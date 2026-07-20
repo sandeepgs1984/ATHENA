@@ -1,0 +1,18 @@
+{
+  "_meta": {
+    "layer": 2,
+    "description": "NSE market structure. Changes when the exchange changes rules, never for strategy.",
+    "verified_by_owner": false
+  },
+  "exchange": "NSE",
+  "timezone": "Asia/Kolkata",
+  "sessions": {
+    "preopen_start": "09:00",
+    "preopen_end": "09:08",
+    "open": "09:15",
+    "close": "15:30"
+  },
+  "circuit_bands_pct": [5, 10, 20],
+  "series": ["EQ", "BE", "BZ", "SM", "ST"],
+  "tick_size_default": "0.05"
+}

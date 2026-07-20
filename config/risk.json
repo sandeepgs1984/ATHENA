@@ -1,0 +1,14 @@
+{
+  "_meta": {
+    "layer": 3,
+    "description": "Risk EVALUATION rules (F-4). Sizing/capital live in capital.json."
+  },
+  "max_daily_loss_pct": 2.0,
+  "per_trade_risk_pct": 0.5,
+  "max_consecutive_losses": 3,
+  "max_decisions_per_day": 5,
+  "no_trade": {
+    "min_market_health": 40,
+    "block_on_stale_data": true
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "_meta": {
+    "layer": 3,
+    "description": "Indicator parameters + versions (F-13). Implementations arrive in Phase 3; versions are part of every run's version vector."
+  },
+  "versions": {
+    "vwap": "1.0.0",
+    "ema": "1.0.0",
+    "rsi": "1.0.0",
+    "atr": "1.0.0"
+  },
+  "params": {
+    "rsi": { "period": 14 },
+    "ema": { "fast": 9, "slow": 21 },
+    "atr": { "period": 14 }
+  }
+}

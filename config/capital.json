@@ -1,0 +1,10 @@
+{
+  "_meta": {
+    "layer": 3,
+    "description": "Capital Manager configuration (F-3). Amounts in INR."
+  },
+  "total_capital": "1000000",
+  "reserved_pct": 20.0,
+  "max_capital_per_position_pct": 10.0,
+  "max_capital_per_sector_pct": 30.0
+}

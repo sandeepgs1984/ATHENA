@@ -23,6 +23,14 @@ Aligned U-2 with the phase plan: journal is a Phase 3 deliverable.
 Per ATHENA-001 §2 D-3.
 ```
 
+## Implementation rules (mandatory — architecture is FROZEN)
+
+- Build correctly, not quickly: optimize for correctness, simplicity, determinism, explainability, maintainability, testability, replayability.
+- Before writing any code: review the relevant ATHENA-002 section; confirm alignment with the Constitution, Blueprint, ADRs, phase scope, and Definition of Done. If anything conflicts, ASK before implementing. Never silently change architecture; genuine architectural limitations → stop, document, propose an ADR, wait for approval.
+- Engineering principles: clarity over cleverness; simplicity over abstraction; configuration over hardcoding; pure functions; one responsibility per module/class/function; deterministic execution; no hidden state; no magic numbers; explicit contracts; every calculation explainable; every failure fails loudly; composition over inheritance; minimal dependencies; business logic independent of providers.
+- Phase discipline: exactly one phase at a time; next phase only after all documented acceptance criteria pass. No speculative features, no placeholders unless explicitly requested, no anticipating future phases.
+- After each milestone: STOP. Produce the 7-part summary (completed work, architectural compliance, files created, tests added, remaining work, risks discovered, implementation-only improvement suggestions) and wait for approval.
+
 ## Project context
 
 Single-user decision-intelligence platform for NSE/BSE swing trading. Constitution: ATHENA-000. Engineering review and 12 accepted amendments: ATHENA-001. Never add order-placement code. Secrets in `.env` only. See README for stack decisions.

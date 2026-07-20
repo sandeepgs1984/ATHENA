@@ -1,0 +1,23 @@
+{
+  "_meta": {
+    "layer": 4,
+    "description": "Default v1 strategy profile (F-10). One active profile per run, recorded in the ConfigurationSnapshot."
+  },
+  "name": "intraday-momentum",
+  "version": "1.0.0",
+  "indicators": ["vwap", "ema", "rsi", "atr"],
+  "weights": {
+    "momentum": 25,
+    "volume": 20,
+    "trend": 15,
+    "volatility": 10,
+    "sector": 15,
+    "market": 15
+  },
+  "risk_overrides": {},
+  "trading_windows": [{ "start": "09:30", "end": "14:45" }],
+  "sizing": {
+    "method": "fixed_risk",
+    "risk_per_trade_pct": 0.5
+  }
+}

@@ -1,0 +1,121 @@
+"""Configuration loader: files → validated AthenaConfig + ConfigurationSnapshot.
+
+Determinism: the snapshot hash is computed over a canonical JSON serialization
+(sorted keys, no whitespace variance), so identical config ⇒ identical hash,
+on any machine, forever (ATHENA-000 p11/p12).
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, Tuple
+
+from pydantic import ValidationError
+
+from athena.config.models import AthenaConfig, EventsFile, ExpiriesFile, HolidaysFile
+from athena.domain.run import ConfigurationSnapshot
+from athena.errors import ConfigError
+
+_REQUIRED_FILES = (
+    "base.json",
+    "market.nse.json",
+    "risk.json",
+    "capital.json",
+    "regime.json",
+    "universe.json",
+    "indicators.json",
+)
+
+
+def _read_json(path: Path) -> Dict[str, Any]:
+    if not path.exists():
+        raise ConfigError(f"Missing configuration file: {path}")
+    try:
+        with path.open(encoding="utf-8") as fh:
+            data = json.load(fh)
+    except json.JSONDecodeError as exc:
+        raise ConfigError(f"Invalid JSON in {path}: {exc}") from exc
+    if not isinstance(data, dict):
+        raise ConfigError(f"{path} must contain a JSON object at top level")
+    return data
+
+
+def _validation_message(name: str, exc: ValidationError) -> str:
+    lines = [f"Configuration invalid in {name}:"]
+    for err in exc.errors():
+        location = ".".join(str(p) for p in err["loc"]) or "(root)"
+        lines.append(f"  - {location}: {err['msg']}")
+    return "\n".join(lines)
+
+
+def load_config(config_dir: Path, profile_name: str | None = None) -> AthenaConfig:
+    """Load and validate the full configuration tree. Raises ConfigError with
+    a human-readable message on ANY problem — ATHENA refuses to run on bad config."""
+
+    config_dir = Path(config_dir)
+    if not config_dir.is_dir():
+        raise ConfigError(f"Config directory not found: {config_dir}")
+
+    raw = {name.split(".")[0].replace("market", "market"): _read_json(config_dir / name)
+           for name in _REQUIRED_FILES}
+    base_raw = raw["base"]
+
+    profile = profile_name or base_raw.get("active_profile")
+    if not profile:
+        raise ConfigError("base.json must define 'active_profile'")
+    profile_path = config_dir / "profiles" / f"{profile}.json"
+    if not profile_path.exists():
+        available = sorted(p.stem for p in (config_dir / "profiles").glob("*.json"))
+        raise ConfigError(
+            f"Strategy profile '{profile}' not found at {profile_path}. Available: {available}"
+        )
+
+    tree: Dict[str, Any] = {
+        "base": base_raw,
+        "market": raw["market"],
+        "risk": raw["risk"],
+        "capital": raw["capital"],
+        "regime": raw["regime"],
+        "universe": raw["universe"],
+        "indicators": raw["indicators"],
+        "profile": _read_json(profile_path),
+    }
+
+    try:
+        return AthenaConfig.model_validate(tree)
+    except ValidationError as exc:
+        raise ConfigError(_validation_message(str(config_dir), exc)) from exc
+
+
+def load_calendar_files(config_dir: Path) -> Tuple[HolidaysFile, ExpiriesFile, EventsFile]:
+    """Load + validate calendar DATA files (consumed by the Calendar Engine)."""
+
+    cal_dir = Path(config_dir) / "calendar"
+    try:
+        holidays = HolidaysFile.model_validate(_read_json(cal_dir / "holidays.json"))
+        expiries = ExpiriesFile.model_validate(_read_json(cal_dir / "expiries.json"))
+        events = EventsFile.model_validate(_read_json(cal_dir / "events.json"))
+    except ValidationError as exc:
+        raise ConfigError(_validation_message(str(cal_dir), exc)) from exc
+    return holidays, expiries, events
+
+
+def _canonical_json(config: AthenaConfig) -> str:
+    return json.dumps(config.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
+
+
+def snapshot_config(config: AthenaConfig, now: datetime | None = None) -> ConfigurationSnapshot:
+    """Freeze the validated config for a run (F-13). Hash is content-addressed."""
+
+    payload = _canonical_json(config)
+    content_hash = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    created = now or datetime.now(timezone.utc)
+    return ConfigurationSnapshot(
+        snapshot_id=f"cfg-{content_hash[:16]}",
+        content_hash=content_hash,
+        payload_json=payload,
+        created_ts=created,
+    )

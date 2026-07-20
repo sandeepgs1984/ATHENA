@@ -1,0 +1,10 @@
+{
+  "_meta": {
+    "description": "Market-moving scheduled events consumed as calendar context (regime input, R-2/R-3).",
+    "note": "Maintained by owner. Kinds are free-form but BUDGET, RBI_POLICY, US_FED, ELECTION, RESULTS are conventional.",
+    "verified_by_owner": false
+  },
+  "events": [
+    { "date": "2026-02-01", "kind": "BUDGET", "name": "Union Budget 2026-27" }
+  ]
+}

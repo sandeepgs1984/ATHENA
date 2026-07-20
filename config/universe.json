@@ -1,0 +1,10 @@
+{
+  "_meta": {
+    "layer": 3,
+    "description": "Dynamic Watchlist Engine filters (R-4). Consumed from Phase 2; validated from Phase 0."
+  },
+  "max_universe_size": 100,
+  "min_avg_daily_volume": 500000,
+  "include_index_constituents": ["NIFTY50"],
+  "custom_symbols": []
+}

@@ -1,0 +1,36 @@
+"""ATHENA error taxonomy (ATHENA-002 §11).
+
+Every failure fails loudly and carries a human-readable reason.
+Modules never let exceptions cross boundaries as surprises; the
+orchestrator (Phase 3) decides run status from typed failures.
+"""
+
+from __future__ import annotations
+
+
+class AthenaError(Exception):
+    """Base class for all ATHENA errors."""
+
+
+class ConfigError(AthenaError):
+    """Invalid, missing, or contradictory configuration. Policy: refuse to start."""
+
+
+class CalendarError(AthenaError):
+    """Calendar data missing or unusable for the requested date. Policy: refuse, name the fix."""
+
+
+class DataStaleError(AthenaError):
+    """Data older than the freshness budget. Policy: degrade loudly, never silently."""
+
+
+class DataValidationError(AthenaError):
+    """Impossible or corrupt market data. Policy: quarantine and report."""
+
+
+class ProviderError(AthenaError):
+    """Market data provider failure (rate limit, auth, outage). Policy: bounded retry, then degrade."""
+
+
+class ReplayMismatchError(AthenaError):
+    """Replay produced different output than the original run. Policy: hard failure, investigate."""

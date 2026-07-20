@@ -1,0 +1,9 @@
+{
+  "_meta": {
+    "description": "F&O expiry dates. DATA file — explicit dates, no weekday rules in code, because NSE has changed expiry weekdays by circular.",
+    "note": "EMPTY by design: owner must populate from the current NSE derivatives circular before expiry-aware features are relied upon. The Calendar Engine treats missing dates as 'not an expiry day'.",
+    "verified_by_owner": false
+  },
+  "weekly": [],
+  "monthly": []
+}
