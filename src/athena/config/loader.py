@@ -21,6 +21,7 @@ from athena.config.models import (
     ExpiriesFile,
     FileProviderConfig,
     HolidaysFile,
+    ValidationConfig,
 )
 from athena.domain.run import ConfigurationSnapshot
 from athena.errors import ConfigError
@@ -115,6 +116,16 @@ def load_file_provider_config(config_dir: Path) -> FileProviderConfig:
     path = Path(config_dir) / "providers" / "file.json"
     try:
         return FileProviderConfig.model_validate(_read_json(path))
+    except ValidationError as exc:
+        raise ConfigError(_validation_message(str(path), exc)) from exc
+
+
+def load_validation_config(config_dir: Path) -> ValidationConfig:
+    """Load + validate the Validation Layer settings (config/validation.json)."""
+
+    path = Path(config_dir) / "validation.json"
+    try:
+        return ValidationConfig.model_validate(_read_json(path))
     except ValidationError as exc:
         raise ConfigError(_validation_message(str(path), exc)) from exc
 

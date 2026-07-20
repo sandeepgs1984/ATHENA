@@ -1,0 +1,14 @@
+{
+  "_meta": {
+    "layer": 3,
+    "description": "Validation Layer thresholds (M1.3). Provider-agnostic data-quality settings."
+  },
+  "freshness": {
+    "max_trading_days_behind": 1,
+    "intraday_max_minutes_behind": 20
+  },
+  "gaps": {
+    "daily_enabled": true,
+    "intraday_enabled": true
+  }
+}

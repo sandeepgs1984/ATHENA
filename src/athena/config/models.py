@@ -294,6 +294,23 @@ class FileProviderConfig(_Strict):
     capabilities: ProviderCapabilitiesConfig
 
 
+class FreshnessConfig(_Strict):
+    max_trading_days_behind: int = Field(ge=0)
+    intraday_max_minutes_behind: int = Field(gt=0)
+
+
+class GapConfig(_Strict):
+    daily_enabled: bool
+    intraday_enabled: bool
+
+
+class ValidationConfig(_Strict):
+    """Validation-layer thresholds (M1.3)."""
+
+    freshness: FreshnessConfig
+    gaps: GapConfig
+
+
 class Holiday(_Strict):
     date: str
     name: str
