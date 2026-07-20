@@ -34,3 +34,7 @@ class ProviderError(AthenaError):
 
 class ReplayMismatchError(AthenaError):
     """Replay produced different output than the original run. Policy: hard failure, investigate."""
+
+
+class CorporateActionError(AthenaError):
+    """Invalid or implausible corporate action definition. Policy: refuse, name the problem."""
