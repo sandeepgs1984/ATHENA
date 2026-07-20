@@ -17,6 +17,7 @@ from pydantic import ValidationError
 
 from athena.config.models import (
     AthenaConfig,
+    ConfidenceConfig,
     EventsFile,
     ExpiriesFile,
     FileProviderConfig,
@@ -159,6 +160,16 @@ def load_scoring_config(config_dir: Path) -> ScoringConfig:
     path = Path(config_dir) / "scoring.json"
     try:
         return ScoringConfig.model_validate(_read_json(path))
+    except ValidationError as exc:
+        raise ConfigError(_validation_message(str(path), exc)) from exc
+
+
+def load_confidence_config(config_dir: Path) -> ConfidenceConfig:
+    """Load + validate the Confidence Engine settings (config/confidence.json)."""
+
+    path = Path(config_dir) / "confidence.json"
+    try:
+        return ConfidenceConfig.model_validate(_read_json(path))
     except ValidationError as exc:
         raise ConfigError(_validation_message(str(path), exc)) from exc
 

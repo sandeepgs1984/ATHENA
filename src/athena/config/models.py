@@ -473,6 +473,49 @@ class ScoringConfig(_Strict):
         return v
 
 
+class ConfidenceWeightsCfg(_Strict):
+    evidence_completeness: int = Field(ge=0)
+    data_freshness: int = Field(ge=0)
+    indicator_availability: int = Field(ge=0)
+    cross_engine_agreement: int = Field(ge=0)
+    unknown_ratio: int = Field(ge=0)
+    consistency: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def _sum_100(self) -> ConfidenceWeightsCfg:
+        total = (self.evidence_completeness + self.data_freshness
+                 + self.indicator_availability + self.cross_engine_agreement
+                 + self.unknown_ratio + self.consistency)
+        if total != 100:
+            raise ValueError(f"confidence weights must sum to 100, got {total}")
+        return self
+
+
+class ConfidenceLevelsCfg(_Strict):
+    low_below: int = Field(ge=0, le=100)
+    high_at_or_above: int = Field(ge=0, le=100)
+
+    @model_validator(mode="after")
+    def _ordered(self) -> ConfidenceLevelsCfg:
+        if self.low_below >= self.high_at_or_above:
+            raise ValueError(
+                f"low_below ({self.low_below}) must be < high_at_or_above ({self.high_at_or_above})")
+        return self
+
+
+class ConsistencyCfg(_Strict):
+    divergence_gap: int = Field(ge=1, le=100)
+    contradiction_penalty: int = Field(ge=0, le=100)
+
+
+class ConfidenceConfig(_Strict):
+    """Confidence Engine configuration (M3.4)."""
+
+    weights: ConfidenceWeightsCfg
+    levels: ConfidenceLevelsCfg
+    consistency: ConsistencyCfg
+
+
 class Holiday(_Strict):
     date: str
     name: str

@@ -2,6 +2,7 @@
 
 from athena.config.loader import (
     load_calendar_files,
+    load_confidence_config,
     load_config,
     load_file_provider_config,
     load_market_health_config,
@@ -12,6 +13,7 @@ from athena.config.loader import (
 )
 from athena.config.models import (
     AthenaConfig,
+    ConfidenceConfig,
     FileProviderConfig,
     MarketHealthConfig,
     ScoringConfig,
@@ -21,12 +23,14 @@ from athena.config.models import (
 
 __all__ = [
     "AthenaConfig",
+    "ConfidenceConfig",
     "FileProviderConfig",
     "MarketHealthConfig",
     "ScoringConfig",
     "SectorHealthConfig",
     "ValidationConfig",
     "load_calendar_files",
+    "load_confidence_config",
     "load_config",
     "load_file_provider_config",
     "load_market_health_config",

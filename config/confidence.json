@@ -1,0 +1,22 @@
+{
+  "_meta": {
+    "layer": 3,
+    "description": "Confidence Engine configuration (M3.4). Measures evaluation reliability, not market direction."
+  },
+  "weights": {
+    "evidence_completeness": 20,
+    "data_freshness": 15,
+    "indicator_availability": 20,
+    "cross_engine_agreement": 15,
+    "unknown_ratio": 15,
+    "consistency": 15
+  },
+  "levels": {
+    "low_below": 40,
+    "high_at_or_above": 70
+  },
+  "consistency": {
+    "divergence_gap": 40,
+    "contradiction_penalty": 25
+  }
+}
