@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| Version | 1.0 |
-| Status | Draft — awaiting owner approval; **no implementation before approval** (ATHENA-001R R-15) |
-| Governed by | ATHENA-000 v0.2 (Constitution), ATHENA-001 (Engineering Review), ATHENA-001R (Owner Review) |
+| Version | 1.1 |
+| Status | **APPROVED — ARCHITECTURE FROZEN** (per ATHENA-002R). Changes only via ADR (§19). Phase 0 authorized. |
+| Governed by | ATHENA-000 v0.2 (Constitution), ATHENA-001 (Engineering Review), ATHENA-001R + ATHENA-002R (Owner Reviews) |
 | Scope | Single source of truth for implementation: architecture, domain model, schema, contracts, lifecycle, standards, roadmap |
 | Horizon | **Intraday-first** (v1) on NSE cash equities; swing later; options/positional in expansion |
 
@@ -21,28 +21,31 @@ Two invariants shape everything below:
 
 ## 2. Module Map
 
-Fourteen modules in four layers. Every module: one responsibility, explicit inputs/outputs, replaceable behind a Protocol.
+Seventeen modules in four layers (v1.1, per ATHENA-002R — **this map is frozen**; additions require an ADR). Every module: one responsibility, explicit inputs/outputs, replaceable behind a Protocol, toggleable by feature flag where marked ⚑ (F-9).
 
 | Layer | Module | Responsibility (one sentence) |
 |---|---|---|
 | Core | `domain` | Canonical immutable objects — the contracts between all modules; pure, no I/O. |
-| Core | `config` | Load, validate (pydantic), snapshot, and version all configuration. |
-| Core | `runtime` | Orchestrate cycles, own RunRecords, SessionContext, determinism, and replay. |
+| Core | `config` | Load, validate (pydantic), snapshot, and version all configuration; strategy profiles; feature flags. |
+| Core | `runtime` | Orchestrate cycles, own RunRecords, PipelineContext, determinism, replay, and simulation mode (F-16). |
+| Core | `observability` | Metrics: module latency, provider latency, data freshness, throughput, refresh/dashboard durations; enforce performance budgets (F-7, F-11). |
 | Context | `calendar` | Trading Calendar Engine — sessions, holidays, expiries, events (R-3). |
-| Context | `regime` | Market Regime Engine — classify market context before any scoring (R-2). |
+| Context | `regime` | Market Regime Engine — classify market context AND emit Market Health + Sector Health scores before any scoring (R-2, F-5, F-6). |
 | Context | `universe` | Dynamic Watchlist Engine — construct today's trading universe (R-4). |
 | Intelligence | `data` | MarketDataProvider abstraction, ingestion, validation, storage. |
 | Intelligence | `evidence` | Indicators/features → canonical Evidence objects (R-5). |
-| Intelligence | `scoring` | Weighted, config-driven Score from Evidence; per-factor attribution. |
-| Intelligence | `confidence` | Confidence Engine — empirical trust in scores, separate from scoring (R-7). |
-| Intelligence | `risk` | Risk gates, NSE market structure, position sizing, no-trade conditions. |
-| Decision | `decision` | Compose Evidence + Score + Confidence + Risk into Decision objects (R-6); enforce explainability quality gate (R-8). |
+| Intelligence | `scoring` | Weighted, profile-driven Score from Evidence; per-factor attribution. |
+| Intelligence | `confidence` ⚑ | Confidence Engine — empirical trust in scores, separate from scoring (R-7). |
+| Intelligence | `risk` | Risk EVALUATION only (F-4): business rules, gates, NSE market structure, no-trade conditions. |
+| Intelligence | `capital` | Capital Manager (F-3): daily/allocated/reserved/risk capital, buying power, per-sector/position caps, position sizing, execution constraints, margin awareness. |
+| Intelligence | `portfolio` ⚑ | Portfolio Intelligence (F-2): sector exposure, open risk, correlation, cash availability, diversification, trade-conflict detection against existing positions. |
+| Decision | `decision` | Compose Evidence + Score + Confidence + Risk + Capital + Portfolio into Decision objects (R-6); enforce the six quality gates (§8.5); emit DecisionTrace (F-15). |
 | Decision | `journal` | Decision Journal — record every recommendation + user action + outcome (R-9). |
 | Decision | `report` | Render dashboard and briefings from stored objects; renders only, never computes. |
 
-Future modules (existing taxonomy, deferred): `learning` (Phase 5), `news`, `options`, `portfolio` analytics (Phase 6+). The `knowledge` base is the `docs/` tree plus journal-derived artifacts (R-10), not code in v1.
+Future modules (existing taxonomy, deferred): `learning` (Phase 6), `news` ⚑, `options` ⚑ (Phase 7). The `knowledge` base is the `docs/` tree plus journal-derived artifacts (R-10), not code in v1.
 
-**Collaborative intelligence (R-12).** Modules do not call each other. Each cycle, the `runtime` orchestrator passes a shared, append-only **SessionContext** through the modules; each module reads what it needs and contributes its output. Regime output influences risk; risk influences decision; decisions influence confidence calibration; learning (later) influences scoring weights — all through SessionContext and stored domain objects, never through direct coupling. This same contract enables the event-driven evolution (§9.4) without rewrites.
+**Collaborative intelligence (R-12).** Modules do not call each other. Each cycle, the `runtime` orchestrator passes a shared, append-only **PipelineContext** through the modules; each module reads what it needs and contributes its output. Regime output influences risk; risk influences decision; decisions influence confidence calibration; learning (later) influences scoring weights — all through PipelineContext and stored domain objects, never through direct coupling. This same contract enables the event-driven evolution (§9.4) without rewrites.
 
 ## 3. Folder Structure
 
@@ -59,18 +62,22 @@ ATHENA/
 │   ├── ATHENA-001-Engineering-Review.md
 │   ├── ATHENA-001R-Owner-Review.md
 │   ├── ATHENA-002-System-Blueprint.md
+│   ├── adr/                     # Architecture Decision Records (F-14) — ADR-001…
 │   ├── playbooks/               # market playbooks (expiry day, budget day, …)
 │   ├── lessons/                 # failure analysis, lessons learned
 │   └── releases/                # release notes per version
 ├── config/
-│   ├── base.json                # app-level: paths, logging, refresh interval
+│   ├── base.json                # app-level: paths, logging, refresh interval, feature flags (F-9)
 │   ├── market.nse.json          # NSE structure: sessions, circuits, series, lot sizes
 │   ├── calendar/                # holidays.json, expiries.json, events.json (data, not code)
 │   ├── universe.json            # watchlist filter definitions (R-4)
-│   ├── regime.json              # regime classification thresholds (R-2)
-│   ├── scoring.json             # factors, weights, normalization
-│   ├── risk.json                # limits, sizing, no-trade conditions
-│   └── indicators.json          # indicator parameters
+│   ├── regime.json              # regime + market/sector health thresholds (R-2, F-5, F-6)
+│   ├── risk.json                # risk-evaluation rules, no-trade conditions (F-4)
+│   ├── capital.json             # capital manager: pools, caps, sizing (F-3)
+│   ├── indicators.json          # indicator parameters + versions (F-13)
+│   └── profiles/                # strategy profiles (F-10): momentum.json, orb.json, …
+│                                #   each: indicators, weights, risk overrides, capital rules,
+│                                #   sizing, trading windows; one active profile per run
 ├── src/athena/
 │   ├── domain/                  # §4 — pure objects, zero dependencies on other layers
 │   ├── config/
@@ -80,13 +87,16 @@ ATHENA/
 │   │   ├── providers/           # base.py (Protocol), file_provider.py, <broker>_provider.py later
 │   │   ├── validation/
 │   │   └── store/               # SQLite access; the ONLY module that writes market data
+│   ├── observability/           # metrics, budgets, system health (F-7, F-8, F-11)
 │   ├── regime/
 │   ├── universe/
 │   ├── evidence/
-│   │   └── indicators/          # in-house, one file per indicator, golden-tested
+│   │   └── indicators/          # in-house, one file per indicator, golden-tested, versioned
 │   ├── scoring/
 │   ├── confidence/
-│   ├── risk/
+│   ├── risk/                    # evaluation only (F-4)
+│   ├── capital/                 # capital manager + sizing (F-3)
+│   ├── portfolio/               # portfolio intelligence (F-2)
 │   ├── decision/
 │   ├── journal/
 │   └── report/
@@ -126,8 +136,13 @@ All objects are frozen dataclasses (or pydantic models where validation is neede
 | `Position` / `Portfolio` | Open positions and aggregate state | instrument, qty, avg price, MTM, realized/unrealized, exposure by sector |
 | `DecisionJournalEntry` | Every recommendation + human response (R-9) | decision_id, market_context_ref, user_action (ACCEPTED/REJECTED/IGNORED), action_ts, outcome_ref? |
 | `TradeOutcome` | Realized result for accepted decisions | entry/exit fills, pnl, holding time, adherence-to-plan flags |
-| `RunRecord` | One pipeline execution | run_id, cycle_id, started/finished, trigger (premarket/refresh/replay), software_version (git sha), config_snapshot_id, input data digest, status |
-| `ConfigurationSnapshot` | Frozen config for a run | id, content hash, full JSON payload, created_ts |
+| `MarketHealthScore` | Market quality inputs (F-5) | ts, components{trend_quality, breadth, liquidity, volatility, institutional_strength, gap_stability}, total, explanation |
+| `SectorHealthScore` | Sector quality inputs (F-6) | ts, sector, components{momentum, leadership, relative_strength, participation, rotation}, total, explanation |
+| `CapitalState` | Capital manager output (F-3) | daily/allocated/reserved/risk capital, buying power, per-sector and per-position caps, explanation |
+| `DecisionTrace` | Complete reasoning path (F-15) | decision_id, ordered stage records (market → calendar → universe → evidence → score → confidence → risk → capital → decision → trade_plan) each with object refs + summary; the primary debugging and learning artifact |
+| `SystemHealthReport` | Pre-flight self-check (F-8) | ts, checks{provider, database, config, data_freshness, storage, replay, last_successful_run, dashboard}, overall status, blocking issues[] |
+| `RunRecord` | One pipeline execution | run_id, cycle_id, started/finished, trigger (premarket/refresh/replay/simulate), status, input data digest, and full version vector (F-13): software_version (git sha), blueprint_version, config_snapshot_id, strategy_profile + version, indicator_versions{} |
+| `ConfigurationSnapshot` | Frozen config for a run | id, content hash, full JSON payload (incl. active profile + feature flags), created_ts |
 
 Contract rule: **modules exchange only these objects.** Adding a field is a reviewed change (`docs`-typed commit referencing this section); removing/renaming one requires a blueprint amendment.
 
@@ -156,8 +171,12 @@ CREATE TABLE sector_snapshots   (ts TEXT, sector TEXT, payload_json TEXT, PRIMAR
 CREATE TABLE config_snapshots   (id TEXT PRIMARY KEY, content_hash TEXT UNIQUE, payload_json TEXT, created_ts TEXT);
 CREATE TABLE runs               (run_id TEXT PRIMARY KEY, cycle_id TEXT, trigger TEXT,
                                  started_ts TEXT, finished_ts TEXT, status TEXT,
-                                 software_version TEXT, config_snapshot_id TEXT REFERENCES config_snapshots,
+                                 software_version TEXT, blueprint_version TEXT,
+                                 strategy_profile TEXT, indicator_versions_json TEXT,
+                                 config_snapshot_id TEXT REFERENCES config_snapshots,
                                  input_digest TEXT);
+CREATE TABLE system_health      (id TEXT PRIMARY KEY, run_id TEXT, ts TEXT,
+                                 checks_json TEXT, status TEXT);
 
 -- Intelligence outputs (append-only, all carry run_id)
 CREATE TABLE regime_assessments (id TEXT PRIMARY KEY, run_id TEXT, ts TEXT, labels_json TEXT, explanation TEXT);
@@ -171,6 +190,9 @@ CREATE TABLE decisions          (id TEXT PRIMARY KEY, run_id TEXT, cycle_id TEXT
                                  instrument_id TEXT, type TEXT, direction TEXT,
                                  score_id TEXT, confidence_json TEXT, risk_json TEXT,
                                  explainability_json TEXT, trade_plan_json TEXT, explanation TEXT);
+
+CREATE TABLE decision_traces    (decision_id TEXT PRIMARY KEY REFERENCES decisions,
+                                 trace_json TEXT);          -- ordered stage records (F-15)
 
 -- Journal & outcomes (R-9)
 CREATE TABLE decision_journal   (decision_id TEXT PRIMARY KEY REFERENCES decisions,
@@ -190,7 +212,9 @@ Layered JSON (constitution's format choice, ATHENA-001 D-7), all loaded through 
 
 - **Layer 1 — application** (`base.json`): paths, log level, refresh interval, dashboard port.
 - **Layer 2 — market structure** (`market.nse.json`, `config/calendar/*`): sessions and timings, circuit bands, series, expiry schedule, lot sizes. Changes when the exchange changes rules, not when strategy changes.
-- **Layer 3 — strategy** (`universe.json`, `regime.json`, `scoring.json`, `risk.json`, `indicators.json`): everything the trader tunes. Every threshold ATHENA-000 forbids hardcoding lives here.
+- **Layer 3 — strategy** (`universe.json`, `regime.json`, `risk.json`, `capital.json`, `indicators.json`): everything the trader tunes. Every threshold ATHENA-000 forbids hardcoding lives here.
+- **Layer 4 — strategy profiles** (`profiles/*.json`, F-10): named profiles (momentum, breakout, ORB, swing, scalping, high-conviction, low-risk) that select indicators, weights, risk overrides, capital rules, sizing, and trading windows. Exactly one active profile per run, recorded in the ConfigurationSnapshot; profiles may override Layer-3 values but never Layer-2 market structure.
+- **Feature flags** (`base.json → features`, F-9): every ⚑-marked module (§2) can be enabled/disabled without code changes. The orchestrator validates the DAG with flags applied — disabling a module whose output a required module consumes is a `ConfigError` unless the consumer declares the input optional.
 - **Secrets** — `.env` only (provider API keys, tokens). Never in JSON, never in the DB, never in logs (ATHENA-001 S-1).
 
 Versioning (ATHENA-000 principle 11): config files are git-tracked; additionally every run stores a `ConfigurationSnapshot` (full payload + content hash) so replay uses the exact config of the original run even if files changed since. Invariants enforced at load (examples): per-trade risk ≤ max daily loss ≤ drawdown budget; position cap ≤ max exposure; refresh interval ≥ 1 minute; every scoring factor weight ≥ 0 and weights sum to the documented total; every universe filter references a defined evidence category.
@@ -204,13 +228,13 @@ All cross-module contracts are `typing.Protocol`s defined in `domain/interfaces.
 ```python
 class IntelligenceModule(Protocol):
     name: str
-    consumes: frozenset[str]   # SessionContext keys it reads
-    produces: frozenset[str]   # SessionContext keys it writes
+    consumes: frozenset[str]   # PipelineContext keys it reads
+    produces: frozenset[str]   # PipelineContext keys it writes
 
-    def evaluate(self, ctx: SessionContext) -> ContextDelta: ...
+    def evaluate(self, ctx: PipelineContext) -> ContextDelta: ...
 ```
 
-`SessionContext` is an immutable snapshot of the cycle so far; each module returns a `ContextDelta` (its outputs). The orchestrator applies deltas in dependency order. Because modules declare `consumes`/`produces`, the orchestrator can compute the dependency graph (§9.3), validate it at startup, and — later — re-run only affected modules when an event invalidates one key (§9.4). No module imports another intelligence module. Ever.
+`PipelineContext` (F-1) is the single immutable object passed through the entire execution lifecycle. It carries: run context (run_id, cycle_id, trigger, execution metadata), calendar context, market context (snapshot, regime, health scores), portfolio context (positions, capital state), the ConfigurationSnapshot (with active strategy profile), the data-provider handle, and everything modules have produced so far this cycle. Each module returns a `ContextDelta` (its outputs). The orchestrator applies deltas in dependency order. Because modules declare `consumes`/`produces`, the orchestrator can compute the dependency graph (§9.3), validate it at startup, and — later — re-run only affected modules when an event invalidates one key (§9.4). No module imports another intelligence module. Ever.
 
 ### 7.2 MarketDataProvider — broker abstraction (owner direction 1)
 
@@ -234,29 +258,37 @@ Rules: **no order methods exist in this Protocol or any implementation — order
 |---|---|---|
 | calendar | date | `calendar` (CalendarContext) |
 | data | calendar, universe? | `candles`, `market_snapshot`, `data_health` |
-| regime | calendar, market_snapshot, candles(index) | `regime` (RegimeAssessment) |
+| regime | calendar, market_snapshot, candles(index+sector) | `regime`, `market_health`, `sector_health` |
 | universe | calendar, regime, candles, market_snapshot | `universe` |
 | evidence | universe, candles, regime, calendar | `evidence` (per instrument) |
-| scoring | evidence | `scores` |
-| confidence | scores, journal history (via store) | `confidence` |
-| risk | scores, regime, portfolio, calendar | `risk_evaluations` |
-| decision | scores, confidence, risk_evaluations, regime, data_health | `decisions` |
+| scoring | evidence, market_health, sector_health | `scores` |
+| confidence | scores, market_health, journal history (via store) | `confidence` |
+| risk | scores, regime, market_health, calendar | `risk_evaluations` |
+| portfolio | positions (via store), scores | `portfolio_assessment` (exposure, correlation, conflicts) |
+| capital | risk_evaluations, portfolio_assessment | `capital_state`, position sizes |
+| decision | scores, confidence, risk_evaluations, capital_state, portfolio_assessment, sector_health, data_health | `decisions` + `decision_traces` |
 | journal | decisions | persisted journal rows |
 | report | everything (read-only, from store) | HTML artifacts |
+| observability | all module timings + provider/data health | metrics, budget violations, `system_health` |
 
 ## 8. Execution Lifecycle (owner direction 2)
+
+### 8.0 Pre-flight: system health check (F-8)
+
+Before any cycle, `observability` produces a `SystemHealthReport`: provider connected, database healthy, config valid, data freshness, storage health, replay availability, last successful run, dashboard status. A failing blocking check ⇒ the run emits no recommendations and the dashboard leads with the health failure and its fix. **ATHENA knows whether it is healthy before it advises.**
 
 ### 8.1 Pre-market run (target: complete before 09:00 IST)
 
 ```
 trigger (scheduled ~08:15)
+→ observability: system health pre-flight (BLOCKED → publish health report; stop)
 → calendar: is today a trading session? (NO → publish MARKET_CLOSED brief; stop)
 → data: ingest overnight EOD + refresh instrument master + corporate actions; validate freshness
-→ regime: overnight/global context, gap expectation, volatility state
+→ regime: overnight/global context, gap expectation, volatility state, market + sector health scores
 → universe: build today's watchlist with per-symbol inclusion trace
-→ evidence → scoring → confidence → risk → decision
-→ journal: record every decision
-→ report: publish PRE-MARKET PLAN (verdict banner, regime, universe, ranked candidates, risk budget)
+→ evidence → scoring → confidence → risk → portfolio → capital → decision (quality gates §8.5)
+→ journal: record every decision (+ DecisionTrace)
+→ report: publish PRE-MARKET PLAN (verdict banner, regime + health, universe, ranked candidates, capital plan)
 ```
 
 ### 8.2 Intraday refresh cycle (every N minutes, config; default 15)
@@ -270,6 +302,39 @@ Same module order, incremental data (`quotes` + latest intraday candles). Each c
 ### 8.4 Evolution path to event-driven (no rewrite required)
 
 v1 scheduling is time-based: the orchestrator re-runs the full module DAG each cycle. Because every module declares `consumes`/`produces` (§7.1), the orchestrator already knows the dependency graph. The event-driven upgrade (deferred, §15) replaces the scheduler loop with a dispatcher that maps invalidation events (new candle batch, regime flip, calendar transition, journal action) to the affected context keys and re-evaluates only downstream modules. Module code is untouched; only `runtime/` changes. This is the architectural insurance the owner review's point 12 asked for.
+
+### 8.5 Quality gates (F-12)
+
+Every Decision must pass six gates before it may recommend action; **any failure ⇒ no recommendation**, and the emitted decision type + explanation state exactly which gate failed and why:
+
+| Gate | Question it answers |
+|---|---|
+| Data quality | Are inputs fresh, validated, complete for this instrument? |
+| Evidence quality | Enough evidence, across enough categories, above minimum confidence? |
+| Risk quality | Do all risk-evaluation rules pass (limits, no-trade conditions, market structure)? |
+| Explainability quality | Is every score factor backed by traceable evidence (R-8)? |
+| Confidence quality | Is the empirical sample behind the confidence assessment above minimum size? |
+| Market quality | Do Market Health and Sector Health clear configured floors (F-5, F-6)? |
+
+Gate thresholds live in config (profile-overridable); gate outcomes are part of the DecisionTrace.
+
+### 8.6 Simulation mode (F-16)
+
+`athena simulate <date|range> [--profile X]` executes the complete pipeline against stored/golden data with injected clock — no live provider, no journal side effects (separate simulation run namespace). Uses: development, testing, regression, backtesting, training. The simulator is the backtest harness of Phase 5 and the regression driver of CI; broker integration is never a prerequisite for exercising the full system.
+
+### 8.7 Performance budgets (F-11)
+
+Architectural contract, measured by `observability` every run; violations are surfaced on the dashboard and tracked as metrics:
+
+| Operation | Budget |
+|---|---|
+| Pre-market analysis (full) | < 60 s |
+| Intraday refresh cycle | < 10 s |
+| Decision generation (post-evidence) | < 3 s |
+| Dashboard generation | < 5 s |
+| Replay of one cycle | < 15 s |
+
+A sustained budget violation is an engineering task, not a config tweak — budgets may only change via ADR.
 
 ## 9. Dependency Graph
 
@@ -290,11 +355,17 @@ graph TD
     JRN[(journal history)] -.-> CNF
     SCO --> RSK[risk]
     REG --> RSK
-    RSK --> DEC[decision]
+    RSK --> CAP[capital]
+    PRT[portfolio] --> CAP
+    JRN -.-> PRT
+    SCO --> PRT
+    CAP --> DEC[decision]
+    RSK --> DEC
     CNF --> DEC
     SCO --> DEC
     DEC --> JR2[journal]
     JR2 --> REP[report]
+    OBS[observability] -.-> REP
 ```
 
 `domain` and `config` are imported by all and import none. Cycles are forbidden; the orchestrator validates the declared graph is a DAG at startup. The dotted edge (journal history → confidence) reads persisted history via the store, not the live cycle — that is how "decision influences confidence" (R-12) works without a cycle.
@@ -330,7 +401,7 @@ Global rules: exceptions never cross module boundaries as surprises — modules 
 
 ## 13. Coding Standards
 
-Python ≥ 3.12, `uv` for env + lockfile. `ruff` (lint + format) and `mypy --strict` on `domain/`, `config/`, `runtime/` (pragmatic strictness elsewhere) — all CI-blocking. Frozen dataclasses for domain objects; pydantic v2 only at boundaries (config, provider payloads). `Decimal` for prices, never float; tz-aware IST datetimes, never naive. `domain/`, `evidence/`, `scoring/`, `risk/`, `decision/` are **pure** (no I/O, no network, no clock reads — time is injected), which is what makes determinism testable. No `TODO` without a tracked reference. Docstrings follow the one-responsibility statement of §2. Commits follow CLAUDE.md (consolidated, `type(scope):`; scopes now include the 14 module names + `blueprint`).
+Python ≥ 3.12, `uv` for env + lockfile. `ruff` (lint + format) and `mypy --strict` on `domain/`, `config/`, `runtime/` (pragmatic strictness elsewhere) — all CI-blocking. Frozen dataclasses for domain objects; pydantic v2 only at boundaries (config, provider payloads). `Decimal` for prices, never float; tz-aware IST datetimes, never naive. `domain/`, `evidence/`, `scoring/`, `risk/`, `decision/` are **pure** (no I/O, no network, no clock reads — time is injected), which is what makes determinism testable. No `TODO` without a tracked reference. Docstrings follow the one-responsibility statement of §2. Commits follow CLAUDE.md (consolidated, `type(scope):`; scopes now include the 17 module names + `blueprint` + `adr`).
 
 ## 14. Phased Roadmap
 
@@ -338,11 +409,11 @@ Each phase produces working software, has owner-approved exit criteria, and no p
 
 | Phase | Scope | Key deliverables | Exit criteria (acceptance) | Cx |
 |---|---|---|---|---|
-| **0 — Foundations** | repo, domain, config, logging, calendar | `domain/` complete per §4; config loaders + invariants; JSONL logging; Calendar Engine with NSE holiday/expiry data; golden dataset skeleton; justfile | `athena today` prints correct CalendarContext for 10 test dates incl. holiday + Muhurat; config invariant violations fail with readable errors; CI green | M |
+| **0 — Foundations** | repo, domain, config, logging, calendar | `domain/` complete per §4; config loaders + invariants + feature flags + strategy profiles; JSONL logging; observability skeleton + system-health pre-flight; Calendar Engine with NSE holiday/expiry data; golden dataset skeleton; justfile | `athena today` prints correct CalendarContext for 10 test dates incl. holiday + Muhurat; config invariant violations fail with readable errors; CI green | M |
 | **1 — Data** | provider abstraction + storage | `MarketDataProvider` Protocol + contract suite; FileProvider (EOD + intraday files); validation (freshness, OHLC sanity, gaps, dupes); corporate-actions handling; SQLite store + backup/restore | golden dataset ingests clean; deliberately corrupted fixtures are quarantined and reported; restore test passes | L |
 | **2 — Context** | regime + universe | Regime Engine (config thresholds, all labels incl. event days from calendar); Universe Engine with per-symbol inclusion trace | golden sessions classify per expected labels; universe for a gap-open golden day matches expectation with full trace | M |
-| **3 — Intelligence** | evidence → decision, pre-market plan | in-house indicators (golden-tested); Evidence generation; scoring with per-factor breakdown; risk gates + sizing (NSE structure from config); Decision composition + explainability quality gate; Decision Journal (write side); static HTML pre-market plan | full pre-market run on golden data reproduces expected decisions byte-identically; every decision passes the explainability gate or is rejected with reason | L |
-| **4 — Intraday loop** | periodic refresh + live dashboard | refresh cycles (quotes polling); FastAPI localhost dashboard with auto-refresh; journal UI (accept/reject/ignore + outcomes, ≤30s per entry); post-market closing cycle; KPI page (adherence, expectancy, drawdown, calibration) | a full simulated trading day (golden intraday data) runs pre-market + all cycles + close without manual intervention; journal round-trip works | L |
+| **3 — Intelligence** | evidence → decision, pre-market plan | in-house indicators (golden-tested, versioned); Evidence generation; scoring with per-factor breakdown; market/sector health scores; risk evaluation (NSE structure from config); capital manager + sizing; Decision composition + six quality gates + DecisionTrace; Decision Journal (write side); static HTML pre-market plan | full pre-market run on golden data reproduces expected decisions byte-identically; every decision passes the explainability gate or is rejected with reason | L |
+| **4 — Intraday loop** | periodic refresh + live dashboard | refresh cycles (quotes polling); portfolio intelligence (positions now exist); FastAPI localhost dashboard with auto-refresh; journal UI (accept/reject/ignore + outcomes, ≤30s per entry); post-market closing cycle; KPI page (adherence, expectancy, drawdown, calibration); performance-budget enforcement (§8.7) | a full simulated trading day (golden intraday data) runs pre-market + all cycles + close without manual intervention; journal round-trip works | L |
 | **5 — Trust** | replay + confidence + backtest | `athena replay`; Confidence Engine (empirical calibration by score bucket, min-sample gates); point-in-time intraday backtest harness on FileProvider | replay of any golden run is byte-identical; confidence output matches hand-computed calibration on synthetic journal data | L |
 | **6 — Learning** | human-supervised learning | learning diagnostics over Decision Journal (decision quality, not just trade outcomes — R-9); propose-and-approve weight changes (D-4 gates); playbook/lessons generation into `docs/` (R-10) | a proposal is generated from ≥ min-sample journal data, shown with evidence, and applies only on approval | M |
 | **7 — Expansion** | swing pack, options, news, event-driven runtime | per deferred decisions §15 | defined when scheduled | — |
@@ -387,6 +458,25 @@ Intentionally postponed choices. Each names its revisit point and the criteria t
 | R9 | SQLite contention (dashboard reads during writes) | L×M | WAL, single writer, read-only connections for report/API |
 | R10 | Determinism erosion (clock reads, dict order, float) | M×M | purity rules §13, injected time, Decimal, CI determinism gate |
 
+## 18. AI Responsibilities (F-17)
+
+Exact boundary of AI involvement in ATHENA — enforced structurally, not by convention:
+
+| Allowed | Not allowed |
+|---|---|
+| News summarization (as Evidence annotation) | Trade decisions |
+| Natural-language explanations of computed results | Risk overrides |
+| Architecture and code reviews | Capital allocation |
+| Learning suggestions (propose-and-approve, D-4) | Score modification |
+| Pattern descriptions | Order placement (structurally impossible — §7.2) |
+| Knowledge-base generation (playbooks, lessons) | |
+
+Rule of thumb: **AI may describe and propose; it may never decide or mutate.** Any AI output entering the pipeline does so as Evidence with `source=ai`, subject to the same explainability and quality gates as everything else.
+
+## 19. Architecture Freeze & ADRs (F-14)
+
+**As of ATHENA-002 v1.1 the architecture is FROZEN.** The module map (§2), domain model (§4), and contracts (§7) may not grow or change without an accepted **Architecture Decision Record** in `docs/adr/` (seeded: ADR-001 modular monolith, ADR-002 broker abstraction, ADR-003 PipelineContext, ADR-004 static HTML first, ADR-005 explainability as data). An ADR records context, decision, alternatives considered, and consequences; it is reviewed like any change (CLAUDE.md commit rule, scope `blueprint`). Everything else — thresholds, weights, profiles, flags — is configuration and needs no ADR. From this point forward the focus is disciplined implementation, not architectural expansion.
+
 ---
 
-*Approval of this blueprint (ATHENA-002 v1.0) authorizes Phase 0 implementation. Amendments to this document follow the CLAUDE.md commit rule with scope `blueprint`.*
+*ATHENA-002 v1.1 — approved and frozen per ATHENA-002R. Phase 0 implementation is authorized. Amendments require an ADR and follow the CLAUDE.md commit rule with scope `blueprint`.*

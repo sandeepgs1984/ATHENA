@@ -11,11 +11,13 @@ ATHENA is not a screener, not a bot, and never executes trades. It exists to imp
 | [ATHENA-000](ATHENA-000-Master-Architecture.md) | Master Architecture & Product Foundation (Constitution) | Ratified v0.2 |
 | [ATHENA-001](ATHENA-001-Engineering-Review.md) | Engineering Review — 7 roles, 8 disagreements resolved, 12 amendments | Approved |
 | [ATHENA-001R](ATHENA-001R-Owner-Review.md) | Owner Review — 15 amendments + 4 directions | Accepted |
-| [ATHENA-002](ATHENA-002-System-Blueprint.md) | System Blueprint — single source of truth for implementation | Draft, awaiting approval |
+| [ATHENA-002](ATHENA-002-System-Blueprint.md) | System Blueprint — single source of truth for implementation | **Approved v1.1 — FROZEN** |
+| [ATHENA-002R](ATHENA-002R-Owner-Review.md) | Owner Review — 17 final refinements + architecture freeze | Accepted |
+| [ADRs](docs/adr/) | Architecture Decision Records (ADR-001…005 seeded) | Active |
 
 ## Core decisions
 
-Modular monolith, 14 modules behind Protocol interfaces (see ATHENA-002 §2). **v1 scope: intraday trading on NSE cash equities** (pre-market plan + periodic refresh; swing later; options/positional in expansion). Broker kept abstract behind a `MarketDataProvider` interface — no broker binding in Phase 1. Stack: Python, pandas, NumPy, SQLite, static HTML + vanilla JS, Lightweight Charts; in-house indicators; JSON config validated by pydantic; FastAPI (localhost-only) from Phase 4. Explainability is carried as data through the pipeline; every recommendation is replayable. The learning engine proposes; the trader approves.
+Modular monolith, 17 modules behind Protocol interfaces (see ATHENA-002 §2); architecture frozen — changes require an ADR. **v1 scope: intraday trading on NSE cash equities** (pre-market plan + periodic refresh; swing later; options/positional in expansion). Broker kept abstract behind a `MarketDataProvider` interface — no broker binding in Phase 1. Stack: Python, pandas, NumPy, SQLite, static HTML + vanilla JS, Lightweight Charts; in-house indicators; JSON config validated by pydantic; FastAPI (localhost-only) from Phase 4. Explainability is carried as data through the pipeline; every recommendation is replayable. The learning engine proposes; the trader approves.
 
 ## Safety invariants
 

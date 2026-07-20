@@ -9,7 +9,7 @@ The AI must NEVER run git actions (add, commit, push, pull, checkout, branch, me
 Every change to this project must be committed with a proper, consolidated commit message:
 
 - One commit per logical change set — never scatter one change across commits, never pile unrelated changes into one.
-- Format: `<type>(<scope>): <summary>` on the first line (≤72 chars, imperative mood), blank line, then a body consolidating WHAT changed and WHY.
+- Format: `<type>(<scope>): <summary>` on the first line (≤72 chars, imperative mood), blank line, then a body as bullet points (`-`), one point per distinct change, each stating WHAT and WHY — never one big paragraph.
 - Types: `docs`, `feat`, `fix`, `config`, `test`, `refactor`, `chore`.
 - Scopes: `constitution`, `review`, or module names once code exists (`data`, `evidence`, `scoring`, `risk`, `decision`, `report`).
 - Reference the governing doc/amendment where relevant (e.g., "per ATHENA-001 amendment 7").
