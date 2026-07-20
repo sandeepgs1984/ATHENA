@@ -6,6 +6,7 @@
 | Reviews | ATHENA-000 v0.1 |
 | Market context | Indian equities (NSE/BSE), single trader, local machine |
 | Verdict | **APPROVED WITH AMENDMENTS** — 12 amendments listed in §3 |
+| Superseded items | ATHENA-001R (owner review) reverses Q-1/amendment 1 (horizon is **intraday**, not EOD swing) and adjusts D-3 (dashboard needs periodic refresh earlier). ATHENA-002 is the current source of truth. |
 
 This document records the review of ATHENA-000 by seven engineering roles, the disagreements between them, and one consolidated recommendation with documented trade-offs.
 

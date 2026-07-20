@@ -2,12 +2,16 @@
 
 | | |
 |---|---|
-| Version | 0.1 |
+| Version | 0.2 |
 | Document | ATHENA-000 |
 | Title | Master Architecture & Product Foundation |
 | Owner | Project Architect |
-| Status | Draft — under engineering review (see ATHENA-001) |
+| Status | RATIFIED — amended per ATHENA-001 (engineering review) and ATHENA-001R (owner review) |
 | Market | Indian equities (NSE/BSE), cash + F&O |
+
+## TRADING HORIZON (v0.2, per ATHENA-001R R-1)
+
+Primary strategy (v1): **Intraday trading**. Secondary (future): swing trading. Expansion: options, positional, multi-day strategies. Every module, scoring rule, indicator, dashboard component, and risk rule is optimized for the primary horizon.
 
 ---
 
@@ -31,7 +35,17 @@ ATHENA is designed exclusively for a single trader. Do NOT optimize for multiple
 4. **Configuration over Hardcoding.** Trading rules live in configuration files whenever practical.
 5. **Modular Architecture.** Every engine has one responsibility and is independently replaceable.
 6. **Data Integrity First.** Indicators are meaningless without reliable data. Validation is mandatory.
-7. **Continuous Learning.** Continuously evaluate historical performance and improve decision quality.
+7. **Continuous Learning.** Continuously evaluate historical performance and improve decision quality. *(Amended per ATHENA-001 D-4: the learning engine proposes; the trader approves.)*
+
+### System-wide principles (v0.2, per ATHENA-001R R-14)
+
+8. Every recommendation must be replayable.
+9. Every decision must be explainable.
+10. Every module must own one responsibility.
+11. Every configuration change must be versioned.
+12. Every pipeline execution must be reproducible.
+13. Every recommendation must be auditable.
+14. Every historical decision must be reconstructable.
 
 ## PROJECT OBJECTIVES
 

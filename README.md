@@ -8,13 +8,14 @@ ATHENA is not a screener, not a bot, and never executes trades. It exists to imp
 
 | Doc | Title | Status |
 |---|---|---|
-| [ATHENA-000](ATHENA-000-Master-Architecture.md) | Master Architecture & Product Foundation (Constitution) | Draft v0.1 |
-| [ATHENA-001](ATHENA-001-Engineering-Review.md) | Engineering Review — 7 roles, 8 disagreements resolved, 12 amendments | Approved with amendments |
-| ATHENA-002 | Folder structure, module definitions, config architecture, phase plan, risk register | Pending |
+| [ATHENA-000](ATHENA-000-Master-Architecture.md) | Master Architecture & Product Foundation (Constitution) | Ratified v0.2 |
+| [ATHENA-001](ATHENA-001-Engineering-Review.md) | Engineering Review — 7 roles, 8 disagreements resolved, 12 amendments | Approved |
+| [ATHENA-001R](ATHENA-001R-Owner-Review.md) | Owner Review — 15 amendments + 4 directions | Accepted |
+| [ATHENA-002](ATHENA-002-System-Blueprint.md) | System Blueprint — single source of truth for implementation | Draft, awaiting approval |
 
-## Core decisions (from ATHENA-001)
+## Core decisions
 
-Modular monolith, six Phase-1 modules: `data`, `evidence`, `scoring`, `risk`, `decision`, `report`. v1 scope: EOD-driven swing trading on NSE cash equities. Stack: Python, pandas, NumPy, SQLite, static HTML + vanilla JS, Lightweight Charts; in-house indicators; JSON config validated by pydantic; FastAPI (localhost-only) deferred to the journal phase. Explainability is carried as data through the pipeline. The learning engine proposes; the trader approves.
+Modular monolith, 14 modules behind Protocol interfaces (see ATHENA-002 §2). **v1 scope: intraday trading on NSE cash equities** (pre-market plan + periodic refresh; swing later; options/positional in expansion). Broker kept abstract behind a `MarketDataProvider` interface — no broker binding in Phase 1. Stack: Python, pandas, NumPy, SQLite, static HTML + vanilla JS, Lightweight Charts; in-house indicators; JSON config validated by pydantic; FastAPI (localhost-only) from Phase 4. Explainability is carried as data through the pipeline; every recommendation is replayable. The learning engine proposes; the trader approves.
 
 ## Safety invariants
 
