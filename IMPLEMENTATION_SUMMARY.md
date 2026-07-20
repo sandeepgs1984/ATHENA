@@ -14,8 +14,8 @@ status updated on approval.
 |---|---|
 | Completed | 2026-07-20 |
 | Scope | Deterministic backup + restore with integrity verification, schema-compat enforcement, recovery validation |
-| Tests | 193 passed / 0 failed (11 new) |
-| Status | **Awaiting owner approval** — closes Phase 1; Phase 2 blocked pending full Phase-1 review |
+| Tests | 182 passed / 0 failed (11 new) |
+| Status | **APPROVED** — closes Phase 1 (Principal Engineer review passed) |
 | Branch | main |
 
 Built the backup/restore layer. `create_backup` integrity-verifies the source, snapshots it via SQLite's online backup API written atomically (temp + `os.replace`, so a backup file is always complete), and writes a JSON metadata sidecar (schema version, per-table counts, provenance). `restore_backup` validates the backup first (integrity + schema-version compatibility — no silent repair, no automatic migration), replaces the target atomically, clears stale WAL sidecars, then re-verifies the restored repository (integrity, foreign keys, schema version, record counts vs metadata) and reports the outcome. Every failure mode raises `RepositoryError` with an actionable message and never leaves the target inconsistent. Repository-focused; no business/provider/intelligence logic.
@@ -28,9 +28,27 @@ Validation checklist 1–10 passed; frozen contracts unchanged; no ADR; no drift
 
 ---
 
-## Phase 1 — Data Foundation: COMPLETE (pending formal review)
+## Phase 2 — Market Intelligence (in progress)
 
-All six milestones implemented and individually reviewed: M1.1 provider contracts, M1.2 FileProvider, M1.3 validation layer, M1.4 corporate actions, M1.5 SQLite repository, M1.6 backup & restore. The data foundation now ingests (via an abstract, order-incapable provider), validates, historically adjusts, persists, and recovers canonical market data — deterministically, explainably, and replayably. 193 tests, ruff-clean. Ready for full Phase-1 review before Phase 2 (Market Intelligence) is authorized.
+### M2.1 — Regime Engine
+
+| | |
+|---|---|
+| Completed | 2026-07-20 |
+| Scope | Deterministic market-regime classification from canonical market data; descriptive, not prescriptive |
+| Tests | 199 passed / 0 failed (17 new) |
+| Status | **Awaiting owner approval** — M2.2 (Market Health) blocked until approved |
+| Branch | main |
+
+Built `RegimeEngine` (`src/athena/regime/`), the first Market Intelligence module. It consumes canonical `Candle` history (an index) plus an optional `MarketSnapshot` (India VIX) and produces the frozen-domain `RegimeAssessment` plus a supporting `RegimeEvidence` chain. Three orthogonal, deterministic dimensions, each always labelled (explicit `*_UNKNOWN` when data is insufficient — never a silent omission): **trend** (BULL/BEAR/SIDEWAYS via fast-vs-slow SMA and last close), **volatility** (HIGH/LOW/NORMAL via India VIX against configured bands), and **gap** (UP/DOWN/NONE via latest open vs prior close against the gap threshold). Pure and replayable: no I/O, no clock reads (time injected as `as_of`), no randomness; Decimal math throughout; thresholds from the existing `regime.json`. Output is strictly descriptive — labels, evidence, and explanation only; no scoring, ranking, or recommendation.
+
+Regime result types live in `src/athena/regime/models.py` (market-intelligence types, not additions to frozen domain §4, which already provides `RegimeAssessment`) — no ADR required. Files created: `src/athena/regime/{__init__,models,engine}.py`, `tests/market_intel/test_regime.py`. Public APIs added: `RegimeEngine.assess`, `RegimeResult`, `RegimeEvidence`, `RegimeLabel`. Validation checklist passed; frozen contracts unchanged; ruff clean; no drift; no tech debt.
+
+---
+
+## Phase 1 — Data Foundation: COMPLETE ✅ (approved 2026-07-20)
+
+All six milestones implemented and individually reviewed: M1.1 provider contracts, M1.2 FileProvider, M1.3 validation layer, M1.4 corporate actions, M1.5 SQLite repository, M1.6 backup & restore. The data foundation now ingests (via an abstract, order-incapable provider), validates, historically adjusts, persists, and recovers canonical market data — deterministically, explainably, and replayably. 182 tests, ruff-clean. **Phase 1 approved; Phase 2 (Market Intelligence) authorized.**
 
 ---
 

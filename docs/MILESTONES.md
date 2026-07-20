@@ -19,11 +19,16 @@ Framework · M0.4 Trading Calendar · M0.5 Observability & CLI.
 | **M1.3** Validation Layer | Freshness, OHLC, duplicate, gap validation; validation reports; quarantine handling | ✅ Approved |
 | **M1.4** Corporate Actions Engine | Splits, bonuses, dividends, renames; historical adjustment strategy | ✅ Approved |
 | **M1.5** SQLite Repository | Schema, WAL, foreign keys, repository layer, append-only storage, integrity verification | ✅ Approved |
-| **M1.6** Backup & Restore | Backup, restore, recovery validation, repository recovery tests | In review |
+| **M1.6** Backup & Restore | Backup, restore, recovery validation, repository recovery tests | ✅ Approved |
 
-## Phase 2 — Market Intelligence
+## Phase 2 — Market Intelligence (AUTHORIZED)
 
-M2.1 Regime Engine · M2.2 Market Health · M2.3 Sector Health · M2.4 Universe Engine
+| Milestone | Scope | Status |
+|---|---|---|
+| **M2.1** Regime Engine | Deterministic regime (trend/volatility/gap) with evidence | In review |
+| M2.2 Market Health | Breadth, trend quality, participation, momentum, volatility health | Blocked on M2.1 |
+| M2.3 Sector Health | Sector-level strength, deterministic + explainable | Blocked on M2.2 |
+| M2.4 Universe Engine | Investable universe construction with explainable inclusion | Blocked on M2.3 |
 
 ## Phase 3 — Decision Intelligence
 
