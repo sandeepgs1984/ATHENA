@@ -158,8 +158,19 @@ class RegimeConfig(_Strict):
 class UniverseConfig(_Strict):
     max_universe_size: int = Field(ge=1)
     min_avg_daily_volume: int = Field(ge=0)
+    min_trading_history_days: int = Field(ge=1)
+    supported_series: list[str]
+    eligible_exchanges: list[str]
+    min_history_completeness: float = Field(gt=0, le=1)
     include_index_constituents: list[str]
     custom_symbols: list[str]
+
+    @field_validator("supported_series", "eligible_exchanges")
+    @classmethod
+    def _non_empty(cls, v: list[str]) -> list[str]:
+        if not v:
+            raise ValueError("must list at least one entry")
+        return v
 
 
 class IndicatorsConfig(_Strict):

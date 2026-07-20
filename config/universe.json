@@ -1,10 +1,14 @@
 {
   "_meta": {
     "layer": 3,
-    "description": "Dynamic Watchlist Engine filters (R-4). Consumed from Phase 2; validated from Phase 0."
+    "description": "Universe Engine eligibility rules (R-4, M2.4). Configuration-driven; every rule independently explainable."
   },
   "max_universe_size": 100,
   "min_avg_daily_volume": 500000,
+  "min_trading_history_days": 30,
+  "supported_series": ["EQ", "BE"],
+  "eligible_exchanges": ["NSE"],
+  "min_history_completeness": 0.9,
   "include_index_constituents": ["NIFTY50"],
   "custom_symbols": []
 }
