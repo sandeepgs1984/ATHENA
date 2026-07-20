@@ -362,6 +362,39 @@ class MarketHealthConfig(_Strict):
     volatility: VolatilityHealthCfg
 
 
+class SectorTrendCfg(_Strict):
+    ma_fast: int = Field(ge=2)
+    ma_slow: int = Field(ge=3)
+
+    @model_validator(mode="after")
+    def _ordered(self) -> SectorTrendCfg:
+        if self.ma_fast >= self.ma_slow:
+            raise ValueError(f"sector ma_fast ({self.ma_fast}) must be < ma_slow ({self.ma_slow})")
+        return self
+
+
+class SectorVolatilityCfg(_Strict):
+    window: int = Field(ge=2)
+    calm_pct: float = Field(gt=0)
+    elevated_pct: float = Field(gt=0)
+
+    @model_validator(mode="after")
+    def _ordered(self) -> SectorVolatilityCfg:
+        if self.calm_pct >= self.elevated_pct:
+            raise ValueError(
+                f"sector calm_pct ({self.calm_pct}) must be < elevated_pct ({self.elevated_pct})")
+        return self
+
+
+class SectorHealthConfig(_Strict):
+    """Sector Health Engine thresholds (M2.3)."""
+
+    trend: SectorTrendCfg
+    breadth: BreadthCfg
+    momentum: MomentumCfg
+    volatility: SectorVolatilityCfg
+
+
 class Holiday(_Strict):
     date: str
     name: str

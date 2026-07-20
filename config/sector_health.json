@@ -1,0 +1,23 @@
+{
+  "_meta": {
+    "layer": 3,
+    "description": "Sector Health Engine thresholds (M2.3). Descriptive per-sector settings."
+  },
+  "trend": {
+    "ma_fast": 10,
+    "ma_slow": 30
+  },
+  "breadth": {
+    "strong_ratio": 0.60,
+    "weak_ratio": 0.40
+  },
+  "momentum": {
+    "period": 10,
+    "healthy_pct": 3.0
+  },
+  "volatility": {
+    "window": 20,
+    "calm_pct": 1.0,
+    "elevated_pct": 2.5
+  }
+}
