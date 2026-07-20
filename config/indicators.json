@@ -1,17 +1,25 @@
 {
   "_meta": {
     "layer": 3,
-    "description": "Indicator parameters + versions (F-13). Implementations arrive in Phase 3; versions are part of every run's version vector."
+    "description": "Indicator parameters + versions (F-13, M3.2). Measurements only; no interpretation."
   },
   "versions": {
-    "vwap": "1.0.0",
+    "sma": "1.0.0",
     "ema": "1.0.0",
     "rsi": "1.0.0",
-    "atr": "1.0.0"
+    "atr": "1.0.0",
+    "macd": "1.0.0",
+    "adx": "1.0.0",
+    "volume_ma": "1.0.0",
+    "vwap": "1.0.0"
   },
   "params": {
+    "sma": { "period": 20 },
+    "ema": { "period": 21 },
     "rsi": { "period": 14 },
-    "ema": { "fast": 9, "slow": 21 },
-    "atr": { "period": 14 }
+    "atr": { "period": 14 },
+    "macd": { "fast": 12, "slow": 26, "signal": 9 },
+    "adx": { "period": 14 },
+    "volume_ma": { "period": 20 }
   }
 }
