@@ -1,5 +1,9 @@
 # ATHENA — Project Rules
 
+## Git actions rule (mandatory)
+
+The AI must NEVER run git actions (add, commit, push, pull, checkout, branch, merge, etc.) on its own. The AI edits files only. For every change set, the AI provides the exact git commands and the consolidated commit message (per the rule below) for sandeep to review and run himself. Git actions may only be executed by the AI if sandeep explicitly asks for it in that specific instance.
+
 ## Git commit rule (mandatory)
 
 Every change to this project must be committed with a proper, consolidated commit message:
