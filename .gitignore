@@ -8,7 +8,10 @@ secrets/
 # Personal data — journal, trade history, local DB and backups
 *.db
 *.db-journal
+*.db-wal
+*.db-shm
 *.sqlite*
+db/
 backups/
 exports/
 

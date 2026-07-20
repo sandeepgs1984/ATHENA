@@ -38,3 +38,7 @@ class ReplayMismatchError(AthenaError):
 
 class CorporateActionError(AthenaError):
     """Invalid or implausible corporate action definition. Policy: refuse, name the problem."""
+
+
+class RepositoryError(AthenaError):
+    """Persistence failure (integrity, duplicate, corruption). Policy: fail loudly, name it."""
