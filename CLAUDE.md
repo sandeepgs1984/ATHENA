@@ -30,6 +30,7 @@ Per ATHENA-001 §2 D-3.
 - Engineering principles: clarity over cleverness; simplicity over abstraction; configuration over hardcoding; pure functions; one responsibility per module/class/function; deterministic execution; no hidden state; no magic numbers; explicit contracts; every calculation explainable; every failure fails loudly; composition over inheritance; minimal dependencies; business logic independent of providers.
 - Phase discipline: exactly one phase at a time; next phase only after all documented acceptance criteria pass. No speculative features, no placeholders unless explicitly requested, no anticipating future phases.
 - After each milestone: STOP. Produce the 7-part summary (completed work, architectural compliance, files created, tests added, remaining work, risks discovered, implementation-only improvement suggestions) and wait for approval.
+- After each completed phase: record that 7-part summary as a new section in `IMPLEMENTATION_SUMMARY.md` (repo root, newest phase first) before handing over for review. This file is the permanent implementation log.
 
 ## Project context
 

@@ -439,7 +439,7 @@ Intentionally postponed choices. Each names its revisit point and the criteria t
 
 **Per change:** code + tests + docstrings; ruff/mypy/CI green; golden diffs intentional and explained; consolidated commit per CLAUDE.md; blueprint amended if a contract changed.
 
-**Per phase:** exit criteria met and demonstrated to owner; release note in `docs/releases/`; risk register (§17) reviewed; no `TODO` without tracked reference; backup/restore verified.
+**Per phase:** exit criteria met and demonstrated to owner; 7-part phase summary recorded in `IMPLEMENTATION_SUMMARY.md` (repo root, permanent implementation log); release note in `docs/releases/`; risk register (§17) reviewed; no `TODO` without tracked reference; backup/restore verified.
 
 **Per recommendation (runtime DoD — the product's own bar):** explainable (passes quality gate), replayable (run provenance stored), auditable (journal row exists), honest (data health reflected in decision type).
 
