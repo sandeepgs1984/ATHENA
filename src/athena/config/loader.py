@@ -11,7 +11,7 @@ import hashlib
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Tuple
+from typing import Any
 
 from pydantic import ValidationError
 
@@ -37,7 +37,7 @@ _REQUIRED_FILES = (
 )
 
 
-def _read_json(path: Path) -> Dict[str, Any]:
+def _read_json(path: Path) -> dict[str, Any]:
     if not path.exists():
         raise ConfigError(f"Missing configuration file: {path}")
     try:
@@ -80,7 +80,7 @@ def load_config(config_dir: Path, profile_name: str | None = None) -> AthenaConf
             f"Strategy profile '{profile}' not found at {profile_path}. Available: {available}"
         )
 
-    tree: Dict[str, Any] = {
+    tree: dict[str, Any] = {
         "base": base_raw,
         "market": raw["market"],
         "risk": raw["risk"],
@@ -97,7 +97,7 @@ def load_config(config_dir: Path, profile_name: str | None = None) -> AthenaConf
         raise ConfigError(_validation_message(str(config_dir), exc)) from exc
 
 
-def load_calendar_files(config_dir: Path) -> Tuple[HolidaysFile, ExpiriesFile, EventsFile]:
+def load_calendar_files(config_dir: Path) -> tuple[HolidaysFile, ExpiriesFile, EventsFile]:
     """Load + validate calendar DATA files (consumed by the Calendar Engine)."""
 
     cal_dir = Path(config_dir) / "calendar"

@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
-from typing import List
 
 from athena.domain.enums import HealthStatus, Timeframe
 from athena.domain.interfaces import ProviderCapabilities, ProviderHealth
@@ -22,7 +21,7 @@ _DATA_END = date(2026, 3, 31)
 
 
 class StubProvider:
-    """Two instruments, weekday daily candles Jan–Mar 2026, 5m candles, quotes."""
+    """Two instruments, weekday daily candles Jan-Mar 2026, 5m candles, quotes."""
 
     name = "stub"
 
@@ -39,7 +38,7 @@ class StubProvider:
             supports_market_snapshot=True,
         )
 
-    def instruments(self) -> List[Instrument]:
+    def instruments(self) -> list[Instrument]:
         return list(self._INSTRUMENTS)
 
     def _require_known(self, instrument_id: str) -> None:
@@ -52,9 +51,9 @@ class StubProvider:
         seed = sum(ord(ch) for ch in instrument_id) + day.toordinal() % 50
         return Decimal(seed) + Decimal("100")
 
-    def daily_candles(self, instrument_id: str, start: date, end: date) -> List[Candle]:
+    def daily_candles(self, instrument_id: str, start: date, end: date) -> list[Candle]:
         self._require_known(instrument_id)
-        candles: List[Candle] = []
+        candles: list[Candle] = []
         day = max(start, _DATA_START)
         last = min(end, _DATA_END)
         while day <= last:
@@ -76,13 +75,13 @@ class StubProvider:
 
     def intraday_candles(
         self, instrument_id: str, timeframe: Timeframe, start: datetime, end: datetime
-    ) -> List[Candle]:
+    ) -> list[Candle]:
         self._require_known(instrument_id)
         if timeframe not in self.capabilities().timeframes or timeframe is Timeframe.D1:
             raise ProviderError(
                 f"timeframe {timeframe.value} not supported by provider '{self.name}'"
             )
-        candles: List[Candle] = []
+        candles: list[Candle] = []
         ts = start
         step = timedelta(minutes=5)
         while ts <= end and len(candles) < 500:
@@ -103,7 +102,7 @@ class StubProvider:
             ts += step
         return candles
 
-    def quotes(self, instrument_ids: List[str]) -> List[Quote]:
+    def quotes(self, instrument_ids: list[str]) -> list[Quote]:
         for instrument_id in instrument_ids:
             self._require_known(instrument_id)
         return [

@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import date, datetime, time
 from decimal import Decimal
-from typing import Any, Mapping, Optional, Tuple
+from typing import Any
 
 from athena.domain.enums import SessionType, Timeframe
 
@@ -18,12 +19,12 @@ class Instrument:
     symbol: str
     exchange: str
     series: str
-    isin: Optional[str] = None
+    isin: str | None = None
     lot_size: int = 1
     tick_size: Decimal = Decimal("0.05")
     status: str = "ACTIVE"
-    listed_date: Optional[date] = None
-    delisted_date: Optional[date] = None
+    listed_date: date | None = None
+    delisted_date: date | None = None
 
     def __post_init__(self) -> None:
         if not self.symbol:
@@ -87,12 +88,12 @@ class CalendarContext:
     session_type: SessionType
     exchange: str
     timezone: str
-    open_time: Optional[time]
-    close_time: Optional[time]
-    holiday_name: Optional[str] = None
+    open_time: time | None
+    close_time: time | None
+    holiday_name: str | None = None
     is_weekly_expiry: bool = False
     is_monthly_expiry: bool = False
-    events: Tuple[CalendarEvent, ...] = ()
+    events: tuple[CalendarEvent, ...] = ()
 
     @property
     def is_trading_session(self) -> bool:
@@ -122,7 +123,7 @@ class MarketSnapshot:
     indices: Mapping[str, Decimal]
     breadth_advances: int = 0
     breadth_declines: int = 0
-    india_vix: Optional[Decimal] = None
+    india_vix: Decimal | None = None
 
     def __post_init__(self) -> None:
         if self.ts.tzinfo is None:
@@ -136,7 +137,7 @@ class SectorSnapshot:
     ts: datetime
     sector: str
     relative_strength: Decimal
-    leaders: Tuple[str, ...] = ()
+    leaders: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -178,8 +179,8 @@ class RegimeAssessment:
 
     assessment_id: str
     ts: datetime
-    labels: Tuple[str, ...]
-    evidence_ids: Tuple[str, ...]
+    labels: tuple[str, ...]
+    evidence_ids: tuple[str, ...]
     explanation: str
 
     def __post_init__(self) -> None:
@@ -194,7 +195,7 @@ class UniverseMember:
     """One instrument in today's universe, with the trace of WHY it was included (R-4)."""
 
     instrument_id: str
-    inclusion_trace: Tuple[str, ...]
+    inclusion_trace: tuple[str, ...]
 
     def __post_init__(self) -> None:
         if not self.inclusion_trace:
@@ -208,4 +209,4 @@ class Universe:
     universe_id: str
     universe_date: date
     cycle_id: str
-    members: Tuple[UniverseMember, ...]
+    members: tuple[UniverseMember, ...]

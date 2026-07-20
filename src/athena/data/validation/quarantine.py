@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Dict, Optional, Tuple
 
 from athena.data.validation.reports import ValidationReport, ValidationSummary
 
@@ -21,7 +20,7 @@ class QuarantineRecord:
 
     dataset_id: str
     reason: str
-    failed_reports: Tuple[ValidationReport, ...]
+    failed_reports: tuple[ValidationReport, ...]
     quarantined_ts: datetime
 
     def __post_init__(self) -> None:
@@ -33,9 +32,9 @@ class QuarantineRegistry:
     """Explicit per-run collector of quarantined datasets (no global state)."""
 
     def __init__(self) -> None:
-        self._records: Dict[str, QuarantineRecord] = {}
+        self._records: dict[str, QuarantineRecord] = {}
 
-    def review(self, summary: ValidationSummary) -> Optional[QuarantineRecord]:
+    def review(self, summary: ValidationSummary) -> QuarantineRecord | None:
         """Quarantine the dataset iff its summary has failures. Returns the record,
         or None if the dataset is clean."""
         failures = summary.failures
@@ -54,9 +53,9 @@ class QuarantineRegistry:
     def is_quarantined(self, dataset_id: str) -> bool:
         return dataset_id in self._records
 
-    def get(self, dataset_id: str) -> Optional[QuarantineRecord]:
+    def get(self, dataset_id: str) -> QuarantineRecord | None:
         return self._records.get(dataset_id)
 
     @property
-    def records(self) -> Tuple[QuarantineRecord, ...]:
+    def records(self) -> tuple[QuarantineRecord, ...]:
         return tuple(self._records.values())

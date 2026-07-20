@@ -18,10 +18,10 @@ Adjustment model (standard back-adjustment):
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import replace
 from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal
-from typing import Dict, List, Optional, Sequence
 
 from athena.calendar.engine import CalendarEngine
 from athena.data.corporate_actions.evidence import AdjustmentEvidence, AdjustmentResult
@@ -44,14 +44,14 @@ _ONE = Decimal(1)
 class CorporateActionsEngine:
     """Deterministic, explainable corporate-action adjustment."""
 
-    def __init__(self, calendar: Optional[CalendarEngine] = None) -> None:
+    def __init__(self, calendar: CalendarEngine | None = None) -> None:
         # Calendar is optional and used only to ANNOTATE whether an ex_date is a
         # trading session — effective dates are never inferred (M1.4 rule).
         self._calendar = calendar
 
     # ------------------------------------------------------------------ renames
 
-    def build_symbol_map(self, actions: Sequence[CorporateAction]) -> Dict[str, str]:
+    def build_symbol_map(self, actions: Sequence[CorporateAction]) -> dict[str, str]:
         """Direct old->new symbol mapping from RENAME actions (ex_date order)."""
         renames = sorted(
             (a for a in self._typed(actions) if isinstance(a, Rename)),
@@ -88,8 +88,8 @@ class CorporateActionsEngine:
         renames = [a for a in typed if isinstance(a, Rename)]
 
         # Precompute each applicable action's factors + evidence.
-        applied: List[tuple[TypedAction, Decimal, Decimal]] = []
-        evidence: List[AdjustmentEvidence] = []
+        applied: list[tuple[TypedAction, Decimal, Decimal]] = []
+        evidence: list[AdjustmentEvidence] = []
 
         for action in sorted(price_actions, key=lambda a: a.ex_date):
             if not strategy.includes(action.action_type):
@@ -132,7 +132,7 @@ class CorporateActionsEngine:
     # ------------------------------------------------------------------ internals
 
     @staticmethod
-    def _typed(actions: Sequence[CorporateAction]) -> List[TypedAction]:
+    def _typed(actions: Sequence[CorporateAction]) -> list[TypedAction]:
         return [parse_action(a) for a in actions]
 
     def _factors(self, action: TypedAction, ordered: Sequence[Candle]) -> tuple[Decimal, Decimal]:
@@ -151,7 +151,7 @@ class CorporateActionsEngine:
         raise CorporateActionError(f"unsupported price action: {action}")
 
     @staticmethod
-    def _apply(candle: Candle, applied: List[tuple[TypedAction, Decimal, Decimal]]) -> Candle:
+    def _apply(candle: Candle, applied: list[tuple[TypedAction, Decimal, Decimal]]) -> Candle:
         price_factor = _ONE
         volume_factor = _ONE
         for action, pf, vf in applied:
@@ -172,7 +172,7 @@ class CorporateActionsEngine:
             adjusted=True,
         )
 
-    def _calendar_note(self, action: TypedAction) -> Dict[str, str]:
+    def _calendar_note(self, action: TypedAction) -> dict[str, str]:
         if self._calendar is None:
             return {}
         try:

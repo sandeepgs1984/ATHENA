@@ -6,8 +6,8 @@ and returns an immutable ValidationSummary. No file/SQLite/broker awareness.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import date, datetime
-from typing import List, Sequence
 
 from athena.calendar.engine import CalendarEngine
 from athena.config.models import ValidationConfig
@@ -35,7 +35,7 @@ class DatasetValidator:
         self, dataset_id: str, candles: Sequence[Candle], *,
         start: date, end: date, as_of: datetime,
     ) -> ValidationSummary:
-        reports: List[ValidationReport] = [
+        reports: list[ValidationReport] = [
             validate_ohlc(candles, as_of=as_of),
             validate_duplicates(candles, as_of=as_of),
             validate_freshness(candles, Timeframe.D1, self._calendar, self._config, as_of=as_of),
@@ -50,7 +50,7 @@ class DatasetValidator:
         self, dataset_id: str, timeframe: Timeframe, candles: Sequence[Candle], *,
         start: date, end: date, as_of: datetime,
     ) -> ValidationSummary:
-        reports: List[ValidationReport] = [
+        reports: list[ValidationReport] = [
             validate_ohlc(candles, as_of=as_of),
             validate_duplicates(candles, as_of=as_of),
             validate_freshness(candles, timeframe, self._calendar, self._config, as_of=as_of),

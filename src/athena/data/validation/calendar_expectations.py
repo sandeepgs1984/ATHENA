@@ -7,14 +7,13 @@ Gap and freshness validation must NEVER infer trading sessions manually
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
-from typing import List, Optional
 
 from athena.calendar.engine import CalendarEngine
 
 
-def trading_days_between(calendar: CalendarEngine, start: date, end: date) -> List[date]:
+def trading_days_between(calendar: CalendarEngine, start: date, end: date) -> list[date]:
     """Expected trading sessions in [start, end] inclusive, per the calendar."""
-    days: List[date] = []
+    days: list[date] = []
     day = start
     while day <= end:
         if calendar.context_for(day).is_trading_session:
@@ -25,7 +24,7 @@ def trading_days_between(calendar: CalendarEngine, start: date, end: date) -> Li
 
 def latest_trading_day_on_or_before(
     calendar: CalendarEngine, ref: date, *, lookback_days: int = 15
-) -> Optional[date]:
+) -> date | None:
     """Most recent trading session on or before ``ref`` (None if none within lookback)."""
     day = ref
     for _ in range(lookback_days + 1):
@@ -37,12 +36,12 @@ def latest_trading_day_on_or_before(
 
 def expected_intraday_opens(
     calendar: CalendarEngine, day: date, step_minutes: int, tzinfo
-) -> List[datetime]:
+) -> list[datetime]:
     """Expected intraday candle open-times for one session (empty if timings unknown)."""
     ctx = calendar.context_for(day)
     if not ctx.is_trading_session or ctx.open_time is None or ctx.close_time is None:
         return []  # e.g. Muhurat before NSE notifies timings — cannot assert expectations
-    opens: List[datetime] = []
+    opens: list[datetime] = []
     cursor = datetime.combine(day, ctx.open_time, tzinfo=tzinfo)
     session_close = datetime.combine(day, ctx.close_time, tzinfo=tzinfo)
     step = timedelta(minutes=step_minutes)

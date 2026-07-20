@@ -106,11 +106,11 @@ class TestCandles:
     def test_duplicate_candle_rejected(self, repo):
         repo.upsert_instrument(_instrument())
         repo.add_candles([_candle(date(2026, 2, 2))])
-        with pytest.raises(RepositoryError, match="integrity violation"):
+        with pytest.raises(RepositoryError, match=r"integrity violation"):
             repo.add_candles([_candle(date(2026, 2, 2))])
 
     def test_foreign_key_enforced(self, repo):
-        with pytest.raises(RepositoryError, match="integrity violation"):
+        with pytest.raises(RepositoryError, match=r"integrity violation"):
             repo.add_candles([_candle(date(2026, 2, 2))])  # instrument not stored
 
     def test_empty_range_returns_empty(self, repo):
@@ -122,14 +122,13 @@ class TestCandles:
 class TestTransactions:
     def test_rollback_on_exception(self, repo):
         repo.upsert_instrument(_instrument())
-        with pytest.raises(RuntimeError):
-            with repo.transaction() as cur:
-                cur.execute(
-                    "INSERT INTO candles (instrument_id, timeframe, ts_open, open, high, low, "
-                    "close, volume, source, adjusted) VALUES (?,?,?,?,?,?,?,?,?,?)",
-                    (INST, "1d", "2026-02-02T09:15:00+05:30", "100", "101", "99", "100", 1000,
-                     "test", 0))
-                raise RuntimeError("boom")
+        with pytest.raises(RuntimeError), repo.transaction() as cur:
+            cur.execute(
+                "INSERT INTO candles (instrument_id, timeframe, ts_open, open, high, low, "
+                "close, volume, source, adjusted) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (INST, "1d", "2026-02-02T09:15:00+05:30", "100", "101", "99", "100", 1000,
+                 "test", 0))
+            raise RuntimeError("boom")
         # rolled back → nothing persisted
         assert repo.get_candles(INST, Timeframe.D1, datetime(2026, 2, 1, tzinfo=IST),
                                 datetime(2026, 2, 28, tzinfo=IST)) == []
@@ -182,7 +181,7 @@ class TestCorporateActions:
     def test_foreign_key_enforced(self, repo):
         ca = CorporateAction(action_id="s1", instrument_id="MISSING", action_type="SPLIT",
                              ex_date=date(2026, 2, 4), details={})
-        with pytest.raises(RepositoryError, match="integrity violation"):
+        with pytest.raises(RepositoryError, match=r"integrity violation"):
             repo.add_corporate_action(ca)
 
 

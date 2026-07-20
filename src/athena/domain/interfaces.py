@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import FrozenSet, List, Protocol, Tuple, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from athena.domain.context import ContextDelta, PipelineContext
 from athena.domain.enums import HealthStatus, Timeframe
@@ -20,7 +20,7 @@ from athena.domain.market import Candle, Instrument, MarketSnapshot, Quote
 class ProviderCapabilities:
     """What a provider can actually serve — declared, not assumed."""
 
-    timeframes: Tuple[Timeframe, ...]
+    timeframes: tuple[Timeframe, ...]
     max_history_days: int
     supports_quotes: bool
     supports_market_snapshot: bool
@@ -79,15 +79,15 @@ class MarketDataProvider(Protocol):
 
     def capabilities(self) -> ProviderCapabilities: ...
 
-    def instruments(self) -> List[Instrument]: ...
+    def instruments(self) -> list[Instrument]: ...
 
-    def daily_candles(self, instrument_id: str, start: date, end: date) -> List[Candle]: ...
+    def daily_candles(self, instrument_id: str, start: date, end: date) -> list[Candle]: ...
 
     def intraday_candles(
         self, instrument_id: str, timeframe: Timeframe, start: datetime, end: datetime
-    ) -> List[Candle]: ...
+    ) -> list[Candle]: ...
 
-    def quotes(self, instrument_ids: List[str]) -> List[Quote]: ...
+    def quotes(self, instrument_ids: list[str]) -> list[Quote]: ...
 
     def market_snapshot(self) -> MarketSnapshot: ...
 
@@ -104,7 +104,7 @@ class IntelligenceModule(Protocol):
     """
 
     name: str
-    consumes: FrozenSet[str]
-    produces: FrozenSet[str]
+    consumes: frozenset[str]
+    produces: frozenset[str]
 
     def evaluate(self, ctx: PipelineContext) -> ContextDelta: ...

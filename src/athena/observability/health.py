@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 from athena.config.loader import load_calendar_files, load_config
 from athena.domain.enums import HealthStatus
@@ -51,8 +50,8 @@ def _check_writable(name: str, directory: Path) -> HealthCheck:
 
 
 def run_system_checks(config_dir: Path, repo_root: Path,
-                      for_date: Optional[date] = None,
-                      now: Optional[datetime] = None) -> SystemHealthReport:
+                      for_date: date | None = None,
+                      now: datetime | None = None) -> SystemHealthReport:
     """Every morning ATHENA knows whether it is healthy before recommending (F-8)."""
 
     today = for_date or datetime.now(timezone.utc).date()

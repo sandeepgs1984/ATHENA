@@ -118,7 +118,7 @@ class MarketDataProviderContract:
 
     def test_unknown_instrument_fails_loudly(self, provider, known_daily_range):
         _, start, end = known_daily_range
-        with pytest.raises(ProviderError, match="NO-SUCH-INSTRUMENT"):
+        with pytest.raises(ProviderError, match=r"NO-SUCH-INSTRUMENT"):
             provider.daily_candles("NO-SUCH-INSTRUMENT", start, end)
 
     # -------------------------------------------------------- intraday candles
@@ -153,7 +153,7 @@ class MarketDataProviderContract:
             for q in quotes:
                 assert q.ts.tzinfo is not None
         else:
-            with pytest.raises(ProviderError, match="quote"):
+            with pytest.raises(ProviderError, match=r"quote"):
                 provider.quotes([instrument_id])
 
     # --------------------------------------------------------- snapshot/health
@@ -164,7 +164,7 @@ class MarketDataProviderContract:
             assert snapshot.ts.tzinfo is not None
             assert snapshot.indices, "market snapshot must include at least one index"
         else:
-            with pytest.raises(ProviderError, match="snapshot"):
+            with pytest.raises(ProviderError, match=r"snapshot"):
                 provider.market_snapshot()
 
     def test_health_reports(self, provider):

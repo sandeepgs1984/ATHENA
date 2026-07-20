@@ -36,7 +36,7 @@ def _cmd_today(args: argparse.Namespace) -> int:
     config = load_config(_config_dir())
     engine = CalendarEngine.from_config_dir(_config_dir(), config.market)
 
-    if args.date:
+    if args.date:  # noqa: SIM108 - explicit block reads clearer than a long ternary
         target = date.fromisoformat(args.date)
     else:
         target = datetime.now(ZoneInfo(config.market.timezone)).date()

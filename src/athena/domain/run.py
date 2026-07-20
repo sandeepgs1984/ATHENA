@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Mapping, Optional
 
 from athena.domain.enums import RunStatus, RunTrigger
 
@@ -41,7 +41,7 @@ class RunRecord:
     indicator_versions: Mapping[str, str]
     config_snapshot_id: str
     input_digest: str = ""
-    finished_ts: Optional[datetime] = None
+    finished_ts: datetime | None = None
 
     def __post_init__(self) -> None:
         for name in ("run_id", "software_version", "blueprint_version", "config_snapshot_id"):

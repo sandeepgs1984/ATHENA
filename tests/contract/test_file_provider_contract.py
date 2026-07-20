@@ -6,10 +6,10 @@ from datetime import date
 from pathlib import Path
 
 import pytest
+from tests.contract.provider_contract import MarketDataProviderContract
 
 from athena.config.models import FileProviderConfig, ProviderCapabilitiesConfig
 from athena.data.providers.file_provider import FileProvider
-from tests.contract.provider_contract import MarketDataProviderContract
 
 SYNTHETIC = Path(__file__).resolve().parents[1] / "data" / "fileprovider"
 

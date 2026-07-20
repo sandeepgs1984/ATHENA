@@ -58,15 +58,15 @@ class TestParsing:
                                     {"old_symbol": "A", "new_symbol": "B"})).action_type is CorporateActionType.RENAME
 
     def test_unknown_type_fails(self):
-        with pytest.raises(CorporateActionError, match="unknown action type"):
+        with pytest.raises(CorporateActionError, match=r"unknown action type"):
             parse_action(_action("x", "MERGER", date(2026, 2, 4), {}))
 
     def test_missing_parameter_fails(self):
-        with pytest.raises(CorporateActionError, match="missing 'to_shares'"):
+        with pytest.raises(CorporateActionError, match=r"missing 'to_shares'"):
             parse_action(_action("s", "SPLIT", date(2026, 2, 4), {"from_shares": 1}))
 
     def test_non_positive_split_fails(self):
-        with pytest.raises(CorporateActionError, match="must be > 0"):
+        with pytest.raises(CorporateActionError, match=r"must be > 0"):
             parse_action(_action("s", "SPLIT", date(2026, 2, 4), {"from_shares": 0, "to_shares": 5}))
 
 
@@ -127,7 +127,7 @@ class TestDividend:
 
     def test_implausible_dividend_fails(self, engine):
         actions = [_action("d1", "DIVIDEND", date(2026, 2, 5), {"amount": "9999"})]
-        with pytest.raises(CorporateActionError, match="implausible"):
+        with pytest.raises(CorporateActionError, match=r"implausible"):
             engine.adjust(INST, _series(), actions,
                           strategy=AdjustmentStrategy.FULLY_ADJUSTED, as_of=AS_OF)
 

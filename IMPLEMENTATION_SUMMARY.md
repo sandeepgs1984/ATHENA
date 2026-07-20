@@ -8,6 +8,32 @@ status updated on approval.
 
 ## Phase 1 — Data Foundation (in progress)
 
+### M1.6 — Backup & Restore  (completes Phase 1)
+
+| | |
+|---|---|
+| Completed | 2026-07-20 |
+| Scope | Deterministic backup + restore with integrity verification, schema-compat enforcement, recovery validation |
+| Tests | 193 passed / 0 failed (11 new) |
+| Status | **Awaiting owner approval** — closes Phase 1; Phase 2 blocked pending full Phase-1 review |
+| Branch | main |
+
+Built the backup/restore layer. `create_backup` integrity-verifies the source, snapshots it via SQLite's online backup API written atomically (temp + `os.replace`, so a backup file is always complete), and writes a JSON metadata sidecar (schema version, per-table counts, provenance). `restore_backup` validates the backup first (integrity + schema-version compatibility — no silent repair, no automatic migration), replaces the target atomically, clears stale WAL sidecars, then re-verifies the restored repository (integrity, foreign keys, schema version, record counts vs metadata) and reports the outcome. Every failure mode raises `RepositoryError` with an actionable message and never leaves the target inconsistent. Repository-focused; no business/provider/intelligence logic.
+
+Files created: `src/athena/data/store/backup.py`, `tests/data_layer/test_backup_restore.py`. Files modified: `src/athena/data/store/{__init__,repository}.py` (exports; repo `path`/`connection`/`record_counts` accessors). Public APIs added: `create_backup`, `restore_backup`, `BackupResult`, `RestoreResult`. 11 new tests: successful backup/restore, overwrite behavior, read-only destination, recovery of every entity, restored==original, deterministic repeated cycles, missing/corrupted backup, incompatible schema refusal (+ target untouched), unhealthy-source refusal.
+
+**Codebase-wide quality pass (this milestone):** ran `ruff` for the first time (not previously available in the sandbox). Applied safe modernizations tree-wide — `typing.List/Dict/Tuple/Optional/Union` → builtin generics and `X | None` (verified against the 3.10 floor; all tests green), raw-string regex patterns in tests, and minor nits. Set ruff `target-version = py310` and `line-length = 120` (a deliberate project-standard width suited to this explainability-heavy code, avoiding low-value wrapping churn). `ruff check src tests` now passes clean. `mypy` could not run — v2.3.0 in the sandbox crashes with an INTERNAL ERROR on any input (tooling bug); strict typing remains configured for `domain`/`config` and should be verified on the owner's machine.
+
+Validation checklist 1–10 passed; frozen contracts unchanged; no ADR; no drift; no tech debt.
+
+---
+
+## Phase 1 — Data Foundation: COMPLETE (pending formal review)
+
+All six milestones implemented and individually reviewed: M1.1 provider contracts, M1.2 FileProvider, M1.3 validation layer, M1.4 corporate actions, M1.5 SQLite repository, M1.6 backup & restore. The data foundation now ingests (via an abstract, order-incapable provider), validates, historically adjusts, persists, and recovers canonical market data — deterministically, explainably, and replayably. 193 tests, ruff-clean. Ready for full Phase-1 review before Phase 2 (Market Intelligence) is authorized.
+
+---
+
 ### M1.5 — SQLite Repository
 
 | | |

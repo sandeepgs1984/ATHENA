@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Any, Mapping
+from typing import Any
 
 from athena.domain.market import CalendarContext
 from athena.domain.run import ConfigurationSnapshot, RunRecord
@@ -51,7 +52,7 @@ class PipelineContext:
     def has(self, key: str) -> bool:
         return key in self.data
 
-    def with_delta(self, delta: ContextDelta) -> "PipelineContext":
+    def with_delta(self, delta: ContextDelta) -> PipelineContext:
         """Return a NEW context with the delta applied. Re-producing a key is a bug."""
         overlap = set(delta.outputs) & set(self.data)
         if overlap:

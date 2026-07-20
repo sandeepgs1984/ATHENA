@@ -15,9 +15,9 @@ Separation of responsibility (ATHENA-002 §7 / M1.3 authorization):
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from collections.abc import Sequence
+from datetime import date, datetime
 from decimal import Decimal
-from typing import List, Sequence
 
 from athena.calendar.engine import CalendarEngine
 from athena.config.models import ValidationConfig
@@ -62,7 +62,7 @@ def _failed(vt, severity, explanation, as_of, stats, evidence=()) -> ValidationR
 def validate_ohlc(candles: Sequence[Candle], *, as_of: datetime) -> ValidationReport:
     """Validate business rules not guaranteed by the Candle contract: strictly
     positive prices. (High/Low ordering is already enforced structurally.)"""
-    offenders: List[str] = []
+    offenders: list[str] = []
     for c in candles:
         if min(c.open, c.high, c.low, c.close) <= Decimal(0):
             offenders.append(
@@ -84,7 +84,7 @@ def validate_duplicates(candles: Sequence[Candle], *, as_of: datetime) -> Valida
     """Detect duplicate (instrument_id, timeframe, ts_open) across the dataset —
     e.g. from merging datasets or crossing ingestion boundaries."""
     seen: set[tuple[str, str, int]] = set()
-    dups: List[str] = []
+    dups: list[str] = []
     for c in candles:
         key = (c.instrument_id, c.timeframe.value, _instant(c.ts_open))
         if key in seen:
@@ -184,7 +184,7 @@ def validate_intraday_gaps(
         raise ValueError(f"intraday gap check needs an intraday timeframe, got {timeframe}")
     step = _STEP_MINUTES[timeframe]
     present = {_instant(c.ts_open) for c in candles}
-    missing: List[str] = []
+    missing: list[str] = []
     expected_count = 0
     for day in trading_days_between(calendar, start, end):
         for open_ts in expected_intraday_opens(calendar, day, step, tzinfo):

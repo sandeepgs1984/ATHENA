@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from datetime import date, time
 from pathlib import Path
-from typing import Dict, FrozenSet, Optional, Tuple
 
 from athena.config.loader import load_calendar_files
 from athena.config.models import MarketConfig
@@ -33,12 +32,12 @@ class CalendarEngine:
     def __init__(
         self,
         market: MarketConfig,
-        holidays: Dict[date, str],
-        special_sessions: Dict[date, Tuple[str, Optional[time], Optional[time]]],
-        weekly_expiries: FrozenSet[date],
-        monthly_expiries: FrozenSet[date],
-        events: Dict[date, Tuple[CalendarEvent, ...]],
-        covered_years: FrozenSet[int],
+        holidays: dict[date, str],
+        special_sessions: dict[date, tuple[str, time | None, time | None]],
+        weekly_expiries: frozenset[date],
+        monthly_expiries: frozenset[date],
+        events: dict[date, tuple[CalendarEvent, ...]],
+        covered_years: frozenset[int],
     ) -> None:
         self._market = market
         self._holidays = holidays
@@ -49,7 +48,7 @@ class CalendarEngine:
         self._years = covered_years
 
     @classmethod
-    def from_config_dir(cls, config_dir: Path, market: MarketConfig) -> "CalendarEngine":
+    def from_config_dir(cls, config_dir: Path, market: MarketConfig) -> CalendarEngine:
         holidays_file, expiries_file, events_file = load_calendar_files(config_dir)
 
         holidays = {
@@ -62,12 +61,10 @@ class CalendarEngine:
         weekly = frozenset(_parse_date(d, "expiries.json") for d in expiries_file.weekly)
         monthly = frozenset(_parse_date(d, "expiries.json") for d in expiries_file.monthly)
 
-        events: Dict[date, Tuple[CalendarEvent, ...]] = {}
+        events: dict[date, tuple[CalendarEvent, ...]] = {}
         for item in events_file.events:
             d = _parse_date(item.date, "events.json")
-            events[d] = events.get(d, ()) + (
-                CalendarEvent(event_date=d, kind=item.kind, name=item.name),
-            )
+            events[d] = (*events.get(d, ()), CalendarEvent(event_date=d, kind=item.kind, name=item.name))
 
         return cls(
             market=market,

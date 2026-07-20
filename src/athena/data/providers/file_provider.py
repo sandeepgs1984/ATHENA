@@ -32,7 +32,6 @@ import json
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Dict, List
 
 from athena.config.models import FileProviderConfig
 from athena.domain.enums import HealthStatus, Timeframe
@@ -89,7 +88,7 @@ class FileProvider:
         )
 
     @classmethod
-    def from_config_dir(cls, config_dir: Path, base_dir: Path | None = None) -> "FileProvider":
+    def from_config_dir(cls, config_dir: Path, base_dir: Path | None = None) -> FileProvider:
         """Build from config/providers/file.json; data_root resolves against base_dir
         (defaults to the repo root, i.e. the config dir's parent)."""
         from athena.config.loader import load_file_provider_config
@@ -105,10 +104,10 @@ class FileProvider:
     def capabilities(self) -> ProviderCapabilities:
         return self._capabilities
 
-    def instruments(self) -> List[Instrument]:
+    def instruments(self) -> list[Instrument]:
         return list(self._load_instruments().values())
 
-    def daily_candles(self, instrument_id: str, start: date, end: date) -> List[Candle]:
+    def daily_candles(self, instrument_id: str, start: date, end: date) -> list[Candle]:
         self._require_known(instrument_id)
         path = self._data_root / self._config.daily_dir / f"{instrument_id}.csv"
         candles = self._read_candles(path, instrument_id, Timeframe.D1)
@@ -116,7 +115,7 @@ class FileProvider:
 
     def intraday_candles(
         self, instrument_id: str, timeframe: Timeframe, start: datetime, end: datetime
-    ) -> List[Candle]:
+    ) -> list[Candle]:
         self._require_known(instrument_id)
         if timeframe not in self._capabilities.timeframes or timeframe not in _INTRADAY_TIMEFRAMES:
             raise ProviderError(
@@ -127,7 +126,7 @@ class FileProvider:
         candles = self._read_candles(path, instrument_id, timeframe)
         return [c for c in candles if start <= c.ts_open <= end]
 
-    def quotes(self, instrument_ids: List[str]) -> List[Quote]:
+    def quotes(self, instrument_ids: list[str]) -> list[Quote]:
         if not self._capabilities.supports_quotes:
             raise ProviderError(f"provider '{self.name}' does not support quotes")
         for instrument_id in instrument_ids:
@@ -162,10 +161,10 @@ class FileProvider:
         if instrument_id not in self._load_instruments():
             raise ProviderError(f"unknown instrument id: {instrument_id}")
 
-    def _load_instruments(self) -> Dict[str, Instrument]:
+    def _load_instruments(self) -> dict[str, Instrument]:
         path = self._data_root / self._config.instruments_file
         rows = self._read_csv(path, expected_first="instrument_id")
-        instruments: Dict[str, Instrument] = {}
+        instruments: dict[str, Instrument] = {}
         for line_no, row in rows:
             where = f"{path}:{line_no}"
             try:
@@ -188,11 +187,11 @@ class FileProvider:
             instruments[instrument.instrument_id] = instrument
         return instruments
 
-    def _read_candles(self, path: Path, instrument_id: str, timeframe: Timeframe) -> List[Candle]:
+    def _read_candles(self, path: Path, instrument_id: str, timeframe: Timeframe) -> list[Candle]:
         if not path.exists():
             return []  # a known instrument with no data for this timeframe is empty, not an error
         rows = self._read_csv(path, expected_first="ts_open")
-        candles: List[Candle] = []
+        candles: list[Candle] = []
         seen: set[datetime] = set()
         for line_no, row in rows:
             where = f"{path}:{line_no}"
@@ -220,12 +219,12 @@ class FileProvider:
         candles.sort(key=lambda c: c.ts_open)
         return candles
 
-    def _read_quotes(self) -> List[Quote]:
+    def _read_quotes(self) -> list[Quote]:
         path = self._data_root / self._config.quotes_file
         if not path.exists():
             raise ProviderError(f"missing quotes file: {path}")
         rows = self._read_csv(path, expected_first="instrument_id")
-        quotes: Dict[str, Quote] = {}
+        quotes: dict[str, Quote] = {}
         for line_no, row in rows:
             where = f"{path}:{line_no}"
             try:
@@ -266,7 +265,7 @@ class FileProvider:
         except (KeyError, ValueError) as exc:
             raise ProviderError(f"corrupted market snapshot {path}: {exc}") from exc
 
-    def _read_csv(self, path: Path, expected_first: str) -> List[tuple[int, Dict[str, str]]]:
+    def _read_csv(self, path: Path, expected_first: str) -> list[tuple[int, dict[str, str]]]:
         if not path.exists():
             raise ProviderError(f"missing file: {path}")
         try:

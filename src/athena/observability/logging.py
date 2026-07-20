@@ -11,9 +11,10 @@ from __future__ import annotations
 import contextvars
 import json
 import logging
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping, Optional
+from typing import Any
 
 _run_id: contextvars.ContextVar[str] = contextvars.ContextVar("athena_run_id", default="-")
 _cycle_id: contextvars.ContextVar[str] = contextvars.ContextVar("athena_cycle_id", default="-")
@@ -60,7 +61,7 @@ class JsonLineFormatter(logging.Formatter):
 
 
 def setup_logging(log_dir: Path, level: str = "INFO", *, also_console: bool = False,
-                  today: Optional[datetime] = None) -> Path:
+                  today: datetime | None = None) -> Path:
     """Configure the root 'athena' logger to write logs/athena-YYYYMMDD.jsonl."""
 
     log_dir = Path(log_dir)
@@ -85,7 +86,7 @@ def setup_logging(log_dir: Path, level: str = "INFO", *, also_console: bool = Fa
     return log_path
 
 
-def log_event(module: str, event: str, payload: Optional[Mapping[str, Any]] = None,
+def log_event(module: str, event: str, payload: Mapping[str, Any] | None = None,
               level: int = logging.INFO) -> None:
     """Convenience: structured event log with payload redaction."""
     logging.getLogger(f"athena.{module}").log(level, event, extra={"payload": payload or {}})

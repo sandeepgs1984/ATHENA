@@ -8,11 +8,11 @@ evidence and statistics needed for audit and replay.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum, unique
 from types import MappingProxyType
-from typing import Mapping, Tuple
 
 
 @unique
@@ -46,7 +46,7 @@ class ValidationReport:
     severity: Severity
     explanation: str
     ts: datetime
-    evidence: Tuple[str, ...] = ()
+    evidence: tuple[str, ...] = ()
     statistics: Mapping[str, object] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -71,7 +71,7 @@ class ValidationSummary:
     """Aggregate of all reports for one dataset."""
 
     dataset_id: str
-    reports: Tuple[ValidationReport, ...]
+    reports: tuple[ValidationReport, ...]
     ts: datetime
 
     def __post_init__(self) -> None:
@@ -83,7 +83,7 @@ class ValidationSummary:
             raise ValueError("ValidationSummary.ts must be timezone-aware")
 
     @property
-    def failures(self) -> Tuple[ValidationReport, ...]:
+    def failures(self) -> tuple[ValidationReport, ...]:
         return tuple(r for r in self.reports if r.result is ValidationResult.FAILED)
 
     @property

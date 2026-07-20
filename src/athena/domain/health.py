@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Tuple
 
 from athena.domain.enums import HealthStatus
 
@@ -27,7 +26,7 @@ class SystemHealthReport:
     """Pre-flight report (ATHENA-002 §8.0). BLOCKED ⇒ the run emits no recommendations."""
 
     ts: datetime
-    checks: Tuple[HealthCheck, ...]
+    checks: tuple[HealthCheck, ...]
 
     def __post_init__(self) -> None:
         if not self.checks:
@@ -43,5 +42,5 @@ class SystemHealthReport:
         return HealthStatus.OK
 
     @property
-    def blocking_issues(self) -> Tuple[HealthCheck, ...]:
+    def blocking_issues(self) -> tuple[HealthCheck, ...]:
         return tuple(c for c in self.checks if c.status is HealthStatus.BLOCKED)

@@ -6,11 +6,11 @@ applied, and how many records were affected. No silent transformations.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
 from types import MappingProxyType
-from typing import Mapping, Tuple
 
 from athena.data.corporate_actions.models import AdjustmentStrategy, CorporateActionType
 from athena.domain.market import Candle
@@ -43,8 +43,8 @@ class AdjustmentResult:
 
     instrument_id: str
     strategy: AdjustmentStrategy
-    adjusted_candles: Tuple[Candle, ...]
-    evidence: Tuple[AdjustmentEvidence, ...]
+    adjusted_candles: tuple[Candle, ...]
+    evidence: tuple[AdjustmentEvidence, ...]
     explanation: str
     ts: datetime
 

@@ -184,11 +184,11 @@ class TestIntradayGaps:
 class TestReports:
     def test_report_is_immutable(self):
         r = validate_ohlc([_daily(date(2026, 2, 2))], as_of=AS_OF)
-        with pytest.raises(Exception):
+        with pytest.raises(TypeError):
             r.statistics["candles_checked"] = 999  # frozen mapping
 
     def test_passed_report_cannot_be_critical(self):
-        with pytest.raises(ValueError, match="PASSED report cannot carry"):
+        with pytest.raises(ValueError, match=r"PASSED report cannot carry"):
             ValidationReport(validation_type=ValidationType.OHLC, result=ValidationResult.PASSED,
                              severity=Severity.CRITICAL, explanation="x", ts=AS_OF)
 
@@ -240,7 +240,7 @@ class TestConfig:
         assert cfg.gaps.daily_enabled in (True, False)
 
     def test_missing_validation_config_fails(self, tmp_path):
-        with pytest.raises(ConfigError, match="Missing configuration file.*validation.json"):
+        with pytest.raises(ConfigError, match=r"Missing configuration file.*validation.json"):
             load_validation_config(tmp_path)
 
     def test_negative_freshness_threshold_rejected(self, config_dir):

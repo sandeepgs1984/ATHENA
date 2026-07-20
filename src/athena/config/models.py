@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from datetime import time
 from decimal import Decimal
-from typing import Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -50,12 +49,12 @@ class BaseConfig(_Strict):
     logging: LoggingConfig
     refresh_interval_minutes: int = Field(ge=1, le=120)
     active_profile: str
-    features: Dict[str, bool]
-    performance_budgets_seconds: Dict[str, float]
+    features: dict[str, bool]
+    performance_budgets_seconds: dict[str, float]
 
     @field_validator("performance_budgets_seconds")
     @classmethod
-    def _positive_budgets(cls, v: Dict[str, float]) -> Dict[str, float]:
+    def _positive_budgets(cls, v: dict[str, float]) -> dict[str, float]:
         bad = {k: s for k, s in v.items() if s <= 0}
         if bad:
             raise ValueError(f"performance budgets must be positive seconds: {bad}")
@@ -69,7 +68,7 @@ class SessionsConfig(_Strict):
     close: time
 
     @model_validator(mode="after")
-    def _ordered(self) -> "SessionsConfig":
+    def _ordered(self) -> SessionsConfig:
         if not (self.preopen_start < self.preopen_end <= self.open < self.close):
             raise ValueError(
                 "market sessions must satisfy preopen_start < preopen_end <= open < close, got "
@@ -82,13 +81,13 @@ class MarketConfig(_Strict):
     exchange: str
     timezone: str
     sessions: SessionsConfig
-    circuit_bands_pct: List[int]
-    series: List[str]
+    circuit_bands_pct: list[int]
+    series: list[str]
     tick_size_default: Decimal
 
     @field_validator("circuit_bands_pct")
     @classmethod
-    def _bands(cls, v: List[int]) -> List[int]:
+    def _bands(cls, v: list[int]) -> list[int]:
         if not v or v != sorted(v) or any(b <= 0 or b > 100 for b in v):
             raise ValueError(f"circuit_bands_pct must be ascending percentages in 1..100, got {v}")
         return v
@@ -107,7 +106,7 @@ class RiskConfig(_Strict):
     no_trade: NoTradeConfig
 
     @model_validator(mode="after")
-    def _risk_invariants(self) -> "RiskConfig":
+    def _risk_invariants(self) -> RiskConfig:
         if self.per_trade_risk_pct > self.max_daily_loss_pct:
             raise ValueError(
                 f"per_trade_risk_pct ({self.per_trade_risk_pct}) must be <= "
@@ -124,7 +123,7 @@ class CapitalConfig(_Strict):
     max_capital_per_sector_pct: float = Field(gt=0, le=100)
 
     @model_validator(mode="after")
-    def _capital_invariants(self) -> "CapitalConfig":
+    def _capital_invariants(self) -> CapitalConfig:
         if self.max_capital_per_position_pct > self.max_capital_per_sector_pct:
             raise ValueError(
                 f"max_capital_per_position_pct ({self.max_capital_per_position_pct}) must be <= "
@@ -143,7 +142,7 @@ class RegimeConfig(_Strict):
     sector_health_floor: int = Field(ge=0, le=100)
 
     @model_validator(mode="after")
-    def _regime_invariants(self) -> "RegimeConfig":
+    def _regime_invariants(self) -> RegimeConfig:
         if self.low_volatility_vix >= self.high_volatility_vix:
             raise ValueError(
                 f"low_volatility_vix ({self.low_volatility_vix}) must be < "
@@ -159,16 +158,16 @@ class RegimeConfig(_Strict):
 class UniverseConfig(_Strict):
     max_universe_size: int = Field(ge=1)
     min_avg_daily_volume: int = Field(ge=0)
-    include_index_constituents: List[str]
-    custom_symbols: List[str]
+    include_index_constituents: list[str]
+    custom_symbols: list[str]
 
 
 class IndicatorsConfig(_Strict):
-    versions: Dict[str, str]
-    params: Dict[str, Dict[str, int]]
+    versions: dict[str, str]
+    params: dict[str, dict[str, int]]
 
     @model_validator(mode="after")
-    def _params_have_versions(self) -> "IndicatorsConfig":
+    def _params_have_versions(self) -> IndicatorsConfig:
         missing = set(self.params) - set(self.versions)
         if missing:
             raise ValueError(f"indicators with params but no version (F-13): {sorted(missing)}")
@@ -180,7 +179,7 @@ class TradingWindow(_Strict):
     end: time
 
     @model_validator(mode="after")
-    def _ordered(self) -> "TradingWindow":
+    def _ordered(self) -> TradingWindow:
         if self.start >= self.end:
             raise ValueError(f"trading window start ({self.start}) must be < end ({self.end})")
         return self
@@ -194,15 +193,15 @@ class SizingConfig(_Strict):
 class ProfileConfig(_Strict):
     name: str
     version: str
-    indicators: List[str]
-    weights: Dict[str, int]
-    risk_overrides: Dict[str, float]
-    trading_windows: List[TradingWindow]
+    indicators: list[str]
+    weights: dict[str, int]
+    risk_overrides: dict[str, float]
+    trading_windows: list[TradingWindow]
     sizing: SizingConfig
 
     @field_validator("weights")
     @classmethod
-    def _weights_sum_100(cls, v: Dict[str, int]) -> Dict[str, int]:
+    def _weights_sum_100(cls, v: dict[str, int]) -> dict[str, int]:
         total = sum(v.values())
         if total != 100:
             raise ValueError(
@@ -214,7 +213,7 @@ class ProfileConfig(_Strict):
 
     @field_validator("trading_windows")
     @classmethod
-    def _at_least_one_window(cls, v: List[TradingWindow]) -> List[TradingWindow]:
+    def _at_least_one_window(cls, v: list[TradingWindow]) -> list[TradingWindow]:
         if not v:
             raise ValueError("profile must define at least one trading window")
         return v
@@ -233,7 +232,7 @@ class AthenaConfig(_Strict):
     profile: ProfileConfig
 
     @model_validator(mode="after")
-    def _cross_file_invariants(self) -> "AthenaConfig":
+    def _cross_file_invariants(self) -> AthenaConfig:
         # Profile indicators must exist in indicators.json (versioned, F-13).
         unknown = set(self.profile.indicators) - set(self.indicators.versions)
         if unknown:
@@ -263,14 +262,14 @@ class AthenaConfig(_Strict):
 
 
 class ProviderCapabilitiesConfig(_Strict):
-    timeframes: List[str]
+    timeframes: list[str]
     max_history_days: int = Field(ge=1)
     supports_quotes: bool
     supports_market_snapshot: bool
 
     @field_validator("timeframes")
     @classmethod
-    def _known_unique_timeframes(cls, v: List[str]) -> List[str]:
+    def _known_unique_timeframes(cls, v: list[str]) -> list[str]:
         allowed = {"1m", "5m", "15m", "1d"}
         unknown = [t for t in v if t not in allowed]
         if unknown:
@@ -320,20 +319,20 @@ class SpecialSession(_Strict):
     date: str
     type: str
     name: str
-    timings_note: Optional[str] = None
-    open: Optional[time] = None
-    close: Optional[time] = None
+    timings_note: str | None = None
+    open: time | None = None
+    close: time | None = None
 
 
 class HolidaysFile(_Strict):
-    years: List[int]
-    holidays: List[Holiday]
-    special_sessions: List[SpecialSession]
+    years: list[int]
+    holidays: list[Holiday]
+    special_sessions: list[SpecialSession]
 
 
 class ExpiriesFile(_Strict):
-    weekly: List[str]
-    monthly: List[str]
+    weekly: list[str]
+    monthly: list[str]
 
 
 class EventItem(_Strict):
@@ -343,4 +342,4 @@ class EventItem(_Strict):
 
 
 class EventsFile(_Strict):
-    events: List[EventItem]
+    events: list[EventItem]

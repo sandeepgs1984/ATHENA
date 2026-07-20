@@ -8,9 +8,10 @@ JSON is serialized with sorted keys for deterministic, inspectable storage.
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping, Sequence
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 from athena.data.validation.reports import (
     Severity,

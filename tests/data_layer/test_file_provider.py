@@ -112,7 +112,7 @@ class TestEmptyAndMissing:
 
     def test_missing_instruments_file_fails_loudly(self, tmp_path):
         prov = FileProvider(_config(), tmp_path)
-        with pytest.raises(ProviderError, match="missing file"):
+        with pytest.raises(ProviderError, match=r"missing file"):
             prov.instruments()
 
     def test_missing_quotes_file_fails_loudly(self, tmp_path):
@@ -120,29 +120,29 @@ class TestEmptyAndMissing:
             "instrument_id,symbol,exchange,series,isin,lot_size,tick_size,status,listed_date,delisted_date\n"
             "X,X,NSE,EQ,,1,0.05,ACTIVE,,\n", encoding="utf-8")
         prov = FileProvider(_config(), tmp_path)
-        with pytest.raises(ProviderError, match="missing quotes file"):
+        with pytest.raises(ProviderError, match=r"missing quotes file"):
             prov.quotes(["X"])
 
 
 class TestErrorHandling:
     def test_unknown_instrument(self, provider):
-        with pytest.raises(ProviderError, match="unknown instrument id: ZZZ"):
+        with pytest.raises(ProviderError, match=r"unknown instrument id: ZZZ"):
             provider.daily_candles("ZZZ", date(2026, 2, 2), date(2026, 2, 13))
 
     def test_unsupported_timeframe(self, provider):
         start = datetime(2026, 2, 2, 9, 15, tzinfo=IST)
         end = datetime(2026, 2, 2, 15, 30, tzinfo=IST)
-        with pytest.raises(ProviderError, match="15m not supported"):
+        with pytest.raises(ProviderError, match=r"15m not supported"):
             provider.intraday_candles("SYN-AAA", Timeframe.M15, start, end)
 
     def test_unsupported_quote_capability(self, tmp_path):
         prov = FileProvider(_config(capabilities=_caps(supports_quotes=False)), SYNTHETIC)
-        with pytest.raises(ProviderError, match="does not support quotes"):
+        with pytest.raises(ProviderError, match=r"does not support quotes"):
             prov.quotes(["SYN-AAA"])
 
     def test_unsupported_snapshot_capability(self):
         prov = FileProvider(_config(capabilities=_caps(supports_market_snapshot=False)), SYNTHETIC)
-        with pytest.raises(ProviderError, match="does not support market snapshot"):
+        with pytest.raises(ProviderError, match=r"does not support market snapshot"):
             prov.market_snapshot()
 
     def test_corrupted_price_fails_loudly(self, tmp_path):
@@ -152,7 +152,7 @@ class TestErrorHandling:
             "ts_open,open,high,low,close,volume\n"
             "2026-02-02T09:15:00+05:30,not_a_number,101,99,100,1000\n", encoding="utf-8")
         prov = FileProvider(_config(), tmp_path)
-        with pytest.raises(ProviderError, match="corrupted data.*not a valid open"):
+        with pytest.raises(ProviderError, match=r"corrupted data.*not a valid open"):
             prov.daily_candles("X", date(2026, 2, 1), date(2026, 2, 28))
 
     def test_impossible_ohlc_is_corrupted(self, tmp_path):
@@ -162,7 +162,7 @@ class TestErrorHandling:
             "ts_open,open,high,low,close,volume\n"
             "2026-02-02T09:15:00+05:30,100,98,99,100,1000\n", encoding="utf-8")  # high<low
         prov = FileProvider(_config(), tmp_path)
-        with pytest.raises(ProviderError, match="corrupted candle.*Impossible OHLC"):
+        with pytest.raises(ProviderError, match=r"corrupted candle.*Impossible OHLC"):
             prov.daily_candles("X", date(2026, 2, 1), date(2026, 2, 28))
 
     def test_naive_timestamp_is_corrupted(self, tmp_path):
@@ -172,7 +172,7 @@ class TestErrorHandling:
             "ts_open,open,high,low,close,volume\n"
             "2026-02-02T09:15:00,100,101,99,100,1000\n", encoding="utf-8")  # no tz
         prov = FileProvider(_config(), tmp_path)
-        with pytest.raises(ProviderError, match="lacks a timezone"):
+        with pytest.raises(ProviderError, match=r"lacks a timezone"):
             prov.daily_candles("X", date(2026, 2, 1), date(2026, 2, 28))
 
     def test_duplicate_timestamp_is_rejected(self, tmp_path):
@@ -183,7 +183,7 @@ class TestErrorHandling:
             "2026-02-02T09:15:00+05:30,100,101,99,100,1000\n"
             "2026-02-02T09:15:00+05:30,100,101,99,100,1000\n", encoding="utf-8")
         prov = FileProvider(_config(), tmp_path)
-        with pytest.raises(ProviderError, match="duplicate candle timestamp"):
+        with pytest.raises(ProviderError, match=r"duplicate candle timestamp"):
             prov.daily_candles("X", date(2026, 2, 1), date(2026, 2, 28))
 
     def test_wrong_header_is_invalid_format(self, tmp_path):
@@ -192,14 +192,14 @@ class TestErrorHandling:
         (tmp_path / "daily" / "X.csv").write_text(
             "date,open,high,low,close,volume\n", encoding="utf-8")  # wrong first column
         prov = FileProvider(_config(), tmp_path)
-        with pytest.raises(ProviderError, match="invalid file format.*expected first column 'ts_open'"):
+        with pytest.raises(ProviderError, match=r"invalid file format.*expected first column 'ts_open'"):
             prov.daily_candles("X", date(2026, 2, 1), date(2026, 2, 28))
 
     def test_invalid_snapshot_json(self, tmp_path):
         _seed_instrument(tmp_path)
         (tmp_path / "snapshot.json").write_text("{not valid json", encoding="utf-8")
         prov = FileProvider(_config(), tmp_path)
-        with pytest.raises(ProviderError, match="invalid JSON in snapshot"):
+        with pytest.raises(ProviderError, match=r"invalid JSON in snapshot"):
             prov.market_snapshot()
 
 
@@ -210,7 +210,7 @@ class TestConfiguration:
         assert "1d" in config.capabilities.timeframes
 
     def test_missing_provider_config_fails(self, tmp_path):
-        with pytest.raises(ConfigError, match="Missing configuration file.*file.json"):
+        with pytest.raises(ConfigError, match=r"Missing configuration file.*file.json"):
             load_file_provider_config(tmp_path)
 
     def test_from_config_dir_resolves_data_root(self, tmp_path):

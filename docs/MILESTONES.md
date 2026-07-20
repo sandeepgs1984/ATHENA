@@ -18,8 +18,8 @@ Framework · M0.4 Trading Calendar · M0.5 Observability & CLI.
 | **M1.2** FileProvider | FileProvider; daily/intraday/instrument/quote loaders; provider health | ✅ Approved |
 | **M1.3** Validation Layer | Freshness, OHLC, duplicate, gap validation; validation reports; quarantine handling | ✅ Approved |
 | **M1.4** Corporate Actions Engine | Splits, bonuses, dividends, renames; historical adjustment strategy | ✅ Approved |
-| **M1.5** SQLite Repository | Schema, WAL, foreign keys, repository layer, append-only storage, integrity verification | In review |
-| M1.6 Backup & Restore | Backup, restore, recovery validation, repository recovery tests | Blocked on M1.5 |
+| **M1.5** SQLite Repository | Schema, WAL, foreign keys, repository layer, append-only storage, integrity verification | ✅ Approved |
+| **M1.6** Backup & Restore | Backup, restore, recovery validation, repository recovery tests | In review |
 
 ## Phase 2 — Market Intelligence
 

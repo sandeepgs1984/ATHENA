@@ -69,7 +69,7 @@ def test_budget_event_attached(engine):
 
 
 def test_uncovered_year_fails_loudly(engine):
-    with pytest.raises(CalendarError, match="No calendar data for 2027"):
+    with pytest.raises(CalendarError, match=r"No calendar data for 2027"):
         engine.context_for(date(2027, 1, 1))
 
 

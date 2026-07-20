@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Mapping, Optional, Tuple
+from typing import Any
 
 from athena.domain.enums import Direction, EvidenceCategory
 
@@ -23,7 +24,7 @@ class Evidence:
     weight: Decimal
     confidence: Decimal
     explanation: str
-    instrument_id: Optional[str] = None
+    instrument_id: str | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -43,7 +44,7 @@ class Signal:
     instrument_id: str
     direction: Direction
     strength: Decimal
-    evidence_ids: Tuple[str, ...]
+    evidence_ids: tuple[str, ...]
     explanation: str
 
     def __post_init__(self) -> None:
@@ -61,7 +62,7 @@ class Score:
     instrument_id: str
     total: int
     breakdown: Mapping[str, int]
-    evidence_ids: Tuple[str, ...]
+    evidence_ids: tuple[str, ...]
     config_snapshot_id: str
     explanation: str
 
@@ -100,7 +101,7 @@ class ExplainabilityReport:
     decision_ref: str
     factor_coverage: Mapping[str, int]
     completeness: Decimal
-    missing: Tuple[str, ...] = ()
+    missing: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not Decimal(0) <= self.completeness <= Decimal(1):

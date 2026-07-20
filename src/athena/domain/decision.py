@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Mapping, Optional, Tuple
+from typing import Any
 
 from athena.domain.enums import DecisionType, Direction, QualityGate, UserAction
 
@@ -17,7 +18,7 @@ class TradePlan:
     entry_low: Decimal
     entry_high: Decimal
     stop_loss: Decimal
-    targets: Tuple[Decimal, ...]
+    targets: tuple[Decimal, ...]
     position_size: int
     risk_amount: Decimal
     risk_reward: Decimal
@@ -41,8 +42,8 @@ class RiskEvaluation:
 
     evaluation_id: str
     passed: bool
-    rules_checked: Tuple[str, ...]
-    blocking_reasons: Tuple[str, ...]
+    rules_checked: tuple[str, ...]
+    blocking_reasons: tuple[str, ...]
     explanation: str
 
     def __post_init__(self) -> None:
@@ -91,7 +92,7 @@ class TraceStage:
     """One step in a DecisionTrace (F-15)."""
 
     stage: str
-    ref_ids: Tuple[str, ...]
+    ref_ids: tuple[str, ...]
     summary: str
 
     def __post_init__(self) -> None:
@@ -104,7 +105,7 @@ class DecisionTrace:
     """Complete reasoning path — the primary debugging and learning artifact (F-15)."""
 
     decision_ref: str
-    stages: Tuple[TraceStage, ...]
+    stages: tuple[TraceStage, ...]
 
     def __post_init__(self) -> None:
         if not self.stages:
@@ -121,13 +122,13 @@ class Decision:
     cycle_id: str
     decision_type: DecisionType
     explanation: str
-    instrument_id: Optional[str] = None
+    instrument_id: str | None = None
     direction: Direction = Direction.NONE
-    score_ref: Optional[str] = None
-    confidence_ref: Optional[str] = None
-    risk_ref: Optional[str] = None
-    gate_results: Tuple[GateResult, ...] = ()
-    trade_plan: Optional[TradePlan] = None
+    score_ref: str | None = None
+    confidence_ref: str | None = None
+    risk_ref: str | None = None
+    gate_results: tuple[GateResult, ...] = ()
+    trade_plan: TradePlan | None = None
 
     def __post_init__(self) -> None:
         if not self.explanation:
@@ -155,7 +156,7 @@ class Position:
     opened_ts: datetime
     quantity: int
     avg_price: Decimal
-    closed_ts: Optional[datetime] = None
+    closed_ts: datetime | None = None
     meta: Mapping[str, Any] = field(default_factory=dict)
 
 
@@ -164,7 +165,7 @@ class Portfolio:
     """Aggregate portfolio state at a moment."""
 
     ts: datetime
-    positions: Tuple[Position, ...]
+    positions: tuple[Position, ...]
     cash: Decimal
     exposure_by_sector: Mapping[str, Decimal] = field(default_factory=dict)
 

@@ -18,7 +18,6 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from enum import Enum, unique
-from typing import Union
 
 from athena.domain.market import CorporateAction
 from athena.errors import CorporateActionError
@@ -136,7 +135,7 @@ class Rename:
                 f"rename {self.action_id}: old_symbol and new_symbol are required")
 
 
-TypedAction = Union[Split, Bonus, Dividend, Rename]
+TypedAction = Split | Bonus | Dividend | Rename
 
 
 def _require_int(details: dict, key: str, action_id: str) -> int:

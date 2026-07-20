@@ -8,11 +8,11 @@ transaction safety, WAL mode, and enforced foreign keys.
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Iterator, List, Optional, Sequence, Tuple
 
 from athena.data.store import serialization as ser
 from athena.data.store.schema import SCHEMA_VERSION, ddl_statements
@@ -30,7 +30,7 @@ class IntegrityReport:
     integrity_check: str
     foreign_key_violations: int
     schema_version_ok: bool
-    issues: Tuple[str, ...] = ()
+    issues: tuple[str, ...] = ()
 
 
 class SqliteRepository:
@@ -63,11 +63,31 @@ class SqliteRepository:
     def close(self) -> None:
         self._conn.close()
 
-    def __enter__(self) -> "SqliteRepository":
+    def __enter__(self) -> SqliteRepository:
         return self
 
     def __exit__(self, *exc: object) -> None:
         self.close()
+
+    @property
+    def path(self) -> str:
+        """Filesystem path of the underlying database (for backup/maintenance)."""
+        return self._path
+
+    @property
+    def connection(self) -> sqlite3.Connection:
+        """The live connection. Intended for maintenance (online backup) only."""
+        return self._conn
+
+    def record_counts(self) -> dict[str, int]:
+        """Row counts per persisted table — used for backup/restore recovery checks."""
+        tables = ("instruments", "candles", "quotes", "market_snapshots",
+                  "corporate_actions", "quarantine_records")
+        try:
+            return {t: int(self._conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0])
+                    for t in tables}
+        except sqlite3.Error as exc:
+            raise RepositoryError(f"record count query failed: {exc}") from exc
 
     @property
     def journal_mode(self) -> str:
@@ -103,7 +123,7 @@ class SqliteRepository:
             ser.instrument_to_row(instrument),
         )
 
-    def get_instrument(self, instrument_id: str) -> Optional[Instrument]:
+    def get_instrument(self, instrument_id: str) -> Instrument | None:
         row = self._query_one(
             "SELECT instrument_id, isin, symbol, exchange, series, lot_size, tick_size, "
             "status, listed_date, delisted_date FROM instruments WHERE instrument_id=?",
@@ -111,7 +131,7 @@ class SqliteRepository:
         )
         return ser.row_to_instrument(row) if row else None
 
-    def list_instruments(self) -> List[Instrument]:
+    def list_instruments(self) -> list[Instrument]:
         rows = self._query_all(
             "SELECT instrument_id, isin, symbol, exchange, series, lot_size, tick_size, "
             "status, listed_date, delisted_date FROM instruments ORDER BY instrument_id"
@@ -132,7 +152,7 @@ class SqliteRepository:
 
     def get_candles(
         self, instrument_id: str, timeframe: Timeframe, start: datetime, end: datetime
-    ) -> List[Candle]:
+    ) -> list[Candle]:
         rows = self._query_all(
             "SELECT instrument_id, timeframe, ts_open, open, high, low, close, volume, source, "
             "adjusted FROM candles WHERE instrument_id=? AND timeframe=? "
@@ -151,7 +171,7 @@ class SqliteRepository:
         )
         return len(rows)
 
-    def get_quotes(self, instrument_id: str) -> List[Quote]:
+    def get_quotes(self, instrument_id: str) -> list[Quote]:
         rows = self._query_all(
             "SELECT instrument_id, ts, last_price, volume, source FROM quotes "
             "WHERE instrument_id=? ORDER BY ts",
@@ -167,7 +187,7 @@ class SqliteRepository:
             (snapshot.ts.isoformat(), ser.snapshot_to_payload(snapshot)),
         )
 
-    def get_latest_snapshot(self) -> Optional[MarketSnapshot]:
+    def get_latest_snapshot(self) -> MarketSnapshot | None:
         row = self._query_one(
             "SELECT payload_json FROM market_snapshots ORDER BY ts DESC LIMIT 1", ()
         )
@@ -182,7 +202,7 @@ class SqliteRepository:
             ser.corporate_action_to_row(action),
         )
 
-    def get_corporate_actions(self, instrument_id: str) -> List[CorporateAction]:
+    def get_corporate_actions(self, instrument_id: str) -> list[CorporateAction]:
         rows = self._query_all(
             "SELECT action_id, instrument_id, action_type, ex_date, details_json "
             "FROM corporate_actions WHERE instrument_id=? ORDER BY ex_date, action_id",
@@ -202,7 +222,7 @@ class SqliteRepository:
              ser.reports_to_json(record.failed_reports)),
         )
 
-    def get_quarantine(self, dataset_id: str) -> Optional[QuarantineRecord]:
+    def get_quarantine(self, dataset_id: str) -> QuarantineRecord | None:
         row = self._query_one(
             "SELECT dataset_id, reason, quarantined_ts, reports_json "
             "FROM quarantine_records WHERE dataset_id=?",
@@ -216,7 +236,7 @@ class SqliteRepository:
             quarantined_ts=datetime.fromisoformat(row[2]),
         )
 
-    def list_quarantine(self) -> List[QuarantineRecord]:
+    def list_quarantine(self) -> list[QuarantineRecord]:
         rows = self._query_all(
             "SELECT dataset_id FROM quarantine_records ORDER BY dataset_id"
         )
@@ -233,7 +253,7 @@ class SqliteRepository:
             raise RepositoryError(f"integrity verification failed: {exc}") from exc
 
         version_ok = version_row is not None and int(version_row[0]) == SCHEMA_VERSION
-        issues: List[str] = []
+        issues: list[str] = []
         if integrity != "ok":
             issues.append(f"integrity_check reported: {integrity}")
         if fk_violations:
@@ -268,13 +288,13 @@ class SqliteRepository:
         except sqlite3.Error as exc:
             raise RepositoryError(f"write failed: {exc}") from exc
 
-    def _query_one(self, sql: str, params: tuple) -> Optional[tuple]:
+    def _query_one(self, sql: str, params: tuple) -> tuple | None:
         try:
             return self._conn.execute(sql, params).fetchone()
         except sqlite3.Error as exc:
             raise RepositoryError(f"query failed: {exc}") from exc
 
-    def _query_all(self, sql: str, params: tuple = ()) -> List[tuple]:
+    def _query_all(self, sql: str, params: tuple = ()) -> list[tuple]:
         try:
             return self._conn.execute(sql, params).fetchall()
         except sqlite3.Error as exc:

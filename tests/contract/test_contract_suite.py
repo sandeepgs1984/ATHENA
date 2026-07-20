@@ -6,6 +6,8 @@ from __future__ import annotations
 from datetime import date
 
 import pytest
+from tests.contract.provider_contract import MarketDataProviderContract
+from tests.contract.stub_provider import StubProvider
 
 from athena.domain.enums import HealthStatus, Timeframe
 from athena.domain.interfaces import (
@@ -13,8 +15,6 @@ from athena.domain.interfaces import (
     ProviderCapabilities,
     ProviderHealth,
 )
-from tests.contract.provider_contract import MarketDataProviderContract
-from tests.contract.stub_provider import StubProvider
 
 
 class TestStubProviderContract(MarketDataProviderContract):
@@ -44,20 +44,20 @@ class TestSuiteCatchesViolations:
                 raise RuntimeError
 
         contract = MarketDataProviderContract()
-        with pytest.raises(AssertionError, match="forbidden order/trade methods"):
+        with pytest.raises(AssertionError, match=r"forbidden order/trade methods"):
             contract.test_no_order_methods_exist(RogueProvider())
 
     def test_capabilities_invariants(self):
-        with pytest.raises(ValueError, match="at least one timeframe"):
+        with pytest.raises(ValueError, match=r"at least one timeframe"):
             ProviderCapabilities(timeframes=(), max_history_days=10,
                                  supports_quotes=False, supports_market_snapshot=False)
-        with pytest.raises(ValueError, match="duplicates"):
+        with pytest.raises(ValueError, match=r"duplicates"):
             ProviderCapabilities(timeframes=(Timeframe.D1, Timeframe.D1), max_history_days=10,
                                  supports_quotes=False, supports_market_snapshot=False)
-        with pytest.raises(ValueError, match="max_history_days"):
+        with pytest.raises(ValueError, match=r"max_history_days"):
             ProviderCapabilities(timeframes=(Timeframe.D1,), max_history_days=0,
                                  supports_quotes=False, supports_market_snapshot=False)
 
     def test_provider_health_requires_detail(self):
-        with pytest.raises(ValueError, match="detail is mandatory"):
+        with pytest.raises(ValueError, match=r"detail is mandatory"):
             ProviderHealth(status=HealthStatus.OK, detail="")
