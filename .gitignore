@@ -1,0 +1,32 @@
+# Secrets — never commit broker credentials (ATHENA-001 §S-1)
+.env
+.env.*
+*.pem
+*.key
+secrets/
+
+# Personal data — journal, trade history, local DB and backups
+*.db
+*.db-journal
+*.sqlite*
+backups/
+exports/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Local data cache
+data/raw/
+data/cache/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
