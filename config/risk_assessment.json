@@ -1,0 +1,45 @@
+{
+  "_meta": {
+    "layer": 3,
+    "description": "Risk Engine configuration (M3.5). Descriptive exposure/uncertainty measurement — higher value = more risk. Not no-trade or sizing rules (those live in risk.json / later milestones)."
+  },
+  "weights": {
+    "volatility_risk": 20,
+    "liquidity_risk": 20,
+    "gap_risk": 15,
+    "event_risk": 15,
+    "market_environment_risk": 20,
+    "concentration_indicator": 10
+  },
+  "levels": {
+    "low_below": 40,
+    "high_at_or_above": 70
+  },
+  "volatility_points": {
+    "HIGH_VOLATILITY": 80, "NORMAL_VOLATILITY": 50, "LOW_VOLATILITY": 20
+  },
+  "gap_points": {
+    "GAP_UP": 70, "GAP_DOWN": 70, "NO_GAP": 20
+  },
+  "liquidity": {
+    "min_volume_ma": 500000,
+    "low_liquidity_risk": 80,
+    "ok_liquidity_risk": 20
+  },
+  "event": {
+    "expiry_risk": 70,
+    "event_risk": 80,
+    "normal_risk": 20
+  },
+  "market_env_points": {
+    "STRONG_BREADTH": 20, "MIXED_BREADTH": 50, "WEAK_BREADTH": 80,
+    "STRONG_TREND_QUALITY": 20, "MIXED_TREND_QUALITY": 50, "WEAK_TREND_QUALITY": 80,
+    "HEALTHY_MOMENTUM": 20, "FLAT_MOMENTUM": 50, "WEAK_MOMENTUM": 80,
+    "VOLATILITY_CALM": 20, "VOLATILITY_NORMAL": 45, "VOLATILITY_ELEVATED": 80
+  },
+  "concentration": {
+    "min_universe_size": 20,
+    "concentrated_risk": 70,
+    "diversified_risk": 30
+  }
+}

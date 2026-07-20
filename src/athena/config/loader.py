@@ -23,6 +23,7 @@ from athena.config.models import (
     FileProviderConfig,
     HolidaysFile,
     MarketHealthConfig,
+    RiskAssessmentConfig,
     ScoringConfig,
     SectorHealthConfig,
     ValidationConfig,
@@ -170,6 +171,16 @@ def load_confidence_config(config_dir: Path) -> ConfidenceConfig:
     path = Path(config_dir) / "confidence.json"
     try:
         return ConfidenceConfig.model_validate(_read_json(path))
+    except ValidationError as exc:
+        raise ConfigError(_validation_message(str(path), exc)) from exc
+
+
+def load_risk_assessment_config(config_dir: Path) -> RiskAssessmentConfig:
+    """Load + validate the Risk Engine settings (config/risk_assessment.json)."""
+
+    path = Path(config_dir) / "risk_assessment.json"
+    try:
+        return RiskAssessmentConfig.model_validate(_read_json(path))
     except ValidationError as exc:
         raise ConfigError(_validation_message(str(path), exc)) from exc
 

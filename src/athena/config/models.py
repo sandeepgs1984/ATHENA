@@ -516,6 +516,74 @@ class ConfidenceConfig(_Strict):
     consistency: ConsistencyCfg
 
 
+class RiskWeightsCfg(_Strict):
+    volatility_risk: int = Field(ge=0)
+    liquidity_risk: int = Field(ge=0)
+    gap_risk: int = Field(ge=0)
+    event_risk: int = Field(ge=0)
+    market_environment_risk: int = Field(ge=0)
+    concentration_indicator: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def _sum_100(self) -> RiskWeightsCfg:
+        total = (self.volatility_risk + self.liquidity_risk + self.gap_risk + self.event_risk
+                 + self.market_environment_risk + self.concentration_indicator)
+        if total != 100:
+            raise ValueError(f"risk weights must sum to 100, got {total}")
+        return self
+
+
+class RiskLevelsCfg(_Strict):
+    low_below: int = Field(ge=0, le=100)
+    high_at_or_above: int = Field(ge=0, le=100)
+
+    @model_validator(mode="after")
+    def _ordered(self) -> RiskLevelsCfg:
+        if self.low_below >= self.high_at_or_above:
+            raise ValueError(
+                f"low_below ({self.low_below}) must be < high_at_or_above ({self.high_at_or_above})")
+        return self
+
+
+class RiskLiquidityCfg(_Strict):
+    min_volume_ma: int = Field(ge=0)
+    low_liquidity_risk: int = Field(ge=0, le=100)
+    ok_liquidity_risk: int = Field(ge=0, le=100)
+
+
+class RiskEventCfg(_Strict):
+    expiry_risk: int = Field(ge=0, le=100)
+    event_risk: int = Field(ge=0, le=100)
+    normal_risk: int = Field(ge=0, le=100)
+
+
+class RiskConcentrationCfg(_Strict):
+    min_universe_size: int = Field(ge=1)
+    concentrated_risk: int = Field(ge=0, le=100)
+    diversified_risk: int = Field(ge=0, le=100)
+
+
+class RiskAssessmentConfig(_Strict):
+    """Risk Engine configuration (M3.5). Descriptive exposure only, not no-trade rules."""
+
+    weights: RiskWeightsCfg
+    levels: RiskLevelsCfg
+    volatility_points: dict[str, int]
+    gap_points: dict[str, int]
+    liquidity: RiskLiquidityCfg
+    event: RiskEventCfg
+    market_env_points: dict[str, int]
+    concentration: RiskConcentrationCfg
+
+    @field_validator("volatility_points", "gap_points", "market_env_points")
+    @classmethod
+    def _points_in_range(cls, v: dict[str, int]) -> dict[str, int]:
+        bad = {k: p for k, p in v.items() if not 0 <= p <= 100}
+        if bad:
+            raise ValueError(f"risk points must be within 0..100: {bad}")
+        return v
+
+
 class Holiday(_Strict):
     date: str
     name: str
