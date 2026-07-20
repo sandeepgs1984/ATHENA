@@ -21,6 +21,7 @@ from athena.config.models import (
     ExpiriesFile,
     FileProviderConfig,
     HolidaysFile,
+    MarketHealthConfig,
     ValidationConfig,
 )
 from athena.domain.run import ConfigurationSnapshot
@@ -126,6 +127,16 @@ def load_validation_config(config_dir: Path) -> ValidationConfig:
     path = Path(config_dir) / "validation.json"
     try:
         return ValidationConfig.model_validate(_read_json(path))
+    except ValidationError as exc:
+        raise ConfigError(_validation_message(str(path), exc)) from exc
+
+
+def load_market_health_config(config_dir: Path) -> MarketHealthConfig:
+    """Load + validate the Market Health Engine settings (config/market_health.json)."""
+
+    path = Path(config_dir) / "market_health.json"
+    try:
+        return MarketHealthConfig.model_validate(_read_json(path))
     except ValidationError as exc:
         raise ConfigError(_validation_message(str(path), exc)) from exc
 

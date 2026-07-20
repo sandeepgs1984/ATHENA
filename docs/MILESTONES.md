@@ -25,8 +25,8 @@ Framework · M0.4 Trading Calendar · M0.5 Observability & CLI.
 
 | Milestone | Scope | Status |
 |---|---|---|
-| **M2.1** Regime Engine | Deterministic regime (trend/volatility/gap) with evidence | In review |
-| M2.2 Market Health | Breadth, trend quality, participation, momentum, volatility health | Blocked on M2.1 |
+| **M2.1** Regime Engine | Deterministic regime (trend/volatility/gap) with evidence | ✅ Approved |
+| **M2.2** Market Health | Breadth, trend quality, participation, momentum, volatility health | In review |
 | M2.3 Sector Health | Sector-level strength, deterministic + explainable | Blocked on M2.2 |
 | M2.4 Universe Engine | Investable universe construction with explainable inclusion | Blocked on M2.3 |
 

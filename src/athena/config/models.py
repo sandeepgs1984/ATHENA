@@ -310,6 +310,58 @@ class ValidationConfig(_Strict):
     gaps: GapConfig
 
 
+class BreadthCfg(_Strict):
+    strong_ratio: float = Field(gt=0, lt=1)
+    weak_ratio: float = Field(gt=0, lt=1)
+
+    @model_validator(mode="after")
+    def _ordered(self) -> BreadthCfg:
+        if self.weak_ratio >= self.strong_ratio:
+            raise ValueError(
+                f"breadth weak_ratio ({self.weak_ratio}) must be < strong_ratio ({self.strong_ratio})")
+        return self
+
+
+class MomentumCfg(_Strict):
+    period: int = Field(ge=1)
+    healthy_pct: float = Field(gt=0)
+
+
+class TrendQualityCfg(_Strict):
+    window: int = Field(ge=2)
+    strong_consistency: float = Field(gt=0, le=1)
+    weak_consistency: float = Field(gt=0, le=1)
+
+    @model_validator(mode="after")
+    def _ordered(self) -> TrendQualityCfg:
+        if self.weak_consistency >= self.strong_consistency:
+            raise ValueError(
+                f"trend weak_consistency ({self.weak_consistency}) must be < "
+                f"strong_consistency ({self.strong_consistency})")
+        return self
+
+
+class VolatilityHealthCfg(_Strict):
+    calm_vix: float = Field(gt=0)
+    elevated_vix: float = Field(gt=0)
+
+    @model_validator(mode="after")
+    def _ordered(self) -> VolatilityHealthCfg:
+        if self.calm_vix >= self.elevated_vix:
+            raise ValueError(
+                f"volatility calm_vix ({self.calm_vix}) must be < elevated_vix ({self.elevated_vix})")
+        return self
+
+
+class MarketHealthConfig(_Strict):
+    """Market Health Engine thresholds (M2.2)."""
+
+    breadth: BreadthCfg
+    momentum: MomentumCfg
+    trend_quality: TrendQualityCfg
+    volatility: VolatilityHealthCfg
+
+
 class Holiday(_Strict):
     date: str
     name: str

@@ -1,0 +1,23 @@
+{
+  "_meta": {
+    "layer": 3,
+    "description": "Market Health Engine thresholds (M2.2). Descriptive market-quality settings."
+  },
+  "breadth": {
+    "strong_ratio": 0.60,
+    "weak_ratio": 0.40
+  },
+  "momentum": {
+    "period": 10,
+    "healthy_pct": 2.0
+  },
+  "trend_quality": {
+    "window": 20,
+    "strong_consistency": 0.65,
+    "weak_consistency": 0.45
+  },
+  "volatility": {
+    "calm_vix": 12.0,
+    "elevated_vix": 20.0
+  }
+}
