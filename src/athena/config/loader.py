@@ -15,7 +15,13 @@ from typing import Any, Dict, Tuple
 
 from pydantic import ValidationError
 
-from athena.config.models import AthenaConfig, EventsFile, ExpiriesFile, HolidaysFile
+from athena.config.models import (
+    AthenaConfig,
+    EventsFile,
+    ExpiriesFile,
+    FileProviderConfig,
+    HolidaysFile,
+)
 from athena.domain.run import ConfigurationSnapshot
 from athena.errors import ConfigError
 
@@ -101,6 +107,16 @@ def load_calendar_files(config_dir: Path) -> Tuple[HolidaysFile, ExpiriesFile, E
     except ValidationError as exc:
         raise ConfigError(_validation_message(str(cal_dir), exc)) from exc
     return holidays, expiries, events
+
+
+def load_file_provider_config(config_dir: Path) -> FileProviderConfig:
+    """Load + validate the FileProvider settings (config/providers/file.json)."""
+
+    path = Path(config_dir) / "providers" / "file.json"
+    try:
+        return FileProviderConfig.model_validate(_read_json(path))
+    except ValidationError as exc:
+        raise ConfigError(_validation_message(str(path), exc)) from exc
 
 
 def _canonical_json(config: AthenaConfig) -> str:

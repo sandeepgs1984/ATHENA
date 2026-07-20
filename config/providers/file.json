@@ -1,0 +1,18 @@
+{
+  "_meta": {
+    "description": "FileProvider settings (M1.2). Paths are relative to data_root, which is relative to the repo root. File formats: candles/instruments/quotes = CSV, snapshot = JSON. See src/athena/data/providers/file_provider.py for the exact schemas.",
+    "layer": "provider"
+  },
+  "data_root": "data",
+  "instruments_file": "instruments.csv",
+  "daily_dir": "daily",
+  "intraday_dir": "intraday",
+  "quotes_file": "quotes.csv",
+  "snapshot_file": "snapshot.json",
+  "capabilities": {
+    "timeframes": ["1d", "5m", "15m"],
+    "max_history_days": 365,
+    "supports_quotes": true,
+    "supports_market_snapshot": true
+  }
+}

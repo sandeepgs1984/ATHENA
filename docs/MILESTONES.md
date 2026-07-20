@@ -14,8 +14,8 @@ Framework · M0.4 Trading Calendar · M0.5 Observability & CLI.
 
 | Milestone | Scope | Status |
 |---|---|---|
-| **M1.1** MarketDataProvider Contracts | Provider Protocol hardening, ProviderCapabilities, ProviderHealth, behavioral contract, reusable contract test suite | In review |
-| M1.2 FileProvider | FileProvider; daily/intraday/instrument/quote loaders; provider health | Awaiting M1.1 approval |
+| **M1.1** MarketDataProvider Contracts | Provider Protocol hardening, ProviderCapabilities, ProviderHealth, behavioral contract, reusable contract test suite | ✅ Approved |
+| **M1.2** FileProvider | FileProvider; daily/intraday/instrument/quote loaders; provider health | In review |
 | M1.3 Validation Layer | Freshness, OHLC, duplicate, gap validation; validation reports; quarantine handling | Blocked on M1.2 |
 | M1.4 Corporate Actions Engine | Splits, bonuses, dividends, renames; historical adjustment strategy | Blocked on M1.3 |
 | M1.5 SQLite Repository | Schema, WAL, foreign keys, repository layer, append-only storage, integrity verification | Blocked on M1.4 |

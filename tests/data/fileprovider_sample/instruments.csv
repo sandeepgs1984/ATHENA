@@ -1,0 +1,3 @@
+instrument_id,symbol,exchange,series,isin,lot_size,tick_size,status,listed_date,delisted_date
+INE002A01018,RELIANCE,NSE,EQ,INE002A01018,1,0.05,ACTIVE,1995-01-01,
+INE467B01029,TCS,NSE,EQ,INE467B01029,1,0.05,ACTIVE,2004-08-25,

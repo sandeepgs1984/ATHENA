@@ -262,6 +262,38 @@ class AthenaConfig(_Strict):
         return self
 
 
+class ProviderCapabilitiesConfig(_Strict):
+    timeframes: List[str]
+    max_history_days: int = Field(ge=1)
+    supports_quotes: bool
+    supports_market_snapshot: bool
+
+    @field_validator("timeframes")
+    @classmethod
+    def _known_unique_timeframes(cls, v: List[str]) -> List[str]:
+        allowed = {"1m", "5m", "15m", "1d"}
+        unknown = [t for t in v if t not in allowed]
+        if unknown:
+            raise ValueError(f"unknown timeframes {unknown}; allowed: {sorted(allowed)}")
+        if len(set(v)) != len(v):
+            raise ValueError(f"duplicate timeframes: {v}")
+        if "1d" not in v:
+            raise ValueError("a provider must serve daily ('1d') candles (Phase 1 baseline)")
+        return v
+
+
+class FileProviderConfig(_Strict):
+    """Settings for the file-based provider (M1.2). All paths are relative to data_root."""
+
+    data_root: str
+    instruments_file: str
+    daily_dir: str
+    intraday_dir: str
+    quotes_file: str
+    snapshot_file: str
+    capabilities: ProviderCapabilitiesConfig
+
+
 class Holiday(_Strict):
     date: str
     name: str

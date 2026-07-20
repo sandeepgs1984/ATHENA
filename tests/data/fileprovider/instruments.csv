@@ -1,0 +1,3 @@
+instrument_id,symbol,exchange,series,isin,lot_size,tick_size,status,listed_date,delisted_date
+SYN-AAA,AAA,NSE,EQ,INE000A01AAA,1,0.05,ACTIVE,2020-01-01,
+SYN-BBB,BBB,NSE,EQ,INE000A01BBB,1,0.05,ACTIVE,2021-06-15,
