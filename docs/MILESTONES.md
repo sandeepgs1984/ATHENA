@@ -37,8 +37,8 @@ Per the Phase 3 authorization the milestone set is:
 | Milestone | Scope | Status |
 |---|---|---|
 | **M3.1** Evidence Aggregation | Single immutable evidence graph with provenance + missing detection | ✅ Approved |
-| **M3.2** Indicator Engine | Deterministic technical indicators (SMA/EMA/RSI/ATR/MACD/ADX/vol avgs) | In review |
-| M3.3 Scoring Engine | Transparent component scores from approved evidence/indicators | Blocked on M3.2 |
+| **M3.2** Indicator Engine | Deterministic technical indicators (SMA/EMA/RSI/ATR/MACD/ADX/vol avgs) | ✅ Approved |
+| **M3.3** Scoring Engine | Transparent component scores from approved evidence/indicators | In review |
 | M3.4 Confidence Engine | Evidence reliability (completeness, agreement, freshness, contradictions) | Blocked on M3.3 |
 | M3.5 Risk Engine | Descriptive trading-risk assessment (volatility/liquidity/gap/event/concentration) | Blocked on M3.4 |
 | M3.6 Decision Engine | First explainable decisions from bundle+indicators+scores+confidence+risk | Blocked on M3.5 |

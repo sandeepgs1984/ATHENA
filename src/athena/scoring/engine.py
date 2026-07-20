@@ -1,0 +1,228 @@
+"""Scoring Engine (M3.3).
+
+Transforms approved evidence and objective measurements into transparent,
+explainable component scores plus a composite that retains a full breakdown.
+Scores are intermediate artifacts — never recommendations, sizing, or decisions.
+
+Consumes approved artifacts only (assessments + IndicatorResults); never raw
+providers or repositories. Pure and replayable: injected ``as_of``, Decimal
+math, config-driven point maps. Missing inputs → explicit UNKNOWN (no defaults).
+"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from datetime import datetime
+from decimal import Decimal
+
+from athena.config.models import ScoringConfig
+from athena.indicators.models import IndicatorName, IndicatorResult, IndicatorStatus
+from athena.market_health.models import MarketHealthResult
+from athena.regime.models import RegimeResult
+from athena.scoring.models import (
+    ComponentScore,
+    CompositeBreakdownItem,
+    CompositeScore,
+    Contribution,
+    ScoreStatus,
+    ScoringResult,
+)
+from athena.sector_health.models import SectorHealthResult
+
+_ZERO, _HUNDRED = Decimal(0), Decimal(100)
+
+
+def _clamp(value: Decimal) -> Decimal:
+    return max(_ZERO, min(_HUNDRED, value))
+
+
+def _ok(dimension, value, contributions, explanation) -> ComponentScore:
+    return ComponentScore(dimension=dimension, status=ScoreStatus.OK, value=_clamp(value),
+                          contributions=tuple(contributions), explanation=explanation)
+
+
+def _unknown(dimension, explanation) -> ComponentScore:
+    return ComponentScore(dimension=dimension, status=ScoreStatus.UNKNOWN, value=None,
+                          contributions=(), explanation=explanation)
+
+
+class ScoringEngine:
+    """Deterministic, evidence- and indicator-driven component + composite scoring."""
+
+    def __init__(self, config: ScoringConfig) -> None:
+        self._config = config
+
+    def score(
+        self,
+        instrument_id: str,
+        *,
+        as_of: datetime,
+        indicators: Mapping[IndicatorName, IndicatorResult] | None = None,
+        regime: RegimeResult | None = None,
+        market_health: MarketHealthResult | None = None,
+        sector_health: SectorHealthResult | None = None,
+    ) -> ScoringResult:
+        indicators = dict(indicators or {})
+        components = {
+            "trend": self._trend(regime, indicators),
+            "momentum": self._momentum(indicators),
+            "market_quality": self._market_quality(market_health),
+            "sector_quality": self._sector_quality(sector_health),
+            "liquidity": self._liquidity(indicators),
+            "technical_structure": self._technical_structure(indicators),
+        }
+        composite = self._composite(components)
+        return ScoringResult(instrument_id=instrument_id, ts=as_of,
+                             components=components, composite=composite)
+
+    # ------------------------------------------------------------- helpers
+
+    def _label_points(self, label: str) -> int | None:
+        return self._config.label_points.get(label)
+
+    @staticmethod
+    def _known_indicator(
+        indicators: Mapping[IndicatorName, IndicatorResult], name: IndicatorName
+    ) -> IndicatorResult | None:
+        result = indicators.get(name)
+        if result is None or result.status is not IndicatorStatus.OK:
+            return None
+        return result
+
+    # ------------------------------------------------------------- components
+
+    def _trend(self, regime, indicators) -> ComponentScore:
+        if regime is None:
+            return _unknown("trend", "no regime assessment available")
+        trend_label = next(
+            (e.outcome.value for e in regime.evidence if e.dimension == "trend"), None)
+        base = self._label_points(trend_label) if trend_label else None
+        if base is None:
+            return _unknown("trend", f"regime trend not scoreable (label={trend_label})")
+        value = Decimal(base)
+        contribs = [Contribution("regime:trend", f"regime-{trend_label}",
+                                 f"regime trend {trend_label} → {base} pts", Decimal(base))]
+        adx = self._known_indicator(indicators, IndicatorName.ADX)
+        if adx is not None and adx.values["adx"] >= Decimal(str(self._config.adx.strong)):
+            bonus = Decimal(self._config.adx.bonus)
+            value += bonus
+            contribs.append(Contribution("indicator:ADX", "ADX",
+                                         f"ADX {adx.values['adx']} >= {self._config.adx.strong} "
+                                         f"→ +{bonus} pts", bonus))
+        return _ok("trend", value, contribs,
+                   f"trend score {_clamp(value)} from regime trend + ADX strength")
+
+    def _momentum(self, indicators) -> ComponentScore:
+        rsi = self._known_indicator(indicators, IndicatorName.RSI)
+        if rsi is None:
+            return _unknown("momentum", "RSI indicator unavailable")
+        cfg = self._config.rsi
+        rsi_val = rsi.values["value"]
+        if rsi_val >= Decimal(str(cfg.strong)):
+            pts = cfg.strong_points
+        elif rsi_val <= Decimal(str(cfg.weak)):
+            pts = cfg.weak_points
+        else:
+            pts = cfg.mid_points
+        contribs = [Contribution("indicator:RSI", "RSI",
+                                 f"RSI {rsi_val} → {pts} pts "
+                                 f"(bands weak {cfg.weak}, strong {cfg.strong})", Decimal(pts))]
+        return _ok("momentum", Decimal(pts), contribs, f"momentum score {pts} from RSI")
+
+    def _market_quality(self, market_health) -> ComponentScore:
+        if market_health is None:
+            return _unknown("market_quality", "no market health assessment available")
+        return self._quality_from_dimensions(
+            "market_quality", "market_health", market_health.assessment.dimensions)
+
+    def _sector_quality(self, sector_health) -> ComponentScore:
+        if sector_health is None:
+            return _unknown("sector_quality", "no sector health assessment available")
+        return self._quality_from_dimensions(
+            "sector_quality", "sector_health", sector_health.assessment.dimensions)
+
+    def _quality_from_dimensions(self, dimension, source, dimensions) -> ComponentScore:
+        contribs: list[Contribution] = []
+        points: list[int] = []
+        for dim, label in sorted(dimensions.items()):
+            pts = self._label_points(label)
+            if pts is None:
+                continue  # UNKNOWN / unscoreable dimension excluded, never defaulted
+            points.append(pts)
+            contribs.append(Contribution(f"{source}:{dim}", label,
+                                         f"{dim}={label} → {pts} pts", Decimal(pts)))
+        if not points:
+            return _unknown(dimension, f"no scoreable {source} dimensions")
+        avg = Decimal(sum(points)) / Decimal(len(points))
+        return _ok(dimension, avg, contribs,
+                   f"{dimension} {avg} = mean of {len(points)} scoreable dimension(s)")
+
+    def _liquidity(self, indicators) -> ComponentScore:
+        vma = self._known_indicator(indicators, IndicatorName.VOLUME_MA)
+        if vma is None:
+            return _unknown("liquidity", "Volume MA indicator unavailable")
+        cfg = self._config.liquidity
+        vma_val = vma.values["value"]
+        pts = cfg.ok_points if vma_val >= Decimal(cfg.min_volume_ma) else cfg.low_points
+        contribs = [Contribution("indicator:VOLUME_MA", "VOLUME_MA",
+                                 f"Volume MA {vma_val} vs min {cfg.min_volume_ma} → {pts} pts",
+                                 Decimal(pts))]
+        return _ok("liquidity", Decimal(pts), contribs, f"liquidity score {pts} from Volume MA")
+
+    def _technical_structure(self, indicators) -> ComponentScore:
+        sma = self._known_indicator(indicators, IndicatorName.SMA)
+        if sma is None:
+            return _unknown("technical_structure", "SMA indicator unavailable")
+        last_close_raw = sma.evidence.inputs.get("last_close")
+        if last_close_raw is None:
+            return _unknown("technical_structure", "SMA evidence lacks last_close")
+        cfg = self._config.technical
+        last_close = Decimal(last_close_raw)
+        sma_val = sma.values["value"]
+        above = last_close >= sma_val
+        pts = cfg.above_ma_points if above else cfg.below_ma_points
+        contribs = [Contribution("indicator:SMA", "SMA",
+                                 f"last close {last_close} {'>=' if above else '<'} SMA {sma_val} "
+                                 f"→ {pts} pts", Decimal(pts))]
+        value = Decimal(pts)
+        macd = self._known_indicator(indicators, IndicatorName.MACD)
+        if macd is not None and macd.values["histogram"] > _ZERO:
+            bonus = Decimal(cfg.macd_pos_bonus)
+            value += bonus
+            contribs.append(Contribution("indicator:MACD", "MACD",
+                                         f"MACD histogram {macd.values['histogram']} > 0 "
+                                         f"→ +{bonus} pts", bonus))
+        return _ok("technical_structure", value, contribs,
+                   f"technical structure {_clamp(value)} from price-vs-SMA + MACD")
+
+    # ------------------------------------------------------------- composite
+
+    def _composite(self, components: Mapping[str, ComponentScore]) -> CompositeScore:
+        weights = self._config.weights.model_dump()
+        breakdown: list[CompositeBreakdownItem] = []
+        weighted_sum = _ZERO
+        known_weight = 0
+        total_weight = 0
+        for dim, comp in components.items():
+            weight = int(weights[dim])
+            total_weight += weight
+            if comp.is_known and comp.value is not None:
+                weighted = comp.value * Decimal(weight)
+                weighted_sum += weighted
+                known_weight += weight
+                breakdown.append(CompositeBreakdownItem(dim, weight, comp.status, comp.value,
+                                                        weighted))
+            else:
+                breakdown.append(CompositeBreakdownItem(dim, weight, comp.status, None, None))
+        breakdown_t = tuple(breakdown)
+        if known_weight == 0:
+            return CompositeScore(status=ScoreStatus.UNKNOWN, value=None, completeness=_ZERO,
+                                  breakdown=breakdown_t,
+                                  explanation="composite UNKNOWN: no scoreable components")
+        value = weighted_sum / Decimal(known_weight)
+        completeness = Decimal(known_weight) / Decimal(total_weight)
+        return CompositeScore(
+            status=ScoreStatus.OK, value=_clamp(value), completeness=completeness,
+            breakdown=breakdown_t,
+            explanation=(f"composite {_clamp(value)} = weighted mean of known components "
+                         f"(completeness {completeness:.2f})"))

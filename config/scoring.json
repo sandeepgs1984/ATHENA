@@ -1,0 +1,32 @@
+{
+  "_meta": {
+    "layer": 3,
+    "description": "Scoring Engine configuration (M3.3). Component weights + transparent label/threshold point maps. Scores are intermediate artifacts, not decisions."
+  },
+  "weights": {
+    "trend": 20,
+    "momentum": 20,
+    "market_quality": 20,
+    "sector_quality": 15,
+    "liquidity": 10,
+    "technical_structure": 15
+  },
+  "label_points": {
+    "BULL_TREND": 80, "SIDEWAYS": 50, "BEAR_TREND": 20,
+    "STRONG_BREADTH": 80, "MIXED_BREADTH": 50, "WEAK_BREADTH": 20,
+    "STRONG_TREND_QUALITY": 80, "MIXED_TREND_QUALITY": 50, "WEAK_TREND_QUALITY": 20,
+    "HEALTHY_MOMENTUM": 80, "FLAT_MOMENTUM": 50, "WEAK_MOMENTUM": 20,
+    "VOLATILITY_CALM": 60, "VOLATILITY_NORMAL": 55, "VOLATILITY_ELEVATED": 30,
+    "STRONG_SECTOR_BREADTH": 80, "MIXED_SECTOR_BREADTH": 50, "WEAK_SECTOR_BREADTH": 20,
+    "SECTOR_UPTREND": 80, "SECTOR_SIDEWAYS": 50, "SECTOR_DOWNTREND": 20,
+    "HEALTHY_SECTOR_MOMENTUM": 80, "FLAT_SECTOR_MOMENTUM": 50, "WEAK_SECTOR_MOMENTUM": 20,
+    "SECTOR_VOLATILITY_CALM": 60, "SECTOR_VOLATILITY_NORMAL": 55, "SECTOR_VOLATILITY_ELEVATED": 30
+  },
+  "rsi": {
+    "strong": 60.0, "weak": 40.0,
+    "strong_points": 80, "mid_points": 50, "weak_points": 20
+  },
+  "adx": { "strong": 25.0, "bonus": 10 },
+  "liquidity": { "min_volume_ma": 500000, "ok_points": 70, "low_points": 30 },
+  "technical": { "above_ma_points": 70, "below_ma_points": 30, "macd_pos_bonus": 10 }
+}

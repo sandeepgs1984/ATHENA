@@ -406,6 +406,73 @@ class SectorHealthConfig(_Strict):
     volatility: SectorVolatilityCfg
 
 
+class ScoringWeightsCfg(_Strict):
+    trend: int = Field(ge=0)
+    momentum: int = Field(ge=0)
+    market_quality: int = Field(ge=0)
+    sector_quality: int = Field(ge=0)
+    liquidity: int = Field(ge=0)
+    technical_structure: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def _sum_100(self) -> ScoringWeightsCfg:
+        total = (self.trend + self.momentum + self.market_quality
+                 + self.sector_quality + self.liquidity + self.technical_structure)
+        if total != 100:
+            raise ValueError(f"scoring weights must sum to 100, got {total}")
+        return self
+
+
+class RsiScoringCfg(_Strict):
+    strong: float = Field(gt=0, lt=100)
+    weak: float = Field(gt=0, lt=100)
+    strong_points: int = Field(ge=0, le=100)
+    mid_points: int = Field(ge=0, le=100)
+    weak_points: int = Field(ge=0, le=100)
+
+    @model_validator(mode="after")
+    def _ordered(self) -> RsiScoringCfg:
+        if self.weak >= self.strong:
+            raise ValueError(f"rsi weak ({self.weak}) must be < strong ({self.strong})")
+        return self
+
+
+class AdxScoringCfg(_Strict):
+    strong: float = Field(gt=0)
+    bonus: int = Field(ge=0, le=100)
+
+
+class LiquidityScoringCfg(_Strict):
+    min_volume_ma: int = Field(ge=0)
+    ok_points: int = Field(ge=0, le=100)
+    low_points: int = Field(ge=0, le=100)
+
+
+class TechnicalScoringCfg(_Strict):
+    above_ma_points: int = Field(ge=0, le=100)
+    below_ma_points: int = Field(ge=0, le=100)
+    macd_pos_bonus: int = Field(ge=0, le=100)
+
+
+class ScoringConfig(_Strict):
+    """Scoring Engine configuration (M3.3). All contributions are config-driven."""
+
+    weights: ScoringWeightsCfg
+    label_points: dict[str, int]
+    rsi: RsiScoringCfg
+    adx: AdxScoringCfg
+    liquidity: LiquidityScoringCfg
+    technical: TechnicalScoringCfg
+
+    @field_validator("label_points")
+    @classmethod
+    def _points_in_range(cls, v: dict[str, int]) -> dict[str, int]:
+        bad = {k: p for k, p in v.items() if not 0 <= p <= 100}
+        if bad:
+            raise ValueError(f"label_points must be within 0..100: {bad}")
+        return v
+
+
 class Holiday(_Strict):
     date: str
     name: str

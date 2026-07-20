@@ -22,6 +22,7 @@ from athena.config.models import (
     FileProviderConfig,
     HolidaysFile,
     MarketHealthConfig,
+    ScoringConfig,
     SectorHealthConfig,
     ValidationConfig,
 )
@@ -148,6 +149,16 @@ def load_sector_health_config(config_dir: Path) -> SectorHealthConfig:
     path = Path(config_dir) / "sector_health.json"
     try:
         return SectorHealthConfig.model_validate(_read_json(path))
+    except ValidationError as exc:
+        raise ConfigError(_validation_message(str(path), exc)) from exc
+
+
+def load_scoring_config(config_dir: Path) -> ScoringConfig:
+    """Load + validate the Scoring Engine settings (config/scoring.json)."""
+
+    path = Path(config_dir) / "scoring.json"
+    try:
+        return ScoringConfig.model_validate(_read_json(path))
     except ValidationError as exc:
         raise ConfigError(_validation_message(str(path), exc)) from exc
 
