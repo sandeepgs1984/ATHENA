@@ -6,6 +6,22 @@ status updated on approval.
 
 ---
 
+## Phase 1 — Data Foundation (in progress)
+
+### M1.1 — MarketDataProvider Contracts
+
+| | |
+|---|---|
+| Completed | 2026-07-20 |
+| Scope | Provider Protocol behavioral contract, ProviderCapabilities/ProviderHealth invariants, reusable contract test suite |
+| Tests | 67 passed / 0 failed (16 new) |
+| Status | **Awaiting owner approval** — M1.2 (FileProvider) blocked until approved |
+| Branch | main |
+
+Frozen Protocol signatures untouched (contract compatibility preserved). Added: constructor invariants on `ProviderCapabilities` (non-empty unique timeframes, history ≥ 1 day) and `ProviderHealth` (mandatory detail, tz-aware timestamps); a documented behavioral contract on the Protocol (capability honesty, candle ordering/uniqueness/range, emptiness-is-not-error, determinism, unknown-id failures, structurally-forbidden order methods); `tests/contract/provider_contract.py` — the conformance suite every provider (M1.2 FileProvider, future broker adapters per DD-1) must pass unchanged, including a `test_no_order_methods_exist` structural-safety check; proven against a deterministic in-memory `StubProvider` (test infrastructure only, arithmetic data, no randomness/clock reads) plus negative tests showing the suite catches rogue order methods and invalid capabilities. Validation checklist 1–10 passed; no ADR needed; no config changes.
+
+---
+
 ## Phase 0 — Foundations
 
 | | |
@@ -13,7 +29,9 @@ status updated on approval.
 | Completed | 2026-07-20 |
 | Blueprint scope | ATHENA-002 §14, Phase 0 |
 | Tests | 51 passed / 0 failed |
-| Status | **Awaiting owner approval** |
+| Status | **APPROVED** (owner + principal engineer review passed, 2026-07-20) |
+| Branch | main |
+| Lessons learned | Phase-sized batches are too large to review well — milestone-based workflow adopted from Phase 1 (see CLAUDE.md, docs/MILESTONES.md) |
 
 ### 1. Summary of completed work
 
