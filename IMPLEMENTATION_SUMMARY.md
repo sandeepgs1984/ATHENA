@@ -28,7 +28,25 @@ Validation checklist 1–10 passed; frozen contracts unchanged; no ADR; no drift
 
 ---
 
-## Phase 2 — Market Intelligence (in progress)
+## Phase 3 — Decision Intelligence (in progress)
+
+### M3.1 — Evidence Aggregation Engine
+
+| | |
+|---|---|
+| Completed | 2026-07-20 |
+| Scope | Gather all approved intelligence into a single immutable, provenance-tagged evidence graph |
+| Tests | 273 passed / 0 failed (10 new) |
+| Status | **Awaiting owner approval** — M3.2 (Indicator Engine) blocked until approved |
+| Branch | main |
+
+Built `EvidenceAggregationEngine` (`src/athena/evidence/`), the first Decision Intelligence module. It gathers approved intelligence — regime, market health, sector health, universe, corporate-action evidence, and validation reports — into a single immutable `EvidenceBundle` of provenance-tagged `EvidenceItem`s. Each item records its `source`, `kind`, `reference_id`, timezone-aware `ts`, explanation, and the original (frozen) intelligence object as `payload` — so nothing is transformed or lost; provenance is preserved verbatim. The engine detects missing required sources (`required_sources` → `missing_sources`, `is_complete`) and publishes a per-source provenance count. Aggregation only — no scoring, signals, decisions, or transformation. Pure and replayable: injected `as_of`, deterministic fixed source ordering (sectors sorted), no I/O/clock/randomness; `EvidenceBundle` exposes `by_source`, `has_source`, `present_sources`.
+
+Result types in `src/athena/evidence/models.py` (decision-intelligence types, not frozen domain §4) — no ADR. Files created: `src/athena/evidence/{__init__,models,engine}.py`, `tests/decision/test_evidence_aggregation.py`. Public APIs added: `EvidenceAggregationEngine.aggregate`, `EvidenceBundle`, `EvidenceItem`, `EvidenceSource`. All prior engines and frozen domain unchanged; ruff clean; no drift; no tech debt.
+
+---
+
+## Phase 2 — Market Intelligence (COMPLETE — pending formal review)
 
 ### M2.4 — Universe Engine  (completes Phase 2)
 

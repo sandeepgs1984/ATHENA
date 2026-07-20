@@ -30,11 +30,19 @@ Framework · M0.4 Trading Calendar · M0.5 Observability & CLI.
 | **M2.3** Sector Health | Sector-level strength, deterministic + explainable | ✅ Approved |
 | **M2.4** Universe Engine | Investable universe construction with explainable inclusion | In review |
 
-## Phase 3 — Decision Intelligence
+## Phase 3 — Decision Intelligence (AUTHORIZED)
 
-M3.1 Evidence Collection · M3.2 Indicator Engine · M3.3 Scoring Engine ·
-M3.4 Confidence Engine · M3.5 Risk Engine · M3.6 Capital Allocation ·
-M3.7 Decision Engine · M3.8 Decision Trace · M3.9 Decision Report
+Per the Phase 3 authorization the milestone set is:
+
+| Milestone | Scope | Status |
+|---|---|---|
+| **M3.1** Evidence Aggregation | Single immutable evidence graph with provenance + missing detection | In review |
+| M3.2 Indicator Engine | Deterministic technical indicators (SMA/EMA/RSI/ATR/MACD/ADX/vol avgs) | Blocked on M3.1 |
+| M3.3 Scoring Engine | Transparent component scores from approved evidence/indicators | Blocked on M3.2 |
+| M3.4 Confidence Engine | Evidence reliability (completeness, agreement, freshness, contradictions) | Blocked on M3.3 |
+| M3.5 Risk Engine | Descriptive trading-risk assessment (volatility/liquidity/gap/event/concentration) | Blocked on M3.4 |
+| M3.6 Decision Engine | First explainable decisions from bundle+indicators+scores+confidence+risk | Blocked on M3.5 |
+| M3.7 Decision Trace & Reporting | Human + machine-readable decision reports | Blocked on M3.6 |
 
 ## Phases 4–7
 
