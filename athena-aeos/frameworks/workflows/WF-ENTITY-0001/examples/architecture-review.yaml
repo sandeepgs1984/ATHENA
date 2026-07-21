@@ -1,0 +1,26 @@
+workflow:
+  extends: MM-0001
+
+  id: WF-0001
+
+  name: Architecture Review
+
+  objective: Validate architectural compliance
+
+  participants:
+    - ROLE-0001
+
+  capabilities:
+    - CAP-0001
+
+  entryCriteria:
+    - Design document approved
+
+  exitCriteria:
+    - Review completed
+
+  successCriteria:
+    - No critical architectural violations
+
+  producedArtifacts:
+    - Architecture Review Report

@@ -1,0 +1,26 @@
+workflow:
+  extends: MM-0001
+
+  id: WF-0002
+
+  name: API Contract Generation
+
+  objective: Produce a canonical API contract
+
+  participants:
+    - ROLE-0002
+
+  capabilities:
+    - CAP-0007
+
+  entryCriteria:
+    - API specification available
+
+  exitCriteria:
+    - Contract generated
+
+  successCriteria:
+    - Contract validated
+
+  producedArtifacts:
+    - API Contract
