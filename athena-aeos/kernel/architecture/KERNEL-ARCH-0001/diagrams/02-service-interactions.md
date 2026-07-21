@@ -1,0 +1,19 @@
+Entity
+  │
+  ▼
+Identity
+  │
+  ▼
+Lifecycle
+  │
+  ▼
+Relationship
+  │
+  ▼
+Validation
+  │
+  ▼
+Versioning
+  │
+  ▼
+Discovery
