@@ -1,0 +1,29 @@
+capability:
+
+  id: CAP-0001
+
+  name: Architecture Review
+
+  category: Architecture
+
+  purpose:
+    Review engineering artifacts for architectural correctness.
+
+  executorTypes:
+
+    - Human
+    - AI Agent
+
+  inputs:
+
+    - Architecture Specification
+    - ADRs
+
+  outputs:
+
+    - Review Report
+    - Decision Record
+
+  lifecycle:
+
+    state: Active

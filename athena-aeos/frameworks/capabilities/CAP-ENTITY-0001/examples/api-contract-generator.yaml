@@ -1,0 +1,34 @@
+capability:
+
+  id: CAP-0002
+
+  name: API Contract Generation
+
+  category: Development
+
+  purpose:
+    Generate standardized API contracts from engineering requirements.
+
+  executorTypes:
+
+    - AI Agent
+
+  inputs:
+
+    - Requirements
+    - Existing APIs
+
+  outputs:
+
+    - OpenAPI Specification
+    - Validation Report
+
+  relationships:
+
+    references:
+
+      - SPEC-API-0001
+
+  lifecycle:
+
+    state: Active
