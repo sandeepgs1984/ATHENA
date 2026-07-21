@@ -27,6 +27,7 @@ from athena.config.models import (
     RiskAssessmentConfig,
     ScoringConfig,
     SectorHealthConfig,
+    StrategyConfig,
     ValidationConfig,
     WatchlistConfig,
 )
@@ -203,6 +204,16 @@ def load_watchlist_config(config_dir: Path) -> WatchlistConfig:
     path = Path(config_dir) / "watchlist.json"
     try:
         return WatchlistConfig.model_validate(_read_json(path))
+    except ValidationError as exc:
+        raise ConfigError(_validation_message(str(path), exc)) from exc
+
+
+def load_strategy_config(config_dir: Path) -> StrategyConfig:
+    """Load + validate the Strategy Framework settings (config/strategy.json)."""
+
+    path = Path(config_dir) / "strategy.json"
+    try:
+        return StrategyConfig.model_validate(_read_json(path))
     except ValidationError as exc:
         raise ConfigError(_validation_message(str(path), exc)) from exc
 

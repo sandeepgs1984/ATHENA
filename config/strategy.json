@@ -1,0 +1,37 @@
+{
+  "_meta": {
+    "layer": 4,
+    "description": "Strategy Framework configuration (M4.4). Each strategy is a declarative selection policy over completed decision artifacts + watchlist memberships. No indicator calculation — thresholds compare against values already produced by the analytical core; a threshold against an UNKNOWN value never matches."
+  },
+  "strategies": {
+    "momentum": {
+      "enabled": true,
+      "decisions": ["TRADE", "INCREASE_POSITION"],
+      "watchlists_any": ["High Conviction", "Improving"],
+      "min_score": 60
+    },
+    "swing": {
+      "enabled": true,
+      "decisions": ["TRADE", "WATCH"],
+      "watchlists_any": ["High Conviction", "Watch"],
+      "min_confidence": 50
+    },
+    "breakout": {
+      "enabled": true,
+      "decisions": ["TRADE"],
+      "direction": "LONG",
+      "min_score": 65
+    },
+    "mean_reversion": {
+      "enabled": true,
+      "decisions": ["WATCH", "WAIT"],
+      "watchlists_any": ["Improving"],
+      "max_risk": 60
+    },
+    "sector_rotation": {
+      "enabled": true,
+      "decisions": ["TRADE", "WATCH", "INCREASE_POSITION"],
+      "watchlists_any": ["High Conviction", "Improving"]
+    }
+  }
+}

@@ -12,7 +12,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from athena.domain.enums import DecisionType
+from athena.domain.enums import DecisionType, Direction
 
 
 class _Strict(BaseModel):
@@ -673,6 +673,54 @@ class WatchlistConfig(_Strict):
                 and not self.decision_rank:
             raise ValueError("decision_rank must be non-empty when a trend rule is used")
         return self
+
+
+class StrategyRuleCfg(_Strict):
+    """Declarative selection policy for one strategy (M4.4).
+
+    All filters are optional; a strategy matches a completed decision when every
+    present filter is satisfied. Thresholds compare against values already
+    produced by the analytical core — a threshold set against an UNKNOWN value
+    never matches (no fabricated defaults).
+    """
+
+    enabled: bool = True
+    decisions: list[str] = Field(default_factory=list)
+    direction: str | None = None
+    watchlists_any: list[str] = Field(default_factory=list)
+    min_score: int | None = Field(default=None, ge=0, le=100)
+    min_confidence: int | None = Field(default=None, ge=0, le=100)
+    max_risk: int | None = Field(default=None, ge=0, le=100)
+
+    @field_validator("decisions")
+    @classmethod
+    def _known_decisions(cls, v: list[str]) -> list[str]:
+        valid = {d.value for d in DecisionType}
+        bad = [d for d in v if d not in valid]
+        if bad:
+            raise ValueError(f"unknown decision type(s): {bad}")
+        return v
+
+    @field_validator("direction")
+    @classmethod
+    def _known_direction(cls, v: str | None) -> str | None:
+        valid = {d.value for d in Direction}
+        if v is not None and v not in valid:
+            raise ValueError(f"unknown direction: {v}")
+        return v
+
+
+class StrategyConfig(_Strict):
+    """Strategy Framework configuration (M4.4). One rule per strategy id."""
+
+    strategies: dict[str, StrategyRuleCfg]
+
+    @field_validator("strategies")
+    @classmethod
+    def _non_empty(cls, v: dict[str, StrategyRuleCfg]) -> dict[str, StrategyRuleCfg]:
+        if not v:
+            raise ValueError("strategy config must define at least one strategy")
+        return v
 
 
 class Holiday(_Strict):
