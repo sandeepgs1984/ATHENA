@@ -1,0 +1,8 @@
+{
+  "_meta": {
+    "layer": 6,
+    "description": "Operational Monitoring Engine configuration (P6.5). Read-only platform health observation — no live polling or auto-remediation."
+  },
+  "fail_on_missing_artifacts": false,
+  "record_history": true
+}

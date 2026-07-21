@@ -92,6 +92,11 @@ class TimelineAuditError(AthenaError):
     """Invalid timeline reconstruction request or causal sequencing failure. Policy: fail loudly."""
 
 
+class MonitoringError(AthenaError):
+    """Invalid operational monitoring evaluation or health check failure. Policy: fail loudly."""
+
+
+
 
 
 

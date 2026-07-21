@@ -30,6 +30,22 @@ Validation checklist 1–10 passed; frozen contracts unchanged; no ADR; no drift
 
 ## Phase 6 — Reporting, Dashboards & User Intelligence (in progress)
 
+### P6.5 — Operational Monitoring
+
+| | |
+|---|---|
+| Completed | 2026-07-21 |
+| Scope | Operational health snapshot generation and component monitoring across 10 platform domains; read-only health observation only |
+| Tests | 645 passed / 0 failed (12 new) |
+| Status | **Awaiting owner approval** — P6.6 (Export & Presentation Layer) blocked until approved |
+| Branch | main |
+
+Built the Operational Monitoring Engine (`src/athena/monitoring/`), which answers one question: "What is the current operational health of ATHENA and are all platform components functioning correctly?" `OperationalMonitoringEngine` evaluates platform health across 10 canonical domains (`MonitoringDomain`: `SCHEDULER`, `WORKFLOW`, `PORTFOLIO`, `EXECUTION`, `ANALYTICS`, `REPORTING`, `DASHBOARD`, `EXPLAINABILITY`, `TIMELINE`, `OVERALL`). It **observes operational health only**: it performs no state mutation, no live polling, no alert delivery, no Prometheus/Grafana integration, and no market analysis.
+
+Monitoring features: `evaluate_health(schedule_execution=None, workflow=None, portfolio_snapshot=None, execution_state=None, performance_snapshot=None, reports=None, dashboard_snapshot=None, explanation_snapshot=None, timeline_snapshot=None, *, as_of)` aggregates component status, detects missing/stale artifacts, and computes overall platform health (`HEALTHY`, `DEGRADED`, `CRITICAL`). All outputs (`MonitoringCheck`, `MonitoringSummary`, `MonitoringSnapshot`, `MonitoringHistory`) are immutable and preserve full `MonitoringReferences` back to originating platform artifacts across every layer.
+
+Files created: `src/athena/monitoring/{__init__,models,engine}.py`, `config/monitoring.json`, `tests/runtime/test_monitoring.py`. Files modified: `src/athena/errors.py` (+`MonitoringError`), `src/athena/config/{models,loader,__init__}.py` (+`MonitoringConfig`, `MonitoringDomain`, `load_monitoring_config`, exports). No analytical engine, timeline engine, explainability engine, dashboard engine, reporting framework, order lifecycle engine, broker abstraction layer, order planning engine, position sizing engine, capital allocation engine, portfolio engine, scheduling framework, scanner, watchlist manager, strategy framework, backtesting engine, reporting & analytics engine, workflow engine, or frozen-domain type touched. Public APIs added: `OperationalMonitoringEngine`, `MonitoringCheck`, `MonitoringSummary`, `MonitoringSnapshot`, `MonitoringHistory`, `MonitoringReferences`, `MonitoringDomain`, `MonitoringConfig`, `load_monitoring_config`. 12 new tests: component health check aggregation across 10 domains, missing artifact detection, overall status calculation, deterministic replay (`to_dict` & `to_json` equality), immutable outputs (`FrozenInstanceError`), append-only history, config validation (production config loading), and an **end-to-end integration test** consuming artifacts across the complete execution pipeline together with Reporting, Dashboard, Explainability, and Timeline engines. ruff clean; no ADR; no drift; no tech debt. Validation checklist 1–10 passed; all prior engines and operational components unchanged.
+
 ### P6.4 — Timeline & Audit Engine
 
 | | |
@@ -37,7 +53,7 @@ Validation checklist 1–10 passed; frozen contracts unchanged; no ADR; no drift
 | Completed | 2026-07-21 |
 | Scope | Chronological timeline reconstruction and audit stream generation across 11 platform domains; read-only reconstruction only |
 | Tests | 633 passed / 0 failed (12 new) |
-| Status | **Awaiting owner approval** — P6.5 (Operational Monitoring) blocked until approved |
+| Status | **APPROVED** — Principal Engineer review passed |
 | Branch | main |
 
 Built the Timeline & Audit Engine (`src/athena/timeline/`), which answers one question: "What happened across the complete ATHENA pipeline, in what order, and how can every platform event be reconstructed?" `TimelineAuditEngine` reconstructs chronological timelines across 11 canonical domains (`TimelineDomain`: `DECISION`, `PORTFOLIO`, `ALLOCATION`, `SIZING`, `ORDER_PLANNING`, `BROKER_TRANSLATION`, `LIFECYCLE`, `ANALYTICS`, `REPORTING`, `DASHBOARD`, `EXPLAINABILITY`). It **reconstructs immutable history only**: it performs no state mutation, no live streaming, no distributed tracing, and no market analysis.

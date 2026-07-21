@@ -31,6 +31,7 @@ from athena.config.models import (
     FileProviderConfig,
     HolidaysFile,
     MarketHealthConfig,
+    MonitoringConfig,
     OrderPlanningConfig,
     PortfolioAnalyticsConfig,
     PortfolioConfig,
@@ -368,6 +369,16 @@ def load_timeline_config(config_dir: Path) -> TimelineConfig:
     path = Path(config_dir) / "timeline.json"
     try:
         return TimelineConfig.model_validate(_read_json(path))
+    except ValidationError as exc:
+        raise ConfigError(_validation_message(str(path), exc)) from exc
+
+
+def load_monitoring_config(config_dir: Path) -> MonitoringConfig:
+    """Load + validate the Operational Monitoring Engine settings (config/monitoring.json)."""
+
+    path = Path(config_dir) / "monitoring.json"
+    try:
+        return MonitoringConfig.model_validate(_read_json(path))
     except ValidationError as exc:
         raise ConfigError(_validation_message(str(path), exc)) from exc
 

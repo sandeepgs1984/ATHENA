@@ -981,6 +981,28 @@ class TimelineConfig(_Strict):
     record_history: bool = True
 
 
+class MonitoringDomain(str, Enum):
+    SCHEDULER = "SCHEDULER"
+    WORKFLOW = "WORKFLOW"
+    PORTFOLIO = "PORTFOLIO"
+    EXECUTION = "EXECUTION"
+    ANALYTICS = "ANALYTICS"
+    REPORTING = "REPORTING"
+    DASHBOARD = "DASHBOARD"
+    EXPLAINABILITY = "EXPLAINABILITY"
+    TIMELINE = "TIMELINE"
+    OVERALL = "OVERALL"
+
+
+class MonitoringConfig(_Strict):
+    """Operational Monitoring Engine configuration (P6.5). Read-only platform health observation —
+    no state mutation, no auto-remediation."""
+
+    fail_on_missing_artifacts: bool = False
+    record_history: bool = True
+
+
+
 
 
 
