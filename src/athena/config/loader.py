@@ -27,6 +27,7 @@ from athena.config.models import (
     FileProviderConfig,
     HolidaysFile,
     MarketHealthConfig,
+    OrderPlanningConfig,
     PortfolioConfig,
     RiskAssessmentConfig,
     SchedulingConfig,
@@ -280,6 +281,16 @@ def load_sizing_config(config_dir: Path) -> SizingConfig:
     path = Path(config_dir) / "sizing.json"
     try:
         return SizingConfig.model_validate(_read_json(path))
+    except ValidationError as exc:
+        raise ConfigError(_validation_message(str(path), exc)) from exc
+
+
+def load_order_planning_config(config_dir: Path) -> OrderPlanningConfig:
+    """Load + validate the Order Planning Engine settings (config/orders.json)."""
+
+    path = Path(config_dir) / "orders.json"
+    try:
+        return OrderPlanningConfig.model_validate(_read_json(path))
     except ValidationError as exc:
         raise ConfigError(_validation_message(str(path), exc)) from exc
 

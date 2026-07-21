@@ -60,4 +60,9 @@ class SizingError(AthenaError):
     """Invalid position sizing policy, price, precision, or constraint violation. Policy: fail loudly."""
 
 
+class OrderPlanningError(AthenaError):
+    """Invalid order planning instruction, price, batching, or constraint violation. Policy: fail loudly."""
+
+
+
 

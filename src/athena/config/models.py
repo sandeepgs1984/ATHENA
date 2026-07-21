@@ -829,6 +829,37 @@ class SizingConfig(_Strict):
         return v
 
 
+class OrderAction(str, Enum):
+    BUY = "BUY"
+    SELL = "SELL"
+    HOLD = "HOLD"
+
+
+class OrderType(str, Enum):
+    MARKET = "MARKET"
+    LIMIT = "LIMIT"
+    STOP = "STOP"
+    STOP_LIMIT = "STOP_LIMIT"
+
+
+class OrderPlanningConfig(_Strict):
+    """Order Planning Engine configuration (P5.4). Execution instruction preparation only —
+    no broker communication, no order placement."""
+
+    default_order_type: OrderType = OrderType.LIMIT
+    batch_by_action: bool = True
+    max_orders_per_batch: int = 10
+    record_history: bool = True
+
+    @field_validator("max_orders_per_batch")
+    @classmethod
+    def _positive_batch_size(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("max_orders_per_batch must be > 0")
+        return v
+
+
+
 
 
 

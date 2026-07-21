@@ -1,0 +1,10 @@
+{
+  "_meta": {
+    "layer": 5,
+    "description": "Order Planning Engine configuration (P5.4). Execution instruction preparation only — no broker communication, no order placement."
+  },
+  "default_order_type": "LIMIT",
+  "batch_by_action": true,
+  "max_orders_per_batch": 10,
+  "record_history": true
+}

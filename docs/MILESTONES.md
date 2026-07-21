@@ -67,8 +67,8 @@ Manages capital responsibly; consumes completed Decision artifacts produced by t
 |---|---|---|
 | **P5.1** Portfolio Engine | Deterministic portfolio state, holdings, cash allocation, reserved capital, closed positions | ✅ Approved |
 | **P5.2** Capital Allocation Engine | Capital allocation policy and reserve floor enforcement | ✅ Approved |
-| **P5.3** Position Sizing Engine | Executable unit quantity calculation & precision handling | In review |
-| P5.4 Order Planning Engine | Execution plan generation from decisions & sizing | Blocked on P5.3 |
+| **P5.3** Position Sizing Engine | Executable unit quantity calculation & precision handling | ✅ Approved |
+| **P5.4** Order Planning Engine | Broker-neutral execution instructions & order batching | In review |
 | P5.5 Broker Abstraction Layer | Abstract broker interface & connection validation | Blocked on P5.4 |
 | P5.6 Order Lifecycle Engine | Order tracking, fill reconciliation, state machine | Blocked on P5.5 |
 | P5.7 Portfolio Analytics & Performance | Realized P&L, performance metrics, portfolio statistics | Blocked on P5.6 |

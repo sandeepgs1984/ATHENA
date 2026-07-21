@@ -30,6 +30,22 @@ Validation checklist 1–10 passed; frozen contracts unchanged; no ADR; no drift
 
 ## Phase 5 — Portfolio & Execution Platform (in progress)
 
+### P5.4 — Order Planning Engine
+
+| | |
+|---|---|
+| Completed | 2026-07-21 |
+| Scope | Transforms position sizes into broker-neutral execution instructions and batches; execution plan generation only |
+| Tests | 549 passed / 0 failed (12 new) |
+| Status | **Awaiting owner approval** — P5.5 (Broker Abstraction Layer) blocked until approved |
+| Branch | main |
+
+Built the Order Planning Engine (`src/athena/orders/`), which answers one question: "Given approved position sizes, what broker-neutral execution instructions should ATHENA prepare?" `OrderPlanningEngine` converts `PositionSizingPlan` outputs into broker-neutral `ExecutionPlan`s composed of `PlannedOrder`s grouped into `ExecutionBatch`es. It **prepares execution instructions only**: it performs no broker communication, no live order placement, no order fill tracking, and no market analysis.
+
+Supported order actions & instruction types: `OrderAction` (`BUY`, `SELL`, `HOLD`) and `OrderType` (`MARKET`, `LIMIT`, `STOP`, `STOP_LIMIT`). Planning operations: `plan_execution(sizing_plan, *, as_of, decisions=None, order_type=None)` processes all position sizes in deterministic sorted order; `create_order(instrument_id, action, quantity, *, as_of, order_type=None, limit_price=None, stop_price=None)` creates a single explicit instruction. Batching policy (`batch_by_action`, `max_orders_per_batch`) groups planned orders into deterministic action batches (e.g. `BUY` batch, `SELL` batch) and chunks larger sets. Zero-quantity or `ZERO_ALLOCATION` items automatically generate `OrderAction.HOLD` instructions. All outputs (`PlannedOrder`, `OrderInstruction`, `ExecutionBatch`, `ExecutionPlan`, `OrderPlanningSummary`, `OrderPlanningHistory`) are immutable and preserve full `OrderReferences` back to `position_sizing_plan_id`, `allocation_plan_id`, `portfolio_snapshot_id`, `decision_id`, `strategy`, `watchlist`, and `schedule_execution_id`.
+
+Files created: `src/athena/orders/{__init__,models,engine}.py`, `config/orders.json`, `tests/runtime/test_orders.py`. Files modified: `src/athena/errors.py` (+`OrderPlanningError`), `src/athena/config/{models,loader,__init__}.py` (+`OrderPlanningConfig`, `OrderAction`, `OrderType`, `load_order_planning_config`, exports). No analytical engine, position sizing engine, capital allocation engine, portfolio engine, scheduling framework, scanner, watchlist manager, strategy framework, backtesting engine, reporting & analytics engine, workflow engine, or frozen-domain type touched. Public APIs added: `OrderPlanningEngine`, `PlannedOrder`, `OrderInstruction`, `ExecutionBatch`, `ExecutionPlan`, `OrderPlanningSummary`, `OrderPlanningHistory`, `OrderReferences`, `OrderAction`, `OrderType`, `OrderPlanningConfig`, `load_order_planning_config`. 12 new tests: BUY planning, SELL planning, HOLD handling, MARKET & LIMIT order types, action batching & chunking, single order creation, deterministic replay (`to_dict` & `to_json` equality), immutable outputs (`FrozenInstanceError`), append-only history, config validation (positive batch size enforcement, production config loading), and an **end-to-end integration test** consuming a real `PositionSizingPlan` from `PositionSizingEngine`. ruff clean; no ADR; no drift; no tech debt. Validation checklist 1–10 passed; all prior engines and operational components unchanged.
+
 ### P5.3 — Position Sizing Engine
 
 | | |
@@ -37,7 +53,7 @@ Validation checklist 1–10 passed; frozen contracts unchanged; no ADR; no drift
 | Completed | 2026-07-21 |
 | Scope | Converts approved capital allocations into executable share/unit quantities with rounding & precision policy; quantity calculation only |
 | Tests | 537 passed / 0 failed (13 new) |
-| Status | **Awaiting owner approval** — P5.4 (Order Planning Engine) blocked until approved |
+| Status | **APPROVED** — Principal Engineer review passed |
 | Branch | main |
 
 Built the Position Sizing Engine (`src/athena/sizing/`), which answers one question: "Given an approved capital allocation, how many units of the instrument should ATHENA purchase or sell?" `PositionSizingEngine` converts allocated capital amounts from an `AllocationPlan` into executable unit quantities based on instrument prices. It **calculates unit quantities only**: it performs no market analysis, no capital allocation policy decisions, no risk limit checks, and no order placement.
