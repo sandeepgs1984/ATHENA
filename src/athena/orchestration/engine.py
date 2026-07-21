@@ -7,7 +7,6 @@ strict failure isolation, and zero coupling to business domains.
 from __future__ import annotations
 
 from athena.config.models import OrchestrationConfig
-from athena.errors import OrchestrationError
 from athena.orchestration.models import (
     PipelineContext,
     PipelineDefinition,

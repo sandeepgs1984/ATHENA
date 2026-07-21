@@ -26,7 +26,23 @@ Files created: `src/athena/orchestration/{__init__,models,engine}.py`, `config/p
 
 ---
 
-## Phase 1 — Data Foundation (in progress)
+### P7.2 — Execution Pipeline Registration
+
+| | |
+|---|---|
+| Completed | 2026-07-21 |
+| Scope | Wire all eight execution-domain stage adapters into a validated, declarative `PipelineDefinition` using the P7.1 generic orchestration framework; typed artifact key model replaces all string-based context access |
+| Tests | 672 passed / 0 failed (7 new) |
+| Status | **Awaiting owner approval** |
+| Branch | main |
+
+Built ATHENA's first production pipeline. `create_execution_pipeline()` returns an immutable `PipelineDefinition` (not a live executor) with eight `PipelineStage` adapters wired in correct topological order: two independent root stages (`PortfolioSnapshotStage`, `DecisionsLoadStage`) followed by `AllocationStage → SizingStage → OrderPlanningStage → BrokerTranslationStage → OrderLifecycleStage → PortfolioAnalyticsStage`. Each stage adapter owns its own engine dependencies and writes a typed `ExecutionArtifactKey` value into the context; no concrete engines are injected at the builder level. `validate_pipeline_definition()` asserts stage count, dependency integrity, key-to-stage consistency, and dual-root topology. `ExecutionArtifactKey` and `ExecutionStageId` enums replace all string-based context access, satisfying the typed key model requirement from the architecture review. Pipeline topology is immutable in code; operational parameters (timeout, retries) remain configurable via `PipelineConfig`. The dual-root design preserves future parallel execution of the two root stages without any structural change.
+
+Files created: `src/athena/orchestration/pipelines/{__init__,keys,execution}.py`, `src/athena/orchestration/stages/{__init__,portfolio_snapshot,decisions,allocation,sizing,order_planning,broker_translation,lifecycle,analytics}.py`, `tests/runtime/test_execution_pipeline.py`. Files modified: `src/athena/orchestration/__init__.py` (exported new APIs). Public APIs added: `ExecutionArtifactKey`, `ExecutionStageId`, `create_execution_pipeline`, `validate_pipeline_definition`, and all eight stage classes. 7 new tests: definition type, stage count, dual independent roots, validator passes, stage execution artifact, failure isolation, deterministic replayability. Fixed 4 E501 linter warnings in stage success-message strings. No ADR; no drift; no tech debt. Validation checklist 1–10 passed; all 672 suite tests pass.
+
+---
+
+## Phase 1 — Data Foundation (complete)
 
 ### M1.6 — Backup & Restore  (completes Phase 1)
 

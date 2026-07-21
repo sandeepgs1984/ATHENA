@@ -9,7 +9,7 @@ The orchestration framework has ZERO knowledge of ATHENA business domains.
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -205,7 +205,7 @@ class PipelineHistory:
 
     def record(self, result: PipelineResult) -> PipelineHistory:
         """Return a new history with result appended."""
-        return PipelineHistory(records=self.records + (result,))
+        return PipelineHistory(records=(*self.records, result))
 
     def to_dict(self) -> dict[str, object]:
         return {"records": [r.to_dict() for r in self.records]}
