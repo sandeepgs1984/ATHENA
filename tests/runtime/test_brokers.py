@@ -33,7 +33,8 @@ from athena.domain.decision import Decision, TradePlan
 from athena.domain.enums import DecisionType, Direction
 from athena.errors import BrokerError, ConfigError
 from athena.orders import OrderPlanningEngine
-from athena.portfolio import PortfolioConfig, PortfolioEngine
+from athena.config import PortfolioConfig, SizingConfig, SizingModel
+from athena.portfolio import PortfolioEngine
 from athena.sizing import PositionSizingEngine
 
 IST = ZoneInfo("Asia/Kolkata")
@@ -136,8 +137,8 @@ class TestBrokerTranslationAndCapabilities:
         alloc_plan = alloc_eng.allocate(p_snap, [_decision("INFY")], as_of=AS_OF)
 
         # Force fractional sizing model
-        sz_cfg = load_sizing_config(config_dir)
-        sz_cfg.default_model = "FRACTIONAL"
+        sz_cfg_base = load_sizing_config(config_dir)
+        sz_cfg = SizingConfig(**{**sz_cfg_base.model_dump(), "default_model": SizingModel.FRACTIONAL})
         sz_eng = PositionSizingEngine(sz_cfg)
         sz_plan = sz_eng.size_plan(alloc_plan, {"INFY": Decimal("1500.00")}, as_of=AS_OF)
 
@@ -161,9 +162,17 @@ class TestBrokerTranslationAndCapabilities:
         assert req.status == "REJECTED_UNSUPPORTED_FRACTIONAL"
 
     def test_unsupported_time_in_force_fails_loudly(self, execution_plan):
+        no_gtc_caps = BrokerCapabilities(
+            supported_order_types=(OrderType.LIMIT,),
+            supports_fractional=True,
+            supported_time_in_force=(TimeInForce.DAY,),
+        )
         mgr = BrokerManager()
+        mgr.register_broker(
+            BrokerDefinition("no_gtc", "No GTC Broker", no_gtc_caps)
+        )
         with pytest.raises(BrokerError, match="does not support TimeInForce"):
-            mgr.translate_plan(execution_plan, as_of=AS_OF, time_in_force=TimeInForce.GTC)
+            mgr.translate_plan(execution_plan, broker_id="no_gtc", as_of=AS_OF, time_in_force=TimeInForce.GTC)
 
 
 class TestMockResponsesAndRegistration:

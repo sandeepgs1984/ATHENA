@@ -33,7 +33,8 @@ from athena.domain.enums import DecisionType, Direction
 from athena.errors import ConfigError, PortfolioAnalyticsError
 from athena.execution import OrderLifecycleEngine
 from athena.orders import OrderPlanningEngine
-from athena.portfolio import PortfolioConfig, PortfolioEngine
+from athena.config import PortfolioConfig
+from athena.portfolio import PortfolioEngine
 from athena.sizing import PositionSizingEngine
 
 IST = ZoneInfo("Asia/Kolkata")
@@ -76,7 +77,7 @@ def _decision(inst: str, dtype: DecisionType = DecisionType.TRADE) -> Decision:
 def full_pipeline_state(config_dir):
     p_cfg = PortfolioConfig(initial_cash=Decimal("1000000.00"))
     p_eng = PortfolioEngine(p_cfg, initial_as_of=AS_OF)
-    p_eng.open_position("INFY", quantity=Decimal("100"), cost_price=Decimal("1500.00"), as_of=AS_OF)
+    p_eng.open_position("INFY", quantity=100, price=Decimal("1500.00"), as_of=AS_OF)
     p_snap = p_eng.current_snapshot
 
     alloc_cfg = load_allocation_config(config_dir)
@@ -123,12 +124,12 @@ class TestPortfolioAnalyticsMetrics:
         p_cfg = PortfolioConfig(initial_cash=Decimal("1000000.00"))
         p_eng = PortfolioEngine(p_cfg, initial_as_of=AS_OF)
         # Open and close INFY for a gain (+10,000)
-        p_eng.open_position("INFY", quantity=Decimal("100"), cost_price=Decimal("1500.00"), as_of=AS_OF)
-        p_eng.close_position("INFY", exit_price=Decimal("1600.00"), as_of=T1)
+        p_eng.open_position("INFY", quantity=100, price=Decimal("1500.00"), as_of=AS_OF)
+        p_eng.close_position("INFY", Decimal("1600.00"), as_of=T1)
 
         # Open and close TCS for a loss (-5,000)
-        p_eng.open_position("TCS", quantity=Decimal("50"), cost_price=Decimal("3000.00"), as_of=AS_OF)
-        p_eng.close_position("TCS", exit_price=Decimal("2900.00"), as_of=T2)
+        p_eng.open_position("TCS", quantity=50, price=Decimal("3000.00"), as_of=T1)
+        p_eng.close_position("TCS", Decimal("2900.00"), as_of=T2)
 
         engine = PortfolioAnalyticsEngine()
         snap = engine.analyze(p_eng.current_snapshot, as_of=T2)
@@ -148,15 +149,15 @@ class TestPortfolioAnalyticsMetrics:
         engine = PortfolioAnalyticsEngine()
 
         # Step 1: Gain to 1,100,000 (new peak)
-        p_eng.open_position("INFY", quantity=Decimal("1000"), cost_price=Decimal("1000.00"), as_of=AS_OF)
-        p_eng.close_position("INFY", exit_price=Decimal("1100.00"), as_of=T1)
+        p_eng.open_position("INFY", quantity=1000, price=Decimal("1000.00"), as_of=AS_OF)
+        p_eng.close_position("INFY", Decimal("1100.00"), as_of=T1)
         snap1 = engine.analyze(p_eng.current_snapshot, as_of=T1)
         assert snap1.portfolio_performance.peak_portfolio_value == Decimal("1100000.00")
         assert snap1.portfolio_performance.drawdown == Decimal("0.00")
 
         # Step 2: Loss to 1,050,000 (50,000 drawdown from peak 1,100,000 -> 4.55% DD)
-        p_eng.open_position("TCS", quantity=Decimal("500"), cost_price=Decimal("2000.00"), as_of=T1)
-        p_eng.close_position("TCS", exit_price=Decimal("1900.00"), as_of=T2)
+        p_eng.open_position("TCS", quantity=500, price=Decimal("2000.00"), as_of=T1)
+        p_eng.close_position("TCS", Decimal("1900.00"), as_of=T2)
         snap2 = engine.analyze(p_eng.current_snapshot, as_of=T2)
 
         perf2 = snap2.portfolio_performance
@@ -232,7 +233,7 @@ class TestEndToEndIntegration:
         # 1. Portfolio Engine
         p_cfg = PortfolioConfig(initial_cash=Decimal("1000000.00"))
         p_eng = PortfolioEngine(p_cfg, initial_as_of=AS_OF)
-        p_eng.open_position("INFY", quantity=Decimal("100"), cost_price=Decimal("1500.00"), as_of=AS_OF)
+        p_eng.open_position("INFY", quantity=100, price=Decimal("1500.00"), as_of=AS_OF)
         p_snap = p_eng.current_snapshot
 
         # 2. Allocation

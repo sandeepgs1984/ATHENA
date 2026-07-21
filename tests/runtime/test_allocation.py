@@ -22,7 +22,8 @@ from athena.config.models import AllocationConfig, AllocationModel
 from athena.domain.decision import Decision, TradePlan
 from athena.domain.enums import DecisionType, Direction
 from athena.errors import ConfigError
-from athena.portfolio import PortfolioConfig, PortfolioEngine
+from athena.config import PortfolioConfig
+from athena.portfolio import PortfolioEngine
 
 IST = ZoneInfo("Asia/Kolkata")
 AS_OF = datetime(2026, 3, 2, 8, 30, tzinfo=IST)

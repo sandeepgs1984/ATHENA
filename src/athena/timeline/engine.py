@@ -89,21 +89,26 @@ class TimelineAuditEngine:
                     ts=portfolio_snapshot.as_of,
                     domain=TimelineDomain.PORTFOLIO,
                     event_type="PORTFOLIO_SNAPSHOT_CREATED",
-                    summary=f"Portfolio snapshot created with value {portfolio_snapshot.total_value}",
-                    details={"snapshot_id": portfolio_snapshot.snapshot_id, "total_value": str(portfolio_snapshot.total_value)},
+                    summary=f"Portfolio snapshot created with value {portfolio_snapshot.portfolio.cash.total_cash}",
+                    details={"snapshot_id": portfolio_snapshot.snapshot_id, "total_value": str(portfolio_snapshot.portfolio.cash.total_cash)},
                 )
             )
 
         # 3. Capital Allocation Plan
         if allocation_plan:
+            alloc_model = (
+                allocation_plan.allocations[0].model_used.value
+                if allocation_plan.allocations
+                else "EQUAL_WEIGHT"
+            )
             raw_events.append(
                 TimelineEvent(
                     event_id=f"evt-alloc-{allocation_plan.plan_id}",
                     ts=allocation_plan.as_of,
                     domain=TimelineDomain.ALLOCATION,
                     event_type="ALLOCATION_PLAN_CREATED",
-                    summary=f"Capital allocation plan created using model {allocation_plan.summary.model_name}",
-                    details={"plan_id": allocation_plan.plan_id, "allocated_capital": str(allocation_plan.summary.allocated_capital)},
+                    summary=f"Capital allocation plan created using model {alloc_model}",
+                    details={"plan_id": allocation_plan.plan_id, "allocated_capital": str(allocation_plan.summary.total_allocated_capital)},
                 )
             )
 

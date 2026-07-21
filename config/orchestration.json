@@ -1,0 +1,8 @@
+{
+  "_meta": {
+    "layer": 7,
+    "description": "Generic Pipeline Infrastructure configuration (P7.1). Read-only stage execution framework."
+  },
+  "stop_on_stage_failure": true,
+  "record_history": true
+}

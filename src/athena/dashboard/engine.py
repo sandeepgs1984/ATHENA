@@ -57,35 +57,42 @@ class DashboardEngine:
 
         # 1. Portfolio Overview
         if portfolio_snapshot is not None:
+            total_val = portfolio_snapshot.portfolio.cash.total_cash
+            realized_pnl_val = sum((cp.total_proceeds - cp.total_cost for cp in portfolio_snapshot.portfolio.closed_positions), Decimal("0.00"))
             sec_port = DashboardSection(
                 section_id="portfolio_overview",
                 title="Portfolio Overview",
                 metrics={
-                    "total_value": str(portfolio_snapshot.total_value),
-                    "cash_balance": str(portfolio_snapshot.cash_balance),
-                    "available_cash": str(portfolio_snapshot.available_cash),
-                    "positions": len(portfolio_snapshot.positions),
-                    "realized_pnl": str(portfolio_snapshot.realized_pnl),
+                    "total_value": str(total_val),
+                    "cash_balance": str(portfolio_snapshot.portfolio.cash.total_cash),
+                    "available_cash": str(portfolio_snapshot.summary.total_available_cash),
+                    "positions": portfolio_snapshot.summary.total_holdings,
+                    "realized_pnl": str(realized_pnl_val),
                 },
                 status="HEALTHY",
-                text_summary=f"Value: {portfolio_snapshot.total_value}, Cash: {portfolio_snapshot.cash_balance}, Positions: {len(portfolio_snapshot.positions)}",
+                text_summary=f"Value: {total_val}, Cash: {portfolio_snapshot.portfolio.cash.total_cash}, Positions: {portfolio_snapshot.summary.total_holdings}",
             )
             sections.append(sec_port)
 
         # 2. Capital Allocation Overview
         if allocation_plan is not None:
             sum_alloc = allocation_plan.summary
+            alloc_model_val = (
+                allocation_plan.allocations[0].model_used.value
+                if allocation_plan.allocations
+                else "EQUAL_WEIGHT"
+            )
             sec_alloc = DashboardSection(
                 section_id="capital_allocation",
                 title="Capital Allocation Overview",
                 metrics={
-                    "model": sum_alloc.model_name,
-                    "allocated_capital": str(sum_alloc.allocated_capital),
-                    "reserve_capital": str(sum_alloc.reserve_capital),
-                    "remaining_unallocated": str(sum_alloc.remaining_unallocated),
+                    "model": alloc_model_val,
+                    "allocated_capital": str(sum_alloc.total_allocated_capital),
+                    "reserve_capital": str(sum_alloc.min_cash_reserve_floor),
+                    "remaining_unallocated": str(sum_alloc.remaining_available_cash),
                 },
                 status="ALLOCATED",
-                text_summary=f"Allocated: {sum_alloc.allocated_capital}, Reserved: {sum_alloc.reserve_capital}",
+                text_summary=f"Allocated: {sum_alloc.total_allocated_capital}, Reserved: {sum_alloc.min_cash_reserve_floor}",
             )
             sections.append(sec_alloc)
 
@@ -94,9 +101,9 @@ class DashboardEngine:
             pos_metrics = {
                 inst_id: {
                     "quantity": str(pos.quantity),
-                    "avg_cost": str(pos.avg_cost_price),
+                    "avg_cost": str(pos.avg_price),
                 }
-                for inst_id, pos in sorted(portfolio_snapshot.positions.items())
+                for inst_id, pos in sorted(portfolio_snapshot.portfolio.holdings.items())
             }
             sec_pos = DashboardSection(
                 section_id="active_positions",
@@ -201,8 +208,8 @@ class DashboardEngine:
         sections.append(sec_health)
 
         # Build DashboardSummary
-        val = portfolio_snapshot.total_value if portfolio_snapshot else Decimal("0.00")
-        pos_cnt = len(portfolio_snapshot.positions) if portfolio_snapshot else 0
+        val = portfolio_snapshot.portfolio.cash.total_cash if portfolio_snapshot else Decimal("0.00")
+        pos_cnt = portfolio_snapshot.summary.total_holdings if portfolio_snapshot else 0
         act_orders = execution_state.summary.active_orders if execution_state else 0
         pnl = performance_snapshot.portfolio_performance.total_pnl if performance_snapshot else Decimal("0.00")
 

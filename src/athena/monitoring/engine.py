@@ -109,8 +109,8 @@ class OperationalMonitoringEngine:
                 domain=MonitoringDomain.PORTFOLIO,
                 component="PortfolioEngine",
                 status="HEALTHY",
-                message=f"Portfolio value {portfolio_snapshot.total_value} with {len(portfolio_snapshot.positions)} position(s)",
-                details={"snapshot_id": portfolio_snapshot.snapshot_id, "total_value": str(portfolio_snapshot.total_value)},
+                message=f"Portfolio value {portfolio_snapshot.portfolio.cash.total_cash} with {portfolio_snapshot.summary.total_holdings} position(s)",
+                details={"snapshot_id": portfolio_snapshot.snapshot_id, "total_value": str(portfolio_snapshot.portfolio.cash.total_cash)},
             )
         else:
             c_port = MonitoringCheck(
@@ -266,9 +266,9 @@ class OperationalMonitoringEngine:
         summary = MonitoringSummary(
             overall_status=overall_status,
             total_checks=len(checks),
-            healthy_checks=healthy_cnt,
-            warning_checks=warning_cnt,
-            missing_checks=missing_cnt,
+            healthy_checks=sum(1 for c in checks if c.status == "HEALTHY"),
+            warning_checks=sum(1 for c in checks if c.status == "WARNING"),
+            missing_checks=sum(1 for c in checks if c.status == "MISSING"),
         )
 
         refs = MonitoringReferences(

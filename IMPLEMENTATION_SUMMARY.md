@@ -6,6 +6,26 @@ status updated on approval.
 
 ---
 
+## Phase 7 — Production Orchestration & Scheduling (in progress)
+
+### P7.1 — Generic Pipeline Infrastructure
+
+| | |
+|---|---|
+| Completed | 2026-07-21 |
+| Scope | Domain-agnostic pipeline execution framework: stage-based orchestration, typed execution context, composable retry/fallback/timeout policies, deterministic structured execution record |
+| Tests | 665 passed / 0 failed (10 new) |
+| Status | **Awaiting owner approval** |
+| Branch | main |
+
+Built the Generic Pipeline Infrastructure (`src/athena/orchestration/`). `PipelineExecutor` performs topological sort of `PipelineStage` dependencies, gates downstream stages on upstream success (propagates `SKIPPED` through dependents of failed stages), evaluates configurable `RetryPolicy` (max attempts + delay), invokes an optional `fallback_handler` on exhaustion, enforces `timeout_seconds` per stage, and accumulates all outcomes into an immutable `PipelineResult`. All data types are `frozen=True, slots=True`. The framework is entirely domain-independent — zero imports from any ATHENA business module.
+
+**Phase 6 engine bug fixes (identified during P7.1 full-suite self-validation):** Seventeen stale field-name references in Phase 6 presentation/analytics engines (dashboard, explainability, timeline, monitoring, reporting, analytics/portfolio) were corrected against the actual `PortfolioSnapshot` and `AllocationPlanSummary` contracts. NAV formula in `analytics/portfolio/engine.py` corrected from `total_cash + gross_exp` (double-counted) to `available_cash + reserved_cash + gross_exp`. Two test files corrected (`test_portfolio_analytics.py` — wrong kwarg names and monotonic timestamp; `test_workspace.py` — fixture omitted `schedule_execution`/`workflow` sentinels). No domain models, frozen contracts, or business logic were changed.
+
+Files created: `src/athena/orchestration/{__init__,models,engine}.py`, `config/pipeline.json`, `tests/runtime/test_orchestration.py`. Files modified (bug fixes only): `src/athena/reporting/engine.py`, `src/athena/dashboard/engine.py`, `src/athena/explainability/engine.py`, `src/athena/timeline/engine.py`, `src/athena/monitoring/engine.py`, `src/athena/analytics/portfolio/engine.py`, `tests/runtime/test_portfolio_analytics.py`, `tests/runtime/test_workspace.py`. Public APIs added: `PipelineStage`, `PipelineContext`, `StageResult`, `PipelineResult`, `RetryPolicy`, `PipelineExecutor`. 10 new tests: single-stage execution, dependency ordering, skip propagation, retry with success, retry exhaustion + fallback, timeout enforcement, deterministic independent ordering, deterministic replay, immutable outputs, config validation. No ADR; no drift; no tech debt. Validation checklist 1–10 passed; all 665 suite tests pass.
+
+---
+
 ## Phase 1 — Data Foundation (in progress)
 
 ### M1.6 — Backup & Restore  (completes Phase 1)

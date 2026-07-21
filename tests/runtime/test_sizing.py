@@ -22,7 +22,8 @@ from athena.config.models import RoundingMode, SizingConfig, SizingModel
 from athena.domain.decision import Decision, TradePlan
 from athena.domain.enums import DecisionType, Direction
 from athena.errors import ConfigError, SizingError
-from athena.portfolio import PortfolioConfig, PortfolioEngine
+from athena.config import PortfolioConfig
+from athena.portfolio import PortfolioEngine
 from athena.sizing import PositionSizingEngine
 
 IST = ZoneInfo("Asia/Kolkata")

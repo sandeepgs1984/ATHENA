@@ -65,23 +65,23 @@ class PortfolioAnalyticsEngine:
         gross_exp = Decimal("0.00")
         net_exp = Decimal("0.00")
 
-        # Sort positions deterministically by instrument_id
-        sorted_pos_ids = sorted(portfolio_snapshot.positions.keys())
+        # Sort holdings deterministically by instrument_id
+        sorted_pos_ids = sorted(portfolio_snapshot.portfolio.holdings.keys())
 
         for inst_id in sorted_pos_ids:
-            pos = portfolio_snapshot.positions[inst_id]
-            price = prices.get(inst_id, pos.avg_cost_price)
+            pos = portfolio_snapshot.portfolio.holdings[inst_id]
+            price = prices.get(inst_id, pos.avg_price)
             mkt_val = pos.quantity * price
             gross_exp += mkt_val
             net_exp += mkt_val  # Long positions
-            unrealized_pnl += (price - pos.avg_cost_price) * pos.quantity
+            unrealized_pnl += (price - pos.avg_price) * pos.quantity
 
         unrealized_pnl = _quantize(unrealized_pnl)
         gross_exp = _quantize(gross_exp)
         net_exp = _quantize(net_exp)
 
         # 2. Compute portfolio valuation and returns
-        port_val = portfolio_snapshot.total_value
+        port_val = portfolio_snapshot.portfolio.cash.available_cash + portfolio_snapshot.portfolio.cash.reserved_cash + gross_exp
         if self._peak_value < port_val:
             self._peak_value = port_val
 
@@ -96,10 +96,11 @@ class PortfolioAnalyticsEngine:
         tot_return_pct = ((port_val - init_cap) / init_cap * Decimal("100")) if init_cap > Decimal("0") else Decimal("0.00")
         tot_return_pct = _quantize(tot_return_pct)
 
-        cash_util_pct = ((port_val - portfolio_snapshot.cash_balance) / port_val * Decimal("100")) if port_val > Decimal("0") else Decimal("0.00")
+        cash_val = portfolio_snapshot.portfolio.cash.total_cash
+        cash_util_pct = ((port_val - cash_val) / port_val * Decimal("100")) if port_val > Decimal("0") else Decimal("0.00")
         cash_util_pct = _quantize(cash_util_pct)
 
-        realized_pnl = portfolio_snapshot.realized_pnl
+        realized_pnl = sum((cp.total_proceeds - cp.total_cost for cp in portfolio_snapshot.portfolio.closed_positions), Decimal("0.00"))
         total_pnl = realized_pnl + unrealized_pnl
 
         # 3. Compute trade performance metrics from closed positions
@@ -110,11 +111,11 @@ class PortfolioAnalyticsEngine:
         tot_loss_val = Decimal("0.00")
         tot_days = 0.0
 
-        sorted_closed = sorted(portfolio_snapshot.closed_positions, key=lambda cp: cp.instrument_id)
+        sorted_closed = sorted(portfolio_snapshot.portfolio.closed_positions, key=lambda cp: cp.instrument_id)
 
         for cp in sorted_closed:
-            pnl = cp.realized_pnl
-            ret_pct = ((cp.exit_price - cp.avg_cost_price) / cp.avg_cost_price * Decimal("100")) if cp.avg_cost_price > Decimal("0") else Decimal("0.00")
+            pnl = cp.total_proceeds - cp.total_cost
+            ret_pct = ((cp.avg_exit_price - cp.avg_entry_price) / cp.avg_entry_price * Decimal("100")) if cp.avg_entry_price > Decimal("0") else Decimal("0.00")
             is_win = pnl > Decimal("0")
             is_loss = pnl < Decimal("0")
 
@@ -131,8 +132,6 @@ class PortfolioAnalyticsEngine:
             t_ref = PortfolioAnalyticsReferences(
                 execution_state_id=execution_state.state_id if execution_state else None,
                 broker_execution_plan_id=execution_state.broker_execution_plan_id if execution_state else None,
-                position_sizing_plan_id=cp.references.position_sizing_plan_id,
-                allocation_plan_id=cp.references.allocation_plan_id,
                 portfolio_snapshot_id=portfolio_snapshot.snapshot_id,
                 decision_id=cp.references.decision_id,
                 strategy=cp.references.strategy,
@@ -144,10 +143,10 @@ class PortfolioAnalyticsEngine:
                 trade_id=f"trade-{self._next_counter():04d}",
                 instrument_id=cp.instrument_id,
                 direction=Direction.LONG,
-                entry_price=cp.avg_cost_price,
-                exit_price=cp.exit_price,
+                entry_price=cp.avg_entry_price,
+                exit_price=cp.avg_exit_price,
                 quantity=cp.quantity,
-                realized_pnl=cp.realized_pnl,
+                realized_pnl=cp.total_proceeds - cp.total_cost,
                 return_pct=_quantize(ret_pct),
                 holding_period_days=round(days, 2),
                 is_win=is_win,

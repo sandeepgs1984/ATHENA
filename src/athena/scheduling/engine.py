@@ -122,10 +122,10 @@ class SchedulingFramework:
         try:
             scan_report = self._scanner.scan(
                 universe, as_of=as_of, pipeline_builder=pipeline_builder)
-            watchlist = self._watchlist.classify(
-                scan_report, previous=previous_watchlist)
+            watchlist = self._watchlist.apply(
+                scan_report, as_of=as_of, previous=previous_watchlist)
             strategy_execution = self._strategy.execute(
-                scan_report, watchlist)
+                scan_report, watchlist, as_of=as_of)
             analytics_report = self._analytics.daily_report(
                 scan_report, as_of=as_of, watchlist=watchlist,
                 strategy_execution=strategy_execution)

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import time
 from decimal import Decimal
+from enum import Enum
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -1024,6 +1025,14 @@ class WorkspaceConfig(_Strict):
 
     include_unified_summary: bool = True
     record_history: bool = True
+
+
+class OrchestrationConfig(_Strict):
+    """Generic Pipeline Infrastructure configuration (P7.1). Read-only stage execution framework."""
+
+    stop_on_stage_failure: bool = True
+    record_history: bool = True
+
 
 
 

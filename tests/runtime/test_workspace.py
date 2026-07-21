@@ -42,7 +42,8 @@ from athena.explainability import ExplainabilityEngine
 from athena.export import ExportPresentationEngine
 from athena.monitoring import OperationalMonitoringEngine
 from athena.orders import OrderPlanningEngine
-from athena.portfolio import PortfolioConfig, PortfolioEngine
+from athena.config import PortfolioConfig
+from athena.portfolio import PortfolioEngine
 from athena.reporting import ReportingEngine
 from athena.sizing import PositionSizingEngine
 from athena.timeline import TimelineAuditEngine
@@ -85,7 +86,7 @@ def full_phase6_artifacts(config_dir):
 
     p_cfg = PortfolioConfig(initial_cash=Decimal("1000000.00"))
     p_eng = PortfolioEngine(p_cfg, initial_as_of=AS_OF)
-    p_eng.open_position("INFY", quantity=Decimal("100"), cost_price=Decimal("1500.00"), as_of=AS_OF)
+    p_eng.open_position("INFY", quantity=100, price=Decimal("1500.00"), as_of=AS_OF)
     p_snap = p_eng.current_snapshot
 
     alloc_cfg = load_allocation_config(config_dir)
@@ -140,6 +141,8 @@ def full_phase6_artifacts(config_dir):
 
     mon_eng = OperationalMonitoringEngine()
     mon_snap = mon_eng.evaluate_health(
+        schedule_execution=object(),
+        workflow=object(),
         portfolio_snapshot=p_snap,
         execution_state=exec_state,
         performance_snapshot=perf_snap,

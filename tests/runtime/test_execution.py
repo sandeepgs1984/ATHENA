@@ -31,7 +31,8 @@ from athena.domain.enums import DecisionType, Direction
 from athena.errors import ConfigError, LifecycleError
 from athena.execution import OrderLifecycleEngine
 from athena.orders import OrderPlanningEngine
-from athena.portfolio import PortfolioConfig, PortfolioEngine
+from athena.config import PortfolioConfig
+from athena.portfolio import PortfolioEngine
 from athena.sizing import PositionSizingEngine
 
 IST = ZoneInfo("Asia/Kolkata")

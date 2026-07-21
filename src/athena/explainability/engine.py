@@ -76,16 +76,17 @@ class ExplainabilityEngine:
         if as_of.tzinfo is None:
             raise ValueError("explain_portfolio as_of datetime must be timezone-aware")
 
+        total_val = portfolio_snapshot.portfolio.cash.total_cash
         sec = ExplanationSection(
             section_id="portfolio_state",
             title="Portfolio Ledger State",
             domain=ExplanationDomain.PORTFOLIO,
-            rationale=f"Portfolio value is {portfolio_snapshot.total_value} with {portfolio_snapshot.cash_balance} cash, {portfolio_snapshot.reserved_capital} reserved, and {len(portfolio_snapshot.positions)} active position(s).",
+            rationale=f"Portfolio value is {total_val} with {portfolio_snapshot.portfolio.cash.total_cash} cash, {portfolio_snapshot.summary.total_reserved_cash} reserved, and {portfolio_snapshot.summary.total_holdings} active position(s).",
             facts={
                 "snapshot_id": portfolio_snapshot.snapshot_id,
-                "total_value": str(portfolio_snapshot.total_value),
-                "cash_balance": str(portfolio_snapshot.cash_balance),
-                "positions_count": len(portfolio_snapshot.positions),
+                "total_value": str(total_val),
+                "cash_balance": str(portfolio_snapshot.portfolio.cash.total_cash),
+                "positions_count": portfolio_snapshot.summary.total_holdings,
             },
         )
         refs = ExplanationReferences(portfolio_snapshot_id=portfolio_snapshot.snapshot_id)
@@ -93,7 +94,7 @@ class ExplainabilityEngine:
             explanation_id=f"exp-{self._next_counter():04d}",
             domain=ExplanationDomain.PORTFOLIO,
             title=f"Portfolio Explanation ({portfolio_snapshot.snapshot_id})",
-            summary=f"Total Value: {portfolio_snapshot.total_value}, Cash: {portfolio_snapshot.cash_balance}",
+            summary=f"Total Value: {total_val}, Cash: {portfolio_snapshot.portfolio.cash.total_cash}",
             sections=(sec,),
             as_of=as_of,
             references=refs,
@@ -105,16 +106,21 @@ class ExplainabilityEngine:
             raise ValueError("explain_allocation as_of datetime must be timezone-aware")
 
         sum_alloc = allocation_plan.summary
+        model_name = (
+            allocation_plan.allocations[0].model_used.value
+            if allocation_plan.allocations
+            else "EQUAL_WEIGHT"
+        )
         sec = ExplanationSection(
             section_id="allocation_policy",
             title="Capital Allocation Rationale",
             domain=ExplanationDomain.ALLOCATION,
-            rationale=f"Capital allocation model '{sum_alloc.model_name}' allocated {sum_alloc.allocated_capital} across {sum_alloc.total_allocations} candidate(s) while maintaining a cash reserve floor of {sum_alloc.reserve_capital}.",
+            rationale=f"Capital allocation model '{model_name}' allocated {sum_alloc.total_allocated_capital} across {sum_alloc.allocated_count} candidate(s) while maintaining a cash reserve floor of {sum_alloc.min_cash_reserve_floor}.",
             facts={
                 "plan_id": allocation_plan.plan_id,
-                "model": sum_alloc.model_name,
-                "allocated_capital": str(sum_alloc.allocated_capital),
-                "reserve_capital": str(sum_alloc.reserve_capital),
+                "model": model_name,
+                "allocated_capital": str(sum_alloc.total_allocated_capital),
+                "reserve_capital": str(sum_alloc.min_cash_reserve_floor),
             },
         )
         refs = ExplanationReferences(allocation_plan_id=allocation_plan.plan_id)
@@ -122,7 +128,7 @@ class ExplainabilityEngine:
             explanation_id=f"exp-{self._next_counter():04d}",
             domain=ExplanationDomain.ALLOCATION,
             title=f"Capital Allocation Explanation ({allocation_plan.plan_id})",
-            summary=f"Allocated {sum_alloc.allocated_capital} using model {sum_alloc.model_name}",
+            summary=f"Allocated {sum_alloc.total_allocated_capital} using model {model_name}",
             sections=(sec,),
             as_of=as_of,
             references=refs,
@@ -134,15 +140,25 @@ class ExplainabilityEngine:
             raise ValueError("explain_sizing as_of datetime must be timezone-aware")
 
         sum_sz = sizing_plan.summary
+        model_name = (
+            sizing_plan.sizes[0].sizing_model.value
+            if sizing_plan.sizes
+            else "WHOLE_SHARE"
+        )
+        rounding_mode = (
+            sizing_plan.sizes[0].rounding_mode.value
+            if sizing_plan.sizes
+            else "ROUND_DOWN"
+        )
         sec = ExplanationSection(
             section_id="sizing_calculation",
             title="Position Sizing Calculation",
             domain=ExplanationDomain.SIZING,
-            rationale=f"Position sizing converted allocated capital into executable quantities using model '{sum_sz.model_name}' and rounding policy '{sum_sz.rounding_mode}', sizing {len(sizing_plan.sizes)} position(s) with total planned cost {sum_sz.total_actual_cost}.",
+            rationale=f"Position sizing converted allocated capital into executable quantities using model '{model_name}' and rounding policy '{rounding_mode}', sizing {len(sizing_plan.sizes)} position(s) with total planned cost {sum_sz.total_actual_cost}.",
             facts={
                 "plan_id": sizing_plan.plan_id,
-                "model": sum_sz.model_name,
-                "rounding_mode": sum_sz.rounding_mode,
+                "model": model_name,
+                "rounding_mode": rounding_mode,
                 "total_actual_cost": str(sum_sz.total_actual_cost),
             },
         )
@@ -151,7 +167,7 @@ class ExplainabilityEngine:
             explanation_id=f"exp-{self._next_counter():04d}",
             domain=ExplanationDomain.SIZING,
             title=f"Position Sizing Explanation ({sizing_plan.plan_id})",
-            summary=f"Sized {len(sizing_plan.sizes)} item(s) using {sum_sz.model_name} / {sum_sz.rounding_mode}",
+            summary=f"Sized {len(sizing_plan.sizes)} item(s) using {model_name} / {rounding_mode}",
             sections=(sec,),
             as_of=as_of,
             references=refs,

@@ -104,6 +104,11 @@ class WorkspaceError(AthenaError):
     """Invalid workspace orchestration or query lookup failure. Policy: fail loudly."""
 
 
+class OrchestrationError(AthenaError):
+    """Invalid pipeline stage execution or pipeline definition failure. Policy: fail loudly."""
+
+
+
 
 
 

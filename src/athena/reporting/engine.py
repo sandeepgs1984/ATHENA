@@ -283,22 +283,22 @@ class ReportingEngine:
 
         content = {
             "snapshot_id": portfolio_snapshot.snapshot_id,
-            "total_value": str(portfolio_snapshot.total_value),
-            "cash_balance": str(portfolio_snapshot.cash_balance),
-            "reserved_capital": str(portfolio_snapshot.reserved_capital),
-            "available_cash": str(portfolio_snapshot.available_cash),
-            "realized_pnl": str(portfolio_snapshot.realized_pnl),
-            "positions_count": len(portfolio_snapshot.positions),
-            "closed_positions_count": len(portfolio_snapshot.closed_positions),
+            "total_value": str(portfolio_snapshot.portfolio.cash.total_cash),
+            "cash_balance": str(portfolio_snapshot.portfolio.cash.total_cash),
+            "reserved_capital": str(portfolio_snapshot.summary.total_reserved_cash),
+            "available_cash": str(portfolio_snapshot.summary.total_available_cash),
+            "realized_pnl": str(sum((cp.total_proceeds - cp.total_cost for cp in portfolio_snapshot.portfolio.closed_positions), Decimal("0.00"))),
+            "positions_count": portfolio_snapshot.summary.total_holdings,
+            "closed_positions_count": portfolio_snapshot.summary.total_closed_positions,
         }
 
         text = (
             f"PORTFOLIO REPORT [{portfolio_snapshot.snapshot_id}]\n"
             f"As Of          : {as_of.isoformat()}\n"
-            f"Total Value    : {portfolio_snapshot.total_value}\n"
-            f"Cash Balance   : {portfolio_snapshot.cash_balance}\n"
-            f"Available Cash : {portfolio_snapshot.available_cash}\n"
-            f"Positions      : {len(portfolio_snapshot.positions)}"
+            f"Total Value    : {content['total_value']}\n"
+            f"Cash Balance   : {portfolio_snapshot.portfolio.cash.total_cash}\n"
+            f"Available Cash : {portfolio_snapshot.summary.total_available_cash}\n"
+            f"Positions      : {portfolio_snapshot.summary.total_holdings}"
         )
 
         refs = ReportingReferences(portfolio_snapshot_id=portfolio_snapshot.snapshot_id)
@@ -349,7 +349,6 @@ class ReportingEngine:
 
         refs = ReportingReferences(
             execution_state_id=execution_state.state_id,
-            broker_execution_plan_id=execution_state.broker_execution_plan_id,
         )
         report = GenericReport(
             report_id=f"rep-{self._next_counter():04d}",
@@ -373,21 +372,26 @@ class ReportingEngine:
             raise ValueError("generate_allocation_report as_of datetime must be timezone-aware")
 
         summary = allocation_plan.summary
+        model_name = (
+            allocation_plan.allocations[0].model_used.value
+            if allocation_plan.allocations
+            else "EQUAL_WEIGHT"
+        )
         content = {
             "plan_id": allocation_plan.plan_id,
-            "model": summary.model_name,
-            "total_allocations": summary.total_allocations,
-            "allocated_capital": str(summary.allocated_capital),
-            "remaining_unallocated": str(summary.remaining_unallocated),
-            "reserve_capital": str(summary.reserve_capital),
+            "model": model_name,
+            "total_allocations": summary.allocated_count,
+            "allocated_capital": str(summary.total_allocated_capital),
+            "remaining_unallocated": str(summary.remaining_available_cash),
+            "reserve_capital": str(summary.min_cash_reserve_floor),
         }
 
         text = (
             f"CAPITAL ALLOCATION REPORT [{allocation_plan.plan_id}]\n"
             f"As Of             : {as_of.isoformat()}\n"
-            f"Model             : {summary.model_name}\n"
-            f"Allocated Capital : {summary.allocated_capital}\n"
-            f"Reserve Capital   : {summary.reserve_capital}"
+            f"Model             : {model_name}\n"
+            f"Allocated Capital : {summary.total_allocated_capital}\n"
+            f"Reserve Capital   : {summary.min_cash_reserve_floor}"
         )
 
         refs = ReportingReferences(allocation_plan_id=allocation_plan.plan_id)

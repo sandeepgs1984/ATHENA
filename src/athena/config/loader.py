@@ -33,6 +33,7 @@ from athena.config.models import (
     HolidaysFile,
     MarketHealthConfig,
     MonitoringConfig,
+    OrchestrationConfig,
     OrderPlanningConfig,
     PortfolioAnalyticsConfig,
     PortfolioConfig,
@@ -401,6 +402,16 @@ def load_workspace_config(config_dir: Path) -> WorkspaceConfig:
     path = Path(config_dir) / "workspace.json"
     try:
         return WorkspaceConfig.model_validate(_read_json(path))
+    except ValidationError as exc:
+        raise ConfigError(_validation_message(str(path), exc)) from exc
+
+
+def load_orchestration_config(config_dir: Path) -> OrchestrationConfig:
+    """Load + validate the Generic Pipeline Infrastructure settings (config/orchestration.json)."""
+
+    path = Path(config_dir) / "orchestration.json"
+    try:
+        return OrchestrationConfig.model_validate(_read_json(path))
     except ValidationError as exc:
         raise ConfigError(_validation_message(str(path), exc)) from exc
 
