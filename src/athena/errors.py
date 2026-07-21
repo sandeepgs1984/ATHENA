@@ -42,3 +42,7 @@ class CorporateActionError(AthenaError):
 
 class RepositoryError(AthenaError):
     """Persistence failure (integrity, duplicate, corruption). Policy: fail loudly, name it."""
+
+
+class WorkflowError(AthenaError):
+    """Invalid workflow definition (missing dependency, cycle, duplicate stage). Refuse to run."""

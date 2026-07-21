@@ -28,7 +28,25 @@ Validation checklist 1–10 passed; frozen contracts unchanged; no ADR; no drift
 
 ---
 
-## Phase 3 — Decision Intelligence (in progress)
+## Phase 4 — Orchestration & Operational Intelligence (in progress)
+
+### M4.1 — Workflow Orchestration Engine
+
+| | |
+|---|---|
+| Completed | 2026-07-20 |
+| Scope | Deterministic central orchestrator that runs analytical engines as coordinated pipeline stages |
+| Tests | 390 passed / 0 failed (17 new) |
+| Status | **Awaiting owner approval** — M4.2 (Daily Market Scanner) blocked until approved |
+| Branch | main |
+
+Built the runtime orchestration layer (`src/athena/runtime/`, realizing the blueprint's reserved §2 `runtime` module — building the plan, not a new module). `WorkflowEngine` executes a `WorkflowDefinition` (a validated DAG of `WorkflowStage`s) in a deterministic topological order, passing a read-only `WorkflowContext` accumulator through the stages; each stage's callable invokes an existing analytical engine and returns named outputs the engine merges (collisions rejected). It **coordinates only** — performs no analysis, duplicates no engine logic, modifies no engine. Dependency validation rejects missing dependencies, cycles, and duplicate stage names up front (`WorkflowError`). Failure isolation: a failed stage is recorded with its error and its downstream dependents are SKIPPED, while independent branches still run. Timing is captured per stage (offset + duration) via an **injected clock**, so under a fixed clock an execution is bit-identical — replay determinism verified. Produces an immutable `WorkflowExecution` (the execution report) plus a presentation-only `WorkflowReport` (`to_dict`/`to_json`/`to_text`). Verified end-to-end by wiring the real indicator → regime → scoring → decision engines as stages — the orchestrator ran the full pipeline without duplicating any engine.
+
+Runtime types live in `src/athena/runtime/` — the blueprint's planned orchestration module — no ADR, no frozen-domain change, no analytical engine touched. Files created: `src/athena/runtime/{__init__,models,workflow,report}.py`, `tests/runtime/test_workflow.py`. Files modified: `src/athena/errors.py` (+WorkflowError). Public APIs added: `WorkflowEngine`, `WorkflowDefinition`, `WorkflowStage`, `WorkflowContext`, `WorkflowExecution`, `WorkflowReport`, `StageResult`, `ExecutionStatus`, `build_definition`. ruff clean; no drift; no tech debt.
+
+---
+
+## Phase 3 — Decision Intelligence (COMPLETE — pending formal review)
 
 ### M3.7 — Decision Trace & Reporting  (completes Phase 3)
 

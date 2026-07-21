@@ -44,11 +44,25 @@ Per the Phase 3 authorization the milestone set is:
 | **M3.6** Decision Engine | First explainable decisions from bundle+indicators+scores+confidence+risk | ✅ Approved |
 | **M3.7** Decision Trace & Reporting | Human + machine-readable decision reports | In review |
 
-## Phases 4–7
+## Phase 4 — Orchestration & Operational Intelligence (AUTHORIZED)
 
-Phase 4 (AI Intelligence), Phase 5 (Simulation & Replay), Phase 6 (Reporting &
-Dashboard), Phase 7 (Production Readiness): each will be split into reviewable
-milestones before its first implementation, at authorization time.
+Turns the analytical core into an operational platform; consumes Phase 0–3
+engine outputs only, modifies no analytical engine.
+
+| Milestone | Scope | Status |
+|---|---|---|
+| **M4.1** Workflow Orchestration Engine | Deterministic DAG pipeline runner (stages, execution, report, failure isolation, replay) | In review |
+| M4.2 Daily Market Scanner | Run ATHENA across the universe → DailyScanReport | Blocked on M4.1 |
+| M4.3 Watchlist Manager | Dynamic watchlists from decision outcomes | Blocked on M4.2 |
+| M4.4 Strategy Framework | Deterministic strategies consuming DecisionReport | Blocked on M4.3 |
+| M4.5 Backtesting Engine | Historical replay through the full pipeline | Blocked on M4.4 |
+| M4.6 Reporting & Analytics | Daily/weekly/monthly summaries + statistics | Blocked on M4.5 |
+| M4.7 Scheduling Framework | Daily/weekly/manual/replay/batch job scheduling | Blocked on M4.6 |
+
+## Phases 5–7
+
+Phase 5 (Simulation & Replay), Phase 6 (Reporting & Dashboard), Phase 7
+(Production Readiness): each split into reviewable milestones at authorization.
 
 ---
 
