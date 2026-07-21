@@ -1,114 +1,138 @@
-# ATHENA AI Engineering Operating System (AEOS)
+# AEOS
+AI Engineering Operating System
 
-> **Specification-Driven • Knowledge-Centric • Vendor-Neutral • Architecture-First**
+----------------------------------------
 
----
+1. Vision
 
-# Vision
+What AEOS is.
 
-AEOS (ATHENA AI Engineering Operating System) is a vendor-neutral engineering operating system designed to standardize Autonomous Software Engineering.
+Why it exists.
 
-Rather than acting as an AI coding assistant, AEOS provides the engineering foundation that enables humans and intelligent systems to collaborate through specifications, governance, knowledge, reusable capabilities, and structured workflows.
+----------------------------------------
 
-AEOS separates engineering from AI vendors, IDEs, programming languages, and individual software projects, allowing organizations to build software consistently regardless of the execution environment.
+2. Core Principles
 
----
+• Specification Driven
+• AI First
+• Modular
+• Layered Architecture
+• Governance by Design
+• Extensible
 
-# Mission
+----------------------------------------
 
-To transform software engineering from isolated interactions with intelligent tools into a governed, knowledge-driven, continuously evolving engineering discipline.
+3. Architecture
 
----
+Foundation
+    ↓
+Kernel
+    ↓
+Framework Foundation
+    ↓
+Frameworks
+    ↓
+Governance
+    ↓
+Knowledge
+    ↓
+Runtime
+    ↓
+Project Packs
 
-# Core Principles
+Include the architecture diagram.
 
-- Specification Before Implementation
-- Architecture Before Code
-- Knowledge Before Automation
-- Governance Before Velocity
-- Human Accountability
-- Vendor Neutrality
-- Continuous Evolution
-- Composable Engineering
+----------------------------------------
 
----
+4. Repository Structure
 
-# What AEOS Is
+foundation/
+kernel/
+frameworks/
+governance/
+knowledge/
+runtime/
+reference/
+tools/
 
-AEOS is:
+Brief description of each folder.
 
-- Engineering Operating System
-- Engineering Knowledge Platform
-- Workflow Orchestration Platform
-- Governance Framework
-- Capability Platform
-- Specification Platform
-- Project-Independent Engineering Foundation
+----------------------------------------
 
----
+5. Current Implementation Status
 
-# What AEOS Is Not
+✅ Foundation
 
-AEOS is NOT:
+    AESS
+    LAW
+    TERM
+    MM
+    ARCH
 
-- A prompt library
-- A Cursor configuration
-- A Claude project
-- An IDE plugin
-- A code generator
-- A chatbot
-- A vendor-specific framework
+✅ Kernel
 
----
+    KS-0001 Identity
+    KS-0002 Lifecycle
+    KS-0003 Relationship
+    KS-0004 Validation
+    KS-0005 Versioning
+    KS-0006 Discovery
 
-# Repository Structure
+✅ Framework Foundation
 
-```
-aeos/
+    FW-0000
 
-00-foundation/
-01-kernel/
-02-governance/
-03-knowledge/
-04-engineering/
-05-orchestration/
-06-projects/
-07-runtime/
-08-reference/
-09-tools/
-```
+✅ Role Framework
 
----
+    ROLE-0001
+    ROLE-ENTITY-0001
 
-# Foundation Documents
+✅ Capability Framework
 
-| ID | Name |
-|----|------|
-| AESS-0000 | AEOS Charter |
-| LAW-0001 | Engineering Laws |
-| PAS-0001 | Principles of Autonomous Software Engineering |
-| MM-0001 | AEOS Meta Model |
-| TERM-0001 | Canonical Terminology |
-| ADR-0001 | Founding Architectural Decisions |
+    CAP-0001
+    CAP-ENTITY-0001
 
----
+🚧 Next
 
-# Engineering Philosophy
+    WF-0001
 
-Software engineering is fundamentally the creation, validation, governance, and evolution of engineering knowledge.
+----------------------------------------
 
-Source code is one artifact of that knowledge.
+6. Engineering Principles
 
-Architecture is another.
+Every specification must include:
 
-Specifications are another.
+• README
+• Specification
+• Review
+• Decisions
+• Changelog
+• Diagrams
+• Examples
 
-Tests are another.
+----------------------------------------
 
-Engineering knowledge—not source code—is the primary asset managed by AEOS.
+7. Contribution Workflow
 
----
+Foundation
+↓
 
-# Long-Term Goal
+Kernel
+↓
 
-Build the world's reference operating system for Autonomous Software Engineering.
+Frameworks
+↓
+
+Governance
+↓
+
+Knowledge
+↓
+
+Runtime
+
+----------------------------------------
+
+8. License
+
+(TODO)
