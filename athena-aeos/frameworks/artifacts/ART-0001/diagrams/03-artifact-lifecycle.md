@@ -1,0 +1,16 @@
+Draft
+  │
+  ▼
+Reviewed
+  │
+  ▼
+Approved
+  │
+  ▼
+Published
+  │
+  ▼
+Deprecated
+  │
+  ▼
+Archived
