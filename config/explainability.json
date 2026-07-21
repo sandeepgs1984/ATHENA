@@ -1,0 +1,9 @@
+{
+  "_meta": {
+    "layer": 6,
+    "description": "Explainability Engine configuration (P6.3). Read-only rationale generation for platform outcomes — no LLM or dynamic reasoning."
+  },
+  "detail_level": "detailed",
+  "include_facts": true,
+  "record_history": true
+}

@@ -84,6 +84,11 @@ class DashboardError(AthenaError):
     """Invalid dashboard generation request or section aggregation failure. Policy: fail loudly."""
 
 
+class ExplainabilityError(AthenaError):
+    """Invalid explainability request or rationale derivation failure. Policy: fail loudly."""
+
+
+
 
 
 

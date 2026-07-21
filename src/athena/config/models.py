@@ -938,6 +938,28 @@ class DashboardConfig(_Strict):
     record_history: bool = True
 
 
+class ExplanationDomain(str, Enum):
+    DECISION = "DECISION"
+    PORTFOLIO = "PORTFOLIO"
+    ALLOCATION = "ALLOCATION"
+    SIZING = "SIZING"
+    ORDER_PLANNING = "ORDER_PLANNING"
+    BROKER_TRANSLATION = "BROKER_TRANSLATION"
+    LIFECYCLE = "LIFECYCLE"
+    ANALYTICS = "ANALYTICS"
+    REPORTING = "REPORTING"
+
+
+class ExplainabilityConfig(_Strict):
+    """Explainability Engine configuration (P6.3). Read-only rationale generation —
+    no state mutation, no LLMs."""
+
+    detail_level: str = "detailed"
+    include_facts: bool = True
+    record_history: bool = True
+
+
+
 
 
 

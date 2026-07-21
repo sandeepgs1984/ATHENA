@@ -30,6 +30,22 @@ Validation checklist 1–10 passed; frozen contracts unchanged; no ADR; no drift
 
 ## Phase 6 — Reporting, Dashboards & User Intelligence (in progress)
 
+### P6.3 — Explainability Engine
+
+| | |
+|---|---|
+| Completed | 2026-07-21 |
+| Scope | Deterministic human-readable explanation generator explaining why decisions, allocations, sizing, execution plans, lifecycle outcomes, and analytics were produced; rationale only |
+| Tests | 621 passed / 0 failed (12 new) |
+| Status | **Awaiting owner approval** — P6.4 (Timeline & Audit Engine) blocked until approved |
+| Branch | main |
+
+Built the Explainability Engine (`src/athena/explainability/`), which answers one question: "Why did ATHENA produce this decision, allocation, position size, execution plan, lifecycle outcome, or analytical result?" `ExplainabilityEngine` generates deterministic, human-readable explanations across 9 canonical domains (`ExplanationDomain`: `DECISION`, `PORTFOLIO`, `ALLOCATION`, `SIZING`, `ORDER_PLANNING`, `BROKER_TRANSLATION`, `LIFECYCLE`, `ANALYTICS`, `REPORTING`). It **explains existing platform outcomes only**: it performs no state mutation, no decision altering, no LLM generation, and no market analysis.
+
+Explainability features: `explain_decision()`, `explain_portfolio()`, `explain_allocation()`, `explain_sizing()`, `explain_order_planning()`, `explain_broker_translation()`, `explain_lifecycle()`, `explain_analytics()`, `explain_reporting()`, and `create_snapshot(explanations, *, as_of)`. All outputs (`ExplanationSection`, `Explanation`, `ExplanationSnapshot`, `ExplanationHistory`) are immutable and preserve full `ExplanationReferences` back to `decision_id`, `portfolio_snapshot_id`, `allocation_plan_id`, `position_sizing_plan_id`, `execution_plan_id`, `broker_execution_plan_id`, `execution_state_id`, `performance_snapshot_id`, `report_id`, and `schedule_execution_id`.
+
+Files created: `src/athena/explainability/{__init__,models,engine}.py`, `config/explainability.json`, `tests/runtime/test_explainability.py`. Files modified: `src/athena/errors.py` (+`ExplainabilityError`), `src/athena/config/{models,loader,__init__}.py` (+`ExplainabilityConfig`, `ExplanationDomain`, `load_explainability_config`, exports). No analytical engine, dashboard engine, reporting framework, order lifecycle engine, broker abstraction layer, order planning engine, position sizing engine, capital allocation engine, portfolio engine, scheduling framework, scanner, watchlist manager, strategy framework, backtesting engine, reporting & analytics engine, workflow engine, or frozen-domain type touched. Public APIs added: `ExplainabilityEngine`, `ExplanationSection`, `Explanation`, `ExplanationSnapshot`, `ExplanationHistory`, `ExplanationReferences`, `ExplanationDomain`, `ExplainabilityConfig`, `load_explainability_config`. 12 new tests: explanation generation across all 9 canonical domains, deterministic replay (`to_dict` & `to_json` equality), immutable outputs (`FrozenInstanceError`), append-only history, config validation (production config loading), and an **end-to-end integration test** consuming artifacts across the complete execution pipeline together with Reporting and Dashboard engines. ruff clean; no ADR; no drift; no tech debt. Validation checklist 1–10 passed; all prior engines and operational components unchanged.
+
 ### P6.2 — Dashboard & Snapshot Engine
 
 | | |
@@ -37,7 +53,7 @@ Validation checklist 1–10 passed; frozen contracts unchanged; no ADR; no drift
 | Completed | 2026-07-21 |
 | Scope | Derived, read-only operational dashboard snapshots aggregating platform status, portfolio health, execution progress, and analytics; presentation layer only |
 | Tests | 609 passed / 0 failed (12 new) |
-| Status | **Awaiting owner approval** — P6.3 (Explainability Engine) blocked until approved |
+| Status | **APPROVED** — Principal Engineer review passed |
 | Branch | main |
 
 Built the Dashboard & Snapshot Engine (`src/athena/dashboard/`), which answers one question: "Given the current immutable platform artifacts, what is the current operational view of ATHENA?" `DashboardEngine` aggregates platform status across 9 canonical sections (`Portfolio Overview`, `Capital Allocation Overview`, `Active Positions`, `Execution Status`, `Order Lifecycle Summary`, `Portfolio Performance`, `Risk & Exposure Summary`, `Reporting Status`, `Platform Health`) into `DashboardSnapshot`s. It **presents derived operational views only**: it performs no state mutation, no UI rendering, no live polling, and no market analysis.

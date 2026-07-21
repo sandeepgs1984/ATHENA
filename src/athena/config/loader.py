@@ -25,6 +25,7 @@ from athena.config.models import (
     DashboardConfig,
     DecisionConfig,
     EventsFile,
+    ExplainabilityConfig,
     ExecutionConfig,
     ExpiriesFile,
     FileProviderConfig,
@@ -346,6 +347,16 @@ def load_dashboard_config(config_dir: Path) -> DashboardConfig:
     path = Path(config_dir) / "dashboard.json"
     try:
         return DashboardConfig.model_validate(_read_json(path))
+    except ValidationError as exc:
+        raise ConfigError(_validation_message(str(path), exc)) from exc
+
+
+def load_explainability_config(config_dir: Path) -> ExplainabilityConfig:
+    """Load + validate the Explainability Engine settings (config/explainability.json)."""
+
+    path = Path(config_dir) / "explainability.json"
+    try:
+        return ExplainabilityConfig.model_validate(_read_json(path))
     except ValidationError as exc:
         raise ConfigError(_validation_message(str(path), exc)) from exc
 

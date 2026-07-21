@@ -80,8 +80,8 @@ Presents, organizes, and explains information already produced by the core platf
 | Milestone | Scope | Status |
 |---|---|---|
 | **P6.1** Reporting Framework | Generic operational reporting engine (portfolio, execution, allocation, analytics, audit) | ✅ Approved |
-| **P6.2** Dashboard & Snapshot Engine | Derived, read-only dashboard views & snapshots | In review |
-| P6.3 Explainability Engine | Human-readable decision & performance explanations | Blocked on P6.2 |
+| **P6.2** Dashboard & Snapshot Engine | Derived, read-only dashboard views & snapshots | ✅ Approved |
+| **P6.3** Explainability Engine | Human-readable decision & performance explanations | In review |
 | P6.4 Timeline & Audit Engine | End-to-end pipeline audit reconstruction & timelines | Blocked on P6.3 |
 | P6.5 Operational Monitoring | Execution pipeline & component health observing | Blocked on P6.4 |
 | P6.6 Export & Presentation Layer | Deterministic presentation formatting & export | Blocked on P6.5 |
