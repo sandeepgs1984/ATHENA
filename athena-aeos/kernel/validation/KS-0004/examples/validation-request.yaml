@@ -1,0 +1,10 @@
+entity:
+  uri: aeos://frameworks/roles/ROLE-0001
+
+operation: Activate
+
+requestedBy: Architecture Board
+
+context:
+  framework: Roles
+  project: ATHENA
