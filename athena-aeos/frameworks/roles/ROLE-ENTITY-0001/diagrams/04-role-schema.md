@@ -1,17 +1,21 @@
+Entity (Inherited)
+
+├── Identity
+├── Metadata
+├── Lifecycle
+├── Version
+├── Relationships
+├── Validation
+└── Audit
+
+        │
+        ▼
+
 Role
 
- ├── Identity
-
- ├── Metadata
-
- ├── Responsibilities
-
- ├── Authorities
-
- ├── Skills
-
- ├── Lifecycle
-
- ├── Version
-
- └── Relationships
+├── Responsibilities
+├── Authorities
+├── Decision Rights
+├── Required Skills
+├── Required Capabilities
+└── Organizational Scope

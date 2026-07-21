@@ -1,9 +1,12 @@
-                   Role
+                 Entity
+                    │
+                    ▼
+                 Role
                     │
      ┌──────────────┼──────────────┐
      │              │              │
 Responsibilities Authorities Decision Rights
-     │
-Relationships
-     │
-Lifecycle
+                    │
+            Required Skills
+                    │
+         Required Capabilities

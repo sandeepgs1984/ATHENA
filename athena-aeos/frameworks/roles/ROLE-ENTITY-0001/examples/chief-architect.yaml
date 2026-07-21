@@ -1,4 +1,5 @@
 role:
+  extends: MM-0001
 
   id: ROLE-0001
 

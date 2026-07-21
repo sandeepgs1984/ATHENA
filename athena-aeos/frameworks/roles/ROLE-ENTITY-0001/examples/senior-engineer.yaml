@@ -1,5 +1,6 @@
 role:
-
+  extends: MM-0001
+  
   id: ROLE-0002
 
   name: Senior Software Engineer

@@ -10,6 +10,16 @@ The Role Framework governs these entities while Kernel Services provide identity
 
 ---
 
+## Inheritance
+
+The Role Entity extends the canonical Entity defined by MM-0001.
+
+All common engineering properties are inherited from the Meta Model.
+
+ROLE-ENTITY-0001 defines only role-specific characteristics.
+
+---
+
 ## Objectives
 
 - Standardize engineering roles

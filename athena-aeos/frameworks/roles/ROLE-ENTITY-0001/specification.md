@@ -16,22 +16,35 @@ Defines the canonical engineering role entity.
 
 ---
 
-# Entity Schema
+# Inheritance
 
-Every Role SHALL define
+Role extends the canonical Entity defined by MM-0001.
+
+Inherited properties include:
 
 - Identity
-- Name
-- Description
+- Metadata
+- Lifecycle
+- Version
+- Relationships
+- Validation
+- Audit Information
+
+These properties are defined by MM-0001 and SHALL NOT be redefined here.
+
+---
+
+# Role-Specific Attributes
+
+The Role Entity adds the following attributes to the canonical Entity:
+
 - Responsibilities
 - Authorities
 - Decision Rights
-- Skills
+- Required Skills
 - Required Capabilities
-- Relationships
-- Lifecycle
-- Metadata
-- Version
+- Organizational Scope
+- Assignment Constraints
 
 ---
 
@@ -87,20 +100,23 @@ APPROVE Specification
 
 # Validation Rules
 
-Every Role SHALL
+In addition to the validation inherited from MM-0001:
 
-✓ have unique identity
+Every Role SHALL:
 
-✓ define responsibilities
+- Define responsibilities.
+- Define authorities.
+- Define decision rights.
+- Define required capabilities.
 
-✓ define lifecycle
+A Role MAY define:
 
-✓ define owner
+- Required certifications.
+- Organizational scope.
+- Delegation rules.
 
-Role SHALL NOT
+A Role SHALL NOT:
 
-✗ create circular ownership
-
-✗ bypass governance
-
-✗ violate framework contract
+- Redefine inherited Entity properties.
+- Override Kernel behavior.
+- Duplicate Meta Model definitions.
