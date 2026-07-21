@@ -1,0 +1,14 @@
+specification:
+  extends: MM-0001
+
+  id: KS-0001
+
+  title: Identity Service
+
+  classification: Kernel Service
+
+  owner: Kernel Team
+
+  approvalAuthority: Architecture Review Board
+
+  publicationStatus: Published

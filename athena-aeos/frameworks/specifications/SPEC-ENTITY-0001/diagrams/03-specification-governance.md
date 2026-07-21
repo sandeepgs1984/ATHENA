@@ -1,0 +1,16 @@
+Author
+   │
+   ▼
+Review
+   │
+   ▼
+Approval
+   │
+   ▼
+Publication
+   │
+   ▼
+Repository
+   │
+   ▼
+Traceability

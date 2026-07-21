@@ -1,0 +1,14 @@
+specification:
+  extends: MM-0001
+
+  id: SPEC-0001
+
+  title: Workflow Framework
+
+  classification: Engineering Framework
+
+  owner: Chief Systems Architect
+
+  approvalAuthority: Architecture Review Board
+
+  publicationStatus: Published
