@@ -1,0 +1,13 @@
+query:
+
+  namespace: aeos://frameworks
+
+  type: Capability
+
+  lifecycle: Active
+
+  tags:
+
+    - architecture
+
+operation: Search

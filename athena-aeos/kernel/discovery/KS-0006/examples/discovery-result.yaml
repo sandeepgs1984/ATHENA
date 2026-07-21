@@ -1,0 +1,17 @@
+results:
+
+  total: 2
+
+  duration: 14ms
+
+  entities:
+
+    - aeos://frameworks/capabilities/CAP-0003
+
+    - aeos://frameworks/capabilities/CAP-0008
+
+  relationships:
+
+    - IMPLEMENTS
+
+    - REFERENCES
