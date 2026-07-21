@@ -29,6 +29,14 @@ Future specifications SHALL use these definitions unless explicitly superseded.
 
 ---
 
+## Scope
+
+This terminology specification defines the canonical naming convention used across the entire AEOS repository.
+
+All future specifications SHALL comply with these naming rules.
+
+---
+
 ## Next Specification
 
 MM-0001 — AEOS Meta Model

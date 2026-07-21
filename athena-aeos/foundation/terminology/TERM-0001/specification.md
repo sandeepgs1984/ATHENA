@@ -1,247 +1,254 @@
-# TERM-0001 — Canonical Terminology
+# TERM-0001 — Naming Convention
 
 | Property | Value |
 |----------|-------|
 | ID | TERM-0001 |
-| Version | 1.0.0 |
-| Status | Approved |
-| Category | Foundation Specification |
+| Version | 0.2.0 |
+| Status | Draft |
+| Layer | Foundation |
 | Owner | Chief Systems Architect |
 
 ---
 
 # Purpose
 
-This specification defines the official terminology used throughout AEOS.
+This specification defines the canonical naming convention used throughout the AI Engineering Operating System (AEOS).
 
-Every specification SHALL use these definitions consistently.
-
----
-
-# Core Terms
-
-## Engineering
-
-The governed process of transforming requirements into validated software through architecture, implementation, verification, and continuous evolution.
+It standardizes identifiers, directory names, document names, and numbering rules to ensure consistency, traceability, and long-term maintainability.
 
 ---
 
-## Knowledge
+# Objectives
 
-Structured engineering information that retains value independently of implementation.
+The naming convention SHALL:
 
-Examples:
-
-- Specifications
-- Architecture
-- ADRs
-- Lessons Learned
-- Design Decisions
+- Provide globally unique identifiers.
+- Maintain consistency across the repository.
+- Improve discoverability.
+- Support automation.
+- Enable future extensibility.
 
 ---
 
-## Entity
+# Repository Prefixes
 
-The fundamental identifiable object within AEOS.
+## Foundation
 
-Every Entity possesses:
-
-- Identity
-- Type
-- Metadata
-- Lifecycle
-- Relationships
-- Version
-
-Examples:
-
-- Role
-- Capability
-- Workflow
-- Policy
-- Project
-- Artifact
+| Prefix | Description |
+|---------|-------------|
+| AESS | AEOS Specification |
+| LAW | Engineering Law |
+| TERM | Terminology |
+| MM | Meta Model |
+| ARCH | Reference Architecture |
 
 ---
 
-## Artifact
+## Kernel
 
-A tangible output produced by engineering activities.
-
-Examples:
-
-- Source Code
-- Specifications
-- Documents
-- Tests
-- Architecture Diagrams
-- Release Notes
+| Prefix | Description |
+|---------|-------------|
+| KS | Kernel Service |
+| KERNEL-ARCH | Kernel Architecture |
 
 ---
 
-## Specification
+## Framework Foundation
 
-A normative document defining expected behavior, structure, constraints, or governance.
-
-Specifications govern implementations.
-
----
-
-## Architecture
-
-The structural organization of engineering components and their interactions.
-
-Architecture defines implementation.
+| Prefix | Description |
+|---------|-------------|
+| FW | Framework Contract |
 
 ---
 
-## Capability
+## Engineering Frameworks
 
-A reusable engineering function that performs a well-defined responsibility.
-
-Examples:
-
-- Code Review
-- API Design
-- Test Generation
-- Security Analysis
-
----
-
-## Role
-
-An engineering responsibility assigned to a human or autonomous participant.
-
-Examples:
-
-- Principal Engineer
-- Security Engineer
-- QA Engineer
-- Documentation Engineer
+| Prefix | Description |
+|---------|-------------|
+| ROLE | Role Framework |
+| ROLE-ENTITY | Role Entity |
+| CAP | Capability Framework |
+| CAP-ENTITY | Capability Entity |
+| WF | Workflow Framework |
+| WF-ENTITY | Workflow Entity |
+| POL | Policy Framework |
+| POL-ENTITY | Policy Entity |
+| ART | Artifact Framework |
+| ART-ENTITY | Artifact Entity |
+| SPEC | Specification Framework |
+| SPEC-ENTITY | Specification Entity |
 
 ---
 
-## Workflow
+## Governance
 
-An ordered sequence of engineering activities executed to achieve a specific objective.
-
----
-
-## Policy
-
-A governance rule constraining engineering behavior.
-
-Policies are enforceable.
+| Prefix | Description |
+|---------|-------------|
+| ADR | Architecture Decision Record |
+| RFC | Request for Comments |
+| REV | Architecture Review |
+| DEC | Engineering Decision |
+| CHG | Change Log |
 
 ---
 
-## Runtime
+# Identifier Format
 
-The execution environment responsible for performing engineering work.
+Every specification SHALL follow:
 
-Examples:
+```
+<PREFIX>-<NUMBER>
+```
 
-- Cursor
-- Claude
-- Codex
-- Gemini
+Examples
 
----
+```
+KS-0001
 
-## Project Pack
+ROLE-0001
 
-A collection of specifications, capabilities, templates, workflows and configurations tailored for a particular software project.
+CAP-ENTITY-0001
 
----
-
-## Knowledge Graph
-
-A structured network of interconnected engineering entities and relationships.
+ADR-0001
+```
 
 ---
 
-## Review
+# Numbering Rules
 
-A formal engineering evaluation performed prior to approval.
-
----
-
-## Approval
-
-Formal acceptance of an engineering artifact.
-
-Approval authorizes progression to the next lifecycle stage.
+- Numbers SHALL contain four digits.
+- Numbering SHALL begin at 0001.
+- Numbers SHALL never be reused.
+- Deprecated specifications SHALL retain their identifiers.
+- Renaming SHALL NOT change identifiers.
 
 ---
 
-## Lifecycle
+# Directory Naming
 
-The sequence of states through which an engineering entity evolves.
+Each specification SHALL reside in its own directory.
 
-Example:
+Example
 
-Draft
+```
+KS-0001/
 
-↓
+ROLE-0001/
 
-Review
-
-↓
-
-Approved
-
-↓
-
-Active
-
-↓
-
-Deprecated
-
-↓
-
-Retired
+ROLE-ENTITY-0001/
+```
 
 ---
 
-# Naming Rules
+# File Naming
 
-Specifications SHALL use consistent terminology.
+Standard files
 
-Incorrect:
+```
+README.md
 
-Agent
+specification.md
 
-Correct:
+review.md
 
-Role
+decisions.md
 
----
+changelog.md
+```
 
-Incorrect:
+Optional directories
 
-Tool
+```
+diagrams/
 
-Correct:
+examples/
 
-Runtime
-
----
-
-Incorrect:
-
-Feature
-
-Correct:
-
-Capability
-
-unless referring to project functionality.
+templates/
+```
 
 ---
 
-# Conformance
+# Reserved Prefixes
 
-Future specifications SHALL use the terminology defined in this document.
+The following prefixes are reserved and SHALL NOT be reused:
 
-Introduction of new terminology requires review and approval.
+- AESS
+- LAW
+- TERM
+- MM
+- ARCH
+- KS
+- FW
+- ROLE
+- ROLE-ENTITY
+- CAP
+- CAP-ENTITY
+- WF
+- WF-ENTITY
+- POL
+- POL-ENTITY
+- ART
+- ART-ENTITY
+- SPEC
+- SPEC-ENTITY
+- ADR
+- RFC
+- REV
+- DEC
+- CHG
+
+---
+
+# Extension Rules
+
+Projects MAY introduce additional prefixes.
+
+Additional prefixes SHALL:
+
+- Be documented.
+- Avoid conflicts.
+- Follow the same naming format.
+
+---
+
+# Examples
+
+```
+Foundation
+
+MM-0001
+
+Kernel
+
+KS-0004
+
+Framework
+
+ROLE-0001
+
+Entity
+
+CAP-ENTITY-0001
+
+Governance
+
+ADR-0012
+```
+
+---
+
+# Related Specifications
+
+- AESS-0000
+- LAW-0001
+- MM-0001
+- ARCH-0001
+- FW-0000
+
+---
+
+# Summary
+
+The Naming Convention establishes the canonical identifier system for AEOS.
+
+All future specifications SHALL comply with this convention.

@@ -34,3 +34,11 @@ Freeze terminology before expanding the Meta Model.
 ## Review Status
 
 Approved
+
+---
+
+## Architectural Improvement
+
+Formalizing repository naming conventions prevents identifier drift as AEOS grows.
+
+This specification establishes a stable namespace for all architectural artifacts and enables future automation, validation, and tooling.
