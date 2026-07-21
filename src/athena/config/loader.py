@@ -28,6 +28,7 @@ from athena.config.models import (
     ScoringConfig,
     SectorHealthConfig,
     ValidationConfig,
+    WatchlistConfig,
 )
 from athena.domain.run import ConfigurationSnapshot
 from athena.errors import ConfigError
@@ -192,6 +193,16 @@ def load_decision_config(config_dir: Path) -> DecisionConfig:
     path = Path(config_dir) / "decision.json"
     try:
         return DecisionConfig.model_validate(_read_json(path))
+    except ValidationError as exc:
+        raise ConfigError(_validation_message(str(path), exc)) from exc
+
+
+def load_watchlist_config(config_dir: Path) -> WatchlistConfig:
+    """Load + validate the Watchlist Manager settings (config/watchlist.json)."""
+
+    path = Path(config_dir) / "watchlist.json"
+    try:
+        return WatchlistConfig.model_validate(_read_json(path))
     except ValidationError as exc:
         raise ConfigError(_validation_message(str(path), exc)) from exc
 

@@ -11,6 +11,7 @@ from athena.config.loader import (
     load_scoring_config,
     load_sector_health_config,
     load_validation_config,
+    load_watchlist_config,
     snapshot_config,
 )
 from athena.config.models import (
@@ -23,6 +24,7 @@ from athena.config.models import (
     ScoringConfig,
     SectorHealthConfig,
     ValidationConfig,
+    WatchlistConfig,
 )
 
 __all__ = [
@@ -35,6 +37,7 @@ __all__ = [
     "ScoringConfig",
     "SectorHealthConfig",
     "ValidationConfig",
+    "WatchlistConfig",
     "load_calendar_files",
     "load_confidence_config",
     "load_config",
@@ -45,5 +48,6 @@ __all__ = [
     "load_scoring_config",
     "load_sector_health_config",
     "load_validation_config",
+    "load_watchlist_config",
     "snapshot_config",
 ]

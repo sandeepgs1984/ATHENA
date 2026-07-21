@@ -1,0 +1,42 @@
+{
+  "_meta": {
+    "layer": 4,
+    "description": "Watchlist Manager configuration (M4.3). Deterministic, config-driven classification of completed decision outcomes into named watchlists. decision_rank orders decision strength for trend (Improving/Weakening) rules; higher = stronger."
+  },
+  "decision_rank": {
+    "TRADE": 6,
+    "INCREASE_POSITION": 6,
+    "WATCH": 5,
+    "WAIT": 4,
+    "PARTIAL_EXIT": 3,
+    "REDUCE_POSITION": 3,
+    "NO_TRADE": 2,
+    "AVOID_SECTOR": 2,
+    "FULL_EXIT": 1,
+    "MARKET_CLOSED": 0,
+    "INSUFFICIENT_DATA": 0,
+    "DATA_VALIDATION_FAILED": 0
+  },
+  "watchlists": [
+    {
+      "name": "High Conviction",
+      "rule": {"type": "decision_in", "decisions": ["TRADE", "INCREASE_POSITION"]}
+    },
+    {
+      "name": "Watch",
+      "rule": {"type": "decision_in", "decisions": ["WATCH", "WAIT"]}
+    },
+    {
+      "name": "Improving",
+      "rule": {"type": "trend", "direction": "improving"}
+    },
+    {
+      "name": "Weakening",
+      "rule": {"type": "trend", "direction": "weakening"}
+    },
+    {
+      "name": "Rejected",
+      "rule": {"type": "decision_in", "decisions": ["NO_TRADE", "AVOID_SECTOR"]}
+    }
+  ]
+}

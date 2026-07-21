@@ -8,8 +8,11 @@ from __future__ import annotations
 
 from datetime import time
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from athena.domain.enums import DecisionType
 
 
 class _Strict(BaseModel):
@@ -613,6 +616,63 @@ class DecisionConfig(_Strict):
 
     thresholds: DecisionThresholdsCfg
     plan: DecisionPlanCfg
+
+
+class WatchlistDecisionRuleCfg(_Strict):
+    """Membership by the instrument's current decision type (M4.3)."""
+
+    type: Literal["decision_in"]
+    decisions: list[str] = Field(min_length=1)
+
+    @field_validator("decisions")
+    @classmethod
+    def _known_decisions(cls, v: list[str]) -> list[str]:
+        valid = {d.value for d in DecisionType}
+        bad = [d for d in v if d not in valid]
+        if bad:
+            raise ValueError(f"unknown decision type(s): {bad}")
+        return v
+
+
+class WatchlistTrendRuleCfg(_Strict):
+    """Membership by decision-strength change vs the previous scan (M4.3)."""
+
+    type: Literal["trend"]
+    direction: Literal["improving", "weakening"]
+
+
+class WatchlistDefCfg(_Strict):
+    """One named watchlist and the rule that governs membership (M4.3)."""
+
+    name: str = Field(min_length=1)
+    rule: WatchlistDecisionRuleCfg | WatchlistTrendRuleCfg = Field(discriminator="type")
+
+
+class WatchlistConfig(_Strict):
+    """Watchlist Manager configuration (M4.3). Classification is config-driven only."""
+
+    decision_rank: dict[str, int]
+    watchlists: list[WatchlistDefCfg] = Field(min_length=1)
+
+    @field_validator("decision_rank")
+    @classmethod
+    def _known_ranks(cls, v: dict[str, int]) -> dict[str, int]:
+        valid = {d.value for d in DecisionType}
+        bad = [k for k in v if k not in valid]
+        if bad:
+            raise ValueError(f"decision_rank has unknown decision type(s): {bad}")
+        return v
+
+    @model_validator(mode="after")
+    def _consistent(self) -> WatchlistConfig:
+        names = [w.name for w in self.watchlists]
+        dupes = sorted({n for n in names if names.count(n) > 1})
+        if dupes:
+            raise ValueError(f"watchlist names must be unique: {dupes}")
+        if any(isinstance(w.rule, WatchlistTrendRuleCfg) for w in self.watchlists) \
+                and not self.decision_rank:
+            raise ValueError("decision_rank must be non-empty when a trend rule is used")
+        return self
 
 
 class Holiday(_Strict):
