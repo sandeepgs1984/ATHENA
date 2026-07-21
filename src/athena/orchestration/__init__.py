@@ -1,8 +1,9 @@
-"""Pipeline Infrastructure, Registration & Integration package (P7.1, P7.2, P7.3, P7.4).
+"""Pipeline Infrastructure, Registration, Integration & Scheduling package (P7.1-P7.5).
 
 Provides domain-agnostic stage protocols, lightweight immutable context propagation,
 pipeline definitions, execution runners, pipeline registration, contract validation,
-pipeline coordination, workspace post-processing, and integrated system execution.
+pipeline coordination, workspace post-processing, integrated system execution, and
+scheduling-domain bridge adapters.
 """
 
 from athena.orchestration.contract import (
@@ -37,6 +38,12 @@ from athena.orchestration.pipelines import (
     create_intelligence_pipeline,
     validate_intelligence_pipeline,
     validate_pipeline_definition,
+)
+from athena.orchestration.schedule_adapter import SystemScheduleAdapter
+from athena.orchestration.schedule_models import (
+    PipelineScheduleHistory,
+    PipelineScheduleRun,
+    ScheduleRunRequest,
 )
 from athena.orchestration.stages import (
     BrokerTranslationStage,
@@ -83,17 +90,21 @@ __all__ = [
     "PipelineMetadata",
     "PipelineResult",
     "PipelineRunner",
+    "PipelineScheduleHistory",
+    "PipelineScheduleRun",
     "PipelineStage",
     "PipelineStatus",
     "PortfolioAnalyticsStage",
     "PortfolioSnapshotStage",
     "PositionSizingStage",
     "ReportingStage",
+    "ScheduleRunRequest",
     "StageExecutionResult",
     "StageResult",
     "StageStatus",
     "SystemPipelineResult",
     "SystemPipelineRunner",
+    "SystemScheduleAdapter",
     "TimelineStage",
     "WorkspaceAssembler",
     "create_execution_pipeline",

@@ -6,9 +6,25 @@ status updated on approval.
 
 ---
 
-## Phase 7 — Production Orchestration & Scheduling (in progress)
+## Phase 7 -- Production Orchestration & Scheduling (in progress)
 
-### P7.4 — Pipeline Runner Integration
+### P7.5 -- Pipeline Scheduler Registration
+
+| | |
+|---|---|
+| Completed | 2026-07-21 |
+| Scope | Introduce scheduling-domain bridge adapter: `ScheduleRunRequest`, `PipelineScheduleRun`, `PipelineScheduleHistory`, `SystemScheduleAdapter` |
+| Tests | 731 passed / 0 failed (26 new) |
+| Status | **Awaiting owner approval** |
+| Branch | main |
+
+Introduced ATHENA's scheduling-domain bridge. `ScheduleRunRequest` is a stable, versioned input contract bundling `ScheduledJob`, `decisions`, `current_prices`, and `as_of`; validation fires at construction, establishing the request-rejected lifecycle boundary before execution begins. `PipelineScheduleRun` is a thin, immutable scheduling envelope holding only the scheduling-domain metadata (`schedule_run_id`, `job_id`, `definition_id`, `duration_seconds`) backed by `SystemPipelineResult` as the authoritative execution record -- no fields duplicated. `PipelineScheduleHistory` is an immutable append-only history exposed as a read-only property; the adapter holds the current instance and replaces it via `record()` with no mutable state leakage. `SystemScheduleAdapter` coordinates the four-step lifecycle: validate-and-build context (via private `_ScheduleContextBuilder`), measure duration, delegate to `SystemPipelineRunner`, wrap result, record history. Failure recording policy is lifecycle-based: request-rejected failures produce no history record; execution-started failures (pipeline failure, contract failure, workspace failure) always produce a `PipelineScheduleRun` and are always recorded. The scheduling domain never touches `PipelineDefinition`, artifact keys, or stage topology.
+
+Files created: `src/athena/orchestration/schedule_models.py`, `src/athena/orchestration/schedule_adapter.py`, `tests/runtime/test_pipeline_scheduler.py`. Files modified: `src/athena/orchestration/__init__.py` (exported four new APIs). Public APIs added: `ScheduleRunRequest`, `PipelineScheduleRun`, `PipelineScheduleHistory`, `SystemScheduleAdapter`. Private (not exported): `_ScheduleContextBuilder`. 26 new tests across four test classes covering request validation, thin-envelope design, append-only history semantics, adapter execution lifecycle, failure recording policy, and scheduler-pipeline isolation. No ADR required; no architecture drift; zero technical debt. All 10 validation checklist items passed; 731 total suite tests pass clean.
+
+---
+
+### P7.4 -- Pipeline Runner Integration
 
 | | |
 |---|---|
