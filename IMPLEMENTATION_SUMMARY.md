@@ -6,7 +6,25 @@ status updated on approval.
 
 ---
 
-## Phase 7 -- Production Orchestration & Scheduling (in progress)
+## Phase 8 -- Application Platform (in progress)
+
+### P8.1 -- Platform API Foundation
+
+| | |
+|---|---|
+| Completed | 2026-07-21 |
+| Scope | Design and implement ATHENA's production REST API infrastructure: FastAPI app factory, ASGI/Lifespan lifecycle, API versioning (`/api/v1/`), unified response envelope `AthenaResponse[T]`, generic filtering (`FilterParams`), pagination/sorting params, `HealthProvider`/`MetricsProvider` protocols, `AthenaExceptionMapper` (RFC 9457 Problem Details) |
+| Tests | 755 passed / 0 failed (24 new) |
+| Status | **Awaiting owner approval** |
+| Branch | main |
+
+Implemented the production FastAPI REST API platform foundation. `APISettings` separates TransportConfig (deployment) from AppMetadataConfig (application identity) with secure-by-default empty CORS origin list. `create_app()` uses a lifespan context manager (`@asynccontextmanager lifespan`) to manage startup and shutdown events cleanly. `AthenaResponse[T]` is the single, unified response envelope used across all endpoints, carrying optional pagination and links metadata. `PaginationMeta` and `PaginationParams` are future-ready, reserving cursor fields next to standard offset page parameters. `FilterParams` and `SortParams` establish consistent collection query interfaces. `AthenaExceptionMapper` functions as a central registry mapping domain errors to HTTP status codes and RFC 9457 `ProblemDetail` structures. Service components (`HealthService` and `MetricsService`) depend entirely on abstract `HealthProvider` and `MetricsProvider` protocols, with default implementations reading from system health checks and returning scaffold telemetry metrics. Middlewares inject unique `X-Request-ID` headers to all responses and format structured request logs. OpenAPI 3.1 is auto-generated with interactive documentation at `/api/docs`.
+
+Files created: `src/athena/api/config.py`, `src/athena/api/errors.py`, `src/athena/api/middleware.py`, `src/athena/api/dependencies.py`, `src/athena/api/app.py`, `src/athena/api/v1/router.py`, `src/athena/api/v1/dtos/base.py`, `src/athena/api/v1/dtos/common.py`, `src/athena/api/v1/providers/base.py`, `src/athena/api/v1/providers/observability.py`, `src/athena/api/v1/routers/health.py`, `src/athena/api/v1/routers/metrics.py`, `src/athena/api/v1/services/health_service.py`, `src/athena/api/v1/services/metrics_service.py`, `tests/api/conftest.py`, `tests/api/v1/test_health.py`, `tests/api/v1/test_metrics.py`, `tests/api/v1/test_error_handling.py`. Files modified: `pyproject.toml` (dependencies). Public APIs added: `GET /api/v1/health`, `GET /api/v1/metrics`, `/api/docs`. 24 new integration tests covering endpoint payloads, headers, CORS behavior, validation errors, and custom exception mappings. All 10 validation checklist items passed; 755 total suite tests pass clean.
+
+---
+
+## Phase 7 -- Production Orchestration & Scheduling (complete)
 
 ### P7.5 -- Pipeline Scheduler Registration
 
@@ -15,7 +33,7 @@ status updated on approval.
 | Completed | 2026-07-21 |
 | Scope | Introduce scheduling-domain bridge adapter: `ScheduleRunRequest`, `PipelineScheduleRun`, `PipelineScheduleHistory`, `SystemScheduleAdapter` |
 | Tests | 731 passed / 0 failed (26 new) |
-| Status | **Awaiting owner approval** |
+| Status | **APPROVED** -- closes Phase 7 (Principal Engineer review passed) |
 | Branch | main |
 
 Introduced ATHENA's scheduling-domain bridge. `ScheduleRunRequest` is a stable, versioned input contract bundling `ScheduledJob`, `decisions`, `current_prices`, and `as_of`; validation fires at construction, establishing the request-rejected lifecycle boundary before execution begins. `PipelineScheduleRun` is a thin, immutable scheduling envelope holding only the scheduling-domain metadata (`schedule_run_id`, `job_id`, `definition_id`, `duration_seconds`) backed by `SystemPipelineResult` as the authoritative execution record -- no fields duplicated. `PipelineScheduleHistory` is an immutable append-only history exposed as a read-only property; the adapter holds the current instance and replaces it via `record()` with no mutable state leakage. `SystemScheduleAdapter` coordinates the four-step lifecycle: validate-and-build context (via private `_ScheduleContextBuilder`), measure duration, delegate to `SystemPipelineRunner`, wrap result, record history. Failure recording policy is lifecycle-based: request-rejected failures produce no history record; execution-started failures (pipeline failure, contract failure, workspace failure) always produce a `PipelineScheduleRun` and are always recorded. The scheduling domain never touches `PipelineDefinition`, artifact keys, or stage topology.
