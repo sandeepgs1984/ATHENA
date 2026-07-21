@@ -1,0 +1,16 @@
+Draft
+  │
+  ▼
+Review
+  │
+  ▼
+Approved
+  │
+  ▼
+Published
+  │
+  ▼
+Superseded
+  │
+  ▼
+Archived
