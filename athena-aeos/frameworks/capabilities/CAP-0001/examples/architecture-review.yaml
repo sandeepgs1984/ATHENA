@@ -1,0 +1,20 @@
+capability:
+
+  id: CAP-ARCH-0001
+
+  name: Architecture Review
+
+  description: Perform architectural review of engineering specifications.
+
+  lifecycle:
+    state: Active
+
+  relatedRoles:
+    - ROLE-ARCHITECT
+
+  outputs:
+    - Review Report
+    - Decision Record
+
+  governedBy:
+    - POL-ARCH-0001
