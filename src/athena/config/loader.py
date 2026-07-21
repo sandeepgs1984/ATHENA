@@ -30,6 +30,7 @@ from athena.config.models import (
     HolidaysFile,
     MarketHealthConfig,
     OrderPlanningConfig,
+    PortfolioAnalyticsConfig,
     PortfolioConfig,
     RiskAssessmentConfig,
     SchedulingConfig,
@@ -313,6 +314,16 @@ def load_execution_config(config_dir: Path) -> ExecutionConfig:
     path = Path(config_dir) / "execution.json"
     try:
         return ExecutionConfig.model_validate(_read_json(path))
+    except ValidationError as exc:
+        raise ConfigError(_validation_message(str(path), exc)) from exc
+
+
+def load_portfolio_analytics_config(config_dir: Path) -> PortfolioAnalyticsConfig:
+    """Load + validate the Portfolio Analytics Engine settings (config/portfolio_analytics.json)."""
+
+    path = Path(config_dir) / "portfolio_analytics.json"
+    try:
+        return PortfolioAnalyticsConfig.model_validate(_read_json(path))
     except ValidationError as exc:
         raise ConfigError(_validation_message(str(path), exc)) from exc
 

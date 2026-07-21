@@ -30,6 +30,22 @@ Validation checklist 1–10 passed; frozen contracts unchanged; no ADR; no drift
 
 ## Phase 5 — Portfolio & Execution Platform (in progress)
 
+### P5.7 — Portfolio Analytics & Performance
+
+| | |
+|---|---|
+| Completed | 2026-07-21 |
+| Scope | Computes portfolio returns, realized/unrealized P&L, exposures, win/loss stats, and drawdowns; performance calculation only |
+| Tests | 585 passed / 0 failed (12 new) |
+| Status | **Awaiting owner approval** — Phase 5 completed; Phase 6 blocked until approved |
+| Branch | main |
+
+Built the Portfolio Analytics Engine (`src/athena/analytics/portfolio/`), which answers one question: "Given completed portfolio activity and execution history, how has the portfolio performed?" `PortfolioAnalyticsEngine` consumes `PortfolioSnapshot`s and `ExecutionState`s to compute comprehensive performance metrics (`PortfolioPerformance`, `TradePerformance`, `AnalyticsSummary`, `PerformanceSnapshot`). It **computes performance metrics and analytics only**: it performs no investment decision making, no capital allocation, no position sizing, no order planning, no broker communication, and no execution state modification.
+
+Core performance metrics & analytics: Realized P&L, unrealized P&L, total P&L, total return %, portfolio valuation, peak portfolio value, drawdown, drawdown %, max drawdown %, gross exposure, net exposure, cash utilization %, trade-level win/loss classification, win rate %, average gain, average loss, win/loss ratio, and average holding period (days). Analytics operations: `analyze(portfolio_snapshot, execution_state=None, current_prices=None, *, as_of)` processes portfolio state deterministically. All outputs (`TradePerformance`, `PortfolioPerformance`, `AnalyticsSummary`, `PerformanceSnapshot`, `PortfolioAnalyticsHistory`) are immutable and preserve full `PortfolioAnalyticsReferences` back to `execution_state_id`, `broker_execution_plan_id`, `execution_plan_id`, `position_sizing_plan_id`, `allocation_plan_id`, `portfolio_snapshot_id`, `decision_id`, `strategy`, `watchlist`, and `schedule_execution_id`.
+
+Files created: `src/athena/analytics/portfolio/{__init__,models,engine}.py`, `config/portfolio_analytics.json`, `tests/runtime/test_portfolio_analytics.py`. Files modified: `src/athena/errors.py` (+`PortfolioAnalyticsError`), `src/athena/config/{models,loader,__init__}.py` (+`PortfolioAnalyticsConfig`, `load_portfolio_analytics_config`, exports). No analytical engine, order lifecycle engine, broker abstraction layer, order planning engine, position sizing engine, capital allocation engine, portfolio engine, scheduling framework, scanner, watchlist manager, strategy framework, backtesting engine, reporting & analytics engine, workflow engine, or frozen-domain type touched. Public APIs added: `PortfolioAnalyticsEngine`, `TradePerformance`, `PortfolioPerformance`, `AnalyticsSummary`, `PerformanceSnapshot`, `PortfolioAnalyticsHistory`, `PortfolioAnalyticsReferences`, `PortfolioAnalyticsConfig`, `load_portfolio_analytics_config`. 12 new tests: unrealized P&L & valuation, win/loss accounting & realized P&L, drawdown calculation, deterministic replay (`to_dict` & `to_json` equality), immutable outputs (`FrozenInstanceError`), append-only history, config validation (negative initial capital rejection, production config loading), and an **end-to-end integration test** consuming real outputs from the entire Phase 5 pipeline (`PortfolioEngine` → `CapitalAllocationEngine` → `PositionSizingEngine` → `OrderPlanningEngine` → `BrokerManager` → `OrderLifecycleEngine` → `PortfolioAnalyticsEngine`). ruff clean; no ADR; no drift; no tech debt. Validation checklist 1–10 passed; all prior engines and operational components unchanged.
+
 ### P5.6 — Order Lifecycle Engine
 
 | | |
@@ -37,7 +53,7 @@ Validation checklist 1–10 passed; frozen contracts unchanged; no ADR; no drift
 | Completed | 2026-07-21 |
 | Scope | Tracks order lifecycle states, validates legal state transitions, and records execution history; execution state model only |
 | Tests | 573 passed / 0 failed (12 new) |
-| Status | **Awaiting owner approval** — P5.7 (Portfolio Analytics & Performance) blocked until approved |
+| Status | **APPROVED** — Principal Engineer review passed |
 | Branch | main |
 
 Built the Order Lifecycle Engine (`src/athena/execution/`), which answers one question: "What is the current lifecycle state of every planned order from creation until completion or cancellation?" `OrderLifecycleEngine` consumes `BrokerExecutionPlan`s and tracks order state transitions (`OrderLifecycleState`: `CREATED`, `ACCEPTED`, `SUBMITTED`, `PARTIALLY_FILLED`, `FILLED`, `CANCELLED`, `REJECTED`, `EXPIRED`). It **tracks execution state transitions only**: it performs no live broker polling, no WebSockets/REST communication, no exchange connectivity, and no market analysis.

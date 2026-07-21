@@ -72,6 +72,11 @@ class LifecycleError(AthenaError):
     """Invalid order lifecycle transition or state constraint violation. Policy: fail loudly."""
 
 
+class PortfolioAnalyticsError(AthenaError):
+    """Invalid portfolio analytics calculation or constraint violation. Policy: fail loudly."""
+
+
+
 
 
 

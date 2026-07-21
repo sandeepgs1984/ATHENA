@@ -1,0 +1,9 @@
+{
+  "_meta": {
+    "layer": 5,
+    "description": "Portfolio Analytics Engine configuration (P5.7). Performance metrics & historical analytics calculation only — no live dashboards or forecasting."
+  },
+  "initial_capital": "1000000.00",
+  "risk_free_rate_pct": "6.00",
+  "record_history": true
+}

@@ -896,6 +896,23 @@ class ExecutionConfig(_Strict):
     record_history: bool = True
 
 
+class PortfolioAnalyticsConfig(_Strict):
+    """Portfolio Analytics Engine configuration (P5.7). Performance calculation only —
+    no live dashboards or forecasting."""
+
+    initial_capital: Decimal = Decimal("1000000.00")
+    risk_free_rate_pct: Decimal = Decimal("6.00")
+    record_history: bool = True
+
+    @field_validator("initial_capital", "risk_free_rate_pct")
+    @classmethod
+    def _non_negative_decimal(cls, v: Decimal) -> Decimal:
+        if v < Decimal("0"):
+            raise ValueError("Decimal values must be >= 0")
+        return v
+
+
+
 
 
 

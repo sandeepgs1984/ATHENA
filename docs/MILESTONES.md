@@ -70,8 +70,8 @@ Manages capital responsibly; consumes completed Decision artifacts produced by t
 | **P5.3** Position Sizing Engine | Executable unit quantity calculation & precision handling | ✅ Approved |
 | **P5.4** Order Planning Engine | Broker-neutral execution instructions & order batching | ✅ Approved |
 | **P5.5** Broker Abstraction Layer | Canonical broker contracts & capability validation | ✅ Approved |
-| **P5.6** Order Lifecycle Engine | Order tracking, fill reconciliation, state machine | In review |
-| P5.7 Portfolio Analytics & Performance | Realized P&L, performance metrics, portfolio statistics | Blocked on P5.6 |
+| **P5.6** Order Lifecycle Engine | Order tracking, fill reconciliation, state machine | ✅ Approved |
+| **P5.7** Portfolio Analytics & Performance | Realized P&L, performance metrics, portfolio statistics | In review |
 
 ## Phases 6–7
 
