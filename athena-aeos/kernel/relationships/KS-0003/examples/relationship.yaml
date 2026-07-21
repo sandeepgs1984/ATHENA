@@ -1,0 +1,21 @@
+relationship:
+
+  identity:
+    uri: aeos://kernel/relationships/REL-000001
+
+  source:
+    uri: aeos://frameworks/roles/ROLE-0001
+
+  target:
+    uri: aeos://frameworks/capabilities/CAP-0003
+
+  type: IMPLEMENTS
+
+  lifecycle:
+    state: Active
+
+  metadata:
+    owner: Architecture Board
+    rationale: >
+      Principal Engineer is responsible for
+      Architecture Review capability.
