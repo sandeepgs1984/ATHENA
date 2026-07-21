@@ -16,6 +16,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from athena.config.models import (
+    AllocationConfig,
     AnalyticsConfig,
     AthenaConfig,
     BacktestConfig,
@@ -258,6 +259,16 @@ def load_portfolio_config(config_dir: Path) -> PortfolioConfig:
     path = Path(config_dir) / "portfolio.json"
     try:
         return PortfolioConfig.model_validate(_read_json(path))
+    except ValidationError as exc:
+        raise ConfigError(_validation_message(str(path), exc)) from exc
+
+
+def load_allocation_config(config_dir: Path) -> AllocationConfig:
+    """Load + validate the Capital Allocation Engine settings (config/allocation.json)."""
+
+    path = Path(config_dir) / "allocation.json"
+    try:
+        return AllocationConfig.model_validate(_read_json(path))
     except ValidationError as exc:
         raise ConfigError(_validation_message(str(path), exc)) from exc
 

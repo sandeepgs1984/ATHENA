@@ -1,6 +1,7 @@
 """Configuration layer (ATHENA-002 §6): load, validate, snapshot, version."""
 
 from athena.config.loader import (
+    load_allocation_config,
     load_analytics_config,
     load_backtest_config,
     load_calendar_files,
@@ -20,6 +21,8 @@ from athena.config.loader import (
     snapshot_config,
 )
 from athena.config.models import (
+    AllocationConfig,
+    AllocationModel,
     AnalyticsConfig,
     AthenaConfig,
     BacktestConfig,
@@ -38,6 +41,8 @@ from athena.config.models import (
 )
 
 __all__ = [
+    "AllocationConfig",
+    "AllocationModel",
     "AnalyticsConfig",
     "AthenaConfig",
     "BacktestConfig",
@@ -53,6 +58,7 @@ __all__ = [
     "StrategyConfig",
     "ValidationConfig",
     "WatchlistConfig",
+    "load_allocation_config",
     "load_analytics_config",
     "load_backtest_config",
     "load_calendar_files",

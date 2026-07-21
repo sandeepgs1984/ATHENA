@@ -30,6 +30,22 @@ Validation checklist 1–10 passed; frozen contracts unchanged; no ADR; no drift
 
 ## Phase 5 — Portfolio & Execution Platform (in progress)
 
+### P5.2 — Capital Allocation Engine
+
+| | |
+|---|---|
+| Completed | 2026-07-21 |
+| Scope | Policy-driven capital allocation per approved opportunity; enforces reserve floors and allocation models without position sizing or order execution |
+| Tests | 524 passed / 0 failed (12 new) |
+| Status | **Awaiting owner approval** — P5.3 (Position Sizing Engine) blocked until approved |
+| Branch | main |
+
+Built the Capital Allocation Engine (`src/athena/allocation/`), which answers one question: "How much capital should be reserved for each approved investment opportunity?" `CapitalAllocationEngine` evaluates available portfolio capital from a `PortfolioSnapshot` and allocates capital to candidate opportunities according to policy. It **determines capital allocation policy only**: it performs no market analysis, no position sizing (shares calculation), no risk limit checks, and no order execution.
+
+Supported allocation models: `FIXED_AMOUNT` (configured fixed INR amount per opportunity), `FIXED_PERCENTAGE` (configured percentage of total portfolio cash), and `EQUAL_WEIGHT` (equal division of the allocatable pool among active candidates up to `max_opportunities`). Minimum cash reserve floor (`min_cash_reserve_pct`, default 20%) is strictly enforced before any allocation occurs (`allocatable_pool = max(0, available_cash - min_reserve_floor)`). Candidate opportunities (filtered for `TRADE` / `INCREASE_POSITION` decision types) are processed in deterministic sorted order. If remaining allocatable cash is less than target, a `status="PARTIAL"` allocation is issued; if pool is exhausted, `status="REJECTED_INSUFFICIENT_CASH"` or `REJECTED_RESERVE_FLOOR` is returned. Opportunities beyond `max_opportunities` are rejected as `REJECTED_MAX_OPPORTUNITIES`. `allocate_amount` provides explicit single-opportunity allocation. All outputs (`CapitalAllocation`, `AllocationPlan`, `AllocationSummary`, `AllocationHistory`) are immutable and preserve full `AllocationReferences` back to `portfolio_snapshot_id`, `decision_id`, `strategy`, `watchlist`, and `schedule_execution_id`.
+
+Files created: `src/athena/allocation/{__init__,models,engine}.py`, `config/allocation.json`, `tests/runtime/test_allocation.py`. Files modified: `src/athena/errors.py` (+`AllocationError`), `src/athena/config/{models,loader,__init__}.py` (+`AllocationConfig`, `AllocationModel`, `load_allocation_config`, exports). No analytical engine, portfolio engine, scheduling framework, scanner, watchlist manager, strategy framework, backtesting engine, reporting & analytics engine, workflow engine, or frozen-domain type touched. Public APIs added: `CapitalAllocationEngine`, `CapitalAllocation`, `AllocationDecision`, `AllocationPlan`, `AllocationSummary`, `AllocationHistory`, `AllocationReferences`, `AllocationModel`, `AllocationConfig`, `load_allocation_config`. 12 new tests: fixed percentage allocation, fixed amount allocation, equal weight allocation, cash reserve threshold enforcement, max opportunities limit, partial & rejected statuses, deterministic replay (`to_dict` & `to_json` equality), immutable outputs (`FrozenInstanceError`), append-only history, config validation (negative values rejection, production config loading), and an **end-to-end integration test** consuming a real `PortfolioSnapshot` from `PortfolioEngine`. ruff clean; no ADR; no drift; no tech debt. Validation checklist 1–10 passed; all prior engines and operational components unchanged.
+
 ### P5.1 — Portfolio Engine
 
 | | |
@@ -37,7 +53,7 @@ Validation checklist 1–10 passed; frozen contracts unchanged; no ADR; no drift
 | Completed | 2026-07-21 |
 | Scope | Deterministic portfolio state management, holdings, cash allocation, reserved capital, closed positions, and append-only history; state tracking only |
 | Tests | 512 passed / 0 failed (18 new) |
-| Status | **Awaiting owner approval** — P5.2 (Capital Allocation Engine) blocked until approved |
+| Status | **APPROVED** — Principal Engineer review passed |
 | Branch | main |
 
 Built the Portfolio Engine (`src/athena/portfolio/`), which answers one question: "Given ATHENA's completed investment decisions, what should the portfolio currently own?" `PortfolioEngine` manages portfolio state, active holdings, available cash, reserved capital, realized/closed positions, and append-only history. It **records state only**: it performs no market analysis, no position sizing calculations, no risk limit checks, and no order execution; it consumes completed `Decision` artifacts produced by the operational pipeline and maintains deterministic portfolio ledger state.

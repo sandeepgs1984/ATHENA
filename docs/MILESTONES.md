@@ -65,8 +65,8 @@ Manages capital responsibly; consumes completed Decision artifacts produced by t
 
 | Milestone | Scope | Status |
 |---|---|---|
-| **P5.1** Portfolio Engine | Deterministic portfolio state, holdings, cash allocation, reserved capital, closed positions | In review |
-| P5.2 Capital Allocation Engine | Capital allocation and strategy/sector limits | Blocked on P5.1 |
+| **P5.1** Portfolio Engine | Deterministic portfolio state, holdings, cash allocation, reserved capital, closed positions | ✅ Approved |
+| **P5.2** Capital Allocation Engine | Capital allocation policy and reserve floor enforcement | In review |
 | P5.3 Position Sizing Engine | Risk-adjusted position sizing rules | Blocked on P5.2 |
 | P5.4 Order Planning Engine | Execution plan generation from decisions & sizing | Blocked on P5.3 |
 | P5.5 Broker Abstraction Layer | Abstract broker interface & connection validation | Blocked on P5.4 |

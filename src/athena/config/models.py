@@ -777,6 +777,32 @@ class PortfolioConfig(_Strict):
         return v
 
 
+class AllocationModel(str, Enum):
+    FIXED_AMOUNT = "FIXED_AMOUNT"
+    FIXED_PERCENTAGE = "FIXED_PERCENTAGE"
+    EQUAL_WEIGHT = "EQUAL_WEIGHT"
+
+
+class AllocationConfig(_Strict):
+    """Capital Allocation Engine configuration (P5.2). Allocation policy only —
+    no position sizing, no order execution."""
+
+    default_model: AllocationModel = AllocationModel.FIXED_PERCENTAGE
+    fixed_amount: Decimal = Decimal("100000.00")
+    fixed_percentage: Decimal = Decimal("10.0")
+    max_opportunities: int = 5
+    min_cash_reserve_pct: Decimal = Decimal("20.0")
+    record_history: bool = True
+
+    @field_validator("fixed_amount", "fixed_percentage", "min_cash_reserve_pct")
+    @classmethod
+    def _positive_decimal(cls, v: Decimal) -> Decimal:
+        if v < Decimal("0"):
+            raise ValueError("Decimal allocation values must be >= 0")
+        return v
+
+
+
 
 class Holiday(_Strict):
     date: str

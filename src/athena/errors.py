@@ -51,3 +51,8 @@ class WorkflowError(AthenaError):
 class PortfolioError(AthenaError):
     """Invalid portfolio operation or state constraint violation. Policy: fail loudly."""
 
+
+class AllocationError(AthenaError):
+    """Invalid capital allocation policy, constraint, or state violation. Policy: fail loudly."""
+
+

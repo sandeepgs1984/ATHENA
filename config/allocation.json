@@ -1,0 +1,12 @@
+{
+  "_meta": {
+    "layer": 5,
+    "description": "Capital Allocation Engine configuration (P5.2). Allocation policy only — no position sizing, no order execution."
+  },
+  "default_model": "FIXED_PERCENTAGE",
+  "fixed_amount": "100000.00",
+  "fixed_percentage": "10.0",
+  "max_opportunities": 5,
+  "min_cash_reserve_pct": "20.0",
+  "record_history": true
+}
