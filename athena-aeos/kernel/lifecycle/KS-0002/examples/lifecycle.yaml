@@ -1,0 +1,10 @@
+identity:
+  uri: aeos://kernel/services/KS-0002
+
+lifecycle:
+  state: Review
+  previousState: Proposed
+  changedAt: 2026-07-21T09:00:00Z
+  changedBy: Architecture Board
+  approvedBy: Chief Systems Architect
+  reason: Initial architectural review completed.
