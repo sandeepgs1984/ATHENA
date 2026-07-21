@@ -8,21 +8,19 @@ status updated on approval.
 
 ## Phase 7 — Production Orchestration & Scheduling (in progress)
 
-### P7.1 — Generic Pipeline Infrastructure
+### P7.3 — Intelligence Pipeline Registration
 
 | | |
 |---|---|
 | Completed | 2026-07-21 |
-| Scope | Domain-agnostic pipeline execution framework: stage-based orchestration, typed execution context, composable retry/fallback/timeout policies, deterministic structured execution record |
-| Tests | 665 passed / 0 failed (10 new) |
+| Scope | Wire six presentation/intelligence stage adapters into a validated, declarative `PipelineDefinition`; model topology as four independent producer roots, Timeline as intermediate aggregator, and Export as terminal aggregator |
+| Tests | 693 passed / 0 failed (21 new) |
 | Status | **Awaiting owner approval** |
 | Branch | main |
 
-Built the Generic Pipeline Infrastructure (`src/athena/orchestration/`). `PipelineExecutor` performs topological sort of `PipelineStage` dependencies, gates downstream stages on upstream success (propagates `SKIPPED` through dependents of failed stages), evaluates configurable `RetryPolicy` (max attempts + delay), invokes an optional `fallback_handler` on exhaustion, enforces `timeout_seconds` per stage, and accumulates all outcomes into an immutable `PipelineResult`. All data types are `frozen=True, slots=True`. The framework is entirely domain-independent — zero imports from any ATHENA business module.
+Built ATHENA's second production pipeline. `create_intelligence_pipeline()` returns an immutable `PipelineDefinition` with six stages: four independent roots (`ReportingStage`, `ExplainabilityStage`, `DashboardStage`, `MonitoringStage`), one intermediate aggregator (`TimelineStage` depending on the four roots), and one terminal aggregator (`ExportStage` depending on all five upstream stages). `validate_intelligence_pipeline()` enforces the correct topological shape, stage count (6), and expected stage IDs. The explicit execution-artifact input contract is defined by `INTELLIGENCE_PIPELINE_REQUIRED_INPUTS` and `INTELLIGENCE_PIPELINE_OPTIONAL_INPUTS` to prevent implicit runtime assumptions. `IntelligenceArtifactKey` and `IntelligenceStageId` enums eliminate all raw string keys in context propagation. Each stage adapter wraps its engine internally with no concrete engine injection at builder level.
 
-**Phase 6 engine bug fixes (identified during P7.1 full-suite self-validation):** Seventeen stale field-name references in Phase 6 presentation/analytics engines (dashboard, explainability, timeline, monitoring, reporting, analytics/portfolio) were corrected against the actual `PortfolioSnapshot` and `AllocationPlanSummary` contracts. NAV formula in `analytics/portfolio/engine.py` corrected from `total_cash + gross_exp` (double-counted) to `available_cash + reserved_cash + gross_exp`. Two test files corrected (`test_portfolio_analytics.py` — wrong kwarg names and monotonic timestamp; `test_workspace.py` — fixture omitted `schedule_execution`/`workflow` sentinels). No domain models, frozen contracts, or business logic were changed.
-
-Files created: `src/athena/orchestration/{__init__,models,engine}.py`, `config/pipeline.json`, `tests/runtime/test_orchestration.py`. Files modified (bug fixes only): `src/athena/reporting/engine.py`, `src/athena/dashboard/engine.py`, `src/athena/explainability/engine.py`, `src/athena/timeline/engine.py`, `src/athena/monitoring/engine.py`, `src/athena/analytics/portfolio/engine.py`, `tests/runtime/test_portfolio_analytics.py`, `tests/runtime/test_workspace.py`. Public APIs added: `PipelineStage`, `PipelineContext`, `StageResult`, `PipelineResult`, `RetryPolicy`, `PipelineExecutor`. 10 new tests: single-stage execution, dependency ordering, skip propagation, retry with success, retry exhaustion + fallback, timeout enforcement, deterministic independent ordering, deterministic replay, immutable outputs, config validation. No ADR; no drift; no tech debt. Validation checklist 1–10 passed; all 665 suite tests pass.
+Files created: `src/athena/orchestration/pipelines/intelligence.py`, `src/athena/orchestration/stages/{reporting,explainability,dashboard,monitoring,timeline,export}.py`, `tests/runtime/test_intelligence_pipeline.py`. Files modified: `src/athena/orchestration/pipelines/keys.py`, `src/athena/orchestration/pipelines/__init__.py`, `src/athena/orchestration/stages/__init__.py`, `src/athena/orchestration/__init__.py`. Public APIs added: `IntelligenceArtifactKey`, `IntelligenceStageId`, `INTELLIGENCE_PIPELINE_REQUIRED_INPUTS`, `INTELLIGENCE_PIPELINE_OPTIONAL_INPUTS`, `create_intelligence_pipeline`, `validate_intelligence_pipeline`, and all six stage classes. 21 new tests: registration, topology validation, stage count, roots, validators, stage execution, failure isolation, and deterministic replayability. No ADR; no drift; no tech debt. Validation checklist 1–10 passed; all 693 suite tests pass.
 
 ---
 
@@ -33,12 +31,30 @@ Files created: `src/athena/orchestration/{__init__,models,engine}.py`, `config/p
 | Completed | 2026-07-21 |
 | Scope | Wire all eight execution-domain stage adapters into a validated, declarative `PipelineDefinition` using the P7.1 generic orchestration framework; typed artifact key model replaces all string-based context access |
 | Tests | 672 passed / 0 failed (7 new) |
-| Status | **Awaiting owner approval** |
+| Status | **APPROVED** — closes P7.2 (Principal Engineer review passed) |
 | Branch | main |
 
 Built ATHENA's first production pipeline. `create_execution_pipeline()` returns an immutable `PipelineDefinition` (not a live executor) with eight `PipelineStage` adapters wired in correct topological order: two independent root stages (`PortfolioSnapshotStage`, `DecisionsLoadStage`) followed by `AllocationStage → SizingStage → OrderPlanningStage → BrokerTranslationStage → OrderLifecycleStage → PortfolioAnalyticsStage`. Each stage adapter owns its own engine dependencies and writes a typed `ExecutionArtifactKey` value into the context; no concrete engines are injected at the builder level. `validate_pipeline_definition()` asserts stage count, dependency integrity, key-to-stage consistency, and dual-root topology. `ExecutionArtifactKey` and `ExecutionStageId` enums replace all string-based context access, satisfying the typed key model requirement from the architecture review. Pipeline topology is immutable in code; operational parameters (timeout, retries) remain configurable via `PipelineConfig`. The dual-root design preserves future parallel execution of the two root stages without any structural change.
 
 Files created: `src/athena/orchestration/pipelines/{__init__,keys,execution}.py`, `src/athena/orchestration/stages/{__init__,portfolio_snapshot,decisions,allocation,sizing,order_planning,broker_translation,lifecycle,analytics}.py`, `tests/runtime/test_execution_pipeline.py`. Files modified: `src/athena/orchestration/__init__.py` (exported new APIs). Public APIs added: `ExecutionArtifactKey`, `ExecutionStageId`, `create_execution_pipeline`, `validate_pipeline_definition`, and all eight stage classes. 7 new tests: definition type, stage count, dual independent roots, validator passes, stage execution artifact, failure isolation, deterministic replayability. Fixed 4 E501 linter warnings in stage success-message strings. No ADR; no drift; no tech debt. Validation checklist 1–10 passed; all 672 suite tests pass.
+
+---
+
+### P7.1 — Generic Pipeline Infrastructure
+
+| | |
+|---|---|
+| Completed | 2026-07-21 |
+| Scope | Domain-agnostic pipeline execution framework: stage-based orchestration, typed execution context, composable retry/fallback/timeout policies, deterministic structured execution record |
+| Tests | 665 passed / 0 failed (10 new) |
+| Status | **APPROVED** — closes P7.1 (Principal Engineer review passed) |
+| Branch | main |
+
+Built the Generic Pipeline Infrastructure (`src/athena/orchestration/`). `PipelineExecutor` performs topological sort of `PipelineStage` dependencies, gates downstream stages on upstream success (propagates `SKIPPED` through dependents of failed stages), evaluates configurable `RetryPolicy` (max attempts + delay), invokes an optional `fallback_handler` on exhaustion, enforces `timeout_seconds` per stage, and accumulates all outcomes into an immutable `PipelineResult`. All data types are `frozen=True, slots=True`. The framework is entirely domain-independent — zero imports from any ATHENA business module.
+
+**Phase 6 engine bug fixes (identified during P7.1 full-suite self-validation):** Seventeen stale field-name references in Phase 6 presentation/analytics engines (dashboard, explainability, timeline, monitoring, reporting, analytics/portfolio) were corrected against the actual `PortfolioSnapshot` and `AllocationPlanSummary` contracts. NAV formula in `analytics/portfolio/engine.py` corrected from `total_cash + gross_exp` (double-counted) to `available_cash + reserved_cash + gross_exp`. Two test files corrected (`test_portfolio_analytics.py` — wrong kwarg names and monotonic timestamp; `test_workspace.py` — fixture omitted `schedule_execution`/`workflow` sentinels). No domain models, frozen contracts, or business logic were changed.
+
+Files created: `src/athena/orchestration/{__init__,models,engine}.py`, `config/pipeline.json`, `tests/runtime/test_orchestration.py`. Files modified (bug fixes only): `src/athena/reporting/engine.py`, `src/athena/dashboard/engine.py`, `src/athena/explainability/engine.py`, `src/athena/timeline/engine.py`, `src/athena/monitoring/engine.py`, `src/athena/analytics/portfolio/engine.py`, `tests/runtime/test_portfolio_analytics.py`, `tests/runtime/test_workspace.py`. Public APIs added: `PipelineStage`, `PipelineContext`, `StageResult`, `PipelineResult`, `RetryPolicy`, `PipelineExecutor`. 10 new tests: single-stage execution, dependency ordering, skip propagation, retry with success, retry exhaustion + fallback, timeout enforcement, deterministic independent ordering, deterministic replay, immutable outputs, config validation. No ADR; no drift; no tech debt. Validation checklist 1–10 passed; all 665 suite tests pass.
 
 ---
 

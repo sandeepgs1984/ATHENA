@@ -1,4 +1,4 @@
-"""Typed keys for ATHENA execution pipeline artifacts and stage identifiers (P7.2).
+"""Typed keys for ATHENA pipeline artifacts and stage identifiers (P7.2, P7.3).
 
 Provides strongly typed enums replacing raw string constants in context propagation
 and stage dependency definition.
@@ -32,3 +32,25 @@ class ExecutionStageId(str, Enum):
     BROKER_TRANSLATION = "stage_broker_translation"
     ORDER_LIFECYCLE = "stage_order_lifecycle"
     PORTFOLIO_ANALYTICS = "stage_portfolio_analytics"
+
+
+class IntelligenceArtifactKey(str, Enum):
+    """Strongly typed keys for context data artifacts passed between intelligence stages."""
+
+    REPORTS = "intelligence.reports"
+    EXPLANATION_SNAPSHOT = "intelligence.explanation_snapshot"
+    DASHBOARD_SNAPSHOT = "intelligence.dashboard_snapshot"
+    MONITORING_SNAPSHOT = "intelligence.monitoring_snapshot"
+    TIMELINE_SNAPSHOT = "intelligence.timeline_snapshot"
+    EXPORT_SNAPSHOT = "intelligence.export_snapshot"
+
+
+class IntelligenceStageId(str, Enum):
+    """Strongly typed stage identifiers for intelligence pipeline stages."""
+
+    REPORTING = "stage_intelligence_reporting"
+    EXPLAINABILITY = "stage_intelligence_explainability"
+    DASHBOARD = "stage_intelligence_dashboard"
+    MONITORING = "stage_intelligence_monitoring"
+    TIMELINE = "stage_intelligence_timeline"
+    EXPORT = "stage_intelligence_export"

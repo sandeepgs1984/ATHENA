@@ -1,7 +1,8 @@
-"""Pipeline Infrastructure & Execution Registration package (P7.1, P7.2).
+"""Pipeline Infrastructure, Execution Registration & Intelligence Registration package (P7.1, P7.2, P7.3).
 
 Provides domain-agnostic stage protocols, lightweight immutable context propagation,
-pipeline definitions, execution runners, and execution pipeline registration.
+pipeline definitions, execution runners, execution pipeline registration, and
+intelligence pipeline registration.
 """
 
 from athena.orchestration.engine import PipelineRunner
@@ -18,28 +19,48 @@ from athena.orchestration.models import (
     StageStatus,
 )
 from athena.orchestration.pipelines import (
+    INTELLIGENCE_PIPELINE_OPTIONAL_INPUTS,
+    INTELLIGENCE_PIPELINE_REQUIRED_INPUTS,
     ExecutionArtifactKey,
     ExecutionStageId,
+    IntelligenceArtifactKey,
+    IntelligenceStageId,
     create_execution_pipeline,
+    create_intelligence_pipeline,
+    validate_intelligence_pipeline,
     validate_pipeline_definition,
 )
 from athena.orchestration.stages import (
     BrokerTranslationStage,
     CapitalAllocationStage,
+    DashboardStage,
     DecisionsLoadStage,
+    ExplainabilityStage,
+    ExportStage,
+    MonitoringStage,
     OrderLifecycleStage,
     OrderPlanningStage,
     PortfolioAnalyticsStage,
     PortfolioSnapshotStage,
     PositionSizingStage,
+    ReportingStage,
+    TimelineStage,
 )
 
 __all__ = [
+    "INTELLIGENCE_PIPELINE_OPTIONAL_INPUTS",
+    "INTELLIGENCE_PIPELINE_REQUIRED_INPUTS",
     "BrokerTranslationStage",
     "CapitalAllocationStage",
+    "DashboardStage",
     "DecisionsLoadStage",
     "ExecutionArtifactKey",
     "ExecutionStageId",
+    "ExplainabilityStage",
+    "ExportStage",
+    "IntelligenceArtifactKey",
+    "IntelligenceStageId",
+    "MonitoringStage",
     "OrderLifecycleStage",
     "OrderPlanningStage",
     "PipelineContext",
@@ -53,9 +74,13 @@ __all__ = [
     "PortfolioAnalyticsStage",
     "PortfolioSnapshotStage",
     "PositionSizingStage",
+    "ReportingStage",
     "StageExecutionResult",
     "StageResult",
     "StageStatus",
+    "TimelineStage",
     "create_execution_pipeline",
+    "create_intelligence_pipeline",
+    "validate_intelligence_pipeline",
     "validate_pipeline_definition",
 ]
