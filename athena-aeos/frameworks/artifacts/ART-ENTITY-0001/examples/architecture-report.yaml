@@ -1,0 +1,16 @@
+artifact:
+  extends: MM-0001
+
+  id: ART-0001
+
+  name: Architecture Review Report
+
+  artifactType: Document
+
+  contentFormat: Markdown
+
+  producingWorkflow: WF-0001
+
+  producingCapability: CAP-0001
+
+  publicationStatus: Published

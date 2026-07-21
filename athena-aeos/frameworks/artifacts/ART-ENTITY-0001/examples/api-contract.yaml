@@ -1,0 +1,16 @@
+artifact:
+  extends: MM-0001
+
+  id: ART-0002
+
+  name: API Contract
+
+  artifactType: API Contract
+
+  contentFormat: OpenAPI
+
+  producingWorkflow: WF-0002
+
+  producingCapability: CAP-0007
+
+  publicationStatus: Approved
