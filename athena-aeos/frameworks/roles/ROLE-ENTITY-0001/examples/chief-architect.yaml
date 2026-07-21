@@ -1,0 +1,23 @@
+role:
+
+  id: ROLE-0001
+
+  name: Chief Systems Architect
+
+  category: Architecture
+
+  responsibilities:
+
+    - Define platform architecture
+    - Review specifications
+    - Approve architecture
+
+  authorities:
+
+    - Kernel
+    - Frameworks
+    - Governance
+
+  lifecycle:
+
+    state: Active

@@ -1,0 +1,17 @@
+role:
+
+  id: ROLE-0002
+
+  name: Senior Software Engineer
+
+  category: Engineering
+
+  responsibilities:
+
+    - Implement capabilities
+    - Review code
+    - Maintain services
+
+  lifecycle:
+
+    state: Active
