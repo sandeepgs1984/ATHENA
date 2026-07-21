@@ -8,6 +8,28 @@ status updated on approval.
 
 ## Phase 8 -- Application Platform (in progress)
 
+### P8.3 -- Core Platform APIs
+
+| | |
+|---|---|
+| Completed | 2026-07-21 |
+| Scope | Expose trading decisions, portfolios, execution run logs, scheduling history, and workspace snapshots under secure, authenticated, role-based controls. |
+| Tests | 785 passed / 0 failed (14 new) |
+| Status | **Awaiting owner approval** |
+| Branch | main |
+
+Implemented core intelligence and operational API resources under versioned REST paths `/api/v1/`.
+- Domain lookup exceptions mapped to RFC 9457 HTTP Problem Details via `AthenaExceptionMapper` (e.g. `DecisionNotFoundError`, `PortfolioUnavailableError`).
+- Composed, generic DTO structures defined under `athena.api.v1.dtos.base` (including `CollectionResult`, `QuerySpecification`, `ResourceReference`).
+- Decisions, Portfolios, Pipelines, Scheduler, and Workspace services map internal domain objects to clean public DTOs.
+- Secured all routes with `RequirePermission(Permission.READ)` dependency.
+- Collection list endpoints support query-based specification parsing for pagination, sorting, and filtering.
+- Consolidated DTO optimization ensures workspace snapshots list returns lightweight metadata summaries while GET details returns full entries.
+
+Files created: `tests/api/v1/test_core_apis.py`. Files modified: `src/athena/api/exceptions.py`, `src/athena/api/errors.py`, `src/athena/api/v1/dtos/__init__.py`, `src/athena/api/v1/routers/decisions.py`, `src/athena/api/v1/routers/portfolio.py`, `src/athena/api/v1/routers/pipelines.py`, `src/athena/api/v1/routers/scheduler.py`, `src/athena/api/v1/routers/workspace.py`, `src/athena/api/v1/services/decisions_service.py`. Public APIs added: `GET /api/v1/decisions`, `GET /api/v1/decisions/{id}`, `GET /api/v1/portfolio`, `GET /api/v1/pipelines/runs`, `GET /api/v1/pipelines/runs/{id}`, `GET /api/v1/scheduler/history`, `GET /api/v1/scheduler/history/{id}`, `GET /api/v1/workspace/snapshots`, `GET /api/v1/workspace/snapshots/{id}`. 14 new integration tests covering listing pagination, specs, filtering, details lookup, error status, and permission/RBAC bounds. All 10 validation checklist items passed; 785 total suite tests pass clean.
+
+---
+
 ### P8.2 -- Authentication & RBAC
 
 | | |

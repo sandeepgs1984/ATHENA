@@ -15,6 +15,15 @@ import logging
 from dataclasses import dataclass, field
 from typing import ClassVar
 
+from athena.api.exceptions import (
+    APIResourceError,
+    DecisionNotFoundError,
+    PipelineRunNotFoundError,
+    PortfolioUnavailableError,
+    ResourceNotFoundError,
+    SchedulerRunNotFoundError,
+    WorkspaceSnapshotNotFoundError,
+)
 from athena.api.security.exceptions import (
     AuthenticationError,
     ExpiredTokenError,
@@ -113,6 +122,14 @@ class AthenaExceptionMapper:
         ExceptionMapping(PortfolioAnalyticsError, 500, "analytics-error",  "Analytics Error"),
         ExceptionMapping(ReportingError,        500, "reporting-error",     "Reporting Error"),
         ExceptionMapping(MonitoringError,       500, "monitoring-error",    "Monitoring Error"),
+        # Resource Exceptions (P8.3)
+        ExceptionMapping(DecisionNotFoundError, 404, "decision-not-found", "Decision Not Found"),
+        ExceptionMapping(PipelineRunNotFoundError, 404, "pipeline-run-not-found", "Pipeline Run Not Found"),
+        ExceptionMapping(WorkspaceSnapshotNotFoundError, 404, "workspace-not-found", "Workspace Snapshot Not Found"),
+        ExceptionMapping(SchedulerRunNotFoundError, 404, "scheduler-run-not-found", "Scheduler Run Not Found"),
+        ExceptionMapping(ResourceNotFoundError, 404, "resource-not-found", "Resource Not Found"),
+        ExceptionMapping(PortfolioUnavailableError, 503, "portfolio-unavailable", "Portfolio Unavailable"),
+        ExceptionMapping(APIResourceError, 400, "api-resource-error", "API Resource Error"),
         # Security Errors (P8.2)
         ExceptionMapping(InvalidCredentialsError, 401, "invalid-credentials", "Invalid Credentials"),
         ExceptionMapping(ExpiredTokenError,       401, "expired-token",       "Token Expired"),

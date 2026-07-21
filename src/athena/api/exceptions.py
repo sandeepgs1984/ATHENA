@@ -1,0 +1,36 @@
+"""API Resource Exceptions (P8.3).
+
+Defines exceptions for resource lookups and platform states returned to callers.
+"""
+
+from __future__ import annotations
+
+from athena.errors import AthenaError
+
+
+class APIResourceError(AthenaError):
+    """Base exception for all API resource errors."""
+
+
+class ResourceNotFoundError(APIResourceError):
+    """Base exception for all HTTP 404 resource not found errors."""
+
+
+class DecisionNotFoundError(ResourceNotFoundError):
+    """Specific decision not found."""
+
+
+class PipelineRunNotFoundError(ResourceNotFoundError):
+    """Specific pipeline execution run not found."""
+
+
+class WorkspaceSnapshotNotFoundError(ResourceNotFoundError):
+    """Specific workspace snapshot not found."""
+
+
+class SchedulerRunNotFoundError(ResourceNotFoundError):
+    """Specific scheduler history execution run not found."""
+
+
+class PortfolioUnavailableError(APIResourceError):
+    """Current portfolio state is unconstructed or unavailable (HTTP 503)."""

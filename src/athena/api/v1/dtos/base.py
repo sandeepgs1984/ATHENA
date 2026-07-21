@@ -10,12 +10,22 @@ query pattern for all future endpoint implementations.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Generic, Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
 T = TypeVar("T")
+
+class ResourceReference(BaseModel):
+    """Standardized reference payload link replacing raw string identifiers."""
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    resource_type: str
+    display_name: str | None = None
 
 
 class ResponseMeta(BaseModel):
@@ -106,3 +116,39 @@ class FilterParams(BaseModel):
     status: str | None = Field(default=None, description="Status filter")
     from_date: datetime | None = Field(default=None, description="Inclusive range start (tz-aware)")
     to_date: datetime | None = Field(default=None, description="Inclusive range end (tz-aware)")
+
+
+F = TypeVar("F", bound=FilterParams)
+
+
+@dataclass(frozen=True, slots=True)
+class CollectionResult(Generic[T]):
+    """Generic immutable container returned by service layer for collections."""
+
+    items: tuple[T, ...]
+    total_count: int
+    page: int
+    page_size: int
+
+    @property
+    def total_pages(self) -> int:
+        if self.page_size <= 0:
+            return 0
+        return (self.total_count + self.page_size - 1) // self.page_size
+
+    @property
+    def has_next(self) -> bool:
+        return self.page < self.total_pages
+
+    @property
+    def has_previous(self) -> bool:
+        return self.page > 1
+
+
+@dataclass(frozen=True, slots=True)
+class QuerySpecification(Generic[F]):
+    """Bundles filters, sorting parameters, and pagination specs."""
+
+    filters: F
+    sort: SortParams
+    pagination: PaginationParams
