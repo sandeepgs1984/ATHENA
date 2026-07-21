@@ -26,6 +26,7 @@ from athena.config.models import (
     FileProviderConfig,
     HolidaysFile,
     MarketHealthConfig,
+    PortfolioConfig,
     RiskAssessmentConfig,
     SchedulingConfig,
     ScoringConfig,
@@ -247,6 +248,16 @@ def load_scheduling_config(config_dir: Path) -> SchedulingConfig:
     path = Path(config_dir) / "scheduling.json"
     try:
         return SchedulingConfig.model_validate(_read_json(path))
+    except ValidationError as exc:
+        raise ConfigError(_validation_message(str(path), exc)) from exc
+
+
+def load_portfolio_config(config_dir: Path) -> PortfolioConfig:
+    """Load + validate the Portfolio Engine settings (config/portfolio.json)."""
+
+    path = Path(config_dir) / "portfolio.json"
+    try:
+        return PortfolioConfig.model_validate(_read_json(path))
     except ValidationError as exc:
         raise ConfigError(_validation_message(str(path), exc)) from exc
 

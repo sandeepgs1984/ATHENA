@@ -28,7 +28,27 @@ Validation checklist 1–10 passed; frozen contracts unchanged; no ADR; no drift
 
 ---
 
-## Phase 4 — Orchestration & Operational Intelligence (in progress)
+## Phase 5 — Portfolio & Execution Platform (in progress)
+
+### P5.1 — Portfolio Engine
+
+| | |
+|---|---|
+| Completed | 2026-07-21 |
+| Scope | Deterministic portfolio state management, holdings, cash allocation, reserved capital, closed positions, and append-only history; state tracking only |
+| Tests | 512 passed / 0 failed (18 new) |
+| Status | **Awaiting owner approval** — P5.2 (Capital Allocation Engine) blocked until approved |
+| Branch | main |
+
+Built the Portfolio Engine (`src/athena/portfolio/`), which answers one question: "Given ATHENA's completed investment decisions, what should the portfolio currently own?" `PortfolioEngine` manages portfolio state, active holdings, available cash, reserved capital, realized/closed positions, and append-only history. It **records state only**: it performs no market analysis, no position sizing calculations, no risk limit checks, and no order execution; it consumes completed `Decision` artifacts produced by the operational pipeline and maintains deterministic portfolio ledger state.
+
+State operations: `open_position` (creates holding, allocates cash), `increase_position` (recomputes quantity & average price), `reduce_position` (reduces holding quantity, releases cost & records proceeds), `close_position` (removes holding, records immutable `ClosedPosition`, releases cash), `hold_position` (updates last-seen timestamp), `reserve_capital` / `release_capital` (allocates/frees reserved cash), and `apply_decision` (convenience mapper dispatching `open`, `increase`, `reduce`, `close`, or `hold` based on `DecisionType` and existing holdings). All operations return immutable `PortfolioSnapshot` objects referencing originating `decision_id`, `strategy`, `watchlist`, and `schedule_execution_id`. `PortfolioHistory` is **append-only** (`record()` returns a new history). Cash accounting enforces strict invariants (`total_cash == available + allocated + reserved`). Backdated operations, duplicate holdings on open, over-reduction, and cash deficits fail loudly with `PortfolioError`.
+
+Files created: `src/athena/portfolio/{__init__,models,engine}.py`, `config/portfolio.json`, `tests/runtime/test_portfolio.py`. Files modified: `src/athena/errors.py` (+`PortfolioError`), `src/athena/config/{models,loader,__init__}.py` (+`PortfolioConfig`, `load_portfolio_config`, exports). No analytical engine, scheduling framework, scanner, watchlist manager, strategy framework, backtesting engine, reporting & analytics engine, workflow engine, or frozen-domain type touched. Public APIs added: `PortfolioEngine`, `Portfolio`, `PortfolioSnapshot`, `Holding`, `ClosedPosition`, `CashBalance`, `ReservedCapital`, `PortfolioReferences`, `PortfolioSummary`, `PortfolioHistory`, `PortfolioConfig`, `load_portfolio_config`. 18 new tests: open/increase/reduce/close/hold operations, capital reservation & release, `apply_decision` with TRADE & FULL_EXIT decisions, duplicate holding protection, insufficient cash handling, backdated timestamp rejection, deterministic replay (`to_dict` and `to_json` equality), immutable snapshots (`FrozenInstanceError`), append-only history, config validation (negative cash rejection, production config loading), and an **end-to-end integration test** consuming the completed operational pipeline via `SchedulingFramework`. ruff clean; no ADR; no drift; no tech debt. Validation checklist 1–10 passed; all prior engines and operational components unchanged.
+
+---
+
+## Phase 4 — Orchestration & Operational Intelligence (APPROVED)
 
 ### M4.7 — Scheduling Framework (completes Phase 4)
 
@@ -37,7 +57,7 @@ Validation checklist 1–10 passed; frozen contracts unchanged; no ADR; no drift
 | Completed | 2026-07-21 |
 | Scope | Deterministic execution coordination over the completed pipeline; schedules and records when ATHENA runs without changing how ATHENA analyzes markets |
 | Tests | 494 passed / 0 failed (21 new) |
-| Status | **Awaiting owner approval** — completes Phase 4 |
+| Status | **APPROVED** — Principal Engineer review passed (completes Phase 4) |
 | Branch | main |
 
 Built the Scheduling Framework (`src/athena/scheduling/`), which answers one question: "When should ATHENA execute its existing operational pipeline?" `SchedulingFramework` coordinates the execution of existing operational components — the M4.1 `WorkflowEngine`, M4.2 `DailyMarketScanner`, M4.3 `WatchlistManager`, M4.4 `StrategyFramework`, M4.5 `BacktestingEngine`, and M4.6 `ReportingAnalyticsEngine`. It **coordinates execution only**: it invokes no analytical engine directly, evaluates no strategy rules, derives no market intelligence, and modifies no completed decision.

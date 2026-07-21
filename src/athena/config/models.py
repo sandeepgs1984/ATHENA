@@ -760,6 +760,24 @@ class SchedulingConfig(_Strict):
     record_history: bool = True
 
 
+class PortfolioConfig(_Strict):
+    """Portfolio Engine configuration (P5.1). State tracking only —
+    no market analysis, no position sizing, no order placement."""
+
+    initial_cash: Decimal = Decimal("1000000.00")
+    currency: str = "INR"
+    allow_short: bool = False
+    record_history: bool = True
+
+    @field_validator("initial_cash")
+    @classmethod
+    def _positive_cash(cls, v: Decimal) -> Decimal:
+        if v < Decimal("0"):
+            raise ValueError("initial_cash must be >= 0")
+        return v
+
+
+
 class Holiday(_Strict):
     date: str
     name: str

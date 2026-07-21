@@ -1,0 +1,10 @@
+{
+  "_meta": {
+    "layer": 5,
+    "description": "Portfolio Engine configuration (P5.1). State tracking only — no market analysis, no position sizing, no order placement."
+  },
+  "initial_cash": "1000000.00",
+  "currency": "INR",
+  "allow_short": false,
+  "record_history": true
+}

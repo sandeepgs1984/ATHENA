@@ -46,3 +46,8 @@ class RepositoryError(AthenaError):
 
 class WorkflowError(AthenaError):
     """Invalid workflow definition (missing dependency, cycle, duplicate stage). Refuse to run."""
+
+
+class PortfolioError(AthenaError):
+    """Invalid portfolio operation or state constraint violation. Policy: fail loudly."""
+

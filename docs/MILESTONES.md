@@ -57,12 +57,25 @@ engine outputs only, modifies no analytical engine.
 | **M4.4** Strategy Framework | Deterministic strategies consuming DecisionReport | ✅ Approved |
 | **M4.5** Backtesting Engine | Historical replay through the full pipeline | ✅ Approved |
 | **M4.6** Reporting & Analytics | Daily/weekly/monthly summaries + statistics | ✅ Approved |
-| **M4.7** Scheduling Framework | Daily/weekly/manual/replay/batch job scheduling | In review |
+| **M4.7** Scheduling Framework | Daily/weekly/manual/replay/batch job scheduling | ✅ Approved |
 
-## Phases 5–7
+## Phase 5 — Portfolio & Execution Platform (AUTHORIZED)
 
-Phase 5 (Simulation & Replay), Phase 6 (Reporting & Dashboard), Phase 7
-(Production Readiness): each split into reviewable milestones at authorization.
+Manages capital responsibly; consumes completed Decision artifacts produced by the existing pipeline; performs no market analysis.
+
+| Milestone | Scope | Status |
+|---|---|---|
+| **P5.1** Portfolio Engine | Deterministic portfolio state, holdings, cash allocation, reserved capital, closed positions | In review |
+| P5.2 Capital Allocation Engine | Capital allocation and strategy/sector limits | Blocked on P5.1 |
+| P5.3 Position Sizing Engine | Risk-adjusted position sizing rules | Blocked on P5.2 |
+| P5.4 Order Planning Engine | Execution plan generation from decisions & sizing | Blocked on P5.3 |
+| P5.5 Broker Abstraction Layer | Abstract broker interface & connection validation | Blocked on P5.4 |
+| P5.6 Order Lifecycle Engine | Order tracking, fill reconciliation, state machine | Blocked on P5.5 |
+| P5.7 Portfolio Analytics & Performance | Realized P&L, performance metrics, portfolio statistics | Blocked on P5.6 |
+
+## Phases 6–7
+
+Phase 6 (Reporting & Dashboard), Phase 7 (Production Readiness): each split into reviewable milestones at authorization.
 
 ---
 
