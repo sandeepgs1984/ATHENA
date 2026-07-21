@@ -730,6 +730,29 @@ class BacktestConfig(_Strict):
     carry_watchlist: bool = True
 
 
+class AnalyticsConfig(_Strict):
+    """Reporting & Analytics configuration (M4.6). Presentation + aggregation only.
+
+    ``confidence_levels`` / ``risk_levels`` fix the display order of the
+    aggregated distributions; ``include_unknown`` controls whether the UNKNOWN
+    bucket is reported.
+    """
+
+    include_unknown: bool = True
+    confidence_levels: list[str] = Field(default_factory=lambda: ["LOW", "MEDIUM", "HIGH"])
+    risk_levels: list[str] = Field(default_factory=lambda: ["LOW", "MEDIUM", "HIGH"])
+
+    @field_validator("confidence_levels", "risk_levels")
+    @classmethod
+    def _non_empty_upper(cls, v: list[str]) -> list[str]:
+        if not v:
+            raise ValueError("level list must be non-empty")
+        bad = [x for x in v if x != x.upper() or not x]
+        if bad:
+            raise ValueError(f"levels must be non-empty upper-case: {bad}")
+        return v
+
+
 class Holiday(_Strict):
     date: str
     name: str

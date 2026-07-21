@@ -16,6 +16,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from athena.config.models import (
+    AnalyticsConfig,
     AthenaConfig,
     BacktestConfig,
     ConfidenceConfig,
@@ -225,6 +226,16 @@ def load_backtest_config(config_dir: Path) -> BacktestConfig:
     path = Path(config_dir) / "backtest.json"
     try:
         return BacktestConfig.model_validate(_read_json(path))
+    except ValidationError as exc:
+        raise ConfigError(_validation_message(str(path), exc)) from exc
+
+
+def load_analytics_config(config_dir: Path) -> AnalyticsConfig:
+    """Load + validate the Reporting & Analytics settings (config/analytics.json)."""
+
+    path = Path(config_dir) / "analytics.json"
+    try:
+        return AnalyticsConfig.model_validate(_read_json(path))
     except ValidationError as exc:
         raise ConfigError(_validation_message(str(path), exc)) from exc
 

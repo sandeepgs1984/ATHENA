@@ -1,0 +1,9 @@
+{
+  "_meta": {
+    "layer": 4,
+    "description": "Reporting & Analytics configuration (M4.6). Presentation + aggregation only over completed artifacts — no analytical engine execution, no new intelligence. confidence_levels/risk_levels set distribution display order; include_unknown toggles the UNKNOWN bucket."
+  },
+  "include_unknown": true,
+  "confidence_levels": ["LOW", "MEDIUM", "HIGH"],
+  "risk_levels": ["LOW", "MEDIUM", "HIGH"]
+}

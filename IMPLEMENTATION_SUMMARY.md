@@ -30,6 +30,22 @@ Validation checklist 1–10 passed; frozen contracts unchanged; no ADR; no drift
 
 ## Phase 4 — Orchestration & Operational Intelligence (in progress)
 
+### M4.6 — Reporting & Analytics
+
+| | |
+|---|---|
+| Completed | 2026-07-21 |
+| Scope | Deterministic operational summaries and analytical statistics aggregated from completed artifacts; presentation + aggregation only |
+| Tests | 473 passed / 0 failed (14 new) |
+| Status | **Awaiting owner approval** — M4.7 (Scheduling Framework) blocked until approved |
+| Branch | main |
+
+Built the Reporting & Analytics layer (`src/athena/analytics/`), which answers operational questions — "What happened today?", "How many instruments matched each strategy?", "How did decisions distribute across the universe?", "What activity occurred during replay?" — purely by aggregating completed artifacts from the M4.2 scanner, M4.3 watchlist manager, M4.4 strategy framework, and M4.5 backtester. `ReportingAnalyticsEngine` is **presentation + aggregation only**: it invokes no analytical engine, derives no new market intelligence, and modifies no completed decision. Every metric is a count or roll-up of an existing immutable artifact, and every report preserves references back to its sources.
+
+Two entry points: `daily_report(scan_report, *, as_of, watchlist=None, strategy_execution=None)` produces a `kind="daily"` `AnalyticsReport` embedding `DailyAnalytics` (decision distribution taken from the scan's own summary; scan success/fail/skip counts; confidence and risk **level distributions** aggregated from completed decision reports; optional `WatchlistAnalytics` and `StrategyAnalytics`); `backtest_report(run, *, as_of)` produces a `kind="replay"` report embedding `BacktestAnalytics` (step counts, replay coverage, decision distribution summed across every replayed scan, and per-strategy match/instrument roll-ups from the run's performance). Confidence/risk distributions honour config: `confidence_levels`/`risk_levels` fix display order and `include_unknown` toggles the UNKNOWN bucket. Determinism: all inputs are immutable, no clock is read (`as_of` injected), distributions are built in fixed config-driven order, and `to_json()` emits sorted-key output — identical inputs yield an identical report (verified). Empty inputs produce empty distributions, not errors.
+
+Files created: `src/athena/analytics/{__init__,models,engine}.py`, `config/analytics.json`, `tests/runtime/test_analytics.py`. Files modified: `src/athena/config/{models,loader,__init__}.py` (add `AnalyticsConfig`, `load_analytics_config`, exports). No analytical engine, scanner, watchlist manager, strategy framework, backtesting engine, workflow engine, or frozen-domain type touched. Public APIs added: `ReportingAnalyticsEngine`, `AnalyticsReport`, `DailyAnalytics`, `WatchlistAnalytics`, `StrategyAnalytics`, `BacktestAnalytics`, `AnalyticsSummary`, `AnalyticsConfig`, `load_analytics_config`. 14 new tests: decision/confidence/risk distributions, embedded watchlist+strategy analytics, skipped-count aggregation, include_unknown toggle, empty scan, deterministic replay, immutable report, sorted-JSON serialization, config validation (unknown-key rejection, lowercase-level rejection, production config loads, missing fails loudly), and a real **BacktestRun end-to-end** produced by the M4.5 chain. ruff clean; no ADR; no drift; no tech debt. Validation checklist 1–10 passed; scanner, watchlist manager, strategy framework, backtesting engine, workflow engine, and analytical engines all unchanged.
+
 ### M4.5 — Backtesting Engine
 
 | | |
@@ -37,7 +53,7 @@ Validation checklist 1–10 passed; frozen contracts unchanged; no ADR; no drift
 | Completed | 2026-07-21 |
 | Scope | Deterministic chronological replay of the existing operational pipeline across historical points, with no alternate analytical logic |
 | Tests | 459 passed / 0 failed (19 new) |
-| Status | **Awaiting owner approval** — M4.6 (Reporting & Analytics) blocked until approved |
+| Status | **APPROVED** — Principal Engineer review passed |
 | Branch | main |
 
 Built the Backtesting Engine (`src/athena/backtest/`), which answers one question: "How would ATHENA's completed analytical pipeline and strategy framework have behaved across historical market snapshots?" `BacktestingEngine.run(points, *, run_id=None)` replays a chronological sequence of caller-supplied `ReplayPoint`s (each a timezone-aware `as_of`, a universe, and the per-instrument pipeline builder for that date — identical in shape to what the live scanner consumes) through the **existing** operational components: the M4.2 `DailyMarketScanner`, M4.3 `WatchlistManager`, and M4.4 `StrategyFramework` (which in turn run the M4.1 `WorkflowEngine` and the analytical core). It **orchestrates only** — it introduces no alternate analytical logic, computes no market values, and replays the same deterministic pipeline used live; the analytical core stays the single source of truth. Out-of-scope items (portfolio valuation, P&L, sizing, brokerage/slippage/cost simulation, order execution) are deliberately absent.
