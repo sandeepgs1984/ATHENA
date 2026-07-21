@@ -584,6 +584,37 @@ class RiskAssessmentConfig(_Strict):
         return v
 
 
+class DecisionThresholdsCfg(_Strict):
+    min_composite_for_trade: int = Field(ge=0, le=100)
+    watch_composite: int = Field(ge=0, le=100)
+    min_confidence_for_trade: int = Field(ge=0, le=100)
+    max_risk_for_trade: int = Field(ge=0, le=100)
+    min_evidence_completeness: float = Field(ge=0, le=1)
+    market_floor: int = Field(ge=0, le=100)
+
+    @model_validator(mode="after")
+    def _ordered(self) -> DecisionThresholdsCfg:
+        if self.watch_composite > self.min_composite_for_trade:
+            raise ValueError(
+                f"watch_composite ({self.watch_composite}) must be <= "
+                f"min_composite_for_trade ({self.min_composite_for_trade})")
+        return self
+
+
+class DecisionPlanCfg(_Strict):
+    atr_stop_multiple: float = Field(gt=0)
+    atr_target_multiple: float = Field(gt=0)
+    default_units: int = Field(ge=1)
+    validity_hours: int = Field(ge=1)
+
+
+class DecisionConfig(_Strict):
+    """Decision Engine configuration (M3.6). Deterministic gate + policy thresholds."""
+
+    thresholds: DecisionThresholdsCfg
+    plan: DecisionPlanCfg
+
+
 class Holiday(_Strict):
     date: str
     name: str

@@ -40,8 +40,8 @@ Per the Phase 3 authorization the milestone set is:
 | **M3.2** Indicator Engine | Deterministic technical indicators (SMA/EMA/RSI/ATR/MACD/ADX/vol avgs) | ✅ Approved |
 | **M3.3** Scoring Engine | Transparent component scores from approved evidence/indicators | ✅ Approved |
 | **M3.4** Confidence Engine | Evidence reliability (completeness, agreement, freshness, contradictions) | ✅ Approved |
-| **M3.5** Risk Engine | Descriptive trading-risk assessment (volatility/liquidity/gap/event/concentration) | In review |
-| M3.6 Decision Engine | First explainable decisions from bundle+indicators+scores+confidence+risk | Blocked on M3.5 |
+| **M3.5** Risk Engine | Descriptive trading-risk assessment (volatility/liquidity/gap/event/concentration) | ✅ Approved |
+| **M3.6** Decision Engine | First explainable decisions from bundle+indicators+scores+confidence+risk | In review |
 | M3.7 Decision Trace & Reporting | Human + machine-readable decision reports | Blocked on M3.6 |
 
 ## Phases 4–7

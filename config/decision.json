@@ -1,0 +1,20 @@
+{
+  "_meta": {
+    "layer": 3,
+    "description": "Decision Engine configuration (M3.6). Deterministic gate + policy thresholds. Analytical trade plans only — no capital-based sizing."
+  },
+  "thresholds": {
+    "min_composite_for_trade": 60,
+    "watch_composite": 50,
+    "min_confidence_for_trade": 50,
+    "max_risk_for_trade": 60,
+    "min_evidence_completeness": 0.5,
+    "market_floor": 40
+  },
+  "plan": {
+    "atr_stop_multiple": 1.5,
+    "atr_target_multiple": 3.0,
+    "default_units": 1,
+    "validity_hours": 6
+  }
+}
