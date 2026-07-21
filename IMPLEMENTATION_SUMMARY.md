@@ -30,6 +30,22 @@ Validation checklist 1–10 passed; frozen contracts unchanged; no ADR; no drift
 
 ## Phase 5 — Portfolio & Execution Platform (in progress)
 
+### P5.5 — Broker Abstraction Layer
+
+| | |
+|---|---|
+| Completed | 2026-07-21 |
+| Scope | Canonical broker contracts, capability validation, and translation from broker-neutral execution plans into broker requests; contract definition only |
+| Tests | 561 passed / 0 failed (12 new) |
+| Status | **Awaiting owner approval** — P5.6 (Order Lifecycle Engine) blocked until approved |
+| Branch | main |
+
+Built the Broker Abstraction Layer (`src/athena/brokers/`), which answers one question: "How can ATHENA communicate with different brokers through a single canonical interface?" `BrokerManager` registers broker contract definitions (`BrokerDefinition`, `BrokerCapabilities`) and translates broker-neutral `ExecutionPlan`s into canonical `BrokerExecutionPlan`s containing `BrokerRequest`s. It **defines contracts and validates capabilities only**: it performs no network communication, no OAuth flows, no REST/WebSocket clients, and no live order submission.
+
+Capability validation & contract features: `BrokerCapabilities` enforces supported order types (`OrderType`), fractional trading support (`supports_fractional`), shorting support (`supports_shorting`), and supported time-in-force policies (`TimeInForce`: `DAY`, `IOC`, `FOK`, `GTC`). Translation operations: `translate_plan(execution_plan, broker_id=None, *, as_of, time_in_force=None)` validates broker availability and capabilities, mapping planned orders into canonical `BrokerRequest`s (`ACCEPTED`, `REJECTED_UNSUPPORTED_ORDER_TYPE`, `REJECTED_UNSUPPORTED_FRACTIONAL`, `SKIPPED_HOLD`); `create_mock_response` generates abstract `BrokerResponse` artifacts for contract testing. All outputs (`BrokerDefinition`, `BrokerCapabilities`, `BrokerRequest`, `BrokerResponse`, `BrokerExecutionPlan`, `BrokerSummary`, `BrokerHistory`) are immutable and preserve full `BrokerReferences` back to `execution_plan_id`, `position_sizing_plan_id`, `allocation_plan_id`, `portfolio_snapshot_id`, `decision_id`, `strategy`, `watchlist`, and `schedule_execution_id`.
+
+Files created: `src/athena/brokers/{__init__,models,engine}.py`, `config/brokers.json`, `tests/runtime/test_brokers.py`. Files modified: `src/athena/errors.py` (+`BrokerError`), `src/athena/config/{models,loader,__init__}.py` (+`BrokerConfig`, `TimeInForce`, `load_broker_config`, exports). No analytical engine, order planning engine, position sizing engine, capital allocation engine, portfolio engine, scheduling framework, scanner, watchlist manager, strategy framework, backtesting engine, reporting & analytics engine, workflow engine, or frozen-domain type touched. Public APIs added: `BrokerManager`, `BrokerDefinition`, `BrokerCapabilities`, `BrokerRequest`, `BrokerResponse`, `BrokerExecutionPlan`, `BrokerSummary`, `BrokerHistory`, `BrokerReferences`, `TimeInForce`, `BrokerConfig`, `load_broker_config`. 12 new tests: canonical translation, unsupported order type rejection, unsupported fractional quantity rejection, unsupported time-in-force error, mock response creation, unregistered & disabled broker handling, deterministic replay (`to_dict` & `to_json` equality), immutable outputs (`FrozenInstanceError`), append-only history, config validation (production config loading), and an **end-to-end integration test** consuming a real `ExecutionPlan` from `OrderPlanningEngine`. ruff clean; no ADR; no drift; no tech debt. Validation checklist 1–10 passed; all prior engines and operational components unchanged.
+
 ### P5.4 — Order Planning Engine
 
 | | |
@@ -37,7 +53,7 @@ Validation checklist 1–10 passed; frozen contracts unchanged; no ADR; no drift
 | Completed | 2026-07-21 |
 | Scope | Transforms position sizes into broker-neutral execution instructions and batches; execution plan generation only |
 | Tests | 549 passed / 0 failed (12 new) |
-| Status | **Awaiting owner approval** — P5.5 (Broker Abstraction Layer) blocked until approved |
+| Status | **APPROVED** — Principal Engineer review passed |
 | Branch | main |
 
 Built the Order Planning Engine (`src/athena/orders/`), which answers one question: "Given approved position sizes, what broker-neutral execution instructions should ATHENA prepare?" `OrderPlanningEngine` converts `PositionSizingPlan` outputs into broker-neutral `ExecutionPlan`s composed of `PlannedOrder`s grouped into `ExecutionBatch`es. It **prepares execution instructions only**: it performs no broker communication, no live order placement, no order fill tracking, and no market analysis.

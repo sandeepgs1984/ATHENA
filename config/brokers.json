@@ -1,0 +1,10 @@
+{
+  "_meta": {
+    "layer": 5,
+    "description": "Broker Abstraction Layer configuration (P5.5). Integration contracts and capability validation only — no live SDKs or network communication."
+  },
+  "default_broker_id": "paper_broker",
+  "default_time_in_force": "DAY",
+  "validate_capabilities": true,
+  "record_history": true
+}

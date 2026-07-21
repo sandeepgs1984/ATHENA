@@ -64,5 +64,10 @@ class OrderPlanningError(AthenaError):
     """Invalid order planning instruction, price, batching, or constraint violation. Policy: fail loudly."""
 
 
+class BrokerError(AthenaError):
+    """Invalid broker contract, capability violation, or translation failure. Policy: fail loudly."""
+
+
+
 
 

@@ -859,6 +859,24 @@ class OrderPlanningConfig(_Strict):
         return v
 
 
+class TimeInForce(str, Enum):
+    DAY = "DAY"
+    IOC = "IOC"
+    FOK = "FOK"
+    GTC = "GTC"
+
+
+class BrokerConfig(_Strict):
+    """Broker Abstraction Layer configuration (P5.5). Integration contract definition only —
+    no live SDKs, no network communication."""
+
+    default_broker_id: str = "paper_broker"
+    default_time_in_force: TimeInForce = TimeInForce.DAY
+    validate_capabilities: bool = True
+    record_history: bool = True
+
+
+
 
 
 

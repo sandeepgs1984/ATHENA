@@ -20,6 +20,7 @@ from athena.config.models import (
     AnalyticsConfig,
     AthenaConfig,
     BacktestConfig,
+    BrokerConfig,
     ConfidenceConfig,
     DecisionConfig,
     EventsFile,
@@ -291,6 +292,16 @@ def load_order_planning_config(config_dir: Path) -> OrderPlanningConfig:
     path = Path(config_dir) / "orders.json"
     try:
         return OrderPlanningConfig.model_validate(_read_json(path))
+    except ValidationError as exc:
+        raise ConfigError(_validation_message(str(path), exc)) from exc
+
+
+def load_broker_config(config_dir: Path) -> BrokerConfig:
+    """Load + validate the Broker Abstraction Layer settings (config/brokers.json)."""
+
+    path = Path(config_dir) / "brokers.json"
+    try:
+        return BrokerConfig.model_validate(_read_json(path))
     except ValidationError as exc:
         raise ConfigError(_validation_message(str(path), exc)) from exc
 
