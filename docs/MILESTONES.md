@@ -83,8 +83,8 @@ Presents, organizes, and explains information already produced by the core platf
 | **P6.2** Dashboard & Snapshot Engine | Derived, read-only dashboard views & snapshots | ✅ Approved |
 | **P6.3** Explainability Engine | Human-readable decision & performance explanations | ✅ Approved |
 | **P6.4** Timeline & Audit Engine | End-to-end pipeline audit reconstruction & timelines | ✅ Approved |
-| **P6.5** Operational Monitoring | Execution pipeline & component health observing | In review |
-| P6.6 Export & Presentation Layer | Deterministic presentation formatting & export | Blocked on P6.5 |
+| **P6.5** Operational Monitoring | Execution pipeline & component health observing | ✅ Approved |
+| **P6.6** Export & Presentation Layer | Deterministic presentation formatting & export | In review |
 | P6.7 Unified Intelligence Workspace | Read-only operational workspace orchestration | Blocked on P6.6 |
 
 ## Phase 7

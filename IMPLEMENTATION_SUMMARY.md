@@ -30,6 +30,22 @@ Validation checklist 1–10 passed; frozen contracts unchanged; no ADR; no drift
 
 ## Phase 6 — Reporting, Dashboards & User Intelligence (in progress)
 
+### P6.6 — Export & Presentation Layer
+
+| | |
+|---|---|
+| Completed | 2026-07-21 |
+| Scope | Presentation format transformation (JSON, Markdown, Text, CSV) for immutable platform artifacts; pure presentation adapter |
+| Tests | 657 passed / 0 failed (12 new) |
+| Status | **Awaiting owner approval** — P6.7 (Unified Intelligence Workspace) blocked until approved |
+| Branch | main |
+
+Built the Export & Presentation Layer (`src/athena/export/`), which answers one question: "How can immutable ATHENA artifacts be exported and presented in standardized formats without changing their meaning or contents?" `ExportPresentationEngine` transforms immutable platform artifacts into 4 canonical presentation formats (`ExportFormat`: `JSON`, `MARKDOWN`, `TEXT`, `CSV`). It **transforms representations only**: it performs no state mutation, no PDF rendering, no REST endpoints, no file upload services, and no market analysis.
+
+Export features: `export_report()`, `export_dashboard()`, `export_explanation()`, `export_timeline()`, `export_monitoring()`, and `create_snapshot(exports, *, as_of)`. Standardized format rendering ensures deterministic payloads, content-type mapping (`application/json`, `text/markdown`, `text/plain`, `text/csv`), and standardized extension generation (`.json`, `.md`, `.txt`, `.csv`). All outputs (`ExportRequest`, `ExportArtifact`, `ExportSummary`, `ExportSnapshot`, `ExportHistory`) are immutable and preserve full `ExportReferences` back to originating platform artifacts (`report_id`, `dashboard_snapshot_id`, `explanation_snapshot_id`, `timeline_snapshot_id`, `monitoring_snapshot_id`).
+
+Files created: `src/athena/export/{__init__,models,engine}.py`, `config/export.json`, `tests/runtime/test_export.py`. Files modified: `src/athena/errors.py` (+`ExportError`), `src/athena/config/{models,loader,__init__}.py` (+`ExportConfig`, `ExportFormat`, `load_export_config`, exports). No analytical engine, monitoring engine, timeline engine, explainability engine, dashboard engine, reporting framework, order lifecycle engine, broker abstraction layer, order planning engine, position sizing engine, capital allocation engine, portfolio engine, scheduling framework, scanner, watchlist manager, strategy framework, backtesting engine, reporting & analytics engine, workflow engine, or frozen-domain type touched. Public APIs added: `ExportPresentationEngine`, `ExportRequest`, `ExportArtifact`, `ExportSummary`, `ExportSnapshot`, `ExportHistory`, `ExportReferences`, `ExportFormat`, `ExportConfig`, `load_export_config`. 12 new tests: export generation across all 4 canonical formats, format-specific content-type verification, deterministic replay (`to_dict` & `to_json` equality), immutable outputs (`FrozenInstanceError`), append-only history, config validation (production config loading), and an **end-to-end integration test** consuming Reporting, Dashboard, Explainability, Timeline, and Monitoring artifacts across all 4 formats. ruff clean; no ADR; no drift; no tech debt. Validation checklist 1–10 passed; all prior engines and operational components unchanged.
+
 ### P6.5 — Operational Monitoring
 
 | | |
@@ -37,7 +53,7 @@ Validation checklist 1–10 passed; frozen contracts unchanged; no ADR; no drift
 | Completed | 2026-07-21 |
 | Scope | Operational health snapshot generation and component monitoring across 10 platform domains; read-only health observation only |
 | Tests | 645 passed / 0 failed (12 new) |
-| Status | **Awaiting owner approval** — P6.6 (Export & Presentation Layer) blocked until approved |
+| Status | **APPROVED** — Principal Engineer review passed |
 | Branch | main |
 
 Built the Operational Monitoring Engine (`src/athena/monitoring/`), which answers one question: "What is the current operational health of ATHENA and are all platform components functioning correctly?" `OperationalMonitoringEngine` evaluates platform health across 10 canonical domains (`MonitoringDomain`: `SCHEDULER`, `WORKFLOW`, `PORTFOLIO`, `EXECUTION`, `ANALYTICS`, `REPORTING`, `DASHBOARD`, `EXPLAINABILITY`, `TIMELINE`, `OVERALL`). It **observes operational health only**: it performs no state mutation, no live polling, no alert delivery, no Prometheus/Grafana integration, and no market analysis.

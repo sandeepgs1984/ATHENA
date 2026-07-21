@@ -25,8 +25,9 @@ from athena.config.models import (
     DashboardConfig,
     DecisionConfig,
     EventsFile,
-    ExplainabilityConfig,
     ExecutionConfig,
+    ExportConfig,
+    ExplainabilityConfig,
     ExpiriesFile,
     FileProviderConfig,
     HolidaysFile,
@@ -379,6 +380,16 @@ def load_monitoring_config(config_dir: Path) -> MonitoringConfig:
     path = Path(config_dir) / "monitoring.json"
     try:
         return MonitoringConfig.model_validate(_read_json(path))
+    except ValidationError as exc:
+        raise ConfigError(_validation_message(str(path), exc)) from exc
+
+
+def load_export_config(config_dir: Path) -> ExportConfig:
+    """Load + validate the Export & Presentation Layer settings (config/export.json)."""
+
+    path = Path(config_dir) / "export.json"
+    try:
+        return ExportConfig.model_validate(_read_json(path))
     except ValidationError as exc:
         raise ConfigError(_validation_message(str(path), exc)) from exc
 

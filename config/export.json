@@ -1,0 +1,9 @@
+{
+  "_meta": {
+    "layer": 6,
+    "description": "Export & Presentation Layer configuration (P6.6). Read-only presentation format adaptation — no PDF or cloud delivery."
+  },
+  "default_format": "JSON",
+  "pretty_print_json": true,
+  "record_history": true
+}

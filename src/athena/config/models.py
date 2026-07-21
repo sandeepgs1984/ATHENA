@@ -1002,6 +1002,23 @@ class MonitoringConfig(_Strict):
     record_history: bool = True
 
 
+class ExportFormat(str, Enum):
+    JSON = "JSON"
+    MARKDOWN = "MARKDOWN"
+    TEXT = "TEXT"
+    CSV = "CSV"
+
+
+class ExportConfig(_Strict):
+    """Export & Presentation Layer configuration (P6.6). Read-only presentation format adaptation —
+    no state mutation."""
+
+    default_format: ExportFormat = ExportFormat.JSON
+    pretty_print_json: bool = True
+    record_history: bool = True
+
+
+
 
 
 

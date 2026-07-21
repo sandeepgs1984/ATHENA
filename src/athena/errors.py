@@ -96,6 +96,11 @@ class MonitoringError(AthenaError):
     """Invalid operational monitoring evaluation or health check failure. Policy: fail loudly."""
 
 
+class ExportError(AthenaError):
+    """Invalid export request or presentation formatting failure. Policy: fail loudly."""
+
+
+
 
 
 
