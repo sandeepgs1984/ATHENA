@@ -24,6 +24,7 @@ from athena.config.models import (
     ConfidenceConfig,
     DecisionConfig,
     EventsFile,
+    ExecutionConfig,
     ExpiriesFile,
     FileProviderConfig,
     HolidaysFile,
@@ -302,6 +303,16 @@ def load_broker_config(config_dir: Path) -> BrokerConfig:
     path = Path(config_dir) / "brokers.json"
     try:
         return BrokerConfig.model_validate(_read_json(path))
+    except ValidationError as exc:
+        raise ConfigError(_validation_message(str(path), exc)) from exc
+
+
+def load_execution_config(config_dir: Path) -> ExecutionConfig:
+    """Load + validate the Order Lifecycle Engine settings (config/execution.json)."""
+
+    path = Path(config_dir) / "execution.json"
+    try:
+        return ExecutionConfig.model_validate(_read_json(path))
     except ValidationError as exc:
         raise ConfigError(_validation_message(str(path), exc)) from exc
 

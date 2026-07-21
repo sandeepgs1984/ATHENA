@@ -876,6 +876,27 @@ class BrokerConfig(_Strict):
     record_history: bool = True
 
 
+class OrderLifecycleState(str, Enum):
+    CREATED = "CREATED"
+    ACCEPTED = "ACCEPTED"
+    SUBMITTED = "SUBMITTED"
+    PARTIALLY_FILLED = "PARTIALLY_FILLED"
+    FILLED = "FILLED"
+    CANCELLED = "CANCELLED"
+    REJECTED = "REJECTED"
+    EXPIRED = "EXPIRED"
+
+
+class ExecutionConfig(_Strict):
+    """Order Lifecycle Engine configuration (P5.6). Execution state tracking only —
+    no live polling, no broker SDKs."""
+
+    allow_partial_fills: bool = True
+    enforce_strict_transitions: bool = True
+    record_history: bool = True
+
+
+
 
 
 

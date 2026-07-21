@@ -1,0 +1,9 @@
+{
+  "_meta": {
+    "layer": 5,
+    "description": "Order Lifecycle Engine configuration (P5.6). Execution state tracking only — no live polling, no broker SDKs."
+  },
+  "allow_partial_fills": true,
+  "enforce_strict_transitions": true,
+  "record_history": true
+}

@@ -30,6 +30,22 @@ Validation checklist 1–10 passed; frozen contracts unchanged; no ADR; no drift
 
 ## Phase 5 — Portfolio & Execution Platform (in progress)
 
+### P5.6 — Order Lifecycle Engine
+
+| | |
+|---|---|
+| Completed | 2026-07-21 |
+| Scope | Tracks order lifecycle states, validates legal state transitions, and records execution history; execution state model only |
+| Tests | 573 passed / 0 failed (12 new) |
+| Status | **Awaiting owner approval** — P5.7 (Portfolio Analytics & Performance) blocked until approved |
+| Branch | main |
+
+Built the Order Lifecycle Engine (`src/athena/execution/`), which answers one question: "What is the current lifecycle state of every planned order from creation until completion or cancellation?" `OrderLifecycleEngine` consumes `BrokerExecutionPlan`s and tracks order state transitions (`OrderLifecycleState`: `CREATED`, `ACCEPTED`, `SUBMITTED`, `PARTIALLY_FILLED`, `FILLED`, `CANCELLED`, `REJECTED`, `EXPIRED`). It **tracks execution state transitions only**: it performs no live broker polling, no WebSockets/REST communication, no exchange connectivity, and no market analysis.
+
+State machine & transition features: Enforces strict legal state transition graph (e.g. `CREATED` → `SUBMITTED` → `PARTIALLY_FILLED` → `FILLED`); illegal transitions (e.g. `CREATED` → `FILLED`, or transitioning out of terminal states `FILLED`/`CANCELLED`/`REJECTED`/`EXPIRED`) fail loudly with `LifecycleError`. Accumulates fill quantities and calculates weighted average fill price (`avg_fill_price`). Auto-promotes `PARTIALLY_FILLED` to `FILLED` when 100% of target quantity is filled. All outputs (`ExecutionEvent`, `OrderLifecycle`, `LifecycleSummary`, `ExecutionState`, `LifecycleHistory`) are immutable and preserve full `ExecutionReferences` back to `broker_execution_plan_id`, `execution_plan_id`, `position_sizing_plan_id`, `allocation_plan_id`, `portfolio_snapshot_id`, `decision_id`, `strategy`, `watchlist`, and `schedule_execution_id`.
+
+Files created: `src/athena/execution/{__init__,models,engine}.py`, `config/execution.json`, `tests/runtime/test_execution.py`. Files modified: `src/athena/errors.py` (+`LifecycleError`), `src/athena/config/{models,loader,__init__}.py` (+`ExecutionConfig`, `OrderLifecycleState`, `load_execution_config`, exports). No analytical engine, broker abstraction layer, order planning engine, position sizing engine, capital allocation engine, portfolio engine, scheduling framework, scanner, watchlist manager, strategy framework, backtesting engine, reporting & analytics engine, workflow engine, or frozen-domain type touched. Public APIs added: `OrderLifecycleEngine`, `OrderLifecycle`, `ExecutionEvent`, `ExecutionState`, `LifecycleSummary`, `LifecycleHistory`, `ExecutionReferences`, `OrderLifecycleState`, `ExecutionConfig`, `load_execution_config`. 12 new tests: legal state transitions, illegal transition rejection, terminal state protection, partial fills & weighted average price, cancellation, deterministic replay (`to_dict` & `to_json` equality), immutable outputs (`FrozenInstanceError`), append-only history, config validation (production config loading), and an **end-to-end integration test** consuming a real `BrokerExecutionPlan` from `BrokerManager`. ruff clean; no ADR; no drift; no tech debt. Validation checklist 1–10 passed; all prior engines and operational components unchanged.
+
 ### P5.5 — Broker Abstraction Layer
 
 | | |
@@ -37,7 +53,7 @@ Validation checklist 1–10 passed; frozen contracts unchanged; no ADR; no drift
 | Completed | 2026-07-21 |
 | Scope | Canonical broker contracts, capability validation, and translation from broker-neutral execution plans into broker requests; contract definition only |
 | Tests | 561 passed / 0 failed (12 new) |
-| Status | **Awaiting owner approval** — P5.6 (Order Lifecycle Engine) blocked until approved |
+| Status | **APPROVED** — Principal Engineer review passed |
 | Branch | main |
 
 Built the Broker Abstraction Layer (`src/athena/brokers/`), which answers one question: "How can ATHENA communicate with different brokers through a single canonical interface?" `BrokerManager` registers broker contract definitions (`BrokerDefinition`, `BrokerCapabilities`) and translates broker-neutral `ExecutionPlan`s into canonical `BrokerExecutionPlan`s containing `BrokerRequest`s. It **defines contracts and validates capabilities only**: it performs no network communication, no OAuth flows, no REST/WebSocket clients, and no live order submission.

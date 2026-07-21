@@ -68,6 +68,11 @@ class BrokerError(AthenaError):
     """Invalid broker contract, capability violation, or translation failure. Policy: fail loudly."""
 
 
+class LifecycleError(AthenaError):
+    """Invalid order lifecycle transition or state constraint violation. Policy: fail loudly."""
+
+
+
 
 
 
