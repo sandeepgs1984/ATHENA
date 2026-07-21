@@ -35,3 +35,13 @@ Model capabilities around engineering outcomes rather than tools or technologies
 ## Review Status
 
 Approved for Draft
+
+---
+
+## Meta Model Compliance
+
+This specification now conforms to MM-0001.
+
+Common engineering properties have been removed in favor of canonical Entity inheritance.
+
+The resulting specification is smaller, clearer, and easier to maintain.

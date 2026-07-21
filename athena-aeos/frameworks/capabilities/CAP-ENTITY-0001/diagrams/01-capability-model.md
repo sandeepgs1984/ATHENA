@@ -1,11 +1,18 @@
-                  Capability
-                      │
-      ┌───────────────┼───────────────┐
-      │               │               │
-   Purpose         Inputs         Outputs
-      │
-Executor Types
-      │
-Relationships
-      │
-Lifecycle
+                 Entity
+                    │
+                    ▼
+               Capability
+                    │
+      ┌─────────────┼─────────────┐
+      │             │             │
+   Purpose       Inputs        Outputs
+                    │
+          Preconditions
+                    │
+         Postconditions
+                    │
+          Executor Types
+                    │
+          Required Skills
+                    │
+         Success Criteria

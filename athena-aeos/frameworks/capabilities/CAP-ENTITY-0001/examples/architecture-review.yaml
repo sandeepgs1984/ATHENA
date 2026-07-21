@@ -1,5 +1,6 @@
 capability:
-
+  extends: MM-0001
+  
   id: CAP-0001
 
   name: Architecture Review

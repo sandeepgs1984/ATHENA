@@ -18,13 +18,28 @@ Capabilities describe reusable engineering functions without prescribing impleme
 
 ---
 
-# Entity Schema
+# Inheritance
 
-Every Capability SHALL define
+Capability extends the canonical Entity defined by MM-0001.
+
+Inherited properties include:
 
 - Identity
-- Name
-- Description
+- Metadata
+- Lifecycle
+- Version
+- Relationships
+- Validation
+- Audit Information
+
+These properties are defined by MM-0001 and SHALL NOT be redefined here.
+
+---
+
+# Capability-Specific Attributes
+
+The Capability Entity adds the following attributes:
+
 - Purpose
 - Inputs
 - Outputs
@@ -32,12 +47,8 @@ Every Capability SHALL define
 - Postconditions
 - Executor Types
 - Required Skills
-- Related Artifacts
-- Related Specifications
-- Relationships
-- Lifecycle
-- Metadata
-- Version
+- Success Criteria
+- Performance Metrics
 
 ---
 
@@ -121,22 +132,25 @@ DEPENDS_ON Capability
 
 # Validation Rules
 
-Every Capability SHALL
+In addition to the validation inherited from MM-0001:
 
-✓ have unique identity
+Every Capability SHALL:
 
-✓ define purpose
+- Define a purpose.
+- Define inputs.
+- Define outputs.
+- Define at least one supported executor type.
 
-✓ define inputs
+A Capability MAY define:
 
-✓ define outputs
+- Preconditions.
+- Postconditions.
+- Success criteria.
+- Performance metrics.
 
-✓ define lifecycle
+A Capability SHALL NOT:
 
-Capability SHALL NOT
-
-✗ depend on implementation
-
-✗ assign specific executors
-
-✗ violate framework contract
+- Redefine inherited Entity properties.
+- Assign a specific executor.
+- Override Kernel behavior.
+- Duplicate Meta Model definitions.

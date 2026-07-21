@@ -10,6 +10,16 @@ A Capability may be executed by humans, teams, AI agents, automation pipelines, 
 
 ---
 
+## Inheritance
+
+The Capability Entity extends the canonical Entity defined by MM-0001.
+
+All common engineering properties are inherited from the Meta Model.
+
+CAP-ENTITY-0001 defines only capability-specific characteristics.
+
+---
+
 ## Objectives
 
 - Standardize engineering capabilities
