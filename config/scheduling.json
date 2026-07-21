@@ -1,0 +1,7 @@
+{
+  "_meta": {
+    "layer": 4,
+    "description": "Scheduling Framework configuration (M4.7). Coordination only — no cron integration, no cloud scheduling, no distributed execution. record_history tracks execution history across invocations."
+  },
+  "record_history": true
+}

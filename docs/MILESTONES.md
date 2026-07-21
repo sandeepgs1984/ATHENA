@@ -56,8 +56,8 @@ engine outputs only, modifies no analytical engine.
 | **M4.3** Watchlist Manager | Dynamic watchlists from decision outcomes | ✅ Approved |
 | **M4.4** Strategy Framework | Deterministic strategies consuming DecisionReport | ✅ Approved |
 | **M4.5** Backtesting Engine | Historical replay through the full pipeline | ✅ Approved |
-| **M4.6** Reporting & Analytics | Daily/weekly/monthly summaries + statistics | In review |
-| M4.7 Scheduling Framework | Daily/weekly/manual/replay/batch job scheduling | Blocked on M4.6 |
+| **M4.6** Reporting & Analytics | Daily/weekly/monthly summaries + statistics | ✅ Approved |
+| **M4.7** Scheduling Framework | Daily/weekly/manual/replay/batch job scheduling | In review |
 
 ## Phases 5–7
 

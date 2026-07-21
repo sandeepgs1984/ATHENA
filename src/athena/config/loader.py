@@ -27,6 +27,7 @@ from athena.config.models import (
     HolidaysFile,
     MarketHealthConfig,
     RiskAssessmentConfig,
+    SchedulingConfig,
     ScoringConfig,
     SectorHealthConfig,
     StrategyConfig,
@@ -236,6 +237,16 @@ def load_analytics_config(config_dir: Path) -> AnalyticsConfig:
     path = Path(config_dir) / "analytics.json"
     try:
         return AnalyticsConfig.model_validate(_read_json(path))
+    except ValidationError as exc:
+        raise ConfigError(_validation_message(str(path), exc)) from exc
+
+
+def load_scheduling_config(config_dir: Path) -> SchedulingConfig:
+    """Load + validate the Scheduling Framework settings (config/scheduling.json)."""
+
+    path = Path(config_dir) / "scheduling.json"
+    try:
+        return SchedulingConfig.model_validate(_read_json(path))
     except ValidationError as exc:
         raise ConfigError(_validation_message(str(path), exc)) from exc
 

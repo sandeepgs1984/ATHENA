@@ -30,6 +30,22 @@ Validation checklist 1–10 passed; frozen contracts unchanged; no ADR; no drift
 
 ## Phase 4 — Orchestration & Operational Intelligence (in progress)
 
+### M4.7 — Scheduling Framework (completes Phase 4)
+
+| | |
+|---|---|
+| Completed | 2026-07-21 |
+| Scope | Deterministic execution coordination over the completed pipeline; schedules and records when ATHENA runs without changing how ATHENA analyzes markets |
+| Tests | 494 passed / 0 failed (21 new) |
+| Status | **Awaiting owner approval** — completes Phase 4 |
+| Branch | main |
+
+Built the Scheduling Framework (`src/athena/scheduling/`), which answers one question: "When should ATHENA execute its existing operational pipeline?" `SchedulingFramework` coordinates the execution of existing operational components — the M4.1 `WorkflowEngine`, M4.2 `DailyMarketScanner`, M4.3 `WatchlistManager`, M4.4 `StrategyFramework`, M4.5 `BacktestingEngine`, and M4.6 `ReportingAnalyticsEngine`. It **coordinates execution only**: it invokes no analytical engine directly, evaluates no strategy rules, derives no market intelligence, and modifies no completed decision.
+
+Two execution paths: `execute(definition, *, as_of, pipeline_builder, universe, previous_watchlist=None)` runs the full daily pipeline (scanner → watchlist → strategy → analytics), returning an immutable `ScheduleExecution` referencing every upstream artifact (`scan_id`, `watchlist_snapshot_id`, `strategy_execution_id`, `analytics_report_id`); `execute_replay(definition, *, as_of, replay_points)` runs the replay pipeline (backtester → analytics), returning a `ScheduleExecution` referencing `backtest_run_id` and `analytics_report_id`. Five deterministic scheduling modes supported: `MANUAL`, `DAILY`, `WEEKLY`, `REPLAY`, `ONE_TIME`. Scheduling policies are configuration-driven (`config/scheduling.json`, `record_history` toggle). `ScheduleHistory` is **append-only** (`record()` returns a new history). **Failure isolation**: any pipeline or replay exception is caught, recorded as `ExecutionStatus.FAILED` with a diagnostic note, and never crashes the framework. Determinism: with `as_of` injected and no clock read for business decisions (monotonic clock used for duration measurement only), identical inputs produce identical execution records (verified). Disabled definitions are rejected loudly before execution.
+
+Files created: `src/athena/scheduling/{__init__,models,engine}.py`, `config/scheduling.json`, `tests/runtime/test_scheduling.py`. Files modified: `src/athena/config/{models,loader,__init__}.py` (add `SchedulingConfig`, `load_scheduling_config`, exports). No analytical engine, scanner, watchlist manager, strategy framework, backtesting engine, reporting & analytics engine, workflow engine, or frozen-domain type touched. Public APIs added: `SchedulingFramework`, `ScheduleDefinition`, `ScheduledJob`, `ScheduleExecution`, `ExecutionReferences`, `ScheduleHistory`, `ScheduleSummary`, `ScheduleMode`, `SchedulingConfig`, `load_scheduling_config`. 21 new tests: full pipeline manual execution (all artifact references preserved), recurring schedules (daily/weekly/one-time modes), replay schedule execution (backtest + analytics references, execute() rejection of REPLAY mode), chronological execution ordering in history, deterministic rerun (`to_dict` equality), immutable outputs (`FrozenInstanceError` on execution and history), history filtering by definition and mode, summary generation, record_history disabled toggle, disabled definition rejection, failure isolation (BrokenScanner recorded as FAILED), config validation (unknown-key rejection, production config loads, missing fails loudly), and a **real end-to-end scheduled execution** through the full M4.1→M4.6 operational pipeline across three instruments. ruff clean; no ADR; no drift; no tech debt. Validation checklist 1–10 passed; all prior engines and operational components unchanged.
+
 ### M4.6 — Reporting & Analytics
 
 | | |
@@ -37,7 +53,7 @@ Validation checklist 1–10 passed; frozen contracts unchanged; no ADR; no drift
 | Completed | 2026-07-21 |
 | Scope | Deterministic operational summaries and analytical statistics aggregated from completed artifacts; presentation + aggregation only |
 | Tests | 473 passed / 0 failed (14 new) |
-| Status | **Awaiting owner approval** — M4.7 (Scheduling Framework) blocked until approved |
+| Status | **APPROVED** — Principal Engineer review passed |
 | Branch | main |
 
 Built the Reporting & Analytics layer (`src/athena/analytics/`), which answers operational questions — "What happened today?", "How many instruments matched each strategy?", "How did decisions distribute across the universe?", "What activity occurred during replay?" — purely by aggregating completed artifacts from the M4.2 scanner, M4.3 watchlist manager, M4.4 strategy framework, and M4.5 backtester. `ReportingAnalyticsEngine` is **presentation + aggregation only**: it invokes no analytical engine, derives no new market intelligence, and modifies no completed decision. Every metric is a count or roll-up of an existing immutable artifact, and every report preserves references back to its sources.

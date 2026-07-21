@@ -753,6 +753,13 @@ class AnalyticsConfig(_Strict):
         return v
 
 
+class SchedulingConfig(_Strict):
+    """Scheduling Framework configuration (M4.7).  Coordination only —
+    no cron integration, no cloud scheduling, no distributed execution."""
+
+    record_history: bool = True
+
+
 class Holiday(_Strict):
     date: str
     name: str
