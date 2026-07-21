@@ -22,6 +22,7 @@ from athena.config.models import (
     BacktestConfig,
     BrokerConfig,
     ConfidenceConfig,
+    DashboardConfig,
     DecisionConfig,
     EventsFile,
     ExecutionConfig,
@@ -335,6 +336,16 @@ def load_reporting_framework_config(config_dir: Path) -> ReportingFrameworkConfi
     path = Path(config_dir) / "reporting.json"
     try:
         return ReportingFrameworkConfig.model_validate(_read_json(path))
+    except ValidationError as exc:
+        raise ConfigError(_validation_message(str(path), exc)) from exc
+
+
+def load_dashboard_config(config_dir: Path) -> DashboardConfig:
+    """Load + validate the Dashboard Engine settings (config/dashboard.json)."""
+
+    path = Path(config_dir) / "dashboard.json"
+    try:
+        return DashboardConfig.model_validate(_read_json(path))
     except ValidationError as exc:
         raise ConfigError(_validation_message(str(path), exc)) from exc
 

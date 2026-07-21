@@ -30,6 +30,22 @@ Validation checklist 1–10 passed; frozen contracts unchanged; no ADR; no drift
 
 ## Phase 6 — Reporting, Dashboards & User Intelligence (in progress)
 
+### P6.2 — Dashboard & Snapshot Engine
+
+| | |
+|---|---|
+| Completed | 2026-07-21 |
+| Scope | Derived, read-only operational dashboard snapshots aggregating platform status, portfolio health, execution progress, and analytics; presentation layer only |
+| Tests | 609 passed / 0 failed (12 new) |
+| Status | **Awaiting owner approval** — P6.3 (Explainability Engine) blocked until approved |
+| Branch | main |
+
+Built the Dashboard & Snapshot Engine (`src/athena/dashboard/`), which answers one question: "Given the current immutable platform artifacts, what is the current operational view of ATHENA?" `DashboardEngine` aggregates platform status across 9 canonical sections (`Portfolio Overview`, `Capital Allocation Overview`, `Active Positions`, `Execution Status`, `Order Lifecycle Summary`, `Portfolio Performance`, `Risk & Exposure Summary`, `Reporting Status`, `Platform Health`) into `DashboardSnapshot`s. It **presents derived operational views only**: it performs no state mutation, no UI rendering, no live polling, and no market analysis.
+
+Dashboard features: `create_snapshot(portfolio_snapshot=None, allocation_plan=None, execution_state=None, performance_snapshot=None, reports=None, *, as_of)` aggregates available platform artifacts into modular `DashboardSection`s and a high-level `DashboardSummary`. All outputs (`DashboardSection`, `DashboardSummary`, `DashboardSnapshot`, `DashboardHistory`) are immutable and preserve full `DashboardReferences` back to `portfolio_snapshot_id`, `performance_snapshot_id`, `execution_state_id`, `allocation_plan_id`, `report_id`, and `schedule_execution_id`.
+
+Files created: `src/athena/dashboard/{__init__,models,engine}.py`, `config/dashboard.json`, `tests/runtime/test_dashboard.py`. Files modified: `src/athena/errors.py` (+`DashboardError`), `src/athena/config/{models,loader,__init__}.py` (+`DashboardConfig`, `load_dashboard_config`, exports). No analytical engine, reporting framework, order lifecycle engine, broker abstraction layer, order planning engine, position sizing engine, capital allocation engine, portfolio engine, scheduling framework, scanner, watchlist manager, strategy framework, backtesting engine, reporting & analytics engine, workflow engine, or frozen-domain type touched. Public APIs added: `DashboardEngine`, `DashboardSection`, `DashboardSummary`, `DashboardSnapshot`, `DashboardHistory`, `DashboardReferences`, `DashboardConfig`, `load_dashboard_config`. 12 new tests: dashboard snapshot creation with all sections, partial artifact handling, deterministic replay (`to_dict` & `to_json` equality), immutable outputs (`FrozenInstanceError`), append-only history, config validation (production config loading), and an **end-to-end integration test** consuming real artifacts from Phase 5 execution pipeline and Reporting Framework. ruff clean; no ADR; no drift; no tech debt. Validation checklist 1–10 passed; all prior engines and operational components unchanged.
+
 ### P6.1 — Reporting Framework
 
 | | |
@@ -37,7 +53,7 @@ Validation checklist 1–10 passed; frozen contracts unchanged; no ADR; no drift
 | Completed | 2026-07-21 |
 | Scope | Generic operational reporting engine generating immutable, structured machine-readable and human-readable reports from platform artifacts; read-only |
 | Tests | 597 passed / 0 failed (12 new) |
-| Status | **Awaiting owner approval** — P6.2 (Dashboard & Snapshot Engine) blocked until approved |
+| Status | **APPROVED** — Principal Engineer review passed |
 | Branch | main |
 
 Built the Reporting Framework (`src/athena/reporting/`), which answers one question: "Given ATHENA's completed artifacts from Phases 1–5, how can we produce generic, immutable, human-readable and structured operational reports?" `ReportingEngine` consumes immutable platform artifacts (`PortfolioSnapshot`, `ExecutionState`, `AllocationPlan`, `PerformanceSnapshot`, audit events) to produce `GenericReport`s. It **presents and formats information only**: it performs no state mutation, no order execution, no analytical calculation, and no market analysis.

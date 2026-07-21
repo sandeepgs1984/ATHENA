@@ -929,6 +929,16 @@ class ReportingFrameworkConfig(_Strict):
     record_history: bool = True
 
 
+class DashboardConfig(_Strict):
+    """Dashboard & Snapshot Engine configuration (P6.2). Read-only derived operational views —
+    no UI rendering or state mutation."""
+
+    default_theme: str = "dark"
+    include_text_rendering: bool = True
+    record_history: bool = True
+
+
+
 
 
 
