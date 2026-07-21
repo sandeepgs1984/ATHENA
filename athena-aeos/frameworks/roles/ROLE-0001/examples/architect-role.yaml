@@ -1,0 +1,25 @@
+role:
+
+  id: ROLE-ARCHITECT
+
+  name: Chief Systems Architect
+
+  responsibilities:
+
+    - Define platform architecture
+    - Review specifications
+    - Approve architectural decisions
+
+  authorities:
+
+    - Approve framework changes
+    - Approve kernel evolution
+
+  decisionRights:
+
+    - Architecture
+    - Standards
+
+  lifecycle:
+
+    state: Active
