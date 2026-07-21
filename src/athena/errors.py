@@ -88,6 +88,11 @@ class ExplainabilityError(AthenaError):
     """Invalid explainability request or rationale derivation failure. Policy: fail loudly."""
 
 
+class TimelineAuditError(AthenaError):
+    """Invalid timeline reconstruction request or causal sequencing failure. Policy: fail loudly."""
+
+
+
 
 
 

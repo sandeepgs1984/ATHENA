@@ -1,0 +1,8 @@
+{
+  "_meta": {
+    "layer": 6,
+    "description": "Timeline & Audit Engine configuration (P6.4). Read-only chronological event reconstruction — no live streaming."
+  },
+  "enforce_strict_causal_ordering": true,
+  "record_history": true
+}

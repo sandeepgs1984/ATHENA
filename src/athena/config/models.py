@@ -959,6 +959,29 @@ class ExplainabilityConfig(_Strict):
     record_history: bool = True
 
 
+class TimelineDomain(str, Enum):
+    DECISION = "DECISION"
+    PORTFOLIO = "PORTFOLIO"
+    ALLOCATION = "ALLOCATION"
+    SIZING = "SIZING"
+    ORDER_PLANNING = "ORDER_PLANNING"
+    BROKER_TRANSLATION = "BROKER_TRANSLATION"
+    LIFECYCLE = "LIFECYCLE"
+    ANALYTICS = "ANALYTICS"
+    REPORTING = "REPORTING"
+    DASHBOARD = "DASHBOARD"
+    EXPLAINABILITY = "EXPLAINABILITY"
+
+
+class TimelineConfig(_Strict):
+    """Timeline & Audit Engine configuration (P6.4). Read-only timeline reconstruction —
+    no state mutation."""
+
+    enforce_strict_causal_ordering: bool = True
+    record_history: bool = True
+
+
+
 
 
 

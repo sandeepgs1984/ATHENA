@@ -38,9 +38,10 @@ from athena.config.models import (
     RiskAssessmentConfig,
     SchedulingConfig,
     ScoringConfig,
-    SizingConfig,
     SectorHealthConfig,
+    SizingConfig,
     StrategyConfig,
+    TimelineConfig,
     ValidationConfig,
     WatchlistConfig,
 )
@@ -357,6 +358,16 @@ def load_explainability_config(config_dir: Path) -> ExplainabilityConfig:
     path = Path(config_dir) / "explainability.json"
     try:
         return ExplainabilityConfig.model_validate(_read_json(path))
+    except ValidationError as exc:
+        raise ConfigError(_validation_message(str(path), exc)) from exc
+
+
+def load_timeline_config(config_dir: Path) -> TimelineConfig:
+    """Load + validate the Timeline & Audit Engine settings (config/timeline.json)."""
+
+    path = Path(config_dir) / "timeline.json"
+    try:
+        return TimelineConfig.model_validate(_read_json(path))
     except ValidationError as exc:
         raise ConfigError(_validation_message(str(path), exc)) from exc
 

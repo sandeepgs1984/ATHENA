@@ -30,6 +30,22 @@ Validation checklist 1–10 passed; frozen contracts unchanged; no ADR; no drift
 
 ## Phase 6 — Reporting, Dashboards & User Intelligence (in progress)
 
+### P6.4 — Timeline & Audit Engine
+
+| | |
+|---|---|
+| Completed | 2026-07-21 |
+| Scope | Chronological timeline reconstruction and audit stream generation across 11 platform domains; read-only reconstruction only |
+| Tests | 633 passed / 0 failed (12 new) |
+| Status | **Awaiting owner approval** — P6.5 (Operational Monitoring) blocked until approved |
+| Branch | main |
+
+Built the Timeline & Audit Engine (`src/athena/timeline/`), which answers one question: "What happened across the complete ATHENA pipeline, in what order, and how can every platform event be reconstructed?" `TimelineAuditEngine` reconstructs chronological timelines across 11 canonical domains (`TimelineDomain`: `DECISION`, `PORTFOLIO`, `ALLOCATION`, `SIZING`, `ORDER_PLANNING`, `BROKER_TRANSLATION`, `LIFECYCLE`, `ANALYTICS`, `REPORTING`, `DASHBOARD`, `EXPLAINABILITY`). It **reconstructs immutable history only**: it performs no state mutation, no live streaming, no distributed tracing, and no market analysis.
+
+Timeline features: `build_timeline(decisions=None, portfolio_snapshot=None, allocation_plan=None, sizing_plan=None, execution_plan=None, broker_plan=None, execution_state=None, performance_snapshot=None, reports=None, dashboard_snapshot=None, explanation_snapshot=None, *, as_of)` extracts, sorts, and sequence-numbers platform events into causally ordered `AuditEntry` records inside a `TimelineSnapshot`. All outputs (`TimelineEvent`, `AuditEntry`, `TimelineSummary`, `TimelineSnapshot`, `TimelineHistory`) are immutable and preserve full `TimelineReferences` back to all originating platform artifacts across every layer.
+
+Files created: `src/athena/timeline/{__init__,models,engine}.py`, `config/timeline.json`, `tests/runtime/test_timeline.py`. Files modified: `src/athena/errors.py` (+`TimelineAuditError`), `src/athena/config/{models,loader,__init__}.py` (+`TimelineConfig`, `TimelineDomain`, `load_timeline_config`, exports). No analytical engine, explainability engine, dashboard engine, reporting framework, order lifecycle engine, broker abstraction layer, order planning engine, position sizing engine, capital allocation engine, portfolio engine, scheduling framework, scanner, watchlist manager, strategy framework, backtesting engine, reporting & analytics engine, workflow engine, or frozen-domain type touched. Public APIs added: `TimelineAuditEngine`, `TimelineEvent`, `AuditEntry`, `TimelineSummary`, `TimelineSnapshot`, `TimelineHistory`, `TimelineReferences`, `TimelineDomain`, `TimelineConfig`, `load_timeline_config`. 12 new tests: timeline building across 11 domains, strict 1-indexed sequence numbering, deterministic replay (`to_dict` & `to_json` equality), immutable outputs (`FrozenInstanceError`), append-only history, config validation (production config loading), and an **end-to-end integration test** consuming artifacts across the complete execution pipeline together with Reporting, Dashboard, and Explainability engines. ruff clean; no ADR; no drift; no tech debt. Validation checklist 1–10 passed; all prior engines and operational components unchanged.
+
 ### P6.3 — Explainability Engine
 
 | | |
@@ -37,7 +53,7 @@ Validation checklist 1–10 passed; frozen contracts unchanged; no ADR; no drift
 | Completed | 2026-07-21 |
 | Scope | Deterministic human-readable explanation generator explaining why decisions, allocations, sizing, execution plans, lifecycle outcomes, and analytics were produced; rationale only |
 | Tests | 621 passed / 0 failed (12 new) |
-| Status | **Awaiting owner approval** — P6.4 (Timeline & Audit Engine) blocked until approved |
+| Status | **APPROVED** — Principal Engineer review passed |
 | Branch | main |
 
 Built the Explainability Engine (`src/athena/explainability/`), which answers one question: "Why did ATHENA produce this decision, allocation, position size, execution plan, lifecycle outcome, or analytical result?" `ExplainabilityEngine` generates deterministic, human-readable explanations across 9 canonical domains (`ExplanationDomain`: `DECISION`, `PORTFOLIO`, `ALLOCATION`, `SIZING`, `ORDER_PLANNING`, `BROKER_TRANSLATION`, `LIFECYCLE`, `ANALYTICS`, `REPORTING`). It **explains existing platform outcomes only**: it performs no state mutation, no decision altering, no LLM generation, and no market analysis.
