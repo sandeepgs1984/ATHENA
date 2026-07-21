@@ -15,6 +15,16 @@ import logging
 from dataclasses import dataclass, field
 from typing import ClassVar
 
+from athena.api.security.exceptions import (
+    AuthenticationError,
+    ExpiredTokenError,
+    InvalidAPIKeyError,
+    InvalidCredentialsError,
+    InvalidTokenError,
+    PermissionDeniedError,
+    SecurityError,
+    SessionRevokedError,
+)
 from athena.errors import (
     AllocationError,
     AthenaError,
@@ -103,6 +113,15 @@ class AthenaExceptionMapper:
         ExceptionMapping(PortfolioAnalyticsError, 500, "analytics-error",  "Analytics Error"),
         ExceptionMapping(ReportingError,        500, "reporting-error",     "Reporting Error"),
         ExceptionMapping(MonitoringError,       500, "monitoring-error",    "Monitoring Error"),
+        # Security Errors (P8.2)
+        ExceptionMapping(InvalidCredentialsError, 401, "invalid-credentials", "Invalid Credentials"),
+        ExceptionMapping(ExpiredTokenError,       401, "expired-token",       "Token Expired"),
+        ExceptionMapping(InvalidTokenError,       401, "invalid-token",       "Invalid Token"),
+        ExceptionMapping(InvalidAPIKeyError,      401, "invalid-api-key",     "Invalid API Key"),
+        ExceptionMapping(SessionRevokedError,     401, "session-revoked",     "Session Revoked"),
+        ExceptionMapping(PermissionDeniedError,   403, "permission-denied",   "Permission Denied"),
+        ExceptionMapping(AuthenticationError,     401, "unauthorized",        "Unauthorized"),
+        ExceptionMapping(SecurityError,           400, "security-error",      "Security Error"),
         # Base ATHENA error catch-all (before generic Exception)
         ExceptionMapping(AthenaError,           500, "internal-error",      "Internal Domain Error"),
         # Standard Python errors

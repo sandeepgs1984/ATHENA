@@ -8,6 +8,22 @@ status updated on approval.
 
 ## Phase 8 -- Application Platform (in progress)
 
+### P8.2 -- Authentication & RBAC
+
+| | |
+|---|---|
+| Completed | 2026-07-21 |
+| Scope | Introduce production-grade authentication and authorization: Users, Roles, Permissions, JWT, API Keys, Sessions, RBAC, Password hashing, Permission middleware, Token refresh, Audit logging |
+| Tests | 771 passed / 0 failed (16 new) |
+| Status | **Awaiting owner approval** |
+| Branch | main |
+
+Implemented the production authentication and authorization layer. `SecurityConfig` isolates cryptographic parameters (secret keys, algorithms, expiries, rounds) into `APISettings`. `AuthenticatedPrincipal` defines the immutable, runtime security context carrying pre-resolved user ID, role, and fine-grained permissions. `PasswordHasher` protocol abstraction uses `BcryptPasswordHasher` for password validation, shielding high-level components from raw password schemas. `TokenSigner` and `TokenClaimsFactory` divide signature verification from JWT claim generation. API Key persistence is split between `APIKeyMetadata` (hashes and active flags) and `APIKeySecret` (one-time returned key plain-text `key_id.raw_secret`). `SessionStore` protocol abstracts session status and token rotation tracking, using an `InMemorySessionStore` implementation that revokes session trees upon detecting refresh token reuse. `AuthenticationProvider` and `AuthorizationProvider` coordinate credential verification and permission validation. Security exceptions are mapped inside `AthenaExceptionMapper` to generate RFC 9457 Problem Details. FastAPI dependencies `get_current_user` and `RequirePermission` guard controller routes, integrating natively with OpenAPI schemas. `LoggingAuditSink` writes structured audit events to stdout log lines.
+
+Files created: `src/athena/api/security/exceptions.py`, `src/athena/api/security/models.py`, `src/athena/api/security/hashing.py`, `src/athena/api/security/token.py`, `src/athena/api/security/repos.py`, `src/athena/api/security/providers.py`, `src/athena/api/security/dependencies.py`, `src/athena/api/security/audit.py`, `src/athena/api/security/__init__.py`, `tests/api/v1/test_security.py`. Files modified: `src/athena/api/config.py` (SecurityConfig), `src/athena/api/errors.py` (mappings), `src/athena/api/app.py` (app state initialization). Public APIs added: None (dependencies and exceptions only). 16 security integration tests covering hashing, claim parsing, token rotation, API key hashing checks, RBAC route bounds, and custom security exceptions. All 10 validation checklist items passed; 771 total suite tests pass clean.
+
+---
+
 ### P8.1 -- Platform API Foundation
 
 | | |
@@ -15,7 +31,7 @@ status updated on approval.
 | Completed | 2026-07-21 |
 | Scope | Design and implement ATHENA's production REST API infrastructure: FastAPI app factory, ASGI/Lifespan lifecycle, API versioning (`/api/v1/`), unified response envelope `AthenaResponse[T]`, generic filtering (`FilterParams`), pagination/sorting params, `HealthProvider`/`MetricsProvider` protocols, `AthenaExceptionMapper` (RFC 9457 Problem Details) |
 | Tests | 755 passed / 0 failed (24 new) |
-| Status | **Awaiting owner approval** |
+| Status | **APPROVED** -- closes P8.1 (Principal Engineer review passed) |
 | Branch | main |
 
 Implemented the production FastAPI REST API platform foundation. `APISettings` separates TransportConfig (deployment) from AppMetadataConfig (application identity) with secure-by-default empty CORS origin list. `create_app()` uses a lifespan context manager (`@asynccontextmanager lifespan`) to manage startup and shutdown events cleanly. `AthenaResponse[T]` is the single, unified response envelope used across all endpoints, carrying optional pagination and links metadata. `PaginationMeta` and `PaginationParams` are future-ready, reserving cursor fields next to standard offset page parameters. `FilterParams` and `SortParams` establish consistent collection query interfaces. `AthenaExceptionMapper` functions as a central registry mapping domain errors to HTTP status codes and RFC 9457 `ProblemDetail` structures. Service components (`HealthService` and `MetricsService`) depend entirely on abstract `HealthProvider` and `MetricsProvider` protocols, with default implementations reading from system health checks and returning scaffold telemetry metrics. Middlewares inject unique `X-Request-ID` headers to all responses and format structured request logs. OpenAPI 3.1 is auto-generated with interactive documentation at `/api/docs`.

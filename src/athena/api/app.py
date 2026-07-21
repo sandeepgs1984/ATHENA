@@ -18,6 +18,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from athena.api.config import APISettings
 from athena.api.errors import exception_mapper
 from athena.api.middleware import RequestIDMiddleware, StructuredLoggingMiddleware
+from athena.api.security.token import HMAC256TokenSigner, TokenClaimsFactory
 from athena.api.v1.router import router as v1_router
 from athena.errors import AthenaError
 
@@ -158,6 +159,15 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
         openapi_url=settings.app.openapi_url,
         lifespan=lifespan,
     )
+
+    # Initialize Security components on app state
+    app.state.token_signer = HMAC256TokenSigner(
+        secret_key=settings.security.jwt_secret,
+        issuer=settings.security.jwt_issuer,
+        audience=settings.security.jwt_audience,
+        algorithm=settings.security.jwt_algorithm,
+    )
+    app.state.claims_factory = TokenClaimsFactory(settings.security)
 
     # Middleware execution pipeline (outermost to innermost)
     app.add_middleware(

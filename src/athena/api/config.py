@@ -44,15 +44,30 @@ class AppMetadataConfig(BaseModel):
     openapi_url: str = "/api/openapi.json"
 
 
+class SecurityConfig(BaseModel):
+    """Cryptographic and expiry configuration parameters."""
+
+    model_config = ConfigDict(frozen=True)
+
+    jwt_secret: str = "secret-change-in-prod-seeding"
+    jwt_algorithm: str = "HS256"
+    jwt_issuer: str = "athena-platform"
+    jwt_audience: str = "athena-dashboard"
+    access_token_expiry_minutes: int = 15
+    refresh_token_expiry_days: int = 7
+    bcrypt_rounds: int = 12
+
+
 class APISettings(BaseModel):
     """Composed top-level settings.
 
     Constructed from defaults or explicit overrides. Each sub-config evolves
     independently: transport settings are infrastructure concerns, app metadata
-    are application identity concerns.
+    are application identity concerns, and security contains crypto secrets/expiry settings.
     """
 
     model_config = ConfigDict(frozen=True)
 
     transport: TransportConfig = TransportConfig()
     app: AppMetadataConfig = AppMetadataConfig()
+    security: SecurityConfig = SecurityConfig()
