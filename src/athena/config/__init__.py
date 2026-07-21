@@ -29,6 +29,7 @@ from athena.config.loader import (
     load_timeline_config,
     load_validation_config,
     load_watchlist_config,
+    load_workspace_config,
     snapshot_config,
 )
 from athena.config.models import (
@@ -69,6 +70,7 @@ from athena.config.models import (
     TimelineDomain,
     ValidationConfig,
     WatchlistConfig,
+    WorkspaceConfig,
 )
 
 __all__ = [
@@ -111,6 +113,7 @@ __all__ = [
     "TimeInForce",
     "ValidationConfig",
     "WatchlistConfig",
+    "WorkspaceConfig",
     "load_allocation_config",
     "load_analytics_config",
     "load_backtest_config",
@@ -139,5 +142,6 @@ __all__ = [
     "load_timeline_config",
     "load_validation_config",
     "load_watchlist_config",
+    "load_workspace_config",
     "snapshot_config",
 ]

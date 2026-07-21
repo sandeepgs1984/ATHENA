@@ -1,0 +1,8 @@
+{
+  "_meta": {
+    "layer": 6,
+    "description": "Unified Intelligence Workspace configuration (P6.7). Read-only intelligence composition surface — no state mutation or REST API."
+  },
+  "include_unified_summary": true,
+  "record_history": true
+}

@@ -1018,6 +1018,15 @@ class ExportConfig(_Strict):
     record_history: bool = True
 
 
+class WorkspaceConfig(_Strict):
+    """Unified Intelligence Workspace configuration (P6.7). Read-only intelligence composition surface —
+    no state mutation."""
+
+    include_unified_summary: bool = True
+    record_history: bool = True
+
+
+
 
 
 

@@ -30,6 +30,22 @@ Validation checklist 1–10 passed; frozen contracts unchanged; no ADR; no drift
 
 ## Phase 6 — Reporting, Dashboards & User Intelligence (in progress)
 
+### P6.7 — Unified Intelligence Workspace
+
+| | |
+|---|---|
+| Completed | 2026-07-21 |
+| Scope | Read-only unified intelligence composition workspace orchestrating query lookups, artifact filtering, and consolidated snapshots across all Phase 6 intelligence artifacts |
+| Tests | 669 passed / 0 failed (12 new) |
+| Status | **Awaiting owner approval** — Phase 6 completed; Phase 7 blocked until approved |
+| Branch | main |
+
+Built the Unified Intelligence Workspace (`src/athena/workspace/`), which answers one question: "How can all immutable ATHENA intelligence artifacts be accessed through a single, unified, read-only interface?" `UnifiedIntelligenceWorkspace` provides a consolidated view across 6 canonical workspace views (`REPORT`, `DASHBOARD`, `EXPLAINABILITY`, `TIMELINE`, `MONITORING`, `EXPORT`) into `WorkspaceSnapshot`s. It **aggregates and organizes information only**: it performs no state mutation, no user authentication, no REST APIs, no Web/Desktop/Mobile UI rendering, and no market analysis.
+
+Workspace features: `assemble_workspace(reports=None, dashboard_snapshot=None, explanation_snapshot=None, timeline_snapshot=None, monitoring_snapshot=None, export_snapshot=None, *, as_of)` aggregates all Phase 6 intelligence artifacts into cataloged `WorkspaceEntry` records, provides deterministic filtering (`filter_by_type()`), identifier lookup (`find_by_id()`), and a high-level `WorkspaceSummary`. All outputs (`WorkspaceEntry`, `WorkspaceSummary`, `WorkspaceSnapshot`, `WorkspaceHistory`) are immutable and preserve full `WorkspaceReferences` back to originating platform artifacts (`report_id`, `dashboard_snapshot_id`, `explanation_snapshot_id`, `timeline_snapshot_id`, `monitoring_snapshot_id`, `export_snapshot_id`).
+
+Files created: `src/athena/workspace/{__init__,models,engine}.py`, `config/workspace.json`, `tests/runtime/test_workspace.py`. Files modified: `src/athena/errors.py` (+`WorkspaceError`), `src/athena/config/{models,loader,__init__}.py` (+`WorkspaceConfig`, `load_workspace_config`, exports). No analytical engine, export engine, monitoring engine, timeline engine, explainability engine, dashboard engine, reporting framework, order lifecycle engine, broker abstraction layer, order planning engine, position sizing engine, capital allocation engine, portfolio engine, scheduling framework, scanner, watchlist manager, strategy framework, backtesting engine, reporting & analytics engine, workflow engine, or frozen-domain type touched. Public APIs added: `UnifiedIntelligenceWorkspace`, `WorkspaceEntry`, `WorkspaceSummary`, `WorkspaceSnapshot`, `WorkspaceHistory`, `WorkspaceReferences`, `WorkspaceConfig`, `load_workspace_config`. 12 new tests: workspace assembly across all 6 Phase 6 artifact types, filtering by artifact type, lookup by ID, deterministic replay (`to_dict` & `to_json` equality), immutable outputs (`FrozenInstanceError`), append-only history, config validation (production config loading), and an **end-to-end integration test** consuming all Phase 6 intelligence artifacts. ruff clean; no ADR; no drift; no tech debt. Validation checklist 1–10 passed; all prior engines and operational components unchanged.
+
 ### P6.6 — Export & Presentation Layer
 
 | | |
@@ -37,7 +53,7 @@ Validation checklist 1–10 passed; frozen contracts unchanged; no ADR; no drift
 | Completed | 2026-07-21 |
 | Scope | Presentation format transformation (JSON, Markdown, Text, CSV) for immutable platform artifacts; pure presentation adapter |
 | Tests | 657 passed / 0 failed (12 new) |
-| Status | **Awaiting owner approval** — P6.7 (Unified Intelligence Workspace) blocked until approved |
+| Status | **APPROVED** — Principal Engineer review passed |
 | Branch | main |
 
 Built the Export & Presentation Layer (`src/athena/export/`), which answers one question: "How can immutable ATHENA artifacts be exported and presented in standardized formats without changing their meaning or contents?" `ExportPresentationEngine` transforms immutable platform artifacts into 4 canonical presentation formats (`ExportFormat`: `JSON`, `MARKDOWN`, `TEXT`, `CSV`). It **transforms representations only**: it performs no state mutation, no PDF rendering, no REST endpoints, no file upload services, and no market analysis.

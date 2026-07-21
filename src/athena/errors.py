@@ -100,6 +100,11 @@ class ExportError(AthenaError):
     """Invalid export request or presentation formatting failure. Policy: fail loudly."""
 
 
+class WorkspaceError(AthenaError):
+    """Invalid workspace orchestration or query lookup failure. Policy: fail loudly."""
+
+
+
 
 
 

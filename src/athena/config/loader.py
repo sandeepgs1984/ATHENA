@@ -46,6 +46,7 @@ from athena.config.models import (
     TimelineConfig,
     ValidationConfig,
     WatchlistConfig,
+    WorkspaceConfig,
 )
 from athena.domain.run import ConfigurationSnapshot
 from athena.errors import ConfigError
@@ -390,6 +391,16 @@ def load_export_config(config_dir: Path) -> ExportConfig:
     path = Path(config_dir) / "export.json"
     try:
         return ExportConfig.model_validate(_read_json(path))
+    except ValidationError as exc:
+        raise ConfigError(_validation_message(str(path), exc)) from exc
+
+
+def load_workspace_config(config_dir: Path) -> WorkspaceConfig:
+    """Load + validate the Unified Intelligence Workspace settings (config/workspace.json)."""
+
+    path = Path(config_dir) / "workspace.json"
+    try:
+        return WorkspaceConfig.model_validate(_read_json(path))
     except ValidationError as exc:
         raise ConfigError(_validation_message(str(path), exc)) from exc
 
