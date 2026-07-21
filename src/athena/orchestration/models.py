@@ -17,7 +17,8 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    pass
+    from athena.workspace.models import WorkspaceSnapshot
+
 
 
 class StageStatus(str, Enum):
@@ -209,3 +210,38 @@ class PipelineHistory:
 
     def to_dict(self) -> dict[str, object]:
         return {"records": [r.to_dict() for r in self.records]}
+
+
+@dataclass(frozen=True, slots=True)
+class SystemPipelineResult:
+    """Immutable result of executing an integrated system pipeline chain."""
+
+    run_id: str
+    as_of: datetime
+    pipeline_runs: tuple[PipelineResult, ...]
+    workspace_snapshot: WorkspaceSnapshot | None
+    overall_status: PipelineStatus
+    final_context: PipelineContext
+
+    def __post_init__(self) -> None:
+        if not self.run_id:
+            raise ValueError("SystemPipelineResult mandatory run_id missing")
+        if self.as_of.tzinfo is None:
+            raise ValueError("SystemPipelineResult.as_of must be timezone-aware")
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "run_id": self.run_id,
+            "as_of": self.as_of.isoformat(),
+            "pipeline_runs": [p.to_dict() for p in self.pipeline_runs],
+            "workspace_snapshot": (
+                self.workspace_snapshot.to_dict() if self.workspace_snapshot else None
+            ),
+            "overall_status": self.overall_status.value,
+            "final_context": self.final_context.to_dict(),
+        }
+
+    def to_json(self) -> str:
+        """Deterministic JSON representation."""
+        return json.dumps(self.to_dict(), sort_keys=True, indent=2)
+

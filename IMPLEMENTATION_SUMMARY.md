@@ -8,6 +8,22 @@ status updated on approval.
 
 ## Phase 7 — Production Orchestration & Scheduling (in progress)
 
+### P7.4 — Pipeline Runner Integration
+
+| | |
+|---|---|
+| Completed | 2026-07-21 |
+| Scope | Implement integrated runtime orchestration layer: `PipelineContract`, `validate_contract`, `PipelineCoordinator`, `WorkspaceAssembler`, `SystemPipelineRunner`, `SystemPipelineResult` |
+| Tests | 705 passed / 0 failed (12 new) |
+| Status | **Awaiting owner approval** |
+| Branch | main |
+
+Implemented ATHENA's integrated production runtime. `PipelineContract` declares symmetric input/output requirements per pipeline; `validate_contract()` is a pure validation function that raises `OrchestrationError` on missing required inputs. `PipelineCoordinator` executes an ordered sequence of `(PipelineDefinition, PipelineContract)` pairs generically — enforcing contracts between runs and threading functional context — with no knowledge of specific artifact keys. `WorkspaceAssembler` is a standalone post-processing adapter that extracts intelligence artifacts from the final `PipelineContext` and delegates construction to `UnifiedIntelligenceWorkspace`, fully isolating workspace assembly from the orchestration layer. `SystemPipelineRunner` is the high-level system entry point, composing coordinator and assembler with explicit four-boundary failure handling: execution failure → immediate termination; contract validation failure → raises `OrchestrationError`; intelligence failure → skips workspace; workspace failure → exception caught, pipelines preserved, `overall_status=FAILED`. `SystemPipelineResult` is an immutable generic container holding `pipeline_runs: tuple[PipelineResult, ...]` to scale beyond two pipelines.
+
+Files created: `src/athena/orchestration/contract.py`, `src/athena/orchestration/coordinator.py`, `src/athena/orchestration/workspace_adapter.py`, `src/athena/orchestration/system_runner.py`, `tests/runtime/test_pipeline_runner_integration.py`. Files modified: `src/athena/orchestration/models.py` (added `SystemPipelineResult`), `src/athena/orchestration/__init__.py` (exported all P7.4 APIs). Public APIs added: `PipelineContract`, `validate_contract`, `EXECUTION_PIPELINE_CONTRACT`, `INTELLIGENCE_PIPELINE_CONTRACT`, `PipelineCoordinator`, `WorkspaceAssembler`, `SystemPipelineRunner`, `SystemPipelineResult`. 12 new tests covering: contract construction and validation, coordinator sequence execution, coordinator contract failure boundary, workspace assembler extraction, end-to-end system cycle success, execution failure early exit, workspace assembly failure handling, deterministic replayability, and `FrozenInstanceError` immutability. No ADR required; no architecture drift; zero technical debt. All 10 validation checklist items passed; 705 total suite tests pass clean.
+
+---
+
 ### P7.3 — Intelligence Pipeline Registration
 
 | | |
