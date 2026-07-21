@@ -1,0 +1,10 @@
+{
+  "_meta": {
+    "layer": 5,
+    "description": "Position Sizing Engine configuration (P5.3). Quantity calculation only — no order placement, no broker execution."
+  },
+  "default_model": "WHOLE_SHARE",
+  "default_rounding": "ROUND_DOWN",
+  "decimal_precision": 4,
+  "record_history": true
+}

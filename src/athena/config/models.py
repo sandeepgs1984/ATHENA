@@ -802,6 +802,34 @@ class AllocationConfig(_Strict):
         return v
 
 
+class SizingModel(str, Enum):
+    WHOLE_SHARE = "WHOLE_SHARE"
+    FRACTIONAL = "FRACTIONAL"
+
+
+class RoundingMode(str, Enum):
+    ROUND_DOWN = "ROUND_DOWN"
+    ROUND_UP = "ROUND_UP"
+
+
+class SizingConfig(_Strict):
+    """Position Sizing Engine configuration (P5.3). Quantity calculation only —
+    no order placement, no broker execution."""
+
+    default_model: SizingModel = SizingModel.WHOLE_SHARE
+    default_rounding: RoundingMode = RoundingMode.ROUND_DOWN
+    decimal_precision: int = 4
+    record_history: bool = True
+
+    @field_validator("decimal_precision")
+    @classmethod
+    def _non_negative_precision(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("decimal_precision must be >= 0")
+        return v
+
+
+
 
 
 class Holiday(_Strict):

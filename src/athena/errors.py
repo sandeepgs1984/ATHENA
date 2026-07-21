@@ -56,3 +56,8 @@ class AllocationError(AthenaError):
     """Invalid capital allocation policy, constraint, or state violation. Policy: fail loudly."""
 
 
+class SizingError(AthenaError):
+    """Invalid position sizing policy, price, precision, or constraint violation. Policy: fail loudly."""
+
+
+

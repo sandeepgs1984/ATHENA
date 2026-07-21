@@ -31,6 +31,7 @@ from athena.config.models import (
     RiskAssessmentConfig,
     SchedulingConfig,
     ScoringConfig,
+    SizingConfig,
     SectorHealthConfig,
     StrategyConfig,
     ValidationConfig,
@@ -269,6 +270,16 @@ def load_allocation_config(config_dir: Path) -> AllocationConfig:
     path = Path(config_dir) / "allocation.json"
     try:
         return AllocationConfig.model_validate(_read_json(path))
+    except ValidationError as exc:
+        raise ConfigError(_validation_message(str(path), exc)) from exc
+
+
+def load_sizing_config(config_dir: Path) -> SizingConfig:
+    """Load + validate the Position Sizing Engine settings (config/sizing.json)."""
+
+    path = Path(config_dir) / "sizing.json"
+    try:
+        return SizingConfig.model_validate(_read_json(path))
     except ValidationError as exc:
         raise ConfigError(_validation_message(str(path), exc)) from exc
 

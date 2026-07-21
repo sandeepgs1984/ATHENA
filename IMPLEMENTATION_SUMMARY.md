@@ -30,6 +30,22 @@ Validation checklist 1–10 passed; frozen contracts unchanged; no ADR; no drift
 
 ## Phase 5 — Portfolio & Execution Platform (in progress)
 
+### P5.3 — Position Sizing Engine
+
+| | |
+|---|---|
+| Completed | 2026-07-21 |
+| Scope | Converts approved capital allocations into executable share/unit quantities with rounding & precision policy; quantity calculation only |
+| Tests | 537 passed / 0 failed (13 new) |
+| Status | **Awaiting owner approval** — P5.4 (Order Planning Engine) blocked until approved |
+| Branch | main |
+
+Built the Position Sizing Engine (`src/athena/sizing/`), which answers one question: "Given an approved capital allocation, how many units of the instrument should ATHENA purchase or sell?" `PositionSizingEngine` converts allocated capital amounts from an `AllocationPlan` into executable unit quantities based on instrument prices. It **calculates unit quantities only**: it performs no market analysis, no capital allocation policy decisions, no risk limit checks, and no order placement.
+
+Supported sizing models & rounding policies: `WHOLE_SHARE` (integer share quantities via `int(raw_qty)`) and `FRACTIONAL` (decimal unit quantities up to configured `decimal_precision`, default 4 decimal places), combined with `ROUND_DOWN` (floor / conservative sizing ensuring cost <= allocation) or `ROUND_UP` (ceiling sizing). Sizing operations: `size_plan(allocation_plan, prices, *, as_of, model=None, rounding=None)` processes all allocations in deterministic sorted order; `size_amount(allocated_amount, unit_price, instrument_id, *, as_of)` calculates single-opportunity quantity. Zero-allocation items get `status="ZERO_ALLOCATION"`, `quantity=0`; missing or non-positive price items get `status="REJECTED_ZERO_PRICE"`, `quantity=0`. All outputs (`PositionSize`, `PositionSizingPlan`, `PositionSizingSummary`, `PositionSizingHistory`) are immutable and preserve full `SizingReferences` back to `allocation_plan_id`, `portfolio_snapshot_id`, `decision_id`, `strategy`, `watchlist`, and `schedule_execution_id`.
+
+Files created: `src/athena/sizing/{__init__,models,engine}.py`, `config/sizing.json`, `tests/runtime/test_sizing.py`. Files modified: `src/athena/errors.py` (+`SizingError`), `src/athena/config/{models,loader,__init__}.py` (+`SizingConfig`, `SizingModel`, `RoundingMode`, `load_sizing_config`, exports). No analytical engine, capital allocation engine, portfolio engine, scheduling framework, scanner, watchlist manager, strategy framework, backtesting engine, reporting & analytics engine, workflow engine, or frozen-domain type touched. Public APIs added: `PositionSizingEngine`, `PositionSize`, `PositionSizingDecision`, `PositionSizingPlan`, `PositionSizingSummary`, `PositionSizingHistory`, `SizingReferences`, `SizingModel`, `RoundingMode`, `SizingConfig`, `load_sizing_config`. 13 new tests: whole-share sizing with round down & round up, fractional unit sizing with precision, zero-allocation handling, missing price handling, single-amount sizing, deterministic replay (`to_dict` & `to_json` equality), immutable outputs (`FrozenInstanceError`), append-only history, config validation (negative precision rejection, production config loading), and an **end-to-end integration test** consuming a real `AllocationPlan` from `CapitalAllocationEngine`. ruff clean; no ADR; no drift; no tech debt. Validation checklist 1–10 passed; all prior engines and operational components unchanged.
+
 ### P5.2 — Capital Allocation Engine
 
 | | |
@@ -37,7 +53,7 @@ Validation checklist 1–10 passed; frozen contracts unchanged; no ADR; no drift
 | Completed | 2026-07-21 |
 | Scope | Policy-driven capital allocation per approved opportunity; enforces reserve floors and allocation models without position sizing or order execution |
 | Tests | 524 passed / 0 failed (12 new) |
-| Status | **Awaiting owner approval** — P5.3 (Position Sizing Engine) blocked until approved |
+| Status | **APPROVED** — Principal Engineer review passed |
 | Branch | main |
 
 Built the Capital Allocation Engine (`src/athena/allocation/`), which answers one question: "How much capital should be reserved for each approved investment opportunity?" `CapitalAllocationEngine` evaluates available portfolio capital from a `PortfolioSnapshot` and allocates capital to candidate opportunities according to policy. It **determines capital allocation policy only**: it performs no market analysis, no position sizing (shares calculation), no risk limit checks, and no order execution.
