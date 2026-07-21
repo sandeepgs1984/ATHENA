@@ -1,0 +1,17 @@
+apiVersion: aeos/v1
+
+kind: Role
+
+metadata:
+  id: ROLE-0001
+  name: Principal Engineer
+  version: 1.0.0
+
+spec:
+  responsibilities:
+    - Architecture
+    - Governance
+    - Reviews
+
+status:
+  lifecycle: Active

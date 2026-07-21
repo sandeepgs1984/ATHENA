@@ -1,0 +1,18 @@
+apiVersion: aeos/v1
+
+kind: Workflow
+
+metadata:
+  id: WF-0001
+  name: Feature Delivery
+
+spec:
+  steps:
+    - Design
+    - Review
+    - Implement
+    - Validate
+    - Release
+
+status:
+  lifecycle: Active

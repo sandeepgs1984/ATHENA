@@ -1,0 +1,17 @@
+apiVersion: aeos/v1
+
+kind: Capability
+
+metadata:
+  id: CAP-0001
+  name: API Design
+
+spec:
+  inputs:
+    - Requirements
+
+  outputs:
+    - API Contract
+
+status:
+  lifecycle: Active
