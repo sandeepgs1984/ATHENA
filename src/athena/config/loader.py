@@ -32,6 +32,7 @@ from athena.config.models import (
     OrderPlanningConfig,
     PortfolioAnalyticsConfig,
     PortfolioConfig,
+    ReportingFrameworkConfig,
     RiskAssessmentConfig,
     SchedulingConfig,
     ScoringConfig,
@@ -324,6 +325,16 @@ def load_portfolio_analytics_config(config_dir: Path) -> PortfolioAnalyticsConfi
     path = Path(config_dir) / "portfolio_analytics.json"
     try:
         return PortfolioAnalyticsConfig.model_validate(_read_json(path))
+    except ValidationError as exc:
+        raise ConfigError(_validation_message(str(path), exc)) from exc
+
+
+def load_reporting_framework_config(config_dir: Path) -> ReportingFrameworkConfig:
+    """Load + validate the Reporting Framework settings (config/reporting.json)."""
+
+    path = Path(config_dir) / "reporting.json"
+    try:
+        return ReportingFrameworkConfig.model_validate(_read_json(path))
     except ValidationError as exc:
         raise ConfigError(_validation_message(str(path), exc)) from exc
 

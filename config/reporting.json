@@ -1,0 +1,9 @@
+{
+  "_meta": {
+    "layer": 6,
+    "description": "Reporting Framework configuration (P6.1). Read-only presentation of platform artifacts — no state mutation."
+  },
+  "default_format": "text",
+  "include_text_rendering": true,
+  "record_history": true
+}

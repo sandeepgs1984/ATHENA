@@ -71,13 +71,28 @@ Manages capital responsibly; consumes completed Decision artifacts produced by t
 | **P5.4** Order Planning Engine | Broker-neutral execution instructions & order batching | ✅ Approved |
 | **P5.5** Broker Abstraction Layer | Canonical broker contracts & capability validation | ✅ Approved |
 | **P5.6** Order Lifecycle Engine | Order tracking, fill reconciliation, state machine | ✅ Approved |
-| **P5.7** Portfolio Analytics & Performance | Realized P&L, performance metrics, portfolio statistics | In review |
+| **P5.7** Portfolio Analytics & Performance | Realized P&L, performance metrics, portfolio statistics | ✅ Approved |
 
-## Phases 6–7
+## Phase 6 — Reporting, Dashboards & User Intelligence (AUTHORIZED)
 
-Phase 6 (Reporting & Dashboard), Phase 7 (Production Readiness): each split into reviewable milestones at authorization.
+Presents, organizes, and explains information already produced by the core platform; read-only; no state mutation.
+
+| Milestone | Scope | Status |
+|---|---|---|
+| **P6.1** Reporting Framework | Generic operational reporting engine (portfolio, execution, allocation, analytics, audit) | In review |
+| P6.2 Dashboard & Snapshot Engine | Derived, read-only dashboard views & snapshots | Blocked on P6.1 |
+| P6.3 Explainability Engine | Human-readable decision & performance explanations | Blocked on P6.2 |
+| P6.4 Timeline & Audit Engine | End-to-end pipeline audit reconstruction & timelines | Blocked on P6.3 |
+| P6.5 Operational Monitoring | Execution pipeline & component health observing | Blocked on P6.4 |
+| P6.6 Export & Presentation Layer | Deterministic presentation formatting & export | Blocked on P6.5 |
+| P6.7 Unified Intelligence Workspace | Read-only operational workspace orchestration | Blocked on P6.6 |
+
+## Phase 7
+
+Phase 7 (Production Readiness): split into reviewable milestones at authorization.
 
 ---
 
 *Status legend: a milestone is "In review" after its Milestone Review Summary is
 delivered, "Approved" only when the owner says so. Never two milestones in flight.*
+

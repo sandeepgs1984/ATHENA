@@ -28,7 +28,27 @@ Validation checklist 1–10 passed; frozen contracts unchanged; no ADR; no drift
 
 ---
 
-## Phase 5 — Portfolio & Execution Platform (in progress)
+## Phase 6 — Reporting, Dashboards & User Intelligence (in progress)
+
+### P6.1 — Reporting Framework
+
+| | |
+|---|---|
+| Completed | 2026-07-21 |
+| Scope | Generic operational reporting engine generating immutable, structured machine-readable and human-readable reports from platform artifacts; read-only |
+| Tests | 597 passed / 0 failed (12 new) |
+| Status | **Awaiting owner approval** — P6.2 (Dashboard & Snapshot Engine) blocked until approved |
+| Branch | main |
+
+Built the Reporting Framework (`src/athena/reporting/`), which answers one question: "Given ATHENA's completed artifacts from Phases 1–5, how can we produce generic, immutable, human-readable and structured operational reports?" `ReportingEngine` consumes immutable platform artifacts (`PortfolioSnapshot`, `ExecutionState`, `AllocationPlan`, `PerformanceSnapshot`, audit events) to produce `GenericReport`s. It **presents and formats information only**: it performs no state mutation, no order execution, no analytical calculation, and no market analysis.
+
+Supported report types: `ReportType` (`PORTFOLIO`, `EXECUTION`, `ALLOCATION`, `ANALYTICS`, `AUDIT`). Report generation operations: `generate_portfolio_report(portfolio_snapshot, *, as_of)`, `generate_execution_report(execution_state, *, as_of)`, `generate_allocation_report(allocation_plan, *, as_of)`, `generate_analytics_report(performance_snapshot, *, as_of)`, `generate_audit_report(run_id, events, *, as_of)`. All reports provide dual presentation views (`to_dict()` machine-readable view and `to_text()` human-readable summary view). All outputs (`GenericReport`, `ReportingReferences`, `ReportingHistory`) are immutable and preserve full `ReportingReferences` back to `portfolio_snapshot_id`, `execution_state_id`, `allocation_plan_id`, `performance_snapshot_id`, `audit_id`, and `schedule_execution_id`.
+
+Files modified: `src/athena/reporting/{__init__,models,engine}.py` (added `ReportingEngine`, `GenericReport`, `ReportingReferences`, `ReportingHistory` while preserving M3.7 `DecisionReportingEngine` & `DecisionReport` intact), `config/reporting.json`, `tests/runtime/test_reporting_framework.py`. Files modified: `src/athena/errors.py` (+`ReportingError`), `src/athena/config/{models,loader,__init__}.py` (+`ReportingFrameworkConfig`, `ReportType`, `load_reporting_framework_config`, exports). No analytical engine, order lifecycle engine, broker abstraction layer, order planning engine, position sizing engine, capital allocation engine, portfolio engine, scheduling framework, scanner, watchlist manager, strategy framework, backtesting engine, reporting & analytics engine, workflow engine, or frozen-domain type touched. Public APIs added: `ReportingEngine`, `GenericReport`, `ReportingReferences`, `ReportingHistory`, `ReportType`, `ReportingFrameworkConfig`, `load_reporting_framework_config`. 12 new tests: portfolio report generation, execution report generation, allocation report generation, analytics report generation, audit report generation, machine/text rendering verification, deterministic replay (`to_dict` & `to_json` equality), immutable outputs (`FrozenInstanceError`), append-only history, config validation (production config loading), and an **end-to-end integration test** consuming real artifacts across all Phases 1–5. ruff clean; no ADR; no drift; no tech debt. Validation checklist 1–10 passed; all prior engines and operational components unchanged.
+
+---
+
+## Phase 5 — Portfolio & Execution Platform (COMPLETED)
 
 ### P5.7 — Portfolio Analytics & Performance
 
@@ -37,7 +57,7 @@ Validation checklist 1–10 passed; frozen contracts unchanged; no ADR; no drift
 | Completed | 2026-07-21 |
 | Scope | Computes portfolio returns, realized/unrealized P&L, exposures, win/loss stats, and drawdowns; performance calculation only |
 | Tests | 585 passed / 0 failed (12 new) |
-| Status | **Awaiting owner approval** — Phase 5 completed; Phase 6 blocked until approved |
+| Status | **APPROVED** — Principal Engineer review passed |
 | Branch | main |
 
 Built the Portfolio Analytics Engine (`src/athena/analytics/portfolio/`), which answers one question: "Given completed portfolio activity and execution history, how has the portfolio performed?" `PortfolioAnalyticsEngine` consumes `PortfolioSnapshot`s and `ExecutionState`s to compute comprehensive performance metrics (`PortfolioPerformance`, `TradePerformance`, `AnalyticsSummary`, `PerformanceSnapshot`). It **computes performance metrics and analytics only**: it performs no investment decision making, no capital allocation, no position sizing, no order planning, no broker communication, and no execution state modification.

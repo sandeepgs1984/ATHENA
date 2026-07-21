@@ -76,6 +76,11 @@ class PortfolioAnalyticsError(AthenaError):
     """Invalid portfolio analytics calculation or constraint violation. Policy: fail loudly."""
 
 
+class ReportingError(AthenaError):
+    """Invalid report generation request or template failure. Policy: fail loudly."""
+
+
+
 
 
 

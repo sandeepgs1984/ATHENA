@@ -1,6 +1,22 @@
-"""Decision Reporting Engine (M3.7) — deterministic, presentation-only decision reports."""
+"""Reporting Framework package (P6.1).
 
-from athena.reporting.engine import DecisionReportingEngine
-from athena.reporting.models import DecisionReport
+Produces read-only structured machine-readable and human-readable operational reports.
+Performs no state mutation or analytical calculation.
+"""
 
-__all__ = ["DecisionReport", "DecisionReportingEngine"]
+from athena.reporting.engine import DecisionReportingEngine, ReportingEngine
+from athena.reporting.models import (
+    DecisionReport,
+    GenericReport,
+    ReportingHistory,
+    ReportingReferences,
+)
+
+__all__ = [
+    "DecisionReport",
+    "DecisionReportingEngine",
+    "GenericReport",
+    "ReportingEngine",
+    "ReportingHistory",
+    "ReportingReferences",
+]

@@ -912,6 +912,24 @@ class PortfolioAnalyticsConfig(_Strict):
         return v
 
 
+class ReportType(str, Enum):
+    PORTFOLIO = "PORTFOLIO"
+    EXECUTION = "EXECUTION"
+    ALLOCATION = "ALLOCATION"
+    ANALYTICS = "ANALYTICS"
+    AUDIT = "AUDIT"
+
+
+class ReportingFrameworkConfig(_Strict):
+    """Reporting Framework configuration (P6.1). Read-only report generation —
+    no state mutation."""
+
+    default_format: str = "text"
+    include_text_rendering: bool = True
+    record_history: bool = True
+
+
+
 
 
 
