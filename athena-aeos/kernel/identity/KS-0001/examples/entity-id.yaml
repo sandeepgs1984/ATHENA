@@ -1,0 +1,8 @@
+identity:
+  id: ROLE-0001
+  kind: Role
+  namespace: aeos.frameworks.roles
+  version: 1.0.0
+  owner: Architecture Board
+  created: 2026-07-21T00:00:00Z
+  checksum: sha256:8b4c2f...

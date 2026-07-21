@@ -1,0 +1,16 @@
+namespaces:
+
+  - aeos.foundation
+  - aeos.kernel
+  - aeos.services
+  - aeos.frameworks
+  - aeos.runtime
+  - aeos.reference
+  - aeos.sdk
+
+projects:
+
+  - athena.mobile
+  - athena.backend
+  - banking.core
+  - healthcare.platform
