@@ -1,210 +1,421 @@
-# MM-0001 — AEOS Meta Model
+# MM-0001 — Canonical Meta Model
 
 | Property | Value |
 |----------|-------|
 | ID | MM-0001 |
-| Version | 1.0.0 |
-| Status | Approved |
-| Category | Foundation Specification |
+| Version | 0.2.0 |
+| Status | Draft |
+| Layer | Foundation |
 | Owner | Chief Systems Architect |
 
 ---
 
 # Purpose
 
-The Meta Model defines the formal structure of every engineering concept within AEOS.
+The Meta Model defines the canonical structural model for all engineering objects within the AI Engineering Operating System (AEOS).
 
-Every object managed by AEOS SHALL conform to this model.
+It establishes the common abstractions, inheritance model, and structural rules that every engineering entity SHALL follow.
 
----
-
-# Meta Model Principles
-
-## Principle 1
-
-Everything is an Entity.
+The Meta Model provides the foundation upon which Kernel Services, Frameworks, Governance, Knowledge, Runtime, and Project Packs are built.
 
 ---
 
-## Principle 2
+# Objectives
 
-Every Entity has identity.
+The Meta Model SHALL:
 
----
-
-## Principle 3
-
-Every Entity has lifecycle.
-
----
-
-## Principle 4
-
-Every Entity may participate in relationships.
+- Define the canonical Entity abstraction.
+- Standardize engineering entities.
+- Eliminate duplicated definitions.
+- Enable interoperability across frameworks.
+- Support extensibility through inheritance.
+- Provide compatibility with all Kernel Services.
 
 ---
 
-## Principle 5
+# Core Principles
 
-Every Entity is versioned.
+The Meta Model follows these principles:
+
+1. Every engineering object is an Entity.
+
+2. Every Entity has a unique identity.
+
+3. Every Entity participates in a lifecycle.
+
+4. Every Entity maintains relationships.
+
+5. Every Entity is versioned.
+
+6. Every Entity is discoverable.
+
+7. Every Entity is validated.
+
+8. Every Entity may be extended but SHALL remain compatible with the canonical model.
 
 ---
 
-## Principle 6
+# Canonical Entity
 
-Every Entity is governable.
+The Entity is the root abstraction of AEOS.
+
+Every engineering object SHALL inherit from the canonical Entity.
+
+Examples include:
+
+- Role
+- Capability
+- Workflow
+- Policy
+- Artifact
+- Specification
+
+Future engineering domains SHALL also inherit from Entity.
 
 ---
 
-# Root Entity
+# Canonical Entity Structure
 
-Every engineering object inherits from Entity.
+Every Entity SHALL define the following inherited properties.
+
+## Identity
+
+Defines the globally unique identity of the Entity.
+
+Examples
+
+- Identifier
+- Name
+- Namespace
+
+---
+
+## Metadata
+
+Defines descriptive information.
+
+Examples
+
+- Description
+- Tags
+- Labels
+- Category
+
+---
+
+## Lifecycle
+
+Defines the operational state.
+
+Examples
+
+- Draft
+- Proposed
+- Approved
+- Active
+- Deprecated
+- Retired
+
+---
+
+## Version
+
+Defines engineering evolution.
+
+Examples
+
+- Semantic Version
+- Revision
+- Change History
+
+---
+
+## Relationships
+
+Defines structural connections.
+
+Examples
+
+- Depends On
+- References
+- Produces
+- Consumes
+- Implements
+- Governs
+
+---
+
+## Validation
+
+Defines engineering correctness.
+
+Examples
+
+- Schema Validation
+- Relationship Validation
+- Lifecycle Validation
+
+---
+
+## Audit Information
+
+Defines engineering traceability.
+
+Examples
+
+- Created By
+- Created Date
+- Modified By
+- Modified Date
+- Approval History
+
+---
+
+# Entity Inheritance
+
+All engineering entities derive from the canonical Entity.
 
 ```
 Entity
-```
-
----
-
-# Entity Contract
-
-Every Entity SHALL contain:
-
-| Property | Required |
-|-----------|----------|
-| id | ✓ |
-| kind | ✓ |
-| version | ✓ |
-| metadata | ✓ |
-| spec | ✓ |
-| status | ✓ |
-
----
-
-# Entity Hierarchy
-
-```
-Entity
-│
-├── Specification
-├── Artifact
 ├── Role
 ├── Capability
 ├── Workflow
 ├── Policy
-├── Runtime
-├── Project
-├── Knowledge
-└── Relationship
+├── Artifact
+└── Specification
+```
+
+Derived entities SHALL inherit all canonical properties.
+
+Derived entities SHALL define only domain-specific attributes.
+
+---
+
+# Extension Model
+
+Frameworks MAY introduce specialized entities.
+
+Specialized entities SHALL:
+
+- Inherit from Entity.
+- Preserve inherited behavior.
+- Remain compatible with Kernel Services.
+- Extend without modifying canonical definitions.
+
+Example
+
+```
+Entity
+
+└── Capability
+
+      └── API Contract Generation
+
+      └── Architecture Review
+
+      └── Test Automation
 ```
 
 ---
 
-# Entity Metadata
+# Kernel Compatibility
 
-Every entity SHALL define:
+Every Entity SHALL be compatible with all Kernel Services.
 
-- Unique Identifier
-- Name
-- Description
-- Owner
-- Version
-- Created Date
-- Updated Date
-- Tags
+| Kernel Service | Responsibility |
+|----------------|----------------|
+| Identity | Unique identification |
+| Lifecycle | State management |
+| Relationship | Connectivity |
+| Validation | Correctness |
+| Versioning | Evolution |
+| Discovery | Searchability |
 
----
-
-# Entity Lifecycle
-
-Every entity progresses through the following states:
-
-Draft
-
-↓
-
-Review
-
-↓
-
-Approved
-
-↓
-
-Active
-
-↓
-
-Deprecated
-
-↓
-
-Retired
-
-Transitions SHALL be auditable.
+Entities SHALL NOT redefine Kernel behavior.
 
 ---
 
-# Relationships
+# Extension Rules
 
-Relationships are first-class entities.
+Derived entities SHALL:
 
-Supported relationship types include:
+- Inherit canonical properties.
+- Add only domain-specific properties.
+- Preserve compatibility.
+- Remain implementation independent.
 
-- DEPENDS_ON
-- IMPLEMENTS
-- PRODUCES
-- CONSUMES
-- GOVERNS
-- EXTENDS
-- REFERENCES
-- OWNS
+Derived entities SHALL NOT:
+
+- Override inherited behavior.
+- Remove inherited properties.
+- Duplicate canonical definitions.
+- Modify Kernel contracts.
 
 ---
 
-# Entity Schema
+# Engineering Rules
 
-Every entity SHALL follow the standard AEOS schema.
+Every Entity SHALL:
 
-```yaml
-apiVersion: aeos/v1
+✓ Have a unique identity.
 
-kind:
+✓ Define lifecycle information.
 
-metadata:
+✓ Participate in relationships.
 
-spec:
+✓ Be versioned.
 
-status:
+✓ Be discoverable.
+
+✓ Be validatable.
+
+✓ Support auditing.
+
+Every Entity SHALL NOT:
+
+✗ Redefine canonical properties.
+
+✗ Duplicate Meta Model definitions.
+
+✗ Bypass Kernel Services.
+
+✗ Break inheritance compatibility.
+
+---
+
+# Examples
+
+## Role
+
+```
+Entity
+    ↓
+Role
+
+Adds:
+
+- Responsibilities
+- Authorities
+- Decision Rights
 ```
 
 ---
 
-# Example
+## Capability
 
-```yaml
-apiVersion: aeos/v1
+```
+Entity
+    ↓
+Capability
 
-kind: Role
+Adds:
 
-metadata:
-  id: ROLE-0001
-  name: Principal Engineer
-  version: 1.0.0
-
-spec:
-  responsibilities:
-    - Architecture Review
-    - Technical Leadership
-
-status:
-  lifecycle: Active
+- Inputs
+- Outputs
+- Preconditions
+- Executor Types
 ```
 
 ---
 
-# Conformance
+## Workflow
 
-Every future specification SHALL define one or more Entity types.
+```
+Entity
+    ↓
+Workflow
 
-No specification may introduce a new root object outside the Entity hierarchy.
+Adds:
+
+- Steps
+- Transitions
+- Conditions
+```
+
+---
+
+## Policy
+
+```
+Entity
+    ↓
+Policy
+
+Adds:
+
+- Rules
+- Compliance
+- Enforcement
+```
+
+---
+
+## Artifact
+
+```
+Entity
+    ↓
+Artifact
+
+Adds:
+
+- Format
+- Location
+- Ownership
+```
+
+---
+
+## Specification
+
+```
+Entity
+    ↓
+Specification
+
+Adds:
+
+- Scope
+- Requirements
+- Constraints
+```
+
+---
+
+# Non-Goals
+
+The Meta Model does NOT define:
+
+- Framework behavior
+- Runtime execution
+- Governance processes
+- Implementation technologies
+- Business-specific entities
+
+These are defined by higher architectural layers.
+
+---
+
+# Related Specifications
+
+- AESS-0000
+- LAW-0001
+- TERM-0001
+- ARCH-0001
+- KS-0001
+- KS-0002
+- KS-0003
+- KS-0004
+- KS-0005
+- KS-0006
+- FW-0000
+
+---
+
+# Summary
+
+The Meta Model establishes the canonical Entity abstraction that serves as the foundation of AEOS.
+
+Every engineering object derives from Entity, inherits common behavior, and extends the model only through domain-specific properties.
+
+This approach provides consistency, interoperability, extensibility, and long-term maintainability across the entire engineering operating system.

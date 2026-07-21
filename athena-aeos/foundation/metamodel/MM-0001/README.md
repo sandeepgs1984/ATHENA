@@ -10,6 +10,25 @@ This specification establishes the common language understood by both humans and
 
 ---
 
+## Canonical Entity
+
+The Entity is the fundamental abstraction of AEOS.
+
+Every engineering object derives from the canonical Entity model.
+
+Examples include:
+
+- Role
+- Capability
+- Workflow
+- Policy
+- Artifact
+- Specification
+
+The Meta Model defines the common properties inherited by all entities.
+
+---
+
 ## Objectives
 
 - Define the engineering object model

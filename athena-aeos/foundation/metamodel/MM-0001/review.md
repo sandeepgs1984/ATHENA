@@ -40,3 +40,19 @@ Future extensions should introduce new Entity specializations rather than modify
 ## Review Status
 
 Approved
+
+---
+
+## Architectural Improvement
+
+The introduction of canonical Entity inheritance removes duplication across engineering domains.
+
+Benefits include:
+
+- Single source of truth.
+- Consistent entity definitions.
+- Reduced maintenance.
+- Improved extensibility.
+- Simplified future specifications.
+
+This aligns AEOS with established architectural principles of abstraction and inheritance.
