@@ -28,7 +28,7 @@ Framework · M0.4 Trading Calendar · M0.5 Observability & CLI.
 | **M2.1** Regime Engine | Deterministic regime (trend/volatility/gap) with evidence | ✅ Approved |
 | **M2.2** Market Health | Breadth, trend quality, participation, momentum, volatility health | ✅ Approved |
 | **M2.3** Sector Health | Sector-level strength, deterministic + explainable | ✅ Approved |
-| **M2.4** Universe Engine | Investable universe construction with explainable inclusion | In review |
+| **M2.4** Universe Engine | Investable universe construction with explainable inclusion | ✅ Approved |
 
 ## Phase 3 — Decision Intelligence (AUTHORIZED)
 
@@ -42,7 +42,7 @@ Per the Phase 3 authorization the milestone set is:
 | **M3.4** Confidence Engine | Evidence reliability (completeness, agreement, freshness, contradictions) | ✅ Approved |
 | **M3.5** Risk Engine | Descriptive trading-risk assessment (volatility/liquidity/gap/event/concentration) | ✅ Approved |
 | **M3.6** Decision Engine | First explainable decisions from bundle+indicators+scores+confidence+risk | ✅ Approved |
-| **M3.7** Decision Trace & Reporting | Human + machine-readable decision reports | In review |
+| **M3.7** Decision Trace & Reporting | Human + machine-readable decision reports | ✅ Approved |
 
 ## Phase 4 — Orchestration & Operational Intelligence (AUTHORIZED)
 
@@ -85,7 +85,7 @@ Presents, organizes, and explains information already produced by the core platf
 | **P6.4** Timeline & Audit Engine | End-to-end pipeline audit reconstruction & timelines | ✅ Approved |
 | **P6.5** Operational Monitoring | Execution pipeline & component health observing | ✅ Approved |
 | **P6.6** Export & Presentation Layer | Deterministic presentation formatting & export | ✅ Approved |
-| **P6.7** Unified Intelligence Workspace | Read-only operational workspace orchestration | In review |
+| **P6.7** Unified Intelligence Workspace | Read-only operational workspace orchestration | ✅ Approved |
 
 ## Phase 7
 
