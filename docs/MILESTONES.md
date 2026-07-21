@@ -51,8 +51,8 @@ engine outputs only, modifies no analytical engine.
 
 | Milestone | Scope | Status |
 |---|---|---|
-| **M4.1** Workflow Orchestration Engine | Deterministic DAG pipeline runner (stages, execution, report, failure isolation, replay) | In review |
-| M4.2 Daily Market Scanner | Run ATHENA across the universe → DailyScanReport | Blocked on M4.1 |
+| **M4.1** Workflow Orchestration Engine | Deterministic DAG pipeline runner (stages, execution, report, failure isolation, replay) | ✅ Approved |
+| **M4.2** Daily Market Scanner | Run ATHENA across the universe → DailyScanReport | In review |
 | M4.3 Watchlist Manager | Dynamic watchlists from decision outcomes | Blocked on M4.2 |
 | M4.4 Strategy Framework | Deterministic strategies consuming DecisionReport | Blocked on M4.3 |
 | M4.5 Backtesting Engine | Historical replay through the full pipeline | Blocked on M4.4 |
