@@ -17,6 +17,7 @@ from pydantic import ValidationError
 
 from athena.config.models import (
     AthenaConfig,
+    BacktestConfig,
     ConfidenceConfig,
     DecisionConfig,
     EventsFile,
@@ -214,6 +215,16 @@ def load_strategy_config(config_dir: Path) -> StrategyConfig:
     path = Path(config_dir) / "strategy.json"
     try:
         return StrategyConfig.model_validate(_read_json(path))
+    except ValidationError as exc:
+        raise ConfigError(_validation_message(str(path), exc)) from exc
+
+
+def load_backtest_config(config_dir: Path) -> BacktestConfig:
+    """Load + validate the Backtesting Engine settings (config/backtest.json)."""
+
+    path = Path(config_dir) / "backtest.json"
+    try:
+        return BacktestConfig.model_validate(_read_json(path))
     except ValidationError as exc:
         raise ConfigError(_validation_message(str(path), exc)) from exc
 

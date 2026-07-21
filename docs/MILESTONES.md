@@ -54,8 +54,8 @@ engine outputs only, modifies no analytical engine.
 | **M4.1** Workflow Orchestration Engine | Deterministic DAG pipeline runner (stages, execution, report, failure isolation, replay) | ✅ Approved |
 | **M4.2** Daily Market Scanner | Run ATHENA across the universe → DailyScanReport | ✅ Approved |
 | **M4.3** Watchlist Manager | Dynamic watchlists from decision outcomes | ✅ Approved |
-| **M4.4** Strategy Framework | Deterministic strategies consuming DecisionReport | In review |
-| M4.5 Backtesting Engine | Historical replay through the full pipeline | Blocked on M4.4 |
+| **M4.4** Strategy Framework | Deterministic strategies consuming DecisionReport | ✅ Approved |
+| **M4.5** Backtesting Engine | Historical replay through the full pipeline | In review |
 | M4.6 Reporting & Analytics | Daily/weekly/monthly summaries + statistics | Blocked on M4.5 |
 | M4.7 Scheduling Framework | Daily/weekly/manual/replay/batch job scheduling | Blocked on M4.6 |
 

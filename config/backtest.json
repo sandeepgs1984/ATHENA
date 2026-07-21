@@ -1,0 +1,8 @@
+{
+  "_meta": {
+    "layer": 4,
+    "description": "Backtesting Engine configuration (M4.5). Replay coordination only — no P&L, valuation, sizing, or execution. continue_on_error keeps the replay going past a failed step (isolated); carry_watchlist threads watchlist state chronologically so trend rules see prior scans."
+  },
+  "continue_on_error": true,
+  "carry_watchlist": true
+}

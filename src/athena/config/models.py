@@ -723,6 +723,13 @@ class StrategyConfig(_Strict):
         return v
 
 
+class BacktestConfig(_Strict):
+    """Backtesting Engine configuration (M4.5). Replay coordination only."""
+
+    continue_on_error: bool = True
+    carry_watchlist: bool = True
+
+
 class Holiday(_Strict):
     date: str
     name: str
