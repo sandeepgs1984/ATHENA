@@ -20,6 +20,20 @@ Frameworks SHALL NOT redefine Kernel responsibilities.
 
 ---
 
+## Framework Design Principles
+
+Every framework within AEOS SHALL:
+
+- Consume Kernel Services.
+- Manage a single engineering domain.
+- Remain independent of other framework implementations.
+- Interact through canonical entities and relationships.
+- Be independently evolvable.
+
+Frameworks are composable but not implementation dependent.
+
+---
+
 ## Dependencies
 
 - AESS-0000

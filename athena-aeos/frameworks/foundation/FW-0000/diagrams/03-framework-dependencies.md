@@ -1,11 +1,19 @@
-Foundation
-      │
-      ▼
- Kernel Services
-      │
-      ▼
-Framework Contract (FW-0000)
-      │
- ┌────┼────┬────┬────┬────┐
- ▼    ▼    ▼    ▼    ▼
-ROLE CAP  WF  POL ART SPEC
+                Foundation
+                     │
+                     ▼
+                  Kernel
+                     │
+                     ▼
+                  FW-0000
+                     │
+      ┌──────────────┼──────────────┐
+      ▼              ▼              ▼
+   ROLE          CAPABILITY      WORKFLOW
+      │              │              │
+      └────── Relationships ────────┘
+
+Allowed:
+Foundation → Kernel → FW-0000 → Framework
+
+Not Allowed:
+Framework → Framework

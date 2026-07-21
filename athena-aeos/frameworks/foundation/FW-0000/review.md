@@ -33,3 +33,11 @@ Keep framework responsibilities domain-specific and delegate universal concerns 
 ## Review Status
 
 Approved for Draft
+
+---
+
+## Architectural Improvement
+
+Explicit dependency rules prevent architectural erosion as additional frameworks are introduced.
+
+This specification establishes strict modular boundaries while preserving collaboration through canonical engineering entities.
