@@ -1,0 +1,19 @@
+policy:
+  extends: MM-0001
+
+  id: POL-0002
+
+  name: Release Approval
+
+  objective: Prevent unauthorized releases
+
+  targetEntityTypes:
+    - Workflow
+    - Artifact
+
+  enforcementMode: Mandatory
+
+  evaluationCriteria:
+    - QA approval completed
+    - Security review completed
+    - Release checklist passed

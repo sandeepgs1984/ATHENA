@@ -1,0 +1,17 @@
+policy:
+  extends: MM-0001
+
+  id: POL-0001
+
+  name: Architecture Review Approval
+
+  objective: Ensure architectural compliance
+
+  targetEntityTypes:
+    - Workflow
+
+  enforcementMode: Blocking
+
+  evaluationCriteria:
+    - Chief Systems Architect approval required
+    - Critical findings resolved
