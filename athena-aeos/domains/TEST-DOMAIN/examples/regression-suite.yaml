@@ -1,0 +1,11 @@
+suite:
+  name: Critical Regression
+
+includes:
+  - Authentication
+  - Payments
+  - User Profile
+  - Notifications
+
+execution:
+  trigger: Every Release

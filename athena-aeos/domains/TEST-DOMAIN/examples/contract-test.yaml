@@ -1,0 +1,10 @@
+contract:
+  provider: User Service
+  consumer: Mobile App
+
+verification:
+  schema_validation: true
+  backward_compatibility: true
+
+result:
+  status: PASS

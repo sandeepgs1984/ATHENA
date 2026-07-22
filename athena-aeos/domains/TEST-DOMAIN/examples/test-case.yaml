@@ -1,0 +1,14 @@
+id: TC-001
+
+title: Valid User Login
+
+preconditions:
+  - Registered User Exists
+
+steps:
+  - Enter Username
+  - Enter Password
+  - Tap Login
+
+expected_result:
+  - Dashboard Displayed
