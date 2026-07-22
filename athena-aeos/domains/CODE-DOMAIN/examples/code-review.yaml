@@ -1,0 +1,18 @@
+request:
+  capability: CAP-0001
+  domain: CODE-DOMAIN
+
+artifact:
+  type: Source Code
+
+review:
+
+  readability: PASS
+  architecture: PASS
+  testing: PASS
+  security: PASS
+  performance: PASS
+
+result:
+
+  status: APPROVED

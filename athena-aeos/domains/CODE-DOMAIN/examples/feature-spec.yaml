@@ -1,0 +1,18 @@
+feature:
+
+  name: Authentication Module
+
+requirements:
+
+  - Login
+  - Logout
+  - Token Refresh
+
+architecture:
+
+  pattern: Clean Architecture
+
+quality:
+
+  testing: REQUIRED
+  review: REQUIRED
