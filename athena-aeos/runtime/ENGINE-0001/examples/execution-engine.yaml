@@ -1,0 +1,15 @@
+engine:
+  id: ENGINE-0001
+
+request:
+  entity: RTE-0001
+
+execution:
+  state: Running
+
+result:
+  status: Completed
+
+events:
+  - ExecutionStarted
+  - ExecutionCompleted
