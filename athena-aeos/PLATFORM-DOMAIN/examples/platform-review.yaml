@@ -1,0 +1,12 @@
+review:
+
+  consumer_value: PASS
+  reliability: PASS
+  security: PASS
+  observability: PASS
+  governance: PASS
+  adoption: PASS
+
+result:
+
+  status: APPROVED

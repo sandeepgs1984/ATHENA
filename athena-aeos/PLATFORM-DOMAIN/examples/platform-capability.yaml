@@ -1,0 +1,17 @@
+capability:
+
+  name: Feature Flag Platform
+
+owner:
+
+  Platform Team
+
+consumers:
+
+  - Mobile
+  - Backend
+  - Web
+
+status:
+
+  Supported
