@@ -1,0 +1,16 @@
+extension:
+  id: EXT-0001
+  name: Custom Validation Rules
+
+version: 1.0.0
+
+target:
+  plugin: ValidationPlugin
+
+extensionPoint:
+  name: PreValidation
+
+configuration:
+  severity: Strict
+
+status: Active

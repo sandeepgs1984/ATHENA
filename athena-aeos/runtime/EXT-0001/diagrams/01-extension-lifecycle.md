@@ -1,0 +1,16 @@
+Installed
+    │
+    ▼
+Registered
+    │
+    ▼
+Bound
+    │
+    ▼
+Active
+    │
+    ▼
+Disabled
+    │
+    ▼
+Uninstalled
