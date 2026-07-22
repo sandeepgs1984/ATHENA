@@ -1,0 +1,13 @@
+session:
+  id: "SESSION-0001"
+  status: Active
+
+context:
+  request: "Generate API Contract"
+
+runtimeEntities:
+  - RTE-0001
+  - RTE-0002
+
+timeline:
+  startedAt: "2026-07-22T10:00:00Z"
