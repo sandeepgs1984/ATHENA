@@ -1,0 +1,16 @@
+orchestration:
+  session: SESSION-0001
+
+pipeline:
+  id: PIPELINE-0001
+
+commands:
+  - ValidateRequirements
+  - GenerateDesign
+  - ReviewArtifacts
+  - PublishOutput
+
+execution:
+  engine: ENGINE-0001
+
+status: Running
