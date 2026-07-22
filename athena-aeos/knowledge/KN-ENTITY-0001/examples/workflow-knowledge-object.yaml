@@ -1,0 +1,17 @@
+metadata:
+  identifier: WF-0001
+  title: Workflow Framework
+  version: 1.0.0
+
+ontology:
+  concept: Framework
+
+relationships:
+  - type: manages
+    target: WF-ENTITY-0001
+
+content:
+  purpose: Define the Workflow Framework.
+  responsibilities:
+    - Standardize workflow behavior
+    - Define workflow lifecycle
