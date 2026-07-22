@@ -1,8 +1,23 @@
-domain: DOC-DOMAIN
-
-capability: CAP-0002
+request:
+  capability: CAP-0002
+  domain: DOC-DOMAIN
 
 artifact:
-  type: OpenAPI Documentation
+  type: REST API Documentation
 
-status: GENERATED
+metadata:
+  service: User Service
+  version: v1
+
+generated:
+  sections:
+    - Overview
+    - Authentication
+    - Endpoints
+    - Request Examples
+    - Response Examples
+    - Error Codes
+    - Rate Limits
+    - Version History
+
+status: SUCCESS

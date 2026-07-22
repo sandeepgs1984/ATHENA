@@ -1,7 +1,17 @@
-Documentation Knowledge
-        │
-        ▼
-Engineering Capability Framework
-        │
-        ▼
-Documentation Engineering Services
+                    DOC-DOMAIN
+
+                         │
+                         │
+        ┌────────────────┼────────────────┐
+        │                │                │
+        ▼                ▼                ▼
+
+  Knowledge          Rules          Artifacts
+        │                │                │
+        └────────────────┼────────────────┘
+                         │
+                         ▼
+        Engineering Capability Framework
+                         │
+                         ▼
+             Documentation Intelligence

@@ -1,9 +1,23 @@
-domain: DOC-DOMAIN
-
-capability: CAP-0001
+request:
+  capability: CAP-0001
+  domain: DOC-DOMAIN
 
 artifact:
+  id: DOC-0015
   type: Architecture Document
+  title: Payment Service Architecture
+  version: 2.1.0
+
+review:
+  reviewer: Architecture Team
 
 result:
-  review: SUCCESS
+  status: PASS
+
+findings:
+  - Documentation follows approved template
+  - Metadata is complete
+  - References are valid
+
+recommendation:
+  Publish document.
