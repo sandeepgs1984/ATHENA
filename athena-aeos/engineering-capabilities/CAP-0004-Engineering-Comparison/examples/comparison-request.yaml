@@ -1,0 +1,10 @@
+capability: CAP-0004
+
+source:
+  path: architecture/v1
+
+target:
+  path: architecture/v2
+
+context:
+  domain: ARCH-DOMAIN
