@@ -1,0 +1,21 @@
+decision:
+
+  problem: Large-scale commerce platform
+
+  selected_architecture: Modular Monolith
+
+  alternatives:
+
+    - Microservices
+    - Layered
+
+reason:
+
+  - Faster delivery
+  - Lower operational cost
+  - Team size
+  - Simpler deployment
+
+review:
+
+  approved: true
