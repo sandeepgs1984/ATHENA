@@ -1,0 +1,14 @@
+domain: ARCH-DOMAIN
+
+service: ARCH-SERV-0001
+
+input:
+  architecture-specification
+
+output:
+  architecture-review-report
+
+dependencies:
+  - Governance
+  - Knowledge
+  - Runtime
