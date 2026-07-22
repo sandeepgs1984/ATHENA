@@ -1,0 +1,10 @@
+capability: CAP-0005
+
+objectives:
+  - Migrate architecture to v2
+
+context:
+  domain: ARCH-DOMAIN
+
+constraints:
+  phased_rollout: true
