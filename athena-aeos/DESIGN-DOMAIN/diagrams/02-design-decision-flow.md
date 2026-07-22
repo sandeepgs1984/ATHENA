@@ -1,0 +1,31 @@
+Requirements
+      │
+      ▼
+Architecture
+      │
+      ▼
+Responsibilities
+      │
+      ▼
+Modules
+      │
+      ▼
+Interfaces
+      │
+      ▼
+Dependencies
+      │
+      ▼
+Trade-offs
+      │
+      ▼
+Review
+      │
+      ▼
+Implementation
+      │
+      ▼
+Refactoring
+      │
+      ▼
+Evolution

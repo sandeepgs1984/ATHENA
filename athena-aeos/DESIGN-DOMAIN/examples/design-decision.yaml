@@ -1,0 +1,18 @@
+decision:
+
+  problem: Payment Processing
+
+  selected_design:
+
+    Component-based Modular Design
+
+alternatives:
+
+  - Layered
+  - Service-oriented
+
+reason:
+
+  - High cohesion
+  - Simple evolution
+  - Stable interfaces
