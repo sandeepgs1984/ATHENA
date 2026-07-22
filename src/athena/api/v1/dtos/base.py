@@ -12,9 +12,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from enum import Enum
 from typing import Generic, Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from athena.config.models import ExportFormat
 
 T = TypeVar("T")
 
@@ -152,3 +155,51 @@ class QuerySpecification(Generic[F]):
     filters: F
     sort: SortParams
     pagination: PaginationParams
+
+
+class SourceArtifactType(str, Enum):
+    """Enumerates the source platform artifact categories supported for presentation export."""
+
+    REPORT = "REPORT"
+    DASHBOARD = "DASHBOARD"
+    EXPLANATION = "EXPLANATION"
+    TIMELINE = "TIMELINE"
+    MONITORING = "MONITORING"
+
+
+class ArtifactMetadataDTO(BaseModel):
+    """Reusable, immutable metadata shared by all generated presentation artifacts."""
+
+    model_config = ConfigDict(frozen=True)
+
+    artifact_id: str
+    artifact_type: SourceArtifactType
+    format: ExportFormat
+    filename: str
+    created_at: datetime
+    generated_by: str
+    size_bytes: int
+    content_type: str
+    checksum: str | None = None
+
+
+class ExportJobStatus(str, Enum):
+    """Execution status states for presentation format adaptation jobs."""
+
+    QUEUED = "QUEUED"
+    RUNNING = "RUNNING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+
+
+class ExportJobDTO(BaseModel):
+    """Job status wrapper for synchronizing asynchronous processing semantics."""
+
+    model_config = ConfigDict(frozen=True)
+
+    job_id: str
+    status: ExportJobStatus
+    created_at: datetime
+    completed_at: datetime | None = None
+    result_artifact_id: str | None = None
+    error_message: str | None = None

@@ -18,8 +18,13 @@ from typing import ClassVar
 from athena.api.exceptions import (
     APIResourceError,
     DecisionNotFoundError,
+    ExportArtifactNotFoundError,
+    ExportGenerationError,
+    ExportSnapshotNotFoundError,
+    PerformanceSnapshotNotFoundError,
     PipelineRunNotFoundError,
     PortfolioUnavailableError,
+    ReportNotFoundError,
     ResourceNotFoundError,
     SchedulerRunNotFoundError,
     WorkspaceSnapshotNotFoundError,
@@ -122,13 +127,20 @@ class AthenaExceptionMapper:
         ExceptionMapping(PortfolioAnalyticsError, 500, "analytics-error",  "Analytics Error"),
         ExceptionMapping(ReportingError,        500, "reporting-error",     "Reporting Error"),
         ExceptionMapping(MonitoringError,       500, "monitoring-error",    "Monitoring Error"),
-        # Resource Exceptions (P8.3)
+        # Resource Exceptions (P8.3 / P8.4)
         ExceptionMapping(DecisionNotFoundError, 404, "decision-not-found", "Decision Not Found"),
         ExceptionMapping(PipelineRunNotFoundError, 404, "pipeline-run-not-found", "Pipeline Run Not Found"),
         ExceptionMapping(WorkspaceSnapshotNotFoundError, 404, "workspace-not-found", "Workspace Snapshot Not Found"),
         ExceptionMapping(SchedulerRunNotFoundError, 404, "scheduler-run-not-found", "Scheduler Run Not Found"),
+        ExceptionMapping(ReportNotFoundError, 404, "report-not-found", "Report Not Found"),
+        ExceptionMapping(
+            PerformanceSnapshotNotFoundError, 404, "performance-snapshot-not-found", "Performance Snapshot Not Found"
+        ),
+        ExceptionMapping(ExportSnapshotNotFoundError, 404, "export-snapshot-not-found", "Export Snapshot Not Found"),
+        ExceptionMapping(ExportArtifactNotFoundError, 404, "export-artifact-not-found", "Export Artifact Not Found"),
         ExceptionMapping(ResourceNotFoundError, 404, "resource-not-found", "Resource Not Found"),
         ExceptionMapping(PortfolioUnavailableError, 503, "portfolio-unavailable", "Portfolio Unavailable"),
+        ExceptionMapping(ExportGenerationError, 400, "export-generation-failed", "Export Generation Failed"),
         ExceptionMapping(APIResourceError, 400, "api-resource-error", "API Resource Error"),
         # Security Errors (P8.2)
         ExceptionMapping(InvalidCredentialsError, 401, "invalid-credentials", "Invalid Credentials"),

@@ -34,3 +34,23 @@ class SchedulerRunNotFoundError(ResourceNotFoundError):
 
 class PortfolioUnavailableError(APIResourceError):
     """Current portfolio state is unconstructed or unavailable (HTTP 503)."""
+
+
+class ReportNotFoundError(ResourceNotFoundError):
+    """Specific generic report not found."""
+
+
+class PerformanceSnapshotNotFoundError(ResourceNotFoundError):
+    """Specific analytics performance snapshot not found."""
+
+
+class ExportSnapshotNotFoundError(ResourceNotFoundError):
+    """Specific batch export snapshot not found."""
+
+
+class ExportArtifactNotFoundError(ResourceNotFoundError):
+    """Specific exported presentation artifact not found."""
+
+
+class ExportGenerationError(APIResourceError):
+    """Failed to dynamically adapt/generate presentation format for an artifact."""

@@ -10,17 +10,24 @@ from fastapi import Request
 
 from athena.api.v1.providers.base import (
     DecisionProvider,
+    ExportGenerationProvider,
+    ExportQueryProvider,
     HealthProvider,
     MetricsProvider,
+    PerformanceAnalyticsProvider,
     PipelineRunProvider,
     PortfolioProvider,
+    ReportProvider,
     SchedulerHistoryProvider,
     WorkspaceProvider,
 )
 from athena.api.v1.providers.in_memory import (
     InMemoryDecisionProvider,
+    InMemoryExportProvider,
+    InMemoryPerformanceAnalyticsProvider,
     InMemoryPipelineRunProvider,
     InMemoryPortfolioProvider,
+    InMemoryReportProvider,
     InMemorySchedulerHistoryProvider,
     InMemoryWorkspaceProvider,
     seed_sample_data,
@@ -29,11 +36,14 @@ from athena.api.v1.providers.observability import (
     ObservabilityHealthProvider,
     ObservabilityMetricsProvider,
 )
+from athena.api.v1.services.analytics_service import AnalyticsService
 from athena.api.v1.services.decisions_service import DecisionsService
+from athena.api.v1.services.exports_service import ExportsService
 from athena.api.v1.services.health_service import HealthService
 from athena.api.v1.services.metrics_service import MetricsService
 from athena.api.v1.services.pipelines_service import PipelinesService
 from athena.api.v1.services.portfolio_service import PortfolioService
+from athena.api.v1.services.reports_service import ReportsService
 from athena.api.v1.services.scheduler_service import SchedulerService
 from athena.api.v1.services.workspace_service import WorkspaceService
 
@@ -47,6 +57,9 @@ _portfolio_provider = InMemoryPortfolioProvider()
 _pipeline_run_provider = InMemoryPipelineRunProvider()
 _scheduler_history_provider = InMemorySchedulerHistoryProvider()
 _workspace_provider = InMemoryWorkspaceProvider()
+_report_provider = InMemoryReportProvider()
+_analytics_provider = InMemoryPerformanceAnalyticsProvider()
+_export_provider = InMemoryExportProvider()
 
 # Seed sample data for Swagger / Dev runtime
 seed_sample_data(
@@ -55,6 +68,9 @@ seed_sample_data(
     _pipeline_run_provider,
     _scheduler_history_provider,
     _workspace_provider,
+    _report_provider,
+    _analytics_provider,
+    _export_provider,
 )
 
 
@@ -148,3 +164,43 @@ def get_workspace_service(request: Request) -> WorkspaceService:
     """Dependency provider for WorkspaceService."""
     provider = getattr(request.app.state, "workspace_provider", _workspace_provider)
     return WorkspaceService(provider)
+
+
+def get_report_provider() -> ReportProvider:
+    """Dependency provider for ReportProvider."""
+    return _report_provider
+
+
+def get_performance_analytics_provider() -> PerformanceAnalyticsProvider:
+    """Dependency provider for PerformanceAnalyticsProvider."""
+    return _analytics_provider
+
+
+def get_export_query_provider() -> ExportQueryProvider:
+    """Dependency provider for ExportQueryProvider."""
+    return _export_provider
+
+
+def get_export_generation_provider() -> ExportGenerationProvider:
+    """Dependency provider for ExportGenerationProvider."""
+    return _export_provider
+
+
+def get_reports_service(request: Request) -> ReportsService:
+    """Dependency provider for ReportsService."""
+    provider = getattr(request.app.state, "report_provider", _report_provider)
+    return ReportsService(provider)
+
+
+def get_analytics_service(request: Request) -> AnalyticsService:
+    """Dependency provider for AnalyticsService."""
+    provider = getattr(request.app.state, "analytics_provider", _analytics_provider)
+    return AnalyticsService(provider)
+
+
+def get_exports_service(request: Request) -> ExportsService:
+    """Dependency provider for ExportsService."""
+    query_prov = getattr(request.app.state, "export_query_provider", _export_provider)
+    gen_prov = getattr(request.app.state, "export_generation_provider", _export_provider)
+    rep_prov = getattr(request.app.state, "report_provider", _report_provider)
+    return ExportsService(query_prov, gen_prov, rep_prov)

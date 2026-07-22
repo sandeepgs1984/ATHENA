@@ -8,6 +8,27 @@ status updated on approval.
 
 ## Phase 8 -- Application Platform (in progress)
 
+### P8.4 -- Reports, Analytics & Export APIs
+
+| | |
+|---|---|
+| Completed | 2026-07-22 |
+| Scope | Expose Generic Reports, Portfolio Performance Analytics, and Presentation Format Export generation endpoints under versioned REST paths, backed by CQRS-aligned query and command providers. |
+| Tests | 799 passed / 0 failed (14 new) |
+| Status | **Awaiting owner approval** |
+| Branch | main |
+
+Implemented reports, analytics, and exports API endpoints under versioned REST paths `/api/v1/`.
+- Domain exceptions (`ReportNotFoundError`, `PerformanceSnapshotNotFoundError`, `ExportSnapshotNotFoundError`, `ExportArtifactNotFoundError`, `ExportGenerationError`) registered and mapped to HTTP Problem Details.
+- Composed, nested DTOs (including `ArtifactMetadataDTO`, `ReportMetadataDTO`, `AnalyticsProvenanceDTO`, `SourceReferenceDTO`, `ExportOptionsDTO`, `ExportRequestDTO`, `ExportJobDTO`) decouple the transport interface from internal structures.
+- Structured export requests and job status wrappers model export generation as a job abstraction, maintaining forward-compatibility for future asynchronous workers.
+- CQRS-aligned provider separation decouples query interfaces from command mutation.
+- Verified lease privilege and RBAC permission checks across all endpoints.
+
+Files created: `src/athena/api/v1/dtos/reports.py`, `src/athena/api/v1/dtos/analytics.py`, `src/athena/api/v1/dtos/exports.py`, `src/athena/api/v1/services/reports_service.py`, `src/athena/api/v1/services/analytics_service.py`, `src/athena/api/v1/services/exports_service.py`, `src/athena/api/v1/routers/reports.py`, `src/athena/api/v1/routers/analytics.py`, `src/athena/api/v1/routers/exports.py`, `tests/api/v1/test_reports_analytics_export.py`. Files modified: `src/athena/api/v1/dtos/base.py`, `src/athena/api/v1/dtos/__init__.py`, `src/athena/api/exceptions.py`, `src/athena/api/errors.py`, `src/athena/api/v1/providers/base.py`, `src/athena/api/v1/providers/in_memory.py`, `src/athena/api/dependencies.py`, `src/athena/api/v1/services/__init__.py`, `src/athena/api/v1/routers/__init__.py`, `src/athena/api/v1/router.py`. Public APIs added: `GET /api/v1/reports`, `GET /api/v1/reports/{id}`, `GET /api/v1/analytics/performance/snapshots`, `GET /api/v1/analytics/performance/snapshots/{id}`, `GET /api/v1/exports/snapshots`, `GET /api/v1/exports/snapshots/{id}`, `GET /api/v1/exports/artifacts/{id}`, `POST /api/v1/exports`. 14 new integration tests covering listing summaries, detail specs, provenance tracking, dynamic export generation jobs, and header/permission guards. All 10 validation checklist items passed; 799 total suite tests pass clean.
+
+---
+
 ### P8.3 -- Core Platform APIs
 
 | | |
@@ -15,7 +36,7 @@ status updated on approval.
 | Completed | 2026-07-21 |
 | Scope | Expose trading decisions, portfolios, execution run logs, scheduling history, and workspace snapshots under secure, authenticated, role-based controls. |
 | Tests | 785 passed / 0 failed (14 new) |
-| Status | **Awaiting owner approval** |
+| Status | **APPROVED** -- closes P8.3 (Principal Engineer review passed) |
 | Branch | main |
 
 Implemented core intelligence and operational API resources under versioned REST paths `/api/v1/`.
@@ -37,7 +58,7 @@ Files created: `tests/api/v1/test_core_apis.py`. Files modified: `src/athena/api
 | Completed | 2026-07-21 |
 | Scope | Introduce production-grade authentication and authorization: Users, Roles, Permissions, JWT, API Keys, Sessions, RBAC, Password hashing, Permission middleware, Token refresh, Audit logging |
 | Tests | 771 passed / 0 failed (16 new) |
-| Status | **Awaiting owner approval** |
+| Status | **APPROVED** -- closes P8.2 (Principal Engineer review passed) |
 | Branch | main |
 
 Implemented the production authentication and authorization layer. `SecurityConfig` isolates cryptographic parameters (secret keys, algorithms, expiries, rounds) into `APISettings`. `AuthenticatedPrincipal` defines the immutable, runtime security context carrying pre-resolved user ID, role, and fine-grained permissions. `PasswordHasher` protocol abstraction uses `BcryptPasswordHasher` for password validation, shielding high-level components from raw password schemas. `TokenSigner` and `TokenClaimsFactory` divide signature verification from JWT claim generation. API Key persistence is split between `APIKeyMetadata` (hashes and active flags) and `APIKeySecret` (one-time returned key plain-text `key_id.raw_secret`). `SessionStore` protocol abstracts session status and token rotation tracking, using an `InMemorySessionStore` implementation that revokes session trees upon detecting refresh token reuse. `AuthenticationProvider` and `AuthorizationProvider` coordinate credential verification and permission validation. Security exceptions are mapped inside `AthenaExceptionMapper` to generate RFC 9457 Problem Details. FastAPI dependencies `get_current_user` and `RequirePermission` guard controller routes, integrating natively with OpenAPI schemas. `LoggingAuditSink` writes structured audit events to stdout log lines.

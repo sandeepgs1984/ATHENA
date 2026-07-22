@@ -12,11 +12,37 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, TypeVar
 
-from athena.api.v1.dtos import CollectionResult, QuerySpecification
+from athena.analytics.portfolio.models import (
+    AnalyticsSummary,
+    PerformanceSnapshot,
+    PortfolioAnalyticsReferences,
+    PortfolioPerformance,
+    TradePerformance,
+)
+from athena.api.v1.dtos import (
+    CollectionResult,
+    EmptyFilterParams,
+    QuerySpecification,
+    ReportFilterParams,
+)
+from athena.api.v1.providers.base import (
+    ExportGenerationProvider,
+    ExportQueryProvider,
+    PerformanceAnalyticsProvider,
+    ReportProvider,
+)
+from athena.config.models import ExportFormat, ReportType
 from athena.domain.decision import Decision, GateResult, Portfolio, Position
 from athena.domain.enums import DecisionType, Direction, QualityGate
+from athena.export.models import (
+    ExportArtifact,
+    ExportReferences,
+    ExportSnapshot,
+    ExportSummary,
+)
 from athena.orchestration.models import SystemPipelineResult
 from athena.orchestration.schedule_models import PipelineScheduleRun
+from athena.reporting.models import GenericReport, ReportingReferences
 from athena.workspace.models import WorkspaceSnapshot, WorkspaceSummary
 
 T = TypeVar("T")
@@ -200,6 +226,93 @@ class InMemoryWorkspaceProvider:
                 return s
         return None
 
+class InMemoryReportProvider(ReportProvider):
+    """In-memory GenericReport provider."""
+
+    def __init__(self) -> None:
+        self.reports: list[GenericReport] = []
+
+    def get_reports(
+        self, spec: QuerySpecification[ReportFilterParams]
+    ) -> CollectionResult[GenericReport]:
+        def filter_func(r: GenericReport) -> bool:
+            return not (spec.filters.report_type and r.report_type != spec.filters.report_type)
+
+        def sort_func(r: GenericReport) -> Any:
+            if spec.sort.sort_by == "as_of":
+                return r.as_of
+            return r.report_id
+
+        return apply_query_spec(self.reports, spec, filter_func, sort_func)
+
+    def get_report(self, report_id: str) -> GenericReport | None:
+        for r in self.reports:
+            if r.report_id == report_id:
+                return r
+        return None
+
+
+class InMemoryPerformanceAnalyticsProvider(PerformanceAnalyticsProvider):
+    """In-memory PerformanceSnapshot provider."""
+
+    def __init__(self) -> None:
+        self.snapshots: list[PerformanceSnapshot] = []
+
+    def get_snapshots(
+        self, spec: QuerySpecification[EmptyFilterParams]
+    ) -> CollectionResult[PerformanceSnapshot]:
+        def filter_func(s: PerformanceSnapshot) -> bool:
+            return True
+
+        def sort_func(s: PerformanceSnapshot) -> Any:
+            if spec.sort.sort_by == "as_of":
+                return s.as_of
+            return s.snapshot_id
+
+        return apply_query_spec(self.snapshots, spec, filter_func, sort_func)
+
+    def get_snapshot(self, snapshot_id: str) -> PerformanceSnapshot | None:
+        for s in self.snapshots:
+            if s.snapshot_id == snapshot_id:
+                return s
+        return None
+
+
+class InMemoryExportProvider(ExportQueryProvider, ExportGenerationProvider):
+    """In-memory Export snapshot and artifact provider implementing both query and command roles."""
+
+    def __init__(self) -> None:
+        self.snapshots: list[ExportSnapshot] = []
+
+    def get_snapshots(
+        self, spec: QuerySpecification[EmptyFilterParams]
+    ) -> CollectionResult[ExportSnapshot]:
+        def filter_func(s: ExportSnapshot) -> bool:
+            return True
+
+        def sort_func(s: ExportSnapshot) -> Any:
+            if spec.sort.sort_by == "as_of":
+                return s.as_of
+            return s.snapshot_id
+
+        return apply_query_spec(self.snapshots, spec, filter_func, sort_func)
+
+    def get_snapshot(self, snapshot_id: str) -> ExportSnapshot | None:
+        for s in self.snapshots:
+            if s.snapshot_id == snapshot_id:
+                return s
+        return None
+
+    def get_artifact(self, export_id: str) -> ExportArtifact | None:
+        for s in self.snapshots:
+            for e in s.exports:
+                if e.export_id == export_id:
+                    return e
+        return None
+
+    def save_snapshot(self, snapshot: ExportSnapshot) -> None:
+        self.snapshots.append(snapshot)
+
 
 # ---------------------------------------------------------------------------
 # Default Sample Data Seed Functions (P8.3 scaffolding)
@@ -211,6 +324,9 @@ def seed_sample_data(
     pipeline_prov: InMemoryPipelineRunProvider,
     scheduler_prov: InMemorySchedulerHistoryProvider,
     workspace_prov: InMemoryWorkspaceProvider,
+    report_prov: InMemoryReportProvider,
+    analytics_prov: InMemoryPerformanceAnalyticsProvider,
+    export_prov: InMemoryExportProvider,
 ) -> None:
     """Seeds in-memory providers with compliant sample data for Swagger/CLI usage."""
     now = datetime.now(tz=timezone.utc)
@@ -265,3 +381,92 @@ def seed_sample_data(
         references=None,
     )
     workspace_prov.snapshots.append(ws_snap)
+
+    # 4. Seed Generic Report
+    report = GenericReport(
+        report_id="rep-sample-1",
+        report_type=ReportType.PORTFOLIO,
+        title="Sample Portfolio Status Report",
+        as_of=now,
+        content={"cash": "50000.00", "positions_count": 1},
+        text_summary="Sample Portfolio Status Report: Cash 50000.00, Positions 1",
+        references=ReportingReferences(portfolio_snapshot_id="ws-sample-1"),
+    )
+    report_prov.reports.append(report)
+
+    # 5. Seed Performance Snapshot
+    trade_perf = TradePerformance(
+        trade_id="trd-sample-1",
+        instrument_id="SBIN",
+        direction=Direction.LONG,
+        entry_price=Decimal("700.00"),
+        exit_price=Decimal("750.00"),
+        quantity=Decimal("100"),
+        realized_pnl=Decimal("5000.00"),
+        return_pct=Decimal("7.14"),
+        holding_period_days=5.0,
+        is_win=True,
+        is_loss=False,
+        as_of=now,
+        references=PortfolioAnalyticsReferences(decision_id="dec-sample-1"),
+    )
+    port_perf = PortfolioPerformance(
+        as_of=now,
+        realized_pnl=Decimal("5000.00"),
+        unrealized_pnl=Decimal("0.00"),
+        total_pnl=Decimal("5000.00"),
+        total_return_pct=Decimal("10.0"),
+        portfolio_value=Decimal("55000.00"),
+        peak_portfolio_value=Decimal("55000.00"),
+        drawdown=Decimal("0.00"),
+        drawdown_pct=Decimal("0.00"),
+        max_drawdown_pct=Decimal("0.00"),
+        gross_exposure=Decimal("0.00"),
+        net_exposure=Decimal("0.00"),
+        cash_utilization_pct=Decimal("0.00"),
+    )
+    summary_perf = AnalyticsSummary(
+        as_of=now,
+        total_trades=1,
+        winning_trades=1,
+        losing_trades=0,
+        win_rate_pct=Decimal("100.0"),
+        avg_gain=Decimal("5000.00"),
+        avg_loss=Decimal("0.00"),
+        win_loss_ratio=Decimal("1.0"),
+        avg_holding_period_days=5.0,
+        max_drawdown_pct=Decimal("0.00"),
+    )
+    analytics_snap = PerformanceSnapshot(
+        snapshot_id="perfsnap-sample-1",
+        as_of=now,
+        portfolio_performance=port_perf,
+        trade_performances=(trade_perf,),
+        summary=summary_perf,
+        references=PortfolioAnalyticsReferences(portfolio_snapshot_id="ws-sample-1"),
+    )
+    analytics_prov.snapshots.append(analytics_snap)
+
+    # 6. Seed Export Snapshot
+    export_art = ExportArtifact(
+        export_id="exp-sample-1",
+        format=ExportFormat.JSON,
+        filename="report_rep-sample-1.json",
+        content_type="application/json",
+        payload='{"report_id": "rep-sample-1", "title": "Sample Portfolio Status Report"}',
+        as_of=now,
+        references=ExportReferences(report_id="rep-sample-1"),
+    )
+    export_sum = ExportSummary(
+        total_exports=1,
+        formats_used=(ExportFormat.JSON,),
+        total_bytes=len(export_art.payload.encode("utf-8")),
+    )
+    export_snap = ExportSnapshot(
+        snapshot_id="expsnap-sample-1",
+        as_of=now,
+        exports=(export_art,),
+        summary=export_sum,
+        references=ExportReferences(report_id="rep-sample-1"),
+    )
+    export_prov.snapshots.append(export_snap)
