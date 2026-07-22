@@ -1,0 +1,13 @@
+request:
+  task: "Review Workflow Framework"
+
+context:
+  knowledgeObjects:
+    - WF-0001
+    - WF-ENTITY-0001
+
+  relatedSpecifications:
+    - POL-0001
+    - TRACE-0001
+
+  validationStatus: Pass
