@@ -1,0 +1,16 @@
+concept:
+  id: WF-0001
+  type: Framework
+
+relationships:
+  - type: manages
+    target: WF-ENTITY-0001
+
+  - type: dependsOn
+    target: KS-0001
+
+  - type: governedBy
+    target: POL-0001
+
+  - type: documentedBy
+    target: SPEC-0001
