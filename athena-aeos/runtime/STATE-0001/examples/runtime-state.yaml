@@ -1,0 +1,14 @@
+runtimeState:
+  component: "RTE-0001"
+
+currentState: Running
+
+allowedTransitions:
+  - Completed
+  - Failed
+  - Suspended
+
+history:
+  - Created
+  - Initialized
+  - Running
