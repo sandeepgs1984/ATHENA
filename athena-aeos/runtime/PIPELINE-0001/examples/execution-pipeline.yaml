@@ -1,0 +1,16 @@
+pipeline:
+  id: PIPELINE-0001
+
+context:
+  session: SESSION-0001
+
+stages:
+  - ValidateRequirements
+  - GenerateDesign
+  - ReviewDesign
+  - PublishArtifacts
+
+status: Executing
+
+output:
+  artifact: SystemDesign.md
