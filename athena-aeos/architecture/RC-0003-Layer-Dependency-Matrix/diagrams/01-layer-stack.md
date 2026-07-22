@@ -1,0 +1,19 @@
+Applications
+      │
+      ▼
+Runtime
+      │
+      ▼
+Knowledge
+      │
+      ▼
+Governance
+      │
+      ▼
+Engineering
+      │
+      ▼
+Kernel
+      │
+      ▼
+Foundation
