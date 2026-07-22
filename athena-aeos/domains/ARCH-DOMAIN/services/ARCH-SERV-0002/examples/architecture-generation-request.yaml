@@ -1,0 +1,14 @@
+service: ARCH-SERV-0002
+
+workflow: ArchitectureGeneration
+
+input:
+  requirements:
+    business: business-requirements.md
+    functional: functional-requirements.md
+    non_functional: non-functional-requirements.md
+
+options:
+  generate_diagrams: true
+  generate_adrs: true
+  generate_repository: true

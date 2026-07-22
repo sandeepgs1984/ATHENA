@@ -1,0 +1,13 @@
+service: ARCH-SERV-0002
+
+status: SUCCESS
+
+generated:
+  - repository-structure
+  - architecture-specification
+  - architecture-diagrams
+  - adr-documents
+  - roadmap
+
+trace:
+  workflow: ArchitectureGeneration
