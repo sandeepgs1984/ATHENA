@@ -1,0 +1,16 @@
+plugin:
+  id: PLUGIN-0001
+  name: Documentation Generator
+
+version: 1.0.0
+
+capability:
+  type: Documentation
+
+interfaces:
+  - GenerateDocument
+
+dependencies:
+  - ENGINE-0001
+
+status: Active

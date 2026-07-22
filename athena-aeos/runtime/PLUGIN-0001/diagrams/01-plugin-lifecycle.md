@@ -1,0 +1,16 @@
+Installed
+    │
+    ▼
+Registered
+    │
+    ▼
+Activated
+    │
+    ▼
+Running
+    │
+    ▼
+Deactivated
+    │
+    ▼
+Uninstalled
