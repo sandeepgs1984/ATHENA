@@ -1,0 +1,21 @@
+namespace:
+  foundation:
+    - MM-0001
+    - TERM-0001
+    - TRACE-0001
+
+  kernel:
+    - KS-0001
+    - KS-0002
+
+  frameworks:
+    - WF-0001
+    - POL-0001
+
+  governance:
+    - GOV-0001
+
+  knowledge:
+    - KN-0001
+    - ONTO-0001
+    - NS-0001
