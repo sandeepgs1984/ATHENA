@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package customer;
+
+service CustomerService {
+  rpc GetCustomer(GetCustomerRequest)
+      returns (CustomerResponse);
+}
+
+message GetCustomerRequest {
+  string id = 1;
+}
+
+message CustomerResponse {
+  string id = 1;
+  string name = 2;
+}
