@@ -1,0 +1,17 @@
+command:
+  id: CMD-0001
+  type: ExecuteWorkflow
+
+target:
+  component: ENGINE-0001
+
+session:
+  id: SESSION-0001
+
+parameters:
+  workflow: WF-0001
+
+timestamp: "2026-07-22T10:00:00Z"
+
+metadata:
+  requestedBy: AI-Agent
