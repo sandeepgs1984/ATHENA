@@ -1,0 +1,16 @@
+runtimeEntity:
+  id: "RTE-0001"
+  state: "Running"
+
+configuration:
+  timeout: 300
+
+input:
+  workflow: "WF-0001"
+
+output:
+  status: "Completed"
+
+events:
+  - WorkflowStarted
+  - WorkflowCompleted
