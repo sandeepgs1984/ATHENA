@@ -1,0 +1,14 @@
+service: ARCH-SERV-0005
+
+workflow: ArchitectureEvolutionPlanning
+
+input:
+  current:
+    path: architecture/current
+
+  target:
+    path: architecture/target
+
+options:
+  phased_migration: true
+  identify_risks: true
