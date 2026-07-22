@@ -1,0 +1,18 @@
+capability: CAP-0001
+
+status: SUCCESS
+
+score: 94
+
+findings:
+  critical: 0
+  high: 1
+  medium: 2
+  low: 4
+
+recommendations:
+  - Improve dependency documentation
+  - Add workflow metrics
+
+trace:
+  workflow: EngineeringReview
