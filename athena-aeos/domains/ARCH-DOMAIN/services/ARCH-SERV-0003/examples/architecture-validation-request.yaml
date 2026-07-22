@@ -1,0 +1,12 @@
+service: ARCH-SERV-0003
+
+workflow: ArchitectureValidation
+
+input:
+  architecture:
+    path: architecture/
+
+options:
+  validate_dependencies: true
+  validate_principles: true
+  validate_structure: true

@@ -1,0 +1,18 @@
+service: ARCH-SERV-0003
+
+status: SUCCESS
+
+compliance:
+  overall: PASS
+
+rules:
+  evaluated: 42
+  passed: 42
+  failed: 0
+
+warnings: []
+
+errors: []
+
+trace:
+  workflow: ArchitectureValidation
