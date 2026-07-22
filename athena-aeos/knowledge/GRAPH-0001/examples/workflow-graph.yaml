@@ -1,0 +1,13 @@
+nodes:
+  - id: WF-0001
+  - id: WF-ENTITY-0001
+  - id: POL-0001
+
+edges:
+  - source: WF-0001
+    relationship: manages
+    target: WF-ENTITY-0001
+
+  - source: WF-0001
+    relationship: governedBy
+    target: POL-0001
