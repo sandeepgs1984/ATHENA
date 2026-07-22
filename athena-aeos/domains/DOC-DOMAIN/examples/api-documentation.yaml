@@ -1,0 +1,8 @@
+domain: DOC-DOMAIN
+
+capability: CAP-0002
+
+artifact:
+  type: OpenAPI Documentation
+
+status: GENERATED

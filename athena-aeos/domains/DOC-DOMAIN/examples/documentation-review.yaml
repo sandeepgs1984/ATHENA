@@ -1,0 +1,9 @@
+domain: DOC-DOMAIN
+
+capability: CAP-0001
+
+artifact:
+  type: Architecture Document
+
+result:
+  review: SUCCESS
