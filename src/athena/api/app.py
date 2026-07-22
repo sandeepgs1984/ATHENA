@@ -6,13 +6,15 @@ Coordinates CORS, custom middlewares, generic exception mapping, and API routing
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from athena.api.config import APISettings
@@ -118,7 +120,13 @@ def _register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(StarletteHTTPException)
     async def http_exception_handler(
         request: Request, exc: StarletteHTTPException
-    ) -> JSONResponse:
+    ) -> JSONResponse | FileResponse:
+        if exc.status_code == 404 and request.url.path.startswith("/dashboard"):
+            static_dir = os.path.join(os.path.dirname(__file__), "static")
+            index_path = os.path.join(static_dir, "index.html")
+            if os.path.exists(index_path):
+                return FileResponse(index_path)
+
         request_id = getattr(request.state, "request_id", "unknown")
         correlation_id = getattr(request.state, "correlation_id", request_id)
 
@@ -205,5 +213,9 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
 
     # Include Versioned Routers
     app.include_router(v1_router, prefix=settings.app.api_prefix + "/v1")
+
+    # Mount StaticFiles for Dashboard UI (P9.1)
+    static_dir = os.path.join(os.path.dirname(__file__), "static")
+    app.mount("/dashboard", StaticFiles(directory=static_dir, html=True), name="dashboard")
 
     return app

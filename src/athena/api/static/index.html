@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ATHENA — Investment Workstation & Operations Console</title>
+    <!-- Google Fonts: Inter & JetBrains Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Custom Style Sheet -->
+    <link rel="stylesheet" href="/dashboard/dashboard.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="sidebar-brand">
+                <i class="fa-solid fa-circle-nodes brand-logo"></i>
+                <span class="brand-text">ATHENA</span>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <a href="/dashboard/overview" class="nav-item active" data-tab="overview">
+                    <i class="fa-solid fa-chart-line"></i>
+                    <span>Portfolio Overview</span>
+                </a>
+                <a href="/dashboard/market" class="nav-item" data-tab="market">
+                    <i class="fa-solid fa-globe"></i>
+                    <span>Market Intelligence</span>
+                </a>
+                <a href="/dashboard/strategies" class="nav-item" data-tab="strategies">
+                    <i class="fa-solid fa-gears"></i>
+                    <span>Strategies & Scans</span>
+                </a>
+                <a href="/dashboard/decisions" class="nav-item" data-tab="decisions">
+                    <i class="fa-solid fa-brain"></i>
+                    <span>Decisions & Trace</span>
+                </a>
+                <a href="/dashboard/operations" class="nav-item" data-tab="operations">
+                    <i class="fa-solid fa-terminal"></i>
+                    <span>Live Operations</span>
+                </a>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <div class="user-profile">
+                    <i class="fa-solid fa-user-shield profile-avatar"></i>
+                    <div class="profile-info">
+                        <span class="profile-name">Administrator</span>
+                        <span class="profile-role">ADMIN ROLE</span>
+                    </div>
+                </div>
+                <button id="logout-btn" class="logout-button" title="Log Out">
+                    <i class="fa-solid fa-right-from-bracket"></i>
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Console Layout -->
+        <main class="console-main">
+            <!-- Header Console Bar -->
+            <header class="console-header">
+                <div class="header-left">
+                    <h1 id="page-title">Portfolio Overview</h1>
+                    <span class="status-badge live-badge">
+                        <span class="pulse-dot"></span>
+                        <span id="session-status">LIVE ENGINE ACTIVE</span>
+                    </span>
+                </div>
+                
+                <div class="header-right">
+                    <div class="telemetry-bar">
+                        <div class="telemetry-item">
+                            <span class="telemetry-label">REQ-ID</span>
+                            <span id="header-req-id" class="telemetry-value font-mono">unknown</span>
+                        </div>
+                        <div class="telemetry-item">
+                            <span class="telemetry-label">CORR-ID</span>
+                            <span id="header-corr-id" class="telemetry-value font-mono">unknown</span>
+                        </div>
+                        <div class="telemetry-item">
+                            <span class="telemetry-label">LATENCY</span>
+                            <span id="header-latency" class="telemetry-value font-mono">-- ms</span>
+                        </div>
+                    </div>
+                    
+                    <div class="header-actions">
+                        <button id="refresh-trigger" class="btn btn-icon" title="Force Refresh">
+                            <i class="fa-solid fa-arrows-rotate"></i>
+                        </button>
+                        <button id="system-health-indicator" class="btn btn-health healthy" title="System Health">
+                            <i class="fa-solid fa-heartbeat"></i>
+                            <span>HEALTHY</span>
+                        </button>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Workspace Content Container -->
+            <section class="workspace-viewport">
+                <!-- Overview Tab -->
+                <div id="tab-overview" class="tab-pane active">
+                    <div class="grid-layout cols-3">
+                        <div class="card val-card">
+                            <div class="card-body">
+                                <h3>Total Portfolio Value</h3>
+                                <div class="metric-value" id="val-total-portfolio">₹ --</div>
+                                <p class="metric-change positive"><i class="fa-solid fa-arrow-trend-up"></i> -- % today</p>
+                            </div>
+                        </div>
+                        <div class="card val-card">
+                            <div class="card-body">
+                                <h3>Cash Available</h3>
+                                <div class="metric-value" id="val-cash-available">₹ --</div>
+                                <p class="metric-desc">Reserved: <span id="val-cash-reserved">₹ --</span></p>
+                            </div>
+                        </div>
+                        <div class="card val-card">
+                            <div class="card-body">
+                                <h3>Active Positions</h3>
+                                <div class="metric-value" id="val-active-positions">--</div>
+                                <p class="metric-desc">Total closed: <span id="val-total-closed">--</span></p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="grid-layout cols-2 mt-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <h2>Holdings & Exposure</h2>
+                            </div>
+                            <div class="card-body">
+                                <div id="portfolio-holdings-list" class="table-container">
+                                    <table class="data-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Symbol</th>
+                                                <th>Quantity</th>
+                                                <th>Avg Cost</th>
+                                                <th>Current Value</th>
+                                                <th>Unrealized P&L</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="holdings-tbody">
+                                            <tr>
+                                                <td colspan="5" class="text-center text-muted">No active positions currently held.</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="card">
+                            <div class="card-header">
+                                <h2>Capital Allocation Pools</h2>
+                            </div>
+                            <div class="card-body">
+                                <div class="allocation-pools-container">
+                                    <div class="pool-progress">
+                                        <div class="pool-info">
+                                            <span>Allocated Capital</span>
+                                            <span id="pool-allocated-val">₹ --</span>
+                                        </div>
+                                        <div class="progress-bar-bg"><div id="pool-allocated-bar" class="progress-bar-fill" style="width: 0%"></div></div>
+                                    </div>
+                                    <div class="pool-progress mt-4">
+                                        <div class="pool-info">
+                                            <span>Reserve Floor</span>
+                                            <span id="pool-reserve-val">₹ --</span>
+                                        </div>
+                                        <div class="progress-bar-bg"><div id="pool-reserve-bar" class="progress-bar-fill warning" style="width: 0%"></div></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Market Intelligence Tab (Placeholder for M5) -->
+                <div id="tab-market" class="tab-pane">
+                    <div class="card">
+                        <div class="card-body">
+                            <h2>Market Intelligence Visualizer</h2>
+                            <p class="text-muted">Loading market intelligence parameters...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Strategies & Scans Tab (Placeholder for M6) -->
+                <div id="tab-strategies" class="tab-pane">
+                    <div class="card">
+                        <div class="card-body">
+                            <h2>Strategies & Scans Visualizer</h2>
+                            <p class="text-muted">Loading strategy configurations and scans...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Decisions & Trace Tab (Placeholder for M7) -->
+                <div id="tab-decisions" class="tab-pane">
+                    <div class="card">
+                        <div class="card-body">
+                            <h2>Decisions & Execution Trace</h2>
+                            <p class="text-muted">Loading decisions timeline and trace logs...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Live Operations Tab (Placeholder for M8) -->
+                <div id="tab-operations" class="tab-pane">
+                    <div class="card">
+                        <div class="card-body">
+                            <h2>Live Operations Console</h2>
+                            <p class="text-muted">Loading platform telemetry, logs, and triggers...</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Centralized Notification Toast Panel -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- Script Coordinator -->
+    <script src="/dashboard/dashboard.js"></script>
+</body>
+</html>
