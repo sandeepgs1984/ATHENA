@@ -1,0 +1,12 @@
+queries:
+  - type: identifier
+    value: WF-0001
+
+  - type: namespace
+    value: frameworks
+
+  - type: relationship
+    value: manages
+
+  - type: dependency
+    value: KS-0001
