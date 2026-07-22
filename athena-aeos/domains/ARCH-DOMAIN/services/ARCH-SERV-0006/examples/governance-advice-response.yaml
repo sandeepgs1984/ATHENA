@@ -1,0 +1,19 @@
+service: ARCH-SERV-0006
+
+status: SUCCESS
+
+recommendation:
+  summary: >
+    Runtime should consume published knowledge contracts rather than depend on implementation details.
+
+references:
+  principles:
+    - Technology Independence
+    - Separation of Concerns
+
+  adrs:
+    - ADR-0002
+    - ADR-0003
+
+trace:
+  workflow: GovernanceAdvisory

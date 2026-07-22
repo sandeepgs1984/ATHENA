@@ -1,0 +1,14 @@
+service: ARCH-SERV-0006
+
+workflow: GovernanceAdvisory
+
+input:
+  question: >
+    Should the Runtime layer depend directly on the Knowledge layer?
+
+context:
+  architecture: architecture/
+
+options:
+  include_adrs: true
+  include_principles: true
