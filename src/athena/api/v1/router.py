@@ -8,6 +8,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from athena.api.v1.routers.analytics import router as analytics_router
+from athena.api.v1.routers.dashboard import router as dashboard_router
 from athena.api.v1.routers.decisions import router as decisions_router
 from athena.api.v1.routers.exports import router as exports_router
 from athena.api.v1.routers.health import router as health_router
@@ -23,6 +24,7 @@ router = APIRouter()
 # Include sub-routers
 router.include_router(health_router, tags=["platform"])
 router.include_router(metrics_router, tags=["platform"])
+router.include_router(dashboard_router)
 router.include_router(decisions_router)
 router.include_router(portfolio_router)
 router.include_router(pipelines_router)

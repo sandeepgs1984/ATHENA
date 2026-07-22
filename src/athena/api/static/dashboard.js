@@ -188,40 +188,40 @@ document.addEventListener("DOMContentLoaded", () => {
 
     async function loadPortfolioData() {
         try {
-            // Note: in early stages we might hit v1 portfolio endpoints, or handle empty structures safely
-            const portData = await apiRequest("/api/v1/portfolio").catch(() => null);
+            // 1. Fetch Consolidated Summary
+            const summaryRes = await apiRequest("/api/v1/dashboard/summary").catch(() => null);
             
-            if (!portData || !portData.data) {
-                setEmptyPortfolioState();
-                return;
+            if (summaryRes && summaryRes.data) {
+                const s = summaryRes.data;
+                valTotalPortfolio.textContent = `₹ ${parseFloat(s.portfolio_value).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+                valCashAvailable.textContent = `₹ ${parseFloat(s.cash_available).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+                valCashReserved.textContent = `₹ ${parseFloat(s.cash_reserved).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+                valActivePositions.textContent = s.active_positions;
+                valTotalClosed.textContent = s.closed_positions;
+
+                // Render capital progress bars
+                const totalCash = parseFloat(s.portfolio_value);
+                const reservedCash = parseFloat(s.cash_reserved);
+                const availableCash = parseFloat(s.cash_available);
+                const allocatedCash = totalCash - availableCash - reservedCash;
+
+                const allocatedPct = totalCash > 0 ? (allocatedCash / totalCash) * 100 : 0;
+                const reservePct = totalCash > 0 ? (reservedCash / totalCash) * 100 : 0;
+
+                poolAllocatedVal.textContent = `₹ ${allocatedCash.toFixed(2)}`;
+                poolAllocatedBar.style.width = `${Math.max(0, allocatedPct)}%`;
+
+                poolReserveVal.textContent = `₹ ${reservedCash.toFixed(2)}`;
+                poolReserveBar.style.width = `${reservePct}%`;
             }
 
-            const portfolio = portData.data;
-            const summary = portData.meta || {};
-
-            // Render Overview stats
-            valTotalPortfolio.textContent = `₹ ${portfolio.cash?.total_cash || "0.00"}`;
-            valCashAvailable.textContent = `₹ ${portfolio.cash?.available_cash || "0.00"}`;
-            valCashReserved.textContent = `₹ ${portfolio.cash?.reserved_cash || "0.00"}`;
-            valActivePositions.textContent = portfolio.holdings?.length || "0";
-            valTotalClosed.textContent = portfolio.closed_positions?.length || "0";
-
-            // Render capital progress bars
-            const totalCash = parseFloat(portfolio.cash?.total_cash || 0);
-            const allocatedCash = parseFloat(portfolio.cash?.allocated_cash || 0);
-            const reservedCash = parseFloat(portfolio.cash?.reserved_cash || 0);
-
-            const allocatedPct = totalCash > 0 ? (allocatedCash / totalCash) * 100 : 0;
-            const reservePct = totalCash > 0 ? (reservedCash / totalCash) * 100 : 0;
-
-            poolAllocatedVal.textContent = `₹ ${allocatedCash.toFixed(2)}`;
-            poolAllocatedBar.style.width = `${allocatedPct}%`;
-
-            poolReserveVal.textContent = `₹ ${reservedCash.toFixed(2)}`;
-            poolReserveBar.style.width = `${reservePct}%`;
-
-            // Populate table body
-            renderHoldingsTable(portfolio.holdings || []);
+            // 2. Fetch Holdings list detail
+            const portData = await apiRequest("/api/v1/portfolio").catch(() => null);
+            if (portData && portData.data) {
+                renderHoldingsTable(portData.data.positions || []);
+            } else {
+                renderHoldingsTable([]);
+            }
         } catch (err) {
             setEmptyPortfolioState();
         }
@@ -257,17 +257,18 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         holdingsTbody.innerHTML = holdings.map(pos => {
-            const currentVal = parseFloat(pos.quantity) * parseFloat(pos.current_price || pos.average_price);
-            const cost = parseFloat(pos.quantity) * parseFloat(pos.average_price);
+            const currentPrice = parseFloat(pos.meta?.current_price || pos.avg_price);
+            const currentVal = parseFloat(pos.quantity) * currentPrice;
+            const cost = parseFloat(pos.quantity) * parseFloat(pos.avg_price);
             const pnl = currentVal - cost;
             const pnlClass = pnl >= 0 ? "positive" : "negative";
             const pnlSign = pnl >= 0 ? "+" : "";
 
             return `
                 <tr>
-                    <td class="font-mono"><strong>${pos.symbol}</strong></td>
+                    <td class="font-mono"><strong>${pos.instrument_id}</strong></td>
                     <td>${pos.quantity}</td>
-                    <td class="font-mono">₹ ${parseFloat(pos.average_price).toFixed(2)}</td>
+                    <td class="font-mono">₹ ${parseFloat(pos.avg_price).toFixed(2)}</td>
                     <td class="font-mono">₹ ${currentVal.toFixed(2)}</td>
                     <td class="font-mono ${pnlClass}"><strong>${pnlSign}₹ ${pnl.toFixed(2)}</strong></td>
                 </tr>

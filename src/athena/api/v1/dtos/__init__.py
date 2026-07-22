@@ -30,6 +30,9 @@ from athena.api.v1.dtos.common import (
     HealthResponse,
     MetricsResponse,
 )
+from athena.api.v1.dtos.dashboard import (
+    DashboardSummaryDTO,
+)
 from athena.api.v1.dtos.decisions import (
     DecisionAnalysisDTO,
     DecisionDTO,
@@ -88,6 +91,7 @@ __all__ = [
     "CollectionResult",
     "ComponentHealth",
     "DecisionAnalysisDTO",
+    "DashboardSummaryDTO",
     "DecisionDTO",
     "DecisionFilterParams",
     "DecisionMetadataDTO",

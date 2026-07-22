@@ -45,6 +45,7 @@ from athena.api.v1.providers.observability import (
     ObservabilityMetricsProvider,
 )
 from athena.api.v1.services.analytics_service import AnalyticsService
+from athena.api.v1.services.dashboard_service import DashboardService
 from athena.api.v1.services.decisions_service import DecisionsService
 from athena.api.v1.services.exports_service import ExportsService
 from athena.api.v1.services.health_service import HealthService
@@ -212,6 +213,16 @@ def get_exports_service(request: Request) -> ExportsService:
     gen_prov = getattr(request.app.state, "export_generation_provider", _export_provider)
     rep_prov = getattr(request.app.state, "report_provider", _report_provider)
     return ExportsService(query_prov, gen_prov, rep_prov)
+
+
+def get_dashboard_service(request: Request) -> DashboardService:
+    """Dependency provider for DashboardService."""
+    port_prov = getattr(request.app.state, "portfolio_provider", _portfolio_provider)
+    pipe_prov = getattr(
+        request.app.state, "pipeline_run_provider", _pipeline_run_provider
+    )
+    health_prov = getattr(request.app.state, "health_provider", _health_provider)
+    return DashboardService(port_prov, pipe_prov, health_prov)
 
 
 # ---------------------------------------------------------------------------
