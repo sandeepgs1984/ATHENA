@@ -38,6 +38,12 @@ document.addEventListener("DOMContentLoaded", () => {
     const poolReserveVal = document.getElementById("pool-reserve-val");
     const poolReserveBar = document.getElementById("pool-reserve-bar");
     const holdingsTbody = document.getElementById("holdings-tbody");
+    
+    // Charts DOM Bindings
+    const navChartCtx = document.getElementById("nav-chart")?.getContext("2d");
+    const sectorChartCtx = document.getElementById("sector-chart")?.getContext("2d");
+    let navChart = null;
+    let sectorChart = null;
 
     // ---------------------------------------------------------------------------
     // Routing & Tab Switcher
@@ -213,6 +219,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
                 poolReserveVal.textContent = `₹ ${reservedCash.toFixed(2)}`;
                 poolReserveBar.style.width = `${reservePct}%`;
+
+                // Render Sector Exposure Chart
+                renderSectorChart(s.exposure_by_sector || {});
             }
 
             // 2. Fetch Holdings list detail
@@ -221,6 +230,14 @@ document.addEventListener("DOMContentLoaded", () => {
                 renderHoldingsTable(portData.data.positions || []);
             } else {
                 renderHoldingsTable([]);
+            }
+
+            // 3. Fetch Analytics Performance Snapshots for NAV Chart
+            const analyticsRes = await apiRequest("/api/v1/analytics/performance/snapshots").catch(() => null);
+            if (analyticsRes && analyticsRes.data) {
+                renderNavChart(analyticsRes.data);
+            } else {
+                renderNavChart([]);
             }
         } catch (err) {
             setEmptyPortfolioState();
@@ -274,6 +291,158 @@ document.addEventListener("DOMContentLoaded", () => {
                 </tr>
             `;
         }).join("");
+    }
+
+    function renderNavChart(snapshots) {
+        if (!navChartCtx) return;
+
+        // Sort snapshots chronologically
+        const sorted = [...snapshots].sort((a, b) => new Date(a.as_of) - new Date(b.as_of));
+
+        const labels = [];
+        const data = [];
+
+        sorted.forEach(s => {
+            const date = new Date(s.as_of);
+            labels.push(date.toLocaleDateString("en-IN", { month: "short", day: "numeric" }));
+            data.push(parseFloat(s.portfolio_performance?.portfolio_value || 0));
+        });
+
+        if (labels.length === 0) {
+            const today = new Date();
+            labels.push(today.toLocaleDateString("en-IN", { month: "short", day: "numeric" }));
+            data.push(parseFloat(valTotalPortfolio.textContent.replace(/[^0-9.]/g, '')) || 0);
+        }
+
+        if (navChart) {
+            navChart.data.labels = labels;
+            navChart.data.datasets[0].data = data;
+            navChart.update();
+            return;
+        }
+
+        navChart = new Chart(navChartCtx, {
+            type: "line",
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: "Net Asset Value (NAV)",
+                    data: data,
+                    borderColor: "#38bdf8",
+                    backgroundColor: "rgba(56, 189, 248, 0.15)",
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.3,
+                    pointBackgroundColor: "#38bdf8",
+                    pointBorderColor: "#0f172a",
+                    pointHoverRadius: 6,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        mode: "index",
+                        intersect: false,
+                        backgroundColor: "#1e293b",
+                        titleColor: "#94a3b8",
+                        bodyColor: "#ffffff",
+                        borderColor: "#334155",
+                        borderWidth: 1,
+                        callbacks: {
+                            label: function(context) {
+                                return `₹ ${context.parsed.y.toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { color: "rgba(255, 255, 255, 0.02)" },
+                        ticks: { color: "#94a3b8", font: { size: 10 } }
+                    },
+                    y: {
+                        grid: { color: "rgba(255, 255, 255, 0.05)" },
+                        ticks: {
+                            color: "#94a3b8",
+                            font: { size: 10 },
+                            callback: function(value) {
+                                return "₹ " + value.toLocaleString('en-IN');
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    function renderSectorChart(exposure) {
+        if (!sectorChartCtx) return;
+
+        const labels = Object.keys(exposure);
+        const data = Object.values(exposure).map(val => parseFloat(val));
+
+        if (labels.length === 0) {
+            labels.push("Cash (Unallocated)");
+            data.push(100);
+        }
+
+        if (sectorChart) {
+            sectorChart.data.labels = labels;
+            sectorChart.data.datasets[0].data = data;
+            sectorChart.update();
+            return;
+        }
+
+        sectorChart = new Chart(sectorChartCtx, {
+            type: "doughnut",
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: data,
+                    backgroundColor: [
+                        "#38bdf8",
+                        "#a855f7",
+                        "#10b981",
+                        "#f59e0b",
+                        "#ec4899",
+                        "#6366f1",
+                    ],
+                    borderWidth: 2,
+                    borderColor: "#0f172a",
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: "right",
+                        labels: {
+                            color: "#94a3b8",
+                            font: { size: 11 },
+                            boxWidth: 12
+                        }
+                    },
+                    tooltip: {
+                        backgroundColor: "#1e293b",
+                        titleColor: "#94a3b8",
+                        bodyColor: "#ffffff",
+                        borderColor: "#334155",
+                        borderWidth: 1,
+                        callbacks: {
+                            label: function(context) {
+                                const val = context.parsed;
+                                return ` ${context.label}: ₹ ${val.toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
+                            }
+                        }
+                    }
+                },
+                cutout: "70%",
+            }
+        });
     }
 
     // ---------------------------------------------------------------------------

@@ -178,6 +178,30 @@
                             </div>
                         </div>
                     </div>
+
+                    <div class="grid-layout cols-2 mt-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <h2>Portfolio Value Trend (NAV)</h2>
+                            </div>
+                            <div class="card-body">
+                                <div class="chart-container" style="position: relative; height: 260px; width: 100%;">
+                                    <canvas id="nav-chart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="card">
+                            <div class="card-header">
+                                <h2>Sector Exposure & Risk</h2>
+                            </div>
+                            <div class="card-body">
+                                <div class="chart-container" style="position: relative; height: 260px; width: 100%;">
+                                    <canvas id="sector-chart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Market Intelligence Tab (Placeholder for M5) -->
@@ -227,6 +251,7 @@
     <div id="toast-container" class="toast-container"></div>
 
     <!-- Script Coordinator -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="/dashboard/dashboard.js"></script>
 </body>
 </html>

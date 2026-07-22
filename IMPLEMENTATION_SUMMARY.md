@@ -6,6 +6,28 @@ status updated on approval.
 
 ---
 
+## Phase 9 -- Dashboard & Operations Console (in progress)
+
+### P9.3 -- Portfolio & Capital Allocation Dashboard
+
+| | |
+|---|---|
+| Completed | 2026-07-22 |
+| Scope | Build visual dashboard components showing exposure breakdowns, asset balances, and portfolio charts including NAV area line chart, Sector Exposure donut chart, and open holdings table detail. |
+| Tests | 818 passed / 0 failed (0 new) |
+| Status | **Awaiting owner approval** |
+| Branch | main |
+
+Implemented visual portfolio dashboard components under `src/athena/api/static/` utilizing Chart.js CDN hosting.
+- Integrated canvas configurations for `#nav-chart` and `#sector-chart` inside `index.html`.
+- Implemented `renderNavChart(snapshots)` and `renderSectorChart(exposure)` functions in `dashboard.js` with responsive configurations, tooltips, currency formatting, and fallback points.
+- Wired charts rendering to load portfolio performance snapshots data asynchronously from `/api/v1/analytics/performance/snapshots`.
+- Introduced environment-controlled single-user mode authentication bypass when `ATHENA_SINGLE_USER=true` is set.
+
+Files created: None. Files modified: `src/athena/api/static/index.html`, `src/athena/api/static/dashboard.js`, `src/athena/api/security/dependencies.py`, `task.md`. Public APIs added: None. All quality checks pass; 818 total suite tests run successfully.
+
+---
+
 ## Phase 8 -- Application Platform (completed)
 
 ### P8.5 -- API Platform Completion & Production Readiness

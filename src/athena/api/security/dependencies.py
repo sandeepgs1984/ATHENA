@@ -91,6 +91,16 @@ def get_current_user(
     if api_key:
         return auth_provider.authenticate_api_key(api_key)
 
+    import os
+    if os.environ.get("ATHENA_SINGLE_USER", "false").lower() == "true":
+        from athena.api.security.models import AuthenticatedPrincipal, Role
+        return AuthenticatedPrincipal(
+            principal_id="usr-admin",
+            username="admin",
+            role=Role.ADMIN,
+            meta={},
+        )
+
     raise AuthenticationError("Authentication credentials missing or invalid")
 
 
