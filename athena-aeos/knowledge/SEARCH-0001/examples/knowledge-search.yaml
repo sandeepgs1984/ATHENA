@@ -1,0 +1,14 @@
+searches:
+  - criteria:
+      title: "Workflow"
+
+  - criteria:
+      namespace: "frameworks"
+
+  - criteria:
+      tags:
+        - governance
+
+  - criteria:
+      keywords:
+        - lifecycle
