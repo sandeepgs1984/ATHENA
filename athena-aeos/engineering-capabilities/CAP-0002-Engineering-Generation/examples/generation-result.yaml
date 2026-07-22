@@ -1,0 +1,13 @@
+capability: CAP-0002
+
+status: SUCCESS
+
+artifact:
+  id: DOC-001
+  version: 1.0.0
+
+metadata:
+  generated_by: CAP-0002
+
+trace:
+  workflow: EngineeringGeneration

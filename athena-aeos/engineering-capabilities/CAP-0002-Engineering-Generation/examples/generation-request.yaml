@@ -1,0 +1,10 @@
+capability: CAP-0002
+
+artifact:
+  type: documentation
+
+context:
+  domain: DOC-DOMAIN
+
+inputs:
+  template: api-contract
