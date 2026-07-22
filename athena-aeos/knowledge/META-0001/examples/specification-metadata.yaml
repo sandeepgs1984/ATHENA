@@ -1,0 +1,18 @@
+metadata:
+  identifier: "WF-0001"
+  title: "Workflow Framework"
+  version: "1.0.0"
+  status: "Approved"
+  layer: "Engineering"
+  owner: "Chief Systems Architect"
+  createdDate: "2026-07-22"
+  lastUpdated: "2026-07-22"
+  description: "Defines the Workflow Framework within AEOS."
+
+  tags:
+    - workflow
+    - engineering
+
+  relatedSpecifications:
+    - MM-0001
+    - TRACE-0001

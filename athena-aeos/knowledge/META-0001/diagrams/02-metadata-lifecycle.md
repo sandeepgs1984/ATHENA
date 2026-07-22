@@ -1,0 +1,13 @@
+Created
+    │
+    ▼
+Updated
+    │
+    ▼
+Reviewed
+    │
+    ▼
+Approved
+    │
+    ▼
+Archived
