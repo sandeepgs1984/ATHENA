@@ -1,0 +1,20 @@
+service:
+  id: ARCH-SERV-0001
+
+domain:
+  ARCH-DOMAIN
+
+operations:
+  - review
+  - score
+  - audit
+
+contracts:
+  input: architecture-specification
+  output: architecture-review-report
+
+workflow:
+  review-workflow
+
+knowledge:
+  architecture-principles
