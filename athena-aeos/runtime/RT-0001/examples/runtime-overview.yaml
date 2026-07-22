@@ -1,0 +1,18 @@
+runtime:
+  framework: RT-0001
+
+responsibilities:
+  - execute
+  - coordinate
+  - monitor
+  - trace
+
+supportedComponents:
+  - Runtime Entity
+  - Execution Engine
+  - Runtime Session
+  - Runtime State
+  - Runtime Event
+  - Runtime Command
+  - Pipeline
+  - Orchestrator
