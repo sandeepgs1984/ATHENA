@@ -1,0 +1,17 @@
+domain:
+  id: ARCH-DOMAIN
+  name: Architecture
+
+purpose:
+  Engineering architecture capabilities
+
+services:
+  - Architecture Review
+  - Architecture Generator
+  - Architecture Validator
+
+owner:
+  Chief Architect
+
+status:
+  Active
