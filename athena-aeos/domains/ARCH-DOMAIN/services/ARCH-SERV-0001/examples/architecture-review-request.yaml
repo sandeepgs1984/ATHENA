@@ -1,0 +1,12 @@
+service: ARCH-SERV-0001
+
+operation: review
+
+input:
+  architecture:
+    path: architecture/
+
+options:
+  include_recommendations: true
+  include_score: true
+  include_trace: true

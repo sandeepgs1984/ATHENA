@@ -1,0 +1,18 @@
+service: ARCH-SERV-0001
+
+overall_score: 94
+
+summary:
+  Architecture is well structured and complies with AEOS governance principles.
+
+findings:
+  - No cyclic dependencies
+  - Strong separation of concerns
+  - Runtime boundaries respected
+
+recommendations:
+  - Introduce service-level performance metrics
+  - Expand architecture traceability
+
+trace:
+  execution_id: review-001

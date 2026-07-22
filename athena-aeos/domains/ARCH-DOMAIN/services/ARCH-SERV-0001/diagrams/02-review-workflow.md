@@ -1,0 +1,22 @@
+Input
+  │
+  ▼
+Validation
+  │
+  ▼
+Knowledge
+  │
+  ▼
+Governance
+  │
+  ▼
+Analysis
+  │
+  ▼
+Scoring
+  │
+  ▼
+Recommendations
+  │
+  ▼
+Report
