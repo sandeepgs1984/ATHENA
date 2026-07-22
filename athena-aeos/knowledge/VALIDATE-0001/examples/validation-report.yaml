@@ -1,0 +1,16 @@
+validation:
+  asset: WF-0001
+  status: Pass
+
+checks:
+  - name: Schema Compliance
+    result: Pass
+
+  - name: Metadata Completeness
+    result: Pass
+
+  - name: Relationship Integrity
+    result: Warning
+
+  - name: Manifest Registration
+    result: Pass
