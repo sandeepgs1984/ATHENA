@@ -19,6 +19,8 @@ router = APIRouter()
     response_model=AthenaResponse[MetricsResponse],
     summary="Get platform telemetry and metrics",
     status_code=status.HTTP_200_OK,
+    tags=["Metrics"],
+    operation_id="v1GetMetrics",
 )
 def get_metrics(
     request: Request,

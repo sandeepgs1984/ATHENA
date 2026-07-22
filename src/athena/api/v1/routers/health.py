@@ -19,6 +19,8 @@ router = APIRouter()
     response_model=AthenaResponse[HealthResponse],
     summary="Get platform health status",
     status_code=status.HTTP_200_OK,
+    tags=["Health"],
+    operation_id="v1GetHealth",
 )
 def get_health(
     request: Request,

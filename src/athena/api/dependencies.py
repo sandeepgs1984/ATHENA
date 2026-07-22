@@ -8,6 +8,14 @@ from __future__ import annotations
 
 from fastapi import Request
 
+from athena.api.platform.providers.build_info_provider import (
+    BuildInfoProvider,
+    DefaultBuildInfoProvider,
+)
+from athena.api.platform.providers.metadata_provider import (
+    DefaultMetadataProvider,
+    MetadataProvider,
+)
 from athena.api.v1.providers.base import (
     DecisionProvider,
     ExportGenerationProvider,
@@ -204,3 +212,26 @@ def get_exports_service(request: Request) -> ExportsService:
     gen_prov = getattr(request.app.state, "export_generation_provider", _export_provider)
     rep_prov = getattr(request.app.state, "report_provider", _report_provider)
     return ExportsService(query_prov, gen_prov, rep_prov)
+
+
+# ---------------------------------------------------------------------------
+# Platform Infrastructure Providers (P8.5)
+# ---------------------------------------------------------------------------
+
+
+_build_info_provider: BuildInfoProvider = DefaultBuildInfoProvider()
+_metadata_provider: MetadataProvider = DefaultMetadataProvider()
+
+
+def get_build_info_provider(request: Request = None) -> BuildInfoProvider:
+    """Dependency provider for BuildInfoProvider."""
+    if request is not None and hasattr(request.app.state, "build_info_provider"):
+        return request.app.state.build_info_provider
+    return _build_info_provider
+
+
+def get_metadata_provider(request: Request = None) -> MetadataProvider:
+    """Dependency provider for MetadataProvider."""
+    if request is not None and hasattr(request.app.state, "metadata_provider"):
+        return request.app.state.metadata_provider
+    return _metadata_provider

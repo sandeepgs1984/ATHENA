@@ -6,7 +6,29 @@ status updated on approval.
 
 ---
 
-## Phase 8 -- Application Platform (in progress)
+## Phase 8 -- Application Platform (completed)
+
+### P8.5 -- API Platform Completion & Production Readiness
+
+| | |
+|---|---|
+| Completed | 2026-07-22 |
+| Scope | Finalize the API platform infrastructure and establish a production-grade API foundation with health, versioning, metadata, feature/capability discovery, standard headers, request context middleware, unified RFC 9457 error mappings, and OpenAPI contract completeness. |
+| Tests | 806 passed / 0 failed (7 new) |
+| Status | **Awaiting owner approval** |
+| Branch | main |
+
+Finalized REST API platform infrastructure.
+- Established a dedicated `platform` module defining extensible `BuildInfoProvider` and `MetadataProvider` protocols.
+- Implemented `/health`, `/health/live`, and `/health/ready` check diagnostics.
+- Implemented `/api/version` and `/api/info` consolidated startup metadata endpoints for desktop/UI clients.
+- Introduced `PlatformMiddleware` combining request ID, correlation ID, logging, execution timing, standard headers injection, and unhandled exception-to-ProblemDetails mapping.
+- Standardized error handling, migrating all mappings to use unified RFC 9457 `ProblemDetail` schemas.
+- Audited all routes to confirm OpenAPI tags, operation IDs, summaries, descriptions, and pagination metadata schemas are 100% complete and consistent.
+
+Files created: `src/athena/api/platform/health.py`, `src/athena/api/platform/version.py`, `src/athena/api/platform/metadata.py`, `src/athena/api/platform/info.py`, `src/athena/api/platform/headers.py`, `src/athena/api/platform/problem_details.py`, `src/athena/api/platform/middleware.py`, `src/athena/api/platform/providers/build_info_provider.py`, `src/athena/api/platform/providers/metadata_provider.py`, `tests/api/platform/test_platform.py`, `docs/API_PLATFORM_GUIDE.md`. Files modified: `src/athena/api/app.py`, `src/athena/api/errors.py`, `src/athena/api/dependencies.py`, `src/athena/api/v1/routers/health.py`, `src/athena/api/v1/routers/metrics.py`. Public APIs added: `GET /health`, `GET /health/live`, `GET /health/ready`, `GET /api/version`, `GET /api/meta`, `GET /api/features`, `GET /api/capabilities`, `GET /api/info`. 7 new integration tests validating process liveness/readiness, headers propagation, timing, unhandled panic mappings, contract schemas, and pagination consistency. All quality checks pass; 806 total suite tests run successfully.
+
+---
 
 ### P8.4 -- Reports, Analytics & Export APIs
 
@@ -15,7 +37,7 @@ status updated on approval.
 | Completed | 2026-07-22 |
 | Scope | Expose Generic Reports, Portfolio Performance Analytics, and Presentation Format Export generation endpoints under versioned REST paths, backed by CQRS-aligned query and command providers. |
 | Tests | 799 passed / 0 failed (14 new) |
-| Status | **Awaiting owner approval** |
+| Status | **APPROVED** -- closes P8.4 (Principal Engineer review passed) |
 | Branch | main |
 
 Implemented reports, analytics, and exports API endpoints under versioned REST paths `/api/v1/`.

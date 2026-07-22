@@ -12,7 +12,7 @@ New exception types are registered here without touching handlers.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import ClassVar
 
 from athena.api.exceptions import (
@@ -29,6 +29,7 @@ from athena.api.exceptions import (
     SchedulerRunNotFoundError,
     WorkspaceSnapshotNotFoundError,
 )
+from athena.api.platform.problem_details import ProblemDetail
 from athena.api.security.exceptions import (
     AuthenticationError,
     ExpiredTokenError,
@@ -64,32 +65,7 @@ logger = logging.getLogger(__name__)
 _BASE_TYPE_URI = "https://athena.internal/errors"
 
 
-@dataclass(frozen=True, slots=True)
-class ProblemDetail:
-    """RFC 9457 Problem Details for HTTP APIs.
 
-    Never leaks internal stack traces. All 500 responses are logged server-side.
-    """
-
-    type: str
-    title: str
-    status: int
-    detail: str
-    instance: str
-    request_id: str
-    extensions: dict[str, object] = field(default_factory=dict)
-
-    def to_dict(self) -> dict[str, object]:
-        base: dict[str, object] = {
-            "type": self.type,
-            "title": self.title,
-            "status": self.status,
-            "detail": self.detail,
-            "instance": self.instance,
-            "request_id": self.request_id,
-        }
-        base.update(self.extensions)
-        return base
 
 
 @dataclass(frozen=True, slots=True)
@@ -165,6 +141,7 @@ class AthenaExceptionMapper:
         exc: Exception,
         instance: str,
         request_id: str,
+        correlation_id: str | None = None,
     ) -> ProblemDetail:
         """Classify exception and produce a Problem Details response.
 
@@ -174,8 +151,11 @@ class AthenaExceptionMapper:
 
         if mapping.http_status >= 500:
             logger.exception(
-                "Unhandled %s on %s [request_id=%s]",
-                type(exc).__name__, instance, request_id,
+                "Unhandled %s on %s [request_id=%s, correlation_id=%s]",
+                type(exc).__name__,
+                instance,
+                request_id,
+                correlation_id,
                 exc_info=exc,
             )
 
@@ -186,6 +166,7 @@ class AthenaExceptionMapper:
             detail=str(exc) if str(exc) else mapping.title,
             instance=instance,
             request_id=request_id,
+            correlation_id=correlation_id or request_id,
         )
 
     def _find_mapping(self, exc: Exception) -> ExceptionMapping:
