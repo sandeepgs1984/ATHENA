@@ -1,0 +1,15 @@
+service: ARCH-SERV-0004
+
+workflow: ArchitectureComparison
+
+input:
+  source:
+    path: architecture/v1
+
+  target:
+    path: architecture/v2
+
+options:
+  compare_structure: true
+  compare_governance: true
+  compare_services: true
