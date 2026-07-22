@@ -1,0 +1,32 @@
+domain:
+  name: PLATFORM-DOMAIN
+  version: 1.0.0
+
+capabilities:
+  - review
+  - recommend
+  - generate
+  - validate
+  - analyze
+  - explain
+
+inputs:
+  - architecture
+  - requirements
+  - platform_capabilities
+  - developer_workflows
+
+outputs:
+  - assessment
+  - recommendations
+  - platform_design
+  - governance_artifacts
+
+ai_personas:
+  - reviewer
+  - architect
+  - mentor
+  - generator
+
+evaluation_contract:
+  artifact: artifacts/ai-evaluation-contract.md
