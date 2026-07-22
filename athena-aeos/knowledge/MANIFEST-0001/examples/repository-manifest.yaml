@@ -1,0 +1,24 @@
+assets:
+  - id: MM-0001
+    title: Meta Model
+    namespace: foundation
+    type: Specification
+    version: 1.0.0
+    status: Approved
+    path: foundation/MM-0001
+
+  - id: WF-0001
+    title: Workflow Framework
+    namespace: frameworks
+    type: Framework
+    version: 1.0.0
+    status: Approved
+    path: frameworks/workflows/WF-0001
+
+  - id: KN-ENTITY-0001
+    title: Knowledge Object
+    namespace: knowledge
+    type: Entity
+    version: 0.1.0
+    status: Draft
+    path: knowledge/KN-ENTITY-0001
