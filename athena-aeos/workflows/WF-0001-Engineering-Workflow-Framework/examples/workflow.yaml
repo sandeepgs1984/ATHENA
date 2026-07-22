@@ -1,0 +1,11 @@
+workflow:
+  id: ARCH-REVIEW-WORKFLOW
+
+activities:
+  - ValidateInput
+  - LoadKnowledge
+  - AnalyzeArchitecture
+  - GenerateReport
+
+output:
+  ArchitectureReviewReport
