@@ -1,0 +1,20 @@
+event:
+  id: EVT-0001
+  type: ExecutionCompleted
+
+source:
+  component: ENGINE-0001
+
+session:
+  id: SESSION-0001
+
+entity:
+  id: RTE-0001
+
+timestamp: "2026-07-22T10:15:42Z"
+
+payload:
+  status: Completed
+
+metadata:
+  traceId: TRACE-12345
