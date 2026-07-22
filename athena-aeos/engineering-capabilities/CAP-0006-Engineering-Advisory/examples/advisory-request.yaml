@@ -1,0 +1,12 @@
+capability: CAP-0006
+
+question: >
+  Should microservices communicate synchronously or asynchronously?
+
+context:
+  domain: Architecture
+
+constraints:
+  latency: LOW
+  scalability: HIGH
+  consistency: EVENTUAL

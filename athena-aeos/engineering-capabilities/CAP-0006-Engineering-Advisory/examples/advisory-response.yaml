@@ -1,0 +1,24 @@
+capability: CAP-0006
+
+status: SUCCESS
+
+recommendation:
+  summary: Prefer asynchronous communication.
+
+rationale:
+  - Better scalability
+  - Loose coupling
+  - Improved resilience
+
+alternatives:
+  - Synchronous REST
+  - gRPC
+
+risks:
+  - Increased operational complexity
+  - Event ordering considerations
+
+confidence: HIGH
+
+trace:
+  workflow: EngineeringAdvisory
