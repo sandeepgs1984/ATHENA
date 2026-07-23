@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -121,8 +120,38 @@ class TestBuilder:
         assert len(briefing.runs) == 1
         assert len(briefing.decisions) == 1
         assert briefing.decisions[0].trace_stage_count == 1
+        assert briefing.day_summary["run_count"] == 1
+        assert briefing.day_summary["journal_prompts_pending"] == 1
+        assert len(briefing.journal_prompts) == 1
+        assert "Record journal action" in briefing.journal_prompts[0].prompt
+        assert "Day summary:" in briefing.text_summary
+        assert "Journal prompts" in briefing.text_summary
         again = builder.build(as_of=AS_OF)
         assert again.to_json() == briefing.to_json()
+        repo.close()
+
+    def test_journal_prompt_clears_when_journaled(self, tmp_path):
+        from athena.domain.decision import DecisionJournalEntry
+        from athena.domain.enums import UserAction
+
+        repo = SqliteRepository(tmp_path / "a.db")
+        repo.initialize()
+        _seed_run(repo, _run("run-1"))
+        decision = _decision()
+        repo.save_decision(decision)
+        repo.save_journal_entry(DecisionJournalEntry(
+            decision_ref="d-1",
+            user_action=UserAction.ACCEPTED,
+            action_ts=AS_OF,
+            notes="took it",
+        ))
+        builder = DailyBriefingBuilder(
+            repo, NotificationsConfig(), tzinfo=IST,
+            decision_source=MemoryDecisions([decision]),
+        )
+        briefing = builder.build(as_of=AS_OF)
+        assert briefing.journal_prompts == ()
+        assert briefing.day_summary["journal_prompts_pending"] == 0
         repo.close()
 
     def test_degraded_without_decisions(self, tmp_path):
@@ -165,7 +194,8 @@ class TestNotifiers:
         repo.close()
 
     def test_webhook_requires_env_url(self):
-        from athena.notifications.models import BriefingStatus as BS, DailyBriefing
+        from athena.notifications.models import BriefingStatus as BS
+        from athena.notifications.models import DailyBriefing
 
         notifier = WebhookNotifier(url="")
         minimal = DailyBriefing(
@@ -182,7 +212,8 @@ class TestNotifiers:
             notifier.notify(minimal)
 
     def test_webhook_posts_json(self, monkeypatch):
-        from athena.notifications.models import DailyBriefing, BriefingStatus as BS
+        from athena.notifications.models import BriefingStatus as BS
+        from athena.notifications.models import DailyBriefing
 
         captured: dict = {}
 

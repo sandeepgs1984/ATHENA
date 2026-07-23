@@ -832,17 +832,26 @@ class RefreshScheduleConfig(_Strict):
     interval_minutes: int | None = Field(default=None, ge=1, le=120)
 
 
+class ClosingScheduleConfig(_Strict):
+    """Post-close day-summary cycle (Blueprint §8 / R6). Once per day at/after ``run_at``
+    and session close."""
+
+    enabled: bool = True
+    run_at: time = time(15, 45)
+
+
 class SchedulingConfig(_Strict):
-    """Scheduling Framework configuration (M4.7 + M10.2 cadence).
+    """Scheduling Framework configuration (M4.7 + M10.2 cadence + R6 closing).
 
     Coordination only — no embedded cron library, no cloud scheduling.
-    Premarket/refresh walls drive ``athena cycle`` / due-trigger evaluation;
+    Premarket/refresh/closing walls drive ``athena cycle`` / due-trigger evaluation;
     external launchd/cron may invoke the CLI (ATHENA-001 O-2).
     """
 
     record_history: bool = True
     premarket: PremarketScheduleConfig = Field(default_factory=PremarketScheduleConfig)
     refresh: RefreshScheduleConfig = Field(default_factory=RefreshScheduleConfig)
+    closing: ClosingScheduleConfig = Field(default_factory=ClosingScheduleConfig)
 
 
 class FileNotifierConfig(_Strict):

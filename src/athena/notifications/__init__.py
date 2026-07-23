@@ -6,6 +6,7 @@ from athena.notifications.dispatch import BriefingDispatcher
 from athena.notifications.models import (
     BriefingDecisionSummary,
     BriefingDispatchResult,
+    BriefingJournalPrompt,
     BriefingRunSummary,
     BriefingStatus,
     DailyBriefing,
@@ -17,6 +18,7 @@ __all__ = [
     "BriefingDecisionSummary",
     "BriefingDispatchResult",
     "BriefingDispatcher",
+    "BriefingJournalPrompt",
     "BriefingRunSummary",
     "BriefingStatus",
     "DailyBriefing",

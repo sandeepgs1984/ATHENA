@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta
-from decimal import Decimal
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -30,6 +29,7 @@ from athena.errors import DataStaleError
 from athena.scheduling import (
     DryRunCycleOrchestrator,
     due_triggers,
+    is_closing_due,
     is_premarket_due,
     is_refresh_due,
 )
@@ -114,6 +114,33 @@ class TestCadence:
             base_interval_minutes=15,
         )
         assert due == (RunTrigger.PREMARKET,)
+
+    def test_closing_due_after_run_at(self):
+        as_of = datetime(2026, 2, 13, 15, 50, tzinfo=IST)
+        assert is_closing_due(
+            as_of, sessions=SESSIONS, config=_sched(), last_closing_date=None,
+        )
+
+    def test_closing_not_before_session_close(self):
+        as_of = datetime(2026, 2, 13, 15, 0, tzinfo=IST)
+        assert not is_closing_due(
+            as_of, sessions=SESSIONS, config=_sched(), last_closing_date=None,
+        )
+
+    def test_closing_once_per_day(self):
+        as_of = datetime(2026, 2, 13, 16, 0, tzinfo=IST)
+        assert not is_closing_due(
+            as_of, sessions=SESSIONS, config=_sched(),
+            last_closing_date=date(2026, 2, 13),
+        )
+
+    def test_due_triggers_includes_closing_after_hours(self):
+        as_of = datetime(2026, 2, 13, 16, 0, tzinfo=IST)
+        due = due_triggers(
+            as_of, sessions=SESSIONS, config=_sched(),
+            base_interval_minutes=15,
+        )
+        assert due == (RunTrigger.CLOSING,)
 
 
 class TestSchedulingConfigLoad:

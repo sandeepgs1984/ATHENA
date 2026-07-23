@@ -91,9 +91,9 @@ class DryRunCycleOrchestrator:
     def run_cycle(self, trigger: RunTrigger, *, as_of: datetime) -> DryRunCycleResult:
         if as_of.tzinfo is None:
             raise ValueError("as_of must be timezone-aware")
-        if trigger not in (RunTrigger.PREMARKET, RunTrigger.REFRESH):
+        if trigger not in (RunTrigger.PREMARKET, RunTrigger.REFRESH, RunTrigger.CLOSING):
             raise ValueError(
-                f"dry-run cycle supports PREMARKET/REFRESH only, got {trigger.value}"
+                f"dry-run cycle supports PREMARKET/REFRESH/CLOSING only, got {trigger.value}"
             )
 
         self._cycle_counter += 1
@@ -135,7 +135,7 @@ class DryRunCycleOrchestrator:
             error_detail = str(exc)
             pipeline_detail = {"mode": "failed", "error": error_detail}
             failure = exc
-        except Exception as exc:  # noqa: BLE001 — cycle must always persist a terminal run
+        except Exception as exc:
             status = RunStatus.FAILED
             error_detail = f"{type(exc).__name__}: {exc}"
             pipeline_detail = {"mode": "failed", "error": error_detail}

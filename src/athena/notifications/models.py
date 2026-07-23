@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum, unique
 from types import MappingProxyType
@@ -66,6 +66,24 @@ class BriefingDecisionSummary:
 
 
 @dataclass(frozen=True, slots=True)
+class BriefingJournalPrompt:
+    """Prompt to record a user action/outcome for a decision (R6 / Blueprint §8)."""
+
+    decision_id: str
+    instrument_id: str | None
+    decision_type: str
+    prompt: str
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "decision_id": self.decision_id,
+            "instrument_id": self.instrument_id,
+            "decision_type": self.decision_type,
+            "prompt": self.prompt,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class DailyBriefing:
     """Immutable daily briefing — assemble once, notify many."""
 
@@ -77,6 +95,8 @@ class DailyBriefing:
     text_summary: str
     machine: Mapping[str, object]
     degradation_reasons: tuple[str, ...] = ()
+    day_summary: Mapping[str, object] = field(default_factory=dict)
+    journal_prompts: tuple[BriefingJournalPrompt, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.briefing_id:
@@ -86,6 +106,7 @@ class DailyBriefing:
         if not self.text_summary:
             raise ValueError("DailyBriefing.text_summary is mandatory")
         object.__setattr__(self, "machine", MappingProxyType(dict(self.machine)))
+        object.__setattr__(self, "day_summary", MappingProxyType(dict(self.day_summary)))
         if self.status is BriefingStatus.DEGRADED and not self.degradation_reasons:
             raise ValueError("DEGRADED briefing must carry degradation_reasons")
         if self.status is BriefingStatus.OK and self.degradation_reasons:
@@ -98,6 +119,8 @@ class DailyBriefing:
             "status": self.status.value,
             "runs": [r.to_dict() for r in self.runs],
             "decisions": [d.to_dict() for d in self.decisions],
+            "day_summary": dict(self.day_summary),
+            "journal_prompts": [p.to_dict() for p in self.journal_prompts],
             "text_summary": self.text_summary,
             "machine": dict(self.machine),
             "degradation_reasons": list(self.degradation_reasons),

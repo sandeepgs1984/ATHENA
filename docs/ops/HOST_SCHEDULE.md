@@ -15,14 +15,27 @@ PYTHONPATH=src python3 -m athena.cli run-due
 ```
 
 1. Load `.env` (wrapper script sources it for launchd’s bare environment).
-2. Evaluate cadence (`athena due` logic): which of PREMARKET / REFRESH are due *now*.
+2. Evaluate cadence (`athena due` logic): which of PREMARKET / REFRESH / **CLOSING** are due *now*.
 3. If none due → exit 0 (`idle`) — safe to poll every 15 minutes.
 4. If due → run those cycles (ingest + run ledger).
-5. If `host_ops.brief_after_cycles` → run briefing dispatch.
+5. If `host_ops.brief_after_cycles` → run briefing dispatch (includes **day summary** + **journal prompts**).
 6. On hard failure → write `artifacts/alerts/…` and POST webhook (if configured), then exit non-zero.
 
-Config: `config/host_ops.json`.
+Config: `config/host_ops.json` · cadence: `config/scheduling.json` (`closing.run_at`, default 15:45 IST).
 
+### Closing cycle (R6)
+
+Once per day after session close and `closing.run_at`:
+
+```bash
+PYTHONPATH=src python3 -m athena.cli due --as-of 2026-07-23T15:50:00+05:30
+# expect: CLOSING when not yet run today
+
+PYTHONPATH=src python3 -m athena.cli cycle --trigger closing --as-of 2026-07-23T15:50:00+05:30
+PYTHONPATH=src python3 -m athena.cli brief --as-of 2026-07-23T15:50:00+05:30 --dry-run
+```
+
+Briefing text includes **Day summary** (run/decision roll-up) and **Journal prompts** for decisions still missing a journal action.
 ---
 
 ## 2. Failure alerts (DD-9 for R5)

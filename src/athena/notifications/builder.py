@@ -1,12 +1,14 @@
-"""Daily briefing assembly from the run ledger (M10.3).
+"""Daily briefing assembly from the run ledger (M10.3 + R6 day summary).
 
 Renders only — does not re-run the decision pipeline. Optional decisions are
 injected via ``DecisionSummarySource``; missing decisions degrade explicitly.
+R6 adds day roll-up + journal prompts for decisions lacking journal rows.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections import Counter
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from typing import Protocol
 from zoneinfo import ZoneInfo
@@ -19,6 +21,7 @@ from athena.domain.run import RunRecord
 from athena.errors import BriefingError
 from athena.notifications.models import (
     BriefingDecisionSummary,
+    BriefingJournalPrompt,
     BriefingRunSummary,
     BriefingStatus,
     DailyBriefing,
@@ -70,15 +73,21 @@ class DailyBriefingBuilder:
         if not decisions and self._config.degrade_without_decisions:
             reasons.append("no_decision_summaries")
 
+        journal_prompts = self._journal_prompts(decisions)
+        day_summary = _build_day_summary(run_summaries, decisions, journal_prompts)
+
         if not runs:
             status = BriefingStatus.FAILED
-            reasons = ("no_runs",)
+            reasons = ["no_runs"]
         elif reasons:
             status = BriefingStatus.DEGRADED
         else:
             status = BriefingStatus.OK
 
-        text = _render_text(briefing_id, as_of, status, run_summaries, decisions, tuple(reasons))
+        text = _render_text(
+            briefing_id, as_of, status, run_summaries, decisions,
+            day_summary, journal_prompts, tuple(reasons),
+        )
         machine = {
             "briefing_id": briefing_id,
             "as_of": as_of.isoformat(),
@@ -87,6 +96,8 @@ class DailyBriefingBuilder:
             "decision_count": len(decisions),
             "runs": [r.to_dict() for r in run_summaries],
             "decisions": [d.to_dict() for d in decisions],
+            "day_summary": dict(day_summary),
+            "journal_prompts": [p.to_dict() for p in journal_prompts],
             "degradation_reasons": list(reasons),
         }
         return DailyBriefing(
@@ -98,6 +109,8 @@ class DailyBriefingBuilder:
             text_summary=text,
             machine=machine,
             degradation_reasons=tuple(reasons),
+            day_summary=day_summary,
+            journal_prompts=journal_prompts,
         )
 
     def _runs_for_day(self, as_of: datetime) -> list[RunRecord]:
@@ -146,6 +159,49 @@ class DailyBriefingBuilder:
         out.sort(key=lambda d: d.decision_id)
         return tuple(out)
 
+    def _journal_prompts(
+        self, decisions: Sequence[BriefingDecisionSummary],
+    ) -> tuple[BriefingJournalPrompt, ...]:
+        """Prompt for decisions that have no journal row yet (user action/outcome)."""
+        journaled = {
+            e.decision_ref
+            for e in self._repo.list_journal(limit=self._config.max_runs_scanned)
+        }
+        prompts: list[BriefingJournalPrompt] = []
+        for d in decisions:
+            if d.decision_id in journaled:
+                continue
+            inst = d.instrument_id or "-"
+            prompts.append(BriefingJournalPrompt(
+                decision_id=d.decision_id,
+                instrument_id=d.instrument_id,
+                decision_type=d.decision_type,
+                prompt=(
+                    f"Record journal action for {d.decision_id} ({inst} {d.decision_type}): "
+                    "ACCEPTED / REJECTED / IGNORED + optional outcome notes"
+                ),
+            ))
+        return tuple(prompts)
+
+
+def _build_day_summary(
+    runs: Sequence[BriefingRunSummary],
+    decisions: Sequence[BriefingDecisionSummary],
+    prompts: Sequence[BriefingJournalPrompt],
+) -> dict[str, object]:
+    by_trigger = Counter(r.trigger for r in runs)
+    by_status = Counter(r.status for r in runs)
+    by_decision_type = Counter(d.decision_type for d in decisions)
+    return {
+        "run_count": len(runs),
+        "runs_by_trigger": dict(sorted(by_trigger.items())),
+        "runs_by_status": dict(sorted(by_status.items())),
+        "decision_count": len(decisions),
+        "decisions_by_type": dict(sorted(by_decision_type.items())),
+        "journal_prompts_pending": len(prompts),
+        "closing_run_present": any(r.trigger == "CLOSING" for r in runs),
+    }
+
 
 def _render_text(
     briefing_id: str,
@@ -153,12 +209,23 @@ def _render_text(
     status: BriefingStatus,
     runs: Sequence[BriefingRunSummary],
     decisions: Sequence[BriefingDecisionSummary],
+    day_summary: Mapping[str, object],
+    journal_prompts: Sequence[BriefingJournalPrompt],
     reasons: Sequence[str],
 ) -> str:
     lines = [
         f"ATHENA Daily Briefing {briefing_id}",
         f"as_of: {as_of.isoformat()}",
         f"status: {status.value}",
+        "",
+        "Day summary:",
+        f"  runs={day_summary.get('run_count', 0)} "
+        f"by_trigger={day_summary.get('runs_by_trigger', {})} "
+        f"by_status={day_summary.get('runs_by_status', {})}",
+        f"  decisions={day_summary.get('decision_count', 0)} "
+        f"by_type={day_summary.get('decisions_by_type', {})}",
+        f"  journal_prompts_pending={day_summary.get('journal_prompts_pending', 0)} "
+        f"closing_run_present={day_summary.get('closing_run_present', False)}",
         "",
         f"Runs ({len(runs)}):",
     ]
@@ -181,6 +248,13 @@ def _render_text(
                 f"  - {d.decision_id} {d.decision_type} {inst} {d.direction} "
                 f"stages={d.trace_stage_count}: {d.explanation}"
             )
+    lines.append("")
+    lines.append(f"Journal prompts ({len(journal_prompts)}):")
+    if not journal_prompts:
+        lines.append("  (none — all decisions journaled, or no decisions)")
+    else:
+        for p in journal_prompts:
+            lines.append(f"  - {p.prompt}")
     if reasons:
         lines.append("")
         lines.append("Degradation:")

@@ -23,7 +23,7 @@
 | Briefings | Strong on **runs**; decision journal in SQLite (R2) |
 | Unattended ops | **R5 APPROVED** — `athena run-due` + launchd/cron docs + failure alerts |
 
-**Verdict:** Daily-advisory core path is in place (R1–R5). Optional polish: R6 closing/day-summary cycle.
+**Verdict:** Production-readiness tracks **R1–R6 APPROVED**. ATHENA is daily-advisory-ready for single-user workstation use (file and/or Kite; launchd/`run-due`; closing brief with journal prompts). Non-goals unchanged: no order placement.
 
 ---
 
@@ -89,7 +89,7 @@ M10.4 Playbook    →    R1 File-backed SOP    →    R3 DD-1 Provider  →   R5
 | ID | Milestone | Objective | Exit criteria |
 |---|---|---|---|
 | **R5** | Host Schedule + Failure Alerts | launchd/cron (or equivalent) invokes `athena cycle` / `brief`; hard failures notify (webhook and/or email — advances DD-9) | **✅ APPROVED 2026-07-23** — `athena run-due`, `docs/ops/HOST_SCHEDULE.md`, file+webhook alerts |
-| **R6** | Closing / Day-Summary Cycle | Optional post-15:30 cycle: day roll-up + journal prompts (Blueprint §8) | Trigger + briefing section; owner approval |
+| **R6** | Closing / Day-Summary Cycle | Optional post-15:30 cycle: day roll-up + journal prompts (Blueprint §8) | **✅ APPROVED 2026-07-23** — `CLOSING` trigger, briefing day summary + journal prompts |
 
 ---
 

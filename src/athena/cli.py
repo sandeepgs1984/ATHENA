@@ -150,6 +150,7 @@ def _cmd_due(args: argparse.Namespace) -> int:
 
     last_premarket_date = None
     last_refresh_ts = None
+    last_closing_date = None
     with _open_repo(cfg) as repo:
         pre = repo.latest_run(RunTrigger.PREMARKET.value)
         if pre is not None:
@@ -157,6 +158,9 @@ def _cmd_due(args: argparse.Namespace) -> int:
         ref = repo.latest_run(RunTrigger.REFRESH.value)
         if ref is not None:
             last_refresh_ts = ref.started_ts
+        closing = repo.latest_run(RunTrigger.CLOSING.value)
+        if closing is not None:
+            last_closing_date = closing.started_ts.astimezone(tz).date()
 
     due = due_triggers(
         as_of,
@@ -165,6 +169,7 @@ def _cmd_due(args: argparse.Namespace) -> int:
         base_interval_minutes=cfg.base.refresh_interval_minutes,
         last_premarket_date=last_premarket_date,
         last_refresh_ts=last_refresh_ts,
+        last_closing_date=last_closing_date,
     )
     print(f"as_of           : {as_of.isoformat()}")
     if due:
@@ -272,7 +277,7 @@ def _cmd_diagnose(args: argparse.Namespace) -> int:
 
 
 def _cmd_run_due(args: argparse.Namespace) -> int:
-    """R5: run due PREMARKET/REFRESH cycles (then optional brief); alert on hard failure."""
+    """R5/R6: run due PREMARKET/REFRESH/CLOSING cycles (then optional brief); alert on hard failure."""
     config_dir = _config_dir()
     cfg = load_config(config_dir)
     sched = load_scheduling_config(config_dir)
@@ -367,7 +372,7 @@ def main(argv: list[str] | None = None) -> int:
 
     p_due = sub.add_parser(
         "due",
-        help="Show due PREMARKET/REFRESH triggers at as_of (M10.2 cadence)",
+        help="Show due PREMARKET/REFRESH/CLOSING triggers at as_of (M10.2 + R6 cadence)",
     )
     p_due.add_argument("--as-of", help="ISO timestamp (defaults to now)")
     p_due.set_defaults(func=_cmd_due)
@@ -379,7 +384,7 @@ def main(argv: list[str] | None = None) -> int:
     p_cycle.add_argument(
         "--trigger",
         required=True,
-        choices=["premarket", "refresh", "PREMARKET", "REFRESH"],
+        choices=["premarket", "refresh", "closing", "PREMARKET", "REFRESH", "CLOSING"],
         help="Cycle trigger",
     )
     p_cycle.add_argument("--as-of", help="ISO timestamp (defaults to now)")
@@ -387,7 +392,7 @@ def main(argv: list[str] | None = None) -> int:
 
     p_run_due = sub.add_parser(
         "run-due",
-        help="R5: run due PREMARKET/REFRESH cycles (+ optional brief); alert on hard failure",
+        help="R5/R6: run due PREMARKET/REFRESH/CLOSING cycles (+ optional brief); alert on hard failure",
     )
     p_run_due.add_argument("--as-of", help="ISO timestamp (defaults to now)")
     brief_group = p_run_due.add_mutually_exclusive_group()

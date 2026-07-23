@@ -75,6 +75,7 @@ class UserAction(str, Enum):
 class RunTrigger(str, Enum):
     PREMARKET = "PREMARKET"
     REFRESH = "REFRESH"
+    CLOSING = "CLOSING"
     CLOSE = "CLOSE"
     REPLAY = "REPLAY"
     SIMULATE = "SIMULATE"

@@ -6,6 +6,24 @@ status updated on approval.
 
 ---
 
+## Production readiness -- R6 Closing / Day-Summary Cycle (APPROVED)
+
+| | |
+|---|---|
+| Completed | 2026-07-23 |
+| Scope | Post-close `CLOSING` cadence + dry-run cycle; briefing day roll-up + journal prompts (Blueprint §8). |
+| Tests | Cadence closing cases; briefing day_summary + journal prompt clear when journaled |
+| Status | **APPROVED** — Owner approved 2026-07-23 |
+| Branch | develop |
+
+- `RunTrigger.CLOSING`; `scheduling.closing` (`run_at` default 15:45); `is_closing_due` / `due_triggers`.
+- Dry-run + `run-due` / CLI `cycle --trigger closing` support CLOSING.
+- Briefings include `day_summary` + `journal_prompts` for decisions lacking journal rows.
+
+Files created: (none new top-level). Files modified: `config/scheduling.json`, `src/athena/domain/enums.py`, `src/athena/config/models.py`, `src/athena/scheduling/{cadence,dry_run,__init__}.py`, `src/athena/notifications/{models,builder,__init__}.py`, `src/athena/ops/scheduled_run.py`, `src/athena/cli.py`, `docs/*`, tests. Public APIs: `is_closing_due`, `BriefingJournalPrompt`, extended `DailyBriefing`. No ADR; no order methods.
+
+---
+
 ## Production readiness -- R5 Host Schedule + Failure Alerts (APPROVED)
 
 | | |

@@ -33,7 +33,7 @@ class HostDueRunResult:
 
 
 class HostDueRunner:
-    """Run whatever PREMARKET/REFRESH triggers are due, then optionally brief."""
+    """Run whatever PREMARKET/REFRESH/CLOSING triggers are due, then optionally brief."""
 
     def __init__(
         self,
@@ -70,12 +70,16 @@ class HostDueRunner:
 
         last_premarket_date = None
         last_refresh_ts = None
+        last_closing_date = None
         pre = self._repo.latest_run(RunTrigger.PREMARKET.value)
         if pre is not None:
             last_premarket_date = pre.started_ts.astimezone(self._tzinfo).date()
         ref = self._repo.latest_run(RunTrigger.REFRESH.value)
         if ref is not None:
             last_refresh_ts = ref.started_ts
+        closing = self._repo.latest_run(RunTrigger.CLOSING.value)
+        if closing is not None:
+            last_closing_date = closing.started_ts.astimezone(self._tzinfo).date()
 
         due = due_triggers(
             as_of,
@@ -84,6 +88,7 @@ class HostDueRunner:
             base_interval_minutes=self._cfg.base.refresh_interval_minutes,
             last_premarket_date=last_premarket_date,
             last_refresh_ts=last_refresh_ts,
+            last_closing_date=last_closing_date,
         )
 
         do_brief = self._host_ops.brief_after_cycles if send_brief is None else send_brief
