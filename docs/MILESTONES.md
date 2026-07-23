@@ -135,6 +135,8 @@ Establishes live scheduled paper-trading operations, real-time market data inges
 | **M10.3** Daily Briefing Notifications | Automated email/webhook notifications dispatching daily decision traces and summaries | ✅ APPROVED |
 | **M10.4** AI Playbook Diagnostics | Diagnostic analysis over Decision Journal outcomes, proposing configuration weight tuning suggestions | ❌ Not started |
 
+**Production readiness (daily advisory use):** see [`docs/PRODUCTION_READINESS_ROADMAP.md`](PRODUCTION_READINESS_ROADMAP.md) for post–Phase-10 tracks R1–R6 (file-backed SOP, decision journal persistence, DD-1 live provider, launchd/alerts). Not authorized until owner gates each item.
+
 ---
 
 *Status legend: a milestone is "In Progress" (🔄) when actively being designed or built, "Approved" (✅) only when the owner signs off. Never two milestones in flight.*
