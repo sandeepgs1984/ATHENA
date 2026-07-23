@@ -34,6 +34,7 @@ from athena.errors import AthenaError
 from athena.notifications import BriefingDispatcher
 from athena.notifications.decision_source import SqliteDecisionSummarySource
 from athena.observability.health import run_system_checks
+from athena.ops.kite_auth import run_interactive_kite_auth
 from athena.scheduling import DryRunCycleOrchestrator, due_triggers
 
 _STATUS_MARK = {HealthStatus.OK: "[OK]     ", HealthStatus.WARN: "[WARN]   ",
@@ -268,6 +269,24 @@ def _cmd_diagnose(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_kite_auth(args: argparse.Namespace) -> int:
+    """Interactive daily Kite login → write KITE_ACCESS_TOKEN to .env → verify."""
+    load_dotenv()
+    from athena.ops.kite_auth import force_inject_kite_env
+
+    run_interactive_kite_auth(
+        repo_root=_repo_root(),
+        open_browser=not args.no_browser,
+        listen_port=args.listen,
+        verify=not args.skip_verify,
+    )
+    if args.ingest:
+        # Force-inject from .env (setdefault load_dotenv would keep a stale token).
+        force_inject_kite_env(_repo_root() / ".env")
+        return _cmd_ingest(args)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="athena",
@@ -339,6 +358,37 @@ def main(argv: list[str] | None = None) -> int:
         help="Accepted for symmetry; diagnostics never mutate config",
     )
     p_diagnose.set_defaults(func=_cmd_diagnose)
+
+    p_kite = sub.add_parser(
+        "kite-auth",
+        help="Interactive Kite login: exchange request_token → write .env access token",
+    )
+    p_kite.add_argument(
+        "--no-browser",
+        action="store_true",
+        help="Do not open the login URL automatically",
+    )
+    p_kite.add_argument(
+        "--listen",
+        type=int,
+        metavar="PORT",
+        help="Capture redirect on http://127.0.0.1:PORT/ (must match Kite Redirect URL)",
+    )
+    p_kite.add_argument(
+        "--skip-verify",
+        action="store_true",
+        help="Skip post-write .env reinjection + Kite /user/profile check",
+    )
+    p_kite.add_argument(
+        "--ingest",
+        action="store_true",
+        help="After writing the token, run one ingest cycle (requires ingestion.provider=kite)",
+    )
+    p_kite.add_argument(
+        "--as-of",
+        help="Passed to ingest when --ingest is set (ISO timestamp)",
+    )
+    p_kite.set_defaults(func=_cmd_kite_auth)
 
     args = parser.parse_args(argv)
     load_dotenv()

@@ -68,7 +68,40 @@ Optional later: `unalias athena` and `pip3 install -e .` so bare `athena` works.
 
 Kite **access tokens expire ~06:00 IST** next day. Do this before live ingest each trading day.
 
-### 1.1 Login (browser)
+### 1.0 Recommended — root helper script
+
+From the **repo root**:
+
+```bash
+./kite-auth
+```
+
+Same thing via module CLI:
+
+```bash
+PYTHONPATH=src python3 -m athena.cli kite-auth
+```
+
+What it does:
+
+1. Asks for `KITE_API_KEY` / `KITE_API_SECRET` (Enter keeps values already in `.env`)
+2. Opens the Kite login URL (or print-only with `--no-browser`)
+3. You Authorize in the browser
+4. You paste the redirect URL (or `request_token`) when prompted  
+   — **or** use auto-capture: `./kite-auth --listen 8765` after setting Kite Redirect URL to `http://127.0.0.1:8765`
+5. Exchanges the token (form POST) and writes `KITE_ACCESS_TOKEN` into `.env`
+6. **Re-injects** those values into the process from `.env` (overwrites any stale env)
+7. **Verifies** with an authenticated Kite `GET /user/profile` — prints `VERIFY OK` or fails loudly
+
+Optional: refresh token **and** ingest in one go (requires `ingestion.provider` = `kite`):
+
+```bash
+./kite-auth --ingest
+./kite-auth --ingest --as-of 2026-07-23T15:30:00+05:30   # after hours
+./kite-auth --skip-verify   # only if you must skip the profile check
+```
+
+### 1.1 Manual login (browser) — if you prefer not to use the script
 
 1. Open (replace with your real API key):
 
@@ -89,7 +122,7 @@ Kite **access tokens expire ~06:00 IST** next day. Do this before live ingest ea
 
 5. Copy the `request_token` value only (expires in a few minutes; one-time use).
 
-### 1.2 Exchange request_token → access_token (terminal)
+### 1.2 Manual exchange (only if not using `./kite-auth`)
 
 Use **form-urlencoded** POST (not JSON). Replace the three placeholders, then run immediately:
 
@@ -128,7 +161,7 @@ PY
 
 Success = a long token string printed (no error JSON).
 
-### 1.3 Save token
+### 1.3 Save token (manual path only)
 
 Put it in `.env`:
 
@@ -223,7 +256,7 @@ Set `"provider": "file"` again in `config/ingestion.json` unless you intend to s
 
 | # | Step | Done? |
 |---|---|---|
-| 1 | Fresh `KITE_ACCESS_TOKEN` in `.env` (§1) | ☐ |
+| 1 | Fresh `KITE_ACCESS_TOKEN` via `./kite-auth` (or §1 manual) | ☐ |
 | 2 | `kite.json` → `symbols` set | ☐ |
 | 3 | `ingestion.json` → `"provider": "kite"` + `instrument_ids` | ☐ |
 | 4 | `PYTHONPATH=src python3 -m athena.cli ingest` (+ `--as-of` if after hours) | ☐ |
@@ -235,7 +268,7 @@ Set `"provider": "file"` again in `config/ingestion.json` unless you intend to s
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `athena ingest` prints nothing | Shell alias `athena` = `cd` only | Use `PYTHONPATH=src python3 -m athena.cli …` |
+| `athena ingest` prints nothing | Shell alias `athena` = `cd` only | Use `./kite-auth` / `PYTHONPATH=src python3 -m athena.cli …` |
 | `KITE_ACCESS_TOKEN is missing` | Not in `.env` / empty | Add token (§1) |
 | `Incorrect api_key or access_token` (403) | Expired/wrong token, or token for another app | New login + exchange; match API key |
 | `The user is not enabled for the app` | Client ID / wrong Zerodha login | Fix app Client ID; same account; incognito |

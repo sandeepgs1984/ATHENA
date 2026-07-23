@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# ATHENA — daily Kite access-token helper (repo root).
+# Usage:
+#   ./kite-auth
+#   ./kite-auth --listen 8765
+#   ./kite-auth --ingest
+#   ./kite-auth --ingest --as-of 2026-07-23T15:30:00+05:30
+#   ./kite-auth --skip-verify
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+cd "$ROOT"
+export PYTHONPATH="${ROOT}/src${PYTHONPATH:+:$PYTHONPATH}"
+exec python3 -m athena.cli kite-auth "$@"
