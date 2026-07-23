@@ -6,9 +6,28 @@ status updated on approval.
 
 ---
 
-## Phase 10 -- Live Dry-Run Operations & AI Playbook Learning (AUTHORIZED — M10.1 APPROVED)
+## Phase 10 -- Live Dry-Run Operations & AI Playbook Learning (AUTHORIZED — M10.2 APPROVED)
 
-Phase outcome: authorized 2026-07-23. M10.1 owner-approved; M10.2–M10.4 not started. Broker binding (DD-1) deferred; FileProvider drives live ingest until chosen. No order-placement code.
+Phase outcome: authorized 2026-07-23. M10.1–M10.2 owner-approved; M10.3–M10.4 not started. Broker binding (DD-1) deferred; FileProvider drives live ingest until chosen. No order-placement code.
+
+### M10.2 -- Scheduled Dry-Run Operations
+
+| | |
+|---|---|
+| Completed | 2026-07-23 |
+| Scope | Premarket + intraday refresh cadence; dry-run cycle = ingest → optional paper pipeline hook → SQLite run ledger; CLI `athena due` / `athena cycle`. |
+| Tests | 851 passed / 0 failed (12 new dry-run/cadence tests) |
+| Status | **APPROVED** — Owner approved 2026-07-23 |
+| Branch | develop |
+
+Implemented schedule cadence and dry-run cycle orchestration (no embedded cron; external launcher may call CLI).
+- Extended `SchedulingConfig` / `scheduling.json` with `premarket.run_at` and `refresh.interval_minutes` (null → `base.refresh_interval_minutes`).
+- Pure cadence helpers: `is_premarket_due`, `is_refresh_due`, `due_triggers` (injected `as_of` + last-run markers).
+- `DryRunCycleOrchestrator.run_cycle(trigger, as_of=…)`: `LiveIngestionEngine` → optional `DryRunPipeline` → persist `RunRecord` (FAILED runs saved before re-raise).
+- SQLite schema v2: append-only `runs` table; `save_run` / `get_run` / `list_runs` / `latest_run`; `initialize` upgrades version.
+- CLI: `athena due [--as-of]`, `athena cycle --trigger premarket|refresh [--as-of]`.
+
+Files created: `src/athena/scheduling/{cadence.py,dry_run.py}`, `tests/runtime/test_dry_run_schedule.py`. Files modified: `config/scheduling.json`, `src/athena/config/models.py`, `src/athena/scheduling/__init__.py`, `src/athena/data/store/{schema.py,repository.py,serialization.py}`, `src/athena/cli.py`, `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md`. Public APIs: cadence helpers, `DryRunCycleOrchestrator`, `DryRunCycleResult`, run ledger methods, `athena due`/`cycle`. No ADR; no broker SDK; no order placement; M10.3 notifications / M10.4 AI deferred.
 
 ### M10.1 -- Live Data Ingestion
 

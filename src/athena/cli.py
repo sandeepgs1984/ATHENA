@@ -1,7 +1,7 @@
 """ATHENA command-line interface.
 
-Phase 0 commands: ``athena today``, ``athena health``, ``athena version``.
-Phase 10: ``athena ingest`` (M10.1). Later: premarket, refresh, replay, simulate.
+Phase 0: ``athena today``, ``athena health``, ``athena version``.
+Phase 10: ``athena ingest`` (M10.1), ``athena cycle`` / ``athena due`` (M10.2).
 """
 
 from __future__ import annotations
@@ -18,15 +18,17 @@ from athena.calendar.engine import CalendarEngine
 from athena.config.loader import (
     load_config,
     load_ingestion_config,
+    load_scheduling_config,
     load_validation_config,
 )
 from athena.data.ingestion import LiveIngestionEngine, build_ingest_validator
 from athena.data.providers import FileProvider
 from athena.data.store import SqliteRepository
 from athena.data.validation import QuarantineRegistry
-from athena.domain.enums import HealthStatus
+from athena.domain.enums import HealthStatus, RunTrigger
 from athena.errors import AthenaError
 from athena.observability.health import run_system_checks
+from athena.scheduling import DryRunCycleOrchestrator, due_triggers
 
 _STATUS_MARK = {HealthStatus.OK: "[OK]     ", HealthStatus.WARN: "[WARN]   ",
                 HealthStatus.BLOCKED: "[BLOCKED]"}
@@ -38,6 +40,23 @@ def _config_dir() -> Path:
 
 def _repo_root() -> Path:
     return _config_dir().resolve().parent
+
+
+def _parse_as_of(raw: str | None, tz: ZoneInfo) -> datetime:
+    if raw:
+        as_of = datetime.fromisoformat(raw)
+        if as_of.tzinfo is None:
+            return as_of.replace(tzinfo=tz)
+        return as_of
+    return datetime.now(tz)
+
+
+def _open_repo(base) -> SqliteRepository:
+    db_env = os.environ.get("ATHENA_DB_PATH")
+    db_path = Path(db_env) if db_env else (_repo_root() / base.paths.db)
+    repo = SqliteRepository(db_path)
+    repo.initialize()
+    return repo
 
 
 def _cmd_today(args: argparse.Namespace) -> int:
@@ -81,37 +100,30 @@ def _cmd_version(_: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_ingest(args: argparse.Namespace) -> int:
-    """One live ingest cycle (M10.1): FileProvider → validate → SQLite."""
-    config_dir = _config_dir()
-    base = load_config(config_dir)
+def _build_ingest_engine(config_dir: Path, base, repo: SqliteRepository, tz: ZoneInfo):
     ingest_cfg = load_ingestion_config(config_dir)
     if ingest_cfg.provider != "file":
         raise AthenaError(
             f"ingestion.provider '{ingest_cfg.provider}' is not supported; "
             "only 'file' until DD-1 broker binding"
         )
-
-    tz = ZoneInfo(base.market.timezone)
-    if args.as_of:
-        as_of = datetime.fromisoformat(args.as_of)
-        if as_of.tzinfo is None:
-            as_of = as_of.replace(tzinfo=tz)
-    else:
-        as_of = datetime.now(tz)
-
     calendar = CalendarEngine.from_config_dir(config_dir, base.market)
     validation = load_validation_config(config_dir)
     validator = build_ingest_validator(calendar, validation, ingest_cfg, tz)
     provider = FileProvider.from_config_dir(config_dir, base_dir=_repo_root())
+    return LiveIngestionEngine(
+        provider, repo, validator, QuarantineRegistry(), ingest_cfg, validation, tzinfo=tz,
+    ), ingest_cfg
 
-    db_env = os.environ.get("ATHENA_DB_PATH")
-    db_path = Path(db_env) if db_env else (_repo_root() / base.paths.db)
-    with SqliteRepository(db_path) as repo:
-        repo.initialize()
-        engine = LiveIngestionEngine(
-            provider, repo, validator, QuarantineRegistry(), ingest_cfg, validation, tzinfo=tz,
-        )
+
+def _cmd_ingest(args: argparse.Namespace) -> int:
+    """One live ingest cycle (M10.1): FileProvider → validate → SQLite."""
+    config_dir = _config_dir()
+    base = load_config(config_dir)
+    tz = ZoneInfo(base.market.timezone)
+    as_of = _parse_as_of(args.as_of, tz)
+    with _open_repo(base) as repo:
+        engine, _ = _build_ingest_engine(config_dir, base, repo, tz)
         result = engine.run_cycle(as_of=as_of)
 
     print(f"ingest complete @ {result.as_of.isoformat()}")
@@ -119,6 +131,71 @@ def _cmd_ingest(args: argparse.Namespace) -> int:
     print(f"candles fetched : {result.candles_fetched}  written: {result.candles_written}")
     print(f"quotes fetched  : {result.quotes_fetched}  written: {result.quotes_written}")
     print(f"datasets ok     : {result.datasets_validated}  empty skipped: {result.datasets_skipped_empty}")
+    return 0
+
+
+def _cmd_due(args: argparse.Namespace) -> int:
+    """Show which dry-run triggers are due at as_of (M10.2 cadence)."""
+    config_dir = _config_dir()
+    base = load_config(config_dir)
+    sched = load_scheduling_config(config_dir)
+    tz = ZoneInfo(base.market.timezone)
+    as_of = _parse_as_of(args.as_of, tz)
+
+    last_premarket_date = None
+    last_refresh_ts = None
+    with _open_repo(base) as repo:
+        pre = repo.latest_run(RunTrigger.PREMARKET.value)
+        if pre is not None:
+            last_premarket_date = pre.started_ts.astimezone(tz).date()
+        ref = repo.latest_run(RunTrigger.REFRESH.value)
+        if ref is not None:
+            last_refresh_ts = ref.started_ts
+
+    due = due_triggers(
+        as_of,
+        sessions=base.market.sessions,
+        config=sched,
+        base_interval_minutes=base.refresh_interval_minutes,
+        last_premarket_date=last_premarket_date,
+        last_refresh_ts=last_refresh_ts,
+    )
+    print(f"as_of           : {as_of.isoformat()}")
+    if due:
+        print(f"due             : {', '.join(t.value for t in due)}")
+    else:
+        print("due             : (none)")
+    return 0
+
+
+def _cmd_cycle(args: argparse.Namespace) -> int:
+    """One scheduled dry-run cycle: ingest → run ledger (M10.2)."""
+    config_dir = _config_dir()
+    base = load_config(config_dir)
+    tz = ZoneInfo(base.market.timezone)
+    as_of = _parse_as_of(args.as_of, tz)
+    trigger = RunTrigger(args.trigger.upper())
+
+    with _open_repo(base) as repo:
+        ingest_engine, _ = _build_ingest_engine(config_dir, base, repo, tz)
+        orchestrator = DryRunCycleOrchestrator(
+            ingest_engine,
+            repo,
+            strategy_profile=base.active_profile,
+            config_snapshot_id="cfg-cli",
+        )
+        result = orchestrator.run_cycle(trigger, as_of=as_of)
+
+    print(f"cycle complete  : {result.run.run_id}")
+    print(f"trigger         : {result.run.trigger.value}")
+    print(f"status          : {result.run.status.value}")
+    print(f"duration_s      : {result.duration_seconds:.3f}")
+    if result.ingestion is not None:
+        print(
+            f"ingest          : candles={result.ingestion.candles_written} "
+            f"quotes={result.ingestion.quotes_written}"
+        )
+    print(f"pipeline mode   : {result.pipeline_detail.get('mode')}")
     return 0
 
 
@@ -149,6 +226,26 @@ def main(argv: list[str] | None = None) -> int:
         help="ISO timestamp for freshness (injected; defaults to now in market timezone)",
     )
     p_ingest.set_defaults(func=_cmd_ingest)
+
+    p_due = sub.add_parser(
+        "due",
+        help="Show due PREMARKET/REFRESH triggers at as_of (M10.2 cadence)",
+    )
+    p_due.add_argument("--as-of", help="ISO timestamp (defaults to now)")
+    p_due.set_defaults(func=_cmd_due)
+
+    p_cycle = sub.add_parser(
+        "cycle",
+        help="Run one scheduled dry-run cycle: ingest + SQLite run ledger (M10.2)",
+    )
+    p_cycle.add_argument(
+        "--trigger",
+        required=True,
+        choices=["premarket", "refresh", "PREMARKET", "REFRESH"],
+        help="Cycle trigger",
+    )
+    p_cycle.add_argument("--as-of", help="ISO timestamp (defaults to now)")
+    p_cycle.set_defaults(func=_cmd_cycle)
 
     args = parser.parse_args(argv)
     try:

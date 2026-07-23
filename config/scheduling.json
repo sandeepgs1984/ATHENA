@@ -1,7 +1,15 @@
 {
   "_meta": {
     "layer": 4,
-    "description": "Scheduling Framework configuration (M4.7). Coordination only — no cron integration, no cloud scheduling, no distributed execution. record_history tracks execution history across invocations."
+    "description": "Scheduling Framework + M10.2 cadence (premarket/refresh). No embedded cron — CLI/external launcher invokes cycles."
   },
-  "record_history": true
+  "record_history": true,
+  "premarket": {
+    "enabled": true,
+    "run_at": "08:15"
+  },
+  "refresh": {
+    "enabled": true,
+    "interval_minutes": null
+  }
 }

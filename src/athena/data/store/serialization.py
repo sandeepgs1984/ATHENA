@@ -19,8 +19,9 @@ from athena.data.validation.reports import (
     ValidationResult,
     ValidationType,
 )
-from athena.domain.enums import Timeframe
+from athena.domain.enums import RunStatus, RunTrigger, Timeframe
 from athena.domain.market import Candle, CorporateAction, Instrument, MarketSnapshot, Quote
+from athena.domain.run import RunRecord
 
 
 def _opt_date(value: str | None) -> date | None:
@@ -147,3 +148,43 @@ def reports_to_json(reports: Sequence[ValidationReport]) -> str:
 
 def json_to_reports(payload: str) -> tuple[ValidationReport, ...]:
     return tuple(_dict_to_report(d) for d in json.loads(payload))
+
+
+# ---------------------------------------------------------------------------- runs
+
+def run_to_row(run: RunRecord, detail_json: str) -> tuple:
+    return (
+        run.run_id,
+        run.cycle_id,
+        run.trigger.value,
+        run.started_ts.isoformat(),
+        run.finished_ts.isoformat() if run.finished_ts else None,
+        run.status.value,
+        run.software_version,
+        run.blueprint_version,
+        run.strategy_profile,
+        run.strategy_profile_version,
+        json.dumps(dict(run.indicator_versions), sort_keys=True),
+        run.config_snapshot_id,
+        run.input_digest,
+        detail_json,
+    )
+
+
+def row_to_run(r: Sequence[Any]) -> RunRecord:
+    finished = datetime.fromisoformat(r[4]) if r[4] else None
+    return RunRecord(
+        run_id=r[0],
+        cycle_id=r[1],
+        trigger=RunTrigger(r[2]),
+        started_ts=datetime.fromisoformat(r[3]),
+        status=RunStatus(r[5]),
+        software_version=r[6],
+        blueprint_version=r[7],
+        strategy_profile=r[8],
+        strategy_profile_version=r[9],
+        indicator_versions=json.loads(r[10]),
+        config_snapshot_id=r[11],
+        input_digest=r[12] or "",
+        finished_ts=finished,
+    )

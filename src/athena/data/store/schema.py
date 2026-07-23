@@ -10,7 +10,7 @@ append-only by discipline (inserts only; duplicates rejected by primary key).
 from __future__ import annotations
 
 #: Bump when the schema changes; enables future explicit migrations.
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 _DDL = (
     "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)",
@@ -84,6 +84,26 @@ _DDL = (
         reports_json   TEXT NOT NULL
     )
     """,
+
+    """
+    CREATE TABLE IF NOT EXISTS runs (
+        run_id                    TEXT PRIMARY KEY,
+        cycle_id                  TEXT NOT NULL,
+        trigger                   TEXT NOT NULL,
+        started_ts                TEXT NOT NULL,
+        finished_ts               TEXT,
+        status                    TEXT NOT NULL,
+        software_version          TEXT NOT NULL,
+        blueprint_version         TEXT NOT NULL,
+        strategy_profile          TEXT NOT NULL,
+        strategy_profile_version  TEXT NOT NULL,
+        indicator_versions_json   TEXT NOT NULL,
+        config_snapshot_id        TEXT NOT NULL,
+        input_digest              TEXT NOT NULL DEFAULT '',
+        detail_json               TEXT NOT NULL DEFAULT '{}'
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_runs_trigger_started ON runs(trigger, started_ts)",
 )
 
 

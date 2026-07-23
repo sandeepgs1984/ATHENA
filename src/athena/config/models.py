@@ -782,11 +782,32 @@ class AnalyticsConfig(_Strict):
         return v
 
 
+class PremarketScheduleConfig(_Strict):
+    """Once-per-trading-day premarket dry-run window (Blueprint §8.1)."""
+
+    enabled: bool = True
+    run_at: time = time(8, 15)
+
+
+class RefreshScheduleConfig(_Strict):
+    """Intraday refresh cadence (Blueprint §8.2). ``interval_minutes`` None →
+    use ``base.refresh_interval_minutes``."""
+
+    enabled: bool = True
+    interval_minutes: int | None = Field(default=None, ge=1, le=120)
+
+
 class SchedulingConfig(_Strict):
-    """Scheduling Framework configuration (M4.7).  Coordination only —
-    no cron integration, no cloud scheduling, no distributed execution."""
+    """Scheduling Framework configuration (M4.7 + M10.2 cadence).
+
+    Coordination only — no embedded cron library, no cloud scheduling.
+    Premarket/refresh walls drive ``athena cycle`` / due-trigger evaluation;
+    external launchd/cron may invoke the CLI (ATHENA-001 O-2).
+    """
 
     record_history: bool = True
+    premarket: PremarketScheduleConfig = Field(default_factory=PremarketScheduleConfig)
+    refresh: RefreshScheduleConfig = Field(default_factory=RefreshScheduleConfig)
 
 
 class PortfolioConfig(_Strict):
