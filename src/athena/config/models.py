@@ -882,6 +882,25 @@ class NotificationsConfig(_Strict):
     max_runs_scanned: int = Field(default=200, ge=1, le=5000)
 
 
+class FailureAlertsConfig(_Strict):
+    """Hard-failure alerts for host-scheduled ops (R5 / DD-9). Secrets stay in ``.env``."""
+
+    enabled: bool = True
+    file_enabled: bool = True
+    output_dir: str = "artifacts/alerts"
+    webhook_enabled: bool = True
+    webhook_timeout_seconds: int = Field(default=10, ge=1, le=120)
+
+
+class HostOpsConfig(_Strict):
+    """External launchd/cron job behaviour (R5). No embedded scheduler."""
+
+    brief_after_cycles: bool = True
+    brief_when_idle: bool = False
+    alert_on_failed_run: bool = True
+    failure_alerts: FailureAlertsConfig = Field(default_factory=FailureAlertsConfig)
+
+
 class DiagnosticsConfig(_Strict):
     """Playbook diagnostics settings (M10.4). Propose only — never auto-apply."""
 

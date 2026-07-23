@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  ATHENA R5 — example LaunchAgent.
+  1. Copy to ~/Library/LaunchAgents/com.athena.run-due.plist
+  2. Replace EVERY occurrence of REPO_ROOT with your absolute clone path
+  3. launchctl load ~/Library/LaunchAgents/com.athena.run-due.plist
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.athena.run-due</string>
+
+  <key>WorkingDirectory</key>
+  <string>REPO_ROOT</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>REPO_ROOT/athena-run-due</string>
+  </array>
+
+  <key>StartInterval</key>
+  <integer>900</integer>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>REPO_ROOT/artifacts/logs/run-due.stdout.log</string>
+  <key>StandardErrorPath</key>
+  <string>REPO_ROOT/artifacts/logs/run-due.stderr.log</string>
+</dict>
+</plist>

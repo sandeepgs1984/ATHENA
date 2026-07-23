@@ -24,19 +24,20 @@ from athena.config.models import (
     ConfidenceConfig,
     DashboardConfig,
     DecisionConfig,
+    DiagnosticsConfig,
     EventsFile,
     ExecutionConfig,
-    ExportConfig,
-    ExplainabilityConfig,
     ExpiriesFile,
+    ExplainabilityConfig,
+    ExportConfig,
     FileProviderConfig,
     HolidaysFile,
+    HostOpsConfig,
     IngestionConfig,
     KiteProviderConfig,
     MarketHealthConfig,
     MonitoringConfig,
     NotificationsConfig,
-    DiagnosticsConfig,
     OrchestrationConfig,
     OrderPlanningConfig,
     PortfolioAnalyticsConfig,
@@ -296,6 +297,16 @@ def load_notifications_config(config_dir: Path) -> NotificationsConfig:
     path = Path(config_dir) / "notifications.json"
     try:
         return NotificationsConfig.model_validate(_read_json(path))
+    except ValidationError as exc:
+        raise ConfigError(_validation_message(str(path), exc)) from exc
+
+
+def load_host_ops_config(config_dir: Path) -> HostOpsConfig:
+    """Load + validate host-scheduled ops settings (config/host_ops.json, R5)."""
+
+    path = Path(config_dir) / "host_ops.json"
+    try:
+        return HostOpsConfig.model_validate(_read_json(path))
     except ValidationError as exc:
         raise ConfigError(_validation_message(str(path), exc)) from exc
 

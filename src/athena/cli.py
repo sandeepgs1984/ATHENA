@@ -19,6 +19,7 @@ from athena.config.env import load_dotenv
 from athena.config.loader import (
     load_config,
     load_diagnostics_config,
+    load_host_ops_config,
     load_ingestion_config,
     load_notifications_config,
     load_scheduling_config,
@@ -35,6 +36,7 @@ from athena.notifications import BriefingDispatcher
 from athena.notifications.decision_source import SqliteDecisionSummarySource
 from athena.observability.health import run_system_checks
 from athena.ops.kite_auth import run_interactive_kite_auth
+from athena.ops.scheduled_run import HostDueRunner
 from athena.scheduling import DryRunCycleOrchestrator, due_triggers
 
 _STATUS_MARK = {HealthStatus.OK: "[OK]     ", HealthStatus.WARN: "[WARN]   ",
@@ -269,6 +271,54 @@ def _cmd_diagnose(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_run_due(args: argparse.Namespace) -> int:
+    """R5: run due PREMARKET/REFRESH cycles (then optional brief); alert on hard failure."""
+    config_dir = _config_dir()
+    cfg = load_config(config_dir)
+    sched = load_scheduling_config(config_dir)
+    host_ops = load_host_ops_config(config_dir)
+    notify_cfg = load_notifications_config(config_dir)
+    tz = ZoneInfo(cfg.market.timezone)
+    as_of = _parse_as_of(args.as_of, tz)
+    send_brief = None if args.brief is None else bool(args.brief)
+
+    with _open_repo(cfg) as repo:
+        ingest_engine, _ = _build_ingest_engine(config_dir, cfg, repo, tz)
+        runner = HostDueRunner(
+            cfg=cfg,
+            sched=sched,
+            host_ops=host_ops,
+            notify_cfg=notify_cfg,
+            repo=repo,
+            ingest_engine=ingest_engine,
+            repo_root=_repo_root(),
+            tzinfo=tz,
+            strategy_profile=cfg.base.active_profile,
+        )
+        result = runner.run(
+            as_of=as_of,
+            send_brief=send_brief,
+            alert=not bool(args.no_alert),
+        )
+
+    print(f"run-due as_of   : {result.as_of.isoformat()}")
+    if result.idle:
+        print("due             : (none)")
+        print("status          : idle")
+        return 0
+    print(f"due             : {', '.join(t.value for t in result.due)}")
+    for cycle in result.cycles:
+        print(
+            f"cycle           : {cycle.run.trigger.value} "
+            f"{cycle.run.status.value} ({cycle.run.run_id})"
+        )
+    if result.briefing_id:
+        print(f"briefing        : {result.briefing_id}")
+    if result.alerted:
+        print("alert           : sent")
+    return 0
+
+
 def _cmd_kite_auth(args: argparse.Namespace) -> int:
     """Interactive daily Kite login → write KITE_ACCESS_TOKEN to .env → verify."""
     load_dotenv()
@@ -334,6 +384,32 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_cycle.add_argument("--as-of", help="ISO timestamp (defaults to now)")
     p_cycle.set_defaults(func=_cmd_cycle)
+
+    p_run_due = sub.add_parser(
+        "run-due",
+        help="R5: run due PREMARKET/REFRESH cycles (+ optional brief); alert on hard failure",
+    )
+    p_run_due.add_argument("--as-of", help="ISO timestamp (defaults to now)")
+    brief_group = p_run_due.add_mutually_exclusive_group()
+    brief_group.add_argument(
+        "--brief",
+        dest="brief",
+        action="store_true",
+        default=None,
+        help="Force briefing after cycles (overrides host_ops.brief_after_cycles)",
+    )
+    brief_group.add_argument(
+        "--no-brief",
+        dest="brief",
+        action="store_false",
+        help="Skip briefing even if host_ops.brief_after_cycles is true",
+    )
+    p_run_due.add_argument(
+        "--no-alert",
+        action="store_true",
+        help="Do not dispatch failure alerts (still exits non-zero on failure)",
+    )
+    p_run_due.set_defaults(func=_cmd_run_due)
 
     p_brief = sub.add_parser(
         "brief",

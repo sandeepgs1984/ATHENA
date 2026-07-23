@@ -6,6 +6,25 @@ status updated on approval.
 
 ---
 
+## Production readiness -- R5 Host Schedule + Failure Alerts (ready for review)
+
+| | |
+|---|---|
+| Completed | 2026-07-23 |
+| Scope | External launchd/cron invokes due cycles + brief; hard failures alert via file + webhook (DD-9). No embedded cron. |
+| Tests | `tests/ops/test_host_ops.py` (file alert, webhook mock, idle path, failure alert, brief-after-cycle) |
+| Status | **Ready for review** — awaiting `approve R5` |
+| Branch | develop |
+
+- CLI `athena run-due` + root `./athena-run-due` (sources `.env` for launchd).
+- `HostDueRunner` evaluates cadence, runs due PREMARKET/REFRESH, optional brief, alerts on `AthenaError`.
+- `FailureAlertDispatcher`: `artifacts/alerts/` + `ATHENA_ALERT_WEBHOOK_URL` (fallback `ATHENA_WEBHOOK_URL`).
+- Docs: `docs/ops/HOST_SCHEDULE.md` + launchd plist example; email SMTP still deferred.
+
+Files created: `config/host_ops.json`, `src/athena/ops/{failure_alerts,scheduled_run}.py`, `athena-run-due`, `docs/ops/HOST_SCHEDULE.md`, `docs/ops/launchd/com.athena.run-due.plist.example`, `tests/ops/test_host_ops.py`. Files modified: `src/athena/config/{models,loader,__init__}.py`, `src/athena/cli.py`, `src/athena/ops/__init__.py`, `.env.example`, `docs/*`, `README.md`, `IMPLEMENTATION_SUMMARY.md`. Public APIs: `HostDueRunner`, `FailureAlertDispatcher`, `load_host_ops_config`, `athena run-due`. No ADR; localhost/secrets policy preserved; no order methods.
+
+---
+
 ## Production readiness -- R4 Kite Live Provider Adapter (APPROVED)
 
 | | |

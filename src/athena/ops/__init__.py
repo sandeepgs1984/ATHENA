@@ -1,5 +1,6 @@
-"""Owner ops helpers (auth scripts, etc.). Not part of the intelligence pipeline."""
+"""Owner ops helpers (auth, host schedule, failure alerts). Not part of the intelligence pipeline."""
 
+from athena.ops.failure_alerts import FailureAlert, FailureAlertDispatcher
 from athena.ops.kite_auth import (
     KiteVerifyResult,
     checksum,
@@ -12,8 +13,13 @@ from athena.ops.kite_auth import (
     verify_env_injection,
     verify_kite_credentials,
 )
+from athena.ops.scheduled_run import HostDueRunner, HostDueRunResult
 
 __all__ = [
+    "FailureAlert",
+    "FailureAlertDispatcher",
+    "HostDueRunResult",
+    "HostDueRunner",
     "KiteVerifyResult",
     "checksum",
     "exchange_access_token",

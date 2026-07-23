@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# ATHENA — host-scheduled due-ops entrypoint for launchd/cron (R5).
+# Usage:
+#   ./athena-run-due
+#   ./athena-run-due --as-of 2026-07-23T10:00:00+05:30
+#   ./athena-run-due --no-brief
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+cd "$ROOT"
+export PYTHONPATH="${ROOT}/src${PYTHONPATH:+:$PYTHONPATH}"
+# Load .env into the process for launchd (which often has a bare environment).
+if [[ -f "$ROOT/.env" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "$ROOT/.env"
+  set +a
+fi
+exec python3 -m athena.cli run-due "$@"

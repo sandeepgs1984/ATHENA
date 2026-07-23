@@ -1,0 +1,16 @@
+{
+  "_meta": {
+    "layer": "ops",
+    "description": "R5 host-scheduled ops (launchd/cron). No embedded cron. Failure alert secrets in .env (ATHENA_ALERT_WEBHOOK_URL or ATHENA_WEBHOOK_URL)."
+  },
+  "brief_after_cycles": true,
+  "brief_when_idle": false,
+  "alert_on_failed_run": true,
+  "failure_alerts": {
+    "enabled": true,
+    "file_enabled": true,
+    "output_dir": "artifacts/alerts",
+    "webhook_enabled": true,
+    "webhook_timeout_seconds": 10
+  }
+}
