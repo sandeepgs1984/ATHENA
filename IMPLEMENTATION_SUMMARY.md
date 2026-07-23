@@ -6,6 +6,26 @@ status updated on approval.
 
 ---
 
+## Production readiness -- R4 Kite Live Provider Adapter (ready for review)
+
+| | |
+|---|---|
+| Completed | 2026-07-23 |
+| Scope | Read-only Zerodha Kite `MarketDataProvider`; config-selected bind; FileProvider remains default; secrets in `.env` only. |
+| Tests | Contract suite green via fake transport; unit tests for quotes/candles/snapshot/allowlist; related data_layer/contract/cli green |
+| Status | **Ready for review** — awaiting `approve R4` |
+| Branch | develop |
+
+- `KiteProvider` + allowlisted GET-only `UrllibKiteTransport` (`/instruments*`, `/quote*` only — no order paths, no kiteconnect SDK).
+- Config: `config/providers/kite.json`; `ingestion.provider` accepts `file` \| `kite` (default `file`).
+- Factory `build_market_data_provider`; CLI ingest/cycle loads `.env` then resolves provider.
+- Ops: `docs/ops/KITE_LIVE_DATA.md` (token refresh, enable steps, limits).
+- Instrument ids: `NSE:SYMBOL`. Snapshot: index LTPs + India VIX; breadth left 0.
+
+Files created: `src/athena/data/providers/{kite_provider,kite_transport,factory}.py`, `src/athena/config/env.py`, `config/providers/kite.json`, `docs/ops/KITE_LIVE_DATA.md`, `tests/data_layer/test_kite_provider.py`, `tests/contract/test_kite_provider_contract.py`. Files modified: `src/athena/config/{models,loader,__init__}.py`, `src/athena/cli.py`, `src/athena/api/app.py`, `config/ingestion.json`, `.env.example`, `docs/*`, `IMPLEMENTATION_SUMMARY.md`, `README.md`. Public APIs: `KiteProvider`, `build_market_data_provider`, `load_kite_provider_config`, `load_dotenv`. No ADR; frozen Protocol unchanged; no order methods.
+
+---
+
 ## Production readiness -- R3 DD-1 Live Vendor Decision (APPROVED)
 
 | | |

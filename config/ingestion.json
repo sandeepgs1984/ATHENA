@@ -1,7 +1,7 @@
 {
   "_meta": {
     "layer": 3,
-    "description": "Live ingest cycle settings (M10.1). FileProvider only until DD-1 broker choice; no credentials."
+    "description": "Live ingest cycle settings (M10.1 / R4). provider: file (default) or kite. Kite secrets in .env only."
   },
   "provider": "file",
   "timeframes": ["5m"],

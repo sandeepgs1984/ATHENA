@@ -17,13 +17,13 @@
 | Phases 0–9 | Complete — intelligence, paper path, API, dashboard/ops |
 | M10.1–M10.3 | Approved — file ingest, dry-run cadence + run ledger, briefings |
 | M10.4 | Approved — closes Phase 10 |
-| Market data | **FileProvider default**; DD-1 **accepted** → Zerodha Kite Connect (R4 adapter not started) |
+| Market data | **FileProvider default**; **KiteProvider** available (`ingestion.provider: kite`) — R4 ready for review |
 | Broker | Paper translation only — no network, no placement |
 | Default daily cycle | Ingest + run ledger (`ingest_only`); full paper pipeline optional/injectable |
-| Briefings | Strong on **runs**; often **DEGRADED** without injected decisions (journal not in SQLite) |
+| Briefings | Strong on **runs**; decision journal in SQLite (R2) |
 | Unattended ops | No embedded cron — CLI + external launcher (launchd/cron) |
 
-**Verdict:** Excellent **lab / paper / review** workstation. **Not** yet “wake up and trust live NSE feeds unattended.”
+**Verdict:** Lab / paper / file-backed daily ops solid. Live Kite path implemented pending R4 approval + owner flip of `ingestion.provider` and daily token hygiene.
 
 ---
 
@@ -78,7 +78,7 @@ M10.4 Playbook    →    R1 File-backed SOP    →    R3 DD-1 Provider  →   R5
 | ID | Milestone | Objective | Exit criteria |
 |---|---|---|---|
 | **R3** | DD-1 Decision Record | Owner picks vendor against ATHENA-002 §15 criteria (depth, rate limits, cost, auth burden, stability) | **✅ APPROVED 2026-07-23** — Zerodha Kite Connect (`docs/decisions/DD-1-broker-live-data-vendor.md`) |
-| **R4** | Live Provider Adapter | Implement `MarketDataProvider` for chosen vendor; pass `tests/contract/provider_contract.py`; bind via config (not hardcoded) | Contract suite green; secrets in `.env`; FileProvider remains default/fallback; ingest config can select live provider |
+| **R4** | Live Provider Adapter | Implement `MarketDataProvider` for chosen vendor; pass `tests/contract/provider_contract.py`; bind via config (not hardcoded) | ⏳ **Ready for review** — `KiteProvider`, allowlisted GET transport, `docs/ops/KITE_LIVE_DATA.md`; default remains `file` |
 
 **After R4:** Ingest/cycles can poll **real** quotes/candles (within vendor limits). Still advisory-only.
 
@@ -132,4 +132,4 @@ When ready to continue, reply with one of:
 - `authorize R2` — decision journal persistence first  
 - `authorize R3` — start DD-1 vendor decision only  
 
-Until then: no further Phase 10 / R* implementation.
+Until then: no further Phase 10 / R* implementation beyond the authorized milestone.

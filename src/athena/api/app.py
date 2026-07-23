@@ -167,16 +167,9 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     Ensures clean setup and lifecycle management.
     """
     # Load .env manually if it exists
-    env_path = os.path.join(os.getcwd(), ".env")
-    if os.path.exists(env_path):
-        with open(env_path) as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith("#") and "=" in line:
-                    k, v = line.split("=", 1)
-                    k = k.strip()
-                    v = v.strip().strip('"').strip("'")
-                    os.environ.setdefault(k, v)
+    from athena.config.env import load_dotenv
+
+    load_dotenv()
 
     settings = settings or APISettings()
 

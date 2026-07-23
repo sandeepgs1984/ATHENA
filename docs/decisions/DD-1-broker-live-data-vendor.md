@@ -6,7 +6,7 @@
 | Date | 2026-07-23 |
 | Deferred decision | ATHENA-002 §15 **DD-1** |
 | ADR context | [ADR-002](../adr/ADR-002-broker-abstraction.md) — adapters behind `MarketDataProvider`; no order methods |
-| Code impact | **None in R3.** Adapter implementation is **R4** only — still unauthorized until owner gates R4 |
+| Code impact | **R4 delivered** — read-only `KiteProvider` behind `MarketDataProvider`; FileProvider remains default |
 | Owner note | Existing Zerodha Kite account; Groww retained for manual execution only (ATHENA never places orders) |
 
 ---
@@ -134,9 +134,8 @@ Scores: **Pass / Partial / Fail / Unknown** against each criterion. “Partial�
 | Chosen vendor | **Zerodha Kite Connect** |
 | Owner | sandeep |
 | Accepted | **2026-07-23** (`approve R3`) — existing Kite account; Groww for manual execution only |
-| Next | **`authorize R4`** to implement read-only Kite `MarketDataProvider` (FileProvider remains default/fallback) |
-
-**R4 remains unauthorized** until R3 is approved with a chosen vendor.
+| R4 | **Ready for review** — `KiteProvider` + config bind; default provider still `file` |
+| Next | Owner **`approve R4`**, then optionally flip `ingestion.provider` to `kite` after setting `.env` |
 
 ---
 

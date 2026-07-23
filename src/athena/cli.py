@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo
 
 from athena import BLUEPRINT_VERSION, __version__
 from athena.calendar.engine import CalendarEngine
+from athena.config.env import load_dotenv
 from athena.config.loader import (
     load_config,
     load_diagnostics_config,
@@ -24,7 +25,7 @@ from athena.config.loader import (
     load_validation_config,
 )
 from athena.data.ingestion import LiveIngestionEngine, build_ingest_validator
-from athena.data.providers import FileProvider
+from athena.data.providers import build_market_data_provider
 from athena.data.store import SqliteRepository
 from athena.data.validation import QuarantineRegistry
 from athena.diagnostics import PlaybookDiagnosticsService
@@ -107,22 +108,19 @@ def _cmd_version(_: argparse.Namespace) -> int:
 
 def _build_ingest_engine(config_dir: Path, cfg, repo: SqliteRepository, tz: ZoneInfo):
     ingest_cfg = load_ingestion_config(config_dir)
-    if ingest_cfg.provider != "file":
-        raise AthenaError(
-            f"ingestion.provider '{ingest_cfg.provider}' is not supported; "
-            "only 'file' until DD-1 broker binding"
-        )
     calendar = CalendarEngine.from_config_dir(config_dir, cfg.market)
     validation = load_validation_config(config_dir)
     validator = build_ingest_validator(calendar, validation, ingest_cfg, tz)
-    provider = FileProvider.from_config_dir(config_dir, base_dir=_repo_root())
+    provider = build_market_data_provider(
+        config_dir, base_dir=_repo_root(), provider_name=ingest_cfg.provider,
+    )
     return LiveIngestionEngine(
         provider, repo, validator, QuarantineRegistry(), ingest_cfg, validation, tzinfo=tz,
     ), ingest_cfg
 
 
 def _cmd_ingest(args: argparse.Namespace) -> int:
-    """One live ingest cycle (M10.1): FileProvider → validate → SQLite."""
+    """One live ingest cycle (M10.1 / R4): configured provider → validate → SQLite."""
     config_dir = _config_dir()
     cfg = load_config(config_dir)
     tz = ZoneInfo(cfg.market.timezone)
@@ -343,6 +341,7 @@ def main(argv: list[str] | None = None) -> int:
     p_diagnose.set_defaults(func=_cmd_diagnose)
 
     args = parser.parse_args(argv)
+    load_dotenv()
     try:
         return int(args.func(args))
     except AthenaError as exc:

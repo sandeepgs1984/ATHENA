@@ -308,6 +308,41 @@ class FileProviderConfig(_Strict):
     capabilities: ProviderCapabilitiesConfig
 
 
+class KiteProviderConfig(_Strict):
+    """Settings for the Zerodha Kite Connect read-only provider (R4 / DD-1).
+
+    Secrets (``KITE_API_KEY``, ``KITE_ACCESS_TOKEN``) stay in ``.env`` — never here.
+    """
+
+    exchange: str = "NSE"
+    instrument_types: list[str] = Field(default_factory=lambda: ["EQ"])
+    symbols: list[str] = Field(default_factory=list)
+    index_instruments: list[str] = Field(
+        default_factory=lambda: ["NSE:NIFTY 50", "NSE:NIFTY BANK"]
+    )
+    india_vix_instrument: str = "NSE:INDIA VIX"
+    base_url: str = "https://api.kite.trade"
+    quote_batch_size: int = Field(default=500, ge=1, le=500)
+    capabilities: ProviderCapabilitiesConfig
+
+    @field_validator("instrument_types")
+    @classmethod
+    def _nonempty_types(cls, v: list[str]) -> list[str]:
+        if not v:
+            raise ValueError("kite.instrument_types must declare at least one type")
+        if len(set(v)) != len(v):
+            raise ValueError(f"duplicate instrument_types: {v}")
+        return v
+
+    @field_validator("symbols")
+    @classmethod
+    def _unique_symbols(cls, v: list[str]) -> list[str]:
+        cleaned = [s.strip() for s in v if s and s.strip()]
+        if len(cleaned) != len(set(cleaned)):
+            raise ValueError(f"duplicate kite.symbols: {v}")
+        return cleaned
+
+
 class FreshnessConfig(_Strict):
     max_trading_days_behind: int = Field(ge=0)
     intraday_max_minutes_behind: int = Field(gt=0)
@@ -326,9 +361,9 @@ class ValidationConfig(_Strict):
 
 
 class IngestionConfig(_Strict):
-    """Live ingest cycle settings (M10.1). Provider-agnostic; DD-1 broker unbound."""
+    """Live ingest cycle settings (M10.1 / R4). Provider selected by name; default file."""
 
-    provider: Literal["file"] = "file"
+    provider: Literal["file", "kite"] = "file"
     timeframes: list[str] = Field(default_factory=lambda: ["5m"])
     lookback_minutes: int = Field(default=30, ge=1, le=1440)
     lookback_days: int = Field(default=5, ge=1, le=365)
