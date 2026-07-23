@@ -16,7 +16,7 @@
 |---|---|
 | Phases 0–9 | Complete — intelligence, paper path, API, dashboard/ops |
 | M10.1–M10.3 | Approved — file ingest, dry-run cadence + run ledger, briefings |
-| M10.4 | Not started |
+| M10.4 | Approved — closes Phase 10 |
 | Market data | **FileProvider only** (`config/ingestion.json` → `provider: file`). DD-1 open |
 | Broker | Paper translation only — no network, no placement |
 | Default daily cycle | Ingest + run ledger (`ingest_only`); full paper pipeline optional/injectable |
@@ -66,8 +66,8 @@ M10.4 Playbook    →    R1 File-backed SOP    →    R3 DD-1 Provider  →   R5
 
 | ID | Milestone | Objective | Exit criteria |
 |---|---|---|---|
-| **R1** | File-backed Daily Ops SOP | Document + script the day: refresh CSVs → `athena due` → `athena cycle` → dashboard → `athena brief --dry-run` | Written SOP in repo; smoke checklist; owner can run a mock trading day on fixtures |
-| **R2** | Decision Journal Persistence | Persist decisions/traces (or cycle decision summaries) to SQLite; wire into briefing `DecisionSummarySource` | Briefings reach OK when cycles produce decisions; schema bump + tests; no order APIs |
+| **R1** | File-backed Daily Ops SOP | Document + script the day: refresh CSVs → `athena due` → `athena cycle` → dashboard → `athena brief --dry-run` | **✅ APPROVED 2026-07-23** — `docs/ops/FILE_BACKED_DAILY_OPS.md` + `scripts/smoke_file_backed_day.sh` |
+| **R2** | Decision Journal Persistence | Persist decisions/traces (or cycle decision summaries) to SQLite; wire into briefing `DecisionSummarySource` | ❌ Not started |
 
 **After R1+R2:** You can use ATHENA **daily** if you keep `data/` fresh (manual export or your own downloader). Still not live broker feed.
 

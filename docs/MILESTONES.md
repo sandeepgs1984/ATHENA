@@ -137,6 +137,16 @@ Establishes live scheduled paper-trading operations, real-time market data inges
 
 **Phase 10 closed (2026-07-23):** owner approved M10.4. Production readiness for daily advisory use continues under [`docs/PRODUCTION_READINESS_ROADMAP.md`](PRODUCTION_READINESS_ROADMAP.md) tracks R1–R6 (not authorized until owner gates each item).
 
+### Production readiness track
+
+| Milestone | Scope | Status |
+|---|---|---|
+| **R1** File-backed Daily Ops SOP | SOP + smoke script for file-backed mock trading day | ✅ APPROVED |
+| **R2** Decision Journal Persistence | Persist decisions/traces for OK briefings | ❌ Not started |
+| **R3–R6** | See production readiness roadmap | ❌ Not started |
+
+SOP: [`docs/ops/FILE_BACKED_DAILY_OPS.md`](ops/FILE_BACKED_DAILY_OPS.md) · Smoke: `./scripts/smoke_file_backed_day.sh`
+
 ---
 
 *Status legend: a milestone is "In Progress" (🔄) when actively being designed or built, "Approved" (✅) only when the owner signs off. Never two milestones in flight.*

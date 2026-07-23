@@ -6,6 +6,24 @@ status updated on approval.
 
 ---
 
+## Production readiness -- R1 File-backed Daily Ops SOP (APPROVED)
+
+| | |
+|---|---|
+| Completed | 2026-07-23 |
+| Scope | Written SOP for file-backed daily advisory use; executable mock-day smoke on fixtures; fix CLI AthenaConfig nesting for due/cycle/brief/diagnose. |
+| Tests | smoke script PASS + `tests/ops/test_file_backed_daily_smoke.py` |
+| Status | **APPROVED** — Owner approved 2026-07-23 |
+| Branch | develop |
+
+- Added `docs/ops/FILE_BACKED_DAILY_OPS.md` (prereqs, refresh CSVs, premarket/refresh CLI sequence, failure playbook, smoke checklist).
+- Added `scripts/smoke_file_backed_day.sh` (temp config/DB, fixture FileProvider, health → due → cycle → brief → diagnose).
+- Fixed Phase 10 CLI to read `cfg.base.*` / `cfg.market.*` correctly on `AthenaConfig`.
+
+Files created: `docs/ops/FILE_BACKED_DAILY_OPS.md`, `scripts/smoke_file_backed_day.sh`, `tests/ops/test_file_backed_daily_smoke.py`. Files modified: `src/athena/cli.py`, `docs/MILESTONES.md`, `docs/PRODUCTION_READINESS_ROADMAP.md`, `IMPLEMENTATION_SUMMARY.md`, `README.md`. No ADR; R2+ still unauthorized.
+
+---
+
 ## Phase 10 -- Live Dry-Run Operations & AI Playbook Learning (COMPLETE — owner closed 2026-07-23)
 
 Phase outcome: M10.1–M10.4 owner-approved. FileProvider-backed dry-run ops, briefings, and propose-only playbook diagnostics delivered. Broker binding (DD-1) deferred. No order-placement code. Next: production-readiness tracks R1–R6 in `docs/PRODUCTION_READINESS_ROADMAP.md` (unauthorized until gated).

@@ -13,6 +13,9 @@ ATHENA is not a screener, not a bot, and never executes trades. It exists to imp
 | [ATHENA-001R](docs/ATHENA-001R-Owner-Review.md) | Owner Review — 15 amendments + 4 directions | Accepted |
 | [ATHENA-002](docs/ATHENA-002-System-Blueprint.md) | System Blueprint — single source of truth for implementation | **Approved v1.1 — FROZEN** |
 | [ATHENA-002R](docs/ATHENA-002R-Owner-Review.md) | Owner Review — 17 final refinements + architecture freeze | Accepted |
+| [MILESTONES](docs/MILESTONES.md) | Phase/milestone roadmap | Active |
+| [Production readiness](docs/PRODUCTION_READINESS_ROADMAP.md) | Daily advisory readiness (R1–R6) | Active |
+| [File-backed daily ops](docs/ops/FILE_BACKED_DAILY_OPS.md) | R1 SOP for FileProvider daily use | Approved |
 | [ADRs](docs/adr/) | Architecture Decision Records (ADR-001…005 seeded) | Active |
 
 ## Core decisions

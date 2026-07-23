@@ -55,9 +55,9 @@ def _parse_as_of(raw: str | None, tz: ZoneInfo) -> datetime:
     return datetime.now(tz)
 
 
-def _open_repo(base) -> SqliteRepository:
+def _open_repo(cfg) -> SqliteRepository:
     db_env = os.environ.get("ATHENA_DB_PATH")
-    db_path = Path(db_env) if db_env else (_repo_root() / base.paths.db)
+    db_path = Path(db_env) if db_env else (_repo_root() / cfg.base.paths.db)
     repo = SqliteRepository(db_path)
     repo.initialize()
     return repo
@@ -104,14 +104,14 @@ def _cmd_version(_: argparse.Namespace) -> int:
     return 0
 
 
-def _build_ingest_engine(config_dir: Path, base, repo: SqliteRepository, tz: ZoneInfo):
+def _build_ingest_engine(config_dir: Path, cfg, repo: SqliteRepository, tz: ZoneInfo):
     ingest_cfg = load_ingestion_config(config_dir)
     if ingest_cfg.provider != "file":
         raise AthenaError(
             f"ingestion.provider '{ingest_cfg.provider}' is not supported; "
             "only 'file' until DD-1 broker binding"
         )
-    calendar = CalendarEngine.from_config_dir(config_dir, base.market)
+    calendar = CalendarEngine.from_config_dir(config_dir, cfg.market)
     validation = load_validation_config(config_dir)
     validator = build_ingest_validator(calendar, validation, ingest_cfg, tz)
     provider = FileProvider.from_config_dir(config_dir, base_dir=_repo_root())
@@ -123,11 +123,11 @@ def _build_ingest_engine(config_dir: Path, base, repo: SqliteRepository, tz: Zon
 def _cmd_ingest(args: argparse.Namespace) -> int:
     """One live ingest cycle (M10.1): FileProvider → validate → SQLite."""
     config_dir = _config_dir()
-    base = load_config(config_dir)
-    tz = ZoneInfo(base.market.timezone)
+    cfg = load_config(config_dir)
+    tz = ZoneInfo(cfg.market.timezone)
     as_of = _parse_as_of(args.as_of, tz)
-    with _open_repo(base) as repo:
-        engine, _ = _build_ingest_engine(config_dir, base, repo, tz)
+    with _open_repo(cfg) as repo:
+        engine, _ = _build_ingest_engine(config_dir, cfg, repo, tz)
         result = engine.run_cycle(as_of=as_of)
 
     print(f"ingest complete @ {result.as_of.isoformat()}")
@@ -141,14 +141,14 @@ def _cmd_ingest(args: argparse.Namespace) -> int:
 def _cmd_due(args: argparse.Namespace) -> int:
     """Show which dry-run triggers are due at as_of (M10.2 cadence)."""
     config_dir = _config_dir()
-    base = load_config(config_dir)
+    cfg = load_config(config_dir)
     sched = load_scheduling_config(config_dir)
-    tz = ZoneInfo(base.market.timezone)
+    tz = ZoneInfo(cfg.market.timezone)
     as_of = _parse_as_of(args.as_of, tz)
 
     last_premarket_date = None
     last_refresh_ts = None
-    with _open_repo(base) as repo:
+    with _open_repo(cfg) as repo:
         pre = repo.latest_run(RunTrigger.PREMARKET.value)
         if pre is not None:
             last_premarket_date = pre.started_ts.astimezone(tz).date()
@@ -158,9 +158,9 @@ def _cmd_due(args: argparse.Namespace) -> int:
 
     due = due_triggers(
         as_of,
-        sessions=base.market.sessions,
+        sessions=cfg.market.sessions,
         config=sched,
-        base_interval_minutes=base.refresh_interval_minutes,
+        base_interval_minutes=cfg.base.refresh_interval_minutes,
         last_premarket_date=last_premarket_date,
         last_refresh_ts=last_refresh_ts,
     )
@@ -175,17 +175,17 @@ def _cmd_due(args: argparse.Namespace) -> int:
 def _cmd_cycle(args: argparse.Namespace) -> int:
     """One scheduled dry-run cycle: ingest → run ledger (M10.2)."""
     config_dir = _config_dir()
-    base = load_config(config_dir)
-    tz = ZoneInfo(base.market.timezone)
+    cfg = load_config(config_dir)
+    tz = ZoneInfo(cfg.market.timezone)
     as_of = _parse_as_of(args.as_of, tz)
     trigger = RunTrigger(args.trigger.upper())
 
-    with _open_repo(base) as repo:
-        ingest_engine, _ = _build_ingest_engine(config_dir, base, repo, tz)
+    with _open_repo(cfg) as repo:
+        ingest_engine, _ = _build_ingest_engine(config_dir, cfg, repo, tz)
         orchestrator = DryRunCycleOrchestrator(
             ingest_engine,
             repo,
-            strategy_profile=base.active_profile,
+            strategy_profile=cfg.base.active_profile,
             config_snapshot_id="cfg-cli",
         )
         result = orchestrator.run_cycle(trigger, as_of=as_of)
@@ -206,12 +206,12 @@ def _cmd_cycle(args: argparse.Namespace) -> int:
 def _cmd_brief(args: argparse.Namespace) -> int:
     """Assemble and dispatch the daily briefing (M10.3)."""
     config_dir = _config_dir()
-    base = load_config(config_dir)
+    cfg = load_config(config_dir)
     notify_cfg = load_notifications_config(config_dir)
-    tz = ZoneInfo(base.market.timezone)
+    tz = ZoneInfo(cfg.market.timezone)
     as_of = _parse_as_of(args.as_of, tz)
 
-    with _open_repo(base) as repo:
+    with _open_repo(cfg) as repo:
         dispatcher = BriefingDispatcher(
             repo,
             notify_cfg,
@@ -235,15 +235,15 @@ def _cmd_brief(args: argparse.Namespace) -> int:
 def _cmd_diagnose(args: argparse.Namespace) -> int:
     """Playbook diagnostics — propose-only config tuning suggestions (M10.4)."""
     config_dir = _config_dir()
-    base = load_config(config_dir)
+    cfg = load_config(config_dir)
     diag_cfg = load_diagnostics_config(config_dir)
-    tz = ZoneInfo(base.market.timezone)
+    tz = ZoneInfo(cfg.market.timezone)
     as_of = _parse_as_of(args.as_of, tz)
 
     # --dry-run is accepted for CLI symmetry; diagnostics never apply config.
     _ = args.dry_run
 
-    with _open_repo(base) as repo:
+    with _open_repo(cfg) as repo:
         service = PlaybookDiagnosticsService(
             repo,
             diag_cfg,
