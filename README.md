@@ -8,11 +8,11 @@ ATHENA is not a screener, not a bot, and never executes trades. It exists to imp
 
 | Doc | Title | Status |
 |---|---|---|
-| [ATHENA-000](ATHENA-000-Master-Architecture.md) | Master Architecture & Product Foundation (Constitution) | Ratified v0.2 |
-| [ATHENA-001](ATHENA-001-Engineering-Review.md) | Engineering Review — 7 roles, 8 disagreements resolved, 12 amendments | Approved |
-| [ATHENA-001R](ATHENA-001R-Owner-Review.md) | Owner Review — 15 amendments + 4 directions | Accepted |
-| [ATHENA-002](ATHENA-002-System-Blueprint.md) | System Blueprint — single source of truth for implementation | **Approved v1.1 — FROZEN** |
-| [ATHENA-002R](ATHENA-002R-Owner-Review.md) | Owner Review — 17 final refinements + architecture freeze | Accepted |
+| [ATHENA-000](docs/ATHENA-000-Master-Architecture.md) | Master Architecture & Product Foundation (Constitution) | Ratified v0.2 |
+| [ATHENA-001](docs/ATHENA-001-Engineering-Review.md) | Engineering Review — 7 roles, 8 disagreements resolved, 12 amendments | Approved |
+| [ATHENA-001R](docs/ATHENA-001R-Owner-Review.md) | Owner Review — 15 amendments + 4 directions | Accepted |
+| [ATHENA-002](docs/ATHENA-002-System-Blueprint.md) | System Blueprint — single source of truth for implementation | **Approved v1.1 — FROZEN** |
+| [ATHENA-002R](docs/ATHENA-002R-Owner-Review.md) | Owner Review — 17 final refinements + architecture freeze | Accepted |
 | [ADRs](docs/adr/) | Architecture Decision Records (ADR-001…005 seeded) | Active |
 
 ## Core decisions

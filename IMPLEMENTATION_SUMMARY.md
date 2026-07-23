@@ -15,7 +15,7 @@ status updated on approval.
 | Completed | 2026-07-22 |
 | Scope | Build visual dashboard components showing exposure breakdowns, asset balances, and portfolio charts including NAV area line chart, Sector Exposure donut chart, and open holdings table detail. |
 | Tests | 818 passed / 0 failed (0 new) |
-| Status | **Awaiting owner approval** |
+| Status | **APPROVED** — closes P9.3 (Owner approved) |
 | Branch | main |
 
 Implemented visual portfolio dashboard components under `src/athena/api/static/` utilizing Chart.js CDN hosting.
@@ -37,7 +37,7 @@ Files created: None. Files modified: `src/athena/api/static/index.html`, `src/at
 | Completed | 2026-07-22 |
 | Scope | Finalize the API platform infrastructure and establish a production-grade API foundation with health, versioning, metadata, feature/capability discovery, standard headers, request context middleware, unified RFC 9457 error mappings, and OpenAPI contract completeness. |
 | Tests | 806 passed / 0 failed (7 new) |
-| Status | **Awaiting owner approval** |
+| Status | **APPROVED** — closes P8.5 (Owner approved) |
 | Branch | main |
 
 Finalized REST API platform infrastructure.
@@ -168,7 +168,7 @@ Files created: `src/athena/orchestration/contract.py`, `src/athena/orchestration
 | Completed | 2026-07-21 |
 | Scope | Wire six presentation/intelligence stage adapters into a validated, declarative `PipelineDefinition`; model topology as four independent producer roots, Timeline as intermediate aggregator, and Export as terminal aggregator |
 | Tests | 693 passed / 0 failed (21 new) |
-| Status | **Awaiting owner approval** |
+| Status | **APPROVED** — closes P7.3 (Owner approved) |
 | Branch | main |
 
 Built ATHENA's second production pipeline. `create_intelligence_pipeline()` returns an immutable `PipelineDefinition` with six stages: four independent roots (`ReportingStage`, `ExplainabilityStage`, `DashboardStage`, `MonitoringStage`), one intermediate aggregator (`TimelineStage` depending on the four roots), and one terminal aggregator (`ExportStage` depending on all five upstream stages). `validate_intelligence_pipeline()` enforces the correct topological shape, stage count (6), and expected stage IDs. The explicit execution-artifact input contract is defined by `INTELLIGENCE_PIPELINE_REQUIRED_INPUTS` and `INTELLIGENCE_PIPELINE_OPTIONAL_INPUTS` to prevent implicit runtime assumptions. `IntelligenceArtifactKey` and `IntelligenceStageId` enums eliminate all raw string keys in context propagation. Each stage adapter wraps its engine internally with no concrete engine injection at builder level.
