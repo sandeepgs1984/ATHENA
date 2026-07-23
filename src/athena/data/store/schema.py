@@ -10,7 +10,7 @@ append-only by discipline (inserts only; duplicates rejected by primary key).
 from __future__ import annotations
 
 #: Bump when the schema changes; enables future explicit migrations.
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 _DDL = (
     "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)",
@@ -104,6 +104,44 @@ _DDL = (
     )
     """,
     "CREATE INDEX IF NOT EXISTS idx_runs_trigger_started ON runs(trigger, started_ts)",
+
+    """
+    CREATE TABLE IF NOT EXISTS decisions (
+        decision_id         TEXT PRIMARY KEY,
+        ts                  TEXT NOT NULL,
+        run_id              TEXT NOT NULL,
+        cycle_id            TEXT NOT NULL,
+        decision_type       TEXT NOT NULL,
+        explanation         TEXT NOT NULL,
+        instrument_id       TEXT,
+        direction           TEXT NOT NULL,
+        score_ref           TEXT,
+        confidence_ref      TEXT,
+        risk_ref            TEXT,
+        gate_results_json   TEXT NOT NULL,
+        trade_plan_json     TEXT
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_decisions_ts ON decisions(ts)",
+    "CREATE INDEX IF NOT EXISTS idx_decisions_run ON decisions(run_id)",
+
+    """
+    CREATE TABLE IF NOT EXISTS decision_traces (
+        decision_ref TEXT PRIMARY KEY REFERENCES decisions(decision_id),
+        stages_json  TEXT NOT NULL
+    )
+    """,
+
+    """
+    CREATE TABLE IF NOT EXISTS decision_journal (
+        entry_id     TEXT PRIMARY KEY,
+        decision_ref TEXT NOT NULL REFERENCES decisions(decision_id),
+        user_action  TEXT NOT NULL,
+        action_ts    TEXT NOT NULL,
+        notes        TEXT NOT NULL DEFAULT ''
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_journal_action_ts ON decision_journal(action_ts)",
 )
 
 

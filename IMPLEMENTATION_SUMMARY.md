@@ -6,6 +6,25 @@ status updated on approval.
 
 ---
 
+## Production readiness -- R2 Decision Journal Persistence (APPROVED)
+
+| | |
+|---|---|
+| Completed | 2026-07-23 |
+| Scope | Persist Decision/Trace/Journal in SQLite (schema v3); SqliteDecisionSummarySource for `athena brief`; smoke seeds decision → briefing OK. |
+| Tests | Full suite green; new `tests/data_layer/test_decision_journal.py`; smoke asserts briefing status OK |
+| Status | **APPROVED** — Owner approved 2026-07-23 |
+| Branch | develop |
+
+- SCHEMA_VERSION 3: `decisions`, `decision_traces`, `decision_journal` tables.
+- Repository: `save_decision`, `get_decision`, `get_trace`, `list_decisions`, `save_journal_entry`, `list_journal`.
+- `SqliteDecisionSummarySource` wired into CLI brief; briefings reach OK when runs + decisions exist.
+- Smoke seeds a fixture WATCH after cycle until live cycle emits decisions.
+
+Files created: `src/athena/notifications/decision_source.py`, `tests/data_layer/test_decision_journal.py`. Files modified: `schema.py`, `serialization.py`, `repository.py`, `notifications/__init__.py`, `cli.py`, smoke script, ops SOP, MILESTONES, roadmap, IMPLEMENTATION_SUMMARY. No ADR; frozen Decision contracts unchanged; no order APIs.
+
+---
+
 ## Production readiness -- R1 File-backed Daily Ops SOP (APPROVED)
 
 | | |

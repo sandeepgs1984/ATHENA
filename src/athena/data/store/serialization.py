@@ -19,8 +19,24 @@ from athena.data.validation.reports import (
     ValidationResult,
     ValidationType,
 )
-from athena.domain.enums import RunStatus, RunTrigger, Timeframe
+from athena.domain.enums import (
+    DecisionType,
+    Direction,
+    QualityGate,
+    RunStatus,
+    RunTrigger,
+    Timeframe,
+    UserAction,
+)
 from athena.domain.market import Candle, CorporateAction, Instrument, MarketSnapshot, Quote
+from athena.domain.decision import (
+    Decision,
+    DecisionJournalEntry,
+    DecisionTrace,
+    GateResult,
+    TraceStage,
+    TradePlan,
+)
 from athena.domain.run import RunRecord
 
 
@@ -187,4 +203,128 @@ def row_to_run(r: Sequence[Any]) -> RunRecord:
         config_snapshot_id=r[11],
         input_digest=r[12] or "",
         finished_ts=finished,
+    )
+
+
+# ----------------------------------------------------------------------- decisions
+
+def _trade_plan_to_json(plan: TradePlan | None) -> str | None:
+    if plan is None:
+        return None
+    return json.dumps({
+        "entry_low": str(plan.entry_low),
+        "entry_high": str(plan.entry_high),
+        "stop_loss": str(plan.stop_loss),
+        "targets": [str(t) for t in plan.targets],
+        "position_size": plan.position_size,
+        "risk_amount": str(plan.risk_amount),
+        "risk_reward": str(plan.risk_reward),
+        "valid_from": plan.valid_from.isoformat(),
+        "valid_until": plan.valid_until.isoformat(),
+    }, sort_keys=True)
+
+
+def _trade_plan_from_json(payload: str | None) -> TradePlan | None:
+    if not payload:
+        return None
+    d = json.loads(payload)
+    return TradePlan(
+        entry_low=Decimal(d["entry_low"]),
+        entry_high=Decimal(d["entry_high"]),
+        stop_loss=Decimal(d["stop_loss"]),
+        targets=tuple(Decimal(t) for t in d["targets"]),
+        position_size=int(d["position_size"]),
+        risk_amount=Decimal(d["risk_amount"]),
+        risk_reward=Decimal(d["risk_reward"]),
+        valid_from=datetime.fromisoformat(d["valid_from"]),
+        valid_until=datetime.fromisoformat(d["valid_until"]),
+    )
+
+
+def _gates_to_json(gates: Sequence[GateResult]) -> str:
+    return json.dumps([
+        {"gate": g.gate.value, "passed": g.passed, "detail": g.detail}
+        for g in gates
+    ], sort_keys=True)
+
+
+def _gates_from_json(payload: str) -> tuple[GateResult, ...]:
+    return tuple(
+        GateResult(gate=QualityGate(g["gate"]), passed=bool(g["passed"]), detail=g["detail"])
+        for g in json.loads(payload)
+    )
+
+
+def decision_to_row(d: Decision) -> tuple:
+    return (
+        d.decision_id,
+        d.ts.isoformat(),
+        d.run_id,
+        d.cycle_id,
+        d.decision_type.value,
+        d.explanation,
+        d.instrument_id,
+        d.direction.value,
+        d.score_ref,
+        d.confidence_ref,
+        d.risk_ref,
+        _gates_to_json(d.gate_results),
+        _trade_plan_to_json(d.trade_plan),
+    )
+
+
+def row_to_decision(r: Sequence[Any]) -> Decision:
+    return Decision(
+        decision_id=r[0],
+        ts=datetime.fromisoformat(r[1]),
+        run_id=r[2],
+        cycle_id=r[3],
+        decision_type=DecisionType(r[4]),
+        explanation=r[5],
+        instrument_id=r[6],
+        direction=Direction(r[7]),
+        score_ref=r[8],
+        confidence_ref=r[9],
+        risk_ref=r[10],
+        gate_results=_gates_from_json(r[11]),
+        trade_plan=_trade_plan_from_json(r[12]),
+    )
+
+
+def trace_to_row(trace: DecisionTrace) -> tuple:
+    stages = json.dumps([
+        {"stage": s.stage, "ref_ids": list(s.ref_ids), "summary": s.summary}
+        for s in trace.stages
+    ], sort_keys=True)
+    return (trace.decision_ref, stages)
+
+
+def row_to_trace(r: Sequence[Any]) -> DecisionTrace:
+    stages = tuple(
+        TraceStage(stage=s["stage"], ref_ids=tuple(s["ref_ids"]), summary=s["summary"])
+        for s in json.loads(r[1])
+    )
+    return DecisionTrace(decision_ref=r[0], stages=stages)
+
+
+def journal_entry_id(entry: DecisionJournalEntry) -> str:
+    return f"{entry.decision_ref}:{entry.action_ts.isoformat()}:{entry.user_action.value}"
+
+
+def journal_to_row(entry: DecisionJournalEntry) -> tuple:
+    return (
+        journal_entry_id(entry),
+        entry.decision_ref,
+        entry.user_action.value,
+        entry.action_ts.isoformat(),
+        entry.notes or "",
+    )
+
+
+def row_to_journal(r: Sequence[Any]) -> DecisionJournalEntry:
+    return DecisionJournalEntry(
+        decision_ref=r[1],
+        user_action=UserAction(r[2]),
+        action_ts=datetime.fromisoformat(r[3]),
+        notes=r[4] or "",
     )

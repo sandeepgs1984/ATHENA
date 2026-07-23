@@ -142,7 +142,7 @@ Establishes live scheduled paper-trading operations, real-time market data inges
 | Milestone | Scope | Status |
 |---|---|---|
 | **R1** File-backed Daily Ops SOP | SOP + smoke script for file-backed mock trading day | ✅ APPROVED |
-| **R2** Decision Journal Persistence | Persist decisions/traces for OK briefings | ❌ Not started |
+| **R2** Decision Journal Persistence | Persist decisions/traces for OK briefings | ✅ APPROVED |
 | **R3–R6** | See production readiness roadmap | ❌ Not started |
 
 SOP: [`docs/ops/FILE_BACKED_DAILY_OPS.md`](ops/FILE_BACKED_DAILY_OPS.md) · Smoke: `./scripts/smoke_file_backed_day.sh`

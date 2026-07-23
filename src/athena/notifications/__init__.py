@@ -1,6 +1,7 @@
 """Daily briefing notifications (M10.3): assemble from run ledger, dispatch via notifiers."""
 
 from athena.notifications.builder import DailyBriefingBuilder, DecisionSummarySource
+from athena.notifications.decision_source import SqliteDecisionSummarySource
 from athena.notifications.dispatch import BriefingDispatcher
 from athena.notifications.models import (
     BriefingDecisionSummary,
@@ -25,5 +26,6 @@ __all__ = [
     "EmailNotifier",
     "FileNotifier",
     "Notifier",
+    "SqliteDecisionSummarySource",
     "WebhookNotifier",
 ]

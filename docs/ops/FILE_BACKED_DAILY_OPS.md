@@ -71,7 +71,7 @@ athena brief --as-of "YYYY-MM-DDTHH:MM:00+05:30" --dry-run
 athena diagnose --as-of "YYYY-MM-DDTHH:MM:00+05:30" --dry-run
 ```
 
-- Briefings write under `artifacts/briefings/` (often **DEGRADED** without decision journal — R2).
+- Briefings write under `artifacts/briefings/`. With R2, persisted decisions make status **OK**; without decisions the briefing is **DEGRADED** (`no_decision_summaries`).
 - Diagnostics write under `artifacts/diagnostics/` (propose-only; never auto-applies config).
 
 ### Human action
@@ -106,7 +106,8 @@ python -m pytest tests/ops/test_file_backed_daily_smoke.py -q
 - [ ] `athena due` reports PREMARKET in the 08:20 window
 - [ ] `athena due` reports REFRESH in the session window
 - [ ] `athena cycle --trigger refresh` completes with fixture-aligned `--as-of`
-- [ ] `athena brief --dry-run` writes a briefing artifact
+- [ ] Seeded/persisted decision present (R2) so briefing is not chronically DEGRADED
+- [ ] `athena brief --dry-run` writes a briefing artifact with **status OK** when decisions exist
 - [ ] `athena diagnose --dry-run` writes a diagnostics artifact
 - [ ] Script exits 0
 

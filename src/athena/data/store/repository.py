@@ -19,6 +19,7 @@ from athena.data.store.schema import SCHEMA_VERSION, ddl_statements
 from athena.data.validation.quarantine import QuarantineRecord
 from athena.domain.enums import Timeframe
 from athena.domain.market import Candle, CorporateAction, Instrument, MarketSnapshot, Quote
+from athena.domain.decision import Decision, DecisionJournalEntry, DecisionTrace
 from athena.domain.run import RunRecord
 from athena.errors import RepositoryError
 
@@ -90,7 +91,8 @@ class SqliteRepository:
     def record_counts(self) -> dict[str, int]:
         """Row counts per persisted table — used for backup/restore recovery checks."""
         tables = ("instruments", "candles", "quotes", "market_snapshots",
-                  "corporate_actions", "quarantine_records", "runs")
+                  "corporate_actions", "quarantine_records", "runs",
+                  "decisions", "decision_traces", "decision_journal")
         try:
             return {t: int(self._conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0])
                     for t in tables}
@@ -319,6 +321,83 @@ class SqliteRepository:
     def latest_run(self, trigger: str) -> RunRecord | None:
         rows = self.list_runs(trigger=trigger, limit=1)
         return rows[0] if rows else None
+
+    # ------------------------------------------------------------- decisions (R2)
+
+    def save_decision(
+        self, decision: Decision, *, trace: DecisionTrace | None = None,
+    ) -> None:
+        """Upsert a Decision and optional DecisionTrace."""
+        if trace is not None and trace.decision_ref != decision.decision_id:
+            raise RepositoryError(
+                f"trace.decision_ref '{trace.decision_ref}' does not match "
+                f"decision_id '{decision.decision_id}'"
+            )
+        self._write(
+            "INSERT INTO decisions ("
+            "decision_id, ts, run_id, cycle_id, decision_type, explanation, "
+            "instrument_id, direction, score_ref, confidence_ref, risk_ref, "
+            "gate_results_json, trade_plan_json"
+            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) "
+            "ON CONFLICT(decision_id) DO UPDATE SET "
+            "ts=excluded.ts, run_id=excluded.run_id, cycle_id=excluded.cycle_id, "
+            "decision_type=excluded.decision_type, explanation=excluded.explanation, "
+            "instrument_id=excluded.instrument_id, direction=excluded.direction, "
+            "score_ref=excluded.score_ref, confidence_ref=excluded.confidence_ref, "
+            "risk_ref=excluded.risk_ref, gate_results_json=excluded.gate_results_json, "
+            "trade_plan_json=excluded.trade_plan_json",
+            ser.decision_to_row(decision),
+        )
+        if trace is not None:
+            self._write(
+                "INSERT INTO decision_traces (decision_ref, stages_json) VALUES (?,?) "
+                "ON CONFLICT(decision_ref) DO UPDATE SET stages_json=excluded.stages_json",
+                ser.trace_to_row(trace),
+            )
+
+    def get_decision(self, decision_id: str) -> Decision | None:
+        row = self._query_one(
+            "SELECT decision_id, ts, run_id, cycle_id, decision_type, explanation, "
+            "instrument_id, direction, score_ref, confidence_ref, risk_ref, "
+            "gate_results_json, trade_plan_json FROM decisions WHERE decision_id=?",
+            (decision_id,),
+        )
+        return ser.row_to_decision(row) if row else None
+
+    def get_trace(self, decision_ref: str) -> DecisionTrace | None:
+        row = self._query_one(
+            "SELECT decision_ref, stages_json FROM decision_traces WHERE decision_ref=?",
+            (decision_ref,),
+        )
+        return ser.row_to_trace(row) if row else None
+
+    def list_decisions(self, *, limit: int = 500) -> list[Decision]:
+        rows = self._query_all(
+            "SELECT decision_id, ts, run_id, cycle_id, decision_type, explanation, "
+            "instrument_id, direction, score_ref, confidence_ref, risk_ref, "
+            "gate_results_json, trade_plan_json FROM decisions "
+            "ORDER BY ts DESC, decision_id DESC LIMIT ?",
+            (limit,),
+        )
+        return [ser.row_to_decision(r) for r in rows]
+
+    def save_journal_entry(self, entry: DecisionJournalEntry) -> None:
+        self._write(
+            "INSERT INTO decision_journal (entry_id, decision_ref, user_action, action_ts, notes) "
+            "VALUES (?,?,?,?,?) "
+            "ON CONFLICT(entry_id) DO UPDATE SET "
+            "decision_ref=excluded.decision_ref, user_action=excluded.user_action, "
+            "action_ts=excluded.action_ts, notes=excluded.notes",
+            ser.journal_to_row(entry),
+        )
+
+    def list_journal(self, *, limit: int = 500) -> list[DecisionJournalEntry]:
+        rows = self._query_all(
+            "SELECT entry_id, decision_ref, user_action, action_ts, notes "
+            "FROM decision_journal ORDER BY action_ts DESC, entry_id DESC LIMIT ?",
+            (limit,),
+        )
+        return [ser.row_to_journal(r) for r in rows]
 
     # ------------------------------------------------------------- integrity
 

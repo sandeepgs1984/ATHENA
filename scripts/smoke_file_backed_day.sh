@@ -65,10 +65,41 @@ echo "$DUE_REF" | grep -q "REFRESH"
 echo "==> [4/6] athena cycle --trigger refresh (fixture-aligned as_of)"
 run_athena cycle --trigger refresh --as-of "$REFRESH_AS_OF"
 
+echo "==> [4b] seed advisory decision into SQLite (R2 — until live cycle emits decisions)"
+PYTHONPATH="${ROOT}/src" python3 - <<PY
+from datetime import datetime
+from zoneinfo import ZoneInfo
+from athena.data.store import SqliteRepository
+from athena.domain.decision import Decision, DecisionTrace, TraceStage
+from athena.domain.enums import DecisionType, Direction
+
+IST = ZoneInfo("Asia/Kolkata")
+as_of = datetime.fromisoformat("$REFRESH_AS_OF")
+decision = Decision(
+    decision_id="smoke-watch-1",
+    ts=as_of,
+    run_id="smoke",
+    cycle_id="smoke",
+    decision_type=DecisionType.WATCH,
+    explanation="R2 smoke advisory WATCH on SYN-AAA",
+    instrument_id="SYN-AAA",
+    direction=Direction.NONE,
+)
+trace = DecisionTrace(
+    decision_ref="smoke-watch-1",
+    stages=(TraceStage("decision", ("smoke-watch-1",), "fixture watch"),),
+)
+with SqliteRepository("$ATHENA_DB_PATH") as repo:
+    repo.initialize()
+    repo.save_decision(decision, trace=trace)
+print("seeded decision smoke-watch-1")
+PY
+
 echo "==> [5/6] athena brief --dry-run"
 run_athena brief --as-of "$REFRESH_AS_OF" --dry-run
 test -f "$TMP/artifacts/briefings/brief-2026-02-13.json"
 test -f "$TMP/artifacts/briefings/brief-2026-02-13.txt"
+grep -q '"status": "OK"' "$TMP/artifacts/briefings/brief-2026-02-13.json"
 
 echo "==> [6/6] athena diagnose --dry-run"
 run_athena diagnose --as-of "$REFRESH_AS_OF" --dry-run

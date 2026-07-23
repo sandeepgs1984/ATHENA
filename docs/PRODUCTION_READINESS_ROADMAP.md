@@ -67,7 +67,7 @@ M10.4 Playbook    →    R1 File-backed SOP    →    R3 DD-1 Provider  →   R5
 | ID | Milestone | Objective | Exit criteria |
 |---|---|---|---|
 | **R1** | File-backed Daily Ops SOP | Document + script the day: refresh CSVs → `athena due` → `athena cycle` → dashboard → `athena brief --dry-run` | **✅ APPROVED 2026-07-23** — `docs/ops/FILE_BACKED_DAILY_OPS.md` + `scripts/smoke_file_backed_day.sh` |
-| **R2** | Decision Journal Persistence | Persist decisions/traces (or cycle decision summaries) to SQLite; wire into briefing `DecisionSummarySource` | ❌ Not started |
+| **R2** | Decision Journal Persistence | Persist decisions/traces (or cycle decision summaries) to SQLite; wire into briefing `DecisionSummarySource` | **✅ APPROVED 2026-07-23** |
 
 **After R1+R2:** You can use ATHENA **daily** if you keep `data/` fresh (manual export or your own downloader). Still not live broker feed.
 

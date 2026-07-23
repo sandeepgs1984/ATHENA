@@ -31,6 +31,7 @@ from athena.diagnostics import PlaybookDiagnosticsService
 from athena.domain.enums import HealthStatus, RunTrigger
 from athena.errors import AthenaError
 from athena.notifications import BriefingDispatcher
+from athena.notifications.decision_source import SqliteDecisionSummarySource
 from athena.observability.health import run_system_checks
 from athena.scheduling import DryRunCycleOrchestrator, due_triggers
 
@@ -217,6 +218,7 @@ def _cmd_brief(args: argparse.Namespace) -> int:
             notify_cfg,
             tzinfo=tz,
             repo_root=_repo_root(),
+            decision_source=SqliteDecisionSummarySource(repo, tzinfo=tz),
         )
         result = dispatcher.dispatch(as_of=as_of, dry_run=bool(args.dry_run))
 

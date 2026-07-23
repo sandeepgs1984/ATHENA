@@ -165,7 +165,7 @@ class TestDryRunCycle:
         as_of = datetime(2026, 2, 13, 8, 20, tzinfo=IST)
         repo = SqliteRepository(tmp_path / "athena.db")
         repo.initialize()
-        assert SCHEMA_VERSION == 2
+        assert SCHEMA_VERSION == 3
         pipe = RecordingPipeline()
         orch = DryRunCycleOrchestrator(
             FakeIngest(_ingestion(as_of)),  # type: ignore[arg-type]
