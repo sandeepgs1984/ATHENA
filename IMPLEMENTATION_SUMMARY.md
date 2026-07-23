@@ -6,6 +6,24 @@ status updated on approval.
 
 ---
 
+## Production readiness -- R3 DD-1 Live Vendor Decision (APPROVED)
+
+| | |
+|---|---|
+| Completed | 2026-07-23 |
+| Scope | Written DD-1 decision record: criteria matrix, candidate vendors, **Zerodha Kite Connect** accepted; **no adapter code**. |
+| Tests | N/A (documentation milestone) |
+| Status | **APPROVED** — Owner approved 2026-07-23 (existing Kite account; Groww for manual execution only) |
+| Branch | develop |
+
+- Created `docs/decisions/DD-1-broker-live-data-vendor.md` against ATHENA-002 §15 and ADR-002.
+- Recommendation: **Zerodha Kite Connect** as first live provider for R4; FileProvider remains default/fallback; C2 deep history deferred to DD-10/accumulation.
+- Explicit non-goals: no R4 code, no orders, no websocket (DD-2).
+
+Files created: `docs/decisions/DD-1-broker-live-data-vendor.md`. Files modified: `docs/MILESTONES.md`, `docs/PRODUCTION_READINESS_ROADMAP.md`, `README.md`, `IMPLEMENTATION_SUMMARY.md`.
+
+---
+
 ## Production readiness -- R2 Decision Journal Persistence (APPROVED)
 
 | | |

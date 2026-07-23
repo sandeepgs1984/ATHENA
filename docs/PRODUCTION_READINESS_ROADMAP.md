@@ -17,7 +17,7 @@
 | Phases 0–9 | Complete — intelligence, paper path, API, dashboard/ops |
 | M10.1–M10.3 | Approved — file ingest, dry-run cadence + run ledger, briefings |
 | M10.4 | Approved — closes Phase 10 |
-| Market data | **FileProvider only** (`config/ingestion.json` → `provider: file`). DD-1 open |
+| Market data | **FileProvider default**; DD-1 **accepted** → Zerodha Kite Connect (R4 adapter not started) |
 | Broker | Paper translation only — no network, no placement |
 | Default daily cycle | Ingest + run ledger (`ingest_only`); full paper pipeline optional/injectable |
 | Briefings | Strong on **runs**; often **DEGRADED** without injected decisions (journal not in SQLite) |
@@ -77,7 +77,7 @@ M10.4 Playbook    →    R1 File-backed SOP    →    R3 DD-1 Provider  →   R5
 
 | ID | Milestone | Objective | Exit criteria |
 |---|---|---|---|
-| **R3** | DD-1 Decision Record | Owner picks vendor against ATHENA-002 §15 criteria (depth, rate limits, cost, auth burden, stability) | Written choice + acceptance notes; no code until R4 authorized |
+| **R3** | DD-1 Decision Record | Owner picks vendor against ATHENA-002 §15 criteria (depth, rate limits, cost, auth burden, stability) | **✅ APPROVED 2026-07-23** — Zerodha Kite Connect (`docs/decisions/DD-1-broker-live-data-vendor.md`) |
 | **R4** | Live Provider Adapter | Implement `MarketDataProvider` for chosen vendor; pass `tests/contract/provider_contract.py`; bind via config (not hardcoded) | Contract suite green; secrets in `.env`; FileProvider remains default/fallback; ingest config can select live provider |
 
 **After R4:** Ingest/cycles can poll **real** quotes/candles (within vendor limits). Still advisory-only.
