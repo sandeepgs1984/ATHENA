@@ -188,8 +188,10 @@ document.addEventListener("DOMContentLoaded", () => {
     async function loadTabData(tabId) {
         if (tabId === "overview") {
             loadPortfolioData();
+        } else if (tabId === "market") {
+            loadMarketIntelligence();
         }
-        // Placeholders for future milestones (market, strategies, decisions, operations)
+        // Placeholders for future milestones (strategies, decisions, operations)
     }
 
     async function loadPortfolioData() {
@@ -475,6 +477,370 @@ document.addEventListener("DOMContentLoaded", () => {
             setTimeout(() => toast.remove(), 300);
         }, 4000);
     }
+
+    // Cache for universe trace results to speed up detail views
+    let universeCache = {};
+
+    async function loadMarketIntelligence() {
+        try {
+            // 1. Fetch Volatility Regime and Universe from the latest Pipeline run
+            const runsRes = await apiRequest("/api/v1/pipelines/runs").catch(() => null);
+            let regime = null;
+            let universe = {};
+
+            if (runsRes && runsRes.data && runsRes.data.length > 0) {
+                const latestRun = runsRes.data[0];
+                const data = latestRun.final_context ? latestRun.final_context.data : {};
+                
+                regime = data.regime_assessment || null;
+                universe = data.universe_members || {};
+                universeCache = universe; // Store in cache for modal inspects
+            }
+
+            // 2. Render Volatility Regime Indicators
+            const trendBadge = document.getElementById("regime-trend-badge");
+            const volBadge = document.getElementById("regime-vol-badge");
+            const gapBadge = document.getElementById("regime-gap-badge");
+            const healthBar = document.getElementById("market-health-bar");
+            const healthValue = document.getElementById("market-health-value");
+            const evidenceText = document.getElementById("regime-evidence-text");
+
+            if (regime) {
+                // Trend Class badge
+                const trendStr = (regime.trend || "NEUTRAL").replace("_TREND", "");
+                trendBadge.textContent = trendStr;
+                trendBadge.className = `regime-badge ${trendStr === "BULL" ? "bull" : trendStr === "BEAR" ? "bear" : "neutral"}`;
+
+                // Volatility level badge
+                const volStr = regime.volatility || "NORMAL";
+                const volClean = volStr.replace("_VOLATILITY", "");
+                volBadge.textContent = volClean;
+                volBadge.className = `regime-badge ${volClean === "LOW" ? "bull" : volClean === "HIGH" ? "bear" : "neutral"}`;
+
+                // Gap state badge
+                const gapStr = (regime.gap || "NO_GAP").replace("_", " ");
+                gapBadge.textContent = gapStr;
+                gapBadge.className = `regime-badge ${gapStr === "NO GAP" ? "bull" : "neutral"}`;
+
+                // Health gauge
+                const score = regime.market_health || 0;
+                healthBar.style.width = `${score}%`;
+                healthValue.textContent = `${score}/100`;
+
+                // Explanation
+                evidenceText.textContent = regime.explanation || "No attribution summary available.";
+            } else {
+                trendBadge.textContent = "UNKNOWN";
+                trendBadge.className = "regime-badge neutral";
+                volBadge.textContent = "UNKNOWN";
+                volBadge.className = "regime-badge neutral";
+                gapBadge.textContent = "UNKNOWN";
+                gapBadge.className = "regime-badge neutral";
+                healthBar.style.width = "0%";
+                healthValue.textContent = "0/100";
+                evidenceText.textContent = "No volatility regime details available for the latest run.";
+            }
+
+            // 3. Fetch and Render Calendar Grid & Events
+            const calRes = await apiRequest("/api/v1/dashboard/calendar").catch(() => null);
+            if (calRes && calRes.data) {
+                renderCalendar(calRes.data);
+                renderUpcomingEvents(calRes.data);
+            }
+
+            // 4. Render Universe list table
+            renderUniverseTable(universe);
+
+        } catch (err) {
+            showToast("Failed to load market intelligence data", "danger");
+        }
+    }
+
+    function renderCalendar(calData) {
+        const gridContainer = document.getElementById("calendar-grid-container");
+        const monthYearLabel = document.getElementById("calendar-month-year");
+        if (!gridContainer) return;
+
+        gridContainer.innerHTML = "";
+
+        // Build weekday headers (Mon - Sun)
+        const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+        days.forEach(day => {
+            const header = document.createElement("div");
+            header.className = "calendar-day-header";
+            header.textContent = day;
+            gridContainer.appendChild(header);
+        });
+
+        // Use the current month for display
+        const displayDate = new Date();
+        const displayYear = displayDate.getFullYear();
+        const displayMonth = displayDate.getMonth(); // 0-indexed
+
+        // Set Month/Year label
+        const monthNames = [
+            "January", "February", "March", "April", "May", "June", 
+            "July", "August", "September", "October", "November", "December"
+        ];
+        monthYearLabel.textContent = `${monthNames[displayMonth]} ${displayYear}`;
+
+        // Get first day of month (0 = Sunday, 1 = Monday...)
+        const firstDay = new Date(displayYear, displayMonth, 1).getDay();
+        // Convert to Mon-first offset (0 = Monday, 6 = Sunday)
+        const startOffset = firstDay === 0 ? 6 : firstDay - 1;
+
+        // Get total days in month
+        const totalDays = new Date(displayYear, displayMonth + 1, 0).getDate();
+
+        // Create mapping sets for fast lookups
+        const holidaysMap = new Map(calData.holidays.map(h => [h.date, h.name]));
+        const specialMap = new Map(calData.special_sessions.map(s => [s.date, s]));
+        const weeklyExpiries = new Set(calData.weekly_expiries);
+        const monthlyExpiries = new Set(calData.monthly_expiries);
+
+        // Inject empty offset cells
+        for (let i = 0; i < startOffset; i++) {
+            const emptyCell = document.createElement("div");
+            emptyCell.className = "calendar-cell empty";
+            gridContainer.appendChild(emptyCell);
+        }
+
+        // Inject day cells
+        for (let dayNum = 1; dayNum <= totalDays; dayNum++) {
+            const cell = document.createElement("div");
+            cell.className = "calendar-cell";
+
+            // Format date string YYYY-MM-DD (zero-padded)
+            const dateStr = `${displayYear}-${String(displayMonth + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+
+            // Add day number
+            const label = document.createElement("span");
+            label.textContent = dayNum;
+            cell.appendChild(label);
+
+            // Check attributes
+            const isWeekend = new Date(displayYear, displayMonth, dayNum).getDay() === 0 || 
+                              new Date(displayYear, displayMonth, dayNum).getDay() === 6;
+            const holidayName = holidaysMap.get(dateStr);
+            const specialSession = specialMap.get(dateStr);
+            const isWeeklyExp = weeklyExpiries.has(dateStr);
+            const isMonthlyExp = monthlyExpiries.has(dateStr);
+            const isToday = displayDate.getDate() === dayNum && displayDate.getMonth() === displayMonth;
+
+            // Apply classes
+            if (isWeekend) cell.classList.add("weekend");
+            if (holidayName) cell.classList.add("holiday");
+            if (specialSession) cell.classList.add("special");
+            if (isWeeklyExp || isMonthlyExp) cell.classList.add("expiry");
+            if (isToday) cell.classList.add("today-cell");
+
+            // Add hover tooltip detail (HTML title attribute for ease)
+            let tooltip = `Date: ${dateStr}`;
+            if (holidayName) tooltip += `\nHoliday: ${holidayName}`;
+            if (specialSession) tooltip += `\nSpecial: ${specialSession.name} (${specialSession.timings_note || 'Muhurat session'})`;
+            if (isWeeklyExp) tooltip += `\nWeekly Expiry`;
+            if (isMonthlyExp) tooltip += `\nMonthly Expiry`;
+            cell.title = tooltip;
+
+            // Add cell dots indicators
+            const dotsContainer = document.createElement("div");
+            dotsContainer.className = "calendar-cell-indicators";
+
+            if (holidayName) {
+                const dot = document.createElement("span");
+                dot.className = "cell-dot holiday";
+                dotsContainer.appendChild(dot);
+            }
+            if (specialSession) {
+                const dot = document.createElement("span");
+                dot.className = "cell-dot special";
+                dotsContainer.appendChild(dot);
+            }
+            if (isWeeklyExp || isMonthlyExp) {
+                const dot = document.createElement("span");
+                dot.className = "cell-dot expiry";
+                dotsContainer.appendChild(dot);
+            }
+
+            cell.appendChild(dotsContainer);
+            gridContainer.appendChild(cell);
+        }
+    }
+
+    function renderUpcomingEvents(calData) {
+        const container = document.getElementById("upcoming-events-container");
+        if (!container) return;
+
+        container.innerHTML = "";
+
+        const allEvents = [];
+
+        // Aggregate weekly expiries
+        calData.weekly_expiries.forEach(date => {
+            allEvents.push({ date, kind: "weekly_expiry", name: "Weekly F&O Expiry", tagClass: "expiry-tag", tagText: "weekly exp" });
+        });
+        // Aggregate monthly expiries
+        calData.monthly_expiries.forEach(date => {
+            allEvents.push({ date, kind: "monthly_expiry", name: "Monthly F&O Expiry", tagClass: "expiry-tag", tagText: "monthly exp" });
+        });
+        // Aggregate holidays
+        calData.holidays.forEach(h => {
+            allEvents.push({ date: h.date, kind: "holiday", name: h.name, tagClass: "holiday-tag", tagText: "holiday" });
+        });
+        // Aggregate events
+        calData.events.forEach(e => {
+            allEvents.push({ date: e.date, kind: e.kind, name: e.name, tagClass: "macro", tagText: e.kind });
+        });
+
+        // Filter events for displays after today or within display range
+        const displayDate = new Date();
+        const displayYear = displayDate.getFullYear();
+        const displayMonth = displayDate.getMonth();
+        const displayMonthStr = String(displayMonth + 1).padStart(2, '0');
+
+        const currentMonthEvents = allEvents.filter(ev => {
+            return ev.date.startsWith(`${displayYear}-${displayMonthStr}`);
+        });
+
+        // Sort by date ascending
+        currentMonthEvents.sort((a, b) => a.date.localeCompare(b.date));
+
+        if (currentMonthEvents.length === 0) {
+            container.innerHTML = `<div class="text-muted text-center" style="padding: 12px 0; font-size: 0.85rem;">No scheduled events this month.</div>`;
+            return;
+        }
+
+        currentMonthEvents.forEach(ev => {
+            const item = document.createElement("div");
+            item.className = "event-item";
+
+            // Format date for display
+            const dateObj = new Date(ev.date);
+            const dateText = dateObj.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+
+            item.innerHTML = `
+                <div class="event-info">
+                    <span class="event-title">${ev.name}</span>
+                    <span class="event-meta">${dateText} (${ev.date})</span>
+                </div>
+                <span class="event-tag ${ev.tagClass}">${ev.tagText}</span>
+            `;
+            container.appendChild(item);
+        });
+    }
+
+    function renderUniverseTable(universeMembers) {
+        const tbody = document.getElementById("universe-list-body");
+        if (!tbody) return;
+
+        tbody.innerHTML = "";
+
+        const symbols = Object.keys(universeMembers);
+
+        if (symbols.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="3" class="text-muted text-center" style="padding: 24px;">No universe members selected in the latest run.</td>
+                </tr>
+            `;
+            return;
+        }
+
+        symbols.forEach(sym => {
+            const member = universeMembers[sym];
+            const tr = document.createElement("tr");
+            tr.setAttribute("data-symbol", sym.toUpperCase());
+
+            const statusBadge = member.included 
+                ? '<span class="symbol-status-badge included"><i class="fas fa-check"></i> Eligible</span>'
+                : '<span class="symbol-status-badge excluded"><i class="fas fa-ban"></i> Excluded</span>';
+
+            tr.innerHTML = `
+                <td class="symbol-name-col">${sym}</td>
+                <td>${statusBadge}</td>
+                <td>
+                    <button class="inspect-btn" onclick="openTraceModal('${sym}')">
+                        <i class="fas fa-search-plus"></i> Inspect Trace
+                    </button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    // Attach search event
+    const searchInput = document.getElementById("universe-search");
+    if (searchInput) {
+        searchInput.addEventListener("keyup", (e) => {
+            const query = e.target.value.toUpperCase();
+            const rows = document.querySelectorAll("#universe-list-body tr");
+            
+            rows.forEach(row => {
+                const sym = row.getAttribute("data-symbol") || "";
+                if (sym.includes(query)) {
+                    row.style.display = "";
+                } else {
+                    row.style.display = "none";
+                }
+            });
+        });
+    }
+
+    // Modal drawer triggers
+    const traceModal = document.getElementById("trace-modal");
+    const traceModalClose = document.getElementById("trace-modal-close");
+    const traceModalTitle = document.getElementById("trace-modal-title");
+    const traceModalBody = document.getElementById("trace-modal-body");
+
+    window.openTraceModal = function(symbol) {
+        const member = universeCache[symbol];
+        if (!member) return;
+
+        traceModalTitle.textContent = `${symbol} Universe Inclusion Trace`;
+        traceModalBody.innerHTML = "";
+
+        const traceList = document.createElement("div");
+        traceList.className = "trace-logs-list";
+
+        if (member.trace && member.trace.length > 0) {
+            member.trace.forEach(logLine => {
+                const step = document.createElement("div");
+                
+                const isPass = logLine.includes("(PASS)");
+                step.className = `trace-step-item ${isPass ? 'pass' : 'fail'}`;
+
+                // Parse rule name and outcome detail
+                const idx = logLine.indexOf("(");
+                const ruleText = idx !== -1 ? logLine.substring(0, idx).trim() : logLine;
+                const outcome = isPass ? "PASS" : "FAIL";
+
+                step.innerHTML = `
+                    <div class="trace-step-header">
+                        <span class="trace-step-rule">${ruleText}</span>
+                        <span class="trace-step-status ${isPass ? 'pass' : 'fail'}">${outcome}</span>
+                    </div>
+                    <span class="trace-step-detail">Eligibility validation check executed for ${symbol}</span>
+                `;
+                traceList.appendChild(step);
+            });
+        } else {
+            traceList.innerHTML = `<div class="text-muted text-center">No step-by-step trace logs stored for this member.</div>`;
+        }
+
+        traceModalBody.appendChild(traceList);
+        traceModal.classList.add("active");
+    };
+
+    if (traceModalClose) {
+        traceModalClose.addEventListener("click", () => {
+            traceModal.classList.remove("active");
+        });
+    }
+    window.addEventListener("click", (e) => {
+        if (e.target === traceModal) {
+            traceModal.classList.remove("active");
+        }
+    });
 
     // Wire refresh trigger
     refreshTrigger.addEventListener("click", () => {

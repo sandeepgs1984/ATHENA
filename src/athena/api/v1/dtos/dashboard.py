@@ -23,3 +23,48 @@ class DashboardSummaryDTO(BaseModel):
     regime_class: str
     health_status: str
     backup_timestamp: datetime | None = None
+
+
+class CalendarHolidayDTO(BaseModel):
+    """DTO representing an exchange holiday."""
+
+    model_config = ConfigDict(frozen=True)
+
+    date: str
+    name: str
+
+
+class CalendarSpecialSessionDTO(BaseModel):
+    """DTO representing a special trading session (e.g. Muhurat)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    date: str
+    type: str
+    name: str
+    timings_note: str | None = None
+    open: str | None = None
+    close: str | None = None
+
+
+class CalendarEventDTO(BaseModel):
+    """DTO representing a scheduled market event (e.g. Budget Day)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    date: str
+    kind: str
+    name: str
+
+
+class CalendarDataDTO(BaseModel):
+    """DTO representing consolidated exchange calendar configurations."""
+
+    model_config = ConfigDict(frozen=True)
+
+    years: list[int]
+    holidays: list[CalendarHolidayDTO]
+    special_sessions: list[CalendarSpecialSessionDTO]
+    weekly_expiries: list[str]
+    monthly_expiries: list[str]
+    events: list[CalendarEventDTO]

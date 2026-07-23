@@ -8,6 +8,27 @@ status updated on approval.
 
 ## Phase 9 -- Dashboard & Operations Console (in progress)
 
+### P9.4 -- Market & Universe Dashboard
+
+| | |
+|---|---|
+| Completed | 2026-07-23 |
+| Scope | Build the Swing Trading Workstation's Market Intelligence and Universe Dashboard containing Volatility regime badges, interactive trading calendar session grid, and search-enabled Universe inclusion traces. |
+| Tests | 809 passed / 0 failed (1 new) |
+| Status | **APPROVED** — closes P9.4 (Owner approved) |
+| Branch | main |
+
+Implemented visual market and universe dashboard workstation panels under `src/athena/api/static/`.
+- Created `GET /api/v1/dashboard/calendar` returning NSE segment holidays, expiries, special timings, and macro events.
+- Extended dashboard service to resolve and load calendar configuration files dynamically.
+- Seeded sample pipeline runs with volatility regime evaluations and eligibility traces in `in_memory.py`.
+- Designed three-column grid workstation layout displaying Trend/Volatility/Gap badges, health gauge, interactive calendar cells with dots indicators, and search-enabled universe list.
+- Implemented step-by-step eligibility trace inspector modals detailing rule checks outcomes (PASS/FAIL).
+
+Files created: None. Files modified: `src/athena/api/v1/dtos/dashboard.py`, `src/athena/api/v1/services/dashboard_service.py`, `src/athena/api/v1/routers/dashboard.py`, `src/athena/api/v1/providers/in_memory.py`, `src/athena/api/static/index.html`, `src/athena/api/static/dashboard.js`, `src/athena/api/static/dashboard.css`, `tests/api/v1/test_core_apis.py`. Public APIs added: `GET /api/v1/dashboard/calendar`. 1 new integration test validating calendar structure. All quality checks pass; 809 total suite tests run successfully.
+
+---
+
 ### P9.3 -- Portfolio & Capital Allocation Dashboard
 
 | | |

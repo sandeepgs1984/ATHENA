@@ -204,12 +204,122 @@
                     </div>
                 </div>
 
-                <!-- Market Intelligence Tab (Placeholder for M5) -->
+                <!-- Market Intelligence Tab -->
                 <div id="tab-market" class="tab-pane">
-                    <div class="card">
-                        <div class="card-body">
-                            <h2>Market Intelligence Visualizer</h2>
-                            <p class="text-muted">Loading market intelligence parameters...</p>
+                    <div class="market-workstation">
+                        <!-- Column 1: Regime & Health -->
+                        <div class="workstation-column">
+                            <div class="card">
+                                <div class="card-header">
+                                    <div class="card-title-icon"><i class="fas fa-chart-line"></i></div>
+                                    <h3>Volatility Regime & Health</h3>
+                                </div>
+                                <div class="card-body">
+                                    <div class="regime-indicators">
+                                        <div class="regime-field">
+                                            <span class="regime-field-label">Trend Direction</span>
+                                            <div id="regime-trend-badge" class="regime-badge neutral">Loading...</div>
+                                        </div>
+                                        <div class="regime-field">
+                                            <span class="regime-field-label">Volatility Level</span>
+                                            <div id="regime-vol-badge" class="regime-badge neutral">Loading...</div>
+                                        </div>
+                                        <div class="regime-field">
+                                            <span class="regime-field-label">Opening Gap</span>
+                                            <div id="regime-gap-badge" class="regime-badge neutral">Loading...</div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="market-health-section">
+                                        <span class="regime-field-label">Market Health Score</span>
+                                        <div class="health-gauge-container">
+                                            <div class="health-bar-bg">
+                                                <div id="market-health-bar" class="health-bar-fill" style="width: 0%;"></div>
+                                            </div>
+                                            <span id="market-health-value" class="health-score-value">0/100</span>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="regime-explanation">
+                                        <h4>Evidence Attribution</h4>
+                                        <p id="regime-evidence-text">No active run loaded.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Column 2: Calendar Session Grid -->
+                        <div class="workstation-column">
+                            <div class="card">
+                                <div class="card-header">
+                                    <div class="card-title-icon"><i class="fas fa-calendar-alt"></i></div>
+                                    <h3>Trading Calendar & Events</h3>
+                                </div>
+                                <div class="card-body">
+                                    <div class="calendar-header-strip">
+                                        <h4 id="calendar-month-year">Trading Calendar</h4>
+                                        <div class="calendar-legend">
+                                            <span class="legend-item"><span class="legend-dot holiday"></span>Holiday</span>
+                                            <span class="legend-item"><span class="legend-dot special"></span>Special</span>
+                                            <span class="legend-item"><span class="legend-dot expiry"></span>Expiry</span>
+                                        </div>
+                                    </div>
+                                    <div id="calendar-grid-container" class="calendar-grid">
+                                        <!-- Days and date cells will be injected here -->
+                                    </div>
+                                    <div class="upcoming-events-list">
+                                        <h4>Scheduled Events & Expiries</h4>
+                                        <div id="upcoming-events-container" class="events-timeline">
+                                            <!-- Event items will be injected here -->
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Column 3: Universe Inclusion Inspector -->
+                        <div class="workstation-column">
+                            <div class="card">
+                                <div class="card-header">
+                                    <div class="card-title-icon"><i class="fas fa-user-shield"></i></div>
+                                    <h3>Universe Inclusion Trace</h3>
+                                </div>
+                                <div class="card-body universe-inspector-body">
+                                    <div class="search-bar-container">
+                                        <i class="fas fa-search search-icon"></i>
+                                        <input type="text" id="universe-search" placeholder="Filter by symbol or sector..." />
+                                    </div>
+                                    <div class="universe-table-wrapper">
+                                        <table class="universe-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Symbol</th>
+                                                    <th>Status</th>
+                                                    <th>Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="universe-list-body">
+                                                <tr>
+                                                    <td colspan="3" class="text-muted text-center" style="padding: 24px;">Loading universe members...</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Trace Evidence Detail Drawer/Modal -->
+                <div id="trace-modal" class="modal-overlay">
+                    <div class="modal-container">
+                        <div class="modal-header">
+                            <h3 id="trace-modal-title">SBI Universe Inclusion Trace</h3>
+                            <button id="trace-modal-close" class="modal-close-btn">&times;</button>
+                        </div>
+                        <div class="modal-body" id="trace-modal-body">
+                            <!-- Trace logs will be dynamically built here -->
                         </div>
                     </div>
                 </div>

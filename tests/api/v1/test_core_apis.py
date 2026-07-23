@@ -424,3 +424,18 @@ class TestWorkspaceAPI:
         response = client.get("/api/v1/workspace/snapshots/ws-invalid", headers=headers)
         assert response.status_code == 404
         assert response.json()["title"] == "Workspace Snapshot Not Found"
+
+
+class TestDashboardAPI:
+    def test_get_dashboard_calendar_success(self, client) -> None:
+        headers = get_auth_headers(client, Role.READONLY)
+        response = client.get("/api/v1/dashboard/calendar", headers=headers)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "success"
+        cal = data["data"]
+        assert len(cal["years"]) > 0
+        assert len(cal["holidays"]) > 0
+        assert isinstance(cal["weekly_expiries"], list)
+        assert isinstance(cal["monthly_expiries"], list)
+

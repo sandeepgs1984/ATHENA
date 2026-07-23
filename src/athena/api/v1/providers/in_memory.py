@@ -40,7 +40,15 @@ from athena.export.models import (
     ExportSnapshot,
     ExportSummary,
 )
-from athena.orchestration.models import SystemPipelineResult
+from athena.orchestration.models import (
+    PipelineContext,
+    PipelineMetadata,
+    PipelineResult,
+    PipelineStatus,
+    StageResult,
+    StageStatus,
+    SystemPipelineResult,
+)
 from athena.orchestration.schedule_models import PipelineScheduleRun
 from athena.reporting.models import GenericReport, ReportingReferences
 from athena.workspace.models import WorkspaceSnapshot, WorkspaceSummary
@@ -470,3 +478,83 @@ def seed_sample_data(
         references=ExportReferences(report_id="rep-sample-1"),
     )
     export_prov.snapshots.append(export_snap)
+
+    # 7. Seed System Pipeline Run (incorporating regime and universe trace results)
+    final_ctx = PipelineContext(
+        run_id="run-sample-1",
+        as_of=now,
+        data={
+            "regime_assessment": {
+                "trend": "BULL_TREND",
+                "volatility": "LOW_VOLATILITY",
+                "gap": "NO_GAP",
+                "market_health": 85,
+                "sector_health": {
+                    "Financials": 90,
+                    "Technology": 75,
+                    "Energy": 80,
+                },
+                "explanation": "Strong index price action supported by high breadth and low VIX readings.",
+            },
+            "universe_members": {
+                "SBIN": {
+                    "symbol": "SBIN",
+                    "included": True,
+                    "trace": [
+                        "Daily volume is 1.5x of 20-day average (PASS)",
+                        "RSI is in bullish zone (PASS)",
+                        "Price is above 50-day EMA (PASS)",
+                    ],
+                },
+                "RELIANCE": {
+                    "symbol": "RELIANCE",
+                    "included": True,
+                    "trace": [
+                        "Daily volume is 1.2x of 20-day average (PASS)",
+                        "Trend classification is positive (PASS)",
+                        "Close is near daily high (PASS)",
+                    ],
+                },
+                "TCS": {
+                    "symbol": "TCS",
+                    "included": True,
+                    "trace": [
+                        "Daily volume is 0.8x of 20-day average (PASS)",
+                        "RSI is in neutral zone (PASS)",
+                        "Excludes from high-momentum watchlist (FAIL)",
+                    ],
+                },
+            },
+        },
+    )
+
+    sys_run = SystemPipelineResult(
+        run_id="run-sample-1",
+        as_of=now,
+        pipeline_runs=(
+            PipelineResult(
+                pipeline_run_id="run-sample-1-exec",
+                metadata=PipelineMetadata(
+                    definition_id="exec-pipeline",
+                    version="1.0",
+                    name="Execution Pipeline",
+                    description="Processes decisions and prepares executions",
+                ),
+                as_of=now,
+                stages=(
+                    StageResult(
+                        stage_id="stage_portfolio_snapshot",
+                        status=StageStatus.SUCCESS,
+                        message="Portfolio snapshot loaded successfully",
+                        output_key="portfolio_snapshot",
+                    ),
+                ),
+                overall_status=PipelineStatus.SUCCESS,
+                final_context=final_ctx,
+            ),
+        ),
+        workspace_snapshot=ws_snap,
+        overall_status=PipelineStatus.SUCCESS,
+        final_context=final_ctx,
+    )
+    pipeline_prov.runs.append(sys_run)

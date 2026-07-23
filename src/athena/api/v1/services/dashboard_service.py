@@ -2,13 +2,22 @@
 
 from __future__ import annotations
 
+import os
 from datetime import datetime, timezone
 from decimal import Decimal
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from athena.api.v1.dtos.base import PaginationParams, QuerySpecification, SortParams
-from athena.api.v1.dtos.dashboard import DashboardSummaryDTO
+from athena.api.v1.dtos.dashboard import (
+    CalendarDataDTO,
+    CalendarEventDTO,
+    CalendarHolidayDTO,
+    CalendarSpecialSessionDTO,
+    DashboardSummaryDTO,
+)
 from athena.api.v1.dtos.pipelines import PipelineRunFilterParams
+from athena.config.loader import load_calendar_files
 
 if TYPE_CHECKING:
     from athena.api.v1.providers.base import (
@@ -30,6 +39,53 @@ class DashboardService:
         self._portfolio_provider = portfolio_provider
         self._pipeline_run_provider = pipeline_run_provider
         self._health_provider = health_provider
+
+    def _resolve_config_dir(self) -> Path:
+        env_dir = os.environ.get("ATHENA_CONFIG_DIR")
+        if env_dir:
+            return Path(env_dir)
+        current = Path(__file__).resolve().parent
+        for _ in range(10):
+            if (current / "config").is_dir() and (current / "src").is_dir():
+                return current / "config"
+            current = current.parent
+        return Path("config")
+
+    def get_calendar_data(self) -> CalendarDataDTO:
+        """Loads and converts the configured exchange calendar files to DTOs."""
+        config_dir = self._resolve_config_dir()
+        holidays_file, expiries_file, events_file = load_calendar_files(config_dir)
+
+        holidays = [
+            CalendarHolidayDTO(date=h.date, name=h.name)
+            for h in holidays_file.holidays
+        ]
+
+        special_sessions = [
+            CalendarSpecialSessionDTO(
+                date=s.date,
+                type=s.type,
+                name=s.name,
+                timings_note=s.timings_note,
+                open=s.open.isoformat() if s.open else None,
+                close=s.close.isoformat() if s.close else None,
+            )
+            for s in holidays_file.special_sessions
+        ]
+
+        events = [
+            CalendarEventDTO(date=e.date, kind=e.kind, name=e.name)
+            for e in events_file.events
+        ]
+
+        return CalendarDataDTO(
+            years=holidays_file.years,
+            holidays=holidays,
+            special_sessions=special_sessions,
+            weekly_expiries=expiries_file.weekly,
+            monthly_expiries=expiries_file.monthly,
+            events=events,
+        )
 
     def get_summary(self) -> DashboardSummaryDTO:
         """Retrieves and aggregates key workstation metrics."""
@@ -55,7 +111,7 @@ class DashboardService:
             # Determine reserved cash and exposures from positions/exposures
             active_positions = len([pos for pos in p.positions if not pos.closed_ts])
             closed_positions = len([pos for pos in p.positions if pos.closed_ts])
-            
+
             # Simple simulation of total portfolio valuation
             portfolio_value = p.cash
             for pos in p.positions:
@@ -78,7 +134,7 @@ class DashboardService:
             if runs.items:
                 latest_run = runs.items[0]
                 last_scan_date = latest_run.as_of
-                
+
                 # Check for strategy matches in final context
                 ctx = latest_run.final_context
                 if ctx and hasattr(ctx, "strategy_matches"):
