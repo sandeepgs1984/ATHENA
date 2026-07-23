@@ -134,8 +134,8 @@ Scores: **Pass / Partial / Fail / Unknown** against each criterion. “Partial�
 | Chosen vendor | **Zerodha Kite Connect** |
 | Owner | sandeep |
 | Accepted | **2026-07-23** (`approve R3`) — existing Kite account; Groww for manual execution only |
-| R4 | **Ready for review** — `KiteProvider` + config bind; default provider still `file` |
-| Next | Owner **`approve R4`**, then optionally flip `ingestion.provider` to `kite` after setting `.env` |
+| R4 | **APPROVED 2026-07-23** — live smoke + runbook |
+| Next | Optional: flip `ingestion.provider` to `kite` for live days; **`authorize R5`** for schedule/alerts |
 
 ---
 

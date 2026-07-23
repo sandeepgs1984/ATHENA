@@ -17,13 +17,13 @@
 | Phases 0–9 | Complete — intelligence, paper path, API, dashboard/ops |
 | M10.1–M10.3 | Approved — file ingest, dry-run cadence + run ledger, briefings |
 | M10.4 | Approved — closes Phase 10 |
-| Market data | **FileProvider default**; **KiteProvider** available (`ingestion.provider: kite`) — R4 ready for review |
+| Market data | **FileProvider default**; **KiteProvider** available (`ingestion.provider: kite`) — **R4 APPROVED** |
 | Broker | Paper translation only — no network, no placement |
 | Default daily cycle | Ingest + run ledger (`ingest_only`); full paper pipeline optional/injectable |
 | Briefings | Strong on **runs**; decision journal in SQLite (R2) |
 | Unattended ops | No embedded cron — CLI + external launcher (launchd/cron) |
 
-**Verdict:** Lab / paper / file-backed daily ops solid. Live Kite path implemented pending R4 approval + owner flip of `ingestion.provider` and daily token hygiene.
+**Verdict:** Live Kite path approved. Daily advisory unattended ops still need R5 (schedule + failure alerts).
 
 ---
 
@@ -78,7 +78,7 @@ M10.4 Playbook    →    R1 File-backed SOP    →    R3 DD-1 Provider  →   R5
 | ID | Milestone | Objective | Exit criteria |
 |---|---|---|---|
 | **R3** | DD-1 Decision Record | Owner picks vendor against ATHENA-002 §15 criteria (depth, rate limits, cost, auth burden, stability) | **✅ APPROVED 2026-07-23** — Zerodha Kite Connect (`docs/decisions/DD-1-broker-live-data-vendor.md`) |
-| **R4** | Live Provider Adapter | Implement `MarketDataProvider` for chosen vendor; pass `tests/contract/provider_contract.py`; bind via config (not hardcoded) | ⏳ **Ready for review** — `KiteProvider`, allowlisted GET transport, `docs/ops/KITE_LIVE_DATA.md`; default remains `file` |
+| **R4** | Live Provider Adapter | Implement `MarketDataProvider` for chosen vendor; pass `tests/contract/provider_contract.py`; bind via config (not hardcoded) | **✅ APPROVED 2026-07-23** — live smoke OK; `docs/ops/KITE_LIVE_DATA.md` |
 
 **After R4:** Ingest/cycles can poll **real** quotes/candles (within vendor limits). Still advisory-only.
 

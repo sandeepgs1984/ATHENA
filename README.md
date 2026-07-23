@@ -16,7 +16,7 @@ ATHENA is not a screener, not a bot, and never executes trades. It exists to imp
 | [MILESTONES](docs/MILESTONES.md) | Phase/milestone roadmap | Active |
 | [Production readiness](docs/PRODUCTION_READINESS_ROADMAP.md) | Daily advisory readiness (R1–R6) | Active |
 | [File-backed daily ops](docs/ops/FILE_BACKED_DAILY_OPS.md) | R1 SOP for FileProvider daily use | Approved |
-| [Kite live data ops](docs/ops/KITE_LIVE_DATA.md) | R4 Kite token + ingest runbook | Ready for review |
+| [Kite live data ops](docs/ops/KITE_LIVE_DATA.md) | R4 Kite token + ingest runbook | **Approved** |
 | [DD-1 live vendor](docs/decisions/DD-1-broker-live-data-vendor.md) | R3 broker/data vendor decision | **Accepted** — Zerodha Kite Connect |
 | [ADRs](docs/adr/) | Architecture Decision Records (ADR-001…005 seeded) | Active |
 

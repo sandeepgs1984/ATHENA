@@ -5,7 +5,7 @@
   },
   "exchange": "NSE",
   "instrument_types": ["EQ"],
-  "symbols": [],
+  "symbols": ["INFY"],
   "index_instruments": ["NSE:NIFTY 50", "NSE:NIFTY BANK"],
   "india_vix_instrument": "NSE:INDIA VIX",
   "base_url": "https://api.kite.trade",
