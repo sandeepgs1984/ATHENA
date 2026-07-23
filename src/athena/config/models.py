@@ -325,6 +325,34 @@ class ValidationConfig(_Strict):
     gaps: GapConfig
 
 
+class IngestionConfig(_Strict):
+    """Live ingest cycle settings (M10.1). Provider-agnostic; DD-1 broker unbound."""
+
+    provider: Literal["file"] = "file"
+    timeframes: list[str] = Field(default_factory=lambda: ["5m"])
+    lookback_minutes: int = Field(default=30, ge=1, le=1440)
+    lookback_days: int = Field(default=5, ge=1, le=365)
+    include_daily: bool = True
+    include_quotes: bool = True
+    validate_gaps: bool = False
+    skip_existing: bool = True
+    quarantine_on_failure: bool = True
+    instrument_ids: list[str] = Field(default_factory=list)
+
+    @field_validator("timeframes")
+    @classmethod
+    def _known_unique_intraday(cls, v: list[str]) -> list[str]:
+        allowed = {"1m", "5m", "15m"}
+        if not v:
+            raise ValueError("ingestion.timeframes must declare at least one intraday timeframe")
+        unknown = [t for t in v if t not in allowed]
+        if unknown:
+            raise ValueError(f"unknown intraday timeframes {unknown}; allowed: {sorted(allowed)}")
+        if len(set(v)) != len(v):
+            raise ValueError(f"duplicate timeframes: {v}")
+        return v
+
+
 class BreadthCfg(_Strict):
     strong_ratio: float = Field(gt=0, lt=1)
     weak_ratio: float = Field(gt=0, lt=1)

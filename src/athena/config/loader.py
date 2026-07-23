@@ -31,6 +31,7 @@ from athena.config.models import (
     ExpiriesFile,
     FileProviderConfig,
     HolidaysFile,
+    IngestionConfig,
     MarketHealthConfig,
     MonitoringConfig,
     OrchestrationConfig,
@@ -152,6 +153,16 @@ def load_validation_config(config_dir: Path) -> ValidationConfig:
     path = Path(config_dir) / "validation.json"
     try:
         return ValidationConfig.model_validate(_read_json(path))
+    except ValidationError as exc:
+        raise ConfigError(_validation_message(str(path), exc)) from exc
+
+
+def load_ingestion_config(config_dir: Path) -> IngestionConfig:
+    """Load + validate live ingest settings (config/ingestion.json, M10.1)."""
+
+    path = Path(config_dir) / "ingestion.json"
+    try:
+        return IngestionConfig.model_validate(_read_json(path))
     except ValidationError as exc:
         raise ConfigError(_validation_message(str(path), exc)) from exc
 

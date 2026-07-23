@@ -30,10 +30,11 @@ from athena.data.validation.reports import (
     Severity,
     ValidationReport,
     ValidationResult,
+    ValidationSummary,
     ValidationType,
 )
 from athena.domain.enums import Timeframe
-from athena.domain.market import Candle
+from athena.domain.market import Candle, Quote
 
 _EVIDENCE_CAP = 20  # keep reports bounded and reviewable
 _STEP_MINUTES = {Timeframe.M1: 1, Timeframe.M5: 5, Timeframe.M15: 15}
@@ -204,3 +205,78 @@ def validate_intraday_gaps(
     return _passed(ValidationType.GAP,
                    f"all {expected_count} expected {timeframe.value} interval(s) present",
                    as_of, stats)
+
+
+# ------------------------------------------------------------------------ quotes
+
+def validate_quotes(
+    quotes: Sequence[Quote], *, as_of: datetime, max_minutes_behind: int,
+) -> ValidationSummary:
+    """Quote-side quality for the live ingest loop (M10.1): positive price,
+    no duplicate instrument ids in the batch, and freshness vs injected as_of."""
+    reports: list[ValidationReport] = []
+
+    offenders: list[str] = []
+    for q in quotes:
+        if q.last_price <= Decimal(0):
+            offenders.append(f"{q.instrument_id}@{q.ts.isoformat()} last_price={q.last_price}")
+    ohlc_stats = {"quotes_checked": len(quotes), "non_positive_price_count": len(offenders)}
+    if offenders:
+        reports.append(_failed(
+            ValidationType.OHLC, Severity.CRITICAL,
+            f"{len(offenders)} quote(s) have non-positive last_price",
+            as_of, ohlc_stats, offenders[:_EVIDENCE_CAP],
+        ))
+    else:
+        reports.append(_passed(
+            ValidationType.OHLC, f"all {len(quotes)} quote(s) have positive last_price",
+            as_of, ohlc_stats,
+        ))
+
+    seen: set[str] = set()
+    dups: list[str] = []
+    for q in quotes:
+        if q.instrument_id in seen:
+            dups.append(q.instrument_id)
+        seen.add(q.instrument_id)
+    dup_stats = {"quotes_checked": len(quotes), "duplicate_count": len(dups)}
+    if dups:
+        reports.append(_failed(
+            ValidationType.DUPLICATE, Severity.ERROR,
+            f"{len(dups)} duplicate quote instrument id(s) in batch",
+            as_of, dup_stats, dups[:_EVIDENCE_CAP],
+        ))
+    else:
+        reports.append(_passed(
+            ValidationType.DUPLICATE, "no duplicate quote instrument ids", as_of, dup_stats,
+        ))
+
+    if not quotes:
+        reports.append(_failed(
+            ValidationType.FRESHNESS, Severity.CRITICAL,
+            "quote batch is empty — no data to assess freshness",
+            as_of, {"quote_count": 0},
+        ))
+    else:
+        latest = max(q.ts for q in quotes)
+        minutes_behind = (as_of - latest).total_seconds() / 60.0
+        fresh_stats = {
+            "latest_quote_ts": latest.isoformat(),
+            "as_of": as_of.isoformat(),
+            "minutes_behind": round(minutes_behind, 2),
+            "threshold_minutes": max_minutes_behind,
+        }
+        if minutes_behind > max_minutes_behind:
+            reports.append(_failed(
+                ValidationType.FRESHNESS, Severity.ERROR,
+                f"quotes are {minutes_behind:.1f} min behind as_of "
+                f"(threshold {max_minutes_behind} min)",
+                as_of, fresh_stats,
+            ))
+        else:
+            reports.append(_passed(
+                ValidationType.FRESHNESS, f"quotes current to {latest.isoformat()}",
+                as_of, fresh_stats,
+            ))
+
+    return ValidationSummary(dataset_id="quotes", reports=tuple(reports), ts=as_of)

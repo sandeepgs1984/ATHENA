@@ -1,7 +1,7 @@
 """ATHENA command-line interface.
 
 Phase 0 commands: ``athena today``, ``athena health``, ``athena version``.
-Later phases add: ingest, premarket, refresh, replay, simulate.
+Phase 10: ``athena ingest`` (M10.1). Later: premarket, refresh, replay, simulate.
 """
 
 from __future__ import annotations
@@ -15,7 +15,15 @@ from zoneinfo import ZoneInfo
 
 from athena import BLUEPRINT_VERSION, __version__
 from athena.calendar.engine import CalendarEngine
-from athena.config.loader import load_config
+from athena.config.loader import (
+    load_config,
+    load_ingestion_config,
+    load_validation_config,
+)
+from athena.data.ingestion import LiveIngestionEngine, build_ingest_validator
+from athena.data.providers import FileProvider
+from athena.data.store import SqliteRepository
+from athena.data.validation import QuarantineRegistry
 from athena.domain.enums import HealthStatus
 from athena.errors import AthenaError
 from athena.observability.health import run_system_checks
@@ -73,6 +81,47 @@ def _cmd_version(_: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_ingest(args: argparse.Namespace) -> int:
+    """One live ingest cycle (M10.1): FileProvider → validate → SQLite."""
+    config_dir = _config_dir()
+    base = load_config(config_dir)
+    ingest_cfg = load_ingestion_config(config_dir)
+    if ingest_cfg.provider != "file":
+        raise AthenaError(
+            f"ingestion.provider '{ingest_cfg.provider}' is not supported; "
+            "only 'file' until DD-1 broker binding"
+        )
+
+    tz = ZoneInfo(base.market.timezone)
+    if args.as_of:
+        as_of = datetime.fromisoformat(args.as_of)
+        if as_of.tzinfo is None:
+            as_of = as_of.replace(tzinfo=tz)
+    else:
+        as_of = datetime.now(tz)
+
+    calendar = CalendarEngine.from_config_dir(config_dir, base.market)
+    validation = load_validation_config(config_dir)
+    validator = build_ingest_validator(calendar, validation, ingest_cfg, tz)
+    provider = FileProvider.from_config_dir(config_dir, base_dir=_repo_root())
+
+    db_env = os.environ.get("ATHENA_DB_PATH")
+    db_path = Path(db_env) if db_env else (_repo_root() / base.paths.db)
+    with SqliteRepository(db_path) as repo:
+        repo.initialize()
+        engine = LiveIngestionEngine(
+            provider, repo, validator, QuarantineRegistry(), ingest_cfg, validation, tzinfo=tz,
+        )
+        result = engine.run_cycle(as_of=as_of)
+
+    print(f"ingest complete @ {result.as_of.isoformat()}")
+    print(f"instruments     : {result.instruments_upserted}")
+    print(f"candles fetched : {result.candles_fetched}  written: {result.candles_written}")
+    print(f"quotes fetched  : {result.quotes_fetched}  written: {result.quotes_written}")
+    print(f"datasets ok     : {result.datasets_validated}  empty skipped: {result.datasets_skipped_empty}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="athena",
@@ -90,6 +139,16 @@ def main(argv: list[str] | None = None) -> int:
 
     p_version = sub.add_parser("version", help="Show software + blueprint versions")
     p_version.set_defaults(func=_cmd_version)
+
+    p_ingest = sub.add_parser(
+        "ingest",
+        help="Run one live ingest cycle (M10.1): quotes/candles → validate → SQLite",
+    )
+    p_ingest.add_argument(
+        "--as-of",
+        help="ISO timestamp for freshness (injected; defaults to now in market timezone)",
+    )
+    p_ingest.set_defaults(func=_cmd_ingest)
 
     args = parser.parse_args(argv)
     try:

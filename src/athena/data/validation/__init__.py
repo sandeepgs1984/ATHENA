@@ -20,6 +20,7 @@ from athena.data.validation.validators import (
     validate_freshness,
     validate_intraday_gaps,
     validate_ohlc,
+    validate_quotes,
 )
 
 __all__ = [
@@ -36,4 +37,5 @@ __all__ = [
     "validate_freshness",
     "validate_intraday_gaps",
     "validate_ohlc",
+    "validate_quotes",
 ]

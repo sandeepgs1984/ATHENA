@@ -6,9 +6,34 @@ status updated on approval.
 
 ---
 
+## Phase 10 -- Live Dry-Run Operations & AI Playbook Learning (AUTHORIZED — M10.1 APPROVED)
+
+Phase outcome: authorized 2026-07-23. M10.1 owner-approved; M10.2–M10.4 not started. Broker binding (DD-1) deferred; FileProvider drives live ingest until chosen. No order-placement code.
+
+### M10.1 -- Live Data Ingestion
+
+| | |
+|---|---|
+| Completed | 2026-07-23 |
+| Scope | Callable live ingest cycle: MarketDataProvider quotes/candles → duplicate/freshness validation → SQLite persist; FileProvider only; `athena ingest` CLI. |
+| Tests | 839 passed / 0 failed (9 new ingestion tests) |
+| Status | **APPROVED** — Owner approved 2026-07-23 |
+| Branch | develop |
+
+Implemented `LiveIngestionEngine.run_cycle(as_of=…)` as a deterministic poll→validate→persist step (scheduler deferred to M10.2).
+- Config: `config/ingestion.json` + `IngestionConfig` / `load_ingestion_config` (provider=`file` only until DD-1).
+- Reuses `DatasetValidator` (OHLC/duplicates/freshness; gaps off by default for live lookback) and `QuarantineRegistry`; adds `validate_quotes` for quote price/freshness/dupes.
+- Empty candle fetches skip (provider contract); failed validation quarantines and raises `DataStaleError` / `DataValidationError` with no writes for that cycle’s failed path.
+- `skip_existing` filters already-persisted candles/quotes for idempotent re-runs.
+- CLI: `athena ingest [--as-of ISO]` wires FileProvider + calendar + SQLite (`ATHENA_DB_PATH` override).
+
+Files created: `config/ingestion.json`, `src/athena/data/ingestion/{__init__.py,engine.py,models.py}`, `tests/data_layer/test_ingestion.py`. Files modified: `src/athena/config/{models.py,loader.py,__init__.py}`, `src/athena/data/validation/{validators.py,__init__.py}`, `src/athena/cli.py`, `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md`. Public APIs: `LiveIngestionEngine`, `IngestionResult`, `build_ingest_validator`, `validate_quotes`, `load_ingestion_config`, `athena ingest`. No ADR; frozen `MarketDataProvider` unchanged; no broker SDK; no order methods.
+
+---
+
 ## Phase 9 -- Dashboard & Operations Console (COMPLETE — owner closed 2026-07-23)
 
-Phase outcome: single-user workstation console delivered and approved (P9.1–P9.7), including console reliability hotfixes and Overview capital correctness. Architecture frozen; no order-placement code; Phase 10 not started.
+Phase outcome: single-user workstation console delivered and approved (P9.1–P9.7), including console reliability hotfixes and Overview capital correctness. Architecture frozen; no order-placement code; Phase 10 authorized after Phase 9 close.
 
 ### P9.7 -- Live Monitoring & Admin
 
@@ -28,7 +53,7 @@ Implemented Live Operations workstation APIs and UI on `#tab-operations`.
 - Clarified restore UX (CONFIRM unlocks buttons; explicit row click required; toast + last-restore feedback).
 - Paths configurable via `ATHENA_DB_PATH` / `ATHENA_BACKUP_DIR` and `app.state.ops_*` for tests; missing live DB fails loudly (503).
 
-Files created: `src/athena/api/v1/dtos/ops.py`, `src/athena/api/v1/services/ops_service.py`, `src/athena/api/v1/routers/ops.py`, `tests/api/v1/test_ops.py`. Files modified: `src/athena/api/v1/router.py`, `src/athena/api/dependencies.py`, `src/athena/api/exceptions.py`, `src/athena/api/errors.py`, `src/athena/api/v1/dtos/__init__.py`, `src/athena/api/static/{index.html,dashboard.js,dashboard.css}`, `tests/api/platform/test_dashboard_hosting.py`, `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md`. Public APIs added: ops stream/telemetry/backups/restore. No ADR; frozen contracts preserved; Phase 10 not started.
+Files created: `src/athena/api/v1/dtos/ops.py`, `src/athena/api/v1/services/ops_service.py`, `src/athena/api/v1/routers/ops.py`, `tests/api/v1/test_ops.py`. Files modified: `src/athena/api/v1/router.py`, `src/athena/api/dependencies.py`, `src/athena/api/exceptions.py`, `src/athena/api/errors.py`, `src/athena/api/v1/dtos/__init__.py`, `src/athena/api/static/{index.html,dashboard.js,dashboard.css}`, `tests/api/platform/test_dashboard_hosting.py`, `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md`. Public APIs added: ops stream/telemetry/backups/restore. No ADR; frozen contracts preserved; Phase 9 closed before Phase 10 authorization.
 
 ---
 

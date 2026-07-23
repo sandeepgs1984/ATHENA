@@ -1,0 +1,16 @@
+{
+  "_meta": {
+    "layer": 3,
+    "description": "Live ingest cycle settings (M10.1). FileProvider only until DD-1 broker choice; no credentials."
+  },
+  "provider": "file",
+  "timeframes": ["5m"],
+  "lookback_minutes": 30,
+  "lookback_days": 5,
+  "include_daily": true,
+  "include_quotes": true,
+  "validate_gaps": false,
+  "skip_existing": true,
+  "quarantine_on_failure": true,
+  "instrument_ids": []
+}

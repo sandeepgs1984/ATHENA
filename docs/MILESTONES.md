@@ -124,13 +124,13 @@ Builds the visual workstation dashboard console for a single-user Swing/Intraday
 
 **Phase 9 closed (2026-07-23):** owner approved P9.7; console hotfixes and Overview correctness patches remain recorded in `IMPLEMENTATION_SUMMARY.md`.
 
-## Phase 10 — Live Dry-Run Operations & AI Playbook Learning (PLANNED — not authorized)
+## Phase 10 — Live Dry-Run Operations & AI Playbook Learning (AUTHORIZED)
 
-Establishes live scheduled paper-trading operations, real-time market data ingestion, daily trace briefings, and automated playbook diagnostics. **No implementation until owner authorizes after design review.**
+Establishes live scheduled paper-trading operations, real-time market data ingestion, daily trace briefings, and automated playbook diagnostics. One milestone in flight at a time.
 
 | Milestone | Scope | Status |
 |---|---|---|
-| **M10.1** Live Data Ingestion | Real-time broker/feed Quote and Candle ingestion, duplicate/freshness validation in live loop | ❌ Not started |
+| **M10.1** Live Data Ingestion | Real-time broker/feed Quote and Candle ingestion, duplicate/freshness validation in live loop | ✅ APPROVED |
 | **M10.2** Scheduled Dry-Run Operations | Premarket and periodic intraday refresh cycles running daily on scheduler, logging to SQLite | ❌ Not started |
 | **M10.3** Daily Briefing Notifications | Automated email/webhook notifications dispatching daily decision traces and summaries | ❌ Not started |
 | **M10.4** AI Playbook Diagnostics | Diagnostic analysis over Decision Journal outcomes, proposing configuration weight tuning suggestions | ❌ Not started |
