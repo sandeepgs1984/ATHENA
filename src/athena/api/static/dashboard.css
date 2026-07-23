@@ -993,7 +993,7 @@ body {
     backdrop-filter: var(--glass-blur);
     -webkit-backdrop-filter: var(--glass-blur);
     z-index: 2000;
-    display: flex;
+    display: none;
     justify-content: center;
     align-items: center;
     opacity: 0;
@@ -1002,6 +1002,7 @@ body {
 }
 
 .modal-overlay.active {
+    display: flex;
     opacity: 1;
     pointer-events: auto;
 }

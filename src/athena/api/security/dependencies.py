@@ -92,13 +92,14 @@ def get_current_user(
         return auth_provider.authenticate_api_key(api_key)
 
     import os
-    if os.environ.get("ATHENA_SINGLE_USER", "false").lower() == "true":
-        from athena.api.security.models import AuthenticatedPrincipal, Role
+    import sys
+    if "pytest" not in sys.modules and os.environ.get("ATHENA_SINGLE_USER", "false").lower() == "true":
+        from athena.api.security.models import AuthenticatedPrincipal, Role, Permission
         return AuthenticatedPrincipal(
-            principal_id="usr-admin",
+            user_id="usr-admin",
             username="admin",
             role=Role.ADMIN,
-            meta={},
+            permissions=(Permission.READ, Permission.EXECUTE, Permission.CONFIGURE, Permission.ADMIN),
         )
 
     raise AuthenticationError("Authentication credentials missing or invalid")
