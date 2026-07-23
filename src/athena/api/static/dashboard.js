@@ -194,6 +194,8 @@ document.addEventListener("DOMContentLoaded", () => {
             loadMarketIntelligence();
         } else if (tabId === "strategies") {
             loadStrategiesWorkspace();
+        } else if (tabId === "decisions") {
+            loadDecisionsWorkspace();
         }
         // Placeholders for future milestones (strategies, decisions, operations)
     }
@@ -1145,6 +1147,275 @@ document.addEventListener("DOMContentLoaded", () => {
             backtestModal.classList.remove("active");
         }
     });
+
+    // ---------------------------------------------------------------------------
+    // Decisions & Trace DAG Handlers
+    // ---------------------------------------------------------------------------
+    const briefingListContainer = document.getElementById("briefing-list-container");
+    const briefingSearch = document.getElementById("briefing-search");
+    const dagNodesContainer = document.getElementById("dag-nodes-container");
+    const dagSvgLines = document.getElementById("dag-svg-lines");
+    const dagDetailsPanel = document.getElementById("dag-details-panel");
+    const dagDetailsTitle = document.getElementById("dag-details-title");
+    const dagDetailsStatus = document.getElementById("dag-details-status");
+    const dagDetailsSummary = document.getElementById("dag-details-summary");
+    const dagDetailsGrid = document.getElementById("dag-details-grid");
+
+    let activeTrace = null;
+    let traceDecisionsList = [];
+
+    async function loadDecisionsWorkspace() {
+        try {
+            const res = await apiRequest("/api/v1/decisions");
+            if (res && res.status === "success") {
+                traceDecisionsList = res.data;
+                renderBriefingList(traceDecisionsList);
+                
+                // Select first decision by default if available
+                if (traceDecisionsList.length > 0) {
+                    selectBriefing(traceDecisionsList[0].metadata.decision_id);
+                } else {
+                    if (dagNodesContainer) {
+                        dagNodesContainer.innerHTML = '<div class="text-muted text-center" style="padding: 48px;">No decisions logged in journal.</div>';
+                    }
+                }
+            }
+        } catch (err) {
+            console.error("Failed to load decisions", err);
+        }
+    }
+
+    function renderBriefingList(decisions) {
+        if (!briefingListContainer) return;
+        briefingListContainer.innerHTML = "";
+
+        if (decisions.length === 0) {
+            briefingListContainer.innerHTML = '<div class="text-muted text-center" style="padding: 24px;">No decisions match query.</div>';
+            return;
+        }
+
+        decisions.forEach(d => {
+            const card = document.createElement("div");
+            card.className = "briefing-card";
+            card.setAttribute("data-id", d.metadata.decision_id);
+
+            const symbol = d.metadata.instrument_id || "INDEX";
+            const type = d.metadata.decision_type;
+            const dir = d.metadata.direction === "NONE" ? "" : ` (${d.metadata.direction})`;
+            
+            const dateObj = new Date(d.metadata.ts);
+            const dateStr = dateObj.toLocaleDateString("en-IN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+
+            card.innerHTML = `
+                <div class="briefing-card-header">
+                    <span class="briefing-symbol">${symbol}${dir}</span>
+                    <span class="badge text-primary" style="font-size: 0.65rem; border: 1px solid rgba(56, 189, 248, 0.2);">${type}</span>
+                </div>
+                <p class="briefing-desc">${d.explanation.substring(0, 80)}...</p>
+                <div class="briefing-date">${dateStr}</div>
+            `;
+
+            card.addEventListener("click", () => {
+                selectBriefing(d.metadata.decision_id);
+            });
+
+            briefingListContainer.appendChild(card);
+        });
+    }
+
+    function selectBriefing(decisionId) {
+        // Toggle active card class
+        const cards = briefingListContainer.querySelectorAll(".briefing-card");
+        cards.forEach(c => {
+            if (c.getAttribute("data-id") === decisionId) {
+                c.classList.add("active");
+            } else {
+                c.classList.remove("active");
+            }
+        });
+
+        // Load trace details
+        loadDecisionTrace(decisionId);
+    }
+
+    async function loadDecisionTrace(decisionId) {
+        try {
+            const res = await apiRequest(`/api/v1/decisions/${decisionId}/trace`);
+            if (res && res.status === "success") {
+                activeTrace = res.data;
+                renderTraceDAG(activeTrace);
+            }
+        } catch (err) {
+            console.error(`Failed to load trace for ${decisionId}`, err);
+        }
+    }
+
+    function renderTraceDAG(trace) {
+        if (!dagNodesContainer) return;
+        dagNodesContainer.innerHTML = "";
+        if (dagSvgLines) dagSvgLines.innerHTML = "";
+
+        // Icon mappings for each stage ID
+        const iconMap = {
+            "universe_ingest": "fa-globe",
+            "technical_indicators": "fa-chart-area",
+            "scoring_engine": "fa-calculator",
+            "confidence_engine": "fa-shield-halved",
+            "risk_assessment": "fa-triangle-exclamation",
+            "quality_gates": "fa-circle-check",
+            "final_decision": "fa-brain"
+        };
+
+        trace.stages.forEach((stage, idx) => {
+            const node = document.createElement("div");
+            node.className = "dag-node";
+            node.setAttribute("data-stage", stage.stage_id);
+
+            const icon = iconMap[stage.stage_id] || "fa-circle-notch";
+            const statusClass = stage.status.toLowerCase();
+
+            node.innerHTML = `
+                <i class="fa-solid ${icon} dag-node-icon"></i>
+                <span class="dag-node-name">${stage.name}</span>
+                <span class="dag-node-status ${statusClass}">${stage.status}</span>
+            `;
+
+            node.addEventListener("click", () => {
+                selectNode(stage.stage_id);
+            });
+
+            dagNodesContainer.appendChild(node);
+        });
+
+        // Add resize observer to draw SVG lines dynamically when nodes position shifts
+        const resizeObserver = new ResizeObserver(() => {
+            drawDAGLines();
+        });
+        resizeObserver.observe(dagNodesContainer);
+
+        // Draw initial connector lines
+        setTimeout(drawDAGLines, 100);
+
+        // Select the first node by default
+        if (trace.stages.length > 0) {
+            selectNode(trace.stages[0].stage_id);
+        }
+    }
+
+    function selectNode(stageId) {
+        const nodes = dagNodesContainer.querySelectorAll(".dag-node");
+        nodes.forEach(n => {
+            if (n.getAttribute("data-stage") === stageId) {
+                n.classList.add("active");
+            } else {
+                n.classList.remove("active");
+            }
+        });
+
+        const stage = activeTrace.stages.find(s => s.stage_id === stageId);
+        if (stage) {
+            showStageDetails(stage);
+        }
+    }
+
+    function showStageDetails(stage) {
+        if (!dagDetailsPanel) return;
+        
+        dagDetailsTitle.textContent = stage.name;
+        dagDetailsStatus.className = `badge ${stage.status.toLowerCase()}`;
+        dagDetailsStatus.textContent = stage.status;
+        dagDetailsSummary.textContent = stage.summary;
+
+        // Render key-value parameters grid
+        if (dagDetailsGrid) {
+            dagDetailsGrid.innerHTML = "";
+            const keys = Object.keys(stage.details);
+            if (keys.length === 0) {
+                dagDetailsGrid.innerHTML = '<div class="text-muted text-center" style="grid-column: 1/-1;">No parameter details captured.</div>';
+            } else {
+                keys.forEach(k => {
+                    const val = stage.details[k];
+                    const item = document.createElement("div");
+                    item.className = "strategy-criteria-item";
+
+                    let displayVal = val;
+                    if (typeof val === "boolean") {
+                        displayVal = val ? "TRUE" : "FALSE";
+                    } else if (Array.isArray(val)) {
+                        // Gates list formatting
+                        displayVal = `${val.length} rules checked`;
+                    }
+
+                    item.innerHTML = `
+                        <span class="criteria-label">${k.replace(/_/g, " ")}</span>
+                        <span class="criteria-value">${displayVal}</span>
+                    `;
+                    dagDetailsGrid.appendChild(item);
+                });
+            }
+        }
+
+        dagDetailsPanel.style.display = "block";
+    }
+
+    function drawDAGLines() {
+        if (!dagSvgLines || !dagNodesContainer) return;
+        dagSvgLines.innerHTML = "";
+
+        const nodes = Array.from(dagNodesContainer.querySelectorAll(".dag-node"));
+        if (nodes.length < 2) return;
+
+        // Get container bounding rect
+        const containerRect = dagNodesContainer.getBoundingClientRect();
+        
+        // Match SVG viewport to container dimensions
+        dagSvgLines.setAttribute("width", containerRect.width);
+        dagSvgLines.setAttribute("height", containerRect.height);
+
+        for (let i = 0; i < nodes.length - 1; i++) {
+            const current = nodes[i].getBoundingClientRect();
+            const next = nodes[i+1].getBoundingClientRect();
+
+            // Calculate center coordinates relative to container
+            const startX = (current.left + current.width / 2) - containerRect.left;
+            const startY = (current.top + current.height / 2) - containerRect.top;
+            
+            const endX = (next.left + next.width / 2) - containerRect.left;
+            const endY = (next.top + next.height / 2) - containerRect.top;
+
+            // Draw line
+            const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+            line.setAttribute("x1", startX);
+            line.setAttribute("y1", startY);
+            line.setAttribute("x2", endX);
+            line.setAttribute("y2", endY);
+            line.setAttribute("stroke", "rgba(56, 189, 248, 0.2)");
+            line.setAttribute("stroke-width", "2");
+            line.setAttribute("stroke-dasharray", "4 4");
+
+            // Animation effect if active trace node is selected
+            if (nodes[i].classList.contains("active") || nodes[i+1].classList.contains("active")) {
+                line.setAttribute("stroke", "rgba(56, 189, 248, 0.6)");
+                line.setAttribute("stroke-width", "3");
+            }
+
+            dagSvgLines.appendChild(line);
+        }
+    }
+
+    // Search filter briefing list
+    if (briefingSearch) {
+        briefingSearch.addEventListener("input", (e) => {
+            const query = e.target.value.toLowerCase();
+            const filtered = traceDecisionsList.filter(d => {
+                const symbol = (d.metadata.instrument_id || "INDEX").toLowerCase();
+                const type = d.metadata.decision_type.toLowerCase();
+                const exp = d.explanation.toLowerCase();
+                return symbol.includes(query) || type.includes(query) || exp.includes(query);
+            });
+            renderBriefingList(filtered);
+        });
+    }
 
     // Wire refresh trigger
     refreshTrigger.addEventListener("click", () => {

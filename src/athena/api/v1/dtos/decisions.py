@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -84,3 +85,26 @@ class DecisionFilterParams(FilterParams):
     direction: str | None = Field(
         default=None, description="Filter by trade direction (LONG, SHORT)"
     )
+
+
+class TraceStageDTO(BaseModel):
+    """DTO representing one stage/node in the decision trace DAG."""
+
+    model_config = ConfigDict(frozen=True)
+
+    stage_id: str
+    name: str
+    status: str
+    summary: str
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
+class DecisionTraceDTO(BaseModel):
+    """DTO representing the complete decision trace DAG flow."""
+
+    model_config = ConfigDict(frozen=True)
+
+    decision_id: str
+    instrument_id: str
+    stages: list[TraceStageDTO]
+

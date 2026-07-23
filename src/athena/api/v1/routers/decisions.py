@@ -16,6 +16,7 @@ from athena.api.v1.dtos import (
     PaginationParams,
     ResponseMeta,
     SortParams,
+    DecisionTraceDTO,
 )
 from athena.api.v1.dtos.base import PaginationMeta
 from athena.api.v1.services.decisions_service import DecisionsService
@@ -93,3 +94,34 @@ def get_decision(
         data=decision_data,
         meta=meta,
     )
+
+
+@router.get(
+    "/{decision_id}/trace",
+    response_model=AthenaResponse[DecisionTraceDTO],
+    summary="Get decision execution trace DAG flow",
+    status_code=status.HTTP_200_OK,
+    operation_id="getDecisionTrace",
+)
+def get_decision_trace(
+    request: Request,
+    decision_id: str,
+    service: DecisionsService = Depends(get_decisions_service),  # noqa: B008
+    principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.READ)),  # noqa: B008
+) -> AthenaResponse[DecisionTraceDTO]:
+    """Retrieve the reasoning DAG trace showing pipeline stages from ingest to safety checks."""
+    trace_data = service.get_decision_trace(decision_id)
+    request_id = getattr(request.state, "request_id", "unknown")
+
+    meta = ResponseMeta(
+        request_id=request_id,
+        api_version="v1",
+        as_of=datetime.now(tz=timezone.utc),
+    )
+
+    return AthenaResponse(
+        status="success",
+        data=trace_data,
+        meta=meta,
+    )
+

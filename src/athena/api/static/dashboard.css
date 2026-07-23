@@ -1413,4 +1413,228 @@ body {
     transition: width 0.6s ease;
 }
 
+/* Decisions & Trace Workstation Layout */
+.trace-workstation {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: 24px;
+    height: calc(100vh - 120px);
+    overflow: hidden;
+    padding: 8px 0;
+}
+
+@media (max-width: 1024px) {
+    .trace-workstation {
+        grid-template-columns: 1fr;
+        overflow-y: auto;
+        height: auto;
+    }
+}
+
+.trace-column {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+.trace-column .card {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.briefing-list {
+    flex-grow: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding-right: 4px;
+}
+
+.briefing-card {
+    background-color: rgba(255, 255, 255, 0.01);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 14px;
+    cursor: pointer;
+    transition: all var(--transition-speed) ease;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.briefing-card:hover {
+    border-color: var(--border-hover);
+    background-color: rgba(255, 255, 255, 0.02);
+}
+
+.briefing-card.active {
+    border-color: var(--accent);
+    background-color: rgba(56, 189, 248, 0.04);
+}
+
+.briefing-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.briefing-symbol {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.briefing-date {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+}
+
+.briefing-desc {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
+
+/* Trace DAG Canvas */
+.trace-dag-canvas-wrapper {
+    flex-grow: 1;
+    overflow-y: auto;
+    position: relative;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+.dag-svg-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.dag-nodes-flow {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 20px;
+    position: relative;
+    z-index: 2;
+    padding: 20px 0;
+}
+
+.dag-node {
+    background-color: rgba(15, 22, 38, 0.9);
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    padding: 14px 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: all var(--transition-speed) ease;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+}
+
+.dag-node:hover {
+    border-color: var(--accent);
+    box-shadow: 0 0 10px var(--accent-glow);
+    transform: translateY(-2px);
+}
+
+.dag-node.active {
+    border-color: var(--accent);
+    background-color: rgba(56, 189, 248, 0.08);
+}
+
+.dag-node-icon {
+    font-size: 1.1rem;
+    color: var(--text-muted);
+    transition: color var(--transition-speed) ease;
+}
+
+.dag-node:hover .dag-node-icon,
+.dag-node.active .dag-node-icon {
+    color: var(--accent);
+}
+
+.dag-node-name {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    text-align: center;
+}
+
+.dag-node-status {
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.dag-node-status.completed {
+    background-color: rgba(0, 230, 118, 0.1);
+    color: var(--success);
+}
+
+.dag-node-status.passed {
+    background-color: rgba(0, 230, 118, 0.1);
+    color: var(--success);
+}
+
+.dag-node-status.failed {
+    background-color: rgba(255, 78, 80, 0.1);
+    color: var(--danger);
+}
+
+/* Stage Details Card */
+.dag-details-card {
+    background-color: rgba(30, 41, 59, 0.4);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 20px;
+    margin-top: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    position: relative;
+    z-index: 2;
+}
+
+.dag-details-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    padding-bottom: 8px;
+}
+
+.dag-details-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.dag-details-text {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
+
+.dag-details-kv-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 8px;
+}
+
+
 

@@ -40,6 +40,8 @@ from athena.api.v1.dtos.decisions import (
     DecisionMetadataDTO,
     GateResultDTO,
     TradePlanDTO,
+    TraceStageDTO,
+    DecisionTraceDTO,
 )
 from athena.api.v1.dtos.exports import (
     ExportArtifactDTO,
@@ -109,6 +111,7 @@ __all__ = [
     "DecisionDTO",
     "DecisionFilterParams",
     "DecisionMetadataDTO",
+    "DecisionTraceDTO",
     "EmptyFilterParams",
     "ExportArtifactDTO",
     "ExportJobDTO",
@@ -152,6 +155,7 @@ __all__ = [
     "SystemPipelineResultDTO",
     "TradePerformanceDTO",
     "TradePlanDTO",
+    "TraceStageDTO",
     "WorkspaceEntryDTO",
     "WorkspaceFilterParams",
     "WorkspaceReferencesDTO",

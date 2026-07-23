@@ -8,6 +8,27 @@ status updated on approval.
 
 ## Phase 9 -- Dashboard & Operations Console (in progress)
 
+### P9.6 -- Decision Trace DAG Viewer
+
+| | |
+|---|---|
+| Completed | 2026-07-23 |
+| Scope | Implement backend REST trace endpoint, briefing document browser list, and interactive 7-node DAG flowchart rendering connection lines using SVG overlay layers. |
+| Tests | 818 passed / 0 failed (3 new) |
+| Status | **PENDING REVIEW** — Ready for review and sign-off |
+| Branch | main |
+
+Implemented backend services and interactive visual workstation features to explore decision rationales.
+- Created `GET /api/v1/decisions/{id}/trace` resolving execution logs and mapping variables to 7 sequential pipeline stages.
+- Developed search-enabled Briefing Documents browser card listing past recommendation entries.
+- Designed node flow diagram representing Universe Ingest, Indicators, Scoring, Confidence, Risk, Quality Gates, and Recommendation outputs.
+- Programmed dynamic connector line drawing inside absolute SVG viewport, wired to window resize triggers.
+- Wired click-to-open node parameter details card rendering composite scores, indicators thresholds, and gate checklists.
+
+Files created: `tests/api/v1/test_decision_trace.py`. Files modified: `src/athena/api/v1/dtos/decisions.py`, `src/athena/api/v1/dtos/__init__.py`, `src/athena/api/v1/services/decisions_service.py`, `src/athena/api/v1/routers/decisions.py`, `src/athena/api/static/index.html`, `src/athena/api/static/dashboard.js`, `src/athena/api/static/dashboard.css`, `docs/MILESTONES.md`. Public APIs added: `GET /api/v1/decisions/{id}/trace`. 3 new integration tests validating trace node schemas and exception parameters. All quality checks pass; 818 total suite tests run successfully.
+
+---
+
 ### P9.5 -- Strategy & Backtest Workspace
 
 | | |
@@ -15,7 +36,7 @@ status updated on approval.
 | Completed | 2026-07-23 |
 | Scope | Implement backend APIs, seed mock runs, and build front-end workstation widgets under the Strategies & Scans tab (`#tab-strategies`) to display active strategy profiles and historical backtest runs. |
 | Tests | 815 passed / 0 failed (6 new) |
-| Status | **PENDING REVIEW** — Ready for review and sign-off |
+| Status | **APPROVED** — closes P9.5 (Owner approved) |
 | Branch | main |
 
 Implemented backend services, mock seeding, and interactive workstation UI components for strategy configuration and backtest execution.
