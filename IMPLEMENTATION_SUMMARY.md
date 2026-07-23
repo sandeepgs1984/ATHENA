@@ -8,6 +8,28 @@ status updated on approval.
 
 ## Phase 9 -- Dashboard & Operations Console (in progress)
 
+### P9.5 -- Strategy & Backtest Workspace
+
+| | |
+|---|---|
+| Completed | 2026-07-23 |
+| Scope | Implement backend APIs, seed mock runs, and build front-end workstation widgets under the Strategies & Scans tab (`#tab-strategies`) to display active strategy profiles and historical backtest runs. |
+| Tests | 815 passed / 0 failed (6 new) |
+| Status | **PENDING REVIEW** — Ready for review and sign-off |
+| Branch | main |
+
+Implemented backend services, mock seeding, and interactive workstation UI components for strategy configuration and backtest execution.
+- Created `GET /api/v1/strategies/profiles` returning active strategy profiles and selection rules.
+- Created `GET /api/v1/backtests/runs` and `GET /api/v1/backtests/runs/{run_id}` exposing backtest replays and performance metrics.
+- Seeded a 10-step mock backtest session spanning all 5 reference strategies inside `in_memory.py`.
+- Developed a two-column UI grid displaying Strategy Profiles Matrix and Backtest Replays.
+- Integrated a Chart.js comparison bar chart showing completed vs failed steps for each run.
+- Implemented a detailed modal drawer showing chronological timelines and horizontal strategy match performance bars.
+
+Files created: `src/athena/api/v1/dtos/strategies.py`, `src/athena/api/v1/dtos/backtests.py`, `src/athena/api/v1/services/strategies_service.py`, `src/athena/api/v1/services/backtests_service.py`, `src/athena/api/v1/routers/strategies.py`, `src/athena/api/v1/routers/backtests.py`, `tests/api/v1/test_strategies_backtests.py`. Files modified: `src/athena/api/v1/dtos/__init__.py`, `src/athena/api/v1/providers/base.py`, `src/athena/api/v1/providers/in_memory.py`, `src/athena/api/dependencies.py`, `src/athena/api/v1/router.py`, `src/athena/api/exceptions.py`, `src/athena/api/errors.py`, `src/athena/api/static/index.html`, `src/athena/api/static/dashboard.js`, `src/athena/api/static/dashboard.css`, `docs/MILESTONES.md`. Public APIs added: `GET /api/v1/strategies/profiles`, `GET /api/v1/backtests/runs`, `GET /api/v1/backtests/runs/{id}`. 6 new integration tests validating payload formats, authentication guards, and details lookup. All quality checks pass; 815 total suite tests run successfully.
+
+---
+
 ### P9.4 -- Market & Universe Dashboard
 
 | | |

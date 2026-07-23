@@ -54,3 +54,8 @@ class ExportArtifactNotFoundError(ResourceNotFoundError):
 
 class ExportGenerationError(APIResourceError):
     """Failed to dynamically adapt/generate presentation format for an artifact."""
+
+
+class BacktestRunNotFoundError(ResourceNotFoundError):
+    """Specific backtest run not found."""
+

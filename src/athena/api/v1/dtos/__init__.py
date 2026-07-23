@@ -82,12 +82,26 @@ from athena.api.v1.dtos.workspace import (
     WorkspaceSnapshotSummaryDTO,
     WorkspaceSummaryDTO,
 )
+from athena.api.v1.dtos.strategies import (
+    StrategyProfileDTO,
+)
+from athena.api.v1.dtos.backtests import (
+    BacktestStepDTO,
+    StrategyPerformanceDTO,
+    BacktestSummaryDTO,
+    BacktestRunDTO,
+    BacktestRunSummaryDTO,
+)
 
 __all__ = [
     "AnalyticsProvenanceDTO",
     "AnalyticsSummaryDTO",
     "ArtifactMetadataDTO",
     "AthenaResponse",
+    "BacktestStepDTO",
+    "BacktestSummaryDTO",
+    "BacktestRunDTO",
+    "BacktestRunSummaryDTO",
     "CollectionResult",
     "ComponentHealth",
     "DecisionAnalysisDTO",
@@ -133,6 +147,8 @@ __all__ = [
     "SourceArtifactType",
     "SourceReferenceDTO",
     "StageResultDTO",
+    "StrategyPerformanceDTO",
+    "StrategyProfileDTO",
     "SystemPipelineResultDTO",
     "TradePerformanceDTO",
     "TradePlanDTO",

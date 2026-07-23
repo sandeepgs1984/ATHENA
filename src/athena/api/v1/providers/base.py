@@ -24,6 +24,7 @@ if TYPE_CHECKING:
         WorkspaceFilterParams,
     )
     from athena.domain.decision import Decision, Portfolio
+    from athena.backtest.models import BacktestRun
     from athena.export.models import ExportArtifact, ExportSnapshot
     from athena.orchestration.models import SystemPipelineResult
     from athena.orchestration.schedule_models import PipelineScheduleRun
@@ -163,3 +164,17 @@ class ExportGenerationProvider(Protocol):
 
     def save_snapshot(self, snapshot: ExportSnapshot) -> None:
         ...
+
+
+@runtime_checkable
+class BacktestRunProvider(Protocol):
+    """Abstract provider for querying backtest execution history."""
+
+    def get_runs(
+        self, spec: QuerySpecification[EmptyFilterParams]
+    ) -> CollectionResult[BacktestRun]:
+        ...
+
+    def get_run(self, run_id: str) -> BacktestRun | None:
+        ...
+

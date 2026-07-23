@@ -26,10 +26,18 @@ from athena.api.v1.dtos import (
     ReportFilterParams,
 )
 from athena.api.v1.providers.base import (
+    BacktestRunProvider,
     ExportGenerationProvider,
     ExportQueryProvider,
     PerformanceAnalyticsProvider,
     ReportProvider,
+)
+from athena.backtest.models import (
+    BacktestRun,
+    BacktestSession,
+    BacktestStep,
+    BacktestSummary,
+    StrategyPerformance,
 )
 from athena.config.models import ExportFormat, ReportType
 from athena.domain.decision import Decision, GateResult, Portfolio, Position
@@ -51,6 +59,7 @@ from athena.orchestration.models import (
 )
 from athena.orchestration.schedule_models import PipelineScheduleRun
 from athena.reporting.models import GenericReport, ReportingReferences
+from athena.runtime.models import ExecutionStatus
 from athena.workspace.models import WorkspaceSnapshot, WorkspaceSummary
 
 T = TypeVar("T")
@@ -322,6 +331,30 @@ class InMemoryExportProvider(ExportQueryProvider, ExportGenerationProvider):
         self.snapshots.append(snapshot)
 
 
+class InMemoryBacktestRunProvider(BacktestRunProvider):
+    """In-memory provider for backtest runs (P9.5)."""
+
+    def __init__(self) -> None:
+        self.runs: list[BacktestRun] = []
+
+    def get_runs(
+        self, spec: QuerySpecification[EmptyFilterParams]
+    ) -> CollectionResult[BacktestRun]:
+        def filter_func(r: BacktestRun) -> bool:
+            return True
+
+        def sort_func(r: BacktestRun) -> Any:
+            return r.run_id
+
+        return apply_query_spec(self.runs, spec, filter_func, sort_func)
+
+    def get_run(self, run_id: str) -> BacktestRun | None:
+        for r in self.runs:
+            if r.run_id == run_id:
+                return r
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Default Sample Data Seed Functions (P8.3 scaffolding)
 # ---------------------------------------------------------------------------
@@ -335,6 +368,7 @@ def seed_sample_data(
     report_prov: InMemoryReportProvider,
     analytics_prov: InMemoryPerformanceAnalyticsProvider,
     export_prov: InMemoryExportProvider,
+    backtest_prov: InMemoryBacktestRunProvider,
 ) -> None:
     """Seeds in-memory providers with compliant sample data for Swagger/CLI usage."""
     now = datetime.now(tz=timezone.utc)
@@ -558,3 +592,77 @@ def seed_sample_data(
         final_context=final_ctx,
     )
     pipeline_prov.runs.append(sys_run)
+
+    # 8. Seed Backtest Run
+    from datetime import date, timedelta
+    first_date = now.date() - timedelta(days=10)
+    last_date = now.date()
+
+    bt_steps = []
+    for i in range(10):
+        step_date = first_date + timedelta(days=i)
+        step_as_of = datetime.combine(step_date, datetime.min.time(), tzinfo=timezone.utc)
+        bt_steps.append(
+            BacktestStep(
+                replay_date=step_date,
+                as_of=step_as_of,
+                status=ExecutionStatus.COMPLETED,
+                scan_report=None,
+                watchlist=None,
+                strategy_execution=None,
+                note=f"Successful replay for date {step_date.isoformat()}",
+            )
+        )
+
+    perf_mom = StrategyPerformance(
+        strategy="momentum",
+        total_matches=15,
+        steps_with_matches=8,
+        instruments=("SBIN", "RELIANCE", "TCS"),
+    )
+    perf_swg = StrategyPerformance(
+        strategy="swing",
+        total_matches=22,
+        steps_with_matches=10,
+        instruments=("SBIN", "RELIANCE", "TCS", "INFY", "LT"),
+    )
+    perf_brk = StrategyPerformance(
+        strategy="breakout",
+        total_matches=8,
+        steps_with_matches=5,
+        instruments=("RELIANCE", "LT"),
+    )
+    perf_rev = StrategyPerformance(
+        strategy="mean_reversion",
+        total_matches=4,
+        steps_with_matches=3,
+        instruments=("TCS", "INFY"),
+    )
+    perf_rot = StrategyPerformance(
+        strategy="sector_rotation",
+        total_matches=12,
+        steps_with_matches=7,
+        instruments=("SBIN", "RELIANCE"),
+    )
+
+    bt_summary = BacktestSummary(
+        total_steps=10,
+        completed_steps=10,
+        failed_steps=0,
+        performance=(perf_mom, perf_swg, perf_brk, perf_rev, perf_rot),
+    )
+
+    bt_session = BacktestSession(
+        session_id="session-bt-sample-1",
+        steps=tuple(bt_steps),
+        summary=bt_summary,
+    )
+
+    bt_run = BacktestRun(
+        run_id="bt-sample-1",
+        first_replay_date=first_date,
+        last_replay_date=last_date,
+        session=bt_session,
+        meta={"profile": "swing_trading_default", "reproduced_by": "Administrator"},
+    )
+    backtest_prov.runs.append(bt_run)

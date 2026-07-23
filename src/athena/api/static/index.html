@@ -324,12 +324,87 @@
                     </div>
                 </div>
 
-                <!-- Strategies & Scans Tab (Placeholder for M6) -->
+                <!-- Strategies & Backtests Tab -->
                 <div id="tab-strategies" class="tab-pane">
-                    <div class="card">
-                        <div class="card-body">
-                            <h2>Strategies & Scans Visualizer</h2>
-                            <p class="text-muted">Loading strategy configurations and scans...</p>
+                    <div class="strategies-workstation">
+                        <!-- Column 1: Strategy Profiles Matrix -->
+                        <div class="strategies-column">
+                            <div class="card">
+                                <div class="card-header">
+                                    <div class="card-title-icon"><i class="fas fa-sitemap"></i></div>
+                                    <h3>Strategy Profiles Matrix</h3>
+                                </div>
+                                <div class="card-body">
+                                    <div id="strategy-profiles-container" class="strategy-profiles-list">
+                                        <!-- Strategy profile cards injected dynamically here -->
+                                        <div class="text-muted text-center" style="padding: 24px;">Loading strategy profiles...</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Column 2: Backtest History & Metrics -->
+                        <div class="strategies-column">
+                            <div class="card">
+                                <div class="card-header">
+                                    <div class="card-title-icon"><i class="fas fa-history"></i></div>
+                                    <h3>Backtest Replays</h3>
+                                </div>
+                                <div class="card-body">
+                                    <div class="backtest-history-wrapper">
+                                        <table class="backtest-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Run ID</th>
+                                                    <th>Replay Period</th>
+                                                    <th>Steps</th>
+                                                    <th>Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="backtest-list-body">
+                                                <tr>
+                                                    <td colspan="4" class="text-muted text-center" style="padding: 24px;">Loading backtest runs...</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    
+                                    <div class="backtest-performance-overview mt-4">
+                                        <h4>Backtest Performance Comparison</h4>
+                                        <div class="chart-container" style="position: relative; height: 180px; width: 100%;">
+                                            <canvas id="backtest-comparison-chart"></canvas>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Backtest Details Modal Drawer -->
+                <div id="backtest-modal" class="modal-overlay">
+                    <div class="modal-container backtest-modal-container">
+                        <div class="modal-header">
+                            <h3 id="backtest-modal-title">Backtest Run Details</h3>
+                            <button id="backtest-modal-close" class="modal-close-btn">&times;</button>
+                        </div>
+                        <div class="modal-body backtest-modal-body">
+                            <div class="backtest-modal-grid">
+                                <!-- Left side: Chronological step list -->
+                                <div class="backtest-steps-timeline">
+                                    <h4>Replay Date Chronology</h4>
+                                    <div id="backtest-steps-container" class="steps-timeline-list">
+                                        <!-- Chronological step list will be injected here -->
+                                    </div>
+                                </div>
+                                <!-- Right side: Strategy performance results -->
+                                <div class="backtest-strategy-metrics">
+                                    <h4>Strategy Match Performance</h4>
+                                    <div id="backtest-performance-container" class="performance-bars-list">
+                                        <!-- Strategy performance bars injected here -->
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

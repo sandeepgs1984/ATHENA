@@ -1107,3 +1107,310 @@ body {
     line-height: 1.4;
 }
 
+/* Strategies Workstation Layout */
+.strategies-workstation {
+    display: grid;
+    grid-template-columns: 1fr 1.2fr;
+    gap: 24px;
+    height: calc(100vh - 120px);
+    overflow: hidden;
+    padding: 8px 0;
+}
+
+@media (max-width: 1024px) {
+    .strategies-workstation {
+        grid-template-columns: 1fr;
+        overflow-y: auto;
+        height: auto;
+    }
+}
+
+.strategies-column {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+.strategies-column .card {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.strategies-column .card-body {
+    flex-grow: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    padding: 24px;
+}
+
+/* Strategy Profiles Matrix */
+.strategy-profiles-list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.strategy-profile-card {
+    background-color: rgba(255, 255, 255, 0.01);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    transition: all var(--transition-speed) ease;
+}
+
+.strategy-profile-card:hover {
+    border-color: var(--border-hover);
+    background-color: rgba(255, 255, 255, 0.02);
+}
+
+.strategy-profile-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.strategy-profile-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--accent);
+    text-transform: capitalize;
+}
+
+.strategy-status-pill {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 100px;
+}
+
+.strategy-status-pill.active {
+    background-color: rgba(0, 230, 118, 0.1);
+    color: var(--success);
+    border: 1px solid rgba(0, 230, 118, 0.2);
+}
+
+.strategy-status-pill.disabled {
+    background-color: rgba(255, 78, 80, 0.1);
+    color: var(--danger);
+    border: 1px solid rgba(255, 78, 80, 0.2);
+}
+
+.strategy-profile-desc {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
+
+.strategy-criteria-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.strategy-criteria-item {
+    background-color: rgba(15, 22, 38, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.02);
+    border-radius: 4px;
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.criteria-label {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+}
+
+.criteria-value {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+}
+
+/* Backtest Replays styling */
+.backtest-history-wrapper {
+    flex-grow: 1;
+    overflow-y: auto;
+    max-height: 250px;
+}
+
+.backtest-table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+}
+
+.backtest-table th {
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 10px 12px;
+    text-transform: uppercase;
+}
+
+.backtest-table td {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+    font-size: 0.85rem;
+    padding: 12px;
+}
+
+.backtest-table tbody tr {
+    cursor: pointer;
+    transition: all var(--transition-speed) ease;
+}
+
+.backtest-table tbody tr:hover {
+    background-color: rgba(255, 255, 255, 0.015);
+}
+
+.backtest-run-id {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+}
+
+.backtest-steps-badge {
+    background-color: rgba(255, 255, 255, 0.05);
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+}
+
+/* Backtest Modal Drawer Grid */
+.backtest-modal-container {
+    max-width: 950px;
+    width: 95%;
+}
+
+.backtest-modal-grid {
+    display: grid;
+    grid-template-columns: 1.2fr 1fr;
+    gap: 24px;
+    max-height: 60vh;
+}
+
+@media (max-width: 768px) {
+    .backtest-modal-grid {
+        grid-template-columns: 1fr;
+        max-height: auto;
+        overflow-y: auto;
+    }
+}
+
+.backtest-steps-timeline, .backtest-strategy-metrics {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    overflow: hidden;
+}
+
+.backtest-steps-timeline h4, .backtest-strategy-metrics h4 {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    padding-bottom: 8px;
+}
+
+.steps-timeline-list {
+    flex-grow: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 48vh;
+    padding-right: 4px;
+}
+
+.performance-bars-list {
+    flex-grow: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    max-height: 48vh;
+}
+
+.bt-step-item {
+    background-color: rgba(255, 255, 255, 0.01);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 10px 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.bt-step-date {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+}
+
+.bt-step-status {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.bt-step-status.completed { color: var(--success); }
+.bt-step-status.failed { color: var(--danger); }
+
+/* Strategy Performance Bar Chart Grid */
+.perf-bar-item {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.perf-bar-header {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.8rem;
+}
+
+.perf-bar-strategy {
+    font-weight: 600;
+    color: var(--text-primary);
+    text-transform: capitalize;
+}
+
+.perf-bar-count {
+    font-family: var(--font-mono);
+    color: var(--accent);
+}
+
+.perf-bar-track {
+    height: 8px;
+    background-color: rgba(255, 255, 255, 0.05);
+    border-radius: 100px;
+    overflow: hidden;
+}
+
+.perf-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent));
+    border-radius: 100px;
+    box-shadow: 0 0 5px var(--accent-glow);
+    transition: width 0.6s ease;
+}
+
+

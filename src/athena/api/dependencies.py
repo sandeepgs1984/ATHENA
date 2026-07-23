@@ -17,6 +17,7 @@ from athena.api.platform.providers.metadata_provider import (
     MetadataProvider,
 )
 from athena.api.v1.providers.base import (
+    BacktestRunProvider,
     DecisionProvider,
     ExportGenerationProvider,
     ExportQueryProvider,
@@ -30,6 +31,7 @@ from athena.api.v1.providers.base import (
     WorkspaceProvider,
 )
 from athena.api.v1.providers.in_memory import (
+    InMemoryBacktestRunProvider,
     InMemoryDecisionProvider,
     InMemoryExportProvider,
     InMemoryPerformanceAnalyticsProvider,
@@ -45,6 +47,7 @@ from athena.api.v1.providers.observability import (
     ObservabilityMetricsProvider,
 )
 from athena.api.v1.services.analytics_service import AnalyticsService
+from athena.api.v1.services.backtests_service import BacktestsService
 from athena.api.v1.services.dashboard_service import DashboardService
 from athena.api.v1.services.decisions_service import DecisionsService
 from athena.api.v1.services.exports_service import ExportsService
@@ -54,6 +57,7 @@ from athena.api.v1.services.pipelines_service import PipelinesService
 from athena.api.v1.services.portfolio_service import PortfolioService
 from athena.api.v1.services.reports_service import ReportsService
 from athena.api.v1.services.scheduler_service import SchedulerService
+from athena.api.v1.services.strategies_service import StrategyService
 from athena.api.v1.services.workspace_service import WorkspaceService
 
 # Singletons for default health/metrics providers
@@ -69,6 +73,7 @@ _workspace_provider = InMemoryWorkspaceProvider()
 _report_provider = InMemoryReportProvider()
 _analytics_provider = InMemoryPerformanceAnalyticsProvider()
 _export_provider = InMemoryExportProvider()
+_backtest_run_provider = InMemoryBacktestRunProvider()
 
 # Seed sample data for Swagger / Dev runtime
 seed_sample_data(
@@ -80,6 +85,7 @@ seed_sample_data(
     _report_provider,
     _analytics_provider,
     _export_provider,
+    _backtest_run_provider,
 )
 
 
@@ -223,6 +229,22 @@ def get_dashboard_service(request: Request) -> DashboardService:
     )
     health_prov = getattr(request.app.state, "health_provider", _health_provider)
     return DashboardService(port_prov, pipe_prov, health_prov)
+
+
+def get_backtest_run_provider() -> BacktestRunProvider:
+    """Dependency provider for BacktestRunProvider."""
+    return _backtest_run_provider
+
+
+def get_strategies_service() -> StrategyService:
+    """Dependency provider for StrategyService."""
+    return StrategyService()
+
+
+def get_backtests_service(request: Request) -> BacktestsService:
+    """Dependency provider for BacktestsService."""
+    provider = getattr(request.app.state, "backtest_run_provider", _backtest_run_provider)
+    return BacktestsService(provider)
 
 
 # ---------------------------------------------------------------------------
