@@ -6,14 +6,14 @@ status updated on approval.
 
 ---
 
-## Production readiness -- R5 Host Schedule + Failure Alerts (ready for review)
+## Production readiness -- R5 Host Schedule + Failure Alerts (APPROVED)
 
 | | |
 |---|---|
 | Completed | 2026-07-23 |
 | Scope | External launchd/cron invokes due cycles + brief; hard failures alert via file + webhook (DD-9). No embedded cron. |
 | Tests | `tests/ops/test_host_ops.py` (file alert, webhook mock, idle path, failure alert, brief-after-cycle) |
-| Status | **Ready for review** — awaiting `approve R5` |
+| Status | **APPROVED** — Owner approved 2026-07-23 |
 | Branch | develop |
 
 - CLI `athena run-due` + root `./athena-run-due` (sources `.env` for launchd).
