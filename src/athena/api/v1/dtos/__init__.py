@@ -33,6 +33,15 @@ from athena.api.v1.dtos.common import (
 from athena.api.v1.dtos.dashboard import (
     DashboardSummaryDTO,
 )
+from athena.api.v1.dtos.ops import (
+    BackupCreateResultDTO,
+    BackupInfoDTO,
+    OpsTelemetryDTO,
+    OpsWarningDTO,
+    RestoreRequestDTO,
+    RestoreResultDTO,
+    StageTelemetryDTO,
+)
 from athena.api.v1.dtos.decisions import (
     DecisionAnalysisDTO,
     DecisionDTO,
@@ -100,6 +109,8 @@ __all__ = [
     "AnalyticsSummaryDTO",
     "ArtifactMetadataDTO",
     "AthenaResponse",
+    "BackupCreateResultDTO",
+    "BackupInfoDTO",
     "BacktestStepDTO",
     "BacktestSummaryDTO",
     "BacktestRunDTO",
@@ -125,6 +136,8 @@ __all__ = [
     "GateResultDTO",
     "HealthResponse",
     "MetricsResponse",
+    "OpsTelemetryDTO",
+    "OpsWarningDTO",
     "PaginationParams",
     "PerformanceSnapshotDTO",
     "PerformanceSnapshotSummaryDTO",
@@ -145,11 +158,14 @@ __all__ = [
     "ReportSummaryDTO",
     "ResourceReference",
     "ResponseMeta",
+    "RestoreRequestDTO",
+    "RestoreResultDTO",
     "SchedulerHistoryFilterParams",
     "SortParams",
     "SourceArtifactType",
     "SourceReferenceDTO",
     "StageResultDTO",
+    "StageTelemetryDTO",
     "StrategyPerformanceDTO",
     "StrategyProfileDTO",
     "SystemPipelineResultDTO",

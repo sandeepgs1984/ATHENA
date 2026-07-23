@@ -45,9 +45,12 @@ document.addEventListener("DOMContentLoaded", () => {
     const navChartCtx = document.getElementById("nav-chart")?.getContext("2d");
     const sectorChartCtx = document.getElementById("sector-chart")?.getContext("2d");
     const backtestComparisonChartCtx = document.getElementById("backtest-comparison-chart")?.getContext("2d");
+    const opsTelemetryChartCtx = document.getElementById("ops-telemetry-chart")?.getContext("2d");
     let navChart = null;
     let sectorChart = null;
     let backtestComparisonChart = null;
+    let opsTelemetryChart = null;
+    let opsEventSource = null;
 
     // ---------------------------------------------------------------------------
     // Routing & Tab Switcher
@@ -76,6 +79,9 @@ document.addEventListener("DOMContentLoaded", () => {
         });
 
         // 3. Trigger API data loading for specific tab
+        if (tabId !== "operations") {
+            stopOpsStream();
+        }
         loadTabData(tabId);
     }
 
@@ -207,8 +213,9 @@ document.addEventListener("DOMContentLoaded", () => {
             await loadStrategiesWorkspace();
         } else if (tabId === "decisions") {
             await loadDecisionsWorkspace();
+        } else if (tabId === "operations") {
+            await loadOperationsWorkspace();
         }
-        // operations: intentional P9.7 placeholder — no loader yet
     }
 
     async function loadPortfolioData() {
@@ -1523,6 +1530,301 @@ document.addEventListener("DOMContentLoaded", () => {
         loadTabData(state.activeTab);
         showToast("Workstation workspace refreshed", "success");
     });
+
+    // ---------------------------------------------------------------------------
+    // Live Operations (P9.7)
+    // ---------------------------------------------------------------------------
+    const opsWarningsFeed = document.getElementById("ops-warnings-feed");
+    const opsStreamStatus = document.getElementById("ops-stream-status");
+    const opsTelemetryMeta = document.getElementById("ops-telemetry-meta");
+    const opsBackupsBody = document.getElementById("ops-backups-body");
+    const opsCreateBackupBtn = document.getElementById("ops-create-backup-btn");
+    const opsRefreshBackupsBtn = document.getElementById("ops-refresh-backups-btn");
+    const opsRestoreConfirm = document.getElementById("ops-restore-confirm");
+
+    async function loadOperationsWorkspace() {
+        await Promise.all([
+            loadOpsTelemetry(),
+            loadOpsBackups(),
+        ]);
+        startOpsStream();
+        wireOpsAdminControls();
+    }
+
+    function setOpsStreamStatus(connected) {
+        if (!opsStreamStatus) return;
+        opsStreamStatus.textContent = connected ? "Connected" : "Disconnected";
+        opsStreamStatus.className = `ops-stream-pill ${connected ? "connected" : "disconnected"}`;
+    }
+
+    function stopOpsStream() {
+        if (opsEventSource) {
+            opsEventSource.close();
+            opsEventSource = null;
+        }
+        setOpsStreamStatus(false);
+    }
+
+    function startOpsStream() {
+        stopOpsStream();
+        if (!opsWarningsFeed) return;
+
+        opsWarningsFeed.innerHTML = "";
+        try {
+            opsEventSource = new EventSource("/api/v1/ops/stream");
+        } catch (err) {
+            console.error("Failed to open ops SSE", err);
+            opsWarningsFeed.innerHTML = '<div class="text-muted text-center" style="padding: 24px;">Failed to open warning stream.</div>';
+            setOpsStreamStatus(false);
+            return;
+        }
+
+        opsEventSource.addEventListener("open", () => setOpsStreamStatus(true));
+        opsEventSource.addEventListener("heartbeat", (ev) => {
+            appendOpsWarning(JSON.parse(ev.data));
+        });
+        opsEventSource.addEventListener("warning", (ev) => {
+            appendOpsWarning(JSON.parse(ev.data));
+        });
+        opsEventSource.onerror = () => {
+            setOpsStreamStatus(false);
+        };
+    }
+
+    function appendOpsWarning(event) {
+        if (!opsWarningsFeed || !event) return;
+        if (opsWarningsFeed.querySelector(".text-muted.text-center")) {
+            opsWarningsFeed.innerHTML = "";
+        }
+
+        const row = document.createElement("div");
+        row.className = `ops-warning-row ${event.severity || "info"}`;
+        const ts = event.as_of ? new Date(event.as_of).toLocaleTimeString("en-IN") : "--";
+        row.innerHTML = `
+            <div class="ops-warning-header">
+                <span>${event.severity || "info"} · ${event.source || "ops"}</span>
+                <span>${ts}</span>
+            </div>
+            <div class="ops-warning-message">${event.message || ""}</div>
+        `;
+        opsWarningsFeed.prepend(row);
+
+        // Cap feed length
+        while (opsWarningsFeed.children.length > 40) {
+            opsWarningsFeed.removeChild(opsWarningsFeed.lastChild);
+        }
+    }
+
+    async function loadOpsTelemetry() {
+        try {
+            const res = await apiRequest("/api/v1/ops/telemetry");
+            if (!res || res.status !== "success") return;
+            const data = res.data;
+            if (opsTelemetryMeta) {
+                if (!data.run_id) {
+                    opsTelemetryMeta.textContent = "No pipeline run loaded.";
+                } else {
+                    const asOf = data.as_of ? new Date(data.as_of).toLocaleString("en-IN") : "--";
+                    opsTelemetryMeta.textContent = `Run ${data.run_id} · ${data.overall_status || "UNKNOWN"} · ${asOf}`;
+                }
+            }
+            renderOpsTelemetryChart(data.stages || []);
+        } catch (err) {
+            console.error("Failed to load ops telemetry", err);
+            if (opsTelemetryMeta) {
+                opsTelemetryMeta.textContent = "Failed to load stage telemetry.";
+            }
+        }
+    }
+
+    function renderOpsTelemetryChart(stages) {
+        if (!opsTelemetryChartCtx) return;
+
+        const labels = stages.map(s => s.stage_id);
+        const successData = stages.map(s => {
+            const st = (s.status || "").toUpperCase();
+            return (st === "SUCCESS" || st === "COMPLETED" || st === "PASSED") ? 1 : 0;
+        });
+        const failedData = stages.map(s => {
+            const st = (s.status || "").toUpperCase();
+            return (st === "FAILED" || st === "ERROR" || st === "TIMEOUT") ? 1 : 0;
+        });
+        const otherData = stages.map((_, idx) => (successData[idx] || failedData[idx]) ? 0 : 1);
+
+        if (labels.length === 0) {
+            labels.push("no_stages");
+            successData.push(0);
+            failedData.push(0);
+            otherData.push(1);
+        }
+
+        if (opsTelemetryChart) {
+            opsTelemetryChart.data.labels = labels;
+            opsTelemetryChart.data.datasets[0].data = successData;
+            opsTelemetryChart.data.datasets[1].data = failedData;
+            opsTelemetryChart.data.datasets[2].data = otherData;
+            opsTelemetryChart.update();
+            return;
+        }
+
+        opsTelemetryChart = new Chart(opsTelemetryChartCtx, {
+            type: "bar",
+            data: {
+                labels,
+                datasets: [
+                    {
+                        label: "Success",
+                        data: successData,
+                        backgroundColor: "#10b981",
+                        stack: "status",
+                    },
+                    {
+                        label: "Failed",
+                        data: failedData,
+                        backgroundColor: "#f43f5e",
+                        stack: "status",
+                    },
+                    {
+                        label: "Other",
+                        data: otherData,
+                        backgroundColor: "#64748b",
+                        stack: "status",
+                    },
+                ],
+            },
+            options: {
+                indexAxis: "y",
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: "top",
+                        labels: { color: "#94a3b8", font: { size: 10 } },
+                    },
+                },
+                scales: {
+                    x: {
+                        stacked: true,
+                        beginAtZero: true,
+                        max: 1,
+                        ticks: { stepSize: 1, color: "#94a3b8", font: { size: 10 } },
+                        grid: { color: "rgba(255, 255, 255, 0.05)" },
+                    },
+                    y: {
+                        stacked: true,
+                        ticks: { color: "#94a3b8", font: { size: 10 } },
+                        grid: { color: "rgba(255, 255, 255, 0.02)" },
+                    },
+                },
+            },
+        });
+    }
+
+    async function loadOpsBackups() {
+        if (!opsBackupsBody) return;
+        try {
+            const res = await apiRequest("/api/v1/ops/backups");
+            if (!res || res.status !== "success") return;
+            renderOpsBackups(res.data || []);
+        } catch (err) {
+            console.error("Failed to load backups", err);
+            opsBackupsBody.innerHTML = '<tr><td colspan="4" class="text-muted text-center" style="padding: 24px;">Failed to load backups.</td></tr>';
+        }
+    }
+
+    function renderOpsBackups(backups) {
+        if (!opsBackupsBody) return;
+        if (!backups.length) {
+            opsBackupsBody.innerHTML = '<tr><td colspan="4" class="text-muted text-center" style="padding: 24px;">No backups found.</td></tr>';
+            return;
+        }
+
+        const confirmOk = opsRestoreConfirm && opsRestoreConfirm.value === "CONFIRM";
+        opsBackupsBody.innerHTML = "";
+        backups.forEach(b => {
+            const row = document.createElement("tr");
+            const modified = b.modified_at
+                ? new Date(b.modified_at).toLocaleString("en-IN")
+                : "--";
+            const sizeKb = Math.max(1, Math.round((b.size_bytes || 0) / 1024));
+            row.innerHTML = `
+                <td class="font-mono">${b.backup_id}</td>
+                <td>${modified}</td>
+                <td>${sizeKb} KB</td>
+                <td>
+                    <button class="btn btn-sm btn-outline ops-restore-btn" data-id="${b.backup_id}" ${confirmOk ? "" : "disabled"}>
+                        Restore
+                    </button>
+                </td>
+            `;
+            const btn = row.querySelector(".ops-restore-btn");
+            btn.addEventListener("click", () => restoreOpsBackup(b.backup_id));
+            opsBackupsBody.appendChild(row);
+        });
+    }
+
+    function refreshRestoreButtonState() {
+        const confirmOk = opsRestoreConfirm && opsRestoreConfirm.value === "CONFIRM";
+        document.querySelectorAll(".ops-restore-btn").forEach(btn => {
+            btn.disabled = !confirmOk;
+        });
+    }
+
+    async function restoreOpsBackup(backupId) {
+        if (!opsRestoreConfirm || opsRestoreConfirm.value !== "CONFIRM") {
+            showToast("Type CONFIRM before restoring", "warning");
+            return;
+        }
+        try {
+            const res = await apiRequest(`/api/v1/ops/backups/${encodeURIComponent(backupId)}/restore`, {
+                method: "POST",
+                body: JSON.stringify({ confirmation: "CONFIRM" }),
+            });
+            if (res && res.status === "success") {
+                const ok = res.data.ok;
+                showToast(
+                    ok ? `Restored from ${backupId}` : `Restore completed with issues: ${(res.data.issues || []).join("; ") || "see details"}`,
+                    ok ? "success" : "warning"
+                );
+                opsRestoreConfirm.value = "";
+                refreshRestoreButtonState();
+                await loadOpsBackups();
+            }
+        } catch (err) {
+            console.error("Restore failed", err);
+        }
+    }
+
+    let opsAdminWired = false;
+    function wireOpsAdminControls() {
+        if (opsAdminWired) return;
+        opsAdminWired = true;
+
+        if (opsCreateBackupBtn) {
+            opsCreateBackupBtn.addEventListener("click", async () => {
+                try {
+                    opsCreateBackupBtn.disabled = true;
+                    const res = await apiRequest("/api/v1/ops/backups", { method: "POST" });
+                    if (res && res.status === "success") {
+                        showToast(`Backup created: ${res.data.backup_id}`, "success");
+                        await loadOpsBackups();
+                    }
+                } catch (err) {
+                    console.error("Backup create failed", err);
+                } finally {
+                    opsCreateBackupBtn.disabled = false;
+                }
+            });
+        }
+
+        if (opsRefreshBackupsBtn) {
+            opsRefreshBackupsBtn.addEventListener("click", () => loadOpsBackups());
+        }
+
+        if (opsRestoreConfirm) {
+            opsRestoreConfirm.addEventListener("input", refreshRestoreButtonState);
+        }
+    }
 
     // Escape closes any open modal
     window.addEventListener("keydown", (e) => {

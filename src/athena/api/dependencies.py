@@ -53,6 +53,7 @@ from athena.api.v1.services.decisions_service import DecisionsService
 from athena.api.v1.services.exports_service import ExportsService
 from athena.api.v1.services.health_service import HealthService
 from athena.api.v1.services.metrics_service import MetricsService
+from athena.api.v1.services.ops_service import OpsService
 from athena.api.v1.services.pipelines_service import PipelinesService
 from athena.api.v1.services.portfolio_service import PortfolioService
 from athena.api.v1.services.reports_service import ReportsService
@@ -248,6 +249,24 @@ def get_backtests_service(request: Request) -> BacktestsService:
     """Dependency provider for BacktestsService."""
     provider = getattr(request.app.state, "backtest_run_provider", _backtest_run_provider)
     return BacktestsService(provider)
+
+
+def get_ops_service(request: Request) -> OpsService:
+    """Dependency provider for OpsService (P9.7)."""
+    health_prov = getattr(request.app.state, "health_provider", _health_provider)
+    metrics_prov = getattr(request.app.state, "metrics_provider", _metrics_provider)
+    pipe_prov = getattr(
+        request.app.state, "pipeline_run_provider", _pipeline_run_provider
+    )
+    db_path = getattr(request.app.state, "ops_db_path", None)
+    backup_dir = getattr(request.app.state, "ops_backup_dir", None)
+    return OpsService(
+        health_prov,
+        metrics_prov,
+        pipe_prov,
+        db_path=db_path,
+        backup_dir=backup_dir,
+    )
 
 
 # ---------------------------------------------------------------------------

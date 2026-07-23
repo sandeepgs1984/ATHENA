@@ -17,7 +17,9 @@ from typing import ClassVar
 
 from athena.api.exceptions import (
     APIResourceError,
+    BackupNotFoundError,
     BacktestRunNotFoundError,
+    DatabaseUnavailableError,
     DecisionNotFoundError,
     ExportArtifactNotFoundError,
     ExportGenerationError,
@@ -27,6 +29,7 @@ from athena.api.exceptions import (
     PortfolioUnavailableError,
     ReportNotFoundError,
     ResourceNotFoundError,
+    RestoreConfirmationError,
     SchedulerRunNotFoundError,
     WorkspaceSnapshotNotFoundError,
 )
@@ -111,6 +114,9 @@ class AthenaExceptionMapper:
         ExceptionMapping(SchedulerRunNotFoundError, 404, "scheduler-run-not-found", "Scheduler Run Not Found"),
         ExceptionMapping(ReportNotFoundError, 404, "report-not-found", "Report Not Found"),
         ExceptionMapping(BacktestRunNotFoundError, 404, "backtest-run-not-found", "Backtest Run Not Found"),
+        ExceptionMapping(BackupNotFoundError, 404, "backup-not-found", "Backup Not Found"),
+        ExceptionMapping(RestoreConfirmationError, 400, "restore-confirmation-required", "Restore Confirmation Required"),
+        ExceptionMapping(DatabaseUnavailableError, 503, "database-unavailable", "Database Unavailable"),
         ExceptionMapping(
             PerformanceSnapshotNotFoundError, 404, "performance-snapshot-not-found", "Performance Snapshot Not Found"
         ),

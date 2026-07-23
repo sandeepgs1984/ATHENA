@@ -119,8 +119,8 @@ Builds the visual workstation dashboard console for a single-user Swing/Intraday
 | **P9.3** Portfolio & Capital Dashboard | NAV area line chart, Sector Exposure donut, Holdings grid, and single-user bypass | ✅ Approved |
 | **P9.4** Market & Universe Dashboard | Trading calendar session grid, Volatility regime badges, Universe inclusion traces | ✅ Approved |
 | **P9.5** Strategy & Backtest Workspace | Strategy profiles matrix, Backtest performance metrics & drawdown charts | ✅ Approved |
-| **P9.6** Decision Trace DAG Viewer | Briefing documents browser, interactive Decision Trace React Flow DAG viewer | 🔄 Ready for Review |
-| **P9.7** Live Monitoring & Admin | SSE live warning streams, stage telemetry bar charts, manual DB backup/restore controls | ❌ Not started |
+| **P9.6** Decision Trace DAG Viewer | Briefing documents browser, interactive Decision Trace React Flow DAG viewer | ✅ Approved |
+| **P9.7** Live Monitoring & Admin | SSE live warning streams, stage telemetry bar charts, manual DB backup/restore controls | 🔄 Ready for Review |
 
 **Console hotfix (2026-07-23):** inactive modals no longer leak into tab document flow; Market/Strategies/Decisions loaders clear failure states instead of stuck "Loading..."; Live Operations shows an explicit P9.7 placeholder (no fake loader). See `IMPLEMENTATION_SUMMARY.md` Phase 9 hotfix entry.
 

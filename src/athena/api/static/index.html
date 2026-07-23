@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.6.3">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.7.0">
 </head>
 <body>
     <div id="app">
@@ -424,17 +424,78 @@
                     </div>
                 </div>
 
-                <!-- Live Operations Tab (P9.7 — not started) -->
+                <!-- Live Operations Tab (P9.7) -->
                 <div id="tab-operations" class="tab-pane">
-                    <div class="card">
-                        <div class="card-body operations-placeholder">
-                            <div class="card-title-icon"><i class="fas fa-terminal"></i></div>
-                            <h2>Live Operations Console</h2>
-                            <p class="text-muted">
-                                SSE telemetry, stage monitoring charts, and backup/restore controls
-                                ship in milestone <strong>P9.7</strong>. This tab is intentionally idle
-                                until that milestone is authorized.
-                            </p>
+                    <div class="operations-workstation">
+                        <div class="operations-column">
+                            <div class="card">
+                                <div class="card-header">
+                                    <div class="card-title-icon"><i class="fas fa-satellite-dish"></i></div>
+                                    <h3>Live Warning Stream</h3>
+                                    <span id="ops-stream-status" class="ops-stream-pill disconnected">Disconnected</span>
+                                </div>
+                                <div class="card-body">
+                                    <div id="ops-warnings-feed" class="ops-warnings-feed">
+                                        <div class="text-muted text-center" style="padding: 24px;">Connecting to operations stream…</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="operations-column">
+                            <div class="card">
+                                <div class="card-header">
+                                    <div class="card-title-icon"><i class="fas fa-chart-bar"></i></div>
+                                    <h3>Stage Telemetry</h3>
+                                </div>
+                                <div class="card-body">
+                                    <p id="ops-telemetry-meta" class="text-muted" style="margin: 0 0 12px; font-size: 0.8rem;">No pipeline run loaded.</p>
+                                    <div class="chart-container" style="position: relative; height: 220px; width: 100%;">
+                                        <canvas id="ops-telemetry-chart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="card mt-4">
+                                <div class="card-header">
+                                    <div class="card-title-icon"><i class="fas fa-database"></i></div>
+                                    <h3>Database Backup &amp; Restore</h3>
+                                </div>
+                                <div class="card-body">
+                                    <div class="ops-admin-actions">
+                                        <button id="ops-create-backup-btn" class="btn btn-outline" type="button">
+                                            <i class="fas fa-floppy-disk" style="margin-right: 6px;"></i>Create Backup
+                                        </button>
+                                        <button id="ops-refresh-backups-btn" class="btn btn-icon" type="button" title="Refresh backup list">
+                                            <i class="fas fa-arrows-rotate"></i>
+                                        </button>
+                                    </div>
+                                    <div class="backtest-history-wrapper" style="margin-top: 14px;">
+                                        <table class="backtest-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Backup ID</th>
+                                                    <th>Modified</th>
+                                                    <th>Size</th>
+                                                    <th>Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="ops-backups-body">
+                                                <tr>
+                                                    <td colspan="4" class="text-muted text-center" style="padding: 24px;">Loading backups…</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <div class="ops-restore-gate">
+                                        <label for="ops-restore-confirm">Type <strong>CONFIRM</strong> to enable restore</label>
+                                        <input id="ops-restore-confirm" type="text" autocomplete="off" placeholder="CONFIRM" />
+                                        <p class="text-muted" style="font-size: 0.75rem; margin: 8px 0 0;">
+                                            Restore overwrites the live database. This action is irreversible without another backup.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -481,6 +542,6 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.6.3"></script>
+    <script src="/dashboard/dashboard.js?v=9.7.0"></script>
 </body>
 </html>

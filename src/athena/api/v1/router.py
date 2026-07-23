@@ -20,6 +20,7 @@ from athena.api.v1.routers.scheduler import router as scheduler_router
 from athena.api.v1.routers.workspace import router as workspace_router
 from athena.api.v1.routers.strategies import router as strategies_router
 from athena.api.v1.routers.backtests import router as backtests_router
+from athena.api.v1.routers.ops import router as ops_router
 
 router = APIRouter()
 
@@ -37,3 +38,4 @@ router.include_router(analytics_router)
 router.include_router(exports_router)
 router.include_router(strategies_router)
 router.include_router(backtests_router)
+router.include_router(ops_router)

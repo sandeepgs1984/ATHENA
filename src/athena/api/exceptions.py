@@ -59,3 +59,15 @@ class ExportGenerationError(APIResourceError):
 class BacktestRunNotFoundError(ResourceNotFoundError):
     """Specific backtest run not found."""
 
+
+class BackupNotFoundError(ResourceNotFoundError):
+    """Specific database backup artifact not found."""
+
+
+class RestoreConfirmationError(APIResourceError):
+    """Restore refused because confirmation token was missing or incorrect."""
+
+
+class DatabaseUnavailableError(APIResourceError):
+    """Live SQLite database path is missing or cannot be opened for backup ops."""
+

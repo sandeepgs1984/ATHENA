@@ -61,6 +61,10 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "Failed to load strategy profiles" in js
     assert "Failed to load decisions" in js
 
-    # Operations tab is an honest P9.7 placeholder, not a fake loader
-    assert "P9.7" in html
+    # Operations console (P9.7) is live — warnings feed + backup panel, not a fake loader
+    assert 'id="ops-warnings-feed"' in html
+    assert 'id="ops-telemetry-chart"' in html
+    assert 'id="ops-backups-body"' in html
     assert "Loading platform telemetry, logs, and triggers..." not in html
+    assert "loadOperationsWorkspace" in js
+    assert "startOpsStream" in js

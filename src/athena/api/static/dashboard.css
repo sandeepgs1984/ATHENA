@@ -1663,5 +1663,118 @@ body {
     margin: 0;
 }
 
+.operations-workstation {
+    display: grid;
+    grid-template-columns: 1.1fr 1fr;
+    gap: 18px;
+    align-items: start;
+}
+
+.operations-column {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    min-width: 0;
+}
+
+.ops-stream-pill {
+    margin-left: auto;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 4px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--border-color);
+}
+
+.ops-stream-pill.connected {
+    color: var(--success);
+    border-color: rgba(16, 185, 129, 0.35);
+    background: rgba(16, 185, 129, 0.08);
+}
+
+.ops-stream-pill.disconnected {
+    color: var(--text-muted);
+}
+
+.ops-warnings-feed {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 520px;
+    overflow-y: auto;
+}
+
+.ops-warning-row {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 10px 12px;
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.ops-warning-row.heartbeat {
+    opacity: 0.55;
+}
+
+.ops-warning-row.warning {
+    border-color: rgba(245, 158, 11, 0.35);
+}
+
+.ops-warning-row.critical {
+    border-color: rgba(244, 63, 94, 0.4);
+}
+
+.ops-warning-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+
+.ops-warning-message {
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    line-height: 1.4;
+}
+
+.ops-admin-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.ops-restore-gate {
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.ops-restore-gate input {
+    background: var(--bg-sidebar);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-primary);
+    padding: 8px 10px;
+    font-family: "JetBrains Mono", monospace;
+    max-width: 220px;
+}
+
+.ops-restore-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+@media (max-width: 1100px) {
+    .operations-workstation {
+        grid-template-columns: 1fr;
+    }
+}
+
 
 
