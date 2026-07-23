@@ -56,7 +56,7 @@ M10.4 Playbook    →    R1 File-backed SOP    →    R3 DD-1 Provider  →   R5
 
 | ID | Milestone | Objective | Exit criteria |
 |---|---|---|---|
-| **M10.4** | AI Playbook Diagnostics | Propose config/weight tuning from journal-like outcomes; **human approves** any change | Diagnostic report + proposals only; no silent config mutation; tests + owner approval |
+| **M10.4** | AI Playbook Diagnostics | Propose config/weight tuning from journal-like outcomes; **human approves** any change | **✅ APPROVED 2026-07-23** — closes Phase 10 |
 
 *Note:* M10.4 quality depends on having outcomes to analyze. If journal persistence (R2) is thin, M10.4 may be **propose-only over run ledger + injected outcomes**, or R2 may be authorized first — owner chooses at authorization time.
 

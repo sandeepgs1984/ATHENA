@@ -17,6 +17,7 @@ from athena import BLUEPRINT_VERSION, __version__
 from athena.calendar.engine import CalendarEngine
 from athena.config.loader import (
     load_config,
+    load_diagnostics_config,
     load_ingestion_config,
     load_notifications_config,
     load_scheduling_config,
@@ -26,6 +27,7 @@ from athena.data.ingestion import LiveIngestionEngine, build_ingest_validator
 from athena.data.providers import FileProvider
 from athena.data.store import SqliteRepository
 from athena.data.validation import QuarantineRegistry
+from athena.diagnostics import PlaybookDiagnosticsService
 from athena.domain.enums import HealthStatus, RunTrigger
 from athena.errors import AthenaError
 from athena.notifications import BriefingDispatcher
@@ -230,6 +232,42 @@ def _cmd_brief(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_diagnose(args: argparse.Namespace) -> int:
+    """Playbook diagnostics — propose-only config tuning suggestions (M10.4)."""
+    config_dir = _config_dir()
+    base = load_config(config_dir)
+    diag_cfg = load_diagnostics_config(config_dir)
+    tz = ZoneInfo(base.market.timezone)
+    as_of = _parse_as_of(args.as_of, tz)
+
+    # --dry-run is accepted for CLI symmetry; diagnostics never apply config.
+    _ = args.dry_run
+
+    with _open_repo(base) as repo:
+        service = PlaybookDiagnosticsService(
+            repo,
+            diag_cfg,
+            tzinfo=tz,
+            config_dir=config_dir,
+            repo_root=_repo_root(),
+        )
+        report, json_path, text_path = service.run(as_of=as_of)
+
+    print(f"diagnostics     : {report.report_id}")
+    print(f"status          : {report.status.value}")
+    print(f"findings        : {len(report.findings)}")
+    print(
+        f"proposals       : {sum(1 for p in report.proposals if not p.blocked)} actionable / "
+        f"{sum(1 for p in report.proposals if p.blocked)} blocked"
+    )
+    if report.degradation_reasons:
+        print(f"degraded        : {', '.join(report.degradation_reasons)}")
+    print(f"wrote           : {json_path}")
+    print(f"                : {text_path}")
+    print("note            : proposals are NEVER auto-applied — human review required")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="athena",
@@ -289,6 +327,18 @@ def main(argv: list[str] | None = None) -> int:
         help="Write FileNotifier artifacts only (no webhook/email)",
     )
     p_brief.set_defaults(func=_cmd_brief)
+
+    p_diagnose = sub.add_parser(
+        "diagnose",
+        help="Playbook diagnostics: propose config tuning (never auto-apply) (M10.4)",
+    )
+    p_diagnose.add_argument("--as-of", help="ISO timestamp (defaults to now)")
+    p_diagnose.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Accepted for symmetry; diagnostics never mutate config",
+    )
+    p_diagnose.set_defaults(func=_cmd_diagnose)
 
     args = parser.parse_args(argv)
     try:

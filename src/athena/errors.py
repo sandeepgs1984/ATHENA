@@ -84,6 +84,10 @@ class BriefingError(AthenaError):
     """Daily briefing assembly or dispatch failure. Policy: fail loudly."""
 
 
+class DiagnosticsError(AthenaError):
+    """Playbook diagnostics failure. Policy: fail loudly; never mute config."""
+
+
 class DashboardError(AthenaError):
     """Invalid dashboard generation request or section aggregation failure. Policy: fail loudly."""
 

@@ -6,9 +6,27 @@ status updated on approval.
 
 ---
 
-## Phase 10 -- Live Dry-Run Operations & AI Playbook Learning (AUTHORIZED — M10.3 APPROVED)
+## Phase 10 -- Live Dry-Run Operations & AI Playbook Learning (COMPLETE — owner closed 2026-07-23)
 
-Phase outcome: authorized 2026-07-23. M10.1–M10.3 owner-approved; M10.4 not started. Broker binding (DD-1) deferred. No order-placement code.
+Phase outcome: M10.1–M10.4 owner-approved. FileProvider-backed dry-run ops, briefings, and propose-only playbook diagnostics delivered. Broker binding (DD-1) deferred. No order-placement code. Next: production-readiness tracks R1–R6 in `docs/PRODUCTION_READINESS_ROADMAP.md` (unauthorized until gated).
+
+### M10.4 -- AI Playbook Diagnostics
+
+| | |
+|---|---|
+| Completed | 2026-07-23 |
+| Scope | Rules-based playbook diagnostics over run ledger + injectable decisions/journal; TuningProposal artifacts only; `athena diagnose`; never auto-applies config. |
+| Tests | 870 passed / 0 failed (11 new diagnostics tests) |
+| Status | **APPROVED** — Owner approved 2026-07-23; closes M10.4 and Phase 10 |
+| Branch | develop |
+
+Implemented propose-only diagnostics (no LLM; no R2 journal schema; no config mutation).
+- `PlaybookDiagnosticsAnalyzer`: ops failure rate, insufficient-data share, gate concentration, adherence → threshold/weight proposals with `min_sample_size` gate (`blocked=True` when under-sampled).
+- Paired scoring weight proposals keep sum-100 invariant in the proposed snapshot.
+- `PlaybookDiagnosticsService` + `DiagnosticReportWriter` → `artifacts/diagnostics/diag-<date>.{json,txt}`.
+- CLI: `athena diagnose [--as-of] [--dry-run]` (dry-run accepted; apply path does not exist).
+
+Files created: `config/diagnostics.json`, `src/athena/diagnostics/{__init__.py,models.py,analyzer.py,writer.py,service.py}`, `tests/runtime/test_diagnostics.py`. Files modified: `src/athena/config/{models.py,loader.py,__init__.py}`, `src/athena/errors.py`, `src/athena/cli.py`, `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md`. Public APIs: `DiagnosticReport`, `TuningProposal`, `PlaybookDiagnosticsService`, `load_diagnostics_config`, `athena diagnose`. No ADR; human approval required for any config change; R1–R6 still unauthorized.
 
 ### M10.3 -- Daily Briefing Notifications
 

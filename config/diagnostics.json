@@ -1,0 +1,14 @@
+{
+  "_meta": {
+    "layer": 10,
+    "description": "M10.4 playbook diagnostics — propose only; human approves any config change."
+  },
+  "enabled": true,
+  "output_dir": "artifacts/diagnostics",
+  "min_sample_size": 30,
+  "max_weight_step": 5,
+  "lookback_runs": 200,
+  "failed_run_rate_watch": 0.2,
+  "rejection_rate_actionable": 0.4,
+  "insufficient_data_share_watch": 0.3
+}

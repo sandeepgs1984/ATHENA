@@ -847,6 +847,19 @@ class NotificationsConfig(_Strict):
     max_runs_scanned: int = Field(default=200, ge=1, le=5000)
 
 
+class DiagnosticsConfig(_Strict):
+    """Playbook diagnostics settings (M10.4). Propose only — never auto-apply."""
+
+    enabled: bool = True
+    output_dir: str = "artifacts/diagnostics"
+    min_sample_size: int = Field(default=30, ge=1, le=10000)
+    max_weight_step: int = Field(default=5, ge=1, le=20)
+    lookback_runs: int = Field(default=200, ge=1, le=5000)
+    failed_run_rate_watch: float = Field(default=0.2, ge=0, le=1)
+    rejection_rate_actionable: float = Field(default=0.4, ge=0, le=1)
+    insufficient_data_share_watch: float = Field(default=0.3, ge=0, le=1)
+
+
 class PortfolioConfig(_Strict):
     """Portfolio Engine configuration (P5.1). State tracking only —
     no market analysis, no position sizing, no order placement."""

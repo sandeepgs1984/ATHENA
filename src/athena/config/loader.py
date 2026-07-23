@@ -35,6 +35,7 @@ from athena.config.models import (
     MarketHealthConfig,
     MonitoringConfig,
     NotificationsConfig,
+    DiagnosticsConfig,
     OrchestrationConfig,
     OrderPlanningConfig,
     PortfolioAnalyticsConfig,
@@ -284,6 +285,16 @@ def load_notifications_config(config_dir: Path) -> NotificationsConfig:
     path = Path(config_dir) / "notifications.json"
     try:
         return NotificationsConfig.model_validate(_read_json(path))
+    except ValidationError as exc:
+        raise ConfigError(_validation_message(str(path), exc)) from exc
+
+
+def load_diagnostics_config(config_dir: Path) -> DiagnosticsConfig:
+    """Load + validate playbook diagnostics settings (config/diagnostics.json, M10.4)."""
+
+    path = Path(config_dir) / "diagnostics.json"
+    try:
+        return DiagnosticsConfig.model_validate(_read_json(path))
     except ValidationError as exc:
         raise ConfigError(_validation_message(str(path), exc)) from exc
 
