@@ -6,7 +6,9 @@ status updated on approval.
 
 ---
 
-## Phase 9 -- Dashboard & Operations Console (in progress)
+## Phase 9 -- Dashboard & Operations Console (COMPLETE — owner closed 2026-07-23)
+
+Phase outcome: single-user workstation console delivered and approved (P9.1–P9.7), including console reliability hotfixes and Overview capital correctness. Architecture frozen; no order-placement code; Phase 10 not started.
 
 ### P9.7 -- Live Monitoring & Admin
 
@@ -15,7 +17,7 @@ status updated on approval.
 | Completed | 2026-07-23 |
 | Scope | Replace Live Operations placeholder with SSE warning stream, stage telemetry Chart.js bars, and CONFIRM-gated SQLite backup/restore admin controls. |
 | Tests | 830 passed / 0 failed (11 new ops + hosting update) |
-| Status | **PENDING REVIEW** — Ready for review and sign-off |
+| Status | **APPROVED** — closes P9.7 and Phase 9 (Owner approved) |
 | Branch | develop |
 
 Implemented Live Operations workstation APIs and UI on `#tab-operations`.
@@ -23,6 +25,7 @@ Implemented Live Operations workstation APIs and UI on `#tab-operations`.
 - Added `GET /api/v1/ops/telemetry` aggregating latest pipeline stage statuses for charts.
 - Added `GET/POST /api/v1/ops/backups` and `POST /api/v1/ops/backups/{id}/restore` reusing `create_backup` / `restore_backup`; restore requires exact token `CONFIRM`.
 - Built Operations UI: EventSource warning feed, horizontal stage telemetry chart, backup list + create/restore admin panel.
+- Clarified restore UX (CONFIRM unlocks buttons; explicit row click required; toast + last-restore feedback).
 - Paths configurable via `ATHENA_DB_PATH` / `ATHENA_BACKUP_DIR` and `app.state.ops_*` for tests; missing live DB fails loudly (503).
 
 Files created: `src/athena/api/v1/dtos/ops.py`, `src/athena/api/v1/services/ops_service.py`, `src/athena/api/v1/routers/ops.py`, `tests/api/v1/test_ops.py`. Files modified: `src/athena/api/v1/router.py`, `src/athena/api/dependencies.py`, `src/athena/api/exceptions.py`, `src/athena/api/errors.py`, `src/athena/api/v1/dtos/__init__.py`, `src/athena/api/static/{index.html,dashboard.js,dashboard.css}`, `tests/api/platform/test_dashboard_hosting.py`, `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md`. Public APIs added: ops stream/telemetry/backups/restore. No ADR; frozen contracts preserved; Phase 10 not started.

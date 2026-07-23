@@ -108,7 +108,7 @@ Exposes internal pipeline artifacts, execution records, portfolios, and reports 
 | **P8.4** Reports, Analytics & Export APIs | Generic Reports, Portfolio Analytics snapshots, and file format exports | ✅ Approved |
 | **P8.5** API Platform Completion | Versioning, metadata endpoints, request context middleware, audit logger, and OpenAPI audit | ✅ Approved |
 
-## Phase 9 — Dashboard & Operations Console (AUTHORIZED)
+## Phase 9 — Dashboard & Operations Console (COMPLETE)
 
 Builds the visual workstation dashboard console for a single-user Swing/Intraday trading platform.
 
@@ -120,15 +120,13 @@ Builds the visual workstation dashboard console for a single-user Swing/Intraday
 | **P9.4** Market & Universe Dashboard | Trading calendar session grid, Volatility regime badges, Universe inclusion traces | ✅ Approved |
 | **P9.5** Strategy & Backtest Workspace | Strategy profiles matrix, Backtest performance metrics & drawdown charts | ✅ Approved |
 | **P9.6** Decision Trace DAG Viewer | Briefing documents browser, interactive Decision Trace React Flow DAG viewer | ✅ Approved |
-| **P9.7** Live Monitoring & Admin | SSE live warning streams, stage telemetry bar charts, manual DB backup/restore controls | 🔄 Ready for Review |
+| **P9.7** Live Monitoring & Admin | SSE live warning streams, stage telemetry bar charts, manual DB backup/restore controls | ✅ Approved |
 
-**Console hotfix (2026-07-23):** inactive modals no longer leak into tab document flow; Market/Strategies/Decisions loaders clear failure states instead of stuck "Loading..."; Live Operations shows an explicit P9.7 placeholder (no fake loader). See `IMPLEMENTATION_SUMMARY.md` Phase 9 hotfix entry.
+**Phase 9 closed (2026-07-23):** owner approved P9.7; console hotfixes and Overview correctness patches remain recorded in `IMPLEMENTATION_SUMMARY.md`.
 
-**Overview correctness patch (2026-07-23):** dashboard summary now returns `exposure_by_sector` + `day_change_pct`; Overview donut/day-% no longer use placeholders. See `IMPLEMENTATION_SUMMARY.md` Phase 9 correctness patch.
+## Phase 10 — Live Dry-Run Operations & AI Playbook Learning (PLANNED — not authorized)
 
-## Phase 10 — Live Dry-Run Operations & AI Playbook Learning (PLANNED)
-
-Establishes live scheduled paper-trading operations, real-time market data ingestion, daily trace briefings, and automated playbook diagnostics.
+Establishes live scheduled paper-trading operations, real-time market data ingestion, daily trace briefings, and automated playbook diagnostics. **No implementation until owner authorizes after design review.**
 
 | Milestone | Scope | Status |
 |---|---|---|
