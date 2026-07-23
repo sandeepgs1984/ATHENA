@@ -1765,9 +1765,38 @@ body {
     max-width: 220px;
 }
 
+.ops-restore-gate-status {
+    font-size: 0.8rem;
+    margin: 0;
+    font-weight: 500;
+}
+
+.ops-restore-gate-status.locked {
+    color: var(--text-muted);
+}
+
+.ops-restore-gate-status.unlocked {
+    color: var(--success);
+}
+
+.ops-restore-btn {
+    border-color: rgba(244, 63, 94, 0.45) !important;
+    color: #fda4af !important;
+}
+
+.ops-restore-btn:not(:disabled) {
+    background: rgba(244, 63, 94, 0.12);
+    box-shadow: 0 0 0 1px rgba(244, 63, 94, 0.25);
+}
+
 .ops-restore-btn:disabled {
-    opacity: 0.4;
+    opacity: 0.35;
     cursor: not-allowed;
+    box-shadow: none;
+}
+
+.ops-last-restore:empty {
+    display: none;
 }
 
 @media (max-width: 1100px) {

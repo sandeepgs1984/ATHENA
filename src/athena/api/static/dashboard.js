@@ -1541,6 +1541,28 @@ document.addEventListener("DOMContentLoaded", () => {
     const opsCreateBackupBtn = document.getElementById("ops-create-backup-btn");
     const opsRefreshBackupsBtn = document.getElementById("ops-refresh-backups-btn");
     const opsRestoreConfirm = document.getElementById("ops-restore-confirm");
+    const opsRestoreGateStatus = document.getElementById("ops-restore-gate-status");
+    const opsLastRestore = document.getElementById("ops-last-restore");
+
+    function isRestoreConfirmUnlocked() {
+        return !!(opsRestoreConfirm && opsRestoreConfirm.value.trim() === "CONFIRM");
+    }
+
+    function updateRestoreGateStatus() {
+        const unlocked = isRestoreConfirmUnlocked();
+        if (opsRestoreGateStatus) {
+            opsRestoreGateStatus.className = `ops-restore-gate-status ${unlocked ? "unlocked" : "locked"}`;
+            opsRestoreGateStatus.textContent = unlocked
+                ? "Restore unlocked — click Restore on a backup row above."
+                : "Restore locked — buttons stay disabled until CONFIRM matches exactly.";
+        }
+        document.querySelectorAll(".ops-restore-btn").forEach(btn => {
+            btn.disabled = !unlocked;
+            btn.title = unlocked
+                ? "Overwrite live database from this backup"
+                : "Type CONFIRM below to unlock";
+        });
+    }
 
     async function loadOperationsWorkspace() {
         await Promise.all([
@@ -1736,10 +1758,11 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!opsBackupsBody) return;
         if (!backups.length) {
             opsBackupsBody.innerHTML = '<tr><td colspan="4" class="text-muted text-center" style="padding: 24px;">No backups found.</td></tr>';
+            updateRestoreGateStatus();
             return;
         }
 
-        const confirmOk = opsRestoreConfirm && opsRestoreConfirm.value === "CONFIRM";
+        const confirmOk = isRestoreConfirmUnlocked();
         opsBackupsBody.innerHTML = "";
         backups.forEach(b => {
             const row = document.createElement("tr");
@@ -1752,46 +1775,51 @@ document.addEventListener("DOMContentLoaded", () => {
                 <td>${modified}</td>
                 <td>${sizeKb} KB</td>
                 <td>
-                    <button class="btn btn-sm btn-outline ops-restore-btn" data-id="${b.backup_id}" ${confirmOk ? "" : "disabled"}>
+                    <button class="btn btn-sm btn-outline ops-restore-btn" type="button" data-id="${b.backup_id}" ${confirmOk ? "" : "disabled"}>
                         Restore
                     </button>
                 </td>
             `;
             const btn = row.querySelector(".ops-restore-btn");
-            btn.addEventListener("click", () => restoreOpsBackup(b.backup_id));
+            btn.addEventListener("click", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                restoreOpsBackup(b.backup_id);
+            });
             opsBackupsBody.appendChild(row);
         });
-    }
-
-    function refreshRestoreButtonState() {
-        const confirmOk = opsRestoreConfirm && opsRestoreConfirm.value === "CONFIRM";
-        document.querySelectorAll(".ops-restore-btn").forEach(btn => {
-            btn.disabled = !confirmOk;
-        });
+        updateRestoreGateStatus();
     }
 
     async function restoreOpsBackup(backupId) {
-        if (!opsRestoreConfirm || opsRestoreConfirm.value !== "CONFIRM") {
-            showToast("Type CONFIRM before restoring", "warning");
+        if (!isRestoreConfirmUnlocked()) {
+            showToast("Type CONFIRM exactly, then click Restore on a backup row", "warning");
             return;
         }
         try {
+            showToast(`Restoring ${backupId}…`, "info");
             const res = await apiRequest(`/api/v1/ops/backups/${encodeURIComponent(backupId)}/restore`, {
                 method: "POST",
                 body: JSON.stringify({ confirmation: "CONFIRM" }),
             });
             if (res && res.status === "success") {
                 const ok = res.data.ok;
-                showToast(
-                    ok ? `Restored from ${backupId}` : `Restore completed with issues: ${(res.data.issues || []).join("; ") || "see details"}`,
-                    ok ? "success" : "warning"
-                );
+                const counts = res.data.record_counts || {};
+                const total = Object.values(counts).reduce((a, b) => a + Number(b || 0), 0);
+                const detail = ok
+                    ? `Restored ${backupId} → live DB (${total} records). Identical empty backups can look unchanged.`
+                    : `Restore finished with issues: ${(res.data.issues || []).join("; ") || "see details"}`;
+                showToast(detail, ok ? "success" : "warning");
+                if (opsLastRestore) {
+                    opsLastRestore.textContent = `${new Date().toLocaleTimeString("en-IN")} — ${detail}`;
+                }
                 opsRestoreConfirm.value = "";
-                refreshRestoreButtonState();
+                updateRestoreGateStatus();
                 await loadOpsBackups();
             }
         } catch (err) {
             console.error("Restore failed", err);
+            showToast("Restore failed — check toast/network details", "danger");
         }
     }
 
@@ -1822,8 +1850,11 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         if (opsRestoreConfirm) {
-            opsRestoreConfirm.addEventListener("input", refreshRestoreButtonState);
+            opsRestoreConfirm.addEventListener("input", updateRestoreGateStatus);
+            opsRestoreConfirm.addEventListener("keyup", updateRestoreGateStatus);
+            opsRestoreConfirm.addEventListener("change", updateRestoreGateStatus);
         }
+        updateRestoreGateStatus();
     }
 
     // Escape closes any open modal
