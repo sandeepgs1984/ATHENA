@@ -8,6 +8,27 @@ status updated on approval.
 
 ## Phase 9 -- Dashboard & Operations Console (in progress)
 
+### Hotfix -- Console modal leak & loader failure UX (2026-07-23)
+
+| | |
+|---|---|
+| Completed | 2026-07-23 |
+| Scope | Repair workstation console defects observed in live screenshots: inactive modals leaking into page flow, silent loader failures leaving permanent "Loading..." states, and a fake Live Operations loader ahead of P9.7. |
+| Tests | 819 passed / 0 failed (hosting suite extended +1) |
+| Status | **READY FOR OWNER VERIFY** — not a new milestone; hardening of P9.1–P9.6 console |
+| Branch | develop |
+
+Root cause: `.modal-overlay` previously used `display: flex` while inactive (opacity-only hide), so trace/backtest modal chrome rendered inside the document flow across every tab. Concurrently, auth/env startup gaps caused API failures; strategies/decisions loaders swallowed errors and never cleared placeholder text.
+- Moved trace and backtest modals outside `#app`, marked `hidden` + `aria-hidden` at rest, and forced inactive overlays to `display: none !important`.
+- Added `openModal` / `closeModal` / Escape-to-dismiss helpers; cache-busted static assets to `?v=9.6.2`.
+- Hardened Market / Strategies / Decisions loaders to always replace Loading placeholders on empty, error, or missing context (with nested `final_context` fallback).
+- Replaced Live Operations fake loader with an explicit P9.7 placeholder (milestone not started — no speculative ops UI).
+- Extended `tests/api/platform/test_dashboard_hosting.py` to lock modal inertness and placeholder contracts.
+
+Files modified: `src/athena/api/static/index.html`, `src/athena/api/static/dashboard.css`, `src/athena/api/static/dashboard.js`, `tests/api/platform/test_dashboard_hosting.py`, `IMPLEMENTATION_SUMMARY.md`.
+
+---
+
 ### P9.6 -- Decision Trace DAG Viewer
 
 | | |

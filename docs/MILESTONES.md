@@ -122,6 +122,8 @@ Builds the visual workstation dashboard console for a single-user Swing/Intraday
 | **P9.6** Decision Trace DAG Viewer | Briefing documents browser, interactive Decision Trace React Flow DAG viewer | 🔄 Ready for Review |
 | **P9.7** Live Monitoring & Admin | SSE live warning streams, stage telemetry bar charts, manual DB backup/restore controls | ❌ Not started |
 
+**Console hotfix (2026-07-23):** inactive modals no longer leak into tab document flow; Market/Strategies/Decisions loaders clear failure states instead of stuck "Loading..."; Live Operations shows an explicit P9.7 placeholder (no fake loader). See `IMPLEMENTATION_SUMMARY.md` Phase 9 hotfix entry.
+
 ## Phase 10 — Live Dry-Run Operations & AI Playbook Learning (PLANNED)
 
 Establishes live scheduled paper-trading operations, real-time market data ingestion, daily trace briefings, and automated playbook diagnostics.

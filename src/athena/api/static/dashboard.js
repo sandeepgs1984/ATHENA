@@ -152,7 +152,16 @@ document.addEventListener("DOMContentLoaded", () => {
             return await response.json();
         } catch (error) {
             console.error(`API request failed: ${url}`, error);
-            showToast(error.data?.detail || "Network request failed", "danger");
+            const detail = error?.data?.detail;
+            let message = "Network request failed";
+            if (typeof detail === "string") {
+                message = detail;
+            } else if (detail && typeof detail === "object" && detail.title) {
+                message = detail.title;
+            } else if (error?.status) {
+                message = `Request failed (${error.status})`;
+            }
+            showToast(message, "danger");
             throw error;
         }
     }
@@ -189,15 +198,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
     async function loadTabData(tabId) {
         if (tabId === "overview") {
-            loadPortfolioData();
+            await loadPortfolioData();
         } else if (tabId === "market") {
-            loadMarketIntelligence();
+            await loadMarketIntelligence();
         } else if (tabId === "strategies") {
-            loadStrategiesWorkspace();
+            await loadStrategiesWorkspace();
         } else if (tabId === "decisions") {
-            loadDecisionsWorkspace();
+            await loadDecisionsWorkspace();
         }
-        // Placeholders for future milestones (strategies, decisions, operations)
+        // operations: intentional P9.7 placeholder — no loader yet
     }
 
     async function loadPortfolioData() {
@@ -496,7 +505,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
             if (runsRes && runsRes.data && runsRes.data.length > 0) {
                 const latestRun = runsRes.data[0];
-                const data = latestRun.final_context ? latestRun.final_context.data : {};
+                // Prefer top-level final_context; fall back to nested pipeline run context
+                const ctx =
+                    latestRun.final_context ||
+                    (latestRun.pipeline_runs && latestRun.pipeline_runs[0]
+                        ? latestRun.pipeline_runs[0].final_context
+                        : null);
+                const data = ctx && ctx.data ? ctx.data : {};
                 
                 regime = data.regime_assessment || null;
                 universe = data.universe_members || {};
@@ -511,7 +526,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const healthValue = document.getElementById("market-health-value");
             const evidenceText = document.getElementById("regime-evidence-text");
 
-            if (regime) {
+            if (regime && trendBadge && volBadge && gapBadge && healthBar && healthValue && evidenceText) {
                 // Trend Class badge
                 const trendStr = (regime.trend || "NEUTRAL").replace("_TREND", "");
                 trendBadge.textContent = trendStr;
@@ -535,7 +550,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
                 // Explanation
                 evidenceText.textContent = regime.explanation || "No attribution summary available.";
-            } else {
+            } else if (trendBadge && volBadge && gapBadge && healthBar && healthValue && evidenceText) {
                 trendBadge.textContent = "UNKNOWN";
                 trendBadge.className = "regime-badge neutral";
                 volBadge.textContent = "UNKNOWN";
@@ -558,6 +573,19 @@ document.addEventListener("DOMContentLoaded", () => {
             renderUniverseTable(universe);
 
         } catch (err) {
+            console.error("Failed to load market intelligence data", err);
+            const trendBadge = document.getElementById("regime-trend-badge");
+            const volBadge = document.getElementById("regime-vol-badge");
+            const gapBadge = document.getElementById("regime-gap-badge");
+            const evidenceText = document.getElementById("regime-evidence-text");
+            const universeBody = document.getElementById("universe-list-body");
+            if (trendBadge) trendBadge.textContent = "ERROR";
+            if (volBadge) volBadge.textContent = "ERROR";
+            if (gapBadge) gapBadge.textContent = "ERROR";
+            if (evidenceText) evidenceText.textContent = "Market intelligence failed to load. Use refresh to retry.";
+            if (universeBody) {
+                universeBody.innerHTML = `<tr><td colspan="3" class="text-muted text-center" style="padding: 24px;">Failed to load universe members.</td></tr>`;
+            }
             showToast("Failed to load market intelligence data", "danger");
         }
     }
@@ -599,10 +627,10 @@ document.addEventListener("DOMContentLoaded", () => {
         const totalDays = new Date(displayYear, displayMonth + 1, 0).getDate();
 
         // Create mapping sets for fast lookups
-        const holidaysMap = new Map(calData.holidays.map(h => [h.date, h.name]));
-        const specialMap = new Map(calData.special_sessions.map(s => [s.date, s]));
-        const weeklyExpiries = new Set(calData.weekly_expiries);
-        const monthlyExpiries = new Set(calData.monthly_expiries);
+        const holidaysMap = new Map((calData.holidays || []).map(h => [h.date, h.name]));
+        const specialMap = new Map((calData.special_sessions || []).map(s => [s.date, s]));
+        const weeklyExpiries = new Set(calData.weekly_expiries || []);
+        const monthlyExpiries = new Set(calData.monthly_expiries || []);
 
         // Inject empty offset cells
         for (let i = 0; i < startOffset; i++) {
@@ -682,19 +710,19 @@ document.addEventListener("DOMContentLoaded", () => {
         const allEvents = [];
 
         // Aggregate weekly expiries
-        calData.weekly_expiries.forEach(date => {
+        (calData.weekly_expiries || []).forEach(date => {
             allEvents.push({ date, kind: "weekly_expiry", name: "Weekly F&O Expiry", tagClass: "expiry-tag", tagText: "weekly exp" });
         });
         // Aggregate monthly expiries
-        calData.monthly_expiries.forEach(date => {
+        (calData.monthly_expiries || []).forEach(date => {
             allEvents.push({ date, kind: "monthly_expiry", name: "Monthly F&O Expiry", tagClass: "expiry-tag", tagText: "monthly exp" });
         });
         // Aggregate holidays
-        calData.holidays.forEach(h => {
+        (calData.holidays || []).forEach(h => {
             allEvents.push({ date: h.date, kind: "holiday", name: h.name, tagClass: "holiday-tag", tagText: "holiday" });
         });
         // Aggregate events
-        calData.events.forEach(e => {
+        (calData.events || []).forEach(e => {
             allEvents.push({ date: e.date, kind: e.kind, name: e.name, tagClass: "macro", tagText: e.kind });
         });
 
@@ -792,11 +820,30 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    // Modal drawer triggers
+    // Modal drawer helpers — keep inactive overlays fully out of layout
     const traceModal = document.getElementById("trace-modal");
     const traceModalClose = document.getElementById("trace-modal-close");
     const traceModalTitle = document.getElementById("trace-modal-title");
     const traceModalBody = document.getElementById("trace-modal-body");
+
+    function openModal(modalEl) {
+        if (!modalEl) return;
+        modalEl.hidden = false;
+        modalEl.setAttribute("aria-hidden", "false");
+        modalEl.classList.add("active");
+    }
+
+    function closeModal(modalEl) {
+        if (!modalEl) return;
+        modalEl.classList.remove("active");
+        modalEl.hidden = true;
+        modalEl.setAttribute("aria-hidden", "true");
+    }
+
+    function closeAllModals() {
+        closeModal(traceModal);
+        closeModal(document.getElementById("backtest-modal"));
+    }
 
     window.openTraceModal = function(symbol) {
         const member = universeCache[symbol];
@@ -834,17 +881,17 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         traceModalBody.appendChild(traceList);
-        traceModal.classList.add("active");
+        openModal(traceModal);
     };
 
     if (traceModalClose) {
         traceModalClose.addEventListener("click", () => {
-            traceModal.classList.remove("active");
+            closeModal(traceModal);
         });
     }
     window.addEventListener("click", (e) => {
         if (e.target === traceModal) {
-            traceModal.classList.remove("active");
+            closeModal(traceModal);
         }
     });
 
@@ -864,17 +911,24 @@ document.addEventListener("DOMContentLoaded", () => {
             // 1. Fetch strategy profiles
             const strategiesRes = await apiRequest("/api/v1/strategies/profiles");
             if (strategiesRes && strategiesRes.status === "success") {
-                renderStrategyProfiles(strategiesRes.data);
+                renderStrategyProfiles(strategiesRes.data || []);
             }
 
             // 2. Fetch backtest runs
             const backtestsRes = await apiRequest("/api/v1/backtests/runs");
             if (backtestsRes && backtestsRes.status === "success") {
-                renderBacktestRuns(backtestsRes.data);
-                renderBacktestComparisonChart(backtestsRes.data);
+                renderBacktestRuns(backtestsRes.data || []);
+                renderBacktestComparisonChart(backtestsRes.data || []);
             }
         } catch (err) {
             console.error("Failed to load strategies workspace", err);
+            if (strategyProfilesContainer) {
+                strategyProfilesContainer.innerHTML = '<div class="text-muted text-center" style="padding: 24px;">Failed to load strategy profiles. Use refresh to retry.</div>';
+            }
+            if (backtestListBody) {
+                backtestListBody.innerHTML = '<tr><td colspan="4" class="text-muted text-center" style="padding: 24px;">Failed to load backtest runs.</td></tr>';
+            }
+            showToast("Failed to load strategies workspace", "danger");
         }
     }
 
@@ -1130,21 +1184,22 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
             }
 
-            backtestModal.classList.add("active");
+            openModal(backtestModal);
         } catch (err) {
             console.error("Failed to open backtest modal", err);
+            showToast("Failed to open backtest run details", "danger");
         }
     }
 
     if (backtestModalClose) {
         backtestModalClose.addEventListener("click", () => {
-            backtestModal.classList.remove("active");
+            closeModal(backtestModal);
         });
     }
     
     window.addEventListener("click", (e) => {
         if (e.target === backtestModal) {
-            backtestModal.classList.remove("active");
+            closeModal(backtestModal);
         }
     });
 
@@ -1168,7 +1223,7 @@ document.addEventListener("DOMContentLoaded", () => {
         try {
             const res = await apiRequest("/api/v1/decisions");
             if (res && res.status === "success") {
-                traceDecisionsList = res.data;
+                traceDecisionsList = res.data || [];
                 renderBriefingList(traceDecisionsList);
                 
                 // Select first decision by default if available
@@ -1182,6 +1237,13 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         } catch (err) {
             console.error("Failed to load decisions", err);
+            if (briefingListContainer) {
+                briefingListContainer.innerHTML = '<div class="text-muted text-center" style="padding: 24px;">Failed to load decisions. Use refresh to retry.</div>';
+            }
+            if (dagNodesContainer) {
+                dagNodesContainer.innerHTML = '<div class="text-muted text-center" style="padding: 48px;">Decision trace unavailable until briefings load.</div>';
+            }
+            showToast("Failed to load decisions workspace", "danger");
         }
     }
 
@@ -1211,7 +1273,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     <span class="briefing-symbol">${symbol}${dir}</span>
                     <span class="badge text-primary" style="font-size: 0.65rem; border: 1px solid rgba(56, 189, 248, 0.2);">${type}</span>
                 </div>
-                <p class="briefing-desc">${d.explanation.substring(0, 80)}...</p>
+                <p class="briefing-desc">${(d.explanation || "No explanation recorded").substring(0, 80)}...</p>
                 <div class="briefing-date">${dateStr}</div>
             `;
 
@@ -1409,8 +1471,8 @@ document.addEventListener("DOMContentLoaded", () => {
             const query = e.target.value.toLowerCase();
             const filtered = traceDecisionsList.filter(d => {
                 const symbol = (d.metadata.instrument_id || "INDEX").toLowerCase();
-                const type = d.metadata.decision_type.toLowerCase();
-                const exp = d.explanation.toLowerCase();
+                const type = (d.metadata.decision_type || "").toLowerCase();
+                const exp = (d.explanation || "").toLowerCase();
                 return symbol.includes(query) || type.includes(query) || exp.includes(query);
             });
             renderBriefingList(filtered);
@@ -1424,7 +1486,15 @@ document.addEventListener("DOMContentLoaded", () => {
         showToast("Workstation workspace refreshed", "success");
     });
 
+    // Escape closes any open modal
+    window.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+            closeAllModals();
+        }
+    });
+
     // Initialize Startup Flows
+    closeAllModals();
     initializeRoute();
     checkSystemHealth();
 });

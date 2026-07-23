@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.6.2">
 </head>
 <body>
     <div id="app">
@@ -311,19 +311,6 @@
                     </div>
                 </div>
 
-                <!-- Trace Evidence Detail Drawer/Modal -->
-                <div id="trace-modal" class="modal-overlay">
-                    <div class="modal-container">
-                        <div class="modal-header">
-                            <h3 id="trace-modal-title">SBI Universe Inclusion Trace</h3>
-                            <button id="trace-modal-close" class="modal-close-btn">&times;</button>
-                        </div>
-                        <div class="modal-body" id="trace-modal-body">
-                            <!-- Trace logs will be dynamically built here -->
-                        </div>
-                    </div>
-                </div>
-
                 <!-- Strategies & Backtests Tab -->
                 <div id="tab-strategies" class="tab-pane">
                     <div class="strategies-workstation">
@@ -374,34 +361,6 @@
                                         <div class="chart-container" style="position: relative; height: 180px; width: 100%;">
                                             <canvas id="backtest-comparison-chart"></canvas>
                                         </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Backtest Details Modal Drawer -->
-                <div id="backtest-modal" class="modal-overlay">
-                    <div class="modal-container backtest-modal-container">
-                        <div class="modal-header">
-                            <h3 id="backtest-modal-title">Backtest Run Details</h3>
-                            <button id="backtest-modal-close" class="modal-close-btn">&times;</button>
-                        </div>
-                        <div class="modal-body backtest-modal-body">
-                            <div class="backtest-modal-grid">
-                                <!-- Left side: Chronological step list -->
-                                <div class="backtest-steps-timeline">
-                                    <h4>Replay Date Chronology</h4>
-                                    <div id="backtest-steps-container" class="steps-timeline-list">
-                                        <!-- Chronological step list will be injected here -->
-                                    </div>
-                                </div>
-                                <!-- Right side: Strategy performance results -->
-                                <div class="backtest-strategy-metrics">
-                                    <h4>Strategy Match Performance</h4>
-                                    <div id="backtest-performance-container" class="performance-bars-list">
-                                        <!-- Strategy performance bars injected here -->
                                     </div>
                                 </div>
                             </div>
@@ -465,12 +424,17 @@
                     </div>
                 </div>
 
-                <!-- Live Operations Tab (Placeholder for M8) -->
+                <!-- Live Operations Tab (P9.7 — not started) -->
                 <div id="tab-operations" class="tab-pane">
                     <div class="card">
-                        <div class="card-body">
+                        <div class="card-body operations-placeholder">
+                            <div class="card-title-icon"><i class="fas fa-terminal"></i></div>
                             <h2>Live Operations Console</h2>
-                            <p class="text-muted">Loading platform telemetry, logs, and triggers...</p>
+                            <p class="text-muted">
+                                SSE telemetry, stage monitoring charts, and backup/restore controls
+                                ship in milestone <strong>P9.7</strong>. This tab is intentionally idle
+                                until that milestone is authorized.
+                            </p>
                         </div>
                     </div>
                 </div>
@@ -478,11 +442,45 @@
         </main>
     </div>
 
+    <!-- Modals live outside #app so they never participate in tab document flow -->
+    <div id="trace-modal" class="modal-overlay" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="trace-modal-title">
+        <div class="modal-container">
+            <div class="modal-header">
+                <h3 id="trace-modal-title">Universe Inclusion Trace</h3>
+                <button id="trace-modal-close" class="modal-close-btn" type="button" aria-label="Close trace modal">&times;</button>
+            </div>
+            <div class="modal-body" id="trace-modal-body">
+                <!-- Trace logs will be dynamically built here -->
+            </div>
+        </div>
+    </div>
+
+    <div id="backtest-modal" class="modal-overlay" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="backtest-modal-title">
+        <div class="modal-container backtest-modal-container">
+            <div class="modal-header">
+                <h3 id="backtest-modal-title">Backtest Run Details</h3>
+                <button id="backtest-modal-close" class="modal-close-btn" type="button" aria-label="Close backtest modal">&times;</button>
+            </div>
+            <div class="modal-body backtest-modal-body">
+                <div class="backtest-modal-grid">
+                    <div class="backtest-steps-timeline">
+                        <h4>Replay Date Chronology</h4>
+                        <div id="backtest-steps-container" class="steps-timeline-list"></div>
+                    </div>
+                    <div class="backtest-strategy-metrics">
+                        <h4>Strategy Match Performance</h4>
+                        <div id="backtest-performance-container" class="performance-bars-list"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Centralized Notification Toast Panel -->
     <div id="toast-container" class="toast-container"></div>
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js"></script>
+    <script src="/dashboard/dashboard.js?v=9.6.2"></script>
 </body>
 </html>

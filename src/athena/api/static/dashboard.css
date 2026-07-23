@@ -982,18 +982,18 @@ body {
     background-color: var(--accent-glow);
 }
 
-/* Modal Overlay & Container */
+/* Modal Overlay & Container — inactive modals must never enter layout */
 .modal-overlay {
     position: fixed;
-    top: 0;
-    left: 0;
+    inset: 0;
     width: 100vw;
     height: 100vh;
     background-color: rgba(7, 10, 19, 0.75);
     backdrop-filter: var(--glass-blur);
     -webkit-backdrop-filter: var(--glass-blur);
     z-index: 2000;
-    display: none;
+    display: none !important;
+    visibility: hidden;
     justify-content: center;
     align-items: center;
     opacity: 0;
@@ -1002,7 +1002,8 @@ body {
 }
 
 .modal-overlay.active {
-    display: flex;
+    display: flex !important;
+    visibility: visible;
     opacity: 1;
     pointer-events: auto;
 }
@@ -1635,6 +1636,31 @@ body {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
     gap: 8px;
+}
+
+.operations-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 32px;
+    min-height: 220px;
+}
+
+.operations-placeholder .card-title-icon {
+    font-size: 1.4rem;
+    color: var(--accent);
+}
+
+.operations-placeholder h2 {
+    margin: 0;
+    font-size: 1.25rem;
+}
+
+.operations-placeholder p {
+    max-width: 52rem;
+    line-height: 1.55;
+    margin: 0;
 }
 
 
