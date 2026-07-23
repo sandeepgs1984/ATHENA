@@ -124,6 +124,8 @@ Builds the visual workstation dashboard console for a single-user Swing/Intraday
 
 **Console hotfix (2026-07-23):** inactive modals no longer leak into tab document flow; Market/Strategies/Decisions loaders clear failure states instead of stuck "Loading..."; Live Operations shows an explicit P9.7 placeholder (no fake loader). See `IMPLEMENTATION_SUMMARY.md` Phase 9 hotfix entry.
 
+**Overview correctness patch (2026-07-23):** dashboard summary now returns `exposure_by_sector` + `day_change_pct`; Overview donut/day-% no longer use placeholders. See `IMPLEMENTATION_SUMMARY.md` Phase 9 correctness patch.
+
 ## Phase 10 — Live Dry-Run Operations & AI Playbook Learning (PLANNED)
 
 Establishes live scheduled paper-trading operations, real-time market data ingestion, daily trace briefings, and automated playbook diagnostics.

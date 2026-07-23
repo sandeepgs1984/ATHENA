@@ -33,6 +33,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const valCashReserved = document.getElementById("val-cash-reserved");
     const valActivePositions = document.getElementById("val-active-positions");
     const valTotalClosed = document.getElementById("val-total-closed");
+    const valDayChange = document.getElementById("val-day-change");
+    const valDayChangeText = document.getElementById("val-day-change-text");
     const poolAllocatedVal = document.getElementById("pool-allocated-val");
     const poolAllocatedBar = document.getElementById("pool-allocated-bar");
     const poolReserveVal = document.getElementById("pool-reserve-val");
@@ -237,7 +239,10 @@ document.addEventListener("DOMContentLoaded", () => {
                 poolReserveVal.textContent = `₹ ${reservedCash.toFixed(2)}`;
                 poolReserveBar.style.width = `${reservePct}%`;
 
-                // Render Sector Exposure Chart
+                // Day change from consecutive NAV snapshots (null → em dash, never fake --)
+                updateDayChange(s.day_change_pct);
+
+                // Render Sector Exposure Chart (absolute ₹ slices from summary)
                 renderSectorChart(s.exposure_by_sector || {});
             }
 
@@ -267,6 +272,7 @@ document.addEventListener("DOMContentLoaded", () => {
         valCashReserved.textContent = "₹ 0.00";
         valActivePositions.textContent = "0";
         valTotalClosed.textContent = "0";
+        updateDayChange(null);
         
         poolAllocatedVal.textContent = "₹ 0.00";
         poolAllocatedBar.style.width = "0%";
@@ -278,6 +284,30 @@ document.addEventListener("DOMContentLoaded", () => {
                 <td colspan="5" class="text-center text-muted">No active positions currently held.</td>
             </tr>
         `;
+        renderSectorChart({});
+    }
+
+    function updateDayChange(dayChangePct) {
+        if (!valDayChange || !valDayChangeText) return;
+
+        if (dayChangePct === null || dayChangePct === undefined || dayChangePct === "") {
+            valDayChange.className = "metric-change";
+            valDayChange.innerHTML = '<i class="fa-solid fa-minus"></i> <span id="val-day-change-text">— % today</span>';
+            return;
+        }
+
+        const pct = parseFloat(dayChangePct);
+        if (Number.isNaN(pct)) {
+            valDayChange.className = "metric-change";
+            valDayChange.innerHTML = '<i class="fa-solid fa-minus"></i> <span id="val-day-change-text">— % today</span>';
+            return;
+        }
+
+        const positive = pct >= 0;
+        const icon = positive ? "fa-arrow-trend-up" : "fa-arrow-trend-down";
+        const sign = positive ? "+" : "";
+        valDayChange.className = `metric-change ${positive ? "positive" : "negative"}`;
+        valDayChange.innerHTML = `<i class="fa-solid ${icon}"></i> <span id="val-day-change-text">${sign}${pct.toFixed(2)} % today</span>`;
     }
 
     function renderHoldingsTable(holdings) {
@@ -402,8 +432,8 @@ document.addEventListener("DOMContentLoaded", () => {
         const data = Object.values(exposure).map(val => parseFloat(val));
 
         if (labels.length === 0) {
-            labels.push("Cash (Unallocated)");
-            data.push(100);
+            labels.push("No exposure data");
+            data.push(1);
         }
 
         if (sectorChart) {
@@ -421,8 +451,8 @@ document.addEventListener("DOMContentLoaded", () => {
                     data: data,
                     backgroundColor: [
                         "#38bdf8",
-                        "#a855f7",
                         "#10b981",
+                        "#a855f7",
                         "#f59e0b",
                         "#ec4899",
                         "#6366f1",
@@ -447,12 +477,12 @@ document.addEventListener("DOMContentLoaded", () => {
                         backgroundColor: "#1e293b",
                         titleColor: "#94a3b8",
                         bodyColor: "#ffffff",
-                        borderColor: "#334155",
-                        borderWidth: 1,
                         callbacks: {
-                            label: function(context) {
-                                const val = context.parsed;
-                                return ` ${context.label}: ₹ ${val.toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
+                            label: (ctx) => {
+                                const value = ctx.parsed || 0;
+                                const total = ctx.dataset.data.reduce((a, b) => a + b, 0) || 1;
+                                const pct = ((value / total) * 100).toFixed(1);
+                                return ` ₹ ${value.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${pct}%)`;
                             }
                         }
                     }
@@ -932,6 +962,14 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
+    function formatStrategyName(name) {
+        return String(name || "")
+            .split("_")
+            .filter(Boolean)
+            .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+            .join(" ");
+    }
+
     function renderStrategyProfiles(profiles) {
         if (!strategyProfilesContainer) return;
         strategyProfilesContainer.innerHTML = "";
@@ -996,7 +1034,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
             card.innerHTML = `
                 <div class="strategy-profile-header">
-                    <span class="strategy-profile-title">${p.name}</span>
+                    <span class="strategy-profile-title">${formatStrategyName(p.name)}</span>
                     <span class="strategy-status-pill ${statusClass}">${statusText}</span>
                 </div>
                 <p class="strategy-profile-desc">${p.description}</p>

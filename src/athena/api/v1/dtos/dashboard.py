@@ -18,6 +18,8 @@ class DashboardSummaryDTO(BaseModel):
     cash_reserved: Decimal
     active_positions: int
     closed_positions: int
+    exposure_by_sector: dict[str, Decimal]
+    day_change_pct: Decimal | None = None
     last_scan_date: datetime | None = None
     strategies_matched: int
     regime_class: str

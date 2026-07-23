@@ -176,10 +176,13 @@ def test_list_performance_snapshots(client: TestClient) -> None:
 
     payload = response.json()
     assert payload["status"] == "success"
-    assert len(payload["data"]) >= 1
+    assert len(payload["data"]) >= 2
 
-    item = payload["data"][0]
-    assert item["snapshot_id"] == "perfsnap-sample-1"
+    by_id = {item["snapshot_id"]: item for item in payload["data"]}
+    assert "perfsnap-sample-0" in by_id
+    assert "perfsnap-sample-1" in by_id
+
+    item = by_id["perfsnap-sample-1"]
     assert "portfolio_performance" in item
     assert "summary" in item
     assert "provenance" in item

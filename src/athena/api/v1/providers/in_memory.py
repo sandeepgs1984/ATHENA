@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import contextlib
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, TypeVar
 
@@ -436,7 +436,11 @@ def seed_sample_data(
     )
     report_prov.reports.append(report)
 
-    # 5. Seed Performance Snapshot
+    # 5. Seed Performance Snapshots (prior day + current for NAV trend / day-change %)
+    prior_as_of = now - timedelta(days=1)
+    prior_value = Decimal("123500.00")
+    current_value = Decimal("125050.00")
+
     trade_perf = TradePerformance(
         trade_id="trd-sample-1",
         instrument_id="SBIN",
@@ -452,20 +456,58 @@ def seed_sample_data(
         as_of=now,
         references=PortfolioAnalyticsReferences(decision_id="dec-sample-1"),
     )
+    prior_port_perf = PortfolioPerformance(
+        as_of=prior_as_of,
+        realized_pnl=Decimal("4500.00"),
+        unrealized_pnl=Decimal("0.00"),
+        total_pnl=Decimal("4500.00"),
+        total_return_pct=Decimal("8.75"),
+        portfolio_value=prior_value,
+        peak_portfolio_value=prior_value,
+        drawdown=Decimal("0.00"),
+        drawdown_pct=Decimal("0.00"),
+        max_drawdown_pct=Decimal("0.00"),
+        gross_exposure=Decimal("75050.00"),
+        net_exposure=Decimal("75050.00"),
+        cash_utilization_pct=Decimal("60.00"),
+    )
+    prior_summary_perf = AnalyticsSummary(
+        as_of=prior_as_of,
+        total_trades=1,
+        winning_trades=1,
+        losing_trades=0,
+        win_rate_pct=Decimal("100.0"),
+        avg_gain=Decimal("4500.00"),
+        avg_loss=Decimal("0.00"),
+        win_loss_ratio=Decimal("1.0"),
+        avg_holding_period_days=5.0,
+        max_drawdown_pct=Decimal("0.00"),
+    )
+    analytics_prov.snapshots.append(
+        PerformanceSnapshot(
+            snapshot_id="perfsnap-sample-0",
+            as_of=prior_as_of,
+            portfolio_performance=prior_port_perf,
+            trade_performances=(),
+            summary=prior_summary_perf,
+            references=PortfolioAnalyticsReferences(portfolio_snapshot_id="ws-sample-1"),
+        )
+    )
+
     port_perf = PortfolioPerformance(
         as_of=now,
         realized_pnl=Decimal("5000.00"),
         unrealized_pnl=Decimal("0.00"),
         total_pnl=Decimal("5000.00"),
         total_return_pct=Decimal("10.0"),
-        portfolio_value=Decimal("55000.00"),
-        peak_portfolio_value=Decimal("55000.00"),
+        portfolio_value=current_value,
+        peak_portfolio_value=current_value,
         drawdown=Decimal("0.00"),
         drawdown_pct=Decimal("0.00"),
         max_drawdown_pct=Decimal("0.00"),
-        gross_exposure=Decimal("0.00"),
-        net_exposure=Decimal("0.00"),
-        cash_utilization_pct=Decimal("0.00"),
+        gross_exposure=Decimal("75050.00"),
+        net_exposure=Decimal("75050.00"),
+        cash_utilization_pct=Decimal("60.04"),
     )
     summary_perf = AnalyticsSummary(
         as_of=now,
@@ -594,7 +636,6 @@ def seed_sample_data(
     pipeline_prov.runs.append(sys_run)
 
     # 8. Seed Backtest Run
-    from datetime import date, timedelta
     first_date = now.date() - timedelta(days=10)
     last_date = now.date()
 

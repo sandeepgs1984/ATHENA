@@ -15,7 +15,7 @@ status updated on approval.
 | Completed | 2026-07-23 |
 | Scope | Repair workstation console defects observed in live screenshots: inactive modals leaking into page flow, silent loader failures leaving permanent "Loading..." states, and a fake Live Operations loader ahead of P9.7. |
 | Tests | 819 passed / 0 failed (hosting suite extended +1) |
-| Status | **READY FOR OWNER VERIFY** — not a new milestone; hardening of P9.1–P9.6 console |
+| Status | **OWNER VERIFIED** — not a new milestone; hardening of P9.1–P9.6 console |
 | Branch | develop |
 
 Root cause: `.modal-overlay` previously used `display: flex` while inactive (opacity-only hide), so trace/backtest modal chrome rendered inside the document flow across every tab. Concurrently, auth/env startup gaps caused API failures; strategies/decisions loaders swallowed errors and never cleared placeholder text.
@@ -26,6 +26,26 @@ Root cause: `.modal-overlay` previously used `display: flex` while inactive (opa
 - Extended `tests/api/platform/test_dashboard_hosting.py` to lock modal inertness and placeholder contracts.
 
 Files modified: `src/athena/api/static/index.html`, `src/athena/api/static/dashboard.css`, `src/athena/api/static/dashboard.js`, `tests/api/platform/test_dashboard_hosting.py`, `IMPLEMENTATION_SUMMARY.md`.
+
+---
+
+### Correctness patch -- Overview exposure & day-change (2026-07-23)
+
+| | |
+|---|---|
+| Completed | 2026-07-23 |
+| Scope | Fix capital-screen correctness: sector donut was 100% fake cash because summary omitted `exposure_by_sector`; day-% was a hardcoded HTML placeholder. |
+| Tests | 819 passed / 0 failed |
+| Status | **READY FOR OWNER VERIFY** |
+| Branch | develop |
+
+- Extended `DashboardSummaryDTO` with `exposure_by_sector` and `day_change_pct`.
+- `DashboardService` now maps portfolio sector exposure + cash into absolute ₹ slices and computes day-change from the two most recent NAV snapshots.
+- Seeded prior-day + current NAV snapshots aligned to live portfolio value (₹1,25,050) so Overview chart and % are deterministic.
+- Wired Overview UI for day-change (+/− classes) and sector tooltips; title-cased strategy profile names.
+- Updated summary + analytics list tests; cache-bust `?v=9.6.3`.
+
+Files modified: `src/athena/api/v1/dtos/dashboard.py`, `src/athena/api/v1/services/dashboard_service.py`, `src/athena/api/dependencies.py`, `src/athena/api/v1/providers/in_memory.py`, `src/athena/api/static/{index.html,dashboard.js}`, `tests/api/platform/test_dashboard_summary.py`, `tests/api/v1/test_reports_analytics_export.py`, `IMPLEMENTATION_SUMMARY.md`, `docs/MILESTONES.md`.
 
 ---
 

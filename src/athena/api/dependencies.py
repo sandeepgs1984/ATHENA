@@ -228,7 +228,10 @@ def get_dashboard_service(request: Request) -> DashboardService:
         request.app.state, "pipeline_run_provider", _pipeline_run_provider
     )
     health_prov = getattr(request.app.state, "health_provider", _health_provider)
-    return DashboardService(port_prov, pipe_prov, health_prov)
+    analytics_prov = getattr(
+        request.app.state, "analytics_provider", _analytics_provider
+    )
+    return DashboardService(port_prov, pipe_prov, health_prov, analytics_prov)
 
 
 def get_backtest_run_provider() -> BacktestRunProvider:

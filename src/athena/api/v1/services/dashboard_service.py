@@ -4,11 +4,16 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, timezone
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from athena.api.v1.dtos.base import PaginationParams, QuerySpecification, SortParams
+from athena.api.v1.dtos.analytics import EmptyFilterParams
+from athena.api.v1.dtos.base import (
+    PaginationParams,
+    QuerySpecification,
+    SortParams,
+)
 from athena.api.v1.dtos.dashboard import (
     CalendarDataDTO,
     CalendarEventDTO,
@@ -22,9 +27,14 @@ from athena.config.loader import load_calendar_files
 if TYPE_CHECKING:
     from athena.api.v1.providers.base import (
         HealthProvider,
+        PerformanceAnalyticsProvider,
         PipelineRunProvider,
         PortfolioProvider,
     )
+
+_ZERO = Decimal("0.00")
+_HUNDRED = Decimal("100")
+_PCT_QUANTUM = Decimal("0.01")
 
 
 class DashboardService:
@@ -35,10 +45,12 @@ class DashboardService:
         portfolio_provider: PortfolioProvider,
         pipeline_run_provider: PipelineRunProvider,
         health_provider: HealthProvider,
+        analytics_provider: PerformanceAnalyticsProvider | None = None,
     ) -> None:
         self._portfolio_provider = portfolio_provider
         self._pipeline_run_provider = pipeline_run_provider
         self._health_provider = health_provider
+        self._analytics_provider = analytics_provider
 
     def _resolve_config_dir(self) -> Path:
         env_dir = os.environ.get("ATHENA_CONFIG_DIR")
@@ -87,6 +99,49 @@ class DashboardService:
             events=events,
         )
 
+    def _build_exposure_map(
+        self,
+        *,
+        sector_exposure: dict[str, Decimal],
+        cash_available: Decimal,
+    ) -> dict[str, Decimal]:
+        """Compose absolute ₹ exposure slices (sectors + cash) for the console donut."""
+        exposure: dict[str, Decimal] = {
+            str(sector): Decimal(str(amount))
+            for sector, amount in sector_exposure.items()
+            if Decimal(str(amount)) > _ZERO
+        }
+        if cash_available > _ZERO:
+            exposure["Cash"] = cash_available
+        return exposure
+
+    def _compute_day_change_pct(self) -> Decimal | None:
+        """Percent change between the two most recent NAV snapshots, if available."""
+        if self._analytics_provider is None:
+            return None
+        try:
+            spec = QuerySpecification(
+                filters=EmptyFilterParams(),
+                sort=SortParams(sort_by="as_of", sort_dir="desc"),
+                pagination=PaginationParams(page=1, page_size=50),
+            )
+            result = self._analytics_provider.get_snapshots(spec)
+            items = list(result.items)
+        except Exception:
+            return None
+
+        if len(items) < 2:
+            return None
+
+        ordered = sorted(items, key=lambda snap: snap.as_of)
+        previous = ordered[-2].portfolio_performance.portfolio_value
+        latest = ordered[-1].portfolio_performance.portfolio_value
+        if previous <= _ZERO:
+            return None
+
+        change = ((latest - previous) / previous) * _HUNDRED
+        return change.quantize(_PCT_QUANTUM, rounding=ROUND_HALF_UP)
+
     def get_summary(self) -> DashboardSummaryDTO:
         """Retrieves and aggregates key workstation metrics."""
         # 1. Fetch Health Status
@@ -99,15 +154,17 @@ class DashboardService:
             health_status = "DEGRADED"
 
         # 2. Fetch Portfolio stats
-        portfolio_value = Decimal("0.00")
-        cash_available = Decimal("0.00")
-        cash_reserved = Decimal("0.00")
+        portfolio_value = _ZERO
+        cash_available = _ZERO
+        cash_reserved = _ZERO
         active_positions = 0
         closed_positions = 0
+        sector_exposure: dict[str, Decimal] = {}
 
         p = self._portfolio_provider.get_portfolio()
         if p:
             cash_available = p.cash
+            sector_exposure = dict(p.exposure_by_sector or {})
             # Determine reserved cash and exposures from positions/exposures
             active_positions = len([pos for pos in p.positions if not pos.closed_ts])
             closed_positions = len([pos for pos in p.positions if pos.closed_ts])
@@ -118,6 +175,12 @@ class DashboardService:
                 if not pos.closed_ts:
                     portfolio_value += pos.quantity * pos.avg_price
 
+        exposure_by_sector = self._build_exposure_map(
+            sector_exposure=sector_exposure,
+            cash_available=cash_available,
+        )
+        day_change_pct = self._compute_day_change_pct()
+
         # 3. Fetch Pipeline runs details
         last_scan_date = None
         strategies_matched = 0
@@ -127,7 +190,7 @@ class DashboardService:
             # Query last run
             spec = QuerySpecification(
                 filters=PipelineRunFilterParams(),
-                sort=SortParams(field="as_of", direction="desc"),
+                sort=SortParams(sort_by="as_of", sort_dir="desc"),
                 pagination=PaginationParams(page=1, page_size=1),
             )
             runs = self._pipeline_run_provider.get_runs(spec)
@@ -156,6 +219,8 @@ class DashboardService:
             cash_reserved=cash_reserved,
             active_positions=active_positions,
             closed_positions=closed_positions,
+            exposure_by_sector=exposure_by_sector,
+            day_change_pct=day_change_pct,
             last_scan_date=last_scan_date,
             strategies_matched=strategies_matched,
             regime_class=regime_class,
