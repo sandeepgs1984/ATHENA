@@ -810,6 +810,43 @@ class SchedulingConfig(_Strict):
     refresh: RefreshScheduleConfig = Field(default_factory=RefreshScheduleConfig)
 
 
+class FileNotifierConfig(_Strict):
+    enabled: bool = True
+    output_dir: str = "artifacts/briefings"
+
+
+class WebhookNotifierConfig(_Strict):
+    enabled: bool = False
+    timeout_seconds: int = Field(default=10, ge=1, le=120)
+
+
+class EmailNotifierConfig(_Strict):
+    """SMTP settings only — credentials stay in ``.env`` (never JSON)."""
+
+    enabled: bool = False
+    smtp_host: str = ""
+    smtp_port: int = Field(default=587, ge=1, le=65535)
+    use_tls: bool = True
+    from_addr: str = ""
+    to_addrs: list[str] = Field(default_factory=list)
+
+
+class NotificationChannelsConfig(_Strict):
+    file: FileNotifierConfig = Field(default_factory=FileNotifierConfig)
+    webhook: WebhookNotifierConfig = Field(default_factory=WebhookNotifierConfig)
+    email: EmailNotifierConfig = Field(default_factory=EmailNotifierConfig)
+
+
+class NotificationsConfig(_Strict):
+    """Daily briefing dispatch settings (M10.3). Secrets never live here."""
+
+    enabled: bool = True
+    channels: NotificationChannelsConfig = Field(default_factory=NotificationChannelsConfig)
+    require_runs: bool = True
+    degrade_without_decisions: bool = True
+    max_runs_scanned: int = Field(default=200, ge=1, le=5000)
+
+
 class PortfolioConfig(_Strict):
     """Portfolio Engine configuration (P5.1). State tracking only —
     no market analysis, no position sizing, no order placement."""

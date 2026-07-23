@@ -80,6 +80,10 @@ class ReportingError(AthenaError):
     """Invalid report generation request or template failure. Policy: fail loudly."""
 
 
+class BriefingError(AthenaError):
+    """Daily briefing assembly or dispatch failure. Policy: fail loudly."""
+
+
 class DashboardError(AthenaError):
     """Invalid dashboard generation request or section aggregation failure. Policy: fail loudly."""
 

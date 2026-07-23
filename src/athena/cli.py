@@ -18,6 +18,7 @@ from athena.calendar.engine import CalendarEngine
 from athena.config.loader import (
     load_config,
     load_ingestion_config,
+    load_notifications_config,
     load_scheduling_config,
     load_validation_config,
 )
@@ -27,6 +28,7 @@ from athena.data.store import SqliteRepository
 from athena.data.validation import QuarantineRegistry
 from athena.domain.enums import HealthStatus, RunTrigger
 from athena.errors import AthenaError
+from athena.notifications import BriefingDispatcher
 from athena.observability.health import run_system_checks
 from athena.scheduling import DryRunCycleOrchestrator, due_triggers
 
@@ -199,6 +201,35 @@ def _cmd_cycle(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_brief(args: argparse.Namespace) -> int:
+    """Assemble and dispatch the daily briefing (M10.3)."""
+    config_dir = _config_dir()
+    base = load_config(config_dir)
+    notify_cfg = load_notifications_config(config_dir)
+    tz = ZoneInfo(base.market.timezone)
+    as_of = _parse_as_of(args.as_of, tz)
+
+    with _open_repo(base) as repo:
+        dispatcher = BriefingDispatcher(
+            repo,
+            notify_cfg,
+            tzinfo=tz,
+            repo_root=_repo_root(),
+        )
+        result = dispatcher.dispatch(as_of=as_of, dry_run=bool(args.dry_run))
+
+    print(f"briefing        : {result.briefing.briefing_id}")
+    print(f"status          : {result.briefing.status.value}")
+    print(f"runs            : {len(result.briefing.runs)}")
+    print(f"decisions       : {len(result.briefing.decisions)}")
+    if result.briefing.degradation_reasons:
+        print(f"degraded        : {', '.join(result.briefing.degradation_reasons)}")
+    for receipt in result.receipts:
+        mark = "ok" if receipt.ok else "fail"
+        print(f"notify[{mark}]     : {receipt.channel} — {receipt.detail}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="athena",
@@ -246,6 +277,18 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_cycle.add_argument("--as-of", help="ISO timestamp (defaults to now)")
     p_cycle.set_defaults(func=_cmd_cycle)
+
+    p_brief = sub.add_parser(
+        "brief",
+        help="Assemble and dispatch the daily briefing from the run ledger (M10.3)",
+    )
+    p_brief.add_argument("--as-of", help="ISO timestamp (defaults to now)")
+    p_brief.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Write FileNotifier artifacts only (no webhook/email)",
+    )
+    p_brief.set_defaults(func=_cmd_brief)
 
     args = parser.parse_args(argv)
     try:

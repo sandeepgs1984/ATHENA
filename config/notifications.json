@@ -1,0 +1,28 @@
+{
+  "_meta": {
+    "layer": 10,
+    "description": "M10.3 daily briefing dispatch. Secrets (webhook URL, SMTP credentials) stay in .env only."
+  },
+  "enabled": true,
+  "channels": {
+    "file": {
+      "enabled": true,
+      "output_dir": "artifacts/briefings"
+    },
+    "webhook": {
+      "enabled": false,
+      "timeout_seconds": 10
+    },
+    "email": {
+      "enabled": false,
+      "smtp_host": "",
+      "smtp_port": 587,
+      "use_tls": true,
+      "from_addr": "",
+      "to_addrs": []
+    }
+  },
+  "require_runs": true,
+  "degrade_without_decisions": true,
+  "max_runs_scanned": 200
+}

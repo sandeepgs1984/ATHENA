@@ -6,9 +6,27 @@ status updated on approval.
 
 ---
 
-## Phase 10 -- Live Dry-Run Operations & AI Playbook Learning (AUTHORIZED — M10.2 APPROVED)
+## Phase 10 -- Live Dry-Run Operations & AI Playbook Learning (AUTHORIZED — M10.3 APPROVED)
 
-Phase outcome: authorized 2026-07-23. M10.1–M10.2 owner-approved; M10.3–M10.4 not started. Broker binding (DD-1) deferred; FileProvider drives live ingest until chosen. No order-placement code.
+Phase outcome: authorized 2026-07-23. M10.1–M10.3 owner-approved; M10.4 not started. Broker binding (DD-1) deferred. No order-placement code.
+
+### M10.3 -- Daily Briefing Notifications
+
+| | |
+|---|---|
+| Completed | 2026-07-23 |
+| Scope | Assemble immutable DailyBriefing from SQLite run ledger (+ optional injected decisions); dispatch via FileNotifier / optional WebhookNotifier; CLI `athena brief`. |
+| Tests | 859 passed / 0 failed (8 new briefing tests) |
+| Status | **APPROVED** — Owner approved 2026-07-23 |
+| Branch | develop |
+
+Implemented assemble→notify path (no decision-pipeline rebuild; no P8.9 alert center).
+- `DailyBriefingBuilder`: runs for `as_of.date()` from ledger; missing runs → `BriefingError`; no decisions → `DEGRADED` with explicit reason; failed runs degrade.
+- Notifiers: `FileNotifier` (JSON+txt), `WebhookNotifier` (`ATHENA_WEBHOOK_URL` from `.env`), `EmailNotifier` refuses loudly if enabled (SMTP deferred).
+- `BriefingDispatcher` + config `notifications.json`; `--dry-run` forces file-only delivery.
+- CLI: `athena brief [--as-of] [--dry-run]`.
+
+Files created: `config/notifications.json`, `src/athena/notifications/{__init__.py,models.py,builder.py,notifiers.py,dispatch.py}`, `tests/runtime/test_daily_briefing.py`. Files modified: `src/athena/config/{models.py,loader.py,__init__.py}`, `src/athena/errors.py`, `src/athena/cli.py`, `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md`. Public APIs: `DailyBriefing`, `BriefingDispatcher`, notifiers, `load_notifications_config`, `athena brief`. No ADR; secrets stay in `.env`; M10.4 AI deferred.
 
 ### M10.2 -- Scheduled Dry-Run Operations
 

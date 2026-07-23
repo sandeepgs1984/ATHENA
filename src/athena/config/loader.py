@@ -34,6 +34,7 @@ from athena.config.models import (
     IngestionConfig,
     MarketHealthConfig,
     MonitoringConfig,
+    NotificationsConfig,
     OrchestrationConfig,
     OrderPlanningConfig,
     PortfolioAnalyticsConfig,
@@ -273,6 +274,16 @@ def load_scheduling_config(config_dir: Path) -> SchedulingConfig:
     path = Path(config_dir) / "scheduling.json"
     try:
         return SchedulingConfig.model_validate(_read_json(path))
+    except ValidationError as exc:
+        raise ConfigError(_validation_message(str(path), exc)) from exc
+
+
+def load_notifications_config(config_dir: Path) -> NotificationsConfig:
+    """Load + validate daily briefing settings (config/notifications.json, M10.3)."""
+
+    path = Path(config_dir) / "notifications.json"
+    try:
+        return NotificationsConfig.model_validate(_read_json(path))
     except ValidationError as exc:
         raise ConfigError(_validation_message(str(path), exc)) from exc
 
