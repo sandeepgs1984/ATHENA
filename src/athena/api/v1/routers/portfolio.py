@@ -10,7 +10,12 @@ from athena.api.dependencies import get_portfolio_service
 from athena.api.security import Permission, RequirePermission
 from athena.api.security.models import AuthenticatedPrincipal
 from athena.api.v1.dtos import AthenaResponse, PortfolioDTO, ResponseMeta
-from athena.api.v1.dtos.portfolio import ClosePositionRequest, OpenPositionRequest
+from athena.api.v1.dtos.portfolio import (
+    ClosePositionRequest,
+    OpenPositionRequest,
+    ResetPositionsRequest,
+    ResetPositionsResultDTO,
+)
 from athena.api.v1.services.portfolio_service import PortfolioService
 
 router = APIRouter(prefix="/portfolio", tags=["Portfolio"])
@@ -73,6 +78,31 @@ def open_position(
     return AthenaResponse(
         status="success",
         data=portfolio_data,
+        meta=_meta(request),
+    )
+
+
+@router.post(
+    "/positions/reset",
+    response_model=AthenaResponse[ResetPositionsResultDTO],
+    summary="Reset owner fill ledger (CONFIRM-gated)",
+    status_code=status.HTTP_200_OK,
+    operation_id="resetPortfolioPositions",
+)
+def reset_positions(
+    body: ResetPositionsRequest,
+    request: Request,
+    service: PortfolioService = Depends(get_portfolio_service),  # noqa: B008
+    principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.ADMIN)),  # noqa: B008
+) -> AthenaResponse[ResetPositionsResultDTO]:
+    """Delete open or all owner-entered fills after typed CONFIRM. Does not touch decisions/journal."""
+    result = service.reset_positions(
+        confirmation=body.confirmation,
+        scope=body.scope,
+    )
+    return AthenaResponse(
+        status="success",
+        data=result,
         meta=_meta(request),
     )
 

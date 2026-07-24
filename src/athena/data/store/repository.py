@@ -113,7 +113,7 @@ class SqliteRepository:
         tables = ("instruments", "candles", "quotes", "market_snapshots",
                   "corporate_actions", "quarantine_records", "runs",
                   "decisions", "decision_traces", "decision_journal",
-                  "owner_positions")
+                  "owner_positions", "owner_candidates")
         try:
             with self._lock:
                 return {
@@ -498,6 +498,83 @@ class SqliteRepository:
             (limit,),
         )
         return [ser.row_to_owner_position(r) for r in rows]
+
+    def delete_owner_positions(self, *, scope: str) -> int:
+        """Delete owner fills. scope: 'open' (closed_ts IS NULL) or 'all'."""
+        if scope not in ("open", "all"):
+            raise RepositoryError(f"invalid owner position reset scope: {scope}")
+        try:
+            with self._lock:
+                if scope == "open":
+                    cur = self._conn.execute(
+                        "DELETE FROM owner_positions WHERE closed_ts IS NULL"
+                    )
+                else:
+                    cur = self._conn.execute("DELETE FROM owner_positions")
+                self._conn.commit()
+                return int(cur.rowcount)
+        except sqlite3.Error as exc:
+            raise RepositoryError(f"delete owner positions failed: {exc}") from exc
+
+    # ------------------------------------------------------------- owner candidates (validation list)
+
+    def upsert_owner_candidate(
+        self,
+        *,
+        symbol: str,
+        added_ts: datetime,
+        notes: str = "",
+        active: bool = True,
+    ) -> None:
+        self._write(
+            "INSERT INTO owner_candidates (symbol, added_ts, notes, active) VALUES (?,?,?,?) "
+            "ON CONFLICT(symbol) DO UPDATE SET "
+            "added_ts=excluded.added_ts, notes=excluded.notes, active=excluded.active",
+            (symbol, added_ts.isoformat(), notes or "", 1 if active else 0),
+        )
+
+    def delete_owner_candidate(self, symbol: str) -> bool:
+        try:
+            with self._lock:
+                cur = self._conn.execute(
+                    "DELETE FROM owner_candidates WHERE symbol=?", (symbol,)
+                )
+                self._conn.commit()
+                return int(cur.rowcount) > 0
+        except sqlite3.Error as exc:
+            raise RepositoryError(f"delete owner candidate failed: {exc}") from exc
+
+    def list_owner_candidates(self, *, active_only: bool = True) -> list[tuple[str, datetime, str, bool]]:
+        if active_only:
+            rows = self._query_all(
+                "SELECT symbol, added_ts, notes, active FROM owner_candidates "
+                "WHERE active=1 ORDER BY symbol"
+            )
+        else:
+            rows = self._query_all(
+                "SELECT symbol, added_ts, notes, active FROM owner_candidates ORDER BY symbol"
+            )
+        return [
+            (r[0], datetime.fromisoformat(r[1]), r[2] or "", bool(r[3]))
+            for r in rows
+        ]
+
+    def list_candles_recent(
+        self,
+        instrument_id: str,
+        timeframe: Timeframe,
+        *,
+        limit: int = 500,
+    ) -> list[Candle]:
+        rows = self._query_all(
+            "SELECT instrument_id, timeframe, ts_open, open, high, low, close, volume, source, "
+            "adjusted FROM candles WHERE instrument_id=? AND timeframe=? "
+            "ORDER BY ts_open DESC LIMIT ?",
+            (instrument_id, timeframe.value, limit),
+        )
+        candles = [ser.row_to_candle(r) for r in rows]
+        candles.reverse()
+        return candles
 
     # ------------------------------------------------------------- integrity
 

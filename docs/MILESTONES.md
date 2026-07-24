@@ -147,6 +147,15 @@ Establishes live scheduled paper-trading operations, real-time market data inges
 
 SOP: [`docs/ops/FILE_BACKED_DAILY_OPS.md`](ops/FILE_BACKED_DAILY_OPS.md) · Smoke: `./scripts/smoke_file_backed_day.sh`
 
+### Dashboard ops extensions (post Phase 9/10)
+
+| Milestone | Scope | Status |
+|---|---|---|
+| **D-P1** Portfolio reset | Reset open \| all owner fills with ADMIN + CONFIRM | 🔄 Ready for review |
+| **D-V1** Owner candidate list | SQLite `owner_candidates` + MI CRUD, shared with CLI | 🔄 Ready for review |
+| **D-V2** Eligibility in cycle | UniverseEngine on candidates → real Eligible/Excluded | 🔄 Ready for review |
+| **D-V3** Qualify WATCH/TRADE | Scan eligible → persist decisions; MI qualified-today | 🔄 Ready for review |
+
 ---
 
 *Status legend: a milestone is "In Progress" (🔄) when actively being designed or built, "Approved" (✅) only when the owner signs off. Never two milestones in flight.*

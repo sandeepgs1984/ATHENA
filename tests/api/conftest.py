@@ -31,4 +31,9 @@ def client(api_settings: APISettings) -> TestClient:
     app.state.decision_provider = get_decision_provider()
     app.state.portfolio_provider = get_portfolio_provider()
     app.state.pipeline_run_provider = get_pipeline_run_provider()
+    from athena.api.dependencies import get_candidate_store
+
+    store = get_candidate_store()
+    store.clear()
+    app.state.candidate_store = store
     return TestClient(app, raise_server_exceptions=False)

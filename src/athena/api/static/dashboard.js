@@ -424,6 +424,48 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
+    const portfolioResetConfirm = document.getElementById("portfolio-reset-confirm");
+    const portfolioResetGateStatus = document.getElementById("portfolio-reset-gate-status");
+    function syncPortfolioResetGate() {
+        const unlocked = portfolioResetConfirm && portfolioResetConfirm.value === "CONFIRM";
+        if (portfolioResetGateStatus) {
+            portfolioResetGateStatus.textContent = unlocked
+                ? "Reset unlocked — choose Reset open or Reset all."
+                : "Reset locked until CONFIRM matches exactly.";
+            portfolioResetGateStatus.className = `ops-restore-gate-status ${unlocked ? "unlocked" : "locked"}`;
+        }
+        document.querySelectorAll(".portfolio-reset-btn").forEach(btn => {
+            btn.disabled = !unlocked;
+        });
+    }
+    if (portfolioResetConfirm) {
+        portfolioResetConfirm.addEventListener("input", syncPortfolioResetGate);
+        syncPortfolioResetGate();
+    }
+    document.querySelectorAll(".portfolio-reset-btn").forEach(btn => {
+        btn.addEventListener("click", async () => {
+            const scope = btn.getAttribute("data-scope");
+            if (!scope || !portfolioResetConfirm || portfolioResetConfirm.value !== "CONFIRM") return;
+            const label = scope === "all" ? "ALL fills (open + closed)" : "open fills only";
+            if (!window.confirm(`Reset ${label}? A backup will be created first.`)) return;
+            try {
+                const res = await apiRequest("/api/v1/portfolio/positions/reset", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ confirmation: "CONFIRM", scope }),
+                });
+                const n = res && res.data ? res.data.deleted_count : 0;
+                showToast(`Reset ${scope}: deleted ${n} fill(s)`, "success");
+                portfolioResetConfirm.value = "";
+                syncPortfolioResetGate();
+                await loadPortfolioData();
+            } catch (err) {
+                console.error(err);
+                showToast("Portfolio reset failed", "danger");
+            }
+        });
+    });
+
     function renderNavChart(snapshots) {
         if (!navChartCtx) return;
 
@@ -612,10 +654,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
     async function loadMarketIntelligence() {
         try {
+            await loadCandidateList();
+
             // 1. Fetch Volatility Regime and Universe from the latest Pipeline run
             const runsRes = await apiRequest("/api/v1/pipelines/runs").catch(() => null);
             let regime = null;
             let universe = {};
+            let qualified = [];
+            let universeNote = null;
 
             if (runsRes && runsRes.data && runsRes.data.length > 0) {
                 const latestRun = runsRes.data[0];
@@ -629,6 +675,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 
                 regime = data.regime_assessment || null;
                 universe = data.universe_members || {};
+                qualified = data.qualified_today || [];
+                universeNote = data.universe_note || null;
                 universeCache = universe; // Store in cache for modal inspects
             }
 
@@ -683,8 +731,9 @@ document.addEventListener("DOMContentLoaded", () => {
                 renderUpcomingEvents(calRes.data);
             }
 
-            // 4. Render Universe list table
-            renderUniverseTable(universe);
+            // 4. Render Universe list table + qualified layer
+            renderUniverseTable(universe, universeNote);
+            renderQualifiedToday(qualified);
 
         } catch (err) {
             console.error("Failed to load market intelligence data", err);
@@ -877,7 +926,7 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    function renderUniverseTable(universeMembers) {
+    function renderUniverseTable(universeMembers, universeNote) {
         const tbody = document.getElementById("universe-list-body");
         if (!tbody) return;
 
@@ -886,11 +935,13 @@ document.addEventListener("DOMContentLoaded", () => {
         const symbols = Object.keys(universeMembers);
 
         if (symbols.length === 0) {
+            const note = universeNote
+                ? universeNote
+                : "No eligibility results yet. Add symbols above, then run <code>athena cycle</code> / <code>./athena-run-due</code>.";
             tbody.innerHTML = `
                 <tr>
                     <td colspan="3" class="text-muted text-center" style="padding: 24px;">
-                        No universe members yet. Run <code>athena cycle</code> / <code>./athena-run-due</code>,
-                        or set symbols in <code>config/providers/kite.json</code>.
+                        ${note}
                     </td>
                 </tr>
             `;
@@ -916,6 +967,112 @@ document.addEventListener("DOMContentLoaded", () => {
                 </td>
             `;
             tbody.appendChild(tr);
+        });
+    }
+
+    function renderQualifiedToday(qualified) {
+        const body = document.getElementById("qualified-today-body");
+        if (!body) return;
+        const rows = Array.isArray(qualified) ? qualified : [];
+        if (rows.length === 0) {
+            body.className = "text-muted text-center";
+            body.style.padding = "12px 0";
+            body.innerHTML = "No WATCH/TRADE names for the latest validation day.";
+            return;
+        }
+        body.className = "";
+        body.style.padding = "0";
+        body.innerHTML = `
+            <table class="universe-table">
+                <thead>
+                    <tr><th>Symbol</th><th>Decision</th><th>Notes</th></tr>
+                </thead>
+                <tbody>
+                    ${rows.map(r => `
+                        <tr>
+                            <td class="symbol-name-col">${r.symbol || r.instrument_id || ""}</td>
+                            <td><span class="symbol-status-badge included">${r.decision_type || ""}</span></td>
+                            <td class="text-muted" style="font-size: 0.8rem;">${(r.explanation || "").slice(0, 120)}</td>
+                        </tr>
+                    `).join("")}
+                </tbody>
+            </table>
+        `;
+    }
+
+    async function loadCandidateList() {
+        const listEl = document.getElementById("candidate-list");
+        const emptyEl = document.getElementById("candidate-list-empty");
+        if (!listEl) return;
+        try {
+            const res = await apiRequest("/api/v1/market/candidates");
+            const rows = (res && res.data && res.data.candidates) ? res.data.candidates : [];
+            listEl.innerHTML = "";
+            if (rows.length === 0) {
+                if (emptyEl) emptyEl.style.display = "block";
+                return;
+            }
+            if (emptyEl) emptyEl.style.display = "none";
+            rows.forEach(c => {
+                const li = document.createElement("li");
+                li.style.cssText = "display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border-color, #333);";
+                li.innerHTML = `
+                    <span class="symbol-name-col">${c.symbol}</span>
+                    <button type="button" class="inspect-btn candidate-remove-btn" data-symbol="${c.symbol}">
+                        <i class="fas fa-times"></i> Remove
+                    </button>
+                `;
+                listEl.appendChild(li);
+            });
+            listEl.querySelectorAll(".candidate-remove-btn").forEach(btn => {
+                btn.addEventListener("click", async () => {
+                    const sym = btn.getAttribute("data-symbol");
+                    try {
+                        await apiRequest(`/api/v1/market/candidates/${encodeURIComponent(sym)}`, { method: "DELETE" });
+                        showToast(`Removed ${sym}`, "success");
+                        await loadCandidateList();
+                    } catch (err) {
+                        showToast(`Failed to remove ${sym}`, "danger");
+                    }
+                });
+            });
+        } catch (err) {
+            console.error("Failed to load candidates", err);
+            if (emptyEl) {
+                emptyEl.style.display = "block";
+                emptyEl.textContent = "Failed to load validation list.";
+            }
+        }
+    }
+
+    const candidateAddBtn = document.getElementById("candidate-add-btn");
+    const candidateInput = document.getElementById("candidate-symbol-input");
+    if (candidateAddBtn && candidateInput) {
+        const addCandidate = async () => {
+            const symbol = (candidateInput.value || "").trim();
+            if (!symbol) {
+                showToast("Enter a symbol", "danger");
+                return;
+            }
+            try {
+                await apiRequest("/api/v1/market/candidates", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ symbol }),
+                });
+                candidateInput.value = "";
+                showToast(`Added ${symbol.toUpperCase()}`, "success");
+                await loadCandidateList();
+            } catch (err) {
+                showToast("Failed to add symbol", "danger");
+            }
+        };
+        candidateAddBtn.addEventListener("click", addCandidate);
+        candidateInput.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") {
+                e.preventDefault();
+                addCandidate();
+            }
         });
     }
 

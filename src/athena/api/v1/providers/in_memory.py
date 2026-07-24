@@ -239,6 +239,38 @@ class InMemoryPortfolioProvider:
         )
         return found
 
+    def reset_positions(self, *, scope: str) -> int:
+        if scope not in ("open", "all"):
+            raise ValueError(f"invalid reset scope: {scope}")
+        if self.portfolio is None:
+            return 0
+        if scope == "all":
+            n = len(self.portfolio.positions)
+            self.portfolio = Portfolio(
+                ts=datetime.now(tz=timezone.utc),
+                positions=(),
+                cash=self.starting_cash,
+                exposure_by_sector={},
+            )
+            return n
+        kept = [p for p in self.portfolio.positions if p.closed_ts is not None]
+        removed = len(self.portfolio.positions) - len(kept)
+        # Recalculate cash: starting + closed P&L only
+        cash = self.starting_cash
+        for pos in kept:
+            cost = Decimal(pos.quantity) * pos.avg_price
+            exit_raw = pos.meta.get("exit_price")
+            if exit_raw is not None:
+                cash = cash - cost + (Decimal(pos.quantity) * Decimal(str(exit_raw)))
+        exposure: dict[str, Decimal] = {}
+        self.portfolio = Portfolio(
+            ts=datetime.now(tz=timezone.utc),
+            positions=tuple(kept),
+            cash=cash,
+            exposure_by_sector=exposure,
+        )
+        return removed
+
 
 class InMemoryPipelineRunProvider:
     """In-memory provider for Pipeline runs."""

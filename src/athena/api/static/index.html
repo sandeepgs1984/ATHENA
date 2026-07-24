@@ -171,6 +171,16 @@
                                         Log fills you placed on Kite/Groww after ATHENA suggestions. ATHENA never places orders.
                                     </p>
                                 </form>
+                                <div class="ops-restore-gate portfolio-reset-gate" style="margin-top: 16px;">
+                                    <label for="portfolio-reset-confirm">Reset fills — type <strong>CONFIRM</strong> to unlock</label>
+                                    <input id="portfolio-reset-confirm" type="text" autocomplete="off" spellcheck="false" placeholder="CONFIRM" />
+                                    <p id="portfolio-reset-gate-status" class="ops-restore-gate-status locked">Reset locked until CONFIRM matches exactly.</p>
+                                    <div style="display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap;">
+                                        <button type="button" class="inspect-btn portfolio-reset-btn" id="portfolio-reset-open" disabled data-scope="open">Reset open</button>
+                                        <button type="button" class="inspect-btn portfolio-reset-btn" id="portfolio-reset-all" disabled data-scope="all">Reset all</button>
+                                    </div>
+                                    <p class="metric-desc" style="margin-top: 8px;">Does not delete decisions, journal, or runs. Creates a DB backup before wipe.</p>
+                                </div>
                                 <div id="portfolio-holdings-list" class="table-container" style="margin-top: 16px;">
                                     <table class="data-table">
                                         <thead>
@@ -320,13 +330,32 @@
                         <div class="workstation-column">
                             <div class="card">
                                 <div class="card-header">
-                                    <div class="card-title-icon"><i class="fas fa-user-shield"></i></div>
-                                    <h3>Universe Inclusion Trace</h3>
+                                    <div class="card-title-icon"><i class="fas fa-list"></i></div>
+                                    <h3>Validation Stock List</h3>
                                 </div>
-                                <div class="card-body universe-inspector-body">
+                                <div class="card-body">
+                                    <p class="text-muted" style="font-size: 0.85rem; margin-bottom: 12px;">
+                                        Symbols you validate daily. Shared with <code>athena cycle</code> / <code>./athena-run-due</code>.
+                                    </p>
+                                    <div class="candidate-add-row" style="display: flex; gap: 8px; margin-bottom: 12px;">
+                                        <input type="text" id="candidate-symbol-input" placeholder="Symbol (e.g. INFY)" style="flex: 1;" />
+                                        <button type="button" id="candidate-add-btn" class="inspect-btn">
+                                            <i class="fas fa-plus"></i> Add
+                                        </button>
+                                    </div>
+                                    <div id="candidate-list-empty" class="text-muted text-center" style="padding: 8px 0; font-size: 0.85rem; display: none;">
+                                        Add symbols to validate.
+                                    </div>
+                                    <ul id="candidate-list" class="candidate-list" style="list-style: none; padding: 0; margin: 0 0 16px 0;"></ul>
+
+                                    <div class="card-header" style="padding: 0; margin-bottom: 8px;">
+                                        <div class="card-title-icon"><i class="fas fa-user-shield"></i></div>
+                                        <h3 style="font-size: 1rem;">Universe Inclusion Trace</h3>
+                                    </div>
+                                    <div class="universe-inspector-body">
                                     <div class="search-bar-container">
                                         <i class="fas fa-search search-icon"></i>
-                                        <input type="text" id="universe-search" placeholder="Filter by symbol or sector..." />
+                                        <input type="text" id="universe-search" placeholder="Filter by symbol..." />
                                     </div>
                                     <div class="universe-table-wrapper">
                                         <table class="universe-table">
@@ -343,6 +372,20 @@
                                                 </tr>
                                             </tbody>
                                         </table>
+                                    </div>
+                                    </div>
+
+                                    <div style="margin-top: 16px;">
+                                        <div class="card-header" style="padding: 0; margin-bottom: 8px;">
+                                            <div class="card-title-icon"><i class="fas fa-star"></i></div>
+                                            <h3 style="font-size: 1rem;">Qualified Today</h3>
+                                        </div>
+                                        <p class="text-muted" style="font-size: 0.8rem; margin-bottom: 8px;">
+                                            Eligible names scored WATCH or TRADE for the latest cycle day.
+                                        </p>
+                                        <div id="qualified-today-body" class="text-muted text-center" style="padding: 12px 0; font-size: 0.85rem;">
+                                            No qualified names yet.
+                                        </div>
                                     </div>
                                 </div>
                             </div>

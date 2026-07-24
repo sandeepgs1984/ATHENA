@@ -19,7 +19,7 @@ from athena.notifications import BriefingDispatcher
 from athena.notifications.decision_source import SqliteDecisionSummarySource
 from athena.ops.failure_alerts import FailureAlertDispatcher
 from athena.scheduling import DryRunCycleOrchestrator, due_triggers
-from athena.scheduling.dry_run import DryRunCycleResult
+from athena.scheduling.dry_run import DryRunCycleResult, DryRunPipeline
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +48,7 @@ class HostDueRunner:
         tzinfo: ZoneInfo,
         strategy_profile: str,
         alert_dispatcher: FailureAlertDispatcher | None = None,
+        pipeline: DryRunPipeline | None = None,
     ) -> None:
         self._cfg = cfg
         self._sched = sched
@@ -58,6 +59,7 @@ class HostDueRunner:
         self._repo_root = Path(repo_root)
         self._tzinfo = tzinfo
         self._strategy_profile = strategy_profile
+        self._pipeline = pipeline
         self._alerts = alert_dispatcher or FailureAlertDispatcher(
             host_ops.failure_alerts,
             repo_root=self._repo_root,
@@ -107,6 +109,7 @@ class HostDueRunner:
         orchestrator = DryRunCycleOrchestrator(
             self._ingest,
             self._repo,
+            pipeline=self._pipeline,
             strategy_profile=self._strategy_profile,
             config_snapshot_id="cfg-host-ops",
         )

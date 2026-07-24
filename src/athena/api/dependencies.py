@@ -67,8 +67,10 @@ from athena.api.v1.services.portfolio_service import PortfolioService
 from athena.api.v1.services.reports_service import ReportsService
 from athena.api.v1.services.scheduler_service import SchedulerService
 from athena.api.v1.services.strategies_service import StrategyService
+from athena.api.v1.services.candidates_service import CandidatesService
 from athena.api.v1.services.workspace_service import WorkspaceService
 from athena.data.store.repository import SqliteRepository
+from athena.ops.owner_candidates import InMemoryCandidateStore, SqliteCandidateStore
 
 # Singletons for default health/metrics providers
 _health_provider = ObservabilityHealthProvider()
@@ -85,6 +87,7 @@ _report_provider = InMemoryReportProvider()
 _analytics_provider = InMemoryPerformanceAnalyticsProvider()
 _export_provider = InMemoryExportProvider()
 _backtest_run_provider = InMemoryBacktestRunProvider()
+_candidate_store = InMemoryCandidateStore()
 
 _sqlite_repo: SqliteRepository | None = None
 
@@ -112,12 +115,14 @@ def wire_sqlite_providers(
     decision_prov = SqliteDecisionProvider(repo)
     portfolio_prov = SqlitePortfolioProvider(repo, starting_cash=starting)
     pipeline_prov = SqlitePipelineRunProvider(repo)
+    candidate_store = SqliteCandidateStore(repo)
 
     app_state.ops_db_path = path  # type: ignore[attr-defined]
     app_state.sqlite_repo = repo  # type: ignore[attr-defined]
     app_state.decision_provider = decision_prov  # type: ignore[attr-defined]
     app_state.portfolio_provider = portfolio_prov  # type: ignore[attr-defined]
     app_state.pipeline_run_provider = pipeline_prov  # type: ignore[attr-defined]
+    app_state.candidate_store = candidate_store  # type: ignore[attr-defined]
     _sqlite_repo = repo
     return repo
 
@@ -186,7 +191,20 @@ def get_portfolio_service(request: Request) -> PortfolioService:
     provider = getattr(
         request.app.state, "portfolio_provider", _portfolio_provider
     )
-    return PortfolioService(provider)
+    db_path = getattr(request.app.state, "ops_db_path", None)
+    backup_dir = getattr(request.app.state, "ops_backup_dir", None)
+    return PortfolioService(provider, db_path=db_path, backup_dir=backup_dir)
+
+
+def get_candidate_store():
+    """Module-level candidate store (tests override via app.state)."""
+    return _candidate_store
+
+
+def get_candidates_service(request: Request) -> CandidatesService:
+    """Dependency provider for CandidatesService."""
+    store = getattr(request.app.state, "candidate_store", _candidate_store)
+    return CandidatesService(store)
 
 
 def get_pipelines_service(request: Request) -> PipelinesService:

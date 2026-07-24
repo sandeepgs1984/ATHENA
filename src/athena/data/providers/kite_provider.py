@@ -88,10 +88,13 @@ class KiteProvider:
         config_dir: Path,
         *,
         transport: KiteTransport | None = None,
+        symbols: list[str] | None = None,
     ) -> KiteProvider:
         from athena.config.loader import load_kite_provider_config
 
         config = load_kite_provider_config(config_dir)
+        if symbols is not None:
+            config = config.model_copy(update={"symbols": list(symbols)})
         if transport is None:
             transport = UrllibKiteTransport(
                 base_url=config.base_url,

@@ -109,18 +109,73 @@ def _cmd_version(_: argparse.Namespace) -> int:
     return 0
 
 
-def _build_ingest_engine(config_dir: Path, cfg, repo: SqliteRepository, tz: ZoneInfo):
+def _build_ingest_engine(
+    config_dir: Path,
+    cfg,
+    repo: SqliteRepository,
+    tz: ZoneInfo,
+    *,
+    scope_to_candidates: bool = False,
+):
+    from athena.ops.owner_candidates import (
+        SqliteCandidateStore,
+        display_symbol,
+        normalize_candidate_symbol,
+    )
+
     ingest_cfg = load_ingestion_config(config_dir)
+    kite_symbols = None
+    trading_symbols: list[str] = []
+    if scope_to_candidates:
+        store = SqliteCandidateStore(repo)
+        trading_symbols = [
+            normalize_candidate_symbol(c.symbol)
+            for c in store.list_candidates(active_only=True)
+        ]
+        if trading_symbols and ingest_cfg.provider == "kite":
+            kite_symbols = trading_symbols
+
     calendar = CalendarEngine.from_config_dir(config_dir, cfg.market)
     validation = load_validation_config(config_dir)
-    validator = build_ingest_validator(calendar, validation, ingest_cfg, tz)
     provider = build_market_data_provider(
-        config_dir, base_dir=_repo_root(), provider_name=ingest_cfg.provider,
+        config_dir,
+        base_dir=_repo_root(),
+        provider_name=ingest_cfg.provider,
+        kite_symbols=kite_symbols,
     )
+
+    if trading_symbols:
+        catalog = provider.instruments()
+        by_symbol: dict[str, str] = {}
+        for inst in catalog:
+            by_symbol[inst.symbol.upper()] = inst.instrument_id
+            by_symbol[display_symbol(inst.instrument_id)] = inst.instrument_id
+        resolved: list[str] = []
+        missing: list[str] = []
+        for sym in trading_symbols:
+            iid = by_symbol.get(sym)
+            if iid is None:
+                missing.append(sym)
+            else:
+                resolved.append(iid)
+        if missing:
+            from athena.errors import DataValidationError
+
+            raise DataValidationError(
+                "owner candidates not in provider catalog: " + ", ".join(missing)
+            )
+        ingest_cfg = ingest_cfg.model_copy(update={"instrument_ids": resolved})
+
+    validator = build_ingest_validator(calendar, validation, ingest_cfg, tz)
     return LiveIngestionEngine(
         provider, repo, validator, QuarantineRegistry(), ingest_cfg, validation, tzinfo=tz,
     ), ingest_cfg
 
+
+def _owner_validation_pipeline(repo: SqliteRepository, config_dir: Path):
+    from athena.ops.owner_validation import OwnerValidationPipeline
+
+    return OwnerValidationPipeline(repo, config_dir)
 
 def _cmd_ingest(args: argparse.Namespace) -> int:
     """One live ingest cycle (M10.1 / R4): configured provider → validate → SQLite."""
@@ -188,10 +243,13 @@ def _cmd_cycle(args: argparse.Namespace) -> int:
     trigger = RunTrigger(args.trigger.upper())
 
     with _open_repo(cfg) as repo:
-        ingest_engine, _ = _build_ingest_engine(config_dir, cfg, repo, tz)
+        ingest_engine, _ = _build_ingest_engine(
+            config_dir, cfg, repo, tz, scope_to_candidates=True
+        )
         orchestrator = DryRunCycleOrchestrator(
             ingest_engine,
             repo,
+            pipeline=_owner_validation_pipeline(repo, config_dir),
             strategy_profile=cfg.base.active_profile,
             config_snapshot_id="cfg-cli",
         )
@@ -288,7 +346,9 @@ def _cmd_run_due(args: argparse.Namespace) -> int:
     send_brief = None if args.brief is None else bool(args.brief)
 
     with _open_repo(cfg) as repo:
-        ingest_engine, _ = _build_ingest_engine(config_dir, cfg, repo, tz)
+        ingest_engine, _ = _build_ingest_engine(
+            config_dir, cfg, repo, tz, scope_to_candidates=True
+        )
         runner = HostDueRunner(
             cfg=cfg,
             sched=sched,
@@ -299,6 +359,7 @@ def _cmd_run_due(args: argparse.Namespace) -> int:
             repo_root=_repo_root(),
             tzinfo=tz,
             strategy_profile=cfg.base.active_profile,
+            pipeline=_owner_validation_pipeline(repo, config_dir),
         )
         result = runner.run(
             as_of=as_of,

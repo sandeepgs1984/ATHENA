@@ -30,6 +30,7 @@ from athena.api.exceptions import (
     ReportNotFoundError,
     ResourceNotFoundError,
     RestoreConfirmationError,
+    PortfolioResetConfirmationError,
     SchedulerRunNotFoundError,
     WorkspaceSnapshotNotFoundError,
 )
@@ -116,6 +117,7 @@ class AthenaExceptionMapper:
         ExceptionMapping(BacktestRunNotFoundError, 404, "backtest-run-not-found", "Backtest Run Not Found"),
         ExceptionMapping(BackupNotFoundError, 404, "backup-not-found", "Backup Not Found"),
         ExceptionMapping(RestoreConfirmationError, 400, "restore-confirmation-required", "Restore Confirmation Required"),
+        ExceptionMapping(PortfolioResetConfirmationError, 400, "portfolio-reset-confirmation-required", "Portfolio Reset Confirmation Required"),
         ExceptionMapping(DatabaseUnavailableError, 503, "database-unavailable", "Database Unavailable"),
         ExceptionMapping(
             PerformanceSnapshotNotFoundError, 404, "performance-snapshot-not-found", "Performance Snapshot Not Found"

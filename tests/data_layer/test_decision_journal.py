@@ -63,13 +63,14 @@ def _run_record() -> RunRecord:
 
 
 class TestDecisionPersistence:
-    def test_schema_version_is_4(self, tmp_path):
+    def test_schema_version_is_5(self, tmp_path):
         repo = SqliteRepository(tmp_path / "a.db")
         repo.initialize()
-        assert SCHEMA_VERSION == 4
+        assert SCHEMA_VERSION == 5
         assert repo.verify_integrity().schema_version_ok
         assert "decisions" in repo.record_counts()
         assert "owner_positions" in repo.record_counts()
+        assert "owner_candidates" in repo.record_counts()
         repo.close()
 
     def test_round_trip_decision_and_trace(self, tmp_path):

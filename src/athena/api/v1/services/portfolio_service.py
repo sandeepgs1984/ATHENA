@@ -1,17 +1,28 @@
-"""Portfolio business service (P8.3)."""
+"""Portfolio business service (P8.3 / owner fill ledger)."""
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
+from pathlib import Path
 from typing import TYPE_CHECKING
 
-from athena.api.exceptions import PortfolioUnavailableError, ResourceNotFoundError
+from athena.api.exceptions import (
+    PortfolioResetConfirmationError,
+    PortfolioUnavailableError,
+    ResourceNotFoundError,
+)
 from athena.api.v1.dtos import PortfolioDTO, PortfolioSummaryDTO, PositionDTO
+from athena.api.v1.dtos.portfolio import ResetPositionsResultDTO
+from athena.api.v1.services.ops_service import default_backup_dir, default_db_path
+from athena.data.store.backup import create_backup
+from athena.data.store.repository import SqliteRepository
 
 if TYPE_CHECKING:
     from athena.api.v1.providers import PortfolioProvider
     from athena.domain.decision import Portfolio
+
+_CONFIRM_TOKEN = "CONFIRM"
 
 
 class PositionNotFoundError(ResourceNotFoundError):
@@ -21,8 +32,16 @@ class PositionNotFoundError(ResourceNotFoundError):
 class PortfolioService:
     """Orchestrates portfolio retrieval, owner fill logging, and DTO mapping."""
 
-    def __init__(self, provider: PortfolioProvider) -> None:
+    def __init__(
+        self,
+        provider: PortfolioProvider,
+        *,
+        db_path: Path | None = None,
+        backup_dir: Path | None = None,
+    ) -> None:
         self._provider = provider
+        self._db_path = Path(db_path) if db_path else default_db_path()
+        self._backup_dir = Path(backup_dir) if backup_dir else default_backup_dir()
 
     def get_portfolio(self) -> PortfolioDTO:
         """Retrieves current portfolio details or raises PortfolioUnavailableError."""
@@ -77,6 +96,49 @@ class PortfolioService:
         except KeyError as exc:
             raise PositionNotFoundError(str(exc)) from exc
         return self.get_portfolio()
+
+    def reset_positions(
+        self,
+        *,
+        confirmation: str,
+        scope: str,
+    ) -> ResetPositionsResultDTO:
+        if confirmation != _CONFIRM_TOKEN:
+            raise PortfolioResetConfirmationError(
+                "Portfolio reset refused: confirmation must be the exact token CONFIRM"
+            )
+        if scope not in ("open", "all"):
+            raise ValueError("scope must be 'open' or 'all'")
+
+        resetter = getattr(self._provider, "reset_positions", None)
+        if resetter is None:
+            raise PortfolioUnavailableError(
+                "Portfolio provider does not support owner fill reset"
+            )
+
+        backup_path: str | None = None
+        # Best-effort auto-backup when a live SQLite ledger file exists
+        if self._db_path.is_file():
+            try:
+                self._backup_dir.mkdir(parents=True, exist_ok=True)
+                stamp = datetime.now(tz=timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+                dest = self._backup_dir / f"athena-pre-portfolio-reset-{stamp}.db"
+                with SqliteRepository(self._db_path) as repo:
+                    result = create_backup(
+                        repo, dest, as_of=datetime.now(tz=timezone.utc)
+                    )
+                backup_path = result.destination
+            except Exception:
+                # Reset must still proceed; backup failure is non-fatal but loud via None path
+                backup_path = None
+
+        deleted = int(resetter(scope=scope))
+        return ResetPositionsResultDTO(
+            scope=scope,
+            deleted_count=deleted,
+            backup_path=backup_path,
+            portfolio=self.get_portfolio(),
+        )
 
     def _map_to_dto(self, p: Portfolio) -> PortfolioDTO:
         positions_dtos = [

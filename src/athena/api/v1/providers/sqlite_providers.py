@@ -268,6 +268,11 @@ class SqlitePortfolioProvider:
         assert pos is not None
         return pos
 
+    def reset_positions(self, *, scope: str) -> int:
+        if scope not in ("open", "all"):
+            raise ValueError(f"invalid reset scope: {scope}")
+        return self._repo.delete_owner_positions(scope=scope)
+
     def _compute_cash(self, positions: tuple[Position, ...] | list[Position]) -> Decimal:
         cash = self._starting_cash
         for pos in positions:
@@ -395,7 +400,14 @@ class SqlitePipelineRunProvider:
         data: dict[str, object] = {}
         pipeline = detail.get("pipeline")
         if isinstance(pipeline, dict):
-            for key in ("regime_assessment", "universe_members", "final_context"):
+            for key in (
+                "regime_assessment",
+                "universe_members",
+                "qualified_today",
+                "universe_source",
+                "universe_summary",
+                "final_context",
+            ):
                 if key in pipeline:
                     val = pipeline[key]
                     if key == "final_context" and isinstance(val, dict):
@@ -412,22 +424,18 @@ class SqlitePipelineRunProvider:
             data["regime_assessment"] = detail["regime_assessment"]
         if "universe_members" in detail and "universe_members" not in data:
             data["universe_members"] = detail["universe_members"]
-
+        if "qualified_today" in detail and "qualified_today" not in data:
+            data["qualified_today"] = detail["qualified_today"]
         if "universe_members" not in data:
+            # No eligibility payload in this run — do not pretend kite.json symbols are Eligible.
+            data["universe_members"] = {}
+            data["universe_source"] = "no_validation_run"
+            data["universe_note"] = (
+                "No UniverseEngine validation in this run. "
+                "Add candidates on Market Intelligence and run athena cycle / ./athena-run-due."
+            )
+            # Optional: surface configured ingest symbols as unvalidated reference only
             symbols = load_configured_universe_symbols(self._config_dir)
             if symbols:
-                data["universe_members"] = {
-                    sym: {
-                        "symbol": sym,
-                        "included": True,
-                        "trace": [
-                            "Configured ingest symbol — no pipeline eligibility trace in this run.",
-                        ],
-                    }
-                    for sym in symbols
-                }
-                data["universe_source"] = "config_ingest_symbols"
-            else:
-                data["universe_members"] = {}
-                data["universe_source"] = "empty"
+                data["configured_ingest_symbols"] = symbols
         return data

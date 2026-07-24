@@ -6,6 +6,25 @@ status updated on approval.
 
 ---
 
+## Portfolio reset + owner validation list (READY FOR REVIEW)
+
+| | |
+|---|---|
+| Completed | 2026-07-24 |
+| Scope | D-P1 portfolio fill reset (open\|all + CONFIRM); D-V1–D-V3 owner candidate list with two-layer daily qualify (UniverseEngine → WATCH/TRADE) |
+| Tests | `tests/api/v1/test_owner_portfolio.py`, `test_owner_candidates.py`, `tests/ops/test_owner_validation.py`; schema v5 asserts updated |
+| Status | **READY FOR REVIEW** |
+| Branch | develop |
+
+- **D-P1:** `delete_owner_positions(scope=open|all)`; `POST /api/v1/portfolio/positions/reset` (ADMIN + typed `CONFIRM`); Overview UI gate; best-effort auto-backup before wipe.
+- **D-V1:** SCHEMA_VERSION 5 `owner_candidates`; CRUD `/api/v1/market/candidates`; MI list editor; shared `SqliteCandidateStore` for API + CLI.
+- **D-V2:** `OwnerValidationPipeline` on `athena cycle` / `./athena-run-due` runs `UniverseEngine` on candidates; ingest scoped to candidate symbols (kite catalog override when needed); MI shows real Eligible/Excluded; kite.json no longer faked as Eligible.
+- **D-V3:** Eligible names scanned via `DailyMarketScanner` + DecisionEngine; decisions/traces persisted; MI “Qualified Today” = WATCH/TRADE for cycle day (same rows as Decisions tab).
+
+Files created: `ops/owner_candidates.py`, `ops/owner_validation.py`, `api/v1/{dtos/market,routers/market,services/candidates_service}.py`, candidate/validation tests. Files modified: schema/repository, CLI + HostDueRunner, sqlite pipeline provider, dashboard static assets, dependencies/router, this log + milestones. No ADR; no order placement; journal/runs untouched by portfolio reset.
+
+---
+
 ## Dashboard live data + owner fill ledger (READY FOR REVIEW)
 
 | | |

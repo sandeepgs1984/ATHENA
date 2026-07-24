@@ -71,6 +71,72 @@ class TestOwnerPositionAPI:
         )
         assert resp.status_code == 403
 
+    def test_reset_open_keeps_closed(self, client: TestClient) -> None:
+        headers = get_auth_headers(client, Role.ADMIN)
+        open_a = client.post(
+            "/api/v1/portfolio/positions",
+            headers=headers,
+            json={"instrument_id": "INFY", "quantity": 10, "avg_price": "100"},
+        ).json()["data"]
+        closed_id = open_a["positions"][0]["position_id"]
+        client.post(
+            f"/api/v1/portfolio/positions/{closed_id}/close",
+            headers=headers,
+            json={"exit_price": "110"},
+        )
+        client.post(
+            "/api/v1/portfolio/positions",
+            headers=headers,
+            json={"instrument_id": "TCS", "quantity": 5, "avg_price": "100"},
+        )
+        bad = client.post(
+            "/api/v1/portfolio/positions/reset",
+            headers=headers,
+            json={"confirmation": "YES", "scope": "open"},
+        )
+        assert bad.status_code == 400
+
+        ok = client.post(
+            "/api/v1/portfolio/positions/reset",
+            headers=headers,
+            json={"confirmation": "CONFIRM", "scope": "open"},
+        )
+        assert ok.status_code == 200
+        data = ok.json()["data"]
+        assert data["scope"] == "open"
+        assert data["deleted_count"] == 1
+        remaining = data["portfolio"]["positions"]
+        assert len(remaining) == 1
+        assert remaining[0]["instrument_id"] == "INFY"
+        assert remaining[0]["closed_ts"] is not None
+
+    def test_reset_all_restores_starting_cash(self, client: TestClient) -> None:
+        headers = get_auth_headers(client, Role.ADMIN)
+        client.post(
+            "/api/v1/portfolio/positions",
+            headers=headers,
+            json={"instrument_id": "INFY", "quantity": 10, "avg_price": "1000"},
+        )
+        resp = client.post(
+            "/api/v1/portfolio/positions/reset",
+            headers=headers,
+            json={"confirmation": "CONFIRM", "scope": "all"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["deleted_count"] == 1
+        assert data["portfolio"]["summary"]["cash"] == "100000.00"
+        assert data["portfolio"]["positions"] == []
+
+    def test_reset_requires_admin(self, client: TestClient) -> None:
+        headers = get_auth_headers(client, Role.OPERATOR)
+        resp = client.post(
+            "/api/v1/portfolio/positions/reset",
+            headers=headers,
+            json={"confirmation": "CONFIRM", "scope": "all"},
+        )
+        assert resp.status_code == 403
+
 
 class TestSqliteProviders:
     def test_decision_provider_round_trip(self, tmp_path: Path) -> None:
@@ -145,7 +211,9 @@ class TestSqliteProviders:
         provider = SqlitePipelineRunProvider(repo, config_dir=cfg)
         result = provider.get_run("run-x")
         assert result is not None
-        members = result.final_context.data["universe_members"]
-        assert "INFY" in members
-        assert "TCS" in members
+        data = result.final_context.data
+        # Kite symbols are reference-only — never shown as Eligible without UniverseEngine
+        assert data["universe_members"] == {}
+        assert data["universe_source"] == "no_validation_run"
+        assert data["configured_ingest_symbols"] == ["INFY", "TCS"]
         repo.close()

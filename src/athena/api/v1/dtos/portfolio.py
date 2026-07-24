@@ -63,3 +63,23 @@ class ClosePositionRequest(BaseModel):
 
     exit_price: Decimal = Field(gt=0)
     closed_ts: datetime | None = None
+
+
+class ResetPositionsRequest(BaseModel):
+    """Destructive wipe of owner fill ledger rows (CONFIRM-gated)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    confirmation: str = Field(description="Must be the exact token CONFIRM")
+    scope: str = Field(description="open = open fills only; all = open + closed")
+
+
+class ResetPositionsResultDTO(BaseModel):
+    """Result of an owner fill ledger reset."""
+
+    model_config = ConfigDict(frozen=True)
+
+    scope: str
+    deleted_count: int
+    backup_path: str | None = None
+    portfolio: PortfolioDTO
