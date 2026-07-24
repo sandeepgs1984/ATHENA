@@ -6,14 +6,33 @@ status updated on approval.
 
 ---
 
-## Live Entry M-E2 — athena serve supervisor (READY FOR REVIEW)
+## Live Entry M-E3 — in-UI Kite morning gate (READY FOR REVIEW)
+
+| | |
+|---|---|
+| Completed | 2026-07-24 |
+| Scope | Verify Kite session after unlock; browser login URL; request-token exchange and live reinjection |
+| Tests | Full suite: **966 passed**; Kite service/API tests; HTML parse; Python lint |
+| Status | **READY FOR REVIEW** — stop here before M-E4 |
+| Branch | develop |
+
+- Routes: `GET /api/v1/ops/kite/status`, `POST /kite/start-auth`, `POST /kite/complete-auth`.
+- Gate verifies read-only Kite `/user/profile`; missing/expired sessions block the LIVE state.
+- Owner opens Kite in a new tab, pastes redirect URL/request token, then ATHENA exchanges, persists, re-injects, and verifies the token.
+- API secret and access token never return to the browser; start/complete require ADMIN.
+- CLI `./kite-auth` remains the fallback. Dashboard assets `?v=9.15.0`.
+- File-backed smoke now forces its intended `file` provider instead of inheriting the owner's live Kite config.
+
+---
+
+## Live Entry M-E2 — athena serve supervisor (APPROVED)
 
 | | |
 |---|---|
 | Completed | 2026-07-24 |
 | Scope | One-command localhost host: API + optional due-cycle worker; health serve fields; cycle lock |
 | Tests | `tests/ops/test_serve_runtime.py`; `tests/api` health compatibility |
-| Status | **READY FOR REVIEW** — stop here before M-E3 |
+| Status | **APPROVED** |
 | Branch | develop |
 
 - CLI: `athena serve [--host] [--port] [--with-cycles] [--cycle-interval] [--open]`.

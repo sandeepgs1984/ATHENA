@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.14.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.15.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -648,6 +648,50 @@
         </main>
     </div>
 
+    <!-- Kite morning gate (M-E3). Blocking only when ingestion requires Kite. -->
+    <div id="kite-gate" class="kite-gate" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="kite-gate-title">
+        <div class="kite-gate-panel">
+            <div class="kite-gate-brand">
+                <i class="fa-solid fa-link"></i>
+                <span>MARKET DATA CONNECTION</span>
+            </div>
+            <h2 id="kite-gate-title">Connect Kite to go live</h2>
+            <p id="kite-gate-detail" class="kite-gate-detail">
+                ATHENA is unlocked. Verify today’s read-only Kite market-data session.
+            </p>
+
+            <div class="kite-gate-steps">
+                <div class="kite-gate-step">
+                    <span class="kite-step-number">1</span>
+                    <div>
+                        <strong>Authorize with Kite</strong>
+                        <p>Opens Zerodha in a new tab. ATHENA never places orders.</p>
+                    </div>
+                </div>
+                <button id="kite-start-auth" class="btn kite-primary-btn" type="button">
+                    <i class="fa-solid fa-arrow-up-right-from-square"></i>
+                    Open Kite Login
+                </button>
+
+                <div class="kite-gate-step">
+                    <span class="kite-step-number">2</span>
+                    <div>
+                        <strong>Paste the redirect URL</strong>
+                        <p>After Authorize, copy the full URL from the browser address bar.</p>
+                    </div>
+                </div>
+                <textarea id="kite-request-token" class="kite-token-input" rows="3" spellcheck="false" placeholder="Paste redirect URL or request_token"></textarea>
+                <p id="kite-gate-error" class="kite-gate-error" hidden></p>
+                <div class="kite-gate-actions">
+                    <button id="kite-recheck" class="btn" type="button">Recheck</button>
+                    <button id="kite-complete-auth" class="btn kite-primary-btn" type="button">
+                        Verify &amp; Go Live
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Modals live outside #app so they never participate in tab document flow -->
     <div id="trace-modal" class="modal-overlay" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="trace-modal-title">
         <div class="modal-container">
@@ -687,6 +731,6 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.14.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.15.0"></script>
 </body>
 </html>

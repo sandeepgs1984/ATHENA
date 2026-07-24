@@ -11,6 +11,8 @@ document.addEventListener("DOMContentLoaded", () => {
         activeTab: "overview",
         authRequired: false,
         authenticated: false,
+        kiteRequired: false,
+        kiteConnected: false,
         telemetry: {
             requestId: "unknown",
             correlationId: "unknown",
@@ -36,6 +38,13 @@ document.addEventListener("DOMContentLoaded", () => {
     const logoutBtn = document.getElementById("logout-btn");
     const profileName = document.getElementById("profile-name");
     const profileRole = document.getElementById("profile-role");
+    const kiteGate = document.getElementById("kite-gate");
+    const kiteGateDetail = document.getElementById("kite-gate-detail");
+    const kiteGateError = document.getElementById("kite-gate-error");
+    const kiteStartAuth = document.getElementById("kite-start-auth");
+    const kiteCompleteAuth = document.getElementById("kite-complete-auth");
+    const kiteRecheck = document.getElementById("kite-recheck");
+    const kiteRequestToken = document.getElementById("kite-request-token");
     
     // Telemetry DOM Bindings
     const reqIdElement = document.getElementById("header-req-id");
@@ -90,6 +99,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function showUnlock(message) {
         state.authenticated = false;
+        hideKiteGate();
         if (appShell) appShell.hidden = true;
         if (unlockGate) unlockGate.hidden = false;
         if (unlockError) {
@@ -114,6 +124,144 @@ document.addEventListener("DOMContentLoaded", () => {
     function applyPrincipal(principal) {
         if (profileName) profileName.textContent = principal?.username || "Owner";
         if (profileRole) profileRole.textContent = principal?.role ? `${principal.role} ROLE` : "ADMIN ROLE";
+    }
+
+    function showKiteGate(detail) {
+        state.kiteConnected = false;
+        if (kiteGateDetail) kiteGateDetail.textContent = detail || "Connect Kite to continue.";
+        if (kiteGate) {
+            kiteGate.hidden = false;
+            kiteGate.setAttribute("aria-hidden", "false");
+        }
+    }
+
+    function hideKiteGate() {
+        if (kiteGate) {
+            kiteGate.hidden = true;
+            kiteGate.setAttribute("aria-hidden", "true");
+        }
+        if (kiteGateError) {
+            kiteGateError.hidden = true;
+            kiteGateError.textContent = "";
+        }
+    }
+
+    function setKiteGateError(message) {
+        if (!kiteGateError) return;
+        kiteGateError.textContent = message || "";
+        kiteGateError.hidden = !message;
+    }
+
+    function setKiteButtonsBusy(busy) {
+        [kiteStartAuth, kiteCompleteAuth, kiteRecheck].forEach((button) => {
+            if (button) button.disabled = busy;
+        });
+    }
+
+    async function checkKiteGate() {
+        if (!state.authenticated) return null;
+        try {
+            const response = await apiRequest("/api/v1/ops/kite/status", {
+                skipAuthRedirect: true,
+            });
+            const data = response?.data;
+            state.kiteRequired = Boolean(data?.required);
+            state.kiteConnected = Boolean(data?.connected);
+            if (!state.kiteRequired || state.kiteConnected) {
+                hideKiteGate();
+            } else {
+                showKiteGate(data?.detail || "Kite market-data session is not connected.");
+            }
+            await checkSystemHealth();
+            return data;
+        } catch (err) {
+            console.error("Kite status check failed", err);
+            state.kiteRequired = true;
+            state.kiteConnected = false;
+            showKiteGate("Could not verify Kite. Recheck the connection before going live.");
+            return null;
+        }
+    }
+
+    if (kiteStartAuth) {
+        kiteStartAuth.addEventListener("click", async () => {
+            setKiteGateError("");
+            setKiteButtonsBusy(true);
+            // Open synchronously to avoid browser popup blocking after fetch.
+            const loginWindow = window.open("about:blank", "_blank");
+            try {
+                const response = await apiRequest("/api/v1/ops/kite/start-auth", {
+                    method: "POST",
+                    skipAuthRedirect: true,
+                });
+                const data = response?.data;
+                if (!data?.ready || !data?.login_url) {
+                    if (loginWindow) loginWindow.close();
+                    setKiteGateError(data?.detail || "Kite login is not configured.");
+                    return;
+                }
+                if (loginWindow) {
+                    loginWindow.opener = null;
+                    loginWindow.location.href = data.login_url;
+                } else {
+                    window.open(data.login_url, "_blank", "noopener");
+                }
+                if (kiteGateDetail) kiteGateDetail.textContent = data.detail;
+                kiteRequestToken?.focus();
+            } catch (err) {
+                if (loginWindow) loginWindow.close();
+                setKiteGateError(err?.data?.detail || "Could not start Kite login.");
+            } finally {
+                setKiteButtonsBusy(false);
+            }
+        });
+    }
+
+    if (kiteCompleteAuth) {
+        kiteCompleteAuth.addEventListener("click", async () => {
+            const raw = kiteRequestToken?.value?.trim() || "";
+            if (!raw) {
+                setKiteGateError("Paste the redirect URL or request_token first.");
+                kiteRequestToken?.focus();
+                return;
+            }
+            setKiteGateError("");
+            setKiteButtonsBusy(true);
+            try {
+                const response = await apiRequest("/api/v1/ops/kite/complete-auth", {
+                    method: "POST",
+                    body: JSON.stringify({ redirect_or_token: raw }),
+                    skipAuthRedirect: true,
+                });
+                const data = response?.data;
+                if (!data?.connected) {
+                    setKiteGateError(data?.detail || "Kite verification failed.");
+                    return;
+                }
+                state.kiteRequired = Boolean(data.required);
+                state.kiteConnected = true;
+                if (kiteRequestToken) kiteRequestToken.value = "";
+                hideKiteGate();
+                await checkSystemHealth();
+                showToast("Kite connected — market data is live", "success");
+            } catch (err) {
+                setKiteGateError(err?.data?.detail || "Kite token exchange failed.");
+            } finally {
+                setKiteButtonsBusy(false);
+            }
+        });
+    }
+
+    if (kiteRecheck) {
+        kiteRecheck.addEventListener("click", async () => {
+            setKiteGateError("");
+            setKiteButtonsBusy(true);
+            try {
+                await checkKiteGate();
+            } finally {
+                setKiteButtonsBusy(false);
+            }
+        });
     }
 
     async function refreshAccessToken() {
@@ -178,6 +326,7 @@ document.addEventListener("DOMContentLoaded", () => {
             closeAllModals();
             initializeRoute();
             checkSystemHealth();
+            checkKiteGate();
             return;
         }
 
@@ -193,6 +342,7 @@ document.addEventListener("DOMContentLoaded", () => {
             closeAllModals();
             initializeRoute();
             checkSystemHealth();
+            checkKiteGate();
         } catch (err) {
             clearTokens();
             showUnlock("Session expired. Unlock again.");
@@ -234,6 +384,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 closeAllModals();
                 initializeRoute();
                 checkSystemHealth();
+                checkKiteGate();
             } catch (err) {
                 console.error(err);
                 showUnlock("Unlock failed. Check network and try again.");
@@ -491,11 +642,10 @@ document.addEventListener("DOMContentLoaded", () => {
             }
 
             if (sessionStatus && data) {
-                const kite = data.kite_token_status || "unknown";
-                if (data.cycles_enabled) {
+                if (state.kiteRequired && !state.kiteConnected) {
+                    sessionStatus.textContent = "KITE CONNECTION REQUIRED";
+                } else if (data.cycles_enabled) {
                     sessionStatus.textContent = "LIVE ENGINE ACTIVE";
-                } else if (kite === "missing") {
-                    sessionStatus.textContent = "API UP · KITE TOKEN MISSING";
                 } else {
                     sessionStatus.textContent = "API UP · MANUAL CYCLES";
                 }

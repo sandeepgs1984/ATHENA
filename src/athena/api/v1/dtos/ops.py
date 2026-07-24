@@ -44,6 +44,43 @@ class OpsTelemetryDTO(BaseModel):
     stages: list[StageTelemetryDTO]
 
 
+class KiteStatusDTO(BaseModel):
+    """Secret-free Kite session state for the workstation gate."""
+
+    model_config = ConfigDict(frozen=True)
+
+    required: bool
+    connected: bool
+    state: Literal[
+        "not_required",
+        "missing",
+        "misconfigured",
+        "connected",
+        "expired",
+        "unavailable",
+    ]
+    detail: str
+    user_id: str | None = None
+
+
+class KiteAuthStartDTO(BaseModel):
+    """Login URL returned to the authenticated owner."""
+
+    model_config = ConfigDict(frozen=True)
+
+    login_url: str | None
+    ready: bool
+    detail: str
+
+
+class KiteAuthCompleteRequestDTO(BaseModel):
+    """Kite redirect URL or bare one-time request token."""
+
+    model_config = ConfigDict(frozen=True)
+
+    redirect_or_token: str = Field(min_length=1, max_length=4096)
+
+
 class BackupInfoDTO(BaseModel):
     """Metadata for one backup artifact under the backups directory."""
 

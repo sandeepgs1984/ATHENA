@@ -30,6 +30,11 @@ cfg_path = Path("$TMP/config/providers/file.json")
 data = json.loads(cfg_path.read_text(encoding="utf-8"))
 data["data_root"] = str(root / "tests/data/fileprovider")
 cfg_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+# This smoke is explicitly file-backed; do not inherit the owner's live provider.
+ingestion = Path("$TMP/config/ingestion.json")
+i = json.loads(ingestion.read_text(encoding="utf-8"))
+i["provider"] = "file"
+ingestion.write_text(json.dumps(i, indent=2) + "\n", encoding="utf-8")
 # Keep briefings/diagnostics inside the temp tree.
 notify = Path("$TMP/config/notifications.json")
 n = json.loads(notify.read_text(encoding="utf-8"))

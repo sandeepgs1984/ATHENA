@@ -9,6 +9,7 @@ import logging
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
@@ -33,6 +34,7 @@ from athena.api.security.service import AuthService
 from athena.api.security.token import HMAC256TokenSigner, TokenClaimsFactory
 from athena.api.v1.router import router as v1_router
 from athena.errors import AthenaError
+from athena.ops.kite_session import KiteSessionService
 
 logger = logging.getLogger(__name__)
 
@@ -212,6 +214,11 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
         audit_sink=LoggingAuditSink(),
     )
     seed_owner_user(get_user_repository())
+    config_dir = Path(os.environ.get("ATHENA_CONFIG_DIR", "config")).resolve()
+    app.state.kite_session_service = KiteSessionService(
+        repo_root=config_dir.parent,
+        config_dir=config_dir,
+    )
 
     # Initialize Platform Infrastructure Providers on app state
     from athena.api.dependencies import get_build_info_provider, get_metadata_provider, wire_sqlite_providers

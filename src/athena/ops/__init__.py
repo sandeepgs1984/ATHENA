@@ -21,6 +21,11 @@ from athena.ops.kite_auth import (
     verify_env_injection,
     verify_kite_credentials,
 )
+from athena.ops.kite_session import (
+    KiteAuthStart,
+    KiteSessionService,
+    KiteSessionStatus,
+)
 from athena.ops.owner_candidates import (
     InMemoryCandidateStore,
     OwnerCandidate,
@@ -53,6 +58,9 @@ __all__ = [
     "HostDueRunner",
     "InMemoryCandidateStore",
     "KiteVerifyResult",
+    "KiteAuthStart",
+    "KiteSessionService",
+    "KiteSessionStatus",
     "LastCycleSnapshot",
     "OwnerCandidate",
     "ServeRuntime",

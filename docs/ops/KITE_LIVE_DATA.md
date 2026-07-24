@@ -68,7 +68,27 @@ Optional later: `unalias athena` and `pip3 install -e .` so bare `athena` works.
 
 Kite **access tokens expire ~06:00 IST** next day. Do this before live ingest each trading day.
 
-### 1.0 Recommended — root helper script
+### 1.0 Recommended — ATHENA workstation gate
+
+Start the workstation:
+
+```bash
+./athena-serve --with-cycles --open
+```
+
+After ATHENA unlock, the dashboard verifies Kite with `/user/profile`. If the
+daily session is missing or expired:
+
+1. Click **Open Kite Login**.
+2. Authorize ATHENA in the Zerodha tab.
+3. Copy the full redirect URL from that tab (a refused-to-connect page is OK).
+4. Paste it into ATHENA and click **Verify & Go Live**.
+
+ATHENA exchanges the one-time request token, updates `.env`, re-injects the
+new access token into the running process, and verifies the read-only profile.
+No broker secret or access token is returned to the browser.
+
+### 1.1 CLI fallback — root helper script
 
 From the **repo root**:
 
@@ -101,7 +121,7 @@ Optional: refresh token **and** ingest in one go (requires `ingestion.provider` 
 ./kite-auth --skip-verify   # only if you must skip the profile check
 ```
 
-### 1.1 Manual login (browser) — if you prefer not to use the script
+### 1.2 Manual login (browser) — if you prefer not to use the script
 
 1. Open (replace with your real API key):
 

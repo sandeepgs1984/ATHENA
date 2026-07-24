@@ -7,12 +7,13 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from tests.api.v1.test_core_apis import get_auth_headers
 
 from athena.api.app import create_app
 from athena.api.config import APISettings
 from athena.api.security.models import Role
 from athena.data.store import SqliteRepository, create_backup
-from tests.api.v1.test_core_apis import get_auth_headers
+from athena.ops.kite_session import KiteAuthStart, KiteSessionStatus
 
 
 @pytest.fixture()
@@ -79,6 +80,73 @@ class TestOpsStream:
             payload = "".join(chunks)
             assert "event: heartbeat" in payload
             assert "data:" in payload
+
+
+class FakeKiteSessionService:
+    def status(self, *, verify: bool = True) -> KiteSessionStatus:
+        return KiteSessionStatus(
+            required=True,
+            connected=False,
+            state="expired",
+            detail="daily token expired",
+        )
+
+    def start_auth(self) -> KiteAuthStart:
+        return KiteAuthStart(
+            login_url="https://kite.zerodha.com/connect/login?v=3&api_key=test",
+            ready=True,
+            detail="authorize",
+        )
+
+    def complete_auth(self, redirect_or_token: str) -> KiteSessionStatus:
+        assert redirect_or_token == "Request123"
+        return KiteSessionStatus(
+            required=True,
+            connected=True,
+            state="connected",
+            detail="session OK",
+            user_id="AB123",
+        )
+
+
+class TestKiteGate:
+    def test_status_requires_auth(self, client: TestClient) -> None:
+        response = client.get("/api/v1/ops/kite/status")
+        assert response.status_code == 401
+
+    def test_status_returns_secret_free_state(self, client: TestClient) -> None:
+        client.app.state.kite_session_service = FakeKiteSessionService()
+        headers = get_auth_headers(client, Role.READONLY)
+        response = client.get("/api/v1/ops/kite/status", headers=headers)
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["state"] == "expired"
+        assert data["connected"] is False
+        assert "token" in data["detail"]
+        assert "access_token" not in data
+        assert "api_secret" not in data
+
+    def test_start_and_complete_require_admin(self, client: TestClient) -> None:
+        client.app.state.kite_session_service = FakeKiteSessionService()
+        analyst = get_auth_headers(client, Role.ANALYST)
+        assert (
+            client.post("/api/v1/ops/kite/start-auth", headers=analyst).status_code
+            == 403
+        )
+
+        admin = get_auth_headers(client, Role.ADMIN, username="kite-admin")
+        start = client.post("/api/v1/ops/kite/start-auth", headers=admin)
+        assert start.status_code == 200
+        assert start.json()["data"]["ready"] is True
+
+        complete = client.post(
+            "/api/v1/ops/kite/complete-auth",
+            headers=admin,
+            json={"redirect_or_token": "Request123"},
+        )
+        assert complete.status_code == 200
+        assert complete.json()["data"]["connected"] is True
+        assert complete.json()["data"]["user_id"] == "AB123"
 
 
 class TestOpsBackups:
