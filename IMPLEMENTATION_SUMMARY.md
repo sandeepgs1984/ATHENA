@@ -6,7 +6,7 @@ status updated on approval.
 
 ---
 
-## Live Entry M-E5 — hardening & ops polish (READY FOR REVIEW)
+## Live Entry M-E5 — hardening & ops polish (APPROVED)
 
 | | |
 |---|---|
@@ -15,7 +15,7 @@ status updated on approval.
 | Scope | Login throttling; production JWT secret resolution; localhost/TLS controls; final runbook and roadmap |
 | Tests | Owner QA: **976 passed, 127 warnings in 9.53s**; auth/serve **33 passed**; R1 smoke **3 passed** |
 | Coverage | Existing project coverage gate retained; no separate percentage collected |
-| Status | **READY FOR REVIEW** — professional live-entry track complete; awaiting owner approval |
+| Status | **APPROVED 2026-07-24** — professional live-entry track complete |
 | Branch | develop |
 
 ### Scope completed
@@ -85,7 +85,7 @@ status updated on approval.
 - Optional TLS is a terminal power-user mode; the Dock launcher intentionally
   keeps the default trusted localhost HTTP path.
 - No technical debt or architecture drift introduced by M-E5.
-- Remaining work: owner/principal-engineer review and approval only.
+- Remaining work: none; owner approved M-E5 on 2026-07-24.
 
 ### Consolidated commit message
 
