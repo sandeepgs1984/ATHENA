@@ -39,6 +39,8 @@ class SymbolValidateResult:
     decisions: int
     qualified: int
     detail: str = ""
+    as_of: datetime | None = None
+    as_of_mode: str | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -50,6 +52,8 @@ class SymbolValidateResult:
             "decisions": self.decisions,
             "qualified": self.qualified,
             "detail": self.detail,
+            "as_of": self.as_of.isoformat() if self.as_of is not None else None,
+            "as_of_mode": self.as_of_mode,
         }
 
 
@@ -165,4 +169,6 @@ def validate_symbols(
         ),
         qualified=len(qualified) if isinstance(qualified, list) else 0,
         detail=str(pipe.get("mode") or ""),
+        as_of=as_of,
+        as_of_mode=None,
     )

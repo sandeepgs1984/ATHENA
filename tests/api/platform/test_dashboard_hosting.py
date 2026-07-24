@@ -82,6 +82,7 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "function renderChartFreshness" in js
     assert "/candles?timeframe=5m&limit=120" in js
     assert "skipToast: true" in js
+    assert "session-close analysis" in js
     assert "Re-validate before using the TradePlan" in js
     assert "Restart ATHENA (Dock/athena-serve)" in js
     assert "decision-chart-entry-zone" in css

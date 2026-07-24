@@ -15,6 +15,8 @@ from athena.api.v1.dtos.market import (
     ValidateSymbolsRequest,
     ValidateSymbolsResultDTO,
 )
+from athena.calendar.engine import CalendarEngine
+from athena.calendar.resolve_as_of import resolve_validate_as_of
 from athena.config.loader import load_config
 from athena.data.store.repository import SqliteRepository
 from athena.errors import AthenaError
@@ -81,7 +83,8 @@ class CandidatesService:
             )
         cfg = load_config(self._config_dir)
         tz = ZoneInfo(cfg.market.timezone)
-        as_of = datetime.now(tz)
+        calendar = CalendarEngine.from_config_dir(self._config_dir, cfg.market)
+        as_of, as_of_mode = resolve_validate_as_of(datetime.now(tz), calendar, tz)
         result = validate_symbols(
             self._repo,
             self._config_dir,
@@ -98,4 +101,6 @@ class CandidatesService:
             decisions=result.decisions,
             qualified=result.qualified,
             detail=result.detail,
+            as_of=as_of,
+            as_of_mode=as_of_mode,
         )

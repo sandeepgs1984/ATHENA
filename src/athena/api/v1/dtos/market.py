@@ -57,6 +57,8 @@ class ValidateSymbolsResultDTO(BaseModel):
     decisions: int
     qualified: int
     detail: str = ""
+    as_of: datetime | None = None
+    as_of_mode: Literal["live", "session_close"] | None = None
 
 
 class CandleDTO(BaseModel):

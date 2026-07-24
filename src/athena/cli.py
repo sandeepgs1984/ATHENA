@@ -647,9 +647,17 @@ def _cmd_validate_symbols(args: argparse.Namespace) -> int:
     config_dir = _config_dir()
     cfg = load_config(config_dir)
     tz = ZoneInfo(cfg.market.timezone)
-    as_of = _parse_as_of(args.as_of, tz)
+    from athena.calendar.engine import CalendarEngine
+    from athena.calendar.resolve_as_of import resolve_validate_as_of
     from athena.ops.owner_candidates import SqliteCandidateStore, normalize_candidate_symbol
     from athena.ops.symbol_validate import validate_symbols
+
+    if args.as_of:
+        as_of = _parse_as_of(args.as_of, tz)
+        as_of_mode = "explicit"
+    else:
+        calendar = CalendarEngine.from_config_dir(config_dir, cfg.market)
+        as_of, as_of_mode = resolve_validate_as_of(datetime.now(tz), calendar, tz)
 
     symbols = [s.strip() for s in args.symbols if s and str(s).strip()]
     if not symbols:
@@ -678,6 +686,8 @@ def _cmd_validate_symbols(args: argparse.Namespace) -> int:
             return 1
     print(f"run_id          : {result.run_id}")
     print(f"status          : {result.status}")
+    print(f"as_of           : {as_of.isoformat()}")
+    print(f"as_of_mode      : {as_of_mode}")
     print(f"symbols         : {', '.join(result.symbols)}")
     print(f"eligible        : {result.eligible}")
     print(f"excluded        : {result.excluded}")

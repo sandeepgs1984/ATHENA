@@ -6,6 +6,48 @@ status updated on approval.
 
 ---
 
+## M-D2 follow-up — After-hours validate as_of (READY FOR REVIEW)
+
+| | |
+|---|---|
+| Completed | 2026-07-24 |
+| Objective | Make Validate / Re-validate usable overnight without pretending stale quotes are live |
+| Scope | Calendar-aware `as_of` clamp + explicit session-close UI messaging |
+| Tests | Targeted resolve/dashboard/candidates **15 passed** |
+| Status | **READY FOR REVIEW** — still under M-D2; do not start M-D3 |
+| Branch | develop |
+
+### Scope completed
+
+- Added pure `resolve_validate_as_of`: during known session → live `now`;
+  after close / premarket / weekend / holiday / Muhurat-without-timings → last
+  completed session close from CalendarEngine (R-3).
+- Wired into `POST /api/v1/market/validate` and CLI `validate-symbols` when
+  `--as-of` is omitted; explicit CLI `--as-of` remains an override.
+- Response now includes `as_of` + `as_of_mode` (`live` | `session_close`).
+- Dashboard Validate / Re-validate toasts explain session-close analysis and
+  replace raw FRESHNESS ingest-reject text with an actionable message.
+- Unattended cycle worker `as_of` is unchanged (separate concern).
+
+### Files created
+
+- `src/athena/calendar/resolve_as_of.py`
+- `tests/unit/test_resolve_validate_as_of.py`
+
+### Files modified
+
+- Calendar package export, candidates service/DTO, symbol_validate result,
+  CLI validate-symbols, dashboard JS/HTML assets `9.19.3`, hosting regression,
+  milestone roadmap, this log.
+
+### Validation
+
+- Targeted: **15 passed**.
+- Architecture: CalendarEngine remains sole trading-day authority; no silent
+  live pretence after hours; no order-placement path touched.
+
+---
+
 ## M-D2 — Intraday chart + TradePlan overlays (READY FOR REVIEW)
 
 | | |

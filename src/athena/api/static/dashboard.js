@@ -697,20 +697,62 @@ document.addEventListener("DOMContentLoaded", () => {
                 });
             }
             showToast(
-                `Validating ${list.join(", ")} — ingest + score (may take ~30–90s)…`,
+                `Validating ${list.join(", ")} — live during session; after hours uses last session close…`,
                 "success"
             );
-            const valRes = await apiRequest("/api/v1/market/validate", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ symbols: list }),
-            });
+            let valRes;
+            try {
+                valRes = await apiRequest("/api/v1/market/validate", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ symbols: list }),
+                    skipToast: true,
+                });
+            } catch (err) {
+                const detail = err?.data?.detail;
+                const title = err?.data?.title;
+                let message =
+                    typeof detail === "string" && detail.trim()
+                        ? detail
+                        : (typeof title === "string" && title.trim() ? title : "Validate failed");
+                if (/FRESHNESS|quotes are .* behind/i.test(message)) {
+                    message =
+                        "Quotes are too old relative to the validation clock. " +
+                        "After hours, ATHENA uses last session close — if this still fails, " +
+                        "Kite has no usable session quotes yet. Retry during market hours.";
+                }
+                showToast(message, "danger");
+                throw err;
+            }
             const d = (valRes && valRes.data) ? valRes.data : {};
             const ok = String(d.status || "").toUpperCase() === "COMPLETED";
+            const mode = String(d.as_of_mode || "").toLowerCase();
+            let asOfLabel = "";
+            if (d.as_of) {
+                const asOfDate = new Date(d.as_of);
+                if (!Number.isNaN(asOfDate.getTime())) {
+                    asOfLabel = asOfDate.toLocaleString("en-IN", {
+                        day: "2-digit",
+                        month: "short",
+                        hour: "numeric",
+                        minute: "2-digit",
+                        hour12: true,
+                        timeZone: "Asia/Kolkata",
+                    });
+                }
+            }
+            let modeLabel = "";
+            if (mode === "session_close" && asOfLabel) {
+                modeLabel = ` · session-close analysis as of ${asOfLabel} IST`;
+            } else if (mode === "live" && asOfLabel) {
+                modeLabel = ` · live as of ${asOfLabel} IST`;
+            } else if (mode === "session_close") {
+                modeLabel = " · session-close analysis (not live)";
+            }
             showToast(
-                `${list.join(", ")}: ${d.status || "done"} · Eligible ${d.eligible ?? "—"} · ` +
+                `${list.join(", ")}: ${d.status || "done"}${modeLabel} · Eligible ${d.eligible ?? "—"} · ` +
                 `Excluded ${d.excluded ?? "—"} · decisions ${d.decisions ?? "—"}`,
-                ok ? "success" : "warning"
+                ok ? (mode === "session_close" ? "warning" : "success") : "warning"
             );
             if (typeof loadMarketIntelligence === "function") {
                 await loadMarketIntelligence();
