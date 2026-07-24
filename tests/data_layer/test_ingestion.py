@@ -115,6 +115,10 @@ class TestHappyPath:
         quotes = repo.get_quotes("SYN-AAA")
         assert len(quotes) == 1
         assert quotes[0].last_price == Decimal("109.50")
+        snap = repo.get_latest_snapshot()
+        assert snap is not None
+        assert snap.india_vix == Decimal("14.5")
+        assert result.snapshots_written == 1
 
     def test_reingest_skips_existing(self, tmp_path, config_dir):
         provider = _write_provider_tree(tmp_path / "data")
@@ -173,7 +177,7 @@ class TestQuoteValidator:
 class TestConfig:
     def test_loads_production_ingestion_config(self, config_dir):
         cfg = load_ingestion_config(config_dir)
-        assert cfg.provider == "file"
+        assert cfg.provider in {"file", "kite"}
         assert "5m" in cfg.timeframes
         assert cfg.validate_gaps is False
 

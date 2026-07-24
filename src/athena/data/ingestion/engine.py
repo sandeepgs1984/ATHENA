@@ -184,6 +184,20 @@ class LiveIngestionEngine:
             if to_write_q:
                 quotes_written += self._repo.add_quotes(to_write_q)
 
+        snapshots_written = 0
+        caps = self._provider.capabilities()
+        if caps.supports_market_snapshot:
+            try:
+                snapshot = self._provider.market_snapshot()
+            except Exception:
+                snapshot = None
+            if snapshot is not None:
+                latest = self._repo.get_latest_snapshot()
+                # market_snapshots.ts is UNIQUE — skip identical-timestamp re-ingest
+                if latest is None or latest.ts != snapshot.ts:
+                    self._repo.add_snapshot(snapshot)
+                    snapshots_written = 1
+
         return IngestionResult(
             as_of=as_of,
             instruments_upserted=len(selected),
@@ -193,6 +207,7 @@ class LiveIngestionEngine:
             quotes_written=quotes_written,
             datasets_validated=len(candle_batches) + (1 if self._config.include_quotes else 0),
             datasets_skipped_empty=skipped_empty,
+            snapshots_written=snapshots_written,
         )
 
 

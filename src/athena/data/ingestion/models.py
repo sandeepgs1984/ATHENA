@@ -18,6 +18,7 @@ class IngestionResult:
     quotes_written: int
     datasets_validated: int
     datasets_skipped_empty: int
+    snapshots_written: int = 0
 
     def __post_init__(self) -> None:
         if self.as_of.tzinfo is None:

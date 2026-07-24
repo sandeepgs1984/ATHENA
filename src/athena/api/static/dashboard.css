@@ -1513,6 +1513,14 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 8px;
+}
+
+.briefing-badges {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
 }
 
 .briefing-symbol {
@@ -1528,6 +1536,144 @@ body {
 }
 
 .briefing-desc {
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+    line-height: 1.45;
+    margin: 0;
+}
+
+.briefing-meta-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.stance-chip,
+.type-chip,
+.meta-chip,
+.gate-chip {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    border-radius: 4px;
+    padding: 3px 8px;
+    border: 1px solid transparent;
+    white-space: nowrap;
+}
+
+.stance-chip.stance-buy {
+    color: #86efac;
+    background: rgba(34, 197, 94, 0.15);
+    border-color: rgba(34, 197, 94, 0.35);
+}
+
+.stance-chip.stance-sell {
+    color: #fca5a5;
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.35);
+}
+
+.stance-chip.stance-hold {
+    color: #7dd3fc;
+    background: rgba(56, 189, 248, 0.14);
+    border-color: rgba(56, 189, 248, 0.35);
+}
+
+.stance-chip.stance-pass {
+    color: #fdba74;
+    background: rgba(245, 158, 11, 0.12);
+    border-color: rgba(245, 158, 11, 0.32);
+}
+
+.stance-chip.stance-wait {
+    color: #cbd5e1;
+    background: rgba(148, 163, 184, 0.12);
+    border-color: rgba(148, 163, 184, 0.3);
+}
+
+.type-chip {
+    color: var(--text-muted);
+    background: rgba(148, 163, 184, 0.08);
+    border-color: rgba(148, 163, 184, 0.22);
+    font-weight: 600;
+}
+
+.type-chip.type-trade {
+    color: #86efac;
+    border-color: rgba(34, 197, 94, 0.3);
+}
+
+.type-chip.type-watch {
+    color: #7dd3fc;
+    border-color: rgba(56, 189, 248, 0.3);
+}
+
+.type-chip.type-no_trade {
+    color: #fdba74;
+    border-color: rgba(245, 158, 11, 0.3);
+}
+
+.meta-chip.score-chip {
+    color: var(--text-primary);
+    background: rgba(15, 23, 42, 0.55);
+    border-color: rgba(148, 163, 184, 0.25);
+    font-family: var(--font-mono);
+    letter-spacing: 0;
+    text-transform: none;
+}
+
+.gate-chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.gate-chip.fail {
+    color: #fecaca;
+    background: rgba(239, 68, 68, 0.12);
+    border-color: rgba(239, 68, 68, 0.28);
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 600;
+}
+
+.gate-chip.pass {
+    color: #86efac;
+    background: rgba(34, 197, 94, 0.1);
+    border-color: rgba(34, 197, 94, 0.25);
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 600;
+}
+
+.qualified-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.qualified-row {
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    background: rgba(255, 255, 255, 0.01);
+}
+
+.qualified-row-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.qualified-summary {
+    margin: 0;
     font-size: 0.8rem;
     color: var(--text-secondary);
     line-height: 1.4;

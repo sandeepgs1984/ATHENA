@@ -38,8 +38,23 @@ from athena.risk.models import RiskAssessment
 from athena.scoring.models import ScoringResult
 
 _ZERO = Decimal(0)
+_SCORE_QUANT = Decimal("0.01")
 
 _TREND_DIRECTION = {"BULL_TREND": Direction.LONG, "BEAR_TREND": Direction.SHORT}
+
+_GATE_PHRASE = {
+    QualityGate.DATA: "data quality",
+    QualityGate.EVIDENCE: "evidence coverage",
+    QualityGate.RISK: "risk limits",
+    QualityGate.EXPLAINABILITY: "explainability",
+    QualityGate.CONFIDENCE: "confidence",
+    QualityGate.MARKET: "market conditions",
+}
+
+
+def _fmt_score(value: Decimal) -> str:
+    """Compact score for owner-facing explanations (avoids long Decimal tails)."""
+    return format(value.quantize(_SCORE_QUANT), "f")
 
 
 class DecisionEngine:
@@ -79,7 +94,10 @@ class DecisionEngine:
                 decision_type=DecisionType.INSUFFICIENT_DATA, instrument_id=instrument_id,
                 score_ref=score_ref, confidence_ref=confidence_ref, risk_ref=risk_ref,
                 gate_results=gates,
-                explanation="INSUFFICIENT_DATA: no composite score available to decide")
+                explanation=(
+                    "Needs more data — ATHENA could not compute a score for this symbol yet."
+                ),
+            )
             return DecisionOutcome(decision=decision,
                                    trace=self._trace(decision_id, regime, market_health,
                                                      sector_health, scoring, confidence, risk,
@@ -90,35 +108,54 @@ class DecisionEngine:
         all_gates_pass = all(g.passed for g in gates)
         direction = self._direction(regime)
         plan = self._build_plan(direction, indicators, as_of)
+        score_txt = _fmt_score(composite)
+        watch_txt = _fmt_score(Decimal(thresholds.watch_composite))
+        trade_txt = _fmt_score(Decimal(thresholds.min_composite_for_trade))
 
         if (all_gates_pass and composite >= Decimal(thresholds.min_composite_for_trade)
                 and direction is not Direction.NONE and plan is not None):
+            stance = "Buy setup" if direction is Direction.LONG else "Sell setup"
             decision = Decision(
                 decision_id=decision_id, ts=as_of, run_id=run_id, cycle_id=cycle_id,
                 decision_type=DecisionType.TRADE, instrument_id=instrument_id,
                 direction=direction, score_ref=score_ref, confidence_ref=confidence_ref,
                 risk_ref=risk_ref, gate_results=gates, trade_plan=plan,
-                explanation=(f"TRADE {direction.value}: composite {composite} ≥ "
-                             f"{thresholds.min_composite_for_trade}, all gates passed"))
+                explanation=(
+                    f"{stance} — score {score_txt}/100 clears the trade level ({trade_txt}) "
+                    f"and all safety checks passed."
+                ),
+            )
         elif composite >= Decimal(thresholds.watch_composite):
-            failed = [g.gate.value for g in gates if not g.passed]
-            reason = (f"gates failed: {failed}" if failed
-                      else f"composite {composite} below trade threshold "
-                           f"{thresholds.min_composite_for_trade}")
+            failed = [g for g in gates if not g.passed]
+            if failed:
+                needs = ", ".join(_GATE_PHRASE.get(g.gate, g.gate.value.lower()) for g in failed)
+                explanation = (
+                    f"Hold / watch — score {score_txt}/100 is interesting, but not ready "
+                    f"to trade yet. Still blocked on: {needs}."
+                )
+            else:
+                explanation = (
+                    f"Hold / watch — score {score_txt}/100 is above watch ({watch_txt}) "
+                    f"but below the trade level ({trade_txt})."
+                )
             decision = Decision(
                 decision_id=decision_id, ts=as_of, run_id=run_id, cycle_id=cycle_id,
                 decision_type=DecisionType.WATCH, instrument_id=instrument_id,
                 score_ref=score_ref, confidence_ref=confidence_ref, risk_ref=risk_ref,
                 gate_results=gates,
-                explanation=f"WATCH: composite {composite} in watch range; {reason}")
+                explanation=explanation,
+            )
         else:
             decision = Decision(
                 decision_id=decision_id, ts=as_of, run_id=run_id, cycle_id=cycle_id,
                 decision_type=DecisionType.NO_TRADE, instrument_id=instrument_id,
                 score_ref=score_ref, confidence_ref=confidence_ref, risk_ref=risk_ref,
                 gate_results=gates,
-                explanation=(f"NO_TRADE: composite {composite} below watch threshold "
-                             f"{thresholds.watch_composite}"))
+                explanation=(
+                    f"Pass — score {score_txt}/100 is below the watch level ({watch_txt}). "
+                    f"No action suggested."
+                ),
+            )
 
         return DecisionOutcome(
             decision=decision,

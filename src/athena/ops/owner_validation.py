@@ -13,6 +13,7 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping, Sequence
 from datetime import datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -154,13 +155,15 @@ class OwnerValidationPipeline:
         if self._enable_scan and included_ids:
             run_id = f"run-{trigger.value.lower()}-{as_of.strftime('%Y%m%dT%H%M%S')}"
             cycle_id = f"{as_of.date().isoformat()}-{trigger.value.lower()}"
-            snap = self._repo.get_latest_snapshot() or MarketSnapshot(
-                ts=as_of,
-                indices={},
-                breadth_advances=0,
-                breadth_declines=0,
-                india_vix=None,
-            )
+            snap = self._resolve_snapshot(as_of, candles_by_id)
+            if snap is None:
+                snap = MarketSnapshot(
+                    ts=as_of,
+                    indices={},
+                    breadth_advances=0,
+                    breadth_declines=0,
+                    india_vix=None,
+                )
             scan_report, scan_regime = self._scan_eligible(
                 included_ids,
                 as_of=as_of,
@@ -235,7 +238,7 @@ class OwnerValidationPipeline:
     ) -> dict[str, object] | None:
         from athena.regime import RegimeEngine
 
-        snap = self._repo.get_latest_snapshot()
+        snap = self._resolve_snapshot(as_of, candles_by_id)
         index_candidates: list[str] = []
         if snap is not None and snap.indices:
             index_candidates.extend(snap.indices.keys())
@@ -279,6 +282,66 @@ class OwnerValidationPipeline:
             except Exception:
                 continue
             return self._regime_to_payload(regime)
+        return None
+
+    def _resolve_snapshot(
+        self,
+        as_of: datetime,
+        candles_by_id: Mapping[str, Sequence[Candle]],
+    ) -> MarketSnapshot | None:
+        """Prefer persisted snapshot; fill India VIX from VIX candles when missing."""
+        snap = self._repo.get_latest_snapshot()
+        vix = snap.india_vix if snap is not None else None
+        if vix is None:
+            vix = self._vix_from_candles(candles_by_id)
+        if snap is None:
+            if vix is None:
+                return None
+            return MarketSnapshot(
+                ts=as_of,
+                indices={},
+                breadth_advances=0,
+                breadth_declines=0,
+                india_vix=vix,
+            )
+        if snap.india_vix is None and vix is not None:
+            return MarketSnapshot(
+                ts=snap.ts,
+                indices=dict(snap.indices),
+                breadth_advances=snap.breadth_advances,
+                breadth_declines=snap.breadth_declines,
+                india_vix=vix,
+            )
+        return snap
+
+    def _vix_from_candles(
+        self, candles_by_id: Mapping[str, Sequence[Candle]]
+    ) -> Decimal | None:
+        vix_ids: list[str] = []
+        try:
+            from athena.config.loader import load_kite_provider_config
+
+            kite = load_kite_provider_config(self._config_dir)
+            if kite.india_vix_instrument:
+                vix_ids.append(kite.india_vix_instrument)
+        except Exception:
+            pass
+        vix_ids.extend(["NSE:INDIA VIX", "INDIA VIX"])
+        seen: set[str] = set()
+        for iid in vix_ids:
+            if not iid or iid in seen:
+                continue
+            seen.add(iid)
+            series = list(candles_by_id.get(iid, ()))
+            if not series:
+                series = self._repo.list_candles_recent(iid, Timeframe.D1, limit=5)
+            if not series:
+                continue
+            last = max(series, key=lambda c: c.ts_open)
+            try:
+                return Decimal(str(last.close))
+            except Exception:
+                continue
         return None
 
     @staticmethod

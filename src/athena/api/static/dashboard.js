@@ -740,19 +740,27 @@ document.addEventListener("DOMContentLoaded", () => {
             if (regime && trendBadge && volBadge && gapBadge && healthBar && healthValue && evidenceText) {
                 // Trend Class badge
                 const trendStr = (regime.trend || "NEUTRAL").replace("_TREND", "");
-                trendBadge.textContent = trendStr;
+                const trendLabel = ({ BULL: "Bullish", BEAR: "Bearish", SIDEWAYS: "Sideways", NEUTRAL: "Neutral", UNKNOWN: "Unknown" })[trendStr] || trendStr;
+                trendBadge.textContent = trendLabel;
                 trendBadge.className = `regime-badge ${trendStr === "BULL" ? "bull" : trendStr === "BEAR" ? "bear" : "neutral"}`;
 
-                // Volatility level badge
-                const volStr = regime.volatility || "NORMAL";
-                const volClean = volStr.replace("_VOLATILITY", "");
-                volBadge.textContent = volClean;
-                volBadge.className = `regime-badge ${volClean === "LOW" ? "bull" : volClean === "HIGH" ? "bear" : "neutral"}`;
+                // Volatility level badge (friendly labels; UNKNOWN = missing India VIX)
+                const volStr = regime.volatility || "NORMAL_VOLATILITY";
+                const volMeta = formatVolatilityLabel(volStr);
+                volBadge.textContent = volMeta.label;
+                volBadge.title = volMeta.hint || "";
+                volBadge.className = `regime-badge ${volMeta.cls}`;
 
                 // Gap state badge
-                const gapStr = (regime.gap || "NO_GAP").replace("_", " ");
-                gapBadge.textContent = gapStr;
-                gapBadge.className = `regime-badge ${gapStr === "NO GAP" ? "bull" : "neutral"}`;
+                const gapRaw = regime.gap || "NO_GAP";
+                const gapMeta = {
+                    NO_GAP: { label: "No gap", cls: "bull" },
+                    GAP_UP: { label: "Gap up", cls: "neutral" },
+                    GAP_DOWN: { label: "Gap down", cls: "neutral" },
+                    GAP_UNKNOWN: { label: "Gap unknown", cls: "neutral" },
+                }[gapRaw] || { label: String(gapRaw).replace(/_/g, " "), cls: "neutral" };
+                gapBadge.textContent = gapMeta.label;
+                gapBadge.className = `regime-badge ${gapMeta.cls}`;
 
                 // Health gauge
                 const score = regime.market_health || 0;
@@ -1035,20 +1043,25 @@ document.addEventListener("DOMContentLoaded", () => {
         body.className = "";
         body.style.padding = "0";
         body.innerHTML = `
-            <table class="universe-table">
-                <thead>
-                    <tr><th>Symbol</th><th>Decision</th><th>Notes</th></tr>
-                </thead>
-                <tbody>
-                    ${rows.map(r => `
-                        <tr>
-                            <td class="symbol-name-col">${r.symbol || r.instrument_id || ""}</td>
-                            <td><span class="symbol-status-badge included">${r.decision_type || ""}</span></td>
-                            <td class="text-muted" style="font-size: 0.8rem;">${(r.explanation || "").slice(0, 120)}</td>
-                        </tr>
-                    `).join("")}
-                </tbody>
-            </table>
+            <div class="qualified-list">
+                ${rows.map(r => {
+                    const type = r.decision_type || "";
+                    const stance = decisionStance(type, r.direction || "NONE");
+                    const summary = formatDecisionSummary(r.explanation || "", type, []);
+                    return `
+                        <div class="qualified-row">
+                            <div class="qualified-row-top">
+                                <span class="symbol-name-col">${r.symbol || r.instrument_id || ""}</span>
+                                <span class="stance-chip ${stance.cls}">${stance.label}</span>
+                                <span class="type-chip type-${String(type).toLowerCase()}">${type || "—"}</span>
+                            </div>
+                            <p class="qualified-summary">${summary.headline}</p>
+                            ${summary.scoreChip}
+                            ${summary.gateChips}
+                        </div>
+                    `;
+                }).join("")}
+            </div>
         `;
     }
 
@@ -1618,21 +1631,106 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
+    function formatVolatilityLabel(volStr) {
+        const key = String(volStr || "").toUpperCase();
+        const map = {
+            HIGH_VOLATILITY: { label: "High", cls: "bear", hint: "India VIX above high band" },
+            LOW_VOLATILITY: { label: "Low", cls: "bull", hint: "India VIX below low band" },
+            NORMAL_VOLATILITY: { label: "Normal", cls: "neutral", hint: "India VIX in normal band" },
+            VOLATILITY_UNKNOWN: {
+                label: "Unknown",
+                cls: "neutral",
+                hint: "India VIX was not in the market snapshot — re-run validate/smoke after this update",
+            },
+            UNKNOWN: {
+                label: "Unknown",
+                cls: "neutral",
+                hint: "Volatility not assessed yet",
+            },
+        };
+        if (map[key]) return map[key];
+        const cleaned = key.replace(/_VOLATILITY$/, "").replace(/_/g, " ");
+        return { label: cleaned || "Unknown", cls: "neutral", hint: "" };
+    }
+
+    function decisionStance(type, direction) {
+        const t = String(type || "").toUpperCase();
+        const dir = String(direction || "NONE").toUpperCase();
+        if (t === "TRADE" && dir === "LONG") return { label: "BUY", cls: "stance-buy" };
+        if (t === "TRADE" && dir === "SHORT") return { label: "SELL", cls: "stance-sell" };
+        if (t === "TRADE") return { label: "TRADE", cls: "stance-buy" };
+        if (t === "WATCH") return { label: "HOLD", cls: "stance-hold" };
+        if (t === "NO_TRADE") return { label: "PASS", cls: "stance-pass" };
+        if (t === "INSUFFICIENT_DATA") return { label: "WAIT", cls: "stance-wait" };
+        return { label: t || "—", cls: "stance-pass" };
+    }
+
+    function friendlyGateName(gate) {
+        const map = {
+            DATA: "Data",
+            EVIDENCE: "Evidence",
+            RISK: "Risk",
+            EXPLAINABILITY: "Explain",
+            CONFIDENCE: "Confidence",
+            MARKET: "Market",
+        };
+        return map[String(gate || "").toUpperCase()] || String(gate || "");
+    }
+
+    function extractScoreFromText(text) {
+        const m = String(text || "").match(/score\s+(\d+(?:\.\d+)?)/i)
+            || String(text || "").match(/composite\s+(\d+(?:\.\d+)?)/i);
+        if (!m) return null;
+        const n = Number(m[1]);
+        return Number.isFinite(n) ? n.toFixed(n % 1 === 0 ? 0 : 1) : null;
+    }
+
+    function formatDecisionSummary(explanation, type, gateResults) {
+        let headline = String(explanation || "").trim();
+        // Soften any leftover machine phrasing from older runs
+        headline = headline
+            .replace(/gates failed:\s*\[([^\]]*)\]/gi, (_, inner) => {
+                const parts = inner.split(",").map(s => s.replace(/['"]/g, "").trim()).filter(Boolean);
+                return parts.length ? `still blocked on ${parts.map(friendlyGateName).join(", ")}` : "safety checks pending";
+            })
+            .replace(/\bcomposite\s+(\d+\.\d{2})\d+/gi, "score $1")
+            .replace(/\bcomposite\b/gi, "score");
+
+        if (!headline) {
+            const t = String(type || "").toUpperCase();
+            if (t === "WATCH") headline = "Hold / watch — interesting score, not ready to trade yet.";
+            else if (t === "TRADE") headline = "Trade setup — score and safety checks cleared.";
+            else if (t === "NO_TRADE") headline = "Pass — score below watch level.";
+            else headline = "No explanation recorded.";
+        }
+
+        const score = extractScoreFromText(headline);
+        const scoreChip = score
+            ? `<span class="meta-chip score-chip">Score ${score}</span>`
+            : "";
+
+        const gates = Array.isArray(gateResults) ? gateResults : [];
+        const failed = gates.filter(g => g && g.passed === false);
+        let gateChips = "";
+        if (failed.length) {
+            gateChips = `<div class="gate-chip-row">${failed.map(g =>
+                `<span class="gate-chip fail" title="${(g.detail || "").replace(/"/g, "&quot;")}">Needs ${friendlyGateName(g.gate)}</span>`
+            ).join("")}</div>`;
+        } else if (gates.length && gates.every(g => g.passed)) {
+            gateChips = `<div class="gate-chip-row"><span class="gate-chip pass">All checks passed</span></div>`;
+        }
+
+        return { headline, scoreChip, gateChips };
+    }
+
     function humanizeDecisionText(text) {
         if (!text) return "No explanation recorded";
-        return String(text)
-            .replace(/(\d+)\.(\d{2})\d+/g, "$1.$2")
-            .replace(/\s+/g, " ")
-            .trim();
+        return formatDecisionSummary(text, "", []).headline;
     }
 
     function decisionTypeBadge(type) {
         const t = (type || "").toUpperCase();
-        let color = "rgba(148, 163, 184, 0.35)";
-        if (t === "TRADE") color = "rgba(34, 197, 94, 0.35)";
-        else if (t === "WATCH") color = "rgba(56, 189, 248, 0.35)";
-        else if (t === "NO_TRADE") color = "rgba(245, 158, 11, 0.35)";
-        return `<span class="badge" style="font-size: 0.65rem; border: 1px solid ${color}; background: ${color};">${t || "—"}</span>`;
+        return `<span class="type-chip type-${t.toLowerCase()}">${t || "—"}</span>`;
     }
 
     function renderBriefingList(decisions) {
@@ -1651,11 +1749,11 @@ document.addEventListener("DOMContentLoaded", () => {
             } else {
                 summaryEl.innerHTML =
                     `<strong>${decisions.length}</strong> symbols (latest each) · ` +
-                    `TRADE ${counts.TRADE || 0} · WATCH ${counts.WATCH || 0} · ` +
-                    `NO_TRADE ${counts.NO_TRADE || 0} · other ${
+                    `BUY/SELL ${counts.TRADE || 0} · HOLD ${counts.WATCH || 0} · ` +
+                    `PASS ${counts.NO_TRADE || 0} · other ${
                         decisions.length - (counts.TRADE || 0) - (counts.WATCH || 0) - (counts.NO_TRADE || 0)
                     }. ` +
-                    `<span class="text-muted">NO_TRADE = scored but below watch threshold (not a bug).</span>`;
+                    `<span class="text-muted">HOLD = interesting but blocked; PASS = below watch score.</span>`;
             }
         }
 
@@ -1672,19 +1770,28 @@ document.addEventListener("DOMContentLoaded", () => {
             const rawSym = d.metadata.instrument_id || "INDEX";
             const symbol = rawSym.includes(":") ? rawSym.split(":").pop() : rawSym;
             const type = d.metadata.decision_type;
-            const dir = d.metadata.direction === "NONE" ? "" : ` (${d.metadata.direction})`;
+            const direction = d.metadata.direction || "NONE";
+            const stance = decisionStance(type, direction);
             
             const dateObj = new Date(d.metadata.ts);
             const dateStr = dateObj.toLocaleDateString("en-IN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-            const explanation = humanizeDecisionText(d.explanation);
+            const gates = (d.analysis && d.analysis.gate_results) ? d.analysis.gate_results : [];
+            const summary = formatDecisionSummary(d.explanation, type, gates);
 
             card.innerHTML = `
                 <div class="briefing-card-header">
-                    <span class="briefing-symbol">${symbol}${dir}</span>
-                    ${decisionTypeBadge(type)}
+                    <span class="briefing-symbol">${symbol}</span>
+                    <div class="briefing-badges">
+                        <span class="stance-chip ${stance.cls}">${stance.label}</span>
+                        ${decisionTypeBadge(type)}
+                    </div>
                 </div>
-                <p class="briefing-desc" title="${explanation}">${explanation.substring(0, 110)}${explanation.length > 110 ? "…" : ""}</p>
-                <div class="briefing-date">${dateStr}</div>
+                <p class="briefing-desc" title="${summary.headline.replace(/"/g, "&quot;")}">${summary.headline}</p>
+                <div class="briefing-meta-row">
+                    ${summary.scoreChip}
+                    <span class="briefing-date">${dateStr}</span>
+                </div>
+                ${summary.gateChips}
             `;
 
             card.addEventListener("click", () => {

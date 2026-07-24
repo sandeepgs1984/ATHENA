@@ -6,6 +6,24 @@ status updated on approval.
 
 ---
 
+## Regime VIX snapshot + decision UX clarity (READY FOR REVIEW)
+
+| | |
+|---|---|
+| Completed | 2026-07-24 |
+| Scope | Persist India VIX market snapshot on ingest (fixes VOLATILITY_UNKNOWN); human-friendly decision copy + chip UI |
+| Tests | `tests/data_layer/test_ingestion.py` (snapshot persist); decision/ops suites |
+| Status | **READY FOR REVIEW** |
+| Branch | develop |
+
+- Live ingest now writes `market_snapshot()` (includes India VIX) into the ledger when the provider supports it.
+- Owner validation fills VIX from INDIA VIX candles when snapshot VIX is missing.
+- DecisionEngine explanations use plain language (Buy/Hold/Pass) with rounded scores and named safety checks.
+- Decisions + Qualified Today: stance chips (BUY/HOLD/PASS), score chip, “Needs Risk/Data/…” gate chips; MI volatility badge shows High/Low/Normal/Unknown.
+- Dashboard assets `?v=9.9.0`. Re-run validate/smoke after upgrade so new explanations and VIX appear.
+
+---
+
 ## On-demand symbol validate + Decisions UI fix (READY FOR REVIEW)
 
 | | |
