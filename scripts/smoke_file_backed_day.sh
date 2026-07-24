@@ -35,6 +35,11 @@ ingestion = Path("$TMP/config/ingestion.json")
 i = json.loads(ingestion.read_text(encoding="utf-8"))
 i["provider"] = "file"
 ingestion.write_text(json.dumps(i, indent=2) + "\n", encoding="utf-8")
+# Fixture catalog is SYN-AAA/SYN-BBB only — never pull live Nifty 500 into smoke.
+seed = Path("$TMP/config/candidate_seed.json")
+s = json.loads(seed.read_text(encoding="utf-8"))
+s["source"] = "none"
+seed.write_text(json.dumps(s, indent=2) + "\n", encoding="utf-8")
 # Keep briefings/diagnostics inside the temp tree.
 notify = Path("$TMP/config/notifications.json")
 n = json.loads(notify.read_text(encoding="utf-8"))
@@ -66,6 +71,19 @@ echo "==> [3/6] athena due (refresh window)"
 DUE_REF="$(run_athena due --as-of "$REFRESH_AS_OF")"
 echo "$DUE_REF"
 echo "$DUE_REF" | grep -q "REFRESH"
+
+echo "==> [3b] seed fixture owner candidates (AAA / BBB)"
+PYTHONPATH="${ROOT}/src" python3 - <<PY
+from athena.data.store import SqliteRepository
+from athena.ops.owner_candidates import SqliteCandidateStore
+
+with SqliteRepository("$ATHENA_DB_PATH") as repo:
+    repo.initialize()
+    store = SqliteCandidateStore(repo)
+    for sym in ("AAA", "BBB"):
+        store.upsert_candidate(symbol=sym, notes="r1-smoke-fixture", active=True)
+print("seeded owner candidates: AAA BBB")
+PY
 
 echo "==> [4/6] athena cycle --trigger refresh (fixture-aligned as_of)"
 run_athena cycle --trigger refresh --as-of "$REFRESH_AS_OF"
