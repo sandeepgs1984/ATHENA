@@ -2223,25 +2223,65 @@ document.addEventListener("DOMContentLoaded", () => {
     let activeTrace = null;
     let traceDecisionsList = [];
 
+    /** Keep the newest decision per instrument (or decision_id when instrument is missing). */
+    function latestDecisionPerInstrument(rows) {
+        const byInstrument = new Map();
+        for (const d of rows || []) {
+            const meta = d && d.metadata ? d.metadata : {};
+            const key = meta.instrument_id || meta.decision_id;
+            if (!key) continue;
+            const prev = byInstrument.get(key);
+            const ts = new Date(meta.ts || 0).getTime();
+            const prevTs = prev
+                ? new Date((prev.metadata && prev.metadata.ts) || 0).getTime()
+                : -1;
+            if (!prev || ts >= prevTs) {
+                byInstrument.set(key, d);
+            }
+        }
+        return Array.from(byInstrument.values());
+    }
+
+    /**
+     * Walk /api/v1/decisions pages before client dedupe.
+     * Default API page_size is 20 (max 100); a single page silently drops symbols
+     * after large validate/seed runs.
+     */
+    async function fetchAllDecisionPages() {
+        const pageSize = 100;
+        const maxPages = 50;
+        const collected = [];
+        let page = 1;
+        let hasNext = true;
+
+        while (hasNext && page <= maxPages) {
+            const qs = new URLSearchParams({
+                page: String(page),
+                page_size: String(pageSize),
+                sort_by: "ts",
+                sort_dir: "desc",
+            });
+            const res = await apiRequest(`/api/v1/decisions?${qs.toString()}`);
+            if (!res || res.status !== "success") {
+                throw new Error("decisions list returned a non-success envelope");
+            }
+            const batch = Array.isArray(res.data) ? res.data : [];
+            collected.push(...batch);
+            hasNext = Boolean(res.pagination && res.pagination.has_next);
+            page += 1;
+            if (!batch.length) {
+                break;
+            }
+        }
+        return collected;
+    }
+
     async function loadDecisionsWorkspace() {
         try {
-            const res = await apiRequest("/api/v1/decisions");
-            if (res && res.status === "success") {
-                // Latest decision per instrument for "Today's Decisions" (avoid duplicate cards)
-                const raw = res.data || [];
-                const byInstrument = new Map();
-                for (const d of raw) {
-                    const key = (d.metadata && d.metadata.instrument_id) || d.metadata.decision_id;
-                    const prev = byInstrument.get(key);
-                    const ts = new Date((d.metadata && d.metadata.ts) || 0).getTime();
-                    const prevTs = prev ? new Date((prev.metadata && prev.metadata.ts) || 0).getTime() : -1;
-                    if (!prev || ts >= prevTs) {
-                        byInstrument.set(key, d);
-                    }
-                }
-                traceDecisionsList = Array.from(byInstrument.values());
-                applyDecisionsView();
-            }
+            const raw = await fetchAllDecisionPages();
+            // Latest decision per instrument for "Today's Decisions" (avoid duplicate cards)
+            traceDecisionsList = latestDecisionPerInstrument(raw);
+            applyDecisionsView();
         } catch (err) {
             console.error("Failed to load decisions", err);
             if (briefingListContainer) {

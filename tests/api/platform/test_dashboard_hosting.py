@@ -60,6 +60,12 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "function closeModal" in js
     assert "Failed to load strategy profiles" in js
     assert "Failed to load decisions" in js
+    # Decisions workspace must walk every page before latest-per-instrument dedupe
+    assert "function fetchAllDecisionPages" in js
+    assert "function latestDecisionPerInstrument" in js
+    assert "page_size" in js
+    assert "has_next" in js
+    assert 'sort_by: "ts"' in js
 
     # Operations console (P9.7) is live — warnings feed + backup panel, not a fake loader
     assert 'id="ops-warnings-feed"' in html

@@ -6,6 +6,27 @@ status updated on approval.
 
 ---
 
+## Decisions pagination / latest-per-instrument fix (READY FOR REVIEW)
+
+| | |
+|---|---|
+| Completed | 2026-07-24 |
+| Objective | Stop Today’s Decisions from silently truncating after the first API page |
+| Scope | Walk all `/api/v1/decisions` pages before client dedupe; enlarge SQLite list window |
+| Tests | `tests/api/platform/test_dashboard_hosting.py` asserts page-walk helpers; decisions paging suite unchanged |
+| Status | **READY FOR REVIEW** |
+| Branch | develop |
+
+- Dashboard previously called `/api/v1/decisions` with the default `page_size=20`, then
+  deduped only that page — large validate/seed runs hid most symbols.
+- `fetchAllDecisionPages()` now requests `page_size=100`, `sort_by=ts`, and follows
+  `pagination.has_next` (capped at 50 pages) before `latestDecisionPerInstrument()`.
+- SQLite decision provider window raised from 2000 → 5000 so page walking can surface
+  Nifty-scale candidate sets.
+- Cache-bust dashboard assets `?v=9.17.0`. Hard-refresh after deploy.
+
+---
+
 ## Live Entry M-E5 — hardening & ops polish (APPROVED)
 
 | | |

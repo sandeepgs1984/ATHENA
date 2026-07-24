@@ -95,8 +95,10 @@ class SqliteDecisionProvider:
     def get_decisions(
         self, spec: QuerySpecification[DecisionFilterParams]
     ) -> CollectionResult[Decision]:
-        # Pull a generous window then apply API filters/sort/page in-memory
-        decisions = self._repo.list_decisions(limit=2000)
+        # Pull a generous window then apply API filters/sort/page in-memory.
+        # Dashboard walks pages (page_size<=100) and dedupes latest-per-instrument;
+        # keep this window large enough for Nifty-scale validate runs.
+        decisions = self._repo.list_decisions(limit=5000)
 
         def filter_func(d: Decision) -> bool:
             f = spec.filters
