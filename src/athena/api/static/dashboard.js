@@ -662,10 +662,32 @@ document.addEventListener("DOMContentLoaded", () => {
             let universe = {};
             let qualified = [];
             let universeNote = null;
+            let validationSummary = null;
 
             if (runsRes && runsRes.data && runsRes.data.length > 0) {
-                const latestRun = runsRes.data[0];
-                // Prefer top-level final_context; fall back to nested pipeline run context
+                // Prefer a completed validation run with universe payload (skip stuck RUNNING / failed)
+                const latestRun =
+                    runsRes.data.find(r => {
+                        const ctx =
+                            r.final_context ||
+                            (r.pipeline_runs && r.pipeline_runs[0]
+                                ? r.pipeline_runs[0].final_context
+                                : null);
+                        const data = ctx && ctx.data ? ctx.data : {};
+                        const members = data.universe_members || {};
+                        const status = (r.overall_status || "").toString().toUpperCase();
+                        return Object.keys(members).length > 0 && status !== "FAILED" && status !== "RUNNING";
+                    }) ||
+                    runsRes.data.find(r => {
+                        const ctx =
+                            r.final_context ||
+                            (r.pipeline_runs && r.pipeline_runs[0]
+                                ? r.pipeline_runs[0].final_context
+                                : null);
+                        const data = ctx && ctx.data ? ctx.data : {};
+                        return Object.keys(data.universe_members || {}).length > 0;
+                    }) ||
+                    runsRes.data[0];
                 const ctx =
                     latestRun.final_context ||
                     (latestRun.pipeline_runs && latestRun.pipeline_runs[0]
@@ -677,7 +699,34 @@ document.addEventListener("DOMContentLoaded", () => {
                 universe = data.universe_members || {};
                 qualified = data.qualified_today || [];
                 universeNote = data.universe_note || null;
-                universeCache = universe; // Store in cache for modal inspects
+                validationSummary = data.validation_summary || null;
+                const summary = data.universe_summary || {};
+                if (!universeNote && summary.excluded != null && summary.included === 0 && summary.evaluated > 0) {
+                    universeNote =
+                        `All ${summary.evaluated} evaluated symbols were Excluded (e.g. need ≥30 daily bars). ` +
+                        "Inspect Trace for rule evidence. Increase ingestion lookback_days if history is short.";
+                }
+                universeCache = universe;
+            }
+
+            const summaryStrip = document.getElementById("validation-summary-strip");
+            if (summaryStrip) {
+                if (validationSummary) {
+                    const counts = validationSummary.decision_counts || {};
+                    summaryStrip.innerHTML =
+                        `<strong>${validationSummary.eligible ?? 0}</strong> Eligible · ` +
+                        `<strong>${validationSummary.excluded ?? 0}</strong> Excluded · ` +
+                        `<strong>${validationSummary.qualified_watch_trade ?? 0}</strong> WATCH/TRADE · ` +
+                        `NO_TRADE ${counts.NO_TRADE || 0} · evaluated ${validationSummary.evaluated ?? 0}`;
+                } else if (Object.keys(universe).length > 0) {
+                    const eligible = Object.values(universe).filter(m => m.included).length;
+                    const excluded = Object.keys(universe).length - eligible;
+                    summaryStrip.innerHTML =
+                        `<strong>${eligible}</strong> Eligible · <strong>${excluded}</strong> Excluded in latest cycle`;
+                } else {
+                    summaryStrip.innerHTML =
+                        `Run <code>./athena-daily smoke</code> or <code>./athena-daily</code> to populate Eligible / Excluded.`;
+                }
             }
 
             // 2. Render Volatility Regime Indicators
@@ -721,7 +770,10 @@ document.addEventListener("DOMContentLoaded", () => {
                 gapBadge.className = "regime-badge neutral";
                 healthBar.style.width = "0%";
                 healthValue.textContent = "0/100";
-                evidenceText.textContent = "No volatility regime details available for the latest run. Run athena cycle / ./athena-run-due to populate.";
+                evidenceText.textContent =
+                    "No regime payload in the latest validation run yet. " +
+                    "Re-run ./athena-daily smoke (after the latest update) — regime is written from the scan. " +
+                    "Volatility can stay UNKNOWN without India VIX in the snapshot.";
             }
 
             // 3. Fetch and Render Calendar Grid & Events
@@ -1048,12 +1100,15 @@ document.addEventListener("DOMContentLoaded", () => {
     const candidateAddBtn = document.getElementById("candidate-add-btn");
     const candidateInput = document.getElementById("candidate-symbol-input");
     if (candidateAddBtn && candidateInput) {
-        const addCandidate = async () => {
-            const symbol = (candidateInput.value || "").trim();
+        const addAndValidateCandidate = async () => {
+            const symbol = (candidateInput.value || "").trim().toUpperCase();
             if (!symbol) {
                 showToast("Enter a symbol", "danger");
                 return;
             }
+            candidateAddBtn.disabled = true;
+            const prevLabel = candidateAddBtn.innerHTML;
+            candidateAddBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Validating…';
             try {
                 await apiRequest("/api/v1/market/candidates", {
                     method: "POST",
@@ -1061,17 +1116,37 @@ document.addEventListener("DOMContentLoaded", () => {
                     body: JSON.stringify({ symbol }),
                 });
                 candidateInput.value = "";
-                showToast(`Added ${symbol.toUpperCase()}`, "success");
+                showToast(`Added ${symbol} — running ATHENA validation (ingest + score)…`, "success");
                 await loadCandidateList();
+
+                const valRes = await apiRequest("/api/v1/market/validate", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ symbols: [symbol] }),
+                });
+                const d = (valRes && valRes.data) ? valRes.data : {};
+                const ok = String(d.status || "").toUpperCase() === "COMPLETED";
+                showToast(
+                    `${symbol}: ${d.status || "done"} · Eligible ${d.eligible ?? "—"} · ` +
+                    `Excluded ${d.excluded ?? "—"} · decisions ${d.decisions ?? "—"}` +
+                    (d.qualified ? ` · WATCH/TRADE ${d.qualified}` : ""),
+                    ok ? "success" : "warning"
+                );
+                await loadMarketIntelligence();
             } catch (err) {
-                showToast("Failed to add symbol", "danger");
+                // apiRequest already toasts Problem Details
+                await loadCandidateList();
+                await loadMarketIntelligence();
+            } finally {
+                candidateAddBtn.disabled = false;
+                candidateAddBtn.innerHTML = prevLabel;
             }
         };
-        candidateAddBtn.addEventListener("click", addCandidate);
+        candidateAddBtn.addEventListener("click", addAndValidateCandidate);
         candidateInput.addEventListener("keydown", (e) => {
             if (e.key === "Enter") {
                 e.preventDefault();
-                addCandidate();
+                addAndValidateCandidate();
             }
         });
     }
@@ -1505,7 +1580,21 @@ document.addEventListener("DOMContentLoaded", () => {
         try {
             const res = await apiRequest("/api/v1/decisions");
             if (res && res.status === "success") {
-                traceDecisionsList = res.data || [];
+                // Latest decision per instrument for "Today's Decisions" (avoid duplicate cards)
+                const raw = res.data || [];
+                const byInstrument = new Map();
+                for (const d of raw) {
+                    const key = (d.metadata && d.metadata.instrument_id) || d.metadata.decision_id;
+                    const prev = byInstrument.get(key);
+                    const ts = new Date((d.metadata && d.metadata.ts) || 0).getTime();
+                    const prevTs = prev ? new Date((prev.metadata && prev.metadata.ts) || 0).getTime() : -1;
+                    if (!prev || ts >= prevTs) {
+                        byInstrument.set(key, d);
+                    }
+                }
+                traceDecisionsList = Array.from(byInstrument.values()).sort((a, b) => {
+                    return new Date(b.metadata.ts).getTime() - new Date(a.metadata.ts).getTime();
+                });
                 renderBriefingList(traceDecisionsList);
                 
                 // Select first decision by default if available
@@ -1529,9 +1618,46 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
+    function humanizeDecisionText(text) {
+        if (!text) return "No explanation recorded";
+        return String(text)
+            .replace(/(\d+)\.(\d{2})\d+/g, "$1.$2")
+            .replace(/\s+/g, " ")
+            .trim();
+    }
+
+    function decisionTypeBadge(type) {
+        const t = (type || "").toUpperCase();
+        let color = "rgba(148, 163, 184, 0.35)";
+        if (t === "TRADE") color = "rgba(34, 197, 94, 0.35)";
+        else if (t === "WATCH") color = "rgba(56, 189, 248, 0.35)";
+        else if (t === "NO_TRADE") color = "rgba(245, 158, 11, 0.35)";
+        return `<span class="badge" style="font-size: 0.65rem; border: 1px solid ${color}; background: ${color};">${t || "—"}</span>`;
+    }
+
     function renderBriefingList(decisions) {
         if (!briefingListContainer) return;
         briefingListContainer.innerHTML = "";
+
+        const summaryEl = document.getElementById("decisions-summary-strip");
+        if (summaryEl) {
+            const counts = {};
+            decisions.forEach(d => {
+                const t = (d.metadata && d.metadata.decision_type) || "OTHER";
+                counts[t] = (counts[t] || 0) + 1;
+            });
+            if (decisions.length === 0) {
+                summaryEl.textContent = "No decisions yet — run ./athena-daily smoke after Kite auth.";
+            } else {
+                summaryEl.innerHTML =
+                    `<strong>${decisions.length}</strong> symbols (latest each) · ` +
+                    `TRADE ${counts.TRADE || 0} · WATCH ${counts.WATCH || 0} · ` +
+                    `NO_TRADE ${counts.NO_TRADE || 0} · other ${
+                        decisions.length - (counts.TRADE || 0) - (counts.WATCH || 0) - (counts.NO_TRADE || 0)
+                    }. ` +
+                    `<span class="text-muted">NO_TRADE = scored but below watch threshold (not a bug).</span>`;
+            }
+        }
 
         if (decisions.length === 0) {
             briefingListContainer.innerHTML = '<div class="text-muted text-center" style="padding: 24px;">No decisions match query.</div>';
@@ -1543,19 +1669,21 @@ document.addEventListener("DOMContentLoaded", () => {
             card.className = "briefing-card";
             card.setAttribute("data-id", d.metadata.decision_id);
 
-            const symbol = d.metadata.instrument_id || "INDEX";
+            const rawSym = d.metadata.instrument_id || "INDEX";
+            const symbol = rawSym.includes(":") ? rawSym.split(":").pop() : rawSym;
             const type = d.metadata.decision_type;
             const dir = d.metadata.direction === "NONE" ? "" : ` (${d.metadata.direction})`;
             
             const dateObj = new Date(d.metadata.ts);
             const dateStr = dateObj.toLocaleDateString("en-IN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+            const explanation = humanizeDecisionText(d.explanation);
 
             card.innerHTML = `
                 <div class="briefing-card-header">
                     <span class="briefing-symbol">${symbol}${dir}</span>
-                    <span class="badge text-primary" style="font-size: 0.65rem; border: 1px solid rgba(56, 189, 248, 0.2);">${type}</span>
+                    ${decisionTypeBadge(type)}
                 </div>
-                <p class="briefing-desc">${(d.explanation || "No explanation recorded").substring(0, 80)}...</p>
+                <p class="briefing-desc" title="${explanation}">${explanation.substring(0, 110)}${explanation.length > 110 ? "…" : ""}</p>
                 <div class="briefing-date">${dateStr}</div>
             `;
 

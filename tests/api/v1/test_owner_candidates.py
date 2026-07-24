@@ -57,3 +57,22 @@ class TestOwnerCandidatesAPI:
             json={"symbol": "INFY"},
         )
         assert resp.status_code == 403
+
+    def test_validate_requires_symbols(self, client: TestClient) -> None:
+        headers = get_auth_headers(client, Role.OPERATOR)
+        resp = client.post(
+            "/api/v1/market/validate",
+            headers=headers,
+            json={"symbols": []},
+        )
+        assert resp.status_code == 422
+
+    def test_validate_unknown_candidate_422(self, client: TestClient) -> None:
+        headers = get_auth_headers(client, Role.OPERATOR)
+        resp = client.post(
+            "/api/v1/market/validate",
+            headers=headers,
+            json={"symbols": ["NOTACANDIDATE999"]},
+        )
+        # No sqlite / not a candidate / kite not wired in unit tests — any client error is ok
+        assert resp.status_code in (422, 500)

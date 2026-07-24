@@ -406,6 +406,7 @@ class SqlitePipelineRunProvider:
                 "qualified_today",
                 "universe_source",
                 "universe_summary",
+                "validation_summary",
                 "final_context",
             ):
                 if key in pipeline:

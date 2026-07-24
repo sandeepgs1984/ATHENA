@@ -36,3 +36,22 @@ class DeleteCandidateResultDTO(BaseModel):
 
     symbol: str
     deleted: bool
+
+
+class ValidateSymbolsRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    symbols: list[str] = Field(..., min_length=1, max_length=20)
+
+
+class ValidateSymbolsResultDTO(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    run_id: str
+    status: str
+    symbols: tuple[str, ...]
+    eligible: int
+    excluded: int
+    decisions: int
+    qualified: int
+    detail: str = ""

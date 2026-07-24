@@ -26,6 +26,7 @@ from athena.ops.owner_candidates import (
     DEFAULT_EXCHANGE,
     SqliteCandidateStore,
     display_symbol,
+    normalize_candidate_symbol,
     to_instrument_id,
 )
 from athena.universe.engine import UniverseEngine
@@ -50,12 +51,18 @@ class OwnerValidationPipeline:
         *,
         exchange: str = DEFAULT_EXCHANGE,
         enable_scan: bool = True,
+        symbols_filter: Sequence[str] | None = None,
     ) -> None:
         self._repo = repo
         self._config_dir = Path(config_dir)
         self._exchange = exchange.strip().upper()
         self._enable_scan = enable_scan
         self._store = SqliteCandidateStore(repo)
+        self._symbols_filter = (
+            tuple(normalize_candidate_symbol(s) for s in symbols_filter)
+            if symbols_filter
+            else None
+        )
 
     def run(
         self,
@@ -65,8 +72,11 @@ class OwnerValidationPipeline:
         ingestion: IngestionResult,
     ) -> Mapping[str, object]:
         candidates = self._store.list_candidates(active_only=True)
+        if self._symbols_filter:
+            wanted = set(self._symbols_filter)
+            candidates = [c for c in candidates if c.symbol in wanted]
         max_raw = os.environ.get("ATHENA_MAX_CANDIDATES", "").strip()
-        if max_raw:
+        if max_raw and self._symbols_filter is None:
             cap = int(max_raw)
             if cap < 1:
                 raise ValueError("ATHENA_MAX_CANDIDATES must be >= 1")
@@ -139,6 +149,7 @@ class OwnerValidationPipeline:
             "skipped": 0,
         }
         decision_counts: dict[str, int] = {}
+        scan_regime: dict[str, object] | None = None
 
         if self._enable_scan and included_ids:
             run_id = f"run-{trigger.value.lower()}-{as_of.strftime('%Y%m%dT%H%M%S')}"
@@ -150,7 +161,7 @@ class OwnerValidationPipeline:
                 breadth_declines=0,
                 india_vix=None,
             )
-            scan_report = self._scan_eligible(
+            scan_report, scan_regime = self._scan_eligible(
                 included_ids,
                 as_of=as_of,
                 run_id=run_id,
@@ -168,11 +179,22 @@ class OwnerValidationPipeline:
             decision_counts = dict(scan_report.summary.decision_counts)
             qualified = self._qualified_from_repo(as_of, included_ids)
 
+        if regime_payload is None and scan_regime is not None:
+            regime_payload = scan_regime
+
         detail: dict[str, object] = {
             "mode": "owner_validation",
             "universe_members": universe_members,
             "universe_source": "owner_candidates",
             "universe_summary": dict(result.summary),
+            "validation_summary": {
+                "candidates": len(candidates),
+                "evaluated": int(result.summary.get("evaluated", 0)),
+                "eligible": int(result.summary.get("included", 0)),
+                "excluded": int(result.summary.get("excluded", 0)),
+                "qualified_watch_trade": len(qualified),
+                "decision_counts": decision_counts,
+            },
             "qualified_today": qualified,
             "scan_statistics": scan_stats,
             "decision_counts": decision_counts,
@@ -214,22 +236,57 @@ class OwnerValidationPipeline:
         from athena.regime import RegimeEngine
 
         snap = self._repo.get_latest_snapshot()
-        if snap is None or not snap.indices:
-            return None
-        index_id = next(iter(snap.indices.keys()))
-        index_candles = list(candles_by_id.get(index_id, ()))
-        if not index_candles:
-            index_candles = self._repo.list_candles_recent(index_id, Timeframe.D1, limit=500)
-        if len(index_candles) < 2:
-            return None
+        index_candidates: list[str] = []
+        if snap is not None and snap.indices:
+            index_candidates.extend(snap.indices.keys())
         try:
-            regime = RegimeEngine(cfg.regime).assess(
-                index_id, index_candles, snap, as_of=as_of
-            )
+            from athena.config.loader import load_kite_provider_config
+
+            kite = load_kite_provider_config(self._config_dir)
+            index_candidates.extend(kite.index_instruments)
         except Exception:
-            return None
+            pass
+        index_candidates.extend(["NSE:NIFTY 50", "NIFTY50"])
+
+        seen: set[str] = set()
+        for index_id in index_candidates:
+            if not index_id or index_id in seen:
+                continue
+            seen.add(index_id)
+            index_candles = list(candles_by_id.get(index_id, ()))
+            if len(index_candles) < 2:
+                index_candles = self._repo.list_candles_recent(
+                    index_id, Timeframe.D1, limit=500
+                )
+            if len(index_candles) < 2:
+                continue
+            try:
+                regime = RegimeEngine(cfg.regime).assess(
+                    index_id, index_candles, snap, as_of=as_of
+                )
+            except Exception:
+                continue
+            return self._regime_to_payload(regime)
+
+        # Fall back: any equity series with enough bars (trend/gap still useful)
+        for iid, series in candles_by_id.items():
+            if len(series) < 2:
+                continue
+            try:
+                regime = RegimeEngine(cfg.regime).assess(
+                    iid, series, snap, as_of=as_of
+                )
+            except Exception:
+                continue
+            return self._regime_to_payload(regime)
+        return None
+
+    @staticmethod
+    def _regime_to_payload(regime) -> dict[str, object]:
         labels = list(regime.assessment.labels)
-        trend = next((lb for lb in labels if "TREND" in lb or lb == "SIDEWAYS"), "UNKNOWN")
+        trend = next(
+            (lb for lb in labels if "TREND" in lb or lb == "SIDEWAYS"), "UNKNOWN"
+        )
         vol = next((lb for lb in labels if "VOLATILITY" in lb), "UNKNOWN")
         gap = next((lb for lb in labels if "GAP" in lb), "NO_GAP")
         explanation = regime.assessment.explanation or "; ".join(
@@ -240,7 +297,8 @@ class OwnerValidationPipeline:
             "volatility": vol,
             "gap": gap,
             "market_health": 0,
-            "explanation": explanation or "Regime assessed from latest market snapshot.",
+            "explanation": explanation
+            or "Regime assessed from available daily candles.",
         }
 
     def _scan_eligible(
@@ -277,6 +335,8 @@ class OwnerValidationPipeline:
         if not index_candles and included_ids:
             index_candles = list(candles_by_id.get(included_ids[0], ()))
 
+        captured_regime: dict[str, object] = {"payload": None}
+
         def builder(instrument_id: str) -> InstrumentPlan:
             cs = list(candles_by_id.get(instrument_id, ()))
             box: dict[str, Any] = {}
@@ -297,11 +357,12 @@ class OwnerValidationPipeline:
 
             def reg_stage(ctx):
                 series = index_candles if index_candles else cs
-                return {
-                    "regime": regime_engine.assess(
-                        index_id, series, snapshot, as_of=ctx.as_of
-                    )
-                }
+                regime = regime_engine.assess(
+                    index_id, series, snapshot, as_of=ctx.as_of
+                )
+                if captured_regime["payload"] is None:
+                    captured_regime["payload"] = self._regime_to_payload(regime)
+                return {"regime": regime}
 
             def sco_stage(ctx):
                 return {
@@ -352,7 +413,8 @@ class OwnerValidationPipeline:
             )
             return InstrumentPlan(definition=defn, collect=lambda: box.get("cap"))
 
-        return scanner.scan(list(included_ids), as_of=as_of, pipeline_builder=builder)
+        report = scanner.scan(list(included_ids), as_of=as_of, pipeline_builder=builder)
+        return report, captured_regime["payload"]
 
     def _qualified_from_repo(
         self, as_of: datetime, included_ids: Sequence[str]

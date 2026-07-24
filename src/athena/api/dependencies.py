@@ -204,7 +204,19 @@ def get_candidate_store():
 def get_candidates_service(request: Request) -> CandidatesService:
     """Dependency provider for CandidatesService."""
     store = getattr(request.app.state, "candidate_store", _candidate_store)
-    return CandidatesService(store)
+    repo = getattr(request.app.state, "sqlite_repo", None)
+    here = Path(__file__).resolve().parent
+    repo_root = here
+    for _ in range(8):
+        if (repo_root / "pyproject.toml").is_file():
+            break
+        repo_root = repo_root.parent
+    return CandidatesService(
+        store,
+        repo=repo,
+        config_dir=repo_root / "config",
+        repo_root=repo_root,
+    )
 
 
 def get_pipelines_service(request: Request) -> PipelinesService:

@@ -174,6 +174,20 @@ def _build_ingest_engine(
                 missing.append(sym)
             else:
                 resolved.append(iid)
+        # Always include configured index / VIX instruments for regime + snapshot
+        if ingest_cfg.provider == "kite":
+            try:
+                from athena.config.loader import load_kite_provider_config
+
+                kite_cfg = load_kite_provider_config(config_dir)
+                catalog_ids = {i.instrument_id for i in catalog}
+                for extra in list(kite_cfg.index_instruments) + [
+                    kite_cfg.india_vix_instrument
+                ]:
+                    if extra and extra in catalog_ids and extra not in resolved:
+                        resolved.append(extra)
+            except Exception:
+                pass
         if missing:
             import sys
 
@@ -470,6 +484,52 @@ def _cmd_seed_candidates(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_validate_symbols(args: argparse.Namespace) -> int:
+    """Ingest + eligibility + decisions for one or more owner-candidate symbols."""
+    config_dir = _config_dir()
+    cfg = load_config(config_dir)
+    tz = ZoneInfo(cfg.market.timezone)
+    as_of = _parse_as_of(args.as_of, tz)
+    from athena.ops.owner_candidates import SqliteCandidateStore, normalize_candidate_symbol
+    from athena.ops.symbol_validate import validate_symbols
+
+    symbols = [s.strip() for s in args.symbols if s and str(s).strip()]
+    if not symbols:
+        print("ERROR: provide at least one symbol", file=sys.stderr)
+        return 2
+
+    with _open_repo(cfg) as repo:
+        store = SqliteCandidateStore(repo)
+        known = {c.symbol for c in store.list_candidates(active_only=False)}
+        for sym in symbols:
+            bare = normalize_candidate_symbol(sym)
+            if bare not in known:
+                store.upsert_candidate(symbol=bare, notes="cli validate", active=True)
+                print(f"added candidate : {bare}")
+                known.add(bare)
+        try:
+            result = validate_symbols(
+                repo,
+                config_dir,
+                symbols=symbols,
+                as_of=as_of,
+                repo_root=_repo_root(),
+            )
+        except Exception as exc:
+            print(f"ERROR: validate failed: {exc}", file=sys.stderr)
+            return 1
+    print(f"run_id          : {result.run_id}")
+    print(f"status          : {result.status}")
+    print(f"symbols         : {', '.join(result.symbols)}")
+    print(f"eligible        : {result.eligible}")
+    print(f"excluded        : {result.excluded}")
+    print(f"decisions       : {result.decisions}")
+    print(f"qualified       : {result.qualified}")
+    if result.detail:
+        print(f"detail          : {result.detail}")
+    return 0 if result.status == "COMPLETED" else 1
+
+
 def _cmd_kite_auth(args: argparse.Namespace) -> int:
     """Interactive daily Kite login → write KITE_ACCESS_TOKEN to .env → verify."""
     load_dotenv()
@@ -568,6 +628,18 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_seed.add_argument("--as-of", help="ISO timestamp (defaults to now)")
     p_seed.set_defaults(func=_cmd_seed_candidates)
+
+    p_validate = sub.add_parser(
+        "validate-symbols",
+        help="Ingest + score one or more owner-candidate symbols (dashboard Add & validate)",
+    )
+    p_validate.add_argument(
+        "symbols",
+        nargs="+",
+        help="Symbols to validate (e.g. INFY RELIANCE)",
+    )
+    p_validate.add_argument("--as-of", help="ISO timestamp (defaults to now)")
+    p_validate.set_defaults(func=_cmd_validate_symbols)
 
     p_brief = sub.add_parser(
         "brief",

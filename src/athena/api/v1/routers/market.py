@@ -15,6 +15,8 @@ from athena.api.v1.dtos.market import (
     OwnerCandidateDTO,
     OwnerCandidateListDTO,
     UpsertCandidateRequest,
+    ValidateSymbolsRequest,
+    ValidateSymbolsResultDTO,
 )
 from athena.api.v1.services.candidates_service import CandidatesService
 
@@ -78,6 +80,24 @@ def create_candidate(
     principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.EXECUTE)),  # noqa: B008
 ) -> AthenaResponse[OwnerCandidateDTO]:
     data = service.upsert_candidate(body)
+    return AthenaResponse(status="success", data=data, meta=_meta(request))
+
+
+@router.post(
+    "/validate",
+    response_model=AthenaResponse[ValidateSymbolsResultDTO],
+    summary="Validate one or more owner candidates now (ingest + score)",
+    status_code=status.HTTP_200_OK,
+    operation_id="validateOwnerCandidates",
+)
+def validate_candidates(
+    body: ValidateSymbolsRequest,
+    request: Request,
+    service: CandidatesService = Depends(get_candidates_service),  # noqa: B008
+    principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.EXECUTE)),  # noqa: B008
+) -> AthenaResponse[ValidateSymbolsResultDTO]:
+    """Run a scoped kite ingest + eligibility + decision cycle for the given symbols."""
+    data = service.validate_candidates(body)
     return AthenaResponse(status="success", data=data, meta=_meta(request))
 
 

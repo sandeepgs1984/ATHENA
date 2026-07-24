@@ -1,0 +1,7 @@
+ATHENA FAILURE ALERT
+id      : alert-20260724T094020-run-due
+as_of   : 2026-07-24T09:40:20.711510+05:30
+source  : run-due
+title   : athena run-due hard failure
+detail  : missing file: /Users/cbz-sandeep/DEVELOPMENT DRIVE/GITHUB Projects/ATHENA/data/instruments.csv
+exit    : 1

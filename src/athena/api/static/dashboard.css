@@ -876,34 +876,57 @@ body {
     gap: 16px;
 }
 
-.search-bar-container {
+/* Flex search bars — avoid absolute icons (they overlapped decision cards) */
+.search-bar-container,
+.search-input-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    flex-shrink: 0;
     position: relative;
-    width: 100%;
-}
-
-.search-icon {
-    position: absolute;
-    left: 14px;
-    top: 50%;
-    transform: translateY(-50%);
-    color: var(--text-muted);
-    font-size: 0.9rem;
-}
-
-#universe-search {
-    width: 100%;
+    isolation: isolate;
     background-color: rgba(15, 22, 38, 0.4);
     border: 1px solid var(--border-color);
     border-radius: 6px;
-    color: var(--text-primary);
-    padding: 12px 16px 12px 38px;
-    font-size: 0.85rem;
-    font-family: var(--font-sans);
-    transition: all var(--transition-speed) ease;
+    padding: 0 12px;
+    box-sizing: border-box;
 }
 
+.search-bar-container .search-icon,
+.search-input-wrapper .search-icon {
+    position: static;
+    transform: none;
+    flex-shrink: 0;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    pointer-events: none;
+    line-height: 1;
+}
+
+.search-input-wrapper .search-input,
+#briefing-search,
+#universe-search {
+    flex: 1 1 auto;
+    width: 100%;
+    min-width: 0;
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    padding: 12px 4px;
+    font-size: 0.85rem;
+    font-family: var(--font-sans);
+    box-sizing: border-box;
+}
+
+.search-input-wrapper .search-input:focus,
+#briefing-search:focus,
 #universe-search:focus {
     outline: none;
+}
+
+.search-bar-container:focus-within,
+.search-input-wrapper:focus-within {
     border-color: var(--accent);
     box-shadow: 0 0 8px var(--accent-glow);
 }
@@ -1447,6 +1470,10 @@ body {
     overflow: hidden;
 }
 
+.briefing-column .card-body {
+    min-height: 0;
+}
+
 .briefing-list {
     flex-grow: 1;
     overflow-y: auto;
@@ -1454,6 +1481,8 @@ body {
     flex-direction: column;
     gap: 12px;
     padding-right: 4px;
+    position: relative;
+    z-index: 0;
 }
 
 .briefing-card {
@@ -1466,6 +1495,8 @@ body {
     display: flex;
     flex-direction: column;
     gap: 8px;
+    position: relative;
+    z-index: 0;
 }
 
 .briefing-card:hover {

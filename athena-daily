@@ -10,6 +10,7 @@
 #
 # Other:
 #   ./athena-daily status
+#   ./athena-daily validate INFY          # add (if needed) + ingest/score one symbol
 #   ./athena-daily force-refresh   # one refresh cycle now (full candidate list)
 #   ./athena-daily force-refresh --smoke
 #   ./athena-daily dashboard
@@ -39,6 +40,7 @@ Usage:
   ./athena-daily                 Run due cycles (seed + run-due) — normal day
   ./athena-daily smoke           First-time proof: seed + refresh on 10 symbols
   ./athena-daily status          Candidates, last runs, what is due now
+  ./athena-daily validate SYM [SYM…]  Ingest+score symbol(s); shows on MI + Decisions
   ./athena-daily force-refresh   One refresh cycle now (full list; slow on Nifty 500)
   ./athena-daily force-refresh --smoke
   ./athena-daily dashboard       Print dashboard URL
@@ -135,11 +137,14 @@ cmd_smoke() {
   require_kite_provider
   echo "=== ATHENA smoke (first ${SMOKE_N} candidates only) ==="
   echo "This proves kite ingest + eligibility + decisions without scanning all 500."
+  echo "Needs ≥30 daily bars per symbol (config/ingestion.json lookback_days)."
   export ATHENA_MAX_CANDIDATES="$SMOKE_N"
   "$PYTHON" -m athena.cli seed-candidates || true
   "$PYTHON" -m athena.cli cycle --trigger refresh "$@"
   echo
-  echo "Smoke finished. Refresh Market Intelligence + Decisions tabs."
+  echo "Smoke finished. Hard-refresh the dashboard (Cmd+Shift+R)."
+  echo "  Market Intelligence → Universe Inclusion Trace should show Eligible/Excluded"
+  echo "  Decisions tab fills only for Eligible names that score WATCH/TRADE"
   echo "When ready for full list: ./athena-daily   (or ./athena-daily force-refresh)"
 }
 
@@ -161,6 +166,16 @@ cmd_force_refresh() {
   exec "$PYTHON" -m athena.cli cycle --trigger refresh "$@"
 }
 
+cmd_validate() {
+  require_kite_provider
+  if [[ "$#" -lt 1 ]]; then
+    echo "Usage: ./athena-daily validate SYMBOL [SYMBOL…]" >&2
+    exit 2
+  fi
+  echo "=== Validate symbols: $* ==="
+  exec "$PYTHON" -m athena.cli validate-symbols "$@"
+}
+
 case "$CMD" in
   run|daily|"")
     cmd_run "$@"
@@ -170,6 +185,9 @@ case "$CMD" in
     ;;
   status)
     cmd_status
+    ;;
+  validate|validate-symbols)
+    cmd_validate "$@"
     ;;
   force-refresh|refresh)
     cmd_force_refresh "$@"

@@ -3,10 +3,10 @@
     "layer": 3,
     "description": "Live ingest cycle settings (M10.1 / R4). provider: file (default) or kite. Kite secrets in .env only."
   },
-  "provider": "file",
+  "provider": "kite",
   "timeframes": ["5m"],
   "lookback_minutes": 30,
-  "lookback_days": 5,
+  "lookback_days": 90,
   "include_daily": true,
   "include_quotes": true,
   "validate_gaps": false,

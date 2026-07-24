@@ -6,6 +6,24 @@ status updated on approval.
 
 ---
 
+## On-demand symbol validate + Decisions UI fix (READY FOR REVIEW)
+
+| | |
+|---|---|
+| Completed | 2026-07-24 |
+| Scope | After MI Add, run scoped kite ingest+score so the symbol appears in Eligible/Excluded and Decisions; fix Decisions search-icon overlap; dedupe latest decision per symbol |
+| Tests | `tests/api/v1/test_owner_candidates.py` (validate empty body 422) |
+| Status | **READY FOR REVIEW** |
+| Branch | develop |
+
+- `POST /api/v1/market/validate` + `CandidatesService.validate_candidates` → `ops/symbol_validate.validate_symbols`.
+- MI **Add & validate** button: upsert candidate then validate; refreshes Market Intelligence panels.
+- CLI: `athena validate-symbols SYM…` / `./athena-daily validate SYM`.
+- Decisions: flex search bar (no absolute icon overlap); list shows latest decision per instrument.
+- Cache bust dashboard assets `?v=9.8.0`.
+
+---
+
 ## Nifty 500 daily candidate seed (READY FOR REVIEW)
 
 | | |
