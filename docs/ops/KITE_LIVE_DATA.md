@@ -88,6 +88,10 @@ ATHENA exchanges the one-time request token, updates `.env`, re-injects the
 new access token into the running process, and verifies the read-only profile.
 No broker secret or access token is returned to the browser.
 
+Use the header **KITE** button anytime to inspect the session, clear it, or
+force a fresh authorize. Broker website logout alone does **not** revoke the
+Connect access token.
+
 ### 1.1 CLI fallback — root helper script
 
 From the **repo root**:

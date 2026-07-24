@@ -117,6 +117,26 @@ def complete_kite_auth(
     )
 
 
+@router.post(
+    "/kite/disconnect",
+    response_model=AthenaResponse[KiteStatusDTO],
+    summary="Clear the daily Kite access token and require reconnect",
+    status_code=status.HTTP_200_OK,
+    operation_id="disconnectKite",
+)
+def disconnect_kite(
+    request: Request,
+    service: KiteSessionService = Depends(get_kite_session_service),  # noqa: B008
+    principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.ADMIN)),  # noqa: B008
+) -> AthenaResponse[KiteStatusDTO]:
+    """Drop the stored access token so the dashboard gate requires a fresh login."""
+    return AthenaResponse(
+        status="success",
+        data=_kite_status_dto(service.disconnect()),
+        meta=_meta(request),
+    )
+
+
 @router.get(
     "/stream",
     summary="SSE live operations warning stream",

@@ -22,6 +22,7 @@ status updated on approval.
 - API secret and access token never return to the browser; start/complete require ADMIN.
 - CLI `./kite-auth` remains the fallback. Dashboard assets `?v=9.15.0`.
 - File-backed smoke now forces its intended `file` provider instead of inheriting the owner's live Kite config.
+- Header **KITE** button shows live session state; opens reconnect panel; **Clear Session** drops the access token via `POST /api/v1/ops/kite/disconnect` (assets `?v=9.16.0`).
 
 ---
 

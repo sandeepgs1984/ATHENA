@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.15.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.16.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -110,6 +110,10 @@
                     </div>
                     
                     <div class="header-actions">
+                        <button id="kite-status-btn" class="btn btn-kite unknown" type="button" title="Kite market-data session" hidden>
+                            <i class="fa-solid fa-link"></i>
+                            <span id="kite-status-label">KITE</span>
+                        </button>
                         <button id="refresh-trigger" class="btn btn-icon" title="Force Refresh">
                             <i class="fa-solid fa-arrows-rotate"></i>
                         </button>
@@ -648,12 +652,15 @@
         </main>
     </div>
 
-    <!-- Kite morning gate (M-E3). Blocking only when ingestion requires Kite. -->
+    <!-- Kite morning gate (M-E3). Blocking only when ingestion requires Kite and session is invalid. -->
     <div id="kite-gate" class="kite-gate" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="kite-gate-title">
         <div class="kite-gate-panel">
-            <div class="kite-gate-brand">
-                <i class="fa-solid fa-link"></i>
-                <span>MARKET DATA CONNECTION</span>
+            <div class="kite-gate-top">
+                <div class="kite-gate-brand">
+                    <i class="fa-solid fa-link"></i>
+                    <span>MARKET DATA CONNECTION</span>
+                </div>
+                <button id="kite-gate-close" class="modal-close-btn" type="button" aria-label="Close Kite panel" hidden>&times;</button>
             </div>
             <h2 id="kite-gate-title">Connect Kite to go live</h2>
             <p id="kite-gate-detail" class="kite-gate-detail">
@@ -683,6 +690,9 @@
                 <textarea id="kite-request-token" class="kite-token-input" rows="3" spellcheck="false" placeholder="Paste redirect URL or request_token"></textarea>
                 <p id="kite-gate-error" class="kite-gate-error" hidden></p>
                 <div class="kite-gate-actions">
+                    <button id="kite-disconnect" class="btn kite-danger-btn" type="button" hidden>
+                        Clear Session
+                    </button>
                     <button id="kite-recheck" class="btn" type="button">Recheck</button>
                     <button id="kite-complete-auth" class="btn kite-primary-btn" type="button">
                         Verify &amp; Go Live
@@ -731,6 +741,6 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.15.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.16.0"></script>
 </body>
 </html>

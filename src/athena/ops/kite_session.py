@@ -149,6 +149,36 @@ class KiteSessionService:
             ),
         )
 
+    def disconnect(self) -> KiteSessionStatus:
+        """Clear the daily access token from ``.env`` and process env.
+
+        Keeps ``KITE_API_KEY`` / ``KITE_API_SECRET`` so reconnect can proceed
+        without re-entering app credentials. Does not call Zerodha logout APIs
+        (broker web logout is separate from Connect access tokens).
+        """
+        provider = load_ingestion_config(self._config_dir).provider
+        if provider != "kite":
+            return KiteSessionStatus(
+                required=False,
+                connected=True,
+                state="not_required",
+                detail=f"Kite not required (ingestion provider: {provider})",
+            )
+
+        os.environ.pop("KITE_ACCESS_TOKEN", None)
+        if self.env_path.is_file():
+            upsert_env_file(self.env_path, {"KITE_ACCESS_TOKEN": ""})
+
+        return KiteSessionStatus(
+            required=True,
+            connected=False,
+            state="missing",
+            detail=(
+                "Kite access token cleared. Open Kite Login to authorize a fresh "
+                "read-only market-data session."
+            ),
+        )
+
     def complete_auth(self, redirect_or_token: str) -> KiteSessionStatus:
         """Exchange request token, persist it, re-inject env, and verify profile."""
         api_key = (os.environ.get("KITE_API_KEY") or "").strip()

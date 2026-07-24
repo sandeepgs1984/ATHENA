@@ -431,6 +431,36 @@ body {
     border-color: rgba(0, 230, 118, 0.3);
 }
 
+.btn-kite {
+    gap: 8px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+}
+
+.btn-kite.connected {
+    background-color: var(--success-glow);
+    border-color: rgba(0, 230, 118, 0.25);
+    color: var(--success);
+}
+
+.btn-kite.required {
+    background-color: var(--warning-glow);
+    border-color: rgba(255, 208, 0, 0.3);
+    color: var(--warning);
+}
+
+.btn-kite.unknown,
+.btn-kite.idle {
+    background-color: rgba(148, 163, 184, 0.08);
+    border-color: rgba(148, 163, 184, 0.2);
+    color: var(--text-secondary);
+}
+
+.btn-kite:hover {
+    filter: brightness(1.08);
+}
+
 /* Workspace Viewport */
 .workspace-viewport {
     flex-grow: 1;
@@ -1461,11 +1491,19 @@ body {
     box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55);
 }
 
+.kite-gate-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 18px;
+}
+
 .kite-gate-brand {
     display: flex;
     align-items: center;
     gap: 9px;
-    margin-bottom: 18px;
+    margin-bottom: 0;
     color: var(--accent);
     font-size: 0.72rem;
     font-weight: 700;
@@ -1560,6 +1598,16 @@ body {
 
 .kite-primary-btn:hover {
     filter: brightness(1.08);
+}
+
+.kite-danger-btn {
+    border-color: rgba(255, 78, 80, 0.35);
+    color: var(--danger);
+}
+
+.kite-danger-btn:hover {
+    background: var(--danger-glow);
+    border-color: rgba(255, 78, 80, 0.5);
 }
 
 .kite-gate-error {

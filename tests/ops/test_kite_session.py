@@ -136,3 +136,28 @@ def test_complete_auth_persists_injects_and_verifies(
         encoding="utf-8"
     )
     assert os.environ["KITE_ACCESS_TOKEN"] == "fresh-token"
+
+
+def test_disconnect_clears_access_token(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("KITE_API_KEY", "key")
+    monkeypatch.setenv("KITE_API_SECRET", "secret")
+    monkeypatch.setenv("KITE_ACCESS_TOKEN", "fresh")
+    (tmp_path / ".env").write_text(
+        "KITE_API_KEY=key\nKITE_API_SECRET=secret\nKITE_ACCESS_TOKEN=fresh\n",
+        encoding="utf-8",
+    )
+    service = KiteSessionService(
+        repo_root=tmp_path,
+        config_dir=_config_dir(tmp_path),
+    )
+    result = service.disconnect()
+    assert result.connected is False
+    assert result.state == "missing"
+    assert "KITE_ACCESS_TOKEN" not in os.environ
+    env_text = (tmp_path / ".env").read_text(encoding="utf-8")
+    assert "KITE_API_KEY=key" in env_text
+    assert "KITE_API_SECRET=secret" in env_text
+    assert "KITE_ACCESS_TOKEN=fresh" not in env_text

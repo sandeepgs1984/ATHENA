@@ -83,7 +83,19 @@ class TestOpsStream:
 
 
 class FakeKiteSessionService:
+    def __init__(self) -> None:
+        self.connected = False
+        self.disconnected = False
+
     def status(self, *, verify: bool = True) -> KiteSessionStatus:
+        if self.connected:
+            return KiteSessionStatus(
+                required=True,
+                connected=True,
+                state="connected",
+                detail="session OK",
+                user_id="AB123",
+            )
         return KiteSessionStatus(
             required=True,
             connected=False,
@@ -100,12 +112,23 @@ class FakeKiteSessionService:
 
     def complete_auth(self, redirect_or_token: str) -> KiteSessionStatus:
         assert redirect_or_token == "Request123"
+        self.connected = True
         return KiteSessionStatus(
             required=True,
             connected=True,
             state="connected",
             detail="session OK",
             user_id="AB123",
+        )
+
+    def disconnect(self) -> KiteSessionStatus:
+        self.connected = False
+        self.disconnected = True
+        return KiteSessionStatus(
+            required=True,
+            connected=False,
+            state="missing",
+            detail="Kite access token cleared",
         )
 
 
@@ -147,6 +170,11 @@ class TestKiteGate:
         assert complete.status_code == 200
         assert complete.json()["data"]["connected"] is True
         assert complete.json()["data"]["user_id"] == "AB123"
+
+        disconnect = client.post("/api/v1/ops/kite/disconnect", headers=admin)
+        assert disconnect.status_code == 200
+        assert disconnect.json()["data"]["connected"] is False
+        assert disconnect.json()["data"]["state"] == "missing"
 
 
 class TestOpsBackups:
