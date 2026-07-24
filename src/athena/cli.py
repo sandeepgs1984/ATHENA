@@ -159,10 +159,21 @@ def _build_ingest_engine(
             else:
                 resolved.append(iid)
         if missing:
+            import sys
+
+            preview = ", ".join(missing[:25])
+            more = f" (+{len(missing) - 25} more)" if len(missing) > 25 else ""
+            print(
+                f"WARNING: {len(missing)} owner candidates not in provider catalog "
+                f"(skipped for ingest): {preview}{more}",
+                file=sys.stderr,
+            )
+        if not resolved:
             from athena.errors import DataValidationError
 
             raise DataValidationError(
-                "owner candidates not in provider catalog: " + ", ".join(missing)
+                "no owner candidates resolved against provider catalog "
+                f"(missing examples: {', '.join(missing[:10])})"
             )
         ingest_cfg = ingest_cfg.model_copy(update={"instrument_ids": resolved})
 
@@ -243,6 +254,20 @@ def _cmd_cycle(args: argparse.Namespace) -> int:
     trigger = RunTrigger(args.trigger.upper())
 
     with _open_repo(cfg) as repo:
+        from athena.ops.candidate_seed import seed_owner_candidates
+        from athena.ops.constituents import ConstituentFetchError
+
+        try:
+            seed = seed_owner_candidates(
+                repo, config_dir, as_of=as_of, repo_root=_repo_root()
+            )
+            print(
+                f"candidate seed  : {seed.status} source={seed.source} "
+                f"fetched={seed.fetched} added={seed.added} present={seed.already_present}"
+            )
+        except ConstituentFetchError as exc:
+            print(f"WARNING: candidate seed failed (continuing with existing list): {exc}")
+
         ingest_engine, _ = _build_ingest_engine(
             config_dir, cfg, repo, tz, scope_to_candidates=True
         )
@@ -346,6 +371,20 @@ def _cmd_run_due(args: argparse.Namespace) -> int:
     send_brief = None if args.brief is None else bool(args.brief)
 
     with _open_repo(cfg) as repo:
+        from athena.ops.candidate_seed import seed_owner_candidates
+        from athena.ops.constituents import ConstituentFetchError
+
+        try:
+            seed = seed_owner_candidates(
+                repo, config_dir, as_of=as_of, repo_root=_repo_root()
+            )
+            print(
+                f"candidate seed  : {seed.status} source={seed.source} "
+                f"fetched={seed.fetched} added={seed.added} present={seed.already_present}"
+            )
+        except ConstituentFetchError as exc:
+            print(f"WARNING: candidate seed failed (continuing with existing list): {exc}")
+
         ingest_engine, _ = _build_ingest_engine(
             config_dir, cfg, repo, tz, scope_to_candidates=True
         )
@@ -382,6 +421,36 @@ def _cmd_run_due(args: argparse.Namespace) -> int:
         print(f"briefing        : {result.briefing_id}")
     if result.alerted:
         print("alert           : sent")
+    return 0
+
+
+def _cmd_seed_candidates(args: argparse.Namespace) -> int:
+    """Fetch Nifty 500 (or configured source) and merge-unique into owner_candidates."""
+    config_dir = _config_dir()
+    cfg = load_config(config_dir)
+    tz = ZoneInfo(cfg.market.timezone)
+    as_of = _parse_as_of(args.as_of, tz)
+    from athena.ops.candidate_seed import seed_owner_candidates
+    from athena.ops.constituents import ConstituentFetchError
+
+    with _open_repo(cfg) as repo:
+        try:
+            seed = seed_owner_candidates(
+                repo, config_dir, as_of=as_of, repo_root=_repo_root()
+            )
+        except ConstituentFetchError as exc:
+            print(f"ERROR: candidate seed failed: {exc}", file=sys.stderr)
+            return 1
+    print(f"candidate seed  : {seed.status}")
+    print(f"source          : {seed.source}")
+    print(f"as_of_date      : {seed.as_of_date.isoformat()}")
+    print(f"fetched         : {seed.fetched}")
+    print(f"added           : {seed.added}")
+    print(f"already_present : {seed.already_present}")
+    if seed.url_used:
+        print(f"url             : {seed.url_used}")
+    if seed.detail:
+        print(f"detail          : {seed.detail}")
     return 0
 
 
@@ -476,6 +545,13 @@ def main(argv: list[str] | None = None) -> int:
         help="Do not dispatch failure alerts (still exits non-zero on failure)",
     )
     p_run_due.set_defaults(func=_cmd_run_due)
+
+    p_seed = sub.add_parser(
+        "seed-candidates",
+        help="Fetch Nifty 500 constituents and merge-unique into owner_candidates",
+    )
+    p_seed.add_argument("--as-of", help="ISO timestamp (defaults to now)")
+    p_seed.set_defaults(func=_cmd_seed_candidates)
 
     p_brief = sub.add_parser(
         "brief",

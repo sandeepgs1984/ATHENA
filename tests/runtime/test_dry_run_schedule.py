@@ -192,7 +192,7 @@ class TestDryRunCycle:
         as_of = datetime(2026, 2, 13, 8, 20, tzinfo=IST)
         repo = SqliteRepository(tmp_path / "athena.db")
         repo.initialize()
-        assert SCHEMA_VERSION == 5
+        assert SCHEMA_VERSION == 6
 
         pipe = RecordingPipeline()
         orch = DryRunCycleOrchestrator(

@@ -155,6 +155,7 @@ SOP: [`docs/ops/FILE_BACKED_DAILY_OPS.md`](ops/FILE_BACKED_DAILY_OPS.md) · Smok
 | **D-V1** Owner candidate list | SQLite `owner_candidates` + MI CRUD, shared with CLI | 🔄 Ready for review |
 | **D-V2** Eligibility in cycle | UniverseEngine on candidates → real Eligible/Excluded | 🔄 Ready for review |
 | **D-V3** Qualify WATCH/TRADE | Scan eligible → persist decisions; MI qualified-today | 🔄 Ready for review |
+| **D-U1–U3** Nifty 500 seed | Daily merge-unique Nifty 500 → `owner_candidates` | 🔄 Ready for review |
 
 ---
 

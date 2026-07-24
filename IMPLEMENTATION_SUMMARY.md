@@ -6,6 +6,24 @@ status updated on approval.
 
 ---
 
+## Nifty 500 daily candidate seed (READY FOR REVIEW)
+
+| | |
+|---|---|
+| Completed | 2026-07-24 |
+| Scope | Once-per-day merge-unique seed of `owner_candidates` from official Nifty 500 constituents CSV |
+| Tests | `tests/ops/test_candidate_seed.py`; schema v6 (`ops_meta`) |
+| Status | **READY FOR REVIEW** |
+| Branch | develop |
+
+- Config: `config/candidate_seed.json` (`source: NIFTY500`, merge_unique, once_per_day).
+- Fetch: NSE archives CSV (+ niftyindices fallback); optional `local_file` for offline/tests.
+- Merge: inserts missing symbols only; never wipes manual adds or overwrites existing notes.
+- Wired into `athena cycle`, `./athena-run-due`, and `athena seed-candidates`.
+- SCHEMA_VERSION 6: `ops_meta` tracks last seed date. Seed failure warns and continues with existing list.
+
+---
+
 ## Portfolio reset + owner validation list (READY FOR REVIEW)
 
 | | |

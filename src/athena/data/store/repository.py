@@ -113,7 +113,7 @@ class SqliteRepository:
         tables = ("instruments", "candles", "quotes", "market_snapshots",
                   "corporate_actions", "quarantine_records", "runs",
                   "decisions", "decision_traces", "decision_journal",
-                  "owner_positions", "owner_candidates")
+                  "owner_positions", "owner_candidates", "ops_meta")
         try:
             with self._lock:
                 return {
@@ -558,6 +558,18 @@ class SqliteRepository:
             (r[0], datetime.fromisoformat(r[1]), r[2] or "", bool(r[3]))
             for r in rows
         ]
+
+    def get_ops_meta(self, key: str) -> str | None:
+        row = self._query_one("SELECT value FROM ops_meta WHERE key=?", (key,))
+        return None if row is None else str(row[0])
+
+    def set_ops_meta(self, key: str, value: str, *, updated_ts: datetime | None = None) -> None:
+        ts = (updated_ts or datetime.now()).isoformat()
+        self._write(
+            "INSERT INTO ops_meta (key, value, updated_ts) VALUES (?,?,?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_ts=excluded.updated_ts",
+            (key, value, ts),
+        )
 
     def list_candles_recent(
         self,

@@ -1,0 +1,14 @@
+{
+  "_meta": {
+    "layer": "ops",
+    "description": "Daily merge-unique seed of owner_candidates from Nifty 500 constituents CSV (NSE Indices). Does not wipe manual adds. Set source to none to disable."
+  },
+  "source": "NIFTY500",
+  "merge_unique": true,
+  "once_per_day": true,
+  "url": "https://archives.nseindia.com/content/indices/ind_nifty500list.csv",
+  "fallback_url": "https://www.niftyindices.com/IndexConstituent/ind_nifty500list.csv",
+  "local_file": null,
+  "http_timeout_seconds": 30,
+  "notes_prefix": "seed:NIFTY500"
+}
