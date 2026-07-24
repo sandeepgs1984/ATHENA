@@ -20,6 +20,7 @@ from athena.api.platform.providers.metadata_provider import (
 )
 from athena.api.v1.providers.base import (
     BacktestRunProvider,
+    CandleHistoryProvider,
     DecisionProvider,
     ExportGenerationProvider,
     ExportQueryProvider,
@@ -34,6 +35,7 @@ from athena.api.v1.providers.base import (
 )
 from athena.api.v1.providers.in_memory import (
     InMemoryBacktestRunProvider,
+    InMemoryCandleHistoryProvider,
     InMemoryDecisionProvider,
     InMemoryExportProvider,
     InMemoryPerformanceAnalyticsProvider,
@@ -48,6 +50,7 @@ from athena.api.v1.providers.observability import (
     ObservabilityMetricsProvider,
 )
 from athena.api.v1.providers.sqlite_providers import (
+    SqliteCandleHistoryProvider,
     SqliteDecisionProvider,
     SqlitePipelineRunProvider,
     SqlitePortfolioProvider,
@@ -56,10 +59,12 @@ from athena.api.v1.providers.sqlite_providers import (
 )
 from athena.api.v1.services.analytics_service import AnalyticsService
 from athena.api.v1.services.backtests_service import BacktestsService
+from athena.api.v1.services.candidates_service import CandidatesService
 from athena.api.v1.services.dashboard_service import DashboardService
 from athena.api.v1.services.decisions_service import DecisionsService
 from athena.api.v1.services.exports_service import ExportsService
 from athena.api.v1.services.health_service import HealthService
+from athena.api.v1.services.market_history_service import MarketHistoryService
 from athena.api.v1.services.metrics_service import MetricsService
 from athena.api.v1.services.ops_service import OpsService
 from athena.api.v1.services.pipelines_service import PipelinesService
@@ -67,7 +72,6 @@ from athena.api.v1.services.portfolio_service import PortfolioService
 from athena.api.v1.services.reports_service import ReportsService
 from athena.api.v1.services.scheduler_service import SchedulerService
 from athena.api.v1.services.strategies_service import StrategyService
-from athena.api.v1.services.candidates_service import CandidatesService
 from athena.api.v1.services.workspace_service import WorkspaceService
 from athena.data.store.repository import SqliteRepository
 from athena.ops.owner_candidates import InMemoryCandidateStore, SqliteCandidateStore
@@ -88,6 +92,7 @@ _analytics_provider = InMemoryPerformanceAnalyticsProvider()
 _export_provider = InMemoryExportProvider()
 _backtest_run_provider = InMemoryBacktestRunProvider()
 _candidate_store = InMemoryCandidateStore()
+_candle_history_provider = InMemoryCandleHistoryProvider()
 
 _sqlite_repo: SqliteRepository | None = None
 
@@ -113,6 +118,7 @@ def wire_sqlite_providers(
 
     starting = load_starting_cash()
     decision_prov = SqliteDecisionProvider(repo)
+    candle_history_prov = SqliteCandleHistoryProvider(repo)
     portfolio_prov = SqlitePortfolioProvider(repo, starting_cash=starting)
     pipeline_prov = SqlitePipelineRunProvider(repo)
     candidate_store = SqliteCandidateStore(repo)
@@ -120,6 +126,7 @@ def wire_sqlite_providers(
     app_state.ops_db_path = path  # type: ignore[attr-defined]
     app_state.sqlite_repo = repo  # type: ignore[attr-defined]
     app_state.decision_provider = decision_prov  # type: ignore[attr-defined]
+    app_state.candle_history_provider = candle_history_prov  # type: ignore[attr-defined]
     app_state.portfolio_provider = portfolio_prov  # type: ignore[attr-defined]
     app_state.pipeline_run_provider = pipeline_prov  # type: ignore[attr-defined]
     app_state.candidate_store = candidate_store  # type: ignore[attr-defined]
@@ -140,6 +147,11 @@ def get_metrics_provider() -> MetricsProvider:
 def get_decision_provider() -> DecisionProvider:
     """Dependency provider for DecisionProvider."""
     return _decision_provider
+
+
+def get_candle_history_provider() -> CandleHistoryProvider:
+    """Module-level candle provider for deterministic API tests."""
+    return _candle_history_provider
 
 
 def get_portfolio_provider() -> PortfolioProvider:
@@ -184,6 +196,20 @@ def get_decisions_service(request: Request) -> DecisionsService:
     """Dependency provider for DecisionsService."""
     provider = getattr(request.app.state, "decision_provider", _decision_provider)
     return DecisionsService(provider)
+
+
+def get_market_history_service(request: Request) -> MarketHistoryService:
+    """Dependency provider for freshness-aware persisted candles."""
+    provider = getattr(
+        request.app.state,
+        "candle_history_provider",
+        _candle_history_provider,
+    )
+    freshness_minutes = request.app.state.intraday_freshness_minutes
+    return MarketHistoryService(
+        provider,
+        freshness_threshold_minutes=freshness_minutes,
+    )
 
 
 def get_portfolio_service(request: Request) -> PortfolioService:

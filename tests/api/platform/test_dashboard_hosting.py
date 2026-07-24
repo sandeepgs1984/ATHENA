@@ -76,6 +76,16 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "dismissDecisionForToday" in js
     assert "athena.dismissed-decisions" in js
     assert "Decision history and replay evidence are never deleted" in js
+    # M-D2 renders persisted candles with plan overlays and explicit freshness
+    assert "function loadDecisionChart" in js
+    assert "function renderCandlestickSvg" in js
+    assert "function renderChartFreshness" in js
+    assert "/candles?timeframe=5m&limit=120" in js
+    assert "skipToast: true" in js
+    assert "Re-validate before using the TradePlan" in js
+    assert "Restart ATHENA (Dock/athena-serve)" in js
+    assert "decision-chart-entry-zone" in css
+    assert "decision-chart-plan-line" in css
 
     # Operations console (P9.7) is live — warnings feed + backup panel, not a fake loader
     assert 'id="ops-warnings-feed"' in html

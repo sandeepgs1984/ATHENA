@@ -601,7 +601,12 @@ document.addEventListener("DOMContentLoaded", () => {
     // ---------------------------------------------------------------------------
     async function apiRequest(url, options = {}) {
         const start = performance.now();
-        const { skipAuthRedirect = false, _retried = false, ...fetchOptions } = options;
+        const {
+            skipAuthRedirect = false,
+            skipToast = false,
+            _retried = false,
+            ...fetchOptions
+        } = options;
         
         // Add default Headers
         const headers = {
@@ -649,15 +654,18 @@ document.addEventListener("DOMContentLoaded", () => {
         } catch (error) {
             console.error(`API request failed: ${url}`, error);
             const detail = error?.data?.detail;
+            const title = error?.data?.title;
             let message = "Network request failed";
-            if (typeof detail === "string") {
+            if (typeof detail === "string" && detail.trim()) {
                 message = detail;
             } else if (detail && typeof detail === "object" && detail.title) {
                 message = detail.title;
+            } else if (typeof title === "string" && title.trim()) {
+                message = title;
             } else if (error?.status) {
                 message = `Request failed (${error.status})`;
             }
-            if (!(error?.status === 401 && state.authRequired)) {
+            if (!skipToast && !(error?.status === 401 && state.authRequired)) {
                 showToast(message, "danger");
             }
             throw error;
@@ -2628,6 +2636,236 @@ document.addEventListener("DOMContentLoaded", () => {
         `;
     }
 
+    function chartLevelValues(plan) {
+        if (!plan) return [];
+        return [
+            Number(plan.entry_low),
+            Number(plan.entry_high),
+            Number(plan.stop_loss),
+            ...(Array.isArray(plan.targets) ? plan.targets.map(Number) : []),
+        ].filter(Number.isFinite);
+    }
+
+    function renderCandlestickSvg(series, plan) {
+        const host = document.getElementById("decision-chart-canvas");
+        if (!host) return;
+        const candles = Array.isArray(series.candles) ? series.candles : [];
+        if (!candles.length) {
+            host.innerHTML = `
+                <div class="decision-chart-empty">
+                    No persisted 5-minute candles for ${escapeDecisionHtml(series.instrument_id)}.
+                    Re-validate after Kite ingestion.
+                </div>
+            `;
+            return;
+        }
+
+        const width = 900;
+        const height = 330;
+        const margin = { top: 20, right: 72, bottom: 34, left: 12 };
+        const plotWidth = width - margin.left - margin.right;
+        const plotHeight = height - margin.top - margin.bottom;
+        const prices = candles.flatMap(candle => [Number(candle.high), Number(candle.low)]);
+        prices.push(...chartLevelValues(plan));
+        let minPrice = Math.min(...prices);
+        let maxPrice = Math.max(...prices);
+        const span = Math.max(maxPrice - minPrice, Math.abs(maxPrice || 1) * 0.005);
+        minPrice -= span * 0.06;
+        maxPrice += span * 0.06;
+
+        const y = price => margin.top
+            + ((maxPrice - Number(price)) / (maxPrice - minPrice)) * plotHeight;
+        const slot = plotWidth / candles.length;
+        const bodyWidth = Math.max(2, Math.min(8, slot * 0.58));
+        const priceLabel = value => Number(value).toLocaleString("en-IN", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        });
+
+        const grid = Array.from({ length: 5 }, (_, index) => {
+            const ratio = index / 4;
+            const price = maxPrice - (maxPrice - minPrice) * ratio;
+            const yy = margin.top + plotHeight * ratio;
+            return `
+                <line x1="${margin.left}" y1="${yy}" x2="${margin.left + plotWidth}" y2="${yy}"
+                    class="decision-chart-gridline" />
+                <text x="${margin.left + plotWidth + 7}" y="${yy + 4}"
+                    class="decision-chart-axis-label">${priceLabel(price)}</text>
+            `;
+        }).join("");
+
+        let entryZone = "";
+        let planLines = "";
+        if (plan) {
+            const entryLowY = y(plan.entry_low);
+            const entryHighY = y(plan.entry_high);
+            const zoneY = Math.min(entryLowY, entryHighY);
+            const zoneHeight = Math.max(2, Math.abs(entryLowY - entryHighY));
+            entryZone = `
+                <rect x="${margin.left}" y="${zoneY}" width="${plotWidth}" height="${zoneHeight}"
+                    class="decision-chart-entry-zone" />
+                <text x="${margin.left + 6}" y="${Math.max(margin.top + 11, zoneY - 4)}"
+                    class="decision-chart-plan-label entry">ENTRY ZONE</text>
+            `;
+            const levels = [
+                { value: plan.stop_loss, label: "STOP", cls: "stop" },
+                ...(Array.isArray(plan.targets)
+                    ? plan.targets.map((target, index) => ({
+                        value: target,
+                        label: `T${index + 1}`,
+                        cls: "target",
+                    }))
+                    : []),
+            ];
+            planLines = levels.map(level => {
+                const yy = y(level.value);
+                return `
+                    <line x1="${margin.left}" y1="${yy}" x2="${margin.left + plotWidth}" y2="${yy}"
+                        class="decision-chart-plan-line ${level.cls}" />
+                    <text x="${margin.left + 6}" y="${yy - 4}"
+                        class="decision-chart-plan-label ${level.cls}">
+                        ${level.label} ${priceLabel(level.value)}
+                    </text>
+                `;
+            }).join("");
+        }
+
+        const bars = candles.map((candle, index) => {
+            const open = Number(candle.open);
+            const close = Number(candle.close);
+            const high = Number(candle.high);
+            const low = Number(candle.low);
+            const rising = close >= open;
+            const x = margin.left + slot * index + slot / 2;
+            const bodyY = Math.min(y(open), y(close));
+            const bodyHeight = Math.max(1.5, Math.abs(y(open) - y(close)));
+            const cls = rising ? "up" : "down";
+            return `
+                <g class="decision-candle ${cls}">
+                    <line x1="${x}" y1="${y(high)}" x2="${x}" y2="${y(low)}" />
+                    <rect x="${x - bodyWidth / 2}" y="${bodyY}"
+                        width="${bodyWidth}" height="${bodyHeight}" />
+                    <title>${escapeDecisionHtml(formatDecisionTime(candle.ts_open))}
+O ${priceLabel(open)} · H ${priceLabel(high)} · L ${priceLabel(low)} · C ${priceLabel(close)}
+Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
+                </g>
+            `;
+        }).join("");
+
+        const labelIndexes = [...new Set([0, Math.floor((candles.length - 1) / 2), candles.length - 1])];
+        const timeLabels = labelIndexes.map(index => {
+            const candle = candles[index];
+            const x = margin.left + slot * index + slot / 2;
+            const date = new Date(candle.ts_open);
+            const label = date.toLocaleTimeString("en-IN", {
+                timeZone: "Asia/Kolkata",
+                hour: "2-digit",
+                minute: "2-digit",
+            });
+            return `<text x="${x}" y="${height - 9}" text-anchor="middle"
+                class="decision-chart-axis-label">${escapeDecisionHtml(label)}</text>`;
+        }).join("");
+
+        host.innerHTML = `
+            <svg class="decision-candlestick-chart" viewBox="0 0 ${width} ${height}"
+                role="img" aria-label="${escapeDecisionHtml(series.instrument_id)} 5-minute candlestick chart">
+                ${grid}
+                ${entryZone}
+                ${bars}
+                ${planLines}
+                ${timeLabels}
+            </svg>
+        `;
+    }
+
+    function renderChartFreshness(series) {
+        const status = document.getElementById("decision-chart-status");
+        const meta = document.getElementById("decision-chart-meta");
+        const warning = document.getElementById("decision-chart-warning");
+        if (!status || !meta || !warning) return;
+        const state = String(series.freshness_status || "NO_DATA");
+        status.className = `chart-freshness-badge ${state.toLowerCase()}`;
+        status.textContent = state === "NO_DATA" ? "NO DATA" : state;
+        const latestCandle = Array.isArray(series.candles) && series.candles.length
+            ? series.candles[series.candles.length - 1]
+            : null;
+        const source = latestCandle && latestCandle.source
+            ? ` · ${latestCandle.source}`
+            : "";
+        meta.textContent = series.latest_ts
+            ? `${series.count} × ${series.timeframe} bars · latest ${formatDecisionTime(series.latest_ts)}${source}`
+            : `No ${series.timeframe} candles persisted`;
+        if (state === "STALE") {
+            warning.hidden = false;
+            warning.textContent =
+                `Chart is ${series.age_minutes} minutes old (limit ${series.freshness_threshold_minutes}). ` +
+                "Re-validate before using the TradePlan.";
+        } else {
+            warning.hidden = true;
+            warning.textContent = "";
+        }
+    }
+
+    async function loadDecisionChart(instrumentId, plan, decisionId) {
+        const host = document.getElementById("decision-chart-canvas");
+        if (!host) return;
+        host.innerHTML =
+            '<div class="decision-chart-empty"><i class="fa-solid fa-circle-notch fa-spin"></i> Loading persisted candles…</div>';
+        try {
+            const candidates = String(instrumentId).includes(":")
+                ? [String(instrumentId)]
+                : [String(instrumentId), `NSE:${instrumentId}`];
+            let series = null;
+            let lastError = null;
+            for (const candidateId of candidates) {
+                const path = `/api/v1/market/instruments/${encodeURIComponent(candidateId)}/candles?timeframe=5m&limit=120`;
+                try {
+                    // Chart panel owns empty/404/stale UI — do not toast on select.
+                    const response = await apiRequest(path, { skipToast: true });
+                    if (activeDecisionId !== decisionId) return;
+                    series = response && response.data;
+                    if (series && series.count > 0) break;
+                } catch (err) {
+                    lastError = err;
+                }
+            }
+            if (!series) {
+                if (lastError) throw lastError;
+                throw new Error("candles response missing data");
+            }
+            renderChartFreshness(series);
+            renderCandlestickSvg(series, plan);
+        } catch (err) {
+            if (activeDecisionId !== decisionId) return;
+            console.error(`Failed to load candles for ${instrumentId}`, err);
+            const statusCode = err && err.status;
+            let detail =
+                "Chart unavailable. Decision evidence and TradePlan remain unchanged.";
+            let badge = "UNAVAILABLE";
+            if (statusCode === 404) {
+                detail =
+                    "Candles API is missing on this running host. Restart ATHENA (Dock/athena-serve), then hard-refresh.";
+                badge = "RESTART HOST";
+            } else if (statusCode === 401) {
+                detail = "Unlock again, then reopen Decisions to load the chart.";
+                badge = "AUTH";
+            }
+            host.innerHTML =
+                `<div class="decision-chart-empty">${escapeDecisionHtml(detail)}</div>`;
+            const status = document.getElementById("decision-chart-status");
+            if (status) {
+                status.className = "chart-freshness-badge no_data";
+                status.textContent = badge;
+            }
+            const meta = document.getElementById("decision-chart-meta");
+            if (meta) {
+                meta.textContent = statusCode
+                    ? `Candles request failed (${statusCode})`
+                    : "Candles request failed";
+            }
+        }
+    }
+
     function renderDecisionBrief(decision) {
         if (!decisionBriefBody || !decision || !decision.metadata) return;
         const meta = decision.metadata;
@@ -2676,6 +2914,21 @@ document.addEventListener("DOMContentLoaded", () => {
 
             ${renderTradePlan(decision.trade_plan, meta.decision_type)}
 
+            <section class="decision-brief-section decision-chart-section">
+                <div class="decision-brief-section-header">
+                    <h4>Intraday price context · 5 minute</h4>
+                    <span id="decision-chart-status" class="chart-freshness-badge no_data">LOADING</span>
+                </div>
+                <p id="decision-chart-meta" class="decision-chart-meta">Loading persisted OHLCV…</p>
+                <div id="decision-chart-warning" class="decision-chart-warning" hidden></div>
+                <div id="decision-chart-canvas" class="decision-chart-canvas"></div>
+                <div class="decision-chart-legend">
+                    <span><i class="legend-box entry"></i> Entry zone</span>
+                    <span><i class="legend-line stop"></i> Invalidation</span>
+                    <span><i class="legend-line target"></i> Targets</span>
+                </div>
+            </section>
+
             <section class="decision-brief-section">
                 <h4>Safety &amp; quality gates</h4>
                 <div class="decision-gates-list">${gateRows}</div>
@@ -2718,6 +2971,7 @@ document.addEventListener("DOMContentLoaded", () => {
         document.getElementById("decision-brief-dismiss")?.addEventListener("click", () => {
             dismissDecisionForToday(decision);
         });
+        loadDecisionChart(rawSymbol, decision.trade_plan, meta.decision_id);
     }
 
     async function loadDecisionDetail(decisionId) {

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import contextlib
 from collections.abc import Callable
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, TypeVar
 
@@ -41,7 +41,8 @@ from athena.backtest.models import (
 )
 from athena.config.models import ExportFormat, ReportType
 from athena.domain.decision import Decision, DecisionTrace, GateResult, Portfolio, Position
-from athena.domain.enums import DecisionType, Direction, QualityGate
+from athena.domain.enums import DecisionType, Direction, QualityGate, Timeframe
+from athena.domain.market import Candle
 from athena.export.models import (
     ExportArtifact,
     ExportReferences,
@@ -140,6 +141,32 @@ class InMemoryDecisionProvider:
         return self.traces.get(decision_id)
 
 
+class InMemoryCandleHistoryProvider:
+    """Deterministic candle store for API tests and fallback wiring."""
+
+    def __init__(self) -> None:
+        self.candles: list[Candle] = []
+
+    def list_recent_candles(
+        self,
+        instrument_id: str,
+        timeframe: Timeframe,
+        *,
+        limit: int,
+    ) -> list[Candle]:
+        matching = [
+            candle
+            for candle in self.candles
+            if candle.instrument_id == instrument_id
+            and candle.timeframe is timeframe
+        ]
+        matching.sort(key=lambda candle: candle.ts_open)
+        return matching[-limit:]
+
+    def clear(self) -> None:
+        self.candles.clear()
+
+
 class InMemoryPortfolioProvider:
     """In-memory provider for Portfolio."""
 
@@ -192,7 +219,7 @@ class InMemoryPortfolioProvider:
             )
         self.portfolio = Portfolio(
             ts=opened,
-            positions=tuple(existing + [pos]),
+            positions=tuple([*existing, pos]),
             cash=cash,
             exposure_by_sector=exposure,
         )

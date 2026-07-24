@@ -227,6 +227,11 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     )
     seed_owner_user(get_user_repository())
     config_dir = Path(os.environ.get("ATHENA_CONFIG_DIR", "config")).resolve()
+    from athena.config.loader import load_validation_config
+
+    app.state.intraday_freshness_minutes = (
+        load_validation_config(config_dir).freshness.intraday_max_minutes_behind
+    )
     app.state.kite_session_service = KiteSessionService(
         repo_root=config_dir.parent,
         config_dir=config_dir,

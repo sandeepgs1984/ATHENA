@@ -2290,6 +2290,187 @@ body {
     gap: 6px;
 }
 
+.decision-chart-section {
+    padding-bottom: 10px;
+}
+
+.chart-freshness-badge {
+    border: 1px solid transparent;
+    border-radius: 999px;
+    font-size: 0.62rem;
+    font-weight: 750;
+    letter-spacing: 0.05em;
+    padding: 3px 8px;
+}
+
+.chart-freshness-badge.fresh {
+    background: rgba(34, 197, 94, 0.1);
+    border-color: rgba(34, 197, 94, 0.25);
+    color: #86efac;
+}
+
+.chart-freshness-badge.stale {
+    background: rgba(245, 158, 11, 0.1);
+    border-color: rgba(245, 158, 11, 0.25);
+    color: #fdba74;
+}
+
+.chart-freshness-badge.no_data {
+    background: rgba(148, 163, 184, 0.1);
+    border-color: rgba(148, 163, 184, 0.25);
+    color: #cbd5e1;
+}
+
+.decision-chart-meta {
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    margin: -3px 0 8px;
+}
+
+.decision-chart-warning {
+    background: rgba(245, 158, 11, 0.07);
+    border-left: 3px solid rgba(245, 158, 11, 0.65);
+    color: #fdba74;
+    font-size: 0.72rem;
+    line-height: 1.45;
+    margin-bottom: 8px;
+    padding: 8px 10px;
+}
+
+.decision-chart-canvas {
+    background:
+        linear-gradient(rgba(15, 23, 42, 0.35), rgba(2, 6, 23, 0.5)),
+        rgba(2, 6, 23, 0.35);
+    border: 1px solid rgba(148, 163, 184, 0.12);
+    border-radius: 6px;
+    min-height: 190px;
+    overflow: hidden;
+}
+
+.decision-chart-empty {
+    min-height: 190px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    line-height: 1.5;
+    padding: 18px;
+    text-align: center;
+}
+
+.decision-candlestick-chart {
+    display: block;
+    height: auto;
+    width: 100%;
+}
+
+.decision-chart-gridline {
+    stroke: rgba(148, 163, 184, 0.1);
+    stroke-width: 1;
+}
+
+.decision-chart-axis-label {
+    fill: #64748b;
+    font-family: var(--font-mono);
+    font-size: 10px;
+}
+
+.decision-candle line {
+    stroke-width: 1.15;
+}
+
+.decision-candle.up line,
+.decision-candle.up rect {
+    fill: #22c55e;
+    stroke: #4ade80;
+}
+
+.decision-candle.down line,
+.decision-candle.down rect {
+    fill: #ef4444;
+    stroke: #f87171;
+}
+
+.decision-chart-entry-zone {
+    fill: rgba(56, 189, 248, 0.1);
+    stroke: rgba(56, 189, 248, 0.28);
+    stroke-width: 1;
+}
+
+.decision-chart-plan-line {
+    stroke-width: 1.5;
+    stroke-dasharray: 5 4;
+}
+
+.decision-chart-plan-line.stop {
+    stroke: rgba(248, 113, 113, 0.9);
+}
+
+.decision-chart-plan-line.target {
+    stroke: rgba(74, 222, 128, 0.85);
+}
+
+.decision-chart-plan-label {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 700;
+}
+
+.decision-chart-plan-label.entry {
+    fill: #7dd3fc;
+}
+
+.decision-chart-plan-label.stop {
+    fill: #fca5a5;
+}
+
+.decision-chart-plan-label.target {
+    fill: #86efac;
+}
+
+.decision-chart-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    color: var(--text-muted);
+    font-size: 0.64rem;
+    margin-top: 8px;
+}
+
+.decision-chart-legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.legend-box,
+.legend-line {
+    display: inline-block;
+    width: 14px;
+}
+
+.legend-box.entry {
+    background: rgba(56, 189, 248, 0.2);
+    border: 1px solid rgba(56, 189, 248, 0.45);
+    height: 7px;
+}
+
+.legend-line {
+    border-top: 2px dashed;
+    height: 0;
+}
+
+.legend-line.stop {
+    border-color: #f87171;
+}
+
+.legend-line.target {
+    border-color: #4ade80;
+}
+
 .provenance-chip {
     border: 1px solid rgba(148, 163, 184, 0.22);
     border-radius: 4px;

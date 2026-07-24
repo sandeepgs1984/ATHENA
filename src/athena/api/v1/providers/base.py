@@ -23,8 +23,10 @@ if TYPE_CHECKING:
         SchedulerHistoryFilterParams,
         WorkspaceFilterParams,
     )
-    from athena.domain.decision import Decision, DecisionTrace, Portfolio
     from athena.backtest.models import BacktestRun
+    from athena.domain.decision import Decision, DecisionTrace, Portfolio
+    from athena.domain.enums import Timeframe
+    from athena.domain.market import Candle
     from athena.export.models import ExportArtifact, ExportSnapshot
     from athena.orchestration.models import SystemPipelineResult
     from athena.orchestration.schedule_models import PipelineScheduleRun
@@ -69,6 +71,20 @@ class DecisionProvider(Protocol):
         ...
 
     def get_trace(self, decision_id: str) -> DecisionTrace | None:
+        ...
+
+
+@runtime_checkable
+class CandleHistoryProvider(Protocol):
+    """Read-only, provider-independent access to persisted market candles."""
+
+    def list_recent_candles(
+        self,
+        instrument_id: str,
+        timeframe: Timeframe,
+        *,
+        limit: int,
+    ) -> list[Candle]:
         ...
 
 

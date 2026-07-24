@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from athena.api.app import create_app
 from athena.api.config import APISettings
 from athena.api.dependencies import (
+    get_candle_history_provider,
     get_decision_provider,
     get_pipeline_run_provider,
     get_portfolio_provider,
@@ -31,6 +32,10 @@ def client(api_settings: APISettings) -> TestClient:
     app.state.decision_provider = get_decision_provider()
     app.state.portfolio_provider = get_portfolio_provider()
     app.state.pipeline_run_provider = get_pipeline_run_provider()
+    candle_provider = get_candle_history_provider()
+    candle_provider.clear()  # type: ignore[attr-defined]
+    app.state.candle_history_provider = candle_provider
+    app.state.intraday_freshness_minutes = 20
     from athena.api.dependencies import get_candidate_store
 
     store = get_candidate_store()

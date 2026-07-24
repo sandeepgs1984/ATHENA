@@ -23,7 +23,8 @@ from athena.api.v1.dtos import (
 from athena.api.v1.providers.in_memory import apply_query_spec
 from athena.data.store.repository import SqliteRepository
 from athena.domain.decision import Decision, DecisionTrace, Portfolio, Position
-from athena.domain.enums import RunStatus
+from athena.domain.enums import RunStatus, Timeframe
+from athena.domain.market import Candle
 from athena.orchestration.models import (
     PipelineContext,
     PipelineMetadata,
@@ -84,6 +85,26 @@ def load_configured_universe_symbols(config_dir: Path | None = None) -> list[str
             text = text.split(":", 1)[1]
         out.append(text)
     return out
+
+
+class SqliteCandleHistoryProvider:
+    """Read-only candle history from the live ATHENA ledger."""
+
+    def __init__(self, repo: SqliteRepository) -> None:
+        self._repo = repo
+
+    def list_recent_candles(
+        self,
+        instrument_id: str,
+        timeframe: Timeframe,
+        *,
+        limit: int,
+    ) -> list[Candle]:
+        return self._repo.list_candles_recent(
+            instrument_id,
+            timeframe,
+            limit=limit,
+        )
 
 
 class SqliteDecisionProvider:
@@ -264,7 +285,12 @@ class SqlitePortfolioProvider:
             broker=broker,
             notes=notes,
             sector=sector,
-            meta={k: v for k, v in meta.items() if k not in ("broker", "notes", "sector", "decision_ref", "exit_price")},
+            meta={
+                k: v
+                for k, v in meta.items()
+                if k
+                not in ("broker", "notes", "sector", "decision_ref", "exit_price")
+            },
         )
         pos = self._repo.get_owner_position(position_id)
         assert pos is not None
@@ -338,9 +364,10 @@ class SqlitePipelineRunProvider:
 
         def filter_func(item: SystemPipelineResult) -> bool:
             f = spec.filters
-            if f.overall_status and item.overall_status.value != f.overall_status:
-                return False
-            return True
+            return not (
+                f.overall_status
+                and item.overall_status.value != f.overall_status
+            )
 
         def sort_func(item: SystemPipelineResult) -> Any:
             sort_by = spec.sort.sort_by

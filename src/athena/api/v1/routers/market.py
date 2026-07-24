@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Query, Request, status
 
-from athena.api.dependencies import get_candidates_service
+from athena.api.dependencies import get_candidates_service, get_market_history_service
 from athena.api.security import Permission, RequirePermission
 from athena.api.security.models import AuthenticatedPrincipal
 from athena.api.v1.dtos import AthenaResponse, ResponseMeta
 from athena.api.v1.dtos.market import (
+    CandleSeriesDTO,
     DeleteCandidateResultDTO,
     OwnerCandidateDTO,
     OwnerCandidateListDTO,
@@ -19,6 +21,8 @@ from athena.api.v1.dtos.market import (
     ValidateSymbolsResultDTO,
 )
 from athena.api.v1.services.candidates_service import CandidatesService
+from athena.api.v1.services.market_history_service import MarketHistoryService
+from athena.domain.enums import Timeframe
 
 router = APIRouter(prefix="/market", tags=["Market"])
 
@@ -30,6 +34,30 @@ def _meta(request: Request) -> ResponseMeta:
         api_version="v1",
         as_of=datetime.now(tz=timezone.utc),
     )
+
+
+@router.get(
+    "/instruments/{instrument_id}/candles",
+    response_model=AthenaResponse[CandleSeriesDTO],
+    summary="Recent persisted candles for an instrument",
+    status_code=status.HTTP_200_OK,
+    operation_id="getInstrumentCandles",
+)
+def get_instrument_candles(
+    instrument_id: str,
+    request: Request,
+    timeframe: Literal["1m", "5m", "15m"] = Query(default="5m"),
+    limit: int = Query(default=120, ge=1, le=500),
+    service: MarketHistoryService = Depends(get_market_history_service),  # noqa: B008
+    principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.READ)),  # noqa: B008
+) -> AthenaResponse[CandleSeriesDTO]:
+    """Return chronological OHLCV from the validated SQLite ledger only."""
+    data = service.recent_candles(
+        instrument_id,
+        Timeframe(timeframe),
+        limit=limit,
+    )
+    return AthenaResponse(status="success", data=data, meta=_meta(request))
 
 
 @router.get(

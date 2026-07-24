@@ -6,7 +6,96 @@ status updated on approval.
 
 ---
 
-## M-D1 — Instrument Decision Brief foundation (READY FOR REVIEW)
+## M-D2 — Intraday chart + TradePlan overlays (READY FOR REVIEW)
+
+| | |
+|---|---|
+| Completed | 2026-07-24 |
+| Objective | Ground each Decision Brief in persisted intraday price context without prediction |
+| Scope | Provider-independent candles API, SVG candlesticks, TradePlan overlays, explicit freshness |
+| Tests | Full suite **980 passed**; targeted M-D2 **20 passed**; changed-file Ruff; HTML parse |
+| Coverage | Existing project coverage retained; no separate percentage collected |
+| Status | **READY FOR REVIEW** — stop before M-D3 ATHENA depth |
+| Branch | develop |
+
+### Scope completed
+
+- Added authenticated read-only
+  `GET /api/v1/market/instruments/{instrument_id}/candles` for persisted
+  `1m`/`5m`/`15m` OHLCV, chronological ordering, bounded `limit`, and explicit
+  `FRESH`/`STALE`/`NO_DATA` status.
+- Added `CandleHistoryProvider` with deterministic in-memory and live SQLite
+  implementations; the service maps canonical `Candle` objects without
+  coupling the API to Kite/FileProvider.
+- Freshness uses `validation.json`’s
+  `freshness.intraday_max_minutes_behind`; service clock is injectable and the
+  threshold boundary is unit-tested.
+- Added a dependency-free responsive SVG candlestick chart in the selected
+  Instrument Decision Brief using the most recent 120 persisted 5-minute bars.
+- Overlaid the persisted TradePlan entry zone, invalidation/stop, and targets;
+  no chart-derived or invented price level is created.
+- Added explicit stale-data warning (“Re-validate before using the TradePlan”),
+  no-data and unavailable states, OHLCV hover tooltips, price/time axes, source,
+  latest timestamp, and bar count.
+- Added bare-symbol → `NSE:` fallback for older decisions while preserving
+  canonical instrument IDs when present.
+- Dashboard assets cache-busted to `9.19.0`.
+
+### Files created
+
+- `src/athena/api/v1/services/market_history_service.py`
+- `tests/api/v1/test_market_history.py`
+
+### Files modified
+
+- API app/dependencies, market DTO/router, provider protocols and in-memory/
+  SQLite providers, dashboard HTML/CSS/JS, API test fixture, hosting regression,
+  milestone roadmap, and this implementation log.
+
+### Public APIs
+
+- Added `GET /api/v1/market/instruments/{instrument_id}/candles`.
+- Query: `timeframe=1m|5m|15m`, `limit=1..500`.
+- Response is read-only and includes candles plus freshness metadata.
+- No frozen domain object or analytical contract changed.
+
+### Validation and architecture
+
+- Full regression: **980 passed**.
+- Targeted market-history/core/dashboard tests: **20 passed**.
+- All changed Python files pass Ruff; dashboard HTML parses successfully.
+- Modern browser loaded `9.19.0` assets; authenticated owner chart interaction
+  remains the final manual smoke step.
+- ADR-004 preserved: no new chart dependency/framework; SVG is static vanilla
+  JS over the localhost API.
+- ADR-005 preserved: chart renders persisted price/TradePlan data only.
+- Determinism, replayability, provider independence, explainability, and
+  no-order boundary are preserved. No ADR required.
+
+### Risks and technical debt
+
+- The chart is historical context from the latest persisted ingest, not a
+  streaming quote chart; freshness state makes this explicit.
+- Bare-symbol fallback assumes NSE for legacy decisions; current canonical IDs
+  bypass the fallback.
+- Full analytical score/confidence/risk payloads remain M-D3 scope.
+- No technical debt introduced.
+
+### Suggested improvements and remaining work
+
+- Owner smoke: select a symbol with ingested 5m candles; verify bars, tooltip,
+  freshness badge, and exact TradePlan overlay values.
+- M-D3 only after approval: eligibility narrative, symbol decision timeline,
+  and resolvable analytical depth.
+- News remains deferred to M-D5/DD-5.
+
+### Commit message
+
+`feat(dashboard): add freshness-aware intraday decision chart`
+
+---
+
+## M-D1 — Instrument Decision Brief foundation (APPROVED)
 
 | | |
 |---|---|
@@ -15,7 +104,7 @@ status updated on approval.
 | Scope | Full decision detail, TradePlan strip, safety gates, provenance, daily dismiss, re-validate/MI actions |
 | Tests | Full suite **976 passed**; targeted dashboard/API **17 passed**; HTML parse; changed-test Ruff |
 | Coverage | Existing project coverage retained; no separate percentage collected |
-| Status | **READY FOR REVIEW** — stop before M-D2 chart/candles |
+| Status | **APPROVED 2026-07-24** — owner smoke verified |
 | Branch | develop |
 
 ### Scope completed
@@ -81,7 +170,7 @@ status updated on approval.
 
 - Owner smoke: unlock, select TRADE/WATCH/PASS cards, verify plan/no-plan,
   dismiss/restore, re-validate, and responsive layout.
-- M-D2 (only after approval): read-only candles endpoint and chart overlays.
+- M-D2 subsequently delivered the read-only candles endpoint and chart overlays.
 - News remains deferred to M-D5/DD-5 and is not represented as available data.
 
 ### Commit message
