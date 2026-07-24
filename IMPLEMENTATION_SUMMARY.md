@@ -13,7 +13,7 @@ status updated on approval.
 | Completed | 2026-07-24 |
 | Objective | Harden the approved Dock/URL → unlock → Kite → LIVE workstation path |
 | Scope | Login throttling; production JWT secret resolution; localhost/TLS controls; final runbook and roadmap |
-| Tests | Full suite **976 passed**; targeted auth/serve **33 passed**; changed-file Ruff; shell syntax; plist lint |
+| Tests | Owner QA: **976 passed, 127 warnings in 9.53s**; auth/serve **33 passed**; R1 smoke **3 passed** |
 | Coverage | Existing project coverage gate retained; no separate percentage collected |
 | Status | **READY FOR REVIEW** — professional live-entry track complete; awaiting owner approval |
 | Branch | develop |
@@ -33,18 +33,25 @@ status updated on approval.
   unattended scheduling.
 - Added `docs/ops/LIVE_ENTRY.md`, `.env.example` security controls, README
   linkage, and M-E1–M-E5 roadmap entries.
+- Isolated the R1 file-backed smoke from live Nifty seeding by disabling the
+  network seed in its temporary config and adding only fixture candidates
+  `AAA`/`BBB`.
+- Added `docs/ops/QA_VERIFICATION.md` as the canonical regression, targeted
+  suite, warning-triage, manual acceptance, and evidence procedure.
 
 ### Files created
 
 - `src/athena/api/security/login_limiter.py`
 - `tests/api/v1/test_login_limiter.py`
 - `docs/ops/LIVE_ENTRY.md`
+- `docs/ops/QA_VERIFICATION.md`
 
 ### Files modified
 
 - API configuration, app wiring, security exceptions/exports/error mapping,
   auth router, serve CLI, auth route tests, `.env.example`, README,
-  `docs/MILESTONES.md`, and this implementation log.
+  `scripts/smoke_file_backed_day.sh`, `docs/MILESTONES.md`, and this
+  implementation log.
 
 ### Public APIs and compatibility
 
@@ -60,7 +67,12 @@ status updated on approval.
 - ADR compliance: no ADR required. The in-process worker remains interactive;
   launchd remains the unattended scheduler. No embedded UI framework added.
 - Provider independence and no-order boundary: unchanged.
-- Full regression: **976 passed**.
+- Owner full regression on macOS Darwin 25.2.0 / Python 3.14.6:
+  **976 passed, 127 warnings in 9.53s**.
+- Known warning categories are Starlette/httpx TestClient deprecation, PyJWT's
+  short test-only signing key, and Starlette's HTTP 422 constant rename; new
+  categories/count increases require investigation.
+- R1 file-backed smoke: **3 passed** after fixture isolation.
 - Changed-file Ruff: passed. Repository-wide Ruff still reports 243 pre-existing
   findings outside this milestone; no new changed-file finding remains.
 - Shell launchers parse successfully; macOS `Info.plist` validates.
@@ -78,6 +90,8 @@ status updated on approval.
 ### Consolidated commit message
 
 `feat(ops): deliver professional live-entry workstation`
+
+QA follow-up: `test(ops): isolate smoke and document QA verification`
 
 ---
 

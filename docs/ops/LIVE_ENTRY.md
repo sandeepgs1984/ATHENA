@@ -73,6 +73,9 @@ Automated regression:
 PYTHONPATH=src python3 -m pytest -q
 ```
 
+For acceptance criteria, targeted suites, warning handling, failure triage, and
+the evidence template, follow [`QA_VERIFICATION.md`](QA_VERIFICATION.md).
+
 ## Optional localhost HTTPS
 
 HTTP on `127.0.0.1` is the default and recommended low-friction single-user
