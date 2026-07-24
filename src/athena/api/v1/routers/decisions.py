@@ -11,12 +11,13 @@ from athena.api.security import Permission, RequirePermission
 from athena.api.security.models import AuthenticatedPrincipal
 from athena.api.v1.dtos import (
     AthenaResponse,
+    DecisionDepthDTO,
     DecisionDTO,
     DecisionFilterParams,
+    DecisionTraceDTO,
     PaginationParams,
     ResponseMeta,
     SortParams,
-    DecisionTraceDTO,
 )
 from athena.api.v1.dtos.base import PaginationMeta
 from athena.api.v1.services.decisions_service import DecisionsService
@@ -93,6 +94,33 @@ def get_decision(
         status="success",
         data=decision_data,
         meta=meta,
+    )
+
+
+@router.get(
+    "/{decision_id}/depth",
+    response_model=AthenaResponse[DecisionDepthDTO],
+    summary="Get persisted decision analytical depth",
+    status_code=status.HTTP_200_OK,
+    operation_id="getDecisionDepth",
+)
+def get_decision_depth(
+    request: Request,
+    decision_id: str,
+    service: DecisionsService = Depends(get_decisions_service),  # noqa: B008
+    principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.READ)),  # noqa: B008
+) -> AthenaResponse[DecisionDepthDTO]:
+    """Render eligibility, score, confidence, and risk artifacts without recomputation."""
+    depth = service.get_decision_depth(decision_id)
+    request_id = getattr(request.state, "request_id", "unknown")
+    return AthenaResponse(
+        status="success",
+        data=depth,
+        meta=ResponseMeta(
+            request_id=request_id,
+            api_version="v1",
+            as_of=datetime.now(tz=timezone.utc),
+        ),
     )
 
 

@@ -107,10 +107,21 @@ class DecisionReportingEngine:
             "status": comp.status.value,
             "composite": _num(comp.value),
             "completeness": str(comp.completeness),
+            "explanation": comp.explanation,
             "components": [
                 {"dimension": item.dimension, "status": item.status.value,
                  "value": _num(item.value), "weight": item.weight,
-                 "weighted": _num(item.weighted)}
+                 "weighted": _num(item.weighted),
+                 "explanation": scoring.components[item.dimension].explanation,
+                 "contributions": [
+                     {
+                         "source": contribution.source,
+                         "reference_id": contribution.reference_id,
+                         "description": contribution.description,
+                         "points": _num(contribution.points),
+                     }
+                     for contribution in scoring.components[item.dimension].contributions
+                 ]}
                 for item in comp.breakdown
             ],
         }
@@ -124,9 +135,19 @@ class DecisionReportingEngine:
             "overall": _num(confidence.overall_value),
             "level": confidence.overall_level.value if confidence.overall_level else _UNKNOWN,
             "completeness": str(confidence.completeness),
+            "explanation": confidence.explanation,
             "dimensions": [
                 {"name": name, "status": d.status.value, "value": _num(d.value),
-                 "level": d.level.value if d.level else _UNKNOWN}
+                 "level": d.level.value if d.level else _UNKNOWN,
+                 "explanation": d.explanation,
+                 "contributions": [
+                     {
+                         "source": contribution.source,
+                         "reference": contribution.reference,
+                         "description": contribution.description,
+                     }
+                     for contribution in d.contributions
+                 ]}
                 for name, d in confidence.dimensions.items()
             ],
         }
@@ -140,9 +161,19 @@ class DecisionReportingEngine:
             "overall": _num(risk.overall_value),
             "level": risk.overall_level.value if risk.overall_level else _UNKNOWN,
             "completeness": str(risk.completeness),
+            "explanation": risk.explanation,
             "dimensions": [
                 {"name": name, "status": d.status.value, "value": _num(d.value),
-                 "level": d.level.value if d.level else _UNKNOWN}
+                 "level": d.level.value if d.level else _UNKNOWN,
+                 "explanation": d.explanation,
+                 "contributions": [
+                     {
+                         "source": contribution.source,
+                         "reference": contribution.reference,
+                         "description": contribution.description,
+                     }
+                     for contribution in d.contributions
+                 ]}
                 for name, d in risk.dimensions.items()
             ],
         }

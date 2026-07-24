@@ -191,7 +191,7 @@ class DecisionEngine:
         else:
             ok = risk.overall_value <= Decimal(t.max_risk_for_trade)
             results.append(GateResult(QualityGate.RISK, ok,
-                                      f"risk {risk.overall_value} vs max {t.max_risk_for_trade}"))
+                                      f"risk {risk.overall_value:.1f} vs max {t.max_risk_for_trade}"))
 
         # EXPLAINABILITY: composite known ⇒ every known component carries a trace (by construction).
         if scoring is None or scoring.composite.value is None:
@@ -206,7 +206,7 @@ class DecisionEngine:
         else:
             ok = confidence.overall_value >= Decimal(t.min_confidence_for_trade)
             results.append(GateResult(QualityGate.CONFIDENCE, ok,
-                                      f"confidence {confidence.overall_value} vs min "
+                                      f"confidence {confidence.overall_value:.1f} vs min "
                                       f"{t.min_confidence_for_trade}"))
 
         # MARKET: market-quality score known and at/above the floor.
@@ -216,7 +216,7 @@ class DecisionEngine:
         else:
             ok = mq.value >= Decimal(t.market_floor)
             results.append(GateResult(QualityGate.MARKET, ok,
-                                      f"market quality {mq.value} vs floor {t.market_floor}"))
+                                      f"market quality {mq.value:.1f} vs floor {t.market_floor}"))
 
         return tuple(results)
 

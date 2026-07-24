@@ -83,6 +83,20 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "/candles?timeframe=5m&limit=120" in js
     assert "skipToast: true" in js
     assert "session-close analysis" in js
+    # M-D3 renders persisted eligibility/analysis/history and safe candidate removal
+    assert "function loadDecisionDepth" in js
+    assert "/depth" in js
+    assert "function renderEligibilityDepth" in js
+    assert "function renderAnalysisBlock" in js
+    assert "function renderDecisionTimeline" in js
+    assert "allTraceDecisionsList" in js
+    assert "function sanitizeNumericText" in js
+    assert "preferInstrumentId" in js
+    assert 'id="decision-brief-remove-candidate"' in js
+    assert "Existing decisions, traces, and replay evidence will be preserved" in js
+    assert "decision history preserved" in js
+    assert ".analysis-depth-grid" in css
+    assert ".decision-history-timeline" in css
     assert "Re-validate before using the TradePlan" in js
     assert "Restart ATHENA (Dock/athena-serve)" in js
     assert "decision-chart-entry-zone" in css

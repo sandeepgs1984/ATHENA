@@ -128,8 +128,22 @@ class TestReasoningPreservation:
 
     def test_score_components_preserved(self, reporting, config_dir):
         arts = _artifacts(config_dir, range(100, 170), _bull())
-        comps = reporting.report(**arts).to_dict()["score"]["components"]
+        score = reporting.report(**arts).to_dict()["score"]
+        comps = score["components"]
         assert len(comps) == 6  # all scoring components represented
+        assert score["explanation"]
+        assert all("explanation" in component for component in comps)
+        assert all("contributions" in component for component in comps)
+
+    def test_confidence_and_risk_rationale_preserved(self, reporting, config_dir):
+        arts = _artifacts(config_dir, range(100, 170), _bull())
+        machine = reporting.report(**arts).to_dict()
+        for name in ("confidence", "risk"):
+            block = machine[name]
+            assert block["explanation"]
+            assert block["dimensions"]
+            assert all("explanation" in dimension for dimension in block["dimensions"])
+            assert all("contributions" in dimension for dimension in block["dimensions"])
 
     def test_indicators_listed(self, reporting, config_dir):
         arts = _artifacts(config_dir, range(100, 170), _bull())

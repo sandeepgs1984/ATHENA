@@ -118,6 +118,18 @@ class TestOwnerValidationPipeline:
         assert "trace" in members["AAA"]
         assert detail["universe_source"] == "owner_candidates"
         assert isinstance(detail["qualified_today"], list)
+        assert isinstance(detail["decision_reports"], dict)
+        assert detail["decision_reports"]
+        first_report = next(iter(detail["decision_reports"].values()))
+        assert "score" in first_report
+        assert "confidence" in first_report
+        assert "risk" in first_report
+        # Full analytical path must populate score/confidence/risk (not refs-only).
+        assert first_report["score"]["status"] == "OK"
+        assert first_report["confidence"]["status"] == "OK"
+        assert first_report["risk"]["status"] == "OK"
+        assert first_report["confidence"]["dimensions"]
+        assert first_report["risk"]["dimensions"]
         # Decisions persisted for included names
         decisions = repo.list_decisions(limit=50)
         assert len(decisions) >= 1
@@ -128,3 +140,5 @@ class TestOwnerValidationPipeline:
             DecisionType.NO_TRADE,
             DecisionType.INSUFFICIENT_DATA,
         }
+        assert any(d.confidence_ref for d in decisions)
+        assert any(d.risk_ref for d in decisions)

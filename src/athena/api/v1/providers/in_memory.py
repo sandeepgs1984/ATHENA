@@ -105,6 +105,7 @@ class InMemoryDecisionProvider:
     def __init__(self) -> None:
         self.decisions: list[Decision] = []
         self.traces: dict[str, DecisionTrace] = {}
+        self.run_details: dict[str, dict[str, object]] = {}
 
     def get_decisions(
         self, spec: QuerySpecification[Any]
@@ -139,6 +140,9 @@ class InMemoryDecisionProvider:
 
     def get_trace(self, decision_id: str) -> DecisionTrace | None:
         return self.traces.get(decision_id)
+
+    def get_run_detail(self, run_id: str) -> dict[str, object]:
+        return dict(self.run_details.get(run_id, {}))
 
 
 class InMemoryCandleHistoryProvider:

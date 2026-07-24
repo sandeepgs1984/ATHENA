@@ -149,6 +149,9 @@ class SqliteDecisionProvider:
     def get_trace(self, decision_id: str) -> DecisionTrace | None:
         return self._repo.get_trace(decision_id)
 
+    def get_run_detail(self, run_id: str) -> dict[str, object]:
+        return self._repo.get_run_detail(run_id)
+
 
 class SqlitePortfolioProvider:
     """Owner-entered fill ledger → domain Portfolio (+ open/close writes)."""

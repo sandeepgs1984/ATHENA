@@ -73,6 +73,10 @@ class DecisionProvider(Protocol):
     def get_trace(self, decision_id: str) -> DecisionTrace | None:
         ...
 
+    def get_run_detail(self, run_id: str) -> dict[str, object]:
+        """Return persisted run detail used to render decision depth."""
+        ...
+
 
 @runtime_checkable
 class CandleHistoryProvider(Protocol):

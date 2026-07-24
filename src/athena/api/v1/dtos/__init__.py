@@ -43,10 +43,16 @@ from athena.api.v1.dtos.ops import (
     StageTelemetryDTO,
 )
 from athena.api.v1.dtos.decisions import (
+    AnalysisBlockDTO,
+    AnalysisContributionDTO,
+    AnalysisDimensionDTO,
     DecisionAnalysisDTO,
+    DecisionDepthDTO,
     DecisionDTO,
     DecisionFilterParams,
     DecisionMetadataDTO,
+    EligibilityDetailDTO,
+    EligibilityRuleDTO,
     GateResultDTO,
     TradePlanDTO,
     TraceStageDTO,
@@ -105,6 +111,9 @@ from athena.api.v1.dtos.backtests import (
 )
 
 __all__ = [
+    "AnalysisBlockDTO",
+    "AnalysisContributionDTO",
+    "AnalysisDimensionDTO",
     "AnalyticsProvenanceDTO",
     "AnalyticsSummaryDTO",
     "ArtifactMetadataDTO",
@@ -118,11 +127,14 @@ __all__ = [
     "CollectionResult",
     "ComponentHealth",
     "DecisionAnalysisDTO",
+    "DecisionDepthDTO",
     "DashboardSummaryDTO",
     "DecisionDTO",
     "DecisionFilterParams",
     "DecisionMetadataDTO",
     "DecisionTraceDTO",
+    "EligibilityDetailDTO",
+    "EligibilityRuleDTO",
     "EmptyFilterParams",
     "ExportArtifactDTO",
     "ExportJobDTO",

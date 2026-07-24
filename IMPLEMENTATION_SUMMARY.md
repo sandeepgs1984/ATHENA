@@ -6,7 +6,101 @@ status updated on approval.
 
 ---
 
-## M-D2 follow-up — After-hours validate as_of (READY FOR REVIEW)
+## M-D3 — ATHENA analytical depth (READY FOR REVIEW)
+
+| | |
+|---|---|
+| Completed | 2026-07-24 |
+| Objective | Explain eligibility and analytical depth for each selected decision |
+| Scope | Eligibility, score/confidence/risk detail, timeline, safe candidate removal |
+| Tests | Full suite **989 passed**; focused M-D3 **36 passed**; changed-file Ruff; browser JS compile |
+| Coverage | Existing project coverage retained; no separate percentage collected |
+| Status | **READY FOR REVIEW** — stop before M-D4 context lane |
+| Branch | develop |
+
+### Scope completed
+
+- Persisted each scanner-produced `DecisionReport.machine` in the originating
+  run detail, retaining score, confidence, risk, evidence, indicator, and trace
+  provenance without adding analytical computation to the API or dashboard.
+- Closed the owner-validate analytical gap: confidence, risk, evidence, and
+  market-health stages now run before DecisionEngine so re-validate persists
+  real depth instead of UNKNOWN confidence/risk refs.
+- Extended report serialization with source-created explanations and
+  contributions for score, confidence, and risk dimensions per ADR-005.
+- Added authenticated, read-only
+  `GET /api/v1/decisions/{decision_id}/depth`, backed by the provider protocol
+  and deterministic in-memory/SQLite implementations.
+- Added typed depth DTOs for the originating universe eligibility assessment
+  and persisted score/confidence/risk artifacts; unavailable historical depth
+  is reported explicitly as `UNKNOWN`.
+- Added Decision Brief sections for universe eligibility/rules, collapsible
+  score-confidence-risk components, and the latest eight persisted decisions
+  for the selected instrument.
+- Added confirmed candidate removal from both Decision Brief and Market
+  Intelligence. Removal stops future validation only; decisions, traces, and
+  replay evidence remain untouched.
+- Retained after-hours Re-validate behavior from M-D2 and cache-busted
+  dashboard assets to `9.20.0`.
+
+### Files created
+
+- None.
+
+### Files modified
+
+- Decision report/run-detail persistence; decision DTO/provider/service/router;
+  dashboard CSS/JS/HTML; API, reporting, owner-validation, and hosting tests;
+  milestone roadmap; this implementation log.
+
+### Public APIs
+
+- Added `GET /api/v1/decisions/{decision_id}/depth`.
+- Response contains `eligibility`, `score`, `confidence`, and `risk` blocks
+  sourced exclusively from persisted artifacts.
+- No frozen domain object, calculation, risk policy, or order boundary changed.
+
+### Validation and architecture
+
+- Full regression: **989 passed**.
+- Focused reporting/owner-validation/decision/dashboard/trace tests:
+  **36 passed**.
+- Changed Python files pass Ruff; the modern browser runtime compiled
+  `dashboard.js` (`9.20.0`) successfully.
+- ATHENA-002 report boundary preserved: API and dashboard render only.
+- ADR-005 preserved: explanations/contributions originate in analytical
+  modules and are persisted, never reconstructed by UI.
+- Candidate deletion does not cascade to immutable decision/run history.
+- Determinism, replayability, provider independence, and no-order boundary
+  preserved. No ADR or schema migration required.
+
+### Risks and technical debt
+
+- Decisions created before M-D3 have no persisted report payload and therefore
+  show `UNKNOWN` analytical depth until the symbol is re-validated.
+- Timeline is bounded to the API's existing 5,000-decision retrieval window and
+  displays the latest eight entries per instrument.
+- No new technical debt introduced.
+
+### Remaining work
+
+- Owner smoke: unlock after host restart, re-validate one symbol, inspect
+  eligibility/components/timeline, and optionally verify confirmed removal.
+- M-D4 remains blocked pending owner approval.
+
+### Commit message
+
+```text
+feat(dashboard): expose persisted decision depth
+
+- Persist score, confidence, risk, and eligibility rationale for faithful rendering
+- Add decision depth API, analytical drill-down, and per-symbol decision timeline
+- Preserve decision history when removing candidates from future validation
+```
+
+---
+
+## M-D2 follow-up — After-hours validate as_of (APPROVED)
 
 | | |
 |---|---|
@@ -14,7 +108,7 @@ status updated on approval.
 | Objective | Make Validate / Re-validate usable overnight without pretending stale quotes are live |
 | Scope | Calendar-aware `as_of` clamp + explicit session-close UI messaging |
 | Tests | Targeted resolve/dashboard/candidates **15 passed** |
-| Status | **READY FOR REVIEW** — still under M-D2; do not start M-D3 |
+| Status | **APPROVED** — owner smoke confirmed after-hours session-close validation |
 | Branch | develop |
 
 ### Scope completed
@@ -48,7 +142,7 @@ status updated on approval.
 
 ---
 
-## M-D2 — Intraday chart + TradePlan overlays (READY FOR REVIEW)
+## M-D2 — Intraday chart + TradePlan overlays (APPROVED)
 
 | | |
 |---|---|
@@ -57,7 +151,7 @@ status updated on approval.
 | Scope | Provider-independent candles API, SVG candlesticks, TradePlan overlays, explicit freshness |
 | Tests | Full suite **980 passed**; targeted M-D2 **20 passed**; changed-file Ruff; HTML parse |
 | Coverage | Existing project coverage retained; no separate percentage collected |
-| Status | **READY FOR REVIEW** — stop before M-D3 ATHENA depth |
+| Status | **APPROVED** — owner smoke confirmed charts and session-close validation |
 | Branch | develop |
 
 ### Scope completed

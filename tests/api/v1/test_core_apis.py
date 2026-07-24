@@ -237,6 +237,56 @@ class TestDecisionsAPI:
             trade_plan=plan,
         )
         dec_p.decisions.append(dec)  # type: ignore[attr-defined]
+        dec_p.run_details["run-1"] = {  # type: ignore[attr-defined]
+            "pipeline": {
+                "universe_members": {
+                    "SBIN": {
+                        "instrument_id": "SBIN",
+                        "included": True,
+                        "eligibility_summary": "SBIN passed all eligibility rules.",
+                        "exclusion_reasons": [],
+                        "evidence": [
+                            {
+                                "rule": "liquidity",
+                                "passed": True,
+                                "explanation": "Average volume exceeded threshold.",
+                                "inputs": {"volume": "1000000"},
+                            }
+                        ],
+                    }
+                },
+                "decision_reports": {
+                    "dec-detail-1": {
+                        "score": {
+                            "status": "OK",
+                            "composite": "72.5",
+                            "completeness": "1",
+                            "explanation": "Composite from persisted components.",
+                            "components": [
+                                {
+                                    "dimension": "trend",
+                                    "status": "OK",
+                                    "value": "80",
+                                    "weight": 25,
+                                    "weighted": "20",
+                                    "explanation": "Trend contribution.",
+                                    "contributions": [
+                                        {
+                                            "source": "regime:trend",
+                                            "reference_id": "regime-1",
+                                            "description": "Bull trend.",
+                                            "points": "80",
+                                        }
+                                    ],
+                                }
+                            ],
+                        },
+                        "confidence": {"status": "UNKNOWN"},
+                        "risk": {"status": "UNKNOWN"},
+                    }
+                },
+            }
+        }
 
         response = client.get("/api/v1/decisions/dec-detail-1", headers=headers)
         assert response.status_code == 200
@@ -250,6 +300,20 @@ class TestDecisionsAPI:
         assert data["trade_plan"]["stop_loss"] == "98.00"
         assert data["trade_plan"]["targets"] == ["104.00", "106.00"]
         assert data["trade_plan"]["risk_reward"] == "2.50"
+
+        depth_response = client.get(
+            "/api/v1/decisions/dec-detail-1/depth", headers=headers
+        )
+        assert depth_response.status_code == 200
+        depth = depth_response.json()["data"]
+        assert depth["eligibility"]["status"] == "INCLUDED"
+        assert depth["eligibility"]["rules"][0]["rule"] == "liquidity"
+        assert depth["score"]["value"] == "72.5"
+        assert depth["score"]["dimensions"][0]["name"] == "trend"
+        assert depth["score"]["dimensions"][0]["contributions"][0]["reference"] == (
+            "regime-1"
+        )
+        assert depth["confidence"]["status"] == "UNKNOWN"
 
     def test_get_decision_not_found(self, client) -> None:
         headers = get_auth_headers(client, Role.ANALYST)

@@ -151,6 +151,7 @@ class OwnerValidationPipeline:
         }
         decision_counts: dict[str, int] = {}
         scan_regime: dict[str, object] | None = None
+        decision_reports: dict[str, dict[str, object]] = {}
 
         if self._enable_scan and included_ids:
             run_id = f"run-{trigger.value.lower()}-{as_of.strftime('%Y%m%dT%H%M%S')}"
@@ -181,6 +182,11 @@ class OwnerValidationPipeline:
             }
             decision_counts = dict(scan_report.summary.decision_counts)
             qualified = self._qualified_from_repo(as_of, included_ids)
+            decision_reports = {
+                result.report.decision_id: result.report.to_dict()
+                for result in scan_report.results
+                if result.report is not None
+            }
 
         if regime_payload is None and scan_regime is not None:
             regime_payload = scan_regime
@@ -201,6 +207,7 @@ class OwnerValidationPipeline:
             "qualified_today": qualified,
             "scan_statistics": scan_stats,
             "decision_counts": decision_counts,
+            "decision_reports": decision_reports,
             "candidates_evaluated": len(candidates),
             "ingestion": {
                 "candles_written": ingestion.candles_written,
@@ -375,19 +382,36 @@ class OwnerValidationPipeline:
         snapshot: MarketSnapshot,
         cfg,
     ):
-        from athena.config.loader import load_decision_config, load_scoring_config
+        from athena.confidence import ConfidenceEngine
+        from athena.config.loader import (
+            load_confidence_config,
+            load_decision_config,
+            load_market_health_config,
+            load_risk_assessment_config,
+            load_scoring_config,
+        )
         from athena.decision import DecisionEngine
+        from athena.evidence import EvidenceAggregationEngine, EvidenceSource
         from athena.indicators import IndicatorEngine, IndicatorName
+        from athena.market_health import MarketHealthEngine
         from athena.regime import RegimeEngine
+        from athena.risk import RiskEngine
         from athena.runtime import WorkflowEngine, WorkflowStage, build_definition
         from athena.scanner import DailyMarketScanner, InstrumentPlan, ScanCapture
         from athena.scoring import ScoringEngine
 
         scoring_cfg = load_scoring_config(self._config_dir)
         decision_cfg = load_decision_config(self._config_dir)
+        confidence_cfg = load_confidence_config(self._config_dir)
+        risk_cfg = load_risk_assessment_config(self._config_dir)
+        market_health_cfg = load_market_health_config(self._config_dir)
         indicator_engine = IndicatorEngine(cfg.indicators)
         regime_engine = RegimeEngine(cfg.regime)
+        market_health_engine = MarketHealthEngine(market_health_cfg)
         scoring_engine = ScoringEngine(scoring_cfg)
+        confidence_engine = ConfidenceEngine(confidence_cfg)
+        risk_engine = RiskEngine(risk_cfg)
+        evidence_engine = EvidenceAggregationEngine()
         decision_engine = DecisionEngine(decision_cfg)
         scanner = DailyMarketScanner(WorkflowEngine(clock=_MonoClock()))
 
@@ -399,6 +423,7 @@ class OwnerValidationPipeline:
             index_candles = list(candles_by_id.get(included_ids[0], ()))
 
         captured_regime: dict[str, object] = {"payload": None}
+        shared_market_health: dict[str, object] = {"value": None}
 
         def builder(instrument_id: str) -> InstrumentPlan:
             cs = list(candles_by_id.get(instrument_id, ()))
@@ -410,6 +435,8 @@ class OwnerValidationPipeline:
                         [
                             IndicatorName.SMA,
                             IndicatorName.RSI,
+                            IndicatorName.ADX,
+                            IndicatorName.MACD,
                             IndicatorName.ATR,
                             IndicatorName.VOLUME_MA,
                         ],
@@ -425,7 +452,18 @@ class OwnerValidationPipeline:
                 )
                 if captured_regime["payload"] is None:
                     captured_regime["payload"] = self._regime_to_payload(regime)
-                return {"regime": regime}
+                if shared_market_health["value"] is None:
+                    shared_market_health["value"] = market_health_engine.assess(
+                        index_id,
+                        series,
+                        snapshot,
+                        as_of=ctx.as_of,
+                        regime=regime,
+                    )
+                return {
+                    "regime": regime,
+                    "market_health": shared_market_health["value"],
+                }
 
             def sco_stage(ctx):
                 return {
@@ -434,6 +472,36 @@ class OwnerValidationPipeline:
                         as_of=ctx.as_of,
                         indicators=ctx.get("indicators"),
                         regime=ctx.get("regime"),
+                        market_health=ctx.get("market_health"),
+                    )
+                }
+
+            def conf_stage(ctx):
+                evidence_bundle = evidence_engine.aggregate(
+                    as_of=ctx.as_of,
+                    regime=ctx.get("regime"),
+                    market_health=ctx.get("market_health"),
+                    required_sources=(EvidenceSource.REGIME,),
+                )
+                confidence = confidence_engine.assess(
+                    as_of=ctx.as_of,
+                    evidence_bundle=evidence_bundle,
+                    scoring=ctx.get("scoring"),
+                    indicators=ctx.get("indicators"),
+                )
+                return {
+                    "evidence_bundle": evidence_bundle,
+                    "confidence": confidence,
+                }
+
+            def risk_stage(ctx):
+                return {
+                    "risk": risk_engine.assess(
+                        instrument_id,
+                        as_of=ctx.as_of,
+                        regime=ctx.get("regime"),
+                        market_health=ctx.get("market_health"),
+                        indicators=ctx.get("indicators"),
                     )
                 }
 
@@ -444,13 +512,20 @@ class OwnerValidationPipeline:
                     run_id=run_id,
                     cycle_id=cycle_id,
                     scoring=ctx.get("scoring"),
+                    confidence=ctx.get("confidence"),
+                    risk=ctx.get("risk"),
+                    evidence_bundle=ctx.get("evidence_bundle"),
                     regime=ctx.get("regime"),
                     indicators=ctx.get("indicators"),
+                    market_health=ctx.get("market_health"),
                 )
                 self._repo.save_decision(outcome.decision, trace=outcome.trace)
                 box["cap"] = ScanCapture(
                     outcome=outcome,
                     scoring=ctx.get("scoring"),
+                    confidence=ctx.get("confidence"),
+                    risk=ctx.get("risk"),
+                    evidence_bundle=ctx.get("evidence_bundle"),
                     indicators=ctx.get("indicators"),
                 )
                 return {"outcome": True}
@@ -459,7 +534,11 @@ class OwnerValidationPipeline:
                 f"owner-val-{instrument_id}",
                 [
                     WorkflowStage("indicators", ind_stage, produces=("indicators",)),
-                    WorkflowStage("regime", reg_stage, produces=("regime",)),
+                    WorkflowStage(
+                        "regime",
+                        reg_stage,
+                        produces=("regime", "market_health"),
+                    ),
                     WorkflowStage(
                         "scoring",
                         sco_stage,
@@ -467,9 +546,21 @@ class OwnerValidationPipeline:
                         produces=("scoring",),
                     ),
                     WorkflowStage(
+                        "confidence",
+                        conf_stage,
+                        depends_on=("scoring", "regime"),
+                        produces=("evidence_bundle", "confidence"),
+                    ),
+                    WorkflowStage(
+                        "risk",
+                        risk_stage,
+                        depends_on=("indicators", "regime"),
+                        produces=("risk",),
+                    ),
+                    WorkflowStage(
                         "decision",
                         dec_stage,
-                        depends_on=("scoring",),
+                        depends_on=("scoring", "confidence", "risk"),
                         produces=("outcome",),
                     ),
                 ],

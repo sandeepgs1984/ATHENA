@@ -758,13 +758,65 @@ document.addEventListener("DOMContentLoaded", () => {
                 await loadMarketIntelligence();
             }
             if (refreshDecisions && typeof loadDecisionsWorkspace === "function") {
-                await loadDecisionsWorkspace();
+                await loadDecisionsWorkspace({
+                    preferInstrumentId: list.length === 1 ? list[0] : null,
+                });
             }
             return valRes;
         } finally {
             if (button) {
                 button.disabled = false;
                 if (prev != null) button.innerHTML = prev;
+            }
+        }
+    }
+
+    async function removeCandidateNow(symbol, { button = null } = {}) {
+        const bare = String(symbol || "").trim().toUpperCase().replace(/^NSE:|^BSE:/, "");
+        if (!bare) return false;
+        const confirmed = window.confirm(
+            `Remove ${bare} from future validation?\n\n` +
+            "Existing decisions, traces, and replay evidence will be preserved."
+        );
+        if (!confirmed) return false;
+
+        const previous = button ? button.innerHTML : null;
+        if (button) {
+            button.disabled = true;
+            button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Removing…';
+        }
+        try {
+            await apiRequest(
+                `/api/v1/market/candidates/${encodeURIComponent(bare)}`,
+                { method: "DELETE", skipToast: true }
+            );
+            showToast(
+                `${bare} removed from future validation · decision history preserved`,
+                "success"
+            );
+            if (typeof loadCandidateList === "function") {
+                await loadCandidateList();
+            }
+            return true;
+        } catch (err) {
+            if (err?.status === 404) {
+                showToast(`${bare} is not in the active validation list`, "warning");
+            } else {
+                const detail = err?.data?.detail;
+                showToast(
+                    typeof detail === "string" && detail.trim()
+                        ? detail
+                        : `Failed to remove ${bare} from validation`,
+                    "danger"
+                );
+            }
+            return false;
+        } finally {
+            if (button && !button.disabled && previous != null) {
+                button.innerHTML = previous;
+            } else if (button && previous != null) {
+                button.disabled = false;
+                button.innerHTML = previous;
             }
         }
     }
@@ -1775,13 +1827,7 @@ document.addEventListener("DOMContentLoaded", () => {
             listEl.querySelectorAll(".candidate-remove-btn").forEach(btn => {
                 btn.addEventListener("click", async () => {
                     const sym = btn.getAttribute("data-symbol");
-                    try {
-                        await apiRequest(`/api/v1/market/candidates/${encodeURIComponent(sym)}`, { method: "DELETE" });
-                        showToast(`Removed ${sym}`, "success");
-                        await loadCandidateList();
-                    } catch (err) {
-                        showToast(`Failed to remove ${sym}`, "danger");
-                    }
+                    await removeCandidateNow(sym, { button: btn });
                 });
             });
         } catch (err) {
@@ -2274,6 +2320,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const decisionBriefBody = document.getElementById("decision-brief-body");
 
     let activeTrace = null;
+    let allTraceDecisionsList = [];
     let traceDecisionsList = [];
     let activeDecisionId = null;
 
@@ -2397,12 +2444,13 @@ document.addEventListener("DOMContentLoaded", () => {
         return collected;
     }
 
-    async function loadDecisionsWorkspace() {
+    async function loadDecisionsWorkspace(options = {}) {
         try {
             const raw = await fetchAllDecisionPages();
+            allTraceDecisionsList = raw;
             // Latest decision per instrument for "Today's Decisions" (avoid duplicate cards)
             traceDecisionsList = latestDecisionPerInstrument(raw);
-            applyDecisionsView();
+            applyDecisionsView(options);
         } catch (err) {
             console.error("Failed to load decisions", err);
             if (briefingListContainer) {
@@ -2421,11 +2469,26 @@ document.addEventListener("DOMContentLoaded", () => {
         return -1;
     }
 
-    function applyDecisionsView() {
+    function applyDecisionsView(options = {}) {
         const query = (briefingSearch && briefingSearch.value || "").toLowerCase().trim();
         const stanceFilter = (document.getElementById("decisions-filter-stance") || {}).value || "all";
         const typeFilter = (document.getElementById("decisions-filter-type") || {}).value || "all";
         const sortMode = (document.getElementById("decisions-sort") || {}).value || "newest";
+        const preferDecisionId = options.preferDecisionId || activeDecisionId || null;
+        let preferInstrumentId = options.preferInstrumentId
+            ? String(options.preferInstrumentId).toUpperCase().replace(/^NSE:|^BSE:/, "")
+            : null;
+
+        if (!preferInstrumentId && preferDecisionId) {
+            const prior = [...allTraceDecisionsList, ...traceDecisionsList].find(
+                d => d && d.metadata && d.metadata.decision_id === preferDecisionId
+            );
+            if (prior && prior.metadata.instrument_id) {
+                preferInstrumentId = String(prior.metadata.instrument_id)
+                    .toUpperCase()
+                    .replace(/^NSE:|^BSE:/, "");
+            }
+        }
 
         let rows = [...traceDecisionsList];
         rows = rows.filter(d => {
@@ -2468,7 +2531,18 @@ document.addEventListener("DOMContentLoaded", () => {
 
         renderBriefingList(rows);
         if (rows.length > 0) {
-            selectBriefing(rows[0].metadata.decision_id);
+            let next = preferDecisionId
+                ? rows.find(d => d.metadata && d.metadata.decision_id === preferDecisionId)
+                : null;
+            if (!next && preferInstrumentId) {
+                next = rows.find(d => {
+                    const instrument = String(d.metadata && d.metadata.instrument_id || "")
+                        .toUpperCase()
+                        .replace(/^NSE:|^BSE:/, "");
+                    return instrument === preferInstrumentId;
+                });
+            }
+            selectBriefing((next || rows[0]).metadata.decision_id);
         } else if (dagNodesContainer) {
             dagNodesContainer.innerHTML = '<div class="text-muted text-center" style="padding: 48px;">No decisions match the current filters.</div>';
             renderDecisionBriefEmpty("No visible decision", "Restore dismissed symbols or change the filters.");
@@ -2529,15 +2603,23 @@ document.addEventListener("DOMContentLoaded", () => {
         return Number.isFinite(n) ? n.toFixed(n % 1 === 0 ? 0 : 1) : null;
     }
 
+    /** Round long Decimal strings for display without inventing new values. */
+    function sanitizeNumericText(text) {
+        return String(text || "").replace(/\d+\.\d{3,}/g, match => {
+            const number = Number(match);
+            return Number.isFinite(number) ? number.toFixed(1) : match;
+        });
+    }
+
     function formatDecisionSummary(explanation, type, gateResults) {
-        let headline = String(explanation || "").trim();
+        let headline = sanitizeNumericText(String(explanation || "").trim());
         // Soften any leftover machine phrasing from older runs
         headline = headline
             .replace(/gates failed:\s*\[([^\]]*)\]/gi, (_, inner) => {
                 const parts = inner.split(",").map(s => s.replace(/['"]/g, "").trim()).filter(Boolean);
                 return parts.length ? `still blocked on ${parts.map(friendlyGateName).join(", ")}` : "safety checks pending";
             })
-            .replace(/\bcomposite\s+(\d+\.\d{2})\d+/gi, "score $1")
+            .replace(/\bcomposite\s+(\d+(?:\.\d+)?)/gi, "score $1")
             .replace(/\bcomposite\b/gi, "score");
 
         if (!headline) {
@@ -2558,7 +2640,7 @@ document.addEventListener("DOMContentLoaded", () => {
         let gateChips = "";
         if (failed.length) {
             gateChips = `<div class="gate-chip-row">${failed.map(g =>
-                `<span class="gate-chip fail" title="${(g.detail || "").replace(/"/g, "&quot;")}">Needs ${friendlyGateName(g.gate)}</span>`
+                `<span class="gate-chip fail" title="${sanitizeNumericText(g.detail || "").replace(/"/g, "&quot;")}">Needs ${friendlyGateName(g.gate)}</span>`
             ).join("")}</div>`;
         } else if (gates.length && gates.every(g => g.passed)) {
             gateChips = `<div class="gate-chip-row"><span class="gate-chip pass">All checks passed</span></div>`;
@@ -2908,6 +2990,183 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         }
     }
 
+    function friendlyAnalysisName(value) {
+        return String(value || "unknown")
+            .replace(/_/g, " ")
+            .replace(/\b\w/g, char => char.toUpperCase());
+    }
+
+    function analysisPercent(value) {
+        const number = Number(value);
+        return Number.isFinite(number) ? `${number.toFixed(1)}` : "UNKNOWN";
+    }
+
+    function renderEligibilityDepth(eligibility) {
+        const host = document.getElementById("decision-eligibility-depth");
+        if (!host) return;
+        const data = eligibility || {};
+        const status = String(data.status || "UNKNOWN").toUpperCase();
+        const statusClass =
+            status === "INCLUDED" ? "included" : (status === "EXCLUDED" ? "excluded" : "unknown");
+        const exclusions = Array.isArray(data.exclusion_reasons) ? data.exclusion_reasons : [];
+        const rules = Array.isArray(data.rules) ? data.rules : [];
+        host.innerHTML = `
+            <div class="eligibility-summary">
+                <span class="depth-status ${statusClass}">${escapeDecisionHtml(status)}</span>
+                <span>${escapeDecisionHtml(data.summary || "No persisted eligibility assessment.")}</span>
+            </div>
+            ${exclusions.length ? `
+                <div class="eligibility-exclusions">
+                    ${exclusions.map(reason => `<span>${escapeDecisionHtml(reason)}</span>`).join("")}
+                </div>
+            ` : ""}
+            ${rules.length ? `
+                <details class="decision-depth-details">
+                    <summary>${rules.length} eligibility rule${rules.length === 1 ? "" : "s"}</summary>
+                    <div class="eligibility-rule-list">
+                        ${rules.map(rule => `
+                            <div class="eligibility-rule">
+                                <i class="fa-solid ${rule.passed ? "fa-circle-check pass" : "fa-circle-xmark fail"}"></i>
+                                <div>
+                                    <strong>${escapeDecisionHtml(friendlyAnalysisName(rule.rule))}</strong>
+                                    <p>${escapeDecisionHtml(rule.explanation || "No rationale recorded.")}</p>
+                                </div>
+                            </div>
+                        `).join("")}
+                    </div>
+                </details>
+            ` : ""}
+        `;
+    }
+
+    function renderAnalysisBlock(label, block, tone) {
+        const data = block || {};
+        const status = String(data.status || "UNKNOWN").toUpperCase();
+        const dimensions = Array.isArray(data.dimensions) ? data.dimensions : [];
+        const level = data.level ? String(data.level).toUpperCase() : "";
+        const completeness = Number(data.completeness);
+        const completenessLabel = Number.isFinite(completeness)
+            ? `${Math.round(completeness * 100)}% complete`
+            : "completeness unknown";
+        const explanation = sanitizeNumericText(
+            data.explanation || `No persisted ${label.toLowerCase()} explanation.`
+        );
+        return `
+            <article class="analysis-depth-card ${escapeDecisionHtml(tone)}">
+                <div class="analysis-depth-head">
+                    <span>${escapeDecisionHtml(label)}</span>
+                    <strong>${escapeDecisionHtml(analysisPercent(data.value))}</strong>
+                </div>
+                <div class="analysis-depth-meta">
+                    <span class="depth-status ${status === "OK" ? "included" : "unknown"}">${escapeDecisionHtml(status)}</span>
+                    ${level ? `<span>${escapeDecisionHtml(level)}</span>` : ""}
+                    <span>${escapeDecisionHtml(completenessLabel)}</span>
+                </div>
+                <p title="${escapeDecisionHtml(explanation)}">${escapeDecisionHtml(explanation)}</p>
+                ${dimensions.length ? `
+                    <details class="decision-depth-details">
+                        <summary>${dimensions.length} component${dimensions.length === 1 ? "" : "s"}</summary>
+                        <div class="analysis-dimension-list">
+                            ${dimensions.map(dimension => {
+                                const contributions = Array.isArray(dimension.contributions)
+                                    ? dimension.contributions
+                                    : [];
+                                const descriptor = dimension.level
+                                    ? String(dimension.level)
+                                    : String(dimension.status || "UNKNOWN");
+                                const dimensionExplanation = sanitizeNumericText(
+                                    dimension.explanation || "No component rationale recorded."
+                                );
+                                return `
+                                    <div class="analysis-dimension">
+                                        <div>
+                                            <strong>${escapeDecisionHtml(friendlyAnalysisName(dimension.name))}</strong>
+                                            <span>${escapeDecisionHtml(analysisPercent(dimension.value))} · ${escapeDecisionHtml(descriptor)}</span>
+                                        </div>
+                                        <p title="${escapeDecisionHtml(dimensionExplanation)}">${escapeDecisionHtml(dimensionExplanation)}</p>
+                                        ${contributions.length ? `
+                                            <ul>
+                                                ${contributions.map(item => `
+                                                    <li>${escapeDecisionHtml(sanitizeNumericText(item.description || item.source || "Recorded contribution"))}</li>
+                                                `).join("")}
+                                            </ul>
+                                        ` : ""}
+                                    </div>
+                                `;
+                            }).join("")}
+                        </div>
+                    </details>
+                ` : ""}
+            </article>
+        `;
+    }
+
+    function renderDecisionDepth(depth) {
+        renderEligibilityDepth(depth && depth.eligibility);
+        const host = document.getElementById("decision-analysis-depth");
+        if (!host) return;
+        host.innerHTML = [
+            renderAnalysisBlock("Score", depth && depth.score, "score"),
+            renderAnalysisBlock("Confidence", depth && depth.confidence, "confidence"),
+            renderAnalysisBlock("Risk", depth && depth.risk, "risk"),
+        ].join("");
+    }
+
+    async function loadDecisionDepth(decisionId) {
+        try {
+            const response = await apiRequest(
+                `/api/v1/decisions/${encodeURIComponent(decisionId)}/depth`,
+                { skipToast: true }
+            );
+            if (activeDecisionId !== decisionId) return;
+            renderDecisionDepth(response && response.data);
+        } catch (err) {
+            if (activeDecisionId !== decisionId) return;
+            console.error(`Failed to load decision depth for ${decisionId}`, err);
+            renderDecisionDepth(null);
+        }
+    }
+
+    function renderDecisionTimeline(decision) {
+        const host = document.getElementById("decision-history-timeline");
+        if (!host || !decision || !decision.metadata) return;
+        const instrument = String(decision.metadata.instrument_id || "").toUpperCase();
+        const bare = instrument.split(":").pop();
+        const rows = allTraceDecisionsList
+            .filter(item => {
+                const candidate = String(item?.metadata?.instrument_id || "").toUpperCase();
+                return candidate === instrument || candidate.split(":").pop() === bare;
+            })
+            .sort((a, b) => new Date(b.metadata.ts || 0) - new Date(a.metadata.ts || 0))
+            .slice(0, 8);
+        if (!rows.length) {
+            host.innerHTML = '<div class="text-muted">No persisted decision history.</div>';
+            return;
+        }
+        host.innerHTML = rows.map(item => {
+            const meta = item.metadata || {};
+            const current = meta.decision_id === decision.metadata.decision_id;
+            const stance = decisionStance(meta.decision_type, meta.direction);
+            return `
+                <button type="button" class="decision-timeline-row ${current ? "current" : ""}"
+                        data-decision-id="${escapeDecisionHtml(meta.decision_id || "")}">
+                    <span class="decision-timeline-dot"></span>
+                    <span>
+                        <strong>${escapeDecisionHtml(formatDecisionTime(meta.ts))}</strong>
+                        <small>${escapeDecisionHtml(stance.label)} · ${escapeDecisionHtml(meta.decision_type || "UNKNOWN")}</small>
+                    </span>
+                    ${current ? '<em>Current</em>' : ""}
+                </button>
+            `;
+        }).join("");
+        host.querySelectorAll(".decision-timeline-row").forEach(row => {
+            row.addEventListener("click", () => {
+                const id = row.getAttribute("data-decision-id");
+                if (id && id !== activeDecisionId) selectBriefing(id);
+            });
+        });
+    }
+
     function renderDecisionBrief(decision) {
         if (!decisionBriefBody || !decision || !decision.metadata) return;
         const meta = decision.metadata;
@@ -2927,7 +3186,7 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
                 <div class="decision-gate-row">
                     <i class="fa-solid ${gate.passed ? "fa-circle-check pass" : "fa-circle-xmark fail"}"></i>
                     <span class="decision-gate-name">${escapeDecisionHtml(friendlyGateName(gate.gate))}</span>
-                    <span class="decision-gate-detail">${escapeDecisionHtml(gate.detail || "No rationale recorded")}</span>
+                    <span class="decision-gate-detail">${escapeDecisionHtml(sanitizeNumericText(gate.detail || "No rationale recorded"))}</span>
                 </div>
             `).join("")
             : '<div class="text-muted">No gate results were persisted for this decision.</div>';
@@ -2954,6 +3213,13 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
                 <p class="decision-brief-thesis">${escapeDecisionHtml(summary.headline)}</p>
             </section>
 
+            <section class="decision-brief-section">
+                <h4>Universe eligibility</h4>
+                <div id="decision-eligibility-depth" class="decision-depth-loading">
+                    <i class="fa-solid fa-circle-notch fa-spin"></i> Loading persisted assessment…
+                </div>
+            </section>
+
             ${renderTradePlan(decision.trade_plan, meta.decision_type)}
 
             <section class="decision-brief-section decision-chart-section">
@@ -2972,8 +3238,22 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
             </section>
 
             <section class="decision-brief-section">
+                <h4>Score · confidence · risk</h4>
+                <div id="decision-analysis-depth" class="analysis-depth-grid">
+                    <div class="decision-depth-loading">
+                        <i class="fa-solid fa-circle-notch fa-spin"></i> Loading analytical artifacts…
+                    </div>
+                </div>
+            </section>
+
+            <section class="decision-brief-section">
                 <h4>Safety &amp; quality gates</h4>
                 <div class="decision-gates-list">${gateRows}</div>
+            </section>
+
+            <section class="decision-brief-section">
+                <h4>Decision timeline</h4>
+                <div id="decision-history-timeline" class="decision-history-timeline"></div>
             </section>
 
             <section class="decision-brief-section">
@@ -2995,10 +3275,13 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
                     <button id="decision-brief-dismiss" class="btn btn-outline" type="button">
                         <i class="fa-solid fa-eye-slash"></i> Dismiss today
                     </button>
+                    <button id="decision-brief-remove-candidate" class="btn btn-outline btn-danger-outline" type="button">
+                        <i class="fa-solid fa-list-check"></i> Remove candidate
+                    </button>
                 </div>
                 <p class="text-muted" style="font-size: 0.68rem; margin: 10px 0 0;">
                     Dismiss only hides this symbol in this browser until the next IST day.
-                    Decision history and replay evidence are never deleted.
+                    Removing a candidate stops future validation only. Decision history and replay evidence are never deleted.
                 </p>
             </section>
         `;
@@ -3013,6 +3296,16 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         document.getElementById("decision-brief-dismiss")?.addEventListener("click", () => {
             dismissDecisionForToday(decision);
         });
+        document.getElementById("decision-brief-remove-candidate")?.addEventListener("click", async event => {
+            const bareSymbol = String(rawSymbol).replace(/^NSE:|^BSE:/, "");
+            const removed = await removeCandidateNow(bareSymbol, { button: event.currentTarget });
+            if (removed) {
+                event.currentTarget.disabled = true;
+                event.currentTarget.innerHTML = '<i class="fa-solid fa-check"></i> Candidate removed';
+            }
+        });
+        renderDecisionTimeline(decision);
+        loadDecisionDepth(meta.decision_id);
         loadDecisionChart(rawSymbol, decision.trade_plan, meta.decision_id);
     }
 
