@@ -4,8 +4,13 @@ document.addEventListener("DOMContentLoaded", () => {
     // ---------------------------------------------------------------------------
     // State Registry
     // ---------------------------------------------------------------------------
+    const AUTH_ACCESS_KEY = "athena.access_token";
+    const AUTH_REFRESH_KEY = "athena.refresh_token";
+
     const state = {
         activeTab: "overview",
+        authRequired: false,
+        authenticated: false,
         telemetry: {
             requestId: "unknown",
             correlationId: "unknown",
@@ -21,6 +26,16 @@ document.addEventListener("DOMContentLoaded", () => {
     const pageTitle = document.getElementById("page-title");
     const refreshTrigger = document.getElementById("refresh-trigger");
     const healthIndicator = document.getElementById("system-health-indicator");
+    const appShell = document.getElementById("app");
+    const unlockGate = document.getElementById("unlock-gate");
+    const unlockForm = document.getElementById("unlock-form");
+    const unlockUsername = document.getElementById("unlock-username");
+    const unlockPassword = document.getElementById("unlock-password");
+    const unlockError = document.getElementById("unlock-error");
+    const unlockSubmit = document.getElementById("unlock-submit");
+    const logoutBtn = document.getElementById("logout-btn");
+    const profileName = document.getElementById("profile-name");
+    const profileRole = document.getElementById("profile-role");
     
     // Telemetry DOM Bindings
     const reqIdElement = document.getElementById("header-req-id");
@@ -51,6 +66,203 @@ document.addEventListener("DOMContentLoaded", () => {
     let backtestComparisonChart = null;
     let opsTelemetryChart = null;
     let opsEventSource = null;
+
+    // ---------------------------------------------------------------------------
+    // Session / Unlock helpers
+    // ---------------------------------------------------------------------------
+    function getAccessToken() {
+        return sessionStorage.getItem(AUTH_ACCESS_KEY) || "";
+    }
+
+    function getRefreshToken() {
+        return sessionStorage.getItem(AUTH_REFRESH_KEY) || "";
+    }
+
+    function storeTokens(accessToken, refreshToken) {
+        sessionStorage.setItem(AUTH_ACCESS_KEY, accessToken);
+        sessionStorage.setItem(AUTH_REFRESH_KEY, refreshToken);
+    }
+
+    function clearTokens() {
+        sessionStorage.removeItem(AUTH_ACCESS_KEY);
+        sessionStorage.removeItem(AUTH_REFRESH_KEY);
+    }
+
+    function showUnlock(message) {
+        state.authenticated = false;
+        if (appShell) appShell.hidden = true;
+        if (unlockGate) unlockGate.hidden = false;
+        if (unlockError) {
+            if (message) {
+                unlockError.hidden = false;
+                unlockError.textContent = message;
+            } else {
+                unlockError.hidden = true;
+                unlockError.textContent = "";
+            }
+        }
+        if (unlockPassword) unlockPassword.value = "";
+        if (unlockUsername) unlockUsername.focus();
+    }
+
+    function showAppShell() {
+        if (unlockGate) unlockGate.hidden = true;
+        if (appShell) appShell.hidden = false;
+        state.authenticated = true;
+    }
+
+    function applyPrincipal(principal) {
+        if (profileName) profileName.textContent = principal?.username || "Owner";
+        if (profileRole) profileRole.textContent = principal?.role ? `${principal.role} ROLE` : "ADMIN ROLE";
+    }
+
+    async function refreshAccessToken() {
+        const refreshToken = getRefreshToken();
+        if (!refreshToken) return false;
+        const response = await fetch("/api/v1/auth/refresh", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ refresh_token: refreshToken }),
+        });
+        if (!response.ok) {
+            clearTokens();
+            return false;
+        }
+        const payload = await response.json();
+        const data = payload?.data;
+        if (!data?.access_token || !data?.refresh_token) {
+            clearTokens();
+            return false;
+        }
+        storeTokens(data.access_token, data.refresh_token);
+        return true;
+    }
+
+    async function fetchAuthStatus() {
+        const response = await fetch("/api/v1/auth/status");
+        if (!response.ok) {
+            const err = new Error(`auth status HTTP ${response.status}`);
+            err.status = response.status;
+            throw err;
+        }
+        const payload = await response.json();
+        return payload?.data || { auth_required: false, owner_configured: false };
+    }
+
+    async function fetchMe() {
+        return apiRequest("/api/v1/auth/me", { skipAuthRedirect: true });
+    }
+
+    async function bootstrapSession() {
+        let status;
+        try {
+            status = await fetchAuthStatus();
+        } catch (err) {
+            console.error(err);
+            const code = err?.status;
+            if (code === 404) {
+                showUnlock("Auth API missing (404). Restart the ATHENA API with the latest code, then hard-refresh.");
+            } else if (code) {
+                showUnlock(`Cannot reach auth API (HTTP ${code}). Restart the server and hard-refresh.`);
+            } else {
+                showUnlock("Cannot reach ATHENA API. Is the server running?");
+            }
+            return;
+        }
+
+        state.authRequired = Boolean(status.auth_required);
+
+        if (!state.authRequired) {
+            applyPrincipal({ username: "Administrator", role: "ADMIN" });
+            showAppShell();
+            closeAllModals();
+            initializeRoute();
+            checkSystemHealth();
+            return;
+        }
+
+        if (!getAccessToken()) {
+            showUnlock();
+            return;
+        }
+
+        try {
+            const me = await fetchMe();
+            applyPrincipal(me?.data || me);
+            showAppShell();
+            closeAllModals();
+            initializeRoute();
+            checkSystemHealth();
+        } catch (err) {
+            clearTokens();
+            showUnlock("Session expired. Unlock again.");
+        }
+    }
+
+    if (unlockForm) {
+        unlockForm.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            if (unlockSubmit) unlockSubmit.disabled = true;
+            if (unlockError) {
+                unlockError.hidden = true;
+                unlockError.textContent = "";
+            }
+            try {
+                const response = await fetch("/api/v1/auth/login", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        username: unlockUsername?.value?.trim() || "",
+                        password: unlockPassword?.value || "",
+                    }),
+                });
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    const detail = payload?.detail || payload?.title || "Invalid credentials";
+                    showUnlock(typeof detail === "string" ? detail : "Invalid credentials");
+                    return;
+                }
+                const data = payload?.data;
+                if (!data?.access_token || !data?.refresh_token) {
+                    showUnlock("Login response missing tokens");
+                    return;
+                }
+                storeTokens(data.access_token, data.refresh_token);
+                const me = await fetchMe();
+                applyPrincipal(me?.data || me);
+                showAppShell();
+                closeAllModals();
+                initializeRoute();
+                checkSystemHealth();
+            } catch (err) {
+                console.error(err);
+                showUnlock("Unlock failed. Check network and try again.");
+            } finally {
+                if (unlockSubmit) unlockSubmit.disabled = false;
+            }
+        });
+    }
+
+    if (logoutBtn) {
+        logoutBtn.addEventListener("click", async () => {
+            try {
+                if (state.authRequired && getAccessToken()) {
+                    await apiRequest("/api/v1/auth/logout", {
+                        method: "POST",
+                        skipAuthRedirect: true,
+                    }).catch(() => null);
+                }
+            } finally {
+                clearTokens();
+                stopOpsStream();
+                if (state.authRequired) {
+                    showUnlock();
+                } else {
+                    window.location.reload();
+                }
+            }
+        });
+    }
 
     // ---------------------------------------------------------------------------
     // Routing & Tab Switcher
@@ -131,15 +343,21 @@ document.addEventListener("DOMContentLoaded", () => {
     // ---------------------------------------------------------------------------
     async function apiRequest(url, options = {}) {
         const start = performance.now();
+        const { skipAuthRedirect = false, _retried = false, ...fetchOptions } = options;
         
         // Add default Headers
         const headers = {
             "Content-Type": "application/json",
-            ...options.headers
+            ...fetchOptions.headers
         };
 
+        const accessToken = getAccessToken();
+        if (accessToken && !headers.Authorization) {
+            headers.Authorization = `Bearer ${accessToken}`;
+        }
+
         try {
-            const response = await fetch(url, { ...options, headers });
+            const response = await fetch(url, { ...fetchOptions, headers });
             
             // Record Latency
             const end = performance.now();
@@ -150,6 +368,18 @@ document.addEventListener("DOMContentLoaded", () => {
             const corrId = response.headers.get("X-Correlation-ID") || "unknown";
             
             updateTelemetry(reqId, corrId, latency);
+
+            if (response.status === 401 && state.authRequired && !_retried) {
+                const refreshed = await refreshAccessToken();
+                if (refreshed) {
+                    return apiRequest(url, { ...options, _retried: true });
+                }
+                clearTokens();
+                if (!skipAuthRedirect) {
+                    showUnlock("Session expired. Unlock again.");
+                }
+                throw { status: 401, data: { detail: "Unauthorized" } };
+            }
             
             if (!response.ok) {
                 // Parse Problem Details structure if possible
@@ -169,7 +399,9 @@ document.addEventListener("DOMContentLoaded", () => {
             } else if (error?.status) {
                 message = `Request failed (${error.status})`;
             }
-            showToast(message, "danger");
+            if (!(error?.status === 401 && state.authRequired)) {
+                showToast(message, "danger");
+            }
             throw error;
         }
     }
@@ -2253,7 +2485,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
         opsWarningsFeed.innerHTML = "";
         try {
-            opsEventSource = new EventSource("/api/v1/ops/stream");
+            const token = getAccessToken();
+            const streamUrl = token
+                ? `/api/v1/ops/stream?access_token=${encodeURIComponent(token)}`
+                : "/api/v1/ops/stream";
+            opsEventSource = new EventSource(streamUrl);
         } catch (err) {
             console.error("Failed to open ops SSE", err);
             opsWarningsFeed.innerHTML = '<div class="text-muted text-center" style="padding: 24px;">Failed to open warning stream.</div>';
@@ -2524,8 +2760,6 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
-    // Initialize Startup Flows
-    closeAllModals();
-    initializeRoute();
-    checkSystemHealth();
+    // Initialize Startup Flows (auth gate first)
+    bootstrapSession();
 });

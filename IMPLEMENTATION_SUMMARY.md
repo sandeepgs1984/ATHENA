@@ -6,6 +6,24 @@ status updated on approval.
 
 ---
 
+## Live Entry M-E1 — Auth surface + unlock screen (READY FOR REVIEW)
+
+| | |
+|---|---|
+| Completed | 2026-07-24 |
+| Scope | Wire AuthService to HTTP; owner seed from `.env`; unlock gate; Bearer + refresh in dashboard |
+| Tests | `tests/api/v1/test_auth_routes.py` + `tests/api` (120 passed) |
+| Status | **READY FOR REVIEW** — stop here before M-E2 |
+| Branch | develop |
+
+- Routes: `GET/POST /api/v1/auth/status|login|refresh|logout|me`.
+- Owner seed: `ATHENA_OWNER_USER` + `ATHENA_OWNER_PASSWORD_HASH`; CLI `athena set-owner-password`.
+- When owner hash is set, `ATHENA_SINGLE_USER` bypass is disabled; unlock is required.
+- Dashboard: unlock overlay, sessionStorage JWTs, Bearer on `apiRequest`, refresh on 401, SSE `access_token` query, profile from `/me`.
+- `/` redirects to `/dashboard/`. Assets `?v=9.13.0`.
+
+---
+
 ## Dashboard workspace usability improvements (READY FOR REVIEW)
 
 | | |

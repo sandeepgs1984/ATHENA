@@ -91,10 +91,18 @@ def get_current_user(
     if api_key:
         return auth_provider.authenticate_api_key(api_key)
 
-    import os
+    # EventSource cannot set Authorization headers; allow access_token query (localhost).
+    query_token = request.query_params.get("access_token")
+    if query_token:
+        return auth_provider.authenticate_token(query_token)
+
     import sys
-    if "pytest" not in sys.modules and os.environ.get("ATHENA_SINGLE_USER", "false").lower() == "true":
-        from athena.api.security.models import AuthenticatedPrincipal, Role, Permission
+
+    from athena.api.security.owner_seed import single_user_bypass_enabled
+
+    if "pytest" not in sys.modules and single_user_bypass_enabled():
+        from athena.api.security.models import AuthenticatedPrincipal, Permission, Role
+
         return AuthenticatedPrincipal(
             user_id="usr-admin",
             username="admin",

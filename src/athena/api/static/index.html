@@ -11,10 +11,32 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.12.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.13.1">
 </head>
 <body>
-    <div id="app">
+    <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
+    <div id="unlock-gate" class="unlock-gate" hidden>
+        <div class="unlock-panel">
+            <div class="unlock-brand">
+                <i class="fa-solid fa-circle-nodes"></i>
+                <span>ATHENA</span>
+            </div>
+            <h1 class="unlock-title">Workstation Unlock</h1>
+            <p class="unlock-subtitle">Enter owner credentials to open the live console.</p>
+            <form id="unlock-form" class="unlock-form" autocomplete="on">
+                <label class="unlock-label" for="unlock-username">Username</label>
+                <input id="unlock-username" name="username" type="text" class="unlock-input" required autocomplete="username" value="owner">
+                <label class="unlock-label" for="unlock-password">Password</label>
+                <input id="unlock-password" name="password" type="password" class="unlock-input" required autocomplete="current-password">
+                <p id="unlock-error" class="unlock-error" hidden></p>
+                <button type="submit" id="unlock-submit" class="btn unlock-submit">
+                    Unlock
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <div id="app" class="app-shell" hidden>
         <!-- Sidebar Navigation -->
         <aside class="sidebar">
             <div class="sidebar-brand">
@@ -49,8 +71,8 @@
                 <div class="user-profile">
                     <i class="fa-solid fa-user-shield profile-avatar"></i>
                     <div class="profile-info">
-                        <span class="profile-name">Administrator</span>
-                        <span class="profile-role">ADMIN ROLE</span>
+                        <span class="profile-name" id="profile-name">—</span>
+                        <span class="profile-role" id="profile-role">—</span>
                     </div>
                 </div>
                 <button id="logout-btn" class="logout-button" title="Log Out">
@@ -665,6 +687,6 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.12.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.13.1"></script>
 </body>
 </html>

@@ -9,10 +9,7 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
 export PYTHONPATH="${ROOT}/src${PYTHONPATH:+:$PYTHONPATH}"
 # Load .env into the process for launchd (which often has a bare environment).
-if [[ -f "$ROOT/.env" ]]; then
-  set -a
-  # shellcheck disable=SC1091
-  source "$ROOT/.env"
-  set +a
-fi
+# shellcheck source=scripts/bash_load_dotenv.sh
+source "$ROOT/scripts/bash_load_dotenv.sh"
+athena_load_dotenv "$ROOT/.env"
 exec python3 -m athena.cli run-due "$@"

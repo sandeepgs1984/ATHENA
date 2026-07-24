@@ -530,6 +530,44 @@ def _cmd_validate_symbols(args: argparse.Namespace) -> int:
     return 0 if result.status == "COMPLETED" else 1
 
 
+def _cmd_set_owner_password(args: argparse.Namespace) -> int:
+    """Hash an owner password for ATHENA_OWNER_PASSWORD_HASH (never stores plaintext)."""
+    import getpass
+
+    from athena.api.security.hashing import BcryptPasswordHasher
+
+    password = args.password
+    if not password:
+        if not sys.stdin.isatty():
+            print(
+                "ERROR: no TTY for password prompt. Re-run with --password, or use:\n"
+                "  PYTHONPATH=src python3 -m athena.cli set-owner-password --username owner --password '…'",
+                file=sys.stderr,
+            )
+            return 1
+        print("Enter owner password (input hidden):", file=sys.stderr)
+        password = getpass.getpass("Owner password: ")
+        confirm = getpass.getpass("Confirm password: ")
+        if password != confirm:
+            print("ERROR: passwords do not match", file=sys.stderr)
+            return 1
+    if not password:
+        print("ERROR: empty password", file=sys.stderr)
+        return 1
+
+    hasher = BcryptPasswordHasher(rounds=12)
+    digest = hasher.hash(password)
+    print("# Add these lines to .env (never commit .env):")
+    print(f"ATHENA_OWNER_USER={args.username}")
+    # Single-quote the bcrypt hash so bash `source .env` does not expand $2b$…
+    print(f"ATHENA_OWNER_PASSWORD_HASH='{digest}'")
+    print(
+        "# Then restart the API and hard-refresh the dashboard.",
+        file=sys.stderr,
+    )
+    return 0
+
+
 def _cmd_kite_auth(args: argparse.Namespace) -> int:
     """Interactive daily Kite login → write KITE_ACCESS_TOKEN to .env → verify."""
     load_dotenv()
@@ -664,6 +702,21 @@ def main(argv: list[str] | None = None) -> int:
         help="Accepted for symmetry; diagnostics never mutate config",
     )
     p_diagnose.set_defaults(func=_cmd_diagnose)
+
+    p_owner = sub.add_parser(
+        "set-owner-password",
+        help="Generate ATHENA_OWNER_PASSWORD_HASH for dashboard unlock (prints .env lines)",
+    )
+    p_owner.add_argument(
+        "--username",
+        default="owner",
+        help="Owner username (default: owner)",
+    )
+    p_owner.add_argument(
+        "--password",
+        help="Password (omit to prompt interactively; preferred)",
+    )
+    p_owner.set_defaults(func=_cmd_set_owner_password)
 
     p_kite = sub.add_parser(
         "kite-auth",

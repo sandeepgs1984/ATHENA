@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -25,6 +25,11 @@ from athena.api.platform.metadata import router as platform_metadata_router
 from athena.api.platform.middleware import PlatformMiddleware
 from athena.api.platform.problem_details import ProblemDetail
 from athena.api.platform.version import router as platform_version_router
+from athena.api.security.audit import LoggingAuditSink
+from athena.api.security.dependencies import get_session_store, get_user_repository
+from athena.api.security.hashing import BcryptPasswordHasher
+from athena.api.security.owner_seed import seed_owner_user
+from athena.api.security.service import AuthService
 from athena.api.security.token import HMAC256TokenSigner, TokenClaimsFactory
 from athena.api.v1.router import router as v1_router
 from athena.errors import AthenaError
@@ -190,6 +195,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     )
 
     # Initialize Security components on app state
+    app.state.api_settings = settings
     app.state.token_signer = HMAC256TokenSigner(
         secret_key=settings.security.jwt_secret,
         issuer=settings.security.jwt_issuer,
@@ -197,6 +203,15 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
         algorithm=settings.security.jwt_algorithm,
     )
     app.state.claims_factory = TokenClaimsFactory(settings.security)
+    app.state.auth_service = AuthService(
+        user_repo=get_user_repository(),
+        session_store=get_session_store(),
+        hasher=BcryptPasswordHasher(rounds=settings.security.bcrypt_rounds),
+        signer=app.state.token_signer,
+        claims_factory=app.state.claims_factory,
+        audit_sink=LoggingAuditSink(),
+    )
+    seed_owner_user(get_user_repository())
 
     # Initialize Platform Infrastructure Providers on app state
     from athena.api.dependencies import get_build_info_provider, get_metadata_provider, wire_sqlite_providers
@@ -218,6 +233,10 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
 
     # Register Exception Handlers
     _register_exception_handlers(app)
+
+    @app.get("/", include_in_schema=False)
+    def root_redirect() -> RedirectResponse:
+        return RedirectResponse(url="/dashboard/", status_code=status.HTTP_307_TEMPORARY_REDIRECT)
 
     # Include Platform Infrastructure Routers (P8.5)
     app.include_router(platform_health_router)
