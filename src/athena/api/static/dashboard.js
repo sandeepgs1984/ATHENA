@@ -2219,9 +2219,80 @@ document.addEventListener("DOMContentLoaded", () => {
     const dagDetailsStatus = document.getElementById("dag-details-status");
     const dagDetailsSummary = document.getElementById("dag-details-summary");
     const dagDetailsGrid = document.getElementById("dag-details-grid");
+    const decisionBriefTitle = document.getElementById("decision-brief-title");
+    const decisionBriefAsOf = document.getElementById("decision-brief-asof");
+    const decisionBriefBody = document.getElementById("decision-brief-body");
 
     let activeTrace = null;
     let traceDecisionsList = [];
+    let activeDecisionId = null;
+
+    function escapeDecisionHtml(value) {
+        return String(value == null ? "" : value)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    function istDateKey() {
+        const parts = new Intl.DateTimeFormat("en-GB", {
+            timeZone: "Asia/Kolkata",
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+        }).formatToParts(new Date());
+        const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+        return `${values.year}-${values.month}-${values.day}`;
+    }
+
+    function dismissedDecisionStorageKey() {
+        return `athena.dismissed-decisions.${istDateKey()}`;
+    }
+
+    function loadDismissedDecisionSymbols() {
+        try {
+            const raw = JSON.parse(localStorage.getItem(dismissedDecisionStorageKey()) || "[]");
+            return new Set(Array.isArray(raw) ? raw.map(v => String(v).toUpperCase()) : []);
+        } catch (_err) {
+            return new Set();
+        }
+    }
+
+    const dismissedDecisionSymbols = loadDismissedDecisionSymbols();
+
+    function persistDismissedDecisionSymbols() {
+        try {
+            localStorage.setItem(
+                dismissedDecisionStorageKey(),
+                JSON.stringify(Array.from(dismissedDecisionSymbols).sort())
+            );
+        } catch (_err) {
+            showToast("Could not persist dismissed decisions in this browser", "warning");
+        }
+    }
+
+    function decisionInstrumentKey(decision) {
+        const meta = decision && decision.metadata ? decision.metadata : {};
+        return String(meta.instrument_id || meta.decision_id || "").toUpperCase();
+    }
+
+    function dismissDecisionForToday(decision) {
+        const key = decisionInstrumentKey(decision);
+        if (!key) return;
+        dismissedDecisionSymbols.add(key);
+        persistDismissedDecisionSymbols();
+        showToast(`${key.includes(":") ? key.split(":").pop() : key} dismissed for today`, "success");
+        applyDecisionsView();
+    }
+
+    function restoreDismissedDecisions() {
+        dismissedDecisionSymbols.clear();
+        persistDismissedDecisionSymbols();
+        showToast("Dismissed decisions restored", "success");
+        applyDecisionsView();
+    }
 
     /** Keep the newest decision per instrument (or decision_id when instrument is missing). */
     function latestDecisionPerInstrument(rows) {
@@ -2308,6 +2379,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         let rows = [...traceDecisionsList];
         rows = rows.filter(d => {
+            if (dismissedDecisionSymbols.has(decisionInstrumentKey(d))) return false;
             const type = (d.metadata && d.metadata.decision_type) || "";
             const dir = (d.metadata && d.metadata.direction) || "NONE";
             const stance = decisionStance(type, dir).label;
@@ -2349,6 +2421,7 @@ document.addEventListener("DOMContentLoaded", () => {
             selectBriefing(rows[0].metadata.decision_id);
         } else if (dagNodesContainer) {
             dagNodesContainer.innerHTML = '<div class="text-muted text-center" style="padding: 48px;">No decisions match the current filters.</div>';
+            renderDecisionBriefEmpty("No visible decision", "Restore dismissed symbols or change the filters.");
         }
     }
 
@@ -2454,19 +2527,237 @@ document.addEventListener("DOMContentLoaded", () => {
         return `<span class="type-chip type-${t.toLowerCase()}">${t || "—"}</span>`;
     }
 
+    function formatDecisionPrice(value) {
+        const amount = Number(value);
+        if (!Number.isFinite(amount)) return "—";
+        return `₹${amount.toLocaleString("en-IN", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        })}`;
+    }
+
+    function formatDecisionTime(value) {
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return "Unknown time";
+        return date.toLocaleString("en-IN", {
+            timeZone: "Asia/Kolkata",
+            day: "2-digit",
+            month: "short",
+            hour: "2-digit",
+            minute: "2-digit",
+        }) + " IST";
+    }
+
+    function renderDecisionBriefEmpty(title, detail) {
+        if (decisionBriefTitle) decisionBriefTitle.textContent = "Instrument Decision Brief";
+        if (decisionBriefAsOf) decisionBriefAsOf.textContent = "Select a symbol";
+        if (!decisionBriefBody) return;
+        decisionBriefBody.innerHTML = `
+            <div class="decision-brief-empty">
+                <i class="fa-solid fa-chart-line"></i>
+                <strong>${escapeDecisionHtml(title || "Select a decision")}</strong>
+                <span>${escapeDecisionHtml(detail || "ATHENA will show the current thesis, safety gates, and advisory TradePlan.")}</span>
+            </div>
+        `;
+    }
+
+    function renderTradePlan(plan, decisionType) {
+        if (!plan) {
+            const label = String(decisionType || "").toUpperCase();
+            return `
+                <div class="decision-brief-section">
+                    <h4>ATHENA TradePlan</h4>
+                    <div class="no-trade-plan">
+                        No actionable entry or exit plan is authorized for a
+                        <strong>${escapeDecisionHtml(label || "non-TRADE")}</strong> decision.
+                        Re-validate when new market data arrives; do not infer levels from this screen.
+                    </div>
+                </div>
+            `;
+        }
+
+        const validFrom = new Date(plan.valid_from);
+        const validUntil = new Date(plan.valid_until);
+        const now = new Date();
+        let statusLabel = "Active";
+        let statusClass = "active";
+        if (!Number.isNaN(validUntil.getTime()) && now > validUntil) {
+            statusLabel = "Expired";
+            statusClass = "expired";
+        } else if (!Number.isNaN(validFrom.getTime()) && now < validFrom) {
+            statusLabel = "Pending";
+            statusClass = "pending";
+        }
+        const targets = Array.isArray(plan.targets) && plan.targets.length
+            ? plan.targets.map(formatDecisionPrice).join(" · ")
+            : "—";
+
+        return `
+            <div class="decision-brief-section">
+                <div class="decision-brief-section-header">
+                    <h4>ATHENA TradePlan</h4>
+                    <span class="trade-plan-label">Advisory · not an order</span>
+                </div>
+                <div class="trade-plan-grid">
+                    <div class="trade-plan-metric">
+                        <span>Entry zone</span>
+                        <strong>${formatDecisionPrice(plan.entry_low)} – ${formatDecisionPrice(plan.entry_high)}</strong>
+                    </div>
+                    <div class="trade-plan-metric invalidation">
+                        <span>Invalidation / stop</span>
+                        <strong>${formatDecisionPrice(plan.stop_loss)}</strong>
+                    </div>
+                    <div class="trade-plan-metric targets">
+                        <span>Targets</span>
+                        <strong>${targets}</strong>
+                    </div>
+                    <div class="trade-plan-metric">
+                        <span>Risk : reward</span>
+                        <strong>${escapeDecisionHtml(plan.risk_reward || "—")}</strong>
+                    </div>
+                    <div class="trade-plan-metric">
+                        <span>Model units · risk</span>
+                        <strong>${escapeDecisionHtml(plan.position_size || 0)} · ${formatDecisionPrice(plan.risk_amount)}</strong>
+                    </div>
+                </div>
+                <div class="trade-plan-validity">
+                    <span>${formatDecisionTime(plan.valid_from)} → ${formatDecisionTime(plan.valid_until)}</span>
+                    <span class="plan-status ${statusClass}">${statusLabel}</span>
+                </div>
+            </div>
+        `;
+    }
+
+    function renderDecisionBrief(decision) {
+        if (!decisionBriefBody || !decision || !decision.metadata) return;
+        const meta = decision.metadata;
+        const rawSymbol = meta.instrument_id || "INDEX";
+        const symbol = rawSymbol.includes(":") ? rawSymbol.split(":").pop() : rawSymbol;
+        const stance = decisionStance(meta.decision_type, meta.direction);
+        const gates = decision.analysis && Array.isArray(decision.analysis.gate_results)
+            ? decision.analysis.gate_results
+            : [];
+        const summary = formatDecisionSummary(decision.explanation, meta.decision_type, gates);
+
+        if (decisionBriefTitle) decisionBriefTitle.textContent = symbol;
+        if (decisionBriefAsOf) decisionBriefAsOf.textContent = `As of ${formatDecisionTime(meta.ts)}`;
+
+        const gateRows = gates.length
+            ? gates.map(gate => `
+                <div class="decision-gate-row">
+                    <i class="fa-solid ${gate.passed ? "fa-circle-check pass" : "fa-circle-xmark fail"}"></i>
+                    <span class="decision-gate-name">${escapeDecisionHtml(friendlyGateName(gate.gate))}</span>
+                    <span class="decision-gate-detail">${escapeDecisionHtml(gate.detail || "No rationale recorded")}</span>
+                </div>
+            `).join("")
+            : '<div class="text-muted">No gate results were persisted for this decision.</div>';
+
+        const references = ["score_ref", "confidence_ref", "risk_ref"]
+            .map(key => decision.analysis ? decision.analysis[key] : null)
+            .filter(Boolean)
+            .map(ref => `
+                <span class="provenance-chip" title="${escapeDecisionHtml(ref.id)}">
+                    ${escapeDecisionHtml(ref.resource_type)} · ${escapeDecisionHtml(ref.id)}
+                </span>
+            `).join("");
+
+        decisionBriefBody.innerHTML = `
+            <section class="decision-brief-hero">
+                <div class="decision-brief-identity">
+                    <span class="decision-brief-symbol">${escapeDecisionHtml(symbol)}</span>
+                    <div class="briefing-badges">
+                        <span class="stance-chip ${stance.cls}">${stance.label}</span>
+                        ${decisionTypeBadge(meta.decision_type)}
+                        ${summary.scoreChip}
+                    </div>
+                </div>
+                <p class="decision-brief-thesis">${escapeDecisionHtml(summary.headline)}</p>
+            </section>
+
+            ${renderTradePlan(decision.trade_plan, meta.decision_type)}
+
+            <section class="decision-brief-section">
+                <h4>Safety &amp; quality gates</h4>
+                <div class="decision-gates-list">${gateRows}</div>
+            </section>
+
+            <section class="decision-brief-section">
+                <h4>Analytical provenance</h4>
+                <div class="decision-provenance">
+                    ${references || '<span class="text-muted">No analytical references persisted.</span>'}
+                </div>
+            </section>
+
+            <section class="decision-brief-section">
+                <h4>Human next step</h4>
+                <div class="decision-brief-actions">
+                    <button id="decision-brief-revalidate" class="btn btn-outline" type="button">
+                        <i class="fa-solid fa-arrows-rotate"></i> Re-validate
+                    </button>
+                    <button id="decision-brief-market" class="btn btn-outline" type="button">
+                        <i class="fa-solid fa-chart-column"></i> Market Intelligence
+                    </button>
+                    <button id="decision-brief-dismiss" class="btn btn-outline" type="button">
+                        <i class="fa-solid fa-eye-slash"></i> Dismiss today
+                    </button>
+                </div>
+                <p class="text-muted" style="font-size: 0.68rem; margin: 10px 0 0;">
+                    Dismiss only hides this symbol in this browser until the next IST day.
+                    Decision history and replay evidence are never deleted.
+                </p>
+            </section>
+        `;
+
+        document.getElementById("decision-brief-revalidate")?.addEventListener("click", event => {
+            const bareSymbol = String(rawSymbol).replace(/^NSE:|^BSE:/, "");
+            validateSymbolsNow([bareSymbol], { button: event.currentTarget, refreshDecisions: true });
+        });
+        document.getElementById("decision-brief-market")?.addEventListener("click", () => {
+            switchTab("market");
+        });
+        document.getElementById("decision-brief-dismiss")?.addEventListener("click", () => {
+            dismissDecisionForToday(decision);
+        });
+    }
+
+    async function loadDecisionDetail(decisionId) {
+        if (!decisionBriefBody) return;
+        decisionBriefBody.innerHTML =
+            '<div class="decision-brief-empty"><i class="fa-solid fa-circle-notch fa-spin"></i><strong>Loading decision brief…</strong></div>';
+        try {
+            const res = await apiRequest(`/api/v1/decisions/${decisionId}`);
+            if (activeDecisionId !== decisionId) return;
+            if (res && res.status === "success") {
+                renderDecisionBrief(res.data);
+            }
+        } catch (err) {
+            if (activeDecisionId !== decisionId) return;
+            console.error(`Failed to load decision detail for ${decisionId}`, err);
+            renderDecisionBriefEmpty(
+                "Decision brief unavailable",
+                "The decision list remains available. Refresh or select another symbol."
+            );
+        }
+    }
+
     function renderBriefingList(decisions) {
         if (!briefingListContainer) return;
         briefingListContainer.innerHTML = "";
 
         const summaryEl = document.getElementById("decisions-summary-strip");
         if (summaryEl) {
+            const dismissedCount = traceDecisionsList.filter(
+                d => dismissedDecisionSymbols.has(decisionInstrumentKey(d))
+            ).length;
             const counts = {};
             decisions.forEach(d => {
                 const t = (d.metadata && d.metadata.decision_type) || "OTHER";
                 counts[t] = (counts[t] || 0) + 1;
             });
             if (decisions.length === 0) {
-                summaryEl.textContent = "No decisions yet — run ./athena-daily smoke after Kite auth.";
+                summaryEl.textContent = traceDecisionsList.length
+                    ? "No visible decisions — restore dismissed symbols or change filters."
+                    : "No decisions yet — run ./athena-daily smoke after Kite auth.";
             } else {
                 summaryEl.innerHTML =
                     `<strong>${decisions.length}</strong> symbols (latest each) · ` +
@@ -2475,6 +2766,13 @@ document.addEventListener("DOMContentLoaded", () => {
                         decisions.length - (counts.TRADE || 0) - (counts.WATCH || 0) - (counts.NO_TRADE || 0)
                     }. ` +
                     `<span class="text-muted">HOLD = interesting but blocked; PASS = below watch score.</span>`;
+            }
+            if (dismissedCount > 0) {
+                summaryEl.innerHTML +=
+                    ` · <strong>${dismissedCount}</strong> hidden today ` +
+                    `<button id="restore-dismissed-decisions" class="restore-dismissed-btn" type="button">Restore</button>`;
+                document.getElementById("restore-dismissed-decisions")
+                    ?.addEventListener("click", restoreDismissedDecisions);
             }
         }
 
@@ -2505,6 +2803,11 @@ document.addEventListener("DOMContentLoaded", () => {
                     <div class="briefing-badges">
                         <span class="stance-chip ${stance.cls}">${stance.label}</span>
                         ${decisionTypeBadge(type)}
+                        <button class="briefing-dismiss-btn" type="button"
+                            title="Hide ${symbol} from Today's Decisions until tomorrow"
+                            aria-label="Dismiss ${symbol} for today">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
                     </div>
                 </div>
                 <p class="briefing-desc" title="${summary.headline.replace(/"/g, "&quot;")}">${summary.headline}</p>
@@ -2518,12 +2821,17 @@ document.addEventListener("DOMContentLoaded", () => {
             card.addEventListener("click", () => {
                 selectBriefing(d.metadata.decision_id);
             });
+            card.querySelector(".briefing-dismiss-btn")?.addEventListener("click", event => {
+                event.stopPropagation();
+                dismissDecisionForToday(d);
+            });
 
             briefingListContainer.appendChild(card);
         });
     }
 
     function selectBriefing(decisionId) {
+        activeDecisionId = decisionId;
         // Toggle active card class
         const cards = briefingListContainer.querySelectorAll(".briefing-card");
         cards.forEach(c => {
@@ -2534,13 +2842,15 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         });
 
-        // Load trace details
+        // Load selected instrument brief and its independent reasoning trace.
+        loadDecisionDetail(decisionId);
         loadDecisionTrace(decisionId);
     }
 
     async function loadDecisionTrace(decisionId) {
         try {
             const res = await apiRequest(`/api/v1/decisions/${decisionId}/trace`);
+            if (activeDecisionId !== decisionId) return;
             if (res && res.status === "success") {
                 activeTrace = res.data;
                 renderTraceDAG(activeTrace);

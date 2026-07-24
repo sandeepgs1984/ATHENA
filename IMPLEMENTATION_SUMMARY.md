@@ -6,6 +6,90 @@ status updated on approval.
 
 ---
 
+## M-D1 — Instrument Decision Brief foundation (READY FOR REVIEW)
+
+| | |
+|---|---|
+| Completed | 2026-07-24 |
+| Objective | Turn a selected Today’s Decision into a disciplined, explainable stock brief |
+| Scope | Full decision detail, TradePlan strip, safety gates, provenance, daily dismiss, re-validate/MI actions |
+| Tests | Full suite **976 passed**; targeted dashboard/API **17 passed**; HTML parse; changed-test Ruff |
+| Coverage | Existing project coverage retained; no separate percentage collected |
+| Status | **READY FOR REVIEW** — stop before M-D2 chart/candles |
+| Branch | develop |
+
+### Scope completed
+
+- Added a responsive three-pane Decisions workstation: Today’s Decisions,
+  selected Instrument Decision Brief, and existing Reasoning Trace DAG.
+- Selecting a card now calls the existing `GET /api/v1/decisions/{id}` endpoint
+  as well as the trace endpoint, with stale-response guards for rapid selection.
+- Renders persisted explanation, stance/type/score chips, all gate rationales,
+  score/confidence/risk provenance references, and exact as-of time in IST.
+- Renders persisted `TradePlan` entry zone, invalidation/stop, targets, R:R,
+  model sizing/risk, validity interval, and active/pending/expired state.
+- WATCH/PASS/INSUFFICIENT decisions explicitly show that no actionable plan is
+  authorized; the UI never invents entry/exit values.
+- Added non-destructive **Dismiss today** per instrument using an IST-day
+  browser key, visible hidden count, and Restore action. Decisions, traces,
+  journal, and replay evidence are never deleted.
+- Added Re-validate and Market Intelligence actions using existing paths.
+
+### Files created
+
+- None.
+
+### Files modified
+
+- `src/athena/api/static/index.html`
+- `src/athena/api/static/dashboard.css`
+- `src/athena/api/static/dashboard.js`
+- `tests/api/platform/test_dashboard_hosting.py`
+- `tests/api/v1/test_core_apis.py`
+- `docs/MILESTONES.md`
+- `IMPLEMENTATION_SUMMARY.md`
+
+### Public APIs
+
+- No new API or frozen domain contract. M-D1 reuses the existing decision
+  detail/trace and market validate APIs.
+
+### Validation and architecture
+
+- Full regression: **976 passed**.
+- Targeted dashboard hosting + core API: **17 passed**.
+- Changed Python tests pass Ruff; dashboard HTML parses successfully.
+- Modern browser loaded the `9.18.0` assets and exposed the new brief landmark;
+  interactive owner-data verification remains an owner smoke step after unlock.
+- ADR-004 preserved: static HTML/CSS/vanilla JS and localhost FastAPI only.
+- ADR-005 preserved: the UI renders stored rationale and never reconstructs or
+  generates post-hoc explanations.
+- Determinism, replayability, provider independence, and no-order boundary
+  remain unchanged. No ADR required.
+
+### Risks and technical debt
+
+- Daily dismiss is intentionally local to one browser profile; it is not a
+  cross-device preference and does not affect future candidate validation.
+- Score/confidence/risk are provenance references only because rich analytical
+  payloads are not yet persisted/resolvable. M-D3 owns that depth.
+- The local Node executable is too old to parse pre-existing optional chaining;
+  browser execution plus hosting assertions cover this milestone.
+- No technical debt introduced beyond the approved phased limits.
+
+### Suggested improvements and remaining work
+
+- Owner smoke: unlock, select TRADE/WATCH/PASS cards, verify plan/no-plan,
+  dismiss/restore, re-validate, and responsive layout.
+- M-D2 (only after approval): read-only candles endpoint and chart overlays.
+- News remains deferred to M-D5/DD-5 and is not represented as available data.
+
+### Commit message
+
+`feat(dashboard): add explainable instrument decision brief`
+
+---
+
 ## Decisions pagination / latest-per-instrument fix (READY FOR REVIEW)
 
 | | |

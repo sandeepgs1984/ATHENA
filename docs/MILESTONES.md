@@ -170,6 +170,16 @@ SOP: [`docs/ops/FILE_BACKED_DAILY_OPS.md`](ops/FILE_BACKED_DAILY_OPS.md) · Smok
 **Professional live-entry track closed (2026-07-24):** owner approved M-E5;
 the complete Dock/URL → unlock → Kite → LIVE workflow is operational.
 
+### Instrument decision brief track (post Phase 9/10)
+
+| Milestone | Scope | Status |
+|---|---|---|
+| **M-D1** Decision Brief foundation | Selected-stock brief, TradePlan presentation, non-destructive daily dismiss | 🔄 Ready for review |
+| **M-D2** Chart + plan overlays | Read-only candles API, intraday chart, entry/stop/target overlays, freshness | ⏳ Planned |
+| **M-D3** ATHENA depth | Eligibility, decision timeline, score/confidence/risk detail, re-validate/remove candidate | ⏳ Planned |
+| **M-D4** Context lane | Session events, deterministic brief export, approved external context links | ⏳ Planned |
+| **M-D5** News evidence | Provenance-first news annotation after DD-5/provider approval | ⏸ Deferred |
+
 ---
 
 *Status legend: a milestone is "In Progress" (🔄) when actively being designed or built, "Approved" (✅) only when the owner signs off. Never two milestones in flight.*

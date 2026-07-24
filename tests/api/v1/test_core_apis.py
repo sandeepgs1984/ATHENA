@@ -35,7 +35,7 @@ from athena.api.security.dependencies import (
     get_user_repository,
 )
 from athena.api.security.models import APIKeyMetadata, Permission, Role, User
-from athena.domain.decision import Decision, GateResult, Portfolio, Position
+from athena.domain.decision import Decision, GateResult, Portfolio, Position, TradePlan
 from athena.domain.enums import DecisionType, Direction, QualityGate
 from athena.orchestration.models import PipelineContext, PipelineStatus, SystemPipelineResult
 from athena.orchestration.schedule_models import PipelineScheduleRun
@@ -210,6 +210,17 @@ class TestDecisionsAPI:
         dec_p = get_decision_provider()
 
         now = datetime.now(tz=timezone.utc)
+        plan = TradePlan(
+            entry_low=Decimal("100.00"),
+            entry_high=Decimal("101.00"),
+            stop_loss=Decimal("98.00"),
+            targets=(Decimal("104.00"), Decimal("106.00")),
+            position_size=10,
+            risk_amount=Decimal("300.00"),
+            risk_reward=Decimal("2.50"),
+            valid_from=now,
+            valid_until=now + timedelta(hours=1),
+        )
         dec = Decision(
             decision_id="dec-detail-1",
             ts=now,
@@ -217,13 +228,13 @@ class TestDecisionsAPI:
             cycle_id="cycle-1",
             instrument_id="SBIN",
             direction=Direction.LONG,
-            decision_type=DecisionType.WATCH,
+            decision_type=DecisionType.TRADE,
             explanation="sbin detail buy",
             score_ref="score-99",
             confidence_ref="conf-99",
             risk_ref="risk-99",
             gate_results=(GateResult(gate=QualityGate.DATA, passed=True, detail="high volume"),),
-            trade_plan=None,
+            trade_plan=plan,
         )
         dec_p.decisions.append(dec)  # type: ignore[attr-defined]
 
@@ -235,6 +246,10 @@ class TestDecisionsAPI:
         assert data["analysis"]["score_ref"]["resource_type"] == "score"
         assert data["analysis"]["gate_results"][0]["gate"] == "DATA"
         assert data["analysis"]["gate_results"][0]["passed"] is True
+        assert data["trade_plan"]["entry_low"] == "100.00"
+        assert data["trade_plan"]["stop_loss"] == "98.00"
+        assert data["trade_plan"]["targets"] == ["104.00", "106.00"]
+        assert data["trade_plan"]["risk_reward"] == "2.50"
 
     def test_get_decision_not_found(self, client) -> None:
         headers = get_auth_headers(client, Role.ANALYST)

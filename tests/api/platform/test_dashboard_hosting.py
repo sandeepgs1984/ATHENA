@@ -67,6 +67,16 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "has_next" in js
     assert 'sort_by: "ts"' in js
 
+    # M-D1 instrument brief is selection-driven and never deletes decision history
+    assert 'id="decision-brief-body"' in html
+    assert 'id="decision-brief-title"' in html
+    assert "function loadDecisionDetail" in js
+    assert "function renderDecisionBrief" in js
+    assert "function renderTradePlan" in js
+    assert "dismissDecisionForToday" in js
+    assert "athena.dismissed-decisions" in js
+    assert "Decision history and replay evidence are never deleted" in js
+
     # Operations console (P9.7) is live — warnings feed + backup panel, not a fake loader
     assert 'id="ops-warnings-feed"' in html
     assert 'id="ops-telemetry-chart"' in html

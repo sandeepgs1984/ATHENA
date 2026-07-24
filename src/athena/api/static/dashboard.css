@@ -2038,14 +2038,17 @@ body {
 /* Decisions & Trace Workstation Layout */
 .trace-workstation {
     display: grid;
-    grid-template-columns: 1fr 2fr;
-    gap: 24px;
+    grid-template-columns:
+        minmax(260px, 0.8fr)
+        minmax(360px, 1.2fr)
+        minmax(320px, 1fr);
+    gap: 16px;
     height: calc(100vh - 120px);
     overflow: hidden;
     padding: 8px 0;
 }
 
-@media (max-width: 1024px) {
+@media (max-width: 1180px) {
     .trace-workstation {
         grid-template-columns: 1fr;
         overflow-y: auto;
@@ -2069,6 +2072,260 @@ body {
 
 .briefing-column .card-body {
     min-height: 0;
+}
+
+.decision-brief-header {
+    align-items: center;
+    justify-content: space-between;
+}
+
+.decision-brief-header > div:first-child {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+}
+
+.decision-brief-asof {
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    white-space: nowrap;
+}
+
+.decision-brief-body {
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 18px;
+}
+
+.decision-brief-empty {
+    min-height: 260px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    color: var(--text-muted);
+    text-align: center;
+}
+
+.decision-brief-empty i {
+    color: rgba(56, 189, 248, 0.65);
+    font-size: 1.8rem;
+}
+
+.decision-brief-empty strong {
+    color: var(--text-secondary);
+}
+
+.decision-brief-hero {
+    border: 1px solid rgba(56, 189, 248, 0.24);
+    border-radius: 8px;
+    padding: 16px;
+    background:
+        radial-gradient(circle at top right, rgba(56, 189, 248, 0.09), transparent 45%),
+        rgba(15, 23, 42, 0.38);
+}
+
+.decision-brief-identity,
+.decision-brief-actions,
+.decision-brief-section-header,
+.trade-plan-validity {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.decision-brief-symbol {
+    color: var(--text-primary);
+    font-size: 1.35rem;
+    font-weight: 750;
+    letter-spacing: -0.02em;
+}
+
+.decision-brief-thesis {
+    color: var(--text-secondary);
+    font-size: 0.88rem;
+    line-height: 1.55;
+    margin: 12px 0 0;
+}
+
+.decision-brief-section {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 14px;
+    background: rgba(15, 23, 42, 0.25);
+}
+
+.decision-brief-section h4 {
+    color: var(--text-primary);
+    font-size: 0.78rem;
+    letter-spacing: 0.06em;
+    margin: 0 0 10px;
+    text-transform: uppercase;
+}
+
+.trade-plan-label {
+    color: #7dd3fc;
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.trade-plan-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.trade-plan-metric {
+    border-left: 2px solid rgba(56, 189, 248, 0.35);
+    padding: 8px 10px;
+    background: rgba(2, 6, 23, 0.3);
+}
+
+.trade-plan-metric.invalidation {
+    border-left-color: rgba(239, 68, 68, 0.75);
+}
+
+.trade-plan-metric.targets {
+    border-left-color: rgba(34, 197, 94, 0.6);
+    grid-column: 1 / -1;
+}
+
+.trade-plan-metric span {
+    color: var(--text-muted);
+    display: block;
+    font-size: 0.66rem;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+}
+
+.trade-plan-metric strong {
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 0.9rem;
+}
+
+.trade-plan-validity {
+    border-top: 1px solid var(--border-color);
+    color: var(--text-muted);
+    font-size: 0.68rem;
+    margin-top: 10px;
+    padding-top: 10px;
+}
+
+.plan-status {
+    border-radius: 999px;
+    font-size: 0.62rem;
+    font-weight: 700;
+    padding: 3px 7px;
+    text-transform: uppercase;
+}
+
+.plan-status.active {
+    background: rgba(34, 197, 94, 0.12);
+    color: #86efac;
+}
+
+.plan-status.expired {
+    background: rgba(245, 158, 11, 0.12);
+    color: #fdba74;
+}
+
+.plan-status.pending {
+    background: rgba(56, 189, 248, 0.12);
+    color: #7dd3fc;
+}
+
+.no-trade-plan {
+    border-left: 3px solid rgba(245, 158, 11, 0.55);
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+    line-height: 1.5;
+    padding: 10px 12px;
+    background: rgba(245, 158, 11, 0.05);
+}
+
+.decision-gates-list {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+}
+
+.decision-gate-row {
+    display: grid;
+    grid-template-columns: 20px minmax(72px, auto) 1fr;
+    align-items: start;
+    gap: 8px;
+    font-size: 0.75rem;
+}
+
+.decision-gate-row i.pass {
+    color: #4ade80;
+}
+
+.decision-gate-row i.fail {
+    color: #f87171;
+}
+
+.decision-gate-name {
+    color: var(--text-primary);
+    font-weight: 650;
+}
+
+.decision-gate-detail {
+    color: var(--text-muted);
+    line-height: 1.35;
+}
+
+.decision-provenance {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.provenance-chip {
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    border-radius: 4px;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    padding: 4px 7px;
+}
+
+.decision-brief-actions {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+}
+
+.briefing-dismiss-btn {
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 4px 6px;
+}
+
+.briefing-dismiss-btn:hover {
+    background: rgba(245, 158, 11, 0.1);
+    color: #fdba74;
+}
+
+.restore-dismissed-btn {
+    border: 0;
+    background: transparent;
+    color: var(--accent);
+    cursor: pointer;
+    font-size: inherit;
+    padding: 0;
+    text-decoration: underline;
 }
 
 .briefing-list {
