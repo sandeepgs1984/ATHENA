@@ -6,14 +6,32 @@ status updated on approval.
 
 ---
 
-## Live Entry M-E3 — in-UI Kite morning gate (READY FOR REVIEW)
+## Live Entry M-E4 — macOS Dock launcher (READY FOR REVIEW)
+
+| | |
+|---|---|
+| Completed | 2026-07-24 |
+| Scope | Thin native `.app` wrapper; one-command installer; health-aware server start and browser open |
+| Tests | App plist/executable, shell syntax, temporary signed app installation; full suite **970 passed** |
+| Status | **READY FOR REVIEW** — stop here before M-E5 |
+| Branch | develop |
+
+- `./install-athena-app` installs an ad-hoc-signed `~/Applications/ATHENA.app`.
+- Dock click opens an already-running workstation or starts `./athena-serve --with-cycles`, waits for `/health/live`, then opens the dashboard.
+- Finder-safe PATH includes Apple Silicon / Intel Homebrew; failures show a native alert and point to `artifacts/logs/athena-serve.log`.
+- The app contains no secrets—only the repository path—and remains a shell app bundle per ADR-004 (no Tauri/Qt/Electron).
+- Documentation: README quick entry and `HOST_SCHEDULE.md` install/Dock/reinstall instructions.
+
+---
+
+## Live Entry M-E3 — in-UI Kite morning gate (APPROVED)
 
 | | |
 |---|---|
 | Completed | 2026-07-24 |
 | Scope | Verify Kite session after unlock; browser login URL; request-token exchange and live reinjection |
 | Tests | Full suite: **966 passed**; Kite service/API tests; HTML parse; Python lint |
-| Status | **READY FOR REVIEW** — stop here before M-E4 |
+| Status | **APPROVED** |
 | Branch | develop |
 
 - Routes: `GET /api/v1/ops/kite/status`, `POST /kite/start-auth`, `POST /kite/complete-auth`.

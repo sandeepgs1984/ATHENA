@@ -22,6 +22,20 @@ ATHENA is not a screener, not a bot, and never executes trades. It exists to imp
 | [DD-1 live vendor](docs/decisions/DD-1-broker-live-data-vendor.md) | R3 broker/data vendor decision | **Accepted** — Zerodha Kite Connect |
 | [ADRs](docs/adr/) | Architecture Decision Records (ADR-001…005 seeded) | Active |
 
+## Workstation entry
+
+```bash
+# Browser-first localhost workstation
+./athena-serve --with-cycles --open
+
+# macOS: install the thin Dock launcher once
+./install-athena-app
+```
+
+The morning path is: **Dock/URL → ATHENA unlock → Kite gate when needed → LIVE**.
+See [Host schedule + launcher](docs/ops/HOST_SCHEDULE.md) and
+[Kite live data](docs/ops/KITE_LIVE_DATA.md).
+
 ## Core decisions
 
 Modular monolith, 17 modules behind Protocol interfaces (see ATHENA-002 §2); architecture frozen — changes require an ADR. **v1 scope: intraday trading on NSE cash equities** (pre-market plan + periodic refresh; swing later; options/positional in expansion). Broker kept abstract behind a `MarketDataProvider` interface — no broker binding in Phase 1. Stack: Python, pandas, NumPy, SQLite, static HTML + vanilla JS, Lightweight Charts; in-house indicators; JSON config validated by pydantic; FastAPI (localhost-only) from Phase 4. Explainability is carried as data through the pipeline; every recommendation is replayable. The learning engine proposes; the trader approves.

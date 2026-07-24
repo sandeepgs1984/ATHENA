@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# Thin macOS launcher for the localhost ATHENA workstation (M-E4).
+set -uo pipefail
+
+APP_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+REPO_FILE="$APP_ROOT/Resources/repo-root"
+HOST="${ATHENA_SERVE_HOST:-127.0.0.1}"
+PORT="${ATHENA_SERVE_PORT:-8000}"
+URL="http://${HOST}:${PORT}/dashboard/"
+HEALTH_URL="http://${HOST}:${PORT}/health/live"
+
+show_error() {
+  local message="$1"
+  /usr/bin/osascript - "$message" >/dev/null 2>&1 <<'APPLESCRIPT' || true
+on run argv
+  display alert "ATHENA could not start" message (item 1 of argv) as critical
+end run
+APPLESCRIPT
+}
+
+if [[ ! -f "$REPO_FILE" ]]; then
+  show_error "Launcher is not configured. Re-run ./install-athena-app from the ATHENA repository."
+  exit 1
+fi
+
+REPO_ROOT="$(<"$REPO_FILE")"
+if [[ ! -x "$REPO_ROOT/athena-serve" ]]; then
+  show_error "Missing executable: $REPO_ROOT/athena-serve. Re-run the launcher installer."
+  exit 1
+fi
+
+# Finder launches apps with a minimal PATH; include common Homebrew locations.
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+
+if /usr/bin/curl --silent --fail --max-time 1 "$HEALTH_URL" >/dev/null 2>&1; then
+  /usr/bin/open "$URL"
+  exit 0
+fi
+
+LOG_DIR="$REPO_ROOT/artifacts/logs"
+LOCK_DIR="$REPO_ROOT/artifacts/locks"
+START_LOCK="$LOCK_DIR/athena-launcher-start.lock"
+LOG_FILE="$LOG_DIR/athena-serve.log"
+PID_FILE="$LOCK_DIR/athena-serve.pid"
+mkdir -p "$LOG_DIR" "$LOCK_DIR"
+
+owns_lock=false
+if mkdir "$START_LOCK" 2>/dev/null; then
+  owns_lock=true
+  trap 'rmdir "$START_LOCK" 2>/dev/null || true' EXIT
+  (
+    cd "$REPO_ROOT" || exit 1
+    nohup "$REPO_ROOT/athena-serve" \
+      --host "$HOST" \
+      --port "$PORT" \
+      --with-cycles \
+      >>"$LOG_FILE" 2>&1 &
+    printf '%s\n' "$!" >"$PID_FILE"
+  )
+fi
+
+# The lock owner starts the host; concurrent clicks simply wait for readiness.
+for _attempt in $(seq 1 80); do
+  if /usr/bin/curl --silent --fail --max-time 1 "$HEALTH_URL" >/dev/null 2>&1; then
+    /usr/bin/open "$URL"
+    exit 0
+  fi
+  /bin/sleep 0.25
+done
+
+if [[ "$owns_lock" == true ]]; then
+  detail="ATHENA did not become ready. Review: $LOG_FILE"
+else
+  detail="Another launcher is starting ATHENA, but it did not become ready. Review: $LOG_FILE"
+fi
+show_error "$detail"
+exit 1

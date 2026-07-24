@@ -13,6 +13,37 @@
 
 That starts the API + optional in-process due poller. launchd/`./athena-run-due` stays for unattended daytime ticks. Both paths share `artifacts/locks/cycle-runner.lock` so they do not overlap.
 
+### macOS Dock launcher (M-E4)
+
+Install the thin native wrapper once:
+
+```bash
+./install-athena-app
+```
+
+This creates `~/Applications/ATHENA.app` and reveals it in Finder. Drag it to
+the Dock. Afterwards:
+
+1. Click **ATHENA** in the Dock.
+2. If the API is already healthy, the dashboard opens immediately.
+3. Otherwise the app starts `./athena-serve --with-cycles`, waits for health,
+   then opens `http://127.0.0.1:8000/dashboard/`.
+4. Unlock ATHENA; connect Kite if the dashboard requests it.
+
+The wrapper is intentionally only a macOS app bundle with a shell executable;
+it does not introduce Tauri, Qt, Electron, or another UI runtime (ADR-004).
+Secrets remain in the repository `.env`; the app stores only the absolute
+repository path.
+
+Logs: `artifacts/logs/athena-serve.log`. If the repository moves, rerun
+`./install-athena-app`. Re-running the installer safely refreshes the app.
+
+Optional system-wide destination (may require administrator permission):
+
+```bash
+./install-athena-app --destination "/Applications/ATHENA.app"
+```
+
 ---
 
 ## 1. What `run-due` does

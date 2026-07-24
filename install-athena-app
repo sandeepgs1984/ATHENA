@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Root convenience wrapper for the macOS ATHENA.app installer (M-E4).
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+exec "$ROOT/scripts/macos/install-athena-app.sh" "$@"
