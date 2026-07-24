@@ -126,6 +126,8 @@ def clean_and_seed_providers() -> None:
     # Reset core domain providers
     dec_p = get_decision_provider()
     dec_p.decisions.clear()  # type: ignore[attr-defined]
+    if hasattr(dec_p, "traces"):
+        dec_p.traces.clear()  # type: ignore[attr-defined]
 
     port_p = get_portfolio_provider()
     port_p.portfolio = None  # type: ignore[attr-defined]

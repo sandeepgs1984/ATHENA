@@ -1502,6 +1502,44 @@ body {
     line-height: 1.4;
 }
 
+.owner-position-form {
+    margin-bottom: 8px;
+}
+
+.owner-position-form-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px 12px;
+    margin-bottom: 12px;
+}
+
+.owner-position-form label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.owner-position-form input,
+.owner-position-form select {
+    background: rgba(15, 23, 42, 0.85);
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    color: var(--text-primary);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 0.85rem;
+    font-family: var(--font-mono);
+}
+
+@media (max-width: 900px) {
+    .owner-position-form-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
 /* Trace DAG Canvas */
 .trace-dag-canvas-wrapper {
     flex-grow: 1;

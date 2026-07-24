@@ -10,7 +10,7 @@ append-only by discipline (inserts only; duplicates rejected by primary key).
 from __future__ import annotations
 
 #: Bump when the schema changes; enables future explicit migrations.
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 _DDL = (
     "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)",
@@ -142,6 +142,25 @@ _DDL = (
     )
     """,
     "CREATE INDEX IF NOT EXISTS idx_journal_action_ts ON decision_journal(action_ts)",
+
+    """
+    CREATE TABLE IF NOT EXISTS owner_positions (
+        position_id   TEXT PRIMARY KEY,
+        instrument_id TEXT NOT NULL,
+        opened_ts     TEXT NOT NULL,
+        quantity      INTEGER NOT NULL,
+        avg_price     TEXT NOT NULL,
+        closed_ts     TEXT,
+        exit_price    TEXT,
+        decision_ref  TEXT,
+        broker        TEXT NOT NULL DEFAULT '',
+        notes         TEXT NOT NULL DEFAULT '',
+        sector        TEXT NOT NULL DEFAULT '',
+        meta_json     TEXT NOT NULL DEFAULT '{}'
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_owner_positions_opened ON owner_positions(opened_ts)",
+    "CREATE INDEX IF NOT EXISTS idx_owner_positions_symbol ON owner_positions(instrument_id)",
 )
 
 

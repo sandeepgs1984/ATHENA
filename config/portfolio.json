@@ -1,7 +1,7 @@
 {
   "_meta": {
-    "layer": 5,
-    "description": "Portfolio Engine configuration (P5.1). State tracking only — no market analysis, no position sizing, no order placement."
+    "description": "Portfolio Engine + owner fill ledger cash baseline (P5.1). initial_cash is the cash starting point before logged Kite/Groww fills. ATHENA never places orders.",
+    "layer": "portfolio"
   },
   "initial_cash": "1000000.00",
   "currency": "INR",

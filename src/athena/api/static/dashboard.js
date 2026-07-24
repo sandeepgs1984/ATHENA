@@ -288,7 +288,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         holdingsTbody.innerHTML = `
             <tr>
-                <td colspan="5" class="text-center text-muted">No active positions currently held.</td>
+                <td colspan="6" class="text-center text-muted">No owner-entered positions yet. Log a fill above.</td>
             </tr>
         `;
         renderSectorChart({});
@@ -318,22 +318,27 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function renderHoldingsTable(holdings) {
-        if (holdings.length === 0) {
+        const open = holdings.filter(pos => !pos.closed_ts);
+        if (open.length === 0) {
             holdingsTbody.innerHTML = `
                 <tr>
-                    <td colspan="5" class="text-center text-muted">No active positions currently held.</td>
+                    <td colspan="6" class="text-center text-muted">No owner-entered positions yet. Log a fill above.</td>
                 </tr>
             `;
             return;
         }
 
-        holdingsTbody.innerHTML = holdings.map(pos => {
-            const currentPrice = parseFloat(pos.meta?.current_price || pos.avg_price);
+        holdingsTbody.innerHTML = open.map(pos => {
+            const hasMark = pos.meta && pos.meta.current_price != null;
+            const currentPrice = parseFloat(hasMark ? pos.meta.current_price : pos.avg_price);
             const currentVal = parseFloat(pos.quantity) * currentPrice;
             const cost = parseFloat(pos.quantity) * parseFloat(pos.avg_price);
             const pnl = currentVal - cost;
             const pnlClass = pnl >= 0 ? "positive" : "negative";
             const pnlSign = pnl >= 0 ? "+" : "";
+            const pnlLabel = hasMark
+                ? `${pnlSign}₹ ${pnl.toFixed(2)}`
+                : `cost ₹ ${cost.toFixed(2)} (no mark)`;
 
             return `
                 <tr>
@@ -341,10 +346,82 @@ document.addEventListener("DOMContentLoaded", () => {
                     <td>${pos.quantity}</td>
                     <td class="font-mono">₹ ${parseFloat(pos.avg_price).toFixed(2)}</td>
                     <td class="font-mono">₹ ${currentVal.toFixed(2)}</td>
-                    <td class="font-mono ${pnlClass}"><strong>${pnlSign}₹ ${pnl.toFixed(2)}</strong></td>
+                    <td class="font-mono ${hasMark ? pnlClass : "text-muted"}"><strong>${pnlLabel}</strong></td>
+                    <td>
+                        <button type="button" class="inspect-btn" data-close-id="${pos.position_id}">
+                            Close
+                        </button>
+                    </td>
                 </tr>
             `;
         }).join("");
+
+        holdingsTbody.querySelectorAll("[data-close-id]").forEach(btn => {
+            btn.addEventListener("click", () => {
+                const id = btn.getAttribute("data-close-id");
+                promptClosePosition(id);
+            });
+        });
+    }
+
+    async function promptClosePosition(positionId) {
+        const raw = window.prompt("Exit price for this fill?");
+        if (raw === null || raw.trim() === "") return;
+        const exitPrice = parseFloat(raw);
+        if (!Number.isFinite(exitPrice) || exitPrice <= 0) {
+            showToast("Exit price must be a positive number", "danger");
+            return;
+        }
+        try {
+            await apiRequest(`/api/v1/portfolio/positions/${encodeURIComponent(positionId)}/close`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ exit_price: String(exitPrice) }),
+            });
+            showToast("Position closed", "success");
+            await loadPortfolioData();
+        } catch (err) {
+            console.error(err);
+            showToast("Failed to close position", "danger");
+        }
+    }
+
+    const ownerPositionForm = document.getElementById("owner-position-form");
+    if (ownerPositionForm) {
+        ownerPositionForm.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const instrument_id = document.getElementById("pos-symbol").value.trim();
+            const quantity = parseInt(document.getElementById("pos-qty").value, 10);
+            const avg_price = document.getElementById("pos-entry").value;
+            const broker = document.getElementById("pos-broker").value;
+            const sector = document.getElementById("pos-sector").value.trim();
+            const notes = document.getElementById("pos-notes").value.trim();
+            if (!instrument_id || !quantity || !avg_price) {
+                showToast("Symbol, quantity, and entry are required", "danger");
+                return;
+            }
+            try {
+                await apiRequest("/api/v1/portfolio/positions", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        instrument_id,
+                        quantity,
+                        avg_price: String(avg_price),
+                        broker,
+                        sector,
+                        notes,
+                    }),
+                });
+                ownerPositionForm.reset();
+                document.getElementById("pos-broker").value = "kite";
+                showToast(`Logged ${instrument_id} fill`, "success");
+                await loadPortfolioData();
+            } catch (err) {
+                console.error(err);
+                showToast("Failed to log fill", "danger");
+            }
+        });
     }
 
     function renderNavChart(snapshots) {
@@ -553,6 +630,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 regime = data.regime_assessment || null;
                 universe = data.universe_members || {};
                 universeCache = universe; // Store in cache for modal inspects
+            } else if (evidenceText) {
+                // Keep evidence text for empty-run path below
             }
 
             // 2. Render Volatility Regime Indicators
@@ -596,7 +675,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 gapBadge.className = "regime-badge neutral";
                 healthBar.style.width = "0%";
                 healthValue.textContent = "0/100";
-                evidenceText.textContent = "No volatility regime details available for the latest run.";
+                evidenceText.textContent = "No volatility regime details available for the latest run. Run athena cycle / ./athena-run-due to populate.";
             }
 
             // 3. Fetch and Render Calendar Grid & Events
@@ -811,7 +890,10 @@ document.addEventListener("DOMContentLoaded", () => {
         if (symbols.length === 0) {
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="3" class="text-muted text-center" style="padding: 24px;">No universe members selected in the latest run.</td>
+                    <td colspan="3" class="text-muted text-center" style="padding: 24px;">
+                        No universe members yet. Run <code>athena cycle</code> / <code>./athena-run-due</code>,
+                        or set symbols in <code>config/providers/kite.json</code>.
+                    </td>
                 </tr>
             `;
             return;
@@ -1370,8 +1452,23 @@ document.addEventListener("DOMContentLoaded", () => {
             "confidence_engine": "fa-shield-halved",
             "risk_assessment": "fa-triangle-exclamation",
             "quality_gates": "fa-circle-check",
-            "final_decision": "fa-brain"
+            "final_decision": "fa-brain",
+            "regime": "fa-chart-line",
+            "market_health": "fa-heartbeat",
+            "sector_health": "fa-industry",
+            "evidence": "fa-layer-group",
+            "score": "fa-calculator",
+            "confidence": "fa-shield-halved",
+            "risk": "fa-triangle-exclamation",
+            "decision": "fa-brain",
+            "trade_plan": "fa-list-check"
         };
+
+        if (!trace.stages || trace.stages.length === 0) {
+            dagNodesContainer.innerHTML = '<div class="text-muted text-center" style="padding: 48px;">No stored reasoning trace for this decision yet.</div>';
+            if (dagDetailsSummary) dagDetailsSummary.textContent = "Trace empty — decision has no persisted DecisionTrace stages.";
+            return;
+        }
 
         trace.stages.forEach((stage, idx) => {
             const node = document.createElement("div");

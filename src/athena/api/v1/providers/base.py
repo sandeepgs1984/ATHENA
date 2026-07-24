@@ -23,7 +23,7 @@ if TYPE_CHECKING:
         SchedulerHistoryFilterParams,
         WorkspaceFilterParams,
     )
-    from athena.domain.decision import Decision, Portfolio
+    from athena.domain.decision import Decision, DecisionTrace, Portfolio
     from athena.backtest.models import BacktestRun
     from athena.export.models import ExportArtifact, ExportSnapshot
     from athena.orchestration.models import SystemPipelineResult
@@ -66,6 +66,9 @@ class DecisionProvider(Protocol):
         ...
 
     def get_decision(self, decision_id: str) -> Decision | None:
+        ...
+
+    def get_trace(self, decision_id: str) -> DecisionTrace | None:
         ...
 
 

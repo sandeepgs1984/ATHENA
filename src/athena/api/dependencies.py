@@ -6,6 +6,8 @@ Allows clean mocking of services and providers in unit tests.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import Request
 
 from athena.api.platform.providers.build_info_provider import (
@@ -40,11 +42,17 @@ from athena.api.v1.providers.in_memory import (
     InMemoryReportProvider,
     InMemorySchedulerHistoryProvider,
     InMemoryWorkspaceProvider,
-    seed_sample_data,
 )
 from athena.api.v1.providers.observability import (
     ObservabilityHealthProvider,
     ObservabilityMetricsProvider,
+)
+from athena.api.v1.providers.sqlite_providers import (
+    SqliteDecisionProvider,
+    SqlitePipelineRunProvider,
+    SqlitePortfolioProvider,
+    default_db_path,
+    load_starting_cash,
 )
 from athena.api.v1.services.analytics_service import AnalyticsService
 from athena.api.v1.services.backtests_service import BacktestsService
@@ -60,12 +68,14 @@ from athena.api.v1.services.reports_service import ReportsService
 from athena.api.v1.services.scheduler_service import SchedulerService
 from athena.api.v1.services.strategies_service import StrategyService
 from athena.api.v1.services.workspace_service import WorkspaceService
+from athena.data.store.repository import SqliteRepository
 
 # Singletons for default health/metrics providers
 _health_provider = ObservabilityHealthProvider()
 _metrics_provider = ObservabilityMetricsProvider()
 
-# Singletons for core platform providers
+# Empty in-memory defaults for tests / fallback when DB is unavailable.
+# Live apps attach Sqlite* providers on app.state in create_app (no seed data).
 _decision_provider = InMemoryDecisionProvider()
 _portfolio_provider = InMemoryPortfolioProvider()
 _pipeline_run_provider = InMemoryPipelineRunProvider()
@@ -76,18 +86,40 @@ _analytics_provider = InMemoryPerformanceAnalyticsProvider()
 _export_provider = InMemoryExportProvider()
 _backtest_run_provider = InMemoryBacktestRunProvider()
 
-# Seed sample data for Swagger / Dev runtime
-seed_sample_data(
-    _decision_provider,
-    _portfolio_provider,
-    _pipeline_run_provider,
-    _scheduler_history_provider,
-    _workspace_provider,
-    _report_provider,
-    _analytics_provider,
-    _export_provider,
-    _backtest_run_provider,
-)
+_sqlite_repo: SqliteRepository | None = None
+
+
+def wire_sqlite_providers(
+    app_state: object,
+    *,
+    db_path: Path | None = None,
+) -> SqliteRepository | None:
+    """Attach SQLite-backed decision/portfolio/pipeline providers to app.state.
+
+    Returns the open repository (caller should keep it for lifespan shutdown),
+    or None if the database cannot be opened.
+    """
+    global _sqlite_repo
+    path = Path(db_path) if db_path else default_db_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        repo = SqliteRepository(path)
+        repo.initialize()
+    except Exception:
+        return None
+
+    starting = load_starting_cash()
+    decision_prov = SqliteDecisionProvider(repo)
+    portfolio_prov = SqlitePortfolioProvider(repo, starting_cash=starting)
+    pipeline_prov = SqlitePipelineRunProvider(repo)
+
+    app_state.ops_db_path = path  # type: ignore[attr-defined]
+    app_state.sqlite_repo = repo  # type: ignore[attr-defined]
+    app_state.decision_provider = decision_prov  # type: ignore[attr-defined]
+    app_state.portfolio_provider = portfolio_prov  # type: ignore[attr-defined]
+    app_state.pipeline_run_provider = pipeline_prov  # type: ignore[attr-defined]
+    _sqlite_repo = repo
+    return repo
 
 
 def get_health_provider() -> HealthProvider:

@@ -133,7 +133,45 @@
                                 <h2>Holdings & Exposure</h2>
                             </div>
                             <div class="card-body">
-                                <div id="portfolio-holdings-list" class="table-container">
+                                <form id="owner-position-form" class="owner-position-form" autocomplete="off">
+                                    <div class="owner-position-form-grid">
+                                        <label>
+                                            Symbol
+                                            <input id="pos-symbol" name="instrument_id" type="text" required placeholder="INFY" />
+                                        </label>
+                                        <label>
+                                            Qty
+                                            <input id="pos-qty" name="quantity" type="number" min="1" step="1" required placeholder="10" />
+                                        </label>
+                                        <label>
+                                            Entry
+                                            <input id="pos-entry" name="avg_price" type="number" min="0.01" step="0.01" required placeholder="1500.00" />
+                                        </label>
+                                        <label>
+                                            Broker
+                                            <select id="pos-broker" name="broker">
+                                                <option value="kite">Kite</option>
+                                                <option value="groww">Groww</option>
+                                                <option value="">Other</option>
+                                            </select>
+                                        </label>
+                                        <label>
+                                            Sector (optional)
+                                            <input id="pos-sector" name="sector" type="text" placeholder="IT" />
+                                        </label>
+                                        <label>
+                                            Notes (optional)
+                                            <input id="pos-notes" name="notes" type="text" placeholder="After ATHENA WATCH" />
+                                        </label>
+                                    </div>
+                                    <button type="submit" class="inspect-btn" id="pos-submit-btn">
+                                        <i class="fas fa-plus"></i> Log fill
+                                    </button>
+                                    <p class="metric-desc" style="margin-top: 8px;">
+                                        Log fills you placed on Kite/Groww after ATHENA suggestions. ATHENA never places orders.
+                                    </p>
+                                </form>
+                                <div id="portfolio-holdings-list" class="table-container" style="margin-top: 16px;">
                                     <table class="data-table">
                                         <thead>
                                             <tr>
@@ -142,11 +180,12 @@
                                                 <th>Avg Cost</th>
                                                 <th>Current Value</th>
                                                 <th>Unrealized P&L</th>
+                                                <th>Actions</th>
                                             </tr>
                                         </thead>
                                         <tbody id="holdings-tbody">
                                             <tr>
-                                                <td colspan="5" class="text-center text-muted">No active positions currently held.</td>
+                                                <td colspan="6" class="text-center text-muted">No owner-entered positions yet. Log a fill above.</td>
                                             </tr>
                                         </tbody>
                                     </table>

@@ -19,7 +19,7 @@ from athena.data.store.schema import SCHEMA_VERSION, ddl_statements
 from athena.data.validation.quarantine import QuarantineRecord
 from athena.domain.enums import Timeframe
 from athena.domain.market import Candle, CorporateAction, Instrument, MarketSnapshot, Quote
-from athena.domain.decision import Decision, DecisionJournalEntry, DecisionTrace
+from athena.domain.decision import Decision, DecisionJournalEntry, DecisionTrace, Position
 from athena.domain.run import RunRecord
 from athena.errors import RepositoryError
 
@@ -92,7 +92,8 @@ class SqliteRepository:
         """Row counts per persisted table — used for backup/restore recovery checks."""
         tables = ("instruments", "candles", "quotes", "market_snapshots",
                   "corporate_actions", "quarantine_records", "runs",
-                  "decisions", "decision_traces", "decision_journal")
+                  "decisions", "decision_traces", "decision_journal",
+                  "owner_positions")
         try:
             return {t: int(self._conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0])
                     for t in tables}
@@ -398,6 +399,79 @@ class SqliteRepository:
             (limit,),
         )
         return [ser.row_to_journal(r) for r in rows]
+
+    # ------------------------------------------------------------- owner positions (dashboard ledger)
+
+    def save_owner_position(
+        self,
+        *,
+        position_id: str,
+        instrument_id: str,
+        opened_ts: datetime,
+        quantity: int,
+        avg_price,
+        closed_ts: datetime | None = None,
+        exit_price=None,
+        decision_ref: str | None = None,
+        broker: str = "",
+        notes: str = "",
+        sector: str = "",
+        meta: Mapping[str, object] | None = None,
+    ) -> None:
+        from decimal import Decimal as _Decimal
+
+        avg = avg_price if isinstance(avg_price, _Decimal) else _Decimal(str(avg_price))
+        exit_p = None
+        if exit_price is not None:
+            exit_p = (
+                exit_price
+                if isinstance(exit_price, _Decimal)
+                else _Decimal(str(exit_price))
+            )
+        self._write(
+            "INSERT INTO owner_positions ("
+            "position_id, instrument_id, opened_ts, quantity, avg_price, "
+            "closed_ts, exit_price, decision_ref, broker, notes, sector, meta_json"
+            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?) "
+            "ON CONFLICT(position_id) DO UPDATE SET "
+            "instrument_id=excluded.instrument_id, opened_ts=excluded.opened_ts, "
+            "quantity=excluded.quantity, avg_price=excluded.avg_price, "
+            "closed_ts=excluded.closed_ts, exit_price=excluded.exit_price, "
+            "decision_ref=excluded.decision_ref, broker=excluded.broker, "
+            "notes=excluded.notes, sector=excluded.sector, meta_json=excluded.meta_json",
+            ser.owner_position_to_row(
+                position_id=position_id,
+                instrument_id=instrument_id,
+                opened_ts=opened_ts,
+                quantity=quantity,
+                avg_price=avg,
+                closed_ts=closed_ts,
+                exit_price=exit_p,
+                decision_ref=decision_ref,
+                broker=broker,
+                notes=notes,
+                sector=sector,
+                meta=meta or {},
+            ),
+        )
+
+    def get_owner_position(self, position_id: str) -> Position | None:
+        row = self._query_one(
+            "SELECT position_id, instrument_id, opened_ts, quantity, avg_price, "
+            "closed_ts, exit_price, decision_ref, broker, notes, sector, meta_json "
+            "FROM owner_positions WHERE position_id=?",
+            (position_id,),
+        )
+        return ser.row_to_owner_position(row) if row else None
+
+    def list_owner_positions(self, *, limit: int = 500) -> list[Position]:
+        rows = self._query_all(
+            "SELECT position_id, instrument_id, opened_ts, quantity, avg_price, "
+            "closed_ts, exit_price, decision_ref, broker, notes, sector, meta_json "
+            "FROM owner_positions ORDER BY opened_ts DESC, position_id DESC LIMIT ?",
+            (limit,),
+        )
+        return [ser.row_to_owner_position(r) for r in rows]
 
     # ------------------------------------------------------------- integrity
 

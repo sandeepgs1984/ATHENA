@@ -169,11 +169,14 @@ class DashboardService:
             active_positions = len([pos for pos in p.positions if not pos.closed_ts])
             closed_positions = len([pos for pos in p.positions if pos.closed_ts])
 
-            # Simple simulation of total portfolio valuation
+            # Total portfolio valuation: cash + marked open positions (cost if no mark)
             portfolio_value = p.cash
             for pos in p.positions:
                 if not pos.closed_ts:
-                    portfolio_value += pos.quantity * pos.avg_price
+                    mark = pos.avg_price
+                    if pos.meta and pos.meta.get("current_price") is not None:
+                        mark = Decimal(str(pos.meta["current_price"]))
+                    portfolio_value += Decimal(pos.quantity) * mark
 
         exposure_by_sector = self._build_exposure_map(
             sector_exposure=sector_exposure,
@@ -184,7 +187,7 @@ class DashboardService:
         # 3. Fetch Pipeline runs details
         last_scan_date = None
         strategies_matched = 0
-        regime_class = "NORMAL_BULLISH"
+        regime_class = "UNKNOWN"
 
         try:
             # Query last run
@@ -205,8 +208,15 @@ class DashboardService:
                 elif ctx and isinstance(ctx, dict) and "strategy_matches" in ctx:
                     strategies_matched = len(ctx["strategy_matches"])
 
-                # Determine regime
-                if ctx and hasattr(ctx, "regime"):
+                # Determine regime from context data when present
+                data = getattr(ctx, "data", None) if ctx is not None else None
+                if isinstance(data, dict):
+                    regime = data.get("regime_assessment")
+                    if isinstance(regime, dict) and regime.get("trend"):
+                        regime_class = str(regime["trend"])
+                    elif "regime" in data:
+                        regime_class = str(data["regime"])
+                elif ctx and hasattr(ctx, "regime"):
                     regime_class = str(ctx.regime)
                 elif ctx and isinstance(ctx, dict) and "regime" in ctx:
                     regime_class = str(ctx["regime"])

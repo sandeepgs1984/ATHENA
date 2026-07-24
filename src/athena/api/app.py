@@ -41,6 +41,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """
     logger.info("ATHENA Platform API starting up")
     yield
+    repo = getattr(app.state, "sqlite_repo", None)
+    if repo is not None:
+        try:
+            repo.close()
+        except Exception:
+            logger.exception("Failed to close SQLite repository on shutdown")
     logger.info("ATHENA Platform API shutting down")
 
 
@@ -193,9 +199,12 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.state.claims_factory = TokenClaimsFactory(settings.security)
 
     # Initialize Platform Infrastructure Providers on app state
-    from athena.api.dependencies import get_build_info_provider, get_metadata_provider
+    from athena.api.dependencies import get_build_info_provider, get_metadata_provider, wire_sqlite_providers
     app.state.build_info_provider = get_build_info_provider()
     app.state.metadata_provider = get_metadata_provider()
+
+    # Live ledger providers (decisions / owner portfolio / cycle runs) — no seed data
+    wire_sqlite_providers(app.state)
 
     # Middleware execution pipeline (outermost to innermost)
     app.add_middleware(

@@ -6,6 +6,26 @@ status updated on approval.
 
 ---
 
+## Dashboard live data + owner fill ledger (READY FOR REVIEW)
+
+| | |
+|---|---|
+| Completed | 2026-07-24 |
+| Scope | Remove dashboard seed/demo data; serve Decisions + Market Intelligence from SQLite; owner-entered Kite/Groww fill ledger for Portfolio Overview |
+| Tests | API + data_layer green; new `tests/api/v1/test_owner_portfolio.py`; decision-trace + dashboard-summary updated for empty/real data |
+| Status | **READY FOR REVIEW** |
+| Branch | develop |
+
+- Dropped `seed_sample_data` from API startup; live app wires `SqliteDecisionProvider`, `SqlitePortfolioProvider`, `SqlitePipelineRunProvider` via `wire_sqlite_providers`.
+- Decision traces return **stored** `DecisionTrace` stages only (no synthetic 7-stage DAG).
+- SCHEMA_VERSION 4: `owner_positions` table; `POST /api/v1/portfolio/positions` + `.../close` for manual fills (symbol/qty/entry/exit); cash from `config/portfolio.json` `initial_cash` (`PortfolioConfig`).
+- Market Intelligence: latest SQLite run context; falls back to `kite.json` symbols when run has no universe payload; honest empty copy when neither exists.
+- Dashboard Overview form to log/close owner fills; no Kite holdings API (still blocked).
+
+Files created: `src/athena/api/v1/providers/sqlite_providers.py`, `config/portfolio.json`, `tests/api/v1/test_owner_portfolio.py`. Files modified: schema/serialization/repository, dependencies/app, decisions/portfolio/dashboard services + routers/DTOs, dashboard static assets, tests, this log. No ADR; no order placement; frozen Position/TradeOutcome contracts reused.
+
+---
+
 ## Production readiness -- R6 Closing / Day-Summary Cycle (APPROVED)
 
 | | |

@@ -21,10 +21,17 @@ import pytest
 from fastapi.testclient import TestClient
 
 from athena.api.dependencies import (
+    get_backtest_run_provider,
+    get_decision_provider,
     get_export_query_provider,
     get_performance_analytics_provider,
+    get_pipeline_run_provider,
+    get_portfolio_provider,
     get_report_provider,
+    get_scheduler_history_provider,
+    get_workspace_provider,
 )
+from athena.api.v1.providers.in_memory import seed_sample_data
 from athena.api.security.dependencies import (
     get_api_key_repository,
     get_session_store,
@@ -50,6 +57,29 @@ from athena.config.models import ExportFormat, ReportType
 from athena.domain.decision import Direction
 from athena.export.models import ExportArtifact, ExportReferences, ExportSnapshot, ExportSummary
 from athena.reporting.models import GenericReport, ReportingReferences
+
+
+@pytest.fixture(autouse=True)
+def seed_report_analytics_export_providers() -> None:
+    """These endpoints still use in-memory fixtures for contract tests (not live SQLite)."""
+    report_p = get_report_provider()
+    analytics_p = get_performance_analytics_provider()
+    export_p = get_export_query_provider()
+    report_p.reports.clear()  # type: ignore[attr-defined]
+    analytics_p.snapshots.clear()  # type: ignore[attr-defined]
+    export_p.snapshots.clear()  # type: ignore[attr-defined]
+
+    seed_sample_data(
+        get_decision_provider(),
+        get_portfolio_provider(),
+        get_pipeline_run_provider(),
+        get_scheduler_history_provider(),
+        get_workspace_provider(),
+        report_p,
+        analytics_p,
+        export_p,
+        get_backtest_run_provider(),
+    )
 
 
 def get_auth_headers(client: TestClient, role: Role, username: str = "analyst") -> dict[str, str]:

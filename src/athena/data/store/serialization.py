@@ -34,6 +34,7 @@ from athena.domain.decision import (
     DecisionJournalEntry,
     DecisionTrace,
     GateResult,
+    Position,
     TraceStage,
     TradePlan,
 )
@@ -327,4 +328,58 @@ def row_to_journal(r: Sequence[Any]) -> DecisionJournalEntry:
         user_action=UserAction(r[2]),
         action_ts=datetime.fromisoformat(r[3]),
         notes=r[4] or "",
+    )
+
+
+def owner_position_to_row(
+    *,
+    position_id: str,
+    instrument_id: str,
+    opened_ts: datetime,
+    quantity: int,
+    avg_price: Decimal,
+    closed_ts: datetime | None,
+    exit_price: Decimal | None,
+    decision_ref: str | None,
+    broker: str,
+    notes: str,
+    sector: str,
+    meta: Mapping[str, Any],
+) -> tuple:
+    return (
+        position_id,
+        instrument_id,
+        opened_ts.isoformat(),
+        int(quantity),
+        str(avg_price),
+        closed_ts.isoformat() if closed_ts is not None else None,
+        str(exit_price) if exit_price is not None else None,
+        decision_ref,
+        broker or "",
+        notes or "",
+        sector or "",
+        json.dumps(dict(meta), sort_keys=True, default=str),
+    )
+
+
+def row_to_owner_position(r: Sequence[Any]) -> Position:
+    meta = dict(json.loads(r[11] or "{}"))
+    if r[6] is not None:
+        meta["exit_price"] = str(r[6])
+    if r[7]:
+        meta["decision_ref"] = r[7]
+    if r[8]:
+        meta["broker"] = r[8]
+    if r[9]:
+        meta["notes"] = r[9]
+    if r[10]:
+        meta["sector"] = r[10]
+    return Position(
+        position_id=r[0],
+        instrument_id=r[1],
+        opened_ts=datetime.fromisoformat(r[2]),
+        quantity=int(r[3]),
+        avg_price=Decimal(r[4]),
+        closed_ts=datetime.fromisoformat(r[5]) if r[5] else None,
+        meta=meta,
     )

@@ -40,7 +40,7 @@ from athena.backtest.models import (
     StrategyPerformance,
 )
 from athena.config.models import ExportFormat, ReportType
-from athena.domain.decision import Decision, GateResult, Portfolio, Position
+from athena.domain.decision import Decision, DecisionTrace, GateResult, Portfolio, Position
 from athena.domain.enums import DecisionType, Direction, QualityGate
 from athena.export.models import (
     ExportArtifact,
@@ -103,6 +103,7 @@ class InMemoryDecisionProvider:
 
     def __init__(self) -> None:
         self.decisions: list[Decision] = []
+        self.traces: dict[str, DecisionTrace] = {}
 
     def get_decisions(
         self, spec: QuerySpecification[Any]
@@ -135,15 +136,108 @@ class InMemoryDecisionProvider:
                 return d
         return None
 
+    def get_trace(self, decision_id: str) -> DecisionTrace | None:
+        return self.traces.get(decision_id)
+
 
 class InMemoryPortfolioProvider:
     """In-memory provider for Portfolio."""
 
     def __init__(self) -> None:
         self.portfolio: Portfolio | None = None
+        self.starting_cash: Decimal = Decimal("0.00")
 
     def get_portfolio(self) -> Portfolio | None:
         return self.portfolio
+
+    def open_position(
+        self,
+        *,
+        instrument_id: str,
+        quantity: int,
+        avg_price: Decimal,
+        opened_ts: datetime | None = None,
+        decision_ref: str | None = None,
+        broker: str = "",
+        notes: str = "",
+        sector: str = "",
+    ) -> Position:
+        from uuid import uuid4
+
+        opened = opened_ts or datetime.now(tz=timezone.utc)
+        pos = Position(
+            position_id=f"pos-{uuid4().hex[:12]}",
+            instrument_id=instrument_id.strip().upper(),
+            opened_ts=opened,
+            quantity=quantity,
+            avg_price=avg_price,
+            meta={
+                k: v
+                for k, v in {
+                    "decision_ref": decision_ref,
+                    "broker": broker,
+                    "notes": notes,
+                    "sector": sector,
+                }.items()
+                if v
+            },
+        )
+        existing = list(self.portfolio.positions) if self.portfolio else []
+        cash = self.starting_cash if self.portfolio is None else self.portfolio.cash
+        cash -= Decimal(quantity) * avg_price
+        exposure = dict(self.portfolio.exposure_by_sector) if self.portfolio else {}
+        if sector:
+            exposure[sector] = exposure.get(sector, Decimal("0")) + (
+                Decimal(quantity) * avg_price
+            )
+        self.portfolio = Portfolio(
+            ts=opened,
+            positions=tuple(existing + [pos]),
+            cash=cash,
+            exposure_by_sector=exposure,
+        )
+        return pos
+
+    def close_position(
+        self,
+        position_id: str,
+        *,
+        exit_price: Decimal,
+        closed_ts: datetime | None = None,
+    ) -> Position:
+        if self.portfolio is None:
+            raise KeyError(f"position '{position_id}' not found")
+        closed = closed_ts or datetime.now(tz=timezone.utc)
+        updated: list[Position] = []
+        found: Position | None = None
+        for pos in self.portfolio.positions:
+            if pos.position_id != position_id:
+                updated.append(pos)
+                continue
+            if pos.closed_ts is not None:
+                raise ValueError(f"position '{position_id}' is already closed")
+            meta = dict(pos.meta)
+            meta["exit_price"] = str(exit_price)
+            found = Position(
+                position_id=pos.position_id,
+                instrument_id=pos.instrument_id,
+                opened_ts=pos.opened_ts,
+                quantity=pos.quantity,
+                avg_price=pos.avg_price,
+                closed_ts=closed,
+                meta=meta,
+            )
+            updated.append(found)
+        if found is None:
+            raise KeyError(f"position '{position_id}' not found")
+        cash = self.portfolio.cash + (Decimal(found.quantity) * exit_price)
+        self.portfolio = Portfolio(
+            ts=closed,
+            positions=tuple(updated),
+            cash=cash,
+            exposure_by_sector=dict(self.portfolio.exposure_by_sector),
+        )
+        return found
 
 
 class InMemoryPipelineRunProvider:
