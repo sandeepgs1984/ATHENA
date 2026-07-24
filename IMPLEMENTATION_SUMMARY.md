@@ -20,7 +20,7 @@ status updated on approval.
 - MI candidate list: dedicated Stock List card with a 561-symbol independently scrolling region, live search/count, and per-row **Validate/Remove**; validation results scroll separately.
 - MI dashboard picks the newest regime and prefers non-UNKNOWN volatility when merging runs.
 - Decisions: Stance / Type / Sort controls (newest, symbol, score, stance) plus search.
-- Assets `?v=9.11.0`. Hard-refresh after deploy.
+- Assets `?v=9.12.0`. Hard-refresh after deploy. Validation card scrolls as one panel; stock-list search uses transparent dark styling.
 
 ---
 
