@@ -1173,19 +1173,28 @@ document.addEventListener("DOMContentLoaded", () => {
     async function loadCandidateList() {
         const listEl = document.getElementById("candidate-list");
         const emptyEl = document.getElementById("candidate-list-empty");
+        const countEl = document.getElementById("candidate-count");
+        const candidateSearch = document.getElementById("candidate-search-input");
         if (!listEl) return;
         try {
             const res = await apiRequest("/api/v1/market/candidates");
             const rows = (res && res.data && res.data.candidates) ? res.data.candidates : [];
             listEl.innerHTML = "";
+            if (countEl) {
+                countEl.textContent = `${rows.length} symbol${rows.length === 1 ? "" : "s"}`;
+            }
             if (rows.length === 0) {
-                if (emptyEl) emptyEl.style.display = "block";
+                if (emptyEl) {
+                    emptyEl.textContent = "No symbols in the stock list.";
+                    emptyEl.style.display = "block";
+                }
                 return;
             }
             if (emptyEl) emptyEl.style.display = "none";
             rows.forEach(c => {
                 const li = document.createElement("li");
                 li.className = "candidate-row";
+                li.dataset.symbol = String(c.symbol || "").toUpperCase();
                 li.innerHTML = `
                     <span class="symbol-name-col">${c.symbol}</span>
                     <div class="candidate-row-actions">
@@ -1199,6 +1208,9 @@ document.addEventListener("DOMContentLoaded", () => {
                 `;
                 listEl.appendChild(li);
             });
+            if (candidateSearch && candidateSearch.value) {
+                filterCandidateList(candidateSearch.value);
+            }
             listEl.querySelectorAll(".candidate-validate-btn").forEach(btn => {
                 btn.addEventListener("click", async () => {
                     const sym = btn.getAttribute("data-symbol");
@@ -1223,11 +1235,44 @@ document.addEventListener("DOMContentLoaded", () => {
                 emptyEl.style.display = "block";
                 emptyEl.textContent = "Failed to load validation list.";
             }
+            if (countEl) countEl.textContent = "Unavailable";
+        }
+    }
+
+    function filterCandidateList(rawQuery) {
+        const listEl = document.getElementById("candidate-list");
+        const emptyEl = document.getElementById("candidate-list-empty");
+        const countEl = document.getElementById("candidate-count");
+        if (!listEl) return;
+        const query = String(rawQuery || "").trim().toUpperCase();
+        const rows = Array.from(listEl.querySelectorAll(".candidate-row"));
+        let visible = 0;
+        rows.forEach(row => {
+            const matches = !query || (row.dataset.symbol || "").includes(query);
+            row.hidden = !matches;
+            if (matches) visible += 1;
+        });
+        if (countEl) {
+            countEl.textContent = query
+                ? `${visible} of ${rows.length}`
+                : `${rows.length} symbol${rows.length === 1 ? "" : "s"}`;
+        }
+        if (emptyEl) {
+            emptyEl.textContent = query
+                ? `No symbols match “${rawQuery}”.`
+                : "No symbols in the stock list.";
+            emptyEl.style.display = visible === 0 ? "block" : "none";
         }
     }
 
     const candidateAddBtn = document.getElementById("candidate-add-btn");
     const candidateInput = document.getElementById("candidate-symbol-input");
+    const candidateSearchInput = document.getElementById("candidate-search-input");
+    if (candidateSearchInput) {
+        candidateSearchInput.addEventListener("input", (e) => {
+            filterCandidateList(e.target.value);
+        });
+    }
     if (candidateAddBtn && candidateInput) {
         const addAndValidateCandidate = async () => {
             const symbol = (candidateInput.value || "").trim().toUpperCase();

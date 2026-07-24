@@ -6,20 +6,21 @@ status updated on approval.
 
 ---
 
-## Overview scroll + Decisions filters + MI regime pick (READY FOR REVIEW)
+## Dashboard workspace usability improvements (READY FOR REVIEW)
 
 | | |
 |---|---|
 | Completed | 2026-07-24 |
-| Scope | Portfolio holdings scrollable panel + Add & validate; MI prefer latest known VIX regime; Decisions stance/type/sort filters |
-| Tests | Existing API/ingestion suites (no new unit file required for static UI) |
+| Scope | Balanced Portfolio layout; dedicated searchable/scrollable MI stock list; Add & validate; known VIX regime selection; Decisions filters |
+| Tests | HTML parse; `tests/api/v1/test_owner_candidates.py` (5 passed); browser layout/filter/scroll verification |
 | Status | **READY FOR REVIEW** |
 | Branch | develop |
 
-- Overview: holdings moved to primary scrollable card (sticky header); log-fill/pools/reset on the side; per-row **Add & validate**.
-- MI candidate list: per-row **Validate**; dashboard picks newest regime and prefers non-UNKNOWN volatility when merging runs.
+- Overview: holdings and charts now share the left stack while log-fill/pools/reset stay on the right, removing the empty center gap; holdings retain a sticky, independently scrolling table and per-row **Add & validate**.
+- MI candidate list: dedicated Stock List card with a 561-symbol independently scrolling region, live search/count, and per-row **Validate/Remove**; validation results scroll separately.
+- MI dashboard picks the newest regime and prefers non-UNKNOWN volatility when merging runs.
 - Decisions: Stance / Type / Sort controls (newest, symbol, score, stance) plus search.
-- Assets `?v=9.10.0`. Hard-refresh after deploy.
+- Assets `?v=9.11.0`. Hard-refresh after deploy.
 
 ---
 

@@ -526,9 +526,42 @@ body {
     min-height: 0;
 }
 
+.overview-main-column {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    min-width: 0;
+}
+
+.overview-charts {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 24px;
+}
+
 @media (max-width: 1100px) {
     .overview-workstation {
         grid-template-columns: 1fr;
+    }
+
+    .overview-side-column {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .overview-side-column .card:last-child {
+        grid-column: 1 / -1;
+    }
+}
+
+@media (max-width: 760px) {
+    .overview-charts,
+    .overview-side-column {
+        grid-template-columns: 1fr;
+    }
+
+    .overview-side-column .card:last-child {
+        grid-column: auto;
     }
 }
 
@@ -536,7 +569,7 @@ body {
     min-height: 0;
     display: flex;
     flex-direction: column;
-    max-height: calc(100vh - 220px);
+    height: clamp(250px, 38vh, 390px);
 }
 
 .overview-holdings-header {
@@ -553,11 +586,11 @@ body {
 
 .holdings-scroll {
     flex: 1 1 auto;
-    min-height: 220px;
-    max-height: calc(100vh - 300px);
+    min-height: 0;
     overflow: auto;
     border: 1px solid var(--border-color);
     border-radius: 8px;
+    scrollbar-gutter: stable;
 }
 
 .holdings-table thead th {
@@ -597,6 +630,10 @@ body {
     display: flex;
     gap: 6px;
     flex-shrink: 0;
+}
+
+.candidate-row[hidden] {
+    display: none;
 }
 
 .decisions-toolbar {
@@ -682,6 +719,93 @@ body {
     flex-direction: column;
     gap: 20px;
     padding: 24px;
+}
+
+/* Validation and the 500-symbol editor need independent scroll regions. */
+.market-validation-column {
+    display: grid;
+    grid-template-rows: minmax(260px, 0.9fr) minmax(300px, 1.1fr);
+    gap: 16px;
+    min-height: 0;
+}
+
+.market-validation-column .card {
+    height: auto;
+    min-height: 0;
+}
+
+.validation-card .card-body {
+    gap: 12px;
+    padding: 18px;
+}
+
+.validation-results-scroll {
+    max-height: 150px;
+    overflow: auto;
+    scrollbar-gutter: stable;
+}
+
+.qualified-section {
+    min-height: 0;
+    overflow: auto;
+}
+
+.candidate-card-header {
+    flex-shrink: 0;
+}
+
+.candidate-card-header > div {
+    min-width: 0;
+}
+
+.candidate-card-header .metric-desc {
+    margin: 3px 0 0;
+    font-size: 0.75rem;
+}
+
+.candidate-card-body {
+    min-height: 0;
+    overflow: hidden !important;
+    gap: 10px !important;
+    padding: 16px !important;
+}
+
+.candidate-add-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    flex-shrink: 0;
+}
+
+.candidate-add-row input {
+    flex: 1 1 130px;
+    min-width: 0;
+}
+
+.candidate-search {
+    flex-shrink: 0;
+}
+
+.candidate-empty {
+    display: none;
+    padding: 8px 0;
+    font-size: 0.85rem;
+}
+
+.candidate-list {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    scrollbar-gutter: stable;
+}
+
+@media (max-width: 1200px) {
+    .market-validation-column {
+        grid-template-rows: minmax(320px, auto) minmax(420px, 65vh);
+    }
 }
 
 /* Regime Indicators */

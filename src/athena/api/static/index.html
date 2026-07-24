@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.10.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.11.0">
 </head>
 <body>
     <div id="app">
@@ -128,6 +128,7 @@
                     </div>
 
                     <div class="overview-workstation mt-4">
+                        <div class="overview-main-column">
                         <div class="card overview-holdings-card">
                             <div class="card-header overview-holdings-header">
                                 <div>
@@ -158,6 +159,26 @@
                                     </table>
                                 </div>
                             </div>
+                        </div>
+
+                        <div class="overview-charts">
+                            <div class="card">
+                                <div class="card-header"><h2>Portfolio Value Trend (NAV)</h2></div>
+                                <div class="card-body">
+                                    <div class="chart-container" style="position: relative; height: 260px; width: 100%;">
+                                        <canvas id="nav-chart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card">
+                                <div class="card-header"><h2>Sector Exposure &amp; Risk</h2></div>
+                                <div class="card-body">
+                                    <div class="chart-container" style="position: relative; height: 260px; width: 100%;">
+                                        <canvas id="sector-chart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                         </div>
 
                         <div class="overview-side-column">
@@ -214,25 +235,6 @@
                                         </div>
                                         <p class="metric-desc" style="margin-top: 8px;">Does not delete decisions, journal, or runs.</p>
                                     </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="grid-layout cols-2 mt-4">
-                        <div class="card">
-                            <div class="card-header"><h2>Portfolio Value Trend (NAV)</h2></div>
-                            <div class="card-body">
-                                <div class="chart-container" style="position: relative; height: 260px; width: 100%;">
-                                    <canvas id="nav-chart"></canvas>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="card">
-                            <div class="card-header"><h2>Sector Exposure &amp; Risk</h2></div>
-                            <div class="card-body">
-                                <div class="chart-container" style="position: relative; height: 260px; width: 100%;">
-                                    <canvas id="sector-chart"></canvas>
                                 </div>
                             </div>
                         </div>
@@ -312,9 +314,9 @@
                             </div>
                         </div>
 
-                        <!-- Column 3: Today's validation + stock list -->
-                        <div class="workstation-column">
-                            <div class="card">
+                        <!-- Column 3: independent validation + stock-list panels -->
+                        <div class="workstation-column market-validation-column">
+                            <div class="card validation-card">
                                 <div class="card-header">
                                     <div class="card-title-icon"><i class="fas fa-user-shield"></i></div>
                                     <h3>Today's Validation</h3>
@@ -328,29 +330,29 @@
                                         <h3 style="font-size: 1rem; margin: 0;">Eligible / Excluded (this cycle)</h3>
                                     </div>
                                     <div class="universe-inspector-body">
-                                    <div class="search-bar-container">
-                                        <i class="fas fa-search search-icon"></i>
-                                        <input type="text" id="universe-search" placeholder="Filter by symbol..." />
-                                    </div>
-                                    <div class="universe-table-wrapper" style="max-height: 220px; overflow: auto;">
-                                        <table class="universe-table">
-                                            <thead>
-                                                <tr>
-                                                    <th>Symbol</th>
-                                                    <th>Status</th>
-                                                    <th>Actions</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody id="universe-list-body">
-                                                <tr>
-                                                    <td colspan="3" class="text-muted text-center" style="padding: 24px;">Loading universe members...</td>
-                                                </tr>
-                                            </tbody>
-                                        </table>
-                                    </div>
+                                        <div class="search-bar-container">
+                                            <i class="fas fa-search search-icon"></i>
+                                            <input type="text" id="universe-search" placeholder="Filter validation results..." />
+                                        </div>
+                                        <div class="universe-table-wrapper validation-results-scroll">
+                                            <table class="universe-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Symbol</th>
+                                                        <th>Status</th>
+                                                        <th>Actions</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody id="universe-list-body">
+                                                    <tr>
+                                                        <td colspan="3" class="text-muted text-center" style="padding: 24px;">Loading universe members...</td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
                                     </div>
 
-                                    <div style="margin-top: 16px;">
+                                    <div class="qualified-section">
                                         <div class="card-header" style="padding: 0; margin-bottom: 8px;">
                                             <h3 style="font-size: 1rem; margin: 0;">Qualified Today (WATCH / TRADE)</h3>
                                         </div>
@@ -361,25 +363,32 @@
                                             No qualified names yet.
                                         </div>
                                     </div>
+                                </div>
+                            </div>
 
-                                    <hr style="border-color: var(--border-color, #333); margin: 16px 0;" />
-                                    <div class="card-header" style="padding: 0; margin-bottom: 8px;">
-                                        <h3 style="font-size: 1rem; margin: 0;">Stock list (edit)</h3>
+                            <div class="card candidate-card">
+                                <div class="card-header candidate-card-header">
+                                    <div>
+                                        <h3>Stock List</h3>
+                                        <p class="metric-desc">Nifty 500 seed + your additions</p>
                                     </div>
-                                    <p class="text-muted" style="font-size: 0.8rem; margin-bottom: 8px;">
-                                        Nifty 500 merge-seeded daily; add/remove extras here.
-                                        Add runs kite ingest + eligibility + score for that symbol so it appears above and on Decisions.
-                                    </p>
-                                    <div class="candidate-add-row" style="display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap;">
-                                        <input type="text" id="candidate-symbol-input" placeholder="Symbol (e.g. INFY)" style="flex: 1; min-width: 120px;" />
+                                    <span id="candidate-count" class="meta-chip score-chip">0 symbols</span>
+                                </div>
+                                <div class="card-body candidate-card-body">
+                                    <div class="candidate-add-row">
+                                        <input type="text" id="candidate-symbol-input" placeholder="Add symbol (e.g. INFY)" />
                                         <button type="button" id="candidate-add-btn" class="inspect-btn">
                                             <i class="fas fa-plus"></i> Add &amp; validate
                                         </button>
                                     </div>
-                                    <div id="candidate-list-empty" class="text-muted text-center" style="padding: 8px 0; font-size: 0.85rem; display: none;">
+                                    <div class="search-bar-container candidate-search">
+                                        <i class="fas fa-search search-icon"></i>
+                                        <input type="text" id="candidate-search-input" placeholder="Search the full stock list..." />
+                                    </div>
+                                    <div id="candidate-list-empty" class="text-muted text-center candidate-empty">
                                         Add symbols to validate.
                                     </div>
-                                    <ul id="candidate-list" class="candidate-list" style="list-style: none; padding: 0; margin: 0; max-height: 220px; overflow: auto;"></ul>
+                                    <ul id="candidate-list" class="candidate-list"></ul>
                                 </div>
                             </div>
                         </div>
@@ -656,6 +665,6 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.10.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.11.0"></script>
 </body>
 </html>
