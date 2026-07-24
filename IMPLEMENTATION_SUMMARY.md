@@ -6,6 +6,23 @@ status updated on approval.
 
 ---
 
+## Overview scroll + Decisions filters + MI regime pick (READY FOR REVIEW)
+
+| | |
+|---|---|
+| Completed | 2026-07-24 |
+| Scope | Portfolio holdings scrollable panel + Add & validate; MI prefer latest known VIX regime; Decisions stance/type/sort filters |
+| Tests | Existing API/ingestion suites (no new unit file required for static UI) |
+| Status | **READY FOR REVIEW** |
+| Branch | develop |
+
+- Overview: holdings moved to primary scrollable card (sticky header); log-fill/pools/reset on the side; per-row **Add & validate**.
+- MI candidate list: per-row **Validate**; dashboard picks newest regime and prefers non-UNKNOWN volatility when merging runs.
+- Decisions: Stance / Type / Sort controls (newest, symbol, score, stance) plus search.
+- Assets `?v=9.10.0`. Hard-refresh after deploy.
+
+---
+
 ## Regime VIX snapshot + decision UX clarity (READY FOR REVIEW)
 
 | | |

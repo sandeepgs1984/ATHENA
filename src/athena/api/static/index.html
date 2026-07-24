@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.9.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.10.0">
 </head>
 <body>
     <div id="app">
@@ -126,102 +126,93 @@
                             </div>
                         </div>
                     </div>
-                    
-                    <div class="grid-layout cols-2 mt-4">
-                        <div class="card">
-                            <div class="card-header">
-                                <h2>Holdings & Exposure</h2>
-                            </div>
-                            <div class="card-body">
-                                <form id="owner-position-form" class="owner-position-form" autocomplete="off">
-                                    <div class="owner-position-form-grid">
-                                        <label>
-                                            Symbol
-                                            <input id="pos-symbol" name="instrument_id" type="text" required placeholder="INFY" />
-                                        </label>
-                                        <label>
-                                            Qty
-                                            <input id="pos-qty" name="quantity" type="number" min="1" step="1" required placeholder="10" />
-                                        </label>
-                                        <label>
-                                            Entry
-                                            <input id="pos-entry" name="avg_price" type="number" min="0.01" step="0.01" required placeholder="1500.00" />
-                                        </label>
-                                        <label>
-                                            Broker
-                                            <select id="pos-broker" name="broker">
-                                                <option value="kite">Kite</option>
-                                                <option value="groww">Groww</option>
-                                                <option value="">Other</option>
-                                            </select>
-                                        </label>
-                                        <label>
-                                            Sector (optional)
-                                            <input id="pos-sector" name="sector" type="text" placeholder="IT" />
-                                        </label>
-                                        <label>
-                                            Notes (optional)
-                                            <input id="pos-notes" name="notes" type="text" placeholder="After ATHENA WATCH" />
-                                        </label>
-                                    </div>
-                                    <button type="submit" class="inspect-btn" id="pos-submit-btn">
-                                        <i class="fas fa-plus"></i> Log fill
-                                    </button>
-                                    <p class="metric-desc" style="margin-top: 8px;">
-                                        Log fills you placed on Kite/Groww after ATHENA suggestions. ATHENA never places orders.
+
+                    <div class="overview-workstation mt-4">
+                        <div class="card overview-holdings-card">
+                            <div class="card-header overview-holdings-header">
+                                <div>
+                                    <h2>Holdings &amp; Exposure</h2>
+                                    <p class="metric-desc" style="margin: 4px 0 0; font-size: 0.8rem;">
+                                        Scrollable list. <strong>Add &amp; validate</strong> runs ATHENA ingest + score for that holding.
                                     </p>
-                                </form>
-                                <div class="ops-restore-gate portfolio-reset-gate" style="margin-top: 16px;">
-                                    <label for="portfolio-reset-confirm">Reset fills — type <strong>CONFIRM</strong> to unlock</label>
-                                    <input id="portfolio-reset-confirm" type="text" autocomplete="off" spellcheck="false" placeholder="CONFIRM" />
-                                    <p id="portfolio-reset-gate-status" class="ops-restore-gate-status locked">Reset locked until CONFIRM matches exactly.</p>
-                                    <div style="display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap;">
-                                        <button type="button" class="inspect-btn portfolio-reset-btn" id="portfolio-reset-open" disabled data-scope="open">Reset open</button>
-                                        <button type="button" class="inspect-btn portfolio-reset-btn" id="portfolio-reset-all" disabled data-scope="all">Reset all</button>
-                                    </div>
-                                    <p class="metric-desc" style="margin-top: 8px;">Does not delete decisions, journal, or runs. Creates a DB backup before wipe.</p>
                                 </div>
-                                <div id="portfolio-holdings-list" class="table-container" style="margin-top: 16px;">
-                                    <table class="data-table">
+                            </div>
+                            <div class="card-body overview-holdings-body">
+                                <div id="portfolio-holdings-list" class="holdings-scroll">
+                                    <table class="data-table holdings-table">
                                         <thead>
                                             <tr>
                                                 <th>Symbol</th>
                                                 <th>Quantity</th>
                                                 <th>Avg Cost</th>
                                                 <th>Current Value</th>
-                                                <th>Unrealized P&L</th>
+                                                <th>Unrealized P&amp;L</th>
                                                 <th>Actions</th>
                                             </tr>
                                         </thead>
                                         <tbody id="holdings-tbody">
                                             <tr>
-                                                <td colspan="6" class="text-center text-muted">No owner-entered positions yet. Log a fill above.</td>
+                                                <td colspan="6" class="text-center text-muted">No owner-entered positions yet. Log a fill on the right.</td>
                                             </tr>
                                         </tbody>
                                     </table>
                                 </div>
                             </div>
                         </div>
-                        
-                        <div class="card">
-                            <div class="card-header">
-                                <h2>Capital Allocation Pools</h2>
+
+                        <div class="overview-side-column">
+                            <div class="card">
+                                <div class="card-header"><h2>Log fill</h2></div>
+                                <div class="card-body">
+                                    <form id="owner-position-form" class="owner-position-form" autocomplete="off">
+                                        <div class="owner-position-form-grid overview-form-grid">
+                                            <label>Symbol<input id="pos-symbol" name="instrument_id" type="text" required placeholder="INFY" /></label>
+                                            <label>Qty<input id="pos-qty" name="quantity" type="number" min="1" step="1" required placeholder="10" /></label>
+                                            <label>Entry<input id="pos-entry" name="avg_price" type="number" min="0.01" step="0.01" required placeholder="1500.00" /></label>
+                                            <label>Broker
+                                                <select id="pos-broker" name="broker">
+                                                    <option value="kite">Kite</option>
+                                                    <option value="groww">Groww</option>
+                                                    <option value="">Other</option>
+                                                </select>
+                                            </label>
+                                            <label>Sector (optional)<input id="pos-sector" name="sector" type="text" placeholder="IT" /></label>
+                                            <label>Notes (optional)<input id="pos-notes" name="notes" type="text" placeholder="After ATHENA WATCH" /></label>
+                                        </div>
+                                        <button type="submit" class="inspect-btn" id="pos-submit-btn"><i class="fas fa-plus"></i> Log fill</button>
+                                        <p class="metric-desc" style="margin-top: 8px;">Log fills you placed on Kite/Groww. ATHENA never places orders.</p>
+                                    </form>
+                                </div>
                             </div>
-                            <div class="card-body">
-                                <div class="allocation-pools-container">
-                                    <div class="pool-progress">
-                                        <div class="pool-info">
-                                            <span>Allocated Capital</span>
-                                            <span id="pool-allocated-val">₹ --</span>
+
+                            <div class="card">
+                                <div class="card-header"><h2>Capital Allocation Pools</h2></div>
+                                <div class="card-body">
+                                    <div class="allocation-pools-container">
+                                        <div class="pool-progress">
+                                            <div class="pool-info"><span>Allocated Capital</span><span id="pool-allocated-val">₹ --</span></div>
+                                            <div class="progress-bar-bg"><div id="pool-allocated-bar" class="progress-bar-fill" style="width: 0%"></div></div>
                                         </div>
-                                        <div class="progress-bar-bg"><div id="pool-allocated-bar" class="progress-bar-fill" style="width: 0%"></div></div>
+                                        <div class="pool-progress mt-4">
+                                            <div class="pool-info"><span>Reserve Floor</span><span id="pool-reserve-val">₹ --</span></div>
+                                            <div class="progress-bar-bg"><div id="pool-reserve-bar" class="progress-bar-fill warning" style="width: 0%"></div></div>
+                                        </div>
                                     </div>
-                                    <div class="pool-progress mt-4">
-                                        <div class="pool-info">
-                                            <span>Reserve Floor</span>
-                                            <span id="pool-reserve-val">₹ --</span>
+                                </div>
+                            </div>
+
+                            <div class="card">
+                                <div class="card-header"><h2>Reset fills</h2></div>
+                                <div class="card-body">
+                                    <div class="ops-restore-gate portfolio-reset-gate">
+                                        <label for="portfolio-reset-confirm">Type <strong>CONFIRM</strong> to unlock</label>
+                                        <input id="portfolio-reset-confirm" type="text" autocomplete="off" spellcheck="false" placeholder="CONFIRM" />
+                                        <p id="portfolio-reset-gate-status" class="ops-restore-gate-status locked">Reset locked until CONFIRM matches exactly.</p>
+                                        <div style="display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap;">
+                                            <button type="button" class="inspect-btn portfolio-reset-btn" id="portfolio-reset-open" disabled data-scope="open">Reset open</button>
+                                            <button type="button" class="inspect-btn portfolio-reset-btn" id="portfolio-reset-all" disabled data-scope="all">Reset all</button>
                                         </div>
-                                        <div class="progress-bar-bg"><div id="pool-reserve-bar" class="progress-bar-fill warning" style="width: 0%"></div></div>
+                                        <p class="metric-desc" style="margin-top: 8px;">Does not delete decisions, journal, or runs.</p>
                                     </div>
                                 </div>
                             </div>
@@ -230,20 +221,15 @@
 
                     <div class="grid-layout cols-2 mt-4">
                         <div class="card">
-                            <div class="card-header">
-                                <h2>Portfolio Value Trend (NAV)</h2>
-                            </div>
+                            <div class="card-header"><h2>Portfolio Value Trend (NAV)</h2></div>
                             <div class="card-body">
                                 <div class="chart-container" style="position: relative; height: 260px; width: 100%;">
                                     <canvas id="nav-chart"></canvas>
                                 </div>
                             </div>
                         </div>
-                        
                         <div class="card">
-                            <div class="card-header">
-                                <h2>Sector Exposure & Risk</h2>
-                            </div>
+                            <div class="card-header"><h2>Sector Exposure &amp; Risk</h2></div>
                             <div class="card-body">
                                 <div class="chart-container" style="position: relative; height: 260px; width: 100%;">
                                     <canvas id="sector-chart"></canvas>
@@ -393,7 +379,7 @@
                                     <div id="candidate-list-empty" class="text-muted text-center" style="padding: 8px 0; font-size: 0.85rem; display: none;">
                                         Add symbols to validate.
                                     </div>
-                                    <ul id="candidate-list" class="candidate-list" style="list-style: none; padding: 0; margin: 0; max-height: 140px; overflow: auto;"></ul>
+                                    <ul id="candidate-list" class="candidate-list" style="list-style: none; padding: 0; margin: 0; max-height: 220px; overflow: auto;"></ul>
                                 </div>
                             </div>
                         </div>
@@ -471,9 +457,43 @@
                                     <div id="decisions-summary-strip" class="text-muted" style="font-size: 0.85rem;">
                                         Loading…
                                     </div>
-                                    <div class="search-input-wrapper">
-                                        <i class="fas fa-search search-icon"></i>
-                                        <input type="text" id="briefing-search" class="search-input" placeholder="Search by symbol or decision...">
+                                    <div class="decisions-toolbar">
+                                        <div class="search-input-wrapper">
+                                            <i class="fas fa-search search-icon"></i>
+                                            <input type="text" id="briefing-search" class="search-input" placeholder="Search by symbol or decision...">
+                                        </div>
+                                        <div class="decisions-filters">
+                                            <label class="decisions-filter-label">Stance
+                                                <select id="decisions-filter-stance" class="decisions-select">
+                                                    <option value="all">All</option>
+                                                    <option value="BUY">BUY</option>
+                                                    <option value="SELL">SELL</option>
+                                                    <option value="HOLD">HOLD</option>
+                                                    <option value="PASS">PASS</option>
+                                                    <option value="WAIT">WAIT</option>
+                                                </select>
+                                            </label>
+                                            <label class="decisions-filter-label">Type
+                                                <select id="decisions-filter-type" class="decisions-select">
+                                                    <option value="all">All</option>
+                                                    <option value="TRADE">TRADE</option>
+                                                    <option value="WATCH">WATCH</option>
+                                                    <option value="NO_TRADE">NO_TRADE</option>
+                                                    <option value="INSUFFICIENT_DATA">INSUFFICIENT</option>
+                                                </select>
+                                            </label>
+                                            <label class="decisions-filter-label">Sort
+                                                <select id="decisions-sort" class="decisions-select">
+                                                    <option value="newest">Newest first</option>
+                                                    <option value="oldest">Oldest first</option>
+                                                    <option value="symbol-asc">Symbol A–Z</option>
+                                                    <option value="symbol-desc">Symbol Z–A</option>
+                                                    <option value="score-desc">Score high→low</option>
+                                                    <option value="score-asc">Score low→high</option>
+                                                    <option value="stance">Stance (BUY→PASS)</option>
+                                                </select>
+                                            </label>
+                                        </div>
                                     </div>
                                     <div id="briefing-list-container" class="briefing-list">
                                         <!-- Dynamic list of decisions injected here -->
@@ -636,6 +656,6 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.9.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.10.0"></script>
 </body>
 </html>

@@ -517,6 +517,127 @@ body {
     to { opacity: 1; transform: translateX(0); }
 }
 
+/* Portfolio Overview workstation */
+.overview-workstation {
+    display: grid;
+    grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.9fr);
+    gap: 24px;
+    align-items: start;
+    min-height: 0;
+}
+
+@media (max-width: 1100px) {
+    .overview-workstation {
+        grid-template-columns: 1fr;
+    }
+}
+
+.overview-holdings-card {
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - 220px);
+}
+
+.overview-holdings-header {
+    flex-shrink: 0;
+}
+
+.overview-holdings-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding-top: 8px;
+}
+
+.holdings-scroll {
+    flex: 1 1 auto;
+    min-height: 220px;
+    max-height: calc(100vh - 300px);
+    overflow: auto;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+
+.holdings-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--bg-sidebar, #0f1626);
+}
+
+.holdings-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.overview-side-column {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-width: 0;
+}
+
+.overview-form-grid {
+    grid-template-columns: 1fr 1fr !important;
+}
+
+.candidate-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border-color, #333);
+}
+
+.candidate-row-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.decisions-toolbar {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.decisions-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.decisions-filter-label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    flex: 1 1 100px;
+    min-width: 90px;
+}
+
+.decisions-select {
+    background: rgba(15, 22, 38, 0.55);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-primary);
+    padding: 8px 10px;
+    font-size: 0.8rem;
+    font-family: var(--font-sans);
+}
+
+.decisions-select:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
 /* Market Workstation Layout */
 .market-workstation {
     display: grid;

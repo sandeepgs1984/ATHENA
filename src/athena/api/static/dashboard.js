@@ -174,6 +174,61 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
+    /** Ensure candidates exist, then run scoped validate (ingest + score). */
+    async function validateSymbolsNow(symbols, { button = null, refreshDecisions = false } = {}) {
+        const list = [...new Set(
+            (symbols || [])
+                .map(s => String(s || "").trim().toUpperCase().replace(/^NSE:|^BSE:/, ""))
+                .filter(Boolean)
+        )];
+        if (!list.length) {
+            showToast("Enter a symbol", "danger");
+            return null;
+        }
+        const prev = button ? button.innerHTML : null;
+        if (button) {
+            button.disabled = true;
+            button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Validating…';
+        }
+        try {
+            for (const symbol of list) {
+                await apiRequest("/api/v1/market/candidates", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ symbol }),
+                });
+            }
+            showToast(
+                `Validating ${list.join(", ")} — ingest + score (may take ~30–90s)…`,
+                "success"
+            );
+            const valRes = await apiRequest("/api/v1/market/validate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ symbols: list }),
+            });
+            const d = (valRes && valRes.data) ? valRes.data : {};
+            const ok = String(d.status || "").toUpperCase() === "COMPLETED";
+            showToast(
+                `${list.join(", ")}: ${d.status || "done"} · Eligible ${d.eligible ?? "—"} · ` +
+                `Excluded ${d.excluded ?? "—"} · decisions ${d.decisions ?? "—"}`,
+                ok ? "success" : "warning"
+            );
+            if (typeof loadMarketIntelligence === "function") {
+                await loadMarketIntelligence();
+            }
+            if (refreshDecisions && typeof loadDecisionsWorkspace === "function") {
+                await loadDecisionsWorkspace();
+            }
+            return valRes;
+        } finally {
+            if (button) {
+                button.disabled = false;
+                if (prev != null) button.innerHTML = prev;
+            }
+        }
+    }
+
     function updateTelemetry(reqId, corrId, latency) {
         state.telemetry = { requestId: reqId, correlationId: corrId, latencyMs: latency };
         
@@ -322,7 +377,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (open.length === 0) {
             holdingsTbody.innerHTML = `
                 <tr>
-                    <td colspan="6" class="text-center text-muted">No owner-entered positions yet. Log a fill above.</td>
+                    <td colspan="6" class="text-center text-muted">No owner-entered positions yet. Log a fill on the right.</td>
                 </tr>
             `;
             return;
@@ -339,15 +394,21 @@ document.addEventListener("DOMContentLoaded", () => {
             const pnlLabel = hasMark
                 ? `${pnlSign}₹ ${pnl.toFixed(2)}`
                 : `cost ₹ ${cost.toFixed(2)} (no mark)`;
+            const bare = String(pos.instrument_id || "").includes(":")
+                ? String(pos.instrument_id).split(":").pop()
+                : String(pos.instrument_id || "");
 
             return `
                 <tr>
-                    <td class="font-mono"><strong>${pos.instrument_id}</strong></td>
+                    <td class="font-mono"><strong>${bare || pos.instrument_id}</strong></td>
                     <td>${pos.quantity}</td>
                     <td class="font-mono">₹ ${parseFloat(pos.avg_price).toFixed(2)}</td>
                     <td class="font-mono">₹ ${currentVal.toFixed(2)}</td>
                     <td class="font-mono ${hasMark ? pnlClass : "text-muted"}"><strong>${pnlLabel}</strong></td>
-                    <td>
+                    <td class="holdings-actions">
+                        <button type="button" class="inspect-btn" data-validate-symbol="${bare}" title="Ingest + score this symbol">
+                            <i class="fas fa-bolt"></i> Add &amp; validate
+                        </button>
                         <button type="button" class="inspect-btn" data-close-id="${pos.position_id}">
                             Close
                         </button>
@@ -360,6 +421,12 @@ document.addEventListener("DOMContentLoaded", () => {
             btn.addEventListener("click", () => {
                 const id = btn.getAttribute("data-close-id");
                 promptClosePosition(id);
+            });
+        });
+        holdingsTbody.querySelectorAll("[data-validate-symbol]").forEach(btn => {
+            btn.addEventListener("click", async () => {
+                const sym = btn.getAttribute("data-validate-symbol");
+                await validateSymbolsNow([sym], { button: btn, refreshDecisions: true });
             });
         });
     }
@@ -665,46 +732,72 @@ document.addEventListener("DOMContentLoaded", () => {
             let validationSummary = null;
 
             if (runsRes && runsRes.data && runsRes.data.length > 0) {
-                // Prefer a completed validation run with universe payload (skip stuck RUNNING / failed)
-                const latestRun =
-                    runsRes.data.find(r => {
-                        const ctx =
-                            r.final_context ||
-                            (r.pipeline_runs && r.pipeline_runs[0]
-                                ? r.pipeline_runs[0].final_context
-                                : null);
-                        const data = ctx && ctx.data ? ctx.data : {};
-                        const members = data.universe_members || {};
-                        const status = (r.overall_status || "").toString().toUpperCase();
-                        return Object.keys(members).length > 0 && status !== "FAILED" && status !== "RUNNING";
-                    }) ||
-                    runsRes.data.find(r => {
-                        const ctx =
-                            r.final_context ||
-                            (r.pipeline_runs && r.pipeline_runs[0]
-                                ? r.pipeline_runs[0].final_context
-                                : null);
-                        const data = ctx && ctx.data ? ctx.data : {};
-                        return Object.keys(data.universe_members || {}).length > 0;
-                    }) ||
-                    runsRes.data[0];
-                const ctx =
-                    latestRun.final_context ||
-                    (latestRun.pipeline_runs && latestRun.pipeline_runs[0]
-                        ? latestRun.pipeline_runs[0].final_context
-                        : null);
-                const data = ctx && ctx.data ? ctx.data : {};
-                
-                regime = data.regime_assessment || null;
-                universe = data.universe_members || {};
-                qualified = data.qualified_today || [];
-                universeNote = data.universe_note || null;
-                validationSummary = data.validation_summary || null;
-                const summary = data.universe_summary || {};
-                if (!universeNote && summary.excluded != null && summary.included === 0 && summary.evaluated > 0) {
-                    universeNote =
-                        `All ${summary.evaluated} evaluated symbols were Excluded (e.g. need ≥30 daily bars). ` +
-                        "Inspect Trace for rule evidence. Increase ingestion lookback_days if history is short.";
+                const extractData = (r) => {
+                    const ctx =
+                        r.final_context ||
+                        (r.pipeline_runs && r.pipeline_runs[0]
+                            ? r.pipeline_runs[0].final_context
+                            : null);
+                    return ctx && ctx.data ? ctx.data : {};
+                };
+                // Newest first — prefer known volatility over older UNKNOWN payloads
+                const runs = [...runsRes.data].sort(
+                    (a, b) => new Date(b.as_of || 0) - new Date(a.as_of || 0)
+                );
+                const isUnknownVol = (reg) => {
+                    const v = String((reg && reg.volatility) || "").toUpperCase();
+                    return !v || v.includes("UNKNOWN");
+                };
+
+                for (const r of runs) {
+                    const status = (r.overall_status || "").toString().toUpperCase();
+                    if (status === "FAILED" || status === "RUNNING") continue;
+                    const data = extractData(r);
+                    const members = data.universe_members || {};
+                    const hasMembers = Object.keys(members).length > 0;
+                    const reg = data.regime_assessment || null;
+
+                    if (!regime && reg) {
+                        regime = reg;
+                    } else if (
+                        regime &&
+                        isUnknownVol(regime) &&
+                        reg &&
+                        !isUnknownVol(reg)
+                    ) {
+                        regime = reg;
+                    }
+                    if (Object.keys(universe).length === 0 && hasMembers) {
+                        universe = members;
+                        qualified = data.qualified_today || [];
+                        universeNote = data.universe_note || null;
+                        validationSummary = data.validation_summary || null;
+                        const summary = data.universe_summary || {};
+                        if (!universeNote && summary.excluded != null && summary.included === 0 && summary.evaluated > 0) {
+                            universeNote =
+                                `All ${summary.evaluated} evaluated symbols were Excluded (e.g. need ≥30 daily bars). ` +
+                                "Inspect Trace for rule evidence. Increase ingestion lookback_days if history is short.";
+                        }
+                    } else if (hasMembers && (!qualified || !qualified.length) && data.qualified_today) {
+                        qualified = data.qualified_today;
+                    }
+                    if (!validationSummary && data.validation_summary) {
+                        validationSummary = data.validation_summary;
+                    }
+                }
+                // Fallback: any run with members if still empty
+                if (Object.keys(universe).length === 0) {
+                    for (const r of runs) {
+                        const data = extractData(r);
+                        if (Object.keys(data.universe_members || {}).length > 0) {
+                            universe = data.universe_members;
+                            qualified = data.qualified_today || [];
+                            universeNote = data.universe_note || null;
+                            validationSummary = data.validation_summary || null;
+                            if (!regime) regime = data.regime_assessment || null;
+                            break;
+                        }
+                    }
                 }
                 universeCache = universe;
             }
@@ -767,8 +860,20 @@ document.addEventListener("DOMContentLoaded", () => {
                 healthBar.style.width = `${score}%`;
                 healthValue.textContent = `${score}/100`;
 
-                // Explanation
-                evidenceText.textContent = regime.explanation || "No attribution summary available.";
+                // Explanation — soften raw enum tokens for display
+                let evidence = regime.explanation || "No attribution summary available.";
+                evidence = evidence
+                    .replace(/NORMAL_VOLATILITY/g, "Normal volatility")
+                    .replace(/HIGH_VOLATILITY/g, "High volatility")
+                    .replace(/LOW_VOLATILITY/g, "Low volatility")
+                    .replace(/VOLATILITY_UNKNOWN/g, "Volatility unknown (VIX missing)")
+                    .replace(/BULL_TREND/g, "Bullish")
+                    .replace(/BEAR_TREND/g, "Bearish")
+                    .replace(/GAP_DOWN/g, "Gap down")
+                    .replace(/GAP_UP/g, "Gap up")
+                    .replace(/NO_GAP/g, "No gap")
+                    .replace(/SIDEWAYS/g, "Sideways");
+                evidenceText.textContent = evidence;
             } else if (trendBadge && volBadge && gapBadge && healthBar && healthValue && evidenceText) {
                 trendBadge.textContent = "UNKNOWN";
                 trendBadge.className = "regime-badge neutral";
@@ -1080,14 +1185,25 @@ document.addEventListener("DOMContentLoaded", () => {
             if (emptyEl) emptyEl.style.display = "none";
             rows.forEach(c => {
                 const li = document.createElement("li");
-                li.style.cssText = "display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border-color, #333);";
+                li.className = "candidate-row";
                 li.innerHTML = `
                     <span class="symbol-name-col">${c.symbol}</span>
-                    <button type="button" class="inspect-btn candidate-remove-btn" data-symbol="${c.symbol}">
-                        <i class="fas fa-times"></i> Remove
-                    </button>
+                    <div class="candidate-row-actions">
+                        <button type="button" class="inspect-btn candidate-validate-btn" data-symbol="${c.symbol}" title="Re-run ingest + score">
+                            <i class="fas fa-bolt"></i> Validate
+                        </button>
+                        <button type="button" class="inspect-btn candidate-remove-btn" data-symbol="${c.symbol}">
+                            <i class="fas fa-times"></i> Remove
+                        </button>
+                    </div>
                 `;
                 listEl.appendChild(li);
+            });
+            listEl.querySelectorAll(".candidate-validate-btn").forEach(btn => {
+                btn.addEventListener("click", async () => {
+                    const sym = btn.getAttribute("data-symbol");
+                    await validateSymbolsNow([sym], { button: btn, refreshDecisions: true });
+                });
             });
             listEl.querySelectorAll(".candidate-remove-btn").forEach(btn => {
                 btn.addEventListener("click", async () => {
@@ -1119,41 +1235,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 showToast("Enter a symbol", "danger");
                 return;
             }
-            candidateAddBtn.disabled = true;
-            const prevLabel = candidateAddBtn.innerHTML;
-            candidateAddBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Validating…';
-            try {
-                await apiRequest("/api/v1/market/candidates", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ symbol }),
-                });
-                candidateInput.value = "";
-                showToast(`Added ${symbol} — running ATHENA validation (ingest + score)…`, "success");
-                await loadCandidateList();
-
-                const valRes = await apiRequest("/api/v1/market/validate", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ symbols: [symbol] }),
-                });
-                const d = (valRes && valRes.data) ? valRes.data : {};
-                const ok = String(d.status || "").toUpperCase() === "COMPLETED";
-                showToast(
-                    `${symbol}: ${d.status || "done"} · Eligible ${d.eligible ?? "—"} · ` +
-                    `Excluded ${d.excluded ?? "—"} · decisions ${d.decisions ?? "—"}` +
-                    (d.qualified ? ` · WATCH/TRADE ${d.qualified}` : ""),
-                    ok ? "success" : "warning"
-                );
-                await loadMarketIntelligence();
-            } catch (err) {
-                // apiRequest already toasts Problem Details
-                await loadCandidateList();
-                await loadMarketIntelligence();
-            } finally {
-                candidateAddBtn.disabled = false;
-                candidateAddBtn.innerHTML = prevLabel;
-            }
+            candidateInput.value = "";
+            await validateSymbolsNow([symbol], { button: candidateAddBtn, refreshDecisions: true });
         };
         candidateAddBtn.addEventListener("click", addAndValidateCandidate);
         candidateInput.addEventListener("keydown", (e) => {
@@ -1605,19 +1688,8 @@ document.addEventListener("DOMContentLoaded", () => {
                         byInstrument.set(key, d);
                     }
                 }
-                traceDecisionsList = Array.from(byInstrument.values()).sort((a, b) => {
-                    return new Date(b.metadata.ts).getTime() - new Date(a.metadata.ts).getTime();
-                });
-                renderBriefingList(traceDecisionsList);
-                
-                // Select first decision by default if available
-                if (traceDecisionsList.length > 0) {
-                    selectBriefing(traceDecisionsList[0].metadata.decision_id);
-                } else {
-                    if (dagNodesContainer) {
-                        dagNodesContainer.innerHTML = '<div class="text-muted text-center" style="padding: 48px;">No decisions logged in journal.</div>';
-                    }
-                }
+                traceDecisionsList = Array.from(byInstrument.values());
+                applyDecisionsView();
             }
         } catch (err) {
             console.error("Failed to load decisions", err);
@@ -1628,6 +1700,64 @@ document.addEventListener("DOMContentLoaded", () => {
                 dagNodesContainer.innerHTML = '<div class="text-muted text-center" style="padding: 48px;">Decision trace unavailable until briefings load.</div>';
             }
             showToast("Failed to load decisions workspace", "danger");
+        }
+    }
+
+    function decisionScoreValue(d) {
+        const fromText = extractScoreFromText(d.explanation || "");
+        if (fromText != null) return Number(fromText);
+        return -1;
+    }
+
+    function applyDecisionsView() {
+        const query = (briefingSearch && briefingSearch.value || "").toLowerCase().trim();
+        const stanceFilter = (document.getElementById("decisions-filter-stance") || {}).value || "all";
+        const typeFilter = (document.getElementById("decisions-filter-type") || {}).value || "all";
+        const sortMode = (document.getElementById("decisions-sort") || {}).value || "newest";
+
+        let rows = [...traceDecisionsList];
+        rows = rows.filter(d => {
+            const type = (d.metadata && d.metadata.decision_type) || "";
+            const dir = (d.metadata && d.metadata.direction) || "NONE";
+            const stance = decisionStance(type, dir).label;
+            if (stanceFilter !== "all" && stance !== stanceFilter) return false;
+            if (typeFilter !== "all" && String(type).toUpperCase() !== typeFilter) return false;
+            if (!query) return true;
+            const symbol = (d.metadata.instrument_id || "INDEX").toLowerCase();
+            const exp = (d.explanation || "").toLowerCase();
+            return symbol.includes(query) || type.toLowerCase().includes(query) || exp.includes(query)
+                || stance.toLowerCase().includes(query);
+        });
+
+        const stanceRank = { BUY: 0, SELL: 1, HOLD: 2, WAIT: 3, PASS: 4 };
+        rows.sort((a, b) => {
+            const sa = (a.metadata && a.metadata.instrument_id) || "";
+            const sb = (b.metadata && b.metadata.instrument_id) || "";
+            const ta = new Date((a.metadata && a.metadata.ts) || 0).getTime();
+            const tb = new Date((b.metadata && b.metadata.ts) || 0).getTime();
+            const scoreA = decisionScoreValue(a);
+            const scoreB = decisionScoreValue(b);
+            const stanceA = decisionStance(a.metadata.decision_type, a.metadata.direction).label;
+            const stanceB = decisionStance(b.metadata.decision_type, b.metadata.direction).label;
+            switch (sortMode) {
+                case "oldest": return ta - tb;
+                case "symbol-asc": return sa.localeCompare(sb);
+                case "symbol-desc": return sb.localeCompare(sa);
+                case "score-desc": return scoreB - scoreA || tb - ta;
+                case "score-asc": return scoreA - scoreB || tb - ta;
+                case "stance":
+                    return (stanceRank[stanceA] ?? 9) - (stanceRank[stanceB] ?? 9) || tb - ta;
+                case "newest":
+                default:
+                    return tb - ta;
+            }
+        });
+
+        renderBriefingList(rows);
+        if (rows.length > 0) {
+            selectBriefing(rows[0].metadata.decision_id);
+        } else if (dagNodesContainer) {
+            dagNodesContainer.innerHTML = '<div class="text-muted text-center" style="padding: 48px;">No decisions match the current filters.</div>';
         }
     }
 
@@ -1997,19 +2127,17 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
-    // Search filter briefing list
-    if (briefingSearch) {
-        briefingSearch.addEventListener("input", (e) => {
-            const query = e.target.value.toLowerCase();
-            const filtered = traceDecisionsList.filter(d => {
-                const symbol = (d.metadata.instrument_id || "INDEX").toLowerCase();
-                const type = (d.metadata.decision_type || "").toLowerCase();
-                const exp = (d.explanation || "").toLowerCase();
-                return symbol.includes(query) || type.includes(query) || exp.includes(query);
-            });
-            renderBriefingList(filtered);
+    // Search / filter / sort for Today's Decisions
+    const wireDecisionsControls = () => {
+        ["decisions-filter-stance", "decisions-filter-type", "decisions-sort"].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener("change", applyDecisionsView);
         });
-    }
+        if (briefingSearch) {
+            briefingSearch.addEventListener("input", applyDecisionsView);
+        }
+    };
+    wireDecisionsControls();
 
     // Wire refresh trigger
     refreshTrigger.addEventListener("click", () => {
