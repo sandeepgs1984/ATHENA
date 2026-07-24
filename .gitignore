@@ -29,6 +29,9 @@ venv/
 data/raw/
 data/cache/
 
+# Ops runtime (alerts, locks, logs)
+artifacts/
+
 # OS / editor
 .DS_Store
 .idea/

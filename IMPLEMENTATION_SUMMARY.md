@@ -6,6 +6,25 @@ status updated on approval.
 
 ---
 
+## Live Entry M-E2 — athena serve supervisor (READY FOR REVIEW)
+
+| | |
+|---|---|
+| Completed | 2026-07-24 |
+| Scope | One-command localhost host: API + optional due-cycle worker; health serve fields; cycle lock |
+| Tests | `tests/ops/test_serve_runtime.py`; `tests/api` health compatibility |
+| Status | **READY FOR REVIEW** — stop here before M-E3 |
+| Branch | develop |
+
+- CLI: `athena serve [--host] [--port] [--with-cycles] [--cycle-interval] [--open]`.
+- Wrappers: `./athena-serve`, `./athena-daily serve`.
+- Worker reuses `_execute_run_due` / `HostDueRunner` (same path as `run-due`).
+- Advisory lock `artifacts/locks/cycle-runner.lock` shared with `run-due`.
+- Health: `kite_token_status`, `cycles_enabled`, `last_cycle`, `serve_error`.
+- Dashboard badge reflects cycles / kite presence (`?v=9.14.0`).
+
+---
+
 ## Live Entry M-E1 — Auth surface + unlock screen (READY FOR REVIEW)
 
 | | |

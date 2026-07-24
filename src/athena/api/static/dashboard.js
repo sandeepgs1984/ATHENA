@@ -476,18 +476,34 @@ document.addEventListener("DOMContentLoaded", () => {
     // Telemetry & Diagnostic Data Handlers
     // ---------------------------------------------------------------------------
     async function checkSystemHealth() {
+        const sessionStatus = document.getElementById("session-status");
         try {
-            const health = await apiRequest("/health");
-            if (health && health.status === "UP") {
+            const platform = await fetch("/health").then((r) => r.json()).catch(() => null);
+            const v1 = await apiRequest("/api/v1/health", { skipAuthRedirect: true }).catch(() => null);
+            const data = v1?.data;
+
+            if (platform && platform.status === "UP") {
                 healthIndicator.className = "btn btn-health healthy";
                 healthIndicator.querySelector("span").textContent = "HEALTHY";
             } else {
                 healthIndicator.className = "btn btn-health warning";
                 healthIndicator.querySelector("span").textContent = "DEGRADED";
             }
+
+            if (sessionStatus && data) {
+                const kite = data.kite_token_status || "unknown";
+                if (data.cycles_enabled) {
+                    sessionStatus.textContent = "LIVE ENGINE ACTIVE";
+                } else if (kite === "missing") {
+                    sessionStatus.textContent = "API UP · KITE TOKEN MISSING";
+                } else {
+                    sessionStatus.textContent = "API UP · MANUAL CYCLES";
+                }
+            }
         } catch (err) {
             healthIndicator.className = "btn btn-health danger";
             healthIndicator.querySelector("span").textContent = "OFFLINE";
+            if (sessionStatus) sessionStatus.textContent = "API OFFLINE";
         }
     }
 

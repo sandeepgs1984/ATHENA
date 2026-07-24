@@ -389,16 +389,20 @@ def _cmd_diagnose(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_run_due(args: argparse.Namespace) -> int:
-    """R5/R6: run due PREMARKET/REFRESH/CLOSING cycles (then optional brief); alert on hard failure."""
+def _execute_run_due(
+    *,
+    as_of_raw: str | None = None,
+    send_brief: bool | None = None,
+    alert: bool = True,
+):
+    """Shared due-ops path for CLI ``run-due`` and ``serve --with-cycles``."""
     config_dir = _config_dir()
     cfg = load_config(config_dir)
     sched = load_scheduling_config(config_dir)
     host_ops = load_host_ops_config(config_dir)
     notify_cfg = load_notifications_config(config_dir)
     tz = ZoneInfo(cfg.market.timezone)
-    as_of = _parse_as_of(args.as_of, tz)
-    send_brief = None if args.brief is None else bool(args.brief)
+    as_of = _parse_as_of(as_of_raw, tz)
 
     with _open_repo(cfg) as repo:
         from athena.ops.candidate_seed import seed_owner_candidates
@@ -430,11 +434,34 @@ def _cmd_run_due(args: argparse.Namespace) -> int:
             strategy_profile=cfg.base.active_profile,
             pipeline=_owner_validation_pipeline(repo, config_dir),
         )
-        result = runner.run(
+        return runner.run(
             as_of=as_of,
+            send_brief=send_brief,
+            alert=alert,
+        )
+
+
+def _cmd_run_due(args: argparse.Namespace) -> int:
+    """R5/R6: run due PREMARKET/REFRESH/CLOSING cycles (then optional brief); alert on hard failure."""
+    from athena.ops.serve_runtime import CycleRunnerLock, default_cycle_lock_path
+
+    send_brief = None if args.brief is None else bool(args.brief)
+    lock = CycleRunnerLock(default_cycle_lock_path(_repo_root()))
+    if not lock.acquire():
+        print(
+            "ERROR: another cycle runner holds artifacts/locks/cycle-runner.lock "
+            "(athena serve --with-cycles or another run-due).",
+            file=sys.stderr,
+        )
+        return 75  # EX_TEMPFAIL
+    try:
+        result = _execute_run_due(
+            as_of_raw=args.as_of,
             send_brief=send_brief,
             alert=not bool(args.no_alert),
         )
+    finally:
+        lock.release()
 
     print(f"run-due as_of   : {result.as_of.isoformat()}")
     if result.idle:
@@ -451,6 +478,109 @@ def _cmd_run_due(args: argparse.Namespace) -> int:
         print(f"briefing        : {result.briefing_id}")
     if result.alerted:
         print("alert           : sent")
+    return 0
+
+
+def _last_cycle_from_result(result):
+    from athena.ops.serve_runtime import LastCycleSnapshot
+
+    if result.idle:
+        return LastCycleSnapshot(
+            as_of=result.as_of,
+            idle=True,
+            due=tuple(t.value for t in result.due),
+            status="idle",
+            detail="no triggers due",
+        )
+    last = result.cycles[-1] if result.cycles else None
+    if last is None:
+        return LastCycleSnapshot(
+            as_of=result.as_of,
+            idle=False,
+            due=tuple(t.value for t in result.due),
+            status="empty",
+            detail="due triggers but no cycle results",
+        )
+    return LastCycleSnapshot(
+        as_of=result.as_of,
+        idle=False,
+        due=tuple(t.value for t in result.due),
+        status=last.run.status.value,
+        run_id=last.run.run_id,
+        trigger=last.run.trigger.value,
+    )
+
+
+def _cmd_serve(args: argparse.Namespace) -> int:
+    """Start localhost API (+ optional in-process due-cycle worker)."""
+    import webbrowser
+
+    import uvicorn
+
+    from athena.ops.serve_runtime import (
+        CycleWorker,
+        ServeRuntime,
+        default_cycle_lock_path,
+        set_serve_runtime,
+    )
+
+    # Ensure DB schema exists before accepting traffic.
+    cfg = load_config(_config_dir())
+    with _open_repo(cfg) as repo:
+        _ = repo
+
+    host = str(args.host)
+    port = int(args.port)
+    runtime = ServeRuntime(
+        cycles_enabled=bool(args.with_cycles),
+        host=host,
+        port=port,
+    )
+    set_serve_runtime(runtime)
+
+    worker: CycleWorker | None = None
+    if args.with_cycles:
+
+        def _tick():
+            # Interactive serve: no failure webhooks spam; launchd path still alerts.
+            result = _execute_run_due(as_of_raw=None, send_brief=None, alert=False)
+            return _last_cycle_from_result(result)
+
+        worker = CycleWorker(
+            runtime=runtime,
+            interval_seconds=float(args.cycle_interval),
+            tick_fn=_tick,
+            lock_path=default_cycle_lock_path(_repo_root()),
+        )
+        worker.start()
+
+    url = f"http://{host}:{port}/dashboard/"
+    print(f"ATHENA serve    : {url}")
+    if args.with_cycles:
+        print(f"cycles worker   : on (interval={args.cycle_interval}s)")
+    else:
+        print("cycles worker   : off")
+    print("Unlock in browser, then use the live console.")
+    print("Stop with Ctrl+C. launchd ./athena-run-due remains the unattended scheduler.")
+
+    if args.open:
+        try:
+            webbrowser.open(url)
+        except Exception as exc:
+            print(f"WARNING: could not open browser: {exc}", file=sys.stderr)
+
+    try:
+        uvicorn.run(
+            "athena.api.app:create_app",
+            factory=True,
+            host=host,
+            port=port,
+            log_level="info",
+        )
+    finally:
+        if worker is not None:
+            worker.stop()
+        set_serve_runtime(None)
     return 0
 
 
@@ -659,6 +789,31 @@ def main(argv: list[str] | None = None) -> int:
         help="Do not dispatch failure alerts (still exits non-zero on failure)",
     )
     p_run_due.set_defaults(func=_cmd_run_due)
+
+    p_serve = sub.add_parser(
+        "serve",
+        help="Start localhost API (+ optional due-cycle worker) — Live Entry workstation host",
+    )
+    p_serve.add_argument("--host", default="127.0.0.1", help="Bind host (default 127.0.0.1)")
+    p_serve.add_argument("--port", type=int, default=8000, help="Bind port (default 8000)")
+    p_serve.add_argument(
+        "--with-cycles",
+        action="store_true",
+        help="Poll due PREMARKET/REFRESH/CLOSING in-process (complements launchd)",
+    )
+    p_serve.add_argument(
+        "--cycle-interval",
+        type=float,
+        default=60.0,
+        metavar="SECONDS",
+        help="Seconds between due checks when --with-cycles (default 60, min 5)",
+    )
+    p_serve.add_argument(
+        "--open",
+        action="store_true",
+        help="Open the dashboard URL in the default browser",
+    )
+    p_serve.set_defaults(func=_cmd_serve)
 
     p_seed = sub.add_parser(
         "seed-candidates",

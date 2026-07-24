@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# ATHENA — one-command localhost workstation host (Live Entry M-E2).
+# Usage:
+#   ./athena-serve
+#   ./athena-serve --with-cycles --open
+#   ./athena-serve --port 8000
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+cd "$ROOT"
+export PYTHONPATH="${ROOT}/src${PYTHONPATH:+:$PYTHONPATH}"
+# shellcheck source=scripts/bash_load_dotenv.sh
+source "$ROOT/scripts/bash_load_dotenv.sh"
+athena_load_dotenv "$ROOT/.env"
+exec python3 -m athena.cli serve "$@"

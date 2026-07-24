@@ -2,7 +2,16 @@
 
 **Purpose:** Run due premarket/refresh cycles unattended via **launchd** or **cron**, and notify on hard failures (DD-9: webhook + file).
 
-**Non-goals:** Embedded cron inside ATHENA · SMTP email · order placement · auto Kite login (still use `./kite-auth` when `provider=kite`).
+**Non-goals:** Embedded production cron replacing launchd · SMTP email · order placement · auto Kite login (still use `./kite-auth` when `provider=kite`).
+
+**Interactive complement (M-E2):** while you are at the desk, prefer:
+
+```bash
+./athena-serve --with-cycles --open
+# or: PYTHONPATH=src python3 -m athena.cli serve --with-cycles --open
+```
+
+That starts the API + optional in-process due poller. launchd/`./athena-run-due` stays for unattended daytime ticks. Both paths share `artifacts/locks/cycle-runner.lock` so they do not overlap.
 
 ---
 

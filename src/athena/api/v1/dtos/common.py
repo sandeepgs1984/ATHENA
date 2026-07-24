@@ -18,6 +18,20 @@ class ComponentHealth(BaseModel):
     detail: str | None = None
 
 
+class LastCycleHealthDTO(BaseModel):
+    """Last interactive/worker due-cycle summary (Live Entry M-E2)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    as_of: datetime
+    idle: bool
+    due: tuple[str, ...] = ()
+    status: str
+    run_id: str | None = None
+    trigger: str | None = None
+    detail: str | None = None
+
+
 class HealthResponse(BaseModel):
     """Platform health summary DTO."""
 
@@ -27,6 +41,10 @@ class HealthResponse(BaseModel):
     version: str
     components: list[ComponentHealth]
     as_of: datetime
+    kite_token_status: Literal["missing", "present", "unknown"] = "unknown"
+    cycles_enabled: bool = False
+    last_cycle: LastCycleHealthDTO | None = None
+    serve_error: str | None = None
 
 
 class MetricsResponse(BaseModel):

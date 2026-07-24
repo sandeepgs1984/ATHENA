@@ -47,6 +47,7 @@ def test_owner_seed_helpers(owner_hash: str, monkeypatch: pytest.MonkeyPatch) ->
     assert single_user_bypass_enabled() is True
     assert auth_required() is False
 
+    monkeypatch.setenv("ATHENA_OWNER_USER", "owner")
     monkeypatch.setenv("ATHENA_OWNER_PASSWORD_HASH", owner_hash)
     assert owner_credentials_configured() is True
     assert single_user_bypass_enabled() is False

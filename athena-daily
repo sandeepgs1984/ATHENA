@@ -40,17 +40,18 @@ Usage:
   ./athena-daily validate SYM [SYM…]  Ingest+score symbol(s); shows on MI + Decisions
   ./athena-daily force-refresh   One refresh cycle now (full list; slow on Nifty 500)
   ./athena-daily force-refresh --smoke
-  ./athena-daily dashboard       Print dashboard URL
+  ./athena-daily dashboard       Print dashboard URL / serve hint
+  ./athena-daily serve [--with-cycles] [--open]  Start API (Live Entry host)
   ./athena-daily set-owner-password   Generate unlock hash lines for .env
   ./athena-daily help
 
 Prereqs (once per trading day):
   1. config/ingestion.json → "provider": "kite"
   2. ./kite-auth
-  3. Dashboard (optional): PYTHONPATH=src uvicorn athena.api.app:create_app --factory --port 8000
-     then open http://localhost:8000/dashboard/
+  3. Dashboard: ./athena-serve   (or ./athena-daily serve --open)
+     then unlock at http://localhost:8000/dashboard/
 
-Note: shell alias `athena` only cds into the repo — use PYTHONPATH=src python3 -m athena.cli … or ./athena-daily
+Note: shell alias `athena` only cds into the repo — use PYTHONPATH=src python3 -m athena.cli … or ./athena-daily / ./athena-serve
 EOF
 }
 
@@ -194,8 +195,13 @@ case "$CMD" in
     ;;
   dashboard)
     echo "Open: http://localhost:8000/dashboard/"
-    echo "Start API if needed:"
-    echo "  cd \"$ROOT\" && PYTHONPATH=src uvicorn athena.api.app:create_app --factory --host 127.0.0.1 --port 8000"
+    echo "Start workstation host:"
+    echo "  ./athena-serve"
+    echo "  ./athena-serve --with-cycles --open"
+    echo "  ./athena-daily serve --with-cycles --open"
+    ;;
+  serve)
+    exec "$PYTHON" -m athena.cli serve "$@"
     ;;
   set-owner-password|owner-password)
     exec "$PYTHON" -m athena.cli set-owner-password "$@"
