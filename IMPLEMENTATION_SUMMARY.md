@@ -6,14 +6,89 @@ status updated on approval.
 
 ---
 
-## Live Entry M-E4 — macOS Dock launcher (READY FOR REVIEW)
+## Live Entry M-E5 — hardening & ops polish (READY FOR REVIEW)
+
+| | |
+|---|---|
+| Completed | 2026-07-24 |
+| Objective | Harden the approved Dock/URL → unlock → Kite → LIVE workstation path |
+| Scope | Login throttling; production JWT secret resolution; localhost/TLS controls; final runbook and roadmap |
+| Tests | Full suite **976 passed**; targeted auth/serve **33 passed**; changed-file Ruff; shell syntax; plist lint |
+| Coverage | Existing project coverage gate retained; no separate percentage collected |
+| Status | **READY FOR REVIEW** — professional live-entry track complete; awaiting owner approval |
+| Branch | develop |
+
+### Scope completed
+
+- Added deterministic, thread-safe login throttling per normalized
+  username/client IP: five failures in ten minutes trigger a fifteen-minute
+  lockout, HTTP 429, and `Retry-After`.
+- Replaced the known development JWT signing key for owner-configured runtime:
+  explicit `ATHENA_JWT_SECRET` wins; otherwise a stable SHA-256 key is derived
+  from the bcrypt owner hash without exposing that hash as the signing key.
+- Changed the transport default to `127.0.0.1`; added paired
+  `--ssl-certfile`/`--ssl-keyfile` serve options and an optional mkcert recipe.
+- Preserved the existing AuthService audit sink, `/auth/me` profile,
+  read-only Kite boundary, cycle-runner advisory lock, and launchd role for
+  unattended scheduling.
+- Added `docs/ops/LIVE_ENTRY.md`, `.env.example` security controls, README
+  linkage, and M-E1–M-E5 roadmap entries.
+
+### Files created
+
+- `src/athena/api/security/login_limiter.py`
+- `tests/api/v1/test_login_limiter.py`
+- `docs/ops/LIVE_ENTRY.md`
+
+### Files modified
+
+- API configuration, app wiring, security exceptions/exports/error mapping,
+  auth router, serve CLI, auth route tests, `.env.example`, README,
+  `docs/MILESTONES.md`, and this implementation log.
+
+### Public APIs and compatibility
+
+- No frozen analytical/domain contract changed.
+- Existing `/api/v1/auth/login` now additionally returns RFC-style HTTP 429
+  while locked; successful response and token contracts are unchanged.
+- `athena serve` adds optional TLS flags; HTTP localhost remains the default.
+
+### Validation and architecture
+
+- Determinism/replayability: analytical execution paths are untouched; limiter
+  clock is injectable and unit-tested.
+- ADR compliance: no ADR required. The in-process worker remains interactive;
+  launchd remains the unattended scheduler. No embedded UI framework added.
+- Provider independence and no-order boundary: unchanged.
+- Full regression: **976 passed**.
+- Changed-file Ruff: passed. Repository-wide Ruff still reports 243 pre-existing
+  findings outside this milestone; no new changed-file finding remains.
+- Shell launchers parse successfully; macOS `Info.plist` validates.
+
+### Risks, debt, and remaining work
+
+- Login counters are intentionally process-local; restarting the localhost
+  workstation clears a lockout. This is proportionate for a single-user,
+  localhost-only app and avoids introducing persistent auth state.
+- Optional TLS is a terminal power-user mode; the Dock launcher intentionally
+  keeps the default trusted localhost HTTP path.
+- No technical debt or architecture drift introduced by M-E5.
+- Remaining work: owner/principal-engineer review and approval only.
+
+### Consolidated commit message
+
+`feat(ops): deliver professional live-entry workstation`
+
+---
+
+## Live Entry M-E4 — macOS Dock launcher (APPROVED)
 
 | | |
 |---|---|
 | Completed | 2026-07-24 |
 | Scope | Thin native `.app` wrapper; one-command installer; health-aware server start and browser open |
 | Tests | App plist/executable, shell syntax, temporary signed app installation; full suite **970 passed** |
-| Status | **READY FOR REVIEW** — stop here before M-E5 |
+| Status | **APPROVED** |
 | Branch | develop |
 
 - `./install-athena-app` installs an ad-hoc-signed `~/Applications/ATHENA.app`.
@@ -63,14 +138,14 @@ status updated on approval.
 
 ---
 
-## Live Entry M-E1 — Auth surface + unlock screen (READY FOR REVIEW)
+## Live Entry M-E1 — Auth surface + unlock screen (APPROVED)
 
 | | |
 |---|---|
 | Completed | 2026-07-24 |
 | Scope | Wire AuthService to HTTP; owner seed from `.env`; unlock gate; Bearer + refresh in dashboard |
 | Tests | `tests/api/v1/test_auth_routes.py` + `tests/api` (120 passed) |
-| Status | **READY FOR REVIEW** — stop here before M-E2 |
+| Status | **APPROVED** |
 | Branch | develop |
 
 - Routes: `GET/POST /api/v1/auth/status|login|refresh|logout|me`.

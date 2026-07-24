@@ -157,6 +157,16 @@ SOP: [`docs/ops/FILE_BACKED_DAILY_OPS.md`](ops/FILE_BACKED_DAILY_OPS.md) · Smok
 | **D-V3** Qualify WATCH/TRADE | Scan eligible → persist decisions; MI qualified-today | 🔄 Ready for review |
 | **D-U1–U3** Nifty 500 seed | Daily merge-unique Nifty 500 → `owner_candidates` | 🔄 Ready for review |
 
+### Professional live-entry track (post Phase 9/10)
+
+| Milestone | Scope | Status |
+|---|---|---|
+| **M-E1** Auth surface | Owner env seed, unlock UI, JWT login/refresh/logout/me | ✅ Approved |
+| **M-E2** Workstation host | `athena serve`, optional due-cycle worker, shared runner lock | ✅ Approved |
+| **M-E3** Kite morning gate | Verified read-only session, in-UI authorize/exchange/reconnect | ✅ Approved |
+| **M-E4** macOS Dock launcher | Thin `.app` wrapper + installer; health-aware open/start | ✅ Approved |
+| **M-E5** Hardening & ops polish | Login lockout, JWT hardening, optional TLS, final live-entry SOP | 🔄 Ready for review |
+
 ---
 
 *Status legend: a milestone is "In Progress" (🔄) when actively being designed or built, "Approved" (✅) only when the owner signs off. Never two milestones in flight.*

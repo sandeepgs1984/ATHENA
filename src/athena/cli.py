@@ -181,8 +181,9 @@ def _build_ingest_engine(
 
                 kite_cfg = load_kite_provider_config(config_dir)
                 catalog_ids = {i.instrument_id for i in catalog}
-                for extra in list(kite_cfg.index_instruments) + [
-                    kite_cfg.india_vix_instrument
+                for extra in [
+                    *kite_cfg.index_instruments,
+                    kite_cfg.india_vix_instrument,
                 ]:
                     if extra and extra in catalog_ids and extra not in resolved:
                         resolved.append(extra)
@@ -531,6 +532,30 @@ def _cmd_serve(args: argparse.Namespace) -> int:
 
     host = str(args.host)
     port = int(args.port)
+    ssl_certfile = (
+        Path(args.ssl_certfile).expanduser().resolve()
+        if args.ssl_certfile
+        else None
+    )
+    ssl_keyfile = (
+        Path(args.ssl_keyfile).expanduser().resolve()
+        if args.ssl_keyfile
+        else None
+    )
+    if (ssl_certfile is None) != (ssl_keyfile is None):
+        print(
+            "ERROR: --ssl-certfile and --ssl-keyfile must be provided together",
+            file=sys.stderr,
+        )
+        return 2
+    for label, path in (
+        ("--ssl-certfile", ssl_certfile),
+        ("--ssl-keyfile", ssl_keyfile),
+    ):
+        if path is not None and not path.is_file():
+            print(f"ERROR: {label} does not exist: {path}", file=sys.stderr)
+            return 2
+
     runtime = ServeRuntime(
         cycles_enabled=bool(args.with_cycles),
         host=host,
@@ -554,7 +579,8 @@ def _cmd_serve(args: argparse.Namespace) -> int:
         )
         worker.start()
 
-    url = f"http://{host}:{port}/dashboard/"
+    scheme = "https" if ssl_certfile is not None else "http"
+    url = f"{scheme}://{host}:{port}/dashboard/"
     print(f"ATHENA serve    : {url}")
     if args.with_cycles:
         print(f"cycles worker   : on (interval={args.cycle_interval}s)")
@@ -576,6 +602,8 @@ def _cmd_serve(args: argparse.Namespace) -> int:
             host=host,
             port=port,
             log_level="info",
+            ssl_certfile=str(ssl_certfile) if ssl_certfile is not None else None,
+            ssl_keyfile=str(ssl_keyfile) if ssl_keyfile is not None else None,
         )
     finally:
         if worker is not None:
@@ -812,6 +840,16 @@ def main(argv: list[str] | None = None) -> int:
         "--open",
         action="store_true",
         help="Open the dashboard URL in the default browser",
+    )
+    p_serve.add_argument(
+        "--ssl-certfile",
+        metavar="PATH",
+        help="Optional localhost TLS certificate (use together with --ssl-keyfile)",
+    )
+    p_serve.add_argument(
+        "--ssl-keyfile",
+        metavar="PATH",
+        help="Optional localhost TLS private key (use together with --ssl-certfile)",
     )
     p_serve.set_defaults(func=_cmd_serve)
 

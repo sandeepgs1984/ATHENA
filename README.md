@@ -18,6 +18,7 @@ ATHENA is not a screener, not a bot, and never executes trades. It exists to imp
 | [File-backed daily ops](docs/ops/FILE_BACKED_DAILY_OPS.md) | R1 SOP for FileProvider daily use | Approved |
 | [Kite live data ops](docs/ops/KITE_LIVE_DATA.md) | R4 Kite token + ingest runbook | **Approved** |
 | [Host schedule + alerts](docs/ops/HOST_SCHEDULE.md) | R5 launchd/cron + failure alerts | **Approved** |
+| [Professional live entry](docs/ops/LIVE_ENTRY.md) | Dock/URL → unlock → Kite → LIVE runbook | Ready for review |
 | [DD-9 alerting](docs/decisions/DD-9-alerting-channel.md) | R5 webhook+file alert choice | Accepted (email deferred) |
 | [DD-1 live vendor](docs/decisions/DD-1-broker-live-data-vendor.md) | R3 broker/data vendor decision | **Accepted** — Zerodha Kite Connect |
 | [ADRs](docs/adr/) | Architecture Decision Records (ADR-001…005 seeded) | Active |
@@ -33,8 +34,7 @@ ATHENA is not a screener, not a bot, and never executes trades. It exists to imp
 ```
 
 The morning path is: **Dock/URL → ATHENA unlock → Kite gate when needed → LIVE**.
-See [Host schedule + launcher](docs/ops/HOST_SCHEDULE.md) and
-[Kite live data](docs/ops/KITE_LIVE_DATA.md).
+See [Professional live entry](docs/ops/LIVE_ENTRY.md).
 
 ## Core decisions
 

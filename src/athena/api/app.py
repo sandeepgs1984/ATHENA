@@ -18,7 +18,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from athena.api.config import APISettings
+from athena.api.config import APISettings, api_settings_from_env
 from athena.api.errors import exception_mapper
 from athena.api.platform.health import router as platform_health_router
 from athena.api.platform.info import router as platform_info_router
@@ -29,6 +29,7 @@ from athena.api.platform.version import router as platform_version_router
 from athena.api.security.audit import LoggingAuditSink
 from athena.api.security.dependencies import get_session_store, get_user_repository
 from athena.api.security.hashing import BcryptPasswordHasher
+from athena.api.security.login_limiter import LoginAttemptLimiter, LoginLimitPolicy
 from athena.api.security.owner_seed import seed_owner_user
 from athena.api.security.service import AuthService
 from athena.api.security.token import HMAC256TokenSigner, TokenClaimsFactory
@@ -69,10 +70,14 @@ def _register_exception_handlers(app: FastAPI) -> None:
         detail = exception_mapper.classify(
             exc, str(request.url.path), request_id, correlation_id
         )
+        headers = {"Content-Type": "application/problem+json"}
+        retry_after = getattr(exc, "retry_after_seconds", None)
+        if retry_after is not None:
+            headers["Retry-After"] = str(retry_after)
         return JSONResponse(
             status_code=detail.status,
             content=detail.to_dict(),
-            headers={"Content-Type": "application/problem+json"},
+            headers=headers,
         )
 
     @app.exception_handler(ValueError)
@@ -184,7 +189,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
 
     load_dotenv()
 
-    settings = settings or APISettings()
+    settings = settings or api_settings_from_env()
 
     app = FastAPI(
         title=settings.app.title,
@@ -212,6 +217,13 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
         signer=app.state.token_signer,
         claims_factory=app.state.claims_factory,
         audit_sink=LoggingAuditSink(),
+    )
+    app.state.login_limiter = LoginAttemptLimiter(
+        LoginLimitPolicy(
+            max_failures=settings.security.login_max_failures,
+            window_minutes=settings.security.login_failure_window_minutes,
+            lockout_minutes=settings.security.login_lockout_minutes,
+        )
     )
     seed_owner_user(get_user_repository())
     config_dir = Path(os.environ.get("ATHENA_CONFIG_DIR", "config")).resolve()

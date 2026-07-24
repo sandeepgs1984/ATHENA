@@ -21,6 +21,17 @@ class InvalidCredentialsError(AuthenticationError):
     """Invalid username or password."""
 
 
+class AuthenticationLockedError(AuthenticationError):
+    """Too many failed unlock attempts; retry after the lockout interval."""
+
+    def __init__(self, *, retry_after_seconds: int) -> None:
+        self.retry_after_seconds = max(1, int(retry_after_seconds))
+        super().__init__(
+            "Too many failed unlock attempts. "
+            f"Try again in {self.retry_after_seconds} seconds."
+        )
+
+
 class InvalidTokenError(AuthenticationError):
     """Token is malformed, missing, or has invalid signature."""
 

@@ -11,6 +11,8 @@ from fastapi import APIRouter, Depends, Request, status
 
 from athena.api.config import APISettings
 from athena.api.security import Permission, RequirePermission
+from athena.api.security.exceptions import InvalidCredentialsError
+from athena.api.security.login_limiter import LoginAttemptLimiter
 from athena.api.security.models import AuthenticatedPrincipal
 from athena.api.security.owner_seed import auth_required, owner_credentials_configured
 from athena.api.security.service import AuthService
@@ -49,6 +51,10 @@ def get_api_settings(request: Request) -> APISettings:
     return request.app.state.api_settings
 
 
+def get_login_limiter(request: Request) -> LoginAttemptLimiter:
+    return request.app.state.login_limiter
+
+
 @router.get(
     "/status",
     response_model=AthenaResponse[AuthStatusDTO],
@@ -80,15 +86,23 @@ def login(
     request: Request,
     auth: AuthService = Depends(get_auth_service),  # noqa: B008
     settings: APISettings = Depends(get_api_settings),  # noqa: B008
+    limiter: LoginAttemptLimiter = Depends(get_login_limiter),  # noqa: B008
 ) -> AthenaResponse[TokenPairDTO]:
     """Authenticate owner and issue access + refresh JWTs."""
     request_id = getattr(request.state, "request_id", "unknown")
-    access_token, refresh_token = auth.login(
-        username=body.username,
-        password=body.password,
-        request_id=request_id,
-        ip_address=_client_ip(request),
-    )
+    ip_address = _client_ip(request)
+    limiter.check(username=body.username, ip_address=ip_address)
+    try:
+        access_token, refresh_token = auth.login(
+            username=body.username,
+            password=body.password,
+            request_id=request_id,
+            ip_address=ip_address,
+        )
+    except InvalidCredentialsError:
+        limiter.record_failure(username=body.username, ip_address=ip_address)
+        raise
+    limiter.record_success(username=body.username, ip_address=ip_address)
     return AthenaResponse(
         status="success",
         data=TokenPairDTO(

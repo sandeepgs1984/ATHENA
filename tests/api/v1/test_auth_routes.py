@@ -104,6 +104,29 @@ def test_login_me_logout_roundtrip(auth_client: TestClient) -> None:
     assert after.status_code == 401
 
 
+def test_login_locks_after_repeated_failures(auth_client: TestClient) -> None:
+    for _ in range(4):
+        response = auth_client.post(
+            "/api/v1/auth/login",
+            json={"username": "owner", "password": "wrong"},
+        )
+        assert response.status_code == 401
+
+    threshold = auth_client.post(
+        "/api/v1/auth/login",
+        json={"username": "owner", "password": "wrong"},
+    )
+    assert threshold.status_code == 429
+    assert threshold.json()["title"] == "Unlock Temporarily Locked"
+    assert int(threshold.headers["Retry-After"]) > 0
+
+    correct_while_locked = auth_client.post(
+        "/api/v1/auth/login",
+        json={"username": "owner", "password": "owner-secret"},
+    )
+    assert correct_while_locked.status_code == 429
+
+
 def test_refresh_rotates_tokens(auth_client: TestClient) -> None:
     login = auth_client.post(
         "/api/v1/auth/login",

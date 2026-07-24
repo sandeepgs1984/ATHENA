@@ -6,6 +6,9 @@ Each model grows independently; no monolithic settings object.
 
 from __future__ import annotations
 
+import hashlib
+import os
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -18,7 +21,7 @@ class TransportConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    host: str = "0.0.0.0"
+    host: str = "127.0.0.1"
     port: int = Field(default=8000, ge=1, le=65535)
     debug: bool = False
     cors_origins: list[str] = []              # Secure default: no origins allowed
@@ -56,6 +59,9 @@ class SecurityConfig(BaseModel):
     access_token_expiry_minutes: int = 15
     refresh_token_expiry_days: int = 7
     bcrypt_rounds: int = 12
+    login_max_failures: int = Field(default=5, ge=1, le=20)
+    login_failure_window_minutes: int = Field(default=10, ge=1, le=1440)
+    login_lockout_minutes: int = Field(default=15, ge=1, le=1440)
 
 
 class APISettings(BaseModel):
@@ -71,3 +77,45 @@ class APISettings(BaseModel):
     transport: TransportConfig = TransportConfig()
     app: AppMetadataConfig = AppMetadataConfig()
     security: SecurityConfig = SecurityConfig()
+
+
+def api_settings_from_env() -> APISettings:
+    """Build production settings from `.env` without exposing secrets in config files.
+
+    An explicit ``ATHENA_JWT_SECRET`` wins. For existing single-owner installs,
+    a stable SHA-256 key is derived from the bcrypt owner hash so the known
+    development JWT secret is never used once owner unlock is configured.
+    """
+    default = SecurityConfig()
+    explicit_secret = (os.environ.get("ATHENA_JWT_SECRET") or "").strip()
+    owner_hash = (os.environ.get("ATHENA_OWNER_PASSWORD_HASH") or "").strip()
+    if explicit_secret:
+        jwt_secret = explicit_secret
+    elif owner_hash:
+        jwt_secret = hashlib.sha256(
+            f"athena-owner-jwt:{owner_hash}".encode()
+        ).hexdigest()
+    else:
+        jwt_secret = default.jwt_secret
+
+    security = SecurityConfig(
+        jwt_secret=jwt_secret,
+        login_max_failures=int(
+            os.environ.get(
+                "ATHENA_LOGIN_MAX_FAILURES", str(default.login_max_failures)
+            )
+        ),
+        login_failure_window_minutes=int(
+            os.environ.get(
+                "ATHENA_LOGIN_FAILURE_WINDOW_MINUTES",
+                str(default.login_failure_window_minutes),
+            )
+        ),
+        login_lockout_minutes=int(
+            os.environ.get(
+                "ATHENA_LOGIN_LOCKOUT_MINUTES",
+                str(default.login_lockout_minutes),
+            )
+        ),
+    )
+    return APISettings(security=security)

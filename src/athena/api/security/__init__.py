@@ -8,6 +8,7 @@ from athena.api.security.dependencies import (
 )
 from athena.api.security.exceptions import (
     AuthenticationError,
+    AuthenticationLockedError,
     ExpiredTokenError,
     InvalidAPIKeyError,
     InvalidCredentialsError,
@@ -30,6 +31,7 @@ __all__ = [
     "APIKeySecret",
     "AuthenticatedPrincipal",
     "AuthenticationError",
+    "AuthenticationLockedError",
     "ExpiredTokenError",
     "InvalidAPIKeyError",
     "InvalidCredentialsError",

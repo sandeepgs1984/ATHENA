@@ -17,8 +17,8 @@ from typing import ClassVar
 
 from athena.api.exceptions import (
     APIResourceError,
-    BackupNotFoundError,
     BacktestRunNotFoundError,
+    BackupNotFoundError,
     DatabaseUnavailableError,
     DecisionNotFoundError,
     ExportArtifactNotFoundError,
@@ -26,17 +26,18 @@ from athena.api.exceptions import (
     ExportSnapshotNotFoundError,
     PerformanceSnapshotNotFoundError,
     PipelineRunNotFoundError,
+    PortfolioResetConfirmationError,
     PortfolioUnavailableError,
     ReportNotFoundError,
     ResourceNotFoundError,
     RestoreConfirmationError,
-    PortfolioResetConfirmationError,
     SchedulerRunNotFoundError,
     WorkspaceSnapshotNotFoundError,
 )
 from athena.api.platform.problem_details import ProblemDetail
 from athena.api.security.exceptions import (
     AuthenticationError,
+    AuthenticationLockedError,
     ExpiredTokenError,
     InvalidAPIKeyError,
     InvalidCredentialsError,
@@ -116,8 +117,18 @@ class AthenaExceptionMapper:
         ExceptionMapping(ReportNotFoundError, 404, "report-not-found", "Report Not Found"),
         ExceptionMapping(BacktestRunNotFoundError, 404, "backtest-run-not-found", "Backtest Run Not Found"),
         ExceptionMapping(BackupNotFoundError, 404, "backup-not-found", "Backup Not Found"),
-        ExceptionMapping(RestoreConfirmationError, 400, "restore-confirmation-required", "Restore Confirmation Required"),
-        ExceptionMapping(PortfolioResetConfirmationError, 400, "portfolio-reset-confirmation-required", "Portfolio Reset Confirmation Required"),
+        ExceptionMapping(
+            RestoreConfirmationError,
+            400,
+            "restore-confirmation-required",
+            "Restore Confirmation Required",
+        ),
+        ExceptionMapping(
+            PortfolioResetConfirmationError,
+            400,
+            "portfolio-reset-confirmation-required",
+            "Portfolio Reset Confirmation Required",
+        ),
         ExceptionMapping(DatabaseUnavailableError, 503, "database-unavailable", "Database Unavailable"),
         ExceptionMapping(
             PerformanceSnapshotNotFoundError, 404, "performance-snapshot-not-found", "Performance Snapshot Not Found"
@@ -129,6 +140,7 @@ class AthenaExceptionMapper:
         ExceptionMapping(ExportGenerationError, 400, "export-generation-failed", "Export Generation Failed"),
         ExceptionMapping(APIResourceError, 400, "api-resource-error", "API Resource Error"),
         # Security Errors (P8.2)
+        ExceptionMapping(AuthenticationLockedError, 429, "authentication-locked", "Unlock Temporarily Locked"),
         ExceptionMapping(InvalidCredentialsError, 401, "invalid-credentials", "Invalid Credentials"),
         ExceptionMapping(ExpiredTokenError,       401, "expired-token",       "Token Expired"),
         ExceptionMapping(InvalidTokenError,       401, "invalid-token",       "Invalid Token"),
