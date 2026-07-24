@@ -9,10 +9,12 @@
 ## 1. What `run-due` does
 
 ```bash
-./athena-run-due
-# or
-PYTHONPATH=src python3 -m athena.cli run-due
+./athena-daily              # normal day: seed (if due) + run-due
+./athena-daily smoke        # first-time proof on 10 symbols
+./athena-daily status
 ```
+
+Also: `./athena-run-due` (same run-due core; prefer `./athena-daily` for owner daily use).
 
 1. Load `.env` (wrapper script sources it for launchd’s bare environment).
 2. Evaluate cadence (`athena due` logic): which of PREMARKET / REFRESH / **CLOSING** are due *now*.

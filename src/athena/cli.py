@@ -132,6 +132,22 @@ def _build_ingest_engine(
             normalize_candidate_symbol(c.symbol)
             for c in store.list_candidates(active_only=True)
         ]
+        max_raw = os.environ.get("ATHENA_MAX_CANDIDATES", "").strip()
+        if max_raw:
+            try:
+                cap = int(max_raw)
+            except ValueError as exc:
+                raise ValueError(
+                    f"ATHENA_MAX_CANDIDATES must be an integer, got {max_raw!r}"
+                ) from exc
+            if cap < 1:
+                raise ValueError("ATHENA_MAX_CANDIDATES must be >= 1")
+            trading_symbols = trading_symbols[:cap]
+            print(
+                f"candidate cap   : ATHENA_MAX_CANDIDATES={cap} "
+                f"(using {len(trading_symbols)} symbols)",
+                flush=True,
+            )
         if trading_symbols and ingest_cfg.provider == "kite":
             kite_symbols = trading_symbols
 

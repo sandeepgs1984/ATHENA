@@ -10,6 +10,7 @@ avoid circular import chains through ``athena.scanner`` at package import time.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
@@ -64,6 +65,12 @@ class OwnerValidationPipeline:
         ingestion: IngestionResult,
     ) -> Mapping[str, object]:
         candidates = self._store.list_candidates(active_only=True)
+        max_raw = os.environ.get("ATHENA_MAX_CANDIDATES", "").strip()
+        if max_raw:
+            cap = int(max_raw)
+            if cap < 1:
+                raise ValueError("ATHENA_MAX_CANDIDATES must be >= 1")
+            candidates = candidates[:cap]
         if not candidates:
             return {
                 "mode": "ingest_only",

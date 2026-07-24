@@ -1,0 +1,190 @@
+#!/usr/bin/env bash
+# ATHENA — daily live ops (owner workstation)
+#
+# Morning / market hours (typical):
+#   ./kite-auth          # once per trading day (Kite token)
+#   ./athena-daily       # seed Nifty 500 (if due) + run whatever cycles are due
+#
+# First-time / prove the path (10 symbols only):
+#   ./athena-daily smoke
+#
+# Other:
+#   ./athena-daily status
+#   ./athena-daily force-refresh   # one refresh cycle now (full candidate list)
+#   ./athena-daily force-refresh --smoke
+#   ./athena-daily dashboard
+#
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+cd "$ROOT"
+export PYTHONPATH="${ROOT}/src${PYTHONPATH:+:$PYTHONPATH}"
+
+if [[ -f "$ROOT/.env" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "$ROOT/.env"
+  set +a
+fi
+
+PYTHON="${ATHENA_PYTHON:-python3}"
+SMOKE_N="${ATHENA_SMOKE_COUNT:-10}"
+CMD="${1:-run}"
+shift || true
+
+usage() {
+  cat <<'EOF'
+ATHENA daily live ops
+
+Usage:
+  ./athena-daily                 Run due cycles (seed + run-due) — normal day
+  ./athena-daily smoke           First-time proof: seed + refresh on 10 symbols
+  ./athena-daily status          Candidates, last runs, what is due now
+  ./athena-daily force-refresh   One refresh cycle now (full list; slow on Nifty 500)
+  ./athena-daily force-refresh --smoke
+  ./athena-daily dashboard       Print dashboard URL
+  ./athena-daily help
+
+Prereqs (once per trading day):
+  1. config/ingestion.json → "provider": "kite"
+  2. ./kite-auth
+  3. Dashboard (optional): PYTHONPATH=src uvicorn athena.api.app:create_app --factory --port 8000
+     then open http://localhost:8000/dashboard/
+EOF
+}
+
+require_kite_provider() {
+  "$PYTHON" - <<'PY'
+import json
+from pathlib import Path
+p = Path("config/ingestion.json")
+raw = json.loads(p.read_text(encoding="utf-8"))
+prov = str(raw.get("provider", "")).strip().lower()
+if prov != "kite":
+    raise SystemExit(
+        f"ERROR: config/ingestion.json provider is '{prov}', need 'kite' for live daily use.\n"
+        "Edit config/ingestion.json and set \"provider\": \"kite\"."
+    )
+print("provider        : kite")
+PY
+}
+
+cmd_status() {
+  "$PYTHON" - <<'PY'
+import os
+from pathlib import Path
+from zoneinfo import ZoneInfo
+from datetime import datetime
+from athena.config.loader import load_config, load_scheduling_config
+from athena.data.store.repository import SqliteRepository
+from athena.domain.enums import RunTrigger
+from athena.ops.owner_candidates import SqliteCandidateStore
+from athena.scheduling import due_triggers
+
+root = Path(".").resolve()
+cfg = load_config(root / "config")
+sched = load_scheduling_config(root / "config")
+tz = ZoneInfo(cfg.market.timezone)
+as_of = datetime.now(tz)
+db = Path(os.environ.get("ATHENA_DB_PATH") or root / cfg.base.paths.db)
+repo = SqliteRepository(db)
+repo.initialize()
+n = len(SqliteCandidateStore(repo).list_candidates(active_only=True))
+print(f"as_of           : {as_of.isoformat()}")
+print(f"db              : {db}")
+print(f"candidates      : {n}")
+print(f"seed last date  : {repo.get_ops_meta('candidate_seed:NIFTY500:last_date') or '(never)'}")
+for label, trigger in (
+    ("premarket", RunTrigger.PREMARKET),
+    ("refresh", RunTrigger.REFRESH),
+    ("closing", RunTrigger.CLOSING),
+):
+    run = repo.latest_run(trigger.value)
+    if run is None:
+        print(f"last {label:10}: (none)")
+    else:
+        print(f"last {label:10}: {run.status.value}  {run.run_id}  @ {run.started_ts.isoformat()}")
+pre = repo.latest_run(RunTrigger.PREMARKET.value)
+ref = repo.latest_run(RunTrigger.REFRESH.value)
+closing = repo.latest_run(RunTrigger.CLOSING.value)
+due = due_triggers(
+    as_of,
+    sessions=cfg.market.sessions,
+    config=sched,
+    base_interval_minutes=cfg.base.refresh_interval_minutes,
+    last_premarket_date=None if pre is None else pre.started_ts.astimezone(tz).date(),
+    last_refresh_ts=None if ref is None else ref.started_ts,
+    last_closing_date=None if closing is None else closing.started_ts.astimezone(tz).date(),
+)
+print(f"due now         : {', '.join(t.value for t in due) if due else '(none — idle)'}")
+print(f"decisions       : {len(repo.list_decisions(limit=5000))}")
+repo.close()
+print()
+print("Dashboard       : http://localhost:8000/dashboard/")
+print("Tip             : UNKNOWN regime / empty Decisions until a cycle COMPLETED successfully.")
+PY
+}
+
+cmd_run() {
+  require_kite_provider
+  echo "=== ATHENA daily ==="
+  echo "1) Seed Nifty 500 (merge-unique, once/day) + run due cycles"
+  exec "$PYTHON" -m athena.cli run-due "$@"
+}
+
+cmd_smoke() {
+  require_kite_provider
+  echo "=== ATHENA smoke (first ${SMOKE_N} candidates only) ==="
+  echo "This proves kite ingest + eligibility + decisions without scanning all 500."
+  export ATHENA_MAX_CANDIDATES="$SMOKE_N"
+  "$PYTHON" -m athena.cli seed-candidates || true
+  "$PYTHON" -m athena.cli cycle --trigger refresh "$@"
+  echo
+  echo "Smoke finished. Refresh Market Intelligence + Decisions tabs."
+  echo "When ready for full list: ./athena-daily   (or ./athena-daily force-refresh)"
+}
+
+cmd_force_refresh() {
+  require_kite_provider
+  local smoke=0
+  if [[ "${1:-}" == "--smoke" ]]; then
+    smoke=1
+    shift || true
+  fi
+  if [[ "$smoke" -eq 1 ]]; then
+    export ATHENA_MAX_CANDIDATES="$SMOKE_N"
+    echo "=== Force refresh (smoke, ${SMOKE_N} symbols) ==="
+  else
+    unset ATHENA_MAX_CANDIDATES || true
+    echo "=== Force refresh (FULL candidate list — can take a long time) ==="
+  fi
+  "$PYTHON" -m athena.cli seed-candidates || true
+  exec "$PYTHON" -m athena.cli cycle --trigger refresh "$@"
+}
+
+case "$CMD" in
+  run|daily|"")
+    cmd_run "$@"
+    ;;
+  smoke)
+    cmd_smoke "$@"
+    ;;
+  status)
+    cmd_status
+    ;;
+  force-refresh|refresh)
+    cmd_force_refresh "$@"
+    ;;
+  dashboard)
+    echo "Open: http://localhost:8000/dashboard/"
+    echo "Start API if needed:"
+    echo "  cd \"$ROOT\" && PYTHONPATH=src uvicorn athena.api.app:create_app --factory --host 127.0.0.1 --port 8000"
+    ;;
+  help|-h|--help)
+    usage
+    ;;
+  *)
+    echo "Unknown command: $CMD" >&2
+    usage >&2
+    exit 2
+    ;;
+esac
