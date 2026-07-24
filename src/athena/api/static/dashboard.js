@@ -630,8 +630,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 regime = data.regime_assessment || null;
                 universe = data.universe_members || {};
                 universeCache = universe; // Store in cache for modal inspects
-            } else if (evidenceText) {
-                // Keep evidence text for empty-run path below
             }
 
             // 2. Render Volatility Regime Indicators
