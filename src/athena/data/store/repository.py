@@ -8,6 +8,7 @@ transaction safety, WAL mode, and enforced foreign keys.
 from __future__ import annotations
 
 import sqlite3
+import threading
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -36,12 +37,25 @@ class IntegrityReport:
 
 
 class SqliteRepository:
-    """A trusted local ledger over a single SQLite file."""
+    """A trusted local ledger over a single SQLite file.
+
+    The connection is created with ``check_same_thread=False`` so FastAPI (and
+    other multi-threaded callers) may share one repository instance. All access
+    is serialized through an ``RLock`` because a sqlite3 connection is not
+    otherwise thread-safe.
+    """
 
     def __init__(self, db_path: str | Path) -> None:
         self._path = str(db_path)
+        self._lock = threading.RLock()
         try:
-            self._conn = sqlite3.connect(self._path, isolation_level="DEFERRED")
+            # check_same_thread=False: API process opens repo at startup, then
+            # request threads reuse it. Access is still serialized via _lock.
+            self._conn = sqlite3.connect(
+                self._path,
+                isolation_level="DEFERRED",
+                check_same_thread=False,
+            )
             self._conn.execute("PRAGMA journal_mode=WAL")
             self._conn.execute("PRAGMA foreign_keys=ON")
         except sqlite3.Error as exc:
@@ -52,25 +66,27 @@ class SqliteRepository:
     def initialize(self) -> None:
         """Create the schema (idempotent) and record/upgrade the schema version."""
         try:
-            with self._conn:
-                for statement in ddl_statements():
-                    self._conn.execute(statement)
-                row = self._conn.execute("SELECT version FROM schema_version").fetchone()
-                if row is None:
-                    self._conn.execute(
-                        "INSERT INTO schema_version(version) VALUES (?)",
-                        (SCHEMA_VERSION,),
-                    )
-                elif int(row[0]) < SCHEMA_VERSION:
-                    self._conn.execute(
-                        "UPDATE schema_version SET version = ?",
-                        (SCHEMA_VERSION,),
-                    )
+            with self._lock:
+                with self._conn:
+                    for statement in ddl_statements():
+                        self._conn.execute(statement)
+                    row = self._conn.execute("SELECT version FROM schema_version").fetchone()
+                    if row is None:
+                        self._conn.execute(
+                            "INSERT INTO schema_version(version) VALUES (?)",
+                            (SCHEMA_VERSION,),
+                        )
+                    elif int(row[0]) < SCHEMA_VERSION:
+                        self._conn.execute(
+                            "UPDATE schema_version SET version = ?",
+                            (SCHEMA_VERSION,),
+                        )
         except sqlite3.Error as exc:
             raise RepositoryError(f"schema initialization failed: {exc}") from exc
 
     def close(self) -> None:
-        self._conn.close()
+        with self._lock:
+            self._conn.close()
 
     def __enter__(self) -> SqliteRepository:
         return self
@@ -85,7 +101,11 @@ class SqliteRepository:
 
     @property
     def connection(self) -> sqlite3.Connection:
-        """The live connection. Intended for maintenance (online backup) only."""
+        """The live connection. Intended for maintenance (online backup) only.
+
+        Callers that use this must serialize access themselves (prefer repository
+        methods). The API providers never use this property on request paths.
+        """
         return self._conn
 
     def record_counts(self) -> dict[str, int]:
@@ -95,29 +115,35 @@ class SqliteRepository:
                   "decisions", "decision_traces", "decision_journal",
                   "owner_positions")
         try:
-            return {t: int(self._conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0])
-                    for t in tables}
+            with self._lock:
+                return {
+                    t: int(self._conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0])
+                    for t in tables
+                }
         except sqlite3.Error as exc:
             raise RepositoryError(f"record count query failed: {exc}") from exc
 
     @property
     def journal_mode(self) -> str:
-        return str(self._conn.execute("PRAGMA journal_mode").fetchone()[0]).lower()
+        with self._lock:
+            return str(self._conn.execute("PRAGMA journal_mode").fetchone()[0]).lower()
 
     @property
     def foreign_keys_enabled(self) -> bool:
-        return bool(self._conn.execute("PRAGMA foreign_keys").fetchone()[0])
+        with self._lock:
+            return bool(self._conn.execute("PRAGMA foreign_keys").fetchone()[0])
 
     @contextmanager
     def transaction(self) -> Iterator[sqlite3.Cursor]:
         """Explicit transaction: commit on success, rollback on any exception."""
-        cursor = self._conn.cursor()
-        try:
-            yield cursor
-            self._conn.commit()
-        except Exception:
-            self._conn.rollback()
-            raise
+        with self._lock:
+            cursor = self._conn.cursor()
+            try:
+                yield cursor
+                self._conn.commit()
+            except Exception:
+                self._conn.rollback()
+                raise
 
     # ------------------------------------------------------------- instruments
 
@@ -477,9 +503,10 @@ class SqliteRepository:
 
     def verify_integrity(self) -> IntegrityReport:
         try:
-            integrity = str(self._conn.execute("PRAGMA integrity_check").fetchone()[0])
-            fk_violations = self._conn.execute("PRAGMA foreign_key_check").fetchall()
-            version_row = self._conn.execute("SELECT version FROM schema_version").fetchone()
+            with self._lock:
+                integrity = str(self._conn.execute("PRAGMA integrity_check").fetchone()[0])
+                fk_violations = self._conn.execute("PRAGMA foreign_key_check").fetchall()
+                version_row = self._conn.execute("SELECT version FROM schema_version").fetchone()
         except sqlite3.Error as exc:
             raise RepositoryError(f"integrity verification failed: {exc}") from exc
 
@@ -503,8 +530,9 @@ class SqliteRepository:
 
     def _write(self, sql: str, params: tuple) -> None:
         try:
-            with self._conn:
-                self._conn.execute(sql, params)
+            with self._lock:
+                with self._conn:
+                    self._conn.execute(sql, params)
         except sqlite3.IntegrityError as exc:
             raise RepositoryError(f"integrity violation: {exc}") from exc
         except sqlite3.Error as exc:
@@ -512,8 +540,9 @@ class SqliteRepository:
 
     def _write_many(self, sql: str, rows: Sequence[tuple]) -> None:
         try:
-            with self._conn:
-                self._conn.executemany(sql, rows)
+            with self._lock:
+                with self._conn:
+                    self._conn.executemany(sql, rows)
         except sqlite3.IntegrityError as exc:
             raise RepositoryError(f"integrity violation: {exc}") from exc
         except sqlite3.Error as exc:
@@ -521,12 +550,14 @@ class SqliteRepository:
 
     def _query_one(self, sql: str, params: tuple) -> tuple | None:
         try:
-            return self._conn.execute(sql, params).fetchone()
+            with self._lock:
+                return self._conn.execute(sql, params).fetchone()
         except sqlite3.Error as exc:
             raise RepositoryError(f"query failed: {exc}") from exc
 
     def _query_all(self, sql: str, params: tuple = ()) -> list[tuple]:
         try:
-            return self._conn.execute(sql, params).fetchall()
+            with self._lock:
+                return self._conn.execute(sql, params).fetchall()
         except sqlite3.Error as exc:
             raise RepositoryError(f"query failed: {exc}") from exc

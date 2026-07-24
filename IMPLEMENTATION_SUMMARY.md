@@ -21,6 +21,7 @@ status updated on approval.
 - SCHEMA_VERSION 4: `owner_positions` table; `POST /api/v1/portfolio/positions` + `.../close` for manual fills (symbol/qty/entry/exit); cash from `config/portfolio.json` `initial_cash` (`PortfolioConfig`).
 - Market Intelligence: latest SQLite run context; falls back to `kite.json` symbols when run has no universe payload; honest empty copy when neither exists.
 - Dashboard Overview form to log/close owner fills; no Kite holdings API (still blocked).
+- **Hotfix:** `SqliteRepository` uses `check_same_thread=False` + `RLock` so FastAPI request threads can reuse the startup connection (fixes “Log fill” / tab query thread errors).
 
 Files created: `src/athena/api/v1/providers/sqlite_providers.py`, `config/portfolio.json`, `tests/api/v1/test_owner_portfolio.py`. Files modified: schema/serialization/repository, dependencies/app, decisions/portfolio/dashboard services + routers/DTOs, dashboard static assets, tests, this log. No ADR; no order placement; frozen Position/TradeOutcome contracts reused.
 
