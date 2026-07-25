@@ -166,6 +166,10 @@ class InMemoryDecisionProvider:
     def get_trade_outcome(self, decision_id: str) -> TradeOutcome | None:
         return self.trade_outcomes.get(decision_id)
 
+    def list_recent_decisions(self, *, limit: int = 500) -> list[Decision]:
+        ordered = sorted(self.decisions, key=lambda d: d.ts, reverse=True)
+        return ordered[:limit]
+
 
 class InMemoryCandleHistoryProvider:
     """Deterministic candle store for API tests and fallback wiring."""

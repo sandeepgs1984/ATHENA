@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, Query, Request, status
 
 from athena.api.dependencies import get_decisions_service
 from athena.api.security import Permission, RequirePermission
 from athena.api.security.models import AuthenticatedPrincipal
 from athena.api.v1.dtos import (
     AthenaResponse,
+    DecisionAnalogsDTO,
     DecisionContextDTO,
     DecisionDepthDTO,
     DecisionDTO,
@@ -153,6 +154,34 @@ def get_decision_context(
             request_id=request_id,
             api_version="v1",
             as_of=datetime.now(tz=timezone.utc),
+        ),
+    )
+
+
+@router.get(
+    "/{decision_id}/analogs",
+    response_model=AthenaResponse[DecisionAnalogsDTO],
+    summary="Get historical decisions with a similar score/confidence/risk fingerprint",
+    status_code=status.HTTP_200_OK,
+    operation_id="getDecisionAnalogs",
+)
+def get_decision_analogs(
+    request: Request,
+    decision_id: str,
+    limit: int = Query(default=5, ge=1, le=20),
+    service: DecisionsService = Depends(get_decisions_service),  # noqa: B008
+    principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.READ)),  # noqa: B008
+) -> AthenaResponse[DecisionAnalogsDTO]:
+    """Deterministic nearest-neighbor retrieval over persisted decision
+    history, with each match's logged human response and realized outcome
+    if any. No generated text, no recomputation of any comparison (M-X1)."""
+    analogs = service.get_decision_analogs(decision_id, limit=limit)
+    request_id = getattr(request.state, "request_id", "unknown")
+    return AthenaResponse(
+        status="success",
+        data=analogs,
+        meta=ResponseMeta(
+            request_id=request_id, api_version="v1", as_of=datetime.now(tz=timezone.utc)
         ),
     )
 

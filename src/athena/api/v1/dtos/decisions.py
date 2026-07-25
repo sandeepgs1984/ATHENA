@@ -317,3 +317,34 @@ class TradeOutcomeDTO(BaseModel):
     adherence: dict[str, bool] = Field(default_factory=dict)
     closed_ts: datetime
 
+
+class DecisionAnalogDTO(BaseModel):
+    """One historical decision with a similar score/confidence/risk fingerprint,
+    plus its logged human response and realized outcome, if any (M-X1). Pure
+    factual retrieval from the persisted Decision Journal — no generated text."""
+
+    model_config = ConfigDict(frozen=True)
+
+    decision_id: str
+    instrument_id: str | None = None
+    ts: datetime
+    decision_type: str
+    direction: str
+    score: Decimal | None = None
+    confidence: Decimal | None = None
+    risk: Decimal | None = None
+    distance: Decimal
+    user_action: str | None = None
+    outcome_pnl: Decimal | None = None
+    outcome_closed_ts: datetime | None = None
+
+
+class DecisionAnalogsDTO(BaseModel):
+    """Nearest-neighbor historical decisions for one decision's fingerprint."""
+
+    model_config = ConfigDict(frozen=True)
+
+    decision_id: str
+    analogs: list[DecisionAnalogDTO] = Field(default_factory=list)
+    compared_count: int = 0
+

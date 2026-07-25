@@ -161,6 +161,16 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".outcome-form" in css
     assert ".outcome-result" in css
 
+    # M-X1: deterministic nearest-neighbor historical analog matcher
+    assert 'id="decision-analogs-panel"' in js
+    assert "function renderAnalogsPanel" in js
+    assert "function loadDecisionAnalogs" in js
+    assert "/analogs" in js
+    assert "ANALOG_MAX_DISTANCE" in js
+    assert "nothing generated" in js
+    assert ".analog-row" in css
+    assert ".analog-list" in css
+
     # Operations console (P9.7) is live — warnings feed + backup panel, not a fake loader
     assert 'id="ops-warnings-feed"' in html
     assert 'id="ops-telemetry-chart"' in html

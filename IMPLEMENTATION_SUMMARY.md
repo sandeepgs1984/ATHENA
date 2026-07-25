@@ -6,7 +6,123 @@ status updated on approval.
 
 ---
 
-## M-X0 — Decision Journal & Outcome capture (READY FOR REVIEW)
+## M-X1 — Historical analog matcher (READY FOR REVIEW)
+
+| | |
+|---|---|
+| Completed | 2026-07-25 |
+| Objective | Deterministic nearest-neighbor retrieval of past decisions with a similar score/confidence/risk fingerprint, each with its logged human response and realized outcome (now real, thanks to M-X0) |
+| Scope | New read-only `/analogs` endpoint + Decision Brief "Similar past setups" section |
+| Tests | Full suite **1010 passed** (+2 new); changed-file Ruff clean; mypy clean on touched modules |
+| Coverage | Existing project coverage retained; no separate percentage collected |
+| Status | **READY FOR REVIEW** — owner smoke required |
+| Branch | feature/live-dashboard |
+
+### Scope completed
+
+- Added `DecisionProvider.list_recent_decisions(limit)` — a raw, unfiltered
+  read (newest first) for analytical queries that need a candidate pool
+  rather than a paginated/filtered API listing. Implemented in both
+  `SqliteDecisionProvider` (delegates to `repo.list_decisions`) and
+  `InMemoryDecisionProvider`.
+- Added `DecisionsService.get_decision_analogs(decision_id, limit=5)`:
+  extracts the target decision's (score composite, confidence overall, risk
+  overall) fingerprint from its persisted report — refactored the existing
+  report-lookup logic out of `get_decision_depth`/`get_decision_context`
+  into a shared `_fetch_report` helper rather than duplicating it a third
+  time — then computes Euclidean distance against every other persisted
+  decision with a comparable (status `OK`) fingerprint, grouping by
+  `run_id` to fetch each run's detail once rather than once per decision.
+  Decisions with an `UNKNOWN` score/confidence/risk (including the target
+  itself, if unassessed) are excluded from comparison entirely — never
+  compared against a fabricated or defaulted value.
+- Each returned match carries its logged `DecisionJournalEntry.user_action`
+  and `TradeOutcome.pnl`/`closed_ts` if present (via M-X0's `get_journal_entry`/
+  `get_trade_outcome`) — `null` when never recorded, never inferred.
+- Added `GET /api/v1/decisions/{id}/analogs?limit=1..20`.
+- Added a "Similar past setups" Decision Brief section: each match shows
+  symbol, stance chip, an intuitive similarity % (derived client-side from
+  distance for display only — never persisted or compared), a response
+  chip, and a pnl chip (color-coded) or "no outcome logged". Rows are
+  clickable and jump to that decision, matching the existing Decision
+  Timeline row pattern. Cache-busted dashboard assets to `9.27.0`.
+- No architecture change: pure read-only composition over already-persisted
+  data (Decision, DecisionReport.machine, DecisionJournalEntry, TradeOutcome)
+  via one small additive Protocol method — no domain object, contract, or
+  frozen model touched.
+
+### Files created
+
+- None (all additive to existing files).
+
+### Files modified
+
+- `src/athena/api/v1/providers/{base,sqlite_providers,in_memory}.py`
+  (`list_recent_decisions`)
+- `src/athena/api/v1/dtos/{decisions,__init__}.py` (`DecisionAnalogDTO`,
+  `DecisionAnalogsDTO`)
+- `src/athena/api/v1/services/decisions_service.py` (`get_decision_analogs`,
+  shared `_fetch_report`/`_fingerprint` helpers, refactored
+  `get_decision_depth`/`get_decision_context` to reuse `_fetch_report`)
+- `src/athena/api/v1/routers/decisions.py` (`GET .../analogs`)
+- dashboard CSS/JS/HTML; `tests/api/v1/test_core_apis.py`,
+  `tests/api/platform/test_dashboard_hosting.py`; `docs/MILESTONES.md`;
+  this log.
+
+### Public APIs
+
+- Added `GET /api/v1/decisions/{decision_id}/analogs`.
+- No frozen domain object, calculation, risk policy, or order boundary
+  changed.
+
+### Validation and architecture
+
+- Full regression: **1010 passed** (was 1008; +2 net new — ranking/exclusion
+  test and an unknown-fingerprint-target test).
+- Ruff clean on every touched file (one import-sort auto-fix applied,
+  verified no behavior change via full suite re-run).
+- mypy clean on all touched modules.
+- ADR-005 preserved: analog matches are factual retrieval from persisted
+  data, no generated text, no recomputed comparison.
+- No order-placement path touched. Determinism, replayability, provider
+  independence preserved. No ADR required — additive Protocol method only.
+
+### Risks and technical debt
+
+- Candidate pool is capped at the 500 most recent decisions (matching the
+  existing `SqliteDecisionProvider` windowing convention) — a very long
+  history could miss older analogs. Acceptable for v1; revisit if the
+  journal grows large enough for this to matter in practice.
+- Similarity % is a display-only derived value (linear map from Euclidean
+  distance over a fixed 0–173.2 range) — not a statistically calibrated
+  confidence measure. Documented as such in the UI copy ("factual retrieval
+  only, nothing generated").
+- No new technical debt beyond the above.
+
+### Remaining work
+
+- Owner smoke: select a decision with several historical siblings, confirm
+  the ranking looks sensible, confirm decisions without a persisted
+  fingerprint (or with UNKNOWN score/confidence/risk) are excluded, confirm
+  clicking a row navigates to that decision's brief.
+- Next in the Intraday Edge Program: **M-X2 "Why not" counterfactual** or
+  **M-X3 confidence-decay clock** (both clean, no gate). **ADR-006**
+  (circuit-limit risk signal) still awaits owner sign-off.
+
+### Commit message
+
+```text
+feat(api): add historical analog matcher for decisions
+
+- Add DecisionProvider.list_recent_decisions for raw candidate-pool reads, implemented in both Sqlite and InMemory providers
+- Add get_decision_analogs: deterministic nearest-neighbor retrieval by score/confidence/risk fingerprint, excluding any decision without a comparable persisted assessment
+- Refactor report-lookup logic shared across depth/context/analogs into one _fetch_report helper instead of duplicating it a third time
+- Add GET /api/v1/decisions/{id}/analogs and a "Similar past setups" Decision Brief section showing each match's logged response and realized outcome
+```
+
+---
+
+## M-X0 — Decision Journal & Outcome capture (APPROVED)
 
 | | |
 |---|---|
@@ -15,7 +131,7 @@ status updated on approval.
 | Scope | Owner accept/reject/ignore response + realized-outcome logging, server-computed pnl/holding-time/TradePlan-adherence, new Decision Brief section |
 | Tests | Full suite **1008 passed** (+19 new); changed-file Ruff clean; mypy clean on touched modules |
 | Coverage | Existing project coverage retained; no separate percentage collected |
-| Status | **READY FOR REVIEW** — owner smoke required |
+| Status | **APPROVED** (owner smoke confirmed 2026-07-25 — response recording, persistence across reload, outcome pnl/adherence computation all verified) |
 | Branch | feature/live-dashboard |
 
 ### Scope completed

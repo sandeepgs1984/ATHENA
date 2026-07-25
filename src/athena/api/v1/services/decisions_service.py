@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import datetime, timezone
+from decimal import Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
@@ -17,6 +18,8 @@ from athena.api.v1.dtos import (
     CalendarEventDTO,
     CollectionResult,
     ContextEvidenceDTO,
+    DecisionAnalogDTO,
+    DecisionAnalogsDTO,
     DecisionAnalysisDTO,
     DecisionContextDTO,
     DecisionDepthDTO,
@@ -200,12 +203,7 @@ class DecisionsService:
             pipeline.get("universe_members"),
             decision.instrument_id,
         )
-        reports = pipeline.get("decision_reports")
-        report: Mapping[str, Any] = {}
-        if isinstance(reports, Mapping):
-            candidate = reports.get(decision.decision_id)
-            if isinstance(candidate, Mapping):
-                report = candidate
+        report = self._fetch_report(decision, pipeline=pipeline)
 
         return DecisionDepthDTO(
             decision_id=decision.decision_id,
@@ -230,16 +228,7 @@ class DecisionsService:
         calendar = CalendarEngine.from_config_dir(self._config_dir, cfg.market)
         calendar_ctx = calendar.context_for(decision.ts.astimezone(tz).date())
 
-        detail = self._provider.get_run_detail(decision.run_id)
-        pipeline = detail.get("pipeline", detail)
-        if not isinstance(pipeline, Mapping):
-            pipeline = {}
-        reports = pipeline.get("decision_reports")
-        report: Mapping[str, Any] = {}
-        if isinstance(reports, Mapping):
-            candidate = reports.get(decision.decision_id)
-            if isinstance(candidate, Mapping):
-                report = candidate
+        report = self._fetch_report(decision)
 
         links_file = load_external_links_file(self._config_dir)
         bare = (decision.instrument_id or "").split(":", 1)[-1]
@@ -320,6 +309,102 @@ class DecisionsService:
         """Most recent realized outcome for a decision, or None if never logged."""
         outcome = self._provider.get_trade_outcome(decision_id)
         return self._map_trade_outcome(outcome) if outcome is not None else None
+
+    def get_decision_analogs(self, decision_id: str, *, limit: int = 5) -> DecisionAnalogsDTO:
+        """Nearest-neighbor historical decisions by score/confidence/risk
+        fingerprint, each with its logged human response and realized outcome
+        if any (M-X1). Deterministic retrieval over persisted history — no
+        generated text, no recomputation of any comparison."""
+        target = self._provider.get_decision(decision_id)
+        if target is None:
+            raise DecisionNotFoundError(f"Decision '{decision_id}' not found")
+
+        target_fp = self._fingerprint(self._fetch_report(target))
+        if target_fp is None:
+            return DecisionAnalogsDTO(decision_id=decision_id, analogs=[], compared_count=0)
+
+        pool = self._provider.list_recent_decisions(limit=500)
+        reports_by_run: dict[str, Mapping[str, Any]] = {}
+        scored: list[tuple[Decimal, Decision, tuple[Decimal, Decimal, Decimal]]] = []
+        for candidate in pool:
+            if candidate.decision_id == decision_id:
+                continue
+            if candidate.run_id not in reports_by_run:
+                detail = self._provider.get_run_detail(candidate.run_id)
+                pipeline = detail.get("pipeline", detail)
+                reports_by_run[candidate.run_id] = pipeline if isinstance(pipeline, Mapping) else {}
+            report = self._fetch_report(candidate, pipeline=reports_by_run[candidate.run_id])
+            fp = self._fingerprint(report)
+            if fp is None:
+                continue
+            distance = (
+                (fp[0] - target_fp[0]) ** 2
+                + (fp[1] - target_fp[1]) ** 2
+                + (fp[2] - target_fp[2]) ** 2
+            ).sqrt()
+            scored.append((distance, candidate, fp))
+
+        scored.sort(key=lambda item: (item[0], item[1].ts), reverse=False)
+        top = scored[:limit]
+
+        analogs = []
+        for distance, candidate, fp in top:
+            journal = self._provider.get_journal_entry(candidate.decision_id)
+            outcome = self._provider.get_trade_outcome(candidate.decision_id)
+            analogs.append(
+                DecisionAnalogDTO(
+                    decision_id=candidate.decision_id,
+                    instrument_id=candidate.instrument_id,
+                    ts=candidate.ts,
+                    decision_type=candidate.decision_type.value,
+                    direction=candidate.direction.value,
+                    score=fp[0],
+                    confidence=fp[1],
+                    risk=fp[2],
+                    distance=distance,
+                    user_action=journal.user_action.value if journal else None,
+                    outcome_pnl=outcome.pnl if outcome else None,
+                    outcome_closed_ts=outcome.closed_ts if outcome else None,
+                )
+            )
+
+        return DecisionAnalogsDTO(
+            decision_id=decision_id, analogs=analogs, compared_count=len(scored)
+        )
+
+    def _fetch_report(self, decision: Decision, *, pipeline: Mapping[str, Any] | None = None) -> Mapping[str, Any]:
+        if pipeline is None:
+            detail = self._provider.get_run_detail(decision.run_id)
+            pipeline = detail.get("pipeline", detail)
+            if not isinstance(pipeline, Mapping):
+                pipeline = {}
+        reports = pipeline.get("decision_reports")
+        if not isinstance(reports, Mapping):
+            return {}
+        candidate = reports.get(decision.decision_id)
+        return candidate if isinstance(candidate, Mapping) else {}
+
+    @staticmethod
+    def _fingerprint(report: Mapping[str, Any]) -> tuple[Decimal, Decimal, Decimal] | None:
+        score = report.get("score")
+        confidence = report.get("confidence")
+        risk = report.get("risk")
+        if not (
+            isinstance(score, Mapping)
+            and isinstance(confidence, Mapping)
+            and isinstance(risk, Mapping)
+        ):
+            return None
+        if score.get("status") != "OK" or confidence.get("status") != "OK" or risk.get("status") != "OK":
+            return None
+        try:
+            return (
+                Decimal(str(score.get("composite"))),
+                Decimal(str(confidence.get("overall"))),
+                Decimal(str(risk.get("overall"))),
+            )
+        except (TypeError, ArithmeticError, ValueError):
+            return None
 
     @staticmethod
     def _compute_pnl(direction, entry_price, exit_price, quantity):

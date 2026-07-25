@@ -452,6 +452,95 @@ class TestDecisionsAPI:
         assert response.status_code == 404
         assert response.json()["title"] == "Decision Not Found"
 
+    def test_decision_analogs_ranking(self, client) -> None:
+        """M-X1: nearest-neighbor retrieval, UNKNOWN fingerprints excluded,
+        matches carry their logged journal response and realized outcome."""
+        headers = get_auth_headers(client, Role.ANALYST)
+        write_headers = get_auth_headers(client, Role.OPERATOR, username="operator3")
+        dec_p = get_decision_provider()
+        now = datetime.now(tz=timezone.utc)
+
+        def _report(score, confidence, risk, *, unknown=False):
+            if unknown:
+                return {"score": {"status": "UNKNOWN"}}
+            return {
+                "score": {"status": "OK", "composite": str(score)},
+                "confidence": {"status": "OK", "overall": str(confidence)},
+                "risk": {"status": "OK", "overall": str(risk)},
+            }
+
+        specs = [
+            ("dec-analog-target", "run-analog-t", 70, 80, 30, None),
+            ("dec-analog-close", "run-analog-c", 72, 78, 32, None),
+            ("dec-analog-far", "run-analog-f", 10, 20, 90, None),
+            ("dec-analog-unknown", "run-analog-u", None, None, None, "unknown"),
+        ]
+        for decision_id, run_id, score, confidence, risk, mode in specs:
+            dec_p.decisions.append(  # type: ignore[attr-defined]
+                Decision(
+                    decision_id=decision_id, ts=now, run_id=run_id, cycle_id="cycle-analog",
+                    instrument_id="TCS", direction=Direction.NONE,
+                    decision_type=DecisionType.WATCH, explanation="analog test",
+                )
+            )
+            report = _report(score, confidence, risk, unknown=(mode == "unknown"))
+            dec_p.run_details[run_id] = {  # type: ignore[attr-defined]
+                "pipeline": {"decision_reports": {decision_id: report}}
+            }
+
+        # The close analog has a logged response + outcome
+        client.post(
+            "/api/v1/decisions/dec-analog-close/journal",
+            json={"user_action": "ACCEPTED", "notes": "worked out"},
+            headers=write_headers,
+        )
+        client.post(
+            "/api/v1/decisions/dec-analog-close/outcome",
+            json={"entry_price": "100.00", "exit_price": "105.00", "quantity": 5},
+            headers=write_headers,
+        )
+
+        response = client.get(
+            "/api/v1/decisions/dec-analog-target/analogs?limit=5", headers=headers
+        )
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["decision_id"] == "dec-analog-target"
+        # unknown-fingerprint candidate excluded from comparison entirely
+        assert data["compared_count"] == 2
+        ids = [a["decision_id"] for a in data["analogs"]]
+        assert "dec-analog-target" not in ids
+        assert "dec-analog-unknown" not in ids
+        # closest match ranks first
+        assert ids[0] == "dec-analog-close"
+        assert ids[1] == "dec-analog-far"
+        assert float(data["analogs"][0]["distance"]) < float(data["analogs"][1]["distance"])
+        close = data["analogs"][0]
+        assert close["user_action"] == "ACCEPTED"
+        assert close["outcome_pnl"] == "25.00"
+        far = data["analogs"][1]
+        assert far["user_action"] is None
+        assert far["outcome_pnl"] is None
+
+    def test_decision_analogs_unknown_target_returns_empty(self, client) -> None:
+        headers = get_auth_headers(client, Role.ANALYST)
+        dec_p = get_decision_provider()
+        now = datetime.now(tz=timezone.utc)
+        dec_p.decisions.append(  # type: ignore[attr-defined]
+            Decision(
+                decision_id="dec-analog-no-fp", ts=now, run_id="run-analog-no-fp",
+                cycle_id="cycle-analog", instrument_id="TCS", direction=Direction.NONE,
+                decision_type=DecisionType.INSUFFICIENT_DATA, explanation="no fingerprint",
+            )
+        )
+        response = client.get(
+            "/api/v1/decisions/dec-analog-no-fp/analogs", headers=headers
+        )
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["analogs"] == []
+        assert data["compared_count"] == 0
+
 
 class TestPortfolioAPI:
     def test_get_portfolio_unavailable_returns_503(self, client) -> None:

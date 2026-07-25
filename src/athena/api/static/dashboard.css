@@ -3870,5 +3870,56 @@ body {
     color: var(--text-primary) !important;
 }
 
+.decision-analogs-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.analog-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.analog-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    width: 100%;
+    background: rgba(15, 23, 42, 0.35);
+    border: 1px solid var(--border-color);
+    border-radius: 7px;
+    padding: 9px 12px;
+    color: inherit;
+    cursor: pointer;
+    text-align: left;
+    transition: border-color var(--transition-speed) ease;
+}
+
+.analog-row:hover {
+    border-color: rgba(56, 189, 248, 0.35);
+}
+
+.analog-row-main {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.analog-row-main small {
+    color: var(--text-muted);
+    font-size: 0.68rem;
+}
+
+.analog-row-chips {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
 
 

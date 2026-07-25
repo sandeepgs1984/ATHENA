@@ -2329,6 +2329,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let activeContextData = null;
     let activeJournalEntry = null;
     let activeTradeOutcome = null;
+    let activeAnalogs = null;
     let selectedStageId = null;
 
     function escapeDecisionHtml(value) {
@@ -3595,6 +3596,85 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         }
     }
 
+    // Max possible distance across 3 dimensions each 0-100 (sqrt(100^2*3)) —
+    // used only to render an intuitive similarity %, never persisted or compared.
+    const ANALOG_MAX_DISTANCE = 173.2;
+
+    function renderAnalogsPanel(analogs) {
+        const host = document.getElementById("decision-analogs-panel");
+        if (!host) return;
+        const data = analogs || { analogs: [], compared_count: 0 };
+        const rows = Array.isArray(data.analogs) ? data.analogs : [];
+
+        if (!rows.length) {
+            host.innerHTML = `<div class="context-caption">
+                ${data.compared_count === 0
+                    ? "No comparable historical decisions yet (needs a persisted score/confidence/risk fingerprint)."
+                    : "No similar setups found."}
+            </div>`;
+            return;
+        }
+
+        host.innerHTML = `
+            <div class="analog-list">
+                ${rows.map(row => {
+                    const symbol = (row.instrument_id || "").split(":").pop() || "—";
+                    const similarity = Math.max(
+                        0, Math.round(100 - (Number(row.distance) / ANALOG_MAX_DISTANCE) * 100)
+                    );
+                    const stance = decisionStance(row.decision_type, row.direction);
+                    const responseChip = row.user_action
+                        ? contextChip(row.user_action, journalActionTone(row.user_action))
+                        : `<span class="context-chip tone-unknown">no response</span>`;
+                    const pnlValue = row.outcome_pnl !== null && row.outcome_pnl !== undefined
+                        ? Number(row.outcome_pnl) : null;
+                    const outcomeChip = pnlValue !== null
+                        ? `<span class="context-chip tone-${pnlValue > 0 ? "good" : (pnlValue < 0 ? "bad" : "neutral")}">${escapeDecisionHtml(formatDecisionPrice(row.outcome_pnl))}</span>`
+                        : `<span class="context-chip tone-unknown">no outcome logged</span>`;
+                    return `
+                        <button type="button" class="analog-row" data-decision-id="${escapeDecisionHtml(row.decision_id)}">
+                            <span class="analog-row-main">
+                                <strong>${escapeDecisionHtml(symbol)}</strong>
+                                <span class="stance-chip ${stance.cls}">${stance.label}</span>
+                                <small>${escapeDecisionHtml(formatDecisionTime(row.ts))}</small>
+                            </span>
+                            <span class="analog-row-chips">
+                                <span class="context-chip tone-neutral">${similarity}% similar</span>
+                                ${responseChip}
+                                ${outcomeChip}
+                            </span>
+                        </button>
+                    `;
+                }).join("")}
+            </div>
+            <p class="context-caption">Compared against ${data.compared_count} historical decision(s) with a comparable fingerprint.</p>
+        `;
+
+        host.querySelectorAll(".analog-row").forEach(row => {
+            row.addEventListener("click", () => {
+                const id = row.getAttribute("data-decision-id");
+                if (id && id !== activeDecisionId) selectBriefing(id);
+            });
+        });
+    }
+
+    async function loadDecisionAnalogs(decisionId) {
+        try {
+            const response = await apiRequest(
+                `/api/v1/decisions/${encodeURIComponent(decisionId)}/analogs`,
+                { skipToast: true }
+            );
+            if (activeDecisionId !== decisionId) return;
+            activeAnalogs = response && response.data;
+            renderAnalogsPanel(activeAnalogs);
+        } catch (err) {
+            if (activeDecisionId !== decisionId) return;
+            console.error(`Failed to load analogs for ${decisionId}`, err);
+            const host = document.getElementById("decision-analogs-panel");
+            if (host) host.innerHTML = '<div class="context-caption">Unable to load similar setups.</div>';
+        }
+    }
+
     function renderDecisionTimeline(decision) {
         const host = document.getElementById("decision-history-timeline");
         if (!host || !decision || !decision.metadata) return;
@@ -3739,6 +3819,20 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
             </section>
 
             <section class="decision-brief-section">
+                <h4>Similar past setups</h4>
+                <p class="analysis-section-intro">
+                    Deterministic nearest-neighbor retrieval by score/confidence/risk
+                    fingerprint across your persisted decision history — factual retrieval
+                    only, nothing generated.
+                </p>
+                <div id="decision-analogs-panel" class="decision-analogs-panel">
+                    <div class="decision-depth-loading">
+                        <i class="fa-solid fa-circle-notch fa-spin"></i> Finding similar setups…
+                    </div>
+                </div>
+            </section>
+
+            <section class="decision-brief-section">
                 <h4>Decision timeline</h4>
                 <div id="decision-history-timeline" class="decision-history-timeline"></div>
             </section>
@@ -3808,6 +3902,7 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         loadDecisionContext(meta.decision_id);
         loadDecisionChart(rawSymbol, decision.trade_plan, meta.decision_id);
         loadJournalPanel(meta.decision_id);
+        loadDecisionAnalogs(meta.decision_id);
         setHeaderRevalidateEnabled(true);
     }
 
@@ -3928,6 +4023,7 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         activeContextData = null;
         activeJournalEntry = null;
         activeTradeOutcome = null;
+        activeAnalogs = null;
         // Toggle active card class
         const cards = briefingListContainer.querySelectorAll(".briefing-card");
         cards.forEach(c => {

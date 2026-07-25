@@ -171,6 +171,9 @@ class SqliteDecisionProvider:
     def get_trade_outcome(self, decision_id: str) -> TradeOutcome | None:
         return self._repo.get_trade_outcome(decision_id)
 
+    def list_recent_decisions(self, *, limit: int = 500) -> list[Decision]:
+        return self._repo.list_decisions(limit=limit)
+
 
 class SqlitePortfolioProvider:
     """Owner-entered fill ledger → domain Portfolio (+ open/close writes)."""

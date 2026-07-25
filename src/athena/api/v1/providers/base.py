@@ -99,6 +99,12 @@ class DecisionProvider(Protocol):
         """Most recent realized outcome for one decision, or None if never logged."""
         ...
 
+    def list_recent_decisions(self, *, limit: int = 500) -> list[Decision]:
+        """Most recent decisions, newest first, unfiltered — for read-only
+        analytical queries (e.g. historical analog matching) that need a raw
+        pool rather than a paginated/filtered API listing."""
+        ...
+
 
 @runtime_checkable
 class CandleHistoryProvider(Protocol):
