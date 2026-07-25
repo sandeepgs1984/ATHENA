@@ -177,8 +177,13 @@ the complete Dock/URL → unlock → Kite → LIVE workflow is operational.
 | **M-D1** Decision Brief foundation | Selected-stock brief, TradePlan presentation, non-destructive daily dismiss | ✅ Approved |
 | **M-D2** Chart + plan overlays | Read-only candles API, intraday chart, entry/stop/target overlays, freshness; after-hours validate clamps to last session close | ✅ Approved |
 | **M-D3** ATHENA depth | Eligibility, decision timeline, score/confidence/risk detail, re-validate/remove candidate | ✅ Approved |
-| **M-D4** Context lane | Session events, deterministic brief export, approved external context links | 🔄 Ready for review |
+| **M-D4** Context lane | Session events, deterministic brief export, approved external context links | ✅ Approved |
 | **M-D5** News evidence | Provenance-first news annotation after DD-5/provider approval | ⏸ Deferred |
+
+**Instrument decision brief track closed (2026-07-25):** owner approved M-D4
+after live smoke-test review (regime/market-health persistence, external
+links, Decision Brief export, Reasoning Trace DAG redesign, header
+Re-validate). M-D5 remains deferred until DD-5/provider approval.
 
 ---
 

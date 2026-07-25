@@ -6,7 +6,7 @@ status updated on approval.
 
 ---
 
-## M-D4 — Context lane (READY FOR REVIEW)
+## M-D4 — Context lane (APPROVED)
 
 | | |
 |---|---|
@@ -15,7 +15,7 @@ status updated on approval.
 | Scope | Session/calendar context, persisted regime/market-health surfacing, deterministic brief export, approved external links |
 | Tests | Full suite **1004 passed** (+15 new); changed-file Ruff clean; mypy clean on touched modules |
 | Coverage | Existing project coverage retained; no separate percentage collected |
-| Status | **READY FOR REVIEW** — owner smoke required before next milestone |
+| Status | **APPROVED** (owner approved 2026-07-25, after live smoke-test review and fixes) |
 | Branch | feature/live-dashboard |
 
 ### Scope completed
@@ -172,16 +172,14 @@ status updated on approval.
 
 ### Remaining work
 
-- Owner smoke (per established M-D pattern): unlock the live workstation,
-  select a symbol, re-validate to populate regime/market-health context,
-  confirm the Session & market context section renders session/expiry/
-  holiday state correctly, add a real entry to `config/external_links.json`
-  and confirm it surfaces, and exercise the Export Brief download. Full
-  authenticated browser verification was not performed by the AI in this
-  session — a live ATHENA instance was already running on port 8000 during
-  implementation, and a second instance was deliberately not started to
-  avoid SQLite contention with the live session.
-- M-D5 (News Evidence) remains deferred until DD-5/provider approval.
+- None. Owner smoke completed live (Session & market context, regime/
+  market-health persistence via re-validate, `config/external_links.json`
+  entry surfacing, Export Brief download, Reasoning Trace DAG node cards,
+  header Re-validate placement) — every issue found during smoke testing
+  was fixed and re-verified in this milestone (see additional entries
+  above). Approved 2026-07-25.
+- **Instrument decision brief track closed.** M-D5 (News Evidence) remains
+  deferred until DD-5/provider approval; no successor milestone is queued.
 
 ### Commit message
 
