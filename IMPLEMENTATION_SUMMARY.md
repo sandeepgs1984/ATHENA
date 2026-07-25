@@ -6,7 +6,7 @@ status updated on approval.
 
 ---
 
-## M-D3 — ATHENA analytical depth (READY FOR REVIEW)
+## M-D3 — ATHENA analytical depth (APPROVED)
 
 | | |
 |---|---|
@@ -15,7 +15,7 @@ status updated on approval.
 | Scope | Eligibility, score/confidence/risk detail, timeline, safe candidate removal |
 | Tests | Full suite **989 passed**; focused M-D3 **36 passed**; changed-file Ruff; browser JS compile |
 | Coverage | Existing project coverage retained; no separate percentage collected |
-| Status | **READY FOR REVIEW** — stop before M-D4 context lane |
+| Status | **APPROVED** (owner approved, 2026-07-25) |
 | Branch | develop |
 
 ### Scope completed
@@ -89,7 +89,8 @@ status updated on approval.
 
 - Owner smoke: unlock after host restart, re-validate one symbol, inspect
   eligibility/components/timeline, and optionally verify confirmed removal.
-- M-D4 remains blocked pending owner approval.
+- M-D4 (Context lane) design started 2026-07-25 against existing calendar,
+  export, and regime/market-health contracts.
 
 ### Commit message
 
