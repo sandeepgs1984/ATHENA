@@ -37,11 +37,14 @@ status updated on approval.
 - Added Decision Brief sections for universe eligibility/rules, collapsible
   score-confidence-risk components, and the latest eight persisted decisions
   for the selected instrument.
+- Redesigned score/confidence/risk as progressive disclosure: recognizable
+  summary cards with 0–100 meters, followed by full-width category and component
+  drill-downs with aligned values and recorded inputs.
 - Added confirmed candidate removal from both Decision Brief and Market
   Intelligence. Removal stops future validation only; decisions, traces, and
   replay evidence remain untouched.
 - Retained after-hours Re-validate behavior from M-D2 and cache-busted
-  dashboard assets to `9.20.0`.
+  dashboard assets to `9.21.0`.
 
 ### Files created
 

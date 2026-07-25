@@ -87,7 +87,11 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "function loadDecisionDepth" in js
     assert "/depth" in js
     assert "function renderEligibilityDepth" in js
+    assert "function renderAnalysisSummaryCard" in js
     assert "function renderAnalysisBlock" in js
+    assert "Opportunity quality" in js
+    assert "Evidence reliability" in js
+    assert "Exposure level" in js
     assert "function renderDecisionTimeline" in js
     assert "allTraceDecisionsList" in js
     assert "function sanitizeNumericText" in js
@@ -96,6 +100,9 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "Existing decisions, traces, and replay evidence will be preserved" in js
     assert "decision history preserved" in js
     assert ".analysis-depth-grid" in css
+    assert ".analysis-overview-grid" in css
+    assert ".analysis-detail-panel" in css
+    assert ".analysis-component-meter" in css
     assert ".decision-history-timeline" in css
     assert "Re-validate before using the TradePlan" in js
     assert "Restart ATHENA (Dock/athena-serve)" in js

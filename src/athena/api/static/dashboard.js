@@ -3001,6 +3001,52 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         return Number.isFinite(number) ? `${number.toFixed(1)}` : "UNKNOWN";
     }
 
+    function analysisMeterWidth(value) {
+        const number = Number(value);
+        if (!Number.isFinite(number)) return 0;
+        return Math.max(0, Math.min(100, number));
+    }
+
+    function analysisPresentation(label, block, tone) {
+        const data = block || {};
+        const status = String(data.status || "UNKNOWN").toUpperCase();
+        const level = data.level ? String(data.level).toUpperCase() : "";
+        const completeness = Number(data.completeness);
+        const completenessLabel = Number.isFinite(completeness)
+            ? `${Math.round(completeness * 100)}% complete`
+            : "Completeness unknown";
+        const config = {
+            score: {
+                icon: "fa-chart-line",
+                eyebrow: "Opportunity quality",
+                guidance: "Higher means stronger alignment with the active strategy.",
+            },
+            confidence: {
+                icon: "fa-shield-halved",
+                eyebrow: "Evidence reliability",
+                guidance: "Higher means the assessment is better supported.",
+            },
+            risk: {
+                icon: "fa-triangle-exclamation",
+                eyebrow: "Exposure level",
+                guidance: "Higher means more uncertainty or market exposure.",
+            },
+        }[tone];
+        return {
+            data,
+            status,
+            level,
+            completenessLabel,
+            icon: config.icon,
+            eyebrow: config.eyebrow,
+            guidance: config.guidance,
+            label,
+            tone,
+            valueLabel: analysisPercent(data.value),
+            meterWidth: analysisMeterWidth(data.value),
+        };
+    }
+
     function renderEligibilityDepth(eligibility) {
         const host = document.getElementById("decision-eligibility-depth");
         if (!host) return;
@@ -3039,34 +3085,61 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         `;
     }
 
+    function renderAnalysisSummaryCard(label, block, tone) {
+        const view = analysisPresentation(label, block, tone);
+        return `
+            <article class="analysis-summary-card ${escapeDecisionHtml(tone)}">
+                <div class="analysis-summary-top">
+                    <span class="analysis-summary-icon">
+                        <i class="fa-solid ${escapeDecisionHtml(view.icon)}"></i>
+                    </span>
+                    <div>
+                        <span class="analysis-summary-eyebrow">${escapeDecisionHtml(view.eyebrow)}</span>
+                        <h5>${escapeDecisionHtml(label)}</h5>
+                    </div>
+                    <span class="depth-status ${view.status === "OK" ? "included" : "unknown"}">
+                        ${escapeDecisionHtml(view.status)}
+                    </span>
+                </div>
+                <div class="analysis-summary-score">
+                    <strong>${escapeDecisionHtml(view.valueLabel)}</strong>
+                    <span>/ 100</span>
+                </div>
+                <div class="analysis-meter" aria-hidden="true">
+                    <span style="width: ${view.meterWidth}%"></span>
+                </div>
+                <div class="analysis-summary-foot">
+                    <span>${escapeDecisionHtml(view.level || "No level")}</span>
+                    <span>${escapeDecisionHtml(view.completenessLabel)}</span>
+                </div>
+            </article>
+        `;
+    }
+
     function renderAnalysisBlock(label, block, tone) {
-        const data = block || {};
-        const status = String(data.status || "UNKNOWN").toUpperCase();
+        const view = analysisPresentation(label, block, tone);
+        const data = view.data;
         const dimensions = Array.isArray(data.dimensions) ? data.dimensions : [];
-        const level = data.level ? String(data.level).toUpperCase() : "";
-        const completeness = Number(data.completeness);
-        const completenessLabel = Number.isFinite(completeness)
-            ? `${Math.round(completeness * 100)}% complete`
-            : "completeness unknown";
         const explanation = sanitizeNumericText(
             data.explanation || `No persisted ${label.toLowerCase()} explanation.`
         );
         return `
-            <article class="analysis-depth-card ${escapeDecisionHtml(tone)}">
-                <div class="analysis-depth-head">
-                    <span>${escapeDecisionHtml(label)}</span>
-                    <strong>${escapeDecisionHtml(analysisPercent(data.value))}</strong>
-                </div>
-                <div class="analysis-depth-meta">
-                    <span class="depth-status ${status === "OK" ? "included" : "unknown"}">${escapeDecisionHtml(status)}</span>
-                    ${level ? `<span>${escapeDecisionHtml(level)}</span>` : ""}
-                    <span>${escapeDecisionHtml(completenessLabel)}</span>
-                </div>
-                <p title="${escapeDecisionHtml(explanation)}">${escapeDecisionHtml(explanation)}</p>
+            <details class="analysis-detail-panel ${escapeDecisionHtml(tone)}">
+                <summary>
+                    <span class="analysis-detail-icon">
+                        <i class="fa-solid ${escapeDecisionHtml(view.icon)}"></i>
+                    </span>
+                    <span class="analysis-detail-title">
+                        <strong>${escapeDecisionHtml(label)} breakdown</strong>
+                        <small>${dimensions.length} component${dimensions.length === 1 ? "" : "s"} · ${escapeDecisionHtml(view.guidance)}</small>
+                    </span>
+                    <span class="analysis-detail-value">${escapeDecisionHtml(view.valueLabel)}</span>
+                    <i class="fa-solid fa-chevron-down analysis-detail-chevron"></i>
+                </summary>
+                <div class="analysis-detail-content">
+                    <p class="analysis-detail-explanation">${escapeDecisionHtml(explanation)}</p>
                 ${dimensions.length ? `
-                    <details class="decision-depth-details">
-                        <summary>${dimensions.length} component${dimensions.length === 1 ? "" : "s"}</summary>
-                        <div class="analysis-dimension-list">
+                        <div class="analysis-component-list">
                             ${dimensions.map(dimension => {
                                 const contributions = Array.isArray(dimension.contributions)
                                     ? dimension.contributions
@@ -3077,27 +3150,41 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
                                 const dimensionExplanation = sanitizeNumericText(
                                     dimension.explanation || "No component rationale recorded."
                                 );
+                                const valueLabel = analysisPercent(dimension.value);
+                                const meterWidth = analysisMeterWidth(dimension.value);
                                 return `
-                                    <div class="analysis-dimension">
-                                        <div>
-                                            <strong>${escapeDecisionHtml(friendlyAnalysisName(dimension.name))}</strong>
-                                            <span>${escapeDecisionHtml(analysisPercent(dimension.value))} · ${escapeDecisionHtml(descriptor)}</span>
-                                        </div>
-                                        <p title="${escapeDecisionHtml(dimensionExplanation)}">${escapeDecisionHtml(dimensionExplanation)}</p>
-                                        ${contributions.length ? `
-                                            <ul>
+                                    <details class="analysis-component-row">
+                                        <summary>
+                                            <span class="analysis-component-name">
+                                                <strong>${escapeDecisionHtml(friendlyAnalysisName(dimension.name))}</strong>
+                                                <small>${escapeDecisionHtml(descriptor)}</small>
+                                            </span>
+                                            <span class="analysis-component-meter" aria-hidden="true">
+                                                <span style="width: ${meterWidth}%"></span>
+                                            </span>
+                                            <span class="analysis-component-value">${escapeDecisionHtml(valueLabel)}</span>
+                                            <i class="fa-solid fa-chevron-down"></i>
+                                        </summary>
+                                        <div class="analysis-component-body">
+                                            <p>${escapeDecisionHtml(dimensionExplanation)}</p>
+                                            ${contributions.length ? `
+                                                <div class="analysis-inputs">
+                                                    <span>Recorded inputs</span>
+                                                    <ul>
                                                 ${contributions.map(item => `
                                                     <li>${escapeDecisionHtml(sanitizeNumericText(item.description || item.source || "Recorded contribution"))}</li>
                                                 `).join("")}
-                                            </ul>
-                                        ` : ""}
-                                    </div>
+                                                    </ul>
+                                                </div>
+                                            ` : ""}
+                                        </div>
+                                    </details>
                                 `;
                             }).join("")}
                         </div>
-                    </details>
-                ` : ""}
-            </article>
+                ` : '<div class="analysis-no-components">No component detail was persisted.</div>'}
+                </div>
+            </details>
         `;
     }
 
@@ -3105,11 +3192,19 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         renderEligibilityDepth(depth && depth.eligibility);
         const host = document.getElementById("decision-analysis-depth");
         if (!host) return;
-        host.innerHTML = [
-            renderAnalysisBlock("Score", depth && depth.score, "score"),
-            renderAnalysisBlock("Confidence", depth && depth.confidence, "confidence"),
-            renderAnalysisBlock("Risk", depth && depth.risk, "risk"),
-        ].join("");
+        const blocks = [
+            ["Score", depth && depth.score, "score"],
+            ["Confidence", depth && depth.confidence, "confidence"],
+            ["Risk", depth && depth.risk, "risk"],
+        ];
+        host.innerHTML = `
+            <div class="analysis-overview-grid">
+                ${blocks.map(args => renderAnalysisSummaryCard(...args)).join("")}
+            </div>
+            <div class="analysis-detail-stack">
+                ${blocks.map(args => renderAnalysisBlock(...args)).join("")}
+            </div>
+        `;
     }
 
     async function loadDecisionDepth(decisionId) {
@@ -3239,6 +3334,10 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
 
             <section class="decision-brief-section">
                 <h4>Score · confidence · risk</h4>
+                <p class="analysis-section-intro">
+                    Read the three headline assessments first. Expand a category, then a component,
+                    only when you need the recorded rationale and inputs.
+                </p>
                 <div id="decision-analysis-depth" class="analysis-depth-grid">
                     <div class="decision-depth-loading">
                         <i class="fa-solid fa-circle-notch fa-spin"></i> Loading analytical artifacts…
