@@ -19,6 +19,16 @@ from athena.data.validation.reports import (
     ValidationResult,
     ValidationType,
 )
+from athena.domain.decision import (
+    Decision,
+    DecisionJournalEntry,
+    DecisionTrace,
+    GateResult,
+    Position,
+    TraceStage,
+    TradeOutcome,
+    TradePlan,
+)
 from athena.domain.enums import (
     DecisionType,
     Direction,
@@ -29,15 +39,6 @@ from athena.domain.enums import (
     UserAction,
 )
 from athena.domain.market import Candle, CorporateAction, Instrument, MarketSnapshot, Quote
-from athena.domain.decision import (
-    Decision,
-    DecisionJournalEntry,
-    DecisionTrace,
-    GateResult,
-    Position,
-    TraceStage,
-    TradePlan,
-)
 from athena.domain.run import RunRecord
 
 
@@ -328,6 +329,43 @@ def row_to_journal(r: Sequence[Any]) -> DecisionJournalEntry:
         user_action=UserAction(r[2]),
         action_ts=datetime.fromisoformat(r[3]),
         notes=r[4] or "",
+    )
+
+
+def trade_outcome_id(decision_ref: str, closed_ts: datetime) -> str:
+    """Canonical, deterministic id — callers should use this to construct
+    ``TradeOutcome.outcome_id`` before persisting (mirrors journal_entry_id's
+    determinism, but ``TradeOutcome`` has its own id field, so it is respected
+    verbatim by ``trade_outcome_to_row``/``row_to_trade_outcome``, never
+    recomputed on write)."""
+    return f"{decision_ref}:{closed_ts.isoformat()}"
+
+
+def trade_outcome_to_row(outcome: TradeOutcome) -> tuple:
+    return (
+        outcome.outcome_id,
+        outcome.decision_ref,
+        str(outcome.entry_price),
+        str(outcome.exit_price),
+        outcome.quantity,
+        str(outcome.pnl),
+        outcome.holding_seconds,
+        json.dumps(dict(outcome.adherence), sort_keys=True),
+        outcome.closed_ts.isoformat(),
+    )
+
+
+def row_to_trade_outcome(r: Sequence[Any]) -> TradeOutcome:
+    return TradeOutcome(
+        outcome_id=r[0],
+        decision_ref=r[1],
+        entry_price=Decimal(r[2]),
+        exit_price=Decimal(r[3]),
+        quantity=r[4],
+        pnl=Decimal(r[5]),
+        holding_seconds=r[6],
+        adherence=json.loads(r[7]) if r[7] else {},
+        closed_ts=datetime.fromisoformat(r[8]),
     )
 
 

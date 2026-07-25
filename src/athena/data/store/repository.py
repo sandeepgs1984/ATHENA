@@ -18,9 +18,15 @@ from pathlib import Path
 from athena.data.store import serialization as ser
 from athena.data.store.schema import SCHEMA_VERSION, ddl_statements
 from athena.data.validation.quarantine import QuarantineRecord
+from athena.domain.decision import (
+    Decision,
+    DecisionJournalEntry,
+    DecisionTrace,
+    Position,
+    TradeOutcome,
+)
 from athena.domain.enums import Timeframe
 from athena.domain.market import Candle, CorporateAction, Instrument, MarketSnapshot, Quote
-from athena.domain.decision import Decision, DecisionJournalEntry, DecisionTrace, Position
 from athena.domain.run import RunRecord
 from athena.errors import RepositoryError
 
@@ -425,6 +431,50 @@ class SqliteRepository:
             (limit,),
         )
         return [ser.row_to_journal(r) for r in rows]
+
+    def get_journal_entry(self, decision_ref: str) -> DecisionJournalEntry | None:
+        """Most recent journal entry for one decision, or None if never recorded."""
+        row = self._query_one(
+            "SELECT entry_id, decision_ref, user_action, action_ts, notes "
+            "FROM decision_journal WHERE decision_ref=? "
+            "ORDER BY action_ts DESC, entry_id DESC LIMIT 1",
+            (decision_ref,),
+        )
+        return ser.row_to_journal(row) if row else None
+
+    def save_trade_outcome(self, outcome: TradeOutcome) -> None:
+        self._write(
+            "INSERT INTO trade_outcomes ("
+            "outcome_id, decision_ref, entry_price, exit_price, quantity, pnl, "
+            "holding_seconds, adherence_json, closed_ts"
+            ") VALUES (?,?,?,?,?,?,?,?,?) "
+            "ON CONFLICT(outcome_id) DO UPDATE SET "
+            "entry_price=excluded.entry_price, exit_price=excluded.exit_price, "
+            "quantity=excluded.quantity, pnl=excluded.pnl, "
+            "holding_seconds=excluded.holding_seconds, "
+            "adherence_json=excluded.adherence_json, closed_ts=excluded.closed_ts",
+            ser.trade_outcome_to_row(outcome),
+        )
+
+    def get_trade_outcome(self, decision_ref: str) -> TradeOutcome | None:
+        """Most recent realized outcome for one decision, or None if never logged."""
+        row = self._query_one(
+            "SELECT outcome_id, decision_ref, entry_price, exit_price, quantity, pnl, "
+            "holding_seconds, adherence_json, closed_ts "
+            "FROM trade_outcomes WHERE decision_ref=? "
+            "ORDER BY closed_ts DESC, outcome_id DESC LIMIT 1",
+            (decision_ref,),
+        )
+        return ser.row_to_trade_outcome(row) if row else None
+
+    def list_trade_outcomes(self, *, limit: int = 500) -> list[TradeOutcome]:
+        rows = self._query_all(
+            "SELECT outcome_id, decision_ref, entry_price, exit_price, quantity, pnl, "
+            "holding_seconds, adherence_json, closed_ts "
+            "FROM trade_outcomes ORDER BY closed_ts DESC, outcome_id DESC LIMIT ?",
+            (limit,),
+        )
+        return [ser.row_to_trade_outcome(r) for r in rows]
 
     # ------------------------------------------------------------- owner positions (dashboard ledger)
 

@@ -40,7 +40,15 @@ from athena.backtest.models import (
     StrategyPerformance,
 )
 from athena.config.models import ExportFormat, ReportType
-from athena.domain.decision import Decision, DecisionTrace, GateResult, Portfolio, Position
+from athena.domain.decision import (
+    Decision,
+    DecisionJournalEntry,
+    DecisionTrace,
+    GateResult,
+    Portfolio,
+    Position,
+    TradeOutcome,
+)
 from athena.domain.enums import DecisionType, Direction, QualityGate, Timeframe
 from athena.domain.market import Candle
 from athena.export.models import (
@@ -106,6 +114,8 @@ class InMemoryDecisionProvider:
         self.decisions: list[Decision] = []
         self.traces: dict[str, DecisionTrace] = {}
         self.run_details: dict[str, dict[str, object]] = {}
+        self.journal_entries: dict[str, DecisionJournalEntry] = {}
+        self.trade_outcomes: dict[str, TradeOutcome] = {}
 
     def get_decisions(
         self, spec: QuerySpecification[Any]
@@ -143,6 +153,18 @@ class InMemoryDecisionProvider:
 
     def get_run_detail(self, run_id: str) -> dict[str, object]:
         return dict(self.run_details.get(run_id, {}))
+
+    def save_journal_entry(self, entry: DecisionJournalEntry) -> None:
+        self.journal_entries[entry.decision_ref] = entry
+
+    def get_journal_entry(self, decision_id: str) -> DecisionJournalEntry | None:
+        return self.journal_entries.get(decision_id)
+
+    def save_trade_outcome(self, outcome: TradeOutcome) -> None:
+        self.trade_outcomes[outcome.decision_ref] = outcome
+
+    def get_trade_outcome(self, decision_id: str) -> TradeOutcome | None:
+        return self.trade_outcomes.get(decision_id)
 
 
 class InMemoryCandleHistoryProvider:

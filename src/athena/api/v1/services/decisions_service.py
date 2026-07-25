@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
@@ -26,18 +27,28 @@ from athena.api.v1.dtos import (
     EligibilityRuleDTO,
     ExternalLinkDTO,
     GateResultDTO,
+    JournalEntryDTO,
     MarketHealthContextDTO,
     QuerySpecification,
     RegimeContextDTO,
     ResourceReference,
     TraceStageDTO,
+    TradeOutcomeDTO,
     TradePlanDTO,
 )
 from athena.calendar.engine import CalendarEngine
 from athena.config.loader import load_config, load_external_links_file
+from athena.data.store.serialization import trade_outcome_id
+from athena.domain.decision import DecisionJournalEntry, TradeOutcome
+from athena.domain.enums import Direction, UserAction
 
 if TYPE_CHECKING:
-    from athena.api.v1.dtos import DecisionFilterParams, PaginationParams, SortParams
+    from athena.api.v1.dtos import (
+        DecisionFilterParams,
+        PaginationParams,
+        RecordOutcomeRequest,
+        SortParams,
+    )
     from athena.api.v1.providers import DecisionProvider
     from athena.domain.decision import Decision, TraceStage
 
@@ -251,6 +262,108 @@ class DecisionsService:
             regime=self._map_regime(report.get("regime")),
             market_health=self._map_market_health(report.get("market_health")),
             external_links=links,
+        )
+
+    def record_journal_entry(
+        self, decision_id: str, user_action: str, notes: str
+    ) -> JournalEntryDTO:
+        """Persist the owner's response to a decision (M-X0, R-9)."""
+        decision = self._provider.get_decision(decision_id)
+        if decision is None:
+            raise DecisionNotFoundError(f"Decision '{decision_id}' not found")
+
+        entry = DecisionJournalEntry(
+            decision_ref=decision_id,
+            user_action=UserAction(user_action),
+            action_ts=datetime.now(tz=timezone.utc),
+            notes=notes,
+        )
+        self._provider.save_journal_entry(entry)
+        return self._map_journal_entry(entry)
+
+    def get_journal_entry(self, decision_id: str) -> JournalEntryDTO | None:
+        """Most recent owner response for a decision, or None if never recorded."""
+        entry = self._provider.get_journal_entry(decision_id)
+        return self._map_journal_entry(entry) if entry is not None else None
+
+    def record_trade_outcome(
+        self, decision_id: str, req: RecordOutcomeRequest
+    ) -> TradeOutcomeDTO:
+        """Persist a realized outcome. PnL, holding time, and TradePlan adherence
+        are computed here — deterministic and explainable, never client-supplied."""
+        decision = self._provider.get_decision(decision_id)
+        if decision is None:
+            raise DecisionNotFoundError(f"Decision '{decision_id}' not found")
+
+        closed_ts = req.closed_ts or datetime.now(tz=timezone.utc)
+        pnl = self._compute_pnl(decision.direction, req.entry_price, req.exit_price, req.quantity)
+        holding_seconds = max(0, int((closed_ts - decision.ts).total_seconds()))
+        adherence = self._compute_adherence(
+            decision.trade_plan, decision.direction, req.entry_price, req.exit_price
+        )
+
+        outcome = TradeOutcome(
+            outcome_id=trade_outcome_id(decision_id, closed_ts),
+            decision_ref=decision_id,
+            entry_price=req.entry_price,
+            exit_price=req.exit_price,
+            quantity=req.quantity,
+            pnl=pnl,
+            holding_seconds=holding_seconds,
+            adherence=adherence,
+            closed_ts=closed_ts,
+        )
+        self._provider.save_trade_outcome(outcome)
+        return self._map_trade_outcome(outcome)
+
+    def get_trade_outcome(self, decision_id: str) -> TradeOutcomeDTO | None:
+        """Most recent realized outcome for a decision, or None if never logged."""
+        outcome = self._provider.get_trade_outcome(decision_id)
+        return self._map_trade_outcome(outcome) if outcome is not None else None
+
+    @staticmethod
+    def _compute_pnl(direction, entry_price, exit_price, quantity):
+        if direction is Direction.SHORT:
+            return (entry_price - exit_price) * quantity
+        return (exit_price - entry_price) * quantity
+
+    @staticmethod
+    def _compute_adherence(trade_plan, direction, entry_price, exit_price) -> dict[str, bool]:
+        if trade_plan is None:
+            return {}
+        entered_within_zone = trade_plan.entry_low <= entry_price <= trade_plan.entry_high
+        if direction is Direction.SHORT:
+            hit_stop = exit_price >= trade_plan.stop_loss
+            hit_target = any(exit_price <= t for t in trade_plan.targets)
+        else:
+            hit_stop = exit_price <= trade_plan.stop_loss
+            hit_target = any(exit_price >= t for t in trade_plan.targets)
+        return {
+            "entered_within_zone": entered_within_zone,
+            "hit_stop": hit_stop,
+            "hit_target": hit_target,
+        }
+
+    @staticmethod
+    def _map_journal_entry(entry: DecisionJournalEntry) -> JournalEntryDTO:
+        return JournalEntryDTO(
+            decision_id=entry.decision_ref,
+            user_action=entry.user_action.value,
+            action_ts=entry.action_ts,
+            notes=entry.notes,
+        )
+
+    @staticmethod
+    def _map_trade_outcome(outcome: TradeOutcome) -> TradeOutcomeDTO:
+        return TradeOutcomeDTO(
+            decision_id=outcome.decision_ref,
+            entry_price=outcome.entry_price,
+            exit_price=outcome.exit_price,
+            quantity=outcome.quantity,
+            pnl=outcome.pnl,
+            holding_seconds=outcome.holding_seconds,
+            adherence=dict(outcome.adherence),
+            closed_ts=outcome.closed_ts,
         )
 
     @staticmethod

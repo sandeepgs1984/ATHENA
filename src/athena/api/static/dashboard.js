@@ -2327,6 +2327,8 @@ document.addEventListener("DOMContentLoaded", () => {
     let activeDecisionData = null;
     let activeDepth = null;
     let activeContextData = null;
+    let activeJournalEntry = null;
+    let activeTradeOutcome = null;
     let selectedStageId = null;
 
     function escapeDecisionHtml(value) {
@@ -3405,6 +3407,194 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         }
     }
 
+    function journalActionTone(userAction) {
+        if (userAction === "ACCEPTED") return "good";
+        if (userAction === "REJECTED") return "bad";
+        return "neutral";
+    }
+
+    function renderJournalPanel(decisionId) {
+        const host = document.getElementById("decision-journal-panel");
+        if (!host) return;
+
+        const entry = activeJournalEntry;
+        const actionRow = `
+            <div class="journal-action-row">
+                <button type="button" class="btn btn-outline journal-action-btn" data-action="ACCEPTED">
+                    <i class="fa-solid fa-check"></i> Accept
+                </button>
+                <button type="button" class="btn btn-outline journal-action-btn" data-action="REJECTED">
+                    <i class="fa-solid fa-xmark"></i> Reject
+                </button>
+                <button type="button" class="btn btn-outline journal-action-btn" data-action="IGNORED">
+                    <i class="fa-solid fa-eye-slash"></i> Ignore
+                </button>
+            </div>
+            <textarea id="journal-notes-input" class="journal-notes-input" rows="2"
+                placeholder="Optional notes (why, sizing, conviction…)"></textarea>
+        `;
+
+        const statusBadge = entry
+            ? `<div class="journal-status-row">
+                   <span class="context-chip tone-${journalActionTone(entry.user_action)}">${escapeDecisionHtml(entry.user_action)}</span>
+                   <span class="text-muted">recorded ${escapeDecisionHtml(formatDecisionTime(entry.action_ts))}</span>
+                   ${entry.notes ? `<p class="context-caption">${escapeDecisionHtml(entry.notes)}</p>` : ""}
+               </div>`
+            : "";
+
+        let outcomeBlock = "";
+        if (entry && entry.user_action === "ACCEPTED") {
+            outcomeBlock = activeTradeOutcome
+                ? renderOutcomeResult(activeTradeOutcome)
+                : renderOutcomeForm();
+        }
+
+        host.innerHTML = `
+            ${statusBadge}
+            <details class="decision-depth-details" ${entry ? "" : "open"}>
+                <summary>${entry ? "Change response" : "Record your response"}</summary>
+                ${actionRow}
+            </details>
+            ${outcomeBlock}
+        `;
+
+        host.querySelectorAll(".journal-action-btn").forEach(btn => {
+            btn.addEventListener("click", () => {
+                const notesEl = document.getElementById("journal-notes-input");
+                recordJournalEntry(decisionId, btn.getAttribute("data-action"), notesEl ? notesEl.value : "", btn);
+            });
+        });
+
+        const outcomeSubmit = document.getElementById("outcome-submit-btn");
+        if (outcomeSubmit) {
+            outcomeSubmit.addEventListener("click", () => recordTradeOutcomeNow(decisionId, outcomeSubmit));
+        }
+    }
+
+    function renderOutcomeForm() {
+        const plan = activeDecisionData && activeDecisionData.trade_plan;
+        const defaultQty = plan ? plan.position_size : 1;
+        return `
+            <div class="outcome-form">
+                <h5>Log realized outcome</h5>
+                <p class="context-caption">
+                    PnL, holding time, and TradePlan adherence are computed here — never entered
+                    manually.
+                </p>
+                <div class="outcome-form-grid">
+                    <label>Entry price
+                        <input id="outcome-entry-price" type="number" step="0.01"
+                            value="${plan ? plan.entry_low : ""}">
+                    </label>
+                    <label>Exit price
+                        <input id="outcome-exit-price" type="number" step="0.01">
+                    </label>
+                    <label>Quantity
+                        <input id="outcome-quantity" type="number" step="1" min="1" value="${defaultQty}">
+                    </label>
+                </div>
+                <button id="outcome-submit-btn" class="btn btn-outline" type="button">
+                    <i class="fa-solid fa-flag-checkered"></i> Log outcome
+                </button>
+            </div>
+        `;
+    }
+
+    function renderOutcomeResult(outcome) {
+        const pnlValue = Number(outcome.pnl);
+        const pnlTone = pnlValue > 0 ? "good" : (pnlValue < 0 ? "bad" : "neutral");
+        const adherence = outcome.adherence || {};
+        const adherenceChips = Object.entries(adherence).map(([key, value]) => {
+            const label = key.replace(/_/g, " ");
+            return `<span class="context-chip tone-${value ? "good" : "bad"}">${escapeDecisionHtml(label)}: ${value ? "yes" : "no"}</span>`;
+        }).join("");
+        return `
+            <div class="outcome-result">
+                <h5>Realized outcome</h5>
+                <div class="outcome-result-grid">
+                    <div><span>Entry</span><strong>${formatDecisionPrice(outcome.entry_price)}</strong></div>
+                    <div><span>Exit</span><strong>${formatDecisionPrice(outcome.exit_price)}</strong></div>
+                    <div><span>PnL</span><strong class="tone-${pnlTone}-text">${formatDecisionPrice(outcome.pnl)}</strong></div>
+                    <div><span>Holding</span><strong>${Math.round(outcome.holding_seconds / 60)} min</strong></div>
+                </div>
+                <div class="context-chip-row">${adherenceChips}</div>
+                <p class="context-caption">Closed ${escapeDecisionHtml(formatDecisionTime(outcome.closed_ts))}</p>
+            </div>
+        `;
+    }
+
+    async function loadJournalPanel(decisionId) {
+        try {
+            const [journalRes, outcomeRes] = await Promise.all([
+                apiRequest(`/api/v1/decisions/${encodeURIComponent(decisionId)}/journal`, { skipToast: true }),
+                apiRequest(`/api/v1/decisions/${encodeURIComponent(decisionId)}/outcome`, { skipToast: true }),
+            ]);
+            if (activeDecisionId !== decisionId) return;
+            activeJournalEntry = journalRes && journalRes.data;
+            activeTradeOutcome = outcomeRes && outcomeRes.data;
+            renderJournalPanel(decisionId);
+        } catch (err) {
+            if (activeDecisionId !== decisionId) return;
+            console.error(`Failed to load journal/outcome for ${decisionId}`, err);
+            const host = document.getElementById("decision-journal-panel");
+            if (host) host.innerHTML = '<div class="context-caption">Unable to load your response.</div>';
+        }
+    }
+
+    async function recordJournalEntry(decisionId, userAction, notes, button) {
+        if (button) button.disabled = true;
+        try {
+            const res = await apiRequest(`/api/v1/decisions/${encodeURIComponent(decisionId)}/journal`, {
+                method: "POST",
+                body: JSON.stringify({ user_action: userAction, notes: notes || "" }),
+            });
+            activeJournalEntry = res && res.data;
+            showToast(`Response recorded: ${userAction}`, "success");
+            renderJournalPanel(decisionId);
+        } catch (err) {
+            console.error(`Failed to record journal entry for ${decisionId}`, err);
+        } finally {
+            if (button) button.disabled = false;
+        }
+    }
+
+    async function recordTradeOutcomeNow(decisionId, button) {
+        const entryEl = document.getElementById("outcome-entry-price");
+        const exitEl = document.getElementById("outcome-exit-price");
+        const qtyEl = document.getElementById("outcome-quantity");
+        const entryPrice = entryEl ? entryEl.value : "";
+        const exitPrice = exitEl ? exitEl.value : "";
+        const quantity = qtyEl ? qtyEl.value : "";
+        if (!entryPrice || !exitPrice || !quantity) {
+            showToast("Entry price, exit price, and quantity are required", "danger");
+            return;
+        }
+        if (button) {
+            button.disabled = true;
+            button.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Logging…';
+        }
+        try {
+            const res = await apiRequest(`/api/v1/decisions/${encodeURIComponent(decisionId)}/outcome`, {
+                method: "POST",
+                body: JSON.stringify({
+                    entry_price: entryPrice,
+                    exit_price: exitPrice,
+                    quantity: Number(quantity),
+                }),
+            });
+            activeTradeOutcome = res && res.data;
+            showToast("Outcome logged.", "success");
+            renderJournalPanel(decisionId);
+        } catch (err) {
+            console.error(`Failed to record trade outcome for ${decisionId}`, err);
+            showToast("Failed to log outcome.", "danger");
+            if (button) {
+                button.disabled = false;
+                button.innerHTML = '<i class="fa-solid fa-flag-checkered"></i> Log outcome';
+            }
+        }
+    }
+
     function renderDecisionTimeline(decision) {
         const host = document.getElementById("decision-history-timeline");
         if (!host || !decision || !decision.metadata) return;
@@ -3535,6 +3725,20 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
             </section>
 
             <section class="decision-brief-section">
+                <h4>Your response</h4>
+                <p class="analysis-section-intro">
+                    Every recommendation gets a recorded human response — nothing is
+                    unrecorded. This is the only source of real feedback the AI Playbook
+                    Diagnostics learning loop has.
+                </p>
+                <div id="decision-journal-panel" class="decision-journal-panel">
+                    <div class="decision-depth-loading">
+                        <i class="fa-solid fa-circle-notch fa-spin"></i> Loading your response…
+                    </div>
+                </div>
+            </section>
+
+            <section class="decision-brief-section">
                 <h4>Decision timeline</h4>
                 <div id="decision-history-timeline" class="decision-history-timeline"></div>
             </section>
@@ -3603,6 +3807,7 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         loadDecisionDepth(meta.decision_id);
         loadDecisionContext(meta.decision_id);
         loadDecisionChart(rawSymbol, decision.trade_plan, meta.decision_id);
+        loadJournalPanel(meta.decision_id);
         setHeaderRevalidateEnabled(true);
     }
 
@@ -3721,6 +3926,8 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         // Clear cross-decision caches so a stale card never renders under a new symbol
         activeDepth = null;
         activeContextData = null;
+        activeJournalEntry = null;
+        activeTradeOutcome = null;
         // Toggle active card class
         const cards = briefingListContainer.querySelectorAll(".briefing-card");
         cards.forEach(c => {

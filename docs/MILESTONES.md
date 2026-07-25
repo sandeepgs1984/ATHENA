@@ -187,4 +187,40 @@ Re-validate). M-D5 remains deferred until DD-5/provider approval.
 
 ---
 
+### Intraday Edge Program (post M-D4, owner direction 2026-07-25)
+
+AI-driven roadmap toward a "no compromise" world-class intraday analyzer.
+AI proposes and implements; owner approves each completed milestone before
+the next starts (per CLAUDE.md milestone workflow — unchanged). Every item
+below was checked against ATHENA-002 §2/§4/§7/§19 and Risk Register R6
+(module map closed, domain/contracts frozen, no scope creep) before being
+added here — anything touching a frozen contract is ADR-gated; anything
+needing a new external data source is DD-gated. Nothing on this list is
+implemented silently past those gates.
+
+| Milestone | Scope | Gate | Status |
+|---|---|---|---|
+| **M-X0** Decision Journal & Outcome capture | Wire the already-modeled `DecisionJournalEntry`/`TradeOutcome` (frozen domain, existing repository methods) to a real owner action: Accept/Reject/Ignore on the Decision Brief, realized-outcome logging with server-computed pnl/holding-time/TradePlan-adherence. Closes the gap where `save_journal_entry` was called nowhere in the codebase and M10.4 AI Playbook Diagnostics ran against an always-empty journal. Prerequisite for M-X1/M-X10. | None — existing frozen domain objects + repository methods, just unconnected | 🔄 Ready for review |
+| **M-X1** Historical analog matcher | Deterministic nearest-neighbor retrieval of past decisions with a similar score/confidence/risk fingerprint + their logged outcomes, surfaced in the Decision Brief | None — read-only query over existing persisted Decision Journal (depends on M-X0 for real outcome data) | ⏳ Planned (after M-X0) |
+| **M-X2** "Why not" counterfactual | Quantify exact score/confidence gap between a WATCH and the TRADE gate | None | ⏳ Planned |
+| **M-X3** Confidence-decay clock | Persisted, deterministic decay indicator for TradePlan staleness through the session | None | ⏳ Planned |
+| **M-X4** Circuit-limit / price-band risk signal | New Risk Engine dimension from Kite's already-fetched, currently-discarded circuit-limit fields | **ADR-006 (Proposed)** — extends frozen `Quote` domain object | ⏸ Blocked on ADR approval |
+| **M-X5** Opening Range Breakout playbook | First-15/30-min range break/hold as a deterministic strategy-framework pattern | None | ⏳ Planned |
+| **M-X6** VWAP deviation scoring dimension | Intraday VWAP reclaim/deviation as a new scoring input | None | ⏳ Planned |
+| **M-X7** Multi-timeframe confluence | 1m/5m/15m agreement as a scoring/confidence dimension | None | ⏳ Planned |
+| **M-X8** Synthetic canary decision | Fixed synthetic instrument through the full pipeline each cycle to catch silent engine regressions | None | ⏳ Planned |
+| **M-X9** Config-change impact preview | Deterministic replay-based diff of a scoring-weight change against recent decisions, before it goes live | None | ⏳ Planned |
+| **M-X10** Outcome-tagged setups + signal drift monitor | Extends M10.4 AI Playbook Diagnostics with per-pattern hit-rate tagging and weight-drift alerts | None | ⏳ Planned |
+
+**Explicitly not started — owner decision required, not an AI call:**
+
+| Item | Why it's gated | Revisit point |
+|---|---|---|
+| ASM/GSM surveillance-stage awareness | New NSE data source; no existing DD covers it | Needs a new DD (owner decision on vendor/method) before any code |
+| Delivery % (NSE daily delivery data) | New NSE data source | Needs a new DD |
+| Bulk/block deal feed | New NSE data source | Needs a new DD |
+| Options data + F&O ban-list feed | **DD-4** already exists in ATHENA-002 §15, deferred to "Phase 7" — Phase 7 is now approved, so DD-4 is revisit-eligible | Owner decision: open DD-4 now or keep deferred |
+
+---
+
 *Status legend: a milestone is "In Progress" (🔄) when actively being designed or built, "Approved" (✅) only when the owner signs off. Never two milestones in flight.*

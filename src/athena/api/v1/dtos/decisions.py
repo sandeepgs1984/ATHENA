@@ -267,3 +267,53 @@ class DecisionContextDTO(BaseModel):
     market_health: MarketHealthContextDTO
     external_links: list[ExternalLinkDTO] = Field(default_factory=list)
 
+
+class RecordJournalRequest(BaseModel):
+    """Owner's response to a decision (M-X0, R-9). Nothing is unrecorded."""
+
+    model_config = ConfigDict(frozen=True)
+
+    user_action: Literal["ACCEPTED", "REJECTED", "IGNORED"]
+    notes: str = Field(default="", max_length=500)
+
+
+class JournalEntryDTO(BaseModel):
+    """Persisted owner response for one decision."""
+
+    model_config = ConfigDict(frozen=True)
+
+    decision_id: str
+    user_action: str
+    action_ts: datetime
+    notes: str = ""
+
+
+class RecordOutcomeRequest(BaseModel):
+    """Realized entry/exit for an accepted decision. PnL and adherence are
+    computed server-side from the persisted TradePlan — never client-supplied,
+    so every outcome is deterministic and explainable (ADR-005)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    entry_price: Decimal
+    exit_price: Decimal
+    quantity: int = Field(..., ge=1)
+    closed_ts: datetime | None = Field(
+        default=None, description="Defaults to now if omitted"
+    )
+
+
+class TradeOutcomeDTO(BaseModel):
+    """Persisted realized outcome for one decision."""
+
+    model_config = ConfigDict(frozen=True)
+
+    decision_id: str
+    entry_price: Decimal
+    exit_price: Decimal
+    quantity: int
+    pnl: Decimal
+    holding_seconds: int
+    adherence: dict[str, bool] = Field(default_factory=dict)
+    closed_ts: datetime
+

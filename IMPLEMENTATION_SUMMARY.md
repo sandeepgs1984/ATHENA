@@ -6,6 +6,136 @@ status updated on approval.
 
 ---
 
+## M-X0 — Decision Journal & Outcome capture (READY FOR REVIEW)
+
+| | |
+|---|---|
+| Completed | 2026-07-25 |
+| Objective | Close a foundational gap discovered while designing the Intraday Edge Program: `DecisionJournalEntry` and `TradeOutcome` are fully modeled, persisted, and already consumed by M10.4 AI Playbook Diagnostics — but nothing in the codebase ever called `save_journal_entry`. The feedback loop has been silently empty since M10.4 shipped. |
+| Scope | Owner accept/reject/ignore response + realized-outcome logging, server-computed pnl/holding-time/TradePlan-adherence, new Decision Brief section |
+| Tests | Full suite **1008 passed** (+19 new); changed-file Ruff clean; mypy clean on touched modules |
+| Coverage | Existing project coverage retained; no separate percentage collected |
+| Status | **READY FOR REVIEW** — owner smoke required |
+| Branch | feature/live-dashboard |
+
+### Scope completed
+
+- Discovered via `git grep`-level tracing (no code written yet) that
+  `save_journal_entry` — the repository method that persists the owner's
+  response to a decision — is called nowhere in `src/`. `TradeOutcome` had
+  no persistence path at all (no repository methods, no table). M10.4's
+  `PlaybookDiagnosticsAnalyzer.analyze(journal=...)` has therefore always
+  received an empty sequence in production. This is the first milestone of
+  the AI-proposed "Intraday Edge Program" (`docs/MILESTONES.md`), reordered
+  ahead of the originally-planned Historical Analog Matcher (M-X1) once
+  discovered, since analog matching over always-empty outcomes would have
+  been hollow.
+- Added `trade_outcomes` SQLite table (schema v6→v7) and repository methods
+  `save_trade_outcome`/`get_trade_outcome`/`list_trade_outcomes`, plus
+  `get_journal_entry` (single-decision lookup; only `list_journal` existed).
+  Additive only — no existing table/method changed.
+- Extended `DecisionProvider` Protocol (P8.3 API-layer abstraction, not an
+  ATHENA-002 §7 analytical contract) with
+  `save_journal_entry`/`get_journal_entry`/`save_trade_outcome`/
+  `get_trade_outcome`; implemented in both `SqliteDecisionProvider` and
+  `InMemoryDecisionProvider`.
+- Added `POST/GET /api/v1/decisions/{id}/journal` and
+  `POST/GET /api/v1/decisions/{id}/outcome`. PnL (`entry`/`exit` vs.
+  `Decision.direction`), holding time (`closed_ts - decision.ts`), and
+  TradePlan adherence (`entered_within_zone`, `hit_stop`, `hit_target`) are
+  computed server-side from the persisted `TradePlan` — never client-
+  supplied, so every outcome is deterministic and explainable (ADR-005).
+  Write endpoints require `Permission.EXECUTE`; reads require `READ`.
+- Added a "Your response" section to the Decision Brief: Accept/Reject/
+  Ignore buttons with optional notes, and — once accepted — an outcome-
+  logging form (entry/exit/quantity only; everything else computed) that
+  becomes a read-only result card (PnL, adherence chips, holding time) once
+  logged. Cache-busted dashboard assets to `9.26.0`.
+- No architecture change: `DecisionJournalEntry`/`TradeOutcome` were already
+  frozen domain objects; `journal` is already a named contract row in
+  ATHENA-002 §7's module table (consumes `decisions`, produces "persisted
+  journal rows") — this milestone completes what the blueprint already
+  specified, per the R6 anti-scope-creep guardrail checked before starting.
+
+### Files created
+
+- None (all additive to existing files).
+
+### Files modified
+
+- `src/athena/data/store/{schema,serialization,repository}.py` (trade_outcomes
+  table + methods, `get_journal_entry`)
+- `src/athena/api/v1/providers/{base,sqlite_providers,in_memory}.py` (Protocol
+  extension + two implementations)
+- `src/athena/api/v1/dtos/{decisions,__init__}.py` (4 new DTOs)
+- `src/athena/api/v1/services/decisions_service.py` (record/get journal +
+  outcome, server-side pnl/adherence computation)
+- `src/athena/api/v1/routers/decisions.py` (4 new endpoints)
+- dashboard CSS/JS/HTML; `tests/api/v1/test_core_apis.py`,
+  `tests/data_layer/test_decision_journal.py`,
+  `tests/runtime/test_dry_run_schedule.py` (schema-version bump fix),
+  `tests/api/platform/test_dashboard_hosting.py`; `docs/MILESTONES.md`; this log.
+
+### Public APIs
+
+- Added `POST/GET /api/v1/decisions/{decision_id}/journal`,
+  `POST/GET /api/v1/decisions/{decision_id}/outcome`.
+- No frozen domain object, calculation, risk policy, or order boundary
+  changed — `DecisionJournalEntry`/`TradeOutcome` were already defined;
+  this milestone only adds their persistence and a real entry point.
+
+### Validation and architecture
+
+- Full regression: **1008 passed** (was 1004; +19 net new: 2 API tests +
+  4 repository round-trip tests + updated 2 stale schema-version assertions
+  + assorted dashboard-hosting assertions).
+- Ruff clean on every touched file; 3 pre-existing `SIM117` findings in
+  `repository.py` (nested `with` in unrelated pre-existing methods) left
+  untouched per scope discipline.
+- mypy clean on all touched modules.
+- ADR-005 preserved: pnl/holding-time/adherence are computed once, server-
+  side, from persisted data — never entered by the owner, never
+  recalculated by the UI.
+- No order-placement path touched. Determinism, replayability, provider
+  independence preserved. No ADR required (confirmed against ATHENA-002
+  §19/§7 before starting — see Scope completed).
+
+### Risks and technical debt
+
+- Outcome logging currently supports one outcome per decision (upsert by
+  `decision_ref:closed_ts`); partial exits across multiple fills are not
+  modeled. Acceptable for v1 — no existing UI/data assumed multiple
+  outcomes either.
+- `adherence` is a fixed 2-key computed dict (`entered_within_zone`,
+  `hit_stop`, `hit_target`) when a TradePlan exists, empty otherwise (e.g.
+  outcome logged against a non-TRADE decision). Documented, not silently
+  defaulted.
+- No new technical debt beyond the above.
+
+### Remaining work
+
+- Owner smoke: unlock the live workstation, select an ACCEPTED-worthy
+  decision, record Accept/Reject/Ignore, confirm it persists across a
+  reload, log a realized outcome and confirm pnl/adherence compute
+  correctly, confirm a REJECTED/IGNORED decision does not show the outcome
+  form.
+- Next in the Intraday Edge Program: **M-X1 Historical analog matcher**,
+  now genuinely valuable once real journal/outcome data accumulates.
+  **ADR-006** (circuit-limit risk signal) still awaits owner sign-off.
+
+### Commit message
+
+```text
+feat(data): wire Decision Journal and Trade Outcome to a real owner action
+
+- Add trade_outcomes table (schema v7) and repository persistence — TradeOutcome existed in the frozen domain model with zero persistence path until now
+- Extend DecisionProvider with journal/outcome save+get, implemented in both Sqlite and InMemory providers
+- Add POST/GET journal and outcome endpoints; pnl, holding time, and TradePlan adherence are computed server-side, never client-supplied (ADR-005)
+- Add a "Your response" Decision Brief section: accept/reject/ignore + outcome logging, closing the gap where M10.4 AI Playbook Diagnostics ran against an always-empty journal since it shipped
+```
+
+---
+
 ## M-D4 — Context lane (APPROVED)
 
 | | |

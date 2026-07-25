@@ -16,9 +16,13 @@ from athena.api.v1.dtos import (
     DecisionDTO,
     DecisionFilterParams,
     DecisionTraceDTO,
+    JournalEntryDTO,
     PaginationParams,
+    RecordJournalRequest,
+    RecordOutcomeRequest,
     ResponseMeta,
     SortParams,
+    TradeOutcomeDTO,
 )
 from athena.api.v1.dtos.base import PaginationMeta
 from athena.api.v1.services.decisions_service import DecisionsService
@@ -149,6 +153,109 @@ def get_decision_context(
             request_id=request_id,
             api_version="v1",
             as_of=datetime.now(tz=timezone.utc),
+        ),
+    )
+
+
+@router.post(
+    "/{decision_id}/journal",
+    response_model=AthenaResponse[JournalEntryDTO],
+    summary="Record the owner's response to a decision (accept/reject/ignore)",
+    status_code=status.HTTP_201_CREATED,
+    operation_id="recordDecisionJournalEntry",
+)
+def record_journal_entry(
+    body: RecordJournalRequest,
+    request: Request,
+    decision_id: str,
+    service: DecisionsService = Depends(get_decisions_service),  # noqa: B008
+    principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.EXECUTE)),  # noqa: B008
+) -> AthenaResponse[JournalEntryDTO]:
+    """Persist the owner's response (M-X0, R-9) — nothing is unrecorded."""
+    entry = service.record_journal_entry(decision_id, body.user_action, body.notes)
+    request_id = getattr(request.state, "request_id", "unknown")
+    return AthenaResponse(
+        status="success",
+        data=entry,
+        meta=ResponseMeta(
+            request_id=request_id, api_version="v1", as_of=datetime.now(tz=timezone.utc)
+        ),
+    )
+
+
+@router.get(
+    "/{decision_id}/journal",
+    response_model=AthenaResponse[JournalEntryDTO | None],
+    summary="Get the owner's most recent response to a decision",
+    status_code=status.HTTP_200_OK,
+    operation_id="getDecisionJournalEntry",
+)
+def get_decision_journal_entry(
+    request: Request,
+    decision_id: str,
+    service: DecisionsService = Depends(get_decisions_service),  # noqa: B008
+    principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.READ)),  # noqa: B008
+) -> AthenaResponse[JournalEntryDTO | None]:
+    """None if the owner has never recorded a response for this decision."""
+    entry = service.get_journal_entry(decision_id)
+    request_id = getattr(request.state, "request_id", "unknown")
+    return AthenaResponse(
+        status="success",
+        data=entry,
+        meta=ResponseMeta(
+            request_id=request_id, api_version="v1", as_of=datetime.now(tz=timezone.utc)
+        ),
+    )
+
+
+@router.post(
+    "/{decision_id}/outcome",
+    response_model=AthenaResponse[TradeOutcomeDTO],
+    summary="Record the realized outcome for an accepted decision",
+    status_code=status.HTTP_201_CREATED,
+    operation_id="recordTradeOutcome",
+)
+def record_trade_outcome(
+    body: RecordOutcomeRequest,
+    request: Request,
+    decision_id: str,
+    service: DecisionsService = Depends(get_decisions_service),  # noqa: B008
+    principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.EXECUTE)),  # noqa: B008
+) -> AthenaResponse[TradeOutcomeDTO]:
+    """PnL, holding time, and TradePlan adherence are computed server-side —
+    deterministic and explainable, never client-supplied (M-X0, ADR-005)."""
+    outcome = service.record_trade_outcome(decision_id, body)
+    request_id = getattr(request.state, "request_id", "unknown")
+    return AthenaResponse(
+        status="success",
+        data=outcome,
+        meta=ResponseMeta(
+            request_id=request_id, api_version="v1", as_of=datetime.now(tz=timezone.utc)
+        ),
+    )
+
+
+@router.get(
+    "/{decision_id}/outcome",
+    response_model=AthenaResponse[TradeOutcomeDTO | None],
+    summary="Get the realized outcome for a decision",
+    status_code=status.HTTP_200_OK,
+    operation_id="getTradeOutcome",
+)
+def get_trade_outcome(
+    request: Request,
+    decision_id: str,
+    service: DecisionsService = Depends(get_decisions_service),  # noqa: B008
+    principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.READ)),  # noqa: B008
+) -> AthenaResponse[TradeOutcomeDTO | None]:
+    """None if no outcome has been logged for this decision."""
+    outcome = service.get_trade_outcome(decision_id)
+    request_id = getattr(request.state, "request_id", "unknown")
+    return AthenaResponse(
+        status="success",
+        data=outcome,
+        meta=ResponseMeta(
+            request_id=request_id, api_version="v1", as_of=datetime.now(tz=timezone.utc)
         ),
     )
 

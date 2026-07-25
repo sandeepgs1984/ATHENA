@@ -145,6 +145,22 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".decision-brief-header-actions" in css
     assert ".btn-sm" in css
 
+    # M-X0: owner response + realized outcome capture — closes the gap where
+    # DecisionJournalEntry/TradeOutcome existed but were never wired to any action
+    assert 'id="decision-journal-panel"' in js
+    assert "function renderJournalPanel" in js
+    assert "function loadJournalPanel" in js
+    assert "function recordJournalEntry" in js
+    assert "function recordTradeOutcomeNow" in js
+    assert "function renderOutcomeForm" in js
+    assert "function renderOutcomeResult" in js
+    assert "/journal" in js
+    assert "/outcome" in js
+    assert "computed here" in js  # never client-entered pnl/adherence, per ADR-005
+    assert ".decision-journal-panel" in css
+    assert ".outcome-form" in css
+    assert ".outcome-result" in css
+
     # Operations console (P9.7) is live — warnings feed + backup panel, not a fake loader
     assert 'id="ops-warnings-feed"' in html
     assert 'id="ops-telemetry-chart"' in html

@@ -22,7 +22,14 @@ from athena.api.v1.dtos import (
 )
 from athena.api.v1.providers.in_memory import apply_query_spec
 from athena.data.store.repository import SqliteRepository
-from athena.domain.decision import Decision, DecisionTrace, Portfolio, Position
+from athena.domain.decision import (
+    Decision,
+    DecisionJournalEntry,
+    DecisionTrace,
+    Portfolio,
+    Position,
+    TradeOutcome,
+)
 from athena.domain.enums import RunStatus, Timeframe
 from athena.domain.market import Candle
 from athena.orchestration.models import (
@@ -151,6 +158,18 @@ class SqliteDecisionProvider:
 
     def get_run_detail(self, run_id: str) -> dict[str, object]:
         return self._repo.get_run_detail(run_id)
+
+    def save_journal_entry(self, entry: DecisionJournalEntry) -> None:
+        self._repo.save_journal_entry(entry)
+
+    def get_journal_entry(self, decision_id: str) -> DecisionJournalEntry | None:
+        return self._repo.get_journal_entry(decision_id)
+
+    def save_trade_outcome(self, outcome: TradeOutcome) -> None:
+        self._repo.save_trade_outcome(outcome)
+
+    def get_trade_outcome(self, decision_id: str) -> TradeOutcome | None:
+        return self._repo.get_trade_outcome(decision_id)
 
 
 class SqlitePortfolioProvider:

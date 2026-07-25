@@ -24,7 +24,13 @@ if TYPE_CHECKING:
         WorkspaceFilterParams,
     )
     from athena.backtest.models import BacktestRun
-    from athena.domain.decision import Decision, DecisionTrace, Portfolio
+    from athena.domain.decision import (
+        Decision,
+        DecisionJournalEntry,
+        DecisionTrace,
+        Portfolio,
+        TradeOutcome,
+    )
     from athena.domain.enums import Timeframe
     from athena.domain.market import Candle
     from athena.export.models import ExportArtifact, ExportSnapshot
@@ -75,6 +81,22 @@ class DecisionProvider(Protocol):
 
     def get_run_detail(self, run_id: str) -> dict[str, object]:
         """Return persisted run detail used to render decision depth."""
+        ...
+
+    def save_journal_entry(self, entry: DecisionJournalEntry) -> None:
+        """Persist the owner's response to a decision (R-9)."""
+        ...
+
+    def get_journal_entry(self, decision_id: str) -> DecisionJournalEntry | None:
+        """Most recent journal entry for one decision, or None if never recorded."""
+        ...
+
+    def save_trade_outcome(self, outcome: TradeOutcome) -> None:
+        """Persist a realized outcome for an accepted decision."""
+        ...
+
+    def get_trade_outcome(self, decision_id: str) -> TradeOutcome | None:
+        """Most recent realized outcome for one decision, or None if never logged."""
         ...
 
 

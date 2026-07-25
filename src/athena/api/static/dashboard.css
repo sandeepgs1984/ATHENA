@@ -3760,5 +3760,115 @@ body {
     margin-left: 4px;
 }
 
+.decision-journal-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.journal-status-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.journal-action-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+}
+
+.journal-notes-input {
+    width: 100%;
+    margin-top: 8px;
+    padding: 8px 10px;
+    background: rgba(2, 6, 23, 0.4);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: 0.8rem;
+    resize: vertical;
+}
+
+.outcome-form,
+.outcome-result {
+    background: rgba(15, 23, 42, 0.35);
+    border: 1px solid var(--border-color);
+    border-radius: 7px;
+    padding: 12px 14px;
+}
+
+.outcome-form h5,
+.outcome-result h5 {
+    color: var(--text-primary);
+    font-size: 0.68rem;
+    letter-spacing: 0.05em;
+    margin: 0 0 6px;
+    text-transform: uppercase;
+}
+
+.outcome-form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 10px;
+    margin: 8px 0 12px;
+}
+
+.outcome-form-grid label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+}
+
+.outcome-form-grid input {
+    padding: 7px 9px;
+    background: rgba(2, 6, 23, 0.4);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    text-transform: none;
+}
+
+.outcome-result-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.outcome-result-grid span {
+    display: block;
+    color: var(--text-muted);
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    margin-bottom: 3px;
+}
+
+.outcome-result-grid strong {
+    font-family: var(--font-mono);
+    font-size: 0.9rem;
+    color: var(--text-primary);
+}
+
+.tone-good-text {
+    color: #86efac !important;
+}
+
+.tone-bad-text {
+    color: #fca5a5 !important;
+}
+
+.tone-neutral-text {
+    color: var(--text-primary) !important;
+}
+
 
 

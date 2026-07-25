@@ -358,6 +358,94 @@ class TestDecisionsAPI:
         assert context["market_health"]["dimensions"]["breadth"] == "STRONG_BREADTH"
         assert context["external_links"] == []
 
+    def test_decision_journal_and_outcome_roundtrip(self, client) -> None:
+        """M-X0: owner response + realized outcome, server-computed pnl/adherence."""
+        read_headers = get_auth_headers(client, Role.ANALYST)
+        write_headers = get_auth_headers(client, Role.OPERATOR, username="operator")
+        dec_p = get_decision_provider()
+
+        now = datetime.now(tz=timezone.utc)
+        plan = TradePlan(
+            entry_low=Decimal("100.00"),
+            entry_high=Decimal("101.00"),
+            stop_loss=Decimal("98.00"),
+            targets=(Decimal("104.00"), Decimal("106.00")),
+            position_size=10,
+            risk_amount=Decimal("300.00"),
+            risk_reward=Decimal("2.50"),
+            valid_from=now,
+            valid_until=now + timedelta(hours=1),
+        )
+        dec = Decision(
+            decision_id="dec-journal-1",
+            ts=now,
+            run_id="run-journal-1",
+            cycle_id="cycle-journal-1",
+            instrument_id="SBIN",
+            direction=Direction.LONG,
+            decision_type=DecisionType.TRADE,
+            explanation="sbin journal test",
+            trade_plan=plan,
+        )
+        dec_p.decisions.append(dec)  # type: ignore[attr-defined]
+
+        # No journal/outcome recorded yet
+        empty = client.get("/api/v1/decisions/dec-journal-1/journal", headers=read_headers)
+        assert empty.status_code == 200
+        assert empty.json()["data"] is None
+
+        # Read-only role cannot record a response
+        forbidden = client.post(
+            "/api/v1/decisions/dec-journal-1/journal",
+            json={"user_action": "ACCEPTED", "notes": "taking this"},
+            headers=read_headers,
+        )
+        assert forbidden.status_code == 403
+
+        accept = client.post(
+            "/api/v1/decisions/dec-journal-1/journal",
+            json={"user_action": "ACCEPTED", "notes": "taking this"},
+            headers=write_headers,
+        )
+        assert accept.status_code == 201
+        assert accept.json()["data"]["user_action"] == "ACCEPTED"
+        assert accept.json()["data"]["notes"] == "taking this"
+
+        fetched = client.get("/api/v1/decisions/dec-journal-1/journal", headers=read_headers)
+        assert fetched.json()["data"]["user_action"] == "ACCEPTED"
+
+        # Outcome: entered within zone, exited at target 1 — pnl computed server-side
+        outcome_resp = client.post(
+            "/api/v1/decisions/dec-journal-1/outcome",
+            json={
+                "entry_price": "100.50",
+                "exit_price": "104.00",
+                "quantity": 10,
+            },
+            headers=write_headers,
+        )
+        assert outcome_resp.status_code == 201
+        outcome = outcome_resp.json()["data"]
+        assert outcome["pnl"] == "35.00"  # (104.00 - 100.50) * 10
+        assert outcome["adherence"]["entered_within_zone"] is True
+        assert outcome["adherence"]["hit_target"] is True
+        assert outcome["adherence"]["hit_stop"] is False
+        assert outcome["holding_seconds"] >= 0
+
+        fetched_outcome = client.get(
+            "/api/v1/decisions/dec-journal-1/outcome", headers=read_headers
+        )
+        assert fetched_outcome.json()["data"]["pnl"] == "35.00"
+
+    def test_decision_journal_not_found(self, client) -> None:
+        headers = get_auth_headers(client, Role.OPERATOR, username="operator2")
+        response = client.post(
+            "/api/v1/decisions/dec-nonexistent/journal",
+            json={"user_action": "IGNORED"},
+            headers=headers,
+        )
+        assert response.status_code == 404
+
     def test_get_decision_not_found(self, client) -> None:
         headers = get_auth_headers(client, Role.ANALYST)
         response = client.get("/api/v1/decisions/dec-invalid", headers=headers)
