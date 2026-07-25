@@ -11,6 +11,7 @@ from athena.api.security import Permission, RequirePermission
 from athena.api.security.models import AuthenticatedPrincipal
 from athena.api.v1.dtos import (
     AthenaResponse,
+    DecisionContextDTO,
     DecisionDepthDTO,
     DecisionDTO,
     DecisionFilterParams,
@@ -116,6 +117,34 @@ def get_decision_depth(
     return AthenaResponse(
         status="success",
         data=depth,
+        meta=ResponseMeta(
+            request_id=request_id,
+            api_version="v1",
+            as_of=datetime.now(tz=timezone.utc),
+        ),
+    )
+
+
+@router.get(
+    "/{decision_id}/context",
+    response_model=AthenaResponse[DecisionContextDTO],
+    summary="Get session/calendar, regime/market-health, and curated links for a decision",
+    status_code=status.HTTP_200_OK,
+    operation_id="getDecisionContext",
+)
+def get_decision_context(
+    request: Request,
+    decision_id: str,
+    service: DecisionsService = Depends(get_decisions_service),  # noqa: B008
+    principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.READ)),  # noqa: B008
+) -> AthenaResponse[DecisionContextDTO]:
+    """Render session/calendar context, persisted regime/market-health, and
+    owner-curated external links. No news ingestion, no generated rationale."""
+    context = service.get_decision_context(decision_id)
+    request_id = getattr(request.state, "request_id", "unknown")
+    return AthenaResponse(
+        status="success",
+        data=context,
         meta=ResponseMeta(
             request_id=request_id,
             api_version="v1",

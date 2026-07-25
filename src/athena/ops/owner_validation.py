@@ -527,6 +527,8 @@ class OwnerValidationPipeline:
                     risk=ctx.get("risk"),
                     evidence_bundle=ctx.get("evidence_bundle"),
                     indicators=ctx.get("indicators"),
+                    regime=ctx.get("regime"),
+                    market_health=ctx.get("market_health"),
                 )
                 return {"outcome": True}
 

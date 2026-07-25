@@ -45,6 +45,8 @@ class DecisionReportingEngine:
         risk: RiskAssessment | None = None,
         evidence_bundle: EvidenceBundle | None = None,
         indicators: Mapping[IndicatorName, IndicatorResult] | None = None,
+        regime: object | None = None,
+        market_health: object | None = None,
     ) -> DecisionReport:
         decision = outcome.decision
         machine: dict[str, object] = {
@@ -66,6 +68,8 @@ class DecisionReportingEngine:
             "risk": self._risk(risk),
             "evidence": self._evidence(evidence_bundle),
             "indicators": self._indicators(indicators),
+            "regime": self._regime(regime),
+            "market_health": self._market_health(market_health),
             "reasoning": {
                 "stages": [
                     {"stage": s.stage, "refs": list(s.ref_ids), "summary": s.summary}
@@ -192,6 +196,52 @@ class DecisionReportingEngine:
         }
 
     @staticmethod
+    def _regime(regime) -> dict:
+        if regime is None:
+            return {"status": _UNKNOWN}
+        assessment = regime.assessment
+        return {
+            "status": "ASSESSED",
+            "assessment_id": assessment.assessment_id,
+            "ts": assessment.ts.isoformat(),
+            "labels": list(assessment.labels),
+            "explanation": assessment.explanation,
+            "evidence": [
+                {
+                    "evidence_id": e.evidence_id,
+                    "dimension": e.dimension,
+                    "outcome": e.outcome.value if hasattr(e.outcome, "value") else str(e.outcome),
+                    "explanation": e.explanation,
+                    "inputs": dict(e.inputs),
+                }
+                for e in regime.evidence
+            ],
+        }
+
+    @staticmethod
+    def _market_health(market_health) -> dict:
+        if market_health is None:
+            return {"status": _UNKNOWN}
+        assessment = market_health.assessment
+        return {
+            "status": "ASSESSED",
+            "assessment_id": assessment.assessment_id,
+            "ts": assessment.ts.isoformat(),
+            "dimensions": dict(assessment.dimensions),
+            "explanation": assessment.explanation,
+            "evidence": [
+                {
+                    "evidence_id": e.evidence_id,
+                    "dimension": e.dimension,
+                    "outcome": e.outcome.value if hasattr(e.outcome, "value") else str(e.outcome),
+                    "explanation": e.explanation,
+                    "inputs": dict(e.inputs),
+                }
+                for e in market_health.evidence
+            ],
+        }
+
+    @staticmethod
     def _indicators(indicators) -> list[dict]:
         if not indicators:
             return []
@@ -255,6 +305,22 @@ class DecisionReportingEngine:
                   f"({rk.get('level', _UNKNOWN)}, status {rk['status']})"]
         for dim in rk.get("dimensions", []):
             lines.append(f"    {dim['name']}: {_disp_from(dim['value'])} [{dim['status']}]")
+
+        reg = machine["regime"]
+        lines += ["", "REGIME", "-" * 60]
+        if reg.get("status") == _UNKNOWN:
+            lines.append("  UNKNOWN (no regime assessment)")
+        else:
+            lines.append(f"  labels: {', '.join(reg['labels'])} — {reg['explanation']}")
+
+        mh = machine["market_health"]
+        lines += ["", "MARKET HEALTH", "-" * 60]
+        if mh.get("status") == _UNKNOWN:
+            lines.append("  UNKNOWN (no market-health assessment)")
+        else:
+            lines.append(f"  {mh['explanation']}")
+            for dim, label in mh.get("dimensions", {}).items():
+                lines.append(f"    {dim}: {label}")
 
         ev = machine["evidence"]
         lines += ["", "EVIDENCE", "-" * 60]

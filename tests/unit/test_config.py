@@ -6,7 +6,7 @@ from __future__ import annotations
 import pytest
 from tests.conftest import rewrite_json
 
-from athena.config.loader import load_config, snapshot_config
+from athena.config.loader import load_config, load_external_links_file, snapshot_config
 from athena.errors import ConfigError
 
 
@@ -81,3 +81,39 @@ def test_missing_file_is_a_readable_error(config_dir):
     (config_dir / "capital.json").unlink()
     with pytest.raises(ConfigError, match=r"Missing configuration file.*capital.json"):
         load_config(config_dir)
+
+
+def test_external_links_default_empty_when_missing(tmp_path):
+    empty_dir = tmp_path / "config"
+    empty_dir.mkdir()
+    result = load_external_links_file(empty_dir)
+    assert result.links == []
+
+
+def test_external_links_loads_valid_entries(config_dir):
+    rewrite_json(config_dir / "external_links.json", lambda d: d["links"].append({
+        "instrument_id": "NSE:RELIANCE",
+        "title": "Reliance FY26 Investor Day",
+        "url": "https://example.com/reliance-investor-day",
+        "source": "Company IR",
+        "added_by": "owner",
+        "date_added": "2026-07-20",
+    }))
+    result = load_external_links_file(config_dir)
+    assert len(result.links) == 1
+    assert result.links[0].instrument_id == "NSE:RELIANCE"
+    assert result.links[0].title == "Reliance FY26 Investor Day"
+
+
+def test_external_links_rejects_unknown_field(config_dir):
+    rewrite_json(config_dir / "external_links.json", lambda d: d["links"].append({
+        "instrument_id": "GLOBAL",
+        "title": "x",
+        "url": "https://x",
+        "source": "x",
+        "added_by": "x",
+        "date_added": "2026-01-01",
+        "unexpected_field": "oops",
+    }))
+    with pytest.raises(ConfigError, match=r"unexpected_field"):
+        load_external_links_file(config_dir)

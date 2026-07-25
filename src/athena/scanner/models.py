@@ -28,6 +28,8 @@ class ScanCapture:
     risk: object | None = None
     evidence_bundle: object | None = None
     indicators: Mapping[object, object] | None = None
+    regime: object | None = None
+    market_health: object | None = None
 
 
 @dataclass(frozen=True, slots=True)

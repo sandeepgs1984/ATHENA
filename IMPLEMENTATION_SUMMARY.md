@@ -6,6 +6,147 @@ status updated on approval.
 
 ---
 
+## M-D4 — Context lane (READY FOR REVIEW)
+
+| | |
+|---|---|
+| Completed | 2026-07-25 |
+| Objective | Ground each selected decision in session/calendar awareness, persisted regime/market-health context, and owner-curated external research links; add a deterministic Decision Brief export |
+| Scope | Session/calendar context, persisted regime/market-health surfacing, deterministic brief export, approved external links |
+| Tests | Full suite **1004 passed** (+15 new); changed-file Ruff clean; mypy clean on touched modules |
+| Coverage | Existing project coverage retained; no separate percentage collected |
+| Status | **READY FOR REVIEW** — owner smoke required before next milestone |
+| Branch | feature/live-dashboard |
+
+### Scope completed
+
+- Extended `ScanCapture` and `DecisionReportingEngine.report()` with optional
+  `regime`/`market_health` fields, persisting them into `DecisionReport.machine`
+  the same additive way M-D3 persisted score/confidence/risk — no frozen
+  domain object changed, no new architecture. Wired both call sites
+  (`scanner.py`, `owner_validation.py`) so future scans/re-validates persist
+  real regime/market-health context instead of leaving it unrecorded.
+- Added a new owner-maintained `config/external_links.json` (+ pydantic model
+  + loader), mirroring the existing `calendar/events.json` convention:
+  static, provenance-tagged link metadata only (title/url/source/added_by/
+  date_added), keyed by instrument id or `GLOBAL`. No fetching, no scraping,
+  no news ingestion.
+- Added authenticated, read-only `GET /api/v1/decisions/{decision_id}/context`
+  combining a live-computed `CalendarContext` (session type, hours, holiday,
+  weekly/monthly expiry, scheduled events) with the persisted regime/
+  market-health snapshot and matching external links (GLOBAL, exact
+  instrument id, or bare-symbol fallback).
+- Added a deterministic `DECISION_BRIEF` export artifact type, composing
+  already-persisted Decision + Depth + Context DTOs into one JSON/Markdown/
+  Text artifact via the existing Export & Presentation pipeline (P6.6/P8.4).
+  No new export dependency; no recomputation.
+- Added a "Session & market context" section to the Instrument Decision Brief
+  dashboard pane: session/expiry/holiday chips, regime labels, market-health
+  dimensions, curated external links, and an "Export Brief" action that
+  downloads the artifact client-side. Cache-busted dashboard assets to
+  `9.22.0`.
+- **Owner smoke fix**: found and fixed a pre-existing latent bug in the P8.4
+  Export layer, surfaced for the first time by repeated Decision Brief
+  exports in one browser session. `ExportsService` was constructed fresh per
+  HTTP request, so its `ExportPresentationEngine`'s id counter reset to zero
+  every time — every export got id `exp-0001`, and the in-memory artifact
+  store's oldest-first lookup silently kept returning the *first* export
+  ever created that session regardless of which decision was actually
+  exported. Fixed by injecting one long-lived `ExportPresentationEngine`
+  singleton (`dependencies._export_engine`) instead of constructing a new
+  one per request; added a regression test exporting two different
+  decisions in sequence and asserting distinct ids/payloads.
+
+### Files created
+
+- `config/external_links.json`
+- `src/athena/api/v1/services/decision_brief.py`
+- `tests/api/v1/test_decision_context_service.py`
+
+### Files modified
+
+- `src/athena/scanner/models.py`, `src/athena/reporting/engine.py`,
+  `src/athena/scanner/scanner.py`, `src/athena/ops/owner_validation.py`
+  (regime/market-health persistence);
+- `src/athena/config/models.py`, `src/athena/config/loader.py` (external
+  links config);
+- `src/athena/api/v1/dtos/{decisions,base,__init__}.py`,
+  `src/athena/api/v1/services/decisions_service.py`,
+  `src/athena/api/v1/routers/decisions.py`, `src/athena/api/dependencies.py`
+  (context endpoint);
+- `src/athena/export/{models,engine}.py`,
+  `src/athena/api/v1/services/exports_service.py` (Decision Brief export);
+- dashboard CSS/JS/HTML; reporting/config/API/dashboard tests; milestone
+  roadmap; this implementation log.
+
+### Public APIs
+
+- Added `GET /api/v1/decisions/{decision_id}/context`. Response contains
+  `calendar`, `regime`, `market_health`, and `external_links` blocks; regime/
+  market-health render `UNKNOWN` explicitly when not yet persisted for a
+  decision (pre-M-D4 decisions, until re-validated).
+- Added `SourceArtifactType.DECISION_BRIEF` to the export request contract;
+  `POST /api/v1/exports` now accepts it and composes a deterministic brief
+  from already-persisted data only.
+- No frozen domain object, calculation, risk policy, or order boundary
+  changed. `DecisionReportingEngine.report()` and `ScanCapture` gained
+  optional, backward-compatible parameters only.
+
+### Validation and architecture
+
+- Full regression: **1003 passed** (was 989 at M-D3; +14 net new tests).
+- Ruff clean on every touched file; pre-existing unrelated lint debt in
+  `config/models.py`, `export/engine.py`, `reporting/engine.py`, and
+  `test_reports_analytics_export.py` (outside this milestone's diff) was left
+  untouched per scope discipline.
+- mypy clean on all touched modules.
+- ADR-004 preserved: no new dashboard dependency/framework.
+- ADR-005 preserved: context/regime/market-health render only persisted data;
+  the export composes persisted DTOs verbatim, never recomputes.
+- CalendarEngine remains the sole trading-day authority (R-3); no new
+  calendar logic was added, only surfaced.
+- No order-placement path touched. Determinism, replayability, provider
+  independence preserved. No ADR or schema migration required.
+
+### Risks and technical debt
+
+- Decisions created before this milestone show `regime`/`market_health` as
+  `UNKNOWN` until re-validated — identical, already-accepted precedent from
+  M-D3's score/confidence/risk backfill behavior.
+- `load_external_links_file` treats a missing `external_links.json` as an
+  empty list rather than failing loudly, since the file is new and owner-
+  optional; every other config loader in this project fails loudly on a
+  missing file. This one deliberate exception should be called out in
+  owner review.
+- No new technical debt beyond the above.
+
+### Remaining work
+
+- Owner smoke (per established M-D pattern): unlock the live workstation,
+  select a symbol, re-validate to populate regime/market-health context,
+  confirm the Session & market context section renders session/expiry/
+  holiday state correctly, add a real entry to `config/external_links.json`
+  and confirm it surfaces, and exercise the Export Brief download. Full
+  authenticated browser verification was not performed by the AI in this
+  session — a live ATHENA instance was already running on port 8000 during
+  implementation, and a second instance was deliberately not started to
+  avoid SQLite contention with the live session.
+- M-D5 (News Evidence) remains deferred until DD-5/provider approval.
+
+### Commit message
+
+```text
+feat(dashboard): add M-D4 context lane, regime persistence, and brief export
+
+- Persist regime/market-health into ScanCapture and DecisionReport.machine, mirroring M-D3's score/confidence/risk pattern
+- Add owner-curated config/external_links.json with GLOBAL/instrument/bare-symbol matching, no fetching or news ingestion
+- Add GET /api/v1/decisions/{id}/context combining live calendar context, persisted regime/market-health, and curated links
+- Add deterministic DECISION_BRIEF export artifact composing Decision + Depth + Context DTOs via the existing export pipeline
+- Add dashboard Session & market context section and Export Brief download action, cache-busted to 9.22.0
+```
+
+---
+
 ## M-D3 — ATHENA analytical depth (APPROVED)
 
 | | |

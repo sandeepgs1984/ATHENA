@@ -182,3 +182,88 @@ class DecisionDepthDTO(BaseModel):
     confidence: AnalysisBlockDTO
     risk: AnalysisBlockDTO
 
+
+class CalendarEventDTO(BaseModel):
+    """One scheduled market-moving event (M-D4)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    kind: str
+    name: str
+
+
+class CalendarContextDTO(BaseModel):
+    """Session/calendar awareness for the decision's trading day; computed live
+    from the Calendar Engine, never persisted (R-3, M-D4)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    context_date: str
+    session_type: str
+    exchange: str
+    timezone: str
+    open_time: str | None = None
+    close_time: str | None = None
+    holiday_name: str | None = None
+    is_weekly_expiry: bool = False
+    is_monthly_expiry: bool = False
+    events: list[CalendarEventDTO] = Field(default_factory=list)
+
+
+class ContextEvidenceDTO(BaseModel):
+    """One persisted regime/market-health evidence item (M-D4)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    dimension: str
+    outcome: str
+    explanation: str
+
+
+class RegimeContextDTO(BaseModel):
+    """Persisted regime assessment for the decision's originating cycle (M-D4)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    status: Literal["ASSESSED", "UNKNOWN"]
+    labels: list[str] = Field(default_factory=list)
+    explanation: str = ""
+    evidence: list[ContextEvidenceDTO] = Field(default_factory=list)
+
+
+class MarketHealthContextDTO(BaseModel):
+    """Persisted market-health assessment for the decision's originating cycle (M-D4)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    status: Literal["ASSESSED", "UNKNOWN"]
+    dimensions: dict[str, str] = Field(default_factory=dict)
+    explanation: str = ""
+    evidence: list[ContextEvidenceDTO] = Field(default_factory=list)
+
+
+class ExternalLinkDTO(BaseModel):
+    """One owner-curated external research link (M-D4). Static metadata only."""
+
+    model_config = ConfigDict(frozen=True)
+
+    title: str
+    url: str
+    source: str
+    added_by: str
+    date_added: str
+
+
+class DecisionContextDTO(BaseModel):
+    """Session/calendar, regime/market-health, and curated links for a decision (M-D4).
+    No news ingestion, no AI-generated rationale."""
+
+    model_config = ConfigDict(frozen=True)
+
+    decision_id: str
+    instrument_id: str | None = None
+    calendar: CalendarContextDTO
+    regime: RegimeContextDTO
+    market_health: MarketHealthContextDTO
+    external_links: list[ExternalLinkDTO] = Field(default_factory=list)
+

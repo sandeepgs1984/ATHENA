@@ -1244,3 +1244,18 @@ class EventItem(_Strict):
 
 class EventsFile(_Strict):
     events: list[EventItem]
+
+
+class ExternalLinkItem(_Strict):
+    """One owner-curated external research link (M-D4). No content is fetched — metadata only."""
+
+    instrument_id: str
+    title: str
+    url: str
+    source: str
+    added_by: str
+    date_added: str
+
+
+class ExternalLinksFile(_Strict):
+    links: list[ExternalLinkItem]

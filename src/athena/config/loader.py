@@ -30,6 +30,7 @@ from athena.config.models import (
     ExpiriesFile,
     ExplainabilityConfig,
     ExportConfig,
+    ExternalLinksFile,
     FileProviderConfig,
     HolidaysFile,
     HostOpsConfig,
@@ -139,6 +140,21 @@ def load_calendar_files(config_dir: Path) -> tuple[HolidaysFile, ExpiriesFile, E
     except ValidationError as exc:
         raise ConfigError(_validation_message(str(cal_dir), exc)) from exc
     return holidays, expiries, events
+
+
+def load_external_links_file(config_dir: Path) -> ExternalLinksFile:
+    """Load + validate owner-curated external research links (M-D4, config/external_links.json).
+
+    Static, provenance-tagged metadata only — no fetching, no news ingestion.
+    """
+
+    path = Path(config_dir) / "external_links.json"
+    if not path.exists():
+        return ExternalLinksFile(links=[])
+    try:
+        return ExternalLinksFile.model_validate(_read_json(path))
+    except ValidationError as exc:
+        raise ConfigError(_validation_message(str(path), exc)) from exc
 
 
 def load_file_provider_config(config_dir: Path) -> FileProviderConfig:

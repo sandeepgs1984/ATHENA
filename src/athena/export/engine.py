@@ -160,6 +160,27 @@ class ExportPresentationEngine:
             references=refs,
         )
 
+    def export_decision_brief(
+        self, brief: object, fmt: ExportFormat = ExportFormat.JSON, *, as_of: datetime
+    ) -> ExportArtifact:
+        """Export a DecisionBriefSnapshot to the specified format (M-D4)."""
+        if as_of.tzinfo is None:
+            raise ValueError("export_decision_brief as_of datetime must be timezone-aware")
+
+        payload = self._render_artifact(brief, fmt)
+        filename = f"decision_brief_{brief.brief_id}.{_EXT_MAP[fmt]}"
+        refs = ExportReferences(decision_brief_id=brief.brief_id)
+
+        return ExportArtifact(
+            export_id=f"exp-{self._next_counter():04d}",
+            format=fmt,
+            filename=filename,
+            content_type=_MIME_MAP[fmt],
+            payload=payload,
+            as_of=as_of,
+            references=refs,
+        )
+
     def create_snapshot(
         self, exports: Sequence[ExportArtifact], *, as_of: datetime
     ) -> ExportSnapshot:

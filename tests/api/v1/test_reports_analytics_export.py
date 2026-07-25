@@ -14,6 +14,7 @@ Covers:
 from __future__ import annotations
 
 import hashlib
+import json
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
@@ -54,7 +55,8 @@ from athena.analytics.portfolio.models import (
     TradePerformance,
 )
 from athena.config.models import ExportFormat, ReportType
-from athena.domain.decision import Direction
+from athena.domain.decision import Decision, Direction
+from athena.domain.enums import DecisionType
 from athena.export.models import ExportArtifact, ExportReferences, ExportSnapshot, ExportSummary
 from athena.reporting.models import GenericReport, ReportingReferences
 
@@ -350,6 +352,95 @@ def test_create_export_job(client: TestClient) -> None:
     assert art_data["metadata"]["artifact_type"] == "REPORT"
     assert art_data["metadata"]["format"] == "JSON"
     assert "Sample Portfolio Status Report" in art_data["payload"]
+
+
+def test_create_decision_brief_export_job(client: TestClient) -> None:
+    """M-D4: deterministic Decision Brief export composes decision + depth + context."""
+    headers = get_auth_headers(client, Role.ANALYST)
+    req_body = {
+        "source": {"artifact_id": "dec-sample-1", "artifact_type": "DECISION_BRIEF"},
+        "format": "JSON",
+        "options": {},
+    }
+    response = client.post("/api/v1/exports", json=req_body, headers=headers)
+    assert response.status_code == 202
+    data = response.json()["data"]
+    assert data["status"] == "COMPLETED"
+    art_id = data["result_artifact_id"]
+
+    art_resp = client.get(f"/api/v1/exports/artifacts/{art_id}", headers=headers)
+    assert art_resp.status_code == 200
+    art_data = art_resp.json()["data"]
+    assert art_data["metadata"]["artifact_type"] == "DECISION_BRIEF"
+    assert "decision_brief_dec-sample-1.json" in art_data["metadata"]["filename"]
+
+    payload = json.loads(art_data["payload"])
+    assert payload["decision"]["metadata"]["decision_id"] == "dec-sample-1"
+    assert payload["depth"]["decision_id"] == "dec-sample-1"
+    assert payload["context"]["decision_id"] == "dec-sample-1"
+    assert payload["context"]["regime"]["status"] == "UNKNOWN"
+
+
+def test_create_decision_brief_export_not_found(client: TestClient) -> None:
+    """M-D4: exporting a nonexistent decision brief maps to HTTP 404."""
+    headers = get_auth_headers(client, Role.ANALYST)
+    req_body = {
+        "source": {"artifact_id": "dec-nonexistent", "artifact_type": "DECISION_BRIEF"},
+        "format": "JSON",
+        "options": {},
+    }
+    response = client.post("/api/v1/exports", json=req_body, headers=headers)
+    assert response.status_code == 404
+
+
+def test_export_ids_do_not_collide_across_requests(client: TestClient) -> None:
+    """Regression: two exports in one session must not collide on 'exp-0001'.
+
+    Each ExportsService used to be constructed fresh per request, resetting
+    its ExportPresentationEngine's id counter to zero every time — so every
+    export got the same id and later requests silently overwrote earlier
+    ones in the shared in-memory store, always resolving back to the first
+    export ever created in that server process.
+    """
+    headers = get_auth_headers(client, Role.ANALYST)
+    dec_p = get_decision_provider()
+    now = datetime.now(tz=timezone.utc)
+    dec_p.decisions.append(  # type: ignore[attr-defined]
+        Decision(
+            decision_id="dec-sample-2",
+            ts=now,
+            run_id="run-sample-2",
+            cycle_id="cycle-sample-2",
+            instrument_id="TCS",
+            direction=Direction.NONE,
+            decision_type=DecisionType.NO_TRADE,
+            explanation="Below watch threshold",
+        )
+    )
+
+    def export_brief(decision_id: str) -> str:
+        req_body = {
+            "source": {"artifact_id": decision_id, "artifact_type": "DECISION_BRIEF"},
+            "format": "JSON",
+            "options": {},
+        }
+        response = client.post("/api/v1/exports", json=req_body, headers=headers)
+        assert response.status_code == 202
+        return response.json()["data"]["result_artifact_id"]
+
+    art_id_1 = export_brief("dec-sample-1")
+    art_id_2 = export_brief("dec-sample-2")
+    assert art_id_1 != art_id_2
+
+    art_1 = client.get(f"/api/v1/exports/artifacts/{art_id_1}", headers=headers).json()["data"]
+    art_2 = client.get(f"/api/v1/exports/artifacts/{art_id_2}", headers=headers).json()["data"]
+
+    payload_1 = json.loads(art_1["payload"])
+    payload_2 = json.loads(art_2["payload"])
+    assert payload_1["decision"]["metadata"]["decision_id"] == "dec-sample-1"
+    assert payload_1["decision"]["metadata"]["instrument_id"] == "SBIN"
+    assert payload_2["decision"]["metadata"]["decision_id"] == "dec-sample-2"
+    assert payload_2["decision"]["metadata"]["instrument_id"] == "TCS"
 
 
 def test_create_export_invalid_source(client: TestClient) -> None:

@@ -74,6 +74,7 @@ from athena.api.v1.services.scheduler_service import SchedulerService
 from athena.api.v1.services.strategies_service import StrategyService
 from athena.api.v1.services.workspace_service import WorkspaceService
 from athena.data.store.repository import SqliteRepository
+from athena.export.engine import ExportPresentationEngine
 from athena.ops.owner_candidates import InMemoryCandidateStore, SqliteCandidateStore
 
 # Singletons for default health/metrics providers
@@ -90,6 +91,9 @@ _workspace_provider = InMemoryWorkspaceProvider()
 _report_provider = InMemoryReportProvider()
 _analytics_provider = InMemoryPerformanceAnalyticsProvider()
 _export_provider = InMemoryExportProvider()
+# Long-lived: its export_id counter must persist across requests, or every
+# on-demand export collides on "exp-0001" against the artifact store above.
+_export_engine = ExportPresentationEngine()
 _backtest_run_provider = InMemoryBacktestRunProvider()
 _candidate_store = InMemoryCandidateStore()
 _candle_history_provider = InMemoryCandleHistoryProvider()
@@ -192,10 +196,20 @@ def get_metrics_service(request: Request) -> MetricsService:
     return MetricsService(provider)
 
 
+def _find_repo_root() -> Path:
+    here = Path(__file__).resolve().parent
+    repo_root = here
+    for _ in range(8):
+        if (repo_root / "pyproject.toml").is_file():
+            break
+        repo_root = repo_root.parent
+    return repo_root
+
+
 def get_decisions_service(request: Request) -> DecisionsService:
     """Dependency provider for DecisionsService."""
     provider = getattr(request.app.state, "decision_provider", _decision_provider)
-    return DecisionsService(provider)
+    return DecisionsService(provider, config_dir=_find_repo_root() / "config")
 
 
 def get_market_history_service(request: Request) -> MarketHistoryService:
@@ -231,12 +245,7 @@ def get_candidates_service(request: Request) -> CandidatesService:
     """Dependency provider for CandidatesService."""
     store = getattr(request.app.state, "candidate_store", _candidate_store)
     repo = getattr(request.app.state, "sqlite_repo", None)
-    here = Path(__file__).resolve().parent
-    repo_root = here
-    for _ in range(8):
-        if (repo_root / "pyproject.toml").is_file():
-            break
-        repo_root = repo_root.parent
+    repo_root = _find_repo_root()
     return CandidatesService(
         store,
         repo=repo,
@@ -307,7 +316,10 @@ def get_exports_service(request: Request) -> ExportsService:
     query_prov = getattr(request.app.state, "export_query_provider", _export_provider)
     gen_prov = getattr(request.app.state, "export_generation_provider", _export_provider)
     rep_prov = getattr(request.app.state, "report_provider", _report_provider)
-    return ExportsService(query_prov, gen_prov, rep_prov)
+    engine = getattr(request.app.state, "export_engine", _export_engine)
+    return ExportsService(
+        query_prov, gen_prov, rep_prov, get_decisions_service(request), engine=engine
+    )
 
 
 def get_dashboard_service(request: Request) -> DashboardService:

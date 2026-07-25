@@ -1,0 +1,8 @@
+{
+  "_meta": {
+    "description": "Owner-curated external research links surfaced in the Decision Brief context lane (M-D4). Static provenance metadata only — ATHENA never fetches, scrapes, or summarizes link content, and this is not a news feed.",
+    "note": "instrument_id must match a canonical instrument id (e.g. 'NSE:RELIANCE') or the literal 'GLOBAL' for market-wide links. Maintained by owner.",
+    "verified_by_owner": false
+  },
+  "links": []
+}

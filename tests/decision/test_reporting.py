@@ -73,7 +73,8 @@ def _artifacts(config_dir, closes, snapshot):
         "X", as_of=AS_OF, scoring=scoring, confidence=confidence, risk=risk,
         evidence_bundle=bundle, regime=regime, indicators=indicators, market_health=mh)
     return dict(outcome=outcome, scoring=scoring, confidence=confidence, risk=risk,
-                evidence_bundle=bundle, indicators=indicators)
+                evidence_bundle=bundle, indicators=indicators, regime=regime,
+                market_health=mh)
 
 
 def _bull():
@@ -111,6 +112,8 @@ class TestReportFaithfulness:
         assert machine["confidence"]["status"] == "UNKNOWN"
         assert machine["risk"]["status"] == "UNKNOWN"
         assert machine["evidence"]["status"] == "UNKNOWN"
+        assert machine["regime"]["status"] == "UNKNOWN"
+        assert machine["market_health"]["status"] == "UNKNOWN"
         assert "UNKNOWN" in report.to_text()
 
 
@@ -149,6 +152,37 @@ class TestReasoningPreservation:
         arts = _artifacts(config_dir, range(100, 170), _bull())
         names = {i["name"] for i in reporting.report(**arts).to_dict()["indicators"]}
         assert "SMA" in names and "RSI" in names
+
+
+class TestRegimeMarketHealthPersistence:
+    """M-D4: regime and market-health context, persisted alongside score/confidence/risk."""
+
+    def test_regime_persisted(self, reporting, config_dir):
+        arts = _artifacts(config_dir, range(100, 170), _bull())
+        machine = reporting.report(**arts).to_dict()
+        reg = machine["regime"]
+        assert reg["status"] == "ASSESSED"
+        assert reg["assessment_id"] == arts["regime"].assessment.assessment_id
+        assert reg["labels"] == list(arts["regime"].assessment.labels)
+        assert reg["explanation"]
+        assert reg["evidence"]
+        assert all("explanation" in item for item in reg["evidence"])
+
+    def test_market_health_persisted(self, reporting, config_dir):
+        arts = _artifacts(config_dir, range(100, 170), _bull())
+        machine = reporting.report(**arts).to_dict()
+        mh = machine["market_health"]
+        assert mh["status"] == "ASSESSED"
+        assert mh["assessment_id"] == arts["market_health"].assessment.assessment_id
+        assert mh["dimensions"] == dict(arts["market_health"].assessment.dimensions)
+        assert mh["explanation"]
+        assert mh["evidence"]
+
+    def test_regime_market_health_in_text(self, reporting, config_dir):
+        arts = _artifacts(config_dir, range(100, 170), _bull())
+        text = reporting.report(**arts).to_text()
+        assert "REGIME" in text
+        assert "MARKET HEALTH" in text
 
 
 class TestContract:

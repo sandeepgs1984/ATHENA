@@ -109,6 +109,20 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "decision-chart-entry-zone" in css
     assert "decision-chart-plan-line" in css
 
+    # M-D4 renders session/calendar, regime/market-health context, curated links, and export
+    assert 'id="decision-context-lane"' in js
+    assert 'id="decision-brief-export"' in js
+    assert "function renderDecisionContext" in js
+    assert "function loadDecisionContext" in js
+    assert "function exportDecisionBrief" in js
+    assert "/context" in js
+    assert "DECISION_BRIEF" in js
+    assert "No news ingestion, no generated rationale" in js
+    assert "UNKNOWN — no persisted regime assessment" in js
+    assert ".decision-context-lane" in css
+    assert ".context-chip" in css
+    assert ".context-links-list" in css
+
     # Operations console (P9.7) is live — warnings feed + backup panel, not a fake loader
     assert 'id="ops-warnings-feed"' in html
     assert 'id="ops-telemetry-chart"' in html

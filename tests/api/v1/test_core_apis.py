@@ -283,6 +283,32 @@ class TestDecisionsAPI:
                         },
                         "confidence": {"status": "UNKNOWN"},
                         "risk": {"status": "UNKNOWN"},
+                        "regime": {
+                            "status": "ASSESSED",
+                            "assessment_id": "regime-1",
+                            "labels": ["BULL_TREND", "NORMAL_VOLATILITY"],
+                            "explanation": "Bull trend, normal volatility.",
+                            "evidence": [
+                                {
+                                    "dimension": "trend",
+                                    "outcome": "BULL_TREND",
+                                    "explanation": "20D SMA rising.",
+                                }
+                            ],
+                        },
+                        "market_health": {
+                            "status": "ASSESSED",
+                            "assessment_id": "mh-1",
+                            "dimensions": {"breadth": "STRONG_BREADTH"},
+                            "explanation": "Breadth strongly positive.",
+                            "evidence": [
+                                {
+                                    "dimension": "breadth",
+                                    "outcome": "STRONG_BREADTH",
+                                    "explanation": "80 advances vs 20 declines.",
+                                }
+                            ],
+                        },
                     }
                 },
             }
@@ -314,6 +340,23 @@ class TestDecisionsAPI:
             "regime-1"
         )
         assert depth["confidence"]["status"] == "UNKNOWN"
+
+        context_response = client.get(
+            "/api/v1/decisions/dec-detail-1/context", headers=headers
+        )
+        assert context_response.status_code == 200
+        context = context_response.json()["data"]
+        assert context["decision_id"] == "dec-detail-1"
+        assert context["calendar"]["exchange"]
+        assert context["calendar"]["session_type"] in {
+            "NORMAL", "WEEKEND", "HOLIDAY", "MUHURAT",
+        }
+        assert context["regime"]["status"] == "ASSESSED"
+        assert context["regime"]["labels"] == ["BULL_TREND", "NORMAL_VOLATILITY"]
+        assert context["regime"]["evidence"][0]["dimension"] == "trend"
+        assert context["market_health"]["status"] == "ASSESSED"
+        assert context["market_health"]["dimensions"]["breadth"] == "STRONG_BREADTH"
+        assert context["external_links"] == []
 
     def test_get_decision_not_found(self, client) -> None:
         headers = get_auth_headers(client, Role.ANALYST)

@@ -3222,6 +3222,152 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         }
     }
 
+    function friendlySessionType(type) {
+        const map = {
+            NORMAL: "Normal trading session",
+            WEEKEND: "Weekend — market closed",
+            HOLIDAY: "Exchange holiday",
+            MUHURAT: "Muhurat / special session",
+            SPECIAL: "Special session",
+        };
+        return map[type] || type || "Unknown";
+    }
+
+    function renderDecisionContext(context) {
+        const host = document.getElementById("decision-context-lane");
+        if (!host) return;
+        if (!context) {
+            host.innerHTML = '<div class="decision-depth-loading">Context unavailable.</div>';
+            return;
+        }
+        const cal = context.calendar || {};
+        const regime = context.regime || { status: "UNKNOWN" };
+        const mh = context.market_health || { status: "UNKNOWN" };
+        const links = Array.isArray(context.external_links) ? context.external_links : [];
+
+        const calendarBadges = [
+            `<span class="context-chip">${escapeDecisionHtml(friendlySessionType(cal.session_type))}</span>`,
+            cal.is_weekly_expiry ? '<span class="context-chip warn">Weekly expiry</span>' : "",
+            cal.is_monthly_expiry ? '<span class="context-chip warn">Monthly expiry</span>' : "",
+            cal.holiday_name ? `<span class="context-chip warn">${escapeDecisionHtml(cal.holiday_name)}</span>` : "",
+        ].filter(Boolean).join("");
+
+        const eventRows = (cal.events || []).map(ev => `
+            <li><strong>${escapeDecisionHtml(ev.kind || "EVENT")}</strong> ${escapeDecisionHtml(ev.name || "")}</li>
+        `).join("");
+
+        const regimeBlock = regime.status === "ASSESSED"
+            ? `<div class="context-chip-row">${(regime.labels || [])
+                  .map(l => `<span class="context-chip">${escapeDecisionHtml(l)}</span>`).join("")}</div>
+               <p class="text-muted">${escapeDecisionHtml(regime.explanation || "")}</p>`
+            : '<p class="text-muted">UNKNOWN — no persisted regime assessment for this decision. Re-validate to refresh.</p>';
+
+        const dimensions = mh.dimensions || {};
+        const healthBlock = mh.status === "ASSESSED"
+            ? `<ul class="context-health-list">
+                   ${Object.entries(dimensions).map(([dim, label]) => `
+                       <li><strong>${escapeDecisionHtml(dim)}</strong>: ${escapeDecisionHtml(label)}</li>
+                   `).join("")}
+               </ul>
+               <p class="text-muted">${escapeDecisionHtml(mh.explanation || "")}</p>`
+            : '<p class="text-muted">UNKNOWN — no persisted market-health assessment for this decision.</p>';
+
+        const linkRows = links.length
+            ? `<ul class="context-links-list">
+                   ${links.map(l => `
+                       <li>
+                           <a href="${escapeDecisionHtml(l.url)}" target="_blank" rel="noopener noreferrer">
+                               ${escapeDecisionHtml(l.title)}
+                           </a>
+                           <small>${escapeDecisionHtml(l.source)}</small>
+                       </li>
+                   `).join("")}
+               </ul>`
+            : '<p class="text-muted">No curated external links for this instrument.</p>';
+
+        host.innerHTML = `
+            <div class="context-lane-block">
+                <h5>Session</h5>
+                <div class="context-chip-row">${calendarBadges}</div>
+                ${eventRows ? `<ul class="context-events-list">${eventRows}</ul>` : ""}
+            </div>
+            <div class="context-lane-block">
+                <h5>Regime</h5>
+                ${regimeBlock}
+            </div>
+            <div class="context-lane-block">
+                <h5>Market health</h5>
+                ${healthBlock}
+            </div>
+            <div class="context-lane-block">
+                <h5>External research</h5>
+                ${linkRows}
+            </div>
+        `;
+    }
+
+    async function loadDecisionContext(decisionId) {
+        try {
+            const response = await apiRequest(
+                `/api/v1/decisions/${encodeURIComponent(decisionId)}/context`,
+                { skipToast: true }
+            );
+            if (activeDecisionId !== decisionId) return;
+            renderDecisionContext(response && response.data);
+        } catch (err) {
+            if (activeDecisionId !== decisionId) return;
+            console.error(`Failed to load decision context for ${decisionId}`, err);
+            renderDecisionContext(null);
+        }
+    }
+
+    async function exportDecisionBrief(decisionId, button) {
+        if (button) {
+            button.disabled = true;
+            button.dataset.originalHtml = button.innerHTML;
+            button.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Exporting…';
+        }
+        try {
+            const jobRes = await apiRequest("/api/v1/exports", {
+                method: "POST",
+                body: JSON.stringify({
+                    source: { artifact_id: decisionId, artifact_type: "DECISION_BRIEF" },
+                    format: "JSON",
+                    options: {},
+                }),
+            });
+            const artifactId = jobRes && jobRes.data && jobRes.data.result_artifact_id;
+            if (!artifactId) throw new Error("Export produced no artifact");
+            const artRes = await apiRequest(
+                `/api/v1/exports/artifacts/${encodeURIComponent(artifactId)}`
+            );
+            const artifact = artRes && artRes.data;
+            if (!artifact) throw new Error("Export artifact unavailable");
+            const blob = new Blob(
+                [artifact.payload],
+                { type: (artifact.metadata && artifact.metadata.content_type) || "application/json" }
+            );
+            const url = URL.createObjectURL(blob);
+            const anchor = document.createElement("a");
+            anchor.href = url;
+            anchor.download = (artifact.metadata && artifact.metadata.filename) || `decision_brief_${decisionId}.json`;
+            document.body.appendChild(anchor);
+            anchor.click();
+            anchor.remove();
+            URL.revokeObjectURL(url);
+            showToast("Decision brief exported.", "success");
+        } catch (err) {
+            console.error(`Failed to export decision brief for ${decisionId}`, err);
+            showToast("Failed to export decision brief.", "danger");
+        } finally {
+            if (button) {
+                button.disabled = false;
+                button.innerHTML = button.dataset.originalHtml
+                    || '<i class="fa-solid fa-file-export"></i> Export Brief';
+            }
+        }
+    }
+
     function renderDecisionTimeline(decision) {
         const host = document.getElementById("decision-history-timeline");
         if (!host || !decision || !decision.metadata) return;
@@ -3356,6 +3502,19 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
             </section>
 
             <section class="decision-brief-section">
+                <h4>Session &amp; market context</h4>
+                <p class="analysis-section-intro">
+                    Trading-day session state, persisted regime/market-health, and owner-curated
+                    research links. No news ingestion, no generated rationale.
+                </p>
+                <div id="decision-context-lane" class="decision-context-lane">
+                    <div class="decision-depth-loading">
+                        <i class="fa-solid fa-circle-notch fa-spin"></i> Loading session &amp; market context…
+                    </div>
+                </div>
+            </section>
+
+            <section class="decision-brief-section">
                 <h4>Analytical provenance</h4>
                 <div class="decision-provenance">
                     ${references || '<span class="text-muted">No analytical references persisted.</span>'}
@@ -3376,6 +3535,9 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
                     </button>
                     <button id="decision-brief-remove-candidate" class="btn btn-outline btn-danger-outline" type="button">
                         <i class="fa-solid fa-list-check"></i> Remove candidate
+                    </button>
+                    <button id="decision-brief-export" class="btn btn-outline" type="button">
+                        <i class="fa-solid fa-file-export"></i> Export Brief
                     </button>
                 </div>
                 <p class="text-muted" style="font-size: 0.68rem; margin: 10px 0 0;">
@@ -3403,8 +3565,12 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
                 event.currentTarget.innerHTML = '<i class="fa-solid fa-check"></i> Candidate removed';
             }
         });
+        document.getElementById("decision-brief-export")?.addEventListener("click", event => {
+            exportDecisionBrief(meta.decision_id, event.currentTarget);
+        });
         renderDecisionTimeline(decision);
         loadDecisionDepth(meta.decision_id);
+        loadDecisionContext(meta.decision_id);
         loadDecisionChart(rawSymbol, decision.trade_plan, meta.decision_id);
     }
 

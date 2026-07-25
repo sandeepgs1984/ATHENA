@@ -118,7 +118,8 @@ class DailyMarketScanner:
         report = self._reporting.report(
             capture.outcome, scoring=capture.scoring, confidence=capture.confidence,
             risk=capture.risk, evidence_bundle=capture.evidence_bundle,
-            indicators=capture.indicators)
+            indicators=capture.indicators, regime=capture.regime,
+            market_health=capture.market_health)
         return InstrumentScanResult(
             instrument_id=instrument_id, status=ExecutionStatus.COMPLETED,
             decision_type=capture.outcome.decision.decision_type.value,

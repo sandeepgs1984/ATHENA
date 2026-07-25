@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from athena.api.exceptions import (
+    DecisionNotFoundError,
     ExportArtifactNotFoundError,
     ExportGenerationError,
     ExportSnapshotNotFoundError,
@@ -23,11 +24,13 @@ from athena.api.v1.dtos import (
     ExportSummaryDTO,
     QuerySpecification,
 )
+from athena.api.v1.services.decision_brief import DecisionBriefSnapshot
 from athena.export.engine import ExportPresentationEngine
 
 if TYPE_CHECKING:
     from athena.api.v1.dtos import EmptyFilterParams, ExportRequestDTO, PaginationParams, SortParams
     from athena.api.v1.providers import ExportGenerationProvider, ExportQueryProvider, ReportProvider
+    from athena.api.v1.services.decisions_service import DecisionsService
     from athena.export.models import ExportArtifact, ExportSnapshot, ExportSummary
 
 
@@ -39,11 +42,18 @@ class ExportsService:
         query_provider: ExportQueryProvider,
         generation_provider: ExportGenerationProvider,
         report_provider: ReportProvider,
+        decisions_service: DecisionsService | None = None,
+        engine: ExportPresentationEngine | None = None,
     ) -> None:
         self._query_provider = query_provider
         self._generation_provider = generation_provider
         self._report_provider = report_provider
-        self._engine = ExportPresentationEngine()
+        self._decisions_service = decisions_service
+        # Callers that serve real HTTP traffic must inject a single long-lived
+        # engine (see dependencies.get_exports_service) — its export_id counter
+        # must not reset per request, or every export collides on "exp-0001"
+        # against the shared in-memory/SQLite artifact store.
+        self._engine = engine if engine is not None else ExportPresentationEngine()
 
     def list_snapshots(
         self,
@@ -97,6 +107,20 @@ class ExportsService:
 
                 # 2. Export source using presentation engine
                 artifact = self._engine.export_report(source_obj, req.format, as_of=now)
+            elif req.source.artifact_type.value == "DECISION_BRIEF":
+                if self._decisions_service is None:
+                    raise ExportGenerationError(
+                        "Decision Brief export requires a configured DecisionsService"
+                    )
+                decision_id = req.source.artifact_id
+                brief = DecisionBriefSnapshot(
+                    brief_id=decision_id,
+                    as_of=now,
+                    decision=self._decisions_service.get_decision(decision_id),
+                    depth=self._decisions_service.get_decision_depth(decision_id),
+                    context=self._decisions_service.get_decision_context(decision_id),
+                )
+                artifact = self._engine.export_decision_brief(brief, req.format, as_of=now)
             else:
                 # Unsupported source artifact type for export in P8.4
                 raise ExportGenerationError(f"Unsupported export source artifact type: {req.source.artifact_type}")
@@ -114,7 +138,7 @@ class ExportsService:
             )
 
         except Exception as e:
-            if isinstance(e, (ReportNotFoundError, ExportGenerationError)):
+            if isinstance(e, (ReportNotFoundError, DecisionNotFoundError, ExportGenerationError)):
                 raise e
             raise ExportGenerationError(f"Failed to generate export: {e!s}") from e
 
@@ -161,7 +185,9 @@ class ExportsService:
         )
 
     def _resolve_artifact_type(self, filename: str) -> str:
-        if filename.startswith("report"):
+        if filename.startswith("decision_brief"):
+            return "DECISION_BRIEF"
+        elif filename.startswith("report"):
             return "REPORT"
         elif filename.startswith("dashboard"):
             return "DASHBOARD"

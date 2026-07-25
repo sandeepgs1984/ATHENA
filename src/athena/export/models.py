@@ -26,6 +26,7 @@ class ExportReferences:
     explanation_snapshot_id: str | None = None
     timeline_snapshot_id: str | None = None
     monitoring_snapshot_id: str | None = None
+    decision_brief_id: str | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -34,6 +35,7 @@ class ExportReferences:
             "explanation_snapshot_id": self.explanation_snapshot_id,
             "timeline_snapshot_id": self.timeline_snapshot_id,
             "monitoring_snapshot_id": self.monitoring_snapshot_id,
+            "decision_brief_id": self.decision_brief_id,
         }
 
 

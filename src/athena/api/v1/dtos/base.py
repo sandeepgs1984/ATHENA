@@ -165,6 +165,7 @@ class SourceArtifactType(str, Enum):
     EXPLANATION = "EXPLANATION"
     TIMELINE = "TIMELINE"
     MONITORING = "MONITORING"
+    DECISION_BRIEF = "DECISION_BRIEF"
 
 
 class ArtifactMetadataDTO(BaseModel):

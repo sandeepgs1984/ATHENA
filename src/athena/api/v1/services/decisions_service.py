@@ -3,27 +3,38 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from zoneinfo import ZoneInfo
 
 from athena.api.exceptions import DecisionNotFoundError
 from athena.api.v1.dtos import (
     AnalysisBlockDTO,
     AnalysisContributionDTO,
     AnalysisDimensionDTO,
+    CalendarContextDTO,
+    CalendarEventDTO,
     CollectionResult,
+    ContextEvidenceDTO,
     DecisionAnalysisDTO,
+    DecisionContextDTO,
     DecisionDepthDTO,
     DecisionDTO,
     DecisionMetadataDTO,
     DecisionTraceDTO,
     EligibilityDetailDTO,
     EligibilityRuleDTO,
+    ExternalLinkDTO,
     GateResultDTO,
+    MarketHealthContextDTO,
     QuerySpecification,
+    RegimeContextDTO,
     ResourceReference,
     TraceStageDTO,
     TradePlanDTO,
 )
+from athena.calendar.engine import CalendarEngine
+from athena.config.loader import load_config, load_external_links_file
 
 if TYPE_CHECKING:
     from athena.api.v1.dtos import DecisionFilterParams, PaginationParams, SortParams
@@ -34,8 +45,14 @@ if TYPE_CHECKING:
 class DecisionsService:
     """Orchestrates decision retrieval and DTO mapping."""
 
-    def __init__(self, provider: DecisionProvider) -> None:
+    def __init__(
+        self,
+        provider: DecisionProvider,
+        *,
+        config_dir: Path | None = None,
+    ) -> None:
         self._provider = provider
+        self._config_dir = Path(config_dir) if config_dir else Path("config")
 
     def list_decisions(
         self,
@@ -188,6 +205,111 @@ class DecisionsService:
                 report.get("confidence"), kind="confidence"
             ),
             risk=self._map_analysis_block(report.get("risk"), kind="risk"),
+        )
+
+    def get_decision_context(self, decision_id: str) -> DecisionContextDTO:
+        """Session/calendar (live), persisted regime/market-health, and curated
+        external links for a decision. No news ingestion, no generated rationale."""
+        decision = self._provider.get_decision(decision_id)
+        if decision is None:
+            raise DecisionNotFoundError(f"Decision '{decision_id}' not found")
+
+        cfg = load_config(self._config_dir)
+        tz = ZoneInfo(cfg.market.timezone)
+        calendar = CalendarEngine.from_config_dir(self._config_dir, cfg.market)
+        calendar_ctx = calendar.context_for(decision.ts.astimezone(tz).date())
+
+        detail = self._provider.get_run_detail(decision.run_id)
+        pipeline = detail.get("pipeline", detail)
+        if not isinstance(pipeline, Mapping):
+            pipeline = {}
+        reports = pipeline.get("decision_reports")
+        report: Mapping[str, Any] = {}
+        if isinstance(reports, Mapping):
+            candidate = reports.get(decision.decision_id)
+            if isinstance(candidate, Mapping):
+                report = candidate
+
+        links_file = load_external_links_file(self._config_dir)
+        bare = (decision.instrument_id or "").split(":", 1)[-1]
+        links = [
+            ExternalLinkDTO(
+                title=item.title,
+                url=item.url,
+                source=item.source,
+                added_by=item.added_by,
+                date_added=item.date_added,
+            )
+            for item in links_file.links
+            if item.instrument_id in ("GLOBAL", decision.instrument_id, bare)
+        ]
+
+        return DecisionContextDTO(
+            decision_id=decision.decision_id,
+            instrument_id=decision.instrument_id,
+            calendar=self._map_calendar(calendar_ctx),
+            regime=self._map_regime(report.get("regime")),
+            market_health=self._map_market_health(report.get("market_health")),
+            external_links=links,
+        )
+
+    @staticmethod
+    def _map_calendar(ctx) -> CalendarContextDTO:
+        return CalendarContextDTO(
+            context_date=ctx.context_date.isoformat(),
+            session_type=ctx.session_type.value,
+            exchange=ctx.exchange,
+            timezone=ctx.timezone,
+            open_time=ctx.open_time.isoformat() if ctx.open_time else None,
+            close_time=ctx.close_time.isoformat() if ctx.close_time else None,
+            holiday_name=ctx.holiday_name,
+            is_weekly_expiry=ctx.is_weekly_expiry,
+            is_monthly_expiry=ctx.is_monthly_expiry,
+            events=[
+                CalendarEventDTO(kind=e.kind, name=e.name) for e in ctx.events
+            ],
+        )
+
+    @staticmethod
+    def _map_context_evidence(raw: object) -> list[ContextEvidenceDTO]:
+        if not isinstance(raw, list):
+            return []
+        return [
+            ContextEvidenceDTO(
+                dimension=str(item.get("dimension") or "unknown"),
+                outcome=str(item.get("outcome") or "UNKNOWN"),
+                explanation=str(item.get("explanation") or ""),
+            )
+            for item in raw
+            if isinstance(item, Mapping)
+        ]
+
+    @classmethod
+    def _map_regime(cls, raw: object) -> RegimeContextDTO:
+        if not isinstance(raw, Mapping) or raw.get("status") != "ASSESSED":
+            return RegimeContextDTO(status="UNKNOWN")
+        labels = raw.get("labels")
+        return RegimeContextDTO(
+            status="ASSESSED",
+            labels=[str(label) for label in labels] if isinstance(labels, list) else [],
+            explanation=str(raw.get("explanation") or ""),
+            evidence=cls._map_context_evidence(raw.get("evidence")),
+        )
+
+    @classmethod
+    def _map_market_health(cls, raw: object) -> MarketHealthContextDTO:
+        if not isinstance(raw, Mapping) or raw.get("status") != "ASSESSED":
+            return MarketHealthContextDTO(status="UNKNOWN")
+        dimensions = raw.get("dimensions")
+        return MarketHealthContextDTO(
+            status="ASSESSED",
+            dimensions=(
+                {str(k): str(v) for k, v in dimensions.items()}
+                if isinstance(dimensions, Mapping)
+                else {}
+            ),
+            explanation=str(raw.get("explanation") or ""),
+            evidence=cls._map_context_evidence(raw.get("evidence")),
         )
 
     @staticmethod
