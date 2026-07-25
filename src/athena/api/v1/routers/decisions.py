@@ -25,6 +25,7 @@ from athena.api.v1.dtos import (
     ResponseMeta,
     SortParams,
     TradeOutcomeDTO,
+    TradePlanFreshnessDTO,
 )
 from athena.api.v1.dtos.base import PaginationMeta
 from athena.api.v1.services.decisions_service import DecisionsService
@@ -151,6 +152,33 @@ def get_decision_counterfactual(
     return AthenaResponse(
         status="success",
         data=counterfactual,
+        meta=ResponseMeta(
+            request_id=request_id, api_version="v1", as_of=datetime.now(tz=timezone.utc)
+        ),
+    )
+
+
+@router.get(
+    "/{decision_id}/plan-freshness",
+    response_model=AthenaResponse[TradePlanFreshnessDTO],
+    summary="Get the deterministic decay clock for this decision's TradePlan validity window",
+    status_code=status.HTTP_200_OK,
+    operation_id="getDecisionPlanFreshness",
+)
+def get_decision_plan_freshness(
+    request: Request,
+    decision_id: str,
+    as_of: datetime | None = Query(default=None),  # noqa: B008
+    service: DecisionsService = Depends(get_decisions_service),  # noqa: B008
+    principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.READ)),  # noqa: B008
+) -> AthenaResponse[TradePlanFreshnessDTO]:
+    """Pure arithmetic over the plan's already-persisted valid_from/valid_until
+    and an as_of instant — never a recomputed plan (M-X3)."""
+    freshness = service.get_trade_plan_freshness(decision_id, as_of=as_of)
+    request_id = getattr(request.state, "request_id", "unknown")
+    return AthenaResponse(
+        status="success",
+        data=freshness,
         meta=ResponseMeta(
             request_id=request_id, api_version="v1", as_of=datetime.now(tz=timezone.utc)
         ),

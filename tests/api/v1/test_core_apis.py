@@ -19,6 +19,7 @@ import hashlib
 # ---------------------------------------------------------------------------
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from urllib.parse import quote
 
 import pytest
 from fastapi.testclient import TestClient
@@ -658,6 +659,84 @@ class TestDecisionsAPI:
         assert len(data["gates"]) == 1
         assert data["gates"][0]["gate"] == "DIRECTION"
         assert "no clear trend direction" in data["gates"][0]["detail"]
+
+    def test_plan_freshness_no_trade_plan(self, client) -> None:
+        headers = get_auth_headers(client, Role.ANALYST)
+        dec_p = get_decision_provider()
+        now = datetime.now(tz=timezone.utc)
+        dec_p.decisions.append(  # type: ignore[attr-defined]
+            Decision(
+                decision_id="dec-fresh-noplan", ts=now, run_id="run-fresh-noplan", cycle_id="c",
+                instrument_id="TCS", direction=Direction.NONE, decision_type=DecisionType.WATCH,
+                explanation="watch",
+                gate_results=(GateResult(QualityGate.CONFIDENCE, False, "confidence low"),),
+            )
+        )
+        response = client.get(
+            "/api/v1/decisions/dec-fresh-noplan/plan-freshness", headers=headers
+        )
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["has_trade_plan"] is False
+        assert data["status"] == "NO_PLAN"
+        assert data["decay_fraction"] is None
+
+    def test_plan_freshness_decay_bands_via_as_of(self, client) -> None:
+        """Same 100-minute validity window, four as_of instants — one per
+        deterministic decay band. Never a wall-clock read inside the engine;
+        the decay is exact arithmetic over persisted valid_from/valid_until
+        and the caller-supplied as_of."""
+        headers = get_auth_headers(client, Role.ANALYST)
+        dec_p = get_decision_provider()
+        valid_from = datetime(2026, 7, 25, 9, 15, tzinfo=timezone.utc)
+        valid_until = valid_from + timedelta(minutes=100)
+        plan = TradePlan(
+            entry_low=Decimal("100"), entry_high=Decimal("101"), stop_loss=Decimal("98"),
+            targets=(Decimal("104"),), position_size=10, risk_amount=Decimal("20"),
+            risk_reward=Decimal("2"), valid_from=valid_from, valid_until=valid_until,
+        )
+        dec_p.decisions.append(  # type: ignore[attr-defined]
+            Decision(
+                decision_id="dec-fresh-plan", ts=valid_from, run_id="run-fresh-plan", cycle_id="c",
+                instrument_id="TCS", direction=Direction.NONE, decision_type=DecisionType.WATCH,
+                explanation="watch", trade_plan=plan,
+                gate_results=(GateResult(QualityGate.CONFIDENCE, False, "confidence low"),),
+            )
+        )
+
+        def freshness_at(offset_minutes: int) -> dict:
+            as_of = quote((valid_from + timedelta(minutes=offset_minutes)).isoformat())
+            response = client.get(
+                f"/api/v1/decisions/dec-fresh-plan/plan-freshness?as_of={as_of}",
+                headers=headers,
+            )
+            assert response.status_code == 200
+            return response.json()["data"]
+
+        fresh = freshness_at(10)
+        assert fresh["status"] == "FRESH"
+        assert fresh["decay_fraction"] == "0.1"
+        assert fresh["total_seconds"] == 6000
+        assert fresh["remaining_seconds"] == 5400
+
+        aging = freshness_at(60)
+        assert aging["status"] == "AGING"
+        assert aging["decay_fraction"] == "0.6"
+
+        stale = freshness_at(90)
+        assert stale["status"] == "STALE"
+        assert stale["decay_fraction"] == "0.9"
+
+        expired = freshness_at(150)
+        assert expired["status"] == "EXPIRED"
+        assert "EXPIRED" in expired["summary"]
+
+    def test_plan_freshness_not_found(self, client) -> None:
+        headers = get_auth_headers(client, Role.ANALYST)
+        response = client.get(
+            "/api/v1/decisions/dec-invalid/plan-freshness", headers=headers
+        )
+        assert response.status_code == 404
 
 
 class TestPortfolioAPI:

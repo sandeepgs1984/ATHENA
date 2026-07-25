@@ -70,6 +70,7 @@ from athena.api.v1.dtos.decisions import (
     TraceStageDTO,
     TradeOutcomeDTO,
     TradePlanDTO,
+    TradePlanFreshnessDTO,
 )
 from athena.api.v1.dtos.exports import (
     ExportArtifactDTO,
@@ -214,6 +215,7 @@ __all__ = [
     "TradeOutcomeDTO",
     "TradePerformanceDTO",
     "TradePlanDTO",
+    "TradePlanFreshnessDTO",
     "WorkspaceEntryDTO",
     "WorkspaceFilterParams",
     "WorkspaceReferencesDTO",

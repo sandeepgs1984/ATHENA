@@ -2269,6 +2269,44 @@ body {
     color: #7dd3fc;
 }
 
+.plan-status-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.plan-freshness-badge {
+    border-radius: 999px;
+    font-size: 0.62rem;
+    font-weight: 700;
+    padding: 3px 7px;
+    text-transform: uppercase;
+}
+
+.plan-freshness-badge:empty {
+    display: none;
+}
+
+.plan-freshness-badge.tone-fresh {
+    background: rgba(34, 197, 94, 0.12);
+    color: #86efac;
+}
+
+.plan-freshness-badge.tone-aging {
+    background: rgba(56, 189, 248, 0.12);
+    color: #7dd3fc;
+}
+
+.plan-freshness-badge.tone-stale {
+    background: rgba(245, 158, 11, 0.12);
+    color: #fdba74;
+}
+
+.plan-freshness-badge.tone-expired {
+    background: rgba(248, 113, 113, 0.14);
+    color: #fca5a5;
+}
+
 .no-trade-plan {
     border-left: 3px solid rgba(245, 158, 11, 0.55);
     color: var(--text-secondary);

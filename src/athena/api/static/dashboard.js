@@ -2331,6 +2331,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let activeTradeOutcome = null;
     let activeAnalogs = null;
     let activeCounterfactual = null;
+    let activePlanFreshness = null;
     let selectedStageId = null;
 
     function escapeDecisionHtml(value) {
@@ -2770,10 +2771,44 @@ document.addEventListener("DOMContentLoaded", () => {
                 </div>
                 <div class="trade-plan-validity">
                     <span>${formatDecisionTime(plan.valid_from)} → ${formatDecisionTime(plan.valid_until)}</span>
-                    <span class="plan-status ${statusClass}">${statusLabel}</span>
+                    <span class="plan-status-group">
+                        <span class="plan-status ${statusClass}">${statusLabel}</span>
+                        <span id="trade-plan-freshness-badge" class="plan-freshness-badge"></span>
+                    </span>
                 </div>
             </div>
         `;
+    }
+
+    function renderPlanFreshnessBadge(data) {
+        const badge = document.getElementById("trade-plan-freshness-badge");
+        if (!badge) return;
+        if (!data || !data.has_trade_plan) {
+            badge.textContent = "";
+            badge.title = "";
+            badge.className = "plan-freshness-badge";
+            return;
+        }
+        const pct = data.decay_fraction !== null && data.decay_fraction !== undefined
+            ? Math.round(Number(data.decay_fraction) * 100) : null;
+        badge.className = `plan-freshness-badge tone-${String(data.status).toLowerCase()}`;
+        badge.textContent = pct !== null ? `${pct}% decayed` : friendlyLabel(data.status);
+        badge.title = data.summary || "";
+    }
+
+    async function loadDecisionPlanFreshness(decisionId) {
+        try {
+            const response = await apiRequest(
+                `/api/v1/decisions/${encodeURIComponent(decisionId)}/plan-freshness`,
+                { skipToast: true }
+            );
+            if (activeDecisionId !== decisionId) return;
+            activePlanFreshness = response && response.data;
+            renderPlanFreshnessBadge(activePlanFreshness);
+        } catch (err) {
+            if (activeDecisionId !== decisionId) return;
+            console.error(`Failed to load plan freshness for ${decisionId}`, err);
+        }
     }
 
     function chartLevelValues(plan) {
@@ -4004,6 +4039,7 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         loadJournalPanel(meta.decision_id);
         loadDecisionAnalogs(meta.decision_id);
         loadDecisionCounterfactual(meta.decision_id);
+        loadDecisionPlanFreshness(meta.decision_id);
         setHeaderRevalidateEnabled(true);
     }
 
@@ -4126,6 +4162,7 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         activeTradeOutcome = null;
         activeAnalogs = null;
         activeCounterfactual = null;
+        activePlanFreshness = null;
         // Toggle active card class
         const cards = briefingListContainer.querySelectorAll(".briefing-card");
         cards.forEach(c => {

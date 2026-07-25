@@ -379,3 +379,24 @@ class DecisionCounterfactualDTO(BaseModel):
     gates: list[CounterfactualGapDTO] = Field(default_factory=list)
     summary: str
 
+
+class TradePlanFreshnessDTO(BaseModel):
+    """Deterministic decay clock for a TradePlan's validity window (M-X3).
+    Pure arithmetic over the plan's already-persisted valid_from/valid_until
+    and an as_of instant — never a recomputed plan, never a hidden clock
+    read inside an analytical engine."""
+
+    model_config = ConfigDict(frozen=True)
+
+    decision_id: str
+    has_trade_plan: bool
+    as_of: datetime
+    valid_from: datetime | None = None
+    valid_until: datetime | None = None
+    elapsed_seconds: int | None = None
+    remaining_seconds: int | None = None
+    total_seconds: int | None = None
+    decay_fraction: Decimal | None = None
+    status: Literal["NO_PLAN", "FRESH", "AGING", "STALE", "EXPIRED"]
+    summary: str
+

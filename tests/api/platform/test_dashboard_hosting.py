@@ -180,6 +180,13 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".decision-counterfactual-panel" in css
     assert ".counterfactual-row" in css
 
+    # M-X3: deterministic decay clock for TradePlan validity-window staleness
+    assert 'id="trade-plan-freshness-badge"' in js
+    assert "function renderPlanFreshnessBadge" in js
+    assert "function loadDecisionPlanFreshness" in js
+    assert "/plan-freshness" in js
+    assert ".plan-freshness-badge" in css
+
     # Operations console (P9.7) is live — warnings feed + backup panel, not a fake loader
     assert 'id="ops-warnings-feed"' in html
     assert 'id="ops-telemetry-chart"' in html

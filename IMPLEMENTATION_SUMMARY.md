@@ -6,7 +6,130 @@ status updated on approval.
 
 ---
 
-## M-X2 — "Why not" counterfactual (READY FOR REVIEW)
+## M-X3 — Confidence-decay clock (APPROVED)
+
+| | |
+|---|---|
+| Completed | 2026-07-25 |
+| Objective | Replace the dashboard's ad-hoc client-side Active/Expired TradePlan badge (computed from an un-quantified `new Date()` comparison) with a real, quantified, backend-computed decay percentage and band (FRESH/AGING/STALE/EXPIRED) over the plan's validity window |
+| Scope | New read-only `/plan-freshness` endpoint + a decay badge next to the existing TradePlan validity row |
+| Tests | Full suite **1016 passed** (+3 new); changed-file Ruff clean; mypy clean on touched modules |
+| Coverage | Existing project coverage retained; no separate percentage collected |
+| Status | **APPROVED** (owner smoke confirmed 2026-07-25) |
+| Branch | feature/live-dashboard |
+
+### Scope completed
+
+- Added `DecisionsService.get_trade_plan_freshness(decision_id, as_of=None)`:
+  pure arithmetic over the decision's already-persisted
+  `TradePlan.valid_from`/`valid_until` and an `as_of` instant (defaults to
+  wall-clock `datetime.now(tz=timezone.utc)` at the API boundary — the same
+  "genuine wall-clock read for a real-time question, not an analytical
+  computation" precedent already used by `record_trade_outcome`'s
+  `closed_ts`). No domain object, engine, or persisted report touched.
+- Added two new config thresholds to `config/decision.json`'s `plan` block:
+  `freshness_warn_fraction` (0.5) and `freshness_stale_fraction` (0.8) —
+  the elapsed-fraction bands that separate FRESH → AGING → STALE, with
+  `EXPIRED` once `as_of >= valid_until`. Validated ordered (`warn <
+  stale`) via a `model_validator`, matching the existing
+  `DecisionThresholdsCfg._ordered` pattern.
+- Added `TradePlanFreshnessDTO` (frozen, `Decimal` decay_fraction) and
+  `GET /api/v1/decisions/{id}/plan-freshness?as_of=<optional ISO8601>` —
+  the optional query param lets a caller ask "what would freshness look
+  like at time X", defaulting to right now.
+- Added a small `plan-freshness-badge` next to the pre-existing
+  `.plan-status` (Active/Expired/Pending) badge in the TradePlan card,
+  filled in asynchronously once the endpoint resolves (e.g. "62% decayed"),
+  color-banded FRESH→green, AGING→blue, STALE→amber, EXPIRED→red. The
+  pre-existing client-side Active/Expired/Pending badge is left untouched —
+  this milestone adds the quantified decay signal alongside it rather than
+  replacing already-working, already-tested behavior. Cache-busted
+  dashboard assets to `9.29.0`.
+- No architecture change: pure read-only arithmetic over already-persisted
+  `TradePlan` fields and new (additive) config thresholds — no domain
+  object, contract, or frozen model touched; no new Protocol method needed.
+
+### Files created
+
+- None (all additive to existing files).
+
+### Files modified
+
+- `config/decision.json`, `src/athena/config/models.py`
+  (`DecisionPlanCfg.freshness_warn_fraction`/`freshness_stale_fraction` +
+  ordering validator)
+- `src/athena/api/v1/dtos/{decisions,__init__}.py` (`TradePlanFreshnessDTO`)
+- `src/athena/api/v1/services/decisions_service.py`
+  (`get_trade_plan_freshness`, `_freshness_summary` helper)
+- `src/athena/api/v1/routers/decisions.py` (`GET .../plan-freshness`)
+- dashboard CSS/JS/HTML; `tests/api/v1/test_core_apis.py`,
+  `tests/api/platform/test_dashboard_hosting.py`; `docs/MILESTONES.md`;
+  this log.
+
+### Public APIs
+
+- Added `GET /api/v1/decisions/{decision_id}/plan-freshness`.
+- Added two new required config fields to `config/decision.json`'s `plan`
+  block (backward-incompatible for hand-edited config files missing them —
+  acceptable since `config/decision.json` is the single owner-controlled
+  instance, already updated in this change set).
+- No frozen domain object, calculation, risk policy, or order boundary
+  changed.
+
+### Validation and architecture
+
+- Full regression: **1016 passed** (was 1013; +3 net new — no-trade-plan,
+  four-band decay-via-as_of, and not-found tests).
+- Ruff clean on every touched file (one pre-existing, unrelated F811 —
+  duplicate `SizingConfig` class in `config/models.py` — spotted while
+  running the check; flagged separately as out-of-scope cleanup, not
+  touched here).
+- mypy clean on all touched modules.
+- ADR-005 preserved: the decay badge and summary are arithmetic/template
+  composition over persisted values and config, never generated text.
+- No order-placement path touched. Determinism, replayability, provider
+  independence preserved. No ADR required — additive config fields + a
+  read-only endpoint over existing persisted fields.
+
+### Risks and technical debt
+
+- The endpoint reads live `config/decision.json` thresholds at request
+  time, same intentional trade-off as M-X2's counterfactual: answers "what
+  would it take right now," not "what it looked like at scoring time."
+- The pre-existing client-side Active/Expired/Pending badge and the new
+  backend-computed decay badge are two independent, not-necessarily-in-sync
+  signals (one reads the browser's clock, one reads the server's). Both are
+  derived from the same `valid_from`/`valid_until`, so they should agree in
+  practice, but a large client/server clock skew could show a mismatch.
+  Acceptable for v1; worth consolidating onto the backend signal only in a
+  future pass if it ever causes confusion.
+- No new technical debt beyond the above.
+
+### Remaining work
+
+- Owner smoke: open a decision with a trade plan, confirm the new decay
+  badge shows a sensible percentage next to the existing status badge, and
+  that it transitions through FRESH → AGING → STALE color bands as time
+  passes (or via a shortened `validity_hours` in config for faster manual
+  testing).
+- Next in the Intraday Edge Program: **M-X8** (synthetic canary decision),
+  **M-X9** (config-change impact preview), or **M-X10** (outcome-tagged
+  setups) are all clean, no-gate candidates. **ADR-006** (circuit-limit
+  risk signal) still awaits owner sign-off before M-X4 can start.
+
+### Commit message
+
+```text
+feat(api): add deterministic TradePlan decay clock (M-X3)
+
+- Add get_trade_plan_freshness: quantifies elapsed/remaining/decay_fraction over the plan's persisted valid_from/valid_until window against an as_of instant (defaults to wall-clock now)
+- Add freshness_warn_fraction/freshness_stale_fraction config thresholds to config/decision.json, ordered-validated like existing DecisionThresholdsCfg
+- Add GET /api/v1/decisions/{id}/plan-freshness and a decay-percentage badge next to the existing TradePlan status badge, replacing nothing — purely additive alongside the already-working client-side Active/Expired indicator
+```
+
+---
+
+## M-X2 — "Why not" counterfactual (APPROVED)
 
 | | |
 |---|---|
@@ -15,7 +138,7 @@ status updated on approval.
 | Scope | New read-only `/counterfactual` endpoint + Decision Brief "Why not a trade?" section |
 | Tests | Full suite **1013 passed** (+3 new); changed-file Ruff clean; mypy clean on touched modules |
 | Coverage | Existing project coverage retained; no separate percentage collected |
-| Status | **READY FOR REVIEW** |
+| Status | **APPROVED** (owner smoke confirmed 2026-07-25) |
 | Branch | feature/live-dashboard |
 
 ### Scope completed

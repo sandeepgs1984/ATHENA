@@ -40,6 +40,7 @@ from athena.api.v1.dtos import (
     TraceStageDTO,
     TradeOutcomeDTO,
     TradePlanDTO,
+    TradePlanFreshnessDTO,
 )
 from athena.calendar.engine import CalendarEngine
 from athena.config.loader import load_config, load_decision_config, load_external_links_file
@@ -554,6 +555,68 @@ class DecisionsService:
         if non_numeric:
             return f"Blocked on: {', '.join(non_numeric)} — see gate detail."
         return "No persisted gap — decision has not yet been through a full scoring cycle."
+
+    def get_trade_plan_freshness(
+        self, decision_id: str, *, as_of: datetime | None = None
+    ) -> TradePlanFreshnessDTO:
+        """Deterministic decay clock for a decision's TradePlan validity window
+        (M-X3). Pure arithmetic over the plan's already-persisted
+        valid_from/valid_until and an as_of instant — never a recomputed
+        plan, never a hidden clock read inside an analytical engine."""
+        decision = self._provider.get_decision(decision_id)
+        if decision is None:
+            raise DecisionNotFoundError(f"Decision '{decision_id}' not found")
+
+        as_of = as_of or datetime.now(tz=timezone.utc)
+        plan = decision.trade_plan
+        if plan is None:
+            return TradePlanFreshnessDTO(
+                decision_id=decision_id,
+                has_trade_plan=False,
+                as_of=as_of,
+                status="NO_PLAN",
+                summary="No trade plan was generated for this decision.",
+            )
+
+        cfg = load_decision_config(self._config_dir).plan
+        total = (plan.valid_until - plan.valid_from).total_seconds()
+        elapsed = max(0.0, min(total, (as_of - plan.valid_from).total_seconds()))
+        remaining = total - elapsed
+        decay_fraction = Decimal(str(elapsed / total)) if total > 0 else Decimal(1)
+
+        if as_of >= plan.valid_until:
+            status = "EXPIRED"
+        elif decay_fraction >= Decimal(str(cfg.freshness_stale_fraction)):
+            status = "STALE"
+        elif decay_fraction >= Decimal(str(cfg.freshness_warn_fraction)):
+            status = "AGING"
+        else:
+            status = "FRESH"
+
+        return TradePlanFreshnessDTO(
+            decision_id=decision_id,
+            has_trade_plan=True,
+            as_of=as_of,
+            valid_from=plan.valid_from,
+            valid_until=plan.valid_until,
+            elapsed_seconds=int(elapsed),
+            remaining_seconds=int(remaining),
+            total_seconds=int(total),
+            decay_fraction=decay_fraction,
+            status=status,
+            summary=self._freshness_summary(status, decay_fraction, remaining),
+        )
+
+    @staticmethod
+    def _freshness_summary(status: str, decay_fraction: Decimal, remaining_seconds: float) -> str:
+        pct = int((decay_fraction * 100).to_integral_value())
+        if status == "EXPIRED":
+            return f"{pct}% of the validity window has elapsed — this plan has EXPIRED."
+        remaining_minutes = max(0, int(remaining_seconds // 60))
+        return (
+            f"{pct}% of the validity window elapsed — plan is {status}, "
+            f"{remaining_minutes} min remaining."
+        )
 
     @staticmethod
     def _compute_pnl(direction, entry_price, exit_price, quantity):

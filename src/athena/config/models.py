@@ -673,6 +673,16 @@ class DecisionPlanCfg(_Strict):
     atr_target_multiple: float = Field(gt=0)
     default_units: int = Field(ge=1)
     validity_hours: int = Field(ge=1)
+    freshness_warn_fraction: float = Field(gt=0, lt=1)
+    freshness_stale_fraction: float = Field(gt=0, lt=1)
+
+    @model_validator(mode="after")
+    def _decay_bands_ordered(self) -> DecisionPlanCfg:
+        if self.freshness_warn_fraction >= self.freshness_stale_fraction:
+            raise ValueError(
+                f"freshness_warn_fraction ({self.freshness_warn_fraction}) must be < "
+                f"freshness_stale_fraction ({self.freshness_stale_fraction})")
+        return self
 
 
 class DecisionConfig(_Strict):

@@ -15,6 +15,8 @@
     "atr_stop_multiple": 1.5,
     "atr_target_multiple": 3.0,
     "default_units": 1,
-    "validity_hours": 6
+    "validity_hours": 6,
+    "freshness_warn_fraction": 0.5,
+    "freshness_stale_fraction": 0.8
   }
 }
