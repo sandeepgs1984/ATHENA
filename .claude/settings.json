@@ -6,7 +6,11 @@
       "Bash(cd * && python3 *)",
       "Bash(cd * && python *)",
       "Bash(pytest *)",
-      "Bash(cd * && pytest *)"
+      "Bash(cd * && pytest *)",
+      "Bash(lsof *)",
+      "Bash(ps *)",
+      "Bash(ruff *)",
+      "Bash(mypy *)"
     ]
   }
 }
