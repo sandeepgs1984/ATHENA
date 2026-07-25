@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.22.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.24.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -580,7 +580,9 @@
                                             <h4 id="dag-details-title">Stage Details</h4>
                                             <span id="dag-details-status" class="badge">COMPLETED</span>
                                         </div>
-                                        <p id="dag-details-summary" class="dag-details-text">Select a node to inspect its execution parameters.</p>
+                                        <div id="dag-details-summary" class="dag-details-text">
+                                            <p class="context-caption">Select a node to inspect its execution parameters.</p>
+                                        </div>
                                         <div id="dag-details-grid" class="dag-details-kv-grid">
                                             <!-- Context parameters key values here -->
                                         </div>
@@ -761,6 +763,6 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.22.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.24.0"></script>
 </body>
 </html>

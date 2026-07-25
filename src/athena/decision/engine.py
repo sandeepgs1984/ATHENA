@@ -294,6 +294,8 @@ class DecisionEngine:
         stages.append(TraceStage("decision", (decision_id,), "decision composed from the above"))
         if plan is not None:
             stages.append(TraceStage("trade_plan", (decision_id,),
-                                     f"entry {plan.entry_low}, stop {plan.stop_loss}, "
-                                     f"target {plan.targets[0]}, RR {plan.risk_reward}"))
+                                     f"entry {_fmt_score(plan.entry_low)}, "
+                                     f"stop {_fmt_score(plan.stop_loss)}, "
+                                     f"target {_fmt_score(plan.targets[0])}, "
+                                     f"RR {_fmt_score(plan.risk_reward)}"))
         return DecisionTrace(decision_ref=decision_id, stages=tuple(stages))

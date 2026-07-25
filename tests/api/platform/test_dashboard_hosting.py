@@ -118,10 +118,24 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "/context" in js
     assert "DECISION_BRIEF" in js
     assert "No news ingestion, no generated rationale" in js
-    assert "UNKNOWN — no persisted regime assessment" in js
+    assert "UNKNOWN — re-validate to persist a regime assessment" in js
     assert ".decision-context-lane" in css
     assert ".context-chip" in css
     assert ".context-links-list" in css
+
+    # Reasoning Trace DAG detail cards reuse the depth/context formatters instead of
+    # raw prose (owner-reported: overflowing Decimal tails, "N rules checked" mislabel)
+    assert "function showStageDetails" in js
+    assert "function renderStageDetailBody" in js
+    assert "function renderContextStageBody" in js
+    assert "function renderTradePlanStageBody" in js
+    assert "function refreshSelectedStageDetail" in js
+    assert "function renderStageProvenance" in js
+    assert "STAGE_ICONS" in js
+    assert "activeDepth" in js
+    assert "activeContextData" in js
+    assert "formatDecisionRatio" in js
+    assert ".dag-details-text .trade-plan-grid.compact" in css
 
     # Operations console (P9.7) is live — warnings feed + backup panel, not a fake loader
     assert 'id="ops-warnings-feed"' in html

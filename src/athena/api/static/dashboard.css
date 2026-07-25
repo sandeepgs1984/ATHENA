@@ -3379,21 +3379,59 @@ body {
 }
 
 .dag-details-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     font-size: 0.95rem;
     font-weight: 600;
     color: var(--text-primary);
 }
 
+.dag-details-title i {
+    color: var(--accent);
+    font-size: 0.85rem;
+}
+
 .dag-details-text {
     font-size: 0.85rem;
     color: var(--text-secondary);
-    line-height: 1.4;
+    line-height: 1.5;
+    margin: 2px 0 4px;
+    word-break: break-word;
+}
+
+.dag-details-text .analysis-summary-card {
+    margin-top: 4px;
+}
+
+.dag-details-text .trade-plan-grid.compact {
+    margin-top: 4px;
+}
+
+.dag-details-text .trade-plan-grid.compact .trade-plan-metric {
+    padding: 6px 9px;
+}
+
+.dag-details-text .trade-plan-grid.compact .trade-plan-metric span {
+    font-size: 0.65rem;
+}
+
+.dag-details-text .trade-plan-grid.compact .trade-plan-metric strong {
+    font-size: 0.82rem;
+}
+
+.dag-details-text .context-chip-row {
+    margin-bottom: 4px;
 }
 
 .dag-details-kv-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-    gap: 8px;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+}
+
+.dag-details-kv-grid .criteria-value {
+    overflow-wrap: anywhere;
 }
 
 .operations-placeholder {
@@ -3565,16 +3603,31 @@ body {
 
 .decision-context-lane {
     display: grid;
-    gap: 12px;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 14px;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.context-lane-block {
+    background: rgba(15, 23, 42, 0.35);
+    border: 1px solid var(--border-color);
+    border-radius: 7px;
+    padding: 12px 14px;
 }
 
 .context-lane-block h5 {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     color: var(--text-primary);
     font-size: 0.68rem;
     letter-spacing: 0.05em;
-    margin: 0 0 6px;
+    margin: 0 0 8px;
     text-transform: uppercase;
+}
+
+.context-lane-block h5 i {
+    color: var(--accent);
+    font-size: 0.72rem;
 }
 
 .context-lane-block p,
@@ -3582,6 +3635,15 @@ body {
     font-size: 0.78rem;
     line-height: 1.45;
     margin: 6px 0 0;
+}
+
+.context-caption {
+    color: var(--text-muted);
+}
+
+.context-caption.unknown {
+    color: #fcd34d;
+    font-style: italic;
 }
 
 .context-chip-row {
@@ -3605,14 +3667,38 @@ body {
     white-space: nowrap;
 }
 
+.context-chip.tone-good {
+    color: #86efac;
+    background: rgba(34, 197, 94, 0.15);
+    border-color: rgba(34, 197, 94, 0.35);
+}
+
+.context-chip.tone-bad {
+    color: #fca5a5;
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.35);
+}
+
+.context-chip.tone-warn,
 .context-chip.warn {
     color: #fcd34d;
     background: rgba(245, 158, 11, 0.15);
     border-color: rgba(245, 158, 11, 0.35);
 }
 
+.context-chip.tone-neutral {
+    color: #7dd3fc;
+    background: rgba(56, 189, 248, 0.12);
+    border-color: rgba(56, 189, 248, 0.32);
+}
+
+.context-chip.tone-unknown {
+    color: var(--text-muted);
+    background: rgba(100, 116, 139, 0.12);
+    border-color: rgba(100, 116, 139, 0.3);
+}
+
 .context-events-list,
-.context-health-list,
 .context-links-list {
     list-style: none;
     margin: 8px 0 0;
@@ -3622,16 +3708,23 @@ body {
 }
 
 .context-events-list li,
-.context-health-list li,
 .context-links-list li {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
     border-top: 1px solid var(--border-color);
-    padding: 5px 0;
+    padding: 6px 0;
 }
 
 .context-events-list li:first-child,
-.context-health-list li:first-child,
 .context-links-list li:first-child {
     border-top: none;
+}
+
+.context-events-list li i,
+.context-links-list li i {
+    color: var(--text-muted);
+    font-size: 0.7rem;
 }
 
 .context-links-list a {
@@ -3645,7 +3738,7 @@ body {
 
 .context-links-list small {
     color: var(--text-muted);
-    margin-left: 6px;
+    margin-left: 4px;
 }
 
 

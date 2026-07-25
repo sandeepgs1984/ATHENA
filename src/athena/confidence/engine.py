@@ -37,6 +37,12 @@ from athena.indicators.models import IndicatorName, IndicatorResult, IndicatorSt
 from athena.scoring.models import ScoringResult
 
 _ZERO, _HUNDRED = Decimal(0), Decimal(100)
+_TWO_DP = Decimal("0.01")
+
+
+def _fmt2(value: Decimal) -> str:
+    """Compact 2dp rendering for owner-facing explanations (avoids long Decimal tails)."""
+    return format(value.quantize(_TWO_DP), "f")
 
 
 def _clamp(value: Decimal) -> Decimal:
@@ -144,10 +150,10 @@ class ConfidenceEngine:
         spread = max(values) - min(values)
         value = _HUNDRED - spread  # tight cluster → high agreement
         contribs = [ConfidenceContribution("scoring", "components",
-                                           f"score spread {spread} across {len(known)} components "
+                                           f"score spread {_fmt2(spread)} across {len(known)} components "
                                            f"({', '.join(d for d, _ in known)})")]
         return self._ok("cross_engine_agreement", value, contribs,
-                        f"cross-engine agreement {_clamp(value)} (score spread {spread})")
+                        f"cross-engine agreement {_fmt2(_clamp(value))} (score spread {_fmt2(spread)})")
 
     def _unknown_ratio(self, scoring, indicators, bundle) -> ConfidenceDimension:
         total = 0
@@ -191,13 +197,13 @@ class ConfidenceEngine:
         contradictions = []
         for a, b in checks:
             if a in known and b in known and abs(known[a] - known[b]) >= gap:
-                contradictions.append(f"{a} vs {b} diverge by {abs(known[a] - known[b])}")
+                contradictions.append(f"{a} vs {b} diverge by {_fmt2(abs(known[a] - known[b]))}")
         value = _HUNDRED - penalty * Decimal(len(contradictions))
         detail = ("; ".join(contradictions) if contradictions
                   else "no contradictory signals among known scores")
         contribs = [ConfidenceContribution("scoring", "components", detail)]
         return self._ok("consistency", value, contribs,
-                        f"consistency {_clamp(value)} ({len(contradictions)} contradiction(s))")
+                        f"consistency {_fmt2(_clamp(value))} ({len(contradictions)} contradiction(s))")
 
     # ------------------------------------------------------------- aggregate
 
@@ -230,5 +236,5 @@ class ConfidenceEngine:
         completeness = Decimal(known_weight) / Decimal(total_weight)
         return dict(overall_status=ConfidenceStatus.OK, overall_value=value,
                     overall_level=self._level(value), completeness=completeness,
-                    explanation=(f"overall confidence {value} ({self._level(value).value}), "
+                    explanation=(f"overall confidence {_fmt2(value)} ({self._level(value).value}), "
                                  f"completeness {completeness:.2f}"))

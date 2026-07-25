@@ -43,8 +43,46 @@ status updated on approval.
 - Added a "Session & market context" section to the Instrument Decision Brief
   dashboard pane: session/expiry/holiday chips, regime labels, market-health
   dimensions, curated external links, and an "Export Brief" action that
-  downloads the artifact client-side. Cache-busted dashboard assets to
-  `9.22.0`.
+  downloads the artifact client-side.
+- **Owner smoke UI fixes** (post-review): redesigned the Session & market
+  context card with semantic color-coded chips (good/bad/warn/neutral/unknown
+  by label meaning), block-card styling, and icons per section; dropped the
+  redundant raw prose duplicating the market-health dimension chips. Fixed
+  `risk_reward` bypassing `formatDecisionPrice` in the TradePlan card (now a
+  proper `formatDecisionRatio` helper, 2dp). Fixed the Decision Trace DAG's
+  Trade Plan node showing full, un-rounded `Decimal` tails (e.g.
+  `2.0000000000000000001`) in its human-readable trace summary — root cause
+  was `DecisionEngine._trace()` interpolating raw `Decimal` values into the
+  `trade_plan` stage summary string; fixed by reusing the engine's existing
+  `_fmt_score` quantize-to-2dp helper (presentation-only; no `TradePlan`
+  value, gate, or contract changed). Also fixed the DAG detail panel
+  mislabeling every `ref_ids` reference list as "N rules checked" regardless
+  of stage type.
+- **Reasoning Trace DAG complete redesign** (post-review, systemic): the same
+  overflowing-Decimal complaint applied to every node, not just Trade Plan —
+  `scoring/engine.py`, `confidence/engine.py`, and `risk/engine.py` each
+  interpolated raw division-derived `Decimal`s (composite/overall scores,
+  dimension averages, cross-engine spread, contradiction deltas) straight
+  into their `explanation=` strings; `regime/engine.py` and
+  `sector_health/engine.py` interpolated raw SMA averages into their trend
+  explanations. Added a local 2dp quantize helper to each of the first three
+  (mirroring `decision/engine.py`'s existing `_fmt_score`) and inline `:.2f`
+  specifiers to the latter two — presentation-only, no stored value, gate,
+  or contract changed. Separately, redesigned the DAG node detail cards to
+  stop rendering raw trace prose at all for Regime/Market Health/Score/
+  Confidence/Risk/Trade Plan: they now reuse the *same* already-fetched,
+  already-formatted structured data the Decision Brief panel uses
+  (`/depth` and `/context` responses, cached client-side as `activeDepth`/
+  `activeContextData`/`activeDecisionData`) — color-coded chips for Regime/
+  Market Health, the existing `renderAnalysisSummaryCard` for Score/
+  Confidence/Risk, and the existing TradePlan formatters for Trade Plan.
+  Handles the load-order race (trace loads independently of depth/context)
+  by re-rendering the currently-selected node once the richer data arrives.
+  Also fixed the provenance grid's misleading "N rules checked" label
+  (applied to every stage regardless of type — those are reference IDs, not
+  rules) to "N reference(s)". Evidence/Decision/Sector Health nodes without
+  a structured secondary source still show prose, now from the corrected
+  backend explanation strings. Cache-busted dashboard assets to `9.24.0`.
 - **Owner smoke fix**: found and fixed a pre-existing latent bug in the P8.4
   Export layer, surfaced for the first time by repeated Decision Brief
   exports in one browser session. `ExportsService` was constructed fresh per

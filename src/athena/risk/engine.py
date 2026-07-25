@@ -37,6 +37,12 @@ from athena.risk.models import (
 from athena.universe.engine import UniverseResult
 
 _ZERO, _HUNDRED = Decimal(0), Decimal(100)
+_TWO_DP = Decimal("0.01")
+
+
+def _fmt2(value: Decimal) -> str:
+    """Compact 2dp rendering for owner-facing explanations (avoids long Decimal tails)."""
+    return format(value.quantize(_TWO_DP), "f")
 
 
 def _clamp(value: Decimal) -> Decimal:
@@ -166,7 +172,7 @@ class RiskEngine:
             return self._unknown("market_environment_risk", "no scoreable market-health labels")
         avg = Decimal(sum(points)) / Decimal(len(points))
         return self._ok("market_environment_risk", avg, contribs,
-                        f"market environment risk {avg} = mean of {len(points)} label(s)")
+                        f"market environment risk {_fmt2(avg)} = mean of {len(points)} label(s)")
 
     def _concentration_indicator(self, universe) -> RiskDimension:
         if universe is None:
@@ -200,5 +206,5 @@ class RiskEngine:
         completeness = Decimal(known_weight) / Decimal(total_weight)
         return dict(overall_status=RiskStatus.OK, overall_value=value,
                     overall_level=self._level(value), completeness=completeness,
-                    explanation=(f"overall risk {value} ({self._level(value).value}), "
+                    explanation=(f"overall risk {_fmt2(value)} ({self._level(value).value}), "
                                  f"completeness {completeness:.2f}"))

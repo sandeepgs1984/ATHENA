@@ -119,7 +119,7 @@ class SectorHealthEngine:
             outcome = SectorHealthLabel.SECTOR_SIDEWAYS
         return SectorHealthEvidence(
             eid, "trend", outcome,
-            f"fast SMA({fast_n})={fast_sma} vs slow SMA({slow_n})={slow_sma}, "
+            f"fast SMA({fast_n})={fast_sma:.2f} vs slow SMA({slow_n})={slow_sma:.2f}, "
             f"last close={last_close} → {outcome.value}",
             {**thresholds, "fast_sma": str(fast_sma), "slow_sma": str(slow_sma),
              "last_close": str(last_close)},

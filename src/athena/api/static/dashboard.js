@@ -2323,6 +2323,10 @@ document.addEventListener("DOMContentLoaded", () => {
     let allTraceDecisionsList = [];
     let traceDecisionsList = [];
     let activeDecisionId = null;
+    let activeDecisionData = null;
+    let activeDepth = null;
+    let activeContextData = null;
+    let selectedStageId = null;
 
     function escapeDecisionHtml(value) {
         return String(value == null ? "" : value)
@@ -2668,6 +2672,12 @@ document.addEventListener("DOMContentLoaded", () => {
         })}`;
     }
 
+    function formatDecisionRatio(value) {
+        const ratio = Number(value);
+        if (!Number.isFinite(ratio)) return "—";
+        return `${ratio.toFixed(2)} : 1`;
+    }
+
     function formatDecisionTime(value) {
         const date = new Date(value);
         if (Number.isNaN(date.getTime())) return "Unknown time";
@@ -2745,7 +2755,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     </div>
                     <div class="trade-plan-metric">
                         <span>Risk : reward</span>
-                        <strong>${escapeDecisionHtml(plan.risk_reward || "—")}</strong>
+                        <strong>${formatDecisionRatio(plan.risk_reward)}</strong>
                     </div>
                     <div class="trade-plan-metric">
                         <span>Model units · risk</span>
@@ -3214,7 +3224,9 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
                 { skipToast: true }
             );
             if (activeDecisionId !== decisionId) return;
-            renderDecisionDepth(response && response.data);
+            activeDepth = response && response.data;
+            renderDecisionDepth(activeDepth);
+            refreshSelectedStageDetail();
         } catch (err) {
             if (activeDecisionId !== decisionId) return;
             console.error(`Failed to load decision depth for ${decisionId}`, err);
@@ -3233,6 +3245,29 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         return map[type] || type || "Unknown";
     }
 
+    function sessionChipTone(type) {
+        if (type === "NORMAL") return "good";
+        if (type === "HOLIDAY" || type === "WEEKEND") return "neutral";
+        return "unknown";
+    }
+
+    function contextChipTone(label) {
+        const s = String(label || "").toUpperCase();
+        if (s.includes("UNKNOWN")) return "unknown";
+        if (/(BULL|STRONG|HEALTHY|CALM)$|GAP_UP/.test(s)) return "good";
+        if (/(BEAR|WEAK|ELEVATED)$|HIGH_VOLATILITY|GAP_DOWN/.test(s)) return "bad";
+        if (/(MIXED|FLAT|SIDEWAYS)/.test(s)) return "warn";
+        return "neutral";
+    }
+
+    function friendlyLabel(label) {
+        return String(label || "").replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+    }
+
+    function contextChip(label, tone) {
+        return `<span class="context-chip tone-${tone}">${escapeDecisionHtml(friendlyLabel(label))}</span>`;
+    }
+
     function renderDecisionContext(context) {
         const host = document.getElementById("decision-context-lane");
         if (!host) return;
@@ -3245,37 +3280,35 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         const mh = context.market_health || { status: "UNKNOWN" };
         const links = Array.isArray(context.external_links) ? context.external_links : [];
 
-        const calendarBadges = [
-            `<span class="context-chip">${escapeDecisionHtml(friendlySessionType(cal.session_type))}</span>`,
-            cal.is_weekly_expiry ? '<span class="context-chip warn">Weekly expiry</span>' : "",
-            cal.is_monthly_expiry ? '<span class="context-chip warn">Monthly expiry</span>' : "",
-            cal.holiday_name ? `<span class="context-chip warn">${escapeDecisionHtml(cal.holiday_name)}</span>` : "",
+        const sessionChips = [
+            contextChip(friendlySessionType(cal.session_type), sessionChipTone(cal.session_type)),
+            cal.is_weekly_expiry ? contextChip("Weekly expiry", "warn") : "",
+            cal.is_monthly_expiry ? contextChip("Monthly expiry", "warn") : "",
+            cal.holiday_name ? contextChip(cal.holiday_name, "warn") : "",
         ].filter(Boolean).join("");
 
         const eventRows = (cal.events || []).map(ev => `
-            <li><strong>${escapeDecisionHtml(ev.kind || "EVENT")}</strong> ${escapeDecisionHtml(ev.name || "")}</li>
+            <li><i class="fa-solid fa-star-of-life"></i>
+                <strong>${escapeDecisionHtml(friendlyLabel(ev.kind || "Event"))}</strong>
+                <span>${escapeDecisionHtml(ev.name || "")}</span></li>
         `).join("");
 
         const regimeBlock = regime.status === "ASSESSED"
             ? `<div class="context-chip-row">${(regime.labels || [])
-                  .map(l => `<span class="context-chip">${escapeDecisionHtml(l)}</span>`).join("")}</div>
-               <p class="text-muted">${escapeDecisionHtml(regime.explanation || "")}</p>`
-            : '<p class="text-muted">UNKNOWN — no persisted regime assessment for this decision. Re-validate to refresh.</p>';
+                  .map(l => contextChip(l, contextChipTone(l))).join("")}</div>
+               <p class="context-caption">${escapeDecisionHtml(regime.explanation || "")}</p>`
+            : '<p class="context-caption unknown">UNKNOWN — re-validate to persist a regime assessment for this decision.</p>';
 
         const dimensions = mh.dimensions || {};
         const healthBlock = mh.status === "ASSESSED"
-            ? `<ul class="context-health-list">
-                   ${Object.entries(dimensions).map(([dim, label]) => `
-                       <li><strong>${escapeDecisionHtml(dim)}</strong>: ${escapeDecisionHtml(label)}</li>
-                   `).join("")}
-               </ul>
-               <p class="text-muted">${escapeDecisionHtml(mh.explanation || "")}</p>`
-            : '<p class="text-muted">UNKNOWN — no persisted market-health assessment for this decision.</p>';
+            ? `<div class="context-chip-row">${Object.values(dimensions)
+                  .map(label => contextChip(label, contextChipTone(label))).join("")}</div>`
+            : '<p class="context-caption unknown">UNKNOWN — re-validate to persist a market-health assessment for this decision.</p>';
 
         const linkRows = links.length
             ? `<ul class="context-links-list">
                    ${links.map(l => `
-                       <li>
+                       <li><i class="fa-solid fa-arrow-up-right-from-square"></i>
                            <a href="${escapeDecisionHtml(l.url)}" target="_blank" rel="noopener noreferrer">
                                ${escapeDecisionHtml(l.title)}
                            </a>
@@ -3283,24 +3316,24 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
                        </li>
                    `).join("")}
                </ul>`
-            : '<p class="text-muted">No curated external links for this instrument.</p>';
+            : '<p class="context-caption">No curated external links for this instrument.</p>';
 
         host.innerHTML = `
             <div class="context-lane-block">
-                <h5>Session</h5>
-                <div class="context-chip-row">${calendarBadges}</div>
+                <h5><i class="fa-solid fa-calendar-day"></i> Session</h5>
+                <div class="context-chip-row">${sessionChips}</div>
                 ${eventRows ? `<ul class="context-events-list">${eventRows}</ul>` : ""}
             </div>
             <div class="context-lane-block">
-                <h5>Regime</h5>
+                <h5><i class="fa-solid fa-chart-line"></i> Regime</h5>
                 ${regimeBlock}
             </div>
             <div class="context-lane-block">
-                <h5>Market health</h5>
+                <h5><i class="fa-solid fa-heart-pulse"></i> Market health</h5>
                 ${healthBlock}
             </div>
             <div class="context-lane-block">
-                <h5>External research</h5>
+                <h5><i class="fa-solid fa-link"></i> External research</h5>
                 ${linkRows}
             </div>
         `;
@@ -3313,7 +3346,9 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
                 { skipToast: true }
             );
             if (activeDecisionId !== decisionId) return;
-            renderDecisionContext(response && response.data);
+            activeContextData = response && response.data;
+            renderDecisionContext(activeContextData);
+            refreshSelectedStageDetail();
         } catch (err) {
             if (activeDecisionId !== decisionId) return;
             console.error(`Failed to load decision context for ${decisionId}`, err);
@@ -3410,6 +3445,7 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
 
     function renderDecisionBrief(decision) {
         if (!decisionBriefBody || !decision || !decision.metadata) return;
+        activeDecisionData = decision;
         const meta = decision.metadata;
         const rawSymbol = meta.instrument_id || "INDEX";
         const symbol = rawSymbol.includes(":") ? rawSymbol.split(":").pop() : rawSymbol;
@@ -3686,6 +3722,9 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
 
     function selectBriefing(decisionId) {
         activeDecisionId = decisionId;
+        // Clear cross-decision caches so a stale card never renders under a new symbol
+        activeDepth = null;
+        activeContextData = null;
         // Toggle active card class
         const cards = briefingListContainer.querySelectorAll(".briefing-card");
         cards.forEach(c => {
@@ -3714,30 +3753,31 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         }
     }
 
+    // Shared by the node list and the detail card header.
+    const STAGE_ICONS = {
+        "universe_ingest": "fa-globe",
+        "technical_indicators": "fa-chart-area",
+        "scoring_engine": "fa-calculator",
+        "confidence_engine": "fa-shield-halved",
+        "risk_assessment": "fa-triangle-exclamation",
+        "quality_gates": "fa-circle-check",
+        "final_decision": "fa-brain",
+        "regime": "fa-chart-line",
+        "market_health": "fa-heartbeat",
+        "sector_health": "fa-industry",
+        "evidence": "fa-layer-group",
+        "score": "fa-calculator",
+        "confidence": "fa-shield-halved",
+        "risk": "fa-triangle-exclamation",
+        "decision": "fa-brain",
+        "trade_plan": "fa-list-check",
+    };
+
     function renderTraceDAG(trace) {
         if (!dagNodesContainer) return;
         dagNodesContainer.innerHTML = "";
         if (dagSvgLines) dagSvgLines.innerHTML = "";
-
-        // Icon mappings for each stage ID
-        const iconMap = {
-            "universe_ingest": "fa-globe",
-            "technical_indicators": "fa-chart-area",
-            "scoring_engine": "fa-calculator",
-            "confidence_engine": "fa-shield-halved",
-            "risk_assessment": "fa-triangle-exclamation",
-            "quality_gates": "fa-circle-check",
-            "final_decision": "fa-brain",
-            "regime": "fa-chart-line",
-            "market_health": "fa-heartbeat",
-            "sector_health": "fa-industry",
-            "evidence": "fa-layer-group",
-            "score": "fa-calculator",
-            "confidence": "fa-shield-halved",
-            "risk": "fa-triangle-exclamation",
-            "decision": "fa-brain",
-            "trade_plan": "fa-list-check"
-        };
+        selectedStageId = null;
 
         if (!trace.stages || trace.stages.length === 0) {
             dagNodesContainer.innerHTML = '<div class="text-muted text-center" style="padding: 48px;">No stored reasoning trace for this decision yet.</div>';
@@ -3750,7 +3790,7 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
             node.className = "dag-node";
             node.setAttribute("data-stage", stage.stage_id);
 
-            const icon = iconMap[stage.stage_id] || "fa-circle-notch";
+            const icon = STAGE_ICONS[stage.stage_id] || "fa-circle-notch";
             const statusClass = stage.status.toLowerCase();
 
             node.innerHTML = `
@@ -3797,43 +3837,120 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         }
     }
 
+    function refreshSelectedStageDetail() {
+        if (!selectedStageId || !activeTrace) return;
+        const stage = activeTrace.stages.find(s => s.stage_id === selectedStageId);
+        if (stage) showStageDetails(stage);
+    }
+
+    function renderContextStageBody(block, kind) {
+        const data = block || { status: "UNKNOWN" };
+        if (data.status !== "ASSESSED") {
+            const label = kind === "regime" ? "regime" : "market-health";
+            return `<p class="context-caption unknown">UNKNOWN — re-validate to persist a ${label} assessment for this decision.</p>`;
+        }
+        if (kind === "regime") {
+            return `
+                <div class="context-chip-row">${(data.labels || [])
+                    .map(l => contextChip(l, contextChipTone(l))).join("")}</div>
+                <p class="context-caption">${escapeDecisionHtml(data.explanation || "")}</p>
+            `;
+        }
+        const dims = data.dimensions || {};
+        return `
+            <div class="context-chip-row">${Object.values(dims)
+                .map(label => contextChip(label, contextChipTone(label))).join("")}</div>
+            ${data.explanation ? `<p class="context-caption">${escapeDecisionHtml(data.explanation)}</p>` : ""}
+        `;
+    }
+
+    function renderTradePlanStageBody() {
+        const plan = activeDecisionData && activeDecisionData.trade_plan;
+        if (!plan) {
+            return '<p class="context-caption">No TradePlan authorized for this decision — a non-TRADE stance carries no entry/exit levels.</p>';
+        }
+        const targets = Array.isArray(plan.targets) && plan.targets.length
+            ? plan.targets.map(formatDecisionPrice).join(" · ")
+            : "—";
+        return `
+            <div class="trade-plan-grid compact">
+                <div class="trade-plan-metric">
+                    <span>Entry zone</span>
+                    <strong>${formatDecisionPrice(plan.entry_low)} – ${formatDecisionPrice(plan.entry_high)}</strong>
+                </div>
+                <div class="trade-plan-metric invalidation">
+                    <span>Invalidation / stop</span>
+                    <strong>${formatDecisionPrice(plan.stop_loss)}</strong>
+                </div>
+                <div class="trade-plan-metric targets">
+                    <span>Targets</span>
+                    <strong>${targets}</strong>
+                </div>
+                <div class="trade-plan-metric">
+                    <span>Risk : reward</span>
+                    <strong>${formatDecisionRatio(plan.risk_reward)}</strong>
+                </div>
+            </div>
+        `;
+    }
+
+    function renderStageDetailBody(stage) {
+        switch (stage.stage_id) {
+            case "regime":
+                return renderContextStageBody(activeContextData && activeContextData.regime, "regime");
+            case "market_health":
+                return renderContextStageBody(activeContextData && activeContextData.market_health, "market_health");
+            case "score":
+                return activeDepth && activeDepth.score
+                    ? renderAnalysisSummaryCard("Score", activeDepth.score, "score")
+                    : `<p class="context-caption">${escapeDecisionHtml(stage.summary)}</p>`;
+            case "confidence":
+                return activeDepth && activeDepth.confidence
+                    ? renderAnalysisSummaryCard("Confidence", activeDepth.confidence, "confidence")
+                    : `<p class="context-caption">${escapeDecisionHtml(stage.summary)}</p>`;
+            case "risk":
+                return activeDepth && activeDepth.risk
+                    ? renderAnalysisSummaryCard("Risk", activeDepth.risk, "risk")
+                    : `<p class="context-caption">${escapeDecisionHtml(stage.summary)}</p>`;
+            case "trade_plan":
+                return renderTradePlanStageBody();
+            default:
+                return `<p class="context-caption">${escapeDecisionHtml(stage.summary)}</p>`;
+        }
+    }
+
+    function renderStageProvenance(stage) {
+        if (!dagDetailsGrid) return;
+        const refIds = Array.isArray(stage.details && stage.details.ref_ids)
+            ? stage.details.ref_ids
+            : [];
+        if (!refIds.length) {
+            dagDetailsGrid.innerHTML = '<div class="text-muted" style="grid-column: 1/-1; font-size: 0.72rem;">No provenance references captured.</div>';
+            return;
+        }
+        const label = refIds.length === 1 ? "reference" : "references";
+        const shown = refIds.length > 2
+            ? `${refIds.slice(0, 2).join(", ")} +${refIds.length - 2} more`
+            : refIds.join(", ");
+        dagDetailsGrid.innerHTML = `
+            <div class="strategy-criteria-item" style="grid-column: 1/-1;">
+                <span class="criteria-label">${escapeDecisionHtml(label)}</span>
+                <span class="criteria-value" title="${escapeDecisionHtml(refIds.join(", "))}">${escapeDecisionHtml(shown)}</span>
+            </div>
+        `;
+    }
+
     function showStageDetails(stage) {
         if (!dagDetailsPanel) return;
-        
-        dagDetailsTitle.textContent = stage.name;
+        selectedStageId = stage.stage_id;
+
+        const icon = STAGE_ICONS[stage.stage_id] || "fa-circle-notch";
+        dagDetailsTitle.innerHTML = `<i class="fa-solid ${icon}"></i> <span>${escapeDecisionHtml(stage.name)}</span>`;
         dagDetailsStatus.className = `badge ${stage.status.toLowerCase()}`;
         dagDetailsStatus.textContent = stage.status;
-        dagDetailsSummary.textContent = stage.summary;
+        dagDetailsSummary.innerHTML = renderStageDetailBody(stage);
 
-        // Render key-value parameters grid
-        if (dagDetailsGrid) {
-            dagDetailsGrid.innerHTML = "";
-            const keys = Object.keys(stage.details);
-            if (keys.length === 0) {
-                dagDetailsGrid.innerHTML = '<div class="text-muted text-center" style="grid-column: 1/-1;">No parameter details captured.</div>';
-            } else {
-                keys.forEach(k => {
-                    const val = stage.details[k];
-                    const item = document.createElement("div");
-                    item.className = "strategy-criteria-item";
-
-                    let displayVal = val;
-                    if (typeof val === "boolean") {
-                        displayVal = val ? "TRUE" : "FALSE";
-                    } else if (Array.isArray(val)) {
-                        // Gates list formatting
-                        displayVal = `${val.length} rules checked`;
-                    }
-
-                    item.innerHTML = `
-                        <span class="criteria-label">${k.replace(/_/g, " ")}</span>
-                        <span class="criteria-value">${displayVal}</span>
-                    `;
-                    dagDetailsGrid.appendChild(item);
-                });
-            }
-        }
-
+        renderStageProvenance(stage);
         dagDetailsPanel.style.display = "block";
     }
 

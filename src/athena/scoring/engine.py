@@ -30,10 +30,16 @@ from athena.scoring.models import (
 from athena.sector_health.models import SectorHealthResult
 
 _ZERO, _HUNDRED = Decimal(0), Decimal(100)
+_TWO_DP = Decimal("0.01")
 
 
 def _clamp(value: Decimal) -> Decimal:
     return max(_ZERO, min(_HUNDRED, value))
+
+
+def _fmt2(value: Decimal) -> str:
+    """Compact 2dp rendering for owner-facing explanations (avoids long Decimal tails)."""
+    return format(value.quantize(_TWO_DP), "f")
 
 
 def _ok(dimension, value, contributions, explanation) -> ComponentScore:
@@ -155,7 +161,7 @@ class ScoringEngine:
             return _unknown(dimension, f"no scoreable {source} dimensions")
         avg = Decimal(sum(points)) / Decimal(len(points))
         return _ok(dimension, avg, contribs,
-                   f"{dimension} {avg} = mean of {len(points)} scoreable dimension(s)")
+                   f"{dimension} {_fmt2(avg)} = mean of {len(points)} scoreable dimension(s)")
 
     def _liquidity(self, indicators) -> ComponentScore:
         vma = self._known_indicator(indicators, IndicatorName.VOLUME_MA)
@@ -224,5 +230,5 @@ class ScoringEngine:
         return CompositeScore(
             status=ScoreStatus.OK, value=_clamp(value), completeness=completeness,
             breakdown=breakdown_t,
-            explanation=(f"composite {_clamp(value)} = weighted mean of known components "
+            explanation=(f"composite {_fmt2(_clamp(value))} = weighted mean of known components "
                          f"(completeness {completeness:.2f})"))

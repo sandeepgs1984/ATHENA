@@ -93,7 +93,7 @@ class RegimeEngine:
 
         return RegimeEvidence(
             evidence_id=eid, dimension="trend", outcome=outcome,
-            explanation=(f"fast SMA({fast_n})={fast_sma} vs slow SMA({slow_n})={slow_sma}, "
+            explanation=(f"fast SMA({fast_n})={fast_sma:.2f} vs slow SMA({slow_n})={slow_sma:.2f}, "
                          f"last close={last_close} → {outcome.value}"),
             inputs={"fast_sma": str(fast_sma), "slow_sma": str(slow_sma),
                     "last_close": str(last_close), "fast_window": str(fast_n),
