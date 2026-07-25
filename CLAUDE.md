@@ -1,5 +1,7 @@
 # ATHENA — Project Rules
 
+@ATHENA_BRIEFING.md
+
 ## Git actions rule (mandatory)
 
 The AI must NEVER run git actions (add, commit, push, pull, checkout, branch, merge, etc.) on its own. The AI edits files only. For every change set, the AI provides ONLY the consolidated commit message (per the rule below) — no cd/add/commit command boilerplate — for sandeep to use himself. Git actions may only be executed by the AI if sandeep explicitly asks for it in that specific instance.
@@ -37,7 +39,8 @@ Per ATHENA-001 §2 D-3.
 - Before marking any milestone complete, verify ALL of: (1) full test suite passes, (2) architectural compliance, (3) frozen contracts unchanged, (4) replayability preserved, (5) deterministic behaviour, (6) no ADR required, (7) no architecture drift, (8) quality gates pass, (9) configuration compatibility, (10) documentation accuracy.
 - Every milestone ends with a Milestone Review Summary: name, objective, scope completed, files created, files modified, public APIs added, tests added, test results, coverage summary, architecture compliance, ADR compliance, risks discovered, technical debt introduced, suggested improvements, remaining work, commit message, ready-for-review.
 - Update `IMPLEMENTATION_SUMMARY.md` (repo root, permanent implementation log) after EVERY completed milestone and phase. Phase entries include: summary, architecture compliance, files created, tests added, remaining work, risks, suggested improvements, lessons learned, implementation metrics, phase outcome, commit hash, branch, review status.
+- When a track/phase closes, or the module map materially changes, update `ATHENA_BRIEFING.md` §6 (repo map) in the same change set — it is the fast-orientation doc every AI agent reads first and must never drift from reality.
 
 ## Project context
 
-Single-user decision-intelligence platform for NSE/BSE swing trading. Constitution: ATHENA-000. Engineering review and 12 accepted amendments: ATHENA-001. Never add order-placement code. Secrets in `.env` only. See README for stack decisions.
+Single-user decision-intelligence platform for NSE/BSE swing trading. Constitution: ATHENA-000. Engineering review and 12 accepted amendments: ATHENA-001. Never add order-placement code. Secrets in `.env` only. See README for stack decisions. See `ATHENA_BRIEFING.md` for the full AI-agent orientation map (what ATHENA is, governing docs, how to find current status, repo map) — read it first, every session.

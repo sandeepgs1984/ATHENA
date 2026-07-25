@@ -8,6 +8,7 @@ ATHENA is not a screener, not a bot, and never executes trades. It exists to imp
 
 | Doc | Title | Status |
 |---|---|---|
+| [ATHENA_BRIEFING](ATHENA_BRIEFING.md) | **Start here (AI agents especially):** what ATHENA is, invariants, orientation checklist, how to find current status | Active |
 | [ATHENA-000](docs/ATHENA-000-Master-Architecture.md) | Master Architecture & Product Foundation (Constitution) | Ratified v0.2 |
 | [ATHENA-001](docs/ATHENA-001-Engineering-Review.md) | Engineering Review — 7 roles, 8 disagreements resolved, 12 amendments | Approved |
 | [ATHENA-001R](docs/ATHENA-001R-Owner-Review.md) | Owner Review — 15 amendments + 4 directions | Accepted |
