@@ -513,6 +513,9 @@ document.addEventListener("DOMContentLoaded", () => {
             } finally {
                 clearTokens();
                 stopOpsStream();
+                // Reset navigation so the next session always lands on Portfolio
+                // Overview, never wherever the previous session happened to be.
+                window.history.replaceState({ tabId: "overview" }, "", "/dashboard/overview");
                 if (state.authRequired) {
                     showUnlock();
                 } else {
