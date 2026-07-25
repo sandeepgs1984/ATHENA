@@ -2318,6 +2318,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const decisionBriefTitle = document.getElementById("decision-brief-title");
     const decisionBriefAsOf = document.getElementById("decision-brief-asof");
     const decisionBriefBody = document.getElementById("decision-brief-body");
+    const decisionBriefRevalidateHeader = document.getElementById("decision-brief-revalidate-header");
 
     let activeTrace = null;
     let allTraceDecisionsList = [];
@@ -2693,6 +2694,7 @@ document.addEventListener("DOMContentLoaded", () => {
     function renderDecisionBriefEmpty(title, detail) {
         if (decisionBriefTitle) decisionBriefTitle.textContent = "Instrument Decision Brief";
         if (decisionBriefAsOf) decisionBriefAsOf.textContent = "Select a symbol";
+        setHeaderRevalidateEnabled(false);
         if (!decisionBriefBody) return;
         decisionBriefBody.innerHTML = `
             <div class="decision-brief-empty">
@@ -3560,9 +3562,6 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
             <section class="decision-brief-section">
                 <h4>Human next step</h4>
                 <div class="decision-brief-actions">
-                    <button id="decision-brief-revalidate" class="btn btn-outline" type="button">
-                        <i class="fa-solid fa-arrows-rotate"></i> Re-validate
-                    </button>
                     <button id="decision-brief-market" class="btn btn-outline" type="button">
                         <i class="fa-solid fa-chart-column"></i> Market Intelligence
                     </button>
@@ -3583,10 +3582,6 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
             </section>
         `;
 
-        document.getElementById("decision-brief-revalidate")?.addEventListener("click", event => {
-            const bareSymbol = String(rawSymbol).replace(/^NSE:|^BSE:/, "");
-            validateSymbolsNow([bareSymbol], { button: event.currentTarget, refreshDecisions: true });
-        });
         document.getElementById("decision-brief-market")?.addEventListener("click", () => {
             switchTab("market");
         });
@@ -3608,6 +3603,7 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         loadDecisionDepth(meta.decision_id);
         loadDecisionContext(meta.decision_id);
         loadDecisionChart(rawSymbol, decision.trade_plan, meta.decision_id);
+        setHeaderRevalidateEnabled(true);
     }
 
     async function loadDecisionDetail(decisionId) {
@@ -4010,6 +4006,22 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         }
     };
     wireDecisionsControls();
+
+    // Header Re-validate — always visible next to the "as of" timestamp,
+    // rather than buried at the bottom of the brief (owner feedback).
+    function setHeaderRevalidateEnabled(enabled) {
+        if (!decisionBriefRevalidateHeader) return;
+        decisionBriefRevalidateHeader.disabled = !enabled;
+    }
+
+    decisionBriefRevalidateHeader?.addEventListener("click", event => {
+        const instrumentId = activeDecisionData && activeDecisionData.metadata
+            ? activeDecisionData.metadata.instrument_id
+            : null;
+        if (!instrumentId) return;
+        const bareSymbol = String(instrumentId).replace(/^NSE:|^BSE:/, "");
+        validateSymbolsNow([bareSymbol], { button: event.currentTarget, refreshDecisions: true });
+    });
 
     // Wire refresh trigger
     refreshTrigger.addEventListener("click", () => {

@@ -137,6 +137,14 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "formatDecisionRatio" in js
     assert ".dag-details-text .trade-plan-grid.compact" in css
 
+    # Re-validate moved to the Decision Brief header — always visible, not buried
+    # at the bottom of the brief (owner feedback: "no idea of where it exists")
+    assert 'id="decision-brief-revalidate-header"' in html
+    assert 'id="decision-brief-revalidate"' not in js
+    assert "function setHeaderRevalidateEnabled" in js
+    assert ".decision-brief-header-actions" in css
+    assert ".btn-sm" in css
+
     # Operations console (P9.7) is live — warnings feed + backup panel, not a fake loader
     assert 'id="ops-warnings-feed"' in html
     assert 'id="ops-telemetry-chart"' in html

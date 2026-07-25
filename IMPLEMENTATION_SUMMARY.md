@@ -83,6 +83,18 @@ status updated on approval.
   rules) to "N reference(s)". Evidence/Decision/Sector Health nodes without
   a structured secondary source still show prose, now from the corrected
   backend explanation strings. Cache-busted dashboard assets to `9.24.0`.
+- **Re-validate moved to the Decision Brief header** (owner feedback: "no
+  idea of where it exists"): added `#decision-brief-revalidate-header`
+  next to the "as of" timestamp in the static header (always visible
+  regardless of scroll position), removed the old button buried at the
+  bottom of the "Human next step" actions row. Wired once at page load
+  (not per-render, since the header markup is static) referencing the
+  cached `activeDecisionData` at click time so it always targets the
+  currently-selected instrument. Enabled/disabled alongside brief load/
+  empty state. Added `.btn-sm` and made `.decision-brief-header` an
+  explicit flex container (previously relied on `align-items`/
+  `justify-content` with no `display: flex` — dead CSS, now fixed).
+  Cache-busted dashboard assets to `9.25.0`.
 - **Owner smoke fix**: found and fixed a pre-existing latent bug in the P8.4
   Export layer, surfaced for the first time by repeated Decision Brief
   exports in one browser session. `ExportsService` was constructed fresh per

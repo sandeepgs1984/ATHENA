@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.24.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.25.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -546,7 +546,12 @@
                                         <div class="card-title-icon"><i class="fas fa-crosshairs"></i></div>
                                         <h3 id="decision-brief-title">Instrument Decision Brief</h3>
                                     </div>
-                                    <span id="decision-brief-asof" class="decision-brief-asof">Select a symbol</span>
+                                    <div class="decision-brief-header-actions">
+                                        <span id="decision-brief-asof" class="decision-brief-asof">Select a symbol</span>
+                                        <button id="decision-brief-revalidate-header" class="btn btn-outline btn-sm" type="button" title="Re-validate this symbol" disabled>
+                                            <i class="fa-solid fa-arrows-rotate"></i> Re-validate
+                                        </button>
+                                    </div>
                                 </div>
                                 <div id="decision-brief-body" class="card-body decision-brief-body">
                                     <div class="decision-brief-empty">
@@ -763,6 +768,6 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.24.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.25.0"></script>
 </body>
 </html>

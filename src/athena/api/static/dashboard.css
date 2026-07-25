@@ -2075,8 +2075,10 @@ body {
 }
 
 .decision-brief-header {
+    display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 12px;
 }
 
 .decision-brief-header > div:first-child {
@@ -2085,11 +2087,28 @@ body {
     min-width: 0;
 }
 
+.decision-brief-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
 .decision-brief-asof {
     color: var(--text-muted);
     font-family: var(--font-mono);
     font-size: 0.68rem;
     white-space: nowrap;
+}
+
+.btn-sm {
+    padding: 5px 10px;
+    font-size: 0.72rem;
+}
+
+.btn-sm:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
 }
 
 .decision-brief-body {
