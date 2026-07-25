@@ -2330,6 +2330,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let activeJournalEntry = null;
     let activeTradeOutcome = null;
     let activeAnalogs = null;
+    let activeCounterfactual = null;
     let selectedStageId = null;
 
     function escapeDecisionHtml(value) {
@@ -3675,6 +3676,92 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         }
     }
 
+    function formatCounterfactualNumber(value) {
+        const num = Number(value);
+        return Number.isFinite(num) ? num.toFixed(2) : "—";
+    }
+
+    function renderCounterfactualPanel(data) {
+        const host = document.getElementById("decision-counterfactual-panel");
+        if (!host) return;
+        if (!data) {
+            host.innerHTML = '<div class="context-caption">Unable to compute the gap to TRADE.</div>';
+            return;
+        }
+
+        if (data.is_trade) {
+            host.innerHTML = `
+                <div class="counterfactual-cleared">
+                    <span class="context-chip tone-good"><i class="fa-solid fa-check"></i> All gates cleared</span>
+                    <p class="context-caption">${escapeDecisionHtml(data.summary)}</p>
+                </div>
+            `;
+            return;
+        }
+
+        const scoreRow = data.score_current !== null && data.score_current !== undefined
+            ? `
+                <div class="counterfactual-row">
+                    <span class="counterfactual-row-label">Composite score</span>
+                    <span class="counterfactual-row-values">
+                        <strong>${formatCounterfactualNumber(data.score_current)}</strong>
+                        <small>/ ${formatCounterfactualNumber(data.score_required)} required</small>
+                    </span>
+                    ${data.score_gap !== null && data.score_gap !== undefined && Number(data.score_gap) > 0
+                        ? `<span class="context-chip tone-bad">+${formatCounterfactualNumber(data.score_gap)} short</span>`
+                        : `<span class="context-chip tone-good">met</span>`}
+                </div>
+            `
+            : "";
+
+        const gateRows = (Array.isArray(data.gates) ? data.gates : []).map(gate => {
+            const hasNumbers = gate.current !== null && gate.current !== undefined
+                && gate.required !== null && gate.required !== undefined;
+            const gapPositive = gate.gap !== null && gate.gap !== undefined && Number(gate.gap) > 0;
+            return `
+                <div class="counterfactual-row">
+                    <span class="counterfactual-row-label">${escapeDecisionHtml(friendlyLabel(gate.gate))}</span>
+                    ${hasNumbers
+                        ? `<span class="counterfactual-row-values">
+                            <strong>${formatCounterfactualNumber(gate.current)}</strong>
+                            <small>vs ${formatCounterfactualNumber(gate.required)} required</small>
+                        </span>`
+                        : `<span class="counterfactual-row-values"><small>${escapeDecisionHtml(gate.detail)}</small></span>`}
+                    ${hasNumbers
+                        ? (gapPositive
+                            ? `<span class="context-chip tone-bad">gap ${formatCounterfactualNumber(gate.gap)}</span>`
+                            : `<span class="context-chip tone-good">met</span>`)
+                        : `<span class="context-chip tone-unknown">blocked</span>`}
+                </div>
+            `;
+        }).join("");
+
+        host.innerHTML = `
+            <div class="counterfactual-body">
+                ${scoreRow}
+                ${gateRows}
+                <p class="counterfactual-summary">${escapeDecisionHtml(data.summary)}</p>
+            </div>
+        `;
+    }
+
+    async function loadDecisionCounterfactual(decisionId) {
+        try {
+            const response = await apiRequest(
+                `/api/v1/decisions/${encodeURIComponent(decisionId)}/counterfactual`,
+                { skipToast: true }
+            );
+            if (activeDecisionId !== decisionId) return;
+            activeCounterfactual = response && response.data;
+            renderCounterfactualPanel(activeCounterfactual);
+        } catch (err) {
+            if (activeDecisionId !== decisionId) return;
+            console.error(`Failed to load counterfactual for ${decisionId}`, err);
+            const host = document.getElementById("decision-counterfactual-panel");
+            if (host) host.innerHTML = '<div class="context-caption">Unable to compute the gap to TRADE.</div>';
+        }
+    }
+
     function renderDecisionTimeline(decision) {
         const host = document.getElementById("decision-history-timeline");
         if (!host || !decision || !decision.metadata) return;
@@ -3799,6 +3886,19 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
                 </div>
             </section>
 
+            <section class="decision-brief-section" id="decision-counterfactual-section">
+                <h4>Why not a trade?</h4>
+                <p class="analysis-section-intro">
+                    Exact arithmetic over persisted values vs. current config thresholds —
+                    never a recomputed score, confidence, or risk.
+                </p>
+                <div id="decision-counterfactual-panel" class="decision-counterfactual-panel">
+                    <div class="decision-depth-loading">
+                        <i class="fa-solid fa-circle-notch fa-spin"></i> Computing gap to TRADE…
+                    </div>
+                </div>
+            </section>
+
             <section class="decision-brief-section">
                 <h4>Safety &amp; quality gates</h4>
                 <div class="decision-gates-list">${gateRows}</div>
@@ -3903,6 +4003,7 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         loadDecisionChart(rawSymbol, decision.trade_plan, meta.decision_id);
         loadJournalPanel(meta.decision_id);
         loadDecisionAnalogs(meta.decision_id);
+        loadDecisionCounterfactual(meta.decision_id);
         setHeaderRevalidateEnabled(true);
     }
 
@@ -4024,6 +4125,7 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         activeJournalEntry = null;
         activeTradeOutcome = null;
         activeAnalogs = null;
+        activeCounterfactual = null;
         // Toggle active card class
         const cards = briefingListContainer.querySelectorAll(".briefing-card");
         cards.forEach(c => {

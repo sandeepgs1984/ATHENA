@@ -6,7 +6,117 @@ status updated on approval.
 
 ---
 
-## M-X1 — Historical analog matcher (READY FOR REVIEW)
+## M-X2 — "Why not" counterfactual (READY FOR REVIEW)
+
+| | |
+|---|---|
+| Completed | 2026-07-25 |
+| Objective | For every non-TRADE decision, quantify the exact score/confidence/risk/evidence/market gap to the TRADE gate — pure arithmetic over already-persisted values and current config thresholds, never a recomputed decision |
+| Scope | New read-only `/counterfactual` endpoint + Decision Brief "Why not a trade?" section |
+| Tests | Full suite **1013 passed** (+3 new); changed-file Ruff clean; mypy clean on touched modules |
+| Coverage | Existing project coverage retained; no separate percentage collected |
+| Status | **READY FOR REVIEW** |
+| Branch | feature/live-dashboard |
+
+### Scope completed
+
+- Added `DecisionsService.get_decision_counterfactual(decision_id)`: for a
+  TRADE decision, returns a trivial "already cleared" result. For any other
+  decision type, reads the decision's own persisted `gate_results` (never
+  recomputed) plus its persisted score/confidence/risk report (via the
+  existing `_fetch_report` helper) and the live `config/decision.json`
+  thresholds, then computes, per failing gate, `current`, `required`, and
+  `gap = max(0, required - current)` (or `current - required` for RISK,
+  since risk is a ceiling not a floor). Composite score gap is computed the
+  same way against `min_composite_for_trade`.
+- Handles the two non-numeric blockers that are not expressed as a
+  `QualityGate` at all — `Direction.NONE` (no trend direction) and a missing
+  `trade_plan` (ATR/SMA indicators unavailable) — by checking the decision's
+  own persisted `direction`/`trade_plan` fields directly, only when no
+  numeric gate/score gap remains, so a decision is never told to "close a
+  gap" that isn't actually the reason it wasn't a TRADE.
+- Added `CounterfactualGapDTO`/`DecisionCounterfactualDTO` (frozen, `Decimal`
+  fields) and a deterministic `summary` string (e.g. `"To become a TRADE:
+  score +4.20, confidence +10.00."`) built from simple template composition
+  over the computed gaps — no generated rationale, per ADR-005.
+- Added `GET /api/v1/decisions/{id}/counterfactual`.
+- Added a "Why not a trade?" Decision Brief section (after "Score ·
+  confidence · risk", before "Safety & quality gates"): an "all gates
+  cleared" chip for TRADE decisions, or a row per gap (current vs. required,
+  with a gap chip) plus the summary sentence for everything else. Cache-
+  busted dashboard assets to `9.28.0`.
+- No architecture change: pure read-only arithmetic over already-persisted
+  data and existing config thresholds — no domain object, contract, or
+  frozen model touched; no new Protocol method needed (reuses
+  `get_decision`/`_fetch_report`).
+
+### Files created
+
+- None (all additive to existing files).
+
+### Files modified
+
+- `src/athena/api/v1/dtos/{decisions,__init__}.py` (`CounterfactualGapDTO`,
+  `DecisionCounterfactualDTO`)
+- `src/athena/api/v1/services/decisions_service.py`
+  (`get_decision_counterfactual`, `_decimal_or_none`, `_market_quality_value`,
+  `_counterfactual_summary` helpers)
+- `src/athena/api/v1/routers/decisions.py` (`GET .../counterfactual`)
+- dashboard CSS/JS/HTML; `tests/api/v1/test_core_apis.py`,
+  `tests/api/platform/test_dashboard_hosting.py`; `docs/MILESTONES.md`;
+  this log.
+
+### Public APIs
+
+- Added `GET /api/v1/decisions/{decision_id}/counterfactual`.
+- No frozen domain object, calculation, risk policy, or order boundary
+  changed.
+
+### Validation and architecture
+
+- Full regression: **1013 passed** (was 1010; +3 net new — already-TRADE,
+  confidence/risk gap quantification, and non-numeric direction-blocker
+  tests).
+- Ruff clean on every touched file. mypy clean on all touched modules.
+- ADR-005 preserved: summary is template composition over persisted/
+  computed numbers, never generated text.
+- No order-placement path touched. Determinism, replayability, provider
+  independence preserved. No ADR required — read-only arithmetic over
+  existing persisted fields and existing config thresholds.
+
+### Risks and technical debt
+
+- Thresholds are read live from `config/decision.json` at request time; if
+  the owner changes a threshold between when a decision was scored and when
+  its counterfactual is viewed, the gap reflects the *current* threshold,
+  not the one in force at scoring time. This is intentional (answers "what
+  would it take right now"), but worth stating explicitly since it's the one
+  place this milestone reads live config rather than only persisted data.
+- No new technical debt beyond the above.
+
+### Remaining work
+
+- Owner smoke: open a WATCH/NO_TRADE decision, confirm the gap numbers and
+  summary sentence match the persisted score/confidence/risk shown
+  elsewhere on the same Decision Brief; open a TRADE decision, confirm the
+  "all gates cleared" state.
+- Next in the Intraday Edge Program: **M-X3 confidence-decay clock** (clean,
+  no gate) is the natural follow-on. **ADR-006** (circuit-limit risk signal)
+  still awaits owner sign-off.
+
+### Commit message
+
+```text
+feat(api): add "why not a trade" counterfactual gap for decisions
+
+- Add get_decision_counterfactual: quantifies exact score/confidence/risk/evidence/market gap to the TRADE gate from already-persisted gate_results and report values, plus live config thresholds
+- Handle non-numeric blockers (no direction, no trade plan) only when no numeric gate/score gap remains, so a decision is never told to close a gap that isn't the real reason
+- Add GET /api/v1/decisions/{id}/counterfactual and a "Why not a trade?" Decision Brief section with per-gate gap rows and a deterministic summary sentence
+```
+
+---
+
+## M-X1 — Historical analog matcher (APPROVED)
 
 | | |
 |---|---|
@@ -15,7 +125,7 @@ status updated on approval.
 | Scope | New read-only `/analogs` endpoint + Decision Brief "Similar past setups" section |
 | Tests | Full suite **1010 passed** (+2 new); changed-file Ruff clean; mypy clean on touched modules |
 | Coverage | Existing project coverage retained; no separate percentage collected |
-| Status | **READY FOR REVIEW** — owner smoke required |
+| Status | **APPROVED** (owner smoke confirmed 2026-07-25) |
 | Branch | feature/live-dashboard |
 
 ### Scope completed

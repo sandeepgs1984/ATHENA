@@ -18,10 +18,12 @@ from athena.api.v1.dtos import (
     CalendarEventDTO,
     CollectionResult,
     ContextEvidenceDTO,
+    CounterfactualGapDTO,
     DecisionAnalogDTO,
     DecisionAnalogsDTO,
     DecisionAnalysisDTO,
     DecisionContextDTO,
+    DecisionCounterfactualDTO,
     DecisionDepthDTO,
     DecisionDTO,
     DecisionMetadataDTO,
@@ -40,10 +42,10 @@ from athena.api.v1.dtos import (
     TradePlanDTO,
 )
 from athena.calendar.engine import CalendarEngine
-from athena.config.loader import load_config, load_external_links_file
+from athena.config.loader import load_config, load_decision_config, load_external_links_file
 from athena.data.store.serialization import trade_outcome_id
 from athena.domain.decision import DecisionJournalEntry, TradeOutcome
-from athena.domain.enums import Direction, UserAction
+from athena.domain.enums import Direction, QualityGate, UserAction
 
 if TYPE_CHECKING:
     from athena.api.v1.dtos import (
@@ -405,6 +407,153 @@ class DecisionsService:
             )
         except (TypeError, ArithmeticError, ValueError):
             return None
+
+    def get_decision_counterfactual(self, decision_id: str) -> DecisionCounterfactualDTO:
+        """Exact quantified distance from this decision to the TRADE gate —
+        arithmetic over already-persisted values and current config
+        thresholds only; never a recomputed score/confidence/risk (M-X2)."""
+        decision = self._provider.get_decision(decision_id)
+        if decision is None:
+            raise DecisionNotFoundError(f"Decision '{decision_id}' not found")
+
+        if decision.decision_type.value == "TRADE":
+            return DecisionCounterfactualDTO(
+                decision_id=decision_id,
+                decision_type=decision.decision_type.value,
+                is_trade=True,
+                summary="Already a TRADE — every gate cleared.",
+            )
+
+        thresholds = load_decision_config(self._config_dir).thresholds
+        report = self._fetch_report(decision)
+        score_block = report.get("score") if isinstance(report.get("score"), Mapping) else {}
+        confidence_block = (
+            report.get("confidence") if isinstance(report.get("confidence"), Mapping) else {}
+        )
+        risk_block = report.get("risk") if isinstance(report.get("risk"), Mapping) else {}
+
+        score_current = self._decimal_or_none(score_block.get("composite"))
+        score_required = Decimal(thresholds.min_composite_for_trade)
+        score_gap = (
+            max(Decimal(0), score_required - score_current) if score_current is not None else None
+        )
+        confidence_current = self._decimal_or_none(confidence_block.get("overall"))
+        risk_current = self._decimal_or_none(risk_block.get("overall"))
+        completeness_current = self._decimal_or_none(score_block.get("completeness"))
+        market_current = self._market_quality_value(score_block)
+
+        gates: list[CounterfactualGapDTO] = []
+        for g in decision.gate_results:
+            if g.passed:
+                continue
+            if g.gate is QualityGate.CONFIDENCE:
+                required = Decimal(thresholds.min_confidence_for_trade)
+                gap = (
+                    max(Decimal(0), required - confidence_current)
+                    if confidence_current is not None else None
+                )
+                gates.append(CounterfactualGapDTO(
+                    gate=g.gate.value, detail=g.detail,
+                    current=confidence_current, required=required, gap=gap,
+                ))
+            elif g.gate is QualityGate.RISK:
+                required = Decimal(thresholds.max_risk_for_trade)
+                gap = (
+                    max(Decimal(0), risk_current - required)
+                    if risk_current is not None else None
+                )
+                gates.append(CounterfactualGapDTO(
+                    gate=g.gate.value, detail=g.detail,
+                    current=risk_current, required=required, gap=gap,
+                ))
+            elif g.gate is QualityGate.MARKET:
+                required = Decimal(thresholds.market_floor)
+                gap = (
+                    max(Decimal(0), required - market_current)
+                    if market_current is not None else None
+                )
+                gates.append(CounterfactualGapDTO(
+                    gate=g.gate.value, detail=g.detail,
+                    current=market_current, required=required, gap=gap,
+                ))
+            elif g.gate is QualityGate.EVIDENCE:
+                required = Decimal(str(thresholds.min_evidence_completeness))
+                gap = (
+                    max(Decimal(0), required - completeness_current)
+                    if completeness_current is not None else None
+                )
+                gates.append(CounterfactualGapDTO(
+                    gate=g.gate.value, detail=g.detail,
+                    current=completeness_current, required=required, gap=gap,
+                ))
+            else:
+                gates.append(CounterfactualGapDTO(gate=g.gate.value, detail=g.detail))
+
+        # A decision can clear score + every gate and still not be a TRADE:
+        # direction/trade_plan are separately required and already persisted
+        # on the decision itself — check them directly, never recomputed.
+        if not gates and (score_gap is None or score_gap <= 0):
+            if decision.direction is Direction.NONE:
+                gates.append(CounterfactualGapDTO(
+                    gate="DIRECTION",
+                    detail="no clear trend direction from regime (required for a TRADE)",
+                ))
+            elif decision.trade_plan is None:
+                gates.append(CounterfactualGapDTO(
+                    gate="TRADE_PLAN",
+                    detail="ATR/SMA indicators unavailable to build a trade plan",
+                ))
+
+        summary = self._counterfactual_summary(score_gap, gates)
+
+        return DecisionCounterfactualDTO(
+            decision_id=decision_id,
+            decision_type=decision.decision_type.value,
+            is_trade=False,
+            score_current=score_current,
+            score_required=score_required,
+            score_gap=score_gap,
+            gates=gates,
+            summary=summary,
+        )
+
+    @staticmethod
+    def _decimal_or_none(value: object) -> Decimal | None:
+        if value is None:
+            return None
+        try:
+            return Decimal(str(value))
+        except (ArithmeticError, ValueError):
+            return None
+
+    @classmethod
+    def _market_quality_value(cls, score_block: Mapping[str, Any]) -> Decimal | None:
+        components = score_block.get("components")
+        if not isinstance(components, list):
+            return None
+        for item in components:
+            if isinstance(item, Mapping) and item.get("dimension") == "market_quality":
+                return cls._decimal_or_none(item.get("value"))
+        return None
+
+    @staticmethod
+    def _counterfactual_summary(
+        score_gap: Decimal | None, gates: list[CounterfactualGapDTO]
+    ) -> str:
+        parts: list[str] = []
+        if score_gap is not None and score_gap > 0:
+            parts.append(f"score +{score_gap:.1f}")
+        for gate in gates:
+            if gate.gap is None or gate.gap <= 0:
+                continue
+            sign = "-" if gate.gate == "RISK" else "+"
+            parts.append(f"{gate.gate.lower()} {sign}{gate.gap:.2f}")
+        if parts:
+            return "To become a TRADE: " + ", ".join(parts) + "."
+        non_numeric = [g.gate for g in gates if g.gap is None]
+        if non_numeric:
+            return f"Blocked on: {', '.join(non_numeric)} — see gate detail."
+        return "No persisted gap — decision has not yet been through a full scoring cycle."
 
     @staticmethod
     def _compute_pnl(direction, entry_price, exit_price, quantity):

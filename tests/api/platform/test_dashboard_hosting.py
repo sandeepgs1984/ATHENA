@@ -171,6 +171,15 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".analog-row" in css
     assert ".analog-list" in css
 
+    # M-X2: exact quantified distance to the TRADE gate — arithmetic over
+    # already-persisted score/confidence/risk values, never a recomputed decision
+    assert 'id="decision-counterfactual-panel"' in js
+    assert "function renderCounterfactualPanel" in js
+    assert "function loadDecisionCounterfactual" in js
+    assert "/counterfactual" in js
+    assert ".decision-counterfactual-panel" in css
+    assert ".counterfactual-row" in css
+
     # Operations console (P9.7) is live — warnings feed + backup panel, not a fake loader
     assert 'id="ops-warnings-feed"' in html
     assert 'id="ops-telemetry-chart"' in html

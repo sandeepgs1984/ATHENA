@@ -13,6 +13,7 @@ from athena.api.v1.dtos import (
     AthenaResponse,
     DecisionAnalogsDTO,
     DecisionContextDTO,
+    DecisionCounterfactualDTO,
     DecisionDepthDTO,
     DecisionDTO,
     DecisionFilterParams,
@@ -126,6 +127,32 @@ def get_decision_depth(
             request_id=request_id,
             api_version="v1",
             as_of=datetime.now(tz=timezone.utc),
+        ),
+    )
+
+
+@router.get(
+    "/{decision_id}/counterfactual",
+    response_model=AthenaResponse[DecisionCounterfactualDTO],
+    summary="Get the exact quantified distance from this decision to the TRADE gate",
+    status_code=status.HTTP_200_OK,
+    operation_id="getDecisionCounterfactual",
+)
+def get_decision_counterfactual(
+    request: Request,
+    decision_id: str,
+    service: DecisionsService = Depends(get_decisions_service),  # noqa: B008
+    principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.READ)),  # noqa: B008
+) -> AthenaResponse[DecisionCounterfactualDTO]:
+    """Arithmetic over already-persisted score/confidence/risk values and
+    current config thresholds — never a recomputed decision (M-X2)."""
+    counterfactual = service.get_decision_counterfactual(decision_id)
+    request_id = getattr(request.state, "request_id", "unknown")
+    return AthenaResponse(
+        status="success",
+        data=counterfactual,
+        meta=ResponseMeta(
+            request_id=request_id, api_version="v1", as_of=datetime.now(tz=timezone.utc)
         ),
     )
 

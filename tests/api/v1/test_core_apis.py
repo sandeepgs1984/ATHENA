@@ -541,6 +541,124 @@ class TestDecisionsAPI:
         assert data["analogs"] == []
         assert data["compared_count"] == 0
 
+    def test_counterfactual_already_trade(self, client) -> None:
+        headers = get_auth_headers(client, Role.ANALYST)
+        dec_p = get_decision_provider()
+        now = datetime.now(tz=timezone.utc)
+        plan = TradePlan(
+            entry_low=Decimal("100"), entry_high=Decimal("101"), stop_loss=Decimal("98"),
+            targets=(Decimal("104"),), position_size=10, risk_amount=Decimal("20"),
+            risk_reward=Decimal("2"), valid_from=now, valid_until=now + timedelta(hours=1),
+        )
+        dec_p.decisions.append(  # type: ignore[attr-defined]
+            Decision(
+                decision_id="dec-cf-trade", ts=now, run_id="run-cf-trade", cycle_id="c",
+                instrument_id="TCS", direction=Direction.LONG, decision_type=DecisionType.TRADE,
+                explanation="trade", trade_plan=plan,
+                gate_results=(GateResult(QualityGate.CONFIDENCE, True, "ok"),),
+            )
+        )
+        response = client.get(
+            "/api/v1/decisions/dec-cf-trade/counterfactual", headers=headers
+        )
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["is_trade"] is True
+        assert "Already a TRADE" in data["summary"]
+        assert data["gates"] == []
+
+    def test_counterfactual_quantifies_confidence_and_risk_gap(self, client) -> None:
+        headers = get_auth_headers(client, Role.ANALYST)
+        dec_p = get_decision_provider()
+        now = datetime.now(tz=timezone.utc)
+        dec_p.decisions.append(  # type: ignore[attr-defined]
+            Decision(
+                decision_id="dec-cf-watch", ts=now, run_id="run-cf-watch", cycle_id="c",
+                instrument_id="TCS", direction=Direction.NONE, decision_type=DecisionType.WATCH,
+                explanation="watch",
+                gate_results=(
+                    GateResult(QualityGate.DATA, True, "ok"),
+                    GateResult(QualityGate.EVIDENCE, True, "ok"),
+                    GateResult(QualityGate.RISK, False, "risk 65.0 vs max 60"),
+                    GateResult(QualityGate.EXPLAINABILITY, True, "ok"),
+                    GateResult(QualityGate.CONFIDENCE, False, "confidence 40.0 vs min 50"),
+                    GateResult(QualityGate.MARKET, True, "ok"),
+                ),
+            )
+        )
+        dec_p.run_details["run-cf-watch"] = {  # type: ignore[attr-defined]
+            "pipeline": {
+                "decision_reports": {
+                    "dec-cf-watch": {
+                        "score": {
+                            "status": "OK", "composite": "56.0", "completeness": "0.9",
+                            "components": [
+                                {"dimension": "market_quality", "value": "62.0"},
+                            ],
+                        },
+                        "confidence": {"status": "OK", "overall": "40.0"},
+                        "risk": {"status": "OK", "overall": "65.0"},
+                    }
+                }
+            }
+        }
+        response = client.get(
+            "/api/v1/decisions/dec-cf-watch/counterfactual", headers=headers
+        )
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["is_trade"] is False
+        # 60 (min_composite_for_trade) - 56.0 — Decimal arithmetic keeps 1dp here
+        assert data["score_gap"] == "4.0"
+        gates_by_name = {g["gate"]: g for g in data["gates"]}
+        assert set(gates_by_name) == {"RISK", "CONFIDENCE"}
+        assert gates_by_name["CONFIDENCE"]["current"] == "40.0"
+        assert gates_by_name["CONFIDENCE"]["gap"] == "10.0"  # 50 - 40
+        assert gates_by_name["RISK"]["current"] == "65.0"
+        assert gates_by_name["RISK"]["gap"] == "5.0"  # 65 - 60
+        # Summary text explicitly formats to 2dp regardless of stored precision
+        assert "confidence +10.00" in data["summary"]
+        assert "risk -5.00" in data["summary"]
+
+    def test_counterfactual_direction_blocker_when_no_numeric_gap(self, client) -> None:
+        """All gates pass and score clears the trade level, but no trend
+        direction was determined — must surface as the real blocker, not a
+        false 'no gap' result."""
+        headers = get_auth_headers(client, Role.ANALYST)
+        dec_p = get_decision_provider()
+        now = datetime.now(tz=timezone.utc)
+        dec_p.decisions.append(  # type: ignore[attr-defined]
+            Decision(
+                decision_id="dec-cf-nodir", ts=now, run_id="run-cf-nodir", cycle_id="c",
+                instrument_id="TCS", direction=Direction.NONE, decision_type=DecisionType.WATCH,
+                explanation="watch",
+                gate_results=tuple(
+                    GateResult(gate, True, "ok") for gate in QualityGate
+                ),
+            )
+        )
+        dec_p.run_details["run-cf-nodir"] = {  # type: ignore[attr-defined]
+            "pipeline": {
+                "decision_reports": {
+                    "dec-cf-nodir": {
+                        "score": {"status": "OK", "composite": "75.0", "completeness": "1.0",
+                                  "components": []},
+                        "confidence": {"status": "OK", "overall": "80.0"},
+                        "risk": {"status": "OK", "overall": "10.0"},
+                    }
+                }
+            }
+        }
+        response = client.get(
+            "/api/v1/decisions/dec-cf-nodir/counterfactual", headers=headers
+        )
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["score_gap"] == "0"
+        assert len(data["gates"]) == 1
+        assert data["gates"][0]["gate"] == "DIRECTION"
+        assert "no clear trend direction" in data["gates"][0]["detail"]
+
 
 class TestPortfolioAPI:
     def test_get_portfolio_unavailable_returns_503(self, client) -> None:

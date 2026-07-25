@@ -348,3 +348,34 @@ class DecisionAnalogsDTO(BaseModel):
     analogs: list[DecisionAnalogDTO] = Field(default_factory=list)
     compared_count: int = 0
 
+
+class CounterfactualGapDTO(BaseModel):
+    """One failed quality gate's exact numeric distance to passing (M-X2).
+    Computed from already-persisted values vs. current config thresholds —
+    never a recomputed score/confidence/risk value."""
+
+    model_config = ConfigDict(frozen=True)
+
+    gate: str
+    detail: str
+    current: Decimal | None = None
+    required: Decimal | None = None
+    gap: Decimal | None = None
+
+
+class DecisionCounterfactualDTO(BaseModel):
+    """Exact quantified distance from a WATCH/NO_TRADE decision to the TRADE
+    gate — never a generated rationale, only arithmetic over persisted values
+    and current config thresholds (M-X2)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    decision_id: str
+    decision_type: str
+    is_trade: bool
+    score_current: Decimal | None = None
+    score_required: Decimal | None = None
+    score_gap: Decimal | None = None
+    gates: list[CounterfactualGapDTO] = Field(default_factory=list)
+    summary: str
+
