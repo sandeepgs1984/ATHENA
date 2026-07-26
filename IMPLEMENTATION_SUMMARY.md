@@ -6,7 +6,7 @@ status updated on approval.
 
 ---
 
-## UX-9b — Add Watchlist (Saved Symbols) (READY FOR REVIEW)
+## UX-9b — Add Watchlist (Saved Symbols) (APPROVED)
 
 | | |
 |---|---|
@@ -15,7 +15,7 @@ status updated on approval.
 | Scope | New `saved_symbols` SQLite table (schema bumped 7→8); `SqliteSavedSymbolStore`/`InMemorySavedSymbolStore` (Protocol-based, mirrors `CandidateStore`); `SavedSymbolsService`; `GET/POST/DELETE /api/v1/saved-symbols` (List=READ, Add/Remove=EXECUTE, matching the `owner_candidates` permission precedent); new "Saved Symbols" card in the Market Intelligence tab (add input + list + per-row remove), reusing the existing `.candidate-*` CSS classes as-is — zero new CSS needed |
 | Tests | 6 new API tests (`tests/api/v1/test_saved_symbols.py`) — CRUD, symbol normalization, re-add-updates-in-place (not a duplicate), 404 on missing delete, EXECUTE-permission gating, unauthenticated rejection, and explicit independence from `owner_candidates` (saving/removing one list never touches the other). 2 existing schema-version assertions updated (7→8). 9 new dashboard-hosting assertions. Full suite **1030 passed** |
 | Coverage | Backend: new repository methods, service, router, DI wiring, schema migration — all exercised via a real `TestClient`+in-memory store round trip. Frontend: markup/function/endpoint presence locked in; visually verified live (see below) |
-| Status | **READY FOR REVIEW** — schema migrated cleanly on the live DB (verified via direct read: `schema_version` now 8, `saved_symbols` table present with the expected columns, zero data loss since it's an additive `CREATE TABLE IF NOT EXISTS`), server restarted, live console check + visual DOM verification done. Awaiting owner smoke test (add/remove a real symbol) on the live dashboard |
+| Status | **APPROVED** (2026-07-26) — schema migrated cleanly on the live DB (verified via direct read: `schema_version` now 8, `saved_symbols` table present with the expected columns, zero data loss since it's an additive `CREATE TABLE IF NOT EXISTS`), server restarted, live console check + visual DOM verification done |
 | Branch | feature/live-dashboard |
 
 ### Scope completed
