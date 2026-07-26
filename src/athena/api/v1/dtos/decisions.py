@@ -337,16 +337,26 @@ class DecisionAnalogDTO(BaseModel):
     user_action: str | None = None
     outcome_pnl: Decimal | None = None
     outcome_closed_ts: datetime | None = None
+    outcome_return_pct: Decimal | None = None
+    outcome_holding_days: Decimal | None = None
 
 
 class DecisionAnalogsDTO(BaseModel):
-    """Nearest-neighbor historical decisions for one decision's fingerprint."""
+    """Nearest-neighbor historical decisions for one decision's fingerprint,
+    plus an aggregate read on how similar setups actually played out (UX-6
+    Historical Validation) — exact arithmetic over the realized TradeOutcome
+    of whichever returned analogs have one; None when none do, never a
+    fabricated stand-in."""
 
     model_config = ConfigDict(frozen=True)
 
     decision_id: str
     analogs: list[DecisionAnalogDTO] = Field(default_factory=list)
     compared_count: int = 0
+    win_rate_pct: Decimal | None = None
+    avg_return_pct: Decimal | None = None
+    avg_holding_days: Decimal | None = None
+    outcomes_sample_size: int = 0
 
 
 class CounterfactualGapDTO(BaseModel):

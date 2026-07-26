@@ -354,6 +354,7 @@ class DecisionsService:
         for distance, candidate, fp in top:
             journal = self._provider.get_journal_entry(candidate.decision_id)
             outcome = self._provider.get_trade_outcome(candidate.decision_id)
+            return_pct, holding_days = self._outcome_return_and_holding(outcome)
             analogs.append(
                 DecisionAnalogDTO(
                     decision_id=candidate.decision_id,
@@ -368,11 +369,23 @@ class DecisionsService:
                     user_action=journal.user_action.value if journal else None,
                     outcome_pnl=outcome.pnl if outcome else None,
                     outcome_closed_ts=outcome.closed_ts if outcome else None,
+                    outcome_return_pct=return_pct,
+                    outcome_holding_days=holding_days,
                 )
             )
 
+        win_rate_pct, avg_return_pct, avg_holding_days, sample_size = (
+            self._aggregate_analog_outcomes(analogs)
+        )
+
         return DecisionAnalogsDTO(
-            decision_id=decision_id, analogs=analogs, compared_count=len(scored)
+            decision_id=decision_id,
+            analogs=analogs,
+            compared_count=len(scored),
+            win_rate_pct=win_rate_pct,
+            avg_return_pct=avg_return_pct,
+            avg_holding_days=avg_holding_days,
+            outcomes_sample_size=sample_size,
         )
 
     def _fetch_report(self, decision: Decision, *, pipeline: Mapping[str, Any] | None = None) -> Mapping[str, Any]:
@@ -623,6 +636,39 @@ class DecisionsService:
         if direction is Direction.SHORT:
             return (entry_price - exit_price) * quantity
         return (exit_price - entry_price) * quantity
+
+    @staticmethod
+    def _outcome_return_and_holding(
+        outcome: TradeOutcome | None,
+    ) -> tuple[Decimal | None, Decimal | None]:
+        """Return % and holding period (days) for one realized outcome — exact
+        arithmetic over the already-persisted pnl/entry/quantity/holding_seconds
+        (UX-6 Historical Validation), never a new independent computation of
+        pnl itself."""
+        if outcome is None:
+            return None, None
+        cost_basis = outcome.entry_price * outcome.quantity
+        return_pct = (outcome.pnl / cost_basis) * 100 if cost_basis != 0 else None
+        holding_days = Decimal(outcome.holding_seconds) / Decimal(86400)
+        return return_pct, holding_days
+
+    @staticmethod
+    def _aggregate_analog_outcomes(
+        analogs: list[DecisionAnalogDTO],
+    ) -> tuple[Decimal | None, Decimal | None, Decimal | None, int]:
+        """Win-rate/avg-return/avg-holding across whichever returned analogs
+        have a realized outcome — exact arithmetic over persisted values,
+        None (not a fabricated 0) when the sample is empty."""
+        with_outcome = [a for a in analogs if a.outcome_pnl is not None]
+        if not with_outcome:
+            return None, None, None, 0
+        wins = sum(1 for a in with_outcome if a.outcome_pnl > 0)
+        win_rate_pct = (Decimal(wins) / Decimal(len(with_outcome))) * 100
+        returns = [a.outcome_return_pct for a in with_outcome if a.outcome_return_pct is not None]
+        avg_return_pct = sum(returns) / Decimal(len(returns)) if returns else None
+        holdings = [a.outcome_holding_days for a in with_outcome if a.outcome_holding_days is not None]
+        avg_holding_days = sum(holdings) / Decimal(len(holdings)) if holdings else None
+        return win_rate_pct, avg_return_pct, avg_holding_days, len(with_outcome)
 
     @staticmethod
     def _compute_adherence(trade_plan, direction, entry_price, exit_price) -> dict[str, bool]:

@@ -2318,6 +2318,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const dagDetailsStatus = document.getElementById("dag-details-status");
     const dagDetailsSummary = document.getElementById("dag-details-summary");
     const dagDetailsGrid = document.getElementById("dag-details-grid");
+    const dagQuickSummary = document.getElementById("dag-quick-summary");
     const decisionBriefTitle = document.getElementById("decision-brief-title");
     const decisionBriefStanceChip = document.getElementById("decision-brief-stance-chip");
     const decisionBriefTypeChip = document.getElementById("decision-brief-type-chip");
@@ -3959,9 +3960,29 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         `;
     }
 
+    // "Did the call turn out right?" (owner UX audit — Decision History
+    // should show outcome + accuracy, not just raw pnl) — a friendlier label
+    // wrapping the same real pnl sign already shown below, same convention
+    // as qualityBand/riskBand: cosmetic phrasing over an already-real value,
+    // never a second judgment of the decision.
+    function decisionAccuracyLabel(outcome) {
+        const meta = activeDecisionData && activeDecisionData.metadata;
+        const stance = meta ? decisionStance(meta.decision_type, meta.direction) : null;
+        const pnlValue = Number(outcome.pnl);
+        if (!Number.isFinite(pnlValue) || pnlValue === 0) {
+            return { label: stance ? `${stance.label} call — broke even` : "Broke even", tone: "neutral", icon: "fa-circle-minus" };
+        }
+        const paidOff = pnlValue > 0;
+        const label = stance
+            ? `${stance.label} call ${paidOff ? "paid off" : "didn't pay off"}`
+            : (paidOff ? "Call paid off" : "Call didn't pay off");
+        return { label, tone: paidOff ? "good" : "bad", icon: paidOff ? "fa-circle-check" : "fa-circle-xmark" };
+    }
+
     function renderOutcomeResult(outcome) {
         const pnlValue = Number(outcome.pnl);
         const pnlTone = pnlValue > 0 ? "good" : (pnlValue < 0 ? "bad" : "neutral");
+        const accuracy = decisionAccuracyLabel(outcome);
         const adherence = outcome.adherence || {};
         const adherenceChips = Object.entries(adherence).map(([key, value]) => {
             const label = key.replace(/_/g, " ");
@@ -3970,6 +3991,9 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         return `
             <div class="outcome-result">
                 <h5>Realized outcome</h5>
+                <div class="outcome-accuracy-badge tone-${accuracy.tone}">
+                    <i class="fa-solid ${accuracy.icon}"></i> ${escapeDecisionHtml(accuracy.label)}
+                </div>
                 <div class="outcome-result-grid">
                     <div><span>Entry</span><strong>${formatDecisionPrice(outcome.entry_price)}</strong></div>
                     <div><span>Exit</span><strong>${formatDecisionPrice(outcome.exit_price)}</strong></div>
@@ -4058,6 +4082,38 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
     // used only to render an intuitive similarity %, never persisted or compared.
     const ANALOG_MAX_DISTANCE = 173.2;
 
+    // Historical Validation (owner UX audit) — win-rate/avg-return/avg-holding
+    // across whichever shown analogs have a realized outcome. Exact values
+    // from DecisionAnalogsDTO's aggregate fields (UX-6 backend addition);
+    // None/zero-sample is shown honestly, never backfilled with a guess.
+    function renderHistoricalValidation(data, shownCount) {
+        const sampleSize = Number(data.outcomes_sample_size) || 0;
+        if (!sampleSize) {
+            return `<div class="historical-validation tone-neutral">
+                <span class="historical-validation-title">Historical validation</span>
+                <p class="context-caption">No realized outcomes logged yet among these similar setups — this will fill in once at least one is closed out.</p>
+            </div>`;
+        }
+        const winRate = Number(data.win_rate_pct);
+        const avgReturn = Number(data.avg_return_pct);
+        const avgHolding = Number(data.avg_holding_days);
+        const winRateLabel = Number.isFinite(winRate) ? `${winRate.toFixed(0)}%` : "—";
+        const avgReturnLabel = Number.isFinite(avgReturn) ? `${avgReturn >= 0 ? "+" : ""}${avgReturn.toFixed(1)}%` : "—";
+        const avgHoldingLabel = Number.isFinite(avgHolding) ? `${avgHolding.toFixed(1)}d` : "—";
+        const tone = Number.isFinite(winRate) ? (winRate >= 60 ? "good" : (winRate <= 40 ? "bad" : "warn")) : "neutral";
+        return `
+            <div class="historical-validation tone-${tone}">
+                <span class="historical-validation-title">Historical validation</span>
+                <div class="historical-validation-stats">
+                    <div><strong>${winRateLabel}</strong><span>win rate</span></div>
+                    <div><strong>${avgReturnLabel}</strong><span>avg return</span></div>
+                    <div><strong>${avgHoldingLabel}</strong><span>avg holding</span></div>
+                </div>
+                <p class="context-caption">Across ${sampleSize} of the ${shownCount} similar setups shown with a realized outcome.</p>
+            </div>
+        `;
+    }
+
     function renderAnalogsPanel(analogs) {
         const host = document.getElementById("decision-analogs-panel");
         if (!host) return;
@@ -4074,6 +4130,7 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         }
 
         host.innerHTML = `
+            ${renderHistoricalValidation(data, rows.length)}
             <div class="analog-list">
                 ${rows.map(row => {
                     const symbol = (row.instrument_id || "").split(":").pop() || "—";
@@ -4219,6 +4276,30 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         }
     }
 
+    // A narrative delta between two consecutive timeline entries (owner UX
+    // audit — "timeline should read as an evolving story, not a flat list of
+    // timestamps"). Reuses decisionScoreValue's existing explanation-text
+    // extraction (the same technique already trusted for timeline sorting) —
+    // no new data, no invented commentary, just a factual stance/score delta.
+    function timelineNarrative(current, previous) {
+        if (!previous) return "Earliest tracked assessment shown for this setup.";
+        const curMeta = current.metadata || {};
+        const prevMeta = previous.metadata || {};
+        const curStance = decisionStance(curMeta.decision_type, curMeta.direction);
+        const prevStance = decisionStance(prevMeta.decision_type, prevMeta.direction);
+        const curScore = decisionScoreValue(current);
+        const prevScore = decisionScoreValue(previous);
+        const parts = [];
+        parts.push(curStance.label === prevStance.label
+            ? `Stance held ${curStance.label}`
+            : `Stance moved from ${prevStance.label} to ${curStance.label}`);
+        if (curScore >= 0 && prevScore >= 0 && curScore !== prevScore) {
+            const direction = curScore > prevScore ? "rose" : "fell";
+            parts.push(`score ${direction} from ${prevScore.toFixed(1)} to ${curScore.toFixed(1)}`);
+        }
+        return `${parts.join(", ")}.`;
+    }
+
     function renderDecisionTimeline(decision) {
         const host = document.getElementById("decision-history-timeline");
         if (!host || !decision || !decision.metadata) return;
@@ -4235,10 +4316,11 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
             host.innerHTML = '<div class="text-muted">No persisted decision history.</div>';
             return;
         }
-        host.innerHTML = rows.map(item => {
+        host.innerHTML = rows.map((item, idx) => {
             const meta = item.metadata || {};
             const current = meta.decision_id === decision.metadata.decision_id;
             const stance = decisionStance(meta.decision_type, meta.direction);
+            const narrative = timelineNarrative(item, rows[idx + 1]);
             return `
                 <button type="button" class="decision-timeline-row ${current ? "current" : ""}"
                         data-decision-id="${escapeDecisionHtml(meta.decision_id || "")}">
@@ -4246,6 +4328,7 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
                     <span>
                         <strong>${escapeDecisionHtml(formatDecisionTime(meta.ts))}</strong>
                         <small>${escapeDecisionHtml(stance.label)} · ${escapeDecisionHtml(meta.decision_type || "UNKNOWN")}</small>
+                        <span class="decision-timeline-narrative">${escapeDecisionHtml(narrative)}</span>
                     </span>
                     ${current ? '<em>Current</em>' : ""}
                 </button>
@@ -4259,9 +4342,46 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         });
     }
 
+    // Sticky quick-glance strip pinned to the top of the Reasoning Trace
+    // panel (owner UX audit — "sidebar summary") so symbol/stance/score/
+    // confidence/risk stay visible while scrolling through DAG detail,
+    // without duplicating the full Hero cockpit. Reuses activeDecisionData/
+    // activeDepth already loaded for the brief — no separate fetch, and
+    // shows "—" for a metric until its real value has loaded.
+    function renderSidebarQuickSummary() {
+        if (!dagQuickSummary) return;
+        const decision = activeDecisionData;
+        if (!decision || !decision.metadata) {
+            dagQuickSummary.style.display = "none";
+            dagQuickSummary.innerHTML = "";
+            return;
+        }
+        const meta = decision.metadata;
+        const symbol = String(meta.instrument_id || "").split(":").pop() || "—";
+        const stance = decisionStance(meta.decision_type, meta.direction);
+        const depth = activeDepth;
+        const metricChip = (tone) => {
+            const block = depth && depth[tone];
+            if (!block || block.status !== "OK") {
+                return `<span class="dag-quick-metric"><span>${escapeDecisionHtml(tone)}</span><strong>—</strong></span>`;
+            }
+            const view = analysisPresentation(friendlyAnalysisName(tone), block, tone);
+            return `<span class="dag-quick-metric"><span>${escapeDecisionHtml(tone)}</span><strong>${escapeDecisionHtml(view.displayBand || view.valueLabel)}</strong></span>`;
+        };
+        dagQuickSummary.style.display = "flex";
+        dagQuickSummary.innerHTML = `
+            <span class="dag-quick-symbol">${escapeDecisionHtml(symbol)}</span>
+            <span class="stance-chip ${stance.cls}">${escapeDecisionHtml(stance.label)}</span>
+            ${metricChip("score")}
+            ${metricChip("confidence")}
+            ${metricChip("risk")}
+        `;
+    }
+
     function renderDecisionBrief(decision) {
         if (!decisionBriefBody || !decision || !decision.metadata) return;
         activeDecisionData = decision;
+        renderSidebarQuickSummary();
         const meta = decision.metadata;
         const rawSymbol = meta.instrument_id || "INDEX";
         const symbol = rawSymbol.includes(":") ? rawSymbol.split(":").pop() : rawSymbol;
@@ -4851,6 +4971,7 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
     // already rendered) so nodes upgrade from the generic lifecycle status
     // to their real computed state without re-selecting or jumping tabs.
     function refreshDagNodeMeanings() {
+        renderSidebarQuickSummary();
         if (!dagNodesContainer || !activeTrace || !Array.isArray(activeTrace.stages)) return;
         activeTrace.stages.forEach(stage => {
             const node = dagNodesContainer.querySelector(`[data-stage="${stage.stage_id}"]`);

@@ -6,7 +6,179 @@ status updated on approval.
 
 ---
 
-## UX-5 — Reasoning Trace redesign (READY FOR REVIEW)
+## UX-6 — Sidebar summary + Historical Validation + Decision Timeline narrative + Decision History polish (APPROVED)
+
+| | |
+|---|---|
+| Completed | 2026-07-26 |
+| Objective | Sixth milestone of the owner's UX audit: keep symbol/stance/score/confidence/risk visible while scrolling the Reasoning Trace panel; show how similar past setups actually played out (win-rate/avg-return/avg-holding), not just their similarity %; make the Decision Timeline read as a narrative of what changed, not a bare list of timestamps; and show a friendly outcome-accuracy read in Decision History |
+| Scope | Backend: `outcome_return_pct`/`outcome_holding_days` added to `DecisionAnalogDTO`, `win_rate_pct`/`avg_return_pct`/`avg_holding_days`/`outcomes_sample_size` added to `DecisionAnalogsDTO`, computed in `decisions_service.py` from the `TradeOutcome` already fetched per analog (no new queries). Frontend: `renderSidebarQuickSummary` (sticky Reasoning Trace strip), `renderHistoricalValidation` (analogs panel), `timelineNarrative` (Decision Timeline), `decisionAccuracyLabel` (Decision History outcome) |
+| Tests | Full suite **1018 passed** (1 new backend test — mixed win/loss aggregate); new dashboard-hosting assertions; Ruff clean on all changed `.py` files |
+| Coverage | New service math covered by 3 analog tests (single-outcome, mixed win/loss, empty); frontend is presentation-only |
+| Status | **APPROVED** (owner smoke confirmed live 2026-07-26) |
+| Branch | feature/live-dashboard |
+
+### Scope completed
+
+- **Sticky Reasoning Trace quick summary** (`renderSidebarQuickSummary`,
+  `#dag-quick-summary`): a compact strip — symbol, stance chip, and
+  score/confidence/risk bands — pinned to the top of the Reasoning Trace
+  panel (`position: sticky` inside `.trace-dag-canvas-wrapper`'s own
+  scroll region), so the trader doesn't lose the core facts while
+  scrolling through DAG nodes and stage detail. Reuses `activeDecisionData`
+  and `activeDepth` already loaded for the brief — no new fetch. Renders
+  immediately with symbol/stance when a decision is selected; score/
+  confidence/risk fill in ("—" until then) once `activeDepth` resolves,
+  via the same `refreshDagNodeMeanings()` hook UX-5 added.
+- **Historical Validation** (`renderHistoricalValidation`, backend
+  aggregate fields): the "Similar past setups" panel now leads with a
+  win-rate/avg-return/avg-holding-days summary computed from whichever
+  shown analogs have a realized `TradeOutcome`. All exact arithmetic over
+  already-persisted values — `return_pct = pnl / (entry_price * quantity)
+  * 100` (reusing the existing direction-aware `pnl`, never a second
+  computation of it) and `holding_days = holding_seconds / 86400` — both
+  computed once per analog in `_outcome_return_and_holding` and aggregated
+  in `_aggregate_analog_outcomes`. Shows an honest "no realized outcomes
+  logged yet" message when the sample is empty, never a fabricated 0%/—.
+- **Decision Timeline as narrative** (`timelineNarrative`): each entry now
+  shows a factual one-line delta versus the prior entry — stance held or
+  moved, and (when both entries have a parseable composite score, via the
+  existing `decisionScoreValue`/`extractScoreFromText` technique already
+  trusted for timeline sorting) whether score rose or fell and by how
+  much. The earliest entry shown reads "Earliest tracked assessment."
+  No new data source — same explanation text already rendered elsewhere.
+- **Decision History outcome accuracy** (`decisionAccuracyLabel`): the
+  realized-outcome card now leads with a friendly badge — e.g. "BUY call
+  paid off" / "HOLD call didn't pay off" / "SELL call — broke even" —
+  derived entirely from the same pnl sign already shown in the grid below
+  it (cosmetic phrasing over an already-real value, same convention as
+  `qualityBand`/`riskBand`), never a second, independent judgment of the
+  decision.
+
+### Files created
+
+- None.
+
+### Files modified
+
+- `src/athena/api/v1/dtos/decisions.py` — `DecisionAnalogDTO` gained
+  `outcome_return_pct`/`outcome_holding_days`; `DecisionAnalogsDTO` gained
+  `win_rate_pct`/`avg_return_pct`/`avg_holding_days`/
+  `outcomes_sample_size`.
+- `src/athena/api/v1/services/decisions_service.py` —
+  `_outcome_return_and_holding` and `_aggregate_analog_outcomes` static
+  helpers; `get_decision_analogs` wires both into the DTOs it returns.
+- `tests/api/v1/test_core_apis.py` — extended
+  `test_decision_analogs_ranking` with the new per-analog/aggregate field
+  assertions; added `test_decision_analogs_aggregate_mixed_win_loss`.
+- `src/athena/api/static/index.html` — `#dag-quick-summary` container
+  added to the Reasoning Trace panel; cache-bust bumped to `9.38.0`.
+- `src/athena/api/static/dashboard.js` — `renderSidebarQuickSummary`
+  (+ call sites in `renderDecisionBrief` and `refreshDagNodeMeanings`),
+  `renderHistoricalValidation` (wired into `renderAnalogsPanel`),
+  `timelineNarrative` (wired into `renderDecisionTimeline`),
+  `decisionAccuracyLabel` (wired into `renderOutcomeResult`).
+- `src/athena/api/static/dashboard.css` — `.dag-quick-summary` (+
+  `-symbol`/`-metric`), `.historical-validation` (+ `-title`/`-stats`
+  and tone variants), `.outcome-accuracy-badge` (+ tone variants),
+  `.decision-timeline-narrative`.
+- `tests/api/platform/test_dashboard_hosting.py` — new assertions.
+- `docs/MILESTONES.md` — UX-2/UX-5 reconciled to Approved (owner had
+  already approved both in chat; the doc had drifted), UX-6 → Ready for
+  review.
+- This log.
+
+### Public APIs
+
+- `DecisionAnalogDTO` and `DecisionAnalogsDTO` gained additive optional
+  fields (`outcome_return_pct`, `outcome_holding_days`, `win_rate_pct`,
+  `avg_return_pct`, `avg_holding_days`, `outcomes_sample_size`) — no
+  existing field removed or retyped, `GET /decisions/{id}/analogs`
+  response shape is backward compatible.
+
+### Validation and architecture
+
+- Full regression: **1018 passed** (1 new backend test).
+- Ruff clean on all changed `.py` files. mypy remains unavailable in this
+  environment (pre-existing, unrelated).
+- JS braces balanced (1517/1517); parens off by the same pre-existing +1
+  baseline quirk. CSS braces balanced (739/739).
+- Live server restarted on `9.38.0`; isolated-browser console check on
+  the pre-login page: zero errors. Authenticated-app verification
+  depends on an owner screenshot/click-through, as with every prior UX
+  milestone — I have no login credentials for the live dashboard.
+- ADR-005 preserved: `outcome_return_pct` and `outcome_holding_days` are
+  exact arithmetic over already-persisted `pnl`/`entry_price`/`quantity`/
+  `holding_seconds` (never a second computation of `pnl` itself, which
+  stays owned by `record_trade_outcome`'s existing `_compute_pnl`); the
+  aggregate fields are `None` (not 0/—) when no analog in the returned set
+  has a realized outcome. No ADR required — additive DTO fields, no
+  schema break, no new query pattern (the `TradeOutcome` lookup per
+  analog already existed).
+
+### Risks and technical debt
+
+- The Historical Validation aggregate is computed only over the analogs
+  actually *returned* (top-N by similarity, default 5), not the full
+  `compared_count` pool — this is intentional (matches what the trader
+  can see and click into) but worth knowing if the owner expects it to
+  reflect a larger sample.
+- `timelineNarrative`'s score comparison depends on `decisionScoreValue`'s
+  text-extraction from the `explanation` string (pre-existing technique,
+  reused, not new) — if a decision's explanation text doesn't mention a
+  parseable score, the narrative silently omits the score delta and shows
+  only the stance line, which is correct behavior but worth confirming
+  reads well across a variety of real decisions.
+- I could not exercise the new UI end-to-end myself (no owner
+  credentials) — needs an owner click-through, ideally on a decision with
+  logged analog outcomes (to see Historical Validation with real
+  numbers) and one without (to confirm the honest empty state).
+- No new technical debt beyond the above.
+
+### Remaining work
+
+- **Owner smoke test**: (a) open a decision's Reasoning Trace, scroll the
+  panel, confirm the quick-summary strip stays pinned and shows real
+  symbol/stance/score/confidence/risk; (b) open Decision History for a
+  decision with analogs that have logged outcomes and confirm Historical
+  Validation shows sensible win-rate/avg-return/avg-holding numbers (and
+  the honest empty state for one with none); (c) confirm the Decision
+  Timeline reads naturally as a narrative across a few entries; (d) log
+  or view a realized outcome and confirm the new accuracy badge reads
+  correctly for both a win and a loss.
+- Next in the UX Overhaul program: **UX-7** (Typography, spacing,
+  elevation, color-language, micro-animations, accessibility — the
+  cross-cutting polish pass, deliberately done last).
+
+### Commit message
+
+```text
+feat(dashboard): add Historical Validation, timeline narrative, sidebar
+summary, and outcome accuracy to Decision History (UX-6)
+
+- Add outcome_return_pct/outcome_holding_days to DecisionAnalogDTO and
+  win_rate_pct/avg_return_pct/avg_holding_days/outcomes_sample_size to
+  DecisionAnalogsDTO, computed in decisions_service from the TradeOutcome
+  already fetched per analog — exact arithmetic over persisted pnl/entry/
+  quantity/holding_seconds, None (not 0) when the sample is empty.
+- Add renderHistoricalValidation to the analogs panel showing that
+  aggregate, per owner UX audit — trader sees how similar setups actually
+  played out, not just their similarity %.
+- Add renderSidebarQuickSummary: a sticky symbol/stance/score/confidence/
+  risk strip pinned to the top of the Reasoning Trace panel so the trader
+  keeps context while scrolling DAG detail.
+- Add timelineNarrative so the Decision Timeline reads as a factual
+  stance/score delta per entry instead of a bare timestamp list.
+- Add decisionAccuracyLabel: a friendly "call paid off/didn't pay off"
+  badge over the same real pnl sign already shown in Decision History.
+- Bump dashboard cache-bust to 9.38.0; add backend + dashboard-hosting
+  test coverage; reconcile UX-2/UX-5 to Approved in docs/MILESTONES.md
+  (owner had already approved both in chat, the doc had drifted).
+```
+
+---
+
+## UX-5 — Reasoning Trace redesign (APPROVED)
 
 | | |
 |---|---|
@@ -15,7 +187,7 @@ status updated on approval.
 | Scope | `stageMeaning(stageId)` resolver reusing already-loaded `activeContextData`/`activeDepth`/`activeDecisionData`; DAG node badges now show the real state when available, falling back to the existing lifecycle badge otherwise; `refreshDagNodeMeanings()` upgrades already-rendered nodes once that async data arrives, without re-selecting or jumping tabs; connector lines get a subtle animated dash-flow (brighter/faster on edges touching the selected node), gated behind `prefers-reduced-motion` |
 | Tests | Full suite **1017 passed**; new assertions; no backend files touched |
 | Coverage | Frontend-only change; no Python coverage impact |
-| Status | **READY FOR REVIEW** — awaiting owner smoke test on the live dashboard |
+| Status | **APPROVED** (owner smoke confirmed live 2026-07-26; one fix pass applied — stale "Setup"/"Response" tab-name text) |
 | Branch | feature/live-dashboard |
 
 ### Scope completed
@@ -533,7 +705,7 @@ feat(dashboard): redesign Trade Plan with hero-sized numbers and Expected Return
 
 ---
 
-## UX-2 — Score/Confidence/Risk storytelling (READY FOR REVIEW)
+## UX-2 — Score/Confidence/Risk storytelling (APPROVED)
 
 | | |
 |---|---|
@@ -542,7 +714,7 @@ feat(dashboard): redesign Trade Plan with hero-sized numbers and Expected Return
 | Scope | `renderAnalysisSummaryCard`/`renderAnalysisBlock` restructured to dispatch by tone; every band/percentage/star sourced from already-persisted `AnalysisDimensionDTO` fields (`value`, `level`, `weight`, `weighted`) — no client-side re-derivation of config thresholds |
 | Tests | Full suite **1016 passed**; new assertions for every new function/class; no backend files touched |
 | Coverage | Frontend-only change; no Python coverage impact |
-| Status | **READY FOR REVIEW** |
+| Status | **APPROVED** (owner confirmed live, approved starting UX-3) |
 | Branch | feature/live-dashboard |
 
 ### Scope completed

@@ -4710,6 +4710,136 @@ body {
     flex-wrap: wrap;
 }
 
+/* Historical Validation summary (UX-6) — aggregate win-rate/avg-return/
+   avg-holding across the analog set's realized outcomes */
+.historical-validation {
+    background: rgba(15, 23, 42, 0.35);
+    border: 1px solid var(--border-color);
+    border-radius: 7px;
+    padding: 10px 12px;
+}
+
+.historical-validation-title {
+    display: block;
+    color: var(--text-secondary);
+    font-size: 0.72rem;
+    font-weight: 700;
+    margin-bottom: 6px;
+}
+
+.historical-validation-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(70px, 1fr));
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.historical-validation-stats strong {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 0.95rem;
+    color: var(--text-primary);
+}
+
+.historical-validation-stats span {
+    display: block;
+    color: var(--text-muted);
+    font-size: 0.62rem;
+    text-transform: uppercase;
+}
+
+.historical-validation.tone-good .historical-validation-stats strong:first-child {
+    color: #86efac;
+}
+
+.historical-validation.tone-bad .historical-validation-stats strong:first-child {
+    color: #fca5a5;
+}
+
+.historical-validation.tone-warn .historical-validation-stats strong:first-child {
+    color: #fdba74;
+}
+
+/* Decision History outcome accuracy (UX-6) — friendlier framing over the
+   same real pnl sign shown in the grid below, never a second judgment */
+.outcome-accuracy-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 6px 10px;
+    border-radius: 6px;
+    margin-bottom: 8px;
+    width: fit-content;
+}
+
+.outcome-accuracy-badge.tone-good {
+    background: var(--success-glow);
+    color: var(--success);
+}
+
+.outcome-accuracy-badge.tone-bad {
+    background: var(--danger-glow);
+    color: var(--danger);
+}
+
+.outcome-accuracy-badge.tone-neutral {
+    background: rgba(148, 163, 184, 0.12);
+    color: var(--text-muted);
+}
+
+/* Decision Timeline narrative line (UX-6) — a factual stance/score delta
+   versus the prior entry, not just a bare timestamp + stance */
+.decision-timeline-narrative {
+    display: block;
+    color: var(--text-muted);
+    font-size: 0.6rem;
+    font-style: italic;
+    margin-top: 2px;
+}
+
+/* Sticky Reasoning Trace quick summary (UX-6 sidebar summary) — pinned to
+   the top of the scrollable trace panel so symbol/stance/score/confidence/
+   risk stay visible while scrolling through DAG detail */
+.dag-quick-summary {
+    position: sticky;
+    top: -24px;
+    z-index: 3;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    background: rgba(15, 22, 38, 0.92);
+    border: 1px solid var(--border-color);
+    border-radius: 7px;
+    padding: 8px 12px;
+    margin: -24px -24px 12px -24px;
+    backdrop-filter: blur(4px);
+}
+
+.dag-quick-symbol {
+    font-family: var(--font-mono);
+    font-weight: 750;
+    color: var(--text-primary);
+    font-size: 0.85rem;
+}
+
+.dag-quick-metric {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.66rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+}
+
+.dag-quick-metric strong {
+    font-family: var(--font-mono);
+    color: var(--text-primary);
+    text-transform: none;
+    font-size: 0.72rem;
+}
+
 .decision-counterfactual-panel {
     display: flex;
     flex-direction: column;

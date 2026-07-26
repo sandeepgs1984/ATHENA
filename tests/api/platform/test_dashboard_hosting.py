@@ -284,6 +284,28 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert '"Trade Plan"' in js
     assert '"Decision History"' in js
 
+    # UX-6: Sidebar summary + Historical Validation + Decision Timeline
+    # narrative + Decision History polish (owner UX audit) — a sticky
+    # quick-glance strip pinned to the Reasoning Trace panel; win-rate/
+    # avg-return/avg-holding aggregate across analog matches (from the new
+    # DecisionAnalogsDTO fields, real arithmetic, never fabricated); the
+    # Decision Timeline reads as a narrative of stance/score deltas instead
+    # of a flat list; Decision History shows a friendly accuracy label
+    # wrapping the same real pnl sign.
+    assert 'id="dag-quick-summary"' in html
+    assert "function renderSidebarQuickSummary" in js
+    assert ".dag-quick-summary" in css
+    assert ".dag-quick-metric" in css
+    assert "function renderHistoricalValidation" in js
+    assert "win_rate_pct" in js
+    assert "avg_return_pct" in js
+    assert "avg_holding_days" in js
+    assert ".historical-validation" in css
+    assert "function timelineNarrative" in js
+    assert ".decision-timeline-narrative" in css
+    assert "function decisionAccuracyLabel" in js
+    assert ".outcome-accuracy-badge" in css
+
     # Re-validate moved to the Decision Brief header — always visible, not buried
     # at the bottom of the brief (owner feedback: "no idea of where it exists")
     assert 'id="decision-brief-revalidate-header"' in html

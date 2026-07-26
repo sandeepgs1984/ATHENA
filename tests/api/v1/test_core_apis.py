@@ -519,9 +519,82 @@ class TestDecisionsAPI:
         close = data["analogs"][0]
         assert close["user_action"] == "ACCEPTED"
         assert close["outcome_pnl"] == "25.00"
+        # UX-6: return % and holding days derived from the same persisted
+        # entry/exit/quantity/holding_seconds — pnl 25.00 over a 500.00 cost
+        # basis (entry 100 x qty 5) is an exact 5% return, never recomputed
+        # pnl itself
+        assert Decimal(close["outcome_return_pct"]) == Decimal("5.00")
+        assert close["outcome_holding_days"] is not None
         far = data["analogs"][1]
         assert far["user_action"] is None
         assert far["outcome_pnl"] is None
+        assert far["outcome_return_pct"] is None
+        assert far["outcome_holding_days"] is None
+        # Aggregate is computed only over the one analog with a logged
+        # outcome ("close") — a 100% win rate and its own return/holding,
+        # not fabricated for the "far" analog that has none
+        assert data["outcomes_sample_size"] == 1
+        assert Decimal(data["win_rate_pct"]) == Decimal("100.00")
+        assert Decimal(data["avg_return_pct"]) == Decimal("5.00")
+        assert data["avg_holding_days"] is not None
+
+    def test_decision_analogs_aggregate_mixed_win_loss(self, client) -> None:
+        """UX-6: win-rate/avg-return/avg-holding aggregate across analogs with
+        a mix of winning and losing realized outcomes — exact arithmetic,
+        never rounded to a fabricated round number."""
+        headers = get_auth_headers(client, Role.ANALYST)
+        write_headers = get_auth_headers(client, Role.OPERATOR, username="operator4")
+        dec_p = get_decision_provider()
+        now = datetime.now(tz=timezone.utc)
+
+        def _report(score, confidence, risk):
+            return {
+                "score": {"status": "OK", "composite": str(score)},
+                "confidence": {"status": "OK", "overall": str(confidence)},
+                "risk": {"status": "OK", "overall": str(risk)},
+            }
+
+        specs = [
+            ("dec-mix-target", "run-mix-t", 70, 80, 30),
+            ("dec-mix-win", "run-mix-w", 71, 79, 31),
+            ("dec-mix-loss", "run-mix-l", 69, 81, 29),
+        ]
+        for decision_id, run_id, score, confidence, risk in specs:
+            dec_p.decisions.append(  # type: ignore[attr-defined]
+                Decision(
+                    decision_id=decision_id, ts=now, run_id=run_id, cycle_id="cycle-mix",
+                    instrument_id="TCS", direction=Direction.NONE,
+                    decision_type=DecisionType.WATCH, explanation="analog mix test",
+                )
+            )
+            dec_p.run_details[run_id] = {  # type: ignore[attr-defined]
+                "pipeline": {"decision_reports": {decision_id: _report(score, confidence, risk)}}
+            }
+
+        # Winner: entry 100 -> exit 110, qty 10 => pnl +100.00, return +10%
+        client.post(
+            "/api/v1/decisions/dec-mix-win/outcome",
+            json={"entry_price": "100.00", "exit_price": "110.00", "quantity": 10},
+            headers=write_headers,
+        )
+        # Loser: entry 100 -> exit 95, qty 10 => pnl -50.00, return -5%
+        client.post(
+            "/api/v1/decisions/dec-mix-loss/outcome",
+            json={"entry_price": "100.00", "exit_price": "95.00", "quantity": 10},
+            headers=write_headers,
+        )
+
+        response = client.get(
+            "/api/v1/decisions/dec-mix-target/analogs?limit=5", headers=headers
+        )
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["outcomes_sample_size"] == 2
+        # One win out of two => 50% win rate
+        assert Decimal(data["win_rate_pct"]) == Decimal("50.00")
+        # Average of +10% and -5% => +2.5%
+        assert Decimal(data["avg_return_pct"]) == Decimal("2.500")
+        assert data["avg_holding_days"] is not None
 
     def test_decision_analogs_unknown_target_returns_empty(self, client) -> None:
         headers = get_auth_headers(client, Role.ANALYST)
