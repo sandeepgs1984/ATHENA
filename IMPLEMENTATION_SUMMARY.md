@@ -6,7 +6,112 @@ status updated on approval.
 
 ---
 
-## UX-3b — Chart ATR/moving-average/volume overlay (READY FOR REVIEW)
+## UX-4 — Tab renaming + progressive disclosure + Market Context cards (APPROVED)
+
+| | |
+|---|---|
+| Completed | 2026-07-26 |
+| Objective | Fourth milestone of the owner's UX audit: replace engineering tab names with trader-facing ones, make the Analysis tab's component breakdown a deliberate second step rather than everything visible at once, and present regime/market-health as labeled cards instead of a flat row of chips |
+| Scope | Tab labels renamed (internal `data-brief-tab` keys unchanged); Score/Confidence/Risk component breakdown moved behind a "View detailed breakdown" toggle; `renderDecisionContext`'s regime/market-health blocks rebuilt as metric-card grids |
+| Tests | Full suite **1017 passed**; new assertions; no backend files touched |
+| Coverage | Frontend-only change; no Python coverage impact |
+| Status | **APPROVED** (owner smoke confirmed live 2026-07-26) |
+| Branch | feature/live-dashboard |
+
+### Scope completed
+
+- **Tab renaming**: Setup → **Trade Plan**, Context → **Market Context**,
+  Response → **Decision History** (Analysis unchanged, matching the
+  owner's exact suggested naming). Only the visible `<span>` text changed
+  — `data-brief-tab="setup"/"context"/"response"` internal keys are
+  untouched, so `STAGE_TAB_MAP`, `switchBriefTab`, and every existing test
+  keep working without modification.
+- **Progressive disclosure in Analysis** (`renderDecisionDepth`): the full
+  Score/Confidence/Risk component stack (star ratings, trust checklist,
+  risk summary — all from earlier UX-2 work) now sits behind a "View
+  detailed breakdown" `<details>` toggle, closed by default. The first
+  thing a trader sees on opening Analysis is just the three overview cards
+  — the same drill-down the owner's audit described (Overview → category →
+  expand → component → expand → raw values), now with one more explicit
+  step at the top instead of the full component stack rendering
+  immediately below the overview.
+- **Market Context as cards, not labels** (`contextMetricCard`,
+  `regimeLabelCategory`): regime labels (e.g. `BULL_TREND`,
+  `NORMAL_VOLATILITY`, `GAP_DOWN`) and market-health dimensions (already a
+  clean `{name: label}` mapping) now render as small labeled metric cards
+  (category caption + value, colored by the same `contextChipTone`
+  convention already used for chips) instead of an undifferentiated row of
+  pills. `regimeLabelCategory` derives a category from the label text
+  itself (VOLATILITY/GAP/BREADTH/TREND, falling back to a generic caption)
+  — a display grouping over already-real data, not a fabricated dimension.
+  Session/expiry/holiday flags are left as chips (they're boolean flags,
+  not label+value dimension pairs, so the "cards" treatment doesn't apply
+  there).
+
+### Files created
+
+- None.
+
+### Files modified
+
+- `src/athena/api/static/index.html` — tab label text; cache-bust bumped
+  to `9.36.0`.
+- `src/athena/api/static/dashboard.js` — `contextMetricCard`,
+  `regimeLabelCategory`; `renderDecisionDepth`'s detail-toggle wrapper;
+  `renderDecisionContext`'s regime/market-health block rebuild.
+- `src/athena/api/static/dashboard.css` — `.analysis-detail-toggle` (+
+  chevron), `.context-metric-grid` (+ `-label`/`-value`), `.tone-unknown-text`.
+- `tests/api/platform/test_dashboard_hosting.py` — new assertions.
+- `docs/MILESTONES.md` — UX-3b flipped to Approved, UX-4 → Ready for review.
+- This log.
+
+### Public APIs
+
+- None — pure frontend change.
+
+### Validation and architecture
+
+- Full regression: **1017 passed** (unchanged — no backend files touched).
+- No Ruff/mypy scope (no `.py` files changed).
+- JS brace/paren balance checked against the pre-edit baseline; live
+  server restart + isolated-browser console check: zero errors on load.
+- ADR-005 preserved: metric cards and category labels render already-real
+  persisted label strings, nothing generated. No ADR required.
+
+### Risks and technical debt
+
+- `regimeLabelCategory`'s pattern matching covers the known regime label
+  families (trend/volatility/gap/breadth); any genuinely new label family
+  added to the regime engine in the future would fall back to a generic
+  "Regime" caption rather than a specific one — not incorrect, just less
+  specific, and easy to extend if it comes up.
+- I could not exercise the redesigned tabs/cards end-to-end myself (no
+  owner credentials) — needs an owner click-through.
+- No new technical debt beyond the above.
+
+### Remaining work
+
+- **Owner smoke test**: confirm the renamed tabs read naturally; open
+  Analysis and confirm the overview cards show first with the component
+  breakdown behind one click; open Market Context and confirm regime/
+  market-health render as clean labeled cards rather than a chip wall.
+- Next in the UX Overhaul program: **UX-5** (Reasoning Trace redesign —
+  animated flow, meaningful per-stage labels instead of generic
+  "Completed," completion/data-quality percentage per stage).
+
+### Commit message
+
+```text
+feat(dashboard): rename tabs, add progressive disclosure, redesign Market Context as cards (UX-4)
+
+- Rename Decision Brief tabs to trader-facing labels (Trade Plan/Analysis/Market Context/Decision History); internal data-brief-tab keys unchanged so STAGE_TAB_MAP and existing tests keep working
+- Move the Analysis tab's Score/Confidence/Risk component breakdown behind a "View detailed breakdown" toggle, closed by default, so the overview cards are the first thing shown
+- Rebuild Market Context's regime/market-health blocks as labeled metric cards (category + value, same tone coloring as the existing chips) instead of a flat row of chips
+```
+
+---
+
+## UX-3b — Chart ATR/moving-average/volume overlay (APPROVED)
 
 | | |
 |---|---|
@@ -15,7 +120,7 @@ status updated on approval.
 | Scope | New `atr_series`/`sma_series` pure functions in `indicators/calculations.py` (existing scalar `atr()`/`sma()` now delegate to them — byte-identical output); `CandleDTO` gains optional `atr`/`moving_average` fields, populated by `MarketHistoryService.recent_candles` using the same config-driven periods (`config/indicators.json`) already used elsewhere; frontend chart renders the MA line, ATR band, and volume bars; also fixed Entry Zone showing "₹X – ₹X" when low==high |
 | Tests | Full suite **1017 passed** (+1 backend test verifying the service's per-candle output matches the pure functions exactly); Ruff clean; mypy currently unavailable in this environment (missing since earlier in the session, unrelated to this change) — types manually reviewed |
 | Coverage | Existing project coverage retained |
-| Status | **READY FOR REVIEW** |
+| Status | **APPROVED** (owner smoke confirmed live 2026-07-26 — Y-axis fix pass verified against live screenshots) |
 | Branch | feature/live-dashboard |
 
 ### Scope completed

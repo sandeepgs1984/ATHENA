@@ -3594,13 +3594,23 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
             ["Confidence", depth && depth.confidence, "confidence"],
             ["Risk", depth && depth.risk, "risk"],
         ];
+        // Progressive disclosure (owner UX audit #6): overview first, the
+        // full component breakdown is a second click away — never all
+        // three categories' worth of components dumped in one first look.
         host.innerHTML = `
             <div class="analysis-overview-grid">
                 ${blocks.map(args => renderAnalysisSummaryCard(...args)).join("")}
             </div>
-            <div class="analysis-detail-stack">
-                ${blocks.map(args => renderAnalysisBlock(...args)).join("")}
-            </div>
+            <details class="analysis-detail-toggle">
+                <summary>
+                    <i class="fa-solid fa-list-ul"></i>
+                    <span>View detailed breakdown</span>
+                    <i class="fa-solid fa-chevron-down analysis-detail-toggle-chevron"></i>
+                </summary>
+                <div class="analysis-detail-stack">
+                    ${blocks.map(args => renderAnalysisBlock(...args)).join("")}
+                </div>
+            </details>
         `;
     }
 
@@ -3698,6 +3708,28 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         return `<span class="context-chip tone-${tone}">${escapeDecisionHtml(friendlyLabel(label))}</span>`;
     }
 
+    // Best-effort category from the label text itself (already-real data,
+    // just grouped for display) — matches the known regime label families;
+    // falls back to a generic caption for any future label type.
+    function regimeLabelCategory(label) {
+        const l = String(label || "").toUpperCase();
+        if (l.includes("VOLATILITY")) return "Volatility";
+        if (l.includes("GAP")) return "Gap";
+        if (l.includes("BREADTH")) return "Breadth";
+        if (l.includes("TREND")) return "Trend";
+        return "Regime";
+    }
+
+    // Market Context as cards, not just labels (owner UX audit #13).
+    function contextMetricCard(name, value, tone) {
+        return `
+            <div class="context-metric">
+                <span class="context-metric-label">${escapeDecisionHtml(name)}</span>
+                <strong class="context-metric-value tone-${tone}-text">${escapeDecisionHtml(friendlyLabel(value))}</strong>
+            </div>
+        `;
+    }
+
     function renderDecisionContext(context) {
         const host = document.getElementById("decision-context-lane");
         if (!host) return;
@@ -3724,15 +3756,15 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         `).join("");
 
         const regimeBlock = regime.status === "ASSESSED"
-            ? `<div class="context-chip-row">${(regime.labels || [])
-                  .map(l => contextChip(l, contextChipTone(l))).join("")}</div>
+            ? `<div class="context-metric-grid">${(regime.labels || [])
+                  .map(l => contextMetricCard(regimeLabelCategory(l), l, contextChipTone(l))).join("")}</div>
                <p class="context-caption">${escapeDecisionHtml(regime.explanation || "")}</p>`
             : '<p class="context-caption unknown">UNKNOWN — re-validate to persist a regime assessment for this decision.</p>';
 
         const dimensions = mh.dimensions || {};
         const healthBlock = mh.status === "ASSESSED"
-            ? `<div class="context-chip-row">${Object.values(dimensions)
-                  .map(label => contextChip(label, contextChipTone(label))).join("")}</div>`
+            ? `<div class="context-metric-grid">${Object.entries(dimensions)
+                  .map(([key, label]) => contextMetricCard(friendlyLabel(key), label, contextChipTone(label))).join("")}</div>`
             : '<p class="context-caption unknown">UNKNOWN — re-validate to persist a market-health assessment for this decision.</p>';
 
         const linkRows = links.length

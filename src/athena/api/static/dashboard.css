@@ -3096,6 +3096,42 @@ body {
     box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.15);
 }
 
+.analysis-detail-toggle {
+    margin-top: 12px;
+}
+
+.analysis-detail-toggle > summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    list-style: none;
+    color: var(--text-secondary);
+    font-size: 0.74rem;
+    font-weight: 600;
+    padding: 8px 2px;
+    border-top: 1px solid var(--border-color);
+}
+
+.analysis-detail-toggle > summary::-webkit-details-marker {
+    display: none;
+}
+
+.analysis-detail-toggle > summary:hover {
+    color: var(--text-primary);
+}
+
+.analysis-detail-toggle-chevron {
+    margin-left: auto;
+    font-size: 0.6rem;
+    color: var(--text-muted);
+    transition: transform 160ms ease;
+}
+
+.analysis-detail-toggle[open] > summary .analysis-detail-toggle-chevron {
+    transform: rotate(180deg);
+}
+
 .analysis-detail-stack {
     display: flex;
     flex-direction: column;
@@ -4339,6 +4375,37 @@ body {
     gap: 6px;
 }
 
+/* Market Context as cards, not just labels (owner UX audit #13) */
+.context-metric-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+    gap: 8px;
+}
+
+.context-metric {
+    background: rgba(15, 23, 42, 0.35);
+    border: 1px solid var(--border-color);
+    border-radius: 7px;
+    padding: 7px 9px;
+    min-width: 0;
+}
+
+.context-metric-label {
+    display: block;
+    color: var(--text-muted);
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 3px;
+}
+
+.context-metric-value {
+    display: block;
+    font-size: 0.78rem;
+    font-weight: 650;
+    overflow-wrap: anywhere;
+}
+
 .context-chip {
     display: inline-flex;
     align-items: center;
@@ -4540,6 +4607,10 @@ body {
 
 .tone-neutral-text {
     color: var(--text-primary) !important;
+}
+
+.tone-unknown-text {
+    color: var(--text-muted) !important;
 }
 
 .decision-analogs-panel {

@@ -237,6 +237,25 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".decision-chart-atr-band" in css
     assert ".decision-chart-volume-bar" in css
 
+    # UX-4: tab renaming, progressive disclosure, Market Context cards
+    # (owner UX audit) — engineering tab names replaced with trader-facing
+    # ones (internal data-brief-tab keys unchanged so nothing else breaks),
+    # the Analysis component breakdown is a second click away from the
+    # overview, and regime/market-health render as labeled metric cards
+    # instead of a flat row of chips
+    assert ">Trade Plan</span>" in html
+    assert ">Market Context</span>" in html
+    assert ">Decision History</span>" in html
+    assert 'data-brief-tab="setup"' in html
+    assert 'data-brief-tab="context"' in html
+    assert 'data-brief-tab="response"' in html
+    assert "function contextMetricCard" in js
+    assert "function regimeLabelCategory" in js
+    assert "View detailed breakdown" in js
+    assert ".analysis-detail-toggle" in css
+    assert ".context-metric-grid" in css
+    assert ".context-metric-value" in css
+
     # Re-validate moved to the Decision Brief header — always visible, not buried
     # at the bottom of the brief (owner feedback: "no idea of where it exists")
     assert 'id="decision-brief-revalidate-header"' in html
