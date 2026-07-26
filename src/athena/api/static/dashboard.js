@@ -4966,7 +4966,7 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
 
         const tab = STAGE_TAB_MAP[stage.stage_id];
         dagDetailsSummary.innerHTML = tab
-            ? `<p class="context-caption">Full detail lives in the <strong>${escapeDecisionHtml(friendlyLabel(tab))}</strong> tab — opened automatically.</p>`
+            ? `<p class="context-caption">Full detail lives in the <strong>${escapeDecisionHtml(BRIEF_TAB_LABELS[tab] || friendlyLabel(tab))}</strong> tab — opened automatically.</p>`
             : `<p class="context-caption">${escapeDecisionHtml(stage.summary || "")}</p>`;
 
         renderStageProvenance(stage);
@@ -4974,6 +4974,19 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
     }
 
     const BRIEF_TAB_NAMES = new Set(["setup", "analysis", "context", "response"]);
+
+    // Trader-facing tab labels (UX-4 renamed the visible tab strip text
+    // while deliberately keeping these internal data-brief-tab keys
+    // unchanged) — anywhere a tab name is reconstructed for display must
+    // use this, not a raw capitalization of the internal key, or it goes
+    // stale the moment the visible name diverges from the key (as
+    // showStageDetails's "Setup tab" text just did).
+    const BRIEF_TAB_LABELS = {
+        setup: "Trade Plan",
+        analysis: "Analysis",
+        context: "Market Context",
+        response: "Decision History",
+    };
 
     // Sticky-cockpit tab strip. Deliberately not reset when the selected
     // decision changes (selectBriefing) — flipping through several decisions

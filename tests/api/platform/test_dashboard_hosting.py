@@ -274,6 +274,16 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "prefers-reduced-motion" in css
     assert "dag-flow-dash" in css
 
+    # Fix pass: the DAG stage-detail panel's "Full detail lives in the X
+    # tab" text was reconstructing the tab name via a raw capitalization
+    # of the internal data-brief-tab key (still "setup"/"response" post
+    # UX-4), so it read "Setup"/"Response" instead of the actual renamed
+    # visible tab labels "Trade Plan"/"Decision History" — owner screenshot
+    # caught it live. BRIEF_TAB_LABELS is the one place that mapping lives.
+    assert "BRIEF_TAB_LABELS" in js
+    assert '"Trade Plan"' in js
+    assert '"Decision History"' in js
+
     # Re-validate moved to the Decision Brief header — always visible, not buried
     # at the bottom of the brief (owner feedback: "no idea of where it exists")
     assert 'id="decision-brief-revalidate-header"' in html

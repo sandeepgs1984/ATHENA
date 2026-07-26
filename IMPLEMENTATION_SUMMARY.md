@@ -76,20 +76,41 @@ status updated on approval.
 
 ### Files modified
 
-- `src/athena/api/static/index.html` — cache-bust bumped to `9.37.0`.
+- `src/athena/api/static/index.html` — cache-bust bumped to `9.37.0`, then
+  `9.37.1` for the fix pass below.
 - `src/athena/api/static/dashboard.js` — `stageMeaning`,
   `stageToneColor` (folded into `stageMeaning`'s return), `dagStatusBadgeHtml`,
   `refreshDagNodeMeanings`; `renderTraceDAG`'s node-building loop now
   calls `dagStatusBadgeHtml` instead of always rendering the raw lifecycle
   status; `loadDecisionDepth`/`loadDecisionContext` call
   `refreshDagNodeMeanings()` after their data lands; `drawDAGLines` tags
-  connector lines with `dag-flow-line`/`dag-flow-line-active`.
+  connector lines with `dag-flow-line`/`dag-flow-line-active`; fix pass
+  added `BRIEF_TAB_LABELS` and used it in `showStageDetails`.
 - `src/athena/api/static/dashboard.css` — `.dag-node-status.meaning-good/
   -bad/-warn/-neutral`; `.dag-flow-line`/`.dag-flow-line-active` +
   `@keyframes dag-flow-dash`, gated behind `prefers-reduced-motion`.
-- `tests/api/platform/test_dashboard_hosting.py` — new assertions.
+- `tests/api/platform/test_dashboard_hosting.py` — new assertions,
+  including the `BRIEF_TAB_LABELS` fix-pass assertions.
 - `docs/MILESTONES.md` — UX-5 → Ready for review.
 - This log.
+
+### Fix pass (owner screenshots, 2026-07-26)
+
+Two live screenshots (TCS/HOLD and DIXON/BUY) confirmed the core feature —
+DAG nodes correctly showing real state (`SIDEWAYS`, `HEALTHY MOMENTUM`,
+`SUFFICIENT`, `GOOD`, `HIGH`, `MEDIUM`, `HOLD`/`BUY`, `AUTHORIZED`) instead
+of generic `COMPLETED` badges — but also surfaced a stale-copy bug in the
+stage-detail panel underneath: clicking a node showed "Full detail lives
+in the **Setup** tab" / "**Response** tab" instead of the actual renamed
+visible labels "Trade Plan" / "Decision History". Root cause: UX-4
+deliberately kept the internal `data-brief-tab` keys unchanged
+(`setup`/`response`) while renaming only the visible tab text — but
+`showStageDetails` was reconstructing the tab name via a raw
+`friendlyLabel()` capitalization of that internal key, so it silently went
+stale the moment the visible label diverged from the key. Fixed by adding
+a single `BRIEF_TAB_LABELS` map (the one place this key→visible-label
+association now lives) and using it in `showStageDetails` instead of
+re-deriving the name from the key.
 
 ### Public APIs
 
@@ -127,15 +148,19 @@ status updated on approval.
 
 ### Remaining work
 
-- **Owner smoke test**: open the Reasoning Trace for a few different
-  decisions and confirm (a) nodes with available data show a real
-  state label (e.g. "Bull Trend", "BUY", "Authorized") instead of
-  "Completed"; (b) a decision with an `UNKNOWN`/not-`OK` stage still
-  shows a sensible fallback badge, not a blank or broken one; (c) the
-  connector lines show a subtle flowing-dash animation, brighter along
-  the path to the selected node; (d) clicking a node still navigates to
-  the right tab, and the automatic first-node highlight on load still
-  does **not** jump tabs.
+- Owner screenshots (TCS/HOLD, DIXON/BUY) already confirmed part (a): DAG
+  nodes correctly show real per-stage state (`SIDEWAYS`, `HEALTHY
+  MOMENTUM`, `SUFFICIENT`, `GOOD`, `HIGH`, `MEDIUM`, `HOLD`/`BUY`,
+  `AUTHORIZED`) instead of the generic `COMPLETED` badge, and surfaced the
+  `BRIEF_TAB_LABELS` bug fixed above.
+- **Owner smoke test still needed**: (b) a decision with an
+  `UNKNOWN`/not-`OK` stage still shows a sensible fallback badge, not a
+  blank or broken one; (c) the connector lines show a subtle
+  flowing-dash animation, brighter along the path to the selected node;
+  (d) clicking a node still navigates to the right tab, the automatic
+  first-node highlight on load still does **not** jump tabs, and the
+  stage-detail panel's "Full detail lives in the X tab" text now reads
+  the correct trader-facing tab name.
 - Next in the UX Overhaul program: **UX-6** (Sidebar summary + Historical
   Validation + Decision Timeline narrative + Decision History polish —
   needs a small backend win-rate/avg-return aggregation addition).
@@ -157,8 +182,13 @@ feat(dashboard): show real per-stage state in the Reasoning Trace DAG
 - Add an animated dash-flow effect to DAG connector lines (brighter/faster
   toward the selected node), gated behind prefers-reduced-motion, per
   owner UX audit #14.
-- Bump dashboard cache-bust to 9.37.0 and extend dashboard hosting test
-  assertions for the new functions/CSS classes.
+- Fix showStageDetails's "Full detail lives in the X tab" text reading
+  "Setup"/"Response" instead of the actual renamed visible tab labels
+  "Trade Plan"/"Decision History" (owner screenshot caught it live) — add
+  BRIEF_TAB_LABELS as the single source for that key-to-label mapping.
+- Bump dashboard cache-bust to 9.37.0, then 9.37.1 for the fix pass, and
+  extend dashboard hosting test assertions for the new functions/CSS
+  classes and the fix.
 ```
 
 ---
