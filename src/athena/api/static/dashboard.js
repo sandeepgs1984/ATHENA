@@ -3117,10 +3117,19 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
                 guidance: "Higher means more uncertainty or market exposure.",
             },
         }[tone];
+        // Score has no backend-computed level (scoring.json carries no
+        // levels block) — band it client-side from the same value everyone
+        // else already sees, same convention as the Hero cockpit gauges.
+        // Confidence/Risk keep their real backend level; never invented.
+        const isOk = status === "OK";
+        const displayBand = tone === "score"
+            ? (isOk ? qualityBand(data.value) : null)
+            : (isOk && level ? friendlyAnalysisName(level) : null);
         return {
             data,
             status,
             level,
+            displayBand,
             completenessLabel,
             icon: config.icon,
             eyebrow: config.eyebrow,
@@ -3286,19 +3295,46 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         }
     }
 
+    // Meaning over decimals (UX-2/owner audit): a 0-100 value on its own
+    // means nothing to a trader in under 5 seconds — band it into a word
+    // first, keep the number as a secondary caption.
+    function qualityBand(value) {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return null;
+        if (n >= 85) return "Excellent";
+        if (n >= 70) return "Strong";
+        if (n >= 55) return "Good";
+        if (n >= 40) return "Fair";
+        return "Weak";
+    }
+
+    // Risk reads as a hazard level (Low/Medium/High), not a quality score —
+    // a "Weak risk" would be nonsensical, so it gets its own 3-band scale.
+    function riskBand(value) {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return null;
+        if (n < 35) return "Low";
+        if (n < 65) return "Medium";
+        return "High";
+    }
+
     // Sticky cockpit gauges reuse the exact same status/level/value already
     // computed for the Analysis tab's summary cards — never a second
     // client-derived score, just a different rendering of the same numbers.
     function resetCockpitGauges() {
         ["score", "confidence", "risk"].forEach(tone => {
             const valueEl = document.getElementById(`gauge-${tone}-value`);
+            const bandEl = document.getElementById(`gauge-${tone}-band`);
             const barEl = document.getElementById(`gauge-${tone}-bar`);
             if (valueEl) valueEl.textContent = "—";
+            if (bandEl) bandEl.textContent = "—";
             if (barEl) {
                 barEl.style.width = "0%";
                 barEl.style.background = "var(--text-muted)";
             }
         });
+        const rrEl = document.getElementById("hero-rr-value");
+        if (rrEl) rrEl.textContent = "—";
     }
 
     function gaugeToneColor(view) {
@@ -3322,14 +3358,28 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         ].forEach(([tone, block]) => {
             const view = analysisPresentation(friendlyAnalysisName(tone), block, tone);
             const valueEl = document.getElementById(`gauge-${tone}-value`);
+            const bandEl = document.getElementById(`gauge-${tone}-band`);
             const barEl = document.getElementById(`gauge-${tone}-bar`);
-            const color = gaugeToneColor(view);
-            if (valueEl) valueEl.textContent = view.valueLabel;
+            // A block that isn't OK (UNKNOWN status) must never be banded as
+            // a real "Weak" score — that's fabricating a value that was
+            // never actually computed (owner-reported mismatch: banner said
+            // 66.92, gauge said 0.0/Weak).
+            const known = view.status === "OK";
+            const color = known ? gaugeToneColor(view) : "var(--text-muted)";
+            const band = known
+                ? (tone === "risk" ? riskBand(view.data.value) : qualityBand(view.data.value))
+                : null;
+            if (valueEl) valueEl.textContent = known ? view.valueLabel : "—";
+            if (bandEl) {
+                bandEl.textContent = band || "Unknown";
+                bandEl.style.color = color;
+            }
             if (barEl) {
-                barEl.style.width = `${view.meterWidth}%`;
+                barEl.style.width = known ? `${view.meterWidth}%` : "0%";
                 barEl.style.background = color;
             }
         });
+        renderExecutiveSummary();
     }
 
     function renderDecisionDepth(depth) {
@@ -3350,6 +3400,50 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
                 ${blocks.map(args => renderAnalysisBlock(...args)).join("")}
             </div>
         `;
+    }
+
+    // Five plain-English lines, composed entirely from strings the engines
+    // already wrote (score/confidence/risk .explanation, gate results) —
+    // never generated, per ADR-005. "Building summary..." until score depth
+    // arrives; gates + suitability show immediately since they're synchronous.
+    function buildExecutiveSummaryLines(decision, depth) {
+        const lines = [];
+        const gates = decision.analysis && Array.isArray(decision.analysis.gate_results)
+            ? decision.analysis.gate_results
+            : [];
+        if (gates.length) {
+            const failed = gates.filter(g => g && g.passed === false);
+            lines.push(failed.length
+                ? `Blocked on ${failed.length} of ${gates.length} safety gates: ${failed.map(g => friendlyGateName(g.gate)).join(", ")}.`
+                : `Passed all ${gates.length} safety gates.`);
+        }
+        [["score", "Score"], ["confidence", "Confidence"], ["risk", "Risk"]].forEach(([key, label]) => {
+            const block = depth && depth[key];
+            if (block && block.status === "OK" && block.explanation) {
+                lines.push(sanitizeNumericText(block.explanation));
+            }
+        });
+        const suitability = {
+            TRADE: "All safety checks cleared — ready for entry.",
+            WATCH: "Above the watch threshold, not yet ready to trade.",
+            NO_TRADE: "Below the bar for a trade right now.",
+            INSUFFICIENT_DATA: "Not enough data to assess yet.",
+        }[String(decision.metadata.decision_type || "").toUpperCase()];
+        if (suitability) lines.push(suitability);
+        return lines;
+    }
+
+    function renderExecutiveSummary() {
+        const host = document.getElementById("decision-executive-summary");
+        if (!host || !activeDecisionData) return;
+        const lines = buildExecutiveSummaryLines(activeDecisionData, activeDepth);
+        if (!lines.length) {
+            host.innerHTML = '<div class="decision-depth-loading"><i class="fa-solid fa-circle-notch fa-spin"></i> Building summary…</div>';
+            return;
+        }
+        host.innerHTML = `<ul class="executive-summary-list">${
+            lines.map(l => `<li>${escapeDecisionHtml(l)}</li>`).join("")
+        }</ul>`;
     }
 
     async function loadDecisionDepth(decisionId) {
@@ -3958,6 +4052,12 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         resetCockpitGauges();
         resetActionButtons();
 
+        const heroRR = document.getElementById("hero-rr-value");
+        if (heroRR) {
+            const rr = decision.trade_plan ? Number(decision.trade_plan.risk_reward) : NaN;
+            heroRR.textContent = Number.isFinite(rr) ? `${rr.toFixed(1)} : 1` : "—";
+        }
+
         const gateRows = gates.length
             ? gates.map(gate => `
                 <div class="decision-gate-row">
@@ -3981,7 +4081,18 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
 
         decisionBriefBody.innerHTML = `
             <section class="decision-brief-hero">
-                <p class="decision-brief-thesis" title="${escapeDecisionHtml(summary.headline)}">${escapeDecisionHtml(summary.headline)}</p>
+                <div class="decision-banner ${stance.cls}">
+                    <div class="decision-banner-head">
+                        <span class="decision-banner-label">ATHENA Recommendation</span>
+                        <span class="decision-banner-stance">${stance.label}</span>
+                    </div>
+                    <p class="decision-banner-reason" title="${escapeDecisionHtml(summary.headline)}">${escapeDecisionHtml(summary.headline)}</p>
+                </div>
+                <div id="decision-executive-summary" class="executive-summary">
+                    <div class="decision-depth-loading">
+                        <i class="fa-solid fa-circle-notch fa-spin"></i> Building summary…
+                    </div>
+                </div>
             </section>
 
             <div class="tabpane${paneActive("setup")}" id="brief-pane-setup" data-brief-pane="setup">
@@ -4107,6 +4218,7 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         `;
 
         renderDecisionTimeline(decision);
+        renderExecutiveSummary();
         loadDecisionDepth(meta.decision_id);
         loadDecisionContext(meta.decision_id);
         loadDecisionChart(rawSymbol, decision.trade_plan, meta.decision_id);
@@ -4435,7 +4547,7 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
             `;
 
             node.addEventListener("click", () => {
-                selectNode(stage.stage_id);
+                selectNode(stage.stage_id, { userInitiated: true });
             });
 
             dagNodesContainer.appendChild(node);
@@ -4450,13 +4562,16 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         // Draw initial connector lines
         setTimeout(drawDAGLines, 100);
 
-        // Select the first node by default
+        // Highlight the first node by default, but never jump tabs for it —
+        // only an actual click should navigate away from whichever tab the
+        // trader is currently comparing across decisions (owner-reported:
+        // picking a new decision was silently yanking them back to Context).
         if (trace.stages.length > 0) {
-            selectNode(trace.stages[0].stage_id);
+            selectNode(trace.stages[0].stage_id, { userInitiated: false });
         }
     }
 
-    function selectNode(stageId) {
+    function selectNode(stageId, { userInitiated = false } = {}) {
         const nodes = dagNodesContainer.querySelectorAll(".dag-node");
         nodes.forEach(n => {
             if (n.getAttribute("data-stage") === stageId) {
@@ -4470,7 +4585,7 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         if (stage) {
             showStageDetails(stage);
             const tab = STAGE_TAB_MAP[stage.stage_id];
-            if (tab) switchBriefTab(tab);
+            if (userInitiated && tab) switchBriefTab(tab);
         }
     }
 

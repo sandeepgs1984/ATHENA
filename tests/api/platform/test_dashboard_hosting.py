@@ -171,6 +171,26 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".brief-tab" in css
     assert ".tabpane" in css
 
+    # UX-1: Hero Decision Card + Executive Summary + Decision Banner (owner
+    # UX audit, 2026-07-26) — meaning over decimals (band words, not just
+    # raw 0-100 numbers), a five-line plain-English summary composed
+    # entirely from already-persisted engine explanations (never generated,
+    # per ADR-005), and a recommendation banner reusing the existing
+    # stance-buy/sell/hold/pass/wait palette
+    assert 'id="gauge-score-band"' in html
+    assert 'id="gauge-confidence-band"' in html
+    assert 'id="gauge-risk-band"' in html
+    assert 'id="hero-rr-value"' in html
+    assert 'id="decision-executive-summary"' in js
+    assert "function qualityBand" in js
+    assert "function riskBand" in js
+    assert "function buildExecutiveSummaryLines" in js
+    assert "function renderExecutiveSummary" in js
+    assert "never generated" in js
+    assert ".decision-banner" in css
+    assert ".executive-summary-list" in css
+    assert ".hero-metric-band" in css
+
     # Re-validate moved to the Decision Brief header — always visible, not buried
     # at the bottom of the brief (owner feedback: "no idea of where it exists")
     assert 'id="decision-brief-revalidate-header"' in html

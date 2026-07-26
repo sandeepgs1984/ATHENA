@@ -6,6 +6,146 @@ status updated on approval.
 
 ---
 
+## UX-1 — Hero Decision Card + Executive Summary + Decision Banner (READY FOR REVIEW)
+
+| | |
+|---|---|
+| Completed | 2026-07-26 |
+| Objective | First milestone of the owner's 40-point "ATHENA UX Overhaul" audit (`docs/MILESTONES.md`): make the top of the Decision Brief answer "what happened / why / what should I do" in under 5 seconds — meaning over decimals, an executive-briefing feel over a metrics strip |
+| Scope | Sticky cockpit gauges gain band words (Strong/Good/Weak, Low/Medium/High) alongside the raw numbers; a 4th "Expected R:R" card; the old plain thesis paragraph becomes a colored Decision Banner ("ATHENA Recommendation: BUY") plus a 5-line Executive Summary composed from already-persisted engine explanations |
+| Tests | Full suite **1016 passed** (new assertions for every new element); no backend files touched |
+| Coverage | Frontend-only change; no Python coverage impact |
+| Status | **READY FOR REVIEW** |
+| Branch | feature/live-dashboard |
+
+### Scope completed
+
+- **Band words, not just decimals** (`qualityBand`, `riskBand`): Composite
+  score and Confidence get a 5-band quality word (Weak → Excellent, 40/55/
+  70/85 breakpoints); Risk gets its own 3-band hazard word (Low/Medium/
+  High, since "Weak risk" reads as nonsense) — both purely cosmetic
+  client-side bands over the same already-computed 0-100 value, colored via
+  the existing `gaugeToneColor`. The raw number moves to a smaller
+  secondary caption underneath.
+- **Expected R:R joins the cockpit** as a 4th gauge card, read straight from
+  `decision.trade_plan.risk_reward` (no computation, `—` when there's no
+  trade plan) — synchronous, no async load needed.
+- **Decision Banner** replaces the plain thesis paragraph: a colored strip
+  (reusing the *exact* `stance-buy`/`stance-sell`/`stance-hold`/`stance-pass`
+  /`stance-wait` palette already used for the header chip — one color
+  meaning throughout, never remapped) headed "ATHENA Recommendation" with
+  the stance and the same reused `formatDecisionSummary().headline`
+  sentence as the reason.
+- **Executive Summary** (`buildExecutiveSummaryLines`, `renderExecutiveSummary`):
+  up to 5 lines — gates pass/fail count, then the score/confidence/risk
+  engines' own persisted `.explanation` strings verbatim (sanitized for
+  numeric formatting), then a decision-type suitability line. Every line is
+  either a deterministic count or a string an engine already wrote — never
+  generated, per ADR-005. Gates + suitability render immediately (synchronous
+  data); the three explanation lines fill in once `loadDecisionDepth`
+  resolves (progressive fill, same pattern as the rest of the brief).
+- **Two fields from the owner's example deliberately omitted**: "Holding:
+  2-5 Days" and "Strategy: Momentum Breakout." Researched first (2026-07-26)
+  — confirmed neither exists prospectively anywhere in the domain model,
+  config, or DTOs (`TradeOutcome.holding_seconds` is retrospective-only,
+  computed after a trade closes; the Strategy Framework can classify
+  *already-completed* decisions against a strategy but never writes that
+  classification back onto the `Decision`). Showing either would mean
+  inventing a value — flagged instead as a possible small backend addition
+  for a future milestone, not fabricated client-side.
+
+### Fix pass (2026-07-26, owner live screenshots)
+
+Owner approved the milestone live, but two real bugs surfaced from close-reading
+the screenshots, both fixed (cache-bust `9.32.1`):
+
+- **Gauges fabricated a "Weak"/"0.0" band for an unavailable block.** A HOLD/
+  WATCH decision's Decision Banner correctly said "score 66.92/100" while
+  the gauge above it showed Composite Score "Weak 0.0/100" — the Executive
+  Summary correctly detected the depth report's status wasn't `"OK"` and
+  omitted its lines, but `renderCockpitGauges` banded the raw value without
+  checking status first. Fixed: gauges now show "Unknown"/"—" whenever the
+  underlying block's status isn't `"OK"`, matching what the Executive
+  Summary already did correctly.
+- **Reasoning Trace's auto-highlighted first node silently overrode the
+  user's chosen tab.** `selectNode()` was called both by an actual click
+  and by the automatic "highlight stage 0 on load" — both paths triggered
+  the same tab-jump, so picking a new decision would silently yank the
+  brief back to whichever tab the first stage mapped to (usually Context),
+  contradicting the stated "tab persists across decision switches" design.
+  Fixed: `selectNode(stageId, { userInitiated })` only jumps tabs when
+  `userInitiated` is true — the automatic initial highlight passes `false`.
+
+### Files created
+
+- None (all additive/restructuring within existing files).
+
+### Files modified
+
+- `src/athena/api/static/index.html` — gauges row expanded to 4 cards with
+  band-word elements; cache-bust bumped to `9.32.0`.
+- `src/athena/api/static/dashboard.js` — `qualityBand`, `riskBand`,
+  `buildExecutiveSummaryLines`, `renderExecutiveSummary`; extended
+  `renderCockpitGauges`/`resetCockpitGauges`; `renderDecisionBrief`'s hero
+  section rebuilt as Decision Banner + Executive Summary.
+- `src/athena/api/static/dashboard.css` — `.decision-banner` (+ stance
+  variants), `.executive-summary-list`, `.hero-metric-band`, 4-column
+  gauge grid; removed the now-dead `.decision-brief-thesis` rule.
+- `tests/api/platform/test_dashboard_hosting.py` — new assertions for every
+  new element/function.
+- `docs/MILESTONES.md` — new "ATHENA UX Overhaul" tracked section (UX-1
+  through UX-9); this log.
+
+### Public APIs
+
+- None — pure frontend restructuring, no backend/API surface touched.
+
+### Validation and architecture
+
+- Full regression: **1016 passed** (unchanged — no backend files touched).
+- No Ruff/mypy scope (no `.py` files changed).
+- JS brace/paren balance checked against the pre-edit baseline (added code
+  perfectly balanced; the single pre-existing off-by-one paren count
+  unchanged). Live server restart + isolated-browser console-error check:
+  zero errors on load.
+- ADR-005 preserved: Executive Summary lines are either exact counts or
+  engine-authored explanation strings, never generated. No ADR required —
+  no domain object, contract, or backend behavior changed.
+
+### Risks and technical debt
+
+- I could not exercise the redesigned cockpit end-to-end myself (no owner
+  credentials) — needs an owner click-through.
+- Holding-period and strategy-name gaps are now documented (not silently
+  missing) — worth a decision on whether to scope small backend additions
+  for them in a future UX milestone.
+- No new technical debt beyond the above.
+
+### Remaining work
+
+- **Owner smoke test**: select a TRADE, WATCH, and NO_TRADE decision each;
+  confirm the band words (score/confidence quality word, risk hazard word)
+  look sensible against the raw numbers; confirm the Decision Banner's
+  color/border matches the stance; confirm the Executive Summary's 5 lines
+  read naturally and match what's shown elsewhere on the same brief;
+  confirm Expected R:R shows `—` for a non-TRADE decision with no trade plan.
+- Next in the UX Overhaul program: **UX-2** (score/confidence/risk
+  storytelling — star-rated contributors, "why ATHENA trusts this"
+  checklist, risk category summary, safety-gate checklist, "Why?" button).
+
+### Commit message
+
+```text
+feat(dashboard): add Hero Decision Card, Executive Summary, Decision Banner
+
+- Add qualityBand/riskBand: band composite score, confidence, and risk into words (Weak-Excellent / Low-Medium-High) alongside the existing raw numbers, colored via the existing gauge tone logic
+- Add a 4th cockpit gauge for Expected R:R, read directly from trade_plan.risk_reward
+- Replace the plain thesis paragraph with a colored Decision Banner (reusing the existing stance palette) and a 5-line Executive Summary composed entirely from already-persisted engine explanations, never generated
+- Research-confirm holding-period and strategy-name (from the owner's UX audit example) don't exist prospectively anywhere in the backend; omit rather than fabricate, flagged for a future milestone
+```
+
+---
+
 ## Decisions & Trace UI overhaul (READY FOR REVIEW)
 
 | | |

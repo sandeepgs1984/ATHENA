@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.31.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.32.1">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -555,18 +555,26 @@
                                     <div id="decision-brief-gauges" class="decision-brief-gauges" hidden>
                                         <div class="brief-gauge">
                                             <span class="brief-gauge-label">Composite score</span>
-                                            <div class="brief-gauge-value-row"><strong id="gauge-score-value">—</strong></div>
+                                            <strong id="gauge-score-band" class="hero-metric-band">—</strong>
+                                            <div class="brief-gauge-value-row"><span id="gauge-score-value">—</span><span class="hero-metric-suffix">/ 100</span></div>
                                             <div class="brief-gauge-bar"><div id="gauge-score-bar" class="brief-gauge-fill"></div></div>
                                         </div>
                                         <div class="brief-gauge">
                                             <span class="brief-gauge-label">Confidence</span>
-                                            <div class="brief-gauge-value-row"><strong id="gauge-confidence-value">—</strong></div>
+                                            <strong id="gauge-confidence-band" class="hero-metric-band">—</strong>
+                                            <div class="brief-gauge-value-row"><span id="gauge-confidence-value">—</span><span class="hero-metric-suffix">%</span></div>
                                             <div class="brief-gauge-bar"><div id="gauge-confidence-bar" class="brief-gauge-fill"></div></div>
                                         </div>
                                         <div class="brief-gauge">
                                             <span class="brief-gauge-label">Risk</span>
-                                            <div class="brief-gauge-value-row"><strong id="gauge-risk-value">—</strong></div>
+                                            <strong id="gauge-risk-band" class="hero-metric-band">—</strong>
+                                            <div class="brief-gauge-value-row"><span id="gauge-risk-value">—</span><span class="hero-metric-suffix">/ 100</span></div>
                                             <div class="brief-gauge-bar"><div id="gauge-risk-bar" class="brief-gauge-fill"></div></div>
+                                        </div>
+                                        <div class="brief-gauge">
+                                            <span class="brief-gauge-label">Expected R:R</span>
+                                            <strong id="hero-rr-value" class="hero-metric-band">—</strong>
+                                            <div class="brief-gauge-value-row"><span class="hero-metric-suffix">reward per ₹1 risked</span></div>
                                         </div>
                                     </div>
                                     <div class="decision-brief-tabstrip" id="decision-brief-tabstrip" hidden>
@@ -807,6 +815,6 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.31.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.32.1"></script>
 </body>
 </html>

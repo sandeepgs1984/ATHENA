@@ -223,4 +223,31 @@ implemented silently past those gates.
 
 ---
 
+### ATHENA UX Overhaul (owner audit, 2026-07-26)
+
+Owner-authored 40-point UX/UI audit: transform ATHENA from an "engineering
+dashboard" into a professional decision workstation (Bloomberg/TradingView/
+Linear/Stripe-grade). Current: 8.2/10 across visual quality, engineering
+quality, information architecture, decision UX, product polish. Target:
+9.8+/10. Grouped into themed milestones (AI-proposed grouping of the 40
+points, owner-confirmed order pending). One explicit exclusion: the
+"Place Order" quick action (owner confirmed 2026-07-26 — not required,
+conflicts with ATHENA's absolute no-order-placement prohibition anyway).
+Two milestones need a small, additive backend piece (no ADR, no domain
+change) rather than pure frontend re-skinning — flagged per-row below.
+
+| Milestone | Scope | Backend touch | Status |
+|---|---|---|---|
+| **UX-1** Hero Decision Card + Executive Summary + Decision Banner | Sticky cockpit becomes an "executive briefing": symbol/stance/score/confidence/risk/R:R at a glance, a 5-line plain-English summary composed from already-persisted engine explanations (never generated), and a one-line recommendation banner. Holding-period and strategy-name fields from the owner's example dropped — confirmed neither exists prospectively anywhere in the backend (research: 2026-07-26) | None | 🔄 Ready for review |
+| **UX-2** Score/Confidence/Risk storytelling | Meaning over decimals: risk/score bands (Weak→Excellent), star-rated score contributors, confidence "why ATHENA trusts this" checklist, risk as categorized summary, safety gates as a reassuring checklist, a "Why?" contribution breakdown | None | ⏳ Planned |
+| **UX-3** Trade Plan visual redesign + chart overlays | Bigger, cleaner entry/stop/target/R:R presentation; chart ATR/moving-average overlay | ATR/MA series not currently exposed for charting — needs owner go-ahead before scoping | ⏳ Planned |
+| **UX-4** Tab renaming + progressive disclosure + Market Context cards | Setup→Trade Plan, Context→Market Context, Response→Decision History; overview-first disclosure in Analysis; context chips become cards | None | ⏳ Planned |
+| **UX-5** Reasoning Trace redesign | Animated flow instead of pipeline boxes; each stage shows its own meaningful state (Bullish/Healthy/Strong) instead of generic "Completed"; completion/data-quality percentage per stage | None | ⏳ Planned |
+| **UX-6** Sidebar summary + Historical Validation + Decision Timeline narrative + Decision History polish | Sticky right-rail quick summary; aggregate win-rate/avg-return/avg-holding across analog matches; timeline as an evolving narrative; response tab shows outcome + accuracy | Win-rate/avg-return aggregation across analogs — small, additive | ⏳ Planned |
+| **UX-7** Typography, spacing, elevation, color-language, micro-animations, accessibility | Cross-cutting visual-polish pass, done last so it polishes the final structure once, not twice | None | ⏳ Planned |
+| **UX-8** Copy pass | Replace engineering vocabulary (persisted/provenance/fingerprint/etc.) throughout; better empty states; "ATHENA explains" narrative blocks | None | ⏳ Planned |
+| **UX-9** Quick actions + Portfolio Context + export/deep-link/share | Open Chart/Compare/News(→existing curated links)/Add Watchlist/Portfolio Impact quick actions (Place Order excluded); "you own N shares, avg price, gain %"; deep-link + share | Portfolio-position lookup by instrument — small, additive; "Compare"/"Portfolio Impact" need a precise scope definition first | ⏳ Planned |
+
+---
+
 *Status legend: a milestone is "In Progress" (🔄) when actively being designed or built, "Approved" (✅) only when the owner signs off. Never two milestones in flight.*
