@@ -6,6 +6,246 @@ status updated on approval.
 
 ---
 
+## UX-7 — Typography/spacing/elevation/color/animation/accessibility polish + CSS refactor (READY FOR REVIEW)
+
+| | |
+|---|---|
+| Completed | 2026-07-26 |
+| Objective | Seventh (and, per plan, deliberately last) milestone of the owner's UX audit: a cross-cutting visual-consistency and accessibility pass. Owner additionally asked to fix the underlying maintainability problem — a single 4,903-line `dashboard.css` — with a proper refactor, and for genuine design-token normalization, not just a cosmetic pass |
+| Scope | (1) Lossless split of `dashboard.css` into 14 `css/*.css` files by concern, loaded via an `@import` manifest; (2) ~85 new spacing/typography/elevation/color design tokens, substituted across all 14 files; (3) accessibility: global keyboard focus ring, dashboard-wide reduced-motion coverage, missing aria-labels, decorative-SVG aria-hidden, keyboard-operable decision cards |
+| Tests | Full suite **1018 passed**; new dashboard-hosting assertions (tokens + accessibility); the token substitution itself was additionally verified via a full resolved-value diff against the pre-refactor stylesheet (688 changed lines, 0 real mismatches) — a stronger check than the usual manual screenshot review, run because this pass touches nearly every CSS line in the app |
+| Coverage | Frontend-only change; no Python coverage impact; one test file touched, Ruff clean |
+| Status | **READY FOR REVIEW** — awaiting owner smoke test on the live dashboard |
+| Branch | feature/live-dashboard |
+
+### Scope completed
+
+- **CSS file split** (owner: "4900 lines of code in a single file... not maintainable"): the original `dashboard.css` was sliced at its own existing section-comment boundaries into 14 files under `css/`, grouped by concern —
+  `00-tokens.css` (root design tokens), `01-base.css` (reset + new global
+  a11y/motion rules), `02-auth.css` (unlock gate), `03-shell.css` (sidebar
+  nav + header + workspace), `04-shared-components.css` (cards, tables,
+  toast, progress bars), `05-portfolio.css`, `06-market-intelligence.css`,
+  `07-universe-modals.css`, `08-strategies-backtest.css`,
+  `09-decision-brief-shell.css` (cockpit header/banner/tabs),
+  `10-trade-plan-chart.css`, `11-analysis-breakdown.css`,
+  `12-decision-cards-dag.css` (Today's Decisions + Reasoning Trace),
+  `13-context-history.css`. `dashboard.css` itself is now a 15-line
+  `@import` manifest — the external contract (`/dashboard/dashboard.css`)
+  is unchanged, so `index.html` needed only its usual cache-bust bump.
+  Verified **byte-for-byte identical** to the original before any token
+  substitution was applied (concatenated the 14 files in import order and
+  diffed against a pre-split backup — empty diff). `StaticFiles` already
+  mounts the whole static directory, so no route changes were needed;
+  confirmed live via network-request inspection that all 14 files load
+  in the correct cascade order with zero console errors.
+- **Design tokens** (owner: "full design-token normalization"): rather
+  than inventing a smaller "ideal" scale and accepting unverifiable
+  visual drift, every token was named **after an exact value already in
+  use** — e.g. `--space-8: 8px` for the existing `8px`, `--text-0-85:
+  0.85rem` for the existing `0.85rem` — so every substitution is
+  value-for-value identical to what it replaced. This is still a real
+  maintainability win (one named source of truth instead of the same
+  literal scattered across 100+ call sites) without gambling on visual
+  regressions I can't see myself. Delivered:
+  - **Spacing scale** — 20 tokens (`--space-1` … `--space-32`) covering
+    every distinct padding/gap/margin px length found; substituted at
+    365 declaration sites. A handful of true one-offs (a single `36px`,
+    negative offsets, one `1.5rem`) were deliberately left as plain
+    literals rather than given a token no one else would reference.
+  - **Typography scale** — 38 tokens covering all 39 distinct font-size
+    values (`inherit` excluded, not a length). The two former bare-px
+    sizes (`9px`/`10px`) were folded into the rem scale as their exact
+    equivalent at a 16px root (`0.5625rem`/`0.625rem`) so every
+    font-size in the app now shares one unit — verified mathematically
+    equivalent, not just visually similar.
+  - **Elevation/shadow scale** — 14 tokens: `--shadow-xs` through
+    `--shadow-xl` for the 5 distinct panel/overlay depths, plus
+    `--ring-*`/`--glow-*` tokens standardizing the focus-ring and
+    colored-glow patterns that were each hand-rolled slightly
+    differently per component (17 of 21 `box-shadow` declarations
+    substituted; the 3 pulse-keyframe-internal shadows and `none` were
+    left as-is — they're intrinsic animation steps, not reusable values).
+  - **Color consolidation** — 5 raw hex literals that were exact
+    duplicates of an *existing* root variable (`#0b0f19`→`--bg-primary`,
+    `#0f1626`→`--bg-sidebar`, `#64748b`→`--text-muted`,
+    `#94a3b8`→`--text-secondary`, `#00f2fe`→`--accent`) now reference
+    that variable instead. 12 new semantic `--tone-*` tokens were added
+    for the shades that recur 2+ times with a clear, consistent
+    good/bad/warn/info role across components (e.g. `--tone-good-text:
+    #86efac`, the lighter/more-readable-on-dark green used for status
+    text, distinct from the more saturated `--success: #00e676` used for
+    solid fills — a deliberate existing distinction, not accidental
+    duplication, so it was preserved rather than collapsed). 12
+    genuinely one-off hex values (single occurrence, no reuse) were left
+    as literals with no new token — consolidating those would have meant
+    inventing abstraction for something used exactly once.
+- **Accessibility fixes** (real, verifiable gaps, not the token-scale
+  cosmetic work):
+  - Global `:focus-visible` ring (`css/01-base.css`) — before this, only
+    5 hand-picked `<input>`s anywhere in the app had *any* focus style;
+    every button, nav link, tab, and modal control had zero visible
+    keyboard-focus feedback. Verified live: tabbing to the pre-login
+    "Unlock" button (previously no indicator at all) now shows a clear
+    cyan ring.
+  - Dashboard-wide `prefers-reduced-motion: reduce` handling — previously
+    only the UX-5 Reasoning Trace flow-line animation was gated; now
+    every `animation`/`transition` on the page (the persistent pulse dot,
+    modal scale-in, toast slide-in, fade-ins) collapses to near-zero
+    duration for users who've asked for reduced motion, via the standard
+    "near-zero duration, !important" pattern.
+  - `aria-label` added to the 3 icon-only header buttons that previously
+    relied only on `title` (not reliably exposed as an accessible name
+    to screen readers): logout, force-refresh, and the ops backup-list
+    refresh button. Each icon inside also got `aria-hidden="true"`.
+  - `aria-hidden="true"` on `#dag-svg-lines`, the decorative Reasoning
+    Trace connector-line SVG overlay (no content of its own, purely
+    visual).
+  - "Today's Decisions" carousel cards (`renderDecisionCard` in
+    `dashboard.js`) were previously a plain `<div>` with a click
+    listener only — unreachable and unactivatable by keyboard. Added
+    `tabindex="0"`, `role="button"`, an `aria-label`, and a keydown
+    handler (Enter/Space triggers the same action as a click), without
+    disturbing the existing nested dismiss-button's own click handling.
+- **Deliberately deferred** (documented, not silently skipped): a
+  systemic `aria-hidden` sweep across every decorative `<i class="fa...">`
+  icon in the app (dozens of occurrences in `index.html` plus JS-rendered
+  markup). Font Awesome icon glyphs are Private-Use-Area codepoints that
+  modern screen readers don't expose by default, so this is a defensive
+  best practice rather than an active bug fix for a severe gap — lower
+  value relative to the effort of touching every icon in the codebase.
+  Flagging it here rather than doing a low-confidence blanket sweep I
+  can't fully verify.
+
+### Files created
+
+- `src/athena/api/static/css/00-tokens.css` through `13-context-history.css`
+  (14 files, sliced from the original `dashboard.css`).
+
+### Files modified
+
+- `src/athena/api/static/dashboard.css` — replaced with a 15-line
+  `@import` manifest (was the 4,903-line monolith).
+- `src/athena/api/static/css/00-tokens.css` — ~85 new design tokens added
+  to the existing `:root` block (spacing/typography/shadow/tone scales).
+- `src/athena/api/static/css/01-base.css` — global `:focus-visible` rule;
+  dashboard-wide `prefers-reduced-motion: reduce` rule.
+- All 14 `css/*.css` files — font-size/padding/gap/margin/box-shadow
+  literals substituted with the new tokens where a token exists; 5
+  hex-literal-duplicate-of-existing-var occurrences deduplicated.
+- `src/athena/api/static/index.html` — `aria-label`/`aria-hidden` on the
+  3 icon-only header buttons and the DAG SVG overlay; cache-bust bumped
+  9.38.0 → 9.39.0 (CSS split) → 9.40.0 (design tokens) → 9.41.0
+  (accessibility).
+- `src/athena/api/static/dashboard.js` — `renderDeckCard` gained
+  tabindex/role/aria-label/keydown for keyboard operability.
+- `tests/api/platform/test_dashboard_hosting.py` — added `_fetch_full_css`
+  helper (resolves and concatenates the `@import` chain so existing CSS
+  content assertions keep working against the split file), new
+  assertions for tokens and accessibility.
+- `docs/MILESTONES.md` — UX-6 → Approved, UX-7 → Ready for review.
+- This log.
+
+### Public APIs
+
+- None — pure frontend refactor. `GET /dashboard/dashboard.css` still
+  returns 200 (now an `@import` manifest instead of the full stylesheet);
+  each `css/*.css` module is independently servable under
+  `/dashboard/css/`.
+
+### Validation and architecture
+
+- Full regression: **1018 passed** (unchanged — no backend files touched).
+- Ruff clean on the one changed `.py` test file. mypy remains unavailable
+  in this environment (pre-existing, unrelated).
+- **CSS split**: verified byte-for-byte identical to the pre-split
+  monolith via direct concatenation + diff (empty diff) *before* any
+  token substitution was applied.
+- **Token substitution**: verified via a custom resolver that expands
+  every `var(--token)` back to its literal value (following fallback
+  chains) and diffs the result, line-by-line, against the pre-refactor
+  file for every one of the 688 changed lines. Result: 0 unexplained
+  mismatches; the only 2 differences are the intentional `9px`/`10px` →
+  rem conversions, confirmed mathematically exact at a 16px root. One
+  script-introduced defect was caught and fixed during this process (a
+  hex-literal `var()` fallback got doubly-wrapped into
+  `var(--bg-sidebar, var(--bg-sidebar))` — simplified to
+  `var(--bg-sidebar)`).
+- JS braces balanced (1520/1520); parens off by the same pre-existing +1
+  baseline quirk. CSS braces balanced across all 14 files (742/742).
+- Live server restarted on `9.41.0`; isolated-browser console check on
+  the pre-login page: zero errors, all 14 `css/*.css` imports load
+  (200 OK) in the correct cascade order, screenshot pixel-identical to
+  pre-refactor, and the new focus-visible ring visually confirmed live
+  on a keyboard tab to the "Unlock" button.
+- ADR-005 not implicated — no data/explainability change, pure
+  presentation-layer refactor. No ADR required: `@import`-based
+  multi-file CSS is a standard technique, doesn't touch ADR-004's
+  "no frontend framework" constraint (still hand-rolled CSS, just
+  organized across files instead of one), and the `StaticFiles` mount
+  already served the whole directory so no backend routing changed.
+
+### Risks and technical debt
+
+- `@import` adds one extra round-trip per file versus a single request,
+  but this is a localhost-only, single-user app (ADR: FastAPI
+  localhost-only) — the latency is unmeasurable in practice, confirmed
+  live (all 14 imports resolved instantly alongside the main page load).
+- The 12 genuinely one-off hex colors and the systemic decorative-icon
+  `aria-hidden` sweep were deliberately deferred (documented above) —
+  not technical debt so much as a scoped-out lower-priority tail.
+- I could not exercise the refreshed dashboard end-to-end myself (no
+  owner credentials) — the pre-login page and a resolved-value diff give
+  strong confidence of zero visual regression, but only an owner
+  click-through across the actual authenticated workstations (Portfolio,
+  Market Intelligence, Strategies, Decisions & Trace, Live Operations)
+  can fully confirm nothing shifted pixel-wise in practice.
+- No new technical debt beyond the above.
+
+### Remaining work
+
+- **Owner smoke test**: click through each workstation tab (Portfolio
+  Overview, Market Intelligence, Strategies & Scans, Decisions & Trace,
+  Live Operations) and confirm nothing looks different from before;
+  specifically check hover/focus states on buttons and the Today's
+  Decisions cards; try tabbing to a decision card and pressing
+  Enter/Space to confirm it opens the same as a click; if your OS/browser
+  has "reduce motion" enabled, confirm the pulse dot and modals no longer
+  animate.
+- This was planned as the **last** UX Overhaul milestone (typography/
+  spacing/color polish makes most sense once the structure it's polishing
+  is final). Remaining: **UX-8** (copy/vocabulary pass) and **UX-9**
+  (quick actions + Portfolio Context + export/deep-link/share — still has
+  open scope questions on "Compare"/"Portfolio Impact" from the original
+  audit).
+
+### Commit message
+
+```text
+refactor(dashboard): split monolithic CSS into 14 files, add design
+tokens, fix accessibility gaps (UX-7)
+
+- Split the 4,903-line dashboard.css into 14 css/*.css files by concern,
+  loaded via an @import manifest from a slim dashboard.css entry point —
+  verified byte-for-byte identical to the original before any value
+  changed. External URL contract and index.html are unaffected.
+- Add ~85 design tokens (20 spacing, 38 typography, 14 elevation/shadow,
+  13 color) named after every distinct value already in use, and
+  substitute them across all 14 files — zero visual drift, verified by
+  resolving every token back to its literal and diffing against the
+  pre-refactor file (688 changed lines, 0 unexplained mismatches).
+- Add a global :focus-visible keyboard focus ring and dashboard-wide
+  prefers-reduced-motion: reduce coverage (previously only 5 inputs and
+  1 animation were handled respectively).
+- Add aria-label to 3 icon-only header buttons, aria-hidden to the
+  decorative DAG connector SVG, and make "Today's Decisions" cards
+  keyboard-operable (tabindex/role/keydown) — previously click-only.
+- Update test_dashboard_hosting.py to resolve the CSS @import chain for
+  content assertions; add token + accessibility coverage. Bump
+  cache-bust to 9.41.0.
+```
+
+---
+
 ## UX-6 — Sidebar summary + Historical Validation + Decision Timeline narrative + Decision History polish (APPROVED)
 
 | | |

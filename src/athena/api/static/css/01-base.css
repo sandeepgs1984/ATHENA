@@ -1,0 +1,52 @@
+/* Global Reset */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    height: 100vh;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+}
+
+#app {
+    display: flex;
+    height: 100vh;
+    width: 100vw;
+}
+
+#app[hidden],
+.unlock-gate[hidden] {
+    display: none !important;
+}
+
+/* Global keyboard-focus ring (UX-7 accessibility) — before this, only a
+   handful of hand-picked <input>s had any focus style at all; every button,
+   link, tab, and card (once made focusable) had zero visible feedback for
+   keyboard users. :focus-visible (not :focus) so mouse clicks stay clean —
+   only keyboard/programmatic focus shows the ring. A handful of inputs
+   already set outline:none plus their own border/shadow treatment on
+   :focus; those keep winning on those specific elements by selector
+   specificity, which is fine — they already have an equivalent visible cue. */
+:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 2px;
+}
+
+/* Users who've asked for reduced motion get it dashboard-wide, not just for
+   the Reasoning Trace flow lines (UX-5) — the persistent pulse and the
+   modal scale-in are the two most perceptible remaining motion sources. */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+    }
+}
+

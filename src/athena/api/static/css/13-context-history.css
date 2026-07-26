@@ -1,0 +1,480 @@
+/* Market Context as cards, not just labels (owner UX audit #13) */
+.context-metric-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+    gap: var(--space-8);
+}
+
+.context-metric {
+    background: rgba(15, 23, 42, 0.35);
+    border: 1px solid var(--border-color);
+    border-radius: 7px;
+    padding: var(--space-7) var(--space-9);
+    min-width: 0;
+}
+
+.context-metric-label {
+    display: block;
+    color: var(--text-muted);
+    font-size: var(--text-0-6);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: var(--space-3);
+}
+
+.context-metric-value {
+    display: block;
+    font-size: var(--text-0-78);
+    font-weight: 650;
+    overflow-wrap: anywhere;
+}
+
+.context-chip {
+    display: inline-flex;
+    align-items: center;
+    font-size: var(--text-0-65);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    border-radius: 4px;
+    padding: var(--space-3) var(--space-8);
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    background: rgba(148, 163, 184, 0.12);
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.context-chip.tone-good {
+    color: var(--tone-good-text);
+    background: rgba(34, 197, 94, 0.15);
+    border-color: rgba(34, 197, 94, 0.35);
+}
+
+.context-chip.tone-bad {
+    color: var(--tone-bad-text);
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.35);
+}
+
+.context-chip.tone-warn,
+.context-chip.warn {
+    color: var(--tone-highlight);
+    background: rgba(245, 158, 11, 0.15);
+    border-color: rgba(245, 158, 11, 0.35);
+}
+
+.context-chip.tone-neutral {
+    color: var(--tone-info-text);
+    background: rgba(56, 189, 248, 0.12);
+    border-color: rgba(56, 189, 248, 0.32);
+}
+
+.context-chip.tone-unknown {
+    color: var(--text-muted);
+    background: rgba(100, 116, 139, 0.12);
+    border-color: rgba(100, 116, 139, 0.3);
+}
+
+.context-events-list,
+.context-links-list {
+    list-style: none;
+    margin: var(--space-8) 0 0;
+    padding: 0;
+    font-size: var(--text-0-78);
+    line-height: 1.5;
+}
+
+.context-events-list li,
+.context-links-list li {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-6);
+    border-top: 1px solid var(--border-color);
+    padding: var(--space-6) 0;
+}
+
+.context-events-list li:first-child,
+.context-links-list li:first-child {
+    border-top: none;
+}
+
+.context-events-list li i,
+.context-links-list li i {
+    color: var(--text-muted);
+    font-size: var(--text-0-7);
+}
+
+.context-links-list a {
+    color: var(--accent);
+    text-decoration: none;
+}
+
+.context-links-list a:hover {
+    text-decoration: underline;
+}
+
+.context-links-list small {
+    color: var(--text-muted);
+    margin-left: var(--space-4);
+}
+
+.decision-journal-panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-10);
+}
+
+.journal-status-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-8);
+    flex-wrap: wrap;
+}
+
+.journal-action-row {
+    display: flex;
+    gap: var(--space-8);
+    margin-top: var(--space-8);
+    flex-wrap: wrap;
+}
+
+.journal-notes-input {
+    width: 100%;
+    margin-top: var(--space-8);
+    padding: var(--space-8) var(--space-10);
+    background: rgba(2, 6, 23, 0.4);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: var(--text-0-8);
+    resize: vertical;
+}
+
+.outcome-form,
+.outcome-result {
+    background: rgba(15, 23, 42, 0.35);
+    border: 1px solid var(--border-color);
+    border-radius: 7px;
+    padding: var(--space-12) var(--space-14);
+}
+
+.outcome-form h5,
+.outcome-result h5 {
+    color: var(--text-primary);
+    font-size: var(--text-0-68);
+    letter-spacing: 0.05em;
+    margin: 0 0 var(--space-6);
+    text-transform: uppercase;
+}
+
+.outcome-form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: var(--space-10);
+    margin: var(--space-8) 0 var(--space-12);
+}
+
+.outcome-form-grid label {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    font-size: var(--text-0-68);
+    color: var(--text-muted);
+    text-transform: uppercase;
+}
+
+.outcome-form-grid input {
+    padding: var(--space-7) var(--space-9);
+    background: rgba(2, 6, 23, 0.4);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: var(--text-0-85);
+    text-transform: none;
+}
+
+.outcome-result-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+    gap: var(--space-10);
+    margin-bottom: var(--space-8);
+}
+
+.outcome-result-grid span {
+    display: block;
+    color: var(--text-muted);
+    font-size: var(--text-0-65);
+    text-transform: uppercase;
+    margin-bottom: var(--space-3);
+}
+
+.outcome-result-grid strong {
+    font-family: var(--font-mono);
+    font-size: var(--text-0-9);
+    color: var(--text-primary);
+}
+
+.tone-good-text {
+    color: var(--tone-good-text) !important;
+}
+
+.tone-warn-text {
+    color: var(--tone-warn-text) !important;
+}
+
+.tone-bad-text {
+    color: var(--tone-bad-text) !important;
+}
+
+.tone-neutral-text {
+    color: var(--text-primary) !important;
+}
+
+.tone-unknown-text {
+    color: var(--text-muted) !important;
+}
+
+.decision-analogs-panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-8);
+}
+
+.analog-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+}
+
+.analog-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-10);
+    flex-wrap: wrap;
+    width: 100%;
+    background: rgba(15, 23, 42, 0.35);
+    border: 1px solid var(--border-color);
+    border-radius: 7px;
+    padding: var(--space-9) var(--space-12);
+    color: inherit;
+    cursor: pointer;
+    text-align: left;
+    transition: border-color var(--transition-speed) ease;
+}
+
+.analog-row:hover {
+    border-color: rgba(56, 189, 248, 0.35);
+}
+
+.analog-row-main {
+    display: flex;
+    align-items: center;
+    gap: var(--space-8);
+}
+
+.analog-row-main small {
+    color: var(--text-muted);
+    font-size: var(--text-0-68);
+}
+
+.analog-row-chips {
+    display: flex;
+    align-items: center;
+    gap: var(--space-6);
+    flex-wrap: wrap;
+}
+
+/* Historical Validation summary (UX-6) — aggregate win-rate/avg-return/
+   avg-holding across the analog set's realized outcomes */
+.historical-validation {
+    background: rgba(15, 23, 42, 0.35);
+    border: 1px solid var(--border-color);
+    border-radius: 7px;
+    padding: var(--space-10) var(--space-12);
+}
+
+.historical-validation-title {
+    display: block;
+    color: var(--text-secondary);
+    font-size: var(--text-0-72);
+    font-weight: 700;
+    margin-bottom: var(--space-6);
+}
+
+.historical-validation-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(70px, 1fr));
+    gap: var(--space-8);
+    margin-bottom: var(--space-4);
+}
+
+.historical-validation-stats strong {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: var(--text-0-95);
+    color: var(--text-primary);
+}
+
+.historical-validation-stats span {
+    display: block;
+    color: var(--text-muted);
+    font-size: var(--text-0-62);
+    text-transform: uppercase;
+}
+
+.historical-validation.tone-good .historical-validation-stats strong:first-child {
+    color: var(--tone-good-text);
+}
+
+.historical-validation.tone-bad .historical-validation-stats strong:first-child {
+    color: var(--tone-bad-text);
+}
+
+.historical-validation.tone-warn .historical-validation-stats strong:first-child {
+    color: var(--tone-warn-text);
+}
+
+/* Decision History outcome accuracy (UX-6) — friendlier framing over the
+   same real pnl sign shown in the grid below, never a second judgment */
+.outcome-accuracy-badge {
+    display: flex;
+    align-items: center;
+    gap: var(--space-6);
+    font-size: var(--text-0-75);
+    font-weight: 700;
+    padding: var(--space-6) var(--space-10);
+    border-radius: 6px;
+    margin-bottom: var(--space-8);
+    width: fit-content;
+}
+
+.outcome-accuracy-badge.tone-good {
+    background: var(--success-glow);
+    color: var(--success);
+}
+
+.outcome-accuracy-badge.tone-bad {
+    background: var(--danger-glow);
+    color: var(--danger);
+}
+
+.outcome-accuracy-badge.tone-neutral {
+    background: rgba(148, 163, 184, 0.12);
+    color: var(--text-muted);
+}
+
+/* Decision Timeline narrative line (UX-6) — a factual stance/score delta
+   versus the prior entry, not just a bare timestamp + stance */
+.decision-timeline-narrative {
+    display: block;
+    color: var(--text-muted);
+    font-size: var(--text-0-6);
+    font-style: italic;
+    margin-top: var(--space-2);
+}
+
+/* Sticky Reasoning Trace quick summary (UX-6 sidebar summary) — pinned to
+   the top of the scrollable trace panel so symbol/stance/score/confidence/
+   risk stay visible while scrolling through DAG detail */
+.dag-quick-summary {
+    position: sticky;
+    top: -24px;
+    z-index: 3;
+    align-items: center;
+    gap: var(--space-10);
+    flex-wrap: wrap;
+    background: rgba(15, 22, 38, 0.92);
+    border: 1px solid var(--border-color);
+    border-radius: 7px;
+    padding: var(--space-8) var(--space-12);
+    margin: -24px -24px var(--space-12) -24px;
+    backdrop-filter: blur(4px);
+}
+
+.dag-quick-symbol {
+    font-family: var(--font-mono);
+    font-weight: 750;
+    color: var(--text-primary);
+    font-size: var(--text-0-85);
+}
+
+.dag-quick-metric {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    font-size: var(--text-0-66);
+    color: var(--text-muted);
+    text-transform: uppercase;
+}
+
+.dag-quick-metric strong {
+    font-family: var(--font-mono);
+    color: var(--text-primary);
+    text-transform: none;
+    font-size: var(--text-0-72);
+}
+
+.decision-counterfactual-panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-8);
+}
+
+.counterfactual-cleared {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+}
+
+.counterfactual-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+}
+
+.counterfactual-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-10);
+    flex-wrap: wrap;
+    background: rgba(15, 23, 42, 0.35);
+    border: 1px solid var(--border-color);
+    border-radius: 7px;
+    padding: var(--space-8) var(--space-12);
+}
+
+.counterfactual-row-label {
+    font-size: var(--text-0-78);
+    font-weight: 600;
+    color: var(--text-primary);
+    min-width: 110px;
+}
+
+.counterfactual-row-values {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-6);
+    font-variant-numeric: tabular-nums;
+}
+
+.counterfactual-row-values strong {
+    font-size: var(--text-0-85);
+}
+
+.counterfactual-row-values small {
+    color: var(--text-muted);
+    font-size: var(--text-0-68);
+}
+
+.counterfactual-summary {
+    margin: var(--space-2) 0 0;
+    font-size: var(--text-0-78);
+    color: var(--text-muted);
+}
+
+
+

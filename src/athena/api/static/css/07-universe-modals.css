@@ -1,0 +1,378 @@
+/* Universe Inspector Styles */
+.universe-inspector-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-16);
+}
+
+/* Flex search bars — avoid absolute icons (they overlapped decision cards) */
+.search-bar-container,
+.search-input-wrapper {
+    display: flex;
+    align-items: center;
+    gap: var(--space-10);
+    width: 100%;
+    flex-shrink: 0;
+    position: relative;
+    isolation: isolate;
+    background-color: rgba(15, 22, 38, 0.4);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 0 var(--space-12);
+    box-sizing: border-box;
+}
+
+.search-bar-container .search-icon,
+.search-input-wrapper .search-icon {
+    position: static;
+    transform: none;
+    flex-shrink: 0;
+    color: var(--text-muted);
+    font-size: var(--text-0-9);
+    pointer-events: none;
+    line-height: 1;
+}
+
+.search-input-wrapper .search-input,
+.search-bar-container input,
+#briefing-search,
+#universe-search,
+#candidate-search-input {
+    flex: 1 1 auto;
+    width: 100%;
+    min-width: 0;
+    background: transparent !important;
+    border: none;
+    color: var(--text-primary);
+    padding: var(--space-12) var(--space-4);
+    font-size: var(--text-0-85);
+    font-family: var(--font-sans);
+    box-sizing: border-box;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.search-input-wrapper .search-input:focus,
+.search-bar-container input:focus,
+#briefing-search:focus,
+#universe-search:focus,
+#candidate-search-input:focus {
+    outline: none;
+    background: transparent !important;
+}
+
+.search-bar-container:focus-within,
+.search-input-wrapper:focus-within {
+    border-color: var(--accent);
+    box-shadow: var(--glow-accent-md);
+}
+
+.universe-table-wrapper {
+    flex-grow: 1;
+    overflow-y: auto;
+}
+
+.universe-table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+}
+
+.universe-table th {
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-muted);
+    font-size: var(--text-0-75);
+    font-weight: 700;
+    padding: var(--space-10) var(--space-12);
+    text-transform: uppercase;
+}
+
+.universe-table td {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+    font-size: var(--text-0-85);
+    padding: var(--space-12);
+    vertical-align: middle;
+}
+
+.universe-table tr:hover {
+    background-color: rgba(255, 255, 255, 0.01);
+}
+
+.symbol-name-col {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+}
+
+.symbol-status-badge {
+    font-size: var(--text-0-75);
+    font-weight: 700;
+    padding: var(--space-3) var(--space-8);
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-4);
+}
+
+.symbol-status-badge.included {
+    background-color: rgba(0, 230, 118, 0.1);
+    color: var(--success);
+}
+
+.symbol-status-badge.excluded {
+    background-color: rgba(255, 78, 80, 0.1);
+    color: var(--danger);
+}
+
+.inspect-btn {
+    background: none;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    color: var(--accent);
+    cursor: pointer;
+    font-size: var(--text-0-75);
+    font-weight: 600;
+    padding: var(--space-5) var(--space-10);
+    transition: all var(--transition-speed) ease;
+}
+
+.inspect-btn:hover {
+    border-color: var(--accent);
+    background-color: var(--accent-glow);
+}
+
+/* Modal Overlay & Container — inactive modals must never enter layout */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: rgba(7, 10, 19, 0.75);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    z-index: 2000;
+    display: none !important;
+    visibility: hidden;
+    justify-content: center;
+    align-items: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--transition-speed) ease;
+}
+
+/* Kite morning gate (Live Entry M-E3) */
+.kite-gate[hidden] {
+    display: none !important;
+}
+
+.kite-gate {
+    position: fixed;
+    inset: 0;
+    z-index: 11000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-24);
+    background: rgba(5, 9, 17, 0.88);
+    backdrop-filter: blur(16px);
+}
+
+.kite-gate-panel {
+    width: min(520px, 100%);
+    max-height: calc(100vh - 48px);
+    overflow-y: auto;
+    padding: var(--space-32);
+    border: 1px solid rgba(0, 242, 254, 0.24);
+    border-radius: 14px;
+    background: var(--bg-sidebar);
+    box-shadow: var(--shadow-xl);
+}
+
+.kite-gate-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-12);
+    margin-bottom: var(--space-18);
+}
+
+.kite-gate-brand {
+    display: flex;
+    align-items: center;
+    gap: var(--space-9);
+    margin-bottom: 0;
+    color: var(--accent);
+    font-size: var(--text-0-72);
+    font-weight: 700;
+    letter-spacing: 0.1em;
+}
+
+.kite-gate-panel h2 {
+    margin-bottom: var(--space-8);
+    font-size: var(--text-1-35);
+}
+
+.kite-gate-detail {
+    margin-bottom: var(--space-22);
+    color: var(--text-secondary);
+    font-size: var(--text-0-88);
+    line-height: 1.5;
+}
+
+.kite-gate-steps {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-12);
+}
+
+.kite-gate-step {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-12);
+    margin-top: var(--space-4);
+}
+
+.kite-step-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    flex: 0 0 26px;
+    border-radius: 50%;
+    background: var(--accent-glow);
+    color: var(--accent);
+    font-family: var(--font-mono);
+    font-size: var(--text-0-75);
+    font-weight: 700;
+}
+
+.kite-gate-step strong {
+    font-size: var(--text-0-88);
+}
+
+.kite-gate-step p {
+    margin-top: var(--space-3);
+    color: var(--text-muted);
+    font-size: var(--text-0-76);
+    line-height: 1.4;
+}
+
+.kite-token-input {
+    width: 100%;
+    resize: vertical;
+    min-height: 74px;
+    padding: var(--space-11) var(--space-12);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: var(--text-0-76);
+    line-height: 1.4;
+}
+
+.kite-token-input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: var(--ring-accent);
+}
+
+.kite-gate-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-10);
+}
+
+.kite-primary-btn {
+    justify-content: center;
+    gap: var(--space-8);
+    border-color: var(--accent);
+    background: var(--accent);
+    color: #071018;
+    font-weight: 700;
+}
+
+.kite-primary-btn:hover {
+    filter: brightness(1.08);
+}
+
+.kite-danger-btn {
+    border-color: rgba(255, 78, 80, 0.35);
+    color: var(--danger);
+}
+
+.kite-danger-btn:hover {
+    background: var(--danger-glow);
+    border-color: rgba(255, 78, 80, 0.5);
+}
+
+.kite-gate-error {
+    color: var(--danger);
+    font-size: var(--text-0-8);
+    line-height: 1.4;
+}
+
+.kite-gate button:disabled {
+    opacity: 0.55;
+    cursor: wait;
+}
+
+.modal-overlay.active {
+    display: flex !important;
+    visibility: visible;
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.modal-container {
+    background-color: var(--bg-sidebar);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    box-shadow: var(--shadow-md);
+    display: flex;
+    flex-direction: column;
+    max-height: 80vh;
+    max-width: 600px;
+    width: 90%;
+    transform: scale(0.95);
+    transition: transform var(--transition-speed) cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.modal-overlay.active .modal-container {
+    transform: scale(1);
+}
+
+.modal-header {
+    align-items: center;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    padding: var(--space-16) var(--space-24);
+}
+
+.modal-header h3 {
+    font-size: var(--text-1-1);
+    font-weight: 600;
+    color: var(--accent);
+}
+
+.modal-close-btn {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: var(--text-1-6);
+    line-height: 1;
+    transition: color var(--transition-speed) ease;
+}
+
+.modal-close-btn:hover {
+    color: var(--danger);
+}
+
+.modal-body {
+    overflow-y: auto;
+    padding: var(--space-24);
+}
+

@@ -4664,6 +4664,11 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         card.className = "deck-card";
         card.style.setProperty("--stance-color", decisionCardStanceColor(type));
         card.setAttribute("data-id", d.metadata.decision_id);
+        // Keyboard-operable (UX-7 accessibility) — this was a plain click-only
+        // div with no way for a keyboard user to reach or activate it.
+        card.setAttribute("tabindex", "0");
+        card.setAttribute("role", "button");
+        card.setAttribute("aria-label", `View ${symbol} decision`);
         card.innerHTML = `
             <div class="deck-top">
                 <span class="deck-sym" title="${escapeDecisionHtml(rawSym)}">${escapeDecisionHtml(symbol)}</span>
@@ -4682,6 +4687,13 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
 
         card.addEventListener("click", () => {
             selectBriefing(d.metadata.decision_id);
+        });
+        card.addEventListener("keydown", event => {
+            if (event.target !== card) return; // let the dismiss button handle its own keys
+            if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                selectBriefing(d.metadata.decision_id);
+            }
         });
         card.querySelector(".deck-dismiss-btn")?.addEventListener("click", event => {
             event.stopPropagation();

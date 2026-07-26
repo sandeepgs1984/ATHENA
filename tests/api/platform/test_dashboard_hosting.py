@@ -3,7 +3,30 @@
 
 from __future__ import annotations
 
+import re
+
 from fastapi.testclient import TestClient
+
+_IMPORT_RE = re.compile(r'@import\s+url\("([^"]+)"\)')
+
+
+def _fetch_full_css(client: TestClient) -> str:
+    """dashboard.css (UX-7 refactor) is a slim entry point that @imports the
+    real rules from css/*.css, split by concern for maintainability. Tests
+    that assert on CSS content need the fully assembled stylesheet, so this
+    resolves and concatenates every @import in the same cascade order the
+    browser would load them in — never re-derive this by re-reading
+    dashboard.css directly, it no longer carries the rules itself."""
+    manifest = client.get("/dashboard/dashboard.css")
+    assert manifest.status_code == 200
+    imports = _IMPORT_RE.findall(manifest.text)
+    assert imports, "dashboard.css should @import at least one css/*.css module"
+    parts = []
+    for href in imports:
+        resp = client.get(f"/dashboard/{href}")
+        assert resp.status_code == 200, f"failed to load imported stylesheet {href}"
+        parts.append(resp.text)
+    return "\n".join(parts)
 
 
 def test_dashboard_static_hosting_and_fallback(client: TestClient) -> None:
@@ -14,10 +37,12 @@ def test_dashboard_static_hosting_and_fallback(client: TestClient) -> None:
     assert "ATHENA" in resp_index.text
     assert "<aside" in resp_index.text
 
-    # 2. Test CSS loading
+    # 2. Test CSS loading — dashboard.css (UX-7) is a slim @import manifest;
+    # the real rules live in css/*.css, each independently servable
     resp_css = client.get("/dashboard/dashboard.css")
     assert resp_css.status_code == 200
-    assert "background-color" in resp_css.text
+    assert "@import" in resp_css.text
+    assert "background-color" in _fetch_full_css(client)
 
     # 3. Test JS loading
     resp_js = client.get("/dashboard/dashboard.js")
@@ -34,7 +59,7 @@ def test_dashboard_static_hosting_and_fallback(client: TestClient) -> None:
 def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None:
     """Inactive modals must not participate in tab document flow (P9 console hotfix)."""
     html = client.get("/dashboard/").text
-    css = client.get("/dashboard/dashboard.css").text
+    css = _fetch_full_css(client)
     js = client.get("/dashboard/dashboard.js").text
 
     # Modals are present once each and marked inert at rest
@@ -273,6 +298,42 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".dag-node-status.meaning-neutral" in css
     assert "prefers-reduced-motion" in css
     assert "dag-flow-dash" in css
+
+    # UX-7: design tokens + accessibility polish pass. Spacing/typography/
+    # elevation/color tokens were added by naming every distinct value
+    # already in use (verified separately via a resolved-value diff against
+    # the pre-refactor stylesheet — zero visual drift) so this only checks
+    # the tokens and their consuming rules exist, not exhaustive coverage.
+    assert "--space-8" in css
+    assert "--space-24" in css
+    assert "--text-0-85" in css
+    assert "--text-0-5625" in css  # former bare 9px, folded into the rem scale
+    assert "--shadow-md" in css
+    assert "--ring-accent" in css
+    assert "--glow-accent-md" in css
+    assert "--tone-good-text" in css
+    assert "--tone-bad-solid" in css
+    assert "--tone-cyan-dot" in css
+    assert "var(--space-8)" in css
+    assert "var(--text-0-85)" in css
+    assert "var(--shadow-md)" in css or "var(--shadow-lg)" in css
+    assert "var(--tone-good-text)" in css
+
+    # Accessibility: global keyboard focus ring + reduced-motion coverage
+    # dashboard-wide (previously only the Reasoning Trace flow lines were
+    # gated); aria-labels on icon-only header buttons that only had a
+    # `title` (not reliably exposed as an accessible name); aria-hidden on
+    # the decorative DAG connector-line SVG overlay; keyboard-operable
+    # "Today's Decisions" cards (previously click-only, unreachable by tab).
+    assert ":focus-visible" in css
+    assert "prefers-reduced-motion: reduce" in css
+    assert 'id="logout-btn"' in html
+    assert 'aria-label="Log out"' in html
+    assert 'aria-label="Force refresh"' in html
+    assert 'aria-label="Refresh backup list"' in html
+    assert 'id="dag-svg-lines" class="dag-svg-overlay" aria-hidden="true"' in html
+    assert 'card.setAttribute("tabindex", "0")' in js
+    assert 'card.setAttribute("role", "button")' in js
 
     # Fix pass: the DAG stage-detail panel's "Full detail lives in the X
     # tab" text was reconstructing the tab name via a raw capitalization

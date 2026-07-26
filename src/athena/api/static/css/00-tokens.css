@@ -1,0 +1,148 @@
+/* ATHENA Dashboard Stylesheet — Premium Dark Workstation (P9.1) */
+
+:root {
+    --bg-primary: #0b0f19;
+    --bg-sidebar: #0f1626;
+    --bg-card: rgba(22, 33, 54, 0.4);
+    --border-color: rgba(255, 255, 255, 0.08);
+    --border-hover: rgba(0, 242, 254, 0.3);
+    
+    --text-primary: #f1f5f9;
+    --text-secondary: #94a3b8;
+    --text-muted: #64748b;
+    
+    --accent: #00f2fe;
+    --accent-glow: rgba(0, 242, 254, 0.15);
+    
+    --success: #00e676;
+    --success-glow: rgba(0, 230, 118, 0.1);
+    
+    --warning: #ffd000;
+    --warning-glow: rgba(255, 208, 0, 0.1);
+    
+    --danger: #ff4e50;
+    --danger-glow: rgba(255, 78, 80, 0.1);
+    
+    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-mono: 'JetBrains Mono', "SFMono-Regular", Consolas, monospace;
+    
+    --transition-speed: 0.25s;
+    --glass-blur: blur(12px);
+
+    /* --- Design tokens (UX-7) ---------------------------------------
+       Added by naming every distinct value already in use across the
+       dashboard — not by inventing a smaller "ideal" scale — so every
+       substitution below is value-for-value identical to what it
+       replaces (verified via resolved-CSS diff, zero visual drift).
+       Centralizing them here is the actual maintainability win: change
+       one line instead of hunting N scattered literals. True one-off
+       values (used once, no semantic reuse) are deliberately left as
+       plain literals at their call site rather than given a token no
+       one else would ever reference. */
+
+    /* Spacing scale — every distinct padding/gap/margin px length in
+       use, named by its own value so the token is self-documenting. */
+    --space-1: 1px;
+    --space-2: 2px;
+    --space-3: 3px;
+    --space-4: 4px;
+    --space-5: 5px;
+    --space-6: 6px;
+    --space-7: 7px;
+    --space-8: 8px;
+    --space-9: 9px;
+    --space-10: 10px;
+    --space-11: 11px;
+    --space-12: 12px;
+    --space-14: 14px;
+    --space-16: 16px;
+    --space-18: 18px;
+    --space-20: 20px;
+    --space-22: 22px;
+    --space-24: 24px;
+    --space-30: 30px;
+    --space-32: 32px;
+
+    /* Typography scale — every distinct font-size in use, named by its
+       own rem value. The two former bare-px sizes (9px/10px) are folded
+       in as their exact rem equivalent at a 16px root (0.5625rem/
+       0.625rem) so every font-size in the file shares one unit. */
+    --text-0-55: 0.55rem;
+    --text-0-57: 0.57rem;
+    --text-0-58: 0.58rem;
+    --text-0-59: 0.59rem;
+    --text-0-5625: 0.5625rem; /* was bare 9px */
+    --text-0-6: 0.6rem;
+    --text-0-61: 0.61rem;
+    --text-0-62: 0.62rem;
+    --text-0-625: 0.625rem; /* was bare 10px */
+    --text-0-64: 0.64rem;
+    --text-0-65: 0.65rem;
+    --text-0-66: 0.66rem;
+    --text-0-67: 0.67rem;
+    --text-0-68: 0.68rem;
+    --text-0-7: 0.7rem;
+    --text-0-72: 0.72rem;
+    --text-0-74: 0.74rem;
+    --text-0-75: 0.75rem;
+    --text-0-76: 0.76rem;
+    --text-0-78: 0.78rem;
+    --text-0-8: 0.8rem;
+    --text-0-82: 0.82rem;
+    --text-0-85: 0.85rem;
+    --text-0-88: 0.88rem;
+    --text-0-9: 0.9rem;
+    --text-0-95: 0.95rem;
+    --text-1: 1rem;
+    --text-1-05: 1.05rem;
+    --text-1-1: 1.1rem;
+    --text-1-15: 1.15rem;
+    --text-1-2: 1.2rem;
+    --text-1-25: 1.25rem;
+    --text-1-35: 1.35rem;
+    --text-1-4: 1.4rem;
+    --text-1-48: 1.48rem;
+    --text-1-6: 1.6rem;
+    --text-1-8: 1.8rem;
+    --text-2-2: 2.2rem;
+
+    /* Elevation/shadow scale — panel/overlay depth (xs→xl, small to
+       large), plus the recurring focus-ring and colored-glow patterns
+       that were each being hand-rolled slightly differently per
+       component. */
+    --shadow-xs: 0 4px 10px rgba(0, 0, 0, 0.3);
+    --shadow-sm: 0 10px 25px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 20px 50px rgba(0, 0, 0, 0.5);
+    --shadow-lg: 0 24px 64px rgba(0, 0, 0, 0.45);
+    --shadow-xl: 0 30px 80px rgba(0, 0, 0, 0.55);
+    --ring-accent: 0 0 0 3px var(--accent-glow);
+    --ring-hairline: 0 0 0 1px rgba(255, 255, 255, 0.15);
+    --ring-cyan: 0 0 0 3px rgba(34, 211, 238, 0.12);
+    --ring-danger: 0 0 0 1px rgba(244, 63, 94, 0.25);
+    --glow-accent-sm: 0 0 5px var(--accent-glow);
+    --glow-accent-md: 0 0 8px var(--accent-glow);
+    --glow-accent-lg: 0 0 10px var(--accent-glow);
+    --glow-success: 0 0 8px var(--success);
+    --glow-success-soft: 0 0 8px var(--success-glow);
+
+    /* Tone palette extensions — the softer/lighter shades used as
+       readable text-on-dark-background for the same good/bad/warn/info
+       meanings --success/--danger/--warning/--accent already carry as
+       solid fills, plus the slightly more saturated "strong" variants
+       used for chart strokes/borders and solid icon fills. Named by
+       role, not by raw color, so the mapping to meaning stays explicit. */
+    --tone-good-text: #86efac;
+    --tone-warn-text: #fdba74;
+    --tone-bad-text: #fca5a5;
+    --tone-info-text: #7dd3fc;
+    --tone-neutral-text: #cbd5e1;
+    --tone-good-strong: #4ade80;
+    --tone-bad-strong: #f87171;
+    --tone-purple-strong: #c4b5fd;
+    --tone-good-solid: #22c55e;
+    --tone-bad-solid: #ef4444;
+    --tone-info-solid: #38bdf8;
+    --tone-highlight: #fcd34d;
+    --tone-cyan-dot: #22d3ee;
+}
+

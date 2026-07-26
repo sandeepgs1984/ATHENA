@@ -1,0 +1,478 @@
+/* Market Workstation Layout */
+.market-workstation {
+    display: grid;
+    grid-template-columns: 1fr 1.2fr 1fr;
+    gap: var(--space-24);
+    height: calc(100vh - 120px);
+    overflow: hidden;
+    padding: var(--space-8) 0;
+}
+
+@media (max-width: 1200px) {
+    .market-workstation {
+        grid-template-columns: 1fr 1fr;
+        overflow-y: auto;
+        height: auto;
+    }
+}
+@media (max-width: 768px) {
+    .market-workstation {
+        grid-template-columns: 1fr;
+    }
+}
+
+.workstation-column {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+.workstation-column .card {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.workstation-column .card-body {
+    flex-grow: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-20);
+    padding: var(--space-24);
+}
+
+/* Validation and the 500-symbol editor need independent scroll regions. */
+.market-validation-column {
+    display: grid;
+    grid-template-rows: minmax(240px, 0.85fr) minmax(280px, 1.15fr);
+    gap: var(--space-16);
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+}
+
+.market-validation-column .card {
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.validation-card .card-body,
+.candidate-card-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.validation-card .card-body {
+    gap: var(--space-12);
+    padding: var(--space-18);
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-gutter: stable;
+}
+
+.validation-results-scroll {
+    flex: 0 1 auto;
+    max-height: none;
+    min-height: 72px;
+    overflow: visible;
+}
+
+.qualified-section {
+    flex: 0 0 auto;
+    min-height: 0;
+}
+
+.candidate-card-header {
+    flex-shrink: 0;
+}
+
+.candidate-card-header > div {
+    min-width: 0;
+}
+
+.candidate-card-header .metric-desc {
+    margin: var(--space-3) 0 0;
+    font-size: var(--text-0-75);
+}
+
+.candidate-card-body {
+    overflow: hidden !important;
+    gap: var(--space-10) !important;
+    padding: var(--space-16) !important;
+}
+
+.candidate-add-row {
+    display: flex;
+    gap: var(--space-8);
+    flex-wrap: wrap;
+    flex-shrink: 0;
+}
+
+.candidate-add-row input {
+    flex: 1 1 130px;
+    min-width: 0;
+    background: rgba(15, 22, 38, 0.55);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-primary);
+    padding: var(--space-10) var(--space-12);
+    font-size: var(--text-0-85);
+    font-family: var(--font-sans);
+    box-sizing: border-box;
+}
+
+.candidate-add-row input::placeholder,
+#candidate-search-input::placeholder,
+#universe-search::placeholder {
+    color: var(--text-muted);
+    opacity: 1;
+}
+
+.candidate-add-row input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: var(--glow-accent-md);
+}
+
+.candidate-search {
+    flex-shrink: 0;
+}
+
+.candidate-empty {
+    display: none;
+    padding: var(--space-8) 0;
+    font-size: var(--text-0-85);
+}
+
+.candidate-list {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    scrollbar-gutter: stable;
+}
+
+@media (max-width: 1200px) {
+    .market-validation-column {
+        grid-template-rows: minmax(280px, 45vh) minmax(360px, 55vh);
+        height: auto;
+        max-height: none;
+    }
+}
+
+/* Regime Indicators */
+.regime-indicators {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-16);
+}
+
+.regime-field {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    padding-bottom: var(--space-12);
+}
+
+.regime-field-label {
+    color: var(--text-secondary);
+    font-size: var(--text-0-9);
+    font-weight: 500;
+}
+
+.regime-badge {
+    padding: var(--space-6) var(--space-14);
+    border-radius: 100px;
+    font-size: var(--text-0-8);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.regime-badge.bull {
+    background-color: var(--success-glow);
+    border: 1px solid rgba(0, 230, 118, 0.2);
+    color: var(--success);
+    text-shadow: 0 0 5px var(--success-glow);
+}
+
+.regime-badge.bear {
+    background-color: var(--danger-glow);
+    border: 1px solid rgba(255, 78, 80, 0.2);
+    color: var(--danger);
+    text-shadow: 0 0 5px var(--danger-glow);
+}
+
+.regime-badge.neutral {
+    background-color: var(--warning-glow);
+    border: 1px solid rgba(255, 208, 0, 0.2);
+    color: var(--warning);
+    text-shadow: 0 0 5px var(--warning-glow);
+}
+
+/* Market Health Score */
+.market-health-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-8);
+}
+
+.health-gauge-container {
+    display: flex;
+    align-items: center;
+    gap: var(--space-16);
+}
+
+.health-bar-bg {
+    flex-grow: 1;
+    height: 10px;
+    background-color: rgba(255, 255, 255, 0.05);
+    border-radius: 100px;
+    overflow: hidden;
+}
+
+.health-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--success));
+    border-radius: 100px;
+    transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: var(--glow-success-soft);
+}
+
+.health-score-value {
+    font-weight: 700;
+    color: var(--success);
+    font-size: var(--text-0-95);
+    font-family: var(--font-mono);
+}
+
+/* Regime Explanation */
+.regime-explanation {
+    margin-top: var(--space-10);
+    background-color: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: var(--space-16);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-8);
+}
+
+.regime-explanation h4 {
+    font-size: var(--text-0-85);
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.regime-explanation p {
+    font-size: var(--text-0-85);
+    line-height: 1.5;
+    color: var(--text-primary);
+}
+
+/* Calendar styling */
+.calendar-header-strip {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    padding-bottom: var(--space-12);
+}
+
+.calendar-header-strip h4 {
+    font-size: var(--text-1-05);
+    font-weight: 600;
+}
+
+.calendar-legend {
+    display: flex;
+    gap: var(--space-12);
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    font-size: var(--text-0-75);
+    color: var(--text-secondary);
+}
+
+.legend-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.legend-dot.holiday { background-color: var(--danger); }
+.legend-dot.special { background-color: var(--warning); }
+.legend-dot.expiry { background-color: var(--accent); }
+
+.calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: var(--space-8);
+    background-color: rgba(255, 255, 255, 0.01);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: var(--space-12);
+}
+
+.calendar-day-header {
+    text-align: center;
+    font-size: var(--text-0-75);
+    font-weight: 700;
+    color: var(--text-muted);
+    padding: var(--space-4) 0;
+    text-transform: uppercase;
+}
+
+.calendar-cell {
+    aspect-ratio: 1.2;
+    background-color: rgba(255, 255, 255, 0.01);
+    border: 1px solid rgba(255, 255, 255, 0.03);
+    border-radius: 4px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: var(--space-6);
+    position: relative;
+    font-size: var(--text-0-85);
+    font-family: var(--font-mono);
+    color: var(--text-secondary);
+    transition: all var(--transition-speed) ease;
+}
+
+.calendar-cell:hover:not(.empty) {
+    border-color: var(--border-hover);
+    background-color: rgba(255, 255, 255, 0.03);
+}
+
+.calendar-cell.empty {
+    opacity: 0.15;
+    border: none;
+    background: none;
+}
+
+.calendar-cell.weekend {
+    background-color: rgba(255, 255, 255, 0.005);
+    color: var(--text-muted);
+}
+
+.calendar-cell.holiday {
+    border-color: rgba(255, 78, 80, 0.3);
+    background-color: rgba(255, 78, 80, 0.05);
+    color: var(--danger);
+}
+
+.calendar-cell.special {
+    border-color: rgba(255, 208, 0, 0.3);
+    background-color: rgba(255, 208, 0, 0.05);
+    color: var(--warning);
+}
+
+.calendar-cell.expiry {
+    border-color: rgba(0, 242, 254, 0.4);
+    background-color: rgba(0, 242, 254, 0.05);
+    color: var(--accent);
+}
+
+.calendar-cell.today-cell {
+    border-color: var(--accent);
+    box-shadow: var(--glow-accent-lg);
+    font-weight: 700;
+}
+
+.calendar-cell-indicators {
+    display: flex;
+    gap: var(--space-3);
+    justify-content: flex-end;
+}
+
+.cell-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+}
+
+.cell-dot.holiday { background-color: var(--danger); }
+.cell-dot.special { background-color: var(--warning); }
+.cell-dot.expiry { background-color: var(--accent); }
+
+/* Events list */
+.upcoming-events-list {
+    margin-top: var(--space-10);
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-12);
+}
+
+.upcoming-events-list h4 {
+    font-size: var(--text-0-85);
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.events-timeline {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-10);
+    overflow-y: auto;
+    max-height: 180px;
+}
+
+.event-item {
+    background-color: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: var(--space-10) var(--space-14);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-12);
+}
+
+.event-info {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+
+.event-title {
+    font-size: var(--text-0-85);
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.event-meta {
+    font-size: var(--text-0-75);
+    color: var(--text-muted);
+}
+
+.event-tag {
+    font-size: var(--text-0-7);
+    font-weight: 700;
+    text-transform: uppercase;
+    padding: var(--space-3) var(--space-8);
+    border-radius: 4px;
+}
+
+.event-tag.macro { background-color: rgba(0, 242, 254, 0.1); color: var(--accent); }
+.event-tag.expiry-tag { background-color: rgba(255, 208, 0, 0.1); color: var(--warning); }
+.event-tag.holiday-tag { background-color: rgba(255, 78, 80, 0.1); color: var(--danger); }
+
