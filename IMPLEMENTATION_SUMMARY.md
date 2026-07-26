@@ -6,7 +6,7 @@ status updated on approval.
 
 ---
 
-## UX-7 — Typography/spacing/elevation/color/animation/accessibility polish + CSS refactor (READY FOR REVIEW)
+## UX-7 — Typography/spacing/elevation/color/animation/accessibility polish + CSS refactor (APPROVED)
 
 | | |
 |---|---|
@@ -15,7 +15,7 @@ status updated on approval.
 | Scope | (1) Lossless split of `dashboard.css` into 14 `css/*.css` files by concern, loaded via an `@import` manifest; (2) ~85 new spacing/typography/elevation/color design tokens, substituted across all 14 files; (3) accessibility: global keyboard focus ring, dashboard-wide reduced-motion coverage, missing aria-labels, decorative-SVG aria-hidden, keyboard-operable decision cards |
 | Tests | Full suite **1018 passed**; new dashboard-hosting assertions (tokens + accessibility); the token substitution itself was additionally verified via a full resolved-value diff against the pre-refactor stylesheet (688 changed lines, 0 real mismatches) — a stronger check than the usual manual screenshot review, run because this pass touches nearly every CSS line in the app |
 | Coverage | Frontend-only change; no Python coverage impact; one test file touched, Ruff clean |
-| Status | **READY FOR REVIEW** — awaiting owner smoke test on the live dashboard |
+| Status | **APPROVED** (owner smoke confirmed live 2026-07-26) |
 | Branch | feature/live-dashboard |
 
 ### Scope completed
