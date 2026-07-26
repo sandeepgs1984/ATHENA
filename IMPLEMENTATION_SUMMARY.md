@@ -582,7 +582,7 @@ persisted decision analysis
 
 ---
 
-## UX-9a — Open Chart / Compare / News / Portfolio Impact quick actions (READY FOR REVIEW)
+## UX-9a — Open Chart / Compare / News / Portfolio Impact quick actions (APPROVED)
 
 | | |
 |---|---|
@@ -591,7 +591,7 @@ persisted decision analysis
 | Scope | `openChartModal` (reuses `renderCandlestickSvg` in a larger modal, no new fetch); `openCompareModal`/`runSymbolCompare` (fetches a second symbol's latest decision + depth via existing endpoints, renders side-by-side using the same `analysisPresentation`/`decisionStance` helpers the current decision uses); `loadPortfolioImpact`/`renderPortfolioImpact` (aggregates open positions for the instrument from the existing full portfolio list, computes gain % against a real latest close); "News" quick action jumps to the already-implemented Market Context tab |
 | Tests | Full suite **1018 passed**; new dashboard-hosting assertions; no backend files touched |
 | Coverage | Frontend-only; no Python coverage impact |
-| Status | **READY FOR REVIEW** — awaiting owner smoke test on the live dashboard |
+| Status | **APPROVED** (2026-07-26) — smoke-tested live by owner, plus the later bug-fix pass above (Compare NSE-prefix + case-sensitivity fixes) |
 | Branch | feature/live-dashboard |
 
 ### Scope completed
