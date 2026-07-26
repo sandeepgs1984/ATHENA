@@ -238,6 +238,81 @@
     width: 95%;
 }
 
+/* Open Chart / Compare quick actions (UX-9) */
+.chart-modal-container {
+    max-width: 960px;
+    width: 95%;
+}
+
+.chart-modal-canvas {
+    min-height: 360px;
+}
+
+.compare-modal-container {
+    max-width: 760px;
+    width: 95%;
+}
+
+.compare-search-row {
+    display: flex;
+    gap: var(--space-8);
+    margin-bottom: var(--space-16);
+}
+
+.compare-search-row input {
+    flex: 1;
+    padding: var(--space-8) var(--space-10);
+    background: rgba(2, 6, 23, 0.4);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    text-transform: uppercase;
+}
+
+.compare-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-16);
+}
+
+.compare-column {
+    background: rgba(15, 23, 42, 0.35);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: var(--space-12) var(--space-14);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+}
+
+.compare-column h5 {
+    font-family: var(--font-mono);
+    font-size: var(--text-0-95);
+    color: var(--text-primary);
+}
+
+.compare-metric {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: var(--text-0-72);
+    color: var(--text-muted);
+    border-top: 1px solid var(--border-color);
+    padding-top: var(--space-6);
+}
+
+.compare-metric strong {
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+}
+
+@media (max-width: 620px) {
+    .compare-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
 .backtest-modal-grid {
     display: grid;
     grid-template-columns: 1.2fr 1fr;

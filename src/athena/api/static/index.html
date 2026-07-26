@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.42.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.43.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -596,6 +596,15 @@
                                         <button id="decision-brief-export" class="btn btn-outline btn-sm" type="button" title="Export this decision brief">
                                             <i class="fa-solid fa-file-export"></i> <span>Export</span>
                                         </button>
+                                        <button id="decision-brief-open-chart" class="btn btn-outline btn-sm" type="button" title="Enlarge the price chart">
+                                            <i class="fa-solid fa-chart-line"></i> <span>Open Chart</span>
+                                        </button>
+                                        <button id="decision-brief-compare" class="btn btn-outline btn-sm" type="button" title="Compare against another symbol">
+                                            <i class="fa-solid fa-scale-balanced"></i> <span>Compare</span>
+                                        </button>
+                                        <button id="decision-brief-news" class="btn btn-outline btn-sm" type="button" title="Jump to curated research links">
+                                            <i class="fa-solid fa-newspaper"></i> <span>News</span>
+                                        </button>
                                     </div>
                                 </div>
                                 <div id="decision-brief-body" class="card-body decision-brief-body">
@@ -811,11 +820,47 @@
         </div>
     </div>
 
+    <div id="chart-modal" class="modal-overlay" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="chart-modal-title">
+        <div class="modal-container chart-modal-container">
+            <div class="modal-header">
+                <h3 id="chart-modal-title">Price Chart</h3>
+                <button id="chart-modal-close" class="modal-close-btn" type="button" aria-label="Close chart modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="chart-modal-canvas" class="decision-chart-canvas chart-modal-canvas"></div>
+                <div class="decision-chart-legend">
+                    <span><i class="legend-box entry"></i> Entry zone</span>
+                    <span><i class="legend-line stop"></i> Invalidation</span>
+                    <span><i class="legend-line target"></i> Targets</span>
+                    <span><i class="legend-line ma"></i> Moving average</span>
+                    <span><i class="legend-box atr"></i> ATR band</span>
+                    <span><i class="legend-box volume"></i> Volume</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="compare-modal" class="modal-overlay" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="compare-modal-title">
+        <div class="modal-container compare-modal-container">
+            <div class="modal-header">
+                <h3 id="compare-modal-title">Compare</h3>
+                <button id="compare-modal-close" class="modal-close-btn" type="button" aria-label="Close compare modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="compare-search-row">
+                    <input id="compare-symbol-input" type="text" placeholder="Enter a symbol, e.g. INFY" autocomplete="off">
+                    <button id="compare-symbol-submit" class="btn btn-outline btn-sm" type="button">Compare</button>
+                </div>
+                <div id="compare-result" class="compare-result"></div>
+            </div>
+        </div>
+    </div>
+
     <!-- Centralized Notification Toast Panel -->
     <div id="toast-container" class="toast-container"></div>
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.42.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.43.0"></script>
 </body>
 </html>

@@ -650,3 +650,24 @@
     letter-spacing: -0.01em;
 }
 
+/* Portfolio Impact (UX-9) — "you own N shares, avg price, gain %" */
+.portfolio-impact-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    gap: var(--space-10);
+}
+
+.portfolio-impact-grid span {
+    display: block;
+    color: var(--text-muted);
+    font-size: var(--text-0-65);
+    text-transform: uppercase;
+    margin-bottom: var(--space-3);
+}
+
+.portfolio-impact-grid strong {
+    font-family: var(--font-mono);
+    font-size: var(--text-0-9);
+    color: var(--text-primary);
+}
+

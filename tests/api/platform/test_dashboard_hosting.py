@@ -357,6 +357,34 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ">Score</span>" in html
     assert "Composite score" not in html
 
+    # UX-9a: quick actions (Open Chart, Compare, News) + Portfolio Impact.
+    # Compare and Portfolio Impact are pure frontend derivations over
+    # already-existing endpoints (GET /decisions?instrument_id=, GET
+    # /decisions/{id}/depth, GET /portfolio, GET /market/instruments/{id}/
+    # candles) — no new backend routes. Open Chart reuses the exact same
+    # renderCandlestickSvg used by the Trade Plan tab, just into a bigger
+    # modal container. "Place Order" remains excluded, per the constitution.
+    assert 'id="decision-brief-open-chart"' in html
+    assert 'id="decision-brief-compare"' in html
+    assert 'id="decision-brief-news"' in html
+    assert 'id="chart-modal"' in html
+    assert 'id="compare-modal"' in html
+    assert "function openChartModal" in js
+    assert "function openCompareModal" in js
+    assert "function runSymbolCompare" in js
+    assert "function fetchLatestDecisionForSymbol" in js
+    assert "instrument_id: symbol" in js
+    assert "function loadPortfolioImpact" in js
+    assert "function renderPortfolioImpact" in js
+    assert "/api/v1/portfolio" in js
+    assert "currently own any shares" in js
+    assert 'hostId = "decision-chart-canvas"' in js
+    assert ".chart-modal-container" in css
+    assert ".compare-grid" in css
+    assert ".portfolio-impact-grid" in css
+    assert "Place Order" not in html
+    assert "Place Order" not in js
+
     # Fix pass: the DAG stage-detail panel's "Full detail lives in the X
     # tab" text was reconstructing the tab name via a raw capitalization
     # of the internal data-brief-tab key (still "setup"/"response" post

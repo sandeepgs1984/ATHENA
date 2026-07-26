@@ -6,6 +6,175 @@ status updated on approval.
 
 ---
 
+## UX-9a — Open Chart / Compare / News / Portfolio Impact quick actions (READY FOR REVIEW)
+
+| | |
+|---|---|
+| Completed | 2026-07-26 |
+| Objective | First half of the final UX Overhaul milestone: four owner-approved quick actions and a portfolio-context strip, all built without new backend routes by composing existing endpoints. Scope for "Compare" (symbol-vs-symbol) and "Open Chart" (enlarge in a modal) was resolved with the owner beforehand — both were originally open questions in the milestone plan |
+| Scope | `openChartModal` (reuses `renderCandlestickSvg` in a larger modal, no new fetch); `openCompareModal`/`runSymbolCompare` (fetches a second symbol's latest decision + depth via existing endpoints, renders side-by-side using the same `analysisPresentation`/`decisionStance` helpers the current decision uses); `loadPortfolioImpact`/`renderPortfolioImpact` (aggregates open positions for the instrument from the existing full portfolio list, computes gain % against a real latest close); "News" quick action jumps to the already-implemented Market Context tab |
+| Tests | Full suite **1018 passed**; new dashboard-hosting assertions; no backend files touched |
+| Coverage | Frontend-only; no Python coverage impact |
+| Status | **READY FOR REVIEW** — awaiting owner smoke test on the live dashboard |
+| Branch | feature/live-dashboard |
+
+### Scope completed
+
+- **Open Chart**: `renderCandlestickSvg` gained an optional `hostId`
+  parameter (default unchanged, so the existing Trade Plan tab call site
+  is untouched) so the exact same chart-rendering code — and the
+  already-loaded candle series, stashed in new `activeChartSeries`/
+  `activeChartPlan` globals — can render into a larger `#chart-modal`
+  without a second fetch. The SVG's `viewBox` already scales to its
+  container, so "enlarge" is purely a bigger CSS box around the same
+  render call, not a second chart implementation.
+- **Compare** (symbol vs. symbol, per owner decision): a new
+  `#compare-modal` with a symbol input. `fetchLatestDecisionForSymbol`
+  reuses the already-supported `instrument_id` filter on
+  `GET /api/v1/decisions` plus the existing `/depth` endpoint — the
+  exact same two calls already made for the *current* decision — and
+  `compareColumn`/`compareMetricRow` render both sides through the same
+  `decisionStance`/`analysisPresentation` helpers, so the compared
+  symbol is never a different, lower-fidelity code path. A symbol with
+  no decision history shows "No decision found for this symbol," not a
+  silent blank.
+- **News**: the "External research" panel (owner-curated
+  `config/external_links.json` links) was already fully implemented but
+  reachable only via a sub-tab click; the new button just calls the
+  existing `switchBriefTab("context")`.
+- **Portfolio Impact** ("you own N shares, avg price, gain %"): reuses
+  the existing full `GET /api/v1/portfolio` positions list (already
+  fetched for the Portfolio Overview workstation) — filtered to this
+  instrument's *open* positions (`closed_ts` null), aggregated into a
+  total share count and a cost-weighted average price. Gain % is exact
+  arithmetic against a real latest close fetched via the same candles
+  endpoint the chart uses (`fetchLatestClose`, deliberately independent
+  of the chart's own load so the two async fetches can't race each
+  other or leave a stale price). Shows "You don't currently own any
+  shares of this symbol" — never a fabricated 0-share row — when there's
+  no open position.
+- **Excluded, as always**: no "Place Order" action anywhere — verified
+  by a dedicated test assertion (`"Place Order" not in html/js`), per
+  the constitution's absolute prohibition on order-placement code.
+
+### Files created
+
+- None.
+
+### Files modified
+
+- `src/athena/api/static/index.html` — 3 new actionbar buttons (Open
+  Chart, Compare, News); 2 new modals (`#chart-modal`, `#compare-modal`)
+  following the existing trace-modal/backtest-modal pattern; cache-bust
+  bumped to `9.43.0`.
+- `src/athena/api/static/dashboard.js` — `renderCandlestickSvg` gained
+  an optional `hostId` param; new `activeChartSeries`/`activeChartPlan`
+  globals (reset in `selectBriefing`, alongside the other per-decision
+  caches); `openChartModal`, `openCompareModal`, `runSymbolCompare`,
+  `fetchLatestDecisionForSymbol`, `compareColumn`, `compareMetricRow`,
+  `loadPortfolioImpact`, `renderPortfolioImpact`,
+  `portfolioInstrumentMatches`, `fetchLatestClose`; `closeAllModals`
+  extended for the 2 new modals; a Portfolio Impact section added to the
+  Trade Plan tab template, loaded alongside the existing chart/analogs/
+  journal loads in `renderDecisionBrief`.
+- `src/athena/api/static/css/08-strategies-backtest.css` — modal/compare
+  styling (`.chart-modal-container`, `.compare-grid`, `.compare-column`,
+  `.compare-metric`, etc.).
+- `src/athena/api/static/css/10-trade-plan-chart.css` —
+  `.portfolio-impact-grid`.
+- `tests/api/platform/test_dashboard_hosting.py` — new assertions.
+- `docs/MILESTONES.md` — UX-9 split into 9a (this milestone) and 9b
+  (Add Watchlist, needs new backend); 9a → Ready for review.
+- This log.
+
+### Public APIs
+
+- None — every new feature composes existing endpoints
+  (`GET /decisions?instrument_id=`, `GET /decisions/{id}/depth`,
+  `GET /portfolio`, `GET /market/instruments/{id}/candles`); no new
+  routes, no schema changes.
+
+### Validation and architecture
+
+- Full regression: **1018 passed** (unchanged — no backend files touched).
+- Ruff clean on the one changed test file. mypy remains unavailable in
+  this environment (pre-existing, unrelated).
+- JS braces balanced (1594/1594); parens off by the same pre-existing +1
+  baseline quirk. CSS braces balanced (757/757).
+- Live server restarted on `9.43.0`; isolated-browser console check on
+  the pre-login page: zero errors.
+- ADR-005 preserved: every number in Compare and Portfolio Impact is
+  exact arithmetic over already-real, already-persisted data (positions,
+  candle closes, existing decision depth) — nothing generated or
+  predicted. No ADR required: no schema change, no new architectural
+  surface, purely frontend composition of existing read endpoints.
+- Constitution preserved: no order-placement code anywhere — verified
+  by an explicit test assertion, not just manual review.
+
+### Risks and technical debt
+
+- `fetchLatestClose` duplicates ~10 lines of the NSE-prefix candidate
+  probing logic already in `loadDecisionChart`, kept deliberately
+  separate rather than shared/refactored to avoid touching an
+  already-approved, working function for this milestone — flagged as a
+  minor, acceptable duplication rather than silently "fixed" by
+  refactoring code outside this milestone's scope.
+- `Portfolio Impact` and `Compare`'s depth fetch both add real (small)
+  network calls per decision view — acceptable for a localhost,
+  single-user app, but worth knowing if either ever needs to be
+  debounced or cached across quick re-selection of the same decision.
+- I could not exercise any of these four features end-to-end myself (no
+  owner credentials, and each depends on real portfolio/decision data
+  existing) — needs an owner click-through, ideally with at least one
+  owned position and one comparable symbol to exercise the non-empty
+  paths of each feature, not just the empty states.
+- No new technical debt beyond the above.
+
+### Remaining work
+
+- **Owner smoke test**: open a decision and (a) click "Open Chart",
+  confirm the enlarged chart matches the inline one; (b) click
+  "Compare", enter a symbol you have a decision for, confirm both
+  columns populate correctly (and try a symbol with no history to see
+  the empty state); (c) click "News", confirm it jumps to Market
+  Context; (d) check the new "Portfolio impact" block on a symbol you
+  own vs. one you don't.
+- Next: **UX-9b** (Add Watchlist / Saved Symbols — new backend domain,
+  its own milestone for a focused review) — not yet started, awaiting
+  approval of this part first.
+- Documented, deferred future enhancement (owner decision): deep-link/
+  share for a specific decision (a `?decision=<id>` URL param + "Copy
+  link" action) — no existing infrastructure for this today; scoped as
+  its own future milestone if the owner wants it later.
+
+### Commit message
+
+```text
+feat(dashboard): add Open Chart, Compare, News, and Portfolio Impact
+quick actions (UX-9a)
+
+- Add openChartModal, reusing renderCandlestickSvg (now with an optional
+  hostId param) and the already-loaded candle series in a larger modal —
+  no second fetch, no separate chart implementation.
+- Add openCompareModal/runSymbolCompare (symbol-vs-symbol, per owner
+  decision): fetches the entered symbol's latest decision + depth via
+  the existing instrument_id filter and /depth endpoint, renders both
+  sides through the same analysisPresentation/decisionStance helpers
+  already used for the current decision.
+- Add a "News" quick action that jumps to the existing Market Context
+  tab (External research links were already implemented, just gated
+  behind a sub-tab).
+- Add loadPortfolioImpact/renderPortfolioImpact: "you own N shares, avg
+  price, gain %" derived from the existing full portfolio positions
+  list and a real latest close price — no new backend, "—" (never
+  fabricated) when there's no open position or no price.
+- No new backend routes; add dashboard-hosting test coverage including
+  an explicit assertion that no "Place Order" text exists anywhere.
+  Bump cache-bust to 9.43.0.
+```
+
+---
+
 ## UX-8 — Copy pass (APPROVED)
 
 | | |

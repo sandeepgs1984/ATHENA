@@ -1937,6 +1937,8 @@ document.addEventListener("DOMContentLoaded", () => {
     function closeAllModals() {
         closeModal(traceModal);
         closeModal(document.getElementById("backtest-modal"));
+        closeModal(document.getElementById("chart-modal"));
+        closeModal(document.getElementById("compare-modal"));
         if (!state.kiteBlocking) hideKiteGate();
     }
 
@@ -2341,6 +2343,8 @@ document.addEventListener("DOMContentLoaded", () => {
     let activeAnalogs = null;
     let activeCounterfactual = null;
     let activePlanFreshness = null;
+    let activeChartSeries = null;
+    let activeChartPlan = null;
     let selectedStageId = null;
     // Persists across decision switches on purpose — flipping through several
     // decisions to compare the same aspect (e.g. Analysis) should not keep
@@ -2888,8 +2892,8 @@ document.addEventListener("DOMContentLoaded", () => {
         ].filter(Number.isFinite);
     }
 
-    function renderCandlestickSvg(series, plan) {
-        const host = document.getElementById("decision-chart-canvas");
+    function renderCandlestickSvg(series, plan, hostId = "decision-chart-canvas") {
+        const host = document.getElementById(hostId);
         if (!host) return;
         const candles = Array.isArray(series.candles) ? series.candles : [];
         if (!candles.length) {
@@ -3143,6 +3147,8 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
             }
             renderChartFreshness(series);
             renderCandlestickSvg(series, plan);
+            activeChartSeries = series;
+            activeChartPlan = plan;
         } catch (err) {
             if (activeDecisionId !== decisionId) return;
             console.error(`Failed to load candles for ${instrumentId}`, err);
@@ -3172,6 +3178,197 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
                     : "Candles request failed";
             }
         }
+    }
+
+    // Latest real close for an instrument (UX-9 Portfolio Impact) — same
+    // NSE-prefix fallback probing as loadDecisionChart, kept independent
+    // rather than sharing state with it so the two loads can't race.
+    async function fetchLatestClose(instrumentId) {
+        const candidates = String(instrumentId).includes(":")
+            ? [String(instrumentId)]
+            : [String(instrumentId), `NSE:${instrumentId}`];
+        for (const candidateId of candidates) {
+            try {
+                const path = `/api/v1/market/instruments/${encodeURIComponent(candidateId)}/candles?timeframe=5m&limit=1`;
+                const response = await apiRequest(path, { skipToast: true });
+                const series = response && response.data;
+                if (series && Array.isArray(series.candles) && series.candles.length) {
+                    const close = Number(series.candles[series.candles.length - 1].close);
+                    if (Number.isFinite(close)) return close;
+                }
+            } catch (err) {
+                // try the next candidate id
+            }
+        }
+        return null;
+    }
+
+    function portfolioInstrumentMatches(positionInstrumentId, targetInstrumentId) {
+        const norm = v => String(v || "").toUpperCase().replace(/^NSE:|^BSE:/, "");
+        return norm(positionInstrumentId) === norm(targetInstrumentId);
+    }
+
+    // "You own N shares, avg price, gain %" (owner UX audit) — derived
+    // entirely from the existing full positions list (GET /api/v1/portfolio,
+    // already used by the Portfolio Overview workstation) and a real latest
+    // close price. No new backend, no fabricated numbers: gain % is exact
+    // arithmetic over the aggregated open positions' weighted average price
+    // vs. the latest real close. "—" (never 0%) when there's no position or
+    // no current price to compare against.
+    function renderPortfolioImpact(host, instrumentId, positions, lastClose) {
+        const open = positions.filter(p =>
+            !p.closed_ts && portfolioInstrumentMatches(p.instrument_id, instrumentId)
+        );
+        if (!open.length) {
+            host.innerHTML = '<p class="context-caption">You don\'t currently own any shares of this symbol.</p>';
+            return;
+        }
+        const totalQty = open.reduce((sum, p) => sum + (Number(p.quantity) || 0), 0);
+        const totalCost = open.reduce((sum, p) => sum + (Number(p.quantity) || 0) * (Number(p.avg_price) || 0), 0);
+        const avgPrice = totalQty > 0 ? totalCost / totalQty : null;
+        const gainPct = (avgPrice && Number.isFinite(lastClose))
+            ? ((lastClose - avgPrice) / avgPrice) * 100
+            : null;
+        const gainTone = gainPct === null ? "neutral" : (gainPct > 0 ? "good" : (gainPct < 0 ? "bad" : "neutral"));
+
+        host.innerHTML = `
+            <div class="portfolio-impact-grid">
+                <div><span>Shares owned</span><strong>${totalQty}</strong></div>
+                <div><span>Avg price</span><strong>${avgPrice !== null ? escapeDecisionHtml(formatDecisionPrice(avgPrice)) : "—"}</strong></div>
+                <div><span>Current price</span><strong>${Number.isFinite(lastClose) ? escapeDecisionHtml(formatDecisionPrice(lastClose)) : "—"}</strong></div>
+                <div><span>Gain / loss</span><strong class="tone-${gainTone}-text">${gainPct !== null ? `${gainPct >= 0 ? "+" : ""}${gainPct.toFixed(1)}%` : "—"}</strong></div>
+            </div>
+            <p class="context-caption">Across ${open.length} open position${open.length === 1 ? "" : "s"} in this symbol.</p>
+        `;
+    }
+
+    async function loadPortfolioImpact(instrumentId, decisionId) {
+        const host = document.getElementById("decision-portfolio-impact");
+        if (!host) return;
+        try {
+            const [portfolioRes, lastClose] = await Promise.all([
+                apiRequest("/api/v1/portfolio", { skipToast: true }),
+                fetchLatestClose(instrumentId),
+            ]);
+            if (activeDecisionId !== decisionId) return;
+            const positions = (portfolioRes && portfolioRes.data && portfolioRes.data.positions) || [];
+            renderPortfolioImpact(host, instrumentId, positions, lastClose);
+        } catch (err) {
+            if (activeDecisionId !== decisionId) return;
+            console.error(`Failed to load portfolio impact for ${instrumentId}`, err);
+            host.innerHTML = '<div class="context-caption">Unable to check your holdings for this symbol.</div>';
+        }
+    }
+
+    // "Open Chart" quick action (UX-9) — reuses the exact same chart data and
+    // render function already loaded for the Trade Plan tab, just at a larger
+    // size (the SVG's viewBox scales to fill whatever container CSS gives
+    // it) — no second fetch, no separate chart implementation to maintain.
+    function openChartModal() {
+        const modal = document.getElementById("chart-modal");
+        const canvas = document.getElementById("chart-modal-canvas");
+        const title = document.getElementById("chart-modal-title");
+        if (!modal || !canvas) return;
+        const meta = activeDecisionData && activeDecisionData.metadata;
+        const symbol = meta ? String(meta.instrument_id || "").split(":").pop() : "";
+        if (title) title.textContent = symbol ? `${symbol} — Price Chart` : "Price Chart";
+        if (!activeChartSeries) {
+            canvas.innerHTML = '<div class="decision-chart-empty">Chart hasn\'t loaded yet for this decision.</div>';
+        } else {
+            renderCandlestickSvg(activeChartSeries, activeChartPlan, "chart-modal-canvas");
+        }
+        openModal(modal);
+    }
+
+    // "Compare" quick action (UX-9, symbol vs. symbol) — fetches the entered
+    // symbol's own latest decision + depth via the existing decisions list
+    // (instrument_id filter, already supported) and depth endpoints, exactly
+    // like the current decision's own data was loaded. No new backend, and
+    // the same real analysisPresentation/decisionStance helpers render both
+    // sides identically — never a second, different code path for "the other
+    // symbol."
+    async function fetchLatestDecisionForSymbol(symbol) {
+        const qs = new URLSearchParams({
+            instrument_id: symbol,
+            sort_by: "ts",
+            sort_dir: "desc",
+            page: "1",
+            page_size: "1",
+        });
+        const listRes = await apiRequest(`/api/v1/decisions?${qs.toString()}`, { skipToast: true });
+        const rows = (listRes && Array.isArray(listRes.data)) ? listRes.data : [];
+        if (!rows.length) return null;
+        const decision = rows[0];
+        const decisionId = decision.metadata && decision.metadata.decision_id;
+        let depth = null;
+        if (decisionId) {
+            const depthRes = await apiRequest(
+                `/api/v1/decisions/${encodeURIComponent(decisionId)}/depth`,
+                { skipToast: true }
+            );
+            depth = depthRes && depthRes.data;
+        }
+        return { decision, depth };
+    }
+
+    function compareMetricRow(labelText, tone, depth) {
+        const block = depth && depth[tone];
+        if (!block || block.status !== "OK") {
+            return `<div class="compare-metric"><span>${escapeDecisionHtml(labelText)}</span><strong>—</strong></div>`;
+        }
+        const view = analysisPresentation(labelText, block, tone);
+        const value = view.displayBand || view.valueLabel;
+        return `<div class="compare-metric"><span>${escapeDecisionHtml(labelText)}</span><strong>${escapeDecisionHtml(value)}</strong></div>`;
+    }
+
+    function compareColumn(symbol, decision, depth) {
+        if (!decision) {
+            return `<div class="compare-column">
+                <h5>${escapeDecisionHtml(symbol)}</h5>
+                <p class="context-caption">No decision found for this symbol.</p>
+            </div>`;
+        }
+        const meta = decision.metadata || {};
+        const stance = decisionStance(meta.decision_type, meta.direction);
+        const rr = decision.trade_plan ? Number(decision.trade_plan.risk_reward) : NaN;
+        return `<div class="compare-column">
+            <h5>${escapeDecisionHtml(symbol)}</h5>
+            <span class="stance-chip ${stance.cls}">${escapeDecisionHtml(stance.label)}</span>
+            <span class="text-muted">${escapeDecisionHtml(formatDecisionTime(meta.ts))}</span>
+            ${compareMetricRow("Score", "score", depth)}
+            ${compareMetricRow("Confidence", "confidence", depth)}
+            ${compareMetricRow("Risk", "risk", depth)}
+            <div class="compare-metric"><span>Risk : Reward</span><strong>${Number.isFinite(rr) ? `${rr.toFixed(1)} : 1` : "—"}</strong></div>
+        </div>`;
+    }
+
+    async function runSymbolCompare(symbol) {
+        const resultHost = document.getElementById("compare-result");
+        if (!resultHost) return;
+        resultHost.innerHTML = '<div class="decision-depth-loading"><i class="fa-solid fa-circle-notch fa-spin"></i> Comparing…</div>';
+        const currentMeta = activeDecisionData && activeDecisionData.metadata;
+        const currentSymbol = currentMeta ? String(currentMeta.instrument_id || "").split(":").pop() : "Current";
+        try {
+            const other = await fetchLatestDecisionForSymbol(symbol);
+            resultHost.innerHTML = `<div class="compare-grid">
+                ${compareColumn(currentSymbol, activeDecisionData, activeDepth)}
+                ${compareColumn(symbol.toUpperCase(), other && other.decision, other && other.depth)}
+            </div>`;
+        } catch (err) {
+            console.error(`Failed to compare against ${symbol}`, err);
+            resultHost.innerHTML = '<div class="context-caption">Unable to fetch that symbol\'s decision right now.</div>';
+        }
+    }
+
+    function openCompareModal() {
+        const modal = document.getElementById("compare-modal");
+        const input = document.getElementById("compare-symbol-input");
+        const resultHost = document.getElementById("compare-result");
+        if (!modal) return;
+        if (input) input.value = "";
+        if (resultHost) resultHost.innerHTML = '<p class="context-caption">Enter a symbol above to compare it against the current decision.</p>';
+        openModal(modal);
+        if (input) input.focus();
     }
 
     function friendlyAnalysisName(value) {
@@ -4491,6 +4688,15 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
 
                 ${renderTradePlan(decision.trade_plan, meta.decision_type, meta.direction)}
 
+                <section class="decision-brief-section" id="decision-portfolio-impact-section">
+                    <h4>Portfolio impact</h4>
+                    <div id="decision-portfolio-impact" class="decision-portfolio-impact">
+                        <div class="decision-depth-loading">
+                            <i class="fa-solid fa-circle-notch fa-spin"></i> Checking your holdings…
+                        </div>
+                    </div>
+                </section>
+
                 <section class="decision-brief-section decision-chart-section">
                     <div class="decision-brief-section-header">
                         <h4>Intraday price context · 5 minute</h4>
@@ -4611,6 +4817,7 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         loadDecisionDepth(meta.decision_id);
         loadDecisionContext(meta.decision_id);
         loadDecisionChart(rawSymbol, decision.trade_plan, meta.decision_id);
+        loadPortfolioImpact(rawSymbol, meta.decision_id);
         loadJournalPanel(meta.decision_id);
         loadDecisionAnalogs(meta.decision_id);
         loadDecisionCounterfactual(meta.decision_id);
@@ -4850,6 +5057,8 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         activeAnalogs = null;
         activeCounterfactual = null;
         activePlanFreshness = null;
+        activeChartSeries = null;
+        activeChartPlan = null;
         // Toggle active card class across every outcome carousel, and bring the
         // selected card into view within its own track (graceful selection).
         if (decisionsCarouselContainer) {
@@ -5266,6 +5475,40 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
             : null;
         if (!decisionId) return;
         exportDecisionBrief(decisionId, event.currentTarget);
+    });
+    document.getElementById("decision-brief-open-chart")?.addEventListener("click", () => {
+        openChartModal();
+    });
+    document.getElementById("decision-brief-news")?.addEventListener("click", () => {
+        switchBriefTab("context");
+    });
+    document.getElementById("decision-brief-compare")?.addEventListener("click", () => {
+        openCompareModal();
+    });
+
+    const chartModalEl = document.getElementById("chart-modal");
+    document.getElementById("chart-modal-close")?.addEventListener("click", () => closeModal(chartModalEl));
+    window.addEventListener("click", event => {
+        if (event.target === chartModalEl) closeModal(chartModalEl);
+    });
+
+    const compareModalEl = document.getElementById("compare-modal");
+    document.getElementById("compare-modal-close")?.addEventListener("click", () => closeModal(compareModalEl));
+    window.addEventListener("click", event => {
+        if (event.target === compareModalEl) closeModal(compareModalEl);
+    });
+    const compareSubmitBtn = document.getElementById("compare-symbol-submit");
+    const compareInputEl = document.getElementById("compare-symbol-input");
+    const submitCompare = () => {
+        const raw = (compareInputEl && compareInputEl.value || "").trim();
+        if (raw) runSymbolCompare(raw);
+    };
+    compareSubmitBtn?.addEventListener("click", submitCompare);
+    compareInputEl?.addEventListener("keydown", event => {
+        if (event.key === "Enter") {
+            event.preventDefault();
+            submitCompare();
+        }
     });
 
     // Wire refresh trigger
