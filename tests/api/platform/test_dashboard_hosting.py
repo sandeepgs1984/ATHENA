@@ -96,7 +96,7 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "allTraceDecisionsList" in js
     assert "function sanitizeNumericText" in js
     assert "preferInstrumentId" in js
-    assert 'id="decision-brief-remove-candidate"' in js
+    assert 'id="decision-brief-remove-candidate"' in html
     assert "Existing decisions, traces, and replay evidence will be preserved" in js
     assert "decision history preserved" in js
     assert ".analysis-depth-grid" in css
@@ -111,7 +111,7 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
 
     # M-D4 renders session/calendar, regime/market-health context, curated links, and export
     assert 'id="decision-context-lane"' in js
-    assert 'id="decision-brief-export"' in js
+    assert 'id="decision-brief-export"' in html
     assert "function renderDecisionContext" in js
     assert "function loadDecisionContext" in js
     assert "function exportDecisionBrief" in js
@@ -123,19 +123,53 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".context-chip" in css
     assert ".context-links-list" in css
 
-    # Reasoning Trace DAG detail cards reuse the depth/context formatters instead of
-    # raw prose (owner-reported: overflowing Decimal tails, "N rules checked" mislabel)
+    # Decisions & Trace UI overhaul (owner-reported: overcrowded single scroll,
+    # duplicate gate chips, DAG panel re-explaining what the brief already
+    # shows). Reasoning Trace nodes now navigate to the matching brief tab
+    # instead of duplicating its content in a side panel.
     assert "function showStageDetails" in js
-    assert "function renderStageDetailBody" in js
-    assert "function renderContextStageBody" in js
-    assert "function renderTradePlanStageBody" in js
-    assert "function refreshSelectedStageDetail" in js
     assert "function renderStageProvenance" in js
     assert "STAGE_ICONS" in js
+    assert "STAGE_TAB_MAP" in js
+    assert "function switchBriefTab" in js
+    assert "activeBriefTab" in js
+    assert "opened automatically" in js
     assert "activeDepth" in js
     assert "activeContextData" in js
     assert "formatDecisionRatio" in js
-    assert ".dag-details-text .trade-plan-grid.compact" in css
+    assert "function renderStageDetailBody" not in js
+    assert "function renderContextStageBody" not in js
+    assert "function renderTradePlanStageBody" not in js
+    assert "function refreshSelectedStageDetail" not in js
+
+    # Today's Decisions is grouped into outcome carousels (Trade -> Watch ->
+    # No trade -> everything else), always in that priority order regardless
+    # of timestamp — never one flat chronological list
+    assert 'id="decisions-carousel-groups"' in html
+    assert "function renderDecisionCarousels" in js
+    assert "function renderDeckCard" in js
+    assert "DECISION_CAROUSEL_SECTIONS" in js
+    assert "function decisionTypePriority" in js
+    assert "regardless of timestamp" in js
+    assert ".decision-carousel-section" in css
+    assert ".decision-carousel-track" in css
+    assert ".deck-card" in css
+
+    # Sticky cockpit header: live score/confidence/risk gauges + a four-tab
+    # brief (Setup/Analysis/Context/Response) replacing one long stacked scroll
+    assert 'id="decision-brief-gauges"' in html
+    assert 'id="gauge-score-value"' in html
+    assert 'id="gauge-confidence-value"' in html
+    assert 'id="gauge-risk-value"' in html
+    assert 'data-brief-tab="setup"' in html
+    assert 'data-brief-tab="analysis"' in html
+    assert 'data-brief-tab="context"' in html
+    assert 'data-brief-tab="response"' in html
+    assert "function renderCockpitGauges" in js
+    assert "function resetCockpitGauges" in js
+    assert ".decision-brief-gauges" in css
+    assert ".brief-tab" in css
+    assert ".tabpane" in css
 
     # Re-validate moved to the Decision Brief header — always visible, not buried
     # at the bottom of the brief (owner feedback: "no idea of where it exists")

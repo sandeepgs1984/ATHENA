@@ -2309,7 +2309,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // ---------------------------------------------------------------------------
     // Decisions & Trace DAG Handlers
     // ---------------------------------------------------------------------------
-    const briefingListContainer = document.getElementById("briefing-list-container");
+    const decisionsCarouselContainer = document.getElementById("decisions-carousel-groups");
     const briefingSearch = document.getElementById("briefing-search");
     const dagNodesContainer = document.getElementById("dag-nodes-container");
     const dagSvgLines = document.getElementById("dag-svg-lines");
@@ -2319,8 +2319,13 @@ document.addEventListener("DOMContentLoaded", () => {
     const dagDetailsSummary = document.getElementById("dag-details-summary");
     const dagDetailsGrid = document.getElementById("dag-details-grid");
     const decisionBriefTitle = document.getElementById("decision-brief-title");
+    const decisionBriefStanceChip = document.getElementById("decision-brief-stance-chip");
+    const decisionBriefTypeChip = document.getElementById("decision-brief-type-chip");
     const decisionBriefAsOf = document.getElementById("decision-brief-asof");
     const decisionBriefBody = document.getElementById("decision-brief-body");
+    const decisionBriefGauges = document.getElementById("decision-brief-gauges");
+    const decisionBriefTabstrip = document.getElementById("decision-brief-tabstrip");
+    const decisionBriefActionbar = document.getElementById("decision-brief-actionbar");
     const decisionBriefRevalidateHeader = document.getElementById("decision-brief-revalidate-header");
 
     let activeTrace = null;
@@ -2336,6 +2341,10 @@ document.addEventListener("DOMContentLoaded", () => {
     let activeCounterfactual = null;
     let activePlanFreshness = null;
     let selectedStageId = null;
+    // Persists across decision switches on purpose — flipping through several
+    // decisions to compare the same aspect (e.g. Analysis) should not keep
+    // resetting back to Setup each time (graceful selection, UI overhaul).
+    let activeBriefTab = "setup";
 
     function escapeDecisionHtml(value) {
         return String(value == null ? "" : value)
@@ -2466,8 +2475,8 @@ document.addEventListener("DOMContentLoaded", () => {
             applyDecisionsView(options);
         } catch (err) {
             console.error("Failed to load decisions", err);
-            if (briefingListContainer) {
-                briefingListContainer.innerHTML = '<div class="text-muted text-center" style="padding: 24px;">Failed to load decisions. Use refresh to retry.</div>';
+            if (decisionsCarouselContainer) {
+                decisionsCarouselContainer.innerHTML = '<div class="text-muted text-center" style="padding: 24px;">Failed to load decisions. Use refresh to retry.</div>';
             }
             if (dagNodesContainer) {
                 dagNodesContainer.innerHTML = '<div class="text-muted text-center" style="padding: 48px;">Decision trace unavailable until briefings load.</div>';
@@ -2480,6 +2489,12 @@ document.addEventListener("DOMContentLoaded", () => {
         const fromText = extractScoreFromText(d.explanation || "");
         if (fromText != null) return Number(fromText);
         return -1;
+    }
+
+    const DECISION_TYPE_PRIORITY = { TRADE: 0, WATCH: 1, NO_TRADE: 2, INSUFFICIENT_DATA: 3 };
+    function decisionTypePriority(d) {
+        const t = String((d.metadata && d.metadata.decision_type) || "").toUpperCase();
+        return DECISION_TYPE_PRIORITY[t] ?? 9;
     }
 
     function applyDecisionsView(options = {}) {
@@ -2542,7 +2557,7 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         });
 
-        renderBriefingList(rows);
+        renderDecisionCarousels(rows);
         if (rows.length > 0) {
             let next = preferDecisionId
                 ? rows.find(d => d.metadata && d.metadata.decision_id === preferDecisionId)
@@ -2555,7 +2570,14 @@ document.addEventListener("DOMContentLoaded", () => {
                     return instrument === preferInstrumentId;
                 });
             }
-            selectBriefing((next || rows[0]).metadata.decision_id);
+            // Default selection follows outcome priority (Trade -> Watch ->
+            // No trade -> everything else), never plain recency, matching the
+            // carousel display order (owner: 2026-07-25, regardless of timestamp).
+            const fallback = next || rows.reduce(
+                (best, d) => (decisionTypePriority(d) < decisionTypePriority(best) ? d : best),
+                rows[0]
+            );
+            selectBriefing(fallback.metadata.decision_id);
         } else if (dagNodesContainer) {
             dagNodesContainer.innerHTML = '<div class="text-muted text-center" style="padding: 48px;">No decisions match the current filters.</div>';
             renderDecisionBriefEmpty("No visible decision", "Restore dismissed symbols or change the filters.");
@@ -2700,8 +2722,17 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function renderDecisionBriefEmpty(title, detail) {
-        if (decisionBriefTitle) decisionBriefTitle.textContent = "Instrument Decision Brief";
+        if (decisionBriefTitle) {
+            decisionBriefTitle.textContent = "Select a symbol";
+            decisionBriefTitle.title = "";
+        }
         if (decisionBriefAsOf) decisionBriefAsOf.textContent = "Select a symbol";
+        if (decisionBriefStanceChip) decisionBriefStanceChip.innerHTML = "";
+        if (decisionBriefTypeChip) decisionBriefTypeChip.innerHTML = "";
+        if (decisionBriefGauges) decisionBriefGauges.hidden = true;
+        if (decisionBriefTabstrip) decisionBriefTabstrip.hidden = true;
+        if (decisionBriefActionbar) decisionBriefActionbar.hidden = true;
+        resetCockpitGauges();
         setHeaderRevalidateEnabled(false);
         if (!decisionBriefBody) return;
         decisionBriefBody.innerHTML = `
@@ -3242,8 +3273,68 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         `;
     }
 
+    // The action bar is static (wired once, not rebuilt per decision) so a
+    // "Removed" state from a previous symbol must not leak onto the next one.
+    function resetActionButtons() {
+        const removeBtn = document.getElementById("decision-brief-remove-candidate");
+        if (removeBtn) {
+            removeBtn.disabled = false;
+            const icon = removeBtn.querySelector("i");
+            const label = removeBtn.querySelector("span");
+            if (icon) icon.className = "fa-solid fa-list-check";
+            if (label) label.textContent = "Remove candidate";
+        }
+    }
+
+    // Sticky cockpit gauges reuse the exact same status/level/value already
+    // computed for the Analysis tab's summary cards — never a second
+    // client-derived score, just a different rendering of the same numbers.
+    function resetCockpitGauges() {
+        ["score", "confidence", "risk"].forEach(tone => {
+            const valueEl = document.getElementById(`gauge-${tone}-value`);
+            const barEl = document.getElementById(`gauge-${tone}-bar`);
+            if (valueEl) valueEl.textContent = "—";
+            if (barEl) {
+                barEl.style.width = "0%";
+                barEl.style.background = "var(--text-muted)";
+            }
+        });
+    }
+
+    function gaugeToneColor(view) {
+        const level = String(view.level || "").toUpperCase();
+        if (view.status !== "OK" || !level) return "var(--text-muted)";
+        const highIsGood = view.tone !== "risk";
+        if (level.includes("HIGH") || level.includes("STRONG")) {
+            return highIsGood ? "var(--success)" : "var(--danger)";
+        }
+        if (level.includes("LOW") || level.includes("WEAK")) {
+            return highIsGood ? "var(--danger)" : "var(--success)";
+        }
+        return "var(--warning)";
+    }
+
+    function renderCockpitGauges(depth) {
+        [
+            ["score", depth && depth.score],
+            ["confidence", depth && depth.confidence],
+            ["risk", depth && depth.risk],
+        ].forEach(([tone, block]) => {
+            const view = analysisPresentation(friendlyAnalysisName(tone), block, tone);
+            const valueEl = document.getElementById(`gauge-${tone}-value`);
+            const barEl = document.getElementById(`gauge-${tone}-bar`);
+            const color = gaugeToneColor(view);
+            if (valueEl) valueEl.textContent = view.valueLabel;
+            if (barEl) {
+                barEl.style.width = `${view.meterWidth}%`;
+                barEl.style.background = color;
+            }
+        });
+    }
+
     function renderDecisionDepth(depth) {
         renderEligibilityDepth(depth && depth.eligibility);
+        renderCockpitGauges(depth);
         const host = document.getElementById("decision-analysis-depth");
         if (!host) return;
         const blocks = [
@@ -3270,7 +3361,6 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
             if (activeDecisionId !== decisionId) return;
             activeDepth = response && response.data;
             renderDecisionDepth(activeDepth);
-            refreshSelectedStageDetail();
         } catch (err) {
             if (activeDecisionId !== decisionId) return;
             console.error(`Failed to load decision depth for ${decisionId}`, err);
@@ -3392,7 +3482,6 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
             if (activeDecisionId !== decisionId) return;
             activeContextData = response && response.data;
             renderDecisionContext(activeContextData);
-            refreshSelectedStageDetail();
         } catch (err) {
             if (activeDecisionId !== decisionId) return;
             console.error(`Failed to load decision context for ${decisionId}`, err);
@@ -3852,8 +3941,22 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
             : [];
         const summary = formatDecisionSummary(decision.explanation, meta.decision_type, gates);
 
-        if (decisionBriefTitle) decisionBriefTitle.textContent = symbol;
+        if (decisionBriefTitle) {
+            decisionBriefTitle.textContent = symbol;
+            decisionBriefTitle.title = rawSymbol;
+        }
         if (decisionBriefAsOf) decisionBriefAsOf.textContent = `As of ${formatDecisionTime(meta.ts)}`;
+        if (decisionBriefStanceChip) {
+            decisionBriefStanceChip.innerHTML = `<span class="stance-chip ${stance.cls}">${stance.label}</span>`;
+        }
+        if (decisionBriefTypeChip) {
+            decisionBriefTypeChip.innerHTML = decisionTypeBadge(meta.decision_type);
+        }
+        if (decisionBriefGauges) decisionBriefGauges.hidden = false;
+        if (decisionBriefTabstrip) decisionBriefTabstrip.hidden = false;
+        if (decisionBriefActionbar) decisionBriefActionbar.hidden = false;
+        resetCockpitGauges();
+        resetActionButtons();
 
         const gateRows = gates.length
             ? gates.map(gate => `
@@ -3874,167 +3977,135 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
                 </span>
             `).join("");
 
+        const paneActive = name => (activeBriefTab === name ? " active" : "");
+
         decisionBriefBody.innerHTML = `
             <section class="decision-brief-hero">
-                <div class="decision-brief-identity">
-                    <span class="decision-brief-symbol">${escapeDecisionHtml(symbol)}</span>
-                    <div class="briefing-badges">
-                        <span class="stance-chip ${stance.cls}">${stance.label}</span>
-                        ${decisionTypeBadge(meta.decision_type)}
-                        ${summary.scoreChip}
+                <p class="decision-brief-thesis" title="${escapeDecisionHtml(summary.headline)}">${escapeDecisionHtml(summary.headline)}</p>
+            </section>
+
+            <div class="tabpane${paneActive("setup")}" id="brief-pane-setup" data-brief-pane="setup">
+                <section class="decision-brief-section">
+                    <h4>Universe eligibility</h4>
+                    <div id="decision-eligibility-depth" class="decision-depth-loading">
+                        <i class="fa-solid fa-circle-notch fa-spin"></i> Loading persisted assessment…
                     </div>
-                </div>
-                <p class="decision-brief-thesis">${escapeDecisionHtml(summary.headline)}</p>
-            </section>
+                </section>
 
-            <section class="decision-brief-section">
-                <h4>Universe eligibility</h4>
-                <div id="decision-eligibility-depth" class="decision-depth-loading">
-                    <i class="fa-solid fa-circle-notch fa-spin"></i> Loading persisted assessment…
-                </div>
-            </section>
+                ${renderTradePlan(decision.trade_plan, meta.decision_type)}
 
-            ${renderTradePlan(decision.trade_plan, meta.decision_type)}
-
-            <section class="decision-brief-section decision-chart-section">
-                <div class="decision-brief-section-header">
-                    <h4>Intraday price context · 5 minute</h4>
-                    <span id="decision-chart-status" class="chart-freshness-badge no_data">LOADING</span>
-                </div>
-                <p id="decision-chart-meta" class="decision-chart-meta">Loading persisted OHLCV…</p>
-                <div id="decision-chart-warning" class="decision-chart-warning" hidden></div>
-                <div id="decision-chart-canvas" class="decision-chart-canvas"></div>
-                <div class="decision-chart-legend">
-                    <span><i class="legend-box entry"></i> Entry zone</span>
-                    <span><i class="legend-line stop"></i> Invalidation</span>
-                    <span><i class="legend-line target"></i> Targets</span>
-                </div>
-            </section>
-
-            <section class="decision-brief-section">
-                <h4>Score · confidence · risk</h4>
-                <p class="analysis-section-intro">
-                    Read the three headline assessments first. Expand a category, then a component,
-                    only when you need the recorded rationale and inputs.
-                </p>
-                <div id="decision-analysis-depth" class="analysis-depth-grid">
-                    <div class="decision-depth-loading">
-                        <i class="fa-solid fa-circle-notch fa-spin"></i> Loading analytical artifacts…
+                <section class="decision-brief-section decision-chart-section">
+                    <div class="decision-brief-section-header">
+                        <h4>Intraday price context · 5 minute</h4>
+                        <span id="decision-chart-status" class="chart-freshness-badge no_data">LOADING</span>
                     </div>
-                </div>
-            </section>
-
-            <section class="decision-brief-section" id="decision-counterfactual-section">
-                <h4>Why not a trade?</h4>
-                <p class="analysis-section-intro">
-                    Exact arithmetic over persisted values vs. current config thresholds —
-                    never a recomputed score, confidence, or risk.
-                </p>
-                <div id="decision-counterfactual-panel" class="decision-counterfactual-panel">
-                    <div class="decision-depth-loading">
-                        <i class="fa-solid fa-circle-notch fa-spin"></i> Computing gap to TRADE…
+                    <p id="decision-chart-meta" class="decision-chart-meta">Loading persisted OHLCV…</p>
+                    <div id="decision-chart-warning" class="decision-chart-warning" hidden></div>
+                    <div id="decision-chart-canvas" class="decision-chart-canvas"></div>
+                    <div class="decision-chart-legend">
+                        <span><i class="legend-box entry"></i> Entry zone</span>
+                        <span><i class="legend-line stop"></i> Invalidation</span>
+                        <span><i class="legend-line target"></i> Targets</span>
                     </div>
-                </div>
-            </section>
+                </section>
+            </div>
 
-            <section class="decision-brief-section">
-                <h4>Safety &amp; quality gates</h4>
-                <div class="decision-gates-list">${gateRows}</div>
-            </section>
-
-            <section class="decision-brief-section">
-                <h4>Your response</h4>
-                <p class="analysis-section-intro">
-                    Every recommendation gets a recorded human response — nothing is
-                    unrecorded. This is the only source of real feedback the AI Playbook
-                    Diagnostics learning loop has.
-                </p>
-                <div id="decision-journal-panel" class="decision-journal-panel">
-                    <div class="decision-depth-loading">
-                        <i class="fa-solid fa-circle-notch fa-spin"></i> Loading your response…
+            <div class="tabpane${paneActive("analysis")}" id="brief-pane-analysis" data-brief-pane="analysis">
+                <section class="decision-brief-section">
+                    <h4>Score · confidence · risk</h4>
+                    <p class="analysis-section-intro">
+                        Read the three headline assessments first. Expand a category, then a component,
+                        only when you need the recorded rationale and inputs.
+                    </p>
+                    <div id="decision-analysis-depth" class="analysis-depth-grid">
+                        <div class="decision-depth-loading">
+                            <i class="fa-solid fa-circle-notch fa-spin"></i> Loading analytical artifacts…
+                        </div>
                     </div>
-                </div>
-            </section>
+                </section>
 
-            <section class="decision-brief-section">
-                <h4>Similar past setups</h4>
-                <p class="analysis-section-intro">
-                    Deterministic nearest-neighbor retrieval by score/confidence/risk
-                    fingerprint across your persisted decision history — factual retrieval
-                    only, nothing generated.
-                </p>
-                <div id="decision-analogs-panel" class="decision-analogs-panel">
-                    <div class="decision-depth-loading">
-                        <i class="fa-solid fa-circle-notch fa-spin"></i> Finding similar setups…
+                <section class="decision-brief-section" id="decision-counterfactual-section">
+                    <h4>Why not a trade?</h4>
+                    <p class="analysis-section-intro">
+                        Exact arithmetic over persisted values vs. current config thresholds —
+                        never a recomputed score, confidence, or risk.
+                    </p>
+                    <div id="decision-counterfactual-panel" class="decision-counterfactual-panel">
+                        <div class="decision-depth-loading">
+                            <i class="fa-solid fa-circle-notch fa-spin"></i> Computing gap to TRADE…
+                        </div>
                     </div>
-                </div>
-            </section>
+                </section>
 
-            <section class="decision-brief-section">
-                <h4>Decision timeline</h4>
-                <div id="decision-history-timeline" class="decision-history-timeline"></div>
-            </section>
+                <section class="decision-brief-section">
+                    <h4>Safety &amp; quality gates</h4>
+                    <div class="decision-gates-list">${gateRows}</div>
+                </section>
+            </div>
 
-            <section class="decision-brief-section">
-                <h4>Session &amp; market context</h4>
-                <p class="analysis-section-intro">
-                    Trading-day session state, persisted regime/market-health, and owner-curated
-                    research links. No news ingestion, no generated rationale.
-                </p>
-                <div id="decision-context-lane" class="decision-context-lane">
-                    <div class="decision-depth-loading">
-                        <i class="fa-solid fa-circle-notch fa-spin"></i> Loading session &amp; market context…
+            <div class="tabpane${paneActive("context")}" id="brief-pane-context" data-brief-pane="context">
+                <section class="decision-brief-section">
+                    <h4>Decision timeline</h4>
+                    <div id="decision-history-timeline" class="decision-history-timeline"></div>
+                </section>
+
+                <section class="decision-brief-section">
+                    <h4>Session &amp; market context</h4>
+                    <p class="analysis-section-intro">
+                        Trading-day session state, persisted regime/market-health, and owner-curated
+                        research links. No news ingestion, no generated rationale.
+                    </p>
+                    <div id="decision-context-lane" class="decision-context-lane">
+                        <div class="decision-depth-loading">
+                            <i class="fa-solid fa-circle-notch fa-spin"></i> Loading session &amp; market context…
+                        </div>
                     </div>
-                </div>
-            </section>
+                </section>
 
-            <section class="decision-brief-section">
-                <h4>Analytical provenance</h4>
-                <div class="decision-provenance">
-                    ${references || '<span class="text-muted">No analytical references persisted.</span>'}
-                </div>
-            </section>
+                <section class="decision-brief-section">
+                    <h4>Analytical provenance</h4>
+                    <div class="decision-provenance">
+                        ${references || '<span class="text-muted">No analytical references persisted.</span>'}
+                    </div>
+                </section>
+            </div>
 
-            <section class="decision-brief-section">
-                <h4>Human next step</h4>
-                <div class="decision-brief-actions">
-                    <button id="decision-brief-market" class="btn btn-outline" type="button">
-                        <i class="fa-solid fa-chart-column"></i> Market Intelligence
-                    </button>
-                    <button id="decision-brief-dismiss" class="btn btn-outline" type="button">
-                        <i class="fa-solid fa-eye-slash"></i> Dismiss today
-                    </button>
-                    <button id="decision-brief-remove-candidate" class="btn btn-outline btn-danger-outline" type="button">
-                        <i class="fa-solid fa-list-check"></i> Remove candidate
-                    </button>
-                    <button id="decision-brief-export" class="btn btn-outline" type="button">
-                        <i class="fa-solid fa-file-export"></i> Export Brief
-                    </button>
-                </div>
-                <p class="text-muted" style="font-size: 0.68rem; margin: 10px 0 0;">
-                    Dismiss only hides this symbol in this browser until the next IST day.
-                    Removing a candidate stops future validation only. Decision history and replay evidence are never deleted.
-                </p>
-            </section>
+            <div class="tabpane${paneActive("response")}" id="brief-pane-response" data-brief-pane="response">
+                <section class="decision-brief-section">
+                    <h4>Your response</h4>
+                    <p class="analysis-section-intro">
+                        Every recommendation gets a recorded human response — nothing is
+                        unrecorded. This is the only source of real feedback the AI Playbook
+                        Diagnostics learning loop has.
+                    </p>
+                    <div id="decision-journal-panel" class="decision-journal-panel">
+                        <div class="decision-depth-loading">
+                            <i class="fa-solid fa-circle-notch fa-spin"></i> Loading your response…
+                        </div>
+                    </div>
+                </section>
+
+                <section class="decision-brief-section">
+                    <h4>Similar past setups</h4>
+                    <p class="analysis-section-intro">
+                        Deterministic nearest-neighbor retrieval by score/confidence/risk
+                        fingerprint across your persisted decision history — factual retrieval
+                        only, nothing generated.
+                    </p>
+                    <div id="decision-analogs-panel" class="decision-analogs-panel">
+                        <div class="decision-depth-loading">
+                            <i class="fa-solid fa-circle-notch fa-spin"></i> Finding similar setups…
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <p class="decision-brief-footnote">
+                Dismiss only hides this symbol in this browser until the next IST day.
+                Removing a candidate stops future validation only. Decision history and replay evidence are never deleted.
+            </p>
         `;
 
-        document.getElementById("decision-brief-market")?.addEventListener("click", () => {
-            switchTab("market");
-        });
-        document.getElementById("decision-brief-dismiss")?.addEventListener("click", () => {
-            dismissDecisionForToday(decision);
-        });
-        document.getElementById("decision-brief-remove-candidate")?.addEventListener("click", async event => {
-            const bareSymbol = String(rawSymbol).replace(/^NSE:|^BSE:/, "");
-            const removed = await removeCandidateNow(bareSymbol, { button: event.currentTarget });
-            if (removed) {
-                event.currentTarget.disabled = true;
-                event.currentTarget.innerHTML = '<i class="fa-solid fa-check"></i> Candidate removed';
-            }
-        });
-        document.getElementById("decision-brief-export")?.addEventListener("click", event => {
-            exportDecisionBrief(meta.decision_id, event.currentTarget);
-        });
         renderDecisionTimeline(decision);
         loadDecisionDepth(meta.decision_id);
         loadDecisionContext(meta.decision_id);
@@ -4066,9 +4137,78 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         }
     }
 
-    function renderBriefingList(decisions) {
-        if (!briefingListContainer) return;
-        briefingListContainer.innerHTML = "";
+    // Priority order always — Trade first, then Watch, then No trade, then
+    // Insufficient data — regardless of timestamp (owner: 2026-07-25). Any
+    // decision_type not in this list still gets its own carousel, appended
+    // after these four, so nothing is ever silently hidden.
+    const DECISION_CAROUSEL_SECTIONS = [
+        { type: "TRADE", label: "Trade", dot: "var(--success)", hint: "acted on now" },
+        { type: "WATCH", label: "Watch", dot: "var(--warning)", hint: "borderline, monitor" },
+        { type: "NO_TRADE", label: "No trade", dot: "var(--text-muted)", hint: "nothing to act on" },
+        { type: "INSUFFICIENT_DATA", label: "Insufficient data", dot: "var(--text-muted)", hint: "not enough data yet" },
+    ];
+
+    function decisionCardStanceColor(type) {
+        const t = String(type || "").toUpperCase();
+        if (t === "TRADE") return "var(--success)";
+        if (t === "WATCH") return "var(--warning)";
+        return "var(--text-muted)";
+    }
+
+    function renderDeckCard(d) {
+        const rawSym = d.metadata.instrument_id || "INDEX";
+        const symbol = rawSym.includes(":") ? rawSym.split(":").pop() : rawSym;
+        const type = d.metadata.decision_type;
+        const dateObj = new Date(d.metadata.ts);
+        const dateStr = dateObj.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+        const gates = (d.analysis && d.analysis.gate_results) ? d.analysis.gate_results : [];
+        const failed = gates.filter(g => g && g.passed === false);
+        const score = decisionScoreValue(d);
+        const scoreLabel = score >= 0 ? score.toFixed(1) : "—";
+        const noteText = gates.length === 0
+            ? "no gates recorded"
+            : (failed.length ? `${failed.length} of ${gates.length} gates open` : "all gates cleared");
+        const noteTitle = failed.length
+            ? `Needs ${failed.map(g => friendlyGateName(g.gate)).join(", ")}`
+            : noteText;
+        // Quick-glance severity without a hover — many cards otherwise show
+        // the same generic "N of M gates open" in identical muted gray.
+        const noteTone = gates.length === 0
+            ? ""
+            : (failed.length === 0 ? "tone-good-text" : (failed.length <= 2 ? "tone-warn-text" : "tone-bad-text"));
+
+        const card = document.createElement("div");
+        card.className = "deck-card";
+        card.style.setProperty("--stance-color", decisionCardStanceColor(type));
+        card.setAttribute("data-id", d.metadata.decision_id);
+        card.innerHTML = `
+            <div class="deck-top">
+                <span class="deck-sym" title="${escapeDecisionHtml(rawSym)}">${escapeDecisionHtml(symbol)}</span>
+                <button class="deck-dismiss-btn" type="button"
+                    title="Hide ${escapeDecisionHtml(symbol)} from Today's Decisions until tomorrow"
+                    aria-label="Dismiss ${escapeDecisionHtml(symbol)} for today">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div class="deck-mid">
+                <span class="deck-score">${escapeDecisionHtml(scoreLabel)}</span>
+                <span class="deck-time">${escapeDecisionHtml(dateStr)}</span>
+            </div>
+            <div class="deck-note ${noteTone}" title="${escapeDecisionHtml(noteTitle)}">${escapeDecisionHtml(noteText)}</div>
+        `;
+
+        card.addEventListener("click", () => {
+            selectBriefing(d.metadata.decision_id);
+        });
+        card.querySelector(".deck-dismiss-btn")?.addEventListener("click", event => {
+            event.stopPropagation();
+            dismissDecisionForToday(d);
+        });
+        return card;
+    }
+
+    function renderDecisionCarousels(decisions) {
+        if (!decisionsCarouselContainer) return;
 
         const summaryEl = document.getElementById("decisions-summary-strip");
         if (summaryEl) {
@@ -4091,7 +4231,7 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
                     `PASS ${counts.NO_TRADE || 0} · other ${
                         decisions.length - (counts.TRADE || 0) - (counts.WATCH || 0) - (counts.NO_TRADE || 0)
                     }. ` +
-                    `<span class="text-muted">HOLD = interesting but blocked; PASS = below watch score.</span>`;
+                    `<span class="text-muted">HOLD = interesting but blocked; PASS = below watch score. Grouped by outcome below — Trade first, always.</span>`;
             }
             if (dismissedCount > 0) {
                 summaryEl.innerHTML +=
@@ -4102,58 +4242,89 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
             }
         }
 
+        decisionsCarouselContainer.innerHTML = "";
+
         if (decisions.length === 0) {
-            briefingListContainer.innerHTML = '<div class="text-muted text-center" style="padding: 24px;">No decisions match query.</div>';
+            decisionsCarouselContainer.innerHTML = '<div class="text-muted text-center" style="padding: 24px;">No decisions match query.</div>';
             return;
         }
 
+        const byType = new Map();
         decisions.forEach(d => {
-            const card = document.createElement("div");
-            card.className = "briefing-card";
-            card.setAttribute("data-id", d.metadata.decision_id);
+            const t = String((d.metadata && d.metadata.decision_type) || "OTHER").toUpperCase();
+            if (!byType.has(t)) byType.set(t, []);
+            byType.get(t).push(d);
+        });
 
-            const rawSym = d.metadata.instrument_id || "INDEX";
-            const symbol = rawSym.includes(":") ? rawSym.split(":").pop() : rawSym;
-            const type = d.metadata.decision_type;
-            const direction = d.metadata.direction || "NONE";
-            const stance = decisionStance(type, direction);
-            
-            const dateObj = new Date(d.metadata.ts);
-            const dateStr = dateObj.toLocaleDateString("en-IN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-            const gates = (d.analysis && d.analysis.gate_results) ? d.analysis.gate_results : [];
-            const summary = formatDecisionSummary(d.explanation, type, gates);
+        const knownTypes = new Set(DECISION_CAROUSEL_SECTIONS.map(s => s.type));
+        const extraTypes = Array.from(byType.keys()).filter(t => !knownTypes.has(t));
+        const sections = [
+            ...DECISION_CAROUSEL_SECTIONS,
+            ...extraTypes.map(t => ({ type: t, label: friendlyLabel(t), dot: "var(--text-muted)", hint: "" })),
+        ];
 
-            card.innerHTML = `
-                <div class="briefing-card-header">
-                    <span class="briefing-symbol">${symbol}</span>
-                    <div class="briefing-badges">
-                        <span class="stance-chip ${stance.cls}">${stance.label}</span>
-                        ${decisionTypeBadge(type)}
-                        <button class="briefing-dismiss-btn" type="button"
-                            title="Hide ${symbol} from Today's Decisions until tomorrow"
-                            aria-label="Dismiss ${symbol} for today">
-                            <i class="fa-solid fa-xmark"></i>
-                        </button>
-                    </div>
+        sections.forEach(section => {
+            const rows = byType.get(section.type) || [];
+            if (!rows.length) return;
+
+            const sectionEl = document.createElement("div");
+            sectionEl.className = "decision-carousel-section";
+            sectionEl.setAttribute("data-section", section.type);
+            sectionEl.innerHTML = `
+                <div class="decision-carousel-head" data-toggle>
+                    <span class="decision-carousel-dot" style="background: ${section.dot}"></span>
+                    <span class="decision-carousel-name">${escapeDecisionHtml(section.label)}</span>
+                    <span class="decision-carousel-count">${rows.length}</span>
+                    ${section.hint ? `<span class="decision-carousel-hint">${escapeDecisionHtml(section.hint)}</span>` : ""}
+                    <i class="fa-solid fa-chevron-down decision-carousel-chevron"></i>
                 </div>
-                <p class="briefing-desc" title="${summary.headline.replace(/"/g, "&quot;")}">${summary.headline}</p>
-                <div class="briefing-meta-row">
-                    ${summary.scoreChip}
-                    <span class="briefing-date">${dateStr}</span>
+                <div class="decision-carousel-body">
+                    <button class="decision-carousel-nav prev" type="button" aria-label="Scroll ${escapeDecisionHtml(section.label)} left">
+                        <i class="fa-solid fa-chevron-left"></i>
+                    </button>
+                    <div class="decision-carousel-track"></div>
+                    <button class="decision-carousel-nav next" type="button" aria-label="Scroll ${escapeDecisionHtml(section.label)} right">
+                        <i class="fa-solid fa-chevron-right"></i>
+                    </button>
                 </div>
-                ${summary.gateChips}
             `;
 
-            card.addEventListener("click", () => {
-                selectBriefing(d.metadata.decision_id);
+            const track = sectionEl.querySelector(".decision-carousel-track");
+            const body = sectionEl.querySelector(".decision-carousel-body");
+            rows.forEach(d => track.appendChild(renderDeckCard(d)));
+
+            sectionEl.querySelector("[data-toggle]").addEventListener("click", () => {
+                sectionEl.classList.toggle("collapsed");
             });
-            card.querySelector(".briefing-dismiss-btn")?.addEventListener("click", event => {
-                event.stopPropagation();
-                dismissDecisionForToday(d);
+            sectionEl.querySelectorAll(".decision-carousel-nav").forEach(btn => {
+                const dir = btn.classList.contains("prev") ? -1 : 1;
+                btn.addEventListener("click", event => {
+                    event.stopPropagation();
+                    track.scrollBy({ left: dir * 340, behavior: "smooth" });
+                });
             });
 
-            briefingListContainer.appendChild(card);
+            decisionsCarouselContainer.appendChild(sectionEl);
+            wireCarouselOverflow(body, track);
         });
+    }
+
+    // Nav arrows and edge fades only show when a row actually overflows, and
+    // each arrow disables at its own end — no dead-end clicks, no "scroll
+    // hint" shown when there's nothing to scroll (owner-reported).
+    function wireCarouselOverflow(body, track) {
+        const updateEdges = () => {
+            const overflowing = track.scrollWidth > track.clientWidth + 1;
+            body.classList.toggle("scrollable", overflowing);
+            if (!overflowing) return;
+            body.classList.toggle("at-start", track.scrollLeft <= 1);
+            body.classList.toggle(
+                "at-end", track.scrollLeft >= track.scrollWidth - track.clientWidth - 1
+            );
+        };
+        track.addEventListener("scroll", updateEdges, { passive: true });
+        new ResizeObserver(updateEdges).observe(track);
+        updateEdges();
     }
 
     function selectBriefing(decisionId) {
@@ -4166,15 +4337,17 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         activeAnalogs = null;
         activeCounterfactual = null;
         activePlanFreshness = null;
-        // Toggle active card class
-        const cards = briefingListContainer.querySelectorAll(".briefing-card");
-        cards.forEach(c => {
-            if (c.getAttribute("data-id") === decisionId) {
-                c.classList.add("active");
-            } else {
-                c.classList.remove("active");
-            }
-        });
+        // Toggle active card class across every outcome carousel, and bring the
+        // selected card into view within its own track (graceful selection).
+        if (decisionsCarouselContainer) {
+            decisionsCarouselContainer.querySelectorAll(".deck-card").forEach(c => {
+                const isActive = c.getAttribute("data-id") === decisionId;
+                c.classList.toggle("active", isActive);
+                if (isActive) {
+                    c.scrollIntoView({ inline: "nearest", block: "nearest", behavior: "smooth" });
+                }
+            });
+        }
 
         // Load selected instrument brief and its independent reasoning trace.
         loadDecisionDetail(decisionId);
@@ -4214,6 +4387,27 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         "trade_plan": "fa-list-check",
     };
 
+    // Every stage maps to exactly one brief tab — the DAG points, the tab
+    // explains. Covers both stage-id vocabularies seen in persisted traces.
+    const STAGE_TAB_MAP = {
+        universe_ingest: "setup",
+        technical_indicators: "setup",
+        trade_plan: "setup",
+        scoring_engine: "analysis",
+        confidence_engine: "analysis",
+        risk_assessment: "analysis",
+        quality_gates: "analysis",
+        final_decision: "analysis",
+        score: "analysis",
+        confidence: "analysis",
+        risk: "analysis",
+        decision: "analysis",
+        evidence: "analysis",
+        regime: "context",
+        market_health: "context",
+        sector_health: "context",
+    };
+
     function renderTraceDAG(trace) {
         if (!dagNodesContainer) return;
         dagNodesContainer.innerHTML = "";
@@ -4236,7 +4430,7 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
 
             node.innerHTML = `
                 <i class="fa-solid ${icon} dag-node-icon"></i>
-                <span class="dag-node-name">${stage.name}</span>
+                <span class="dag-node-name" title="${escapeDecisionHtml(stage.name)}">${escapeDecisionHtml(stage.name)}</span>
                 <span class="dag-node-status ${statusClass}">${stage.status}</span>
             `;
 
@@ -4275,88 +4469,8 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         const stage = activeTrace.stages.find(s => s.stage_id === stageId);
         if (stage) {
             showStageDetails(stage);
-        }
-    }
-
-    function refreshSelectedStageDetail() {
-        if (!selectedStageId || !activeTrace) return;
-        const stage = activeTrace.stages.find(s => s.stage_id === selectedStageId);
-        if (stage) showStageDetails(stage);
-    }
-
-    function renderContextStageBody(block, kind) {
-        const data = block || { status: "UNKNOWN" };
-        if (data.status !== "ASSESSED") {
-            const label = kind === "regime" ? "regime" : "market-health";
-            return `<p class="context-caption unknown">UNKNOWN — re-validate to persist a ${label} assessment for this decision.</p>`;
-        }
-        if (kind === "regime") {
-            return `
-                <div class="context-chip-row">${(data.labels || [])
-                    .map(l => contextChip(l, contextChipTone(l))).join("")}</div>
-                <p class="context-caption">${escapeDecisionHtml(data.explanation || "")}</p>
-            `;
-        }
-        const dims = data.dimensions || {};
-        return `
-            <div class="context-chip-row">${Object.values(dims)
-                .map(label => contextChip(label, contextChipTone(label))).join("")}</div>
-            ${data.explanation ? `<p class="context-caption">${escapeDecisionHtml(data.explanation)}</p>` : ""}
-        `;
-    }
-
-    function renderTradePlanStageBody() {
-        const plan = activeDecisionData && activeDecisionData.trade_plan;
-        if (!plan) {
-            return '<p class="context-caption">No TradePlan authorized for this decision — a non-TRADE stance carries no entry/exit levels.</p>';
-        }
-        const targets = Array.isArray(plan.targets) && plan.targets.length
-            ? plan.targets.map(formatDecisionPrice).join(" · ")
-            : "—";
-        return `
-            <div class="trade-plan-grid compact">
-                <div class="trade-plan-metric">
-                    <span>Entry zone</span>
-                    <strong>${formatDecisionPrice(plan.entry_low)} – ${formatDecisionPrice(plan.entry_high)}</strong>
-                </div>
-                <div class="trade-plan-metric invalidation">
-                    <span>Invalidation / stop</span>
-                    <strong>${formatDecisionPrice(plan.stop_loss)}</strong>
-                </div>
-                <div class="trade-plan-metric targets">
-                    <span>Targets</span>
-                    <strong>${targets}</strong>
-                </div>
-                <div class="trade-plan-metric">
-                    <span>Risk : reward</span>
-                    <strong>${formatDecisionRatio(plan.risk_reward)}</strong>
-                </div>
-            </div>
-        `;
-    }
-
-    function renderStageDetailBody(stage) {
-        switch (stage.stage_id) {
-            case "regime":
-                return renderContextStageBody(activeContextData && activeContextData.regime, "regime");
-            case "market_health":
-                return renderContextStageBody(activeContextData && activeContextData.market_health, "market_health");
-            case "score":
-                return activeDepth && activeDepth.score
-                    ? renderAnalysisSummaryCard("Score", activeDepth.score, "score")
-                    : `<p class="context-caption">${escapeDecisionHtml(stage.summary)}</p>`;
-            case "confidence":
-                return activeDepth && activeDepth.confidence
-                    ? renderAnalysisSummaryCard("Confidence", activeDepth.confidence, "confidence")
-                    : `<p class="context-caption">${escapeDecisionHtml(stage.summary)}</p>`;
-            case "risk":
-                return activeDepth && activeDepth.risk
-                    ? renderAnalysisSummaryCard("Risk", activeDepth.risk, "risk")
-                    : `<p class="context-caption">${escapeDecisionHtml(stage.summary)}</p>`;
-            case "trade_plan":
-                return renderTradePlanStageBody();
-            default:
-                return `<p class="context-caption">${escapeDecisionHtml(stage.summary)}</p>`;
+            const tab = STAGE_TAB_MAP[stage.stage_id];
+            if (tab) switchBriefTab(tab);
         }
     }
 
@@ -4381,6 +4495,9 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         `;
     }
 
+    // Full detail for every stage already lives in one of the four brief tabs
+    // (Setup/Analysis/Context) — this panel shows only what isn't duplicated
+    // there: the stage's own status and its provenance references.
     function showStageDetails(stage) {
         if (!dagDetailsPanel) return;
         selectedStageId = stage.stage_id;
@@ -4389,10 +4506,34 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         dagDetailsTitle.innerHTML = `<i class="fa-solid ${icon}"></i> <span>${escapeDecisionHtml(stage.name)}</span>`;
         dagDetailsStatus.className = `badge ${stage.status.toLowerCase()}`;
         dagDetailsStatus.textContent = stage.status;
-        dagDetailsSummary.innerHTML = renderStageDetailBody(stage);
+
+        const tab = STAGE_TAB_MAP[stage.stage_id];
+        dagDetailsSummary.innerHTML = tab
+            ? `<p class="context-caption">Full detail lives in the <strong>${escapeDecisionHtml(friendlyLabel(tab))}</strong> tab — opened automatically.</p>`
+            : `<p class="context-caption">${escapeDecisionHtml(stage.summary || "")}</p>`;
 
         renderStageProvenance(stage);
         dagDetailsPanel.style.display = "block";
+    }
+
+    const BRIEF_TAB_NAMES = new Set(["setup", "analysis", "context", "response"]);
+
+    // Sticky-cockpit tab strip. Deliberately not reset when the selected
+    // decision changes (selectBriefing) — flipping through several decisions
+    // to compare the same aspect should keep you on that aspect.
+    function switchBriefTab(name) {
+        if (!BRIEF_TAB_NAMES.has(name)) return;
+        activeBriefTab = name;
+        if (decisionBriefTabstrip) {
+            decisionBriefTabstrip.querySelectorAll(".brief-tab").forEach(btn => {
+                btn.classList.toggle("active", btn.getAttribute("data-brief-tab") === name);
+            });
+        }
+        if (decisionBriefBody) {
+            decisionBriefBody.querySelectorAll(".tabpane").forEach(pane => {
+                pane.classList.toggle("active", pane.getAttribute("data-brief-pane") === name);
+            });
+        }
     }
 
     function drawDAGLines() {
@@ -4466,6 +4607,40 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         if (!instrumentId) return;
         const bareSymbol = String(instrumentId).replace(/^NSE:|^BSE:/, "");
         validateSymbolsNow([bareSymbol], { button: event.currentTarget, refreshDecisions: true });
+    });
+
+    // Tab strip and action bar live in the static sticky header (not rebuilt
+    // per decision), so they're wired exactly once here and read
+    // activeDecisionData/activeDecisionId at click time.
+    decisionBriefTabstrip?.querySelectorAll(".brief-tab").forEach(btn => {
+        btn.addEventListener("click", () => switchBriefTab(btn.getAttribute("data-brief-tab")));
+    });
+
+    document.getElementById("decision-brief-market")?.addEventListener("click", () => {
+        switchTab("market");
+    });
+    document.getElementById("decision-brief-dismiss")?.addEventListener("click", () => {
+        if (activeDecisionData) dismissDecisionForToday(activeDecisionData);
+    });
+    document.getElementById("decision-brief-remove-candidate")?.addEventListener("click", async event => {
+        const instrumentId = activeDecisionData && activeDecisionData.metadata
+            ? activeDecisionData.metadata.instrument_id
+            : null;
+        if (!instrumentId) return;
+        const bareSymbol = String(instrumentId).replace(/^NSE:|^BSE:/, "");
+        const removed = await removeCandidateNow(bareSymbol, { button: event.currentTarget });
+        if (removed) {
+            event.currentTarget.disabled = true;
+            event.currentTarget.querySelector("i").className = "fa-solid fa-check";
+            event.currentTarget.querySelector("span").textContent = "Removed";
+        }
+    });
+    document.getElementById("decision-brief-export")?.addEventListener("click", event => {
+        const decisionId = activeDecisionData && activeDecisionData.metadata
+            ? activeDecisionData.metadata.decision_id
+            : null;
+        if (!decisionId) return;
+        exportDecisionBrief(decisionId, event.currentTarget);
     });
 
     // Wire refresh trigger

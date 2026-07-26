@@ -2039,9 +2039,8 @@ body {
 .trace-workstation {
     display: grid;
     grid-template-columns:
-        minmax(260px, 0.8fr)
-        minmax(360px, 1.2fr)
-        minmax(320px, 1fr);
+        minmax(0, 1.7fr)
+        minmax(280px, 1fr);
     gap: 16px;
     height: calc(100vh - 120px);
     overflow: hidden;
@@ -2070,21 +2069,38 @@ body {
     overflow: hidden;
 }
 
-.briefing-column .card-body {
-    min-height: 0;
+/* Sticky cockpit header: identity row, gauges, tab strip, action bar —
+   all always visible regardless of which tab or scroll position is active */
+.decision-brief-header {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
 }
 
-.decision-brief-header {
+.decision-brief-header-row1 {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
 }
 
-.decision-brief-header > div:first-child {
+.decision-brief-identity {
     display: flex;
     align-items: center;
+    gap: 8px;
     min-width: 0;
+}
+
+.decision-brief-symbol-lg {
+    color: var(--text-primary);
+    font-size: 1.2rem;
+    font-weight: 750;
+    letter-spacing: -0.02em;
+    font-family: var(--font-mono);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 220px;
 }
 
 .decision-brief-header-actions {
@@ -2109,6 +2125,102 @@ body {
 .btn-sm:disabled {
     opacity: 0.4;
     cursor: not-allowed;
+}
+
+.decision-brief-gauges {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+}
+
+/* Author display rules otherwise beat the browser's own [hidden] default,
+   so the cockpit gauges/tabstrip/actionbar would stay visible even after
+   JS sets .hidden = true on the empty state (owner-reported). */
+.decision-brief-gauges[hidden],
+.decision-brief-tabstrip[hidden],
+.decision-brief-actionbar[hidden] {
+    display: none;
+}
+
+.brief-gauge {
+    background: rgba(15, 23, 42, 0.35);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 7px 10px;
+    min-width: 0;
+}
+
+.brief-gauge-label {
+    display: block;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    font-weight: 700;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.brief-gauge-value-row strong {
+    font-family: var(--font-mono);
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.brief-gauge-bar {
+    height: 3px;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.06);
+    margin-top: 5px;
+    overflow: hidden;
+}
+
+.brief-gauge-fill {
+    height: 100%;
+    border-radius: 3px;
+    width: 0%;
+    transition: width var(--transition-speed) ease, background-color var(--transition-speed) ease;
+}
+
+.decision-brief-tabstrip {
+    display: flex;
+    gap: 2px;
+    border-bottom: 1px solid var(--border-color);
+    overflow-x: auto;
+}
+
+.brief-tab {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-family: var(--font-sans);
+    font-size: 0.76rem;
+    font-weight: 600;
+    padding: 7px 12px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.brief-tab:hover {
+    color: var(--text-primary);
+}
+
+.brief-tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+}
+
+.decision-brief-actionbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
 }
 
 .decision-brief-body {
@@ -2143,14 +2255,30 @@ body {
 .decision-brief-hero {
     border: 1px solid rgba(56, 189, 248, 0.24);
     border-radius: 8px;
-    padding: 16px;
+    padding: 14px 16px;
     background:
         radial-gradient(circle at top right, rgba(56, 189, 248, 0.09), transparent 45%),
         rgba(15, 23, 42, 0.38);
 }
 
-.decision-brief-identity,
-.decision-brief-actions,
+/* Only one tab pane renders at a time — replaces the old single stacked
+   scroll of 13 sections with four independently-scrollable groups */
+.tabpane {
+    display: none;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.tabpane.active {
+    display: flex;
+}
+
+.decision-brief-footnote {
+    color: var(--text-muted);
+    font-size: 0.68rem;
+    margin: 0;
+}
+
 .decision-brief-section-header,
 .trade-plan-validity {
     display: flex;
@@ -2159,18 +2287,11 @@ body {
     gap: 10px;
 }
 
-.decision-brief-symbol {
-    color: var(--text-primary);
-    font-size: 1.35rem;
-    font-weight: 750;
-    letter-spacing: -0.02em;
-}
-
 .decision-brief-thesis {
     color: var(--text-secondary);
     font-size: 0.88rem;
     line-height: 1.55;
-    margin: 12px 0 0;
+    margin: 0;
 }
 
 .decision-brief-section {
@@ -3008,11 +3129,6 @@ body {
     color: #fca5a5 !important;
 }
 
-.decision-brief-actions {
-    flex-wrap: wrap;
-    justify-content: flex-start;
-}
-
 @container (max-width: 520px) {
     .analysis-overview-grid {
         grid-template-columns: 1fr;
@@ -3050,20 +3166,6 @@ body {
     }
 }
 
-.briefing-dismiss-btn {
-    border: 0;
-    border-radius: 4px;
-    background: transparent;
-    color: var(--text-muted);
-    cursor: pointer;
-    padding: 4px 6px;
-}
-
-.briefing-dismiss-btn:hover {
-    background: rgba(245, 158, 11, 0.1);
-    color: #fdba74;
-}
-
 .restore-dismissed-btn {
     border: 0;
     background: transparent;
@@ -3074,79 +3176,258 @@ body {
     text-decoration: underline;
 }
 
-.briefing-list {
-    flex-grow: 1;
-    overflow-y: auto;
+/* Today's Decisions — outcome-grouped carousels (Trade -> Watch -> No trade
+   -> everything else), always in that priority order regardless of timestamp */
+.decisions-toolbar-body {
+    padding: 16px 18px;
     display: flex;
     flex-direction: column;
     gap: 12px;
-    padding-right: 4px;
-    position: relative;
-    z-index: 0;
 }
 
-.briefing-card {
-    background-color: rgba(255, 255, 255, 0.01);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    padding: 14px;
-    cursor: pointer;
-    transition: all var(--transition-speed) ease;
+.decisions-summary-strip {
+    font-size: 0.82rem;
+    line-height: 1.5;
+}
+
+.decisions-carousel-groups {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    position: relative;
-    z-index: 0;
+    gap: 12px;
+    margin-bottom: 16px;
 }
 
-.briefing-card:hover {
-    border-color: var(--border-hover);
-    background-color: rgba(255, 255, 255, 0.02);
+.decision-carousel-section {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 12px 10px 14px;
 }
 
-.briefing-card.active {
-    border-color: var(--accent);
-    background-color: rgba(56, 189, 248, 0.04);
-}
-
-.briefing-card-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 8px;
-}
-
-.briefing-badges {
+.decision-carousel-head {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
+    padding: 0 4px 8px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.decision-carousel-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
     flex-shrink: 0;
 }
 
-.briefing-symbol {
-    font-size: 0.9rem;
+.decision-carousel-name {
+    font-size: 0.78rem;
     font-weight: 700;
+    letter-spacing: 0.02em;
     color: var(--text-primary);
+    white-space: nowrap;
 }
 
-.briefing-date {
-    font-size: 0.75rem;
+.decision-carousel-count {
+    font-size: 0.72rem;
     color: var(--text-muted);
     font-family: var(--font-mono);
 }
 
-.briefing-desc {
-    font-size: 0.82rem;
-    color: var(--text-secondary);
-    line-height: 1.45;
-    margin: 0;
+.decision-carousel-hint {
+    margin-left: auto;
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.briefing-meta-row {
+.decision-carousel-chevron {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    transition: transform var(--transition-speed) ease;
+    flex-shrink: 0;
+}
+
+.decision-carousel-section.collapsed .decision-carousel-chevron {
+    transform: rotate(-90deg);
+}
+
+.decision-carousel-section.collapsed .decision-carousel-body {
+    display: none;
+}
+
+.decision-carousel-body {
+    position: relative;
+}
+
+.decision-carousel-track {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    scroll-behavior: smooth;
+    scroll-snap-type: x proximity;
+    padding: 2px 4px;
+}
+
+/* Only pay the nav-button gutter, and only fade the edge that actually has
+   more content, once a row genuinely overflows (owner-reported: arrows and
+   a hard-clipped edge showed even on a single-card row) */
+.decision-carousel-body.scrollable .decision-carousel-track {
+    padding: 2px 30px;
+    -webkit-mask-image: linear-gradient(90deg, transparent, black 24px, black calc(100% - 24px), transparent);
+    mask-image: linear-gradient(90deg, transparent, black 24px, black calc(100% - 24px), transparent);
+}
+
+.decision-carousel-body.scrollable.at-start .decision-carousel-track {
+    -webkit-mask-image: linear-gradient(90deg, black calc(100% - 24px), transparent);
+    mask-image: linear-gradient(90deg, black calc(100% - 24px), transparent);
+}
+
+.decision-carousel-body.scrollable.at-end .decision-carousel-track {
+    -webkit-mask-image: linear-gradient(90deg, transparent, black 24px);
+    mask-image: linear-gradient(90deg, transparent, black 24px);
+}
+
+.decision-carousel-body.scrollable.at-start.at-end .decision-carousel-track {
+    -webkit-mask-image: none;
+    mask-image: none;
+}
+
+.decision-carousel-track::-webkit-scrollbar {
+    height: 5px;
+}
+
+.decision-carousel-track::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 3px;
+}
+
+.decision-carousel-nav {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 30px;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    z-index: 1;
+}
+
+.decision-carousel-body.scrollable .decision-carousel-nav {
+    display: flex;
+}
+
+.decision-carousel-body.scrollable.at-start .decision-carousel-nav.prev,
+.decision-carousel-body.scrollable.at-end .decision-carousel-nav.next {
+    display: none;
+}
+
+.decision-carousel-nav:hover {
+    color: var(--text-primary);
+}
+
+.decision-carousel-nav.prev {
+    left: 0;
+    background: linear-gradient(90deg, var(--bg-card) 45%, transparent);
+}
+
+.decision-carousel-nav.next {
+    right: 0;
+    background: linear-gradient(270deg, var(--bg-card) 45%, transparent);
+}
+
+.deck-card {
+    flex: 0 0 156px;
+    max-width: 156px;
+    scroll-snap-align: start;
+    border-radius: 8px;
+    padding: 9px 10px;
+    background-color: rgba(255, 255, 255, 0.01);
+    border: 1px solid var(--border-color);
+    border-top: 2px solid var(--stance-color, var(--text-muted));
+    cursor: pointer;
+    transition: border-color var(--transition-speed) ease, background-color var(--transition-speed) ease;
+}
+
+.deck-card:hover {
+    border-color: var(--border-hover);
+    background-color: rgba(255, 255, 255, 0.02);
+}
+
+.deck-card.active {
+    border-color: var(--accent);
+    background-color: rgba(56, 189, 248, 0.04);
+    outline: 1px solid var(--accent);
+    outline-offset: -1px;
+}
+
+.deck-top {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
+    gap: 4px;
+}
+
+.deck-sym {
+    font-family: var(--font-mono);
+    font-weight: 700;
+    font-size: 0.78rem;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+.deck-dismiss-btn {
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 2px 4px;
+    flex-shrink: 0;
+}
+
+.deck-dismiss-btn:hover {
+    background: rgba(245, 158, 11, 0.1);
+    color: #fdba74;
+}
+
+.deck-mid {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 6px;
+    margin-top: 4px;
+}
+
+.deck-score {
+    font-family: var(--font-mono);
+    font-weight: 700;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+}
+
+.deck-time {
+    font-size: 0.62rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.deck-note {
+    font-size: 0.62rem;
+    color: var(--text-muted);
+    margin-top: 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .stance-chip,
@@ -3328,6 +3609,15 @@ body {
     justify-content: space-between;
 }
 
+.dag-legend {
+    position: relative;
+    z-index: 2;
+    font-size: 0.66rem;
+    color: var(--text-muted);
+    line-height: 1.4;
+    margin: 0 0 4px;
+}
+
 .dag-svg-overlay {
     position: absolute;
     top: 0;
@@ -3455,30 +3745,6 @@ body {
     line-height: 1.5;
     margin: 2px 0 4px;
     word-break: break-word;
-}
-
-.dag-details-text .analysis-summary-card {
-    margin-top: 4px;
-}
-
-.dag-details-text .trade-plan-grid.compact {
-    margin-top: 4px;
-}
-
-.dag-details-text .trade-plan-grid.compact .trade-plan-metric {
-    padding: 6px 9px;
-}
-
-.dag-details-text .trade-plan-grid.compact .trade-plan-metric span {
-    font-size: 0.65rem;
-}
-
-.dag-details-text .trade-plan-grid.compact .trade-plan-metric strong {
-    font-size: 0.82rem;
-}
-
-.dag-details-text .context-chip-row {
-    margin-bottom: 4px;
 }
 
 .dag-details-kv-grid {
@@ -3898,6 +4164,10 @@ body {
 
 .tone-good-text {
     color: #86efac !important;
+}
+
+.tone-warn-text {
+    color: #fdba74 !important;
 }
 
 .tone-bad-text {

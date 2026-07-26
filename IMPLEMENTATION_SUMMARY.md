@@ -6,6 +6,196 @@ status updated on approval.
 
 ---
 
+## Decisions & Trace UI overhaul (READY FOR REVIEW)
+
+| | |
+|---|---|
+| Completed | 2026-07-25 |
+| Objective | Owner-reported: the Decisions & Trace tab was overcrowded (13 sections stacked in one scroll), had redundant gate chips (list card vs. brief), and a Reasoning Trace DAG that duplicated the brief's own analysis in a side panel. Also fixed: logging out left the browser URL on the previous tab, so the next login reopened it instead of defaulting to Portfolio Overview. |
+| Scope | Full frontend redesign: outcome-grouped horizontal carousels for Today's Decisions, a sticky cockpit header with live score/confidence/risk gauges, a four-tab Decision Brief (Setup/Analysis/Context/Response), and a Reasoning Trace that navigates to the matching tab instead of duplicating it. Plus the logout navigation fix. No backend/API changes. |
+| Tests | Full suite **1016 passed** (2 stale dashboard-hosting assertions updated to match the new static markup, plus new assertions for every redesigned element); no backend files touched, so no Ruff/mypy scope. No JS test runner in this repo — verified via full-suite substring assertions, a JS brace/paren balance check against the pre-edit baseline, and a live browser console-error check (zero errors on load) |
+| Coverage | Frontend-only change; no Python coverage impact |
+| Status | **READY FOR REVIEW** — first-pass redesign smoke-tested live by owner (2026-07-26), four issues found and fixed in a follow-up pass (below); needs a second owner click-through |
+| Branch | feature/live-dashboard |
+
+### Fix pass (2026-07-26, owner screenshots)
+
+Owner smoke-tested the first pass live and reported four issues, all fixed:
+
+- **Empty state didn't actually hide** — filtering to zero matching
+  decisions left the cockpit gauges (`0.0`/`0.0`/`0.0`), all four tabs, and
+  the action buttons visibly rendered and interactive, with the title
+  ellipsis-truncated to "Instrument Decisio…". Root cause: the browser's
+  built-in `[hidden] { display: none }` default is author-overridable, and
+  `.decision-brief-gauges`/`.decision-brief-tabstrip`/`.decision-brief-actionbar`
+  each had their own unconditional `display: grid`/`flex` rule, which wins
+  the cascade over the UA default even with the `hidden` attribute present.
+  Fixed with explicit `[hidden] { display: none; }` overrides for all
+  three, a short "Select a symbol" placeholder that fits without
+  truncating, and `resetCockpitGauges()` now also runs in the empty state
+  for defense-in-depth.
+- **Carousel nav arrows/fade showed even with nothing to scroll** — Trade's
+  single-card row still showed both chevrons and a hard-clipped right edge.
+  Added `wireCarouselOverflow()`: measures actual overflow per row via
+  `ResizeObserver` + a scroll listener, toggling `.scrollable`/`.at-start`/
+  `.at-end` classes so each arrow only appears when there's somewhere to
+  scroll *in that direction*, and a `mask-image` edge fade (instead of the
+  earlier gradient-on-button approach, which read as a hard clip) shows
+  only on the side that actually has more content.
+- **Repetitive, undifferentiated gate notes** — many Watch/No-trade cards
+  showed the identical muted-gray "N of M gates open" with no at-a-glance
+  severity cue (only a hover tooltip). Added a `tone-good-text`/
+  `tone-warn-text`/`tone-bad-text` color cue (0 / 1-2 / 3+ failed gates)
+  reusing the existing tone-text convention, so severity reads at a glance
+  across a row of cards without hovering each one.
+- **Possible stray character before a card's score digits** — traced the
+  render path (`decisionScoreValue` → `extractScoreFromText` →
+  `renderDeckCard`); no currency symbol or prefix is ever added to the raw
+  `.toFixed(1)` score string, so this is almost certainly a screenshot
+  compression artifact on a thin-serif numeral, not a real bug — flagged to
+  the owner to double-check live rather than "fixed" speculatively.
+
+### Scope completed
+
+- **Logout navigation fix**: `logoutBtn`'s click handler never reset the
+  browser URL, so it stayed at e.g. `/dashboard/decisions`; the next login's
+  `initializeRoute()` read that stale path and reopened the same tab instead
+  of defaulting to Portfolio Overview. Fixed with one
+  `window.history.replaceState({tabId: "overview"}, "", "/dashboard/overview")`
+  call before the reload/unlock-gate branch.
+- **Outcome-grouped carousels** (`renderDecisionCarousels`, `renderDeckCard`,
+  `DECISION_CAROUSEL_SECTIONS`): Today's Decisions is grouped into
+  Trade → Watch → No trade → Insufficient data (any other `decision_type`
+  gets its own carousel too, so nothing is ever silently hidden), always in
+  that priority order regardless of timestamp (owner-confirmed). Each
+  section is an independently scrollable horizontal row with prev/next
+  buttons, expanded by default (owner-confirmed), collapsible via its
+  header. Cards are compact (symbol, score, time, a single "N of M gates
+  open" note whose tooltip lists the specific failing gates — the full
+  breakdown lives in the Analysis tab, so nothing shown before is now
+  unreachable). `decisionTypePriority()` drives both the display order and
+  the default-selected decision on load/filter-change, replacing the old
+  "newest first" fallback.
+- **Sticky cockpit header**: symbol, stance chip, decision-type chip,
+  as-of time, and Re-validate button, plus three live gauges (composite
+  score / confidence / risk) that read the exact same
+  `analysisPresentation()`-derived value/level already computed for the
+  Analysis tab's summary cards (`renderCockpitGauges`) — never a second,
+  independently-derived number. Always visible regardless of scroll
+  position or active tab.
+- **Four-tab Decision Brief** (`switchBriefTab`, `activeBriefTab`) replaces
+  the old 13-section stacked scroll: **Setup** (eligibility, TradePlan,
+  intraday chart), **Analysis** (score/confidence/risk depth, "why not a
+  trade", safety & quality gates), **Context** (decision timeline, session/
+  market context, analytical provenance), **Response** (your response/
+  outcome, similar past setups). Every one of the original sections is
+  preserved — none dropped, only regrouped — and every existing loader
+  (`loadDecisionDepth`, `loadDecisionContext`, `loadDecisionChart`,
+  `loadJournalPanel`, `loadDecisionAnalogs`, `loadDecisionCounterfactual`,
+  `loadDecisionPlanFreshness`) is unchanged, since each still targets the
+  same element ids, now nested inside a tab pane instead of a flat section.
+  `activeBriefTab` deliberately persists across decision switches — flipping
+  through several decisions to compare the same aspect keeps you on that
+  aspect instead of resetting to Setup each time (graceful selection).
+- **Action bar and tab strip are static, wired once**: the header
+  previously rebuilt and rebound its action buttons on every
+  `renderDecisionBrief` call; since it's now a fixed part of the sticky
+  header (not rebuilt per decision), the buttons are wired exactly once at
+  load and read `activeDecisionData`/`activeDecisionId` at click time — this
+  needed a new `resetActionButtons()` so a "Removed" state from a previous
+  symbol can't leak onto the next one.
+- **Reasoning Trace navigates instead of duplicating**: clicking a DAG node
+  now looks up its tab via a new `STAGE_TAB_MAP` and calls `switchBriefTab`,
+  so the brief opens exactly where that value lives. The side panel
+  (`showStageDetails`) now shows only what isn't duplicated elsewhere — the
+  stage's status and provenance references — instead of re-rendering the
+  same score/confidence/risk/regime/trade-plan content a second time.
+  Removed the now-dead `renderStageDetailBody`, `renderContextStageBody`,
+  `renderTradePlanStageBody`, and `refreshSelectedStageDetail` (their output
+  is fully covered by the brief tabs, which have no async-refresh problem
+  since they're rebuilt fresh on every `renderDecisionBrief`).
+- **Text truncation handled throughout**: long symbols/labels get
+  `text-overflow: ellipsis` plus a `title` tooltip with the full value
+  (deck card symbol, cockpit symbol, gauge labels, carousel hint text,
+  decision-note tooltips, DAG node names) — nothing silently clips without
+  a way to read the full value.
+
+### Files created
+
+- None (all additive/restructuring within existing files).
+
+### Files modified
+
+- `src/athena/api/static/index.html` — replaced the 3-column
+  `.trace-workstation` with a toolbar card, outcome-carousel container, and
+  a 2-column workstation (Decision Brief | Reasoning Trace); new static
+  cockpit header (identity, gauges, tab strip, action bar); cache-bust
+  bumped to `9.30.0`.
+- `src/athena/api/static/dashboard.js` — see Scope completed above for the
+  full list of new/changed functions; `logoutBtn` click handler.
+- `src/athena/api/static/dashboard.css` — new carousel/cockpit/tab-strip/
+  gauge styles; removed dead `.briefing-*` and DAG-panel-duplication rules.
+- `tests/api/platform/test_dashboard_hosting.py` — replaced stale
+  DAG-duplication assertions with new ones for the redesigned elements;
+  fixed two assertions that checked `js` for id attributes now emitted only
+  in static `html`.
+- This log.
+
+### Public APIs
+
+- None — pure frontend restructuring, no backend/API surface touched.
+
+### Validation and architecture
+
+- Full regression: **1016 passed** (unchanged count — no backend files
+  touched, no new backend tests needed).
+- No Ruff/mypy scope (no `.py` files changed).
+- JS has no linter/test runner in this repo; verified via (1) full-suite
+  substring assertions against the new markup/functions, (2) a brace/paren
+  balance check of the whole file against the pre-edit baseline (added code
+  is perfectly balanced; the single pre-existing off-by-one paren count is
+  unchanged, confirmed not something this change introduced), (3) a live
+  server restart + isolated-browser console-error check (zero errors on
+  load, both `dashboard.css`/`dashboard.js` served 200).
+- No order-placement path touched. ADR-005 preserved: gauges/tabs render
+  already-computed values, nothing generated. No ADR required — no domain
+  object, contract, or backend behavior changed.
+
+### Risks and technical debt
+
+- I could not exercise the redesigned Decisions & Trace tab end-to-end
+  myself (no owner credentials) — the live console-error check only covers
+  the pre-login page. **This milestone needs an owner click-through in the
+  real dashboard before being marked approved.**
+- No new technical debt beyond the above; dead code from the old DAG-panel
+  duplication was removed rather than left in place.
+
+### Remaining work
+
+- **Owner smoke test round 2** (see chat for step-by-step): re-check the
+  empty state (filter to zero matches) now cleanly shows just "Select a
+  symbol" with no gauges/tabs/actions visible; confirm the Trade row (or
+  any single-card row) shows no nav arrows and no clipped edge; confirm
+  Watch/No-trade cards now show a color-coded gate note; confirm the
+  ADANIENSOL-like score glyph looks correct live. Beyond the fix pass: the
+  original round-1 smoke test items (carousel order, gauges, all four tabs,
+  DAG node jumps, logout landing on Portfolio Overview) plus the owner's
+  own list of further refinements are still pending.
+
+### Commit message
+
+```text
+refactor(dashboard): overhaul Decisions & Trace UI; fix logout tab reset
+
+- Replace the flat, chronological Today's Decisions list with outcome-grouped horizontal carousels (Trade/Watch/No trade/Insufficient data), always in that priority order regardless of timestamp
+- Add a sticky cockpit header with live score/confidence/risk gauges, replacing the 13-section stacked scroll with a four-tab brief (Setup/Analysis/Context/Response) — every original section preserved, just regrouped
+- Make Reasoning Trace nodes navigate to the matching brief tab instead of duplicating its content in a side panel; remove the now-dead duplicate renderers
+- Fix logout leaving the browser URL on the previous tab, which made the next login reopen it instead of defaulting to Portfolio Overview
+- Fix empty-state gauges/tabstrip/actionbar not actually hiding ([hidden] was overridden by an unconditional display rule); hide carousel nav arrows/fade when a row doesn't overflow; add a quick-glance severity color to repetitive gate notes
+```
+
+---
+
 ## M-X3 — Confidence-decay clock (APPROVED)
 
 | | |

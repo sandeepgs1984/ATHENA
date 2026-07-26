@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.29.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.31.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -480,76 +480,113 @@
 
                 <!-- Decisions & Trace Tab -->
                 <div id="tab-decisions" class="tab-pane">
-                    <div class="trace-workstation">
-                        <!-- Column 1: Briefing Documents Browser -->
-                        <div class="trace-column briefing-column">
-                            <div class="card">
-                                <div class="card-header">
-                                    <div class="card-title-icon"><i class="fas fa-file-invoice"></i></div>
-                                    <h3>Today's Decisions</h3>
+                    <!-- Toolbar: search / stance / type / sort, shared across all outcome carousels -->
+                    <div class="card decisions-toolbar-card">
+                        <div class="card-body decisions-toolbar-body">
+                            <div id="decisions-summary-strip" class="text-muted decisions-summary-strip">
+                                Loading…
+                            </div>
+                            <div class="decisions-toolbar">
+                                <div class="search-input-wrapper">
+                                    <i class="fas fa-search search-icon"></i>
+                                    <input type="text" id="briefing-search" class="search-input" placeholder="Search by symbol or decision...">
                                 </div>
-                                <div class="card-body" style="padding: 18px; display: flex; flex-direction: column; gap: 14px;">
-                                    <div id="decisions-summary-strip" class="text-muted" style="font-size: 0.85rem;">
-                                        Loading…
-                                    </div>
-                                    <div class="decisions-toolbar">
-                                        <div class="search-input-wrapper">
-                                            <i class="fas fa-search search-icon"></i>
-                                            <input type="text" id="briefing-search" class="search-input" placeholder="Search by symbol or decision...">
-                                        </div>
-                                        <div class="decisions-filters">
-                                            <label class="decisions-filter-label">Stance
-                                                <select id="decisions-filter-stance" class="decisions-select">
-                                                    <option value="all">All</option>
-                                                    <option value="BUY">BUY</option>
-                                                    <option value="SELL">SELL</option>
-                                                    <option value="HOLD">HOLD</option>
-                                                    <option value="PASS">PASS</option>
-                                                    <option value="WAIT">WAIT</option>
-                                                </select>
-                                            </label>
-                                            <label class="decisions-filter-label">Type
-                                                <select id="decisions-filter-type" class="decisions-select">
-                                                    <option value="all">All</option>
-                                                    <option value="TRADE">TRADE</option>
-                                                    <option value="WATCH">WATCH</option>
-                                                    <option value="NO_TRADE">NO_TRADE</option>
-                                                    <option value="INSUFFICIENT_DATA">INSUFFICIENT</option>
-                                                </select>
-                                            </label>
-                                            <label class="decisions-filter-label">Sort
-                                                <select id="decisions-sort" class="decisions-select">
-                                                    <option value="newest">Newest first</option>
-                                                    <option value="oldest">Oldest first</option>
-                                                    <option value="symbol-asc">Symbol A–Z</option>
-                                                    <option value="symbol-desc">Symbol Z–A</option>
-                                                    <option value="score-desc">Score high→low</option>
-                                                    <option value="score-asc">Score low→high</option>
-                                                    <option value="stance">Stance (BUY→PASS)</option>
-                                                </select>
-                                            </label>
-                                        </div>
-                                    </div>
-                                    <div id="briefing-list-container" class="briefing-list">
-                                        <!-- Dynamic list of decisions injected here -->
-                                        <div class="text-muted text-center" style="padding: 24px;">Loading decisions...</div>
-                                    </div>
+                                <div class="decisions-filters">
+                                    <label class="decisions-filter-label">Stance
+                                        <select id="decisions-filter-stance" class="decisions-select">
+                                            <option value="all">All</option>
+                                            <option value="BUY">BUY</option>
+                                            <option value="SELL">SELL</option>
+                                            <option value="HOLD">HOLD</option>
+                                            <option value="PASS">PASS</option>
+                                            <option value="WAIT">WAIT</option>
+                                        </select>
+                                    </label>
+                                    <label class="decisions-filter-label">Type
+                                        <select id="decisions-filter-type" class="decisions-select">
+                                            <option value="all">All</option>
+                                            <option value="TRADE">TRADE</option>
+                                            <option value="WATCH">WATCH</option>
+                                            <option value="NO_TRADE">NO_TRADE</option>
+                                            <option value="INSUFFICIENT_DATA">INSUFFICIENT</option>
+                                        </select>
+                                    </label>
+                                    <label class="decisions-filter-label">Sort
+                                        <select id="decisions-sort" class="decisions-select">
+                                            <option value="newest">Newest first</option>
+                                            <option value="oldest">Oldest first</option>
+                                            <option value="symbol-asc">Symbol A–Z</option>
+                                            <option value="symbol-desc">Symbol Z–A</option>
+                                            <option value="score-desc">Score high→low</option>
+                                            <option value="score-asc">Score low→high</option>
+                                            <option value="stance">Stance (BUY→PASS)</option>
+                                        </select>
+                                    </label>
                                 </div>
                             </div>
                         </div>
+                    </div>
 
-                        <!-- Column 2: Selected Instrument Decision Brief -->
+                    <!-- Today's decisions, grouped by outcome: Trade → Watch → No trade → Insufficient
+                         data, in that priority order always (never by timestamp) -->
+                    <div id="decisions-carousel-groups" class="decisions-carousel-groups">
+                        <div class="text-muted text-center" style="padding: 24px;">Loading decisions...</div>
+                    </div>
+
+                    <div class="trace-workstation">
+                        <!-- Decision Brief: sticky cockpit header + four-tab detail pane -->
                         <div class="trace-column instrument-brief-column">
                             <div class="card">
                                 <div class="card-header decision-brief-header">
-                                    <div>
-                                        <div class="card-title-icon"><i class="fas fa-crosshairs"></i></div>
-                                        <h3 id="decision-brief-title">Instrument Decision Brief</h3>
+                                    <div class="decision-brief-header-row1">
+                                        <div class="decision-brief-identity">
+                                            <div class="card-title-icon"><i class="fas fa-crosshairs"></i></div>
+                                            <span id="decision-brief-title" class="decision-brief-symbol-lg">Select a symbol</span>
+                                            <span id="decision-brief-stance-chip"></span>
+                                            <span id="decision-brief-type-chip"></span>
+                                        </div>
+                                        <div class="decision-brief-header-actions">
+                                            <span id="decision-brief-asof" class="decision-brief-asof">Select a symbol</span>
+                                            <button id="decision-brief-revalidate-header" class="btn btn-outline btn-sm" type="button" title="Re-validate this symbol" disabled>
+                                                <i class="fa-solid fa-arrows-rotate"></i> Re-validate
+                                            </button>
+                                        </div>
                                     </div>
-                                    <div class="decision-brief-header-actions">
-                                        <span id="decision-brief-asof" class="decision-brief-asof">Select a symbol</span>
-                                        <button id="decision-brief-revalidate-header" class="btn btn-outline btn-sm" type="button" title="Re-validate this symbol" disabled>
-                                            <i class="fa-solid fa-arrows-rotate"></i> Re-validate
+                                    <div id="decision-brief-gauges" class="decision-brief-gauges" hidden>
+                                        <div class="brief-gauge">
+                                            <span class="brief-gauge-label">Composite score</span>
+                                            <div class="brief-gauge-value-row"><strong id="gauge-score-value">—</strong></div>
+                                            <div class="brief-gauge-bar"><div id="gauge-score-bar" class="brief-gauge-fill"></div></div>
+                                        </div>
+                                        <div class="brief-gauge">
+                                            <span class="brief-gauge-label">Confidence</span>
+                                            <div class="brief-gauge-value-row"><strong id="gauge-confidence-value">—</strong></div>
+                                            <div class="brief-gauge-bar"><div id="gauge-confidence-bar" class="brief-gauge-fill"></div></div>
+                                        </div>
+                                        <div class="brief-gauge">
+                                            <span class="brief-gauge-label">Risk</span>
+                                            <div class="brief-gauge-value-row"><strong id="gauge-risk-value">—</strong></div>
+                                            <div class="brief-gauge-bar"><div id="gauge-risk-bar" class="brief-gauge-fill"></div></div>
+                                        </div>
+                                    </div>
+                                    <div class="decision-brief-tabstrip" id="decision-brief-tabstrip" hidden>
+                                        <button class="brief-tab active" data-brief-tab="setup" type="button"><i class="fa-solid fa-route"></i> <span>Setup</span></button>
+                                        <button class="brief-tab" data-brief-tab="analysis" type="button"><i class="fa-solid fa-chart-bar"></i> <span>Analysis</span></button>
+                                        <button class="brief-tab" data-brief-tab="context" type="button"><i class="fa-solid fa-calendar-day"></i> <span>Context</span></button>
+                                        <button class="brief-tab" data-brief-tab="response" type="button"><i class="fa-solid fa-comment-dots"></i> <span>Response</span></button>
+                                    </div>
+                                    <div class="decision-brief-actionbar" id="decision-brief-actionbar" hidden>
+                                        <button id="decision-brief-market" class="btn btn-outline btn-sm" type="button" title="Open Market Intelligence">
+                                            <i class="fa-solid fa-chart-column"></i> <span>Market Intelligence</span>
+                                        </button>
+                                        <button id="decision-brief-dismiss" class="btn btn-outline btn-sm" type="button" title="Hide this symbol until tomorrow">
+                                            <i class="fa-solid fa-eye-slash"></i> <span>Dismiss today</span>
+                                        </button>
+                                        <button id="decision-brief-remove-candidate" class="btn btn-outline btn-sm btn-danger-outline" type="button" title="Stop future validation for this symbol">
+                                            <i class="fa-solid fa-list-check"></i> <span>Remove candidate</span>
+                                        </button>
+                                        <button id="decision-brief-export" class="btn btn-outline btn-sm" type="button" title="Export this decision brief">
+                                            <i class="fa-solid fa-file-export"></i> <span>Export</span>
                                         </button>
                                     </div>
                                 </div>
@@ -563,23 +600,25 @@
                             </div>
                         </div>
 
-                        <!-- Column 3: Decision Trace DAG Viewer -->
+                        <!-- Reasoning Trace: a stage click jumps the brief to where that value
+                             lives instead of duplicating it in a side panel -->
                         <div class="trace-column dag-column">
                             <div class="card">
                                 <div class="card-header">
                                     <div class="card-title-icon"><i class="fas fa-project-diagram"></i></div>
-                                    <h3>Reasoning Trace DAG</h3>
+                                    <h3>Reasoning Trace</h3>
                                 </div>
                                 <div class="card-body trace-dag-canvas-wrapper" style="position: relative;">
+                                    <p class="dag-legend">Click a stage to jump the brief to where that value lives.</p>
                                     <!-- Dynamic SVG connection line layer -->
                                     <svg id="dag-svg-lines" class="dag-svg-overlay"></svg>
-                                    
+
                                     <div id="dag-nodes-container" class="dag-nodes-flow">
                                         <!-- Dynamic stage nodes injected here -->
                                         <div class="text-muted text-center" style="padding: 48px;">Select a decision briefing document to view its reasoning trace.</div>
                                     </div>
 
-                                    <!-- Stage details card -->
+                                    <!-- Compact stage status + provenance (full explanation lives in the brief tab) -->
                                     <div id="dag-details-panel" class="dag-details-card" style="display: none;">
                                         <div class="dag-details-header">
                                             <h4 id="dag-details-title">Stage Details</h4>
@@ -768,6 +807,6 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.29.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.31.0"></script>
 </body>
 </html>
