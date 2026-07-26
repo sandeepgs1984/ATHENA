@@ -2424,39 +2424,70 @@ body {
     text-transform: uppercase;
 }
 
-.trade-plan-grid {
+/* Trade Plan hero grid (owner audit #10) — "huge numbers, professional",
+   the same visual weight as the cockpit gauges rather than small dense text */
+.trade-plan-hero-grid {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 10px;
 }
 
-.trade-plan-metric {
+.trade-plan-hero-metric {
     border-left: 2px solid rgba(56, 189, 248, 0.35);
-    padding: 8px 10px;
-    background: rgba(2, 6, 23, 0.3);
+    padding: 10px 12px;
+    background: rgba(2, 6, 23, 0.32);
+    border-radius: 0 6px 6px 0;
+    min-width: 0;
 }
 
-.trade-plan-metric.invalidation {
+.trade-plan-hero-metric.invalidation {
     border-left-color: rgba(239, 68, 68, 0.75);
 }
 
-.trade-plan-metric.targets {
+.trade-plan-hero-metric.target {
     border-left-color: rgba(34, 197, 94, 0.6);
-    grid-column: 1 / -1;
 }
 
-.trade-plan-metric span {
+.trade-plan-hero-label {
     color: var(--text-muted);
     display: block;
-    font-size: 0.66rem;
-    margin-bottom: 4px;
+    font-size: 0.62rem;
+    margin-bottom: 5px;
     text-transform: uppercase;
+    letter-spacing: 0.04em;
 }
 
-.trade-plan-metric strong {
+.trade-plan-hero-value {
     color: var(--text-primary);
     font-family: var(--font-mono);
-    font-size: 0.9rem;
+    font-size: 1.15rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    display: block;
+    overflow-wrap: anywhere;
+}
+
+.trade-plan-hero-caption {
+    display: block;
+    color: var(--text-muted);
+    font-size: 0.6rem;
+    margin-top: 2px;
+}
+
+.trade-plan-secondary-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    color: var(--text-muted);
+    font-size: 0.68rem;
+    margin-top: 10px;
+}
+
+.trade-plan-secondary-row strong {
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-weight: 600;
 }
 
 .trade-plan-validity {

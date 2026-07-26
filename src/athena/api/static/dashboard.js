@@ -2744,7 +2744,21 @@ document.addEventListener("DOMContentLoaded", () => {
         `;
     }
 
-    function renderTradePlan(plan, decisionType) {
+    // Expected Return % (owner audit #10) — pure arithmetic over the plan's
+    // own persisted entry_low/entry_high/targets[0], nothing invented. Uses
+    // the nearest target (targets[0]) since that's the one most likely to
+    // be hit; when there's more than one target the label says "to T1" so
+    // it's never ambiguous which target the % refers to.
+    function computeExpectedReturnPct(plan, direction) {
+        if (!plan || !Array.isArray(plan.targets) || !plan.targets.length) return null;
+        const entryMid = (Number(plan.entry_low) + Number(plan.entry_high)) / 2;
+        const target = Number(plan.targets[0]);
+        if (!Number.isFinite(entryMid) || entryMid === 0 || !Number.isFinite(target)) return null;
+        const isShort = String(direction || "").toUpperCase() === "SHORT";
+        return isShort ? ((entryMid - target) / entryMid) * 100 : ((target - entryMid) / entryMid) * 100;
+    }
+
+    function renderTradePlan(plan, decisionType, direction) {
         if (!plan) {
             const label = String(decisionType || "").toUpperCase();
             return `
@@ -2771,9 +2785,13 @@ document.addEventListener("DOMContentLoaded", () => {
             statusLabel = "Pending";
             statusClass = "pending";
         }
-        const targets = Array.isArray(plan.targets) && plan.targets.length
-            ? plan.targets.map(formatDecisionPrice).join(" · ")
+        const targetList = Array.isArray(plan.targets) ? plan.targets : [];
+        const targets = targetList.length ? targetList.map(formatDecisionPrice).join(" · ") : "—";
+        const returnPct = computeExpectedReturnPct(plan, direction);
+        const returnLabel = returnPct !== null
+            ? `${returnPct >= 0 ? "+" : ""}${returnPct.toFixed(1)}%`
             : "—";
+        const returnCaption = targetList.length > 1 ? "to T1" : "to target";
 
         return `
             <div class="decision-brief-section">
@@ -2781,27 +2799,32 @@ document.addEventListener("DOMContentLoaded", () => {
                     <h4>ATHENA TradePlan</h4>
                     <span class="trade-plan-label">Advisory · not an order</span>
                 </div>
-                <div class="trade-plan-grid">
-                    <div class="trade-plan-metric">
-                        <span>Entry zone</span>
-                        <strong>${formatDecisionPrice(plan.entry_low)} – ${formatDecisionPrice(plan.entry_high)}</strong>
+                <div class="trade-plan-hero-grid">
+                    <div class="trade-plan-hero-metric">
+                        <span class="trade-plan-hero-label">Entry zone</span>
+                        <strong class="trade-plan-hero-value">${formatDecisionPrice(plan.entry_low)} – ${formatDecisionPrice(plan.entry_high)}</strong>
                     </div>
-                    <div class="trade-plan-metric invalidation">
-                        <span>Invalidation / stop</span>
-                        <strong>${formatDecisionPrice(plan.stop_loss)}</strong>
+                    <div class="trade-plan-hero-metric invalidation">
+                        <span class="trade-plan-hero-label">Stop</span>
+                        <strong class="trade-plan-hero-value">${formatDecisionPrice(plan.stop_loss)}</strong>
                     </div>
-                    <div class="trade-plan-metric targets">
-                        <span>Targets</span>
-                        <strong>${targets}</strong>
+                    <div class="trade-plan-hero-metric target">
+                        <span class="trade-plan-hero-label">${targetList.length > 1 ? "Targets" : "Target"}</span>
+                        <strong class="trade-plan-hero-value">${targets}</strong>
                     </div>
-                    <div class="trade-plan-metric">
-                        <span>Risk : reward</span>
-                        <strong>${formatDecisionRatio(plan.risk_reward)}</strong>
+                    <div class="trade-plan-hero-metric">
+                        <span class="trade-plan-hero-label">Expected return</span>
+                        <strong class="trade-plan-hero-value">${returnLabel}</strong>
+                        <span class="trade-plan-hero-caption">${escapeDecisionHtml(returnCaption)}</span>
                     </div>
-                    <div class="trade-plan-metric">
-                        <span>Model units · risk</span>
-                        <strong>${escapeDecisionHtml(plan.position_size || 0)} · ${formatDecisionPrice(plan.risk_amount)}</strong>
+                    <div class="trade-plan-hero-metric">
+                        <span class="trade-plan-hero-label">Risk : reward</span>
+                        <strong class="trade-plan-hero-value">${formatDecisionRatio(plan.risk_reward)}</strong>
                     </div>
+                </div>
+                <div class="trade-plan-secondary-row">
+                    <span>Model units · risk</span>
+                    <strong>${escapeDecisionHtml(plan.position_size || 0)} · ${formatDecisionPrice(plan.risk_amount)}</strong>
                 </div>
                 <div class="trade-plan-validity">
                     <span>${formatDecisionTime(plan.valid_from)} → ${formatDecisionTime(plan.valid_until)}</span>
@@ -4227,7 +4250,7 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
                     </div>
                 </section>
 
-                ${renderTradePlan(decision.trade_plan, meta.decision_type)}
+                ${renderTradePlan(decision.trade_plan, meta.decision_type, meta.direction)}
 
                 <section class="decision-brief-section decision-chart-section">
                     <div class="decision-brief-section-header">

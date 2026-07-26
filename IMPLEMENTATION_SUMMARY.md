@@ -6,6 +6,93 @@ status updated on approval.
 
 ---
 
+## UX-3a — Trade Plan visual redesign (READY FOR REVIEW)
+
+| | |
+|---|---|
+| Completed | 2026-07-26 |
+| Objective | Third milestone of the owner's UX audit: "huge numbers, professional" — the Trade Plan's entry/stop/target/R:R deserve the same visual weight as the cockpit gauges, not small dense text |
+| Scope | `renderTradePlan` restructured into a hero-metric grid; new **Expected Return %** figure computed from the plan's own persisted `entry_low`/`entry_high`/`targets[0]` (pure arithmetic, never invented) |
+| Tests | Full suite **1016 passed**; new assertions; no backend files touched |
+| Coverage | Frontend-only change; no Python coverage impact |
+| Status | **READY FOR REVIEW** |
+| Branch | feature/live-dashboard |
+
+### Scope completed
+
+- **Trade Plan hero grid**: Entry zone, Stop, Target(s), Expected Return,
+  Risk:Reward each get their own bordered metric card with a large
+  (1.15rem mono) value — the same visual language as the cockpit gauges —
+  replacing the old dense 2-column grid of small text. Model units/risk
+  amount moved to a smaller secondary row underneath (still shown, just
+  de-emphasized relative to the tradeable levels).
+- **Expected Return %** (`computeExpectedReturnPct`): `((target - entryMid)
+  / entryMid) * 100`, using the nearest target (`targets[0]`) since that's
+  the one most likely to be hit; sign-flipped for SHORT decisions. When a
+  plan has more than one target, the caption reads "to T1" so it's never
+  ambiguous which target the percentage refers to. Pure arithmetic over
+  already-persisted `TradePlan` fields — no new backend field, nothing
+  invented, per ADR-005.
+- Removed the now-dead `.trade-plan-grid`/`.trade-plan-metric` CSS (only
+  consumer was the old template, and the DAG-panel duplicate that rendered
+  it was already removed in an earlier milestone).
+
+### Files created
+
+- None.
+
+### Files modified
+
+- `src/athena/api/static/dashboard.js` — `computeExpectedReturnPct`;
+  `renderTradePlan` signature gains `direction`; call site updated.
+- `src/athena/api/static/dashboard.css` — `.trade-plan-hero-grid` (+
+  `-metric`/`-label`/`-value`/`-caption`), `.trade-plan-secondary-row`;
+  removed dead `.trade-plan-grid`/`.trade-plan-metric` rules.
+- `tests/api/platform/test_dashboard_hosting.py` — new assertions.
+- `docs/MILESTONES.md` — UX-3 split into UX-3a (this) and UX-3b (chart
+  ATR/MA/volume overlay, researched but not yet implemented).
+- Cache-bust: `9.33.2` → `9.34.0`.
+- This log.
+
+### Public APIs
+
+- None — pure frontend change.
+
+### Validation and architecture
+
+- Full regression: **1016 passed**. No Ruff/mypy scope.
+- JS brace/paren balance checked against baseline; live server restart +
+  isolated-browser console check: zero errors on load.
+- ADR-005 preserved: Expected Return % is arithmetic over already-persisted
+  fields, never generated or invented. No ADR required.
+
+### Risks and technical debt
+
+- None beyond needing an owner click-through (no login credentials).
+
+### Remaining work
+
+- **Owner smoke test**: open a TRADE decision, confirm Entry/Stop/Target/
+  Expected Return/R:R all read clearly at the new size; confirm Expected
+  Return's sign and "to T1" caption make sense for both LONG and SHORT
+  decisions if you have one of each.
+- **UX-3b** (chart ATR/moving-average/volume overlay) is scoped but not yet
+  implemented — see `docs/MILESTONES.md` for the research summary. Owner
+  go-ahead already given; will implement as its own change set given the
+  backend work involved (new indicator series functions + DTO extension).
+
+### Commit message
+
+```text
+feat(dashboard): redesign Trade Plan with hero-sized numbers and Expected Return % (UX-3a)
+
+- Restructure renderTradePlan into a hero-metric grid (Entry/Stop/Target/Expected Return/R:R), matching the cockpit gauges' visual weight instead of small dense text
+- Add computeExpectedReturnPct: pure arithmetic over the plan's own persisted entry/target values, sign-aware for SHORT decisions, captioned "to T1" when there's more than one target
+- Remove dead .trade-plan-grid/.trade-plan-metric CSS (no longer referenced after the Decisions & Trace redesign removed the DAG-panel duplicate)
+```
+
+---
+
 ## UX-2 — Score/Confidence/Risk storytelling (READY FOR REVIEW)
 
 | | |

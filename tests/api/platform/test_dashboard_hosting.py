@@ -218,6 +218,13 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".quality-ladder" in css
     assert ".safety-checklist-summary" in css
 
+    # UX-3: Trade Plan visual redesign (owner UX audit) — bigger numbers,
+    # plus a genuinely new Expected Return % computed from the plan's own
+    # persisted entry/target values, never fabricated
+    assert "function computeExpectedReturnPct" in js
+    assert ".trade-plan-hero-grid" in css
+    assert ".trade-plan-hero-value" in css
+
     # Re-validate moved to the Decision Brief header — always visible, not buried
     # at the bottom of the brief (owner feedback: "no idea of where it exists")
     assert 'id="decision-brief-revalidate-header"' in html
