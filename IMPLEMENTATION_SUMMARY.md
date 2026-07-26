@@ -103,6 +103,22 @@ issue found and fixed:
   (4px → 6px, added a subtle highlight ring on the active segment) since it
   was hard to confirm from a screenshot whether it was rendering at all.
 
+### Third fix pass (2026-07-26) — Decision Timeline moved out of the Context tab
+
+Owner-reported: the Decision Timeline's entries aren't just a history
+display — clicking one actually switches the entire brief to that other
+decision (`renderDecisionTimeline`'s rows already called `selectBriefing`),
+but it was buried inside the Context tab where that significance wasn't
+obvious. Moved it into `.decision-brief-hero` — the section that already
+renders once per decision, outside all four tab panes, right below the
+Decision Banner/Executive Summary — so it's now visible regardless of which
+tab is active, with an explicit hint ("Click an entry to view ATHENA's
+assessment at that point in time") for discoverability. No function
+changed, no new element ids — same `renderDecisionTimeline`/
+`#decision-history-timeline`, only relocated in the template. Cache-bust
+`9.33.2`. Full suite still **1016 passed**; live server restart + browser
+console check: zero errors.
+
 ### Public APIs
 
 - None — pure frontend restructuring, no backend/API surface touched.

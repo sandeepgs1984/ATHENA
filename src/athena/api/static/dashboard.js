@@ -4210,6 +4210,13 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
                         <i class="fa-solid fa-circle-notch fa-spin"></i> Building summary…
                     </div>
                 </div>
+                <div class="decision-brief-section decision-timeline-section">
+                    <div class="decision-brief-section-header">
+                        <h4>Decision timeline</h4>
+                        <span class="decision-timeline-hint">Click an entry to view ATHENA's assessment at that point in time</span>
+                    </div>
+                    <div id="decision-history-timeline" class="decision-history-timeline"></div>
+                </div>
             </section>
 
             <div class="tabpane${paneActive("setup")}" id="brief-pane-setup" data-brief-pane="setup">
@@ -4273,11 +4280,6 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
             </div>
 
             <div class="tabpane${paneActive("context")}" id="brief-pane-context" data-brief-pane="context">
-                <section class="decision-brief-section">
-                    <h4>Decision timeline</h4>
-                    <div id="decision-history-timeline" class="decision-history-timeline"></div>
-                </section>
-
                 <section class="decision-brief-section">
                     <h4>Session &amp; market context</h4>
                     <p class="analysis-section-intro">

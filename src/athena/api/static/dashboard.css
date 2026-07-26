@@ -3349,6 +3349,16 @@ body {
     padding: 8px;
 }
 
+.decision-timeline-hint {
+    color: var(--text-muted);
+    font-size: 0.62rem;
+    font-style: italic;
+    text-align: right;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .decision-history-timeline {
     display: flex;
     flex-direction: column;
