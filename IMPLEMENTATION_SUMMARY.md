@@ -73,8 +73,26 @@ status updated on approval.
   swatches).
 - `tests/api/platform/test_dashboard_hosting.py` — new assertions.
 - `docs/MILESTONES.md` — UX-3a flipped to Approved, UX-3b → Ready for review.
-- Cache-bust: `9.34.0` → `9.35.0`.
+- Cache-bust: `9.34.0` → `9.35.0` → `9.35.1` (fix pass, below).
 - This log.
+
+### Fix pass (2026-07-26, owner live screenshot)
+
+Owner-reported: the chart's Y-axis showed an absurd range (-907 to 16,026)
+for a stock trading around ₹13,000-15,000, squeezing the Entry Zone/Stop/
+Target lines and their labels together at the very top. Root cause: a
+classic JavaScript gotcha — `Number(null)` evaluates to `0`, not `NaN`.
+With only 11 candles in this chart (below both the 14-period ATR and
+20-period SMA warmup), every candle's `atr`/`moving_average` is genuinely
+`null` from the API — correct, honest behavior — but `numericOrNull`
+coerced each `null` into a fake reading of exactly `0` instead of treating
+it as "not available." That silently injected a price of `0` into both the
+rendered MA line/ATR band (a spurious flat line/band at the bottom of the
+plot) and the Y-axis autoscale (forcing the range down to include `0`).
+Fixed by checking for `null`/`undefined` explicitly before the `Number()`
+coercion. Cache-bust `9.35.1`. Full suite still **1017 passed** (this is a
+pure frontend logic fix, not something a Python test could have caught);
+live server restart + browser console check: zero errors.
 
 ### Public APIs
 

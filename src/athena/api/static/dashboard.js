@@ -2908,7 +2908,13 @@ document.addEventListener("DOMContentLoaded", () => {
         const plotHeight = height - margin.top - margin.bottom - volumeHeight - volumeGap;
         const volumeTop = margin.top + plotHeight + volumeGap;
 
+        // Number(null) is 0 in JavaScript, not NaN — a warmup candle's
+        // genuinely-absent atr/moving_average (JSON null) would otherwise
+        // silently become a fake reading of exactly 0, corrupting both the
+        // rendered line/band and the Y-axis autoscale (owner-reported: axis
+        // spanning -907 to 16,026 for a ~13-15k stock).
         const numericOrNull = value => {
+            if (value === null || value === undefined) return null;
             const n = Number(value);
             return Number.isFinite(n) ? n : null;
         };
