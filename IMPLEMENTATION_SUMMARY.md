@@ -6,6 +6,184 @@ status updated on approval.
 
 ---
 
+## UX-8 — Copy pass (READY FOR REVIEW)
+
+| | |
+|---|---|
+| Completed | 2026-07-26 |
+| Objective | Eighth milestone of the owner's UX audit: replace engineering vocabulary leaking into trader-facing text, improve unhelpful empty states, and fix a couple of narrative-parity gaps — the last purely-cosmetic milestone before UX-9 |
+| Scope | Friendly labels for raw ALL_CAPS enums shown in chips/sentences (decision type, eligibility status); plain-English rewrites of five dense tab-intro paragraphs; a handful of empty-state message fixes; a real (not fabricated) market-health explanation sentence for parity with the regime block; one label-consistency fix ("Composite score" → "Score") |
+| Tests | Full suite **1018 passed**; new dashboard-hosting assertions for the rewritten copy; no backend files touched |
+| Coverage | Frontend-only, pure copy/text change; no Python coverage impact |
+| Status | **READY FOR REVIEW** — awaiting owner smoke test on the live dashboard |
+| Branch | feature/live-dashboard |
+
+### Scope completed
+
+- **Raw enum leakage fixed** — several spots showed an internal ALL_CAPS
+  value directly, often right next to an already-friendly label for the
+  same concept:
+  - `decisionTypeBadge()` and the "qualified names" row (dashboard.js)
+    showed the raw `decision_type` (`TRADE`/`WATCH`/`NO_TRADE`/
+    `INSUFFICIENT_DATA`) as a second chip sitting beside the
+    already-friendly stance chip (`BUY`/`HOLD`/`PASS`/`WAIT`) — two
+    badges for one idea, one polished and one raw, with a literal
+    underscore visible in two of the four values. Both now reuse the
+    existing `friendlyAnalysisName()` helper (already used elsewhere in
+    the file for exactly this purpose).
+  - The Trade Plan "no plan authorized" sentence used to interpolate the
+    raw uppercase type directly into a sentence (e.g. "...for a
+    **NO_TRADE** decision"); now reads "...for a **No Trade** decision."
+  - `renderEligibilityDepth()`'s status badge showed the raw
+    `INCLUDED`/`EXCLUDED`/`UNKNOWN` instead of the "Eligible"/"Excluded"
+    wording the Universe table already established — added
+    `friendlyEligibilityLabel()` so both surfaces agree.
+  - The Decision Timeline's decision-type fallback and the regime/
+    volatility/gap badge fallback (no-payload case) both showed raw
+    `"UNKNOWN"`; now "Unknown", consistent with the friendly-cased
+    fallback the main (non-fallback) rendering path already used.
+  - `analysisPercent()` returned the literal string `"UNKNOWN"` as a
+    score value (rendering as "UNKNOWN / 100"); now returns "—", matching
+    the app's own established em-dash convention for missing numbers,
+    and the "/ 100" suffix is hidden entirely when there's no value.
+- **Dense engineering paragraphs rewritten in plain English** (same
+  underlying meaning — "this is exact math over saved data, nothing
+  invented" — just without the jargon): the "Why not a trade?", "Session
+  & market context", "Analytical provenance" (renamed **"Data sources"**),
+  "Your response", and "Similar past setups" tab intros no longer say
+  "persisted", "config thresholds", "recomputed", "ingestion", "generated
+  rationale", "deterministic nearest-neighbor retrieval", "fingerprint",
+  or name the internal "AI Playbook Diagnostics" module directly.
+- **Empty-state fixes**: "No comparable historical decisions yet (needs a
+  persisted score/confidence/risk fingerprint)" → explains the real
+  requirement in plain terms; "No provenance references captured"/"No
+  analytical references persisted" → "No source references recorded";
+  "Trace empty — decision has no persisted DecisionTrace stages" (leaked
+  an internal class name) → "This decision has no recorded reasoning
+  stages to show"; "No step-by-step trace logs stored for this member" →
+  "...for this symbol" ("member" is internal universe-membership
+  terminology); "No WATCH/TRADE names for the latest validation day" →
+  "No Watch or Trade candidates from the latest validation run."
+- **Market-health narrative parity** (real fix, not fabricated): the
+  regime block in Market Context already rendered its persisted
+  `explanation` sentence under the metric cards; the market-health block
+  sat right next to it with no equivalent sentence, even though
+  `MarketHealthContextDTO.explanation` is a real, already-computed field
+  that simply wasn't being rendered. Now both blocks show their own
+  explanation sentence — no new backend work, just surfacing data that
+  already existed.
+- **Label consistency**: the hero gauge's static label read "Composite
+  score" while the rest of the app (including a code comment explicitly
+  stripping the word "composite" from rendered text elsewhere) has
+  standardized on plain "Score" — fixed the one outlier.
+- **Deliberately left unchanged** (a real scoping decision, not an
+  oversight): CLI-command instructions in a few empty/error states (e.g.
+  "Re-run `./athena-daily smoke`") and HTTP-status/technical error text
+  on the unlock screen. ATHENA is a single owner-operator tool — the same
+  person reading these messages is the one who runs those exact commands
+  — so this is accurate operational guidance for its one user, not
+  jargon leaking to a separate non-technical audience the way the other
+  fixes above were.
+
+### Files created
+
+- None.
+
+### Files modified
+
+- `src/athena/api/static/dashboard.js` — `decisionTypeBadge`,
+  the qualified-names type chip, `renderTradePlan`'s no-plan sentence,
+  `friendlyEligibilityLabel` (new) + `renderEligibilityDepth`,
+  `analysisPercent`, the analysis-summary-card status badge, the regime/
+  volatility/gap no-payload fallback, `renderDecisionContext`'s regime/
+  market-health blocks (added the market-health explanation sentence),
+  five tab-intro paragraphs, four empty-state messages, the Decision
+  Timeline's decision-type fallback.
+- `src/athena/api/static/index.html` — hero gauge label "Composite
+  score" → "Score"; cache-bust bumped to `9.42.0`.
+- `tests/api/platform/test_dashboard_hosting.py` — updated two
+  assertions whose underlying text changed, added new assertions for the
+  UX-8 copy fixes.
+- `docs/MILESTONES.md` — UX-7 → Approved, UX-8 → Ready for review.
+- This log.
+
+### Public APIs
+
+- None — pure frontend copy change, no backend files touched.
+
+### Validation and architecture
+
+- Full regression: **1018 passed** (unchanged — no backend files touched).
+- Ruff clean on the one changed test file. mypy remains unavailable in
+  this environment (pre-existing, unrelated).
+- JS braces balanced (1524/1524); parens off by the same pre-existing +1
+  baseline quirk.
+- Live server restarted on `9.42.0`; isolated-browser console check on
+  the pre-login page: zero errors.
+- ADR-005 preserved: every rewritten sentence describes the same
+  already-real computation/data it always did — nothing was invented,
+  and the one new sentence added (market-health explanation) surfaces an
+  existing, already-computed backend field that simply wasn't rendered
+  before. No ADR required.
+
+### Risks and technical debt
+
+- This was a representative pass over the clearest, highest-value jargon
+  leaks identified by an audit of both `index.html` and `dashboard.js`
+  (~30 candidate findings), not an exhaustive line-by-line rewrite of
+  every string in a ~6,400-line frontend — some lower-visibility spots
+  may remain. Flagging this rather than claiming full coverage.
+- I could not exercise the rewritten copy end-to-end myself (no owner
+  credentials) — needs an owner read-through, especially of the five
+  rewritten tab-intro paragraphs, to confirm the plain-English versions
+  still read naturally in context.
+- No new technical debt beyond the above.
+
+### Remaining work
+
+- **Owner smoke test**: read through the Decision Brief's four tabs
+  (especially the intro paragraph under each section heading) and
+  confirm the plain-English rewrites read naturally; open a decision
+  with no trade plan / no analog matches / no reasoning trace to see the
+  updated empty states; check the hero gauge now reads "Score" instead
+  of "Composite score."
+- Next in the UX Overhaul program: **UX-9** (Quick actions + Portfolio
+  Context + export/deep-link/share — needs a small backend
+  portfolio-position-lookup addition, and "Compare"/"Portfolio Impact"
+  still need a precise scope definition before implementation).
+
+### Commit message
+
+```text
+refactor(dashboard): plain-English copy pass, fix jargon leaks (UX-8)
+
+- Replace raw ALL_CAPS enum leakage (decision type, eligibility status)
+  in chips and sentences with the friendly labels already established
+  elsewhere in the app (friendlyAnalysisName, new
+  friendlyEligibilityLabel matching the Universe table's wording).
+- Rewrite five dense tab-intro paragraphs in plain English — same
+  meaning (exact math over saved data, nothing invented), no more
+  "persisted"/"config thresholds"/"ingestion"/"generated rationale"/
+  "deterministic nearest-neighbor retrieval"/"fingerprint", and no
+  internal module name ("AI Playbook Diagnostics") in trader-facing text.
+- Fix several empty-state messages that leaked internal terminology
+  ("member", raw "DecisionTrace", "provenance") or read as unhelpful
+  dead ends.
+- Surface MarketHealthContextDTO.explanation (a real, already-computed
+  field) in the Market Context tab's market-health block, matching the
+  explanation sentence the regime block already showed — parity fix,
+  not new data.
+- Rename hero gauge label "Composite score" to "Score", matching the
+  app's own established convention (already stripped elsewhere).
+- Deliberately leave CLI-command/HTTP-status operational text as-is —
+  accurate guidance for ATHENA's single owner-operator, not jargon
+  leaking to a separate audience.
+- Update dashboard hosting tests for the rewritten copy; bump cache-bust
+  to 9.42.0.
+```
+
+---
+
 ## UX-7 — Typography/spacing/elevation/color/animation/accessibility polish + CSS refactor (APPROVED)
 
 | | |

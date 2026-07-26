@@ -1485,18 +1485,18 @@ document.addEventListener("DOMContentLoaded", () => {
                     .replace(/SIDEWAYS/g, "Sideways");
                 evidenceText.textContent = evidence;
             } else if (trendBadge && volBadge && gapBadge && healthBar && healthValue && evidenceText) {
-                trendBadge.textContent = "UNKNOWN";
+                trendBadge.textContent = "Unknown";
                 trendBadge.className = "regime-badge neutral";
-                volBadge.textContent = "UNKNOWN";
+                volBadge.textContent = "Unknown";
                 volBadge.className = "regime-badge neutral";
-                gapBadge.textContent = "UNKNOWN";
+                gapBadge.textContent = "Unknown";
                 gapBadge.className = "regime-badge neutral";
                 healthBar.style.width = "0%";
                 healthValue.textContent = "0/100";
                 evidenceText.textContent =
-                    "No regime payload in the latest validation run yet. " +
+                    "No regime assessment from the latest validation run yet. " +
                     "Re-run ./athena-daily smoke (after the latest update) — regime is written from the scan. " +
-                    "Volatility can stay UNKNOWN without India VIX in the snapshot.";
+                    "Volatility can stay unavailable without India VIX in the snapshot.";
             }
 
             // 3. Fetch and Render Calendar Grid & Events
@@ -1752,7 +1752,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (rows.length === 0) {
             body.className = "text-muted text-center";
             body.style.padding = "12px 0";
-            body.innerHTML = "No WATCH/TRADE names for the latest validation day.";
+            body.innerHTML = "No Watch or Trade candidates from the latest validation run.";
             return;
         }
         body.className = "";
@@ -1768,7 +1768,7 @@ document.addEventListener("DOMContentLoaded", () => {
                             <div class="qualified-row-top">
                                 <span class="symbol-name-col">${r.symbol || r.instrument_id || ""}</span>
                                 <span class="stance-chip ${stance.cls}">${stance.label}</span>
-                                <span class="type-chip type-${String(type).toLowerCase()}">${type || "—"}</span>
+                                <span class="type-chip type-${String(type).toLowerCase()}">${type ? escapeDecisionHtml(friendlyAnalysisName(type)) : "—"}</span>
                             </div>
                             <p class="qualified-summary">${summary.headline}</p>
                             ${summary.scoreChip}
@@ -1972,7 +1972,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 traceList.appendChild(step);
             });
         } else {
-            traceList.innerHTML = `<div class="text-muted text-center">No step-by-step trace logs stored for this member.</div>`;
+            traceList.innerHTML = `<div class="text-muted text-center">No step-by-step trace logged for this symbol.</div>`;
         }
 
         traceModalBody.appendChild(traceList);
@@ -2690,9 +2690,13 @@ document.addEventListener("DOMContentLoaded", () => {
         return formatDecisionSummary(text, "", []).headline;
     }
 
+    // Friendly label (UX-8 copy pass) — the raw enum (TRADE/WATCH/NO_TRADE/
+    // INSUFFICIENT_DATA) was leaking straight into a chip sitting right next
+    // to the already-friendly stance chip (BUY/HOLD/PASS/WAIT), reading as
+    // two badges for one idea, one polished and one raw.
     function decisionTypeBadge(type) {
         const t = (type || "").toUpperCase();
-        return `<span class="type-chip type-${t.toLowerCase()}">${t || "—"}</span>`;
+        return `<span class="type-chip type-${t.toLowerCase()}">${t ? escapeDecisionHtml(friendlyAnalysisName(t)) : "—"}</span>`;
     }
 
     function formatDecisionPrice(value) {
@@ -2761,13 +2765,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function renderTradePlan(plan, decisionType, direction) {
         if (!plan) {
-            const label = String(decisionType || "").toUpperCase();
+            const label = decisionType ? friendlyAnalysisName(decisionType) : "non-Trade";
             return `
                 <div class="decision-brief-section">
                     <h4>ATHENA TradePlan</h4>
                     <div class="no-trade-plan">
                         No actionable entry or exit plan is authorized for a
-                        <strong>${escapeDecisionHtml(label || "non-TRADE")}</strong> decision.
+                        <strong>${escapeDecisionHtml(label)}</strong> decision.
                         Re-validate when new market data arrives; do not infer levels from this screen.
                     </div>
                 </div>
@@ -3178,7 +3182,7 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
 
     function analysisPercent(value) {
         const number = Number(value);
-        return Number.isFinite(number) ? `${number.toFixed(1)}` : "UNKNOWN";
+        return Number.isFinite(number) ? `${number.toFixed(1)}` : "—";
     }
 
     function analysisMeterWidth(value) {
@@ -3236,6 +3240,15 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         };
     }
 
+    // Same "Eligible"/"Excluded" wording as the Universe table (UX-8 copy
+    // pass) — this previously showed the raw INCLUDED/EXCLUDED/UNKNOWN
+    // status instead of matching that established, friendlier vocabulary.
+    function friendlyEligibilityLabel(status) {
+        if (status === "INCLUDED") return "Eligible";
+        if (status === "EXCLUDED") return "Excluded";
+        return "Unknown";
+    }
+
     function renderEligibilityDepth(eligibility) {
         const host = document.getElementById("decision-eligibility-depth");
         if (!host) return;
@@ -3247,8 +3260,8 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         const rules = Array.isArray(data.rules) ? data.rules : [];
         host.innerHTML = `
             <div class="eligibility-summary">
-                <span class="depth-status ${statusClass}">${escapeDecisionHtml(status)}</span>
-                <span>${escapeDecisionHtml(data.summary || "No persisted eligibility assessment.")}</span>
+                <span class="depth-status ${statusClass}">${escapeDecisionHtml(friendlyEligibilityLabel(status))}</span>
+                <span>${escapeDecisionHtml(data.summary || "No eligibility assessment recorded for this decision.")}</span>
             </div>
             ${exclusions.length ? `
                 <div class="eligibility-exclusions">
@@ -3298,13 +3311,13 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
                         <h5>${escapeDecisionHtml(label)}</h5>
                     </div>
                     <span class="depth-status ${view.status === "OK" ? "included" : "unknown"}">
-                        ${escapeDecisionHtml(view.status)}
+                        ${escapeDecisionHtml(view.status === "OK" ? "OK" : "Unknown")}
                     </span>
                 </div>
                 <div class="analysis-summary-band">${escapeDecisionHtml(band)}</div>
                 <div class="analysis-summary-score">
                     <strong>${escapeDecisionHtml(view.valueLabel)}</strong>
-                    <span>/ 100</span>
+                    ${view.valueLabel === "—" ? "" : "<span>/ 100</span>"}
                 </div>
                 <div class="analysis-meter" aria-hidden="true">
                     <span style="width: ${view.meterWidth}%"></span>
@@ -3761,13 +3774,14 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
             ? `<div class="context-metric-grid">${(regime.labels || [])
                   .map(l => contextMetricCard(regimeLabelCategory(l), l, contextChipTone(l))).join("")}</div>
                <p class="context-caption">${escapeDecisionHtml(regime.explanation || "")}</p>`
-            : '<p class="context-caption unknown">UNKNOWN — re-validate to persist a regime assessment for this decision.</p>';
+            : '<p class="context-caption unknown">Not available yet — re-validate this decision to capture a regime assessment.</p>';
 
         const dimensions = mh.dimensions || {};
         const healthBlock = mh.status === "ASSESSED"
             ? `<div class="context-metric-grid">${Object.entries(dimensions)
-                  .map(([key, label]) => contextMetricCard(friendlyLabel(key), label, contextChipTone(label))).join("")}</div>`
-            : '<p class="context-caption unknown">UNKNOWN — re-validate to persist a market-health assessment for this decision.</p>';
+                  .map(([key, label]) => contextMetricCard(friendlyLabel(key), label, contextChipTone(label))).join("")}</div>
+               ${mh.explanation ? `<p class="context-caption">${escapeDecisionHtml(mh.explanation)}</p>` : ""}`
+            : '<p class="context-caption unknown">Not available yet — re-validate this decision to capture a market-health assessment.</p>';
 
         const linkRows = links.length
             ? `<ul class="context-links-list">
@@ -4123,7 +4137,7 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         if (!rows.length) {
             host.innerHTML = `<div class="context-caption">
                 ${data.compared_count === 0
-                    ? "No comparable historical decisions yet (needs a persisted score/confidence/risk fingerprint)."
+                    ? "No comparable historical decisions yet — this needs a scored, confidence-rated, risk-rated decision to compare against."
                     : "No similar setups found."}
             </div>`;
             return;
@@ -4327,7 +4341,7 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
                     <span class="decision-timeline-dot"></span>
                     <span>
                         <strong>${escapeDecisionHtml(formatDecisionTime(meta.ts))}</strong>
-                        <small>${escapeDecisionHtml(stance.label)} · ${escapeDecisionHtml(meta.decision_type || "UNKNOWN")}</small>
+                        <small>${escapeDecisionHtml(stance.label)} · ${escapeDecisionHtml(meta.decision_type ? friendlyAnalysisName(meta.decision_type) : "Unknown")}</small>
                         <span class="decision-timeline-narrative">${escapeDecisionHtml(narrative)}</span>
                     </span>
                     ${current ? '<em>Current</em>' : ""}
@@ -4513,8 +4527,8 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
                 <section class="decision-brief-section" id="decision-counterfactual-section">
                     <h4>Why not a trade?</h4>
                     <p class="analysis-section-intro">
-                        Exact arithmetic over persisted values vs. current config thresholds —
-                        never a recomputed score, confidence, or risk.
+                        Exact math comparing this decision's saved values against today's
+                        thresholds — never a re-run of the score, confidence, or risk itself.
                     </p>
                     <div id="decision-counterfactual-panel" class="decision-counterfactual-panel">
                         <div class="decision-depth-loading">
@@ -4534,8 +4548,9 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
                 <section class="decision-brief-section">
                     <h4>Session &amp; market context</h4>
                     <p class="analysis-section-intro">
-                        Trading-day session state, persisted regime/market-health, and owner-curated
-                        research links. No news ingestion, no generated rationale.
+                        Trading-day session state, the regime/market-health reading saved with
+                        this decision, and your own curated research links. No live news feed,
+                        no AI-written commentary.
                     </p>
                     <div id="decision-context-lane" class="decision-context-lane">
                         <div class="decision-depth-loading">
@@ -4545,9 +4560,13 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
                 </section>
 
                 <section class="decision-brief-section">
-                    <h4>Analytical provenance</h4>
+                    <h4>Data sources</h4>
+                    <p class="analysis-section-intro">
+                        Exactly which stored records this decision's numbers were pulled from —
+                        useful if you ever need to trace a value back to where it came from.
+                    </p>
                     <div class="decision-provenance">
-                        ${references || '<span class="text-muted">No analytical references persisted.</span>'}
+                        ${references || '<span class="text-muted">No source references recorded for this decision.</span>'}
                     </div>
                 </section>
             </div>
@@ -4556,9 +4575,9 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
                 <section class="decision-brief-section">
                     <h4>Your response</h4>
                     <p class="analysis-section-intro">
-                        Every recommendation gets a recorded human response — nothing is
-                        unrecorded. This is the only source of real feedback the AI Playbook
-                        Diagnostics learning loop has.
+                        Every recommendation gets your recorded response — accepted, rejected,
+                        or ignored. It's the only real feedback ATHENA's future tuning can ever
+                        learn from.
                     </p>
                     <div id="decision-journal-panel" class="decision-journal-panel">
                         <div class="decision-depth-loading">
@@ -4570,9 +4589,8 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
                 <section class="decision-brief-section">
                     <h4>Similar past setups</h4>
                     <p class="analysis-section-intro">
-                        Deterministic nearest-neighbor retrieval by score/confidence/risk
-                        fingerprint across your persisted decision history — factual retrieval
-                        only, nothing generated.
+                        The closest-matching past decisions by score/confidence/risk profile,
+                        pulled from your own decision history — nothing generated or predicted.
                     </p>
                     <div id="decision-analogs-panel" class="decision-analogs-panel">
                         <div class="decision-depth-loading">
@@ -5003,8 +5021,8 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         selectedStageId = null;
 
         if (!trace.stages || trace.stages.length === 0) {
-            dagNodesContainer.innerHTML = '<div class="text-muted text-center" style="padding: 48px;">No stored reasoning trace for this decision yet.</div>';
-            if (dagDetailsSummary) dagDetailsSummary.textContent = "Trace empty — decision has no persisted DecisionTrace stages.";
+            dagNodesContainer.innerHTML = '<div class="text-muted text-center" style="padding: 48px;">No reasoning trace recorded for this decision yet.</div>';
+            if (dagDetailsSummary) dagDetailsSummary.textContent = "This decision has no recorded reasoning stages to show.";
             return;
         }
 
@@ -5070,7 +5088,7 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
             ? stage.details.ref_ids
             : [];
         if (!refIds.length) {
-            dagDetailsGrid.innerHTML = '<div class="text-muted" style="grid-column: 1/-1; font-size: 0.72rem;">No provenance references captured.</div>';
+            dagDetailsGrid.innerHTML = '<div class="text-muted" style="grid-column: 1/-1; font-size: 0.72rem;">No source references recorded for this stage.</div>';
             return;
         }
         const label = refIds.length === 1 ? "reference" : "references";

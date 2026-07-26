@@ -142,8 +142,9 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "function exportDecisionBrief" in js
     assert "/context" in js
     assert "DECISION_BRIEF" in js
-    assert "No news ingestion, no generated rationale" in js
-    assert "UNKNOWN — re-validate to persist a regime assessment" in js
+    assert "No live news feed" in js
+    assert "no AI-written commentary" in js
+    assert "Not available yet — re-validate this decision to capture a regime assessment" in js
     assert ".decision-context-lane" in css
     assert ".context-chip" in css
     assert ".context-links-list" in css
@@ -334,6 +335,27 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert 'id="dag-svg-lines" class="dag-svg-overlay" aria-hidden="true"' in html
     assert 'card.setAttribute("tabindex", "0")' in js
     assert 'card.setAttribute("role", "button")' in js
+
+    # UX-8: copy pass — raw ALL_CAPS enums (TRADE/WATCH/NO_TRADE/
+    # INSUFFICIENT_DATA, INCLUDED/EXCLUDED/UNKNOWN) no longer leak into
+    # sentences/chips next to the already-friendly stance vocabulary; dense
+    # engineering paragraphs ("persisted"/"config thresholds"/"ingestion"/
+    # "generated rationale"/the internal "AI Playbook Diagnostics" module
+    # name/"deterministic nearest-neighbor... fingerprint") were rewritten
+    # in plain English; the market-health block gained the same real,
+    # already-persisted `explanation` sentence the regime block already
+    # showed (parity fix, not new data); the hero "Composite score" label
+    # now reads "Score", matching the app's own established convention.
+    assert "function friendlyEligibilityLabel" in js
+    assert 'friendlyAnalysisName(t)' in js
+    assert "No live news feed" in js
+    assert "no AI-written commentary" in js
+    assert "Exact math comparing this decision" in js
+    assert "ATHENA's future tuning can ever" in js
+    assert "The closest-matching past decisions" in js
+    assert "mh.explanation" in js
+    assert ">Score</span>" in html
+    assert "Composite score" not in html
 
     # Fix pass: the DAG stage-detail panel's "Full detail lives in the X
     # tab" text was reconstructing the tab name via a raw capitalization
