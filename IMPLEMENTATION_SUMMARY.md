@@ -6,7 +6,152 @@ status updated on approval.
 
 ---
 
-## UX-1 — Hero Decision Card + Executive Summary + Decision Banner (READY FOR REVIEW)
+## UX-2 — Score/Confidence/Risk storytelling (READY FOR REVIEW)
+
+| | |
+|---|---|
+| Completed | 2026-07-26 |
+| Objective | Second milestone of the owner's UX audit: replace the raw dimension bars in the Analysis tab with storytelling that matches each tone — star-rated contributors for Score, a trust checklist for Confidence, a categorized hazard summary for Risk — plus a reassuring safety-gate headline and a Decision Quality Meter ladder |
+| Scope | `renderAnalysisSummaryCard`/`renderAnalysisBlock` restructured to dispatch by tone; every band/percentage/star sourced from already-persisted `AnalysisDimensionDTO` fields (`value`, `level`, `weight`, `weighted`) — no client-side re-derivation of config thresholds |
+| Tests | Full suite **1016 passed**; new assertions for every new function/class; no backend files touched |
+| Coverage | Frontend-only change; no Python coverage impact |
+| Status | **READY FOR REVIEW** |
+| Branch | feature/live-dashboard |
+
+### Scope completed
+
+- **Score contributors as storytelling** (`renderScoreContributors`, `starRating`,
+  `starGlyphs`, `dimensionContributionPct`): dimensions ranked by actual
+  value (highest first), each shown as a 1-5 star rating plus its *real*
+  contribution percentage — computed from the already-persisted `weight`/
+  `weighted` fields on `AnalysisDimensionDTO` (`weighted / sum(weighted)`),
+  never a client-side copy of `config/scoring.json`'s weight table that
+  could silently drift out of sync with the real config.
+- **Confidence as "why ATHENA trusts this"** (`renderConfidenceChecklist`,
+  `CONFIDENCE_TRUST_LABELS`): the six raw dimension names (evidence
+  completeness, data freshness, indicator availability, cross-engine
+  agreement, unknown ratio, consistency) become a ✔/✘ checklist with plain
+  labels ("Evidence is complete," "Engines agree with each other"). Trust
+  vs. flag comes entirely from the backend's own persisted `level`
+  (anything not `LOW` counts as trusted) — no new numeric threshold
+  invented client-side.
+- **Risk as a categorized "Major Risks" summary** (`renderRiskSummary`):
+  the six raw dimensions (volatility/liquidity/gap/event/market-environment/
+  concentration risk) sorted by severity (highest first), each banded
+  Low/Medium/High via the same `riskBand` helper the Hero cockpit gauge
+  already uses — one hazard scale throughout, never two disagreeing ones.
+- **Decision Quality Meter** (`qualityLadder`, `QUALITY_LADDER_BANDS`): a
+  5-segment ladder (Weak→Excellent) under the Score summary card, marking
+  the same band word already shown above it — Score has no backend-computed
+  level (`scoring.json` carries no levels block), so `analysisPresentation`
+  now derives a `displayBand` per tone: Score uses the client `qualityBand`
+  (same one from UX-1's Hero gauge); Confidence/Risk keep showing their
+  real backend level, never overridden by a client approximation.
+- **Safety checklist summary** ("All safety checks passed" / "Blocked on N
+  of M safety checks") — a reassuring headline over the exact same gate
+  results already listed below it, not a separate computation.
+- **Fix pass, same turn** (owner live screenshots, cache-bust `9.32.1`):
+  found two bugs while reviewing the screenshots closely before starting
+  UX-2 — (1) the Hero cockpit gauges banded a fabricated "Weak"/"0.0" for a
+  block whose depth status wasn't `"OK"` (Decision Banner correctly said
+  "score 66.92," gauge said "Weak 0.0" for the same decision) — fixed by
+  gating the band/value/bar entirely on `status === "OK"`, showing
+  "Unknown"/"—" otherwise, matching what the Executive Summary already did
+  correctly; (2) the Reasoning Trace's automatic "highlight stage 0 on
+  load" was calling the same tab-jump logic as a real click, silently
+  overriding whichever tab the trader had chosen every time they picked a
+  new decision — fixed via `selectNode(stageId, { userInitiated })`, which
+  only jumps tabs when `userInitiated` is true.
+
+### Files created
+
+- None (all additive/restructuring within existing files).
+
+### Files modified
+
+- `src/athena/api/static/dashboard.js` — `dimensionContributionPct`,
+  `dimensionExplanationBody`, `starRating`, `starGlyphs`,
+  `renderScoreContributors`, `CONFIDENCE_TRUST_LABELS`,
+  `renderConfidenceChecklist`, `renderRiskSummary`, `qualityLadder`,
+  `QUALITY_LADDER_BANDS`; `analysisPresentation` extended with
+  `displayBand`; `renderAnalysisSummaryCard`/`renderAnalysisBlock`
+  restructured; safety-checklist summary line in `renderDecisionBrief`;
+  `renderCockpitGauges` status-gating fix; `selectNode` `userInitiated` fix.
+- `src/athena/api/static/dashboard.css` — `.analysis-summary-band`,
+  `.quality-ladder`, `.score-contributor-row`, `.trust-checklist-row`,
+  `.risk-summary-row`, `.risk-band-chip`, `.safety-checklist-summary`.
+- `tests/api/platform/test_dashboard_hosting.py` — new assertions.
+- `docs/MILESTONES.md` — UX-1 flipped to Approved, UX-2 → Ready for review.
+- Cache-bust: `9.32.0` → `9.32.1` (fix pass) → `9.33.0` (UX-2) → `9.33.1`
+  (second fix pass, below).
+- This log.
+
+### Second fix pass (2026-07-26, owner live screenshots of UX-2)
+
+Owner-reviewed the live Score/Confidence/Risk breakdowns closely; one real
+issue found and fixed:
+
+- **Score contributors were sorted by star rating, not by actual
+  contribution.** A dimension with 4 stars but only 12% of the score
+  (Liquidity) was listed above one with 3 stars but 21% (Market Quality) —
+  since the whole point of the list is "what actually drove the score,"
+  ranking by raw value instead of the real weight-derived contribution
+  produced a confusing order. Fixed: `renderScoreContributors` now sorts by
+  `contributionPct` (falling back to raw value only when a dimension has no
+  persisted `weighted` figure to rank by).
+- Also bumped the Decision Quality Meter ladder's visual weight slightly
+  (4px → 6px, added a subtle highlight ring on the active segment) since it
+  was hard to confirm from a screenshot whether it was rendering at all.
+
+### Public APIs
+
+- None — pure frontend restructuring, no backend/API surface touched.
+
+### Validation and architecture
+
+- Full regression: **1016 passed** (unchanged — no backend files touched).
+- No Ruff/mypy scope (no `.py` files changed).
+- JS brace/paren balance checked against the pre-edit baseline after every
+  edit in this turn; live server restart + isolated-browser console-error
+  check after both the fix pass and UX-2: zero errors on load.
+- ADR-005 preserved: every star/percentage/checklist tick is arithmetic or
+  a direct read of an already-persisted field (`value`, `level`, `weight`,
+  `weighted`), never generated or client-invented. No ADR required.
+
+### Risks and technical debt
+
+- I could not exercise the redesigned Analysis tab end-to-end myself (no
+  owner credentials) — needs an owner click-through.
+- No new technical debt beyond the above.
+
+### Remaining work
+
+- **Owner smoke test**: expand Score/Confidence/Risk breakdowns on a few
+  decisions; confirm star ratings and contribution % look sensible against
+  the raw values; confirm the confidence checklist's ✔/✘ matches what you'd
+  expect from each dimension's level; confirm risk dimensions are sorted
+  worst-first with sensible Low/Medium/High bands; confirm the safety
+  checklist headline matches the gate list below it.
+- Next in the UX Overhaul program: **UX-3** (Trade Plan visual redesign +
+  chart ATR/MA overlay — needs your go-ahead on the chart backend addition
+  first).
+
+### Commit message
+
+```text
+feat(dashboard): add score/confidence/risk storytelling (UX-2); fix gauge and DAG-tab bugs
+
+- Add renderScoreContributors: star-rated score dimensions ranked by value, with real contribution % from persisted weight/weighted fields, never a re-derived config-weight table
+- Add renderConfidenceChecklist: "why ATHENA trusts this" checklist driven entirely by each dimension's real backend level
+- Add renderRiskSummary: Major Risks categorized Low/Medium/High, worst first, same riskBand scale as the Hero gauge
+- Add a Decision Quality Meter ladder for Score (no backend level exists for it) and a safety-checklist reassurance headline over the existing gate list
+- Fix: cockpit gauges no longer band a fabricated "Weak"/"0.0" when the underlying block's status isn't OK
+- Fix: Reasoning Trace's automatic first-node highlight no longer force-switches the brief's active tab — only a real click does
+```
+
+---
+
+## UX-1 — Hero Decision Card + Executive Summary + Decision Banner (APPROVED)
 
 | | |
 |---|---|
@@ -15,7 +160,7 @@ status updated on approval.
 | Scope | Sticky cockpit gauges gain band words (Strong/Good/Weak, Low/Medium/High) alongside the raw numbers; a 4th "Expected R:R" card; the old plain thesis paragraph becomes a colored Decision Banner ("ATHENA Recommendation: BUY") plus a 5-line Executive Summary composed from already-persisted engine explanations |
 | Tests | Full suite **1016 passed** (new assertions for every new element); no backend files touched |
 | Coverage | Frontend-only change; no Python coverage impact |
-| Status | **READY FOR REVIEW** |
+| Status | **APPROVED** (owner smoke confirmed live 2026-07-26; two bugs found and fixed in the same turn — see UX-2's fix-pass note above) |
 | Branch | feature/live-dashboard |
 
 ### Scope completed

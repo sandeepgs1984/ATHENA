@@ -191,6 +191,33 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".executive-summary-list" in css
     assert ".hero-metric-band" in css
 
+    # UX-1 fix pass: gauges must never band a fabricated 0.0 as "Weak" when
+    # the underlying block isn't OK; DAG auto-highlight must never force a
+    # tab jump — only an explicit click may
+    assert "function selectNode" in js
+    assert "userInitiated" in js
+
+    # UX-2: score/confidence/risk storytelling (owner UX audit) — star-rated
+    # score contributors, a "why ATHENA trusts this" checklist, risk as a
+    # categorized Low/Medium/High summary, a reassuring safety checklist
+    # headline, and a Decision Quality Meter ladder — every band/percentage
+    # derived from already-persisted dimension value/level/weight/weighted
+    # fields, never a client-side re-derivation of config thresholds
+    assert "function renderScoreContributors" in js
+    assert "function renderConfidenceChecklist" in js
+    assert "function renderRiskSummary" in js
+    assert "function dimensionContributionPct" in js
+    assert "function starRating" in js
+    assert "CONFIDENCE_TRUST_LABELS" in js
+    assert "QUALITY_LADDER_BANDS" in js
+    assert "function qualityLadder" in js
+    assert "safety-checklist-summary" in js
+    assert ".score-contributor-row" in css
+    assert ".trust-checklist-row" in css
+    assert ".risk-summary-row" in css
+    assert ".quality-ladder" in css
+    assert ".safety-checklist-summary" in css
+
     # Re-validate moved to the Decision Brief header — always visible, not buried
     # at the bottom of the brief (owner feedback: "no idea of where it exists")
     assert 'id="decision-brief-revalidate-header"' in html

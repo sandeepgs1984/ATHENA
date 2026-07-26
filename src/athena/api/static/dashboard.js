@@ -3179,8 +3179,19 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         `;
     }
 
+    const QUALITY_LADDER_BANDS = ["Weak", "Fair", "Good", "Strong", "Excellent"];
+
+    function qualityLadder(band) {
+        return `
+            <div class="quality-ladder" aria-hidden="true">
+                ${QUALITY_LADDER_BANDS.map(b => `<span class="quality-ladder-seg${b === band ? " active" : ""}"></span>`).join("")}
+            </div>
+        `;
+    }
+
     function renderAnalysisSummaryCard(label, block, tone) {
         const view = analysisPresentation(label, block, tone);
+        const band = view.displayBand || "Unknown";
         return `
             <article class="analysis-summary-card ${escapeDecisionHtml(tone)}">
                 <div class="analysis-summary-top">
@@ -3195,6 +3206,7 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
                         ${escapeDecisionHtml(view.status)}
                     </span>
                 </div>
+                <div class="analysis-summary-band">${escapeDecisionHtml(band)}</div>
                 <div class="analysis-summary-score">
                     <strong>${escapeDecisionHtml(view.valueLabel)}</strong>
                     <span>/ 100</span>
@@ -3202,12 +3214,147 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
                 <div class="analysis-meter" aria-hidden="true">
                     <span style="width: ${view.meterWidth}%"></span>
                 </div>
+                ${tone === "score" ? qualityLadder(view.displayBand) : ""}
                 <div class="analysis-summary-foot">
-                    <span>${escapeDecisionHtml(view.level || "No level")}</span>
                     <span>${escapeDecisionHtml(view.completenessLabel)}</span>
                 </div>
             </article>
         `;
+    }
+
+    // Real, already-persisted weight/weighted fields (AnalysisDimensionDTO) —
+    // never a client-side re-derivation of config weights, per "Why?"
+    // contribution breakdown (owner audit #36).
+    function dimensionContributionPct(dimensions) {
+        const total = dimensions.reduce((sum, d) => {
+            const w = Number(d.weighted);
+            return sum + (Number.isFinite(w) ? w : 0);
+        }, 0);
+        return dimensions.map(d => {
+            const w = Number(d.weighted);
+            const pct = total > 0 && Number.isFinite(w) ? (w / total) * 100 : null;
+            return Object.assign({}, d, { contributionPct: pct });
+        });
+    }
+
+    function dimensionExplanationBody(dimension) {
+        const contributions = Array.isArray(dimension.contributions) ? dimension.contributions : [];
+        const explanation = sanitizeNumericText(dimension.explanation || "No component rationale recorded.");
+        return `
+            <div class="analysis-component-body">
+                <p>${escapeDecisionHtml(explanation)}</p>
+                ${contributions.length ? `
+                    <div class="analysis-inputs">
+                        <span>Recorded inputs</span>
+                        <ul>
+                    ${contributions.map(item => `
+                        <li>${escapeDecisionHtml(sanitizeNumericText(item.description || item.source || "Recorded contribution"))}</li>
+                    `).join("")}
+                        </ul>
+                    </div>
+                ` : ""}
+            </div>
+        `;
+    }
+
+    function starRating(value) {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return 0;
+        return Math.max(1, Math.min(5, Math.round(n / 20)));
+    }
+
+    function starGlyphs(count) {
+        return "★".repeat(count) + "☆".repeat(5 - count);
+    }
+
+    // Score contributors as storytelling (owner audit #7): ranked by actual
+    // value, star rating plus the real contribution % from weight/weighted —
+    // never a re-derived config-weight table client-side.
+    function renderScoreContributors(dimensions) {
+        const withPct = dimensionContributionPct(dimensions);
+        // Sort by actual contribution (weight x value), not star rating —
+        // a 4-star dimension worth 12% of the score must never rank above a
+        // 3-star one worth 21% (owner-reported mismatch between order and %).
+        const sorted = [...withPct].sort((a, b) => {
+            const pa = a.contributionPct;
+            const pb = b.contributionPct;
+            if (pa === null && pb === null) return (Number(b.value) || -1) - (Number(a.value) || -1);
+            if (pa === null) return 1;
+            if (pb === null) return -1;
+            return pb - pa;
+        });
+        return `<div class="analysis-component-list">${sorted.map(d => {
+            const known = d.status === "OK";
+            const stars = known ? starRating(d.value) : 0;
+            const pctLabel = d.contributionPct !== null
+                ? `${d.contributionPct.toFixed(0)}% of score`
+                : "not counted";
+            return `
+                <details class="score-contributor-row">
+                    <summary>
+                        <span class="contributor-name">${escapeDecisionHtml(friendlyAnalysisName(d.name))}</span>
+                        <span class="contributor-stars" aria-hidden="true">${known ? escapeDecisionHtml(starGlyphs(stars)) : "—"}</span>
+                        <span class="contributor-pct">${escapeDecisionHtml(pctLabel)}</span>
+                        <i class="fa-solid fa-chevron-down"></i>
+                    </summary>
+                    ${dimensionExplanationBody(d)}
+                </details>
+            `;
+        }).join("")}</div>`;
+    }
+
+    // "Why ATHENA trusts this" (owner audit #8) — a checklist, not a bar
+    // chart. Trust/flag comes entirely from the backend's own persisted
+    // level (LOW/MODERATE/HIGH), never a new client-side threshold.
+    const CONFIDENCE_TRUST_LABELS = {
+        evidence_completeness: "Evidence is complete",
+        data_freshness: "Data is fresh",
+        indicator_availability: "Indicators fully available",
+        cross_engine_agreement: "Engines agree with each other",
+        unknown_ratio: "No unknown or missing signals",
+        consistency: "No conflicting signals",
+    };
+
+    function renderConfidenceChecklist(dimensions) {
+        return `<div class="analysis-component-list">${dimensions.map(d => {
+            const known = d.status === "OK";
+            const level = String(d.level || "").toUpperCase();
+            const trusted = known && level && !level.includes("LOW");
+            const icon = !known ? "fa-circle-question unknown" : (trusted ? "fa-circle-check pass" : "fa-circle-xmark fail");
+            const label = CONFIDENCE_TRUST_LABELS[d.name] || friendlyAnalysisName(d.name);
+            return `
+                <details class="trust-checklist-row">
+                    <summary>
+                        <i class="fa-solid ${icon}"></i>
+                        <span class="contributor-name">${escapeDecisionHtml(label)}</span>
+                        <i class="fa-solid fa-chevron-down"></i>
+                    </summary>
+                    ${dimensionExplanationBody(d)}
+                </details>
+            `;
+        }).join("")}</div>`;
+    }
+
+    // Major Risks (owner audit #9) — categorized by hazard, highest first.
+    // Same 3-band Low/Medium/High scale as the Hero cockpit gauge, applied
+    // per-dimension instead of only to the overall risk value.
+    function renderRiskSummary(dimensions) {
+        const sorted = [...dimensions].sort((a, b) => (Number(b.value) || -1) - (Number(a.value) || -1));
+        return `<div class="analysis-component-list">${sorted.map(d => {
+            const known = d.status === "OK";
+            const band = known ? riskBand(d.value) : null;
+            const tone = band === "High" ? "fail" : (band === "Medium" ? "warn" : "pass");
+            return `
+                <details class="risk-summary-row">
+                    <summary>
+                        <span class="contributor-name">${escapeDecisionHtml(friendlyAnalysisName(d.name))}</span>
+                        <span class="risk-band-chip ${known ? tone : "unknown"}">${escapeDecisionHtml(band || "Unknown")}</span>
+                        <i class="fa-solid fa-chevron-down"></i>
+                    </summary>
+                    ${dimensionExplanationBody(d)}
+                </details>
+            `;
+        }).join("")}</div>`;
     }
 
     function renderAnalysisBlock(label, block, tone) {
@@ -3217,6 +3364,11 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         const explanation = sanitizeNumericText(
             data.explanation || `No persisted ${label.toLowerCase()} explanation.`
         );
+        const componentsHtml = !dimensions.length
+            ? '<div class="analysis-no-components">No component detail was persisted.</div>'
+            : (tone === "score" ? renderScoreContributors(dimensions)
+                : tone === "confidence" ? renderConfidenceChecklist(dimensions)
+                : renderRiskSummary(dimensions));
         return `
             <details class="analysis-detail-panel ${escapeDecisionHtml(tone)}">
                 <summary>
@@ -3232,51 +3384,7 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
                 </summary>
                 <div class="analysis-detail-content">
                     <p class="analysis-detail-explanation">${escapeDecisionHtml(explanation)}</p>
-                ${dimensions.length ? `
-                        <div class="analysis-component-list">
-                            ${dimensions.map(dimension => {
-                                const contributions = Array.isArray(dimension.contributions)
-                                    ? dimension.contributions
-                                    : [];
-                                const descriptor = dimension.level
-                                    ? String(dimension.level)
-                                    : String(dimension.status || "UNKNOWN");
-                                const dimensionExplanation = sanitizeNumericText(
-                                    dimension.explanation || "No component rationale recorded."
-                                );
-                                const valueLabel = analysisPercent(dimension.value);
-                                const meterWidth = analysisMeterWidth(dimension.value);
-                                return `
-                                    <details class="analysis-component-row">
-                                        <summary>
-                                            <span class="analysis-component-name">
-                                                <strong>${escapeDecisionHtml(friendlyAnalysisName(dimension.name))}</strong>
-                                                <small>${escapeDecisionHtml(descriptor)}</small>
-                                            </span>
-                                            <span class="analysis-component-meter" aria-hidden="true">
-                                                <span style="width: ${meterWidth}%"></span>
-                                            </span>
-                                            <span class="analysis-component-value">${escapeDecisionHtml(valueLabel)}</span>
-                                            <i class="fa-solid fa-chevron-down"></i>
-                                        </summary>
-                                        <div class="analysis-component-body">
-                                            <p>${escapeDecisionHtml(dimensionExplanation)}</p>
-                                            ${contributions.length ? `
-                                                <div class="analysis-inputs">
-                                                    <span>Recorded inputs</span>
-                                                    <ul>
-                                                ${contributions.map(item => `
-                                                    <li>${escapeDecisionHtml(sanitizeNumericText(item.description || item.source || "Recorded contribution"))}</li>
-                                                `).join("")}
-                                                    </ul>
-                                                </div>
-                                            ` : ""}
-                                        </div>
-                                    </details>
-                                `;
-                            }).join("")}
-                        </div>
-                ` : '<div class="analysis-no-components">No component detail was persisted.</div>'}
+                    ${componentsHtml}
                 </div>
             </details>
         `;
@@ -4068,6 +4176,15 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
             `).join("")
             : '<div class="text-muted">No gate results were persisted for this decision.</div>';
 
+        // Safety checklist summary (owner audit #20) — a reassuring headline
+        // over the same gate results, not a separate computation.
+        const gatesFailed = gates.filter(g => g && g.passed === false).length;
+        const gatesSummary = !gates.length
+            ? ""
+            : gatesFailed === 0
+                ? '<div class="safety-checklist-summary pass"><i class="fa-solid fa-shield-halved"></i> All safety checks passed</div>'
+                : `<div class="safety-checklist-summary fail"><i class="fa-solid fa-shield-halved"></i> Blocked on ${gatesFailed} of ${gates.length} safety checks</div>`;
+
         const references = ["score_ref", "confidence_ref", "risk_ref"]
             .map(key => decision.analysis ? decision.analysis[key] : null)
             .filter(Boolean)
@@ -4150,6 +4267,7 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
 
                 <section class="decision-brief-section">
                     <h4>Safety &amp; quality gates</h4>
+                    ${gatesSummary}
                     <div class="decision-gates-list">${gateRows}</div>
                 </section>
             </div>

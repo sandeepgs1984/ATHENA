@@ -2994,6 +2994,34 @@ body {
     margin-top: 8px;
 }
 
+.analysis-summary-band {
+    font-size: 1.1rem;
+    font-weight: 750;
+    color: var(--analysis-accent, var(--text-primary));
+    margin-top: 8px;
+    letter-spacing: -0.01em;
+}
+
+/* Decision Quality Meter (owner audit #18) — a ladder reads faster than a
+   lone number; the active segment marks the same band word shown above */
+.quality-ladder {
+    display: flex;
+    gap: 3px;
+    margin-top: 10px;
+}
+
+.quality-ladder-seg {
+    flex: 1 1 0;
+    height: 6px;
+    border-radius: 3px;
+    background: rgba(148, 163, 184, 0.18);
+}
+
+.quality-ladder-seg.active {
+    background: var(--analysis-accent, var(--accent));
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.15);
+}
+
 .analysis-detail-stack {
     display: flex;
     flex-direction: column;
@@ -3134,6 +3162,158 @@ body {
 .analysis-component-body {
     border-top: 1px solid rgba(148, 163, 184, 0.08);
     padding: 9px 10px 10px;
+}
+
+/* Score contributors (#7), confidence trust checklist (#8), risk summary
+   (#9) — same expand-for-detail row shell as .analysis-component-row,
+   different summary content per storytelling mode */
+.score-contributor-row,
+.trust-checklist-row,
+.risk-summary-row {
+    background: rgba(15, 23, 42, 0.24);
+    border: 1px solid rgba(148, 163, 184, 0.1);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.score-contributor-row[open] > summary,
+.trust-checklist-row[open] > summary,
+.risk-summary-row[open] > summary {
+    background: rgba(148, 163, 184, 0.05);
+}
+
+.score-contributor-row > summary::-webkit-details-marker,
+.trust-checklist-row > summary::-webkit-details-marker,
+.risk-summary-row > summary::-webkit-details-marker {
+    display: none;
+}
+
+.score-contributor-row > summary > i,
+.trust-checklist-row > summary > i:last-child,
+.risk-summary-row > summary > i {
+    color: var(--text-muted);
+    font-size: 0.58rem;
+    transition: transform 160ms ease;
+}
+
+.score-contributor-row[open] > summary > i,
+.trust-checklist-row[open] > summary > i:last-child,
+.risk-summary-row[open] > summary > i {
+    transform: rotate(180deg);
+}
+
+.score-contributor-row > summary {
+    display: grid;
+    grid-template-columns: minmax(90px, 1fr) auto minmax(70px, auto) 10px;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    list-style: none;
+    padding: 8px 10px;
+}
+
+.contributor-name {
+    color: var(--text-primary);
+    font-size: 0.68rem;
+    font-weight: 600;
+}
+
+.contributor-stars {
+    color: #fbbf24;
+    font-size: 0.78rem;
+    letter-spacing: 1px;
+    white-space: nowrap;
+}
+
+.contributor-pct {
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    white-space: nowrap;
+}
+
+.trust-checklist-row > summary {
+    display: grid;
+    grid-template-columns: 16px minmax(0, 1fr) 10px;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    list-style: none;
+    padding: 8px 10px;
+}
+
+.trust-checklist-row > summary > i:first-child.pass {
+    color: var(--success);
+}
+
+.trust-checklist-row > summary > i:first-child.fail {
+    color: var(--danger);
+}
+
+.trust-checklist-row > summary > i:first-child.unknown {
+    color: var(--text-muted);
+}
+
+.risk-summary-row > summary {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto 10px;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    list-style: none;
+    padding: 8px 10px;
+}
+
+.risk-band-chip {
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    padding: 2px 8px;
+    border-radius: 999px;
+    text-transform: uppercase;
+}
+
+.risk-band-chip.pass {
+    background: var(--success-glow);
+    color: var(--success);
+}
+
+.risk-band-chip.warn {
+    background: var(--warning-glow);
+    color: var(--warning);
+}
+
+.risk-band-chip.fail {
+    background: var(--danger-glow);
+    color: var(--danger);
+}
+
+.risk-band-chip.unknown {
+    background: rgba(148, 163, 184, 0.12);
+    color: var(--text-muted);
+}
+
+/* Safety checklist summary (#20) — a reassuring headline over the same
+   gate results already listed below it */
+.safety-checklist-summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.78rem;
+    font-weight: 650;
+    padding: 8px 10px;
+    border-radius: 6px;
+    margin-bottom: 10px;
+}
+
+.safety-checklist-summary.pass {
+    background: var(--success-glow);
+    color: var(--success);
+}
+
+.safety-checklist-summary.fail {
+    background: var(--warning-glow);
+    color: var(--warning);
 }
 
 .analysis-component-body > p {
