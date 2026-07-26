@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import time as _time
+import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
@@ -27,7 +28,12 @@ class DryRunPipeline(Protocol):
     """Optional paper/dry-run step after successful ingest (injectable)."""
 
     def run(
-        self, trigger: RunTrigger, *, as_of: datetime, ingestion: IngestionResult,
+        self,
+        trigger: RunTrigger,
+        *,
+        as_of: datetime,
+        ingestion: IngestionResult,
+        run_id: str,
     ) -> Mapping[str, object]: ...
 
 
@@ -127,7 +133,9 @@ class DryRunCycleOrchestrator:
             ingestion = self._ingest.run_cycle(as_of=as_of)
             if self._pipeline is not None:
                 pipeline_detail = dict(
-                    self._pipeline.run(trigger, as_of=as_of, ingestion=ingestion)
+                    self._pipeline.run(
+                        trigger, as_of=as_of, ingestion=ingestion, run_id=run_id
+                    )
                 )
                 pipeline_detail.setdefault("mode", "paper_pipeline")
         except AthenaError as exc:
@@ -188,6 +196,22 @@ class DryRunCycleOrchestrator:
 
 def _default_run_id(trigger: RunTrigger, as_of: datetime) -> str:
     stamp = as_of.strftime("%Y%m%dT%H%M%S")
+    if trigger is RunTrigger.REFRESH:
+        # REFRESH backs ad-hoc, owner-triggered symbol validation and can
+        # legitimately fire many times in one day. Outside live trading
+        # hours resolve_validate_as_of always resolves to the same fixed
+        # session-close timestamp, so every such call previously produced
+        # the identical run_id — and SqliteRepository.save_run's upsert
+        # (ON CONFLICT(run_id) DO UPDATE ... detail_json=excluded.detail_json)
+        # would silently overwrite the prior call's decision_reports,
+        # orphaning its decisions (they'd show "Unknown" score/confidence/
+        # risk until re-validated again, which just moved the bug onto
+        # whichever symbol was validated before it). A per-call suffix
+        # makes each REFRESH invocation's run_id genuinely unique.
+        # PREMARKET/CLOSING are untouched: those are scheduled, at-most-
+        # once-per-trigger-per-day cycles where a stable id may be relied
+        # on for idempotent retries of the same logical run.
+        return f"run-{trigger.value.lower()}-{stamp}-{uuid.uuid4().hex[:8]}"
     return f"run-{trigger.value.lower()}-{stamp}"
 
 

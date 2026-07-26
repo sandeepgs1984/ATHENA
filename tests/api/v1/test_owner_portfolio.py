@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from tests.api.v1.test_core_apis import get_auth_headers
 
 from athena.api.dependencies import get_portfolio_provider
 from athena.api.security.models import Role
@@ -17,10 +18,15 @@ from athena.api.v1.providers.sqlite_providers import (
     SqlitePortfolioProvider,
 )
 from athena.data.store.repository import SqliteRepository
-from athena.domain.decision import Decision, DecisionTrace, TraceStage
-from athena.domain.enums import DecisionType, Direction, RunStatus, RunTrigger
+from athena.domain.decision import (
+    Decision,
+    DecisionJournalEntry,
+    DecisionTrace,
+    TraceStage,
+    TradeOutcome,
+)
+from athena.domain.enums import DecisionType, Direction, RunStatus, RunTrigger, UserAction
 from athena.domain.run import RunRecord
-from tests.api.v1.test_core_apis import get_auth_headers
 
 
 @pytest.fixture(autouse=True)
@@ -161,6 +167,55 @@ class TestSqliteProviders:
         provider = SqliteDecisionProvider(repo)
         assert provider.get_decision("dec-live-1") is not None
         assert provider.get_trace("dec-live-1") is not None
+        repo.close()
+
+    def test_reset_decisions_data_respects_foreign_keys(self, tmp_path: Path) -> None:
+        """Regression test: delete_decisions_data's first implementation
+        deleted the `decisions` parent row before its child rows
+        (decision_traces/decision_journal/trade_outcomes, each
+        `REFERENCES decisions(decision_id)`), which raised a live
+        `FOREIGN KEY constraint failed` against the real SQLite database
+        (foreign_keys=ON) even though it passed against the in-memory
+        provider used elsewhere in the test suite, since that provider has
+        no FK enforcement to violate. Uses a real SqliteRepository
+        specifically to exercise that constraint."""
+        repo = SqliteRepository(tmp_path / "p.db")
+        repo.initialize()
+        assert repo.foreign_keys_enabled
+        now = datetime(2026, 7, 23, 10, 0, tzinfo=timezone.utc)
+        decision = Decision(
+            decision_id="dec-reset-1", ts=now, run_id="run-1", cycle_id="cycle-1",
+            instrument_id="INFY", direction=Direction.LONG, decision_type=DecisionType.WATCH,
+            explanation="live",
+        )
+        trace = DecisionTrace(
+            decision_ref="dec-reset-1",
+            stages=(TraceStage("decision", ("dec-reset-1",), "composed"),),
+        )
+        repo.save_decision(decision, trace=trace)
+        repo.save_journal_entry(
+            DecisionJournalEntry(
+                decision_ref="dec-reset-1", user_action=UserAction.ACCEPTED,
+                action_ts=now, notes="",
+            )
+        )
+        repo.save_trade_outcome(
+            TradeOutcome(
+                outcome_id="out-1", decision_ref="dec-reset-1",
+                entry_price=Decimal("100"), exit_price=Decimal("110"), quantity=10,
+                pnl=Decimal("100"), holding_seconds=60, adherence={}, closed_ts=now,
+            )
+        )
+
+        counts = repo.delete_decisions_data()
+        assert counts["decisions"] == 1
+        assert counts["decision_traces"] == 1
+        assert counts["decision_journal"] == 1
+        assert counts["trade_outcomes"] == 1
+        assert repo.get_decision("dec-reset-1") is None
+        assert repo.get_trace("dec-reset-1") is None
+        assert repo.get_journal_entry("dec-reset-1") is None
+        assert repo.get_trade_outcome("dec-reset-1") is None
         repo.close()
 
     def test_portfolio_cash_from_starting(self, tmp_path: Path) -> None:

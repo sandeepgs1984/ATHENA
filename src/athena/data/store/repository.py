@@ -566,6 +566,25 @@ class SqliteRepository:
         except sqlite3.Error as exc:
             raise RepositoryError(f"delete owner positions failed: {exc}") from exc
 
+    def delete_decisions_data(self) -> dict[str, int]:
+        """Owner-triggered full wipe of the Decisions & Trace domain: decisions,
+        their reasoning traces, journal entries, and realized outcomes. Does
+        not touch runs (shared with Market Intelligence's universe/regime
+        history), portfolio positions, or owner candidates."""
+        try:
+            with self._lock:
+                counts: dict[str, int] = {}
+                # Children first (each REFERENCES decisions(decision_id)),
+                # decisions last — deleting the parent first violates the
+                # foreign key constraint.
+                for table in ("decision_traces", "decision_journal", "trade_outcomes", "decisions"):
+                    cur = self._conn.execute(f"DELETE FROM {table}")
+                    counts[table] = int(cur.rowcount)
+                self._conn.commit()
+                return counts
+        except sqlite3.Error as exc:
+            raise RepositoryError(f"delete decisions data failed: {exc}") from exc
+
     # ------------------------------------------------------------- owner candidates (validation list)
 
     def upsert_owner_candidate(

@@ -40,6 +40,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const logoutBtn = document.getElementById("logout-btn");
     const profileName = document.getElementById("profile-name");
     const profileRole = document.getElementById("profile-role");
+    const validateOverlay = document.getElementById("validate-overlay");
+    const validateOverlaySymbols = document.getElementById("validate-overlay-symbols");
+    const validateOverlayDetail = document.getElementById("validate-overlay-detail");
     const kiteGate = document.getElementById("kite-gate");
     const kiteGateDetail = document.getElementById("kite-gate-detail");
     const kiteGateTitle = document.getElementById("kite-gate-title");
@@ -675,6 +678,27 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
+    // Blocking overlay while a validate (ingest + score) is in flight (owner
+    // UX request) — otherwise only the clicked button showed a spinner while
+    // the rest of the page stayed fully interactive, risking the trader
+    // acting on stale/half-updated state mid-run. Centralized here so every
+    // caller of validateSymbolsNow gets it for free.
+    function showValidateOverlay(symbols) {
+        if (!validateOverlay) return;
+        if (validateOverlaySymbols) validateOverlaySymbols.textContent = symbols.join(", ");
+        if (validateOverlayDetail) {
+            validateOverlayDetail.textContent = "Ingesting quotes and recomputing the decision…";
+        }
+        validateOverlay.hidden = false;
+        validateOverlay.setAttribute("aria-hidden", "false");
+    }
+
+    function hideValidateOverlay() {
+        if (!validateOverlay) return;
+        validateOverlay.hidden = true;
+        validateOverlay.setAttribute("aria-hidden", "true");
+    }
+
     /** Ensure candidates exist, then run scoped validate (ingest + score). */
     async function validateSymbolsNow(symbols, { button = null, refreshDecisions = false } = {}) {
         const list = [...new Set(
@@ -691,6 +715,7 @@ document.addEventListener("DOMContentLoaded", () => {
             button.disabled = true;
             button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Validating…';
         }
+        showValidateOverlay(list);
         try {
             for (const symbol of list) {
                 await apiRequest("/api/v1/market/candidates", {
@@ -771,6 +796,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 button.disabled = false;
                 if (prev != null) button.innerHTML = prev;
             }
+            hideValidateOverlay();
         }
     }
 
@@ -3288,15 +3314,31 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
     // sides identically — never a second, different code path for "the other
     // symbol."
     async function fetchLatestDecisionForSymbol(symbol) {
-        const qs = new URLSearchParams({
-            instrument_id: symbol,
-            sort_by: "ts",
-            sort_dir: "desc",
-            page: "1",
-            page_size: "1",
-        });
-        const listRes = await apiRequest(`/api/v1/decisions?${qs.toString()}`, { skipToast: true });
-        const rows = (listRes && Array.isArray(listRes.data)) ? listRes.data : [];
+        // instrument_id is stored with an exchange prefix (e.g. "NSE:HFCL")
+        // and the backend filter is an exact, case-sensitive match — a bare
+        // or lower/mixed-case symbol typed by the trader (the input's
+        // uppercase display is CSS text-transform only; the underlying
+        // .value keeps whatever case was actually typed) would silently
+        // match nothing. Same candidate-id probe already used by
+        // loadDecisionChart, so typing "hfcl" or "HFCL" both find NSE:HFCL
+        // instead of always reporting "no decision found."
+        const upper = String(symbol).toUpperCase();
+        const candidates = upper.includes(":")
+            ? [upper]
+            : [`NSE:${upper}`, upper];
+        let rows = [];
+        for (const candidateId of candidates) {
+            const qs = new URLSearchParams({
+                instrument_id: candidateId,
+                sort_by: "ts",
+                sort_dir: "desc",
+                page: "1",
+                page_size: "1",
+            });
+            const listRes = await apiRequest(`/api/v1/decisions?${qs.toString()}`, { skipToast: true });
+            rows = (listRes && Array.isArray(listRes.data)) ? listRes.data : [];
+            if (rows.length) break;
+        }
         if (!rows.length) return null;
         const decision = rows[0];
         const decisionId = decision.metadata && decision.metadata.decision_id;
@@ -3377,12 +3419,20 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
             .replace(/\b\w/g, char => char.toUpperCase());
     }
 
+    // Number(null) is 0 in JavaScript, not NaN — a genuinely-absent value
+    // (status !== "OK", JSON null) would otherwise silently become a fake
+    // "0.0", which is exactly the owner-reported confusion (a real error
+    // state rendering as a plausible-looking zero score instead of an
+    // honest "—"). Same class of bug already fixed once for the chart's
+    // numericOrNull — this was the one other place it was still lurking.
     function analysisPercent(value) {
+        if (value === null || value === undefined) return "—";
         const number = Number(value);
         return Number.isFinite(number) ? `${number.toFixed(1)}` : "—";
     }
 
     function analysisMeterWidth(value) {
+        if (value === null || value === undefined) return 0;
         const number = Number(value);
         if (!Number.isFinite(number)) return 0;
         return Math.max(0, Math.min(100, number));
@@ -3392,7 +3442,12 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         const data = block || {};
         const status = String(data.status || "UNKNOWN").toUpperCase();
         const level = data.level ? String(data.level).toUpperCase() : "";
-        const completeness = Number(data.completeness);
+        // Same Number(null) === 0 trap as analysisPercent/analysisMeterWidth
+        // above — a genuinely-absent completeness value must read as
+        // "Completeness unknown", never a fabricated "0% complete".
+        const completeness = (data.completeness === null || data.completeness === undefined)
+            ? NaN
+            : Number(data.completeness);
         const completenessLabel = Number.isFinite(completeness)
             ? `${Math.round(completeness * 100)}% complete`
             : "Completeness unknown";
@@ -5426,6 +5481,67 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         }
     };
     wireDecisionsControls();
+
+    // "Clear all" (owner-requested) — CONFIRM-gated wipe of the Decisions &
+    // Trace domain via POST /decisions/reset, mirroring the existing
+    // Portfolio "Reset fills" gate exactly (type CONFIRM to unlock, backup
+    // created automatically server-side before anything is deleted).
+    const decisionsClearAllConfirm = document.getElementById("decisions-clear-all-confirm");
+    const decisionsClearAllGateStatus = document.getElementById("decisions-clear-all-gate-status");
+    const decisionsClearAllSubmit = document.getElementById("decisions-clear-all-submit");
+    function syncDecisionsClearAllGate() {
+        const unlocked = decisionsClearAllConfirm && decisionsClearAllConfirm.value === "CONFIRM";
+        if (decisionsClearAllGateStatus) {
+            decisionsClearAllGateStatus.textContent = unlocked
+                ? "Unlocked — Delete everything is now enabled."
+                : "Locked until CONFIRM matches exactly.";
+            decisionsClearAllGateStatus.className = `ops-restore-gate-status ${unlocked ? "unlocked" : "locked"}`;
+        }
+        if (decisionsClearAllSubmit) decisionsClearAllSubmit.disabled = !unlocked;
+    }
+    decisionsClearAllConfirm?.addEventListener("input", syncDecisionsClearAllGate);
+
+    const decisionsClearAllModal = document.getElementById("decisions-clear-all-modal");
+    document.getElementById("decisions-clear-all-btn")?.addEventListener("click", () => {
+        if (decisionsClearAllConfirm) decisionsClearAllConfirm.value = "";
+        syncDecisionsClearAllGate();
+        openModal(decisionsClearAllModal);
+    });
+    document.getElementById("decisions-clear-all-close")?.addEventListener("click", () => {
+        closeModal(decisionsClearAllModal);
+    });
+    window.addEventListener("click", event => {
+        if (event.target === decisionsClearAllModal) closeModal(decisionsClearAllModal);
+    });
+    decisionsClearAllSubmit?.addEventListener("click", async () => {
+        if (!decisionsClearAllConfirm || decisionsClearAllConfirm.value !== "CONFIRM") return;
+        decisionsClearAllSubmit.disabled = true;
+        decisionsClearAllSubmit.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Deleting…';
+        try {
+            const res = await apiRequest("/api/v1/decisions/reset", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ confirmation: "CONFIRM" }),
+            });
+            const n = res && res.data ? res.data.total_deleted : 0;
+            showToast(`Cleared ${n} record(s) from Decisions & Trace`, "success");
+            closeModal(decisionsClearAllModal);
+            activeDecisionId = null;
+            activeDecisionData = null;
+            if (decisionBriefBody) renderDecisionBriefEmpty("Select a decision", "ATHENA will show the current thesis, safety gates, and advisory TradePlan.");
+            if (dagNodesContainer) {
+                dagNodesContainer.innerHTML = '<div class="text-muted text-center" style="padding: 48px;">Select a decision briefing document to view its reasoning trace.</div>';
+            }
+            await loadDecisionsWorkspace();
+        } catch (err) {
+            console.error(err);
+            showToast("Clear all failed", "danger");
+        } finally {
+            decisionsClearAllConfirm.value = "";
+            syncDecisionsClearAllGate();
+            decisionsClearAllSubmit.innerHTML = '<i class="fa-solid fa-trash-can"></i> Delete everything';
+        }
+    });
 
     // Header Re-validate — always visible next to the "as of" timestamp,
     // rather than buried at the bottom of the brief (owner feedback).

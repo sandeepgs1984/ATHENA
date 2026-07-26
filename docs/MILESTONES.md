@@ -248,8 +248,64 @@ change) rather than pure frontend re-skinning — flagged per-row below.
 | **UX-7** Typography, spacing, elevation, color-language, micro-animations, accessibility + CSS codebase refactor | Owner requested full design-token normalization plus a proper split of the single 4,903-line `dashboard.css` (was flagged as an unmaintainable monolith). Delivered: (1) lossless split into 14 `css/*.css` files by concern, loaded via an `@import` manifest, verified byte-identical to the original before any value changed; (2) ~85 new design tokens (spacing/typography/elevation/color scales) added by naming every distinct value already in use — zero visual drift, verified by resolving every token back to its literal and diffing against the pre-refactor file (688 changed lines, 0 real mismatches, 2 intentional/verified-equivalent px→rem conversions); (3) accessibility fixes: global `:focus-visible` ring (previously only 5 hand-picked inputs had any focus style), dashboard-wide `prefers-reduced-motion: reduce` coverage (previously only 1 of 4 animations was gated), `aria-label` on 3 icon-only header buttons, `aria-hidden` on the decorative DAG connector SVG, keyboard-operable "Today's Decisions" cards (tabindex/role/keydown, previously click-only) | None (pure frontend refactor + additive tokens; no backend/API change) | ✅ Approved |
 | **UX-8** Copy pass | Replaced raw ALL_CAPS enum leakage (TRADE/WATCH/NO_TRADE/INSUFFICIENT_DATA, INCLUDED/EXCLUDED/UNKNOWN) with friendly labels; rewrote dense engineering paragraphs ("persisted"/"config thresholds"/"ingestion"/"generated rationale", the internal "AI Playbook Diagnostics" module name, "deterministic nearest-neighbor...fingerprint") in plain English; fixed several unhelpful empty-state messages; added the market-health explanation sentence (real, already-persisted field) for parity with the regime block, which already had one; renamed hero "Composite score" → "Score" to match the app's own established convention. CLI-command/HTTP-status operational messages were deliberately left as-is — this is a single owner-operator who runs those commands directly, not jargon leaking to a separate non-technical audience | None | ✅ Approved |
 | **UX-9** Quick actions + Portfolio Context + export/deep-link/share | Scope resolved with owner: Compare = symbol-vs-symbol side-by-side; Open Chart = enlarge in a modal; deep-link/share deferred to a future enhancement (no existing infra, out of scope here). Split into two reviewable parts | Deep-link/share deferred (documented as future enhancement); Add Watchlist needs a new small backend domain (UX-9b) | 🔄 In progress |
-**UX-9a** Open Chart / Compare / News / Portfolio Impact | Pure frontend, built entirely on existing endpoints (`?instrument_id=`, `/depth`, `/portfolio`, `/market/instruments/{id}/candles`) — no new backend routes. Open Chart reuses the existing chart renderer in a modal; Compare fetches a second symbol's latest decision + depth and renders side-by-side; Portfolio Impact aggregates open positions for the instrument and computes gain % against the latest real close | None | 🔄 Ready for review |
-**UX-9b** Add Watchlist (Saved Symbols) | New minimal owner-curated "Saved Symbols" domain — deliberately named distinct from the existing automated M4.3 `watchlist` package (a fully automated, config-driven pipeline classifier) to avoid concept collision | New domain model + service + repository + endpoint (small, additive, same shape as M-X0's DecisionJournalEntry/TradeOutcome precedent) | ⏳ Planned |
+| **UX-9a** Open Chart / Compare / News / Portfolio Impact | Pure frontend, built entirely on existing endpoints (`?instrument_id=`, `/depth`, `/portfolio`, `/market/instruments/{id}/candles`) — no new backend routes. Open Chart reuses the existing chart renderer in a modal; Compare fetches a second symbol's latest decision + depth and renders side-by-side; Portfolio Impact aggregates open positions for the instrument and computes gain % against the latest real close | None | 🔄 Ready for review |
+| **UX-9b** Add Watchlist (Saved Symbols) | New minimal owner-curated "Saved Symbols" domain — deliberately named distinct from the existing automated M4.3 `watchlist` package (a fully automated, config-driven pipeline classifier) to avoid concept collision | New domain model + service + repository + endpoint (small, additive, same shape as M-X0's DecisionJournalEntry/TradeOutcome precedent) | ⏳ Planned |
+
+---
+
+### Data-integrity fix: REFRESH run_id collision (owner-reported, 2026-07-26)
+
+Not a UX item — a backend correctness bug, tracked separately per owner
+instruction. Owner reported Score/Confidence/Risk showing "Unknown"/0.0
+for a decision selected from a carousel, fixed only by re-validating it —
+and the same happening to whichever OTHER decision had been re-validated
+most recently. Root-caused via direct SQLite inspection (`db/athena.db`):
+DIXON, TCS, and HFCL's decisions from the same day all shared run_id
+`run-refresh-20260724T153000`, but that run's `detail_json.pipeline.
+decision_reports` contained an entry for only one of the three.
+
+| | |
+|---|---|
+| Root cause | `_default_run_id(trigger, as_of)` (`src/athena/scheduling/dry_run.py`) derives the run_id purely from `(trigger, as_of)`. Outside live trading hours, `resolve_validate_as_of` always resolves to the same fixed session-close timestamp, so every ad-hoc "Re-validate" (`RunTrigger.REFRESH`) call on the same day computed the *identical* run_id. `SqliteRepository.save_run`'s upsert (`ON CONFLICT(run_id) DO UPDATE SET ... detail_json=excluded.detail_json`) then silently overwrote the previous call's `decision_reports` with the new call's — orphaning the earlier decisions from their own analysis, which is why they rendered "Unknown" until re-validated again (which just moved the same bug onto whichever symbol was validated *before* it) |
+| Fix (part 1) | Append a `uuid4` disambiguator to the run_id for `RunTrigger.REFRESH` only (`run-refresh-{stamp}-{8 hex chars}`), so every ad-hoc validation gets a genuinely unique run_id regardless of `as_of` collapsing to the same value. `PREMARKET`/`CLOSING` are untouched — those are scheduled, at-most-once-per-day cycles where a stable id may be relied on for idempotent retries of the same logical run |
+| **Correction (same day)** | Part 1 alone was **incomplete** — confirmed by the owner still seeing "Unknown" values after a successful re-validate. Direct SQLite inspection showed the `runs` table row *did* get a correctly-unique id (part 1 worked for that), but the actual `Decision` row saved to the `decisions` table still pointed at the old, colliding, non-unique id. Root cause: `OwnerValidationPipeline.run()` (`src/athena/ops/owner_validation.py`) independently **recomputed its own local `run_id`** from `(trigger, as_of)` — using the exact same old, collision-prone formula — completely disconnected from the orchestrator's now-fixed, actually-unique run_id. `DryRunPipeline.run()`'s Protocol never had a way to receive the real run_id at all |
+| Fix (part 2) | `DryRunPipeline` Protocol and `DryRunCycleOrchestrator.run_cycle()` now thread the orchestrator's own real `run_id` through to `OwnerValidationPipeline.run(..., run_id=run_id)`, which uses it directly instead of recomputing one locally. Every `Decision` saved now correctly points at the exact run whose `detail_json` holds its own analysis — no more silent divergence between "the run record's identity" and "the identity the decision was tagged with" |
+| Scope | `src/athena/scheduling/dry_run.py` (`_default_run_id`, `DryRunPipeline` Protocol, `run_cycle`), `src/athena/ops/owner_validation.py` (`run()` signature); no API/DTO/schema change |
+| Tests | 2 regression tests in `tests/runtime/test_dry_run_schedule.py` (part 1) + 1 new regression test in `tests/ops/test_owner_validation.py` (`test_repeat_validate_with_same_as_of_does_not_orphan_earlier_decision`, part 2 — validates two different symbols back-to-back with the same `as_of` and asserts each decision keeps its own distinct run_id) + an existing test extended to assert the saved decision's `run_id` matches what was passed in. Full suite **1023 passed** |
+| Note | Existing decisions already orphaned by a past collision (this session's TCS/HFCL, and any created between the part-1-only fix and this correction) are not retroactively repaired — see the "Clear all" feature below for a clean-slate path instead |
+| Status | ✅ Fixed (both parts), tested, server restarted — awaiting owner confirmation on the live dashboard |
+
+---
+
+### Feature: "Clear all" for Decisions & Trace (owner-requested, 2026-07-26)
+
+Not a UX item — an owner-requested admin utility, tracked separately.
+Lets the owner wipe the Decisions & Trace domain and start fresh (e.g.
+after the run_id collision above orphaned some test decisions) instead
+of re-validating each affected symbol individually. Built as a close
+mirror of the existing "Reset fills" (Portfolio) feature — same
+CONFIRM-token gate, same automatic pre-delete backup pattern.
+
+| | |
+|---|---|
+| Scope | Deletes all rows in `decisions`, `decision_traces`, `decision_journal`, `trade_outcomes`. Does **not** touch `runs` (shared with Market Intelligence's universe/regime history), portfolio positions, or owner candidates |
+| Backend | `SqliteRepository.delete_decisions_data()`; `DecisionsService.reset_decisions()` (CONFIRM-gated, auto-backup via the same `create_backup` helper Portfolio reset uses, saved as `db/backups/athena-pre-decisions-reset-<timestamp>.db`); `POST /api/v1/decisions/reset` (ADMIN-only) |
+| Frontend | "Clear all" button in the Decisions & Trace toolbar → a confirmation modal with a "type CONFIRM to unlock" gate (same UX pattern as Portfolio's reset gate) → "Delete everything" button, disabled until the token matches exactly |
+| Tests | 2 new backend tests (confirmation + admin-role gating refuses before touching data; a real clear deletes and a subsequent list is empty) + 6 new dashboard-hosting assertions. Full suite **1022 passed** |
+| Status | ✅ Built, tested, server restarted — awaiting owner confirmation on the live dashboard |
+
+### Feature: blocking validate overlay for Decisions & Trace / Market Intelligence (owner-requested, 2026-07-26)
+
+Not a UX item — a correctness/UX fix tracked separately. Owner reported
+being able to click other UI mid "Re-validate"/"Validate"/"Add & validate",
+risking acting on stale state. Adds a full-viewport, non-dismissible,
+ATHENA-branded overlay for the duration of any validate call.
+
+| | |
+|---|---|
+| Scope | Frontend only — `#validate-overlay` markup + CSS + `showValidateOverlay`/`hideValidateOverlay` centralized inside the shared `validateSymbolsNow`, so all 4 existing call sites (Portfolio row, Market Intelligence row, "Add & validate", Decision Brief "Re-validate") get it automatically |
+| Tests | 15 new dashboard-hosting assertions. Full suite **1024 passed** |
+| Status | 🔄 Built, tested, visually verified via browser DOM inspection (no owner credentials to trigger a real authenticated validate) — awaiting owner confirmation on the live dashboard |
 
 ---
 

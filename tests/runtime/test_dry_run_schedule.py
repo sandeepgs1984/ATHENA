@@ -168,9 +168,11 @@ class FakeIngest:
 class RecordingPipeline:
     def __init__(self):
         self.calls: list[RunTrigger] = []
+        self.run_ids: list[str] = []
 
-    def run(self, trigger, *, as_of, ingestion):
+    def run(self, trigger, *, as_of, ingestion, run_id):
         self.calls.append(trigger)
+        self.run_ids.append(run_id)
         return {"mode": "paper_pipeline", "ok": True, "as_of": as_of.isoformat()}
 
 
@@ -226,6 +228,66 @@ class TestDryRunCycle:
         stored = repo.get_run("run-fail-1")
         assert stored is not None
         assert stored.status is RunStatus.FAILED
+        repo.close()
+
+    def test_refresh_run_id_unique_per_call_even_with_same_as_of(self, tmp_path):
+        """Regression test: outside live trading hours, resolve_validate_as_of
+        always resolves to the same fixed session-close timestamp, so two
+        separate ad-hoc REFRESH validations (e.g. two different symbols,
+        each via the dashboard's "Re-validate") previously collided on the
+        same default run_id. SqliteRepository.save_run's upsert
+        (ON CONFLICT(run_id) DO UPDATE ... detail_json=excluded.detail_json)
+        then silently overwrote the first call's persisted decision_reports —
+        orphaning its decisions, which would render Score/Confidence/Risk as
+        "Unknown" until re-validated again. Uses the real default
+        run_id_factory (no override) to exercise the actual bug path."""
+        as_of = datetime(2026, 2, 13, 15, 30, tzinfo=IST)
+        repo = SqliteRepository(tmp_path / "athena.db")
+        repo.initialize()
+
+        pipe_a = RecordingPipeline()
+        orch_a = DryRunCycleOrchestrator(
+            FakeIngest(_ingestion(as_of)),  # type: ignore[arg-type]
+            repo,
+            pipeline=pipe_a,
+        )
+        result_a = orch_a.run_cycle(RunTrigger.REFRESH, as_of=as_of)
+
+        pipe_b = RecordingPipeline()
+        orch_b = DryRunCycleOrchestrator(
+            FakeIngest(_ingestion(as_of)),  # type: ignore[arg-type]
+            repo,
+            pipeline=pipe_b,
+        )
+        result_b = orch_b.run_cycle(RunTrigger.REFRESH, as_of=as_of)
+
+        assert result_a.run.run_id != result_b.run.run_id
+
+        # The first run's persisted detail must survive the second run's
+        # write — this is the exact data-loss the bug caused.
+        first_detail = repo.get_run_detail(result_a.run.run_id)
+        second_detail = repo.get_run_detail(result_b.run.run_id)
+        assert first_detail["pipeline"]["as_of"] == as_of.isoformat()
+        assert second_detail["pipeline"]["as_of"] == as_of.isoformat()
+        assert repo.get_run(result_a.run.run_id) is not None
+        assert repo.get_run(result_b.run.run_id) is not None
+        repo.close()
+
+    def test_premarket_run_id_still_deterministic_for_same_as_of(self, tmp_path):
+        """PREMARKET/CLOSING are scheduled, at-most-once-per-day cycles where
+        a stable run_id may be relied on for idempotent retries of the same
+        logical run — confirm the fix does not touch this trigger's id
+        format."""
+        as_of = datetime(2026, 2, 13, 8, 20, tzinfo=IST)
+        repo = SqliteRepository(tmp_path / "athena.db")
+        repo.initialize()
+        orch = DryRunCycleOrchestrator(
+            FakeIngest(_ingestion(as_of)),  # type: ignore[arg-type]
+            repo,
+            pipeline=RecordingPipeline(),
+        )
+        result = orch.run_cycle(RunTrigger.PREMARKET, as_of=as_of)
+        assert result.run.run_id == "run-premarket-20260213T082000"
         repo.close()
 
 

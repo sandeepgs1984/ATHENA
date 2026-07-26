@@ -71,6 +71,7 @@ class OwnerValidationPipeline:
         *,
         as_of: datetime,
         ingestion: IngestionResult,
+        run_id: str,
     ) -> Mapping[str, object]:
         candidates = self._store.list_candidates(active_only=True)
         if self._symbols_filter:
@@ -154,7 +155,16 @@ class OwnerValidationPipeline:
         decision_reports: dict[str, dict[str, object]] = {}
 
         if self._enable_scan and included_ids:
-            run_id = f"run-{trigger.value.lower()}-{as_of.strftime('%Y%m%dT%H%M%S')}"
+            # Use the orchestrator's own run_id (passed in) rather than
+            # recomputing one locally from (trigger, as_of) — that used to
+            # silently diverge from DryRunCycleOrchestrator's actual
+            # persisted run_id whenever as_of collapsed to the same value
+            # across separate invocations (e.g. every off-hours REFRESH),
+            # causing each Decision saved here to keep pointing at a run
+            # whose own detail_json had since been overwritten by a
+            # different symbol's validation — the real cause behind
+            # Score/Confidence/Risk still showing "Unknown" even after a
+            # freshly-succeeded re-validate.
             cycle_id = f"{as_of.date().isoformat()}-{trigger.value.lower()}"
             snap = self._resolve_snapshot(as_of, candles_by_id)
             if snap is None:

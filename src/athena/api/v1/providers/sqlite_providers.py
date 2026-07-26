@@ -174,6 +174,9 @@ class SqliteDecisionProvider:
     def list_recent_decisions(self, *, limit: int = 500) -> list[Decision]:
         return self._repo.list_decisions(limit=limit)
 
+    def reset_decisions_data(self) -> dict[str, int]:
+        return self._repo.delete_decisions_data()
+
 
 class SqlitePortfolioProvider:
     """Owner-entered fill ledger → domain Portfolio (+ open/close writes)."""

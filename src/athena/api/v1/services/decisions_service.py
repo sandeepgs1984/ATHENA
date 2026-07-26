@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
-from athena.api.exceptions import DecisionNotFoundError
+from athena.api.exceptions import DecisionNotFoundError, DecisionsResetConfirmationError
 from athena.api.v1.dtos import (
     AnalysisBlockDTO,
     AnalysisContributionDTO,
@@ -36,17 +36,23 @@ from athena.api.v1.dtos import (
     MarketHealthContextDTO,
     QuerySpecification,
     RegimeContextDTO,
+    ResetDecisionsResultDTO,
     ResourceReference,
     TraceStageDTO,
     TradeOutcomeDTO,
     TradePlanDTO,
     TradePlanFreshnessDTO,
 )
+from athena.api.v1.services.ops_service import default_backup_dir, default_db_path
 from athena.calendar.engine import CalendarEngine
 from athena.config.loader import load_config, load_decision_config, load_external_links_file
+from athena.data.store.backup import create_backup
+from athena.data.store.repository import SqliteRepository
 from athena.data.store.serialization import trade_outcome_id
 from athena.domain.decision import DecisionJournalEntry, TradeOutcome
 from athena.domain.enums import Direction, QualityGate, UserAction
+
+_RESET_CONFIRM_TOKEN = "CONFIRM"
 
 if TYPE_CHECKING:
     from athena.api.v1.dtos import (
@@ -67,9 +73,13 @@ class DecisionsService:
         provider: DecisionProvider,
         *,
         config_dir: Path | None = None,
+        db_path: Path | None = None,
+        backup_dir: Path | None = None,
     ) -> None:
         self._provider = provider
         self._config_dir = Path(config_dir) if config_dir else Path("config")
+        self._db_path = Path(db_path) if db_path else default_db_path()
+        self._backup_dir = Path(backup_dir) if backup_dir else default_backup_dir()
 
     def list_decisions(
         self,
@@ -386,6 +396,38 @@ class DecisionsService:
             avg_return_pct=avg_return_pct,
             avg_holding_days=avg_holding_days,
             outcomes_sample_size=sample_size,
+        )
+
+    def reset_decisions(self, *, confirmation: str) -> ResetDecisionsResultDTO:
+        """Owner-triggered full wipe of the Decisions & Trace domain (decisions,
+        traces, journal entries, realized outcomes) — CONFIRM-gated, with a
+        best-effort automatic backup first, mirroring PortfolioService's
+        reset_positions. Does not touch runs (shared with Market
+        Intelligence's universe/regime history), portfolio positions, or
+        owner candidates."""
+        if confirmation != _RESET_CONFIRM_TOKEN:
+            raise DecisionsResetConfirmationError(
+                "Decisions reset refused: confirmation must be the exact token CONFIRM"
+            )
+
+        backup_path: str | None = None
+        if self._db_path.is_file():
+            try:
+                self._backup_dir.mkdir(parents=True, exist_ok=True)
+                stamp = datetime.now(tz=timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+                dest = self._backup_dir / f"athena-pre-decisions-reset-{stamp}.db"
+                with SqliteRepository(self._db_path) as repo:
+                    result = create_backup(repo, dest, as_of=datetime.now(tz=timezone.utc))
+                backup_path = result.destination
+            except Exception:
+                # Reset must still proceed; backup failure is non-fatal but loud via None path
+                backup_path = None
+
+        deleted_counts = self._provider.reset_decisions_data()
+        return ResetDecisionsResultDTO(
+            deleted_counts=deleted_counts,
+            total_deleted=sum(deleted_counts.values()),
+            backup_path=backup_path,
         )
 
     def _fetch_report(self, decision: Decision, *, pipeline: Mapping[str, Any] | None = None) -> Mapping[str, Any]:

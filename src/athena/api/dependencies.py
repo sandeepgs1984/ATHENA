@@ -209,7 +209,14 @@ def _find_repo_root() -> Path:
 def get_decisions_service(request: Request) -> DecisionsService:
     """Dependency provider for DecisionsService."""
     provider = getattr(request.app.state, "decision_provider", _decision_provider)
-    return DecisionsService(provider, config_dir=_find_repo_root() / "config")
+    db_path = getattr(request.app.state, "ops_db_path", None)
+    backup_dir = getattr(request.app.state, "ops_backup_dir", None)
+    return DecisionsService(
+        provider,
+        config_dir=_find_repo_root() / "config",
+        db_path=db_path,
+        backup_dir=backup_dir,
+    )
 
 
 def get_market_history_service(request: Request) -> MarketHistoryService:

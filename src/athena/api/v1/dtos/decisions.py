@@ -11,6 +11,24 @@ from pydantic import BaseModel, ConfigDict, Field
 from athena.api.v1.dtos.base import FilterParams, ResourceReference
 
 
+class ResetDecisionsRequest(BaseModel):
+    """Destructive wipe of the Decisions & Trace domain (CONFIRM-gated)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    confirmation: str = Field(description="Must be the exact token CONFIRM")
+
+
+class ResetDecisionsResultDTO(BaseModel):
+    """Result of an owner-triggered Decisions & Trace reset."""
+
+    model_config = ConfigDict(frozen=True)
+
+    deleted_counts: dict[str, int]
+    total_deleted: int
+    backup_path: str | None = None
+
+
 class TradePlanDTO(BaseModel):
     """Composed DTO representing entry, stop loss, targets, and sizing plans."""
 

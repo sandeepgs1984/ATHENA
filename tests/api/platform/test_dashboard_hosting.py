@@ -373,7 +373,17 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "function openCompareModal" in js
     assert "function runSymbolCompare" in js
     assert "function fetchLatestDecisionForSymbol" in js
-    assert "instrument_id: symbol" in js
+    assert "instrument_id: candidateId" in js
+    # Fix pass: instrument_id is stored with an exchange prefix (e.g.
+    # "NSE:HFCL") and the backend filter is an exact match, so a bare
+    # symbol typed into Compare always found nothing — this locks in the
+    # NSE:-prefix candidate probe (same pattern loadDecisionChart uses).
+    assert "`NSE:${upper}`" in js
+    # Fix pass: the compare input's uppercase look is CSS text-transform
+    # only — the underlying .value keeps whatever case was typed, so a
+    # lowercase/mixed-case symbol previously matched nothing against the
+    # case-sensitive instrument_id filter. Locks in the .toUpperCase() fix.
+    assert "const upper = String(symbol).toUpperCase();" in js
     assert "function loadPortfolioImpact" in js
     assert "function renderPortfolioImpact" in js
     assert "/api/v1/portfolio" in js
@@ -382,8 +392,29 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container" in css
     assert ".compare-grid" in css
     assert ".portfolio-impact-grid" in css
+
+    # Fix pass: analysisPercent/analysisMeterWidth/the completeness
+    # calculation all did Number(value) without first checking for null —
+    # and Number(null) is 0 in JavaScript, not NaN. A genuinely-absent
+    # score/confidence/risk (status != "OK") silently rendered as a
+    # plausible-looking "0.0/100" and "0% complete" instead of the honest
+    # "—"/"Completeness unknown" — exactly the owner-reported confusion
+    # ("zero values" that looked like real data, not an error state).
+    assert "if (value === null || value === undefined) return \"—\";" in js
+    assert "if (value === null || value === undefined) return 0;" in js
+    assert "data.completeness === null || data.completeness === undefined" in js
     assert "Place Order" not in html
     assert "Place Order" not in js
+
+    # Owner-requested "Clear all" for Decisions & Trace — CONFIRM-gated,
+    # mirroring the existing Portfolio "Reset fills" pattern exactly (typed
+    # token unlock, backup created server-side before deletion).
+    assert 'id="decisions-clear-all-btn"' in html
+    assert 'id="decisions-clear-all-modal"' in html
+    assert 'id="decisions-clear-all-confirm"' in html
+    assert "function syncDecisionsClearAllGate" in js
+    assert "/api/v1/decisions/reset" in js
+    assert 'confirmation: "CONFIRM"' in js
 
     # Fix pass: the DAG stage-detail panel's "Full detail lives in the X
     # tab" text was reconstructing the tab name via a raw capitalization
@@ -474,3 +505,22 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "Loading platform telemetry, logs, and triggers..." not in html
     assert "loadOperationsWorkspace" in js
     assert "startOpsStream" in js
+
+    # Owner-requested full-viewport blocking overlay during validate (owner
+    # feedback: other UI stayed interactive mid-run, risking acting on stale
+    # state). Non-dismissible by design — no cancel affordance, since the
+    # backend call can't be aborted once started. Centralized inside
+    # validateSymbolsNow so all 4 call sites (Portfolio row, Market
+    # Intelligence row, "Add & validate", Decision Brief "Re-validate")
+    # get it automatically.
+    assert 'id="validate-overlay"' in html
+    assert 'id="validate-overlay-symbols"' in html
+    assert 'id="validate-overlay-detail"' in html
+    assert 'role="alertdialog"' in html
+    assert "function showValidateOverlay" in js
+    assert "function hideValidateOverlay" in js
+    assert "showValidateOverlay(list);" in js
+    assert "hideValidateOverlay();" in js
+    assert ".validate-overlay" in css
+    assert ".validate-overlay-panel" in css
+    assert "validate-spin" in css

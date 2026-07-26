@@ -72,6 +72,10 @@ class PortfolioResetConfirmationError(APIResourceError):
     """Portfolio reset refused because confirmation token was missing or incorrect."""
 
 
+class DecisionsResetConfirmationError(APIResourceError):
+    """Decisions & Trace reset refused because confirmation token was missing or incorrect."""
+
+
 class DatabaseUnavailableError(APIResourceError):
     """Live SQLite database path is missing or cannot be opened for backup ops."""
 

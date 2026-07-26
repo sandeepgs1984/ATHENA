@@ -170,6 +170,19 @@ class InMemoryDecisionProvider:
         ordered = sorted(self.decisions, key=lambda d: d.ts, reverse=True)
         return ordered[:limit]
 
+    def reset_decisions_data(self) -> dict[str, int]:
+        counts = {
+            "decisions": len(self.decisions),
+            "decision_traces": len(self.traces),
+            "decision_journal": len(self.journal_entries),
+            "trade_outcomes": len(self.trade_outcomes),
+        }
+        self.decisions.clear()
+        self.traces.clear()
+        self.journal_entries.clear()
+        self.trade_outcomes.clear()
+        return counts
+
 
 class InMemoryCandleHistoryProvider:
     """Deterministic candle store for API tests and fallback wiring."""

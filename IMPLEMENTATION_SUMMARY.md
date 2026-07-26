@@ -6,6 +6,582 @@ status updated on approval.
 
 ---
 
+## Feature — Blocking validate overlay for Decisions & Trace / Market Intelligence (BUILT, awaiting owner confirmation)
+
+| | |
+|---|---|
+| Completed | 2026-07-26 |
+| Objective | Owner-reported: while "Re-validate" (Decision Brief) or "Validate"/"Add & validate" (Market Intelligence) was in flight, the rest of the dashboard stayed fully interactive — the trader could click other candidates or decisions mid-run and act on stale or half-updated state. Not just cosmetic: a correctness risk given the run_id-collision history above. Requested as a "beautiful ATHENA theme loading blocker/indicator" |
+| Scope | A full-viewport, non-dismissible overlay shown for the duration of any `validateSymbolsNow` call, covering all 4 existing call sites (Portfolio holdings row, Market Intelligence candidate row, "Add & validate" button, Decision Brief "Re-validate" header button) automatically since it's centralized in the one shared function rather than duplicated per call site. No cancel affordance — the backend call itself can't be aborted once started |
+| Frontend | `index.html`: `#validate-overlay` markup (ATHENA `fa-circle-nodes` brand mark, title, dynamic symbol list, detail line), `role="alertdialog"`/`aria-modal`, placed as a body-level sibling after the Kite gate. `css/07-universe-modals.css`: `.validate-overlay`/`.validate-overlay-panel`/`.validate-overlay-mark` (rotating-ring `validate-spin` animation, `prefers-reduced-motion` respected), z-index 9000 (above modals at 2000, below the unlock/Kite gates at 10000/11000, since a validate can only start once already past those). `dashboard.js`: `showValidateOverlay(symbols)`/`hideValidateOverlay()` helpers, wired into `validateSymbolsNow`'s existing try/finally so every caller gets it for free |
+| Tests | 15 new dashboard-hosting assertions locking in the markup/CSS/JS. Full suite **1024 passed** |
+| Coverage | No backend changes — pure frontend. Verified via a live isolated-browser check: zero console errors, overlay DOM resolves to the intended fixed/flex/z-index-9000 styling, and a manual reveal confirms the intended visual (brand mark, spin, symbol list, detail copy) |
+| Status | **BUILT** — server serves static assets live (no restart needed to pick up changes), cache-bust bumped to `9.44.4`, visually verified via browser DOM inspection. Awaiting owner confirmation of the real end-to-end trigger (an authenticated Re-validate/Validate click) on the live dashboard, since I have no owner credentials to drive that myself |
+| Branch | feature/live-dashboard |
+
+### Files created
+
+- None.
+
+### Files modified
+
+- `src/athena/api/static/index.html` — `#validate-overlay` markup added; cache-bust `9.44.3` → `9.44.4`.
+- `src/athena/api/static/css/07-universe-modals.css` — `.validate-overlay*` rules + `validate-spin` keyframes + reduced-motion override, inserted before the existing Kite-gate block.
+- `src/athena/api/static/dashboard.js` — `showValidateOverlay`/`hideValidateOverlay` helpers; wired into `validateSymbolsNow`'s show/finally logic.
+- `tests/api/platform/test_dashboard_hosting.py` — 15 new assertions.
+- This log; `docs/MILESTONES.md`.
+
+### Public APIs
+
+- None — no backend/API changes.
+
+### Validation and architecture
+
+- Full regression: **1024 passed**.
+- JS braces balanced (1614/1614), CSS braces balanced (769/769).
+- Static files are served directly from disk, so the live dev server
+  already reflects the change without a restart; confirmed via `curl`
+  that `/dashboard/` and `/dashboard/dashboard.js` return the `9.44.4`
+  cache-bust and the new markup/functions.
+- Isolated-browser console check: zero errors. DOM inspection confirms
+  `#validate-overlay` resolves to `position: fixed`, `display: flex`,
+  `z-index: 9000` and reverts cleanly to `hidden` — matches the intended
+  stacking order relative to modals (2000) and the unlock/Kite gates
+  (10000/11000).
+- No ADR required: additive UI-only change, no domain/contract/schema
+  impact, no architecture drift.
+
+### Risks and technical debt
+
+- I could not trigger a real authenticated validate call end-to-end
+  myself (no owner credentials) — verified the overlay's markup, CSS
+  resolution, and wiring instead, plus a manual DOM-level reveal to
+  confirm the visual. Owner should confirm the real trigger path (click
+  "Re-validate" or "Add & validate" and see the overlay appear/disappear
+  around the actual network call) on the live dashboard.
+- No new technical debt.
+
+### Remaining work
+
+- **Owner confirmation**: trigger a real "Re-validate" (Decision Brief)
+  and a real "Add & validate" (Market Intelligence) on the live
+  dashboard and confirm the overlay blocks other UI interaction for the
+  duration of the call and clears cleanly afterward either way (success
+  or failure).
+
+### Commit message
+
+```text
+feat(dashboard): add blocking ATHENA-themed overlay during validate calls
+
+- Re-validate (Decision Brief) and Validate/Add & validate (Market
+  Intelligence) left the rest of the dashboard fully interactive while
+  the backend ingest+score call was in flight, letting the trader click
+  other candidates/decisions and act on stale or half-updated state.
+- Add a full-viewport, non-dismissible #validate-overlay (ATHENA brand
+  mark, rotating ring, dynamic symbol list) wired into the one shared
+  validateSymbolsNow function so all 4 existing call sites get it
+  automatically, with no per-call-site duplication.
+- Lock in the new markup/CSS/JS with 15 dashboard-hosting assertions;
+  bump cache-bust to 9.44.4.
+```
+
+---
+
+## Data-integrity fix — correction: run_id never actually reached the saved Decision (FIXED)
+
+| | |
+|---|---|
+| Completed | 2026-07-26 |
+| Objective | The earlier "REFRESH run_id collision" fix was incomplete — the owner reported still seeing "Unknown" Score/Confidence/Risk after successfully re-authenticating Kite and re-validating multiple times. This entry is the real, complete fix, found by directly querying the live SQLite database rather than assuming the first fix was sufficient |
+| Scope | `src/athena/scheduling/dry_run.py` (`DryRunPipeline` Protocol, `run_cycle`), `src/athena/ops/owner_validation.py` (`OwnerValidationPipeline.run` signature) — plus a related frontend fix (see below) for the specific visual confusion the owner flagged |
+| Tests | 1 new regression test (`test_repeat_validate_with_same_as_of_does_not_orphan_earlier_decision`) + 1 existing test extended with a direct assertion; 2 new dashboard-hosting assertions for the frontend fix. Full suite **1023 passed** |
+| Coverage | The new backend test exercises the exact real code path (`OwnerValidationPipeline.run()` called twice with a shared `as_of`, different `run_id`s) that produced the owner's reported symptom |
+| Status | **FIXED** — root-caused via direct database inspection (twice), verified via a regression test that reproduces the exact scenario, server restarted |
+| Branch | feature/live-dashboard |
+
+### Root cause (found by re-inspecting the live database, not assumed)
+
+After the first run_id fix, the owner re-authenticated Kite, re-validated
+several times, and still saw "Unknown" for BIOCON. Rather than assume the
+first fix was sufficient, I queried `db/athena.db` directly again and
+found something specific: **11 new-format run rows now existed**
+(`run-refresh-20260724T153000-<8 hex chars>`, confirming the first fix's
+uuid suffix *was* being generated), each `COMPLETED` with a correct,
+intact `decision_reports` entry for whichever symbol had been
+re-validated — including 3 separate successful runs for BIOCON. But the
+`decisions` table's BIOCON row still pointed at the *original*,
+un-suffixed `run-refresh-20260724T153000` — none of those 3 successful
+re-validates had updated it, despite `SqliteRepository.save_decision`'s
+upsert (`ON CONFLICT(decision_id) DO UPDATE SET run_id=excluded.run_id`,
+verified correct in isolation with a standalone repro script) being
+perfectly capable of doing so.
+
+Traced why: `OwnerValidationPipeline.run()` (called by the orchestrator
+as the pipeline stage inside `DryRunCycleOrchestrator.run_cycle()`)
+**recomputed its own local `run_id`** at
+`f"run-{trigger.value.lower()}-{as_of.strftime('%Y%m%dT%H%M%S')}"` —
+line-for-line the same old, collision-prone formula the first fix had
+already corrected *for the orchestrator's own `RunRecord`* — completely
+independent of and disconnected from the orchestrator's actual,
+now-unique `run_id`. This local variable is what gets threaded into
+`decision_engine.decide(..., run_id=run_id, ...)` and ultimately saved
+onto the `Decision` domain object. The `DryRunPipeline` Protocol's
+`run()` signature never had a parameter to receive the orchestrator's
+real run_id in the first place, so `OwnerValidationPipeline` had no
+choice but to invent its own — and that invented one collided every
+time, exactly as before the first fix, just one layer deeper.
+
+### Fix
+
+- `DryRunPipeline` Protocol (`src/athena/scheduling/dry_run.py`) gains a
+  required `run_id: str` parameter.
+- `DryRunCycleOrchestrator.run_cycle()` now passes its own already-unique
+  `run_id` through: `self._pipeline.run(trigger, as_of=as_of,
+  ingestion=ingestion, run_id=run_id)`.
+- `OwnerValidationPipeline.run()` accepts `run_id: str` and uses it
+  directly — the local recomputation is deleted entirely.
+- Updated the one other implementation (`RecordingPipeline` in
+  `tests/runtime/test_dry_run_schedule.py`) and the two existing callers
+  in `tests/ops/test_owner_validation.py` to match the new required
+  parameter.
+
+### Related frontend fix (owner-flagged, same investigation)
+
+The owner separately pointed out that even when this *is* a genuine data
+problem (e.g. stale Kite quotes), the UI showing "0.0/100" next to
+"Unknown" looks exactly like a real, computed zero score rather than an
+honest error/absent state — confusing regardless of the backend cause.
+Traced to the classic `Number(null) === 0` JavaScript trap (the same
+class of bug fixed once before for the chart's `numericOrNull`, but
+never re-checked here): `analysisPercent`, `analysisMeterWidth`, and the
+completeness calculation inside `analysisPresentation` all did
+`Number(value)` without first checking for `null`/`undefined` — so a
+genuinely-absent `AnalysisBlockDTO.value`/`.completeness` (JSON `null`
+when `status != "OK"`) silently became a plausible-looking `"0.0"`/`"0%
+complete"` instead of the honest `"—"`/`"Completeness unknown"` the code
+already used elsewhere for real absence. Fixed by adding an explicit
+`value === null || value === undefined` check before coercion in all
+three places.
+
+### Files created
+
+- None.
+
+### Files modified
+
+- `src/athena/scheduling/dry_run.py` — `DryRunPipeline.run()` gains `run_id`; `run_cycle()` passes it through.
+- `src/athena/ops/owner_validation.py` — `OwnerValidationPipeline.run()` accepts and uses the passed-in `run_id`; local recomputation removed.
+- `tests/runtime/test_dry_run_schedule.py` — `RecordingPipeline.run()` updated to match the new signature.
+- `tests/ops/test_owner_validation.py` — both existing `pipe.run(...)` calls updated with `run_id=`; new `test_repeat_validate_with_same_as_of_does_not_orphan_earlier_decision`; existing test extended with a `run_id` assertion.
+- `src/athena/api/static/dashboard.js` — `analysisPercent`, `analysisMeterWidth`, and `analysisPresentation`'s completeness calculation all gained an explicit null/undefined check before `Number()` coercion.
+- `tests/api/platform/test_dashboard_hosting.py` — new assertions for the frontend fix.
+- `docs/MILESTONES.md` — the original "Data-integrity fix" entry updated in place with a "Correction (same day)" row rather than a new, separate section, since it's the same bug, more completely fixed.
+- This log.
+
+### Public APIs
+
+- None — internal pipeline wiring only.
+
+### Validation and architecture
+
+- Full regression: **1023 passed** (1022 + 1 new).
+- Ruff clean on all changed `.py` files. mypy remains unavailable in
+  this environment (pre-existing, unrelated).
+- JS braces balanced (1611/1611).
+- Live server restarted; isolated-browser console check on the
+  pre-login page: zero errors.
+- No ADR required: internal signature threading + a null-check
+  correctness fix, no domain/contract change.
+- ADR-005 reinforced, not weakened: the frontend fix makes the "never
+  fabricate a value" principle actually visible to the trader (a
+  genuinely-absent value now *reads* as absent) rather than silently
+  looking like a real zero.
+
+### Risks and technical debt
+
+- This was found by re-querying the live database a second time after
+  the owner reported the first fix hadn't resolved their symptom —
+  worth internalizing as a pattern: for data-integrity bugs, verify the
+  *complete* data flow end-to-end (here: orchestrator run_id → pipeline
+  callback → decision_engine → saved Decision row) rather than stopping
+  at the first plausible-looking fix.
+- Existing decisions from between the first (incomplete) fix and this
+  correction may still have inconsistent run_id references — the "Clear
+  all" feature gives a clean-slate path if needed.
+- I could not exercise this against the live authenticated dashboard
+  myself (no owner credentials) — verified via a regression test that
+  reproduces the exact reported scenario end-to-end at the code level.
+- No new technical debt beyond the above.
+
+### Remaining work
+
+- **Owner confirmation**: re-validate a symbol on the live dashboard and
+  confirm Score/Confidence/Risk populate with real values (not
+  "Unknown"), and that re-validating a *different* symbol afterward
+  doesn't blank out the first one again.
+
+### Commit message
+
+```text
+fix(scheduling): thread the real run_id through to OwnerValidationPipeline
+so saved decisions stop pointing at a colliding, recomputed one
+
+- The earlier run_id-uniqueness fix only fixed the orchestrator's own
+  RunRecord identity. OwnerValidationPipeline.run() independently
+  recomputed its own local run_id from (trigger, as_of) using the same
+  old collision-prone formula, and that's what actually got attached to
+  each saved Decision — so decisions kept pointing at a run whose
+  detail_json had since been overwritten by a different symbol's
+  validation, still showing "Unknown" Score/Confidence/Risk even after a
+  successful re-validate.
+- Add run_id to the DryRunPipeline Protocol and thread the orchestrator's
+  actual run_id through to OwnerValidationPipeline.run(), removing the
+  local recomputation entirely.
+- Add a regression test validating two different symbols back-to-back
+  with the same as_of and asserting each keeps its own distinct run_id.
+- Fix analysisPercent/analysisMeterWidth/completeness calculation:
+  Number(null) is 0 in JS, not NaN — a genuinely-absent score/confidence/
+  risk value was rendering as a plausible "0.0/100" instead of an honest
+  "—", which is exactly the confusion the owner flagged regardless of the
+  underlying data cause.
+```
+
+---
+
+## Feature — "Clear all" for Decisions & Trace (BUILT, awaiting owner confirmation)
+
+| | |
+|---|---|
+| Completed | 2026-07-26 |
+| Objective | Owner-requested admin utility: wipe the Decisions & Trace domain so it can be "cleared properly in the DB and added again," instead of repairing/re-validating each decision individually (especially useful after the run_id-collision bug above orphaned some test decisions) |
+| Scope | `decisions`, `decision_traces`, `decision_journal`, `trade_outcomes` tables — built as a close mirror of the existing "Reset fills" (Portfolio) feature: same CONFIRM-token gate, same automatic pre-delete backup pattern, same ADMIN-only permission requirement |
+| Tests | 2 new backend tests (`test_reset_decisions_requires_confirmation_and_admin`, `test_reset_decisions_clears_domain_after_confirmation`) + 6 new dashboard-hosting assertions. Full suite **1022 passed** |
+| Coverage | Backend: repository + provider + service + router, all exercised by the new tests. Frontend: presentation-only, no computed values |
+| Status | **BUILT** — implemented, tested, server restarted. Awaiting owner confirmation on the live dashboard |
+| Branch | feature/live-dashboard |
+
+### Scope completed
+
+- **Backend**, following the exact established `PortfolioService.
+  reset_positions` pattern:
+  - `SqliteRepository.delete_decisions_data()` (`src/athena/data/store/
+    repository.py`) — deletes all rows from `decisions`,
+    `decision_traces`, `decision_journal`, `trade_outcomes`, returns
+    per-table deleted counts. Deliberately does **not** touch `runs`
+    (shared with Market Intelligence's universe/regime history —
+    clearing it could have side effects beyond "Decisions & Trace"),
+    portfolio positions, or owner candidates.
+  - `SqliteDecisionProvider.reset_decisions_data()` /
+    `InMemoryDecisionProvider.reset_decisions_data()` (same interface
+    on both, `DecisionProvider` Protocol updated to match) — so the
+    in-memory test fixture and the real SQLite path behave identically.
+  - `DecisionsService.reset_decisions(confirmation)` — refuses unless
+    `confirmation == "CONFIRM"` (raises the new
+    `DecisionsResetConfirmationError`, mapped to HTTP 400 in
+    `errors.py`, same shape as the existing
+    `PortfolioResetConfirmationError`); creates a best-effort automatic
+    backup first via the same `create_backup` helper Portfolio reset
+    uses, saved as `db/backups/athena-pre-decisions-reset-<UTC
+    timestamp>.db`; backup failure is non-fatal (the reset still
+    proceeds — a `backup_path: null` in the response signals it wasn't
+    created).
+  - `POST /api/v1/decisions/reset` (new `ResetDecisionsRequest`/
+    `ResetDecisionsResultDTO`), gated by `Permission.ADMIN` (same
+    requirement as Portfolio reset).
+- **Frontend**: a "Clear all" button in the Decisions & Trace toolbar
+  opens a confirmation modal (following the existing trace-modal/
+  chart-modal/compare-modal pattern) containing the exact same "type
+  CONFIRM to unlock" gate UX as Portfolio's "Reset fills" card — reused
+  the existing `.ops-restore-gate`/`.ops-restore-gate-status` CSS
+  classes directly, no new styling needed. On success: clears the
+  active decision brief and Reasoning Trace panel back to their empty
+  states, reloads the (now-empty) decisions list.
+
+### Files created
+
+- None.
+
+### Files modified
+
+- `src/athena/data/store/repository.py` — `delete_decisions_data()`.
+- `src/athena/api/v1/providers/sqlite_providers.py` — `SqliteDecisionProvider.reset_decisions_data()`.
+- `src/athena/api/v1/providers/in_memory.py` — `InMemoryDecisionProvider.reset_decisions_data()`.
+- `src/athena/api/v1/providers/base.py` — `DecisionProvider` Protocol gains `reset_decisions_data()`.
+- `src/athena/api/exceptions.py` — `DecisionsResetConfirmationError`.
+- `src/athena/api/errors.py` — exception → HTTP 400 mapping.
+- `src/athena/api/v1/dtos/decisions.py` + `dtos/__init__.py` — `ResetDecisionsRequest`, `ResetDecisionsResultDTO`.
+- `src/athena/api/v1/services/decisions_service.py` — `db_path`/`backup_dir` constructor params (mirroring `PortfolioService`), `reset_decisions()`.
+- `src/athena/api/dependencies.py` — `get_decisions_service` wires `ops_db_path`/`ops_backup_dir` from app state, same as `get_portfolio_service`.
+- `src/athena/api/v1/routers/decisions.py` — `POST /reset` endpoint.
+- `src/athena/api/static/index.html` — "Clear all" toolbar button + confirmation modal; cache-bust bumped to `9.44.0`.
+- `src/athena/api/static/dashboard.js` — gate-sync logic, modal wiring, submit handler.
+- `tests/api/v1/test_core_apis.py` — 2 new tests, `DecisionTrace`/`TraceStage` imports added.
+- `tests/api/platform/test_dashboard_hosting.py` — new assertions.
+- `docs/MILESTONES.md` — new "Clear all" feature section.
+- This log.
+
+### Public APIs
+
+- New: `POST /api/v1/decisions/reset` (ADMIN-only), `ResetDecisionsRequest`, `ResetDecisionsResultDTO`. Additive — no existing endpoint or DTO changed.
+
+### Validation and architecture
+
+- Full regression: **1022 passed** (1020 + 2 new).
+- Ruff clean on all changed `.py` files (fixed 2 incidental lint issues
+  surfaced by `ruff check --fix` while touching these files: an
+  `__all__` sort order in `dtos/__init__.py` and an import-order issue
+  in `test_core_apis.py` — both mechanical, auto-fixed, verified with a
+  full test re-run afterward). 3 pre-existing `SIM117` (nested-`with`)
+  warnings in `repository.py` at unrelated lines were left untouched —
+  out of scope for this change. mypy remains unavailable in this
+  environment (pre-existing, unrelated).
+- JS braces balanced (1611/1611); parens off by the same pre-existing
+  +1 baseline quirk.
+- Live server restarted on `9.44.0`; isolated-browser console check on
+  the pre-login page: zero errors.
+- No ADR required: purely additive (new domain-scoped delete capability
+  behind a confirmation + permission gate), no frozen contract or
+  domain model changed, follows an already-approved precedent
+  (Portfolio reset) exactly in shape and safety mechanism.
+
+### Risks and technical debt
+
+- I could not exercise the modal/gate/delete flow against the live
+  authenticated dashboard myself (no owner credentials) — the backend
+  is covered by real HTTP-level tests (confirmation refusal, role
+  refusal, actual deletion + empty subsequent listing), which is the
+  strongest verification available without live access; the frontend
+  gate-sync logic directly mirrors the already-working Portfolio reset
+  gate's exact code shape.
+- Deliberately did not clear the `runs` table — a "Clear all" that also
+  wiped scheduled premarket/closing run history would affect Market
+  Intelligence surfaces (universe/regime history) beyond what "Decisions
+  & Trace" implies. If the owner wants a fuller reset later, that's a
+  separate, explicit scope decision, not something to fold in silently.
+- No new technical debt beyond the above.
+
+### Fix pass (owner live test, 2026-07-26)
+
+Owner clicked "Clear all" on the live dashboard and got "delete decisions
+data failed: FOREIGN KEY constraint failed." Root cause: `decision_traces`,
+`decision_journal`, and `trade_outcomes` each `REFERENCES
+decisions(decision_id)` — my original `delete_decisions_data()` deleted
+`decisions` (the parent) **first**, then the child tables, which SQLite's
+foreign-key enforcement (`PRAGMA foreign_keys=ON`) correctly rejects. This
+passed my original tests because those used the **in-memory** decision
+provider (no real FK enforcement), never the real `SqliteRepository` —
+a real gap in test coverage for this feature. Fixed the delete order
+(children first, `decisions` last) and added
+`test_reset_decisions_data_respects_foreign_keys` in
+`tests/api/v1/test_owner_portfolio.py`, using a real `SqliteRepository`
+with `foreign_keys=ON` specifically to exercise this constraint — verified
+it fails against the old order and passes against the fixed one before
+finalizing. Version bumped to `9.44.3`.
+
+### Remaining work
+
+- **Owner confirmation**: open Decisions & Trace, click "Clear all,"
+  confirm the gate stays locked until "CONFIRM" is typed exactly, then
+  confirm a real clear empties the carousels and resets the brief/trace
+  panel to their empty states, and that a backup file appears under
+  `db/backups/`.
+
+### Commit message
+
+```text
+feat(decisions): add CONFIRM-gated "Clear all" reset for Decisions &
+Trace, mirroring the existing Portfolio reset pattern
+
+- Add SqliteRepository.delete_decisions_data() (decisions, traces,
+  journal entries, trade outcomes — not runs/positions/candidates).
+- Add DecisionsService.reset_decisions(confirmation), gated on the
+  exact token "CONFIRM" (DecisionsResetConfirmationError -> HTTP 400),
+  with a best-effort automatic pre-delete backup via the same
+  create_backup helper Portfolio reset already uses.
+- Add POST /api/v1/decisions/reset (ADMIN-only), ResetDecisionsRequest/
+  ResetDecisionsResultDTO.
+- Add a "Clear all" button + confirmation modal to the Decisions &
+  Trace toolbar, reusing the existing Portfolio reset gate's exact UX
+  (type CONFIRM to unlock) and CSS classes — no new styling needed.
+- Add 2 backend tests (confirmation/role gating, real clear + empty
+  listing) and dashboard-hosting assertions. Bump cache-bust to 9.44.0.
+```
+
+---
+
+## Data-integrity fix — REFRESH run_id collision (FIXED, awaiting owner confirmation)
+
+| | |
+|---|---|
+| Completed | 2026-07-26 |
+| Objective | Owner-reported, tracked separately from the UX Overhaul per explicit instruction: fix the root cause of Score/Confidence/Risk showing "Unknown"/0.0 for a decision until it's re-validated — and the same thing then happening to whichever *other* decision had been re-validated most recently |
+| Scope | `_default_run_id` in `src/athena/scheduling/dry_run.py` — append a `uuid4` disambiguator for `RunTrigger.REFRESH` only, so every ad-hoc symbol validation gets a genuinely unique run_id even when `as_of` collapses to the same value (which it always does outside live trading hours) |
+| Tests | Full suite **1020 passed** (2 new regression tests: REFRESH run_id uniqueness under a shared `as_of`, PREMARKET run_id format unchanged) |
+| Coverage | `tests/runtime/test_dry_run_schedule.py` exercises the real default `run_id_factory` (no override) for the first time on this exact path |
+| Status | **FIXED** — root cause confirmed via direct inspection of the live `db/athena.db`, code fix applied, tested, server restarted. Awaiting owner confirmation that re-validating a symbol no longer breaks a previously-fresh one |
+| Branch | feature/live-dashboard |
+
+### Root cause (confirmed via direct SQLite inspection, not guessed)
+
+The owner's screenshot showed decision "PERSISTENT" (HOLD/WATCH) with
+Score/Confidence/Risk all "Unknown"/0.0, despite its own explanation text
+correctly quoting a real score (62.75/100) — meaning the base decision
+record was fine, but its *depth* (score/confidence/risk breakdown) wasn't
+resolving. Traced the exact chain:
+
+1. `GET /decisions/{id}/depth` → `decisions_service.get_decision_depth`
+   resolves score/confidence/risk from `get_run_detail(decision.run_id)`
+   — a SQLite lookup of `runs.detail_json` by `run_id`.
+2. Queried `db/athena.db` directly: `decision-NSE:DIXON-...`,
+   `decision-NSE:TCS-...`, and `decision-NSE:HFCL-...` — all three, from
+   the same day — shared the identical `run_id`
+   `run-refresh-20260724T153000`. Loaded that run's `detail_json` and
+   found `pipeline.decision_reports` contained an entry for **only
+   DIXON** — TCS and HFCL were simply absent, so their depth fetch
+   correctly (but unhelpfully) fell back to "Unknown" for every block —
+   ADR-005 behaving as designed (no fabricated number), just fed by
+   already-corrupted upstream data.
+3. Traced why three decisions share one run_id: `resolve_validate_as_of`
+   (`src/athena/calendar/resolve_as_of.py`) returns the exact session
+   *close* time whenever validation happens outside live trading
+   hours — a fixed value, identical for every call made later that same
+   day. `_default_run_id(trigger, as_of)`
+   (`src/athena/scheduling/dry_run.py:189-191`, before this fix) derives
+   the run_id purely from `(trigger, as_of)` with no per-invocation
+   disambiguator, so every off-hours "Re-validate" click that day
+   computed the *same* run_id string.
+4. `SqliteRepository.save_run` (`src/athena/data/store/repository.py:
+   290-313`) persists runs via `INSERT ... ON CONFLICT(run_id) DO UPDATE
+   SET ... detail_json=excluded.detail_json` — a genuine upsert. So
+   validating DIXON, then later TCS, then later HFCL (all colliding on
+   the same run_id) meant each subsequent call's `detail_json`
+   (containing only *that* call's requested symbol's report, since
+   `validateSymbolsNow` sends one symbol at a time) completely
+   overwrote the previous call's — silently orphaning whichever
+   decision had been "fresh" a moment before. This is fully
+   deterministic and reproducible, not intermittent: it happens on
+   *every* off-hours re-validation of more than one symbol on the same
+   calendar day.
+
+### Fix
+
+`_default_run_id` now appends `-{uuid4().hex[:8]}` to the run_id **only**
+for `RunTrigger.REFRESH` (the ad-hoc, owner-triggered validation path —
+`PREMARKET`/`CLOSING` are scheduled, at-most-once-per-day cycles left
+untouched, since a stable id there may be relied on for idempotent
+retries of the same logical run). This is a bookkeeping-identifier
+concern, not an analytical-determinism one: no score/confidence/risk/
+regime computation is affected, and `uuid4()` for identifier generation
+is already an established pattern elsewhere in this codebase (request-id
+middleware, ops service, security service) — it is not being introduced
+into any analytical engine, which remain fully deterministic.
+
+### Files created
+
+- None.
+
+### Files modified
+
+- `src/athena/scheduling/dry_run.py` — `_default_run_id` gains a
+  `uuid4`-based disambiguator for `RunTrigger.REFRESH`; `import uuid`.
+- `tests/runtime/test_dry_run_schedule.py` —
+  `test_refresh_run_id_unique_per_call_even_with_same_as_of` (regression
+  test for the exact bug, using the real default `run_id_factory`),
+  `test_premarket_run_id_still_deterministic_for_same_as_of` (confirms
+  no change to the untouched trigger types).
+- `docs/MILESTONES.md` — new "Data-integrity fix" section, tracked
+  separately from the UX Overhaul per owner instruction; also fixed a
+  markdown table formatting bug (two rows missing their leading `|`)
+  noticed while editing.
+- This log.
+
+### Public APIs
+
+- None — internal run_id generation only; `run_id` was always an opaque
+  string to API consumers, no contract change.
+
+### Validation and architecture
+
+- Full regression: **1020 passed** (1018 + 2 new).
+- Ruff clean on both changed files. mypy remains unavailable in this
+  environment (pre-existing, unrelated).
+- No architecture change, no ADR required: this is a bug fix to an
+  identifier-generation function's collision behavior, not a domain
+  model, contract, or module-boundary change.
+- Live server restarted; isolated-browser console check on the
+  pre-login page: zero errors.
+
+### Risks and technical debt
+
+- **Not retroactively repaired**: decisions already orphaned by a past
+  collision in this session's live database (TCS, HFCL, and possibly
+  others sharing `run-refresh-20260724T153000` or any other collided
+  run_id from before this fix) will continue to show "Unknown" until
+  each is individually re-validated once more. I deliberately did not
+  hand-edit the live `db/athena.db` to backfill/repair this — that would
+  be an out-of-band data mutation on the owner's real working database
+  without being asked, and the safe path is simply: re-validate the
+  affected symbols once, going forward each will get its own unique
+  run_id and never be silently clobbered by another symbol's refresh.
+- `cycle_id` has a structurally similar (lower-severity) non-uniqueness
+  issue: it's built from a `self._cycle_counter` that resets to zero
+  every time a new `DryRunCycleOrchestrator` is constructed (which
+  happens on every API call), so it can also collide across separate
+  validate calls — but `cycle_id` is not the `runs` table's primary key
+  (`run_id` is), so it does not cause data loss. Not fixed here since it
+  wasn't the reported symptom and fixing it isn't needed to resolve the
+  actual bug — flagging for awareness, not silently expanding scope.
+- I could not exercise the fix against the live authenticated dashboard
+  myself (no owner credentials) — the regression tests exercise the
+  exact code path (`DryRunCycleOrchestrator.run_cycle` with the real
+  default `run_id_factory`), which is the strongest verification
+  available without live access.
+
+### Remaining work
+
+- **Owner confirmation**: re-validate two different symbols back-to-back
+  on the live dashboard (ideally outside live trading hours, to
+  reproduce the exact conditions that triggered the original bug) and
+  confirm the first symbol's Score/Confidence/Risk stay populated after
+  the second is validated.
+- Optional follow-up (not blocking, not requested): decide whether to
+  also fix `cycle_id`'s reset-per-orchestrator-instance behavior, and/or
+  whether to write a one-off script to repair already-orphaned
+  decisions in the live database by re-associating them with their
+  original (still-correct-at-the-time) run detail, if any of that detail
+  is recoverable from earlier backup snapshots in `db/backups/`.
+
+### Commit message
+
+```text
+fix(scheduling): prevent REFRESH run_id collisions from clobbering
+persisted decision analysis
+
+- _default_run_id derived run_id purely from (trigger, as_of); outside
+  live trading hours, resolve_validate_as_of always returns the same
+  fixed session-close as_of, so every ad-hoc "Re-validate" call on the
+  same day computed an identical run_id.
+- SqliteRepository.save_run's upsert (ON CONFLICT(run_id) DO UPDATE ...
+  detail_json=excluded.detail_json) then silently overwrote the
+  previous call's persisted decision_reports with the new call's —
+  orphaning the earlier decision from its own score/confidence/risk,
+  which rendered as "Unknown" until re-validated again (which just
+  moved the same bug onto whichever symbol was validated before it).
+  Root-caused via direct inspection of the live SQLite database.
+- Fix: append a uuid4-based disambiguator to the run_id for
+  RunTrigger.REFRESH only. PREMARKET/CLOSING (scheduled, at-most-once-
+  per-day cycles) are untouched.
+- Add 2 regression tests exercising the real default run_id_factory:
+  two REFRESH calls sharing an as_of now get distinct run_ids and both
+  persist their detail intact; PREMARKET's id format is unchanged.
+- Not retroactively repaired: decisions already orphaned by a prior
+  collision need one more re-validate each; the fix only prevents new
+  collisions going forward.
+```
+
+---
+
 ## UX-9a — Open Chart / Compare / News / Portfolio Impact quick actions (READY FOR REVIEW)
 
 | | |
@@ -86,6 +662,56 @@ status updated on approval.
 - `docs/MILESTONES.md` — UX-9 split into 9a (this milestone) and 9b
   (Add Watchlist, needs new backend); 9a → Ready for review.
 - This log.
+
+### Fix pass (owner screenshots, 2026-07-26)
+
+Owner screenshot showed Compare always returning "No decision found for
+this symbol" for a valid symbol (HFCL). Root cause: `instrument_id` is
+stored with an exchange prefix (e.g. `NSE:HFCL`) and the backend's
+`GET /decisions?instrument_id=` filter is an exact string match
+(`sqlite_providers.py:133`) — a bare symbol typed into Compare (e.g.
+"HFCL") never matched anything. Fixed `fetchLatestDecisionForSymbol` to
+probe `NSE:{symbol}` before the bare symbol, the same candidate-id
+pattern `loadDecisionChart` already uses successfully. Version bumped to
+`9.43.1`; cache-bust-only fix, no other changes in this pass.
+
+The owner also reported a second, separate issue: selecting an older
+decision from a carousel sometimes shows Score/Confidence/Risk as
+"Unknown" with 0.0/100 until "Re-validate" is clicked — and the same
+thing then happening to whichever *other* decision had been re-validated
+most recently. Initial code tracing correctly identified this as a
+backend data-lookup issue unrelated to any UX-9a frontend change, not a
+regression — and per owner instruction, this was tracked and fixed as
+its own separate item rather than folded into the UX milestone. See the
+dedicated **"Data-integrity fix — REFRESH run_id collision"** entry above
+this one for the full root cause (confirmed via direct SQLite inspection)
+and fix.
+
+### Second fix pass (owner screenshots, 2026-07-26)
+
+Owner reported Compare returning "No decision found for this symbol" for
+DIXON specifically, even though DIXON has real decisions (confirmed
+working elsewhere in the same session). Root cause: `fetchLatestDecisionForSymbol`
+never uppercased the typed symbol before building the `NSE:{symbol}`/
+`{symbol}` candidates. The Compare input's all-caps *look* is CSS
+`text-transform: uppercase` only — it doesn't change the underlying
+`.value`, so a symbol typed in lowercase or mixed case (e.g. "dixon")
+silently failed the backend's case-sensitive `instrument_id` match, while
+an all-caps-typed symbol (e.g. "HFCL", typed that way by chance) worked.
+Fixed by uppercasing the input before building candidates. Version bumped
+to `9.44.1`.
+
+Also re-confirmed via direct database inspection: the owner's "even after
+re-validate, I'm getting 0 values for HFCL" report is a **separate,
+expected** condition, not a remaining bug in the run_id fix above. Every
+`RunTrigger.REFRESH` attempt that day was failing outright with
+`ingest rejected dataset 'quotes': FRESHNESS: quotes are 2716.2 min
+behind as_of (threshold 20 min)` — a live Kite quote-freshness gate
+correctly refusing stale market data, unrelated to run_id generation.
+Since the validate call never completes, no new decision is ever created
+for HFCL, so it correctly keeps showing its old, already-orphaned data.
+This is expected, intentional data-quality enforcement (ADR-005-adjacent:
+never analyze on stale data) — not something to relax.
 
 ### Public APIs
 

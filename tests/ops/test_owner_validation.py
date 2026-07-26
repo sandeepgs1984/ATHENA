@@ -74,7 +74,9 @@ class TestOwnerValidationPipeline:
             datasets_validated=0,
             datasets_skipped_empty=0,
         )
-        detail = pipe.run(RunTrigger.PREMARKET, as_of=AS_OF, ingestion=ingestion)
+        detail = pipe.run(
+            RunTrigger.PREMARKET, as_of=AS_OF, ingestion=ingestion, run_id="run-test-empty"
+        )
         assert detail["mode"] == "ingest_only"
         assert detail["universe_members"] == {}
 
@@ -109,7 +111,9 @@ class TestOwnerValidationPipeline:
             datasets_validated=2,
             datasets_skipped_empty=0,
         )
-        detail = pipe.run(RunTrigger.PREMARKET, as_of=AS_OF, ingestion=ingestion)
+        detail = pipe.run(
+            RunTrigger.PREMARKET, as_of=AS_OF, ingestion=ingestion, run_id="run-test-eligibility"
+        )
         assert detail["mode"] == "owner_validation"
         members = detail["universe_members"]
         assert "AAA" in members and "BBB" in members
@@ -142,3 +146,47 @@ class TestOwnerValidationPipeline:
         }
         assert any(d.confidence_ref for d in decisions)
         assert any(d.risk_ref for d in decisions)
+        # Regression: each persisted decision must carry the actual run_id
+        # passed into this call, not a locally-recomputed one derived from
+        # (trigger, as_of) — see test_repeat_validate_with_same_as_of_does_
+        # not_orphan_earlier_decision below for the full collision scenario.
+        assert all(d.run_id == "run-test-eligibility" for d in decisions)
+
+    def test_repeat_validate_with_same_as_of_does_not_orphan_earlier_decision(
+        self, repo: SqliteRepository, config_dir: Path
+    ) -> None:
+        """Regression test for the exact owner-reported bug: validating two
+        different symbols back-to-back with the same as_of (the normal case
+        for ad-hoc "Re-validate" outside live trading hours, since
+        resolve_validate_as_of always resolves to the same fixed session
+        close) must not orphan the first symbol's decision from its own
+        run. Each OwnerValidationPipeline.run() call now receives the
+        orchestrator's own unique run_id instead of recomputing one locally
+        from (trigger, as_of) — previously every such call collided on the
+        same derived run_id, and whichever call ran second silently
+        overwrote the first's persisted analysis via the runs-table upsert,
+        even though the *decision* row itself still (correctly, now) points
+        at its own distinct run_id."""
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        store.upsert_candidate(symbol="BBB")
+        for sym, seed in (("AAA", 100), ("BBB", 200)):
+            iid = f"NSE:{sym}"
+            repo.upsert_instrument(
+                Instrument(instrument_id=iid, symbol=sym, exchange="NSE", series="EQ", status="ACTIVE")
+            )
+            repo.add_candles(_candles(iid, seed=seed))
+        ingestion = IngestionResult(
+            as_of=AS_OF, instruments_upserted=1, candles_fetched=80, candles_written=80,
+            quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+        )
+
+        pipe_a = OwnerValidationPipeline(repo, config_dir, symbols_filter=["AAA"])
+        pipe_a.run(RunTrigger.REFRESH, as_of=AS_OF, ingestion=ingestion, run_id="run-refresh-A")
+
+        pipe_b = OwnerValidationPipeline(repo, config_dir, symbols_filter=["BBB"])
+        pipe_b.run(RunTrigger.REFRESH, as_of=AS_OF, ingestion=ingestion, run_id="run-refresh-B")
+
+        decisions = {d.instrument_id: d for d in repo.list_decisions(limit=50)}
+        assert decisions["NSE:AAA"].run_id == "run-refresh-A"
+        assert decisions["NSE:BBB"].run_id == "run-refresh-B"

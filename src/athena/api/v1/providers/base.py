@@ -105,6 +105,11 @@ class DecisionProvider(Protocol):
         pool rather than a paginated/filtered API listing."""
         ...
 
+    def reset_decisions_data(self) -> dict[str, int]:
+        """Owner-triggered full wipe of decisions, traces, journal entries,
+        and realized outcomes. Returns per-table deleted row counts."""
+        ...
+
 
 @runtime_checkable
 class CandleHistoryProvider(Protocol):

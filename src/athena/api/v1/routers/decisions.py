@@ -22,6 +22,8 @@ from athena.api.v1.dtos import (
     PaginationParams,
     RecordJournalRequest,
     RecordOutcomeRequest,
+    ResetDecisionsRequest,
+    ResetDecisionsResultDTO,
     ResponseMeta,
     SortParams,
     TradeOutcomeDTO,
@@ -371,5 +373,33 @@ def get_decision_trace(
         status="success",
         data=trace_data,
         meta=meta,
+    )
+
+
+@router.post(
+    "/reset",
+    response_model=AthenaResponse[ResetDecisionsResultDTO],
+    summary="Reset the Decisions & Trace domain (CONFIRM-gated)",
+    status_code=status.HTTP_200_OK,
+    operation_id="resetDecisions",
+)
+def reset_decisions(
+    body: ResetDecisionsRequest,
+    request: Request,
+    service: DecisionsService = Depends(get_decisions_service),  # noqa: B008
+    principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.ADMIN)),  # noqa: B008
+) -> AthenaResponse[ResetDecisionsResultDTO]:
+    """Delete all decisions, traces, journal entries, and realized outcomes
+    after a typed CONFIRM, with a best-effort automatic backup first. Does
+    not touch runs, portfolio positions, or owner candidates."""
+    result = service.reset_decisions(confirmation=body.confirmation)
+    return AthenaResponse(
+        status="success",
+        data=result,
+        meta=ResponseMeta(
+            request_id=getattr(request.state, "request_id", "unknown"),
+            api_version="v1",
+            as_of=datetime.now(tz=timezone.utc),
+        ),
     )
 

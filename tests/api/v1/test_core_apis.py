@@ -36,7 +36,15 @@ from athena.api.security.dependencies import (
     get_user_repository,
 )
 from athena.api.security.models import APIKeyMetadata, Permission, Role, User
-from athena.domain.decision import Decision, GateResult, Portfolio, Position, TradePlan
+from athena.domain.decision import (
+    Decision,
+    DecisionTrace,
+    GateResult,
+    Portfolio,
+    Position,
+    TraceStage,
+    TradePlan,
+)
 from athena.domain.enums import DecisionType, Direction, QualityGate
 from athena.orchestration.models import PipelineContext, PipelineStatus, SystemPipelineResult
 from athena.orchestration.schedule_models import PipelineScheduleRun
@@ -614,6 +622,68 @@ class TestDecisionsAPI:
         data = response.json()["data"]
         assert data["analogs"] == []
         assert data["compared_count"] == 0
+
+    def test_reset_decisions_requires_confirmation_and_admin(self, client) -> None:
+        """Decisions & Trace reset (owner-requested "Clear all" feature) is
+        CONFIRM-gated and ADMIN-only, mirroring the existing portfolio reset
+        pattern — refuses a wrong/missing token and a non-admin caller
+        before ever touching data."""
+        dec_p = get_decision_provider()
+        now = datetime.now(tz=timezone.utc)
+        dec_p.decisions.append(  # type: ignore[attr-defined]
+            Decision(
+                decision_id="dec-reset-1", ts=now, run_id="run-reset-1",
+                cycle_id="cycle-reset", instrument_id="TCS", direction=Direction.NONE,
+                decision_type=DecisionType.WATCH, explanation="reset test",
+            )
+        )
+
+        admin_headers = get_auth_headers(client, Role.ADMIN)
+        operator_headers = get_auth_headers(client, Role.OPERATOR, username="operator-reset")
+
+        wrong_token = client.post(
+            "/api/v1/decisions/reset", headers=admin_headers, json={"confirmation": "YES"}
+        )
+        assert wrong_token.status_code == 400
+        assert dec_p.decisions  # untouched
+
+        forbidden = client.post(
+            "/api/v1/decisions/reset", headers=operator_headers, json={"confirmation": "CONFIRM"}
+        )
+        assert forbidden.status_code == 403
+        assert dec_p.decisions  # untouched
+
+    def test_reset_decisions_clears_domain_after_confirmation(self, client) -> None:
+        dec_p = get_decision_provider()
+        now = datetime.now(tz=timezone.utc)
+        dec_p.decisions.append(  # type: ignore[attr-defined]
+            Decision(
+                decision_id="dec-reset-2", ts=now, run_id="run-reset-2",
+                cycle_id="cycle-reset", instrument_id="INFY", direction=Direction.NONE,
+                decision_type=DecisionType.WATCH, explanation="reset test 2",
+            )
+        )
+        dec_p.traces["dec-reset-2"] = DecisionTrace(  # type: ignore[attr-defined]
+            decision_ref="dec-reset-2",
+            stages=(TraceStage("decision", ("dec-reset-2",), "composed"),),
+        )
+
+        headers = get_auth_headers(client, Role.ADMIN)
+        ok = client.post(
+            "/api/v1/decisions/reset", headers=headers, json={"confirmation": "CONFIRM"}
+        )
+        assert ok.status_code == 200
+        data = ok.json()["data"]
+        assert data["total_deleted"] >= 2  # at least the decision + its trace
+        assert data["deleted_counts"]["decisions"] >= 1
+        assert data["deleted_counts"]["decision_traces"] >= 1
+
+        assert dec_p.decisions == []  # type: ignore[attr-defined]
+        assert dec_p.traces == {}  # type: ignore[attr-defined]
+
+        listing = client.get("/api/v1/decisions", headers=headers)
+        assert listing.status_code == 200
+        assert listing.json()["data"] == []
 
     def test_counterfactual_already_trade(self, client) -> None:
         headers = get_auth_headers(client, Role.ANALYST)

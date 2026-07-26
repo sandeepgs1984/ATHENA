@@ -21,6 +21,7 @@ from athena.api.exceptions import (
     BackupNotFoundError,
     DatabaseUnavailableError,
     DecisionNotFoundError,
+    DecisionsResetConfirmationError,
     ExportArtifactNotFoundError,
     ExportGenerationError,
     ExportSnapshotNotFoundError,
@@ -128,6 +129,12 @@ class AthenaExceptionMapper:
             400,
             "portfolio-reset-confirmation-required",
             "Portfolio Reset Confirmation Required",
+        ),
+        ExceptionMapping(
+            DecisionsResetConfirmationError,
+            400,
+            "decisions-reset-confirmation-required",
+            "Decisions Reset Confirmation Required",
         ),
         ExceptionMapping(DatabaseUnavailableError, 503, "database-unavailable", "Database Unavailable"),
         ExceptionMapping(
