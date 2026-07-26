@@ -6,7 +6,7 @@ status updated on approval.
 
 ---
 
-## UX-8 — Copy pass (READY FOR REVIEW)
+## UX-8 — Copy pass (APPROVED)
 
 | | |
 |---|---|
@@ -15,7 +15,7 @@ status updated on approval.
 | Scope | Friendly labels for raw ALL_CAPS enums shown in chips/sentences (decision type, eligibility status); plain-English rewrites of five dense tab-intro paragraphs; a handful of empty-state message fixes; a real (not fabricated) market-health explanation sentence for parity with the regime block; one label-consistency fix ("Composite score" → "Score") |
 | Tests | Full suite **1018 passed**; new dashboard-hosting assertions for the rewritten copy; no backend files touched |
 | Coverage | Frontend-only, pure copy/text change; no Python coverage impact |
-| Status | **READY FOR REVIEW** — awaiting owner smoke test on the live dashboard |
+| Status | **APPROVED** (owner smoke confirmed live 2026-07-26) |
 | Branch | feature/live-dashboard |
 
 ### Scope completed
