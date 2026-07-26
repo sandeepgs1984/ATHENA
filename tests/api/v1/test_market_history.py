@@ -14,6 +14,7 @@ from athena.api.v1.providers.in_memory import InMemoryCandleHistoryProvider
 from athena.api.v1.services.market_history_service import MarketHistoryService
 from athena.domain.enums import Timeframe
 from athena.domain.market import Candle
+from athena.indicators.calculations import align_trailing_series, atr_series, sma_series
 
 
 def _candle(ts: datetime, close: str) -> Candle:
@@ -107,3 +108,36 @@ def test_freshness_boundary_is_deterministic() -> None:
     result = service.recent_candles("NSE:INFY", Timeframe.M5, limit=120)
     assert result.freshness_status == "FRESH"
     assert result.age_minutes == 20
+
+
+def test_candles_carry_atr_and_moving_average_overlay() -> None:
+    """UX-3b: chart overlay values are None during warmup, then exactly match
+    the same atr_series/sma_series functions used by TradePlan sizing —
+    never a second, independently-derived computation."""
+    now = datetime(2026, 7, 24, 10, 30, tzinfo=timezone.utc)
+    provider = InMemoryCandleHistoryProvider()
+    candles = [
+        _candle(now - timedelta(minutes=5 * (25 - i)), str(100 + i))
+        for i in range(25)
+    ]
+    provider.candles.extend(candles)  # type: ignore[attr-defined]
+    service = MarketHistoryService(
+        provider,
+        freshness_threshold_minutes=20,
+        now_fn=lambda: now,
+    )
+
+    result = service.recent_candles("NSE:INFY", Timeframe.M5, limit=120)
+    assert result.count == 25
+
+    closes = [c.close for c in candles]
+    expected_atr = align_trailing_series(atr_series(candles, 14), len(candles))
+    expected_sma = align_trailing_series(sma_series(closes, 20), len(candles))
+
+    assert [row.atr for row in result.candles] == expected_atr
+    assert [row.moving_average for row in result.candles] == expected_sma
+    # Warmup prefix is honestly None, never a fabricated early value
+    assert result.candles[0].atr is None
+    assert result.candles[0].moving_average is None
+    assert result.candles[-1].atr is not None
+    assert result.candles[-1].moving_average is not None

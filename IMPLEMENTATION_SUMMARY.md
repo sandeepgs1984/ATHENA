@@ -6,7 +6,137 @@ status updated on approval.
 
 ---
 
-## UX-3a — Trade Plan visual redesign (READY FOR REVIEW)
+## UX-3b — Chart ATR/moving-average/volume overlay (READY FOR REVIEW)
+
+| | |
+|---|---|
+| Completed | 2026-07-26 |
+| Objective | "Professional mini-TradingView style" chart (owner UX audit #11): the intraday chart gains a moving-average line, an ATR volatility envelope, and a volume subplot |
+| Scope | New `atr_series`/`sma_series` pure functions in `indicators/calculations.py` (existing scalar `atr()`/`sma()` now delegate to them — byte-identical output); `CandleDTO` gains optional `atr`/`moving_average` fields, populated by `MarketHistoryService.recent_candles` using the same config-driven periods (`config/indicators.json`) already used elsewhere; frontend chart renders the MA line, ATR band, and volume bars; also fixed Entry Zone showing "₹X – ₹X" when low==high |
+| Tests | Full suite **1017 passed** (+1 backend test verifying the service's per-candle output matches the pure functions exactly); Ruff clean; mypy currently unavailable in this environment (missing since earlier in the session, unrelated to this change) — types manually reviewed |
+| Coverage | Existing project coverage retained |
+| Status | **READY FOR REVIEW** |
+| Branch | feature/live-dashboard |
+
+### Scope completed
+
+- **`atr_series`/`sma_series`** (`indicators/calculations.py`): full per-bar
+  series versions of the existing scalar `atr()`/`sma()`, retaining every
+  intermediate Wilder-smoothed/rolling-window value instead of discarding
+  all but the last. The scalar functions now **delegate** to the series
+  functions (`series[-1]`) rather than duplicating the math — guarantees
+  the chart's ATR/MA line and the TradePlan's D1-based sizing can never
+  silently diverge from the same underlying computation. Verified
+  byte-identical against the pre-existing `tests/decision/test_indicators.py`
+  suite (26 tests, all still pass unchanged).
+- **`align_trailing_series`**: pads a trailing series (which starts partway
+  through the candle history, once enough bars exist) with `None` for the
+  warmup prefix — honest "not yet computable," never an invented early
+  value.
+- **`CandleDTO.atr`/`.moving_average`** (both `Decimal | None`, default
+  `None`): additive fields, no existing consumer breaks.
+  `MarketHistoryService.recent_candles` computes both using the exact same
+  periods already configured in `config/indicators.json` (`atr.period=14`,
+  `sma.period=20`) — no new config, no duplicated thresholds.
+- **Chart rendering** (`renderCandlestickSvg`): a moving-average polyline,
+  a semi-transparent ATR envelope (MA ± ATR, filled only across indices
+  where both values are actually known — never interpolated across a
+  gap), and a volume bar subplot beneath the price chart (up/down colored
+  to match the candle bodies above it). Y-axis scaling now also accounts
+  for the ATR band's price range so it's never clipped. Legend gained
+  "Moving average," "ATR band," and "Volume" entries.
+- **Entry Zone display fix** (owner-reported): when `entry_low ==
+  entry_high`, the Trade Plan card now shows the single price instead of
+  "₹13,781.00 – ₹13,781.00," which read as a rendering glitch.
+
+### Files created
+
+- None.
+
+### Files modified
+
+- `src/athena/indicators/calculations.py` — `sma_series`, `atr_series`,
+  `align_trailing_series`; `sma`/`atr` now delegate to their series.
+- `src/athena/api/v1/dtos/market.py` — `CandleDTO.atr`/`.moving_average`.
+- `src/athena/api/v1/services/market_history_service.py` — `config_dir`
+  constructor param; computes/attaches the aligned series per candle.
+- `src/athena/api/dependencies.py` — `get_market_history_service` passes
+  `config_dir`.
+- `tests/api/v1/test_market_history.py` — new test verifying per-candle
+  output matches `atr_series`/`sma_series` exactly, warmup is honestly
+  `None`.
+- `src/athena/api/static/dashboard.js` — `renderCandlestickSvg` gains the
+  MA/ATR/volume rendering; chart legend entries; `renderTradePlan`'s
+  entry-zone single-value fix.
+- `src/athena/api/static/dashboard.css` — `.decision-chart-ma-line`,
+  `.decision-chart-atr-band`, `.decision-chart-volume-bar` (+ legend
+  swatches).
+- `tests/api/platform/test_dashboard_hosting.py` — new assertions.
+- `docs/MILESTONES.md` — UX-3a flipped to Approved, UX-3b → Ready for review.
+- Cache-bust: `9.34.0` → `9.35.0`.
+- This log.
+
+### Public APIs
+
+- `CandleDTO` gains two additive, optional fields (`atr`, `moving_average`)
+  — backward compatible, no existing consumer breaks. No other API surface
+  changed.
+
+### Validation and architecture
+
+- Full regression: **1017 passed** (was 1016; +1 new backend test).
+- Ruff clean on every touched file. mypy unavailable in this environment
+  (disappeared from the toolchain since earlier in this session, unrelated
+  to this change) — reviewed all touched signatures/types manually;
+  existing `tests/decision/test_indicators.py` (26 tests) confirms the
+  scalar/series delegation produces identical output.
+- JS brace/paren balance checked against the pre-edit baseline; live
+  server restart (clean startup — confirms the new config-loading path
+  works) + isolated-browser console check: zero errors on load.
+- No order-placement path touched. ADR-005 preserved: ATR/MA are pure,
+  deterministic, already-existing-formula computations over persisted
+  candle history — never generated, never a second independently-derived
+  number (the scalar TradePlan-sizing ATR and the chart's ATR line share
+  one function). No ADR required — additive DTO fields, not a domain
+  object change.
+
+### Risks and technical debt
+
+- I could not exercise the redesigned chart end-to-end myself (no owner
+  credentials) — needs an owner click-through, especially to confirm the
+  ATR band/MA line/volume subplot read clearly rather than adding clutter.
+- mypy being unavailable in this environment is a pre-existing
+  environment issue, not something this change introduced or can fix —
+  flagging for awareness, not treating as this milestone's technical debt.
+- No new technical debt beyond the above.
+
+### Remaining work
+
+- **Owner smoke test**: open a decision with enough candle history (≥21
+  bars) to clear both the ATR (14) and SMA (20) warmup periods; confirm
+  the moving-average line and ATR band render sensibly against price;
+  confirm the volume subplot reads clearly; confirm a short-history
+  decision (< 21 bars) shows the chart with no MA/ATR line rather than an
+  error. Confirm the Entry Zone single-value fix reads correctly for a
+  zero-width entry.
+- This closes out **UX-3** (both 3a and 3b). Next in the UX Overhaul
+  program: **UX-4** (tab renaming + progressive disclosure + Market
+  Context cards).
+
+### Commit message
+
+```text
+feat(indicators,dashboard): add ATR/moving-average/volume chart overlay (UX-3b)
+
+- Add atr_series/sma_series pure functions to indicators/calculations.py; existing scalar atr()/sma() now delegate to them (byte-identical output, verified by the existing 26-test indicator suite) so the chart and TradePlan sizing can never silently diverge
+- Add CandleDTO.atr/.moving_average (additive, optional) and align_trailing_series for honest None-padding during warmup, never an invented early value
+- Wire MarketHistoryService.recent_candles to compute both using the same config/indicators.json periods already used elsewhere (atr=14, sma=20), no new config
+- Add moving-average line, ATR envelope, and volume subplot to renderCandlestickSvg; fix Entry Zone showing "X - X" when entry_low equals entry_high
+```
+
+---
+
+## UX-3a — Trade Plan visual redesign (APPROVED)
 
 | | |
 |---|---|
@@ -15,7 +145,7 @@ status updated on approval.
 | Scope | `renderTradePlan` restructured into a hero-metric grid; new **Expected Return %** figure computed from the plan's own persisted `entry_low`/`entry_high`/`targets[0]` (pure arithmetic, never invented) |
 | Tests | Full suite **1016 passed**; new assertions; no backend files touched |
 | Coverage | Frontend-only change; no Python coverage impact |
-| Status | **READY FOR REVIEW** |
+| Status | **APPROVED** (owner smoke confirmed live 2026-07-26 — math verified against the live screenshot) |
 | Branch | feature/live-dashboard |
 
 ### Scope completed

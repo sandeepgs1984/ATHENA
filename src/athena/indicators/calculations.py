@@ -23,11 +23,38 @@ from decimal import Decimal
 from athena.domain.market import Candle
 
 
-def sma(closes: Sequence[Decimal], period: int) -> Decimal | None:
+def sma_series(closes: Sequence[Decimal], period: int) -> list[Decimal]:
+    """Full trailing-SMA series (length len(closes) - period + 1), or [] if
+    insufficient. Each value is the mean of that value's own trailing
+    ``period`` closes — identical math to ``sma``, just retaining every
+    intermediate step instead of only the last one."""
     if len(closes) < period:
-        return None
-    window = closes[-period:]
-    return sum(window, Decimal(0)) / Decimal(period)
+        return []
+    out: list[Decimal] = []
+    window_sum = sum(closes[:period], Decimal(0))
+    out.append(window_sum / Decimal(period))
+    for i in range(period, len(closes)):
+        window_sum += closes[i] - closes[i - period]
+        out.append(window_sum / Decimal(period))
+    return out
+
+
+def sma(closes: Sequence[Decimal], period: int) -> Decimal | None:
+    series = sma_series(closes, period)
+    return series[-1] if series else None
+
+
+def align_trailing_series(
+    series: Sequence[Decimal], total_length: int
+) -> list[Decimal | None]:
+    """Right-align a trailing series (e.g. ``sma_series``/``atr_series``
+    output, which starts partway through the source candles) against the
+    full candle count, padding the warmup prefix with ``None`` rather than
+    inventing a value for bars where the indicator wasn't yet computable."""
+    pad = total_length - len(series)
+    if pad < 0:
+        raise ValueError("series longer than total_length")
+    return [None] * pad + list(series)
 
 
 def ema_series(values: Sequence[Decimal], period: int) -> list[Decimal]:
@@ -75,14 +102,24 @@ def _true_ranges(candles: Sequence[Candle]) -> list[Decimal]:
     return trs
 
 
-def atr(candles: Sequence[Candle], period: int) -> Decimal | None:
+def atr_series(candles: Sequence[Candle], period: int) -> list[Decimal]:
+    """Full Wilder-smoothed ATR series (length len(candles) - period), or []
+    if insufficient. Identical math to ``atr``, just retaining every
+    intermediate smoothed value instead of only the last one."""
     if len(candles) < period + 1:
-        return None
+        return []
     trs = _true_ranges(candles)
     value = sum(trs[:period], Decimal(0)) / Decimal(period)
+    out = [value]
     for i in range(period, len(trs)):
         value = (value * (period - 1) + trs[i]) / Decimal(period)
-    return value
+        out.append(value)
+    return out
+
+
+def atr(candles: Sequence[Candle], period: int) -> Decimal | None:
+    series = atr_series(candles, period)
+    return series[-1] if series else None
 
 
 def macd(

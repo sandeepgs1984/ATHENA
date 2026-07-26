@@ -223,6 +223,7 @@ def get_market_history_service(request: Request) -> MarketHistoryService:
     return MarketHistoryService(
         provider,
         freshness_threshold_minutes=freshness_minutes,
+        config_dir=_find_repo_root() / "config",
     )
 
 

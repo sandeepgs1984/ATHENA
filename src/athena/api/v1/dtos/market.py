@@ -74,6 +74,8 @@ class CandleDTO(BaseModel):
     volume: int
     source: str
     adjusted: bool
+    atr: Decimal | None = None
+    moving_average: Decimal | None = None
 
 
 class CandleSeriesDTO(BaseModel):

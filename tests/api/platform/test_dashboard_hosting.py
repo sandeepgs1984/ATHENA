@@ -225,6 +225,18 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".trade-plan-hero-grid" in css
     assert ".trade-plan-hero-value" in css
 
+    # UX-3b: chart ATR/moving-average/volume overlay — plotted from the
+    # candle-level atr/moving_average fields the API now serves, honestly
+    # None during warmup, never interpolated or invented
+    assert "Moving average" in js
+    assert "ATR band" in js
+    assert "decision-chart-ma-line" in js
+    assert "decision-chart-atr-band" in js
+    assert "decision-chart-volume-bar" in js
+    assert ".decision-chart-ma-line" in css
+    assert ".decision-chart-atr-band" in css
+    assert ".decision-chart-volume-bar" in css
+
     # Re-validate moved to the Decision Brief header — always visible, not buried
     # at the bottom of the brief (owner feedback: "no idea of where it exists")
     assert 'id="decision-brief-revalidate-header"' in html

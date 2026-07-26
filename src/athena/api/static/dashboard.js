@@ -2792,6 +2792,11 @@ document.addEventListener("DOMContentLoaded", () => {
             ? `${returnPct >= 0 ? "+" : ""}${returnPct.toFixed(1)}%`
             : "—";
         const returnCaption = targetList.length > 1 ? "to T1" : "to target";
+        // A single point entry (low == high) reading as "X - X" looks like
+        // a rendering glitch, not a real zone (owner-reported).
+        const entryZoneLabel = Number(plan.entry_low) === Number(plan.entry_high)
+            ? formatDecisionPrice(plan.entry_low)
+            : `${formatDecisionPrice(plan.entry_low)} – ${formatDecisionPrice(plan.entry_high)}`;
 
         return `
             <div class="decision-brief-section">
@@ -2802,7 +2807,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 <div class="trade-plan-hero-grid">
                     <div class="trade-plan-hero-metric">
                         <span class="trade-plan-hero-label">Entry zone</span>
-                        <strong class="trade-plan-hero-value">${formatDecisionPrice(plan.entry_low)} – ${formatDecisionPrice(plan.entry_high)}</strong>
+                        <strong class="trade-plan-hero-value">${entryZoneLabel}</strong>
                     </div>
                     <div class="trade-plan-hero-metric invalidation">
                         <span class="trade-plan-hero-label">Stop</span>
@@ -2893,12 +2898,29 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         const width = 900;
-        const height = 330;
+        const height = 390;
         const margin = { top: 20, right: 72, bottom: 34, left: 12 };
+        // Volume subplot (UX-3b) takes a fixed band above the time axis;
+        // the price plot fills whatever height remains.
+        const volumeHeight = 56;
+        const volumeGap = 10;
         const plotWidth = width - margin.left - margin.right;
-        const plotHeight = height - margin.top - margin.bottom;
+        const plotHeight = height - margin.top - margin.bottom - volumeHeight - volumeGap;
+        const volumeTop = margin.top + plotHeight + volumeGap;
+
+        const numericOrNull = value => {
+            const n = Number(value);
+            return Number.isFinite(n) ? n : null;
+        };
+        const maValues = candles.map(c => numericOrNull(c.moving_average));
+        const atrValues = candles.map(c => numericOrNull(c.atr));
+        const bandPrices = candles.flatMap((c, i) => {
+            if (maValues[i] === null || atrValues[i] === null) return [];
+            return [maValues[i] + atrValues[i], maValues[i] - atrValues[i]];
+        });
+
         const prices = candles.flatMap(candle => [Number(candle.high), Number(candle.low)]);
-        prices.push(...chartLevelValues(plan));
+        prices.push(...chartLevelValues(plan), ...bandPrices);
         let minPrice = Math.min(...prices);
         let maxPrice = Math.max(...prices);
         const span = Math.max(maxPrice - minPrice, Math.abs(maxPrice || 1) * 0.005);
@@ -2909,6 +2931,7 @@ document.addEventListener("DOMContentLoaded", () => {
             + ((maxPrice - Number(price)) / (maxPrice - minPrice)) * plotHeight;
         const slot = plotWidth / candles.length;
         const bodyWidth = Math.max(2, Math.min(8, slot * 0.58));
+        const xAt = index => margin.left + slot * index + slot / 2;
         const priceLabel = value => Number(value).toLocaleString("en-IN", {
             minimumFractionDigits: 2,
             maximumFractionDigits: 2,
@@ -2962,13 +2985,34 @@ document.addEventListener("DOMContentLoaded", () => {
             }).join("");
         }
 
+        // ATR envelope (moving average +/- ATR) — a volatility band, not a
+        // price level. None during warmup, so the band only spans indices
+        // where both values were actually computed (never interpolated
+        // across a gap, never invented for a bar that had no history yet).
+        let atrBand = "";
+        let maLine = "";
+        const bandIndexes = candles
+            .map((_, i) => i)
+            .filter(i => maValues[i] !== null && atrValues[i] !== null);
+        if (bandIndexes.length > 1) {
+            const upper = bandIndexes.map(i => `${xAt(i)},${y(maValues[i] + atrValues[i])}`);
+            const lower = [...bandIndexes].reverse()
+                .map(i => `${xAt(i)},${y(maValues[i] - atrValues[i])}`);
+            atrBand = `<polygon class="decision-chart-atr-band" points="${upper.concat(lower).join(" ")}" />`;
+        }
+        const maIndexes = candles.map((_, i) => i).filter(i => maValues[i] !== null);
+        if (maIndexes.length > 1) {
+            const points = maIndexes.map(i => `${xAt(i)},${y(maValues[i])}`).join(" ");
+            maLine = `<polyline class="decision-chart-ma-line" points="${points}" />`;
+        }
+
         const bars = candles.map((candle, index) => {
             const open = Number(candle.open);
             const close = Number(candle.close);
             const high = Number(candle.high);
             const low = Number(candle.low);
             const rising = close >= open;
-            const x = margin.left + slot * index + slot / 2;
+            const x = xAt(index);
             const bodyY = Math.min(y(open), y(close));
             const bodyHeight = Math.max(1.5, Math.abs(y(open) - y(close)));
             const cls = rising ? "up" : "down";
@@ -2984,10 +3028,27 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
             `;
         }).join("");
 
+        // Volume subplot — same up/down coloring as the candle bodies above it.
+        const volumes = candles.map(c => Number(c.volume) || 0);
+        const maxVolume = Math.max(1, ...volumes);
+        const volY = v => volumeTop + volumeHeight - (v / maxVolume) * volumeHeight;
+        const volumeBars = candles.map((candle, index) => {
+            const rising = Number(candle.close) >= Number(candle.open);
+            const x = xAt(index);
+            const vy = volY(volumes[index]);
+            return `
+                <rect x="${x - bodyWidth / 2}" y="${vy}"
+                    width="${bodyWidth}" height="${Math.max(1, volumeTop + volumeHeight - vy)}"
+                    class="decision-chart-volume-bar ${rising ? "up" : "down"}" />
+            `;
+        }).join("");
+        const volumeLabel = `<text x="${margin.left}" y="${volumeTop - 3}"
+            class="decision-chart-axis-label">VOLUME</text>`;
+
         const labelIndexes = [...new Set([0, Math.floor((candles.length - 1) / 2), candles.length - 1])];
         const timeLabels = labelIndexes.map(index => {
             const candle = candles[index];
-            const x = margin.left + slot * index + slot / 2;
+            const x = xAt(index);
             const date = new Date(candle.ts_open);
             const label = date.toLocaleTimeString("en-IN", {
                 timeZone: "Asia/Kolkata",
@@ -3003,8 +3064,12 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
                 role="img" aria-label="${escapeDecisionHtml(series.instrument_id)} 5-minute candlestick chart">
                 ${grid}
                 ${entryZone}
+                ${atrBand}
                 ${bars}
+                ${maLine}
                 ${planLines}
+                ${volumeLabel}
+                ${volumeBars}
                 ${timeLabels}
             </svg>
         `;
@@ -4264,6 +4329,9 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
                         <span><i class="legend-box entry"></i> Entry zone</span>
                         <span><i class="legend-line stop"></i> Invalidation</span>
                         <span><i class="legend-line target"></i> Targets</span>
+                        <span><i class="legend-line ma"></i> Moving average</span>
+                        <span><i class="legend-box atr"></i> ATR band</span>
+                        <span><i class="legend-box volume"></i> Volume</span>
                     </div>
                 </section>
             </div>

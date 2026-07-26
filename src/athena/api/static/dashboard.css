@@ -2750,6 +2750,32 @@ body {
     fill: #86efac;
 }
 
+/* Moving-average line + ATR envelope (UX-3b) — a soft volatility band, not
+   a price level, so it stays low-opacity behind the candles and plan lines */
+.decision-chart-ma-line {
+    fill: none;
+    stroke: #c4b5fd;
+    stroke-width: 1.4;
+    opacity: 0.85;
+}
+
+.decision-chart-atr-band {
+    fill: rgba(196, 181, 253, 0.07);
+    stroke: none;
+}
+
+.decision-chart-volume-bar {
+    opacity: 0.55;
+}
+
+.decision-chart-volume-bar.up {
+    fill: #22c55e;
+}
+
+.decision-chart-volume-bar.down {
+    fill: #ef4444;
+}
+
 .decision-chart-legend {
     display: flex;
     flex-wrap: wrap;
@@ -2788,6 +2814,23 @@ body {
 
 .legend-line.target {
     border-color: #4ade80;
+}
+
+.legend-line.ma {
+    border-top-style: solid;
+    border-color: #c4b5fd;
+}
+
+.legend-box.atr {
+    background: rgba(196, 181, 253, 0.18);
+    border: 1px solid rgba(196, 181, 253, 0.4);
+    height: 7px;
+}
+
+.legend-box.volume {
+    background: rgba(148, 163, 184, 0.35);
+    border: 1px solid rgba(148, 163, 184, 0.5);
+    height: 7px;
 }
 
 .provenance-chip {
