@@ -524,3 +524,19 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".validate-overlay" in css
     assert ".validate-overlay-panel" in css
     assert "validate-spin" in css
+
+    # UX-9b: owner-curated "Saved Symbols" personal watch list — deliberately
+    # independent of the Stock List / owner-candidates validation list (no
+    # pipeline seeding effect) and of the automated M4.3 watchlist package
+    # (config-driven, no owner input). New backend domain (saved_symbols
+    # table + SavedSymbolsService + /api/v1/saved-symbols endpoints), new
+    # Market Intelligence card for add/list/remove.
+    assert 'id="saved-symbol-input"' in html
+    assert 'id="saved-symbol-add-btn"' in html
+    assert 'id="saved-symbols-list"' in html
+    assert 'id="saved-symbols-count"' in html
+    assert 'id="saved-symbols-empty"' in html
+    assert "function loadSavedSymbols" in js
+    assert "function removeSavedSymbolNow" in js
+    assert "/api/v1/saved-symbols" in js
+    assert "saved-symbol-remove-btn" in js

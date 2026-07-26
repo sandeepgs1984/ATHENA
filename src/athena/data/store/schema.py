@@ -10,7 +10,7 @@ append-only by discipline (inserts only; duplicates rejected by primary key).
 from __future__ import annotations
 
 #: Bump when the schema changes; enables future explicit migrations.
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 _DDL = (
     "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)",
@@ -187,6 +187,15 @@ _DDL = (
     )
     """,
     "CREATE INDEX IF NOT EXISTS idx_owner_candidates_active ON owner_candidates(active)",
+
+    """
+    CREATE TABLE IF NOT EXISTS saved_symbols (
+        symbol    TEXT PRIMARY KEY,
+        added_ts  TEXT NOT NULL,
+        notes     TEXT NOT NULL DEFAULT ''
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_saved_symbols_added_ts ON saved_symbols(added_ts)",
 
     """
     CREATE TABLE IF NOT EXISTS ops_meta (

@@ -9,20 +9,21 @@ from fastapi import APIRouter
 
 from athena.api.v1.routers.analytics import router as analytics_router
 from athena.api.v1.routers.auth import router as auth_router
+from athena.api.v1.routers.backtests import router as backtests_router
 from athena.api.v1.routers.dashboard import router as dashboard_router
 from athena.api.v1.routers.decisions import router as decisions_router
 from athena.api.v1.routers.exports import router as exports_router
 from athena.api.v1.routers.health import router as health_router
+from athena.api.v1.routers.market import router as market_router
 from athena.api.v1.routers.metrics import router as metrics_router
+from athena.api.v1.routers.ops import router as ops_router
 from athena.api.v1.routers.pipelines import router as pipelines_router
 from athena.api.v1.routers.portfolio import router as portfolio_router
 from athena.api.v1.routers.reports import router as reports_router
+from athena.api.v1.routers.saved_symbols import router as saved_symbols_router
 from athena.api.v1.routers.scheduler import router as scheduler_router
-from athena.api.v1.routers.workspace import router as workspace_router
 from athena.api.v1.routers.strategies import router as strategies_router
-from athena.api.v1.routers.backtests import router as backtests_router
-from athena.api.v1.routers.ops import router as ops_router
-from athena.api.v1.routers.market import router as market_router
+from athena.api.v1.routers.workspace import router as workspace_router
 
 router = APIRouter()
 
@@ -43,3 +44,4 @@ router.include_router(exports_router)
 router.include_router(strategies_router)
 router.include_router(backtests_router)
 router.include_router(ops_router)
+router.include_router(saved_symbols_router)

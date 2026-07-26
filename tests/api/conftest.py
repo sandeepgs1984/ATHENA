@@ -36,9 +36,12 @@ def client(api_settings: APISettings) -> TestClient:
     candle_provider.clear()  # type: ignore[attr-defined]
     app.state.candle_history_provider = candle_provider
     app.state.intraday_freshness_minutes = 20
-    from athena.api.dependencies import get_candidate_store
+    from athena.api.dependencies import get_candidate_store, get_saved_symbol_store
 
     store = get_candidate_store()
     store.clear()
     app.state.candidate_store = store
+    saved_symbol_store = get_saved_symbol_store()
+    saved_symbol_store.clear()
+    app.state.saved_symbol_store = saved_symbol_store
     return TestClient(app, raise_server_exceptions=False)

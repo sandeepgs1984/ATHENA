@@ -1358,6 +1358,7 @@ document.addEventListener("DOMContentLoaded", () => {
     async function loadMarketIntelligence() {
         try {
             await loadCandidateList();
+            await loadSavedSymbols();
 
             // 1. Fetch Volatility Regime and Universe from the latest Pipeline run
             const runsRes = await apiRequest("/api/v1/pipelines/runs").catch(() => null);
@@ -1918,6 +1919,137 @@ document.addEventListener("DOMContentLoaded", () => {
             if (e.key === "Enter") {
                 e.preventDefault();
                 addAndValidateCandidate();
+            }
+        });
+    }
+
+    // UX-9b: "Saved Symbols" — a passive personal watch list, deliberately
+    // independent of the Stock List / owner-candidates validation list above
+    // (saving a symbol here never seeds ingest/scoring) and of the automated
+    // M4.3 watchlist package (that one is fully config-driven, no owner input).
+    async function removeSavedSymbolNow(symbol, { button = null } = {}) {
+        const bare = String(symbol || "").trim().toUpperCase().replace(/^NSE:|^BSE:/, "");
+        if (!bare) return false;
+        const previous = button ? button.innerHTML : null;
+        if (button) {
+            button.disabled = true;
+            button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Removing…';
+        }
+        try {
+            await apiRequest(
+                `/api/v1/saved-symbols/${encodeURIComponent(bare)}`,
+                { method: "DELETE", skipToast: true }
+            );
+            showToast(`${bare} removed from Saved Symbols`, "success");
+            await loadSavedSymbols();
+            return true;
+        } catch (err) {
+            if (err?.status === 404) {
+                showToast(`${bare} is not in Saved Symbols`, "warning");
+            } else {
+                const detail = err?.data?.detail;
+                showToast(
+                    typeof detail === "string" && detail.trim()
+                        ? detail
+                        : `Failed to remove ${bare} from Saved Symbols`,
+                    "danger"
+                );
+            }
+            return false;
+        } finally {
+            if (button) {
+                button.disabled = false;
+                if (previous != null) button.innerHTML = previous;
+            }
+        }
+    }
+
+    async function loadSavedSymbols() {
+        const listEl = document.getElementById("saved-symbols-list");
+        const emptyEl = document.getElementById("saved-symbols-empty");
+        const countEl = document.getElementById("saved-symbols-count");
+        if (!listEl) return;
+        try {
+            const res = await apiRequest("/api/v1/saved-symbols");
+            const rows = (res && res.data && res.data.symbols) ? res.data.symbols : [];
+            listEl.innerHTML = "";
+            if (countEl) {
+                countEl.textContent = `${rows.length} symbol${rows.length === 1 ? "" : "s"}`;
+            }
+            if (rows.length === 0) {
+                if (emptyEl) emptyEl.style.display = "block";
+                return;
+            }
+            if (emptyEl) emptyEl.style.display = "none";
+            rows.forEach(s => {
+                const li = document.createElement("li");
+                li.className = "candidate-row";
+                li.dataset.symbol = String(s.symbol || "").toUpperCase();
+                li.innerHTML = `
+                    <span class="symbol-name-col">${s.symbol}</span>
+                    <div class="candidate-row-actions">
+                        <button type="button" class="inspect-btn saved-symbol-remove-btn" data-symbol="${s.symbol}">
+                            <i class="fas fa-times"></i> Remove
+                        </button>
+                    </div>
+                `;
+                listEl.appendChild(li);
+            });
+            listEl.querySelectorAll(".saved-symbol-remove-btn").forEach(btn => {
+                btn.addEventListener("click", async () => {
+                    const sym = btn.getAttribute("data-symbol");
+                    await removeSavedSymbolNow(sym, { button: btn });
+                });
+            });
+        } catch (err) {
+            console.error("Failed to load saved symbols", err);
+            if (emptyEl) {
+                emptyEl.style.display = "block";
+                emptyEl.textContent = "Failed to load Saved Symbols.";
+            }
+            if (countEl) countEl.textContent = "Unavailable";
+        }
+    }
+
+    const savedSymbolAddBtn = document.getElementById("saved-symbol-add-btn");
+    const savedSymbolInput = document.getElementById("saved-symbol-input");
+    if (savedSymbolAddBtn && savedSymbolInput) {
+        const addSavedSymbol = async () => {
+            const symbol = (savedSymbolInput.value || "").trim().toUpperCase();
+            if (!symbol) {
+                showToast("Enter a symbol", "danger");
+                return;
+            }
+            const previous = savedSymbolAddBtn.innerHTML;
+            savedSymbolAddBtn.disabled = true;
+            savedSymbolAddBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…';
+            try {
+                await apiRequest("/api/v1/saved-symbols", {
+                    method: "POST",
+                    body: JSON.stringify({ symbol }),
+                    skipToast: true,
+                });
+                savedSymbolInput.value = "";
+                showToast(`${symbol} saved to your watch list`, "success");
+                await loadSavedSymbols();
+            } catch (err) {
+                const detail = err?.data?.detail;
+                showToast(
+                    typeof detail === "string" && detail.trim()
+                        ? detail
+                        : `Failed to save ${symbol}`,
+                    "danger"
+                );
+            } finally {
+                savedSymbolAddBtn.disabled = false;
+                savedSymbolAddBtn.innerHTML = previous;
+            }
+        };
+        savedSymbolAddBtn.addEventListener("click", addSavedSymbol);
+        savedSymbolInput.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") {
+                e.preventDefault();
+                addSavedSymbol();
             }
         });
     }

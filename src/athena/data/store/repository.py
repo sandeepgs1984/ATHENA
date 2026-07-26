@@ -119,7 +119,7 @@ class SqliteRepository:
         tables = ("instruments", "candles", "quotes", "market_snapshots",
                   "corporate_actions", "quarantine_records", "runs",
                   "decisions", "decision_traces", "decision_journal",
-                  "owner_positions", "owner_candidates", "ops_meta")
+                  "owner_positions", "owner_candidates", "saved_symbols", "ops_meta")
         try:
             with self._lock:
                 return {
@@ -627,6 +627,39 @@ class SqliteRepository:
             (r[0], datetime.fromisoformat(r[1]), r[2] or "", bool(r[3]))
             for r in rows
         ]
+
+    # ------------------------------------------------------------- saved symbols (owner watchlist)
+
+    def add_saved_symbol(
+        self,
+        *,
+        symbol: str,
+        added_ts: datetime,
+        notes: str = "",
+    ) -> None:
+        self._write(
+            "INSERT INTO saved_symbols (symbol, added_ts, notes) VALUES (?,?,?) "
+            "ON CONFLICT(symbol) DO UPDATE SET "
+            "added_ts=excluded.added_ts, notes=excluded.notes",
+            (symbol, added_ts.isoformat(), notes or ""),
+        )
+
+    def remove_saved_symbol(self, symbol: str) -> bool:
+        try:
+            with self._lock:
+                cur = self._conn.execute(
+                    "DELETE FROM saved_symbols WHERE symbol=?", (symbol,)
+                )
+                self._conn.commit()
+                return int(cur.rowcount) > 0
+        except sqlite3.Error as exc:
+            raise RepositoryError(f"remove saved symbol failed: {exc}") from exc
+
+    def list_saved_symbols(self) -> list[tuple[str, datetime, str]]:
+        rows = self._query_all(
+            "SELECT symbol, added_ts, notes FROM saved_symbols ORDER BY added_ts DESC"
+        )
+        return [(r[0], datetime.fromisoformat(r[1]), r[2] or "") for r in rows]
 
     def get_ops_meta(self, key: str) -> str | None:
         row = self._query_one("SELECT value FROM ops_meta WHERE key=?", (key,))

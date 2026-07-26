@@ -70,12 +70,14 @@ from athena.api.v1.services.ops_service import OpsService
 from athena.api.v1.services.pipelines_service import PipelinesService
 from athena.api.v1.services.portfolio_service import PortfolioService
 from athena.api.v1.services.reports_service import ReportsService
+from athena.api.v1.services.saved_symbols_service import SavedSymbolsService
 from athena.api.v1.services.scheduler_service import SchedulerService
 from athena.api.v1.services.strategies_service import StrategyService
 from athena.api.v1.services.workspace_service import WorkspaceService
 from athena.data.store.repository import SqliteRepository
 from athena.export.engine import ExportPresentationEngine
 from athena.ops.owner_candidates import InMemoryCandidateStore, SqliteCandidateStore
+from athena.ops.saved_symbols import InMemorySavedSymbolStore, SqliteSavedSymbolStore
 
 # Singletons for default health/metrics providers
 _health_provider = ObservabilityHealthProvider()
@@ -96,6 +98,7 @@ _export_provider = InMemoryExportProvider()
 _export_engine = ExportPresentationEngine()
 _backtest_run_provider = InMemoryBacktestRunProvider()
 _candidate_store = InMemoryCandidateStore()
+_saved_symbol_store = InMemorySavedSymbolStore()
 _candle_history_provider = InMemoryCandleHistoryProvider()
 
 _sqlite_repo: SqliteRepository | None = None
@@ -126,6 +129,7 @@ def wire_sqlite_providers(
     portfolio_prov = SqlitePortfolioProvider(repo, starting_cash=starting)
     pipeline_prov = SqlitePipelineRunProvider(repo)
     candidate_store = SqliteCandidateStore(repo)
+    saved_symbol_store = SqliteSavedSymbolStore(repo)
 
     app_state.ops_db_path = path  # type: ignore[attr-defined]
     app_state.sqlite_repo = repo  # type: ignore[attr-defined]
@@ -134,6 +138,7 @@ def wire_sqlite_providers(
     app_state.portfolio_provider = portfolio_prov  # type: ignore[attr-defined]
     app_state.pipeline_run_provider = pipeline_prov  # type: ignore[attr-defined]
     app_state.candidate_store = candidate_store  # type: ignore[attr-defined]
+    app_state.saved_symbol_store = saved_symbol_store  # type: ignore[attr-defined]
     _sqlite_repo = repo
     return repo
 
@@ -260,6 +265,17 @@ def get_candidates_service(request: Request) -> CandidatesService:
         config_dir=repo_root / "config",
         repo_root=repo_root,
     )
+
+
+def get_saved_symbol_store():
+    """Module-level saved-symbol store (tests override via app.state)."""
+    return _saved_symbol_store
+
+
+def get_saved_symbols_service(request: Request) -> SavedSymbolsService:
+    """Dependency provider for SavedSymbolsService."""
+    store = getattr(request.app.state, "saved_symbol_store", _saved_symbol_store)
+    return SavedSymbolsService(store)
 
 
 def get_pipelines_service(request: Request) -> PipelinesService:

@@ -6,6 +6,97 @@ status updated on approval.
 
 ---
 
+## UX-9b — Add Watchlist (Saved Symbols) (READY FOR REVIEW)
+
+| | |
+|---|---|
+| Completed | 2026-07-26 |
+| Objective | Second half of the final UX Overhaul milestone: a minimal owner-curated "Saved Symbols" personal watch list, deliberately independent of two unrelated existing concepts — `owner_candidates` (the Market Intelligence "Stock List," which seeds the ingest/scoring pipeline) and the automated M4.3 `watchlist` package (config-driven, no owner input). Research confirmed `owner_candidates` is a closer structural analog than the milestone doc's original M-X0 (DecisionJournalEntry/TradeOutcome) reference — no FK relationship to decisions, same flat symbol+timestamp+notes shape — so the implementation mirrors it end-to-end |
+| Scope | New `saved_symbols` SQLite table (schema bumped 7→8); `SqliteSavedSymbolStore`/`InMemorySavedSymbolStore` (Protocol-based, mirrors `CandidateStore`); `SavedSymbolsService`; `GET/POST/DELETE /api/v1/saved-symbols` (List=READ, Add/Remove=EXECUTE, matching the `owner_candidates` permission precedent); new "Saved Symbols" card in the Market Intelligence tab (add input + list + per-row remove), reusing the existing `.candidate-*` CSS classes as-is — zero new CSS needed |
+| Tests | 6 new API tests (`tests/api/v1/test_saved_symbols.py`) — CRUD, symbol normalization, re-add-updates-in-place (not a duplicate), 404 on missing delete, EXECUTE-permission gating, unauthenticated rejection, and explicit independence from `owner_candidates` (saving/removing one list never touches the other). 2 existing schema-version assertions updated (7→8). 9 new dashboard-hosting assertions. Full suite **1030 passed** |
+| Coverage | Backend: new repository methods, service, router, DI wiring, schema migration — all exercised via a real `TestClient`+in-memory store round trip. Frontend: markup/function/endpoint presence locked in; visually verified live (see below) |
+| Status | **READY FOR REVIEW** — schema migrated cleanly on the live DB (verified via direct read: `schema_version` now 8, `saved_symbols` table present with the expected columns, zero data loss since it's an additive `CREATE TABLE IF NOT EXISTS`), server restarted, live console check + visual DOM verification done. Awaiting owner smoke test (add/remove a real symbol) on the live dashboard |
+| Branch | feature/live-dashboard |
+
+### Scope completed
+
+- **Domain/store** (`src/athena/ops/saved_symbols.py`, new): `SavedSymbol` frozen dataclass (`symbol`, `added_ts`, `notes`), `normalize_saved_symbol()` (strips `NSE:`/`BSE:` prefixes, uppercases — same convention as `owner_candidates`), `SavedSymbolStore` Protocol, `SqliteSavedSymbolStore`, `InMemorySavedSymbolStore`.
+- **Schema** (`src/athena/data/store/schema.py`): `saved_symbols` table (`symbol TEXT PRIMARY KEY`, `added_ts`, `notes`) + index on `added_ts`; `SCHEMA_VERSION` 7 → 8. No `active` flag (unlike `owner_candidates`) — a personal watch list has no soft-delete/reactivation use case, so removal is a hard delete; kept deliberately simpler than the pipeline-list precedent rather than copying unneeded complexity.
+- **Repository** (`src/athena/data/store/repository.py`): `add_saved_symbol()` (upsert — re-saving an existing symbol refreshes its timestamp/notes rather than duplicating), `remove_saved_symbol()`, `list_saved_symbols()` (ordered newest-first by `added_ts`, not alphabetically — a watch list's natural read order is "what did I just save," unlike the pipeline list's alphabetical order). `saved_symbols` added to `record_counts()` for backup/restore integrity checks.
+- **DTOs** (`src/athena/api/v1/dtos/saved_symbols.py`, new): `SavedSymbolDTO`, `SavedSymbolListDTO`, `AddSavedSymbolRequest`, `RemoveSavedSymbolResultDTO`.
+- **Service** (`src/athena/api/v1/services/saved_symbols_service.py`, new): `SavedSymbolsService` + `SavedSymbolNotFoundError(ResourceNotFoundError)` (maps to 404 automatically via the existing generic `ResourceNotFoundError` exception mapping — no new entry needed in `errors.py`).
+- **Router** (`src/athena/api/v1/routers/saved_symbols.py`, new): `GET /api/v1/saved-symbols` (READ), `POST /api/v1/saved-symbols` (EXECUTE, add/upsert), `DELETE /api/v1/saved-symbols/{symbol}` (EXECUTE). Registered in `src/athena/api/v1/router.py`.
+- **DI wiring** (`src/athena/api/dependencies.py`): module-level `InMemorySavedSymbolStore()` default + `SqliteSavedSymbolStore` attached to `app.state` inside `wire_sqlite_providers`, `get_saved_symbol_store()`/`get_saved_symbols_service()` factories — mirrors the `candidate_store` wiring exactly.
+- **Frontend** (`index.html`, `dashboard.js`): new "Saved Symbols" card in the Market Intelligence tab, placed directly below the existing "Stock List" card, with an explanatory HTML comment distinguishing it from that list. `loadSavedSymbols()`, `removeSavedSymbolNow()`, and the add-button/Enter-key wiring closely mirror `loadCandidateList()`/`removeCandidateNow()` but simpler (no search bar, no per-row "Validate" action — a personal list has no pipeline action to trigger). Hooked into `loadMarketIntelligence()` so it loads whenever that tab is opened.
+
+### Files created
+
+- `src/athena/ops/saved_symbols.py`
+- `src/athena/api/v1/dtos/saved_symbols.py`
+- `src/athena/api/v1/services/saved_symbols_service.py`
+- `src/athena/api/v1/routers/saved_symbols.py`
+- `tests/api/v1/test_saved_symbols.py`
+
+### Files modified
+
+- `src/athena/data/store/schema.py` — new `saved_symbols` table; `SCHEMA_VERSION` 7 → 8.
+- `src/athena/data/store/repository.py` — `add_saved_symbol`/`remove_saved_symbol`/`list_saved_symbols`; `saved_symbols` added to `record_counts()`.
+- `src/athena/api/v1/router.py` — registers the new router.
+- `src/athena/api/dependencies.py` — store singleton, `wire_sqlite_providers` wiring, `get_saved_symbol_store`/`get_saved_symbols_service`.
+- `tests/api/conftest.py` — `client` fixture now resets `saved_symbol_store` between tests (mirrors the existing `candidate_store` reset).
+- `tests/data_layer/test_decision_journal.py`, `tests/runtime/test_dry_run_schedule.py` — hardcoded `SCHEMA_VERSION == 7` assertions updated to `8`.
+- `src/athena/api/static/index.html` — new Saved Symbols card; cache-bust `9.44.4` → `9.45.0`.
+- `src/athena/api/static/dashboard.js` — `loadSavedSymbols`/`removeSavedSymbolNow` + wiring, hooked into `loadMarketIntelligence()`.
+- `tests/api/platform/test_dashboard_hosting.py` — 9 new assertions.
+- This log; `docs/MILESTONES.md`.
+
+### Public APIs
+
+- `GET /api/v1/saved-symbols` (READ)
+- `POST /api/v1/saved-symbols` (EXECUTE) — add/upsert
+- `DELETE /api/v1/saved-symbols/{symbol}` (EXECUTE)
+
+### Validation and architecture
+
+- Full regression: **1030 passed** (1024 + 6 new).
+- Ruff clean on all changed/new `.py` files (2 pre-existing, unrelated `I001` import-order issues introduced by my own new imports were auto-fixed and re-verified; 3 pre-existing `SIM117` nested-`with` warnings in `repository.py` confirmed unrelated, left untouched per established practice this session).
+- Live-DB schema migration verified directly (not just in tests): `schema_version` row now reads `8`, `saved_symbols` table exists with the expected columns, via a read-only `sqlite3` inspection of the actual `db/athena.db` — confirms the idempotent `CREATE TABLE IF NOT EXISTS` + version-bump path is safe for an existing production database with no downtime or data loss.
+- Server restarted (backend Python changes require this, unlike the static-asset-only overlay feature); isolated-browser console check: zero errors on load.
+- Visual verification: since I have no owner credentials to authenticate, I bypassed only the client-side unlock-gate `hidden` attribute via DOM manipulation (not a real auth bypass — no data was fetched, no protected action taken) purely to screenshot the new card's layout/styling; confirmed it renders identically in visual language to the adjacent "Stock List" card, reusing its CSS with zero new rules.
+- No ADR required: additive table + additive endpoints, no change to any frozen contract, no architecture drift. Confirmed via research that this deliberately does NOT reuse or modify `owner_candidates` or `watchlist` — avoids concept collision the milestone doc explicitly flagged.
+
+### Risks and technical debt
+
+- I could not exercise the real end-to-end add/remove flow through an authenticated session myself (no owner credentials) — verified via the automated test suite (real `TestClient` round trip) and a live DOM/CSS visual check instead.
+- No new technical debt. The design deliberately omitted features not in scope (search/filter within Saved Symbols, bulk clear, any pipeline-triggering action) to keep the milestone small and reviewable — can be added later if the owner wants them, but nothing here blocks that.
+
+### Remaining work
+
+- **Owner confirmation**: on the live dashboard, save a real symbol from the new Market Intelligence card, confirm it appears in the list, refresh the page and confirm it persists (SQLite-backed), then remove it and confirm it's gone.
+
+### Commit message
+
+```text
+feat(market): add owner-curated Saved Symbols watch list (UX-9b)
+
+- Add a minimal "Saved Symbols" domain — a passive personal watch list,
+  deliberately independent of owner_candidates (the Stock List, which
+  seeds ingest/scoring) and the automated M4.3 watchlist package
+  (config-driven, no owner input) — to avoid conflating three different
+  concepts that all happen to be "a list of symbols."
+- New saved_symbols SQLite table (schema v7 -> v8), SqliteSavedSymbolStore/
+  InMemorySavedSymbolStore mirroring the existing CandidateStore shape,
+  SavedSymbolsService, and GET/POST/DELETE /api/v1/saved-symbols
+  (List=READ, Add/Remove=EXECUTE, matching the owner_candidates
+  permission precedent).
+- New "Saved Symbols" card in the Market Intelligence tab (add/list/
+  remove), reusing the existing .candidate-* CSS classes as-is.
+- Add 6 new API tests plus 9 dashboard-hosting assertions; update 2
+  existing tests that hardcoded the old schema version.
+```
+
+---
+
 ## Feature — Blocking validate overlay for Decisions & Trace / Market Intelligence (BUILT, awaiting owner confirmation)
 
 | | |
