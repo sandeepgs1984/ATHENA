@@ -256,6 +256,24 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".context-metric-grid" in css
     assert ".context-metric-value" in css
 
+    # UX-5: Reasoning Trace redesign (owner UX audit #14/#19) — DAG nodes
+    # show each stage's own real computed state (e.g. "Bullish", "BUY",
+    # "Authorized") instead of the generic lifecycle badge once that
+    # stage's data has loaded, falling back to the lifecycle status when
+    # no mapping applies; connector lines get a subtle flow animation
+    # that respects prefers-reduced-motion.
+    assert "function stageMeaning" in js
+    assert "function dagStatusBadgeHtml" in js
+    assert "function refreshDagNodeMeanings" in js
+    assert "dag-flow-line" in js
+    assert "dag-flow-line-active" in js
+    assert ".dag-node-status.meaning-good" in css
+    assert ".dag-node-status.meaning-bad" in css
+    assert ".dag-node-status.meaning-warn" in css
+    assert ".dag-node-status.meaning-neutral" in css
+    assert "prefers-reduced-motion" in css
+    assert "dag-flow-dash" in css
+
     # Re-validate moved to the Decision Brief header — always visible, not buried
     # at the bottom of the brief (owner feedback: "no idea of where it exists")
     assert 'id="decision-brief-revalidate-header"' in html

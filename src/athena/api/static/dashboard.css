@@ -4103,6 +4103,52 @@ body {
     color: var(--danger);
 }
 
+/* Real per-stage computed state (e.g. "Bullish", "BUY", "Authorized")
+   instead of the generic lifecycle badge, once that stage's own data has
+   loaded — never a fabricated label (owner UX audit #14/#19). */
+.dag-node-status.meaning-good {
+    background-color: var(--success-glow);
+    color: var(--success);
+}
+
+.dag-node-status.meaning-bad {
+    background-color: var(--danger-glow);
+    color: var(--danger);
+}
+
+.dag-node-status.meaning-warn {
+    background-color: var(--warning-glow);
+    color: var(--warning);
+}
+
+.dag-node-status.meaning-neutral {
+    background-color: rgba(148, 163, 184, 0.12);
+    color: var(--text-muted);
+}
+
+/* Gentle continuous dash-flow along the connector lines, brighter along
+   whichever edge touches the selected node (owner UX audit #14 — the
+   trace should feel like a flow, not a static diagram). */
+.dag-flow-line {
+    stroke-dashoffset: 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .dag-flow-line {
+        animation: dag-flow-dash 1.4s linear infinite;
+    }
+
+    .dag-flow-line-active {
+        animation-duration: 0.7s;
+    }
+}
+
+@keyframes dag-flow-dash {
+    to {
+        stroke-dashoffset: -16;
+    }
+}
+
 /* Stage Details Card */
 .dag-details-card {
     background-color: rgba(30, 41, 59, 0.4);

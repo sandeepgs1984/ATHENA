@@ -6,6 +6,163 @@ status updated on approval.
 
 ---
 
+## UX-5 — Reasoning Trace redesign (READY FOR REVIEW)
+
+| | |
+|---|---|
+| Completed | 2026-07-26 |
+| Objective | Fifth milestone of the owner's UX audit: make the Reasoning Trace DAG feel like a flow rather than a static pipeline diagram, and replace each stage's generic lifecycle badge ("COMPLETED") with that stage's own real computed state, without ever inventing a value a stage doesn't actually have |
+| Scope | `stageMeaning(stageId)` resolver reusing already-loaded `activeContextData`/`activeDepth`/`activeDecisionData`; DAG node badges now show the real state when available, falling back to the existing lifecycle badge otherwise; `refreshDagNodeMeanings()` upgrades already-rendered nodes once that async data arrives, without re-selecting or jumping tabs; connector lines get a subtle animated dash-flow (brighter/faster on edges touching the selected node), gated behind `prefers-reduced-motion` |
+| Tests | Full suite **1017 passed**; new assertions; no backend files touched |
+| Coverage | Frontend-only change; no Python coverage impact |
+| Status | **READY FOR REVIEW** — awaiting owner smoke test on the live dashboard |
+| Branch | feature/live-dashboard |
+
+### Scope completed
+
+- **`stageMeaning(stageId)`** (owner audit #14/#19 — "each node should show
+  what actually happened, not just 'Completed'"): maps a stage id to a
+  `{label, tone}` pair drawn from data already loaded elsewhere on the
+  page — never a second fetch, never a fabricated value:
+  - `regime` → the Trend-category regime label (e.g. "Bull Trend"), tone
+    from the existing `contextChipTone` convention.
+  - `market_health` → the `momentum` dimension label (or the first
+    available dimension), same tone convention.
+  - `score` / `confidence` / `risk` → the real `displayBand` each already
+    shows in its Analysis card (`analysisPresentation`), toned
+    good/warn/bad by band meaning (risk inverted: LOW is good, HIGH is
+    bad).
+  - `decision` → the real stance (`decisionStance` — BUY/SELL/HOLD/
+    PASS/WAIT), toned by stance.
+  - `trade_plan` → "Authorized" if a trade plan was persisted for this
+    decision, "Not authorized" otherwise.
+  - `evidence` → "Sufficient"/"Insufficient" from the persisted EVIDENCE
+    gate result.
+  - Any other/unmapped stage id (or a mapped one whose data hasn't
+    loaded/isn't `OK` yet) returns `null` — `dagStatusBadgeHtml` then
+    falls back to the pre-existing generic lifecycle badge. Nothing is
+    ever guessed.
+- **`refreshDagNodeMeanings()`**: the DAG renders before `activeDepth`/
+  `activeContextData` finish loading (separate async calls), so it's
+  called again from `loadDecisionDepth`'s and `loadDecisionContext`'s
+  success paths to upgrade already-rendered badges in place. Deliberately
+  does **not** call `selectNode`/`switchBriefTab` — this is a passive
+  badge refresh, not a navigation event, avoiding a repeat of the
+  previously-fixed "automatic highlight silently jumps the trader's tab"
+  bug.
+- **Animated connector flow** (owner audit #14 — "the trace should feel
+  like a flow, not a diagram"): `drawDAGLines` now tags every SVG line
+  `dag-flow-line`, and `dag-flow-line-active` for lines adjacent to the
+  selected node. CSS drives a dashed-stroke animation
+  (`stroke-dashoffset`) at two speeds — this is purely decorative, no new
+  data is introduced — wrapped in `@media (prefers-reduced-motion:
+  no-preference)` so trader accessibility settings are respected.
+
+### Deferred (scope note, not a gap)
+
+- **Per-stage completion/data-quality percentage** (part of the original
+  audit point) was researched and explicitly **not** implemented for this
+  milestone: only the `score`/`confidence`/`risk` blocks persist a
+  `completeness` field, and that's already surfaced in their existing
+  Analysis detail cards (`completenessLabel`). `regime`, `market_health`,
+  `decision`, `trade_plan`, and `evidence` have no equivalent persisted
+  field — adding one would mean inventing a number, which ADR-005
+  forbids. If the owner wants this for those stages, it needs a backend
+  addition first (a genuine, small one), not a client-side guess.
+
+### Files created
+
+- None.
+
+### Files modified
+
+- `src/athena/api/static/index.html` — cache-bust bumped to `9.37.0`.
+- `src/athena/api/static/dashboard.js` — `stageMeaning`,
+  `stageToneColor` (folded into `stageMeaning`'s return), `dagStatusBadgeHtml`,
+  `refreshDagNodeMeanings`; `renderTraceDAG`'s node-building loop now
+  calls `dagStatusBadgeHtml` instead of always rendering the raw lifecycle
+  status; `loadDecisionDepth`/`loadDecisionContext` call
+  `refreshDagNodeMeanings()` after their data lands; `drawDAGLines` tags
+  connector lines with `dag-flow-line`/`dag-flow-line-active`.
+- `src/athena/api/static/dashboard.css` — `.dag-node-status.meaning-good/
+  -bad/-warn/-neutral`; `.dag-flow-line`/`.dag-flow-line-active` +
+  `@keyframes dag-flow-dash`, gated behind `prefers-reduced-motion`.
+- `tests/api/platform/test_dashboard_hosting.py` — new assertions.
+- `docs/MILESTONES.md` — UX-5 → Ready for review.
+- This log.
+
+### Public APIs
+
+- None — pure frontend change, no backend files touched.
+
+### Validation and architecture
+
+- Full regression: **1017 passed** (unchanged — no backend files touched).
+- No Ruff/mypy scope on `.py` (only the one test file changed; `ruff check`
+  on it is clean). mypy remains unavailable in this environment
+  (pre-existing, unrelated).
+- JS braces balanced (1468/1468); parens off by the same pre-existing
+  +1 baseline quirk confirmed harmless in prior milestones. CSS braces
+  balanced (722/722).
+- Live server restarted; isolated-browser console check on the
+  pre-login page: zero errors. Authenticated-app verification depends on
+  an owner screenshot/click-through, as with every prior UX milestone —
+  I have no login credentials for the live dashboard.
+- ADR-005 preserved: every per-stage label rendered by `stageMeaning`
+  traces to a value already computed and persisted elsewhere on the page;
+  no new computation, no invented numbers. No ADR required.
+
+### Risks and technical debt
+
+- `stageMeaning`'s per-stage mapping is hand-written per stage id; a
+  future new stage type would silently fall back to the generic lifecycle
+  badge rather than error — acceptable, matches the existing
+  `STAGE_ICONS`/`STAGE_TAB_MAP` fallback pattern, and is easy to extend.
+- I could not exercise the redesigned DAG end-to-end myself (no owner
+  credentials, and the effect depends on real trace/analysis data loading
+  asynchronously) — needs an owner click-through across a few different
+  decisions (including one with a stage that's genuinely `UNKNOWN`/not
+  `OK`, to confirm the fallback badge still renders correctly).
+- No new technical debt beyond the above.
+
+### Remaining work
+
+- **Owner smoke test**: open the Reasoning Trace for a few different
+  decisions and confirm (a) nodes with available data show a real
+  state label (e.g. "Bull Trend", "BUY", "Authorized") instead of
+  "Completed"; (b) a decision with an `UNKNOWN`/not-`OK` stage still
+  shows a sensible fallback badge, not a blank or broken one; (c) the
+  connector lines show a subtle flowing-dash animation, brighter along
+  the path to the selected node; (d) clicking a node still navigates to
+  the right tab, and the automatic first-node highlight on load still
+  does **not** jump tabs.
+- Next in the UX Overhaul program: **UX-6** (Sidebar summary + Historical
+  Validation + Decision Timeline narrative + Decision History polish —
+  needs a small backend win-rate/avg-return aggregation addition).
+
+### Commit message
+
+```text
+feat(dashboard): show real per-stage state in the Reasoning Trace DAG
+
+- Add stageMeaning() resolving each DAG stage to its own already-loaded
+  computed state (regime trend, market-health momentum, score/confidence/
+  risk band, decision stance, trade-plan authorization, evidence
+  sufficiency) instead of the generic "Completed" lifecycle badge, per
+  owner UX audit #14/#19 — falls back to the lifecycle badge when no
+  mapping applies or the underlying data isn't OK yet, never fabricated.
+- Add refreshDagNodeMeanings() to upgrade already-rendered DAG badges once
+  activeDepth/activeContextData resolve asynchronously, called from
+  loadDecisionDepth/loadDecisionContext without triggering a tab jump.
+- Add an animated dash-flow effect to DAG connector lines (brighter/faster
+  toward the selected node), gated behind prefers-reduced-motion, per
+  owner UX audit #14.
+- Bump dashboard cache-bust to 9.37.0 and extend dashboard hosting test
+  assertions for the new functions/CSS classes.
+```
+
+---
+
 ## UX-4 — Tab renaming + progressive disclosure + Market Context cards (APPROVED)
 
 | | |

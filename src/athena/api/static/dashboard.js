@@ -3667,6 +3667,7 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
             if (activeDecisionId !== decisionId) return;
             activeDepth = response && response.data;
             renderDecisionDepth(activeDepth);
+            refreshDagNodeMeanings();
         } catch (err) {
             if (activeDecisionId !== decisionId) return;
             console.error(`Failed to load decision depth for ${decisionId}`, err);
@@ -3810,6 +3811,7 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
             if (activeDecisionId !== decisionId) return;
             activeContextData = response && response.data;
             renderDecisionContext(activeContextData);
+            refreshDagNodeMeanings();
         } catch (err) {
             if (activeDecisionId !== decisionId) return;
             console.error(`Failed to load decision context for ${decisionId}`, err);
@@ -4769,6 +4771,98 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         sector_health: "context",
     };
 
+    // Each stage's own computed state instead of the generic lifecycle
+    // "Completed" (owner audit #19/#14) — reuses whatever's already loaded
+    // client-side; a stage with no specific mapping (or whose data hasn't
+    // loaded yet) keeps showing the persisted lifecycle status, refreshed
+    // once the real data arrives via refreshDagNodeMeanings().
+    function stageMeaning(stageId) {
+        const depth = activeDepth;
+        const ctx = activeContextData;
+        const decision = activeDecisionData;
+
+        if (stageId === "regime") {
+            const regime = ctx && ctx.regime;
+            if (!regime || regime.status !== "ASSESSED") return null;
+            const labels = Array.isArray(regime.labels) ? regime.labels : [];
+            const trendLabel = labels.find(l => regimeLabelCategory(l) === "Trend") || labels[0];
+            if (!trendLabel) return null;
+            return { label: friendlyLabel(trendLabel), tone: contextChipTone(trendLabel) };
+        }
+        if (stageId === "market_health") {
+            const mh = ctx && ctx.market_health;
+            if (!mh || mh.status !== "ASSESSED") return null;
+            const dims = mh.dimensions || {};
+            const preferred = dims.momentum || Object.values(dims)[0];
+            if (!preferred) return null;
+            return { label: friendlyLabel(preferred), tone: contextChipTone(preferred) };
+        }
+        if (stageId === "score" || stageId === "confidence" || stageId === "risk") {
+            const block = depth && depth[stageId];
+            if (!block || block.status !== "OK") return null;
+            const view = analysisPresentation(friendlyAnalysisName(stageId), block, stageId);
+            const band = view.displayBand;
+            if (!band) return null;
+            const b = band.toUpperCase();
+            let tone = "warn";
+            if (stageId === "risk") {
+                if (b === "LOW") tone = "good"; else if (b === "HIGH") tone = "bad";
+            } else {
+                if (b === "EXCELLENT" || b === "STRONG" || b === "GOOD" || b === "HIGH") tone = "good";
+                else if (b === "WEAK" || b === "LOW") tone = "bad";
+            }
+            return { label: band, tone };
+        }
+        if (stageId === "decision") {
+            if (!decision || !decision.metadata) return null;
+            const stance = decisionStance(decision.metadata.decision_type, decision.metadata.direction);
+            const toneMap = {
+                "stance-buy": "good", "stance-sell": "bad",
+                "stance-hold": "warn", "stance-pass": "neutral", "stance-wait": "neutral",
+            };
+            return { label: stance.label, tone: toneMap[stance.cls] || "neutral" };
+        }
+        if (stageId === "trade_plan") {
+            if (!decision) return null;
+            return decision.trade_plan
+                ? { label: "Authorized", tone: "good" }
+                : { label: "Not authorized", tone: "neutral" };
+        }
+        if (stageId === "evidence") {
+            const gates = decision && decision.analysis && Array.isArray(decision.analysis.gate_results)
+                ? decision.analysis.gate_results
+                : [];
+            const gate = gates.find(g => g && g.gate === "EVIDENCE");
+            if (!gate) return null;
+            return gate.passed ? { label: "Sufficient", tone: "good" } : { label: "Insufficient", tone: "bad" };
+        }
+        return null;
+    }
+
+    function dagStatusBadgeHtml(stage) {
+        const meaning = stageMeaning(stage.stage_id);
+        if (meaning) {
+            return `<span class="dag-node-status meaning-${meaning.tone}">${escapeDecisionHtml(meaning.label)}</span>`;
+        }
+        return `<span class="dag-node-status ${stage.status.toLowerCase()}">${stage.status}</span>`;
+    }
+
+    // Called once activeDepth/activeContextData arrive (async, after the DAG
+    // already rendered) so nodes upgrade from the generic lifecycle status
+    // to their real computed state without re-selecting or jumping tabs.
+    function refreshDagNodeMeanings() {
+        if (!dagNodesContainer || !activeTrace || !Array.isArray(activeTrace.stages)) return;
+        activeTrace.stages.forEach(stage => {
+            const node = dagNodesContainer.querySelector(`[data-stage="${stage.stage_id}"]`);
+            const badge = node && node.querySelector(".dag-node-status");
+            if (!badge) return;
+            const meaning = stageMeaning(stage.stage_id);
+            if (!meaning) return;
+            badge.className = `dag-node-status meaning-${meaning.tone}`;
+            badge.textContent = meaning.label;
+        });
+    }
+
     function renderTraceDAG(trace) {
         if (!dagNodesContainer) return;
         dagNodesContainer.innerHTML = "";
@@ -4787,12 +4881,11 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
             node.setAttribute("data-stage", stage.stage_id);
 
             const icon = STAGE_ICONS[stage.stage_id] || "fa-circle-notch";
-            const statusClass = stage.status.toLowerCase();
 
             node.innerHTML = `
                 <i class="fa-solid ${icon} dag-node-icon"></i>
                 <span class="dag-node-name" title="${escapeDecisionHtml(stage.name)}">${escapeDecisionHtml(stage.name)}</span>
-                <span class="dag-node-status ${statusClass}">${stage.status}</span>
+                ${dagStatusBadgeHtml(stage)}
             `;
 
             node.addEventListener("click", () => {
@@ -4925,20 +5018,24 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
             const endX = (next.left + next.width / 2) - containerRect.left;
             const endY = (next.top + next.height / 2) - containerRect.top;
 
-            // Draw line
+            // Draw line — a gentle continuous dash-flow animation (CSS
+            // class, respects prefers-reduced-motion) gives the "animated
+            // flow" feel the owner asked for without anything flashy.
             const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
             line.setAttribute("x1", startX);
             line.setAttribute("y1", startY);
             line.setAttribute("x2", endX);
             line.setAttribute("y2", endY);
+            line.setAttribute("class", "dag-flow-line");
             line.setAttribute("stroke", "rgba(56, 189, 248, 0.2)");
             line.setAttribute("stroke-width", "2");
             line.setAttribute("stroke-dasharray", "4 4");
 
-            // Animation effect if active trace node is selected
+            // Brighter + faster flow along the line adjacent to the selected node
             if (nodes[i].classList.contains("active") || nodes[i+1].classList.contains("active")) {
                 line.setAttribute("stroke", "rgba(56, 189, 248, 0.6)");
                 line.setAttribute("stroke-width", "3");
+                line.classList.add("dag-flow-line-active");
             }
 
             dagSvgLines.appendChild(line);
