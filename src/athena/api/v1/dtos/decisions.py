@@ -374,6 +374,8 @@ class DecisionAnalogsDTO(BaseModel):
     win_rate_pct: Decimal | None = None
     avg_return_pct: Decimal | None = None
     avg_holding_days: Decimal | None = None
+    min_holding_days: Decimal | None = None
+    max_holding_days: Decimal | None = None
     outcomes_sample_size: int = 0
 
 

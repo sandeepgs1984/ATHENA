@@ -545,6 +545,11 @@ class TestDecisionsAPI:
         assert Decimal(data["win_rate_pct"]) == Decimal("100.00")
         assert Decimal(data["avg_return_pct"]) == Decimal("5.00")
         assert data["avg_holding_days"] is not None
+        # min/max holding reuse the exact same per-analog holding_days values
+        # already averaged — with a single realized outcome, min == max ==
+        # avg exactly (not a separately-derived number).
+        assert Decimal(data["min_holding_days"]) == Decimal(data["avg_holding_days"])
+        assert Decimal(data["max_holding_days"]) == Decimal(data["avg_holding_days"])
 
     def test_decision_analogs_aggregate_mixed_win_loss(self, client) -> None:
         """UX-6: win-rate/avg-return/avg-holding aggregate across analogs with
@@ -579,16 +584,26 @@ class TestDecisionsAPI:
                 "pipeline": {"decision_reports": {decision_id: _report(score, confidence, risk)}}
             }
 
-        # Winner: entry 100 -> exit 110, qty 10 => pnl +100.00, return +10%
+        # Winner: entry 100 -> exit 110, qty 10 => pnl +100.00, return +10%.
+        # Closed 3 days after the decision, so the aggregate's min/max holding
+        # has a real, deterministic spread to assert on (rather than two
+        # outcomes both closed "now", which would collapse to ~0 days apart).
         client.post(
             "/api/v1/decisions/dec-mix-win/outcome",
-            json={"entry_price": "100.00", "exit_price": "110.00", "quantity": 10},
+            json={
+                "entry_price": "100.00", "exit_price": "110.00", "quantity": 10,
+                "closed_ts": (now + timedelta(days=3)).isoformat(),
+            },
             headers=write_headers,
         )
-        # Loser: entry 100 -> exit 95, qty 10 => pnl -50.00, return -5%
+        # Loser: entry 100 -> exit 95, qty 10 => pnl -50.00, return -5%.
+        # Closed 7 days after the decision.
         client.post(
             "/api/v1/decisions/dec-mix-loss/outcome",
-            json={"entry_price": "100.00", "exit_price": "95.00", "quantity": 10},
+            json={
+                "entry_price": "100.00", "exit_price": "95.00", "quantity": 10,
+                "closed_ts": (now + timedelta(days=7)).isoformat(),
+            },
             headers=write_headers,
         )
 
@@ -603,6 +618,12 @@ class TestDecisionsAPI:
         # Average of +10% and -5% => +2.5%
         assert Decimal(data["avg_return_pct"]) == Decimal("2.500")
         assert data["avg_holding_days"] is not None
+        # min/max reuse the same per-analog holding_days already averaged —
+        # a real 3-day/7-day spread across these two analogs, not a guess.
+        # Exact (not approximate): closed_ts is an exact +3d/+7d offset of
+        # the same `now`, so the day-count arithmetic has no rounding.
+        assert Decimal(data["min_holding_days"]) == Decimal("3")
+        assert Decimal(data["max_holding_days"]) == Decimal("7")
 
     def test_decision_analogs_unknown_target_returns_empty(self, client) -> None:
         headers = get_auth_headers(client, Role.ANALYST)

@@ -310,6 +310,54 @@
     100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 230, 118, 0); }
 }
 
+/* DT-2 header market ticker — shown only on Decisions & Trace (toggled via
+   JS, not this file); real level + real day-change % only, never breadth
+   or an overall health score (neither exists as real data — see the
+   MarketTickerDTO docstring). */
+.header-market-ticker {
+    display: flex;
+    align-items: center;
+    gap: var(--space-20);
+}
+
+.header-market-ticker[hidden] {
+    display: none;
+}
+
+.ticker-item {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.ticker-label {
+    font-size: var(--text-0-62);
+    color: var(--text-muted);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.ticker-value {
+    font-family: var(--font-mono);
+    font-size: var(--text-0-85);
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.ticker-change {
+    font-family: var(--font-mono);
+    font-size: var(--text-0-72);
+    font-weight: 600;
+}
+
+.ticker-change.positive {
+    color: var(--tone-good-text);
+}
+
+.ticker-change.negative {
+    color: var(--tone-bad-text);
+}
+
 .header-right {
     align-items: center;
     display: flex;

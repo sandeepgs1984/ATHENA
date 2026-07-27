@@ -14,6 +14,7 @@ from athena.api.v1.dtos import AthenaResponse, ResponseMeta
 from athena.api.v1.dtos.market import (
     CandleSeriesDTO,
     DeleteCandidateResultDTO,
+    MarketTickerDTO,
     OwnerCandidateDTO,
     OwnerCandidateListDTO,
     UpsertCandidateRequest,
@@ -57,6 +58,25 @@ def get_instrument_candles(
         Timeframe(timeframe),
         limit=limit,
     )
+    return AthenaResponse(status="success", data=data, meta=_meta(request))
+
+
+@router.get(
+    "/ticker",
+    response_model=AthenaResponse[MarketTickerDTO],
+    summary="Header market ticker — NIFTY 50 / BANK NIFTY / INDIA VIX",
+    status_code=status.HTTP_200_OK,
+    operation_id="getMarketTicker",
+)
+def get_market_ticker(
+    request: Request,
+    service: MarketHistoryService = Depends(get_market_history_service),  # noqa: B008
+    principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.READ)),  # noqa: B008
+) -> AthenaResponse[MarketTickerDTO]:
+    """Level + day-change % for each index, from the latest persisted Kite
+    snapshot and daily candles only — no new provider, no new calculations
+    beyond simple arithmetic over already-persisted values."""
+    data = service.market_ticker()
     return AthenaResponse(status="success", data=data, meta=_meta(request))
 
 

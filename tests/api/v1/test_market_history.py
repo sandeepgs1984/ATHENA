@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 from tests.api.v1.test_core_apis import get_auth_headers
@@ -12,8 +13,9 @@ from athena.api.dependencies import get_candle_history_provider
 from athena.api.security.models import Role
 from athena.api.v1.providers.in_memory import InMemoryCandleHistoryProvider
 from athena.api.v1.services.market_history_service import MarketHistoryService
+from athena.data.store.repository import SqliteRepository
 from athena.domain.enums import Timeframe
-from athena.domain.market import Candle
+from athena.domain.market import Candle, Instrument, MarketSnapshot
 from athena.indicators.calculations import align_trailing_series, atr_series, sma_series
 
 
@@ -141,3 +143,139 @@ def test_candles_carry_atr_and_moving_average_overlay() -> None:
     assert result.candles[0].moving_average is None
     assert result.candles[-1].atr is not None
     assert result.candles[-1].moving_average is not None
+
+
+def _index_candle(instrument_id: str, ts: datetime, close: str) -> Candle:
+    value = Decimal(close)
+    return Candle(
+        instrument_id=instrument_id,
+        timeframe=Timeframe.D1,
+        ts_open=ts,
+        open=value,
+        high=value,
+        low=value,
+        close=value,
+        volume=0,
+        source="test",
+    )
+
+
+def _register_index_instrument(repo: SqliteRepository, instrument_id: str) -> None:
+    """candles.instrument_id REFERENCES instruments(instrument_id) — indices
+    need a real row there too, same as any equity."""
+    repo.upsert_instrument(
+        Instrument(
+            instrument_id=instrument_id,
+            symbol=instrument_id.split(":", 1)[-1],
+            exchange="NSE",
+            series="INDEX",
+        )
+    )
+
+
+class TestMarketTicker:
+    """DT-2 header ticker — real level + real day-change %, derived only
+    from already-persisted Kite snapshot + daily candle data. Uses a real
+    SqliteRepository (not the in-memory candle provider) since the ticker
+    reads get_latest_snapshot()/list_candles_recent() directly."""
+
+    def test_ticker_computes_level_and_change_pct_from_real_data(
+        self, tmp_path: Path
+    ) -> None:
+        repo = SqliteRepository(tmp_path / "t.db")
+        repo.initialize()
+        yesterday = datetime(2026, 7, 24, 15, 30, tzinfo=timezone.utc)
+        today = datetime(2026, 7, 27, 5, 46, tzinfo=timezone.utc)  # ~11:16 IST
+
+        for iid in ("NSE:NIFTY 50", "NSE:NIFTY BANK", "NSE:INDIA VIX"):
+            _register_index_instrument(repo, iid)
+        repo.add_candles([_index_candle("NSE:NIFTY 50", yesterday, "23800.00")])
+        repo.add_candles([_index_candle("NSE:NIFTY BANK", yesterday, "56800.00")])
+        repo.add_candles([_index_candle("NSE:INDIA VIX", yesterday, "13.10")])
+        repo.add_snapshot(
+            MarketSnapshot(
+                ts=today,
+                indices={"NIFTY 50": Decimal("23929.90"), "NIFTY BANK": Decimal("57023.55")},
+                breadth_advances=0,
+                breadth_declines=0,
+                india_vix=Decimal("13.30"),
+            )
+        )
+
+        service = MarketHistoryService(
+            InMemoryCandleHistoryProvider(),
+            freshness_threshold_minutes=20,
+            repo=repo,
+        )
+        ticker = service.market_ticker()
+
+        assert ticker.nifty.label == "NIFTY 50"
+        assert ticker.nifty.level == Decimal("23929.90")
+        assert ticker.nifty.change_pct == (
+            (Decimal("23929.90") - Decimal("23800.00")) / Decimal("23800.00") * 100
+        )
+        assert ticker.bank_nifty.level == Decimal("57023.55")
+        assert ticker.india_vix.level == Decimal("13.30")
+        assert ticker.india_vix.change_pct is not None
+        assert ticker.as_of == today
+        repo.close()
+
+    def test_ticker_omits_change_pct_without_a_prior_close_never_fabricates(
+        self, tmp_path: Path
+    ) -> None:
+        """No prior-day candle persisted yet — change_pct must be None, not
+        a fabricated 0 or the level itself (ADR-005)."""
+        repo = SqliteRepository(tmp_path / "t2.db")
+        repo.initialize()
+        repo.add_snapshot(
+            MarketSnapshot(
+                ts=datetime(2026, 7, 27, 5, 46, tzinfo=timezone.utc),
+                indices={"NIFTY 50": Decimal("23929.90")},
+                breadth_advances=0,
+                breadth_declines=0,
+                india_vix=None,
+            )
+        )
+        service = MarketHistoryService(
+            InMemoryCandleHistoryProvider(),
+            freshness_threshold_minutes=20,
+            repo=repo,
+        )
+        ticker = service.market_ticker()
+
+        assert ticker.nifty.level == Decimal("23929.90")
+        assert ticker.nifty.change_pct is None
+        assert ticker.bank_nifty.level is None
+        assert ticker.bank_nifty.change_pct is None
+        assert ticker.india_vix.level is None
+        repo.close()
+
+    def test_ticker_with_no_repo_or_no_snapshot_returns_all_none(self) -> None:
+        """No repo wired (e.g. SQLite unavailable) — every field None, never
+        a placeholder number."""
+        service = MarketHistoryService(
+            InMemoryCandleHistoryProvider(),
+            freshness_threshold_minutes=20,
+        )
+        ticker = service.market_ticker()
+        assert ticker.nifty.level is None
+        assert ticker.bank_nifty.level is None
+        assert ticker.india_vix.level is None
+        assert ticker.as_of is None
+
+    def test_ticker_endpoint_requires_auth(self, client: TestClient) -> None:
+        unauthenticated = client.get("/api/v1/market/ticker")
+        assert unauthenticated.status_code == 401
+
+        headers = get_auth_headers(client, Role.READONLY)
+        ok = client.get("/api/v1/market/ticker", headers=headers)
+        assert ok.status_code == 200
+        data = ok.json()["data"]
+        # create_app() always wires the real ATHENA_DB_PATH (no test
+        # override exists for this, a pre-existing characteristic of this
+        # suite — not introduced here), so this hits whatever the real
+        # local db/athena.db actually contains, not a clean fixture. Assert
+        # the response shape only, never a specific value.
+        assert set(data.keys()) == {"nifty", "bank_nifty", "india_vix", "as_of"}
+        for key in ("nifty", "bank_nifty", "india_vix"):
+            assert set(data[key].keys()) == {"label", "level", "change_pct"}

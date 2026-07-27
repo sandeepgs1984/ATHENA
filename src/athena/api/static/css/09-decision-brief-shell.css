@@ -44,31 +44,70 @@
     overflow: hidden;
 }
 
-/* Sticky cockpit header: identity row, gauges, tab strip, action bar —
-   all always visible regardless of which tab or scroll position is active */
+/* DT-2: .dag-column now holds two stacked cards (Quick Summary + Reasoning
+   Trace) instead of one — Quick Summary sizes to its content, Reasoning
+   Trace fills whatever vertical space remains. */
+.dag-column {
+    gap: var(--space-14);
+}
+
+.dag-column .quick-summary-card {
+    flex: 0 0 auto;
+    height: auto;
+    max-height: 45%;
+}
+
+.dag-column .quick-summary-card .dag-quick-summary {
+    overflow-y: auto;
+    padding: var(--space-14) var(--space-16);
+}
+
+.dag-column > .card:not(.quick-summary-card) {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.quick-summary-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-10);
+}
+
+.card-header-title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-8);
+}
+
+/* Sticky cockpit header: identity row, gauges, tab strip, action bar — all
+   always visible regardless of which tab or scroll position is active.
+   DT-2 spacing/hierarchy polish (owner assignment: "large: stock name...
+   more whitespace instead of extra separators") — same elements, same
+   data, no content moved; only sizing/spacing/grouping changed. */
 .decision-brief-header {
     display: flex;
     flex-direction: column;
-    gap: var(--space-10);
+    gap: var(--space-14);
 }
 
 .decision-brief-header-row1 {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--space-12);
+    gap: var(--space-16);
 }
 
 .decision-brief-identity {
     display: flex;
     align-items: center;
-    gap: var(--space-8);
+    gap: var(--space-10);
     min-width: 0;
 }
 
 .decision-brief-symbol-lg {
     color: var(--text-primary);
-    font-size: var(--text-1-2);
+    font-size: var(--text-1-4);
     font-weight: 750;
     letter-spacing: -0.02em;
     font-family: var(--font-mono);
@@ -105,7 +144,9 @@
 .decision-brief-gauges {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: var(--space-8);
+    gap: var(--space-12);
+    padding-top: var(--space-12);
+    border-top: 1px solid var(--border-color);
 }
 
 /* Author display rules otherwise beat the browser's own [hidden] default,

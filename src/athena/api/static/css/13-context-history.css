@@ -376,45 +376,36 @@
     margin-top: var(--space-2);
 }
 
-/* Sticky Reasoning Trace quick summary (UX-6 sidebar summary) — pinned to
-   the top of the scrollable trace panel so symbol/stance/score/confidence/
-   risk stay visible while scrolling through DAG detail */
+/* Reasoning Trace "Quick Summary" card (DT-2 refinement — reference mock:
+   its own standalone card, not inline at the top of the Reasoning Trace
+   card). Every row reuses a value that already renders elsewhere on the
+   brief (gauges, Trade Plan, Historical Analogs) — see
+   renderSidebarQuickSummary. Card chrome (border/background) comes from
+   the shared .card/.quick-summary-card rules in 09-decision-brief-shell.css;
+   this is just the row layout. */
 .dag-quick-summary {
-    position: sticky;
-    top: -24px;
-    z-index: 3;
-    align-items: center;
-    gap: var(--space-10);
-    flex-wrap: wrap;
-    background: rgba(15, 22, 38, 0.92);
-    border: 1px solid var(--border-color);
-    border-radius: 7px;
-    padding: var(--space-8) var(--space-12);
-    margin: -24px -24px var(--space-12) -24px;
-    backdrop-filter: blur(4px);
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-6);
 }
 
-.dag-quick-symbol {
-    font-family: var(--font-mono);
-    font-weight: 750;
-    color: var(--text-primary);
-    font-size: var(--text-0-85);
-}
-
-.dag-quick-metric {
+.quick-summary-row {
     display: flex;
     align-items: center;
-    gap: var(--space-4);
-    font-size: var(--text-0-66);
-    color: var(--text-muted);
-    text-transform: uppercase;
+    justify-content: space-between;
+    gap: var(--space-8);
+    font-size: var(--text-0-72);
 }
 
-.dag-quick-metric strong {
+.quick-summary-row span {
+    color: var(--text-muted);
+}
+
+.quick-summary-row strong {
     font-family: var(--font-mono);
     color: var(--text-primary);
-    text-transform: none;
-    font-size: var(--text-0-72);
+    font-weight: 700;
 }
 
 .decision-counterfactual-panel {

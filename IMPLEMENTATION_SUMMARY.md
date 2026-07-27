@@ -6,6 +6,132 @@ status updated on approval.
 
 ---
 
+## DT-2 — Hero header + Quick Summary + ticker strip (APPROVED)
+
+| | |
+|---|---|
+| Completed | 2026-07-27 |
+| Objective | Second milestone of the owner's "ATHENA Workstation Refactor": rearrange the hero header hierarchy, build a "Quick Summary" card from existing data only, and add a market ticker strip — per an explicit data-source priority (reuse ATHENA's existing pipeline first; stop and present any gap rather than fabricate or silently add a new external integration) |
+| Scope | `src/athena/api/v1/dtos/market.py`, `src/athena/api/v1/services/market_history_service.py`, `src/athena/api/v1/routers/market.py`, `src/athena/api/dependencies.py`, `src/athena/api/static/index.html`, `src/athena/api/static/js/03-app-shell.js`, `src/athena/api/static/js/13-decision-brief-core.js`, `src/athena/api/static/js/19-decision-brief-history.js`, `src/athena/api/static/css/03-shell.css`, `src/athena/api/static/css/09-decision-brief-shell.css`, `src/athena/api/static/css/13-context-history.css` |
+| Tests | 4 new backend tests + 2 existing analog-aggregate tests extended with real min/max holding-day assertions + ~35 new dashboard-hosting assertions. Full suite **1035 passed** |
+| Coverage | Live-browser verified: ticker shows/hides correctly per active tab via real nav clicks; graceful all-`None`/"—" fallback confirmed when the endpoint 401s (no owner credentials for a real fetch); Quick Summary card visually confirmed via injected sample data |
+| Status | **✅ Approved** (2026-07-27) |
+| Branch | feature/live-dashboard |
+
+### Research phase: what does ATHENA already have?
+
+Before writing any ticker code, dispatched research (not implementation) to verify the owner's stated priority — reuse existing data, only propose new infrastructure for a genuine gap:
+
+- **NIFTY 50 / BANK NIFTY / India VIX**: all three have a real live level (`KiteMarketDataProvider.market_snapshot()` already fetches all three into `MarketSnapshot.indices`/`.india_vix`) **and** real persisted daily candles (`index_instruments`/`india_vix_instrument` are always included in the ingestion catalog, confirmed directly against the live DB: `NSE:NIFTY 50`, `NSE:NIFTY BANK`, `NSE:INDIA VIX` all have candle rows). Neither the level nor a day-change % required any new provider — only a small new endpoint to expose what already exists (Priority 2 per the owner's own rule) plus simple derived arithmetic over already-persisted values.
+- **Market breadth (ADV/DEC)**: genuine gap. `MarketSnapshot.breadth_advances`/`breadth_declines` exist as domain fields, but the live Kite provider hardcodes both to `0` — Kite Connect's quote API has no advancers/decliners concept at all. **Decision (owner): omit from the ticker, track as future scope** rather than propose a new external feed as part of this milestone.
+- **Overall Market Health score**: the Market Intelligence tab's existing "Market Health" gauge has silently shown a hardcoded `0/100` forever — `_regime_to_payload()` (`src/athena/ops/owner_validation.py`) never merges in the real `MarketHealthEngine.assess()` result. Investigating *what that real result actually is* revealed it's not a fixable wiring bug the way it first looked: `MarketHealthAssessment` has no scalar 0-100 field at all, only 4 categorical dimension labels (Breadth/Trend Quality/Momentum/Volatility). Synthesizing a single score from those labels would be new business logic, not a data-exposure fix. **Decision (owner): omit from the ticker, drop the fake gauge for now, track as future scope.**
+
+### Scope completed
+
+- **Backend (Priority-2 exception — small, additive, no new provider/architecture)**:
+  - `MarketIndexTickerDTO` (label/level/change_pct, all `Optional`) and `MarketTickerDTO` (nifty/bank_nifty/india_vix/as_of) in `dtos/market.py` — docstrings explicitly record why breadth and an overall health score are excluded, so a future reader doesn't mistake the omission for an oversight.
+  - `MarketHistoryService.market_ticker()`: reads `repo.get_latest_snapshot()` for each index's live level, then `repo.list_candles_recent(instrument_id, Timeframe.D1, limit=5)` filtered to the most recent candle strictly before the snapshot's own trading day, as the prior-close baseline for `change_pct = (level - baseline) / baseline * 100`. Returns `None` for any field whose underlying data isn't available — never a fabricated 0.
+  - `GET /api/v1/market/ticker` (`routers/market.py`, `Permission.READ`) — thin, delegates entirely to the service.
+  - `MarketHistoryService` gained an optional `repo: SqliteRepository | None` constructor param (mirrors the existing `CandidatesService`/`DecisionsService` precedent of accepting a raw repo alongside a primary provider abstraction for secondary read needs); wired from `app.state.sqlite_repo` in `get_market_history_service`.
+- **Frontend — header ticker**: `#header-market-ticker` in the shared `.console-header` (outside any tab-pane), hidden by default; `switchTab()` shows it only when `tabId === "decisions"`; `loadTabData()`'s "decisions" branch calls the new `loadMarketTicker()` — the one new fetch approved for this page, never triggered by any other tab.
+- **Frontend — Quick Summary**: `renderSidebarQuickSummary()` (UX-6's sidebar score/confidence/risk strip) expanded — not duplicated alongside a second new section — with R:R Potential (`decision.trade_plan.risk_reward`, same `formatDecisionRatio` already used on the Trade Plan tab), Expected Return (same `computeExpectedReturnPct` already used there too — never a second, independently-derived calculation), and Historical Analogs' Win Rate/Avg Holding, both explicitly labeled "(Historical)" since no forward-looking per-decision holding-period field exists anywhere in ATHENA — this is honestly a real average across similar past trades, not a guarantee for the current one. `loadDecisionAnalogs()` now also calls `renderSidebarQuickSummary()` after it resolves, since Win Rate/Avg Holding depend on that data and nothing previously re-rendered the sidebar for it.
+- **Hero header polish**: `.decision-brief-header`/`-row1` gaps widened, `.decision-brief-symbol-lg` font-size increased (`--text-1-2` → `--text-1-4`), a top border/padding added above `.decision-brief-gauges` as a clear visual divider between the identity row and the score/confidence/risk/R:R row — same elements, same data, only spacing/sizing/grouping changed.
+
+### Refinements from owner screenshot review (2026-07-27), before final approval
+
+- **Quick Summary → standalone card.** The owner shared a reference-mock screenshot showing Quick Summary as its own distinct bordered card (own header + stance badge), not inline at the top of the Reasoning Trace card the way it was originally built. Restructured: `#quick-summary-card` is now a sibling `.card` above the Reasoning Trace card inside `.dag-column`; the header (icon + "Quick Summary" title + `#quick-summary-stance` badge) lives in static HTML, and `renderSidebarQuickSummary()` now only toggles the card's visibility, sets the badge's text/class, and fills the metrics rows — it no longer builds a header or symbol line itself. `.dag-column` gained explicit flex sizing (`.quick-summary-card { flex: 0 0 auto }`, the Reasoning Trace card `{ flex: 1 1 auto; min-height: 0 }`) since it now holds two stacked cards instead of one. One deliberate deviation from the mock: it showed "Holding Period: 2-5 Days", but no such range field exists anywhere in ATHENA — only a real historical *average* (`DecisionAnalogsDTO.avg_holding_days`). Kept the honest "Avg Holding (Historical)" label rather than inventing a range to match the mock exactly.
+- **Ticker auto-refresh.** Owner asked how often the ticker refreshes; the honest answer was "never automatically" — no `setInterval` exists anywhere in this dashboard, every tab (this one included) only reloads on tab-switch or a manual refresh click. Owner asked for a timer. Added `startTickerRefresh()`/`stopTickerRefresh()` (60s interval via `TICKER_REFRESH_INTERVAL_MS`), started when `switchTab` activates Decisions & Trace and stopped when leaving it — mirrors the existing `stopOpsStream()` start/stop lifecycle already used for the Operations tab's live stream. Deliberately scoped to the ticker only, not the decisions list/briefing (re-fetching those every tick would reset scroll position/selection, which wasn't asked for).
+- **Quick Summary value formatting/coloring** (owner reference-mock screenshot, second review pass). Score/Confidence were rendering the same band words the hero gauges already show ("Strong"/"HIGH") — changed to raw numbers, `${scoreView.valueLabel}/100` and `${confidenceView.valueLabel}%`, so this card reads as at-a-glance data rather than repeating the gauge chips. Risk was band-only — changed to `${band} (${valueLabel})` (e.g. "Medium (42.9)"), colored via the shared `.tone-good-text`/`.tone-warn-text`/`.tone-bad-text` utility classes (the same tokens the header ticker's `.positive`/`.negative` colors use). R:R Potential was using the shared `formatDecisionRatio()` (2 decimals, `2.00 : 1`) — switched to `rr.toFixed(1)` to match the hero cockpit gauge's own "EXPECTED R:R" formatting (`2.0 : 1`) instead of introducing a third ratio format. Expected Return gained the same sign-based `tone-good-text`/`tone-bad-text` coloring. Every value still comes from the exact same `analysisPresentation`/`riskBand` computations the hero gauges already use (`depth.score`/`depth.confidence`/`depth.risk`) — this was purely a presentation change, no new number computed anywhere.
+- **Holding Period (real range, replacing the fabricated one in the mock).** Owner asked whether ATHENA can provide a real "Holding Period" in days like the mock's "2 - 5 Days". Checked: each returned analog already carries its own real `outcome_holding_days` (from a persisted trade's actual entry-to-exit time), and `DecisionsService._aggregate_analog_outcomes` already collects all of them in memory to compute the average — the min/max across that exact same list was simply never exposed. Added `min_holding_days`/`max_holding_days` to `DecisionAnalogsDTO`, computed alongside the existing average (same method, same input list — no new provider, no new business logic, Priority 1/2). Quick Summary's "Avg Holding (Historical)" row replaced with "Holding Period (Historical): 3 - 7 Days" — a real historical range across similar past trades (collapses to a single number when every analog held for the same length of time), not a fabricated estimate.
+
+### Files created
+
+- None.
+
+### Files modified
+
+- `src/athena/api/v1/dtos/market.py` — `MarketIndexTickerDTO`, `MarketTickerDTO`.
+- `src/athena/api/v1/services/market_history_service.py` — `market_ticker()`, `_index_ticker()`, `_prior_close()`; optional `repo` constructor param.
+- `src/athena/api/v1/routers/market.py` — `GET /market/ticker`.
+- `src/athena/api/dependencies.py` — `get_market_history_service` passes `repo=app.state.sqlite_repo`.
+- `src/athena/api/v1/dtos/decisions.py` — `DecisionAnalogsDTO` gained `min_holding_days`/`max_holding_days`.
+- `src/athena/api/v1/services/decisions_service.py` — `_aggregate_analog_outcomes()` now also returns min/max holding days from the same collected list.
+- `src/athena/api/static/index.html` — header ticker markup; Quick Summary restructured into a standalone card; cache-bust `9.48.0` → `9.49.4`.
+- `src/athena/api/static/js/03-app-shell.js` — ticker show/hide in `switchTab`, `loadMarketTicker()`/`renderTickerIndex()`, fetch wired into `loadTabData`'s "decisions" branch; `startTickerRefresh()`/`stopTickerRefresh()` 60s auto-refresh lifecycle.
+- `src/athena/api/static/js/13-decision-brief-core.js` — `renderSidebarQuickSummary()` expanded, then restructured to target the standalone card's header badge + body separately, then reworked per-row formatting/coloring and the Holding Period range.
+- `src/athena/api/static/js/19-decision-brief-history.js` — `loadDecisionAnalogs()` now also refreshes the sidebar.
+- `src/athena/api/static/css/03-shell.css` — `.header-market-ticker`/`.ticker-*` styles.
+- `src/athena/api/static/css/09-decision-brief-shell.css` — hero header spacing/hierarchy polish; `.dag-column` flex sizing for two stacked cards; `.quick-summary-card-header`/`.card-header-title`.
+- `src/athena/api/static/css/13-context-history.css` — `.dag-quick-summary` restructured for the richer card, then simplified once the header moved to static HTML (dropped `.quick-summary-header`/`.dag-quick-symbol`/`.quick-summary-grid`, dropped the sticky-positioning/margin-bleed hack since it's no longer visually merged into the DAG canvas); removed the now-unused `.dag-quick-metric`.
+- `tests/api/v1/test_market_history.py` — 4 new tests (`TestMarketTicker`).
+- `tests/api/v1/test_core_apis.py` — 2 existing analog-aggregate tests extended with real min/max holding-day assertions (one exact single-outcome equality, one deterministic 3-day/7-day spread via explicit `closed_ts`).
+- `tests/api/platform/test_dashboard_hosting.py` — ~35 new assertions; 1 updated (`.dag-quick-metric` no longer exists).
+- This log; `docs/MILESTONES.md`.
+
+### Public APIs
+
+- `GET /api/v1/market/ticker` (READ) — new.
+- `GET /api/v1/decisions/{decision_id}/analogs` — response shape additive-only change: `min_holding_days`/`max_holding_days` added alongside the existing `avg_holding_days`, no fields removed or renamed.
+
+### Validation and architecture
+
+- Full regression: **1035 passed** (1031 + 4 new backend tests). Ruff clean.
+- Discovered mid-implementation that `create_app()`'s test client always wires the real local `db/athena.db` (no `ATHENA_DB_PATH` override exists in the test fixtures) — a pre-existing characteristic of this test suite, not introduced here. Adjusted the endpoint-level test to assert response *shape* only, not specific values, and did the real value-level testing directly against `MarketHistoryService` with an isolated `tmp_path` `SqliteRepository` instead.
+- Two backend test failures along the way, both fixed and re-verified: a foreign-key violation (candles reference `instruments`, so indices need a real `instruments` row too, same as any equity) and the DB-wiring discovery above.
+- JS syntax verified (`node --check` on the reassembled script). HTML/CSS balance re-verified after every edit.
+- No ADR required: the ticker's backend addition is the Priority-2 exception the owner's own rule pre-approved (expose already-computed data via a small read endpoint — no new provider, no new architecture, no new business logic); everything else is presentation-only.
+
+### Risks and technical debt
+
+- Could not exercise the ticker's real authenticated fetch end-to-end (no owner credentials) — verified via live DOM injection of sample data (exercises the same render path) plus the backend tests' real-repository coverage of the actual arithmetic.
+- Market breadth and an overall Market Health score are explicitly tracked as future scope, not fixed here — see the two "Decision (owner)" notes above.
+- No new technical debt otherwise.
+
+### Remaining work
+
+- None — owner reviewed on the live dashboard (including restarting the server to pick up the Holding Period backend change, and confirming the field renders correctly with real logged-outcome data) and approved. Proceeding to DT-3.
+
+### Commit message
+
+```text
+feat(dashboard): DT-2 — hero header polish, standalone Quick Summary
+card, auto-refreshing market ticker
+
+- Add GET /api/v1/market/ticker (NIFTY 50/BANK NIFTY/INDIA VIX, real
+  level + real day-change % derived from already-persisted Kite
+  snapshot + daily candle data — no new provider, no new calculations
+  beyond simple arithmetic). Shown/fetched only on Decisions & Trace,
+  auto-refreshed every 60s while that tab is active (owner-requested;
+  mirrors the existing Operations-tab stream start/stop lifecycle).
+- Explicitly omit market breadth (Kite has no adv/dec data — hardcoded
+  0/0 in the live provider, a genuine gap) and an overall Market Health
+  score (no scalar aggregate exists anywhere in ATHENA, only 4
+  categorical dimension labels — synthesizing one would be new business
+  logic) from the ticker; both tracked as future scope instead of
+  fabricated.
+- Expand renderSidebarQuickSummary (UX-6) with R:R Potential, Expected
+  Return, and historical-analogs Win Rate/Holding Period (all
+  explicitly labeled "(Historical)") rather than adding a second,
+  duplicate section — reuses values already computed/rendered
+  elsewhere on the brief, no new fetch or calculation. Restructured as
+  its own standalone card (owner reference-mock refinement) rather
+  than inline at the top of the Reasoning Trace card.
+- Score/Confidence as raw numbers instead of band words, Risk as
+  "band (value)" colored by band, R:R at one decimal (matching the
+  hero gauge's own formatting), Expected Return colored by sign — all
+  from the exact same analysisPresentation/riskBand computations the
+  hero gauges already use.
+- Add min_holding_days/max_holding_days to DecisionAnalogsDTO, computed
+  from the same per-analog outcome_holding_days list
+  _aggregate_analog_outcomes already collects for the average — a real
+  historical Holding Period range (e.g. "3 - 7 Days"), replacing the
+  single-average row, never a fabricated estimate.
+- Hero header spacing/hierarchy polish (larger symbol text, clearer
+  divider above the gauges row) — same elements, same data.
+```
+
+---
+
 ## Fix pass — reload-resets-tab regression + collapsible global sidebar (BUILT, awaiting owner confirmation)
 
 | | |

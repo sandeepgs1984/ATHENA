@@ -315,6 +315,10 @@
             if (activeDecisionId !== decisionId) return;
             activeAnalogs = response && response.data;
             renderAnalogsPanel(activeAnalogs);
+            // DT-2: Quick Summary's Win Rate/Avg Holding rows depend on this
+            // same activeAnalogs — refresh once it's loaded (nothing else
+            // re-rendered the sidebar for this specific data before).
+            renderSidebarQuickSummary();
         } catch (err) {
             if (activeDecisionId !== decisionId) return;
             console.error(`Failed to load analogs for ${decisionId}`, err);

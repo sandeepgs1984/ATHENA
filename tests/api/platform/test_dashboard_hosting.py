@@ -443,7 +443,10 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert 'id="dag-quick-summary"' in html
     assert "function renderSidebarQuickSummary" in js
     assert ".dag-quick-summary" in css
-    assert ".dag-quick-metric" in css
+    # DT-2 expanded this into a richer "Quick Summary" card (see the DT-2
+    # assertions further below) — .dag-quick-metric (the old inline-chip
+    # layout) no longer exists, replaced by .quick-summary-row.
+    assert ".dag-quick-metric" not in css
     assert "function renderHistoricalValidation" in js
     assert "win_rate_pct" in js
     assert "avg_return_pct" in js
@@ -674,6 +677,103 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "transition: width var(--transition-speed) ease;" in css
     assert "function applySidebarCollapsed" in js
     assert "athena.sidebar-collapsed" in js
+
+    # DT-2 (owner UX workstation refactor) — header market ticker: NIFTY 50 /
+    # BANK NIFTY / INDIA VIX only, real level + real day-change % from a new
+    # GET /api/v1/market/ticker (derives everything from already-persisted
+    # Kite snapshot + daily candle data — no new provider, no new
+    # calculations beyond simple arithmetic). Shown/fetched only on
+    # Decisions & Trace. Market breadth and an overall health score are
+    # deliberately omitted — neither exists as real data anywhere in ATHENA
+    # today (tracked as future scope, not fabricated).
+    assert 'id="header-market-ticker"' in html
+    assert 'id="ticker-nifty-level"' in html
+    assert 'id="ticker-banknifty-level"' in html
+    assert 'id="ticker-vix-level"' in html
+    assert ".header-market-ticker" in css
+    assert "function loadMarketTicker" in js
+    assert "/api/v1/market/ticker" in js
+    assert 'headerMarketTicker.hidden = tabId !== "decisions";' in js
+
+    # Fix pass (owner, 2026-07-27): ticker previously only refreshed on
+    # tab-switch/manual refresh, same as every other tab (no polling existed
+    # anywhere in this dashboard) — owner asked for a timer. Scoped tightly
+    # to the ticker only (not the decisions list/briefing, which would reset
+    # scroll position/selection on every tick) and only while Decisions &
+    # Trace is the active tab, mirroring the existing start/stop pattern
+    # already used for the Operations tab's live stream (stopOpsStream).
+    assert "function startTickerRefresh" in js
+    assert "function stopTickerRefresh" in js
+    assert "TICKER_REFRESH_INTERVAL_MS = 60000" in js
+    assert "setInterval(loadMarketTicker, TICKER_REFRESH_INTERVAL_MS)" in js
+    switch_tab_start = js.find("function switchTab(tabId)")
+    switch_tab_end = js.find("\n    function ", switch_tab_start + 1)
+    switch_tab_body = js[switch_tab_start:switch_tab_end]
+    assert "startTickerRefresh();" in switch_tab_body
+    assert "stopTickerRefresh();" in switch_tab_body
+
+    # DT-2 — Quick Summary: the UX-6 sidebar strip (score/confidence/risk
+    # only) expanded into a richer card (R:R Potential, Expected Return,
+    # Win Rate/Avg Holding — all historical-analogs-labeled honestly) rather
+    # than a second, separate "Quick Summary" section duplicating the same
+    # score/confidence/risk (owner: "don't duplicate information
+    # unnecessarily"). No new fetch — reuses activeDecisionData/activeDepth/
+    # activeAnalogs already loaded for the brief.
+    #
+    # DT-2 refinement (owner reference mock): Quick Summary is its own
+    # standalone card, not inline at the top of the Reasoning Trace card —
+    # header markup (title + stance chip) lives in static HTML; JS only
+    # toggles the card's visibility and the stance chip's text/class.
+    assert 'id="quick-summary-card"' in html
+    assert 'id="quick-summary-stance"' in html
+    assert "quickSummaryCard" in js
+    assert "quickSummaryStanceEl" in js
+    assert ".quick-summary-card-header" in css
+    assert "R:R Potential" in js
+    assert "Expected Return" in js
+    assert "Win Rate (Historical)" in js
+    assert "Holding Period (Historical)" in js
+    assert ".quick-summary-row" in css
+    # Locks in that Win Rate/Avg Holding actually refresh once analogs load
+    # (nothing else re-rendered the sidebar for this data before).
+    analogs_fn_start = js.find("async function loadDecisionAnalogs")
+    analogs_fn_end = js.find("async function ", analogs_fn_start + 1)
+    assert "renderSidebarQuickSummary();" in js[analogs_fn_start:analogs_fn_end]
+
+    # Fix pass (owner reference-mock screenshot, 2026-07-27): Quick Summary
+    # value formatting/coloring corrections — Score/Confidence as raw
+    # numbers (not repeating the gauge chips' band words), Risk as
+    # "band (value)" colored by band, R:R at one decimal matching the hero
+    # gauge's own formatting, Expected Return colored by sign. All reuse the
+    # exact same status/level/value already computed for the hero cockpit
+    # gauges (analysisPresentation/riskBand) — never a second, client-
+    # derived number.
+    assert "escapeDecisionHtml(scoreView.valueLabel)}/100" in js
+    assert "escapeDecisionHtml(confidenceView.valueLabel)}%" in js
+    quick_summary_fn_start = js.find("function renderSidebarQuickSummary")
+    quick_summary_fn_end = js.find("\n    function ", quick_summary_fn_start + 1)
+    quick_summary_fn_body = js[quick_summary_fn_start:quick_summary_fn_end]
+    assert "riskBand(riskView.data.value)" in quick_summary_fn_body
+    assert "tone-good-text" in quick_summary_fn_body
+    assert "tone-warn-text" in quick_summary_fn_body
+    assert "tone-bad-text" in quick_summary_fn_body
+    assert "rr.toFixed(1)" in quick_summary_fn_body
+
+    # Owner follow-up (2026-07-27): "does ATHENA have a real Holding Period
+    # (days)?" — checked, and each analog's own outcome_holding_days is
+    # already computed for the avg; min/max across that same real list is
+    # honest historical data, not a guess, and matches the reference mock's
+    # field more closely than a single average did. Replaces the earlier
+    # "Avg Holding (Historical)" row.
+    assert "min_holding_days" in js
+    assert "max_holding_days" in js
+    assert "minHold === maxHold" in quick_summary_fn_body
+
+    # DT-2 — hero header spacing/hierarchy polish (owner assignment: "large:
+    # stock name... more whitespace instead of extra separators"). Same
+    # elements, same data — only sizing/spacing/grouping changed.
+    assert "var(--text-1-4)" in css
+    assert "border-top: 1px solid var(--border-color);" in css
 
     # Future-implementation nav placeholders (no backing route yet) —
     # deliberately excluded from .nav-item so app-shell.js's click-wiring

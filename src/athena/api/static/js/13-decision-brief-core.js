@@ -1,5 +1,7 @@
 
     const dagQuickSummary = document.getElementById("dag-quick-summary");
+    const quickSummaryCard = document.getElementById("quick-summary-card");
+    const quickSummaryStanceEl = document.getElementById("quick-summary-stance");
     const decisionBriefTitle = document.getElementById("decision-brief-title");
     const decisionBriefStanceChip = document.getElementById("decision-brief-stance-chip");
     const decisionBriefTypeChip = document.getElementById("decision-brief-type-chip");
@@ -93,39 +95,106 @@
         }
     }
 
-    // Sticky quick-glance strip pinned to the top of the Reasoning Trace
-    // panel (owner UX audit — "sidebar summary") so symbol/stance/score/
-    // confidence/risk stay visible while scrolling through DAG detail,
-    // without duplicating the full Hero cockpit. Reuses activeDecisionData/
-    // activeDepth already loaded for the brief — no separate fetch, and
-    // shows "—" for a metric until its real value has loaded.
+    // Sticky "Quick Summary" card pinned to the top of the Reasoning Trace
+    // panel (DT-2, owner UX workstation refactor — expanded from UX-6's
+    // score/confidence/risk-only sidebar strip). Every field is a value
+    // that already exists and already renders elsewhere on this same brief
+    // (gauges, Trade Plan, Historical Analogs) — this consolidates them into
+    // one glanceable card rather than duplicating a second, separate
+    // "Quick Summary" section, per the owner's "don't duplicate information
+    // unnecessarily" instruction. No new fetch, no new calculation beyond
+    // formatting — reuses activeDecisionData/activeDepth/activeAnalogs
+    // already loaded for the brief, and shows "—" for anything not loaded
+    // (or not applicable) yet, never a fabricated value.
     function renderSidebarQuickSummary() {
         if (!dagQuickSummary) return;
         const decision = activeDecisionData;
         if (!decision || !decision.metadata) {
-            dagQuickSummary.style.display = "none";
+            if (quickSummaryCard) quickSummaryCard.style.display = "none";
             dagQuickSummary.innerHTML = "";
             return;
         }
         const meta = decision.metadata;
-        const symbol = String(meta.instrument_id || "").split(":").pop() || "—";
         const stance = decisionStance(meta.decision_type, meta.direction);
         const depth = activeDepth;
-        const metricChip = (tone) => {
-            const block = depth && depth[tone];
-            if (!block || block.status !== "OK") {
-                return `<span class="dag-quick-metric"><span>${escapeDecisionHtml(tone)}</span><strong>—</strong></span>`;
+
+        // Score/Confidence/Risk reuse the exact same status/level/value
+        // already computed for the hero cockpit gauges (renderCockpitGauges)
+        // — never a second, client-derived number — but formatted per the
+        // owner's reference mock (raw numbers, not band words, so this card
+        // reads as data at a glance rather than repeating the gauge chips).
+        const scoreView = analysisPresentation(friendlyAnalysisName("score"), depth && depth.score, "score");
+        const scoreRow = scoreView.status === "OK"
+            ? `<div class="quick-summary-row"><span>Score</span><strong>${escapeDecisionHtml(scoreView.valueLabel)}/100</strong></div>`
+            : `<div class="quick-summary-row"><span>Score</span><strong>—</strong></div>`;
+
+        const confidenceView = analysisPresentation(friendlyAnalysisName("confidence"), depth && depth.confidence, "confidence");
+        const confidenceRow = confidenceView.status === "OK"
+            ? `<div class="quick-summary-row"><span>Confidence</span><strong>${escapeDecisionHtml(confidenceView.valueLabel)}%</strong></div>`
+            : `<div class="quick-summary-row"><span>Confidence</span><strong>—</strong></div>`;
+
+        // Risk band (Low/Medium/High) from the same riskBand() thresholds
+        // the hero gauge already bands by, colored via the shared
+        // .tone-good/warn/bad-text utility classes (same tokens the header
+        // ticker's positive/negative colors use).
+        const riskView = analysisPresentation(friendlyAnalysisName("risk"), depth && depth.risk, "risk");
+        const riskRow = (() => {
+            if (riskView.status !== "OK") {
+                return `<div class="quick-summary-row"><span>Risk</span><strong>—</strong></div>`;
             }
-            const view = analysisPresentation(friendlyAnalysisName(tone), block, tone);
-            return `<span class="dag-quick-metric"><span>${escapeDecisionHtml(tone)}</span><strong>${escapeDecisionHtml(view.displayBand || view.valueLabel)}</strong></span>`;
-        };
-        dagQuickSummary.style.display = "flex";
+            const band = riskBand(riskView.data.value) || "—";
+            const toneCls = band === "Low" ? "tone-good-text" : band === "High" ? "tone-bad-text" : "tone-warn-text";
+            return `<div class="quick-summary-row"><span>Risk</span><strong class="${toneCls}">${escapeDecisionHtml(band)} (${escapeDecisionHtml(riskView.valueLabel)})</strong></div>`;
+        })();
+
+        const plan = decision.trade_plan;
+        // One-decimal ratio, matching the hero gauge's own "EXPECTED R:R"
+        // formatting (heroRR.toFixed(1)) rather than the two-decimal
+        // formatDecisionRatio() used on the Trade Plan tab.
+        const rr = plan ? Number(plan.risk_reward) : NaN;
+        const rrRow = Number.isFinite(rr)
+            ? `<div class="quick-summary-row"><span>R:R Potential</span><strong>${rr.toFixed(1)} : 1</strong></div>`
+            : "";
+        // Same computeExpectedReturnPct already used by the Trade Plan tab —
+        // never a second, independently-derived calculation.
+        const expectedReturnPct = plan ? computeExpectedReturnPct(plan, meta.direction) : null;
+        const expectedReturnRow = expectedReturnPct != null && Number.isFinite(expectedReturnPct)
+            ? `<div class="quick-summary-row"><span>Expected Return</span><strong class="${expectedReturnPct >= 0 ? "tone-good-text" : "tone-bad-text"}">${expectedReturnPct >= 0 ? "+" : ""}${expectedReturnPct.toFixed(2)}%</strong></div>`
+            : "";
+
+        // Historical Analogs aggregate (UX-6) — explicitly labeled
+        // "(Historical)" since there is no forward-looking, per-decision
+        // holding-period field anywhere in ATHENA; this is a real average
+        // across similar PAST trades, not a guarantee for this one.
+        const analogs = activeAnalogs;
+        const winRateRow = analogs && analogs.win_rate_pct != null
+            ? `<div class="quick-summary-row"><span>Win Rate (Historical)</span><strong>${Number(analogs.win_rate_pct).toFixed(0)}%</strong></div>`
+            : "";
+        // Holding Period: a real min-max range across the same per-analog
+        // outcome_holding_days values already averaged above (never a
+        // fabricated estimate) — matches the reference mock's field more
+        // closely than a single average did. Whole days, matching the
+        // mock's own "2 - 5 Days" convention; collapses to one number when
+        // every analog happened to hold for the same length of time.
+        const minHold = analogs && analogs.min_holding_days != null ? Math.round(Number(analogs.min_holding_days)) : null;
+        const maxHold = analogs && analogs.max_holding_days != null ? Math.round(Number(analogs.max_holding_days)) : null;
+        const holdingPeriodRow = minHold != null && maxHold != null
+            ? `<div class="quick-summary-row"><span>Holding Period (Historical)</span><strong>${minHold === maxHold ? `${minHold}` : `${minHold} - ${maxHold}`} Days</strong></div>`
+            : "";
+
+        if (quickSummaryStanceEl) {
+            quickSummaryStanceEl.textContent = stance.label;
+            quickSummaryStanceEl.className = `stance-chip ${stance.cls}`;
+        }
+        if (quickSummaryCard) quickSummaryCard.style.display = "flex";
         dagQuickSummary.innerHTML = `
-            <span class="dag-quick-symbol">${escapeDecisionHtml(symbol)}</span>
-            <span class="stance-chip ${stance.cls}">${escapeDecisionHtml(stance.label)}</span>
-            ${metricChip("score")}
-            ${metricChip("confidence")}
-            ${metricChip("risk")}
+            ${scoreRow}
+            ${confidenceRow}
+            ${riskRow}
+            ${holdingPeriodRow}
+            ${winRateRow}
+            ${expectedReturnRow}
+            ${rrRow}
         `;
     }
 

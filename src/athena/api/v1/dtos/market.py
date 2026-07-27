@@ -91,3 +91,32 @@ class CandleSeriesDTO(BaseModel):
     freshness_status: Literal["FRESH", "STALE", "NO_DATA"]
     age_minutes: int | None
     freshness_threshold_minutes: int
+
+
+class MarketIndexTickerDTO(BaseModel):
+    """One index's level + day-over-day change, from already-persisted Kite
+    data only (the latest market snapshot's LTP + the most recent prior
+    daily candle close). Both fields are None — never a fabricated 0 or
+    placeholder — when the underlying data isn't available yet (ADR-005)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    label: str
+    level: Decimal | None = None
+    change_pct: Decimal | None = None
+
+
+class MarketTickerDTO(BaseModel):
+    """Header market ticker (DT-2, owner UX workstation refactor). Deliberately
+    excludes market breadth (ADV/DEC) and an overall market-health score —
+    neither exists as real data anywhere in ATHENA today (breadth is
+    hardcoded 0/0 by the Kite provider; there is no aggregate health score,
+    only 4 per-decision categorical dimension labels) — tracked as future
+    scope rather than fabricated here."""
+
+    model_config = ConfigDict(frozen=True)
+
+    nifty: MarketIndexTickerDTO
+    bank_nifty: MarketIndexTickerDTO
+    india_vix: MarketIndexTickerDTO
+    as_of: datetime | None = None

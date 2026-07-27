@@ -384,7 +384,7 @@ class DecisionsService:
                 )
             )
 
-        win_rate_pct, avg_return_pct, avg_holding_days, sample_size = (
+        win_rate_pct, avg_return_pct, avg_holding_days, min_holding_days, max_holding_days, sample_size = (
             self._aggregate_analog_outcomes(analogs)
         )
 
@@ -395,6 +395,8 @@ class DecisionsService:
             win_rate_pct=win_rate_pct,
             avg_return_pct=avg_return_pct,
             avg_holding_days=avg_holding_days,
+            min_holding_days=min_holding_days,
+            max_holding_days=max_holding_days,
             outcomes_sample_size=sample_size,
         )
 
@@ -697,20 +699,32 @@ class DecisionsService:
     @staticmethod
     def _aggregate_analog_outcomes(
         analogs: list[DecisionAnalogDTO],
-    ) -> tuple[Decimal | None, Decimal | None, Decimal | None, int]:
-        """Win-rate/avg-return/avg-holding across whichever returned analogs
-        have a realized outcome — exact arithmetic over persisted values,
-        None (not a fabricated 0) when the sample is empty."""
+    ) -> tuple[Decimal | None, Decimal | None, Decimal | None, Decimal | None, Decimal | None, int]:
+        """Win-rate/avg-return/avg-holding (+ min/max holding) across whichever
+        returned analogs have a realized outcome — exact arithmetic over
+        persisted values, None (not a fabricated 0) when the sample is empty.
+        min/max reuse the exact same per-analog outcome_holding_days values
+        already collected for the average — a real historical range across
+        past trades, not a forward-looking guarantee for the current one."""
         with_outcome = [a for a in analogs if a.outcome_pnl is not None]
         if not with_outcome:
-            return None, None, None, 0
+            return None, None, None, None, None, 0
         wins = sum(1 for a in with_outcome if a.outcome_pnl > 0)
         win_rate_pct = (Decimal(wins) / Decimal(len(with_outcome))) * 100
         returns = [a.outcome_return_pct for a in with_outcome if a.outcome_return_pct is not None]
         avg_return_pct = sum(returns) / Decimal(len(returns)) if returns else None
         holdings = [a.outcome_holding_days for a in with_outcome if a.outcome_holding_days is not None]
         avg_holding_days = sum(holdings) / Decimal(len(holdings)) if holdings else None
-        return win_rate_pct, avg_return_pct, avg_holding_days, len(with_outcome)
+        min_holding_days = min(holdings) if holdings else None
+        max_holding_days = max(holdings) if holdings else None
+        return (
+            win_rate_pct,
+            avg_return_pct,
+            avg_holding_days,
+            min_holding_days,
+            max_holding_days,
+            len(with_outcome),
+        )
 
     @staticmethod
     def _compute_adherence(trade_plan, direction, entry_price, exit_price) -> dict[str, bool]:

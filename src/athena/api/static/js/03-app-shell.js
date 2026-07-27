@@ -3,9 +3,11 @@
     // ---------------------------------------------------------------------------
     // Routing & Tab Switcher
     // ---------------------------------------------------------------------------
+    const headerMarketTicker = document.getElementById("header-market-ticker");
+
     function switchTab(tabId) {
         state.activeTab = tabId;
-        
+
         // 1. Toggle Active Nav Link
         navItems.forEach(item => {
             if (item.getAttribute("data-tab") === tabId) {
@@ -25,6 +27,16 @@
                 pane.classList.remove("active");
             }
         });
+
+        // DT-2: header market ticker only ever shows (and only ever fetches
+        // — see loadTabData below) on Decisions & Trace, per the one
+        // approved new API call for this page.
+        if (headerMarketTicker) headerMarketTicker.hidden = tabId !== "decisions";
+        if (tabId === "decisions") {
+            startTickerRefresh();
+        } else {
+            stopTickerRefresh();
+        }
 
         // 3. Trigger API data loading for specific tab
         if (tabId !== "operations") {
@@ -136,8 +148,77 @@
             await loadStrategiesWorkspace();
         } else if (tabId === "decisions") {
             await loadDecisionsWorkspace();
+            await loadMarketTicker();
         } else if (tabId === "operations") {
             await loadOperationsWorkspace();
+        }
+    }
+
+    // DT-2 header market ticker — NIFTY 50 / BANK NIFTY / INDIA VIX only,
+    // real level + real day-change % from GET /api/v1/market/ticker (which
+    // itself derives everything from already-persisted Kite snapshot +
+    // daily candle data — no new calculations beyond simple arithmetic).
+    // Market breadth and an overall health score are deliberately not
+    // rendered here — neither exists as real data anywhere in ATHENA today.
+    function renderTickerIndex(prefix, index) {
+        const levelEl = document.getElementById(`ticker-${prefix}-level`);
+        const changeEl = document.getElementById(`ticker-${prefix}-change`);
+        if (!levelEl || !changeEl) return;
+        if (index.level == null) {
+            levelEl.textContent = "—";
+            changeEl.textContent = "—";
+            changeEl.className = "ticker-change";
+            return;
+        }
+        const level = Number(index.level);
+        levelEl.textContent = level.toLocaleString("en-IN", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        });
+        if (index.change_pct == null) {
+            changeEl.textContent = "—";
+            changeEl.className = "ticker-change";
+            return;
+        }
+        const pct = Number(index.change_pct);
+        const positive = pct >= 0;
+        changeEl.textContent = `${positive ? "+" : ""}${pct.toFixed(2)}%`;
+        changeEl.className = `ticker-change ${positive ? "positive" : "negative"}`;
+    }
+
+    async function loadMarketTicker() {
+        if (!headerMarketTicker) return;
+        try {
+            const res = await apiRequest("/api/v1/market/ticker", { skipToast: true });
+            const data = (res && res.data) ? res.data : {};
+            renderTickerIndex("nifty", data.nifty || {});
+            renderTickerIndex("banknifty", data.bank_nifty || {});
+            renderTickerIndex("vix", data.india_vix || {});
+        } catch (err) {
+            console.error("Failed to load market ticker", err);
+        }
+    }
+
+    // Auto-refresh (owner-requested, 2026-07-27): the ticker otherwise only
+    // updated on tab-switch or a manual refresh click, same as every other
+    // tab in ATHENA — no polling exists anywhere else in this dashboard.
+    // Scoped tightly to the ticker only (not the decisions list/briefing —
+    // re-fetching those every tick would reset scroll position/selection,
+    // which was never asked for) and only while Decisions & Trace is the
+    // active tab, mirroring the existing start/stop pattern already used
+    // for the Operations tab's live stream (see stopOpsStream).
+    const TICKER_REFRESH_INTERVAL_MS = 60000;
+    let tickerRefreshIntervalId = null;
+
+    function startTickerRefresh() {
+        stopTickerRefresh();
+        tickerRefreshIntervalId = setInterval(loadMarketTicker, TICKER_REFRESH_INTERVAL_MS);
+    }
+
+    function stopTickerRefresh() {
+        if (tickerRefreshIntervalId != null) {
+            clearInterval(tickerRefreshIntervalId);
+            tickerRefreshIntervalId = null;
         }
     }
 

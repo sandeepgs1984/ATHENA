@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.48.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.49.4">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -110,7 +110,32 @@
                         <span id="session-status">LIVE ENGINE ACTIVE</span>
                     </span>
                 </div>
-                
+
+                <!-- DT-2 (owner UX workstation refactor): shown only on Decisions
+                     & Trace (fetched only when that tab loads — the one approved
+                     new API call). NIFTY 50 / BANK NIFTY / INDIA VIX only — real
+                     level + real day-change %, both from already-persisted Kite
+                     data. Market breadth and an overall health score are
+                     deliberately omitted: neither exists as real data anywhere in
+                     ATHENA today (tracked as future scope, not fabricated here). -->
+                <div id="header-market-ticker" class="header-market-ticker" hidden>
+                    <div class="ticker-item">
+                        <span class="ticker-label">NIFTY 50</span>
+                        <span class="ticker-value" id="ticker-nifty-level">—</span>
+                        <span class="ticker-change" id="ticker-nifty-change">—</span>
+                    </div>
+                    <div class="ticker-item">
+                        <span class="ticker-label">BANK NIFTY</span>
+                        <span class="ticker-value" id="ticker-banknifty-level">—</span>
+                        <span class="ticker-change" id="ticker-banknifty-change">—</span>
+                    </div>
+                    <div class="ticker-item">
+                        <span class="ticker-label">VIX</span>
+                        <span class="ticker-value" id="ticker-vix-level">—</span>
+                        <span class="ticker-change" id="ticker-vix-change">—</span>
+                    </div>
+                </div>
+
                 <div class="header-right">
                     <div class="telemetry-bar">
                         <div class="telemetry-item">
@@ -705,13 +730,25 @@
                         <!-- Reasoning Trace: a stage click jumps the brief to where that value
                              lives instead of duplicating it in a side panel -->
                         <div class="trace-column dag-column">
+                            <!-- Quick Summary: its own card (DT-2 refinement, owner-reviewed
+                                 reference mock) — previously inline at the top of the Reasoning
+                                 Trace card with no visual separation. -->
+                            <div class="card quick-summary-card" id="quick-summary-card" style="display: none;">
+                                <div class="card-header quick-summary-card-header">
+                                    <div class="card-header-title">
+                                        <div class="card-title-icon"><i class="fas fa-bolt"></i></div>
+                                        <h3>Quick Summary</h3>
+                                    </div>
+                                    <span id="quick-summary-stance" class="stance-chip"></span>
+                                </div>
+                                <div id="dag-quick-summary" class="dag-quick-summary"></div>
+                            </div>
                             <div class="card">
                                 <div class="card-header">
                                     <div class="card-title-icon"><i class="fas fa-project-diagram"></i></div>
                                     <h3>Reasoning Trace</h3>
                                 </div>
                                 <div class="card-body trace-dag-canvas-wrapper" style="position: relative;">
-                                    <div id="dag-quick-summary" class="dag-quick-summary" style="display: none;"></div>
                                     <p class="dag-legend">Click a stage to jump the brief to where that value lives.</p>
                                     <!-- Dynamic SVG connection line layer -->
                                     <svg id="dag-svg-lines" class="dag-svg-overlay" aria-hidden="true"></svg>
@@ -989,6 +1026,6 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.48.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.49.4"></script>
 </body>
 </html>

@@ -232,10 +232,12 @@ def get_market_history_service(request: Request) -> MarketHistoryService:
         _candle_history_provider,
     )
     freshness_minutes = request.app.state.intraday_freshness_minutes
+    repo = getattr(request.app.state, "sqlite_repo", None)
     return MarketHistoryService(
         provider,
         freshness_threshold_minutes=freshness_minutes,
         config_dir=_find_repo_root() / "config",
+        repo=repo,
     )
 
 
