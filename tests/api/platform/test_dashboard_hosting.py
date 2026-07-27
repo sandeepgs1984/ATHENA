@@ -152,6 +152,31 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".context-chip" in css
     assert ".context-links-list" in css
 
+    # Market Context redesign (owner screenshot review, DT-4 follow-up):
+    # Session as a slim full-width bar instead of a card matching Regime/
+    # Market Health's height (was leaving a large dead-space gap under a
+    # near-empty Session card); Regime's 3 dimensions forced into one even
+    # row instead of auto-fit wrapping 2+1; the redundant composite
+    # explanation sentence (raw SNAKE_CASE repeat of the metric cards
+    # above it) replaced by each metric's own real per-dimension evidence
+    # text, shown as a title tooltip.
+    assert "context-session-bar" in js
+    assert ".context-session-bar" in css
+    assert ".context-analytics-row" in css
+    assert "context-metric-grid--cols-3" in js
+    assert ".context-metric-grid--cols-3" in css
+    assert "function evidenceExplanationByDimension" in js
+    context_metric_card_start = js.find("function contextMetricCard")
+    context_metric_card_end = js.find("\n    function ", context_metric_card_start + 1)
+    assert "explanation" in js[context_metric_card_start:context_metric_card_end]
+    render_context_start = js.find("function renderDecisionContext")
+    render_context_end = js.find("\n    function ", render_context_start + 1)
+    render_context_body = js[render_context_start:render_context_end]
+    assert "regimeEvidence" in render_context_body
+    assert "healthEvidence" in render_context_body
+    assert "regime.explanation" not in render_context_body
+    assert "mh.explanation" not in render_context_body
+
     # Decisions & Trace UI overhaul (owner-reported: overcrowded single scroll,
     # duplicate gate chips, DAG panel re-explaining what the brief already
     # shows). Reasoning Trace nodes now navigate to the matching brief tab
@@ -162,6 +187,11 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "STAGE_TAB_MAP" in js
     assert "function switchBriefTab" in js
     assert "activeBriefTab" in js
+    # Bug fix: each brief tab now lands at the top instead of keeping
+    # whatever scroll offset the previous tab happened to be at.
+    switch_brief_tab_start = js.find("function switchBriefTab")
+    switch_brief_tab_end = js.find("\n    function ", switch_brief_tab_start + 1)
+    assert "decisionBriefBody.scrollTop = 0" in js[switch_brief_tab_start:switch_brief_tab_end]
     assert "opened automatically" in js
     assert "activeDepth" in js
     assert "activeContextData" in js
@@ -298,6 +328,16 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".context-metric-grid" in css
     assert ".context-metric-value" in css
 
+    # Bug fix: RegimeLabel/MarketHealthLabel values are DESCRIPTOR_DIMENSION
+    # (e.g. BULL_TREND, HEALTHY_MOMENTUM) — an end-anchored regex assuming
+    # the descriptor was a suffix silently matched none of the real enum
+    # values, always falling through to neutral instead of good/bad.
+    context_chip_tone_start = js.find("function contextChipTone")
+    context_chip_tone_end = js.find("\n    function ", context_chip_tone_start + 1)
+    context_chip_tone_body = js[context_chip_tone_start:context_chip_tone_end]
+    assert "(BULL|STRONG|HEALTHY|CALM)$" not in context_chip_tone_body
+    assert "BULL|STRONG|HEALTHY|CALM" in context_chip_tone_body
+
     # UX-5: Reasoning Trace redesign (owner UX audit #14/#19) — DAG nodes
     # show each stage's own real computed state (e.g. "Bullish", "BUY",
     # "Authorized") instead of the generic lifecycle badge once that
@@ -365,7 +405,10 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "Exact math comparing this decision" in js
     assert "ATHENA's future tuning can ever" in js
     assert "The closest-matching past decisions" in js
-    assert "mh.explanation" in js
+    # mh.explanation (the market-health composite sentence UX-6 parity fix
+    # originally locked in here) was later replaced entirely by per-dimension
+    # evidence tooltips (see the Market Context redesign assertions above) —
+    # the composite sentence just repeated the metric cards in raw SNAKE_CASE.
     assert ">Score</span>" in html
     assert "Composite score" not in html
 

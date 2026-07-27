@@ -297,6 +297,9 @@
             decisionBriefBody.querySelectorAll(".tabpane").forEach(pane => {
                 pane.classList.toggle("active", pane.getAttribute("data-brief-pane") === name);
             });
+            // Each tab reads as its own page — land at the top, not wherever
+            // the previous tab's content happened to be scrolled to.
+            decisionBriefBody.scrollTop = 0;
         }
     }
 

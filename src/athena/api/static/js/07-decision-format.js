@@ -101,12 +101,17 @@
         return formatDecisionSummary(text, "", []).headline;
     }
 
+    // RegimeLabel/MarketHealthLabel values are DESCRIPTOR_DIMENSION (e.g.
+    // BULL_TREND, HEALTHY_MOMENTUM, STRONG_BREADTH) — the descriptor is a
+    // prefix, not a suffix, so these must NOT be end-anchored (a previous
+    // "(BULL|STRONG|HEALTHY|CALM)$" anchor silently matched none of the real
+    // enum values and always fell through to neutral).
     function contextChipTone(label) {
         const s = String(label || "").toUpperCase();
         if (s.includes("UNKNOWN")) return "unknown";
-        if (/(BULL|STRONG|HEALTHY|CALM)$|GAP_UP/.test(s)) return "good";
-        if (/(BEAR|WEAK|ELEVATED)$|HIGH_VOLATILITY|GAP_DOWN/.test(s)) return "bad";
-        if (/(MIXED|FLAT|SIDEWAYS)/.test(s)) return "warn";
+        if (/BULL|STRONG|HEALTHY|CALM|GAP_UP/.test(s)) return "good";
+        if (/BEAR|WEAK|ELEVATED|HIGH_VOLATILITY|GAP_DOWN/.test(s)) return "bad";
+        if (/MIXED|FLAT|SIDEWAYS/.test(s)) return "warn";
         return "neutral";
     }
 

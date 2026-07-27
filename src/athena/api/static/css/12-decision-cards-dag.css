@@ -956,9 +956,34 @@
 }
 
 .decision-context-lane {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-14);
+}
+
+/* Session is typically 1-4 small chips — a slim full-width bar instead of
+   a card sized to match Regime/Market Health avoids a large dead-space
+   gap underneath it (owner UX audit). */
+.context-session-bar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-10);
+    background: rgba(15, 23, 42, 0.35);
+    border: 1px solid var(--border-color);
+    border-radius: 7px;
+    padding: var(--space-10) var(--space-14);
+}
+
+.context-session-bar .context-events-list {
+    flex-basis: 100%;
+    margin: var(--space-4) 0 0;
+}
+
+.context-analytics-row {
     display: grid;
     gap: var(--space-14);
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
 }
 
 .context-lane-block {
@@ -968,7 +993,8 @@
     padding: var(--space-12) var(--space-14);
 }
 
-.context-lane-block h5 {
+.context-lane-block h5,
+.context-lane-label {
     display: flex;
     align-items: center;
     gap: var(--space-6);
@@ -979,7 +1005,13 @@
     text-transform: uppercase;
 }
 
-.context-lane-block h5 i {
+.context-session-bar .context-lane-label {
+    margin: 0;
+    flex-shrink: 0;
+}
+
+.context-lane-block h5 i,
+.context-lane-label i {
     color: var(--accent);
     font-size: var(--text-0-72);
 }

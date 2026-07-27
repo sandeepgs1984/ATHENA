@@ -29,14 +29,27 @@
         return "Regime";
     }
 
-    // Market Context as cards, not just labels (owner UX audit #13).
-    function contextMetricCard(name, value, tone) {
+    // Market Context as cards, not just labels (owner UX audit #13). The
+    // optional `explanation` is real per-dimension evidence text already
+    // fetched alongside the label (RegimeEvidence/HealthEvidence.explanation,
+    // e.g. "fast SMA(20)=... vs slow SMA(50)=..."), shown as a native title
+    // tooltip — replaces the old composite sentence that just repeated the
+    // same enum values already visible in the cards, in raw SNAKE_CASE.
+    function contextMetricCard(name, value, tone, explanation) {
         return `
-            <div class="context-metric">
+            <div class="context-metric"${explanation ? ` title="${escapeDecisionHtml(explanation)}"` : ""}>
                 <span class="context-metric-label">${escapeDecisionHtml(name)}</span>
                 <strong class="context-metric-value tone-${tone}-text">${escapeDecisionHtml(friendlyLabel(value))}</strong>
             </div>
         `;
+    }
+
+    function evidenceExplanationByDimension(evidence) {
+        const map = {};
+        (Array.isArray(evidence) ? evidence : []).forEach(item => {
+            if (item && item.dimension) map[String(item.dimension).toLowerCase()] = item.explanation || "";
+        });
+        return map;
     }
 
     function renderDecisionContext(context) {
@@ -64,17 +77,22 @@
                 <span>${escapeDecisionHtml(ev.name || "")}</span></li>
         `).join("");
 
+        const regimeEvidence = evidenceExplanationByDimension(regime.evidence);
         const regimeBlock = regime.status === "ASSESSED"
-            ? `<div class="context-metric-grid">${(regime.labels || [])
-                  .map(l => contextMetricCard(regimeLabelCategory(l), l, contextChipTone(l))).join("")}</div>
-               <p class="context-caption">${escapeDecisionHtml(regime.explanation || "")}</p>`
+            ? `<div class="context-metric-grid context-metric-grid--cols-3">${(regime.labels || [])
+                  .map(l => contextMetricCard(
+                      regimeLabelCategory(l), l, contextChipTone(l),
+                      regimeEvidence[regimeLabelCategory(l).toLowerCase()]
+                  )).join("")}</div>`
             : '<p class="context-caption unknown">Not available yet — re-validate this decision to capture a regime assessment.</p>';
 
         const dimensions = mh.dimensions || {};
+        const healthEvidence = evidenceExplanationByDimension(mh.evidence);
         const healthBlock = mh.status === "ASSESSED"
             ? `<div class="context-metric-grid">${Object.entries(dimensions)
-                  .map(([key, label]) => contextMetricCard(friendlyLabel(key), label, contextChipTone(label))).join("")}</div>
-               ${mh.explanation ? `<p class="context-caption">${escapeDecisionHtml(mh.explanation)}</p>` : ""}`
+                  .map(([key, label]) => contextMetricCard(
+                      friendlyLabel(key), label, contextChipTone(label), healthEvidence[key.toLowerCase()]
+                  )).join("")}</div>`
             : '<p class="context-caption unknown">Not available yet — re-validate this decision to capture a market-health assessment.</p>';
 
         const linkRows = links.length
@@ -91,18 +109,20 @@
             : '<p class="context-caption">No curated external links for this instrument.</p>';
 
         host.innerHTML = `
-            <div class="context-lane-block">
-                <h5><i class="fa-solid fa-calendar-day"></i> Session</h5>
+            <div class="context-session-bar">
+                <span class="context-lane-label"><i class="fa-solid fa-calendar-day"></i> Session</span>
                 <div class="context-chip-row">${sessionChips}</div>
                 ${eventRows ? `<ul class="context-events-list">${eventRows}</ul>` : ""}
             </div>
-            <div class="context-lane-block">
-                <h5><i class="fa-solid fa-chart-line"></i> Regime</h5>
-                ${regimeBlock}
-            </div>
-            <div class="context-lane-block">
-                <h5><i class="fa-solid fa-heart-pulse"></i> Market health</h5>
-                ${healthBlock}
+            <div class="context-analytics-row">
+                <div class="context-lane-block">
+                    <h5><i class="fa-solid fa-chart-line"></i> Regime</h5>
+                    ${regimeBlock}
+                </div>
+                <div class="context-lane-block">
+                    <h5><i class="fa-solid fa-heart-pulse"></i> Market health</h5>
+                    ${healthBlock}
+                </div>
             </div>
             <div class="context-lane-block">
                 <h5><i class="fa-solid fa-link"></i> External research</h5>

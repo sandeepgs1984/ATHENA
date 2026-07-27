@@ -5,12 +5,26 @@
     gap: var(--space-8);
 }
 
+/* Regime always has exactly 3 dimensions (Trend/Volatility/Gap) — force one
+   even row instead of auto-fit wrapping 2+1 with a leftover half-empty row */
+.context-metric-grid--cols-3 {
+    grid-template-columns: repeat(3, 1fr);
+}
+
 .context-metric {
     background: rgba(15, 23, 42, 0.35);
     border: 1px solid var(--border-color);
     border-radius: 7px;
     padding: var(--space-7) var(--space-9);
     min-width: 0;
+}
+
+/* A titled card carries real per-dimension evidence text (DT-4 follow-up) —
+   the underline hints there's more detail on hover/tap, native title tooltip */
+.context-metric[title] {
+    cursor: help;
+    text-decoration: underline dotted var(--border-color);
+    text-underline-offset: 3px;
 }
 
 .context-metric-label {
