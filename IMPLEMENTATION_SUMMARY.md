@@ -6,6 +6,95 @@ status updated on approval.
 
 ---
 
+## Fix pass — reload-resets-tab regression + collapsible global sidebar (BUILT, awaiting owner confirmation)
+
+| | |
+|---|---|
+| Completed | 2026-07-27 |
+| Objective | Two owner requests before starting DT-2: (1) a plain browser reload (Cmd+R) was jumping back to Portfolio Overview every time instead of staying on the current tab — a regression from the earlier "tab restored on login" fix, which had been made too broad; (2) a collapsible global sidebar (icon-only when minimized, smooth animation, main content reflows) |
+| Scope | `src/athena/api/static/js/03-app-shell.js`, `src/athena/api/static/js/01-auth.js`, `src/athena/api/static/index.html`, `src/athena/api/static/css/03-shell.css` |
+| Tests | 6 new dashboard-hosting assertions. Full suite **1031 passed** |
+| Coverage | Live-browser verified: sidebar collapse/expand (smooth width transition, main content reflow, icon flip, localStorage persistence across reload). The reload-preserves-tab fix could not be driven through the real end-to-end scenario myself — this deployment requires real owner credentials (the unlock gate stayed visible when I navigated directly to `/dashboard/decisions` without logging in) — verified via direct code review instead, plus a test that explicitly checks `initializeRoute`'s function body no longer contains the force-reset call |
+| Status | **BUILT** — sidebar collapse live-verified; reload-tab-persistence awaiting owner confirmation on the real authenticated session |
+| Branch | feature/live-dashboard |
+
+### Root cause: reload-resets-tab regression
+
+Earlier this session, the owner reported "sometimes previously selected tab appears after user logins" and asked for every session to always start on Portfolio Overview. The fix changed `initializeRoute()` — called from 3 places — to unconditionally force Overview:
+
+```js
+function initializeRoute() {
+    window.history.replaceState({ tabId: "overview" }, "", "/dashboard/overview");
+    switchTab("overview");
+}
+```
+
+This was correct for the actual login-form-submit call site, but `initializeRoute()` is *also* called from both branches of `bootstrapSession()` — the silent-restore paths that run on every single page load (auth not required, or an already-valid stored token) — not just on an explicit login. Since a plain reload re-runs `bootstrapSession()`, it now *always* reset to Overview too, which the owner flagged as "very annoying." The original bug and this over-fix are two sides of the same coin: the shared function needed to behave differently depending on *which* of its 3 callers invoked it, and the first fix picked the wrong one to change.
+
+### Fix
+
+- `initializeRoute()` reverted to its original, URL-preserving behavior (parses `window.location.pathname`, defaults to Overview only if the path doesn't match a known tab) — used by both `bootstrapSession()` silent-restore branches.
+- A new, separate `resetToOverviewTab()` (the force-to-Overview logic) is called only from the login-form submit handler (`01-auth.js`) — the one call site that represents an actual new login, not a continuation of an existing session.
+
+### Feature: collapsible global sidebar
+
+- New `#sidebar-collapse-toggle` button in `.sidebar-brand`, toggling a `.collapsed` class on `.sidebar`.
+- `.sidebar` gains `width: 260px` → `72px` on collapse, with `transition: width var(--transition-speed) ease` — the existing `.console-main { flex-grow: 1 }` reflows into the freed space automatically via normal flexbox layout, no JS recalculation needed for any page's content (Decisions & Trace's 3-column grid included, since its `grid-template-columns` are relative to its own container's width).
+- Nav item labels, the "Soon" badges, brand text, and profile info all hidden when collapsed (icons centered); each nav item already had visible text so gained a matching `title="..."` attribute for a hover tooltip once collapsed.
+- Preference persisted to `localStorage` (`athena.sidebar-collapsed`), restored on load — same pattern already used for dismissed-decision symbols elsewhere in this file.
+
+### Files created
+
+- None.
+
+### Files modified
+
+- `src/athena/api/static/js/03-app-shell.js` — `initializeRoute()` reverted to URL-preserving; new `resetToOverviewTab()`; new sidebar-collapse toggle logic + localStorage persistence.
+- `src/athena/api/static/js/01-auth.js` — login-form submit now calls `resetToOverviewTab()` instead of `initializeRoute()`.
+- `src/athena/api/static/index.html` — `#sidebar-collapse-toggle` button; `title="..."` on each nav item; cache-bust `9.47.3` → `9.48.0`.
+- `src/athena/api/static/css/03-shell.css` — `.sidebar` width transition + `.collapsed` state and all its descendant overrides (brand text, nav-item labels, footer/profile).
+- `tests/api/platform/test_dashboard_hosting.py` — 6 new assertions, including one that inspects `initializeRoute`'s own function body to lock in the corrected (non-forcing) behavior.
+- This log; `docs/MILESTONES.md`.
+
+### Public APIs
+
+- None — frontend-only.
+
+### Validation and architecture
+
+- Full regression: **1031 passed**. Ruff clean. JS syntax verified (`node --check` on the reassembled script). HTML/CSS balance re-verified.
+- Live-browser verification for the sidebar: expand → collapse → confirm smooth width transition, main content reflow, icon flip, `localStorage` write; reload → confirm collapsed state restored.
+- No ADR required: both are small, presentation/behavior-only changes — no domain/contract/schema impact.
+
+### Risks and technical debt
+
+- Could not drive the real reload-preserves-tab scenario end-to-end (no owner credentials for this deployment, which does require real auth) — mitigated by a test that inspects the actual function body rather than just checking the function exists, plus the fact both functions are small and unconditional (no branching to get wrong).
+- No new technical debt.
+
+### Remaining work
+
+- **Owner confirmation**: reload while on a non-Overview tab (e.g. Decisions & Trace) and confirm it stays there; confirm logging out and back in still resets to Overview as expected.
+
+### Commit message
+
+```text
+fix(dashboard): stop reload from resetting the active tab; add
+collapsible sidebar
+
+- initializeRoute() was made to always force Portfolio Overview by an
+  earlier fix, but it's shared by 3 callers — bootstrapSession's two
+  silent session-restore paths (which also run on every plain reload)
+  and the login-form submit. Only the login path should force Overview;
+  a reload of an already-active session should stay where it was.
+  Revert initializeRoute() to URL-preserving and add a separate
+  resetToOverviewTab(), called only from the login-form submit handler.
+- Add a collapsible global sidebar (icon-only when minimized, smooth
+  width transition, main content reflows automatically via existing
+  flex-grow, preference persisted in localStorage).
+```
+
+---
+
 ## DT-1 — Layout shell: 3-pane workstation (BUILT, awaiting owner confirmation)
 
 | | |

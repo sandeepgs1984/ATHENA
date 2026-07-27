@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.47.3">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.48.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -42,26 +42,29 @@
             <div class="sidebar-brand">
                 <i class="fa-solid fa-circle-nodes brand-logo"></i>
                 <span class="brand-text">ATHENA</span>
+                <button id="sidebar-collapse-toggle" class="sidebar-collapse-btn" type="button" title="Collapse sidebar" aria-expanded="true" aria-label="Collapse sidebar">
+                    <i class="fa-solid fa-angles-left"></i>
+                </button>
             </div>
-            
+
             <nav class="sidebar-nav">
-                <a href="/dashboard/overview" class="nav-item active" data-tab="overview">
+                <a href="/dashboard/overview" class="nav-item active" data-tab="overview" title="Portfolio Overview">
                     <i class="fa-solid fa-chart-line"></i>
                     <span>Portfolio Overview</span>
                 </a>
-                <a href="/dashboard/market" class="nav-item" data-tab="market">
+                <a href="/dashboard/market" class="nav-item" data-tab="market" title="Market Intelligence">
                     <i class="fa-solid fa-globe"></i>
                     <span>Market Intelligence</span>
                 </a>
-                <a href="/dashboard/strategies" class="nav-item" data-tab="strategies">
+                <a href="/dashboard/strategies" class="nav-item" data-tab="strategies" title="Strategies & Scans">
                     <i class="fa-solid fa-gears"></i>
                     <span>Strategies & Scans</span>
                 </a>
-                <a href="/dashboard/decisions" class="nav-item" data-tab="decisions">
+                <a href="/dashboard/decisions" class="nav-item" data-tab="decisions" title="Decisions & Trace">
                     <i class="fa-solid fa-brain"></i>
                     <span>Decisions & Trace</span>
                 </a>
-                <a href="/dashboard/operations" class="nav-item" data-tab="operations">
+                <a href="/dashboard/operations" class="nav-item" data-tab="operations" title="Live Operations">
                     <i class="fa-solid fa-terminal"></i>
                     <span>Live Operations</span>
                 </a>
@@ -81,7 +84,7 @@
                     <span class="nav-item-soon">Soon</span>
                 </span>
             </nav>
-            
+
             <div class="sidebar-footer">
                 <div class="user-profile">
                     <i class="fa-solid fa-user-shield profile-avatar"></i>
@@ -986,6 +989,6 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.47.3"></script>
+    <script src="/dashboard/dashboard.js?v=9.48.0"></script>
 </body>
 </html>

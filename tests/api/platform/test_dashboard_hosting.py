@@ -554,10 +554,27 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     # which tab to land on after login/bootstrap, so a stale URL left over
     # from a previous session (e.g. a session that expired while on
     # /dashboard/decisions) could reopen that same tab instead of Portfolio
-    # Overview. Every login now always resets to Overview, mirroring the
-    # existing logout reset.
+    # Overview. First fix made every bootstrap always reset to Overview —
+    # correct for a fresh login, but the owner then reported it also made a
+    # *plain reload* of an already-active session jump back to Overview
+    # every time ("very annoying"). Corrected: initializeRoute (used by
+    # bootstrapSession's silent-restore paths — auth not required, or an
+    # already-valid stored token) is back to being URL-preserving; only the
+    # actual login form submit calls the new, separate resetToOverviewTab.
     assert "function initializeRoute" in js
+    assert "function resetToOverviewTab" in js
     assert 'window.history.replaceState({ tabId: "overview" }, "", "/dashboard/overview");' in js
+    reset_tab_fn_start = js.find("function resetToOverviewTab")
+    reset_tab_fn_end = js.find("function ", reset_tab_fn_start + 1)
+    assert 'switchTab("overview");' in js[reset_tab_fn_start:reset_tab_fn_end]
+    # The critical distinction: initializeRoute's OWN body must not contain
+    # the force-reset call — it must still parse window.location.pathname,
+    # or a plain reload would regress right back to jumping to Overview.
+    init_route_fn_start = js.find("function initializeRoute")
+    init_route_fn_end = js.find("function ", init_route_fn_start + 1)
+    init_route_body = js[init_route_fn_start:init_route_fn_end]
+    assert "window.location.pathname.split" in init_route_body
+    assert "replaceState" not in init_route_body
     # (2) After "Clear all" (and, more generally, whenever there's no active
     # decision), the main brief correctly went empty but the Reasoning Trace
     # sidebar kept showing the previously selected symbol's quick-summary
@@ -646,6 +663,18 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "const previousScrollTop = decisionsCarouselContainer.scrollTop;" in js
     assert "decisionsCarouselContainer.scrollTop = previousScrollTop;" in js
     assert "decisionBriefBody.scrollTop = 0;" in js
+
+    # Owner-requested (2026-07-27): collapsible global sidebar — icon-only
+    # when collapsed, .console-main (flex-grow: 1) reflows automatically via
+    # the CSS width transition, no JS recalculation needed. Preference
+    # persisted in localStorage across reloads.
+    assert 'id="sidebar-collapse-toggle"' in html
+    assert 'title="Portfolio Overview"' in html
+    assert ".sidebar.collapsed" in css
+    assert "transition: width var(--transition-speed) ease;" in css
+    assert "function applySidebarCollapsed" in js
+    assert "athena.sidebar-collapsed" in js
+
     # Future-implementation nav placeholders (no backing route yet) —
     # deliberately excluded from .nav-item so app-shell.js's click-wiring
     # never has to special-case them.

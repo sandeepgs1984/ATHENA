@@ -63,16 +63,32 @@
         }
     });
 
-    // Called once per successful login/bootstrap (never for in-session
-    // navigation — that goes through switchTab directly via nav clicks and
-    // popstate). Owner-reported: the browser's address bar can still point
-    // at whatever tab was open before (e.g. /dashboard/decisions) when a
-    // session expires or the app is reloaded, and this used to honor that
-    // stale path instead of resetting — so a login could land back on a
-    // previous tab instead of Portfolio Overview. Every session now always
-    // starts on Overview, mirroring the same reset the logout handler
-    // already does.
+    // Called on every silent session bootstrap (auth not required, or a
+    // plain page reload/reopen with an already-valid stored token) — parses
+    // the current URL so a reload stays on whatever tab the browser was
+    // already showing (owner-reported: forcing Overview here made every
+    // Cmd+R "very annoying," since it's not a new session, just the same
+    // one continuing). Never used for an actual login — see
+    // resetToOverviewTab below.
     function initializeRoute() {
+        const pathParts = window.location.pathname.split("/");
+        const pathTab = pathParts[pathParts.length - 1];
+        if (["overview", "market", "strategies", "decisions", "operations"].includes(pathTab)) {
+            switchTab(pathTab);
+        } else {
+            switchTab("overview");
+        }
+    }
+
+    // Called only when the owner actively submits the login form — a fresh
+    // login (or a re-login after session expiry) always starts on Portfolio
+    // Overview, regardless of whatever tab's URL the browser happened to
+    // still be showing (owner-reported: a stale /dashboard/decisions in the
+    // address bar from a previous session could reopen that same tab on
+    // login instead of Overview). Never called for a plain reload of an
+    // already-valid session — that's initializeRoute above, which
+    // deliberately does the opposite (preserves the current tab).
+    function resetToOverviewTab() {
         window.history.replaceState({ tabId: "overview" }, "", "/dashboard/overview");
         switchTab("overview");
     }
@@ -124,6 +140,39 @@
             await loadOperationsWorkspace();
         }
     }
+
+    // ---------------------------------------------------------------------------
+    // Collapsible global sidebar (owner-requested) — icon-only when
+    // collapsed, .console-main (flex-grow: 1) reflows to fill the freed
+    // width automatically via the CSS width transition on .sidebar, no JS
+    // recalculation needed. Preference persisted across reloads, same
+    // pattern as the existing dismissed-decisions localStorage key.
+    // ---------------------------------------------------------------------------
+    const sidebarEl = document.querySelector(".sidebar");
+    const sidebarCollapseToggle = document.getElementById("sidebar-collapse-toggle");
+    const SIDEBAR_COLLAPSED_KEY = "athena.sidebar-collapsed";
+
+    function applySidebarCollapsed(collapsed) {
+        if (!sidebarEl) return;
+        sidebarEl.classList.toggle("collapsed", collapsed);
+        if (sidebarCollapseToggle) {
+            sidebarCollapseToggle.setAttribute("aria-expanded", String(!collapsed));
+            sidebarCollapseToggle.setAttribute(
+                "title", collapsed ? "Expand sidebar" : "Collapse sidebar"
+            );
+            sidebarCollapseToggle.setAttribute(
+                "aria-label", collapsed ? "Expand sidebar" : "Collapse sidebar"
+            );
+        }
+    }
+
+    applySidebarCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1");
+
+    sidebarCollapseToggle?.addEventListener("click", () => {
+        const collapsed = !sidebarEl.classList.contains("collapsed");
+        applySidebarCollapsed(collapsed);
+        localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? "1" : "0");
+    });
 
     // Wire refresh trigger
     refreshTrigger.addEventListener("click", () => {

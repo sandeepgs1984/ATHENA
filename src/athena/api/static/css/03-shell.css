@@ -6,6 +6,16 @@
     flex-direction: column;
     width: 260px;
     flex-shrink: 0;
+    /* Owner-requested: collapsible to icon-only. .console-main is already
+       flex-grow: 1 (03-shell.css below), so it reflows to fill the freed
+       width automatically — no JS recalculation needed, just this one
+       transition on both sides of the split. */
+    transition: width var(--transition-speed) ease;
+    overflow: hidden;
+}
+
+.sidebar.collapsed {
+    width: 72px;
 }
 
 .sidebar-brand {
@@ -17,10 +27,15 @@
     gap: var(--space-12);
 }
 
+.sidebar.collapsed .sidebar-brand {
+    padding: 0 var(--space-14);
+}
+
 .brand-logo {
     color: var(--accent);
     font-size: var(--text-1-8);
     text-shadow: 0 0 10px var(--accent-glow);
+    flex-shrink: 0;
 }
 
 .brand-text {
@@ -30,6 +45,49 @@
     background: linear-gradient(135deg, #fff, var(--text-secondary));
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
+    white-space: nowrap;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.sidebar.collapsed .brand-text {
+    display: none;
+}
+
+.sidebar-collapse-btn {
+    flex-shrink: 0;
+    width: 26px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    background: rgba(255, 255, 255, 0.02);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all var(--transition-speed) ease;
+}
+
+.sidebar-collapse-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-glow);
+}
+
+.sidebar-collapse-btn i {
+    transition: transform var(--transition-speed) ease;
+}
+
+.sidebar.collapsed .sidebar-collapse-btn i {
+    transform: rotate(180deg);
+}
+
+/* When collapsed, the toggle is the only thing left in the brand row —
+   center it instead of hugging the (now hidden) text's old position. */
+.sidebar.collapsed .sidebar-brand {
+    justify-content: center;
 }
 
 .sidebar-nav {
@@ -72,6 +130,20 @@
     border: 1px solid rgba(0, 242, 254, 0.2);
     color: var(--accent);
     text-shadow: 0 0 8px var(--accent-glow);
+}
+
+/* Collapsed sidebar (owner-requested): icon-only, centered, labels hidden.
+   Each nav-item already carries a title="..." attribute (added alongside
+   this feature) so hovering still shows the label as a native tooltip. */
+.sidebar.collapsed .nav-item,
+.sidebar.collapsed .nav-item-disabled {
+    justify-content: center;
+    padding: var(--space-12) 0;
+}
+
+.sidebar.collapsed .nav-item span,
+.sidebar.collapsed .nav-item-disabled span {
+    display: none;
 }
 
 /* Future-implementation placeholders (no backing page/route yet) — visually
@@ -121,10 +193,24 @@
     justify-content: space-between;
 }
 
+.sidebar.collapsed .sidebar-footer {
+    padding: 0 var(--space-10);
+    flex-direction: column;
+    justify-content: center;
+    height: auto;
+    padding-top: var(--space-14);
+    padding-bottom: var(--space-14);
+    gap: var(--space-10);
+}
+
 .user-profile {
     display: flex;
     align-items: center;
     gap: var(--space-12);
+}
+
+.sidebar.collapsed .profile-info {
+    display: none;
 }
 
 .profile-avatar {

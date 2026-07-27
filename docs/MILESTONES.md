@@ -385,6 +385,19 @@ Owner-confirmed scope decisions (before DT-1 started):
 
 11 new dashboard-hosting assertions. Full suite **1031 passed**.
 
+### Fix pass: reload-resets-tab regression + collapsible global sidebar (owner-requested, 2026-07-27)
+
+Not Decisions & Trace-specific — global app-shell fixes, requested before starting DT-2.
+
+| | |
+|---|---|
+| Bug | The earlier "tab restored on login" fix (see the fix-pass entry above this one) made `initializeRoute()` *always* force Portfolio Overview — correct for a fresh login, but the owner reported it also made a **plain reload (Cmd+R)** of an already-active session jump back to Overview every time, which they flagged as "very annoying." Root cause of the over-fix: `initializeRoute()` is called from 3 places — `bootstrapSession()`'s two silent-restore branches (auth not required; an already-valid stored token) **and** the login-form submit handler — and the original fix changed the shared function instead of only the login path |
+| Fix | `initializeRoute()` reverted to URL-preserving (parses `window.location.pathname`, used by both `bootstrapSession()` branches — a reload now stays on whatever tab was already showing). A new, separate `resetToOverviewTab()` (force-to-Overview) is called only from the login-form submit handler — the one place that should actually reset navigation |
+| Feature | Collapsible global sidebar — icon-only when collapsed (each nav item already had visible text as its label; added `title="..."` attributes so hovering still shows it as a tooltip once collapsed). `.console-main` (`flex-grow: 1`) reflows into the freed width automatically via the same CSS width transition on `.sidebar` — no JS recalculation needed. Preference persisted in `localStorage` across reloads |
+| Tests | 6 new dashboard-hosting assertions (including one that explicitly greps `initializeRoute`'s own function body to confirm it does *not* contain the force-reset call, so this exact regression can't silently reappear) |
+| Coverage | Live-browser verified: sidebar collapses/expands with a smooth width transition, main content reflows automatically, toggle icon flips direction, collapsed state survives a reload. Could not drive the real reload-preserves-tab scenario end-to-end myself — this deployment requires real owner credentials (confirmed via the unlock gate staying visible) — verified via direct code review instead, since both `initializeRoute`/`resetToOverviewTab` are small, unconditional functions with no branching |
+| Status | ✅ Built, tested, live-verified (sidebar collapse); awaiting owner confirmation of the reload-tab-persistence fix on the real authenticated session |
+
 ---
 
 *Status legend: a milestone is "In Progress" (🔄) when actively being designed or built, "Approved" (✅) only when the owner signs off. Never two milestones in flight.*

@@ -168,7 +168,10 @@
                 applyPrincipal(me?.data || me);
                 showAppShell();
                 closeAllModals();
-                initializeRoute();
+                // A fresh login (not a reload of an existing session) —
+                // always starts on Overview, never whatever tab the address
+                // bar happened to still show from before.
+                resetToOverviewTab();
                 checkSystemHealth();
                 checkKiteGate();
             } catch (err) {
