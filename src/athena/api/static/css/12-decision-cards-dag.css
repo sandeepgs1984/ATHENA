@@ -584,52 +584,82 @@
     margin: 0 0 var(--space-4);
 }
 
-.dag-svg-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;
-    z-index: 1;
-}
-
+/* DT-4 (owner reference-mock screenshot): replaced the auto-fit grid +
+   dynamically-computed SVG connector lines with a vertical pipeline
+   list — a continuous rail (::after below) connects each stage's icon
+   circle straight down to the next, in the same DOM order as
+   trace.stages. Same click/detail-panel behavior, same stage order,
+   same per-stage status data — presentation-only. */
 .dag-nodes-flow {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-    gap: var(--space-20);
+    display: flex;
+    flex-direction: column;
     position: relative;
     z-index: 2;
-    padding: var(--space-20) 0;
+    padding: var(--space-8) 0;
 }
 
 .dag-node {
-    background-color: rgba(15, 22, 38, 0.9);
-    border: 2px solid var(--border-color);
-    border-radius: 8px;
-    padding: var(--space-14) var(--space-10);
     display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: var(--space-8);
+    align-items: flex-start;
+    gap: var(--space-14);
+    padding: var(--space-10) var(--space-8);
     cursor: pointer;
-    transition: all var(--transition-speed) ease;
-    box-shadow: var(--shadow-xs);
+    border-radius: 6px;
+    transition: background-color var(--transition-speed) ease;
 }
 
 .dag-node:hover {
-    border-color: var(--accent);
-    box-shadow: var(--glow-accent-lg);
-    transform: translateY(-2px);
+    background-color: rgba(255, 255, 255, 0.03);
 }
 
 .dag-node.active {
-    border-color: var(--accent);
     background-color: rgba(56, 189, 248, 0.08);
 }
 
+.dag-node-rail {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+/* The connecting line — every node but the last extends it down into the
+   gap toward the next node's icon (no coordinate math, no ResizeObserver:
+   pure CSS, immune to line-wrapping quirks the old SVG version had). */
+.dag-node:not(:last-child) .dag-node-rail::after {
+    content: "";
+    position: absolute;
+    top: 32px;
+    bottom: calc(-1 * var(--space-10));
+    width: 2px;
+    background: var(--border-color);
+    z-index: 1;
+}
+
+.dag-node-icon-wrap {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(15, 22, 38, 0.9);
+    border: 2px solid var(--border-color);
+    position: relative;
+    z-index: 2;
+    transition: border-color var(--transition-speed) ease;
+    flex-shrink: 0;
+}
+
+.dag-node:hover .dag-node-icon-wrap,
+.dag-node.active .dag-node-icon-wrap {
+    border-color: var(--accent);
+    box-shadow: var(--glow-accent-md);
+}
+
 .dag-node-icon {
-    font-size: var(--text-1-1);
+    font-size: var(--text-0-88);
     color: var(--text-muted);
     transition: color var(--transition-speed) ease;
 }
@@ -639,11 +669,23 @@
     color: var(--accent);
 }
 
+.dag-node-body {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-10);
+    min-width: 0;
+    padding-top: var(--space-5);
+}
+
 .dag-node-name {
-    font-size: var(--text-0-75);
+    font-size: var(--text-0-8);
     font-weight: 600;
     color: var(--text-primary);
-    text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .dag-node-status {
@@ -690,29 +732,6 @@
 .dag-node-status.meaning-neutral {
     background-color: rgba(148, 163, 184, 0.12);
     color: var(--text-muted);
-}
-
-/* Gentle continuous dash-flow along the connector lines, brighter along
-   whichever edge touches the selected node (owner UX audit #14 — the
-   trace should feel like a flow, not a static diagram). */
-.dag-flow-line {
-    stroke-dashoffset: 0;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-    .dag-flow-line {
-        animation: dag-flow-dash 1.4s linear infinite;
-    }
-
-    .dag-flow-line-active {
-        animation-duration: 0.7s;
-    }
-}
-
-@keyframes dag-flow-dash {
-    to {
-        stroke-dashoffset: -16;
-    }
 }
 
 /* Stage Details Card */

@@ -337,6 +337,50 @@
     color: var(--tone-warn-text);
 }
 
+/* DT-4: last-5-trades sparkline — compact bar trend of the most recently
+   closed similar setups, built from each analog's own realized outcome */
+.analog-sparkline {
+    display: flex;
+    align-items: center;
+    gap: var(--space-8);
+    margin-bottom: var(--space-4);
+}
+
+.analog-sparkline-label {
+    flex-shrink: 0;
+    color: var(--text-muted);
+    font-size: var(--text-0-62);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.analog-sparkline-svg {
+    flex: 1;
+    height: 22px;
+    min-width: 80px;
+}
+
+.analog-sparkline-zero {
+    stroke: var(--border-color);
+    stroke-width: 1;
+}
+
+.analog-sparkline-bar {
+    stroke: none;
+}
+
+.analog-sparkline-bar.tone-good {
+    fill: var(--tone-good-text);
+}
+
+.analog-sparkline-bar.tone-bad {
+    fill: var(--tone-bad-text);
+}
+
+.analog-sparkline-bar.tone-neutral {
+    fill: var(--text-muted);
+}
+
 /* Decision History outcome accuracy (UX-6) — friendlier framing over the
    same real pnl sign shown in the grid below, never a second judgment */
 .outcome-accuracy-badge {

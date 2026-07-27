@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.52.5">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.53.1">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -805,9 +805,8 @@
                                 </div>
                                 <div class="card-body trace-dag-canvas-wrapper" style="position: relative;">
                                     <p class="dag-legend">Click a stage to jump the brief to where that value lives.</p>
-                                    <!-- Dynamic SVG connection line layer -->
-                                    <svg id="dag-svg-lines" class="dag-svg-overlay" aria-hidden="true"></svg>
-
+                                    <!-- DT-4: vertical pipeline list — a continuous CSS rail (not a
+                                         dynamically-computed SVG line layer) connects each stage's icon. -->
                                     <div id="dag-nodes-container" class="dag-nodes-flow">
                                         <!-- Dynamic stage nodes injected here -->
                                         <div class="text-muted text-center" style="padding: 48px;">Select a decision briefing document to view its reasoning trace.</div>
@@ -1101,6 +1100,6 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.52.5"></script>
+    <script src="/dashboard/dashboard.js?v=9.53.1"></script>
 </body>
 </html>

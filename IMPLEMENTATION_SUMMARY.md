@@ -6,6 +6,39 @@ status updated on approval.
 
 ---
 
+## DT-4 — Reasoning Trace vertical pipeline list + Similar Trades sparkline (APPROVED)
+
+| | |
+|---|---|
+| Completed | 2026-07-27 |
+| Objective | Fourth and final milestone of the owner's "ATHENA Workstation Refactor": replace the Reasoning Trace's auto-fit-grid + SVG-connector DAG with a cleaner vertical pipeline list, and add a last-5-trades sparkline to the Analogs (Similar Trades) panel — both per the scope agreed at the start of the assignment |
+| Scope | `src/athena/api/static/js/{18-decision-brief-trace,19-decision-brief-history}.js`, `src/athena/api/static/css/{12-decision-cards-dag,13-context-history}.css`, `src/athena/api/static/index.html`, `tests/api/platform/test_dashboard_hosting.py` |
+| Public APIs added | None — both changes are frontend-only, built from data already fetched by existing endpoints (`GET /decisions/{id}/trace`, `GET /decisions/{id}/analogs`) |
+| Tests | ~15 new/updated dashboard-hosting assertions. Full suite **1042 passed** |
+| Coverage | Live-browser verified via injected sample data (no owner credentials available for a real authenticated load, same constraint as prior milestones): pipeline list renders with a connecting rail between stages, click sets the active state (accent icon ring + glow + highlighted row), status badges render inline; sparkline renders bars scaled by return magnitude, colored green/red by sign, tooltip shows exact date/return. Zero uncaught console errors from the new code |
+| Architecture compliance | No backend/business-logic change; no new provider; no new calculation — sparkline reuses `DecisionAnalogDTO.outcome_return_pct`/`outcome_closed_ts`, both already persisted and already fetched |
+| ADR compliance | ADR-005 (explainability-as-data): no new numbers computed client-side beyond simple bar-height scaling of already-real values; ADR-004 (static HTML-first, no framework): both pieces are hand-rolled JS/CSS, no dependency added |
+| Risks discovered | None new. Confirmed a stale-browser-cache quirk during verification (the outer `dashboard.css` link carries a cache-bust query param but its inner `@import`-ed files don't, so a long-lived tab can serve a stale inner CSS file until a hard reload) — not a code defect, just a verification-technique note for future sessions |
+| Technical debt introduced | None |
+| Suggested improvements | None identified |
+| Remaining work | None — both scope items complete. This was the final milestone (DT-4 of 4) of the ATHENA Workstation Refactor assignment; the whole track is now closed |
+| Status | **✅ Approved** (2026-07-27) |
+| Branch | feature/live-dashboard |
+
+### Scope completed
+
+**Part 1 — Reasoning Trace vertical pipeline list.** Replaced the CSS grid (`grid-template-columns: repeat(auto-fit, minmax(130px, 1fr))`) of card-style stage nodes connected by JS-computed SVG `<line>` elements (`drawDAGLines()`, using a `ResizeObserver` + `getBoundingClientRect()` to redraw connector coordinates on resize — fragile once stages wrapped onto a second grid row) with a vertical flex-column list: each stage is a horizontal row (a circular icon-wrap + name/status body) connected by a pure-CSS rail (`.dag-node-rail::after`, a static `2px` line to the next node, no coordinate math, immune to wrapping). Same stage order, same click → `selectNode`/`showStageDetails` behavior, same status badge classes — only the connective visual layer changed. `drawDAGLines()` and its `ResizeObserver`/`setTimeout` callers removed entirely (dead code, zero remaining callers checked before deletion). The `<svg id="dag-svg-lines">` element removed from `index.html`.
+
+**Part 2 — Similar Trades sparkline.** Added a compact inline SVG bar sparkline to the existing "Historical validation" card in the Analogs panel, showing the last 5 similar trades' realized returns. `analogSparklinePoints()` filters the already-fetched analogs (`activeAnalogs`, from `loadDecisionAnalogs`) to those with a realized outcome, sorts by close time descending, takes the 5 most recent, and reverses to oldest-first for a left-to-right trend read. `renderAnalogSparkline()` renders each as a `<rect>` whose height is proportional to `|outcome_return_pct|` (normalized against the max magnitude in the set) and whose color is `--tone-good-text`/`--tone-bad-text` by sign — the same tokens already used everywhere else in the app for pnl coloring, not a new palette. No new endpoint, no new backend field (`outcome_return_pct`/`outcome_closed_ts` already existed on `DecisionAnalogDTO` from an earlier milestone, simply unused until now) — a pure Priority-1 "reposition already-fetched data" change, per the owner's earlier "add the mini sparkline (Recommended)" decision.
+
+### Verification notes
+
+- Caught and fixed one test regression: an explanatory code comment containing the literal word "ResizeObserver" tripped the `assert "ResizeObserver" not in js` check meant to confirm the old coordinate-math approach was gone — narrowed to `"new ResizeObserver" not in js` (checking for actual instantiation, not any mention of the word).
+- During live-browser verification, the sparkline bars initially rendered solid black instead of green/red. Root cause: the browser tab had cached the *inner* `css/13-context-history.css` file (reached via `@import` from the outer `dashboard.css`) from before this milestone's edit — the outer link's cache-bust query param doesn't propagate through `@import`, so a long-lived tab's HTTP cache can serve a stale inner file even after a fresh navigation. Confirmed via a cache-bypassing `fetch(..., {cache: "no-store"})` that the correct CSS rule was already on disk; this was a verification-technique artifact, not a code defect — a real hard-reload (or a fresh server restart, as already required for backend changes) picks up the new CSS normally.
+- No backend restart was required for this milestone (frontend-only change) — cache-bust bumped in `index.html` (`9.53.0` for Part 1, `9.53.1` for Part 2) so the single concatenated `dashboard.js` and outer `dashboard.css` are re-fetched on next load.
+
+---
+
 ## DT-3 — Tab restructuring: 5 tabs + spacing polish (APPROVED)
 
 | | |

@@ -302,19 +302,15 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     # show each stage's own real computed state (e.g. "Bullish", "BUY",
     # "Authorized") instead of the generic lifecycle badge once that
     # stage's data has loaded, falling back to the lifecycle status when
-    # no mapping applies; connector lines get a subtle flow animation
-    # that respects prefers-reduced-motion.
+    # no mapping applies.
     assert "function stageMeaning" in js
     assert "function dagStatusBadgeHtml" in js
     assert "function refreshDagNodeMeanings" in js
-    assert "dag-flow-line" in js
-    assert "dag-flow-line-active" in js
     assert ".dag-node-status.meaning-good" in css
     assert ".dag-node-status.meaning-bad" in css
     assert ".dag-node-status.meaning-warn" in css
     assert ".dag-node-status.meaning-neutral" in css
     assert "prefers-reduced-motion" in css
-    assert "dag-flow-dash" in css
 
     # UX-7: design tokens + accessibility polish pass. Spacing/typography/
     # elevation/color tokens were added by naming every distinct value
@@ -337,18 +333,16 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "var(--tone-good-text)" in css
 
     # Accessibility: global keyboard focus ring + reduced-motion coverage
-    # dashboard-wide (previously only the Reasoning Trace flow lines were
-    # gated); aria-labels on icon-only header buttons that only had a
-    # `title` (not reliably exposed as an accessible name); aria-hidden on
-    # the decorative DAG connector-line SVG overlay; keyboard-operable
-    # "Today's Decisions" cards (previously click-only, unreachable by tab).
+    # dashboard-wide; aria-labels on icon-only header buttons that only had
+    # a `title` (not reliably exposed as an accessible name); keyboard-
+    # operable "Today's Decisions" cards (previously click-only,
+    # unreachable by tab).
     assert ":focus-visible" in css
     assert "prefers-reduced-motion: reduce" in css
     assert 'id="logout-btn"' in html
     assert 'aria-label="Log out"' in html
     assert 'aria-label="Force refresh"' in html
     assert 'aria-label="Refresh backup list"' in html
-    assert 'id="dag-svg-lines" class="dag-svg-overlay" aria-hidden="true"' in html
     assert 'row.setAttribute("tabindex", "0")' in js
     assert 'row.setAttribute("role", "button")' in js
 
@@ -507,6 +501,23 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "nothing generated" in js
     assert ".analog-row" in css
     assert ".analog-list" in css
+
+    # DT-4: last-5-trades sparkline — built purely from each analog's own
+    # already-fetched outcome_return_pct/outcome_closed_ts, no new fetch
+    assert "function renderAnalogSparkline" in js
+    assert "function analogSparklinePoints" in js
+    assert "outcome_return_pct" in js
+    assert "outcome_closed_ts" in js
+    assert ".analog-sparkline" in css
+    assert ".analog-sparkline-bar" in css
+    sparkline_fn_start = js.find("function renderAnalogSparkline")
+    sparkline_fn_end = js.find("\n    function ", sparkline_fn_start + 1)
+    sparkline_fn_body = js[sparkline_fn_start:sparkline_fn_end]
+    assert "analogSparklinePoints" in sparkline_fn_body
+    assert "<svg" in sparkline_fn_body
+    validation_fn_start = js.find("function renderHistoricalValidation")
+    validation_fn_end = js.find("\n    function ", validation_fn_start + 1)
+    assert "renderAnalogSparkline(data)" in js[validation_fn_start:validation_fn_end]
 
     # M-X2: exact quantified distance to the TRADE gate — arithmetic over
     # already-persisted score/confidence/risk values, never a recomputed decision
@@ -960,6 +971,30 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ">Open Chart<" not in header_actions_body  # icon-only, no label
     assert ">Compare<" not in header_actions_body
     assert ".header-icon-btn" in css
+
+    # DT-4 (owner reference-mock screenshot): Reasoning Trace redesigned
+    # from an auto-fit grid + dynamically-computed SVG connector lines into
+    # a vertical pipeline list — same stageMeaning()/dagStatusBadgeHtml()/
+    # refreshDagNodeMeanings() data wiring (checked above, unchanged), same
+    # click -> selectNode() -> showStageDetails()+switchBriefTab() behavior,
+    # same stage order (trace.stages, unchanged) — presentation-only.
+    # ResizeObserver/ getBoundingClientRect coordinate math and the SVG
+    # overlay are gone entirely, replaced by a pure-CSS rail.
+    assert 'id="dag-svg-lines"' not in html
+    assert "class=\"dag-svg-overlay\"" not in html
+    assert "new ResizeObserver" not in js
+    assert "function drawDAGLines" not in js
+    assert "dagSvgLines" not in js
+    assert ".dag-node-rail" in css
+    assert ".dag-node-icon-wrap" in css
+    assert ".dag-node-body" in css
+    render_trace_dag_start = js.find("function renderTraceDAG(trace)")
+    render_trace_dag_end = js.find("\n    function ", render_trace_dag_start + 1)
+    render_trace_dag_body = js[render_trace_dag_start:render_trace_dag_end]
+    assert "dag-node-rail" in render_trace_dag_body
+    assert "dag-node-icon-wrap" in render_trace_dag_body
+    assert "dag-node-body" in render_trace_dag_body
+    assert "selectNode(stage.stage_id, { userInitiated: true })" in render_trace_dag_body
 
 
 def test_dashboard_js_assembled_losslessly_from_concern_split(client: TestClient) -> None:

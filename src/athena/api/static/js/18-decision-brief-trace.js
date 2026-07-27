@@ -1,6 +1,5 @@
 
     const dagNodesContainer = document.getElementById("dag-nodes-container");
-    const dagSvgLines = document.getElementById("dag-svg-lines");
     const dagDetailsPanel = document.getElementById("dag-details-panel");
     const dagDetailsTitle = document.getElementById("dag-details-title");
     const dagDetailsStatus = document.getElementById("dag-details-status");
@@ -154,10 +153,18 @@
         });
     }
 
+    // DT-4 (owner reference-mock screenshot): replaced the auto-fit grid +
+    // dynamically-computed SVG connector lines with a vertical pipeline
+    // list — a continuous CSS rail (::after on .dag-node-rail) connects
+    // each stage's icon circle to the next, in the same DOM order as
+    // trace.stages. No ResizeObserver/getBoundingClientRect coordinate
+    // math needed (that logic broke down whenever the grid wrapped stages
+    // onto multiple rows, since "next" isn't always "to the right").
+    // Same data, same click/detail-panel behavior, same stage order —
+    // presentation-only change.
     function renderTraceDAG(trace) {
         if (!dagNodesContainer) return;
         dagNodesContainer.innerHTML = "";
-        if (dagSvgLines) dagSvgLines.innerHTML = "";
         selectedStageId = null;
 
         if (!trace.stages || trace.stages.length === 0) {
@@ -166,7 +173,7 @@
             return;
         }
 
-        trace.stages.forEach((stage, idx) => {
+        trace.stages.forEach(stage => {
             const node = document.createElement("div");
             node.className = "dag-node";
             node.setAttribute("data-stage", stage.stage_id);
@@ -174,9 +181,13 @@
             const icon = STAGE_ICONS[stage.stage_id] || "fa-circle-notch";
 
             node.innerHTML = `
-                <i class="fa-solid ${icon} dag-node-icon"></i>
-                <span class="dag-node-name" title="${escapeDecisionHtml(stage.name)}">${escapeDecisionHtml(stage.name)}</span>
-                ${dagStatusBadgeHtml(stage)}
+                <div class="dag-node-rail">
+                    <span class="dag-node-icon-wrap"><i class="fa-solid ${icon} dag-node-icon"></i></span>
+                </div>
+                <div class="dag-node-body">
+                    <span class="dag-node-name" title="${escapeDecisionHtml(stage.name)}">${escapeDecisionHtml(stage.name)}</span>
+                    ${dagStatusBadgeHtml(stage)}
+                </div>
             `;
 
             node.addEventListener("click", () => {
@@ -185,15 +196,6 @@
 
             dagNodesContainer.appendChild(node);
         });
-
-        // Add resize observer to draw SVG lines dynamically when nodes position shifts
-        const resizeObserver = new ResizeObserver(() => {
-            drawDAGLines();
-        });
-        resizeObserver.observe(dagNodesContainer);
-
-        // Draw initial connector lines
-        setTimeout(drawDAGLines, 100);
 
         // Highlight the first node by default, but never jump tabs for it —
         // only an actual click should navigate away from whichever tab the
@@ -298,51 +300,3 @@
         }
     }
 
-    function drawDAGLines() {
-        if (!dagSvgLines || !dagNodesContainer) return;
-        dagSvgLines.innerHTML = "";
-
-        const nodes = Array.from(dagNodesContainer.querySelectorAll(".dag-node"));
-        if (nodes.length < 2) return;
-
-        // Get container bounding rect
-        const containerRect = dagNodesContainer.getBoundingClientRect();
-        
-        // Match SVG viewport to container dimensions
-        dagSvgLines.setAttribute("width", containerRect.width);
-        dagSvgLines.setAttribute("height", containerRect.height);
-
-        for (let i = 0; i < nodes.length - 1; i++) {
-            const current = nodes[i].getBoundingClientRect();
-            const next = nodes[i+1].getBoundingClientRect();
-
-            // Calculate center coordinates relative to container
-            const startX = (current.left + current.width / 2) - containerRect.left;
-            const startY = (current.top + current.height / 2) - containerRect.top;
-            
-            const endX = (next.left + next.width / 2) - containerRect.left;
-            const endY = (next.top + next.height / 2) - containerRect.top;
-
-            // Draw line — a gentle continuous dash-flow animation (CSS
-            // class, respects prefers-reduced-motion) gives the "animated
-            // flow" feel the owner asked for without anything flashy.
-            const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-            line.setAttribute("x1", startX);
-            line.setAttribute("y1", startY);
-            line.setAttribute("x2", endX);
-            line.setAttribute("y2", endY);
-            line.setAttribute("class", "dag-flow-line");
-            line.setAttribute("stroke", "rgba(56, 189, 248, 0.2)");
-            line.setAttribute("stroke-width", "2");
-            line.setAttribute("stroke-dasharray", "4 4");
-
-            // Brighter + faster flow along the line adjacent to the selected node
-            if (nodes[i].classList.contains("active") || nodes[i+1].classList.contains("active")) {
-                line.setAttribute("stroke", "rgba(56, 189, 248, 0.6)");
-                line.setAttribute("stroke-width", "3");
-                line.classList.add("dag-flow-line-active");
-            }
-
-            dagSvgLines.appendChild(line);
-        }
-    }

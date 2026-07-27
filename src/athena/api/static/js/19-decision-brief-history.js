@@ -215,6 +215,50 @@
     // used only to render an intuitive similarity %, never persisted or compared.
     const ANALOG_MAX_DISTANCE = 173.2;
 
+    // DT-4: last-5-trades sparkline — a compact visual trend of the most
+    // recently closed similar setups, built from each analog's already-
+    // fetched outcome_return_pct/outcome_closed_ts (DecisionAnalogDTO,
+    // UX-6). No new fetch, no new calculation — just the existing per-
+    // analog outcome fields ordered by close time. Empty when nothing has
+    // a realized outcome yet.
+    function analogSparklinePoints(data) {
+        const rows = Array.isArray(data.analogs) ? data.analogs : [];
+        return rows
+            .filter(r => r.outcome_return_pct !== null && r.outcome_return_pct !== undefined && r.outcome_closed_ts)
+            .sort((a, b) => new Date(b.outcome_closed_ts) - new Date(a.outcome_closed_ts))
+            .slice(0, 5)
+            .reverse();
+    }
+
+    function renderAnalogSparkline(data) {
+        const points = analogSparklinePoints(data);
+        if (!points.length) return "";
+        const values = points.map(p => Number(p.outcome_return_pct));
+        const maxAbs = Math.max(...values.map(v => Math.abs(v)), 0.01);
+        const width = 132;
+        const height = 34;
+        const gap = 6;
+        const barWidth = (width - gap * (values.length - 1)) / values.length;
+        const zeroY = height / 2;
+        const bars = values.map((v, i) => {
+            const barHeight = Math.max(Math.min((Math.abs(v) / maxAbs) * (zeroY - 2), zeroY - 2), 1);
+            const x = i * (barWidth + gap);
+            const y = v >= 0 ? zeroY - barHeight : zeroY;
+            const tone = v > 0 ? "good" : (v < 0 ? "bad" : "neutral");
+            const label = `${escapeDecisionHtml(formatDecisionTime(points[i].outcome_closed_ts))}: ${v >= 0 ? "+" : ""}${v.toFixed(1)}%`;
+            return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${barHeight.toFixed(1)}" rx="1.5" class="analog-sparkline-bar tone-${tone}"><title>${label}</title></rect>`;
+        }).join("");
+        return `
+            <div class="analog-sparkline">
+                <span class="analog-sparkline-label">Last ${values.length} similar trade${values.length > 1 ? "s" : ""}</span>
+                <svg viewBox="0 0 ${width} ${height}" class="analog-sparkline-svg" preserveAspectRatio="none" role="img" aria-label="Return of the last ${values.length} similar trades">
+                    <line x1="0" y1="${zeroY}" x2="${width}" y2="${zeroY}" class="analog-sparkline-zero"></line>
+                    ${bars}
+                </svg>
+            </div>
+        `;
+    }
+
     // Historical Validation (owner UX audit) — win-rate/avg-return/avg-holding
     // across whichever shown analogs have a realized outcome. Exact values
     // from DecisionAnalogsDTO's aggregate fields (UX-6 backend addition);
@@ -242,6 +286,7 @@
                     <div><strong>${avgReturnLabel}</strong><span>avg return</span></div>
                     <div><strong>${avgHoldingLabel}</strong><span>avg holding</span></div>
                 </div>
+                ${renderAnalogSparkline(data)}
                 <p class="context-caption">Across ${sampleSize} of the ${shownCount} similar setups shown with a realized outcome.</p>
             </div>
         `;
