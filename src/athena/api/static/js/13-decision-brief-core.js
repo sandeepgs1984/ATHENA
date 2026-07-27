@@ -11,6 +11,21 @@
     const decisionBriefTabstrip = document.getElementById("decision-brief-tabstrip");
     const decisionBriefActionbar = document.getElementById("decision-brief-actionbar");
     const decisionBriefRevalidateHeader = document.getElementById("decision-brief-revalidate-header");
+    const gaugeRecommendationTile = document.getElementById("gauge-recommendation-tile");
+    const gaugeRecommendationStance = document.getElementById("gauge-recommendation-stance");
+    const decisionSummaryCard = document.getElementById("decision-summary-card");
+    const decisionSummaryHeadline = document.getElementById("decision-summary-headline");
+
+    // ATHENA Summary "View Details" opens the same executive-summary bullet
+    // list previously shown inline on every tab — now a modal, following the
+    // existing openModal/closeModal pattern already used for Compare/Chart/
+    // Backtest (no new modal architecture).
+    const executiveSummaryModalEl = document.getElementById("executive-summary-modal");
+    document.getElementById("decision-summary-view-details")?.addEventListener("click", () => openModal(executiveSummaryModalEl));
+    document.getElementById("executive-summary-modal-close")?.addEventListener("click", () => closeModal(executiveSummaryModalEl));
+    window.addEventListener("click", event => {
+        if (event.target === executiveSummaryModalEl) closeModal(executiveSummaryModalEl);
+    });
 
     function renderDecisionBriefEmpty(title, detail) {
         if (decisionBriefTitle) {
@@ -23,6 +38,10 @@
         if (decisionBriefGauges) decisionBriefGauges.hidden = true;
         if (decisionBriefTabstrip) decisionBriefTabstrip.hidden = true;
         if (decisionBriefActionbar) decisionBriefActionbar.hidden = true;
+        if (decisionSummaryCard) decisionSummaryCard.hidden = true;
+        if (decisionSummaryHeadline) decisionSummaryHeadline.textContent = "";
+        if (gaugeRecommendationTile) gaugeRecommendationTile.className = "brief-gauge brief-gauge-recommendation";
+        if (gaugeRecommendationStance) gaugeRecommendationStance.textContent = "—";
         resetCockpitGauges();
         setHeaderRevalidateEnabled(false);
         // Owner-reported: after "Clear all", the main brief correctly went
@@ -234,6 +253,38 @@
             heroRR.textContent = Number.isFinite(rr) ? `${rr.toFixed(1)} : 1` : "—";
         }
 
+        // DT-3 refinement (owner reference-mock screenshot): Recommendation
+        // merged into the gauges row as its own tile, styled as a filled
+        // stance-tinted card (not a small pill) to match the mock — the
+        // whole tile's background/border and the stance text's color both
+        // key off the same .stance-buy/-sell/-hold/-pass/-wait class,
+        // mirroring the exact tone treatment .decision-banner already uses.
+        // Stance is known synchronously (from decision.metadata, same as
+        // the header chip); the qualifier band ("Strong Setup") depends on
+        // the async score depth and is filled in by renderCockpitGauges
+        // alongside the Score tile's own band, reusing that exact same
+        // computed value.
+        if (gaugeRecommendationTile) {
+            gaugeRecommendationTile.className = `brief-gauge brief-gauge-recommendation ${stance.cls}`;
+        }
+        if (gaugeRecommendationStance) {
+            gaugeRecommendationStance.textContent = stance.label;
+        }
+
+        // ATHENA Summary card: the same real headline previously shown
+        // inline as the "ATHENA Recommendation" banner (now redundant with
+        // the gauges-row stance badge above) — repositioned into the sticky
+        // header, collapsed behind a "View Details" button rather than
+        // permanently repeating the full bullet breakdown on every tab.
+        if (decisionSummaryCard) {
+            decisionSummaryCard.className = `decision-banner ${stance.cls}`;
+            decisionSummaryCard.hidden = false;
+        }
+        if (decisionSummaryHeadline) {
+            decisionSummaryHeadline.textContent = summary.headline;
+            decisionSummaryHeadline.title = summary.headline;
+        }
+
         const gateRows = gates.length
             ? gates.map(gate => `
                 <div class="decision-gate-row">
@@ -265,28 +316,6 @@
         const paneActive = name => (activeBriefTab === name ? " active" : "");
 
         decisionBriefBody.innerHTML = `
-            <section class="decision-brief-hero">
-                <div class="decision-banner ${stance.cls}">
-                    <div class="decision-banner-head">
-                        <span class="decision-banner-label">ATHENA Recommendation</span>
-                        <span class="decision-banner-stance">${stance.label}</span>
-                    </div>
-                    <p class="decision-banner-reason" title="${escapeDecisionHtml(summary.headline)}">${escapeDecisionHtml(summary.headline)}</p>
-                </div>
-                <div id="decision-executive-summary" class="executive-summary">
-                    <div class="decision-depth-loading">
-                        <i class="fa-solid fa-circle-notch fa-spin"></i> Building summary…
-                    </div>
-                </div>
-                <div class="decision-brief-section decision-timeline-section">
-                    <div class="decision-brief-section-header">
-                        <h4>Decision timeline</h4>
-                        <span class="decision-timeline-hint">Click an entry to view ATHENA's assessment at that point in time</span>
-                    </div>
-                    <div id="decision-history-timeline" class="decision-history-timeline"></div>
-                </div>
-            </section>
-
             <div class="tabpane${paneActive("setup")}" id="brief-pane-setup" data-brief-pane="setup">
                 <section class="decision-brief-section">
                     <h4>Universe eligibility</h4>
@@ -399,6 +428,22 @@
                             <i class="fa-solid fa-circle-notch fa-spin"></i> Loading your response…
                         </div>
                     </div>
+                </section>
+            </div>
+
+            <!-- DT-3 (owner workstation refactor): split out of the old
+                 "Decision History" tab — Decision Timeline moved here from
+                 the always-visible hero (it was crowding the hero on every
+                 tab, not just when reviewing history), Similar past setups
+                 moved here from the Response tab (owner: response/outcome
+                 recording is a distinct action from browsing history). -->
+            <div class="tabpane${paneActive("history")}" id="brief-pane-history" data-brief-pane="history">
+                <section class="decision-brief-section decision-timeline-section">
+                    <div class="decision-brief-section-header">
+                        <h4>Decision timeline</h4>
+                        <span class="decision-timeline-hint">Click an entry to view ATHENA's assessment at that point in time</span>
+                    </div>
+                    <div id="decision-history-timeline" class="decision-history-timeline"></div>
                 </section>
 
                 <section class="decision-brief-section">

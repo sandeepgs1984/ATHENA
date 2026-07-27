@@ -6,6 +6,110 @@ status updated on approval.
 
 ---
 
+## DT-3 — Tab restructuring: 5 tabs + spacing polish (BUILT, awaiting owner review)
+
+| | |
+|---|---|
+| Completed | 2026-07-27 |
+| Objective | Third milestone of the owner's "ATHENA Workstation Refactor": split the old single "Decision History" tab (which mixed logging a response with browsing history) into Response and History, per the scope agreed at the start of the assignment |
+| Scope | `src/athena/api/static/index.html`, `src/athena/api/static/js/13-decision-brief-core.js`, `src/athena/api/static/js/14-decision-brief-analysis.js`, `src/athena/api/static/js/18-decision-brief-trace.js`, `src/athena/api/static/js/06-ui-helpers.js`, `src/athena/api/static/css/09-decision-brief-shell.css`, `tests/api/platform/test_dashboard_hosting.py` |
+| Tests | ~25 new/updated dashboard-hosting assertions across both rounds. Full suite **1035 passed** |
+| Coverage | Live-browser verified: all 5 tabstrip buttons present, correctly ordered/labeled, click-wiring confirmed; structural source-slice test confirms Journal stays in Response while Timeline+Analogs move together into History; merged Recommendation+gauges tile and collapsed ATHENA Summary card visually confirmed via injected sample data, matching the reference mock; View Details modal opens/closes correctly (button, close button, and backdrop click all confirmed); zero uncaught console errors |
+| Status | **BUILT** — awaiting owner review |
+| Branch | feature/live-dashboard |
+
+### Scope completed
+
+- **Tabstrip**: the single "Decision History" button (`data-brief-tab="response"`) split into two — "Response" (unchanged icon `fa-comment-dots`) and a new "History" (`fa-clock-rotate-left`).
+- **Decision Timeline moved out of the always-visible hero.** It previously rendered inside `.decision-brief-hero` — visible on every tab regardless of which one was active, a real instance of the original assignment's "Remove Vertical Wasted Space" principle, not just a cosmetic complaint. Now it only renders inside the new History tabpane.
+- **Similar past setups (Analogs) moved out of Response into History**, alongside the Timeline — reasoning: recording a response/outcome is a distinct action from browsing history, and the two didn't share a rendering timeline or data source. Response now holds only the Journal panel.
+- `BRIEF_TAB_NAMES` (`18-decision-brief-trace.js`) extended `["setup", "analysis", "context", "response"]` → `[..., "history"]`; `BRIEF_TAB_LABELS.response` renamed `"Decision History"` → `"Response"`, new `history: "History"` entry added. `STAGE_TAB_MAP` left unchanged — no DAG stage currently jumps to response or history.
+- No backend touched — this is presentation-only regrouping of already-rendered sections; no new fetch, no new calculation, no content removed or invented.
+
+### Refinement from owner screenshot review (2026-07-27), before final approval
+
+Owner shared the reference mock's hero hierarchy (Recommendation+gauges card → collapsed Summary card with "View Details" → tab strip) and asked for the same, since the Executive Summary bullet list was still always-visible on every tab (same class of issue this milestone had just fixed for Decision Timeline). Confirmed scope first: skip an "Expected Holding" gauge (same conclusion as DT-2's Quick Summary — no real forward-looking estimate exists), and leave the action bar's position unchanged.
+
+- **Recommendation merged into the gauges row** as a new first tile — stance badge (`gauge-recommendation-stance`) set synchronously from `decisionStance()` (same data already used for the header chip); a qualifier band (`gauge-recommendation-band`, e.g. "Good Setup") set inside `renderCockpitGauges()` by reusing the Score tile's own already-computed band — never a second, independently-derived word.
+- **Executive Summary collapsed into an "ATHENA Summary" card** (`#decision-summary-card`, reusing the existing `.decision-banner` stance-tone-colored classes) — shows the same real one-line headline previously rendered as the banner's reason text, plus a "View Details" button, positioned between the gauges row and the tab strip in the sticky header (moved out of the scrollable, always-visible hero).
+- **New `#executive-summary-modal`** shows the full bullet breakdown on "View Details" — reuses the exact existing `openModal`/`closeModal` functions and the compare-modal's close-button/backdrop-click/Escape-key pattern verbatim; added to `closeAllModals()`. `renderExecutiveSummary()` is unchanged — its target container just moved from a per-render JS template into static HTML inside the modal.
+- **`.decision-brief-hero` removed entirely** from `renderDecisionBrief()`'s per-decision template (it had already lost Decision Timeline earlier in this same milestone, and now the Banner moved out too — nothing was left to justify the wrapper), and the now-dead `.decision-brief-hero` CSS rule was deleted.
+
+**Fix pass (same review):** the Recommendation tile initially shipped as a small `.stance-chip` pill inside a plain dark `.brief-gauge` tile — owner feedback: the reference mock treats it as a fully stance-tinted highlight card, not just another gauge tile with a badge inside. Fixed: `gaugeRecommendationTile.className` now applies the same `stance.cls` (`stance-buy`/`-sell`/`-hold`/`-pass`/`-wait`) already used by `.decision-banner`, and `.brief-gauge-recommendation.stance-*` gets the identical radial-gradient tint `.decision-banner.stance-*` uses (one tone system, not a second palette); the stance text switched from a small `.stance-chip` pill to `.hero-metric-band` (same large-bold sizing the Score/Confidence/Risk tiles already use for their band words), colored per stance via a scoped selector on the tile's own class.
+
+### Files created
+
+- None.
+
+### Files modified
+
+- `src/athena/api/static/index.html` — tabstrip button split; Recommendation tile added to the gauges row; new `#decision-summary-card` + `#executive-summary-modal`; `#decision-executive-summary` moved into the modal as static HTML; cache-bust `9.49.4` → `9.50.1`.
+- `src/athena/api/static/js/13-decision-brief-core.js` — Decision Timeline section removed from the hero template; Response tabpane split into Response (Journal only) + new History tabpane (Timeline + Analogs); Recommendation tile + Summary card populated synchronously in `renderDecisionBrief()`; `renderDecisionBriefEmpty()` resets both; `.decision-brief-hero`/`.decision-banner` removed from the template entirely; View Details/modal-close/backdrop-click wiring added.
+- `src/athena/api/static/js/14-decision-brief-analysis.js` — `renderCockpitGauges()`/`resetCockpitGauges()` also populate/reset the Recommendation tile's qualifier band, reusing the Score tile's own computed value.
+- `src/athena/api/static/js/18-decision-brief-trace.js` — `BRIEF_TAB_NAMES`/`BRIEF_TAB_LABELS` updated for the 5th tab.
+- `src/athena/api/static/js/06-ui-helpers.js` — `closeAllModals()` now also closes `#executive-summary-modal`.
+- `src/athena/api/static/css/09-decision-brief-shell.css` — `.decision-summary-icon` tone coloring, `.decision-summary-details-btn` right-alignment, `.brief-gauge-recommendation` spacing; dead `.decision-brief-hero` rule removed.
+- `tests/api/platform/test_dashboard_hosting.py` — ~25 new/updated assertions total (tab count/order/labels, Response/History content-placement structural check, hero/banner-removed-from-template check, Recommendation tile, Summary card, and View Details modal wiring).
+- This log; `docs/MILESTONES.md`.
+
+### Public APIs
+
+- None.
+
+### Validation and architecture
+
+- Full regression: **1035 passed**. Ruff clean.
+- JS syntax verified (`node --check` on the reassembled script). HTML div-balance re-verified after every edit.
+- No ADR required — pure frontend presentation change, no architecture, provider, or business-logic impact.
+
+### Risks and technical debt
+
+- Could not exercise the full tabpane content (Response/History) against a real, authenticated decision selection end-to-end — verified via a structural source-slice test plus live tabstrip click-wiring, same constraint as every prior milestone (no owner credentials available to the AI).
+- "Spacing polish" (the other half of this milestone's name) was intentionally limited to the concrete win here (removing Decision Timeline from the always-visible hero) rather than speculative CSS tweaking across Trade Plan/Analysis/Market Context with no concrete target — matches the pattern established this session (DT-1/DT-2 polish was always owner-screenshot-driven, not guessed at).
+
+### Remaining work
+
+- **Owner review** on the live dashboard: click through all 5 tabs on a real decision, confirm Response shows only the journal/outcome form and History shows Timeline + Similar past setups together; confirm the merged Recommendation+gauges tile and the ATHENA Summary card with "View Details" render as expected; flag any specific spacing/hierarchy issue for a targeted follow-up (rather than the AI guessing at "polish").
+- Then proceed to DT-4 (Reasoning Trace redesign + Similar Trades sparkline) once approved.
+
+### Commit message
+
+```text
+feat(dashboard): DT-3 — split Decision History into Response + History
+tabs
+
+- Split the tabstrip's single "Decision History" button into "Response"
+  (Journal/Outcome only) and a new "History" (Decision Timeline +
+  Similar past setups) — matches the milestone scope agreed at the
+  start of the workstation refactor assignment.
+- Move Decision Timeline out of the always-visible hero section (it
+  rendered on every tab regardless of which was active) into the new
+  History tab — a real fix for the assignment's "Remove Vertical
+  Wasted Space" principle, not just a relabeling.
+- Move Similar past setups (Analogs) out of Response into History,
+  alongside the Timeline — recording a response is a distinct action
+  from browsing history; Response now holds only the Journal panel.
+- Extend BRIEF_TAB_NAMES/BRIEF_TAB_LABELS for the 5th tab; no backend
+  change, no content removed or invented, purely a regroup of already-
+  rendered sections.
+- Merge ATHENA Recommendation into the gauges row as its own tile
+  (stance badge + a qualifier band reusing the Score tile's own
+  computed word, e.g. "Good Setup") — matches the reference mock's
+  hero hierarchy, requested after reviewing the live build.
+- Collapse the always-visible Executive Summary bullet list into an
+  "ATHENA Summary" card (same real one-line headline, now positioned
+  between the gauges and the tab strip) with a "View Details" button
+  that opens the full breakdown in a modal — reuses the existing
+  openModal/closeModal pattern (Compare/Chart/Backtest), no new modal
+  architecture. Fixes the same always-repeats-on-every-tab issue this
+  milestone had just fixed for Decision Timeline.
+- Remove the now-empty .decision-brief-hero wrapper and its dead CSS
+  rule; no backend change, no content invented — same real headline
+  and bullet computations, only repositioned and collapsed.
+```
+
+---
+
 ## DT-2 — Hero header + Quick Summary + ticker strip (APPROVED)
 
 | | |

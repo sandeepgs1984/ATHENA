@@ -490,6 +490,8 @@
         });
         const rrEl = document.getElementById("hero-rr-value");
         if (rrEl) rrEl.textContent = "—";
+        const recommendationBandEl = document.getElementById("gauge-recommendation-band");
+        if (recommendationBandEl) recommendationBandEl.textContent = "—";
     }
 
     function gaugeToneColor(view) {
@@ -532,6 +534,13 @@
             if (barEl) {
                 barEl.style.width = known ? `${view.meterWidth}%` : "0%";
                 barEl.style.background = color;
+            }
+            // Recommendation tile's qualifier ("Strong Setup") reuses the
+            // Score tile's own already-computed band — never a second,
+            // independently-derived word.
+            if (tone === "score") {
+                const recommendationBandEl = document.getElementById("gauge-recommendation-band");
+                if (recommendationBandEl) recommendationBandEl.textContent = band ? `${band} Setup` : "—";
             }
         });
         renderExecutiveSummary();

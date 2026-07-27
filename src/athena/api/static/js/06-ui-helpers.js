@@ -50,5 +50,6 @@
         closeModal(document.getElementById("backtest-modal"));
         closeModal(document.getElementById("chart-modal"));
         closeModal(document.getElementById("compare-modal"));
+        closeModal(document.getElementById("executive-summary-modal"));
         if (!state.kiteBlocking) hideKiteGate();
     }

@@ -187,8 +187,9 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".decision-carousel-section" in css
     assert ".symbol-row" in css
 
-    # Sticky cockpit header: live score/confidence/risk gauges + a four-tab
-    # brief (Setup/Analysis/Context/Response) replacing one long stacked scroll
+    # Sticky cockpit header: live score/confidence/risk gauges + a five-tab
+    # brief (Setup/Analysis/Context/Response/History) replacing one long
+    # stacked scroll
     assert 'id="decision-brief-gauges"' in html
     assert 'id="gauge-score-value"' in html
     assert 'id="gauge-confidence-value"' in html
@@ -197,6 +198,7 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert 'data-brief-tab="analysis"' in html
     assert 'data-brief-tab="context"' in html
     assert 'data-brief-tab="response"' in html
+    assert 'data-brief-tab="history"' in html
     assert "function renderCockpitGauges" in js
     assert "function resetCockpitGauges" in js
     assert ".decision-brief-gauges" in css
@@ -213,7 +215,11 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert 'id="gauge-confidence-band"' in html
     assert 'id="gauge-risk-band"' in html
     assert 'id="hero-rr-value"' in html
-    assert 'id="decision-executive-summary"' in js
+    # DT-3 refinement: this container moved from a per-decision JS template
+    # into static HTML inside the new executive-summary-modal (see below) —
+    # renderExecutiveSummary() still targets the same id via getElementById,
+    # it just no longer builds the wrapping <div> itself each render.
+    assert 'id="decision-executive-summary"' in html
     assert "function qualityBand" in js
     assert "function riskBand" in js
     assert "function buildExecutiveSummaryLines" in js
@@ -277,10 +283,14 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     # instead of a flat row of chips
     assert ">Trade Plan</span>" in html
     assert ">Market Context</span>" in html
-    assert ">Decision History</span>" in html
+    # DT-3 split the old "Decision History" tab into Response (Journal/
+    # Outcome only) + History (Timeline + Similar past setups).
+    assert ">Response</span>" in html
+    assert ">History</span>" in html
     assert 'data-brief-tab="setup"' in html
     assert 'data-brief-tab="context"' in html
     assert 'data-brief-tab="response"' in html
+    assert 'data-brief-tab="history"' in html
     assert "function contextMetricCard" in js
     assert "function regimeLabelCategory" in js
     assert "View detailed breakdown" in js
@@ -430,7 +440,12 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     # caught it live. BRIEF_TAB_LABELS is the one place that mapping lives.
     assert "BRIEF_TAB_LABELS" in js
     assert '"Trade Plan"' in js
-    assert '"Decision History"' in js
+    # DT-3: BRIEF_TAB_LABELS relabeled response -> "Response" and added a
+    # new "history" -> "History" entry (split out of the old single
+    # "Decision History" tab) — no stage currently maps to either via
+    # STAGE_TAB_MAP, so this is a pure label/structure change.
+    assert '"Response"' in js
+    assert '"History"' in js
 
     # UX-6: Sidebar summary + Historical Validation + Decision Timeline
     # narrative + Decision History polish (owner UX audit) — a sticky
@@ -774,6 +789,74 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     # elements, same data — only sizing/spacing/grouping changed.
     assert "var(--text-1-4)" in css
     assert "border-top: 1px solid var(--border-color);" in css
+
+    # DT-3 — tab restructuring: the old single "Decision History" tab (which
+    # mixed logging a response with browsing history) split into Response
+    # (Journal only) and History (Decision Timeline, moved out of the
+    # always-visible hero, + Similar past setups, moved out of Response).
+    # No content deleted or invented — same three sections, regrouped.
+    assert '["setup", "analysis", "context", "response", "history"]' in js
+    response_pane_start = js.find('data-brief-pane="response"')
+    history_pane_start = js.find('data-brief-pane="history"')
+    history_pane_end = js.find("decision-brief-footnote", history_pane_start)
+    assert 0 <= response_pane_start < history_pane_start < history_pane_end
+    response_pane_body = js[response_pane_start:history_pane_start]
+    history_pane_body = js[history_pane_start:history_pane_end]
+    assert "decision-journal-panel" in response_pane_body
+    assert "decision-analogs-panel" not in response_pane_body
+    assert "decision-history-timeline" in history_pane_body
+    assert "decision-analogs-panel" in history_pane_body
+    # Decision Timeline no longer renders on every tab via the hero — it's
+    # gated behind selecting the History tab now (confirmed above: it only
+    # appears inside history_pane_body).
+
+    # Follow-up refinement (owner reference-mock screenshot): the always-
+    # visible ".decision-brief-hero" wrapper (ATHENA Recommendation banner +
+    # full bullet-point Executive Summary, both repeating on every tab) is
+    # gone entirely — the per-decision body template now starts directly
+    # with the first tabpane.
+    render_fn_start = js.find("function renderDecisionBrief(decision)")
+    render_fn_end = js.find("\n    function ", render_fn_start + 1)
+    render_fn_body = js[render_fn_start:render_fn_end]
+    assert 'class="decision-brief-hero"' not in render_fn_body
+    assert 'class="decision-banner' not in render_fn_body
+
+    # Recommendation merged into the gauges row as its own tile — stance
+    # badge set synchronously (same stance already computed for the header
+    # chip); qualifier band ("Strong Setup") reuses the Score tile's own
+    # already-computed band via renderCockpitGauges, never a second word.
+    assert 'id="gauge-recommendation-tile"' in html
+    assert 'id="gauge-recommendation-stance"' in html
+    assert 'id="gauge-recommendation-band"' in html
+    assert "gaugeRecommendationStance.textContent = stance.label" in js
+    cockpit_fn_start = js.find("function renderCockpitGauges(depth)")
+    cockpit_fn_end = js.find("\n    function ", cockpit_fn_start + 1)
+    cockpit_fn_body = js[cockpit_fn_start:cockpit_fn_end]
+    assert "gauge-recommendation-band" in cockpit_fn_body
+    assert "${band} Setup" in cockpit_fn_body
+    # Fix pass (owner screenshot): a small pill badge read as just another
+    # gauge tile — the whole tile is now stance-tinted (same tone treatment
+    # .decision-banner.stance-* already uses), not a plain dark tile with a
+    # chip inside.
+    assert 'gaugeRecommendationTile.className = `brief-gauge brief-gauge-recommendation ${stance.cls}`' in js
+    assert ".brief-gauge-recommendation.stance-buy" in css
+    assert ".brief-gauge-recommendation.stance-buy #gauge-recommendation-stance" in css
+
+    # ATHENA Summary: the same real headline previously shown inline as the
+    # "ATHENA Recommendation" banner (now redundant with the stance badge
+    # above), collapsed behind "View Details" instead of always showing the
+    # full bullet breakdown on every tab.
+    assert 'id="decision-summary-card"' in html
+    assert 'id="decision-summary-headline"' in html
+    assert 'id="decision-summary-view-details"' in html
+    assert "decisionSummaryHeadline.textContent = summary.headline" in js
+
+    # View Details opens the SAME executive-summary-modal via the existing
+    # openModal/closeModal pattern already used for Compare/Chart/Backtest —
+    # no new modal architecture, and it's wired into closeAllModals()/Escape.
+    assert 'id="executive-summary-modal"' in html
+    assert 'openModal(executiveSummaryModalEl)' in js
+    assert 'closeModal(document.getElementById("executive-summary-modal"))' in js
 
     # Future-implementation nav placeholders (no backing route yet) —
     # deliberately excluded from .nav-item so app-shell.js's click-wiring

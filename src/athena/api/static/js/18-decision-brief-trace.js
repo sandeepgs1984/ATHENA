@@ -264,7 +264,7 @@
         dagDetailsPanel.style.display = "block";
     }
 
-    const BRIEF_TAB_NAMES = new Set(["setup", "analysis", "context", "response"]);
+    const BRIEF_TAB_NAMES = new Set(["setup", "analysis", "context", "response", "history"]);
 
     // Trader-facing tab labels (UX-4 renamed the visible tab strip text
     // while deliberately keeping these internal data-brief-tab keys
@@ -276,7 +276,8 @@
         setup: "Trade Plan",
         analysis: "Analysis",
         context: "Market Context",
-        response: "Decision History",
+        response: "Response",
+        history: "History",
     };
 
     // Sticky-cockpit tab strip. Deliberately not reset when the selected
