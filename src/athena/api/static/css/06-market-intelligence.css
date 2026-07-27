@@ -1,24 +1,57 @@
-/* Market Workstation Layout */
+/* Market Workstation Layout. MI-1 removed the Trading Calendar column (now
+   a collapsible panel below, see .market-calendar-details) — 3 columns
+   became 2; the two remaining columns keep their prior relative width. */
 .market-workstation {
     display: grid;
-    grid-template-columns: 1fr 1.2fr 1fr;
+    grid-template-columns: 1fr 1fr;
     gap: var(--space-24);
     height: calc(100vh - 120px);
     overflow: hidden;
     padding: var(--space-8) 0;
 }
 
-@media (max-width: 1200px) {
+@media (max-width: 768px) {
     .market-workstation {
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: 1fr;
         overflow-y: auto;
         height: auto;
     }
 }
-@media (max-width: 768px) {
-    .market-workstation {
-        grid-template-columns: 1fr;
-    }
+
+/* MI-1: Trading Calendar relocated out of the primary grid — collapsed by
+   default, expands in place without consuming premium dashboard space at
+   rest (owner UX audit: it previously occupied the largest area on the
+   page for one of the lowest-value sections during live trading). */
+.market-calendar-details {
+    margin-top: var(--space-16);
+}
+
+.market-calendar-summary {
+    display: flex;
+    align-items: center;
+    gap: var(--space-10);
+    padding: var(--space-14) var(--space-18);
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+}
+
+.market-calendar-summary::-webkit-details-marker {
+    display: none;
+}
+
+.market-calendar-summary h3 {
+    margin: 0;
+    flex-grow: 1;
+}
+
+.market-calendar-chevron {
+    color: var(--text-muted);
+    transition: transform var(--transition-speed) ease;
+}
+
+.market-calendar-details[open] .market-calendar-chevron {
+    transform: rotate(180deg);
 }
 
 .workstation-column {

@@ -4,6 +4,9 @@
     // Routing & Tab Switcher
     // ---------------------------------------------------------------------------
     const headerMarketTicker = document.getElementById("header-market-ticker");
+    // MI-1: shared ticker strip lives on both Decisions & Trace and Market
+    // Intelligence — one component/endpoint, not two.
+    const TICKER_TABS = new Set(["decisions", "market"]);
 
     function switchTab(tabId) {
         state.activeTab = tabId;
@@ -28,11 +31,11 @@
             }
         });
 
-        // DT-2: header market ticker only ever shows (and only ever fetches
-        // — see loadTabData below) on Decisions & Trace, per the one
-        // approved new API call for this page.
-        if (headerMarketTicker) headerMarketTicker.hidden = tabId !== "decisions";
-        if (tabId === "decisions") {
+        // DT-2 header market ticker, generalized in MI-1 (Market Intelligence
+        // redesign) to also cover Market Intelligence — both tabs share the
+        // exact same component/endpoint, no duplication.
+        if (headerMarketTicker) headerMarketTicker.hidden = !TICKER_TABS.has(tabId);
+        if (TICKER_TABS.has(tabId)) {
             startTickerRefresh();
         } else {
             stopTickerRefresh();
@@ -144,6 +147,7 @@
             await loadPortfolioData();
         } else if (tabId === "market") {
             await loadMarketIntelligence();
+            await loadMarketTicker();
         } else if (tabId === "strategies") {
             await loadStrategiesWorkspace();
         } else if (tabId === "decisions") {
@@ -160,6 +164,8 @@
     // daily candle data — no new calculations beyond simple arithmetic).
     // Market breadth and an overall health score are deliberately not
     // rendered here — neither exists as real data anywhere in ATHENA today.
+    // MI-1: shared verbatim with Market Intelligence (TICKER_TABS above) —
+    // same component, same endpoint, no per-tab duplication.
     function renderTickerIndex(prefix, index) {
         const levelEl = document.getElementById(`ticker-${prefix}-level`);
         const changeEl = document.getElementById(`ticker-${prefix}-change`);
@@ -204,7 +210,7 @@
     // tab in ATHENA — no polling exists anywhere else in this dashboard.
     // Scoped tightly to the ticker only (not the decisions list/briefing —
     // re-fetching those every tick would reset scroll position/selection,
-    // which was never asked for) and only while Decisions & Trace is the
+    // which was never asked for) and only while one of TICKER_TABS is the
     // active tab, mirroring the existing start/stop pattern already used
     // for the Operations tab's live stream (see stopOpsStream).
     const TICKER_REFRESH_INTERVAL_MS = 60000;

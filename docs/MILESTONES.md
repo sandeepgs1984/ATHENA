@@ -368,7 +368,39 @@ Owner-confirmed scope decisions (before DT-1 started):
 
 **ATHENA Workstation Refactor track closed (2026-07-27):** owner approved DT-4, the last of the 4 milestones (DT-1 through DT-4). The full presentation-layer refactor of Decisions & Trace — 3-pane layout shell, hero header + Quick Summary + market ticker, 5-tab restructuring + identity row + symbols-panel color system, and the Reasoning Trace vertical pipeline list + Similar Trades sparkline — is complete. No backend/business-logic/scoring/reasoning changes were made in any of the four milestones; every new visual element traced back to real, already-persisted data (or was explicitly omitted and tracked as future scope when no real data existed, per ADR-005).
 
-#### DT-1 — Layout shell: 3-pane workstation
+### ATHENA Market Intelligence Redesign (owner assignment + reference mock, 2026-07-27)
+
+Full redesign of the Market Intelligence tab into a "Market Command Center," matching the design language, component hierarchy, and workstation layout established by the ATHENA Workstation Refactor above. Same golden rule as that track: reuse existing ViewModels/APIs/business logic wherever possible, never fabricate a value with no real data source — hide the field instead and track as future scope. Split into 5 reviewable milestones; one in flight at a time.
+
+Before any implementation, a full data-source inventory was done across every mock element (see MI-2 below for the two biggest findings). Owner-confirmed scope decisions (before MI-1 started):
+
+- Market Health Score ("84/100" ring) and Breadth ("72%"/"1458/526") are both confirmed gaps (hardcoded `0`/`0` upstream, no numeric `MarketHealthScore` ever constructed anywhere in the codebase) — owner chose to show the real 4-dimension categorical labels `MarketHealthEngine` already computes instead of either fabricating a number or omitting the section entirely (MI-2).
+- Recent Market Activity will be a real chronological feed (validation runs + VIX/index snapshot history) — no synthesized "regime reaffirmed"/"breadth improved" diff-events, since no comparison logic for those exists anywhere (MI-5).
+- Universe table's Sector column — a fixable gap (same shape as DT-3's company-name fix): the seed CSV's real `Industry` column is silently discarded during ingestion. Owner approved fixing it (MI-4).
+- "Run Full Validation" — a real engine (`OwnerValidationPipeline.run()`) with zero endpoint/button today; owner approved wiring a new endpoint despite it being the one mutating (not just read) action in this otherwise presentation-only redesign (MI-5).
+- Trading Calendar relocated to a collapsed-by-default secondary panel on the same page (not moved to Settings/a new Utilities section) — it previously consumed the largest area on the page for one of the lowest-value sections during live trading (MI-1).
+- "Export Market Snapshot" and the Validation Pipeline's "Filtered" stage are lower-stakes calls proceeding on stated defaults: Export omitted entirely (the export type genuinely isn't implemented — matches the "hide, don't fabricate" rule); "Filtered" shown as a derived rollup (Eligible − Watch − Trade, pure arithmetic over already-real counts, no new data).
+
+| Milestone | Scope | Status |
+|---|---|---|
+| **MI-1** Shared ticker strip + Trading Calendar relocation | Generalize the Decisions & Trace header ticker to also render on Market Intelligence (one shared component/endpoint via `TICKER_TABS`, not two); relocate Trading Calendar out of the primary grid into a collapsed-by-default `<details>` panel, same rendering functions/ids untouched | ✅ Approved |
+| **MI-2** Market Summary Hero + Market Regime & Context | Larger-presentation Trend/Volatility/Gap/Evidence Attribution (real); Market Health Score/Breadth gap handled via real categorical labels | ⏳ Planned |
+| **MI-3** Validation Pipeline funnel | New small dedicated endpoint exposing the already-computed Universe→Evaluated→Eligible/Excluded→decision_counts breakdown as a typed 5-stage funnel | ⏳ Planned |
+| **MI-4** Universe table redesign | Reuse real Symbol/Status/Actions; add Sector via the ingestion fix; scope Eligibility-per-row/Last-Validated-per-row | ⏳ Planned |
+| **MI-5** Recent Activity + Quick Actions + Saved Symbols | Real chronological activity feed; Quick Actions consolidated (Add Symbol reuse, new Run Full Validation endpoint, Refresh Market Data relabeled honestly, Export omitted); Saved Symbols relocated to a secondary panel | ⏳ Planned |
+
+#### MI-1 — Shared ticker strip + Trading Calendar relocation
+
+A full data-source inventory (file:line level) was done across every element in the reference mock before proposing any milestone breakdown — see the track intro above for the two biggest findings (Market Health Score/Breadth are both confirmed gaps). MI-1's own scope was narrowed from the originally-proposed "2-row workstation grid" down to just the two independently well-defined, zero-placeholder pieces: building the full target grid now would leave empty cells for Quick Actions/Recent Activity (content that doesn't exist until MI-5), which conflicts with the project's "no placeholders" rule. The grid will take its final shape incrementally as MI-2 through MI-5 land real content, mirroring how DT-1→DT-4 organically built up the Decisions & Trace layout.
+
+| | |
+|---|---|
+| Scope | `03-app-shell.js`: `TICKER_TABS = new Set(["decisions", "market"])` replaces the hardcoded `tabId !== "decisions"` check in 3 places (visibility, refresh start/stop, `loadTabData`'s market branch now also calls `loadMarketTicker()`). `index.html`: Trading Calendar markup moved out of the 3-column `.market-workstation` grid (now 2 columns) into a `<details class="market-calendar-details">` panel below it, collapsed by default — same ids (`calendar-month-year`/`calendar-grid-container`/`upcoming-events-container`) so `renderCalendar()`/`renderUpcomingEvents()` are completely untouched. `06-market-intelligence.css`: `.market-workstation` grid-template-columns `1fr 1.2fr 1fr` → `1fr 1fr`; new `.market-calendar-details`/`.market-calendar-summary`/`.market-calendar-chevron` (native `<details>`, no JS toggle logic needed). |
+| Tests | ~15 new/updated dashboard-hosting assertions (ticker generalization across all 3 coupling points, calendar relocation, 2-column grid). Full suite **1042 passed** |
+| Coverage | Live-browser verified: ticker strip now visible on Market Intelligence tab (confirmed via a real nav click, not a synthetic poke); 2-column grid renders correctly; calendar panel collapsed by default, expands on click with the chevron rotating, calendar content (month grid, upcoming events) renders correctly once expanded; zero uncaught console errors beyond the expected unauthenticated-fetch logging already present in every prior milestone's verification |
+| Status | ✅ Approved (2026-07-27) |
+
+---
 
 | | |
 |---|---|

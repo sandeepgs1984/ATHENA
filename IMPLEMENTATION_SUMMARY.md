@@ -6,6 +6,29 @@ status updated on approval.
 
 ---
 
+## MI-1 — Shared ticker strip + Trading Calendar relocation (APPROVED)
+
+| | |
+|---|---|
+| Completed | 2026-07-27 |
+| Objective | First milestone of the new "ATHENA Market Intelligence Redesign" assignment (Market Intelligence → "Market Command Center", matching the Decisions & Trace workstation design language). Scope narrowed at Design time from the originally-proposed full 2-row grid down to the two independently well-defined, zero-placeholder pieces — see Scope completed below for why |
+| Scope | `src/athena/api/static/js/03-app-shell.js`, `src/athena/api/static/index.html`, `src/athena/api/static/css/06-market-intelligence.css`, `tests/api/platform/test_dashboard_hosting.py` |
+| Public APIs added | None — frontend-only, reuses the existing `GET /api/v1/market/ticker` endpoint and existing calendar-rendering functions verbatim |
+| Tests | ~15 new/updated dashboard-hosting assertions. Full suite **1042 passed** |
+| Coverage | Live-browser verified: ticker strip confirmed visible on Market Intelligence via a real nav click (not synthetic); 2-column grid renders correctly; calendar `<details>` panel collapsed by default, expands on click with chevron rotation, calendar content renders correctly once expanded; zero uncaught console errors beyond the expected unauthenticated-fetch logging already present in every prior milestone |
+| Status | **✅ Approved** (2026-07-27) |
+| Branch | feature/live-dashboard |
+
+### Scope completed
+
+Before proposing any milestone breakdown, a full data-source inventory (file:line level) was done across every element in the reference mock the owner supplied. Two findings materially changed what the redesign can show: **Market Health Score** ("84/100" ring in the mock) is hardcoded `0` upstream, and the numeric `MarketHealthScore` domain type has zero constructors anywhere in the codebase — never implemented, not just stale. **Breadth** ("72%"/"1458/526") is likewise hardcoded `0`/`0` in the live Kite provider, confirmed still true today. Both findings, plus four other gaps (Recent Activity synthesis, Universe table Sector, Run Full Validation wiring, Export Market Snapshot), were presented to the owner before any code was written; owner decisions are recorded in `docs/MILESTONES.md`'s track intro.
+
+- **Shared ticker strip**: `03-app-shell.js` previously hardcoded `tabId !== "decisions"` in three separate places (visibility toggle, refresh start/stop, `loadTabData`'s dispatch). Replaced all three with a single `TICKER_TABS = new Set(["decisions", "market"])` set, and added a `loadMarketTicker()` call to the `"market"` branch of `loadTabData()` — one shared component/endpoint across both tabs, not a duplicated one.
+- **Trading Calendar relocation**: moved out of the primary `.market-workstation` grid (3 columns → 2) into a `<details class="market-calendar-details">` panel below it, collapsed by default. Exact same ids (`calendar-month-year`/`calendar-grid-container`/`upcoming-events-container`) preserved, so `renderCalendar()`/`renderUpcomingEvents()` needed zero changes — purely a markup relocation plus new CSS for the collapsible summary/chevron (native `<details>`, no JS toggle logic).
+- **Scope narrowing, disclosed before implementation**: the originally-proposed "2-row workstation grid" (Hero / Context+Pipeline+Actions / Universe+Activity+Saved) would have required empty placeholder cells for Quick Actions and Recent Activity, since their real content doesn't exist until MI-5 — conflicts with the project's "no speculative features, no placeholders" rule. Narrowed MI-1 to just the two pieces above; the grid will take its final shape incrementally as MI-2 through MI-5 land real content, the same way DT-1→DT-4 organically built up the Decisions & Trace layout rather than pre-building an empty shell.
+
+---
+
 ## DT-4 — Reasoning Trace vertical pipeline list + Similar Trades sparkline (APPROVED)
 
 | | |

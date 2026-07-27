@@ -787,10 +787,12 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     # BANK NIFTY / INDIA VIX only, real level + real day-change % from a new
     # GET /api/v1/market/ticker (derives everything from already-persisted
     # Kite snapshot + daily candle data — no new provider, no new
-    # calculations beyond simple arithmetic). Shown/fetched only on
-    # Decisions & Trace. Market breadth and an overall health score are
-    # deliberately omitted — neither exists as real data anywhere in ATHENA
-    # today (tracked as future scope, not fabricated).
+    # calculations beyond simple arithmetic). Market breadth and an overall
+    # health score are deliberately omitted — neither exists as real data
+    # anywhere in ATHENA today (tracked as future scope, not fabricated).
+    # MI-1 (Market Intelligence redesign) generalized this from a
+    # Decisions-&-Trace-only component to a shared strip covering both tabs
+    # (TICKER_TABS) — one component/endpoint, not two.
     assert 'id="header-market-ticker"' in html
     assert 'id="ticker-nifty-level"' in html
     assert 'id="ticker-banknifty-level"' in html
@@ -798,15 +800,17 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".header-market-ticker" in css
     assert "function loadMarketTicker" in js
     assert "/api/v1/market/ticker" in js
-    assert 'headerMarketTicker.hidden = tabId !== "decisions";' in js
+    assert 'TICKER_TABS = new Set(["decisions", "market"])' in js
+    assert 'headerMarketTicker.hidden = tabId !== "decisions";' not in js
+    assert "headerMarketTicker.hidden = !TICKER_TABS.has(tabId);" in js
 
     # Fix pass (owner, 2026-07-27): ticker previously only refreshed on
     # tab-switch/manual refresh, same as every other tab (no polling existed
     # anywhere in this dashboard) — owner asked for a timer. Scoped tightly
     # to the ticker only (not the decisions list/briefing, which would reset
-    # scroll position/selection on every tick) and only while Decisions &
-    # Trace is the active tab, mirroring the existing start/stop pattern
-    # already used for the Operations tab's live stream (stopOpsStream).
+    # scroll position/selection on every tick) and only while one of
+    # TICKER_TABS is the active tab, mirroring the existing start/stop
+    # pattern already used for the Operations tab's live stream (stopOpsStream).
     assert "function startTickerRefresh" in js
     assert "function stopTickerRefresh" in js
     assert "TICKER_REFRESH_INTERVAL_MS = 60000" in js
@@ -816,6 +820,33 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     switch_tab_body = js[switch_tab_start:switch_tab_end]
     assert "startTickerRefresh();" in switch_tab_body
     assert "stopTickerRefresh();" in switch_tab_body
+    assert "TICKER_TABS.has(tabId)" in switch_tab_body
+
+    # MI-1: Market Intelligence's own tab also loads the shared ticker.
+    load_tab_data_start = js.find("async function loadTabData(tabId)")
+    load_tab_data_end = js.find("\n    async function ", load_tab_data_start + 1)
+    load_tab_data_body = js[load_tab_data_start:load_tab_data_end]
+    market_branch_start = load_tab_data_body.find('tabId === "market"')
+    market_branch_end = load_tab_data_body.find("} else if", market_branch_start)
+    market_branch_body = load_tab_data_body[market_branch_start:market_branch_end]
+    assert "loadMarketIntelligence();" in market_branch_body
+    assert "loadMarketTicker();" in market_branch_body
+
+    # MI-1 (Market Intelligence redesign): Trading Calendar relocated out of
+    # the primary 3-column grid (now 2 columns) into a collapsed-by-default
+    # <details> panel — it previously occupied the largest area on the page
+    # for one of the lowest-value sections during live trading. Same ids
+    # (calendar-month-year/calendar-grid-container/upcoming-events-container)
+    # so renderCalendar()/renderUpcomingEvents() are untouched.
+    assert '<details class="card market-calendar-details">' in html
+    assert 'id="calendar-month-year"' in html
+    assert 'id="calendar-grid-container"' in html
+    assert 'id="upcoming-events-container"' in html
+    assert ".market-calendar-details" in css
+    assert ".market-calendar-summary" in css
+    market_workstation_start = css.find(".market-workstation {")
+    market_workstation_end = css.find("\n}", market_workstation_start)
+    assert "grid-template-columns: 1fr 1fr;" in css[market_workstation_start:market_workstation_end]
 
     # DT-2 — Quick Summary: the UX-6 sidebar strip (score/confidence/risk
     # only) expanded into a richer card (R:R Potential, Expected Return,

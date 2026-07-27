@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.53.2">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.54.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -111,11 +111,13 @@
                     </span>
                 </div>
 
-                <!-- DT-2 (owner UX workstation refactor): shown only on Decisions
-                     & Trace (fetched only when that tab loads — the one approved
-                     new API call). NIFTY 50 / BANK NIFTY / INDIA VIX only — real
-                     level + real day-change %, both from already-persisted Kite
-                     data. Market breadth and an overall health score are
+                <!-- DT-2 (owner UX workstation refactor), generalized in MI-1
+                     (Market Intelligence redesign): shown on Decisions & Trace
+                     AND Market Intelligence (TICKER_TABS in 03-app-shell.js) —
+                     one shared component/endpoint, fetched only when one of
+                     those tabs loads. NIFTY 50 / BANK NIFTY / INDIA VIX only —
+                     real level + real day-change %, both from already-persisted
+                     Kite data. Market breadth and an overall health score are
                      deliberately omitted: neither exists as real data anywhere in
                      ATHENA today (tracked as future scope, not fabricated here). -->
                 <div id="header-market-ticker" class="header-market-ticker" hidden>
@@ -313,7 +315,8 @@
                 <!-- Market Intelligence Tab -->
                 <div id="tab-market" class="tab-pane">
                     <div class="market-workstation">
-                        <!-- Column 1: Regime & Health -->
+                        <!-- Column 1: Regime & Health (MI-2 will redesign this into
+                             the Market Summary Hero + Market Context card) -->
                         <div class="workstation-column">
                             <div class="card">
                                 <div class="card-header">
@@ -354,36 +357,11 @@
                             </div>
                         </div>
 
-                        <!-- Column 2: Calendar Session Grid -->
-                        <div class="workstation-column">
-                            <div class="card">
-                                <div class="card-header">
-                                    <div class="card-title-icon"><i class="fas fa-calendar-alt"></i></div>
-                                    <h3>Trading Calendar & Events</h3>
-                                </div>
-                                <div class="card-body">
-                                    <div class="calendar-header-strip">
-                                        <h4 id="calendar-month-year">Trading Calendar</h4>
-                                        <div class="calendar-legend">
-                                            <span class="legend-item"><span class="legend-dot holiday"></span>Holiday</span>
-                                            <span class="legend-item"><span class="legend-dot special"></span>Special</span>
-                                            <span class="legend-item"><span class="legend-dot expiry"></span>Expiry</span>
-                                        </div>
-                                    </div>
-                                    <div id="calendar-grid-container" class="calendar-grid">
-                                        <!-- Days and date cells will be injected here -->
-                                    </div>
-                                    <div class="upcoming-events-list">
-                                        <h4>Scheduled Events & Expiries</h4>
-                                        <div id="upcoming-events-container" class="events-timeline">
-                                            <!-- Event items will be injected here -->
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Column 3: independent validation + stock-list panels -->
+                        <!-- Column 2: independent validation + stock-list panels
+                             (MI-3 will redesign Today's Validation into the
+                             Validation Pipeline funnel; MI-4 will redesign Stock
+                             List into the Universe table; MI-5 will relocate
+                             Saved Symbols and add Recent Activity/Quick Actions) -->
                         <div class="workstation-column market-validation-column">
                             <div class="card validation-card">
                                 <div class="card-header">
@@ -489,6 +467,37 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- MI-1: Trading Calendar moved out of the primary 2-column
+                         grid into a collapsed-by-default secondary panel — it
+                         previously consumed the largest area on the page while
+                         offering little value during live trading. -->
+                    <details class="card market-calendar-details">
+                        <summary class="market-calendar-summary">
+                            <div class="card-title-icon"><i class="fas fa-calendar-alt"></i></div>
+                            <h3>Trading Calendar & Events</h3>
+                            <i class="fas fa-chevron-down market-calendar-chevron"></i>
+                        </summary>
+                        <div class="card-body">
+                            <div class="calendar-header-strip">
+                                <h4 id="calendar-month-year">Trading Calendar</h4>
+                                <div class="calendar-legend">
+                                    <span class="legend-item"><span class="legend-dot holiday"></span>Holiday</span>
+                                    <span class="legend-item"><span class="legend-dot special"></span>Special</span>
+                                    <span class="legend-item"><span class="legend-dot expiry"></span>Expiry</span>
+                                </div>
+                            </div>
+                            <div id="calendar-grid-container" class="calendar-grid">
+                                <!-- Days and date cells will be injected here -->
+                            </div>
+                            <div class="upcoming-events-list">
+                                <h4>Scheduled Events & Expiries</h4>
+                                <div id="upcoming-events-container" class="events-timeline">
+                                    <!-- Event items will be injected here -->
+                                </div>
+                            </div>
+                        </div>
+                    </details>
                 </div>
 
                 <!-- Strategies & Backtests Tab -->
@@ -1100,6 +1109,6 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.53.2"></script>
+    <script src="/dashboard/dashboard.js?v=9.54.0"></script>
 </body>
 </html>
