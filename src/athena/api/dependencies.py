@@ -216,11 +216,13 @@ def get_decisions_service(request: Request) -> DecisionsService:
     provider = getattr(request.app.state, "decision_provider", _decision_provider)
     db_path = getattr(request.app.state, "ops_db_path", None)
     backup_dir = getattr(request.app.state, "ops_backup_dir", None)
+    repo = getattr(request.app.state, "sqlite_repo", None)
     return DecisionsService(
         provider,
         config_dir=_find_repo_root() / "config",
         db_path=db_path,
         backup_dir=backup_dir,
+        repo=repo,
     )
 
 

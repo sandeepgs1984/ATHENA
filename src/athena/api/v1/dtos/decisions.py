@@ -65,6 +65,11 @@ class DecisionMetadataDTO(BaseModel):
     run_id: str
     cycle_id: str
     instrument_id: str | None = None
+    # Real company name from the instruments table (Kite's own instrument
+    # dump), when the catalog has been refreshed since this field was added
+    # — None (rendered as absent) for instruments not yet re-synced, never
+    # a fabricated placeholder.
+    instrument_name: str | None = None
     direction: str = "NONE"
     decision_type: str
 

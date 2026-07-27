@@ -363,7 +363,9 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     # showed (parity fix, not new data); the hero "Composite score" label
     # now reads "Score", matching the app's own established convention.
     assert "function friendlyEligibilityLabel" in js
-    assert 'friendlyAnalysisName(t)' in js
+    # decisionTypeBadge() (the type-chip UX-8 fix this originally locked in)
+    # was removed entirely in the later identity-row redesign below — the
+    # BUY/TRADE chips it built are gone, replaced by the Recommendation tile.
     assert "No live news feed" in js
     assert "no AI-written commentary" in js
     assert "Exact math comparing this decision" in js
@@ -626,6 +628,40 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".symbols-filter-popover" in css
     assert ".symbol-row.active" in css
     assert "function renderSymbolRow" in js
+
+    # Fix pass (owner screenshot, 2026-07-27): section headers (Trade/Watch/
+    # No trade/...) had no background — flush with the rows below them, no
+    # differentiation between sections.
+    #
+    # Second fix pass (owner screenshot, same day): the first attempt reused
+    # each section's raw alert-style dot color (--success/--warning) as a
+    # color-mix() full-block background — but those hues are calibrated for
+    # a tiny 8px dot, not a background: pure yellow (Watch) visually
+    # overpowered green (Trade) at the identical opacity.
+    #
+    # Third fix pass (owner screenshot, same day): even hue-balanced, 3-4
+    # stacked full-width solid blocks read as "too much color". Switched to
+    # a thin left-border accent + a barely-there wash — same restrained
+    # pattern the Recommendation tile/ATHENA Summary card use.
+    assert "accent: \"rgba(34, 197, 94," in js  # Trade
+    assert "accent: \"rgba(245, 158, 11," in js  # Watch
+    assert "accent: \"rgba(148, 163, 184," in js  # No trade / Insufficient data
+    assert "background: ${section.wash}; border-left-color: ${section.accent}" in js
+    assert "filter: brightness(1.25)" in css
+
+    # Fourth fix pass (owner follow-up, same day): even the header's thin
+    # accent, repeated per-row via decisionCardStanceColor()/--stance-color,
+    # was "not feeling good" once the header already carried that same
+    # color — redundant on top of it. decisionCardStanceColor() and the
+    # --stance-color wiring were removed entirely (dead code, not just
+    # hidden), so .symbol-row now carries no per-row color at all — the
+    # section header is the only place that color lives. A subtle
+    # border-bottom divider (reusing --border-color, not a new value)
+    # replaces color as the way rows separate from each other.
+    assert "decisionCardStanceColor" not in js
+    assert "--stance-color" not in js
+    assert ".symbol-row:not(:last-child)" in css
+    assert "border-bottom-color: var(--border-color);" in css
     assert "symbolsFilterToggle" in js
     # Fix pass (live browser check, same milestone): the popover must be a
     # DOM child of .symbols-panel-header (its position:relative anchor), not
@@ -789,6 +825,11 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     # elements, same data — only sizing/spacing/grouping changed.
     assert "var(--text-1-4)" in css
     assert "border-top: 1px solid var(--border-color);" in css
+    # Fix pass (owner screenshot): 5 gauge tiles in a 4-column grid wrapped
+    # Expected R:R alone onto row 2 with only 1/4 the row's width — "reward
+    # per ₹1 risked" truncated with empty space right next to it. It's
+    # always the last tile, so give it the whole row instead.
+    assert ".decision-brief-gauges .brief-gauge:last-child" in css
 
     # DT-3 — tab restructuring: the old single "Decision History" tab (which
     # mixed logging a response with browsing history) split into Response
@@ -865,6 +906,60 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "Reports &amp; Analytics" in html or "Reports & Analytics" in html
     assert ">Settings<" in html
     assert ".nav-item-disabled" in css
+
+    # Owner reference-mock screenshot (2026-07-27): identity row redesign.
+    # BUY/TRADE badges dropped (now redundant with the Recommendation tile);
+    # star favorite toggle wired to the existing Saved Symbols endpoints
+    # (Priority-2 — no new backend); real company name + "EXCHANGE: SYMBOL"
+    # meta row; secondary action-bar buttons consolidated into a "more" menu.
+    assert 'id="decision-brief-stance-chip"' not in html
+    assert 'id="decision-brief-type-chip"' not in html
+    assert 'id="decision-brief-favorite-toggle"' in html
+    assert 'id="decision-brief-company-name"' in html
+    assert 'id="decision-brief-meta-row"' in html
+    assert 'id="decision-brief-exchange-symbol"' in html
+    assert "function loadSavedSymbolsCache" in js
+    assert "/api/v1/saved-symbols" in js
+    render_fn_start2 = js.find("function renderDecisionBrief(decision)")
+    render_fn_end2 = js.find("\n    function ", render_fn_start2 + 1)
+    render_fn_body2 = js[render_fn_start2:render_fn_end2]
+    assert "meta.instrument_name" in render_fn_body2
+    assert "decisionBriefExchangeSymbol.textContent" in render_fn_body2
+    assert ".favorite-toggle-btn" in css
+    assert ".is-saved" in css
+
+    # Overflow menu — same moved buttons (ids/classes/click handlers
+    # unchanged), only their container changed; toggle/backdrop-click/
+    # Escape follow the same pattern as the symbols filter popover.
+    assert 'id="decision-brief-overflow-toggle"' in html
+    assert 'id="decision-brief-overflow-menu"' in html
+    assert 'id="decision-brief-dismiss"' in html
+    assert 'id="decision-brief-remove-candidate"' in html
+    assert 'id="decision-brief-export"' in html
+    assert 'id="decision-brief-news"' in html
+    assert "function closeOverflowMenu" in js
+    assert ".decision-brief-overflow-menu" in css
+    assert ".overflow-menu-item" in css
+
+    # Owner screenshot follow-up (2026-07-27): Market Intelligence dropped
+    # entirely (redundant with the sidebar nav item of the same name — no
+    # button anywhere replaces it); Open Chart/Compare relocated as icon-
+    # only buttons next to Re-validate ("icons are also sufficient" per the
+    # owner) instead of full-width labeled buttons in a dedicated action
+    # bar — same ids/click handlers, so nothing needed rewiring except the
+    # container. The action bar itself is gone (it held only these 3
+    # buttons), a further real vertical-space win.
+    assert 'id="decision-brief-actionbar"' not in html
+    assert 'id="decision-brief-market"' not in html
+    assert "function switchTab" in js  # still used pervasively elsewhere
+    header_actions_start = html.find('class="decision-brief-header-actions"')
+    header_actions_end = html.find("decision-brief-meta-row", header_actions_start)
+    header_actions_body = html[header_actions_start:header_actions_end]
+    assert 'id="decision-brief-open-chart"' in header_actions_body
+    assert 'id="decision-brief-compare"' in header_actions_body
+    assert ">Open Chart<" not in header_actions_body  # icon-only, no label
+    assert ">Compare<" not in header_actions_body
+    assert ".header-icon-btn" in css
 
 
 def test_dashboard_js_assembled_losslessly_from_concern_split(client: TestClient) -> None:

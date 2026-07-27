@@ -195,18 +195,31 @@
     border-radius: 8px;
 }
 
+/* Fix pass (owner screenshots, 2026-07-27): section headers (Trade/Watch/
+   No trade/...) had no background at all, reading as flush with the rows
+   below them. First attempt used a full-block color-mix() background from
+   the dot's raw alert color — pure yellow overpowered green at the same
+   opacity. Second attempt balanced the hues but still read as "too much
+   color" (3-4 stacked full-width solid blocks). Settled on a thin left-
+   border accent + a barely-there wash — same restrained pattern the
+   Recommendation tile/ATHENA Summary card use, and the same accent/wash
+   values reused for the individual .symbol-row rows below (one calibrated
+   color system for the whole panel, not per-element magic numbers). */
 .decision-carousel-head {
     display: flex;
     align-items: center;
     gap: var(--space-8);
-    padding: var(--space-8) var(--space-4);
+    padding: var(--space-8) var(--space-10);
     cursor: pointer;
     user-select: none;
     border-radius: 6px;
+    border-left: 3px solid transparent;
+    filter: brightness(1);
+    transition: filter var(--transition-speed) ease;
 }
 
 .decision-carousel-head:hover {
-    background: rgba(255, 255, 255, 0.02);
+    filter: brightness(1.25);
 }
 
 .decision-carousel-dot {
@@ -263,6 +276,12 @@
     gap: var(--space-4);
 }
 
+/* Owner follow-up (2026-07-27): removed the per-row stance-colored left
+   edge — the section header above each group already carries that same
+   color, so repeating it on every single row was redundant on top of
+   being visually loud. border-left stays reserved-but-transparent (not
+   removed outright) so .active's 4px accent border below doesn't shift
+   the row's content by a few pixels when a row is selected. */
 .symbol-row {
     display: flex;
     align-items: center;
@@ -270,9 +289,19 @@
     border-radius: 7px;
     padding: var(--space-9) var(--space-10);
     border: 1px solid transparent;
-    border-left: 3px solid var(--stance-color, var(--text-muted));
+    border-left: 3px solid transparent;
     cursor: pointer;
     transition: background-color var(--transition-speed) ease, border-color var(--transition-speed) ease;
+}
+
+/* Owner follow-up: with the per-row color gone, rows needed some visual
+   separation of their own rather than relying on color to tell them
+   apart — a subtle divider (same --border-color already used for every
+   card/section boundary elsewhere, not a new value) between rows, never
+   under the last row in a group (that boundary is already the group's
+   own edge). */
+.symbol-row:not(:last-child) {
+    border-bottom-color: var(--border-color);
 }
 
 .symbol-row:hover {
@@ -285,13 +314,14 @@
 }
 
 /* Strong, unambiguous selected state (owner requirement — the previous
-   thin-outline treatment was "too weak") — full-row accent wash, brighter
-   left indicator, subtle glow, bolder/larger symbol text. */
+   thin-outline treatment was "too weak") — full-row accent wash, subtle
+   glow, bolder/larger symbol text. Owner follow-up (2026-07-27): dropped
+   the thick left-edge accent border here too, same reasoning as removing
+   per-row color elsewhere — the background wash + border + glow already
+   make selection unambiguous without an extra colored edge. */
 .symbol-row.active {
     background: linear-gradient(90deg, rgba(0, 242, 254, 0.1), rgba(0, 242, 254, 0.02));
     border-color: rgba(0, 242, 254, 0.18);
-    border-left-color: var(--accent);
-    border-left-width: 4px;
     box-shadow: var(--glow-accent-md);
 }
 

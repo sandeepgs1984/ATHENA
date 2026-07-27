@@ -125,6 +125,14 @@ class TestKiteProviderUnit:
         assert "NSE:RELIANCE" in ids
         assert "NSE:NIFTY 50" in ids  # snapshot index always included
 
+    def test_instruments_capture_real_company_name_from_kite_dump(self, provider: KiteProvider):
+        """Kite's instrument dump already carries a `name` column — ingestion
+        previously discarded it entirely. Confirms it's now captured, not
+        just present in the fixture."""
+        by_id = {i.instrument_id: i for i in provider.instruments()}
+        assert by_id["NSE:INFY"].name == "INFOSYS"
+        assert by_id["NSE:RELIANCE"].name == "RELIANCE"
+
     def test_daily_candles_sorted(self, provider: KiteProvider):
         candles = provider.daily_candles("NSE:INFY", date(2026, 2, 10), date(2026, 2, 12))
         assert len(candles) == 3

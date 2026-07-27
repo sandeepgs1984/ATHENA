@@ -6,16 +6,16 @@ status updated on approval.
 
 ---
 
-## DT-3 — Tab restructuring: 5 tabs + spacing polish (BUILT, awaiting owner review)
+## DT-3 — Tab restructuring: 5 tabs + spacing polish (APPROVED)
 
 | | |
 |---|---|
 | Completed | 2026-07-27 |
 | Objective | Third milestone of the owner's "ATHENA Workstation Refactor": split the old single "Decision History" tab (which mixed logging a response with browsing history) into Response and History, per the scope agreed at the start of the assignment |
-| Scope | `src/athena/api/static/index.html`, `src/athena/api/static/js/13-decision-brief-core.js`, `src/athena/api/static/js/14-decision-brief-analysis.js`, `src/athena/api/static/js/18-decision-brief-trace.js`, `src/athena/api/static/js/06-ui-helpers.js`, `src/athena/api/static/css/09-decision-brief-shell.css`, `tests/api/platform/test_dashboard_hosting.py` |
-| Tests | ~25 new/updated dashboard-hosting assertions across both rounds. Full suite **1035 passed** |
-| Coverage | Live-browser verified: all 5 tabstrip buttons present, correctly ordered/labeled, click-wiring confirmed; structural source-slice test confirms Journal stays in Response while Timeline+Analogs move together into History; merged Recommendation+gauges tile and collapsed ATHENA Summary card visually confirmed via injected sample data, matching the reference mock; View Details modal opens/closes correctly (button, close button, and backdrop click all confirmed); zero uncaught console errors |
-| Status | **BUILT** — awaiting owner review |
+| Scope | `src/athena/api/static/index.html`, `src/athena/api/static/js/{13-decision-brief-core,14-decision-brief-analysis,18-decision-brief-trace,06-ui-helpers,07-decision-format}.js`, `src/athena/api/static/css/09-decision-brief-shell.css`, `src/athena/domain/market.py`, `src/athena/data/store/{schema,repository,serialization}.py`, `src/athena/data/providers/{kite_provider,file_provider}.py`, `src/athena/api/v1/dtos/decisions.py`, `src/athena/api/v1/services/decisions_service.py`, `src/athena/api/dependencies.py`, test files listed below |
+| Tests | ~40 new/updated dashboard-hosting assertions across four rounds, plus 7 new backend tests (instruments.name migration/roundtrip, Kite-dump name parsing, DecisionMetadataDTO.instrument_name). Full suite **1042 passed** |
+| Coverage | Live-browser verified: all 5 tabstrip buttons present, correctly ordered/labeled, click-wiring confirmed; structural source-slice test confirms Journal stays in Response while Timeline+Analogs move together into History; merged Recommendation+gauges tile and collapsed ATHENA Summary card visually confirmed via injected sample data, matching the reference mock; View Details modal opens/closes correctly (button, close button, and backdrop click all confirmed); identity row redesign visually confirmed (star toggle, company name, "NSE: DIXON" meta row, overflow menu open/close, ticker no longer truncates); star toggle's graceful 401 handling confirmed (no owner credentials for a real save); schema migration confirmed safe against the real production db (506 rows preserved); zero uncaught console errors |
+| Status | **✅ Approved** (2026-07-27) |
 | Branch | feature/live-dashboard |
 
 ### Scope completed
@@ -37,39 +37,80 @@ Owner shared the reference mock's hero hierarchy (Recommendation+gauges card →
 
 **Fix pass (same review):** the Recommendation tile initially shipped as a small `.stance-chip` pill inside a plain dark `.brief-gauge` tile — owner feedback: the reference mock treats it as a fully stance-tinted highlight card, not just another gauge tile with a badge inside. Fixed: `gaugeRecommendationTile.className` now applies the same `stance.cls` (`stance-buy`/`-sell`/`-hold`/`-pass`/`-wait`) already used by `.decision-banner`, and `.brief-gauge-recommendation.stance-*` gets the identical radial-gradient tint `.decision-banner.stance-*` uses (one tone system, not a second palette); the stance text switched from a small `.stance-chip` pill to `.hero-metric-band` (same large-bold sizing the Score/Confidence/Risk tiles already use for their band words), colored per stance via a scoped selector on the tile's own class.
 
+### Identity row redesign (owner reference-mock screenshot, third review round)
+
+Researched every new element in the mock before building anything, per the Data Source Priority rule — three of the four turned out to be data gaps, one of them fixable:
+
+- **Company full name — fixable gap, owner approved the ingestion change.** Kite Connect's real instrument dump has always carried a `name` column; ATHENA's ingestion discarded it. Added `Instrument.name` (domain), bumped `SCHEMA_VERSION` 8→9, added an idempotent migration (`_migrate_instruments_name_column()` in `repository.py`, guarded by `PRAGMA table_info` so it safely reaches the *existing* `db/athena.db` — `CREATE TABLE IF NOT EXISTS` alone is a no-op against a table that already exists), updated `kite_provider.py`/`file_provider.py` to capture it, added `DecisionMetadataDTO.instrument_name`, and gave `DecisionsService` an optional `repo` (same optional-repo-alongside-primary-abstraction precedent as `MarketHistoryService`) to look it up via `repo.get_instrument()`. **Verified the migration already ran safely against the real production db** (via the test suite's own real-db wiring, a pre-existing characteristic): 506 existing instruments preserved, `name` column added, all correctly `NULL` — never fabricated — since no fresh Kite catalog sync has happened since. Real names will populate automatically on the next sync.
+- **Sector and market-cap category — genuine gaps, no fix available.** Nothing in ATHENA's domain model, database, or Kite's own feed maps a symbol to either. **Owner decision: omit both, tracked as future scope.** The new meta row gracefully holds just the one real pill ("NSE: DIXON") today.
+- **Star favorite toggle** — new UI surface for the existing "Saved Symbols" feature (UX-9b), reusing `GET/POST/DELETE /api/v1/saved-symbols` as-is (Priority-2, no new backend). A local `Set` cache avoids re-fetching the list on every symbol selection.
+- **BUY/TRADE badges dropped** (owner-confirmed) — redundant with the Recommendation tile in the gauges row.
+- **Secondary actions moved into a "more" (⋮) popover** (owner-confirmed which ones) — Dismiss today/Remove candidate/Export/News; Market Intelligence/Open Chart/Compare stay in the primary action bar. The moved buttons are the exact same elements relocated (ids/classes/click handlers unchanged), not rebuilt — same toggle/backdrop-click/Escape pattern as the symbols filter popover.
+- **Fix pass (same round):** the ticker ("DIXON") rendered truncated to "DI…" once the company name sat beside it in the same flex row — neither element had an explicit `flex-shrink`, so flexbox shrank both by default. Fixed: `.decision-brief-symbol-lg` gets `flex-shrink: 0` (the primary identifier must never lose space to a secondary one), `.decision-brief-company-name` is the element that truncates.
+- Dead code removed: `decisionBriefStanceChip`/`decisionBriefTypeChip` DOM refs and the now-unused `decisionTypeBadge()` function (its only caller was the removed BUY/TRADE row).
+
+### Second fix pass (owner live-session screenshots, same day)
+
+- **Confirmed company name works end-to-end**: owner added a new symbol ("ETERNAL") and its real name ("ETERNAL - ZOMATO") rendered correctly immediately. Investigated why *existing* symbols still showed nothing: a pre-existing (not introduced this session) invalid candidate symbol `INFSDFSD` in `owner_candidates` (added 2026-07-26) has been failing every scheduled cycle tick at the exact point the instrument catalog rebuilds — `KiteProvider._ensure_catalog()` raises `ProviderError` before any `upsert_instrument` call can run, so the scheduled catalog refresh (and name backfill) never completes. New/re-validated symbols go through a different, unblocked path. Flagged to the owner as a separate pre-existing issue, not fixed here.
+- **Market Intelligence button removed** from the identity row's actions (redundant with the sidebar nav item — both just call `switchTab("market")`); its click handler deleted.
+- **Open Chart/Compare relocated as icon-only buttons** in the header-actions row, next to Re-validate — same ids/click handlers moved, only the markup/label changed (owner: "icons are also sufficient"). With no buttons left in it, `.decision-brief-actionbar` was removed entirely — HTML element, the `decisionBriefActionbar` JS ref and its two hidden-toggle lines, and the CSS rules (including its entry in the `[hidden]` display-override list).
+- **Fix pass: Expected R:R tile truncation.** 5 tiles in a 4-column grid wrap the last one (Expected R:R) onto its own row with only 1/4 the width — "reward per ₹1 risked" was truncating next to empty space. `.decision-brief-gauges .brief-gauge:last-child { grid-column: 1 / -1; }` lets it span the full row.
+
+### Third fix pass (owner live-session screenshot, same day)
+
+- **Company name truncation on the identity row itself** ("SANDHA…") — too many competing elements (star, ticker, as-of, icon buttons) in the center column's narrower width. Moved `#decision-brief-company-name` into the meta row instead, next to "NSE: SANDHAR" — verified via `scrollWidth === clientWidth` (no overflow) that long real names ("Sandhar Technologies Limited") now render in full.
+- **Re-confirmed sector/market-cap are genuine gaps** — re-checked `Instrument`, config, and Kite's exact dump columns a second time on direct owner follow-up; nothing new found. **Owner decision reconfirmed: leave omitted, track as future scope.**
+
 ### Files created
 
 - None.
 
 ### Files modified
 
-- `src/athena/api/static/index.html` — tabstrip button split; Recommendation tile added to the gauges row; new `#decision-summary-card` + `#executive-summary-modal`; `#decision-executive-summary` moved into the modal as static HTML; cache-bust `9.49.4` → `9.50.1`.
-- `src/athena/api/static/js/13-decision-brief-core.js` — Decision Timeline section removed from the hero template; Response tabpane split into Response (Journal only) + new History tabpane (Timeline + Analogs); Recommendation tile + Summary card populated synchronously in `renderDecisionBrief()`; `renderDecisionBriefEmpty()` resets both; `.decision-brief-hero`/`.decision-banner` removed from the template entirely; View Details/modal-close/backdrop-click wiring added.
+- `src/athena/api/static/index.html` — tabstrip button split; Recommendation tile added to the gauges row; new `#decision-summary-card` + `#executive-summary-modal`; `#decision-executive-summary` moved into the modal as static HTML; identity row redesigned (favorite toggle, company name, meta row, overflow menu with the 4 moved action buttons; BUY/TRADE chip spans removed); cache-bust `9.49.4` → `9.51.1`.
+- `src/athena/api/static/js/13-decision-brief-core.js` — Decision Timeline section removed from the hero template; Response tabpane split into Response (Journal only) + new History tabpane (Timeline + Analogs); Recommendation tile + Summary card populated synchronously in `renderDecisionBrief()`; `renderDecisionBriefEmpty()` resets both; `.decision-brief-hero`/`.decision-banner` removed from the template entirely; View Details/modal-close/backdrop-click wiring added; favorite-toggle wiring (`loadSavedSymbolsCache`/`applyFavoriteToggleState`) + overflow-menu toggle/close wiring added; company-name/exchange-symbol population added; stance-chip/type-chip population removed.
 - `src/athena/api/static/js/14-decision-brief-analysis.js` — `renderCockpitGauges()`/`resetCockpitGauges()` also populate/reset the Recommendation tile's qualifier band, reusing the Score tile's own computed value.
 - `src/athena/api/static/js/18-decision-brief-trace.js` — `BRIEF_TAB_NAMES`/`BRIEF_TAB_LABELS` updated for the 5th tab.
 - `src/athena/api/static/js/06-ui-helpers.js` — `closeAllModals()` now also closes `#executive-summary-modal`.
-- `src/athena/api/static/css/09-decision-brief-shell.css` — `.decision-summary-icon` tone coloring, `.decision-summary-details-btn` right-alignment, `.brief-gauge-recommendation` spacing; dead `.decision-brief-hero` rule removed.
-- `tests/api/platform/test_dashboard_hosting.py` — ~25 new/updated assertions total (tab count/order/labels, Response/History content-placement structural check, hero/banner-removed-from-template check, Recommendation tile, Summary card, and View Details modal wiring).
+- `src/athena/api/static/js/07-decision-format.js` — dead `decisionTypeBadge()` removed (its only caller, the removed type-chip span, is gone).
+- `src/athena/api/static/css/09-decision-brief-shell.css` — `.decision-summary-icon` tone coloring, `.decision-summary-details-btn` right-alignment, `.brief-gauge-recommendation` spacing + stance-tinted background/text; dead `.decision-brief-hero` rule removed; `.favorite-toggle-btn`/`.decision-brief-company-name`/`.decision-brief-meta-row`/`.decision-brief-exchange-symbol`/`.decision-brief-overflow-*`/`.overflow-menu-item*` added; `.decision-brief-symbol-lg` gained `flex-shrink: 0` (fix pass).
+- `src/athena/domain/market.py` — `Instrument.name: str | None = None`.
+- `src/athena/data/store/schema.py` — `SCHEMA_VERSION` 8→9; `instruments` DDL gained `name TEXT` (fresh dbs).
+- `src/athena/data/store/repository.py` — `_migrate_instruments_name_column()` (idempotent `ALTER TABLE`, reaches existing dbs); `upsert_instrument`/`get_instrument`/`list_instruments` SQL updated for the new column.
+- `src/athena/data/store/serialization.py` — `instrument_to_row`/`row_to_instrument` updated for `name`.
+- `src/athena/data/providers/kite_provider.py` — reads Kite's real `name` column (previously discarded).
+- `src/athena/data/providers/file_provider.py` — reads an optional `name` CSV column, for offline/test parity.
+- `src/athena/api/v1/dtos/decisions.py` — `DecisionMetadataDTO.instrument_name`.
+- `src/athena/api/v1/services/decisions_service.py` — optional `repo` constructor param; `_lookup_instrument_name()`.
+- `src/athena/api/dependencies.py` — `get_decisions_service` passes `repo=app.state.sqlite_repo`.
+- `tests/api/platform/test_dashboard_hosting.py` — ~35 new/updated assertions total (tab count/order/labels, Response/History content-placement structural check, hero/banner-removed-from-template check, Recommendation tile, Summary card, View Details modal wiring, identity-row redesign, overflow menu, action-bar decluttering).
+- `tests/data_layer/test_repository.py` — 3 new tests (`name` roundtrip, absent-reads-as-None, pre-existing-db migration).
+- `tests/data_layer/test_kite_provider.py` — 1 new test (`name` captured from the Kite dump fixture).
+- `tests/api/v1/test_decisions_instrument_name.py` — new file, 3 tests (`instrument_name` populated/None/no-repo).
+- `tests/data_layer/test_decision_journal.py`, `tests/runtime/test_dry_run_schedule.py` — `SCHEMA_VERSION == 8` → `9` (legitimate bump, not a regression).
 - This log; `docs/MILESTONES.md`.
 
 ### Public APIs
 
-- None.
+- No new endpoints. `GET /api/v1/decisions/{id}` and `GET /api/v1/decisions` response shape gained `metadata.instrument_name` (additive-only, nothing removed/renamed).
 
 ### Validation and architecture
 
-- Full regression: **1035 passed**. Ruff clean.
+- Full regression: **1042 passed** (1035 + 7 new backend tests). Ruff clean (pre-existing, unrelated issues only: `SIM117` in `repository.py` predates this change, confirmed via diff).
 - JS syntax verified (`node --check` on the reassembled script). HTML div-balance re-verified after every edit.
-- No ADR required — pure frontend presentation change, no architecture, provider, or business-logic impact.
+- Schema migration verified safe two ways: (1) a dedicated test that builds a pre-migration db (old column set, a real row) and confirms `initialize()` adds the column in place without touching existing data; (2) direct inspection of the real `db/athena.db` after the test suite's own real-db wiring exercised it live — 506 rows preserved, `name` column present, all `NULL` as expected.
+- No ADR required: the schema/ingestion change is a normal additive column for a real field Kite already provides — not a new architectural pattern, provider, or business-logic addition. Everything else (identity row) is presentation-only, reusing the existing Saved Symbols service as-is.
 
 ### Risks and technical debt
 
 - Could not exercise the full tabpane content (Response/History) against a real, authenticated decision selection end-to-end — verified via a structural source-slice test plus live tabstrip click-wiring, same constraint as every prior milestone (no owner credentials available to the AI).
 - "Spacing polish" (the other half of this milestone's name) was intentionally limited to the concrete win here (removing Decision Timeline from the always-visible hero) rather than speculative CSS tweaking across Trade Plan/Analysis/Market Context with no concrete target — matches the pattern established this session (DT-1/DT-2 polish was always owner-screenshot-driven, not guessed at).
+- Existing instruments (all 506 in the real db) will show no company name in the dashboard until the next Kite instrument-catalog refresh runs and re-upserts them — not a bug, just a natural consequence of the migration being additive rather than a backfill. The UI gracefully shows nothing (no name span rendered) rather than a placeholder.
+- Restarted the live `athena-serve --with-cycles` process to load the new backend code (same as the earlier Holding Period feature this session) — a scheduled cycle tick was interrupted, consistent with prior restarts this session.
 
 ### Remaining work
 
-- **Owner review** on the live dashboard: click through all 5 tabs on a real decision, confirm Response shows only the journal/outcome form and History shows Timeline + Similar past setups together; confirm the merged Recommendation+gauges tile and the ATHENA Summary card with "View Details" render as expected; flag any specific spacing/hierarchy issue for a targeted follow-up (rather than the AI guessing at "polish").
+- **Owner review** on the live dashboard: click through all 5 tabs on a real decision, confirm Response shows only the journal/outcome form and History shows Timeline + Similar past setups together; confirm the merged Recommendation+gauges tile, the ATHENA Summary card with "View Details", and the redesigned identity row (star toggle, company name once a catalog refresh populates it, "NSE: SYMBOL" meta row, overflow menu) all render as expected; flag any specific spacing/hierarchy issue for a targeted follow-up (rather than the AI guessing at "polish").
 - Then proceed to DT-4 (Reasoning Trace redesign + Similar Trades sparkline) once approved.
 
 ### Commit message
@@ -106,6 +147,52 @@ tabs
 - Remove the now-empty .decision-brief-hero wrapper and its dead CSS
   rule; no backend change, no content invented — same real headline
   and bullet computations, only repositioned and collapsed.
+- Redesign the identity row to match the reference mock: star favorite
+  toggle (reuses the existing Saved Symbols GET/POST/DELETE endpoints,
+  Priority-2, no new backend), real company name + "EXCHANGE: SYMBOL"
+  meta row, BUY/TRADE badges dropped (redundant with the Recommendation
+  tile), secondary actions (Dismiss today/Remove candidate/Export/News)
+  moved into a "more" overflow popover — same buttons relocated, not
+  rebuilt.
+- Add Instrument.name: Kite's real instrument dump has always carried a
+  company-name column that ingestion discarded. Bump SCHEMA_VERSION
+  8->9 with an idempotent ALTER TABLE migration (reaches the existing
+  production db safely, verified against a simulated pre-migration db
+  and against the real db/athena.db — 506 rows preserved, name column
+  added, all NULL until the next Kite catalog sync populates them, never
+  fabricated). Sector and market-cap category are genuine gaps with no
+  fix available in Kite's feed — omitted, tracked as future scope.
+- Fix pass: the ticker truncated to "DI..." once the company name sat
+  next to it (flexbox shrinking both siblings by default) —
+  .decision-brief-symbol-lg now has flex-shrink: 0 so the primary
+  identifier never loses space to the secondary one.
+- Remove the Market Intelligence button (redundant with the sidebar nav
+  item of the same name); relocate Open Chart/Compare as icon-only
+  buttons next to Re-validate (owner: "icons are also sufficient").
+  With no buttons left in it, remove decision-brief-actionbar entirely
+  (HTML/JS/CSS) — a further real vertical-space win.
+- Fix pass: "reward per ₹1 risked" was truncating on the Expected R:R
+  tile, which only got 1 of 4 grid columns' width when it wrapped alone
+  onto row 2 — .brief-gauge:last-child now spans the full row.
+- Fix pass: company name was still truncating on the identity row
+  itself once cramped next to the star/ticker/as-of/icon buttons — move
+  it into the meta row (alongside "NSE: SYMBOL") where it has far more
+  room; verified no overflow via scrollWidth === clientWidth.
+- Re-confirm sector/market-cap category are genuine gaps (re-checked
+  Instrument, config, and Kite's exact dump columns a second time) —
+  owner reconfirmed: leave omitted, track as future scope.
+- Give the symbols panel a single, calibrated color system across
+  three iterations. (1) Section headers (Trade/Watch/No trade/...) had
+  no background — flush with the rows below. (2) First attempt reused
+  each section's raw alert-style dot color as a color-mix() full-block
+  tint — pure yellow (Watch) overpowered green (Trade) at the same
+  opacity. (3) Balanced the hues, but 3-4 stacked solid blocks still
+  read as "too much color" overall. Final: thin left-border accent +
+  barely-there wash (same restrained pattern as the Recommendation
+  tile/ATHENA Summary card), and the exact same accent applied to
+  individual .symbol-row rows (decisionCardStanceColor()), which had
+  the identical fully-opaque-3px-border problem, loud across a dozen+
+  stacked rows. Hover uses filter: brightness(1.25).
 ```
 
 ---

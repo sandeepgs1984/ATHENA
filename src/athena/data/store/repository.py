@@ -76,6 +76,7 @@ class SqliteRepository:
                 with self._conn:
                     for statement in ddl_statements():
                         self._conn.execute(statement)
+                    self._migrate_instruments_name_column()
                     row = self._conn.execute("SELECT version FROM schema_version").fetchone()
                     if row is None:
                         self._conn.execute(
@@ -89,6 +90,18 @@ class SqliteRepository:
                         )
         except sqlite3.Error as exc:
             raise RepositoryError(f"schema initialization failed: {exc}") from exc
+
+    def _migrate_instruments_name_column(self) -> None:
+        """SCHEMA_VERSION 9: instruments.name — the real company name Kite's
+        instrument dump already carries but ingestion previously discarded.
+        Additive, nullable column; existing rows read as None (rendered as
+        absent, never fabricated) until the next instrument catalog refresh
+        backfills them via upsert_instrument. `CREATE TABLE IF NOT EXISTS`
+        above is a no-op against an already-existing instruments table, so
+        this explicit, idempotent ALTER is what actually reaches it."""
+        cols = {row[1] for row in self._conn.execute("PRAGMA table_info(instruments)")}
+        if "name" not in cols:
+            self._conn.execute("ALTER TABLE instruments ADD COLUMN name TEXT")
 
     def close(self) -> None:
         with self._lock:
@@ -156,19 +169,19 @@ class SqliteRepository:
     def upsert_instrument(self, instrument: Instrument) -> None:
         self._write(
             "INSERT INTO instruments "
-            "(instrument_id, isin, symbol, exchange, series, lot_size, tick_size, status, "
-            " listed_date, delisted_date) VALUES (?,?,?,?,?,?,?,?,?,?) "
+            "(instrument_id, isin, symbol, exchange, series, name, lot_size, tick_size, status, "
+            " listed_date, delisted_date) VALUES (?,?,?,?,?,?,?,?,?,?,?) "
             "ON CONFLICT(instrument_id) DO UPDATE SET "
             "isin=excluded.isin, symbol=excluded.symbol, exchange=excluded.exchange, "
-            "series=excluded.series, lot_size=excluded.lot_size, tick_size=excluded.tick_size, "
-            "status=excluded.status, listed_date=excluded.listed_date, "
-            "delisted_date=excluded.delisted_date",
+            "series=excluded.series, name=excluded.name, lot_size=excluded.lot_size, "
+            "tick_size=excluded.tick_size, status=excluded.status, "
+            "listed_date=excluded.listed_date, delisted_date=excluded.delisted_date",
             ser.instrument_to_row(instrument),
         )
 
     def get_instrument(self, instrument_id: str) -> Instrument | None:
         row = self._query_one(
-            "SELECT instrument_id, isin, symbol, exchange, series, lot_size, tick_size, "
+            "SELECT instrument_id, isin, symbol, exchange, series, name, lot_size, tick_size, "
             "status, listed_date, delisted_date FROM instruments WHERE instrument_id=?",
             (instrument_id,),
         )
@@ -176,7 +189,7 @@ class SqliteRepository:
 
     def list_instruments(self) -> list[Instrument]:
         rows = self._query_all(
-            "SELECT instrument_id, isin, symbol, exchange, series, lot_size, tick_size, "
+            "SELECT instrument_id, isin, symbol, exchange, series, name, lot_size, tick_size, "
             "status, listed_date, delisted_date FROM instruments ORDER BY instrument_id"
         )
         return [ser.row_to_instrument(r) for r in rows]

@@ -101,15 +101,6 @@
         return formatDecisionSummary(text, "", []).headline;
     }
 
-    // Friendly label (UX-8 copy pass) — the raw enum (TRADE/WATCH/NO_TRADE/
-    // INSUFFICIENT_DATA) was leaking straight into a chip sitting right next
-    // to the already-friendly stance chip (BUY/HOLD/PASS/WAIT), reading as
-    // two badges for one idea, one polished and one raw.
-    function decisionTypeBadge(type) {
-        const t = (type || "").toUpperCase();
-        return `<span class="type-chip type-${t.toLowerCase()}">${t ? escapeDecisionHtml(friendlyAnalysisName(t)) : "—"}</span>`;
-    }
-
     function contextChipTone(label) {
         const s = String(label || "").toUpperCase();
         if (s.includes("UNKNOWN")) return "unknown";

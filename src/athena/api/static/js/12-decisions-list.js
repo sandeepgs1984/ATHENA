@@ -185,19 +185,21 @@
     // Insufficient data — regardless of timestamp (owner: 2026-07-25). Any
     // decision_type not in this list still gets its own carousel, appended
     // after these four, so nothing is ever silently hidden.
+    // `dot` stays a saturated alert color (fine for an 8px dot). `tint`/
+    // `tintBorder` were a full-block background fill per section — the two
+    // owner screenshots after that shipped both read as "too much color":
+    // first an imbalance between hues, then (once balanced) simply too
+    // much colored surface area for 3-4 stacked section dividers in a
+    // narrow panel. Switched to a thin left-border accent (`accent`) +ba
+    // much quieter wash (`wash`) — the same restrained pattern the
+    // Recommendation tile/ATHENA Summary card already use elsewhere —
+    // color reads as a scan cue at the edge, not a filled block.
     const DECISION_CAROUSEL_SECTIONS = [
-        { type: "TRADE", label: "Trade", dot: "var(--success)", hint: "acted on now" },
-        { type: "WATCH", label: "Watch", dot: "var(--warning)", hint: "borderline, monitor" },
-        { type: "NO_TRADE", label: "No trade", dot: "var(--text-muted)", hint: "nothing to act on" },
-        { type: "INSUFFICIENT_DATA", label: "Insufficient data", dot: "var(--text-muted)", hint: "not enough data yet" },
+        { type: "TRADE", label: "Trade", dot: "var(--success)", accent: "rgba(34, 197, 94, 0.65)", wash: "rgba(34, 197, 94, 0.05)", hint: "acted on now" },
+        { type: "WATCH", label: "Watch", dot: "var(--warning)", accent: "rgba(245, 158, 11, 0.65)", wash: "rgba(245, 158, 11, 0.05)", hint: "borderline, monitor" },
+        { type: "NO_TRADE", label: "No trade", dot: "var(--text-muted)", accent: "rgba(148, 163, 184, 0.45)", wash: "rgba(148, 163, 184, 0.04)", hint: "nothing to act on" },
+        { type: "INSUFFICIENT_DATA", label: "Insufficient data", dot: "var(--text-muted)", accent: "rgba(148, 163, 184, 0.45)", wash: "rgba(148, 163, 184, 0.04)", hint: "not enough data yet" },
     ];
-
-    function decisionCardStanceColor(type) {
-        const t = String(type || "").toUpperCase();
-        if (t === "TRADE") return "var(--success)";
-        if (t === "WATCH") return "var(--warning)";
-        return "var(--text-muted)";
-    }
 
     // DT-1: was renderDeckCard, building a fixed-width horizontal carousel
     // card. Same data, same fields — just a full-width vertical row now that
@@ -205,7 +207,6 @@
     function renderSymbolRow(d) {
         const rawSym = d.metadata.instrument_id || "INDEX";
         const symbol = rawSym.includes(":") ? rawSym.split(":").pop() : rawSym;
-        const type = d.metadata.decision_type;
         const dateObj = new Date(d.metadata.ts);
         const dateStr = dateObj.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
         const gates = (d.analysis && d.analysis.gate_results) ? d.analysis.gate_results : [];
@@ -226,7 +227,6 @@
 
         const row = document.createElement("div");
         row.className = "symbol-row";
-        row.style.setProperty("--stance-color", decisionCardStanceColor(type));
         row.setAttribute("data-id", d.metadata.decision_id);
         // Keyboard-operable (UX-7 accessibility) — this was a plain click-only
         // div with no way for a keyboard user to reach or activate it.
@@ -326,7 +326,10 @@
         const extraTypes = Array.from(byType.keys()).filter(t => !knownTypes.has(t));
         const sections = [
             ...DECISION_CAROUSEL_SECTIONS,
-            ...extraTypes.map(t => ({ type: t, label: friendlyLabel(t), dot: "var(--text-muted)", hint: "" })),
+            ...extraTypes.map(t => ({
+                type: t, label: friendlyLabel(t), dot: "var(--text-muted)",
+                accent: "rgba(148, 163, 184, 0.45)", wash: "rgba(148, 163, 184, 0.04)", hint: "",
+            })),
         ];
 
         sections.forEach(section => {
@@ -337,7 +340,7 @@
             sectionEl.className = "decision-carousel-section";
             sectionEl.setAttribute("data-section", section.type);
             sectionEl.innerHTML = `
-                <div class="decision-carousel-head" data-toggle>
+                <div class="decision-carousel-head" data-toggle style="background: ${section.wash}; border-left-color: ${section.accent}">
                     <span class="decision-carousel-dot" style="background: ${section.dot}"></span>
                     <span class="decision-carousel-name">${escapeDecisionHtml(section.label)}</span>
                     <span class="decision-carousel-count">${rows.length}</span>

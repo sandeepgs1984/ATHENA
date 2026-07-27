@@ -3,13 +3,14 @@
     const quickSummaryCard = document.getElementById("quick-summary-card");
     const quickSummaryStanceEl = document.getElementById("quick-summary-stance");
     const decisionBriefTitle = document.getElementById("decision-brief-title");
-    const decisionBriefStanceChip = document.getElementById("decision-brief-stance-chip");
-    const decisionBriefTypeChip = document.getElementById("decision-brief-type-chip");
+    const decisionBriefCompanyName = document.getElementById("decision-brief-company-name");
+    const decisionBriefMetaRow = document.getElementById("decision-brief-meta-row");
+    const decisionBriefExchangeSymbol = document.getElementById("decision-brief-exchange-symbol");
+    const decisionBriefFavoriteToggle = document.getElementById("decision-brief-favorite-toggle");
     const decisionBriefAsOf = document.getElementById("decision-brief-asof");
     const decisionBriefBody = document.getElementById("decision-brief-body");
     const decisionBriefGauges = document.getElementById("decision-brief-gauges");
     const decisionBriefTabstrip = document.getElementById("decision-brief-tabstrip");
-    const decisionBriefActionbar = document.getElementById("decision-brief-actionbar");
     const decisionBriefRevalidateHeader = document.getElementById("decision-brief-revalidate-header");
     const gaugeRecommendationTile = document.getElementById("gauge-recommendation-tile");
     const gaugeRecommendationStance = document.getElementById("gauge-recommendation-stance");
@@ -27,17 +28,117 @@
         if (event.target === executiveSummaryModalEl) closeModal(executiveSummaryModalEl);
     });
 
+    // Owner reference-mock: secondary actions (Dismiss today/Remove
+    // candidate/Export/News) consolidated behind a "more" popover instead of
+    // cluttering the action bar — same toggle/backdrop-click/Escape pattern
+    // already established for the symbols filter popover (12-decisions-
+    // list.js) and the reasoning-trace stage-detail panel.
+    const decisionBriefOverflowToggle = document.getElementById("decision-brief-overflow-toggle");
+    const decisionBriefOverflowMenu = document.getElementById("decision-brief-overflow-menu");
+
+    function closeOverflowMenu() {
+        if (!decisionBriefOverflowMenu || !decisionBriefOverflowToggle) return;
+        decisionBriefOverflowMenu.hidden = true;
+        decisionBriefOverflowToggle.setAttribute("aria-expanded", "false");
+    }
+
+    decisionBriefOverflowToggle?.addEventListener("click", event => {
+        event.stopPropagation();
+        if (!decisionBriefOverflowMenu) return;
+        const opening = decisionBriefOverflowMenu.hidden;
+        decisionBriefOverflowMenu.hidden = !opening;
+        decisionBriefOverflowToggle.setAttribute("aria-expanded", opening ? "true" : "false");
+    });
+    document.addEventListener("click", event => {
+        if (decisionBriefOverflowMenu && !decisionBriefOverflowMenu.hidden
+            && !decisionBriefOverflowMenu.contains(event.target)
+            && event.target !== decisionBriefOverflowToggle) {
+            closeOverflowMenu();
+        }
+    });
+    document.addEventListener("keydown", event => {
+        if (event.key === "Escape") closeOverflowMenu();
+    });
+    // Any menu item click also closes the menu (owner UX precedent: the
+    // symbols filter popover closes itself after an action, not left open).
+    decisionBriefOverflowMenu?.querySelectorAll(".overflow-menu-item").forEach(btn => {
+        btn.addEventListener("click", closeOverflowMenu);
+    });
+
+    // Favorite (Saved Symbols) toggle — reuses the existing GET/POST/DELETE
+    // /api/v1/saved-symbols endpoints (Market Intelligence's own watch-list
+    // feature, UX-9b), just a new star-icon surface for it. A lightweight
+    // local Set cache avoids re-fetching the whole list on every keystroke/
+    // selection; refreshed whenever it might be stale.
+    let savedSymbolsCache = null;
+
+    async function loadSavedSymbolsCache() {
+        try {
+            const res = await apiRequest("/api/v1/saved-symbols", { skipToast: true });
+            const rows = (res && res.data && res.data.symbols) ? res.data.symbols : [];
+            savedSymbolsCache = new Set(rows.map(s => String(s.symbol || "").toUpperCase()));
+        } catch (err) {
+            console.error("Failed to load saved symbols", err);
+            savedSymbolsCache = null;
+        }
+    }
+
+    function applyFavoriteToggleState(bareSymbol) {
+        if (!decisionBriefFavoriteToggle) return;
+        const saved = savedSymbolsCache instanceof Set && savedSymbolsCache.has(bareSymbol);
+        decisionBriefFavoriteToggle.classList.toggle("is-saved", saved);
+        decisionBriefFavoriteToggle.setAttribute("aria-pressed", saved ? "true" : "false");
+        decisionBriefFavoriteToggle.title = saved ? "Remove from watch list" : "Save to watch list";
+    }
+
+    decisionBriefFavoriteToggle?.addEventListener("click", async () => {
+        const bareSymbol = decisionBriefFavoriteToggle.dataset.symbol;
+        if (!bareSymbol) return;
+        decisionBriefFavoriteToggle.disabled = true;
+        try {
+            const alreadySaved = savedSymbolsCache instanceof Set && savedSymbolsCache.has(bareSymbol);
+            if (alreadySaved) {
+                await apiRequest(`/api/v1/saved-symbols/${encodeURIComponent(bareSymbol)}`, {
+                    method: "DELETE", skipToast: true,
+                });
+                savedSymbolsCache?.delete(bareSymbol);
+                showToast(`${bareSymbol} removed from Saved Symbols`, "success");
+            } else {
+                await apiRequest("/api/v1/saved-symbols", {
+                    method: "POST",
+                    body: JSON.stringify({ symbol: bareSymbol }),
+                    skipToast: true,
+                });
+                if (!(savedSymbolsCache instanceof Set)) savedSymbolsCache = new Set();
+                savedSymbolsCache.add(bareSymbol);
+                showToast(`${bareSymbol} saved to your watch list`, "success");
+            }
+            applyFavoriteToggleState(bareSymbol);
+        } catch (err) {
+            console.error(`Failed to toggle saved symbol ${bareSymbol}`, err);
+            showToast("Could not update Saved Symbols — try again", "danger");
+        } finally {
+            decisionBriefFavoriteToggle.disabled = false;
+        }
+    });
+
     function renderDecisionBriefEmpty(title, detail) {
         if (decisionBriefTitle) {
             decisionBriefTitle.textContent = "Select a symbol";
             decisionBriefTitle.title = "";
         }
         if (decisionBriefAsOf) decisionBriefAsOf.textContent = "Select a symbol";
-        if (decisionBriefStanceChip) decisionBriefStanceChip.innerHTML = "";
-        if (decisionBriefTypeChip) decisionBriefTypeChip.innerHTML = "";
+        if (decisionBriefCompanyName) decisionBriefCompanyName.textContent = "";
+        if (decisionBriefMetaRow) decisionBriefMetaRow.hidden = true;
+        if (decisionBriefExchangeSymbol) decisionBriefExchangeSymbol.textContent = "";
+        if (decisionBriefFavoriteToggle) {
+            decisionBriefFavoriteToggle.disabled = true;
+            decisionBriefFavoriteToggle.classList.remove("is-saved");
+            decisionBriefFavoriteToggle.removeAttribute("data-symbol");
+        }
+        closeOverflowMenu();
         if (decisionBriefGauges) decisionBriefGauges.hidden = true;
         if (decisionBriefTabstrip) decisionBriefTabstrip.hidden = true;
-        if (decisionBriefActionbar) decisionBriefActionbar.hidden = true;
         if (decisionSummaryCard) decisionSummaryCard.hidden = true;
         if (decisionSummaryHeadline) decisionSummaryHeadline.textContent = "";
         if (gaugeRecommendationTile) gaugeRecommendationTile.className = "brief-gauge brief-gauge-recommendation";
@@ -235,15 +336,34 @@
             decisionBriefTitle.title = rawSymbol;
         }
         if (decisionBriefAsOf) decisionBriefAsOf.textContent = `As of ${formatDecisionTime(meta.ts)}`;
-        if (decisionBriefStanceChip) {
-            decisionBriefStanceChip.innerHTML = `<span class="stance-chip ${stance.cls}">${stance.label}</span>`;
+        // Owner reference-mock: company name (real instruments.name — absent
+        // for instruments the catalog hasn't re-synced since it was added,
+        // never fabricated) instead of the BUY/TRADE badges, which are now
+        // redundant with the Recommendation tile in the gauges row below.
+        if (decisionBriefCompanyName) {
+            decisionBriefCompanyName.textContent = meta.instrument_name || "";
         }
-        if (decisionBriefTypeChip) {
-            decisionBriefTypeChip.innerHTML = decisionTypeBadge(meta.decision_type);
+        // "NSE: DIXON" — trivial split of instrument_id, already available.
+        const exchangePrefix = rawSymbol.includes(":") ? rawSymbol.split(":")[0] : null;
+        if (decisionBriefExchangeSymbol) {
+            decisionBriefExchangeSymbol.textContent = exchangePrefix ? `${exchangePrefix}: ${symbol}` : symbol;
+        }
+        if (decisionBriefMetaRow) decisionBriefMetaRow.hidden = false;
+        // Favorite (Saved Symbols) toggle — bare symbol, matching the same
+        // NSE:/BSE: stripping convention already used by
+        // removeSavedSymbolNow (09-market-intelligence.js).
+        if (decisionBriefFavoriteToggle) {
+            const bareSymbol = symbol.toUpperCase();
+            decisionBriefFavoriteToggle.disabled = false;
+            decisionBriefFavoriteToggle.dataset.symbol = bareSymbol;
+            if (savedSymbolsCache === null) {
+                loadSavedSymbolsCache().then(() => applyFavoriteToggleState(bareSymbol));
+            } else {
+                applyFavoriteToggleState(bareSymbol);
+            }
         }
         if (decisionBriefGauges) decisionBriefGauges.hidden = false;
         if (decisionBriefTabstrip) decisionBriefTabstrip.hidden = false;
-        if (decisionBriefActionbar) decisionBriefActionbar.hidden = false;
         resetCockpitGauges();
         resetActionButtons();
 
@@ -558,9 +678,6 @@
         btn.addEventListener("click", () => switchBriefTab(btn.getAttribute("data-brief-tab")));
     });
 
-    document.getElementById("decision-brief-market")?.addEventListener("click", () => {
-        switchTab("market");
-    });
     document.getElementById("decision-brief-dismiss")?.addEventListener("click", () => {
         if (activeDecisionData) dismissDecisionForToday(activeDecisionData);
     });

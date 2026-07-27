@@ -10,7 +10,7 @@ append-only by discipline (inserts only; duplicates rejected by primary key).
 from __future__ import annotations
 
 #: Bump when the schema changes; enables future explicit migrations.
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 _DDL = (
     "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)",
@@ -22,6 +22,7 @@ _DDL = (
         symbol        TEXT NOT NULL,
         exchange      TEXT NOT NULL,
         series        TEXT NOT NULL,
+        name          TEXT,
         lot_size      INTEGER NOT NULL,
         tick_size     TEXT NOT NULL,
         status        TEXT NOT NULL,

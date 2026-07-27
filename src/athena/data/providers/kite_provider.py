@@ -298,6 +298,7 @@ class KiteProvider:
                 symbol=tradingsymbol,
                 exchange=row_exchange,
                 series=series,
+                name=(row.get("name") or "").strip() or None,
                 lot_size=max(lot, 1),
                 tick_size=tick,
                 status="ACTIVE",

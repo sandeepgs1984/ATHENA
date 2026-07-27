@@ -174,6 +174,7 @@ class FileProvider:
                     exchange=row["exchange"].strip(),
                     series=row["series"].strip(),
                     isin=(row.get("isin") or "").strip() or None,
+                    name=(row.get("name") or "").strip() or None,
                     lot_size=_int(row["lot_size"], "lot_size", where),
                     tick_size=_decimal(row["tick_size"], "tick_size", where),
                     status=(row.get("status") or "ACTIVE").strip() or "ACTIVE",

@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.50.2">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.52.5">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -650,17 +650,71 @@
                                 <div class="card-header decision-brief-header">
                                     <div class="decision-brief-header-row1">
                                         <div class="decision-brief-identity">
-                                            <div class="card-title-icon"><i class="fas fa-crosshairs"></i></div>
+                                            <!-- Owner reference-mock screenshot (2026-07-27): star toggle
+                                                 wired to the existing Saved Symbols watch list (Priority-2 —
+                                                 reuses GET/POST/DELETE /api/v1/saved-symbols as-is, just a new
+                                                 UI surface for it), replacing the plain crosshair icon. -->
+                                            <button id="decision-brief-favorite-toggle" class="favorite-toggle-btn" type="button" title="Save to watch list" aria-label="Save to watch list" aria-pressed="false" disabled>
+                                                <i class="fa-solid fa-star"></i>
+                                            </button>
                                             <span id="decision-brief-title" class="decision-brief-symbol-lg">Select a symbol</span>
-                                            <span id="decision-brief-stance-chip"></span>
-                                            <span id="decision-brief-type-chip"></span>
                                         </div>
                                         <div class="decision-brief-header-actions">
                                             <span id="decision-brief-asof" class="decision-brief-asof">Select a symbol</span>
                                             <button id="decision-brief-revalidate-header" class="btn btn-outline btn-sm" type="button" title="Re-validate this symbol" disabled>
                                                 <i class="fa-solid fa-arrows-rotate"></i> Re-validate
                                             </button>
+                                            <!-- Owner screenshot follow-up: Market Intelligence dropped
+                                                 entirely (redundant with the sidebar nav item of the same
+                                                 name); Open Chart/Compare relocated here as icon-only buttons
+                                                 (owner: "icons are also sufficient") — same ids/click
+                                                 handlers, only their container and text label changed. -->
+                                            <button id="decision-brief-open-chart" class="btn btn-outline btn-sm header-icon-btn" type="button" title="Enlarge the price chart" aria-label="Enlarge the price chart">
+                                                <i class="fa-solid fa-chart-line"></i>
+                                            </button>
+                                            <button id="decision-brief-compare" class="btn btn-outline btn-sm header-icon-btn" type="button" title="Compare against another symbol" aria-label="Compare against another symbol">
+                                                <i class="fa-solid fa-scale-balanced"></i>
+                                            </button>
+                                            <!-- Owner reference-mock: secondary actions consolidated behind
+                                                 a "more" menu instead of cluttering the primary action bar.
+                                                 Buttons below are the exact same elements (ids/classes/click
+                                                 handlers unchanged) moved out of decision-brief-actionbar —
+                                                 no new wiring needed for what they do, only for the toggle. -->
+                                            <div class="decision-brief-overflow-wrap">
+                                                <button id="decision-brief-overflow-toggle" class="btn btn-outline btn-sm decision-brief-overflow-btn" type="button" title="More actions" aria-haspopup="true" aria-expanded="false">
+                                                    <i class="fa-solid fa-ellipsis-vertical"></i>
+                                                </button>
+                                                <div id="decision-brief-overflow-menu" class="decision-brief-overflow-menu" hidden>
+                                                    <button id="decision-brief-dismiss" class="overflow-menu-item" type="button" title="Hide this symbol until tomorrow">
+                                                        <i class="fa-solid fa-eye-slash"></i> <span>Dismiss today</span>
+                                                    </button>
+                                                    <button id="decision-brief-remove-candidate" class="overflow-menu-item overflow-menu-item-danger" type="button" title="Stop future validation for this symbol">
+                                                        <i class="fa-solid fa-list-check"></i> <span>Remove candidate</span>
+                                                    </button>
+                                                    <button id="decision-brief-export" class="overflow-menu-item" type="button" title="Export this decision brief">
+                                                        <i class="fa-solid fa-file-export"></i> <span>Export</span>
+                                                    </button>
+                                                    <button id="decision-brief-news" class="overflow-menu-item" type="button" title="Jump to curated research links">
+                                                        <i class="fa-solid fa-newspaper"></i> <span>News</span>
+                                                    </button>
+                                                </div>
+                                            </div>
                                         </div>
+                                    </div>
+                                    <!-- "NSE: DIXON" — trivial split of instrument_id, already available.
+                                         Sector/market-cap badges from the reference mock are a genuine
+                                         data gap (nothing in ATHENA or Kite's feed maps a symbol to a
+                                         sector/cap category) — omitted rather than fabricated, tracked as
+                                         future scope. This row gracefully holds just the one real pill for
+                                         now and can take more later without a layout change. -->
+                                    <div id="decision-brief-meta-row" class="decision-brief-meta-row" hidden>
+                                        <span id="decision-brief-exchange-symbol" class="decision-brief-exchange-symbol"></span>
+                                        <!-- Fix pass (owner screenshot): company name was truncating on the
+                                             identity row (cramped next to the star/ticker/asof/buttons in a
+                                             narrow center column) — moved here, where the row has much more
+                                             width to itself, so long real names ("Sandhar Technologies
+                                             Limited") show in full instead of "SANDHA…". -->
+                                        <span id="decision-brief-company-name" class="decision-brief-company-name"></span>
                                     </div>
                                     <div id="decision-brief-gauges" class="decision-brief-gauges" hidden>
                                         <!-- DT-3 refinement (owner reference mock): Recommendation merged into
@@ -717,30 +771,7 @@
                                         <button class="brief-tab" data-brief-tab="response" type="button"><i class="fa-solid fa-comment-dots"></i> <span>Response</span></button>
                                         <button class="brief-tab" data-brief-tab="history" type="button"><i class="fa-solid fa-clock-rotate-left"></i> <span>History</span></button>
                                     </div>
-                                    <div class="decision-brief-actionbar" id="decision-brief-actionbar" hidden>
-                                        <button id="decision-brief-market" class="btn btn-outline btn-sm" type="button" title="Open Market Intelligence">
-                                            <i class="fa-solid fa-chart-column"></i> <span>Market Intelligence</span>
-                                        </button>
-                                        <button id="decision-brief-dismiss" class="btn btn-outline btn-sm" type="button" title="Hide this symbol until tomorrow">
-                                            <i class="fa-solid fa-eye-slash"></i> <span>Dismiss today</span>
-                                        </button>
-                                        <button id="decision-brief-remove-candidate" class="btn btn-outline btn-sm btn-danger-outline" type="button" title="Stop future validation for this symbol">
-                                            <i class="fa-solid fa-list-check"></i> <span>Remove candidate</span>
-                                        </button>
-                                        <button id="decision-brief-export" class="btn btn-outline btn-sm" type="button" title="Export this decision brief">
-                                            <i class="fa-solid fa-file-export"></i> <span>Export</span>
-                                        </button>
-                                        <button id="decision-brief-open-chart" class="btn btn-outline btn-sm" type="button" title="Enlarge the price chart">
-                                            <i class="fa-solid fa-chart-line"></i> <span>Open Chart</span>
-                                        </button>
-                                        <button id="decision-brief-compare" class="btn btn-outline btn-sm" type="button" title="Compare against another symbol">
-                                            <i class="fa-solid fa-scale-balanced"></i> <span>Compare</span>
-                                        </button>
-                                        <button id="decision-brief-news" class="btn btn-outline btn-sm" type="button" title="Jump to curated research links">
-                                            <i class="fa-solid fa-newspaper"></i> <span>News</span>
-                                        </button>
-                                    </div>
-                                </div>
+                                              </div>
                                 <div id="decision-brief-body" class="card-body decision-brief-body">
                                     <div class="decision-brief-empty">
                                         <i class="fa-solid fa-chart-line"></i>
@@ -1070,6 +1101,6 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.50.2"></script>
+    <script src="/dashboard/dashboard.js?v=9.52.5"></script>
 </body>
 </html>

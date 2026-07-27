@@ -82,6 +82,58 @@ class TestInstruments:
     def test_missing_instrument_returns_none(self, repo):
         assert repo.get_instrument("NOPE") is None
 
+    def test_name_column_roundtrips(self, repo):
+        """SCHEMA_VERSION 9: instruments.name — real company name from
+        Kite's own instrument dump, previously discarded on ingestion."""
+        repo.upsert_instrument(
+            Instrument(instrument_id=INST, symbol="AAA", exchange="NSE", series="EQ",
+                       name="Alpha Alloys Limited")
+        )
+        assert repo.get_instrument(INST).name == "Alpha Alloys Limited"
+        assert repo.list_instruments()[0].name == "Alpha Alloys Limited"
+
+    def test_name_absent_reads_as_none_never_fabricated(self, repo):
+        repo.upsert_instrument(_instrument())
+        assert repo.get_instrument(INST).name is None
+
+    def test_initialize_migrates_pre_existing_db_missing_name_column(self, tmp_path):
+        """A database created before SCHEMA_VERSION 9 (instruments table has
+        no `name` column) must not break — initialize() adds it in place,
+        idempotently, without touching any other column or existing rows."""
+        db_path = tmp_path / "legacy.db"
+        legacy = SqliteRepository(db_path)
+        legacy.initialize()
+        # Simulate the pre-migration schema by dropping back to the old
+        # column set on a fresh connection to the same file.
+        legacy._conn.execute("ALTER TABLE instruments RENAME TO instruments_new")
+        legacy._conn.execute(
+            "CREATE TABLE instruments (instrument_id TEXT PRIMARY KEY, isin TEXT, "
+            "symbol TEXT NOT NULL, exchange TEXT NOT NULL, series TEXT NOT NULL, "
+            "lot_size INTEGER NOT NULL, tick_size TEXT NOT NULL, status TEXT NOT NULL, "
+            "listed_date TEXT, delisted_date TEXT)"
+        )
+        legacy._conn.execute("DROP TABLE instruments_new")
+        legacy._conn.execute(
+            "INSERT INTO instruments (instrument_id, isin, symbol, exchange, series, "
+            "lot_size, tick_size, status, listed_date, delisted_date) "
+            "VALUES ('LEGACY-1', NULL, 'OLD', 'NSE', 'EQ', 1, '0.05', 'ACTIVE', NULL, NULL)"
+        )
+        legacy._conn.commit()
+        legacy.close()
+
+        migrated = SqliteRepository(db_path)
+        migrated.initialize()
+        pre_existing = migrated.get_instrument("LEGACY-1")
+        assert pre_existing is not None
+        assert pre_existing.symbol == "OLD"
+        assert pre_existing.name is None
+        migrated.upsert_instrument(
+            Instrument(instrument_id="LEGACY-1", symbol="OLD", exchange="NSE", series="EQ",
+                       name="Old Co Ltd")
+        )
+        assert migrated.get_instrument("LEGACY-1").name == "Old Co Ltd"
+        migrated.close()
+
 
 class TestCandles:
     def test_append_and_range_query(self, repo):

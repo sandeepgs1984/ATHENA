@@ -75,11 +75,18 @@ class DecisionsService:
         config_dir: Path | None = None,
         db_path: Path | None = None,
         backup_dir: Path | None = None,
+        repo: SqliteRepository | None = None,
     ) -> None:
         self._provider = provider
         self._config_dir = Path(config_dir) if config_dir else Path("config")
         self._db_path = Path(db_path) if db_path else default_db_path()
         self._backup_dir = Path(backup_dir) if backup_dir else default_backup_dir()
+        # Optional persistent repo for read-only instrument lookups (real
+        # company name — see _lookup_instrument_name) — mirrors the same
+        # optional-repo-alongside-primary-abstraction precedent already used
+        # by MarketHistoryService, avoiding a fresh sqlite connection per
+        # decision the way reset_decisions' one-off backup step does.
+        self._repo = repo
 
     def list_decisions(
         self,
@@ -106,6 +113,16 @@ class DecisionsService:
             raise DecisionNotFoundError(f"Decision '{decision_id}' not found")
         return self._map_to_dto(d)
 
+    def _lookup_instrument_name(self, instrument_id: str | None) -> str | None:
+        """Real company name from the instruments table — None (never a
+        fabricated value) if no repo is wired, the instrument isn't found,
+        or the catalog hasn't been re-synced since the name column was
+        added."""
+        if not instrument_id or self._repo is None:
+            return None
+        instrument = self._repo.get_instrument(instrument_id)
+        return instrument.name if instrument else None
+
     def _map_to_dto(self, d: Decision) -> DecisionDTO:
         # Resolve enums safely to strings
         direction_str = (
@@ -123,6 +140,7 @@ class DecisionsService:
             run_id=d.run_id,
             cycle_id=d.cycle_id,
             instrument_id=d.instrument_id,
+            instrument_name=self._lookup_instrument_name(d.instrument_id),
             direction=direction_str,
             decision_type=dec_type_str,
         )

@@ -115,6 +115,12 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     max-width: 220px;
+    /* Fix pass (owner reference-mock screenshot): the ticker is the primary
+       identifier and must never lose space to the company name — without
+       an explicit flex-shrink:0, flexbox's default shrink-both-siblings
+       behavior was truncating "DIXON" down to "DI…" to make room for
+       ".decision-brief-company-name" next to it. */
+    flex-shrink: 0;
 }
 
 .decision-brief-header-actions {
@@ -129,6 +135,135 @@
     font-family: var(--font-mono);
     font-size: var(--text-0-68);
     white-space: nowrap;
+}
+
+/* Owner reference-mock screenshot (2026-07-27): identity row redesign —
+   star favorite toggle (Saved Symbols), company name, "EXCHANGE: SYMBOL"
+   meta row, and a "more" overflow menu replacing the BUY/TRADE badges
+   (now redundant with the Recommendation tile in the gauges row) and the
+   decluttered action bar. */
+.favorite-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    background: none;
+    color: var(--text-muted);
+    font-size: var(--text-1-05);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: color var(--transition-speed) ease;
+}
+
+.favorite-toggle-btn:hover {
+    color: var(--tone-highlight);
+}
+
+.favorite-toggle-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.favorite-toggle-btn.is-saved {
+    color: var(--tone-highlight);
+}
+
+.decision-brief-company-name {
+    color: var(--text-muted);
+    font-size: var(--text-0-72);
+    font-weight: 400;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+/* Small divider between "NSE: SYMBOL" and the company name, now that both
+   sit in the wider meta row instead of cramped next to the ticker. */
+.decision-brief-company-name:not(:empty)::before {
+    content: "·";
+    margin-right: var(--space-8);
+    color: var(--text-muted);
+}
+
+.decision-brief-meta-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-8);
+    margin-top: var(--space-2);
+}
+
+.decision-brief-exchange-symbol {
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: var(--text-0-68);
+    font-weight: 600;
+}
+
+.decision-brief-overflow-wrap {
+    position: relative;
+}
+
+.decision-brief-overflow-btn {
+    padding: var(--space-5) var(--space-9);
+}
+
+/* Owner screenshot follow-up: Open Chart/Compare relocated from the old
+   action bar into icon-only buttons here, next to Re-validate — same
+   tight icon-only padding as the overflow toggle for visual consistency. */
+.header-icon-btn {
+    padding: var(--space-5) var(--space-9);
+}
+
+.decision-brief-overflow-menu {
+    position: absolute;
+    top: calc(100% + var(--space-4));
+    right: 0;
+    z-index: 20;
+    width: max-content;
+    min-width: 180px;
+    display: flex;
+    flex-direction: column;
+    padding: var(--space-6);
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-sidebar);
+    box-shadow: var(--shadow-md);
+}
+
+.decision-brief-overflow-menu[hidden] {
+    display: none;
+}
+
+.overflow-menu-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-8);
+    padding: var(--space-8) var(--space-10);
+    border: none;
+    border-radius: 6px;
+    background: none;
+    color: var(--text-secondary);
+    font-size: var(--text-0-8);
+    text-align: left;
+    cursor: pointer;
+}
+
+.overflow-menu-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
+}
+
+.overflow-menu-item-danger {
+    color: var(--tone-bad-text);
+}
+
+.overflow-menu-item-danger:hover {
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--tone-bad-text);
 }
 
 .btn-sm {
@@ -149,12 +284,19 @@
     border-top: 1px solid var(--border-color);
 }
 
+/* Fix pass (owner screenshot): 5 tiles in a 4-column grid wraps Expected
+   R:R alone onto its own row, but it only got 1 of 4 columns' width there
+   — "reward per ₹1 risked" truncated with room to spare next to it. It's
+   always the last tile, so let it use the whole row instead of ~1/4 of it. */
+.decision-brief-gauges .brief-gauge:last-child {
+    grid-column: 1 / -1;
+}
+
 /* Author display rules otherwise beat the browser's own [hidden] default,
-   so the cockpit gauges/tabstrip/actionbar would stay visible even after
-   JS sets .hidden = true on the empty state (owner-reported). */
+   so the cockpit gauges/tabstrip would stay visible even after JS sets
+   .hidden = true on the empty state (owner-reported). */
 .decision-brief-gauges[hidden],
-.decision-brief-tabstrip[hidden],
-.decision-brief-actionbar[hidden] {
+.decision-brief-tabstrip[hidden] {
     display: none;
 }
 
@@ -254,12 +396,6 @@
 .brief-tab.active {
     color: var(--accent);
     border-bottom-color: var(--accent);
-}
-
-.decision-brief-actionbar {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-8);
 }
 
 .decision-brief-body {
