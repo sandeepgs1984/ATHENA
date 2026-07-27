@@ -338,6 +338,53 @@ Two bugs the owner found via live screenshots.
 | Tests | 4 new dashboard-hosting assertions. Full suite **1031 passed** |
 | Status | ✅ Built, verified via code-level correctness (both fixes are small, unconditional, no branching) + a live check confirming `history.replaceState` behaves as expected in-browser. Could not drive a real authenticated login/Clear-all end-to-end myself (this deployment requires real owner credentials) — awaiting owner confirmation on the live dashboard |
 
+### ATHENA Workstation Refactor (owner assignment + reference mock, 2026-07-27)
+
+Presentation-layer-only refactor of Decisions & Trace to match a reference
+"professional trading workstation" mock — reposition existing information,
+never invent new. No backend/business-logic/scoring/reasoning changes in
+any of DT-1 through DT-4. Split into 4 reviewable milestones per the
+milestone-workflow discipline; one in flight at a time.
+
+Owner-confirmed scope decisions (before DT-1 started):
+- Tabs split into 5 (Trade Plan / Analysis / Market Context / Response /
+  History) rather than keeping today's 4 — Response = Journal/Outcome only,
+  History = Timeline (moved from the always-visible hero) + Analogs (DT-3).
+- Market ticker strip (NIFTY/BankNifty/VIX/breadth) approved as a header
+  addition, with a strict data-source priority: reuse ATHENA's existing
+  Kite/Regime/Market-Health pipeline data first; a genuinely new external
+  feed is only a last resort requiring its own stop-and-propose gate (DT-2).
+- "Similar Trades" mini sparkline approved — reuses each analog's
+  already-fetched `outcome_return_pct` (DT-4).
+- Two nav placeholders ("Reports & Analytics", "Settings") added as visibly
+  disabled, no backing route — explicitly future-implementation (DT-1).
+
+| Milestone | Scope | Status |
+|---|---|---|
+| **DT-1** Layout shell — 3-pane workstation | Replaced the horizontal outcome carousels + toolbar-above-the-fold layout with a permanent left Symbols panel (search always visible, collapsible BUY/WATCH/PASS-equivalent groups, strong selected-row highlight) beside the center detail (now immediately visible, zero scroll) and the existing right Reasoning Trace (untouched — its redesign is DT-4). Same data/selection/filter/sort/dismiss logic throughout — only the DOM position and row/group markup shape changed | ✅ Approved |
+| **DT-2** Hero header + Quick Summary + ticker strip | Rearrange the hero header hierarchy; build a "Quick Summary" card from existing gauges/Trade-Plan/Historical-Analogs data only; add the market ticker strip per the data-source priority above | ⏳ Planned |
+| **DT-3** Tab restructuring (5 tabs) + spacing polish | Split "Decision History" into Response (Journal/Outcome) + History (Timeline + Analogs); whitespace/hierarchy polish across Trade Plan/Analysis/Market Context — no content changes | ⏳ Planned |
+| **DT-4** Reasoning Trace redesign + Similar Trades sparkline | Replace the auto-fit-grid + SVG-connector DAG with a cleaner vertical pipeline list (real existing stage status only, never fabricated counts/funnels — confirmed no such data exists anywhere in ATHENA); same click/detail-panel behavior, same stage order; add the last-5-trades sparkline to Analogs | ⏳ Planned |
+
+#### DT-1 — Layout shell: 3-pane workstation
+
+| | |
+|---|---|
+| Scope | `index.html`: new `.decisions-workstation` (3-column grid) replacing `.trace-workstation` (2-column); new `.symbols-panel` (search + icon-triggered filter/sort/clear-all popover + summary strip + collapsible outcome groups), replacing the old toolbar card + `#decisions-carousel-groups` carousel container. `12-decisions-list.js`: `renderDecisionCarousels` rewritten to build vertical rows instead of a horizontal scroll-snap track (nav-arrow buttons and `wireCarouselOverflow` removed as dead code); `renderDeckCard` renamed `renderSymbolRow`; left-panel scroll position preserved across re-renders. `13-decision-brief-core.js`'s `selectBriefing`: resets only the center panel's scroll to top on a new selection, leaves left/right panels untouched. `09-decision-brief-shell.css`/`12-decision-cards-dag.css`: new grid + row/group styling, strong selected-state (accent wash, left indicator, glow, bolder symbol text). Two disabled nav placeholders added to the global sidebar |
+| Tests | 2 new dashboard-hosting assertions sets (structural markup/CSS/JS presence + a real div-nesting-depth check for the filter popover, which caught a real bug — see below). Full suite **1031 passed** |
+| Coverage | Live-browser verified: 3-pane layout renders correctly with zero scroll to reach the detail panel; injected sample decision data to confirm row/group rendering, selected-row highlight, and collapse-toggle all match the reference mock; verified the responsive single-column collapse below 1400px; confirmed zero console errors (only the expected, pre-existing unauthenticated-API-call logging, since no owner credentials were available) |
+| Status | ✅ Built, tested, live-verified |
+
+**Bug caught and fixed during live verification**: the filter popover initially rendered off-screen, anchored to the wrong ancestor — it was a DOM *sibling* of `.symbols-panel-header` rather than a *child*, so its `position: absolute` resolved against an unrelated ancestor instead of the header. Fixed by nesting it inside the header in the HTML; added a test that checks actual div-nesting depth between the two elements (not just that both class names exist somewhere in the page), so this exact regression can't silently reappear.
+
+**Fix pass (owner live screenshots, 2026-07-27)** — four refinements to the filter popover, found once the owner tried it on real data:
+1. Excessive vertical gaps between Stance/Type/Sort: each `<label class="decisions-filter-label">` was inheriting `flex: 1 1 100px` from an unrelated shared rule written for the old horizontal toolbar (`05-portfolio.css`), which stretched each label to fill the popover's height inside this new vertical flex layout. Pinned to `flex: none`.
+2. "Clear all" moved out of the popover entirely into its own separate, danger-styled icon button — sitting inside a view-only filter panel, it read as "clear the filters" rather than "wipe my decisions."
+3. Added an explicit "Reset" (view only — stance/type/sort back to defaults, distinct from "Clear all" which deletes data) and a close (×) button — the filter icon toggle was previously the only way to dismiss the popover, which the owner flagged as undiscoverable. Reset also dismisses the popover afterward (owner follow-up).
+4. Added a backdrop behind the popover, scoped to the list area only (the header stays outside it and interactive) — previously the symbol list stayed fully visible *and clickable* underneath the open popover, with no visual differentiation. Verified via `elementFromPoint` in a live browser that the backdrop itself, not the list, receives clicks in that region.
+
+11 new dashboard-hosting assertions. Full suite **1031 passed**.
+
 ---
 
 *Status legend: a milestone is "In Progress" (🔄) when actively being designed or built, "Approved" (✅) only when the owner signs off. Never two milestones in flight.*

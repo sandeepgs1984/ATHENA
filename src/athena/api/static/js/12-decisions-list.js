@@ -199,7 +199,10 @@
         return "var(--text-muted)";
     }
 
-    function renderDeckCard(d) {
+    // DT-1: was renderDeckCard, building a fixed-width horizontal carousel
+    // card. Same data, same fields — just a full-width vertical row now that
+    // the carousels are a permanent left-hand list instead of a scroller.
+    function renderSymbolRow(d) {
         const rawSym = d.metadata.instrument_id || "INDEX";
         const symbol = rawSym.includes(":") ? rawSym.split(":").pop() : rawSym;
         const type = d.metadata.decision_type;
@@ -221,46 +224,48 @@
             ? ""
             : (failed.length === 0 ? "tone-good-text" : (failed.length <= 2 ? "tone-warn-text" : "tone-bad-text"));
 
-        const card = document.createElement("div");
-        card.className = "deck-card";
-        card.style.setProperty("--stance-color", decisionCardStanceColor(type));
-        card.setAttribute("data-id", d.metadata.decision_id);
+        const row = document.createElement("div");
+        row.className = "symbol-row";
+        row.style.setProperty("--stance-color", decisionCardStanceColor(type));
+        row.setAttribute("data-id", d.metadata.decision_id);
         // Keyboard-operable (UX-7 accessibility) — this was a plain click-only
         // div with no way for a keyboard user to reach or activate it.
-        card.setAttribute("tabindex", "0");
-        card.setAttribute("role", "button");
-        card.setAttribute("aria-label", `View ${symbol} decision`);
-        card.innerHTML = `
-            <div class="deck-top">
-                <span class="deck-sym" title="${escapeDecisionHtml(rawSym)}">${escapeDecisionHtml(symbol)}</span>
-                <button class="deck-dismiss-btn" type="button"
-                    title="Hide ${escapeDecisionHtml(symbol)} from Today's Decisions until tomorrow"
-                    aria-label="Dismiss ${escapeDecisionHtml(symbol)} for today">
-                    <i class="fa-solid fa-xmark"></i>
-                </button>
+        row.setAttribute("tabindex", "0");
+        row.setAttribute("role", "button");
+        row.setAttribute("aria-label", `View ${symbol} decision`);
+        row.innerHTML = `
+            <div style="flex: 1 1 auto; min-width: 0;">
+                <div class="symbol-row-top">
+                    <span class="symbol-row-sym" title="${escapeDecisionHtml(rawSym)}">${escapeDecisionHtml(symbol)}</span>
+                    <button class="symbol-row-dismiss" type="button"
+                        title="Hide ${escapeDecisionHtml(symbol)} from Today's Decisions until tomorrow"
+                        aria-label="Dismiss ${escapeDecisionHtml(symbol)} for today">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+                <div class="symbol-row-mid">
+                    <span class="symbol-row-score">${escapeDecisionHtml(scoreLabel)}</span>
+                    <span class="symbol-row-time">${escapeDecisionHtml(dateStr)}</span>
+                </div>
+                <div class="symbol-row-note ${noteTone}" title="${escapeDecisionHtml(noteTitle)}">${escapeDecisionHtml(noteText)}</div>
             </div>
-            <div class="deck-mid">
-                <span class="deck-score">${escapeDecisionHtml(scoreLabel)}</span>
-                <span class="deck-time">${escapeDecisionHtml(dateStr)}</span>
-            </div>
-            <div class="deck-note ${noteTone}" title="${escapeDecisionHtml(noteTitle)}">${escapeDecisionHtml(noteText)}</div>
         `;
 
-        card.addEventListener("click", () => {
+        row.addEventListener("click", () => {
             selectBriefing(d.metadata.decision_id);
         });
-        card.addEventListener("keydown", event => {
-            if (event.target !== card) return; // let the dismiss button handle its own keys
+        row.addEventListener("keydown", event => {
+            if (event.target !== row) return; // let the dismiss button handle its own keys
             if (event.key === "Enter" || event.key === " ") {
                 event.preventDefault();
                 selectBriefing(d.metadata.decision_id);
             }
         });
-        card.querySelector(".deck-dismiss-btn")?.addEventListener("click", event => {
+        row.querySelector(".symbol-row-dismiss")?.addEventListener("click", event => {
             event.stopPropagation();
             dismissDecisionForToday(d);
         });
-        return card;
+        return row;
     }
 
     function renderDecisionCarousels(decisions) {
@@ -298,6 +303,11 @@
             }
         }
 
+        // DT-1: preserve the left panel's scroll position across a rebuild
+        // (e.g. typing in search re-renders the list on every keystroke) —
+        // only the newly *selected* row should ever move the viewport
+        // (via scrollIntoView below), never a re-render on its own.
+        const previousScrollTop = decisionsCarouselContainer.scrollTop;
         decisionsCarouselContainer.innerHTML = "";
 
         if (decisions.length === 0) {
@@ -334,53 +344,20 @@
                     ${section.hint ? `<span class="decision-carousel-hint">${escapeDecisionHtml(section.hint)}</span>` : ""}
                     <i class="fa-solid fa-chevron-down decision-carousel-chevron"></i>
                 </div>
-                <div class="decision-carousel-body">
-                    <button class="decision-carousel-nav prev" type="button" aria-label="Scroll ${escapeDecisionHtml(section.label)} left">
-                        <i class="fa-solid fa-chevron-left"></i>
-                    </button>
-                    <div class="decision-carousel-track"></div>
-                    <button class="decision-carousel-nav next" type="button" aria-label="Scroll ${escapeDecisionHtml(section.label)} right">
-                        <i class="fa-solid fa-chevron-right"></i>
-                    </button>
-                </div>
+                <div class="decision-carousel-body"></div>
             `;
 
-            const track = sectionEl.querySelector(".decision-carousel-track");
             const body = sectionEl.querySelector(".decision-carousel-body");
-            rows.forEach(d => track.appendChild(renderDeckCard(d)));
+            rows.forEach(d => body.appendChild(renderSymbolRow(d)));
 
             sectionEl.querySelector("[data-toggle]").addEventListener("click", () => {
                 sectionEl.classList.toggle("collapsed");
             });
-            sectionEl.querySelectorAll(".decision-carousel-nav").forEach(btn => {
-                const dir = btn.classList.contains("prev") ? -1 : 1;
-                btn.addEventListener("click", event => {
-                    event.stopPropagation();
-                    track.scrollBy({ left: dir * 340, behavior: "smooth" });
-                });
-            });
 
             decisionsCarouselContainer.appendChild(sectionEl);
-            wireCarouselOverflow(body, track);
         });
-    }
 
-    // Nav arrows and edge fades only show when a row actually overflows, and
-    // each arrow disables at its own end — no dead-end clicks, no "scroll
-    // hint" shown when there's nothing to scroll (owner-reported).
-    function wireCarouselOverflow(body, track) {
-        const updateEdges = () => {
-            const overflowing = track.scrollWidth > track.clientWidth + 1;
-            body.classList.toggle("scrollable", overflowing);
-            if (!overflowing) return;
-            body.classList.toggle("at-start", track.scrollLeft <= 1);
-            body.classList.toggle(
-                "at-end", track.scrollLeft >= track.scrollWidth - track.clientWidth - 1
-            );
-        };
-        track.addEventListener("scroll", updateEdges, { passive: true });
-        new ResizeObserver(updateEdges).observe(track);
-        updateEdges();
+        decisionsCarouselContainer.scrollTop = previousScrollTop;
     }
 
     // Search / filter / sort for Today's Decisions
@@ -394,6 +371,70 @@
         }
     };
     wireDecisionsControls();
+
+    // DT-1: stance/type/sort moved off the toolbar (removed, per the
+    // workstation redesign) into a small popover behind an icon button, so
+    // they never consume vertical space above the detail panel. Same
+    // <select> elements, same change listeners above — only their
+    // visibility is new. "Clear all" moved to its own separate icon button
+    // (fix pass, owner screenshot) — it's a destructive data action, not a
+    // view filter, so it no longer lives inside this popover at all.
+    const symbolsFilterToggle = document.getElementById("symbols-filter-toggle");
+    const symbolsFilterPopover = document.getElementById("symbols-filter-popover");
+    const symbolsFilterReset = document.getElementById("symbols-filter-reset");
+    const symbolsFilterClose = document.getElementById("symbols-filter-close");
+    // Fix pass (owner screenshot): with no backdrop, the symbol list stayed
+    // fully visible and clickable underneath the open popover — no visual
+    // differentiation, and rows were still interactive. Shown/hidden in
+    // lockstep with the popover itself.
+    const symbolsFilterBackdrop = document.getElementById("symbols-filter-backdrop");
+
+    function closeSymbolsFilterPopover() {
+        if (!symbolsFilterPopover || symbolsFilterPopover.hidden) return;
+        symbolsFilterPopover.hidden = true;
+        if (symbolsFilterBackdrop) symbolsFilterBackdrop.hidden = true;
+        symbolsFilterToggle?.setAttribute("aria-expanded", "false");
+    }
+
+    symbolsFilterToggle?.addEventListener("click", event => {
+        event.stopPropagation();
+        const willOpen = symbolsFilterPopover.hidden;
+        symbolsFilterPopover.hidden = !willOpen;
+        if (symbolsFilterBackdrop) symbolsFilterBackdrop.hidden = !willOpen;
+        symbolsFilterToggle.setAttribute("aria-expanded", String(willOpen));
+    });
+    // Fix pass (owner screenshot): the filter icon toggling open/closed was
+    // the *only* way to hide the popover again — "clueless for the user".
+    // Click-outside and Escape already worked; this adds an explicit,
+    // visible close button inside the popover itself.
+    symbolsFilterClose?.addEventListener("click", event => {
+        event.stopPropagation();
+        closeSymbolsFilterPopover();
+    });
+    document.addEventListener("click", event => {
+        if (!symbolsFilterPopover || symbolsFilterPopover.hidden) return;
+        if (symbolsFilterPopover.contains(event.target) || event.target === symbolsFilterToggle) return;
+        closeSymbolsFilterPopover();
+    });
+    document.addEventListener("keydown", event => {
+        if (event.key === "Escape") closeSymbolsFilterPopover();
+    });
+
+    // Fix pass (owner screenshot): resets the view (stance/type/sort back to
+    // defaults) — distinct from "Clear all", which deletes decision data.
+    // Also dismisses the popover afterward (owner feedback) — resetting is a
+    // completed action, not a mid-adjustment the user needs the panel open
+    // for.
+    symbolsFilterReset?.addEventListener("click", () => {
+        const stanceEl = document.getElementById("decisions-filter-stance");
+        const typeEl = document.getElementById("decisions-filter-type");
+        const sortEl = document.getElementById("decisions-sort");
+        if (stanceEl) stanceEl.value = "all";
+        if (typeEl) typeEl.value = "all";
+        if (sortEl) sortEl.value = "newest";
+        applyDecisionsView();
+        closeSymbolsFilterPopover();
+    });
 
     // "Clear all" (owner-requested) — CONFIRM-gated wipe of the Decisions &
     // Trace domain via POST /decisions/reset, mirroring the existing

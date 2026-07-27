@@ -1,38 +1,212 @@
-/* Today's Decisions — outcome-grouped carousels (Trade -> Watch -> No trade
-   -> everything else), always in that priority order regardless of timestamp */
-.decisions-toolbar-body {
-    padding: var(--space-16) var(--space-18);
+/* Left Symbols panel (DT-1 owner UX workstation refactor, 2026-07-27) —
+   replaces the old horizontal outcome carousels (Trade -> Watch -> No trade
+   -> everything else) with a permanent, always-visible vertical list, grouped
+   by the exact same outcome priority, never by timestamp. Search stays
+   pinned at the top; only the group list below it scrolls. */
+.symbols-panel-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-8);
+    padding: var(--space-14) var(--space-14) var(--space-10);
+    flex-shrink: 0;
+    position: relative;
+}
+
+.symbols-search {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.symbols-icon-btn {
+    flex-shrink: 0;
+    width: 34px;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 7px;
+    border: 1px solid var(--border-color);
+    background: rgba(255, 255, 255, 0.02);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all var(--transition-speed) ease;
+}
+
+.symbols-icon-btn:hover,
+.symbols-icon-btn[aria-expanded="true"] {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-glow);
+}
+
+/* Fix pass (owner screenshot, 2026-07-27): a destructive data action ("Clear
+   all") deserves its own distinct, always-visible, danger-styled affordance —
+   not a control tucked inside the view-only filter popover, which read as
+   "clear the filters" rather than "wipe my decisions". */
+.symbols-icon-btn-danger {
+    color: var(--tone-bad-text);
+    border-color: rgba(239, 68, 68, 0.3);
+}
+
+.symbols-icon-btn-danger:hover {
+    border-color: var(--danger);
+    color: var(--danger);
+    background: var(--danger-glow);
+}
+
+/* Filter/sort — tucked behind the icon toggle above so they never consume
+   vertical space above the detail panel (owner requirement). Same
+   <select> elements as before; only their position moved. */
+.symbols-filter-popover {
+    position: absolute;
+    top: calc(100% - var(--space-4));
+    right: var(--space-14);
+    z-index: 20;
+    width: min(260px, calc(100vw - 48px));
     display: flex;
     flex-direction: column;
     gap: var(--space-12);
+    padding: var(--space-14);
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-sidebar);
+    box-shadow: var(--shadow-md);
 }
 
-.decisions-summary-strip {
-    font-size: var(--text-0-82);
-    line-height: 1.5;
+.symbols-filter-popover[hidden] {
+    display: none;
 }
 
-.decisions-carousel-groups {
+.symbols-filter-popover-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-8);
+    padding-bottom: var(--space-8);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.symbols-filter-popover-title {
+    font-size: var(--text-0-78);
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--text-primary);
+}
+
+/* Fix pass: resets the filter/sort controls only (stance/type/sort back to
+   "all"/"all"/"newest") — distinct from "Clear all", which wipes decision
+   data. Owner-reported: no way to quickly reset the view. */
+.symbols-filter-reset-btn {
+    margin-left: auto;
+    background: none;
+    border: none;
+    color: var(--accent);
+    font-size: var(--text-0-72);
+    font-weight: 600;
+    cursor: pointer;
+    padding: var(--space-2) var(--space-4);
+}
+
+.symbols-filter-reset-btn:hover {
+    text-decoration: underline;
+}
+
+/* Fix pass: an explicit, discoverable close affordance — owner-reported
+   that clicking the filter icon again to hide the popover was "clueless".
+   Click-outside/Escape still work too, this is just no longer the only way. */
+.symbols-filter-close-btn {
+    width: 24px;
+    height: 24px;
+    flex-shrink: 0;
+}
+
+/* Fix pass: each label used to inherit `flex: 1 1 100px` from the shared
+   .decisions-filter-label rule (05-portfolio.css, written for the old
+   horizontal toolbar row) — inside this vertical flex popover that made
+   every label grow to fill the popover's height, producing large gaps
+   between Stance/Type/Sort. Pin each label to its natural content height. */
+.symbols-filter-popover .decisions-filter-label {
     display: flex;
     flex-direction: column;
-    gap: var(--space-12);
-    margin-bottom: var(--space-16);
+    gap: var(--space-4);
+    font-size: var(--text-0-72);
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    flex: none;
+}
+
+.symbols-filter-popover .decisions-select {
+    background: rgba(15, 23, 42, 0.85);
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    color: var(--text-primary);
+    border-radius: 6px;
+    padding: var(--space-8) var(--space-10);
+    font-size: var(--text-0-8);
+}
+
+/* Fix pass (owner screenshot, 2026-07-27): positioning/z-index context for
+   the filter backdrop below — scoped to the list area only, so the header
+   (search/filter/clear-all) stays outside it and always interactive. */
+.symbols-panel-body {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+}
+
+.symbols-summary-strip {
+    padding: 0 var(--space-14) var(--space-10);
+    font-size: var(--text-0-72);
+    line-height: 1.4;
+    flex-shrink: 0;
+}
+
+.symbols-groups {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 0 var(--space-10) var(--space-14);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-10);
+}
+
+/* Owner-reported: with no backdrop, the symbol list stayed fully visible
+   and clickable underneath the open filter popover — no visual
+   differentiation, and rows were still interactive. This dims the list and
+   blocks clicks from reaching it (a click here falls through to the
+   existing document-level "click outside closes the popover" handler,
+   since this element isn't the popover or its toggle button). */
+.symbols-filter-backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: 15;
+    background: rgba(5, 9, 17, 0.65);
+    backdrop-filter: blur(1px);
+    -webkit-backdrop-filter: blur(1px);
+}
+
+.symbols-filter-backdrop[hidden] {
+    display: none;
 }
 
 .decision-carousel-section {
-    background: var(--bg-card);
-    border: 1px solid var(--border-color);
     border-radius: 8px;
-    padding: var(--space-12) var(--space-10) var(--space-14);
 }
 
 .decision-carousel-head {
     display: flex;
     align-items: center;
     gap: var(--space-8);
-    padding: 0 var(--space-4) var(--space-8);
+    padding: var(--space-8) var(--space-4);
     cursor: pointer;
     user-select: none;
+    border-radius: 6px;
+}
+
+.decision-carousel-head:hover {
+    background: rgba(255, 255, 255, 0.02);
 }
 
 .decision-carousel-dot {
@@ -43,7 +217,7 @@
 }
 
 .decision-carousel-name {
-    font-size: var(--text-0-78);
+    font-size: var(--text-0-8);
     font-weight: 700;
     letter-spacing: 0.02em;
     color: var(--text-primary);
@@ -58,7 +232,7 @@
 
 .decision-carousel-hint {
     margin-left: auto;
-    font-size: var(--text-0-68);
+    font-size: var(--text-0-66);
     color: var(--text-muted);
     white-space: nowrap;
     overflow: hidden;
@@ -80,134 +254,74 @@
     display: none;
 }
 
+/* Vertical symbol list — was a horizontal scroll-snap track with nav
+   arrows; the whole left panel scrolls now, so each group is just a plain
+   stack of rows. */
 .decision-carousel-body {
-    position: relative;
-}
-
-.decision-carousel-track {
     display: flex;
-    gap: var(--space-8);
-    overflow-x: auto;
-    scroll-behavior: smooth;
-    scroll-snap-type: x proximity;
-    padding: var(--space-2) var(--space-4);
-}
-
-/* Only pay the nav-button gutter, and only fade the edge that actually has
-   more content, once a row genuinely overflows (owner-reported: arrows and
-   a hard-clipped edge showed even on a single-card row) */
-.decision-carousel-body.scrollable .decision-carousel-track {
-    padding: var(--space-2) var(--space-30);
-    -webkit-mask-image: linear-gradient(90deg, transparent, black 24px, black calc(100% - 24px), transparent);
-    mask-image: linear-gradient(90deg, transparent, black 24px, black calc(100% - 24px), transparent);
-}
-
-.decision-carousel-body.scrollable.at-start .decision-carousel-track {
-    -webkit-mask-image: linear-gradient(90deg, black calc(100% - 24px), transparent);
-    mask-image: linear-gradient(90deg, black calc(100% - 24px), transparent);
-}
-
-.decision-carousel-body.scrollable.at-end .decision-carousel-track {
-    -webkit-mask-image: linear-gradient(90deg, transparent, black 24px);
-    mask-image: linear-gradient(90deg, transparent, black 24px);
-}
-
-.decision-carousel-body.scrollable.at-start.at-end .decision-carousel-track {
-    -webkit-mask-image: none;
-    mask-image: none;
-}
-
-.decision-carousel-track::-webkit-scrollbar {
-    height: 5px;
-}
-
-.decision-carousel-track::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.12);
-    border-radius: 3px;
-}
-
-.decision-carousel-nav {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    width: 30px;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    background: none;
-    border: none;
-    color: var(--text-secondary);
-    cursor: pointer;
-    z-index: 1;
-}
-
-.decision-carousel-body.scrollable .decision-carousel-nav {
-    display: flex;
-}
-
-.decision-carousel-body.scrollable.at-start .decision-carousel-nav.prev,
-.decision-carousel-body.scrollable.at-end .decision-carousel-nav.next {
-    display: none;
-}
-
-.decision-carousel-nav:hover {
-    color: var(--text-primary);
-}
-
-.decision-carousel-nav.prev {
-    left: 0;
-    background: linear-gradient(90deg, var(--bg-card) 45%, transparent);
-}
-
-.decision-carousel-nav.next {
-    right: 0;
-    background: linear-gradient(270deg, var(--bg-card) 45%, transparent);
-}
-
-.deck-card {
-    flex: 0 0 156px;
-    max-width: 156px;
-    scroll-snap-align: start;
-    border-radius: 8px;
-    padding: var(--space-9) var(--space-10);
-    background-color: rgba(255, 255, 255, 0.01);
-    border: 1px solid var(--border-color);
-    border-top: 2px solid var(--stance-color, var(--text-muted));
-    cursor: pointer;
-    transition: border-color var(--transition-speed) ease, background-color var(--transition-speed) ease;
-}
-
-.deck-card:hover {
-    border-color: var(--border-hover);
-    background-color: rgba(255, 255, 255, 0.02);
-}
-
-.deck-card.active {
-    border-color: var(--accent);
-    background-color: rgba(56, 189, 248, 0.04);
-    outline: 1px solid var(--accent);
-    outline-offset: -1px;
-}
-
-.deck-top {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
+    flex-direction: column;
     gap: var(--space-4);
 }
 
-.deck-sym {
+.symbol-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-10);
+    border-radius: 7px;
+    padding: var(--space-9) var(--space-10);
+    border: 1px solid transparent;
+    border-left: 3px solid var(--stance-color, var(--text-muted));
+    cursor: pointer;
+    transition: background-color var(--transition-speed) ease, border-color var(--transition-speed) ease;
+}
+
+.symbol-row:hover {
+    background-color: rgba(255, 255, 255, 0.02);
+}
+
+.symbol-row:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+/* Strong, unambiguous selected state (owner requirement — the previous
+   thin-outline treatment was "too weak") — full-row accent wash, brighter
+   left indicator, subtle glow, bolder/larger symbol text. */
+.symbol-row.active {
+    background: linear-gradient(90deg, rgba(0, 242, 254, 0.1), rgba(0, 242, 254, 0.02));
+    border-color: rgba(0, 242, 254, 0.18);
+    border-left-color: var(--accent);
+    border-left-width: 4px;
+    box-shadow: var(--glow-accent-md);
+}
+
+.symbol-row.active .symbol-row-sym {
+    color: var(--accent);
+    font-size: var(--text-0-88);
+    text-shadow: 0 0 8px var(--accent-glow);
+}
+
+.symbol-row-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-6);
+    min-width: 0;
+}
+
+.symbol-row-sym {
     font-family: var(--font-mono);
     font-weight: 700;
-    font-size: var(--text-0-78);
+    font-size: var(--text-0-8);
     color: var(--text-primary);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     min-width: 0;
+    transition: color var(--transition-speed) ease, font-size var(--transition-speed) ease;
 }
 
-.deck-dismiss-btn {
+.symbol-row-dismiss {
     border: 0;
     border-radius: 4px;
     background: transparent;
@@ -217,36 +331,36 @@
     flex-shrink: 0;
 }
 
-.deck-dismiss-btn:hover {
+.symbol-row-dismiss:hover {
     background: rgba(245, 158, 11, 0.1);
     color: var(--tone-warn-text);
 }
 
-.deck-mid {
+.symbol-row-mid {
     display: flex;
     align-items: baseline;
     justify-content: space-between;
     gap: var(--space-6);
-    margin-top: var(--space-4);
+    margin-top: var(--space-2);
 }
 
-.deck-score {
+.symbol-row-score {
     font-family: var(--font-mono);
     font-weight: 700;
-    font-size: var(--text-0-85);
+    font-size: var(--text-0-82);
     color: var(--text-primary);
 }
 
-.deck-time {
+.symbol-row-time {
     font-size: var(--text-0-62);
     color: var(--text-muted);
     white-space: nowrap;
 }
 
-.deck-note {
+.symbol-row-note {
     font-size: var(--text-0-62);
     color: var(--text-muted);
-    margin-top: var(--space-4);
+    margin-top: var(--space-2);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

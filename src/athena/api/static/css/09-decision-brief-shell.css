@@ -1,7 +1,11 @@
-/* Decisions & Trace Workstation Layout */
-.trace-workstation {
+/* Decisions & Trace Workstation Layout (DT-1: 3-pane — symbols | brief | trace,
+   replacing the old 2-column trace-workstation that had carousels stacked
+   above it). Left and right panes are sticky/full-height; only the center
+   brief content scrolls (via .decision-brief-body's own overflow-y below). */
+.decisions-workstation {
     display: grid;
     grid-template-columns:
+        minmax(240px, 280px)
         minmax(0, 1.7fr)
         minmax(280px, 1fr);
     gap: var(--space-16);
@@ -10,14 +14,21 @@
     padding: var(--space-8) 0;
 }
 
-@media (max-width: 1180px) {
-    .trace-workstation {
+@media (max-width: 1400px) {
+    .decisions-workstation {
         grid-template-columns: 1fr;
         overflow-y: auto;
         height: auto;
     }
+
+    .symbols-panel,
+    .trace-column {
+        height: auto;
+        max-height: 70vh;
+    }
 }
 
+.symbols-panel,
 .trace-column {
     display: flex;
     flex-direction: column;
@@ -25,6 +36,7 @@
     overflow: hidden;
 }
 
+.symbols-panel .card,
 .trace-column .card {
     height: 100%;
     display: flex;

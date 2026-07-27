@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.46.1">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.47.3">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -65,6 +65,21 @@
                     <i class="fa-solid fa-terminal"></i>
                     <span>Live Operations</span>
                 </a>
+                <!-- Future implementation — no backing page/route exists yet.
+                     Deliberately NOT a .nav-item (excluded from the click-wiring
+                     and active-state loops in app-shell.js, which only ever
+                     query .nav-item), so these are inert by construction rather
+                     than needing a guard at every call site. -->
+                <span class="nav-item-disabled" aria-disabled="true" tabindex="-1" title="Coming soon">
+                    <i class="fa-solid fa-chart-pie"></i>
+                    <span>Reports & Analytics</span>
+                    <span class="nav-item-soon">Soon</span>
+                </span>
+                <span class="nav-item-disabled" aria-disabled="true" tabindex="-1" title="Coming soon">
+                    <i class="fa-solid fa-sliders"></i>
+                    <span>Settings</span>
+                    <span class="nav-item-soon">Soon</span>
+                </span>
             </nav>
             
             <div class="sidebar-footer">
@@ -507,18 +522,46 @@
 
                 <!-- Decisions & Trace Tab -->
                 <div id="tab-decisions" class="tab-pane">
-                    <!-- Toolbar: search / stance / type / sort, shared across all outcome carousels -->
-                    <div class="card decisions-toolbar-card">
-                        <div class="card-body decisions-toolbar-body">
-                            <div id="decisions-summary-strip" class="text-muted decisions-summary-strip">
-                                Loading…
-                            </div>
-                            <div class="decisions-toolbar">
-                                <div class="search-input-wrapper">
-                                    <i class="fas fa-search search-icon"></i>
-                                    <input type="text" id="briefing-search" class="search-input" placeholder="Search by symbol or decision...">
-                                </div>
-                                <div class="decisions-filters">
+                    <!-- DT-1 (owner UX workstation refactor, 2026-07-27): the toolbar and
+                         outcome carousels used to stack ABOVE this point, pushing the
+                         selected symbol's detail below the fold. They are now the
+                         permanently-visible left pane below, so the center detail is
+                         immediately visible with zero scrolling. Every element id the JS
+                         already wires by id (briefing-search, decisions-filter-stance,
+                         decisions-filter-type, decisions-sort, decisions-clear-all-btn,
+                         decisions-summary-strip, decisions-carousel-groups) is preserved
+                         verbatim — only their position in the DOM changed. -->
+                    <div class="decisions-workstation">
+                        <div class="symbols-panel">
+                            <div class="card">
+                                <div class="symbols-panel-header">
+                                    <div class="search-input-wrapper symbols-search">
+                                        <i class="fas fa-search search-icon"></i>
+                                        <input type="text" id="briefing-search" class="search-input" placeholder="Search symbol or decision...">
+                                    </div>
+                                    <button id="symbols-filter-toggle" class="symbols-icon-btn" type="button" title="Filter &amp; sort" aria-expanded="false" aria-controls="symbols-filter-popover">
+                                        <i class="fa-solid fa-sliders"></i>
+                                    </button>
+                                    <!-- Separate from the filter popover on purpose (owner feedback:
+                                         "Clear all" sitting inside the filter panel read as "clear the
+                                         filters", not "wipe my decisions"). Same button/id/modal as
+                                         before — a destructive data action deserves its own distinct,
+                                         always-visible, danger-styled affordance, not tucked behind a
+                                         view-only control. -->
+                                    <button id="decisions-clear-all-btn" class="symbols-icon-btn symbols-icon-btn-danger" type="button" title="Clear all decisions, traces, journal entries, and outcomes">
+                                        <i class="fa-solid fa-trash-can"></i>
+                                    </button>
+                                <!-- Nested inside .symbols-panel-header (not a sibling) so its
+                                     position:absolute anchors to the header row, right below the
+                                     toggle button, not to some unrelated ancestor further up. -->
+                                <div id="symbols-filter-popover" class="symbols-filter-popover" hidden>
+                                    <div class="symbols-filter-popover-head">
+                                        <span class="symbols-filter-popover-title">Filters</span>
+                                        <button id="symbols-filter-reset" class="symbols-filter-reset-btn" type="button">Reset</button>
+                                        <button id="symbols-filter-close" class="symbols-icon-btn symbols-filter-close-btn" type="button" title="Close" aria-label="Close filters">
+                                            <i class="fa-solid fa-xmark"></i>
+                                        </button>
+                                    </div>
                                     <label class="decisions-filter-label">Stance
                                         <select id="decisions-filter-stance" class="decisions-select">
                                             <option value="all">All</option>
@@ -550,20 +593,29 @@
                                         </select>
                                     </label>
                                 </div>
-                                <button id="decisions-clear-all-btn" class="btn btn-outline btn-sm btn-danger-outline" type="button" title="Wipe all decisions, traces, journal entries, and outcomes">
-                                    <i class="fa-solid fa-trash-can"></i> <span>Clear all</span>
-                                </button>
+                                </div>
+                                <!-- Fix pass (owner screenshot, 2026-07-27): the filter popover had
+                                     no backdrop, so the symbol list underneath stayed fully visible
+                                     and clickable while filtering — no visual differentiation, and a
+                                     real functional issue (a click could land on a row instead of the
+                                     popover). This wrapper is the popover's positioning/z-index
+                                     context for the list area only — the header (search/filter/clear
+                                     buttons) stays outside it and always interactive. -->
+                                <div class="symbols-panel-body">
+                                    <div id="decisions-summary-strip" class="text-muted symbols-summary-strip">
+                                        Loading…
+                                    </div>
+                                    <!-- Today's decisions, grouped by outcome: Trade → Watch → No trade →
+                                         Insufficient data, in that priority order always (never by
+                                         timestamp) -->
+                                    <div id="decisions-carousel-groups" class="symbols-groups">
+                                        <div class="text-muted text-center" style="padding: 24px;">Loading decisions...</div>
+                                    </div>
+                                    <div id="symbols-filter-backdrop" class="symbols-filter-backdrop" hidden></div>
+                                </div>
                             </div>
                         </div>
-                    </div>
 
-                    <!-- Today's decisions, grouped by outcome: Trade → Watch → No trade → Insufficient
-                         data, in that priority order always (never by timestamp) -->
-                    <div id="decisions-carousel-groups" class="decisions-carousel-groups">
-                        <div class="text-muted text-center" style="padding: 24px;">Loading decisions...</div>
-                    </div>
-
-                    <div class="trace-workstation">
                         <!-- Decision Brief: sticky cockpit header + four-tab detail pane -->
                         <div class="trace-column instrument-brief-column">
                             <div class="card">
@@ -934,6 +986,6 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.46.1"></script>
+    <script src="/dashboard/dashboard.js?v=9.47.3"></script>
 </body>
 </html>

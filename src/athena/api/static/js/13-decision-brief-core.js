@@ -397,10 +397,12 @@
         activePlanFreshness = null;
         activeChartSeries = null;
         activeChartPlan = null;
-        // Toggle active card class across every outcome carousel, and bring the
-        // selected card into view within its own track (graceful selection).
+        // Toggle the active row across every symbol group in the left panel,
+        // and bring the selected row into view only if it isn't already
+        // (graceful selection — never yanks the panel's scroll position
+        // around for a row that's already visible).
         if (decisionsCarouselContainer) {
-            decisionsCarouselContainer.querySelectorAll(".deck-card").forEach(c => {
+            decisionsCarouselContainer.querySelectorAll(".symbol-row").forEach(c => {
                 const isActive = c.getAttribute("data-id") === decisionId;
                 c.classList.toggle("active", isActive);
                 if (isActive) {
@@ -408,6 +410,11 @@
                 }
             });
         }
+
+        // Selecting a symbol resets only the center detail panel to the top —
+        // the left symbol list and right Reasoning Trace panel keep whatever
+        // scroll position they were already at (owner requirement).
+        if (decisionBriefBody) decisionBriefBody.scrollTop = 0;
 
         // Load selected instrument brief and its independent reasoning trace.
         loadDecisionDetail(decisionId);

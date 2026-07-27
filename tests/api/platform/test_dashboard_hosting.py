@@ -171,18 +171,21 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "function renderTradePlanStageBody" not in js
     assert "function refreshSelectedStageDetail" not in js
 
-    # Today's Decisions is grouped into outcome carousels (Trade -> Watch ->
+    # Today's Decisions is grouped into outcome groups (Trade -> Watch ->
     # No trade -> everything else), always in that priority order regardless
-    # of timestamp — never one flat chronological list
+    # of timestamp — never one flat chronological list. DT-1 (2026-07-27)
+    # replaced the horizontal carousel presentation with a permanent left
+    # symbols panel (see the symbols-panel assertions further below) — same
+    # grouping/priority/render functions, just a vertical row instead of a
+    # fixed-width horizontal card.
     assert 'id="decisions-carousel-groups"' in html
     assert "function renderDecisionCarousels" in js
-    assert "function renderDeckCard" in js
+    assert "function renderSymbolRow" in js
     assert "DECISION_CAROUSEL_SECTIONS" in js
     assert "function decisionTypePriority" in js
     assert "regardless of timestamp" in js
     assert ".decision-carousel-section" in css
-    assert ".decision-carousel-track" in css
-    assert ".deck-card" in css
+    assert ".symbol-row" in css
 
     # Sticky cockpit header: live score/confidence/risk gauges + a four-tab
     # brief (Setup/Analysis/Context/Response) replacing one long stacked scroll
@@ -336,8 +339,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert 'aria-label="Force refresh"' in html
     assert 'aria-label="Refresh backup list"' in html
     assert 'id="dag-svg-lines" class="dag-svg-overlay" aria-hidden="true"' in html
-    assert 'card.setAttribute("tabindex", "0")' in js
-    assert 'card.setAttribute("role", "button")' in js
+    assert 'row.setAttribute("tabindex", "0")' in js
+    assert 'row.setAttribute("role", "button")' in js
 
     # UX-8: copy pass — raw ALL_CAPS enums (TRADE/WATCH/NO_TRADE/
     # INSUFFICIENT_DATA, INCLUDED/EXCLUDED/UNKNOWN) no longer leak into
@@ -565,6 +568,91 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "activeDecisionData = null;" in js
     assert "renderSidebarQuickSummary();" in js
     assert 'dagDetailsPanel.style.display = "none";' in js
+
+    # DT-1 (owner UX workstation refactor, 2026-07-27): Decisions & Trace's
+    # horizontal outcome carousels + toolbar-above-the-fold layout replaced
+    # with a permanent 3-pane workstation — left symbols panel (search always
+    # visible, collapsible outcome groups, no scrolling back to find the
+    # list), center detail (immediately visible, no scroll-past-carousels),
+    # right Reasoning Trace (unchanged in this milestone — its own redesign
+    # is DT-4). Same underlying data/selection/filter logic throughout —
+    # every id the JS already wired by id (briefing-search,
+    # decisions-filter-stance/-type, decisions-sort, decisions-clear-all-btn,
+    # decisions-summary-strip, decisions-carousel-groups) is unchanged, only
+    # repositioned in the DOM.
+    assert 'class="decisions-workstation"' in html
+    assert 'class="symbols-panel"' in html
+    assert 'id="symbols-filter-toggle"' in html
+    assert 'id="symbols-filter-popover"' in html
+    assert 'id="briefing-search"' in html
+    assert 'id="decisions-clear-all-btn"' in html
+    assert ".decisions-workstation" in css
+    assert ".symbols-panel" in css
+    assert ".symbols-filter-popover" in css
+    assert ".symbol-row.active" in css
+    assert "function renderSymbolRow" in js
+    assert "symbolsFilterToggle" in js
+    # Fix pass (live browser check, same milestone): the popover must be a
+    # DOM child of .symbols-panel-header (its position:relative anchor), not
+    # a sibling — a sibling popover anchors to some unrelated ancestor
+    # further up the tree and renders far from the toggle button that opens
+    # it. A plain "both strings appear" check can't tell nesting from
+    # sibling placement, so walk the div depth between the two: if the
+    # header's own <div> hasn't been closed by the time the popover's id
+    # appears, the popover is still inside it.
+    header_start = html.find('class="symbols-panel-header"')
+    popover_start = html.find('id="symbols-filter-popover"')
+    assert 0 <= header_start < popover_start, "symbols-panel-header must appear before the popover"
+    between = html[header_start:popover_start]
+    depth = between.count("<div") - between.count("</div>")
+    assert depth >= 1, (
+        "symbols-filter-popover must be nested inside .symbols-panel-header "
+        f"(div depth between them was {depth}, expected >= 1)"
+    )
+
+    # Fix pass (owner screenshots, 2026-07-27): filter popover refinements.
+    # (1) "Clear all" moved to its own separate, danger-styled icon button —
+    # a destructive data wipe sitting inside a view-only filter popover read
+    # as "clear the filters", not "wipe my decisions".
+    # (2) each filter <label> used to inherit `flex: 1 1 100px` from the
+    # shared .decisions-filter-label rule (written for the old horizontal
+    # toolbar row) — inside this vertical popover that stretched every label
+    # to fill the popover's height, producing large gaps. Pinned to `flex:
+    # none` so each takes only its natural content height.
+    # (3) an explicit Reset (view only, not data) and a close (X) button —
+    # the filter icon toggle was previously the only way to close it.
+    # (4) a backdrop dims and blocks clicks to the symbol list while the
+    # popover is open — previously the list stayed fully visible/clickable
+    # underneath it, with no visual differentiation.
+    # (5) Reset also dismisses the popover (owner feedback) rather than
+    # leaving it open after a completed reset action.
+    assert 'id="decisions-clear-all-btn"' in html
+    assert "symbols-icon-btn-danger" in html
+    assert "flex: none;" in css
+    assert 'id="symbols-filter-reset"' in html
+    assert 'id="symbols-filter-close"' in html
+    assert ".symbols-filter-reset-btn" in css
+    assert "symbolsFilterReset" in js
+    assert "symbolsFilterClose" in js
+    assert 'id="symbols-filter-backdrop"' in html
+    assert ".symbols-filter-backdrop" in css
+    assert "symbolsFilterBackdrop" in js
+    reset_fn_start = js.find("symbolsFilterReset?.addEventListener")
+    reset_fn_end = js.find("});", reset_fn_start)
+    assert "closeSymbolsFilterPopover();" in js[reset_fn_start:reset_fn_end]
+
+    # Left-panel scroll position preserved across a rebuild; center panel
+    # resets to top on every new selection; right panel untouched by either.
+    assert "const previousScrollTop = decisionsCarouselContainer.scrollTop;" in js
+    assert "decisionsCarouselContainer.scrollTop = previousScrollTop;" in js
+    assert "decisionBriefBody.scrollTop = 0;" in js
+    # Future-implementation nav placeholders (no backing route yet) —
+    # deliberately excluded from .nav-item so app-shell.js's click-wiring
+    # never has to special-case them.
+    assert 'class="nav-item-disabled"' in html
+    assert "Reports &amp; Analytics" in html or "Reports & Analytics" in html
+    assert ">Settings<" in html
+    assert ".nav-item-disabled" in css
 
 
 def test_dashboard_js_assembled_losslessly_from_concern_split(client: TestClient) -> None:

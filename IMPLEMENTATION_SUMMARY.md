@@ -6,6 +6,105 @@ status updated on approval.
 
 ---
 
+## DT-1 — Layout shell: 3-pane workstation (BUILT, awaiting owner confirmation)
+
+| | |
+|---|---|
+| Completed | 2026-07-27 |
+| Objective | First milestone of the owner's "ATHENA Workstation Refactor" assignment (presentation-layer only, matching a reference trading-workstation mock): replace Decisions & Trace's horizontal outcome carousels + toolbar-above-the-fold layout — which the owner measured as wasting ~300px of vertical space before the selected symbol's details became visible — with a permanent 3-pane layout: left Symbols panel (always visible), center detail (immediately visible, zero scroll), right Reasoning Trace (unchanged this milestone) |
+| Scope | `index.html`, `12-decisions-list.js`, `13-decision-brief-core.js`, `09-decision-brief-shell.css`, `12-decision-cards-dag.css`, `03-shell.css` (nav placeholders) |
+| Tests | New structural assertions (markup/CSS/JS presence) plus a real div-nesting-depth check for the filter popover (see bug below). Full suite **1031 passed** |
+| Coverage | Live-browser verified end to end: 3-pane layout, sample-data row/group rendering, selected-row highlight, collapse toggle, filter popover open/close/click-outside, responsive single-column collapse below 1400px, zero console errors |
+| Status | **BUILT** — awaiting owner confirmation on the live dashboard |
+| Branch | feature/live-dashboard |
+
+### Scope completed
+
+- **Layout shell**: `.trace-workstation` (2-column grid: brief + trace) became `.decisions-workstation` (3-column grid: `minmax(240px,280px) minmax(0,1.7fr) minmax(280px,1fr)`), with a single responsive breakpoint at 1400px collapsing to one stacked column (each pane capped at `max-height: 70vh`). Header, left panel, and right panel all sticky/full-height via `overflow: hidden` on the grid + independent `overflow-y: auto` inside each pane's own scrollable content — only the center brief body and the left symbol list actually scroll.
+- **Left Symbols panel**: new `.symbols-panel` replacing the old `.decisions-toolbar-card` + `#decisions-carousel-groups`. Search stays pinned in a fixed header row; stance/type/sort filters + "Clear all" moved behind a small icon-triggered popover (`#symbols-filter-popover`) so they never consume vertical space above the detail panel — same `<select>`/`<button>` elements and change-listeners as before, only their visibility changed. The summary strip and outcome groups sit below, in the only scrollable region of the panel.
+- **Row/group rendering**: `renderDecisionCarousels` (unchanged grouping/priority logic — Trade → Watch → No trade → Insufficient data → anything else, never by timestamp) now appends vertical rows directly into each group instead of a horizontal `scroll-snap` track; the nav-arrow buttons and their `wireCarouselOverflow` edge-fade logic were deleted entirely (dead code once nothing scrolls horizontally). `renderDeckCard` renamed `renderSymbolRow` — identical fields (symbol, score, time, gate-summary note, dismiss button), just a full-width row layout instead of a 156px-wide card.
+- **Selected-state strength** (owner: "current selected state is too weak"): `.symbol-row.active` gets a full-row accent gradient wash, a thicker accent-colored left border, `box-shadow` glow, and the symbol text switches to accent color at a slightly larger size — unambiguous at a glance.
+- **Scroll-position discipline** (owner requirements): the left panel's `scrollTop` is captured before every `innerHTML` rebuild (search/filter/sort changes trigger a full re-render) and restored after, so typing in search no longer resets the list to the top. `selectBriefing` now also resets only `decisionBriefBody.scrollTop` to 0 on a new selection — the left and right panels keep whatever scroll position they already had.
+- **Nav placeholders**: "Reports & Analytics" / "Settings" added to the global sidebar as `.nav-item-disabled` (deliberately not `.nav-item`, so `app-shell.js`'s click-wiring and active-state loops — which only ever query `.nav-item` — never see them at all; no guard needed at any call site), each with a "Soon" badge.
+
+### Bug found and fixed during live verification
+
+The filter popover initially rendered far off-screen (`top: 758px` instead of anchored just below the toggle button). Root cause: `#symbols-filter-popover` was authored as a DOM **sibling** of `.symbols-panel-header` rather than a **child** — since the popover uses `position: absolute`, it resolved against the nearest *other* positioned ancestor up the tree instead of the header. Fixed by nesting the popover inside the header element in the HTML. Added a regression test that checks actual div-nesting depth between the header and the popover (not just that both elements' class/id strings appear somewhere on the page) — a plain substring check would have passed even with the bug present, since both elements still existed in the DOM, just in the wrong place.
+
+### Files created
+
+- None.
+
+### Files modified
+
+- `src/athena/api/static/index.html` — 3-pane layout, left Symbols panel, nav placeholders; cache-bust `9.46.1` → `9.47.0`.
+- `src/athena/api/static/js/12-decisions-list.js` — `renderDecisionCarousels` rewritten for vertical rows; `renderDeckCard` → `renderSymbolRow`; `wireCarouselOverflow` deleted; filter-popover toggle wiring added; scroll-position preservation added.
+- `src/athena/api/static/js/13-decision-brief-core.js` — `selectBriefing`: `.deck-card` → `.symbol-row` selector update; center-panel-only scroll reset added.
+- `src/athena/api/static/css/09-decision-brief-shell.css` — `.trace-workstation` → `.decisions-workstation` (3 columns), `.symbols-panel` sizing rules.
+- `src/athena/api/static/css/12-decision-cards-dag.css` — carousel/deck-card CSS replaced with symbols-panel/symbol-row CSS (everything below the DAG/context section, out of DT-1's scope, untouched).
+- `src/athena/api/static/css/03-shell.css` — `.nav-item-disabled`/`.nav-item-soon` styles.
+- `tests/api/platform/test_dashboard_hosting.py` — updated 3 stale assertions (old class/function names), added new DT-1 structural assertions + the popover-nesting regression test.
+- This log; `docs/MILESTONES.md`.
+
+### Public APIs
+
+- None — frontend-only, no backend/API changes.
+
+### Validation and architecture
+
+- Full regression: **1031 passed**.
+- Ruff clean. HTML `<div>`/`</div>` count balanced (250/250) before and after every edit. CSS brace balance verified per file. JS reassembled-script syntax verified with `node --check`.
+- Live-browser verification (see Coverage above) — this milestone's scale (a full layout restructure) warranted more live checking than the smaller fixes earlier this session, including catching and fixing a real bug (the popover mis-anchoring) before considering it done.
+- No ADR required: pure frontend reorganization, no domain/contract/schema change, no architecture drift. Confirmed via the earlier structural research pass that this milestone's scope (layout shell only) doesn't touch the Reasoning Trace's DAG rendering, tab content, or any data/selection logic — those are DT-3/DT-4.
+
+### Risks and technical debt
+
+- Could not exercise a real authenticated end-to-end flow (no owner credentials) — verified via live DOM injection of sample data instead, which exercises the same render functions the real data path uses.
+- No new technical debt. The nav placeholders are intentionally inert until DT-2+ (or a future milestone) gives them real destinations.
+
+### Remaining work
+
+- **Owner confirmation** on the live dashboard, then proceed to DT-2 (Hero header + Quick Summary + ticker strip) once approved.
+
+### Commit message
+
+```text
+feat(dashboard): DT-1 — 3-pane workstation layout for Decisions & Trace
+
+- Replace the horizontal outcome carousels + toolbar-above-the-fold
+  layout with a permanent left Symbols panel (search always visible,
+  collapsible BUY/WATCH/PASS-equivalent groups, strong selected-row
+  highlight) beside the center detail (now immediately visible, zero
+  scroll) and the existing right Reasoning Trace — first milestone of
+  the owner's workstation-refactor assignment, matching a reference
+  mock. Same data/selection/filter/sort/dismiss logic throughout; only
+  DOM position and row/group markup shape changed.
+- Move stance/type/sort filters + Clear all behind a small popover so
+  they never consume vertical space above the detail panel.
+- Preserve left-panel scroll position across re-renders; reset only the
+  center panel's scroll to top on a new symbol selection.
+- Add two disabled "Reports & Analytics"/"Settings" nav placeholders
+  (future implementation, no backing route yet).
+- Fix a popover mis-anchoring bug found during live verification (was a
+  DOM sibling instead of a child of its position:relative anchor); add
+  a regression test that checks actual nesting depth.
+```
+
+### Fix pass (owner live screenshots, 2026-07-27)
+
+Once the owner tried the filter popover against real data, four refinements came back:
+
+1. **Excessive vertical gaps between Stance/Type/Sort.** Root cause: each `<label class="decisions-filter-label">` inherited `flex: 1 1 100px` from an unrelated shared rule in `05-portfolio.css` (written for the *old horizontal* toolbar row, where growing to fill available width made sense). Inside the *new vertical* flex popover, that same `flex-grow: 1` stretched every label to fill a third of the popover's total height, producing large empty gaps. Fixed with `flex: none` on `.symbols-filter-popover .decisions-filter-label`. Verified in a live browser: all three labels now measure a consistent 54px tall with ~11px gaps, and the whole popover is 260px tall instead of stretching to fill its container.
+2. **"Clear all" read as "clear the filters."** A destructive data-wipe button sitting inside a view-only filter popover was genuinely ambiguous. Moved it to its own separate, danger-red-styled icon button in the panel header, next to (not inside) the filter toggle — same `#decisions-clear-all-btn` id and click handler as before, purely a DOM relocation.
+3. **No way to reset filters, and no discoverable way to close the popover.** Added a small popover header row: "FILTERS" title, a "Reset" link (stance/type/sort back to `all`/`all`/`newest`, re-runs `applyDecisionsView()` — distinct from "Clear all," which deletes data), and an explicit close (×) button. Click-outside and Escape already worked; this adds a third, visible way that doesn't require already knowing about the other two. Owner follow-up: Reset should also dismiss the popover afterward (a completed action, not a mid-adjustment) — added.
+4. **No visual differentiation, and the list stayed clickable underneath.** Added `#symbols-filter-backdrop`, scoped to the list area only (wrapped `.symbols-summary-strip` + `.symbols-groups` in a new `.symbols-panel-body` container as its positioning/z-index context — the header with search/filter/clear-all stays outside it and always interactive). Shown/hidden in lockstep with the popover. Verified in a live browser via `document.elementFromPoint()` at a coordinate within the backdrop's rect but below the popover's own footprint: the backdrop element itself is what receives the click, not the symbol row underneath — confirming rows are genuinely non-interactive while filtering, not just visually dimmed.
+
+11 new dashboard-hosting assertions (flex-none rule present, danger-icon-button class present, reset/close ids and JS wiring present, backdrop id/CSS/JS present, Reset's click handler contains a call to close the popover). Full suite **1031 passed**. Ruff clean. JS/CSS/HTML balance re-verified after every edit.
+
+**Files modified in this fix pass**: `src/athena/api/static/index.html` (popover header row, separate Clear-all button, `.symbols-panel-body` wrapper, backdrop element; cache-bust `9.47.0` → `9.47.3` across the round), `src/athena/api/static/js/12-decisions-list.js` (`closeSymbolsFilterPopover()` helper, reset/close/backdrop wiring), `src/athena/api/static/css/12-decision-cards-dag.css` (`flex: none` fix, danger-icon-button, popover-head/reset/close, `.symbols-panel-body`, `.symbols-filter-backdrop`), `tests/api/platform/test_dashboard_hosting.py` (11 new assertions).
+
+---
+
 ## Fix pass — stale Reasoning Trace sidebar after Clear all + tab restored on login (BUILT, awaiting owner confirmation)
 
 | | |
