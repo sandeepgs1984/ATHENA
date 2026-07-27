@@ -307,6 +307,26 @@ ATHENA-branded overlay for the duration of any validate call.
 | Tests | 15 new dashboard-hosting assertions. Full suite **1024 passed** |
 | Status | 🔄 Built, tested, visually verified via browser DOM inspection (no owner credentials to trigger a real authenticated validate) — awaiting owner confirmation on the live dashboard |
 
+### Refactor: dashboard.js concern-based split (owner-requested, 2026-07-26)
+
+Not a UX item — a maintainability refactor tracked separately, mirroring
+UX-7's `dashboard.css` split. Owner flagged `dashboard.js` at 6,108 lines in
+one file. Unlike CSS, the whole file lived inside one
+`document.addEventListener("DOMContentLoaded", () => { ... })` closure with
+real cross-section coupling (shared mutable state, a 3-way cycle between the
+DAG/analysis/context renderers, an auth/api-client cycle) — real ES modules
+would have required behavioral code changes at those points with no way to
+verify equivalence by diff. Owner chose the lower-risk option instead: split
+the source into 22 concern-based files under `static/js/`, reassembled
+server-side (new `/dashboard/dashboard.js` route, registered ahead of the
+`StaticFiles` mount) into the exact original single-closure script.
+
+| | |
+|---|---|
+| Scope | `src/athena/api/static/js/00-state-and-dom.js` through `21-bootstrap.js` (+ `_header.js`/`_footer.js` carrying the exact original wrapper boilerplate) — no manual retyping anywhere; every file was mechanically sliced from the original using an Acorn-parsed statement inventory (Node 26 + acorn, installed for this refactor only, not a runtime/build dependency). `src/athena/api/app.py` gains `DASHBOARD_JS_PARTS`/`assemble_dashboard_js()` and a route serving `/dashboard/dashboard.js` by concatenating them in order, read fresh per request (no restart needed to see an edit, same as before) |
+| Verification | A standalone Node script parsed the original file into its 372 top-level statements, verified 100% coverage (no gap/duplicate) across the 22-file partition, then re-parsed the reassembled output and did a **content-equality check per statement**: every one of the 372 original statements' exact source text was confirmed present, unaltered, at its new (relocated) position — plus a non-whitespace character-count match end to end. The live server's actual `/dashboard/dashboard.js` response was then diffed against that verified reference: **byte-identical**. Full regression **1031 passed** (new: `test_dashboard_js_assembled_losslessly_from_concern_split`, which re-derives the expected assembly from the real files on every test run — never a frozen snapshot). Live browser check: zero console errors on load; all 5 tabs exercised via real click-wired handlers (not synthetic DOM pokes) with only the expected, pre-existing unauthenticated-API-call error logging (since no owner credentials were available to authenticate), no ReferenceError/TypeError/SyntaxError anywhere |
+| Status | ✅ Built, verified, live-tested — old monolithic `dashboard.js` deleted (fully superseded) |
+
 ---
 
 *Status legend: a milestone is "In Progress" (🔄) when actively being designed or built, "Approved" (✅) only when the owner signs off. Never two milestones in flight.*

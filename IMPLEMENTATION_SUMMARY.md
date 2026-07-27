@@ -6,6 +6,189 @@ status updated on approval.
 
 ---
 
+## Refactor — dashboard.js concern-based split (BUILT, verified)
+
+| | |
+|---|---|
+| Completed | 2026-07-26 |
+| Objective | Owner flagged `dashboard.js` at 6,108 lines in one file and asked whether that's maintainable — same complaint that drove UX-7's `dashboard.css` split into 14 `css/*.css` files. Owner then explicitly asked to refactor it properly and verify properly, mirroring that precedent |
+| Scope | Split the single-closure script (everything lived inside one `document.addEventListener("DOMContentLoaded", () => {...})`) into 22 concern-based files under `src/athena/api/static/js/`, reassembled server-side into the exact original script via a new FastAPI route |
+| Tests | New `test_dashboard_js_assembled_losslessly_from_concern_split` (re-derives the expected assembly from the live files every run, spot-checks functions across the concern spread, confirms the wrapper closure and final `bootstrapSession()` ordering survive). Full suite **1031 passed** |
+| Coverage | A standalone verification script (not part of the shipped app) parsed the original file's AST, proved 100% statement coverage across the 22-file partition (no gap, no duplicate), and did a full content-equality check — every one of 372 original top-level statements confirmed byte-identical at its new position. The live server's actual response was then diffed against that verified reference and found byte-identical |
+| Status | **BUILT** — verified via a mechanical content-equality proof (stronger than a visual diff) plus a live browser smoke test (zero console errors, all 5 tabs exercised via real click handlers). Old monolithic `dashboard.js` deleted (fully superseded) |
+| Branch | feature/live-dashboard |
+
+### Why this needed a different approach than the CSS split
+
+UX-7's CSS split was purely mechanical and losslessly verified because CSS
+has no scoping or circular-dependency concerns — cutting `dashboard.css`
+into 14 files and loading them via `@import` changes nothing about how the
+cascade resolves. `dashboard.js` is not like that: the whole file lives
+inside one JS closure, and a structural analysis (via a dedicated research
+pass reading the entire 6,108-line file) surfaced real coupling that a naive
+split into genuine ES modules (`<script type="module">`, real
+`export`/`import`) would have had to resolve with actual code changes, not
+just code moves:
+
+- Shared mutable `let` state (`activeDecisionId`, `activeDepth`,
+  `activeContextData`, etc.) gets reassigned directly from `selectBriefing`
+  and various `load*` functions across what would become module boundaries —
+  ES module imports are read-only live bindings, so this would need setter
+  functions at ~10 call sites, not a bare move.
+- A genuine 3-way cycle: the DAG/trace renderer reads `activeDepth` (owned
+  by the analysis renderer) and `activeContextData` (owned by the context
+  renderer) to paint each node's live status, while both of those call back
+  into the DAG renderer to refresh it after their own async loads resolve.
+- `ui-helpers.js`'s `closeAllModals()` hardcodes four different modals' DOM
+  ids spanning three unrelated feature areas.
+- A real `auth.js` ↔ `api-client.js` cycle (`apiRequest` needs auth's token
+  helpers; `auth.js`'s `bootstrapSession`/`fetchMe` call `apiRequest`).
+
+None of this is unsafe today — it's one shared closure, so it all just
+works — but real ES modules would require fixing all four points with
+actual behavioral changes, verifiable only by manual testing (this app has
+no JS test framework, and I have no owner credentials to drive a full
+authenticated smoke test). The owner was given this trade-off explicitly and
+chose the lower-risk option: **reorganize the source into concern-based
+files but keep the exact original runtime structure** (one closure, same
+statement order semantics), reassembled server-side rather than via
+`<script type="module">` — verified with a mechanical proof strictly
+stronger than "looks the same," rather than relying on manual smoke-testing
+alone.
+
+### How the split was built (mechanical, not hand-transcribed)
+
+1. Installed Node 26 (via Homebrew — the pre-existing Node in this
+   environment was v8.9.0 from 2017 and couldn't even parse the file's
+   optional-chaining syntax) and the `acorn` JS parser, used only as an
+   authoring-time tool for this refactor — not a new runtime or build
+   dependency; the shipped app remains vanilla JS with zero build step.
+2. Parsed the original file's AST to get the exact character range of every
+   one of its 372 top-level statements inside the `DOMContentLoaded`
+   callback — avoids any risk of a hand-counted line range being wrong
+   around a template literal's `${...}` braces.
+3. Authored a partition table assigning contiguous ranges of statement
+   indices to 22 target files (by concern: auth, kite-gate, app-shell,
+   api-client, utils, ui-helpers, decision-format, portfolio,
+   market-intelligence, strategies-backtests, decision-state,
+   decisions-list, decision-brief-core/analysis/context/chart/trace/history,
+   decision-compare, operations, plus a tiny final `bootstrap.js` holding
+   only the very last two statements — the Escape-key listener and the
+   final `bootstrapSession();` call, which must stay last).
+4. A script verified the partition covers all 372 indices exactly once,
+   then **sliced the original source directly** (no retyping) into each
+   target file.
+5. Reassembled the 22 files (+ `_header.js`/`_footer.js`, also sliced
+   directly from the original, never hand-typed) in the new file order and
+   proved equivalence: re-parsed the reassembled output, and for every one
+   of the 372 original statements, confirmed its exact source text appears,
+   unaltered, at the position implied by the new file order. Also confirmed
+   the total non-whitespace character count matches exactly end to end.
+
+### Files created
+
+- `src/athena/api/static/js/00-state-and-dom.js` through `21-bootstrap.js`
+  (22 files) + `_header.js` / `_footer.js`.
+- `tests/api/platform/test_dashboard_hosting.py`'s new test (see below).
+
+### Files modified
+
+- `src/athena/api/app.py` — `DASHBOARD_JS_PARTS` tuple, `assemble_dashboard_js()`,
+  and a `GET /dashboard/dashboard.js` route registered ahead of the
+  `StaticFiles` mount so this one path is served by concatenation instead of
+  a (now nonexistent) single static file.
+- `tests/api/platform/test_dashboard_hosting.py` — new
+  `test_dashboard_js_assembled_losslessly_from_concern_split`.
+- `src/athena/api/static/index.html` — cache-bust `9.45.0` → `9.46.0`.
+
+### Files deleted
+
+- `src/athena/api/static/dashboard.js` (the 6,108-line monolith — fully
+  superseded by `static/js/*.js` + the new route; confirmed nothing else in
+  the codebase referenced its raw file path before deleting).
+
+### Public APIs
+
+- None — the served `/dashboard/dashboard.js` URL and its content are
+  unchanged from the trader's/browser's perspective. No backend/domain API
+  touched.
+
+### Validation and architecture
+
+- Full regression: **1031 passed**.
+- Ruff clean on `app.py` and the modified test file.
+- Live-server verification: restarted the API, fetched the real
+  `/dashboard/dashboard.js` response, and diffed it byte-for-byte against
+  the independently-verified reassembly — identical. Repeated after
+  deleting the old monolith to confirm the route has zero dependency on the
+  now-deleted file.
+- Live browser verification: zero console errors on a fresh, uncached page
+  load (confirmed in a brand-new browser tab to rule out a stale
+  console-log buffer from an earlier tab); all 5 sidebar tabs successfully
+  switched via their real, wired click handlers (not synthetic CSS-class
+  pokes), each correctly triggering its own `load*` function; the only
+  logged errors were the pre-existing, expected `console.error` calls for
+  unauthenticated API calls (since I have no owner credentials to complete
+  a real login) — no `ReferenceError`/`TypeError`/`SyntaxError` anywhere,
+  which is exactly the failure signature a broken split would produce.
+- No ADR required: purely additive/organizational — no domain, contract, or
+  schema change; the frozen ATHENA-002 architecture is untouched. The one
+  backend change (a route ahead of the `StaticFiles` mount) is a serving
+  mechanism, not an architectural boundary.
+
+### Risks and technical debt
+
+- The server now reads and concatenates 22 files on every request to
+  `/dashboard/dashboard.js` instead of serving one static file — negligible
+  cost for a single-owner localhost app (~280KB total, no measurable
+  latency change observed), but noted for completeness.
+- If a future edit adds a new top-level statement, it must go into the
+  right concern file and — if it's an immediately-executing statement that
+  isn't inside a function/event-handler body — the author should keep the
+  same discipline: everything up to the final `bootstrap.js` still executes
+  before `bootstrapSession()` runs, which must stay the last statement.
+  `DASHBOARD_JS_PARTS` in `app.py` is the single source of truth for the
+  concatenation order.
+- I could not exercise a real authenticated session (no owner credentials) —
+  verified via the mechanical content-equality proof (which does not depend
+  on authentication at all) plus everything reachable pre-login/via a
+  client-side gate bypass for visual/wiring checks only.
+
+### Remaining work
+
+- **Owner confirmation**: use the live dashboard as normal for a while
+  (all tabs, Decision Brief, journal, chart, compare, saved symbols,
+  validate) and confirm nothing behaves differently than before — the
+  content-equality proof means it shouldn't, but only real day-to-day use
+  can confirm.
+
+### Commit message
+
+```text
+refactor(dashboard): split dashboard.js into 22 concern-based files
+
+- dashboard.js had grown to 6,108 lines in one closure (owner-flagged,
+  same complaint that drove the UX-7 dashboard.css split). Real ES
+  modules would have required behavioral changes at 4 real coupling
+  points (shared mutable state reassigned across module boundaries, a
+  3-way DAG/analysis/context cycle, a hardcoded multi-modal registry, an
+  auth/api-client cycle) with no way to verify equivalence by diff, so
+  the split instead preserves the exact original single-closure runtime
+  structure, reorganizing only where the source lives on disk.
+- Split via a mechanical, Acorn-AST-driven script: every one of the
+  original file's 372 top-level statements was sliced directly from the
+  source (never retyped) into 22 new concern-based files under
+  static/js/, then verified byte-for-byte unaltered at its new
+  (relocated) position via a full content-equality check.
+- Add a GET /dashboard/dashboard.js route (ahead of the StaticFiles
+  mount) that concatenates the 22 files in order, read fresh per
+  request; delete the now-superseded monolithic dashboard.js.
+- Add a test that re-derives the expected assembly from the live files
+  on every run and locks in the closure/statement-ordering invariants.
+```
+
+---
+
 ## UX-9b — Add Watchlist (Saved Symbols) (APPROVED)
 
 | | |

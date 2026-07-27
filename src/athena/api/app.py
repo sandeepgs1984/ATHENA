@@ -14,7 +14,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -38,6 +38,56 @@ from athena.errors import AthenaError
 from athena.ops.kite_session import KiteSessionService
 
 logger = logging.getLogger(__name__)
+
+# dashboard.js concern-based source split (owner-requested maintainability
+# refactor — the file had grown past 6,100 lines in one closure). Classic
+# <script> tags have no browser-native multi-file mechanism (unlike CSS's
+# @import, which the earlier dashboard.css split relies on), so this list is
+# concatenated server-side, in this exact order, into the single script the
+# browser requests at /dashboard/dashboard.js — reproducing the original
+# file's single document.addEventListener("DOMContentLoaded", ...) closure
+# byte-for-byte (every statement's source text unchanged, only relocated;
+# verified with a standalone content-equality script during the refactor).
+# Read fresh on every request (not cached) so editing a js/*.js file is
+# reflected on the next reload, same as every other static asset here.
+DASHBOARD_JS_PARTS: tuple[str, ...] = (
+    "_header.js",
+    "00-state-and-dom.js",
+    "01-auth.js",
+    "02-kite-gate.js",
+    "03-app-shell.js",
+    "04-api-client.js",
+    "05-utils.js",
+    "06-ui-helpers.js",
+    "07-decision-format.js",
+    "08-portfolio.js",
+    "09-market-intelligence.js",
+    "10-strategies-backtests.js",
+    "11-decision-state.js",
+    "12-decisions-list.js",
+    "13-decision-brief-core.js",
+    "14-decision-brief-analysis.js",
+    "15-decision-brief-context.js",
+    "16-decision-brief-chart.js",
+    "17-decision-compare.js",
+    "18-decision-brief-trace.js",
+    "19-decision-brief-history.js",
+    "20-operations.js",
+    "21-bootstrap.js",
+    "_footer.js",
+)
+
+
+def assemble_dashboard_js(static_dir: str) -> str:
+    """Concatenate DASHBOARD_JS_PARTS, in order, into the served dashboard.js."""
+    js_dir = Path(static_dir) / "js"
+    parts = []
+    for name in DASHBOARD_JS_PARTS:
+        file_path = js_dir / name
+        if not file_path.is_file():
+            raise FileNotFoundError(f"dashboard.js part missing: {file_path}")
+        parts.append(file_path.read_text(encoding="utf-8"))
+    return "".join(parts)
 
 
 @asynccontextmanager
@@ -273,6 +323,31 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
 
     # Mount StaticFiles for Dashboard UI (P9.1)
     static_dir = os.path.join(os.path.dirname(__file__), "static")
+
+    # dashboard.js is assembled from src/athena/api/static/js/*.js (see
+    # DASHBOARD_JS_PARTS above) — registered ahead of the StaticFiles mount
+    # below so this exact path is served by this route, not by a (now
+    # nonexistent) single static dashboard.js file.
+    @app.get(
+        "/dashboard/dashboard.js",
+        include_in_schema=False,
+        operation_id="serveDashboardJs",
+        tags=["platform"],
+        summary="Assembled dashboard.js",
+        description=(
+            "Concatenates the concern-based js/*.js source files (see "
+            "DASHBOARD_JS_PARTS) into the single script the dashboard SPA loads."
+        ),
+    )
+    def serve_dashboard_js() -> PlainTextResponse:
+        try:
+            content = assemble_dashboard_js(static_dir)
+        except FileNotFoundError as exc:
+            # Surface loudly (500) rather than letting the /dashboard 404
+            # handler below silently swallow this into an index.html response.
+            raise AthenaError(str(exc)) from exc
+        return PlainTextResponse(content, media_type="application/javascript")
+
     app.mount("/dashboard", StaticFiles(directory=static_dir, html=True), name="dashboard")
 
     return app

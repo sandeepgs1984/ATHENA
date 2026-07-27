@@ -121,7 +121,7 @@ its milestone is approved — check §5):
 | Orchestration & Ops | `orchestration/`, `scanner/`, `watchlist/`, `strategy/`, `backtest/`, `scheduling/` |
 | Portfolio & planning (no execution) | `portfolio/`, `allocation/`, `sizing/`, `orders/` (planning only), `brokers/` (abstraction only), `execution/` |
 | Presentation | `dashboard/`, `explainability/`, `timeline/`, `monitoring/`, `export/`, `analytics/` |
-| Application platform | `api/` — FastAPI v1 REST + security + platform; `api/static/` — the dashboard SPA (`index.html`, `dashboard.js`, `dashboard.css`, hand-rolled, no framework per ADR-004) |
+| Application platform | `api/` — FastAPI v1 REST + security + platform; `api/static/` — the dashboard SPA (`index.html`; `dashboard.js` and `dashboard.css` are each served-assembled from concern-based source files — `js/*.js` (concatenated server-side by an `app.py` route) and `css/*.css` (loaded via `@import`) respectively — hand-rolled, no framework/build step per ADR-004) |
 | Live ops | `notifications/`, `diagnostics/`, `ops/` (owner candidate lists, live validation pipeline, alerts) |
 | Cross-cutting | `runtime/` (workflow/execution models shared across phases) |
 

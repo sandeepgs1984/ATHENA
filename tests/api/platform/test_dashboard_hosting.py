@@ -4,8 +4,11 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 from fastapi.testclient import TestClient
+
+from athena.api.app import DASHBOARD_JS_PARTS, assemble_dashboard_js
 
 _IMPORT_RE = re.compile(r'@import\s+url\("([^"]+)"\)')
 
@@ -540,3 +543,52 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "function removeSavedSymbolNow" in js
     assert "/api/v1/saved-symbols" in js
     assert "saved-symbol-remove-btn" in js
+
+
+def test_dashboard_js_assembled_losslessly_from_concern_split(client: TestClient) -> None:
+    """dashboard.js (owner-flagged: 6,100+ lines in one file) was split into
+    22 concern-based files under static/js/ (mirrors the earlier dashboard.css
+    @import split from UX-7) — verified during the refactor with a standalone
+    content-equality script confirming every one of the original 372
+    top-level statements survives byte-for-byte, just relocated, never
+    altered. Classic <script> tags have no @import equivalent, so this route
+    concatenates the split files server-side; this test locks in that the
+    served response is exactly what DASHBOARD_JS_PARTS says it should be —
+    never a stale cached single file, never a partial/reordered assembly."""
+    import athena.api.app as app_module
+
+    real_static_dir = str(Path(app_module.__file__).parent / "static")
+    expected = assemble_dashboard_js(real_static_dir)
+    resp = client.get("/dashboard/dashboard.js")
+    assert resp.status_code == 200
+    assert resp.text == expected
+
+    # Every concern file actually contributed real content (catches an empty
+    # or accidentally-dropped file in DASHBOARD_JS_PARTS).
+    js_dir = Path(real_static_dir) / "js"
+    for name in DASHBOARD_JS_PARTS:
+        text = (js_dir / name).read_text(encoding="utf-8")
+        assert text.strip(), f"{name} is empty — dropped from the split?"
+
+    # Spot-check functions from across the concern spread survive in the
+    # assembled output, in their original, unaltered form.
+    assert "function apiRequest(url, options = {})" in expected
+    assert "function bootstrapSession()" in expected
+    assert "function loadPortfolioData()" in expected
+    assert "function loadMarketIntelligence()" in expected
+    assert "function renderDecisionBrief(" in expected
+    assert "function refreshDagNodeMeanings(" in expected
+    assert "function loadOperationsWorkspace()" in expected
+    assert "function loadSavedSymbols()" in expected
+    # The wrapper closure must be preserved exactly — everything still runs
+    # inside one document.addEventListener("DOMContentLoaded", ...) callback.
+    expected_prefix = (
+        '/* ATHENA Workstation Coordinator Script (P9.1) */\n\n'
+        'document.addEventListener("DOMContentLoaded", () => {'
+    )
+    assert expected.startswith(expected_prefix)
+    assert expected.rstrip().endswith("});")
+    # bootstrapSession() must still be the very last statement to execute —
+    # everything else must already be declared by the time it runs.
+    tail = expected.rstrip()
+    assert tail.endswith("bootstrapSession();\n});") or tail.endswith("bootstrapSession();\n    });")
