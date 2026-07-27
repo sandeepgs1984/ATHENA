@@ -544,6 +544,28 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "/api/v1/saved-symbols" in js
     assert "saved-symbol-remove-btn" in js
 
+    # Fix pass (owner screenshot, 2026-07-27): two bugs reported after the
+    # dashboard.js concern split landed.
+    #
+    # (1) initializeRoute used to read window.location.pathname to decide
+    # which tab to land on after login/bootstrap, so a stale URL left over
+    # from a previous session (e.g. a session that expired while on
+    # /dashboard/decisions) could reopen that same tab instead of Portfolio
+    # Overview. Every login now always resets to Overview, mirroring the
+    # existing logout reset.
+    assert "function initializeRoute" in js
+    assert 'window.history.replaceState({ tabId: "overview" }, "", "/dashboard/overview");' in js
+    # (2) After "Clear all" (and, more generally, whenever there's no active
+    # decision), the main brief correctly went empty but the Reasoning Trace
+    # sidebar kept showing the previously selected symbol's quick-summary
+    # chips and DAG stage-detail card — neither is owned by the main brief
+    # body, so both were silently left stale. renderDecisionBriefEmpty now
+    # clears both authoritatively for every caller.
+    assert "function renderDecisionBriefEmpty" in js
+    assert "activeDecisionData = null;" in js
+    assert "renderSidebarQuickSummary();" in js
+    assert 'dagDetailsPanel.style.display = "none";' in js
+
 
 def test_dashboard_js_assembled_losslessly_from_concern_split(client: TestClient) -> None:
     """dashboard.js (owner-flagged: 6,100+ lines in one file) was split into

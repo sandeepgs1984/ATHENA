@@ -327,6 +327,17 @@ server-side (new `/dashboard/dashboard.js` route, registered ahead of the
 | Verification | A standalone Node script parsed the original file into its 372 top-level statements, verified 100% coverage (no gap/duplicate) across the 22-file partition, then re-parsed the reassembled output and did a **content-equality check per statement**: every one of the 372 original statements' exact source text was confirmed present, unaltered, at its new (relocated) position — plus a non-whitespace character-count match end to end. The live server's actual `/dashboard/dashboard.js` response was then diffed against that verified reference: **byte-identical**. Full regression **1031 passed** (new: `test_dashboard_js_assembled_losslessly_from_concern_split`, which re-derives the expected assembly from the real files on every test run — never a frozen snapshot). Live browser check: zero console errors on load; all 5 tabs exercised via real click-wired handlers (not synthetic DOM pokes) with only the expected, pre-existing unauthenticated-API-call error logging (since no owner credentials were available to authenticate), no ReferenceError/TypeError/SyntaxError anywhere |
 | Status | ✅ Built, verified, live-tested — old monolithic `dashboard.js` deleted (fully superseded) |
 
+### Fix pass: stale Reasoning Trace sidebar + tab restored on login (owner screenshot, 2026-07-27)
+
+Two bugs the owner found via live screenshots.
+
+| | |
+|---|---|
+| Bug 1 | After "Clear all" (Decisions & Trace), the main brief correctly went empty but the Reasoning Trace sidebar kept showing the previously selected symbol's quick-summary chips (score/confidence/risk) and DAG stage-detail card ("Regime / COMPLETED / regime-NIFTY 50-..."). Root cause: `renderSidebarQuickSummary()` already correctly hides itself when there's no active decision, but nothing re-invoked it after Clear all nulled the decision state, and the DAG stage-detail panel had no reset path at all. Fix: `renderDecisionBriefEmpty()` — the one function whose job is "there is no decision to show" — now authoritatively nulls `activeDecisionData`/`selectedStageId`, re-invokes `renderSidebarQuickSummary()`, and hides the DAG details panel, so every caller (Clear all, zero-filter-results, a failed decision-detail fetch) is covered, not just the one path the owner happened to hit |
+| Bug 2 | Login sometimes reopened whatever tab was active before instead of always landing on Portfolio Overview. Root cause: `initializeRoute()` read `window.location.pathname` to pick a tab — if the browser's address bar still pointed at e.g. `/dashboard/decisions` (left over from a prior session), login honored that stale URL. Fix: `initializeRoute()` now always resets to `/dashboard/overview` and switches to Overview, mirroring the reset the logout handler already did |
+| Tests | 4 new dashboard-hosting assertions. Full suite **1031 passed** |
+| Status | ✅ Built, verified via code-level correctness (both fixes are small, unconditional, no branching) + a live check confirming `history.replaceState` behaves as expected in-browser. Could not drive a real authenticated login/Clear-all end-to-end myself (this deployment requires real owner credentials) — awaiting owner confirmation on the live dashboard |
+
 ---
 
 *Status legend: a milestone is "In Progress" (🔄) when actively being designed or built, "Approved" (✅) only when the owner signs off. Never two milestones in flight.*

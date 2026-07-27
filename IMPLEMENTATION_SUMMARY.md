@@ -6,6 +6,134 @@ status updated on approval.
 
 ---
 
+## Fix pass — stale Reasoning Trace sidebar after Clear all + tab restored on login (BUILT, awaiting owner confirmation)
+
+| | |
+|---|---|
+| Completed | 2026-07-27 |
+| Objective | Two bugs the owner found via a live screenshot right after the dashboard.js split shipped: (1) after "Clear all," the Reasoning Trace sidebar kept showing the previously selected symbol's score/confidence/risk chips and a stale DAG stage-detail card ("Regime / COMPLETED / regime-NIFTY 50-2026-07-24T15:30:00+05:30"); (2) login sometimes reopened whatever tab was active before instead of always landing on Portfolio Overview |
+| Scope | `src/athena/api/static/js/13-decision-brief-core.js` (`renderDecisionBriefEmpty`), `src/athena/api/static/js/03-app-shell.js` (`initializeRoute`) |
+| Tests | 4 new dashboard-hosting assertions. Full suite **1031 passed** |
+| Coverage | Both fixes verified correct by direct code inspection (each is a small, unconditional function with no branching) plus a live in-browser check confirming `history.replaceState` behaves as expected in this exact browser. Could not drive a real authenticated login or a real Clear all end to end myself — this deployment requires real owner credentials, unlike the earlier no-auth dev assumption this session had been testing against |
+| Status | **BUILT** — awaiting owner confirmation on the live dashboard (trigger a real Clear all and confirm the sidebar goes empty; log out/in and confirm Overview always opens) |
+| Branch | feature/live-dashboard |
+
+### Root cause: Bug 1 (stale Reasoning Trace sidebar)
+
+`renderSidebarQuickSummary()` already had correct logic to hide itself
+when there's no active decision (`if (!decision || !decision.metadata) {
+dagQuickSummary.style.display = "none"; ... return; }`) — but nothing ever
+called it again after "Clear all" nulled `activeDecisionData`, so the DOM
+just kept showing whatever it had last rendered. The DAG stage-detail
+panel (`dagDetailsPanel`, populated by `showStageDetails` when a trader
+clicks a DAG node) had no reset path at all — it defaults to
+`display: none` in the HTML but nothing ever set it back once a stage had
+been shown.
+
+Rather than patch the three call sites that can lead to an empty brief
+(Clear all, zero-filter-results in `applyDecisionsView`, and a failed
+decision-detail fetch in `loadDecisionDetail`) individually, the fix
+centralizes the reset inside `renderDecisionBriefEmpty()` — the one
+function whose entire purpose is "there is no decision to show" — so any
+future caller gets this for free too:
+
+```js
+activeDecisionData = null;
+selectedStageId = null;
+renderSidebarQuickSummary();
+if (dagDetailsPanel) dagDetailsPanel.style.display = "none";
+```
+
+### Root cause: Bug 2 (tab restored on login)
+
+`initializeRoute()` (called once, at the end of `bootstrapSession()` or
+after a successful login) used to read `window.location.pathname` to
+decide which tab to open:
+
+```js
+function initializeRoute() {
+    const pathParts = window.location.pathname.split("/");
+    const pathTab = pathParts[pathParts.length - 1];
+    if ([...].includes(pathTab)) switchTab(pathTab);
+    else switchTab("overview");
+}
+```
+
+If the browser's address bar still pointed at, say, `/dashboard/decisions`
+(left over from a session that expired while on that tab, or simply
+because the browser was closed there), this would reopen that same tab
+after the next login — even though the existing logout handler already
+explicitly resets navigation to Overview
+(`window.history.replaceState({tabId: "overview"}, "", "/dashboard/overview")`)
+specifically so "the next session always lands on Portfolio Overview,
+never wherever the previous session happened to be." `initializeRoute()`
+just never got the same treatment. Confirmed via `grep` that
+`initializeRoute` has exactly 3 call sites, all inside the post-auth
+bootstrap flow — never used for normal in-session tab navigation (that
+goes through `switchTab` directly via nav clicks and the `popstate`
+handler) — so it's safe to make it unconditional:
+
+```js
+function initializeRoute() {
+    window.history.replaceState({ tabId: "overview" }, "", "/dashboard/overview");
+    switchTab("overview");
+}
+```
+
+### Files created
+
+- None.
+
+### Files modified
+
+- `src/athena/api/static/js/13-decision-brief-core.js` — `renderDecisionBriefEmpty` now clears `activeDecisionData`/`selectedStageId`, re-invokes `renderSidebarQuickSummary()`, and hides `dagDetailsPanel`.
+- `src/athena/api/static/js/03-app-shell.js` — `initializeRoute()` always resets to Overview instead of reading the current URL.
+- `src/athena/api/static/index.html` — cache-bust `9.46.0` → `9.46.1`.
+- `tests/api/platform/test_dashboard_hosting.py` — 4 new assertions.
+- This log; `docs/MILESTONES.md`.
+
+### Public APIs
+
+- None — frontend-only.
+
+### Validation and architecture
+
+- Full regression: **1031 passed**.
+- JS syntax validated (`node --check`) on the full reassembled script after the edit.
+- Live-server check: served `/dashboard/dashboard.js` confirmed to contain the fix; zero console errors on a fresh load.
+- Live-browser check: loading `/dashboard/decisions` directly and confirming `window.history.replaceState` itself behaves as expected in this browser (updates `window.location.pathname` immediately) — could not complete the actual authenticated login flow myself, since this deployment (unlike the earlier no-auth dev assumption this session had been testing against) requires real owner credentials. Both fixes are small, unconditional functions with no branching, so direct code inspection carries most of the confidence here.
+- No ADR required: two small, targeted bug fixes, no architecture/contract change.
+
+### Risks and technical debt
+
+- Neither fix could be exercised through a real authenticated session (no owner credentials) — the owner should confirm both live: trigger a real "Clear all" and confirm the Reasoning Trace sidebar goes fully empty (no stale chips or stage-detail card); log out and back in (or let a session expire) and confirm Portfolio Overview always opens regardless of which tab was open before.
+- No new technical debt.
+
+### Remaining work
+
+- **Owner confirmation**: both fixes, live.
+
+### Commit message
+
+```text
+fix(dashboard): clear stale Reasoning Trace sidebar and always reset to
+Overview on login
+
+- renderDecisionBriefEmpty() now nulls activeDecisionData/selectedStageId,
+  re-invokes renderSidebarQuickSummary(), and hides the DAG stage-detail
+  panel — previously nothing re-ran these after Clear all (or a
+  zero-filter-results state, or a failed decision-detail fetch), so the
+  sidebar kept showing the last-selected symbol's score/confidence/risk
+  chips and a stale "Regime / COMPLETED" detail card.
+- initializeRoute() now always resets to /dashboard/overview instead of
+  reading window.location.pathname — a stale URL left over from a prior
+  session (e.g. one that expired while on /dashboard/decisions) could
+  reopen that same tab on the next login instead of Portfolio Overview,
+  the one guarantee the logout handler already made but login didn't.
+```
+
+---
+
 ## Refactor — dashboard.js concern-based split (BUILT, verified)
 
 | | |

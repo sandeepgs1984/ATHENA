@@ -63,15 +63,18 @@
         }
     });
 
-    // Parse URL path on initial load to set active tab
+    // Called once per successful login/bootstrap (never for in-session
+    // navigation — that goes through switchTab directly via nav clicks and
+    // popstate). Owner-reported: the browser's address bar can still point
+    // at whatever tab was open before (e.g. /dashboard/decisions) when a
+    // session expires or the app is reloaded, and this used to honor that
+    // stale path instead of resetting — so a login could land back on a
+    // previous tab instead of Portfolio Overview. Every session now always
+    // starts on Overview, mirroring the same reset the logout handler
+    // already does.
     function initializeRoute() {
-        const pathParts = window.location.pathname.split("/");
-        const pathTab = pathParts[pathParts.length - 1];
-        if (["overview", "market", "strategies", "decisions", "operations"].includes(pathTab)) {
-            switchTab(pathTab);
-        } else {
-            switchTab("overview");
-        }
+        window.history.replaceState({ tabId: "overview" }, "", "/dashboard/overview");
+        switchTab("overview");
     }
 
     // ---------------------------------------------------------------------------

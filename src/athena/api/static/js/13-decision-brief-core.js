@@ -23,6 +23,19 @@
         if (decisionBriefActionbar) decisionBriefActionbar.hidden = true;
         resetCockpitGauges();
         setHeaderRevalidateEnabled(false);
+        // Owner-reported: after "Clear all", the main brief correctly went
+        // empty but the Reasoning Trace sidebar kept showing the previously
+        // selected symbol's quick-summary chips and DAG stage-detail card —
+        // neither is owned by the main brief body this function otherwise
+        // resets, so both were silently left stale. This is the one function
+        // whose job is "there is no decision to show," so it now clears them
+        // authoritatively for every caller (Clear all, zero-filter-results,
+        // and a failed decision-detail fetch) rather than relying on each
+        // call site to remember to do it individually.
+        activeDecisionData = null;
+        selectedStageId = null;
+        renderSidebarQuickSummary();
+        if (dagDetailsPanel) dagDetailsPanel.style.display = "none";
         if (!decisionBriefBody) return;
         decisionBriefBody.innerHTML = `
             <div class="decision-brief-empty">
