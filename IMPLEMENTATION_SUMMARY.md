@@ -6,7 +6,7 @@ status updated on approval.
 
 ---
 
-## MH-3 — Market Summary API + mock-faithful UI (READY FOR REVIEW)
+## MH-3 — Market Summary API + mock-faithful UI (APPROVED)
 
 | | |
 |---|---|
@@ -21,9 +21,10 @@ status updated on approval.
 | Risks discovered | Score often Unavailable until institutional + coverage + gap window are complete — UI caption surfaces `unavailable_reason` |
 | Technical debt introduced | None intentional. Recent Activity still uses `/pipelines/runs` (acceptable; summary is separate) |
 | Suggested improvements | Optional ticker chip when score present; collapse categorical Health into tooltip when score is live |
-| Remaining work | Track closed after approval — no further MH milestones |
-| Status | 🔄 Ready for review (2026-07-28) |
+| Remaining work | None — Market Metrics Completion track closed on MH-3 approval |
+| Status | ✅ Approved (2026-07-28) |
 | Branch | feature/live-dashboard |
+| Track outcome | Market Metrics Completion (MH-0…MH-3) closed |
 
 ### Scope completed
 
@@ -62,13 +63,13 @@ status updated on approval.
 - Owner validation assesses categorical health once, builds score, persists `market_health_score` diagnostics on run detail, shares score into scan scoring.
 - `ScoringEngine._market_quality` prefers `MarketHealthScore.total`; categorical label average remains the compat shim.
 
-### Deferred by owner — pre-existing test-suite warnings (observed 2026-07-28, unrelated to MH-2)
+### Follow-up after MH-3 approval — pre-existing test-suite warnings (addressed)
 
-All three are warnings only; the suite is green at 1091 passed.
+Observed during MH-2 (warnings only; suite was green). Cleared in the post-approval chore change set:
 
-1. `InsecureKeyLengthWarning` — `SecurityConfig.jwt_secret` defaults to the 29-byte `"secret-change-in-prod-seeding"`, below the 32-byte HS256 minimum. Tests build settings without env vars so they hit that default. Production is safe only when `ATHENA_JWT_SECRET` or `ATHENA_OWNER_PASSWORD_HASH` is set (the latter derives a 64-char SHA-256 key). Candidate fix: fail loudly at startup when the effective secret is under 32 bytes.
-2. `StarletteDeprecationWarning` — `HTTP_422_UNPROCESSABLE_ENTITY` is renamed to `HTTP_422_UNPROCESSABLE_CONTENT`; referenced once at `src/athena/api/app.py:173`. Cosmetic, behaviour identical.
-3. `PytestUnraisableExceptionWarning` — the fake 429 response `_Body` in `tests/data_layer/test_kite_provider.py` implements only `read()`, so garbage-collecting the `HTTPError` raises `AttributeError: no attribute 'close'` at GC time. One-line no-op `close()` on the stub fixes it; `UrllibKiteTransport` itself is correct.
+1. `InsecureKeyLengthWarning` — default `jwt_secret` lengthened to ≥32 bytes; `create_app` fails loudly if the effective secret is under 32 UTF-8 bytes.
+2. `StarletteDeprecationWarning` — `HTTP_422_UNPROCESSABLE_ENTITY` → `HTTP_422_UNPROCESSABLE_CONTENT` in `app.py`.
+3. `PytestUnraisableExceptionWarning` — no-op `close()` on the kite 429 test `_Body` stub.
 
 ---
 

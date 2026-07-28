@@ -503,7 +503,7 @@ Literal Market Summary mock fidelity requires real numeric inputs the MI track d
 | **MH-0** Design — FII/DII source + F-5 scoring contract | DD-11 institutional-flow source decision; ADR-008 (provider Protocol); F-5 scoring / unknown-data / persistence / API history specification | ✅ Approved |
 | **MH-1** Canonical inputs + persistence | Approved FII/DII ingest; universe breadth (+ neutral); liquidity + gap-stability aggregates; snapshot/history read paths | ✅ Approved |
 | **MH-2** Exact F-5 `MarketHealthScore` | Construct + persist authoritative six-component score; align scoring/risk/decision consumers; ADR-005 evidence | ✅ Approved |
-| **MH-3** Market Summary API + mock-faithful UI | Dedicated summary read model; sparklines/rings/ADV-DEC/evidence panel from real persisted data only | 🔄 Ready for review |
+| **MH-3** Market Summary API + mock-faithful UI | Dedicated summary read model; sparklines/rings/ADV-DEC/evidence panel from real persisted data only | ✅ Approved |
 
 Design artifacts (MH-0):
 
@@ -540,7 +540,9 @@ Dedicated read model exposes persisted F-5 score, universe breadth, VIX, and spa
 |---|---|
 | Scope | **API**: `GET /api/v1/market/summary` + `MarketSummaryDTO` (F-5 §8). **Service**: reads latest completed validation run detail (`market_health_score`, `market_metric_inputs`, `regime_assessment`) + D1 candle closes for sparklines. **UI**: mock-aligned single 8-cell band — Regime (NIFTY sparkline), Volatility (VIX sparkline), Gap indicator, real Universe Breadth ring, categorical Momentum/Trend/Volatility indicators, and persisted F-5 Market Health ring; concise display labels remove only redundant dimension words. |
 | Tests | Service unit + authenticated HTTP + dashboard hosting assertions. Full suite **1095 passed** |
-| Status | 🔄 Ready for review (2026-07-28) |
+| Status | ✅ Approved (2026-07-28) |
+
+**ATHENA Market Metrics Completion track closed (2026-07-28):** owner approved MH-3, the last of the 4 milestones (MH-0 through MH-3). Canonical FII/DII + universe breadth inputs, exact F-5 `MarketHealthScore`, and the dedicated Market Summary read model + mock-faithful 8-cell UI are complete. Unavailable Breadth / Market Health remain honest empty states until a post–MH-1/MH-2 validation writes complete metric inputs and a six-component score — never fabricated (ADR-005).
 
 ---
 
