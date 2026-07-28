@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Proposed |
+| Status | Accepted |
 | Date | 2026-07-28 |
 | Deciders | sandeep (owner) |
 
@@ -158,5 +158,6 @@ not via a new job queue or scheduler dependency.
 ## Implementation gate
 
 MI-5 implementation must not begin until **both** MI-4 is approved and this ADR
-is accepted. If accepted, MI-5 splits so that provider pacing + 429 retry
-(testable in isolation, no UI) lands before the background job and its UI.
+is accepted. **Gate cleared 2026-07-28** (MI-4 approved, ADR accepted). MI-5
+splits so that provider pacing + 429 retry (testable in isolation, no UI) lands
+before the background job and its UI.

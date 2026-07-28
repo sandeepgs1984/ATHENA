@@ -308,6 +308,21 @@ class FileProviderConfig(_Strict):
     capabilities: ProviderCapabilitiesConfig
 
 
+class KiteRateLimitConfig(_Strict):
+    """Per end-point-class pacing and 429 retry (ADR-007 / MI-5).
+
+    Intervals are minimum seconds between requests of that class. Kite Connect
+    documents historical ≤3 req/s, quote ≤1 req/s, other ≤10 req/s — values live
+    here so they are not magic numbers. Pacing changes wall-clock only.
+    """
+
+    historical_min_interval_seconds: float = Field(default=1.0 / 3.0, gt=0)
+    quote_min_interval_seconds: float = Field(default=1.0, gt=0)
+    other_min_interval_seconds: float = Field(default=0.1, gt=0)
+    max_429_retries: int = Field(default=3, ge=0)
+    retry_backoff_base_seconds: float = Field(default=1.0, gt=0)
+
+
 class KiteProviderConfig(_Strict):
     """Settings for the Zerodha Kite Connect read-only provider (R4 / DD-1).
 
@@ -323,6 +338,7 @@ class KiteProviderConfig(_Strict):
     india_vix_instrument: str = "NSE:INDIA VIX"
     base_url: str = "https://api.kite.trade"
     quote_batch_size: int = Field(default=500, ge=1, le=500)
+    rate_limit: KiteRateLimitConfig = Field(default_factory=KiteRateLimitConfig)
     capabilities: ProviderCapabilitiesConfig
 
     @field_validator("instrument_types")

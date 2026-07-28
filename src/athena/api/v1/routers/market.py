@@ -14,6 +14,7 @@ from athena.api.v1.dtos import AthenaResponse, ResponseMeta
 from athena.api.v1.dtos.market import (
     CandleSeriesDTO,
     DeleteCandidateResultDTO,
+    FullValidationProgressDTO,
     MarketTickerDTO,
     OwnerCandidateDTO,
     OwnerCandidateListDTO,
@@ -146,6 +147,39 @@ def validate_candidates(
 ) -> AthenaResponse[ValidateSymbolsResultDTO]:
     """Run a scoped kite ingest + eligibility + decision cycle for the given symbols."""
     data = service.validate_candidates(body)
+    return AthenaResponse(status="success", data=data, meta=_meta(request))
+
+
+@router.post(
+    "/validate-all",
+    response_model=AthenaResponse[FullValidationProgressDTO],
+    summary="Start owner-triggered full-universe validation (background)",
+    status_code=status.HTTP_202_ACCEPTED,
+    operation_id="startFullUniverseValidation",
+)
+def start_full_validation(
+    request: Request,
+    service: CandidatesService = Depends(get_candidates_service),  # noqa: B008
+    principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.EXECUTE)),  # noqa: B008
+) -> AthenaResponse[FullValidationProgressDTO]:
+    """ADR-007 / MI-5: one run over all active candidates; poll GET /validate-all."""
+    data = service.start_full_validation()
+    return AthenaResponse(status="success", data=data, meta=_meta(request))
+
+
+@router.get(
+    "/validate-all",
+    response_model=AthenaResponse[FullValidationProgressDTO],
+    summary="Poll full-universe validation progress",
+    status_code=status.HTTP_200_OK,
+    operation_id="getFullUniverseValidationStatus",
+)
+def full_validation_status(
+    request: Request,
+    service: CandidatesService = Depends(get_candidates_service),  # noqa: B008
+    principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.READ)),  # noqa: B008
+) -> AthenaResponse[FullValidationProgressDTO]:
+    data = service.full_validation_status()
     return AthenaResponse(status="success", data=data, meta=_meta(request))
 
 

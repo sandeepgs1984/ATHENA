@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.58.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.63.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -312,27 +312,20 @@
                     </div>
                 </div>
 
-                <!-- Market Intelligence Tab -->
+                <!-- Market Intelligence Tab — MI-5 layout: Market Summary band;
+                     main row splits Validation Pipeline | Universe (scrollable);
+                     right rail holds Quick Actions, Recent Activity, Saved Symbols.
+                     Export / numeric Health-Breadth gauges omitted (no real data). -->
                 <div id="tab-market" class="tab-pane">
-                    <div class="market-workstation">
-                        <!-- Column 1: Market Summary Hero (MI-2). Trend/Volatility/
-                             Gap reuse the exact .brief-gauge/.hero-metric-band tile
-                             language already established for Decisions & Trace, tone-
-                             colored via the same contextChipTone() used there — same
-                             RegimeLabel enum, one tone system, not a parallel one.
-                             Market Health shows the real 4-dimension categorical
-                             breakdown (breadth/trend quality/momentum/volatility) —
-                             there is no real numeric 0-100 score anywhere in ATHENA
-                             (MarketHealthScore is never constructed), so a fabricated
-                             gauge was replaced with real data instead, per ADR-005. -->
-                        <div class="workstation-column">
-                            <div class="card">
+                    <div class="market-workstation market-workstation-mi5">
+                        <div class="market-summary-band">
+                            <div class="card market-summary-card">
                                 <div class="card-header">
                                     <div class="card-title-icon"><i class="fas fa-chart-line"></i></div>
                                     <h3>Market Summary</h3>
                                     <span id="market-summary-asof" class="text-muted market-summary-asof"></span>
                                 </div>
-                                <div class="card-body">
+                                <div class="card-body market-summary-body">
                                     <div class="market-summary-gauges">
                                         <div class="brief-gauge">
                                             <span class="brief-gauge-label">Regime</span>
@@ -363,21 +356,17 @@
                             </div>
                         </div>
 
-                        <!-- Column 2: compact Validation Pipeline (MI-3) + Stock
-                             List as the primary scroll region. View Details opens
-                             a modal (not an inline expand) so the funnel never
-                             steals vertical space. Saved Symbols is collapsed by
-                             default (same secondary-panel pattern as Trading
-                             Calendar; MI-5 will relocate it fully). MI-4 will
-                             redesign Stock List into the Universe table. -->
-                        <div class="workstation-column market-validation-column">
+                        <!-- Main workspace: Validation Pipeline | Universe side-by-side
+                             so the table keeps a real scroll pane instead of being
+                             crushed under the funnel. Right rail stays Quick Actions. -->
+                        <div class="market-main-column market-main-split">
                             <div class="card validation-card">
                                 <div class="card-header">
                                     <div class="card-title-icon"><i class="fas fa-filter"></i></div>
                                     <h3>Validation Pipeline <span class="validation-funnel-period">(Today)</span></h3>
                                 </div>
-                                <div class="card-body">
-                                    <div id="validation-funnel" class="validation-funnel" aria-live="polite">
+                                <div class="card-body validation-card-body">
+                                    <div id="validation-funnel" class="validation-funnel validation-funnel-vertical" aria-live="polite">
                                         <div class="text-muted">Loading funnel…</div>
                                     </div>
                                     <div class="validation-funnel-footer">
@@ -398,7 +387,12 @@
                                         <h3>Universe</h3>
                                         <p class="metric-desc">Nifty 500 seed + your additions</p>
                                     </div>
-                                    <span id="candidate-count" class="meta-chip score-chip">0 symbols</span>
+                                    <div class="universe-header-actions">
+                                        <button type="button" id="universe-validate-all-btn" class="mi-primary-btn" title="Same as Run Full Validation — one background job for every active candidate">
+                                            <i class="fas fa-play"></i> Validate All
+                                        </button>
+                                        <span id="candidate-count" class="meta-chip score-chip">0 symbols</span>
+                                    </div>
                                 </div>
                                 <div class="card-body candidate-card-body">
                                     <div class="candidate-add-row">
@@ -445,20 +439,29 @@
                                     <ul id="candidate-list" class="candidate-list" hidden></ul>
                                 </div>
                             </div>
+                        </div>
 
-                            <!-- UX-9b: personal watch list — collapsed by default so
-                                 the Stock List keeps the remaining viewport height.
-                                 Saving a symbol here has no pipeline effect. -->
-                            <details class="card candidate-card market-saved-symbols-details">
-                                <summary class="market-saved-symbols-summary">
-                                    <div class="card-title-icon"><i class="fas fa-bookmark"></i></div>
-                                    <div class="market-saved-symbols-summary-copy">
+                        <aside class="market-side-rail">
+                            <div class="card market-recent-activity-card">
+                                <div class="card-header">
+                                    <div class="card-title-icon"><i class="fas fa-clock-rotate-left"></i></div>
+                                    <h3>Recent Activity</h3>
+                                </div>
+                                <div class="card-body">
+                                    <ul id="market-recent-activity" class="market-recent-activity-list">
+                                        <li class="text-muted">Loading…</li>
+                                    </ul>
+                                </div>
+                            </div>
+
+                            <div class="card candidate-card market-saved-symbols-card">
+                                <div class="card-header candidate-card-header">
+                                    <div>
                                         <h3>Saved Symbols</h3>
-                                        <p class="metric-desc">Your personal watch list</p>
+                                        <p class="metric-desc">Personal watch list</p>
                                     </div>
-                                    <span id="saved-symbols-count" class="meta-chip score-chip">0 symbols</span>
-                                    <i class="fas fa-chevron-down market-calendar-chevron" aria-hidden="true"></i>
-                                </summary>
+                                    <span id="saved-symbols-count" class="meta-chip score-chip">0</span>
+                                </div>
                                 <div class="card-body candidate-card-body">
                                     <div class="candidate-add-row">
                                         <input type="text" id="saved-symbol-input" placeholder="Save symbol (e.g. INFY)" />
@@ -471,14 +474,42 @@
                                     </div>
                                     <ul id="saved-symbols-list" class="candidate-list"></ul>
                                 </div>
-                            </details>
-                        </div>
+                            </div>
+
+                            <div class="card market-quick-actions-card">
+                                <div class="card-header">
+                                    <div class="card-title-icon"><i class="fas fa-bolt"></i></div>
+                                    <h3>Quick Actions</h3>
+                                </div>
+                                <div class="card-body market-quick-actions-body">
+                                    <button type="button" id="mi-focus-add-symbol-btn" class="mi-action-row">
+                                        <span class="mi-action-icon mi-action-icon-add" aria-hidden="true"><i class="fas fa-plus"></i></span>
+                                        <span class="mi-action-copy">
+                                            <strong>Add Symbol to Universe</strong>
+                                            <span>Type a trading symbol and validate</span>
+                                        </span>
+                                    </button>
+                                    <button type="button" id="mi-run-full-validation-btn" class="mi-action-row">
+                                        <span class="mi-action-icon mi-action-icon-play" aria-hidden="true"><i class="fas fa-play"></i></span>
+                                        <span class="mi-action-copy">
+                                            <strong>Run Full Validation</strong>
+                                            <span>All active candidates, one background run</span>
+                                        </span>
+                                    </button>
+                                    <button type="button" id="mi-refresh-market-btn" class="mi-action-row">
+                                        <span class="mi-action-icon mi-action-icon-refresh" aria-hidden="true"><i class="fas fa-rotate"></i></span>
+                                        <span class="mi-action-copy">
+                                            <strong>Refresh Market View</strong>
+                                            <span>Reload summary, funnel, and universe</span>
+                                        </span>
+                                    </button>
+                                    <div id="full-validation-progress" class="full-validation-progress text-muted" hidden aria-live="polite"></div>
+                                </div>
+                            </div>
+                        </aside>
                     </div>
 
-                    <!-- MI-1: Trading Calendar moved out of the primary 2-column
-                         grid into a collapsed-by-default secondary panel — it
-                         previously consumed the largest area on the page while
-                         offering little value during live trading. -->
+                    <!-- MI-1: Trading Calendar remains a collapsed secondary panel. -->
                     <details class="card market-calendar-details">
                         <summary class="market-calendar-summary">
                             <div class="card-title-icon"><i class="fas fa-calendar-alt"></i></div>
@@ -1166,6 +1197,6 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.58.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.63.0"></script>
 </body>
 </html>

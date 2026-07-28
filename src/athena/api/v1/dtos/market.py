@@ -66,6 +66,29 @@ class ValidateSymbolsResultDTO(BaseModel):
     as_of_mode: Literal["live", "session_close"] | None = None
 
 
+class FullValidationProgressDTO(BaseModel):
+    """Transient owner-triggered full-universe job progress (ADR-007 / MI-5)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    state: Literal["idle", "running", "completed", "failed"]
+    stage: Literal[
+        "idle",
+        "acquiring_lock",
+        "seeding",
+        "ingesting",
+        "validating",
+        "completed",
+        "failed",
+    ]
+    symbols_total: int = 0
+    symbols_completed: int = 0
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    run_id: str | None = None
+    detail: str | None = None
+
+
 class CandleDTO(BaseModel):
     """One provider-independent OHLCV bar for read-only charting."""
 

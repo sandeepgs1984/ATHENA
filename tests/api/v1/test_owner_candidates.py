@@ -322,3 +322,56 @@ class TestOwnerCandidatesAPI:
         assert by_sym["TCS"].status == "PENDING"
         assert by_sym["TCS"].last_validated_ts is None
         repo.close()
+
+
+class TestFullUniverseValidationAPI:
+    def test_validate_all_start_and_poll(self, client: TestClient) -> None:
+        from athena.ops.serve_runtime import (
+            FullValidationProgress,
+            ServeRuntime,
+            set_serve_runtime,
+        )
+
+        headers = get_auth_headers(client, Role.OPERATOR)
+        runtime = ServeRuntime()
+        set_serve_runtime(runtime)
+        progress = FullValidationProgress(
+            state="running",
+            stage="ingesting",
+            symbols_total=5,
+            symbols_completed=0,
+            started_at=datetime.now(tz=timezone.utc),
+        )
+        try:
+            with mock.patch(
+                "athena.ops.full_validation.start_full_validation",
+                return_value=progress,
+            ):
+                response = client.post("/api/v1/market/validate-all", headers=headers)
+            assert response.status_code == 202
+            assert response.json()["data"]["state"] == "running"
+            assert response.json()["data"]["symbols_total"] == 5
+
+            runtime.set_full_validation(progress)
+            status = client.get("/api/v1/market/validate-all", headers=headers)
+            assert status.status_code == 200
+            assert status.json()["data"]["stage"] == "ingesting"
+        finally:
+            set_serve_runtime(None)
+
+    def test_validate_all_conflict_is_409(self, client: TestClient) -> None:
+        from athena.ops.full_validation import CycleBusyError
+        from athena.ops.serve_runtime import ServeRuntime, set_serve_runtime
+
+        headers = get_auth_headers(client, Role.OPERATOR)
+        set_serve_runtime(ServeRuntime())
+        try:
+            with mock.patch(
+                "athena.ops.full_validation.start_full_validation",
+                side_effect=CycleBusyError("cycle lock busy — another run-due"),
+            ):
+                response = client.post("/api/v1/market/validate-all", headers=headers)
+            assert response.status_code == 409
+            assert response.json()["title"] == "Cycle Busy"
+        finally:
+            set_serve_runtime(None)

@@ -22,7 +22,7 @@ status updated on approval.
 | Technical debt introduced | None |
 | Suggested improvements | Optional client-side paging if Universe grows far past ~500; Inspect Trace FAIL-badge parsing honesty (pre-existing, flagged in MI-3) |
 | Remaining work | None for this milestone |
-| Status | 🔄 Ready for review (2026-07-28) |
+| Status | **✅ Approved** (2026-07-28) |
 | Branch | feature/live-dashboard |
 
 ### Scope completed
@@ -92,6 +92,33 @@ status updated on approval.
 - **Write path**: `_qualified_from_repo()` reports every WATCH/TRADE decision made today instead of only the current run's symbols, still keeping each symbol's newest verdict (a name downgraded to NO_TRADE drops out).
 - **Funnel**: `validation_funnel()` merges the day's completed runs — each symbol keeps the verdict of the newest run that covered it, and its WATCH/TRADE is read from that same run, so a name re-validated without qualifying loses the decision it earned earlier. Runs that recorded counts without per-symbol members keep the previous summary-based reading.
 - **Details modal**: the dashboard applies the same merge, so Eligible/Excluded and Qualified Today agree with the funnel instead of showing the last scoped symbol alone.
+
+---
+
+## MI-5 — Recent Activity + Quick Actions + Full Validation (ADR-007)
+
+| | |
+|---|---|
+| Completed | 2026-07-28 |
+| Objective | Final Market Intelligence redesign milestone: Quick Actions, Recent Activity, Saved Symbols relocation, and owner-triggered full-universe validation as a background host job (ADR-007 Accepted) |
+| Scope | `src/athena/config/models.py`, `config/providers/kite.json`, `src/athena/data/providers/{kite_transport,kite_provider}.py`, `src/athena/ops/{serve_runtime,full_validation}.py`, `src/athena/api/{errors.py,v1/dtos/market.py,v1/services/candidates_service.py,v1/routers/market.py}`, `src/athena/api/static/{index.html,js/09-market-intelligence.js,css/06-market-intelligence.css}`, tests below |
+| Public APIs added | `POST /api/v1/market/validate-all` (202) → start; `GET /api/v1/market/validate-all` → poll `FullValidationProgressDTO`. `CycleBusyError` → HTTP 409 |
+| Tests | Pacing/429 transport; full-validation busy/lock; validate-all API; dashboard hosting. Full suite **1072 passed** |
+| Coverage | Self-verified. Owner live-review density pass measured at 1920×1080: Universe occupies 62.7% of the main workspace with a 553px internal table viewport; Summary is 172px high and Pipeline 173px. Progress is process-local on ServeRuntime |
+| Architecture compliance | No new execution model beyond ADR-007. Reuses `CycleRunnerLock` / `DryRunCycleOrchestrator` / `OwnerValidationPipeline`. No schema bump. Scoped validate contract unchanged |
+| ADR compliance | ADR-007 Accepted. ADR-005: Recent Activity is real run history; Export omitted; Refresh Market View labelled honestly (reload view, not provider ingest) |
+| Risks discovered | Progress mid-ingest cannot honestly report per-symbol completion without instrumenting `LiveIngestionEngine` — UI shows stage + total, completed jumps to total on success |
+| Technical debt introduced | None intentional. Revisit ServeRuntime progress before multi-worker deploy (documented in ADR-007) |
+| Suggested improvements | Optional per-symbol progress callbacks in ingestion; cancel-running-job control |
+| Remaining work | None for this milestone — Market Intelligence redesign track complete pending approval |
+| Status | 🔄 Ready for review (2026-07-28) |
+| Branch | feature/live-dashboard |
+
+### Scope completed
+
+- **Provider pacing**: configurable intervals + 429 retry with exponential backoff; injectable sleep/clock for tests; wired through `KiteProvider.from_config_dir`.
+- **Background job**: single-flight via advisory lock; transient progress on `ServeRuntime`; durable outcome is the usual run record.
+- **UI**: Mock-aligned Market Summary with one seven-cell row (Regime/Volatility/Gap + four real health dimensions) and a full-width Evidence footer; compact horizontal Validation KPI blocks; Universe at ~63% of the main workspace with sticky-header internal scrolling; utility rail reordered Recent Activity → Saved Symbols → Quick Actions; assets `v9.63.0`.
 
 ---
 

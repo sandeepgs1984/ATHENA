@@ -1,21 +1,200 @@
 /* Market Workstation Layout. MI-1 removed the Trading Calendar column (now
    a collapsible panel below, see .market-calendar-details) — 3 columns
    became 2; the two remaining columns keep their prior relative width. */
-.market-workstation {
+/* Market Workstation Layout — MI-5 mock alignment:
+   summary band across the top; main column (pipeline + universe);
+   right rail (quick actions + recent activity + saved symbols). */
+.market-workstation,
+.market-workstation-mi5 {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: var(--space-24);
+    grid-template-columns: minmax(0, 1fr) 280px;
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas:
+        "summary rail"
+        "main rail";
+    gap: var(--space-12);
     height: calc(100vh - 120px);
     overflow: hidden;
     padding: var(--space-8) 0;
 }
 
+.market-summary-band {
+    grid-area: summary;
+    min-height: 0;
+}
+
+.market-main-column {
+    grid-area: main;
+    display: grid;
+    grid-template-columns: minmax(360px, 0.58fr) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    gap: var(--space-12);
+    min-height: 0;
+    overflow: hidden;
+}
+
+.market-side-rail {
+    grid-area: rail;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-12);
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.market-summary-card,
+.market-summary-card .card-body {
+    height: auto;
+}
+
+.market-summary-body {
+    display: grid !important;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 0 !important;
+    padding: var(--space-8) var(--space-12) var(--space-9) !important;
+}
+
+/* Pipeline | Universe side-by-side: Universe owns the height and table scroll. */
+.market-main-split > .market-universe-card {
+    min-height: 0;
+    height: 100%;
+    max-height: 100%;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.market-main-split > .validation-card {
+    align-self: start;
+    height: auto;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.market-main-split .validation-card-body {
+    flex: 0 0 auto;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-8);
+    padding: var(--space-10) var(--space-12) !important;
+}
+
+.market-main-split .validation-funnel-vertical {
+    flex: 0 0 auto;
+    min-height: 0;
+    overflow-x: auto;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(64px, 1fr));
+    gap: var(--space-5);
+}
+
+.market-main-split .validation-funnel-vertical .validation-funnel-stage {
+    flex-direction: column;
+    justify-content: center;
+    text-align: center;
+    gap: 3px;
+    min-height: 84px;
+    padding: var(--space-7) var(--space-4);
+}
+
+.market-main-split .validation-funnel-vertical .validation-funnel-stage + .validation-funnel-stage::before {
+    left: calc(var(--space-5) * -1 - 5px);
+    top: 50%;
+    transform: translateY(-55%);
+}
+
+.market-main-split .validation-funnel-vertical .validation-funnel-stage-label {
+    min-width: 0;
+    font-size: 0.67rem;
+}
+
+.market-main-split .validation-funnel-vertical .validation-funnel-stage-count {
+    margin-left: 0;
+    font-size: 1rem;
+}
+
+.market-main-split .validation-funnel-footer {
+    flex-direction: row;
+    align-items: center;
+    gap: var(--space-6);
+    padding-top: var(--space-7);
+    min-height: 24px;
+}
+
+.market-main-split .validation-funnel-details-btn {
+    align-self: auto;
+    margin-left: auto;
+    padding: var(--space-5) var(--space-9);
+}
+
+.market-main-split .market-universe-card .candidate-card-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-12);
+}
+
+.market-main-split .market-universe-scroll {
+    flex: 1 1 auto;
+    min-height: 140px;
+    overflow: auto;
+}
+
+@media (max-width: 1280px) {
+    .market-main-column {
+        grid-template-columns: minmax(330px, 0.58fr) minmax(0, 1fr);
+    }
+}
+
+@media (max-width: 1100px) {
+    .market-workstation-mi5 {
+        grid-template-columns: 1fr;
+        grid-template-areas:
+            "summary"
+            "main"
+            "rail";
+        grid-template-rows: auto auto auto;
+        height: auto;
+        overflow: visible;
+    }
+
+    .market-main-column {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto minmax(420px, 60vh);
+        height: auto;
+        overflow: visible;
+    }
+
+    .market-side-rail {
+        overflow: visible;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
 @media (max-width: 768px) {
-    .market-workstation {
+    .market-workstation,
+    .market-workstation-mi5 {
         grid-template-columns: 1fr;
         overflow-y: auto;
         height: auto;
     }
+
+    .market-side-rail {
+        grid-template-columns: 1fr;
+    }
+}
+
+.market-workstation > .workstation-column {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-16);
+    min-height: 0;
+    overflow: hidden;
 }
 
 /* MI-1: Trading Calendar relocated out of the primary grid — collapsed by
@@ -461,11 +640,7 @@
    .tone-*-text utility classes (13-context-history.css) applied directly
    to .hero-metric-band — no local color rules needed. */
 .market-summary-gauges {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: var(--space-12);
-    padding-bottom: var(--space-12);
-    border-bottom: 1px solid var(--border-color);
+    display: contents;
 }
 
 /* .brief-gauge-label defaults to single-line ellipsis, tuned for that
@@ -489,25 +664,72 @@
    (13-context-history.css), the exact same cards the Decision Brief's own
    Market Context uses for the same MarketHealthLabel dimensions. */
 .market-health-section {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-8);
+    display: contents;
 }
 
-/* Regime Explanation */
+.market-summary-card .card-header {
+    min-height: 34px;
+    padding: var(--space-7) var(--space-14);
+}
+
+.market-summary-card .brief-gauge,
+.market-summary-card .context-metric {
+    min-width: 0;
+    min-height: 58px;
+    padding: var(--space-7) var(--space-11);
+    border: 0;
+    border-right: 1px solid var(--border-color);
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
+.market-summary-card .context-metric:last-child {
+    border-right: 0;
+}
+
+.market-summary-card .context-metric-grid {
+    display: contents;
+}
+
+.market-health-section > .regime-field-label {
+    display: none;
+}
+
+.market-summary-card .brief-gauge-label,
+.market-summary-card .context-metric-label {
+    margin-bottom: var(--space-4);
+    font-size: var(--text-0-68);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.market-summary-card .hero-metric-band,
+.market-summary-card .context-metric-value {
+    font-size: var(--text-0-88);
+    line-height: 1.2;
+    white-space: normal;
+}
+
+/* Evidence is attribution, not a workspace card: keep it as a footer strip. */
 .regime-explanation {
-    margin-top: var(--space-10);
+    grid-column: 1 / -1;
+    margin-top: 0;
     background-color: rgba(255, 255, 255, 0.02);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    padding: var(--space-16);
+    border: 0;
+    border-top: 1px solid var(--border-color);
+    border-radius: 0;
+    padding: var(--space-6) var(--space-3) 0;
     display: flex;
-    flex-direction: column;
-    gap: var(--space-8);
+    flex-direction: row;
+    align-items: baseline;
+    gap: var(--space-10);
 }
 
 .regime-explanation h4 {
-    font-size: var(--text-0-85);
+    flex: 0 0 auto;
+    margin: 0;
+    font-size: var(--text-0-72);
     font-weight: 600;
     color: var(--text-secondary);
     text-transform: uppercase;
@@ -515,9 +737,13 @@
 }
 
 .regime-explanation p {
-    font-size: var(--text-0-85);
-    line-height: 1.5;
+    margin: 0;
+    font-size: var(--text-0-78);
+    line-height: 1.35;
     color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* Calendar styling */
@@ -712,4 +938,265 @@
 .event-tag.macro { background-color: rgba(0, 242, 254, 0.1); color: var(--accent); }
 .event-tag.expiry-tag { background-color: rgba(255, 208, 0, 0.1); color: var(--warning); }
 .event-tag.holiday-tag { background-color: rgba(255, 78, 80, 0.1); color: var(--danger); }
+
+/* MI-5 Quick Actions / Recent Activity / Validate All — mock-aligned action rows */
+.market-quick-actions-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-8);
+    padding-top: var(--space-4);
+}
+
+.mi-action-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-12);
+    width: 100%;
+    text-align: left;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    padding: var(--space-12) var(--space-14);
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: border-color var(--transition-speed) ease,
+        background var(--transition-speed) ease,
+        transform var(--transition-speed) ease;
+}
+
+.mi-action-row:hover:not(:disabled) {
+    border-color: rgba(0, 230, 118, 0.35);
+    background: rgba(0, 230, 118, 0.06);
+}
+
+.mi-action-row:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.mi-action-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: var(--text-0-85);
+}
+
+.mi-action-icon-add {
+    background: rgba(0, 242, 254, 0.12);
+    color: var(--accent);
+}
+
+.mi-action-icon-play {
+    background: rgba(0, 230, 118, 0.16);
+    color: var(--success);
+}
+
+.mi-action-icon-refresh {
+    background: rgba(148, 163, 184, 0.14);
+    color: var(--text-muted);
+}
+
+.mi-action-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.mi-action-copy strong {
+    font-size: var(--text-0-85);
+    font-weight: 650;
+    color: var(--text-primary);
+}
+
+.mi-action-copy span {
+    font-size: var(--text-0-75);
+    color: var(--text-muted);
+    line-height: 1.3;
+}
+
+.mi-primary-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-8);
+    background: rgba(0, 230, 118, 0.14);
+    border: 1px solid rgba(0, 230, 118, 0.4);
+    color: var(--success);
+    border-radius: 8px;
+    padding: var(--space-8) var(--space-14);
+    font-size: var(--text-0-8);
+    font-weight: 700;
+    cursor: pointer;
+    transition: background var(--transition-speed) ease, border-color var(--transition-speed) ease;
+}
+
+.mi-primary-btn:hover:not(:disabled) {
+    background: rgba(0, 230, 118, 0.22);
+    border-color: rgba(0, 230, 118, 0.65);
+}
+
+.mi-primary-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.full-validation-progress {
+    font-size: var(--text-0-8);
+    line-height: 1.4;
+    padding: var(--space-8) 0 0;
+}
+
+.full-validation-progress.is-running {
+    color: var(--accent);
+}
+
+.full-validation-progress.is-failed {
+    color: var(--danger);
+}
+
+.full-validation-progress.is-completed {
+    color: var(--success);
+}
+
+.market-recent-activity-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    max-height: 240px;
+    overflow-y: auto;
+}
+
+.market-recent-activity-list li {
+    display: grid;
+    grid-template-columns: 8px minmax(0, 1fr) auto;
+    align-items: start;
+    gap: var(--space-10);
+    font-size: var(--text-0-8);
+    padding: var(--space-10) 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.market-recent-activity-list li:last-child {
+    border-bottom: none;
+}
+
+.market-activity-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-top: 5px;
+    background: var(--accent);
+    box-shadow: 0 0 0 3px rgba(0, 242, 254, 0.15);
+}
+
+.market-activity-dot.is-failed {
+    background: var(--danger);
+    box-shadow: 0 0 0 3px rgba(255, 78, 80, 0.15);
+}
+
+.market-activity-main {
+    color: var(--text-primary);
+    line-height: 1.35;
+}
+
+.market-activity-meta {
+    color: var(--text-muted);
+    white-space: nowrap;
+    font-size: var(--text-0-75);
+}
+
+.universe-header-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-10);
+}
+
+.market-saved-symbols-card {
+    flex: 0 0 auto;
+}
+
+.market-saved-symbols-card .candidate-list {
+    max-height: 160px;
+    overflow-y: auto;
+}
+
+.market-saved-symbols-details {
+    margin-top: var(--space-16);
+}
+
+/* Density pass: preserve readability while giving rows and activity the pixels. */
+.market-side-rail > .market-recent-activity-card {
+    flex: 1 1 0;
+    min-height: 170px;
+}
+
+.market-side-rail > .market-saved-symbols-card,
+.market-side-rail > .market-quick-actions-card {
+    flex: 0 0 auto;
+}
+
+.market-side-rail .card-header,
+.market-main-split .card-header {
+    min-height: 38px;
+    padding: var(--space-8) var(--space-12);
+}
+
+.market-side-rail .card-body {
+    padding: var(--space-10) var(--space-12);
+}
+
+.market-quick-actions-body {
+    gap: var(--space-5);
+}
+
+.mi-action-row {
+    gap: var(--space-8);
+    border-radius: 7px;
+    padding: var(--space-7) var(--space-9);
+}
+
+.mi-action-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+}
+
+.mi-action-copy strong {
+    font-size: var(--text-0-78);
+}
+
+.mi-action-copy span {
+    font-size: var(--text-0-7);
+}
+
+.market-main-split .market-universe-card .candidate-card-body {
+    gap: var(--space-7) !important;
+    padding: var(--space-10) !important;
+}
+
+.market-main-split .candidate-add-row input,
+.market-main-split .candidate-add-row button,
+.market-main-split .universe-filter-select,
+.market-main-split .candidate-search input {
+    min-height: 30px;
+}
+
+.market-main-split .market-universe-table th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--surface-card, #101827);
+    padding: var(--space-7) var(--space-9);
+}
+
+.market-main-split .market-universe-table td {
+    padding: var(--space-8) var(--space-9);
+}
 

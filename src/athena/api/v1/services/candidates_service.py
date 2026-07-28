@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 from athena.api.exceptions import ResourceNotFoundError
 from athena.api.v1.dtos.market import (
     DeleteCandidateResultDTO,
+    FullValidationProgressDTO,
     OwnerCandidateDTO,
     OwnerCandidateListDTO,
     UpsertCandidateRequest,
@@ -187,6 +188,40 @@ class CandidatesService:
             detail=result.detail,
             as_of=as_of,
             as_of_mode=as_of_mode,
+        )
+
+    def start_full_validation(self) -> FullValidationProgressDTO:
+        """ADR-007: kick off owner-triggered full-universe validation in the host."""
+        from athena.ops.full_validation import start_full_validation
+
+        if self._repo is None:
+            raise AthenaError(
+                "Full validation requires the live SQLite ledger "
+                "(restart the API so wire_sqlite_providers attaches the DB)"
+            )
+        progress = start_full_validation(
+            repo_root=self._repo_root,
+            config_dir=self._config_dir,
+            db_path=Path(self._repo.path),
+        )
+        return self._progress_dto(progress)
+
+    def full_validation_status(self) -> FullValidationProgressDTO:
+        from athena.ops.full_validation import get_full_validation_progress
+
+        return self._progress_dto(get_full_validation_progress())
+
+    @staticmethod
+    def _progress_dto(progress) -> FullValidationProgressDTO:
+        return FullValidationProgressDTO(
+            state=progress.state,
+            stage=progress.stage,
+            symbols_total=progress.symbols_total,
+            symbols_completed=progress.symbols_completed,
+            started_at=progress.started_at,
+            finished_at=progress.finished_at,
+            run_id=progress.run_id,
+            detail=progress.detail,
         )
 
     def _to_dto(

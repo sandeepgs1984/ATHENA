@@ -201,7 +201,12 @@
             return;
         }
         host.innerHTML = entries
-            .map(([key, label]) => contextMetricCard(friendlyLabel(key), label, contextChipTone(label)))
+            .map(([key, label]) => {
+                const displayName = key === "volatility"
+                    ? "Volatility Quality"
+                    : friendlyLabel(key);
+                return contextMetricCard(displayName, label, contextChipTone(label));
+            })
             .join("");
     }
 
@@ -430,6 +435,15 @@
             renderUniverseTable(universe, universeNote);
             renderQualifiedToday(qualified);
 
+            // 5. MI-5: Recent Activity from the same runs we already fetched.
+            if (runsRes && runsRes.data) {
+                renderRecentActivity(runsRes.data);
+            } else {
+                renderRecentActivity([]);
+            }
+            // Resume an in-flight full-validation poll if the host still has one.
+            pollFullValidationStatus({ silent: true });
+
         } catch (err) {
             console.error("Failed to load market intelligence data", err);
             const trendBadge = document.getElementById("regime-trend-badge");
@@ -445,6 +459,133 @@
                 universeBody.innerHTML = `<tr><td colspan="3" class="text-muted text-center" style="padding: 24px;">Failed to load universe members.</td></tr>`;
             }
             showToast("Failed to load market intelligence data", "danger");
+        }
+    }
+
+    function renderRecentActivity(runs) {
+        const host = document.getElementById("market-recent-activity");
+        if (!host) return;
+        const sorted = [...(runs || [])].sort(
+            (a, b) => new Date(b.as_of || 0) - new Date(a.as_of || 0)
+        ).slice(0, 12);
+        if (!sorted.length) {
+            host.innerHTML = '<li class="text-muted">No validation runs yet.</li>';
+            return;
+        }
+        host.innerHTML = sorted.map((r) => {
+            const status = String(r.overall_status || "unknown");
+            const failed = status.toUpperCase() === "FAILED";
+            const when = r.as_of ? formatDecisionTime(r.as_of) : "—";
+            const runId = String(r.run_id || "").slice(0, 18);
+            const label = failed ? "Validation failed" : "Market validation completed";
+            return (
+                `<li>` +
+                `<span class="market-activity-dot${failed ? " is-failed" : ""}" aria-hidden="true"></span>` +
+                `<span class="market-activity-main">${label}` +
+                (runId ? `<br><span class="text-muted">${runId}</span>` : "") +
+                `</span>` +
+                `<span class="market-activity-meta">${when}</span>` +
+                `</li>`
+            );
+        }).join("");
+    }
+
+    let _fullValidationPollTimer = null;
+
+    function renderFullValidationProgress(progress) {
+        const el = document.getElementById("full-validation-progress");
+        const runBtn = document.getElementById("mi-run-full-validation-btn");
+        const allBtn = document.getElementById("universe-validate-all-btn");
+        if (!el) return;
+        if (!progress) {
+            el.hidden = true;
+            el.textContent = "";
+            el.className = "full-validation-progress text-muted";
+            if (runBtn) runBtn.disabled = false;
+            if (allBtn) allBtn.disabled = false;
+            return;
+        }
+        const state = String(progress.state || "idle");
+        const stage = String(progress.stage || "idle");
+        const total = progress.symbols_total ?? 0;
+        const done = progress.symbols_completed ?? 0;
+        el.hidden = state === "idle";
+        el.className = `full-validation-progress text-muted is-${state}`;
+        if (state === "running") {
+            el.textContent =
+                `Running full validation… ${stage}` +
+                (total ? ` · ${done}/${total} symbols` : "") +
+                " (this can take several minutes)";
+            if (runBtn) runBtn.disabled = true;
+            if (allBtn) allBtn.disabled = true;
+        } else if (state === "completed") {
+            el.textContent =
+                `Full validation completed` +
+                (progress.run_id ? ` · ${progress.run_id}` : "") +
+                (total ? ` · ${total} symbols` : "");
+            if (runBtn) runBtn.disabled = false;
+            if (allBtn) allBtn.disabled = false;
+        } else if (state === "failed") {
+            el.textContent =
+                `Full validation failed` +
+                (progress.detail ? `: ${progress.detail}` : "");
+            if (runBtn) runBtn.disabled = false;
+            if (allBtn) allBtn.disabled = false;
+        } else {
+            el.hidden = true;
+            if (runBtn) runBtn.disabled = false;
+            if (allBtn) allBtn.disabled = false;
+        }
+    }
+
+    async function pollFullValidationStatus({ silent = false } = {}) {
+        try {
+            const res = await apiRequest("/api/v1/market/validate-all", { skipToast: true });
+            const progress = res && res.data ? res.data : null;
+            renderFullValidationProgress(progress);
+            if (progress && progress.state === "running") {
+                if (_fullValidationPollTimer) clearTimeout(_fullValidationPollTimer);
+                _fullValidationPollTimer = setTimeout(() => pollFullValidationStatus(), 3000);
+            } else if (progress && progress.state === "completed" && !silent) {
+                showToast("Full validation completed", "success");
+                if (typeof loadMarketIntelligence === "function") {
+                    await loadMarketIntelligence();
+                }
+            } else if (progress && progress.state === "failed" && !silent) {
+                showToast(progress.detail || "Full validation failed", "danger");
+            }
+        } catch (err) {
+            if (!silent) {
+                console.error("full validation status poll failed", err);
+            }
+        }
+    }
+
+    async function startFullUniverseValidation() {
+        try {
+            const res = await apiRequest("/api/v1/market/validate-all", {
+                method: "POST",
+                skipToast: true,
+            });
+            renderFullValidationProgress(res && res.data ? res.data : null);
+            showToast("Full validation started in the background", "success");
+            pollFullValidationStatus();
+        } catch (err) {
+            const status = err?.status;
+            const detail = err?.data?.detail || err?.data?.title;
+            if (status === 404) {
+                showToast(
+                    "Full validation API not loaded — restart ./athena-serve and hard-refresh",
+                    "danger"
+                );
+                return;
+            }
+            showToast(
+                typeof detail === "string" && detail.trim()
+                    ? detail
+                    : "Could not start full validation",
+                "danger"
+            );
         }
     }
 
@@ -1055,6 +1196,34 @@
     const funnelDetailsBtn = document.getElementById("validation-funnel-details-btn");
     const funnelDetailsModal = document.getElementById("validation-funnel-modal");
     const funnelDetailsClose = document.getElementById("validation-funnel-modal-close");
+
+    const runFullValidationBtn = document.getElementById("mi-run-full-validation-btn");
+    const universeValidateAllBtn = document.getElementById("universe-validate-all-btn");
+    const focusAddSymbolBtn = document.getElementById("mi-focus-add-symbol-btn");
+    const refreshMarketBtn = document.getElementById("mi-refresh-market-btn");
+    if (runFullValidationBtn) {
+        runFullValidationBtn.addEventListener("click", () => startFullUniverseValidation());
+    }
+    if (universeValidateAllBtn) {
+        universeValidateAllBtn.addEventListener("click", () => startFullUniverseValidation());
+    }
+    if (focusAddSymbolBtn) {
+        focusAddSymbolBtn.addEventListener("click", () => {
+            const input = document.getElementById("candidate-symbol-input");
+            if (input) {
+                input.focus();
+                input.scrollIntoView({ behavior: "smooth", block: "center" });
+            }
+        });
+    }
+    if (refreshMarketBtn) {
+        refreshMarketBtn.addEventListener("click", async () => {
+            showToast("Refreshing market view…", "info");
+            if (typeof loadMarketIntelligence === "function") {
+                await loadMarketIntelligence();
+            }
+        });
+    }
     if (funnelDetailsBtn && funnelDetailsModal) {
         funnelDetailsBtn.addEventListener("click", () => openModal(funnelDetailsModal));
     }

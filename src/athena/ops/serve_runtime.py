@@ -22,6 +22,16 @@ from typing import Callable, Literal
 logger = logging.getLogger(__name__)
 
 KiteTokenStatus = Literal["missing", "present", "unknown"]
+FullValidationState = Literal["idle", "running", "completed", "failed"]
+FullValidationStage = Literal[
+    "idle",
+    "acquiring_lock",
+    "seeding",
+    "ingesting",
+    "validating",
+    "completed",
+    "failed",
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,6 +47,20 @@ class LastCycleSnapshot:
     detail: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class FullValidationProgress:
+    """Transient progress for the owner-triggered full-universe job (ADR-007)."""
+
+    state: FullValidationState = "idle"
+    stage: FullValidationStage = "idle"
+    symbols_total: int = 0
+    symbols_completed: int = 0
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    run_id: str | None = None
+    detail: str | None = None
+
+
 @dataclass
 class ServeRuntime:
     """Process-local serve state (readable by health providers)."""
@@ -47,6 +71,7 @@ class ServeRuntime:
     started_at: datetime = field(default_factory=lambda: datetime.now(tz=timezone.utc))
     last_cycle: LastCycleSnapshot | None = None
     last_error: str | None = None
+    full_validation: FullValidationProgress = field(default_factory=FullValidationProgress)
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     def record_cycle(self, snapshot: LastCycleSnapshot) -> None:
@@ -58,6 +83,10 @@ class ServeRuntime:
         with self._lock:
             self.last_error = detail
 
+    def set_full_validation(self, progress: FullValidationProgress) -> None:
+        with self._lock:
+            self.full_validation = progress
+
     def snapshot(self) -> dict[str, object]:
         with self._lock:
             last = self.last_cycle
@@ -68,6 +97,7 @@ class ServeRuntime:
                 "started_at": self.started_at,
                 "last_cycle": last,
                 "last_error": self.last_error,
+                "full_validation": self.full_validation,
             }
 
 

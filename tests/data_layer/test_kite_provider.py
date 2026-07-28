@@ -205,6 +205,106 @@ class TestKiteProviderUnit:
         with pytest.raises(ProviderError, match=r"KITE_ACCESS_TOKEN"):
             UrllibKiteTransport(base_url="https://api.kite.trade", api_key="k", access_token="")
 
+    def test_endpoint_class_buckets(self):
+        from athena.data.providers.kite_transport import endpoint_class
+
+        assert endpoint_class("/quote") == "quote"
+        assert endpoint_class("/instruments/historical/408065/day") == "historical"
+        assert endpoint_class("/instruments/NSE") == "other"
+
+    def test_pacing_waits_between_same_class_requests(self, monkeypatch: pytest.MonkeyPatch):
+        """Quote class is 1 req/s: a second quote before the interval must sleep."""
+        from athena.config.models import KiteRateLimitConfig
+        from athena.data.providers.kite_transport import UrllibKiteTransport
+
+        sleeps: list[float] = []
+        clock = {"t": 100.0}
+
+        def fake_sleep(seconds: float) -> None:
+            sleeps.append(seconds)
+            clock["t"] += seconds
+
+        class _Resp:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self) -> bytes:
+                return b'{"status":"success","data":{}}'
+
+        monkeypatch.setattr(
+            "urllib.request.urlopen", lambda *a, **k: _Resp()
+        )
+        transport = UrllibKiteTransport(
+            base_url="https://api.kite.trade",
+            api_key="k",
+            access_token="t",
+            rate_limit=KiteRateLimitConfig(
+                quote_min_interval_seconds=1.0,
+                historical_min_interval_seconds=0.334,
+                other_min_interval_seconds=0.1,
+                max_429_retries=0,
+            ),
+            sleep=fake_sleep,
+            clock=lambda: clock["t"],
+        )
+        transport.get_json("/quote")
+        clock["t"] += 0.2  # only 0.2s later — must wait ~0.8s
+        transport.get_json("/quote")
+        assert sleeps and sleeps[0] == pytest.approx(0.8, abs=0.01)
+
+    def test_429_retries_then_fails_loudly(self, monkeypatch: pytest.MonkeyPatch):
+        from athena.config.models import KiteRateLimitConfig
+        from athena.data.providers.kite_transport import UrllibKiteTransport
+        import urllib.error
+
+        attempts = {"n": 0}
+        sleeps: list[float] = []
+        clock = {"t": 0.0}
+
+        class _Body:
+            def read(self) -> bytes:
+                return b"rate limited"
+
+        def fake_open_with_body(*_a, **_k):
+            attempts["n"] += 1
+            raise urllib.error.HTTPError(
+                url="https://api.kite.trade/quote",
+                code=429,
+                msg="Too Many Requests",
+                hdrs=None,  # type: ignore[arg-type]
+                fp=_Body(),  # type: ignore[arg-type]
+            )
+
+        def fake_sleep(seconds: float) -> None:
+            sleeps.append(seconds)
+            clock["t"] += seconds
+
+        monkeypatch.setattr("urllib.request.urlopen", fake_open_with_body)
+        transport = UrllibKiteTransport(
+            base_url="https://api.kite.trade",
+            api_key="k",
+            access_token="t",
+            rate_limit=KiteRateLimitConfig(
+                quote_min_interval_seconds=0.001,
+                historical_min_interval_seconds=0.001,
+                other_min_interval_seconds=0.001,
+                max_429_retries=2,
+                retry_backoff_base_seconds=0.5,
+            ),
+            sleep=fake_sleep,
+            clock=lambda: clock["t"],
+        )
+        with pytest.raises(ProviderError, match=r"kite HTTP 429"):
+            transport.get_json("/quote")
+        # 1 initial + 2 retries = 3 attempts; backoff 0.5 then 1.0 (pace sleeps
+        # are ~0.001 and ignored here by filtering)
+        assert attempts["n"] == 3
+        backoffs = [s for s in sleeps if s >= 0.4]
+        assert backoffs == [pytest.approx(0.5), pytest.approx(1.0)]
+
     def test_factory_selects_kite(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         config_dir = tmp_path / "config"
         (config_dir / "providers").mkdir(parents=True)

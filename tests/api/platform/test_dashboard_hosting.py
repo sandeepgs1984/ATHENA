@@ -840,15 +840,19 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     # for one of the lowest-value sections during live trading. Same ids
     # (calendar-month-year/calendar-grid-container/upcoming-events-container)
     # so renderCalendar()/renderUpcomingEvents() are untouched.
+    # MI-1 relocated the calendar; MI-5 reshaped the workstation into
+    # summary + main + right rail (mock-aligned), so the grid is no longer
+    # a flat 1fr 1fr pair of equal columns.
     assert '<details class="card market-calendar-details">' in html
     assert 'id="calendar-month-year"' in html
     assert 'id="calendar-grid-container"' in html
     assert 'id="upcoming-events-container"' in html
     assert ".market-calendar-details" in css
     assert ".market-calendar-summary" in css
-    market_workstation_start = css.find(".market-workstation {")
-    market_workstation_end = css.find("\n}", market_workstation_start)
-    assert "grid-template-columns: 1fr 1fr;" in css[market_workstation_start:market_workstation_end]
+    assert "grid-template-areas:" in css
+    assert '"summary rail"' in css
+    assert '"main rail"' in css
+    assert "minmax(0, 1fr) 280px" in css
 
     # MI-2 (Market Intelligence redesign): "Volatility Regime & Health" card
     # replaced with a "Market Summary" hero — Trend/Volatility/Gap reuse the
@@ -887,6 +891,12 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert 'regime.trend || "TREND_UNKNOWN"' in load_mi_body
     assert 'regime.volatility || "VOLATILITY_UNKNOWN"' in load_mi_body
     assert 'regime.gap || "GAP_UNKNOWN"' in load_mi_body
+    # Updated reference: 3 regime metrics + 4 real categorical health metrics
+    # form one dense seven-cell row; Evidence Attribution is the footer strip.
+    assert "grid-template-columns: repeat(7, minmax(0, 1fr))" in css
+    assert ".market-summary-gauges" in css and "display: contents" in css
+    assert "Volatility Quality" in js
+    assert "grid-column: 1 / -1" in css
 
     # MI-3 (Market Intelligence redesign): Today's Validation text strip
     # replaced with a typed Validation Pipeline funnel (Universe→Eligible→
@@ -931,7 +941,9 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert modal_idx != -1 and universe_idx != -1
     assert modal_idx < universe_idx
     assert 'class="card candidate-card market-stock-list-card market-universe-card"' in html
-    assert "market-saved-symbols-details" in html
+    assert "market-saved-symbols-card" in html
+    assert "market-side-rail" in html
+    assert "market-workstation-mi5" in html
     assert 'closeModal(document.getElementById("validation-funnel-modal"))' in js
     # Inspect Trace is reached only from inside the funnel details modal, and
     # all overlays otherwise share one z-index (later-in-DOM wins), so the
@@ -960,6 +972,40 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".market-universe-table" in css
     assert "last_validated_ts" in js
     assert "eligibility_summary" in js
+
+    # MI-5: Quick Actions + Recent Activity + Validate All + Saved Symbols
+    # relocated out of the primary workstation column.
+    assert 'id="mi-run-full-validation-btn"' in html
+    assert "Run Full Validation" in html
+    assert 'id="universe-validate-all-btn"' in html
+    assert "Validate All" in html
+    assert 'id="mi-refresh-market-btn"' in html
+    assert "Refresh Market View" in html
+    assert 'id="market-recent-activity"' in html
+    assert "function startFullUniverseValidation" in js
+    assert "function renderRecentActivity" in js
+    assert "/api/v1/market/validate-all" in js
+    assert ".mi-action-row" in css
+    assert ".mi-action-icon-play" in css
+    assert ".mi-primary-btn" in css
+    assert ".market-recent-activity-list" in css
+    assert "market-side-rail" in html
+    assert "market-main-column" in html
+    assert "market-main-split" in html
+    assert "validation-funnel-vertical" in html
+    assert "market-summary-band" in html
+    assert "minmax(360px, 0.58fr) minmax(0, 1fr)" in css
+    assert ".market-main-split .market-universe-scroll" in css
+    assert "grid-template-columns: repeat(5, minmax(64px, 1fr))" in css
+    # Utility rail order is Activity → Saved → Actions; Saved is not collapsed
+    # under the calendar, and occasional actions receive the lowest priority.
+    assert "market-saved-symbols-card" in html
+    cal_idx = html.find('class="card market-calendar-details"')
+    activity_idx = html.find("market-recent-activity-card")
+    saved_idx = html.find("market-saved-symbols-card")
+    actions_idx = html.find("market-quick-actions-card")
+    assert saved_idx != -1 and cal_idx != -1 and saved_idx < cal_idx
+    assert activity_idx < saved_idx < actions_idx
 
     # DT-2 — Quick Summary: the UX-6 sidebar strip (score/confidence/risk
     # only) expanded into a richer card (R:R Potential, Expected Return,

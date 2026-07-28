@@ -108,6 +108,7 @@ class KiteProvider:
                 base_url=config.base_url,
                 api_key=os.environ.get("KITE_API_KEY", ""),
                 access_token=os.environ.get("KITE_ACCESS_TOKEN", ""),
+                rate_limit=config.rate_limit,
             )
         return cls(config, transport, strict_symbol_filter=strict_symbol_filter)
 

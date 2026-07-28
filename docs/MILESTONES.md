@@ -388,8 +388,8 @@ Before any implementation, a full data-source inventory was done across every mo
 | **MI-1** Shared ticker strip + Trading Calendar relocation | Generalize the Decisions & Trace header ticker to also render on Market Intelligence (one shared component/endpoint via `TICKER_TABS`, not two); relocate Trading Calendar out of the primary grid into a collapsed-by-default `<details>` panel, same rendering functions/ids untouched | ✅ Approved |
 | **MI-2** Market Summary Hero + Market Regime & Context | Larger-presentation Trend/Volatility/Gap/Evidence Attribution (real); Market Health Score/Breadth gap handled via real categorical labels | ✅ Approved |
 | **MI-3** Validation Pipeline funnel | New small dedicated endpoint exposing the already-computed Universe→Evaluated→Eligible/Excluded→decision_counts breakdown as a typed 5-stage funnel | ✅ Approved |
-| **MI-4** Universe table redesign | Reuse real Symbol/Status/Actions; add Sector via the ingestion fix; scope Eligibility-per-row/Last-Validated-per-row | 🔄 Ready for review |
-| **MI-5** Recent Activity + Quick Actions + Saved Symbols | Real chronological activity feed; Quick Actions consolidated (Add Symbol reuse, new Run Full Validation endpoint, Refresh Market Data relabeled honestly, Export omitted); Saved Symbols relocated to a secondary panel. Also absorbs the owner-requested "Validate All" — same operation as Run Full Validation — plus Kite pacing/429 handling | ⏸ Blocked on **ADR-007 (Proposed)** — owner-triggered background validation job |
+| **MI-4** Universe table redesign | Reuse real Symbol/Status/Actions; add Sector via the ingestion fix; scope Eligibility-per-row/Last-Validated-per-row | ✅ Approved |
+| **MI-5** Recent Activity + Quick Actions + Saved Symbols | Real chronological activity feed; Quick Actions consolidated (Add Symbol reuse, new Run Full Validation endpoint, Refresh Market Data relabeled honestly, Export omitted); Saved Symbols relocated to a secondary panel. Also absorbs the owner-requested "Validate All" — same operation as Run Full Validation — plus Kite pacing/429 handling | 🔄 Ready for review |
 
 #### MI-1 — Shared ticker strip + Trading Calendar relocation
 
@@ -447,7 +447,7 @@ Replaced the Stock List (symbol + Validate/Remove) with the mock’s Universe ta
 | Tests | Sector parse/migration/preserve/backfill; candidates enrichment; scoped-validate verdict merge; Qualified Today dedupe (write + read path). Full suite **1055 passed** |
 | Coverage | Self-verified via tests, plus replayed against a copy of the live DB: 16 Eligible / 10 Excluded / 481 Pending with real per-symbol timestamps, Qualified Today collapsed to one row per name, and the seed path backfilling sector onto 500 instruments (20 distinct sectors). Live: restart the host — a host started before these files were saved serves the old Python and shows every row Pending — then `./athena-daily` for the sector backfill. |
 | Owner-reported fixes | Universe status no longer collapses to Pending after a scoped validate (per-symbol verdict merged newest-run-first, Excluded rows take Last Validated from the judging run); Qualified Today keeps one row per symbol (newest same-day verdict), so repeat validates stop duplicating names. |
-| Status | 🔄 Ready for review (2026-07-28) — implemented and self-verified, awaiting owner approval |
+| Status | ✅ Approved (2026-07-28) |
 
 ---
 
@@ -472,6 +472,19 @@ Owner: "validation pipeline always lists only recent symbol and overrides previo
 | Scope | `owner_validation.py`: `_qualified_from_repo()` no longer restricts the day's WATCH/TRADE decisions to the current run's own symbols (still newest verdict per symbol, so a name downgraded to NO_TRADE drops out). `pipelines_service.py`: `validation_funnel()` counts distinct symbols across the day's completed runs, each keeping the verdict of the newest run that covered it, with each symbol's WATCH/TRADE read from that same run — never summed per-run counts, which would count re-validations twice; runs that recorded counts without per-symbol members keep the previous summary-based reading. `09-market-intelligence.js`: the details modal merges the day's runs by the same rule, so its Eligible/Excluded and Qualified Today lists match the funnel. |
 | Tests | Funnel merges the day's runs and ignores a previous day's; re-validating replaces a symbol's verdict rather than adding a row; Qualified Today keeps symbols from earlier runs, one row per symbol, same day only. Full suite **1064 passed** |
 | Coverage | Replayed against a copy of the live DB: the funnel went from Universe 1 / Eligible 1 (the last scoped validate) to Universe 16 / Eligible 9 / Watch 5 / Trade 4 for the day, reconstructed from runs already persisted — no re-validation needed. |
+
+---
+
+#### MI-5 — Recent Activity + Quick Actions + Full Validation (ADR-007)
+
+Closes the Market Intelligence redesign. Delivers the mock's Quick Actions and Recent Activity, relocates Saved Symbols to a secondary panel, and wires **Run Full Validation / Validate All** as one owner-triggered background job per ADR-007 — with Kite pacing + 429 retry so a 507-symbol run does not trip the vendor.
+
+| | |
+|---|---|
+| Scope | **Pacing**: `KiteRateLimitConfig` in `kite.json` / `KiteProviderConfig`; `UrllibKiteTransport` enforces per-class min intervals (historical 3/s, quote 1/s, other 10/s) and bounded 429 backoff. **Job**: `ServeRuntime.full_validation` + `ops/full_validation.py` (daemon thread, `CycleRunnerLock` single-flight, own DB connection); `POST/GET /api/v1/market/validate-all` (202 / poll); `CycleBusyError` → 409. Scoped `POST /market/validate` unchanged. **UI**: mock-aligned seven-cell Market Summary row (three regime metrics + four real categorical health dimensions) and Evidence footer; compact Validation KPI blocks beside the primary Universe workspace (~63% main width, sticky-header internal scroll); utility rail ordered Recent Activity → Saved Symbols → Quick Actions; Run Full Validation / Validate All / Add Symbol / Refresh Market View preserved. Export omitted (not implemented). |
+| Tests | Transport pacing + 429 retry; full-validation lock/busy guards; validate-all 202/409 API; dashboard hosting for new controls. Full suite **1072 passed** |
+| Coverage | Self-verified via tests and static browser measurement at 1920×1080: Universe 818px of 1304px main width (62.7%) with 553px visible internal table viewport; Summary 172px; compact Pipeline 173px. Assets `v9.62.0`; full-validation progress polls every 3s. |
+| Status | 🔄 Ready for review (2026-07-28) |
 
 ---
 
