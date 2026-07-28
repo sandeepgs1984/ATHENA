@@ -7,7 +7,11 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, Query, Request, status
 
-from athena.api.dependencies import get_candidates_service, get_market_history_service
+from athena.api.dependencies import (
+    get_candidates_service,
+    get_market_history_service,
+    get_market_summary_service,
+)
 from athena.api.security import Permission, RequirePermission
 from athena.api.security.models import AuthenticatedPrincipal
 from athena.api.v1.dtos import AthenaResponse, ResponseMeta
@@ -15,6 +19,7 @@ from athena.api.v1.dtos.market import (
     CandleSeriesDTO,
     DeleteCandidateResultDTO,
     FullValidationProgressDTO,
+    MarketSummaryDTO,
     MarketTickerDTO,
     OwnerCandidateDTO,
     OwnerCandidateListDTO,
@@ -24,6 +29,7 @@ from athena.api.v1.dtos.market import (
 )
 from athena.api.v1.services.candidates_service import CandidatesService
 from athena.api.v1.services.market_history_service import MarketHistoryService
+from athena.api.v1.services.market_summary_service import MarketSummaryService
 from athena.domain.enums import Timeframe
 
 router = APIRouter(prefix="/market", tags=["Market"])
@@ -59,6 +65,23 @@ def get_instrument_candles(
         Timeframe(timeframe),
         limit=limit,
     )
+    return AthenaResponse(status="success", data=data, meta=_meta(request))
+
+
+@router.get(
+    "/summary",
+    response_model=AthenaResponse[MarketSummaryDTO],
+    summary="Market Summary hero — regime, F-5 score, universe breadth, sparklines",
+    status_code=status.HTTP_200_OK,
+    operation_id="getMarketSummary",
+)
+def get_market_summary(
+    request: Request,
+    service: MarketSummaryService = Depends(get_market_summary_service),  # noqa: B008
+    principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.READ)),  # noqa: B008
+) -> AthenaResponse[MarketSummaryDTO]:
+    """Persisted validation-run artifacts only — score/breadth null when absent."""
+    data = service.market_summary()
     return AthenaResponse(status="success", data=data, meta=_meta(request))
 
 

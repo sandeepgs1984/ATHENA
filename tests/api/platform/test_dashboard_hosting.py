@@ -859,9 +859,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     # exact .brief-gauge/.hero-metric-band tile language and contextChipTone/
     # friendlyLabel tone logic already established for Decisions & Trace's
     # own regime rendering (one tone system, not two parallel ones). Market
-    # Health shows the real 4-dimension categorical breakdown instead of a
-    # fabricated numeric score/gauge — MarketHealthScore (the frozen domain's
-    # numeric 0-100 type) is never constructed anywhere in ATHENA.
+    # Health shows the real 4-dimension categorical breakdown; MH-3 adds the
+    # numeric F-5 ring + Universe Breadth from GET /api/v1/market/summary.
     assert "<h3>Market Summary</h3>" in html
     assert "Volatility Regime & Health" not in html
     assert 'id="market-summary-asof"' in html
@@ -874,7 +873,6 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert '"regime-badge' not in js
     assert ".regime-badge" not in css
     assert ".health-bar-fill" not in css
-    assert ".health-score-value" not in css
     assert ".health-gauge-container" not in css
     assert ".market-summary-gauges" in css
     render_health_start = js.find("function renderMarketHealthGrid")
@@ -886,11 +884,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     load_mi_start = js.find("async function loadMarketIntelligence")
     load_mi_end = js.find("\n    async function ", load_mi_start + 1)
     load_mi_body = js[load_mi_start:load_mi_end]
-    assert "regimeAsOf" in load_mi_body
-    assert "renderMarketHealthGrid(regime.market_health)" in load_mi_body
-    assert 'regime.trend || "TREND_UNKNOWN"' in load_mi_body
-    assert 'regime.volatility || "VOLATILITY_UNKNOWN"' in load_mi_body
-    assert 'regime.gap || "GAP_UNKNOWN"' in load_mi_body
+    assert "/api/v1/market/summary" in load_mi_body
+    assert "renderMarketSummaryHero(" in load_mi_body
     # Updated reference: 3 regime metrics + 4 real categorical health metrics
     # form one dense seven-cell row; Evidence Attribution is the footer strip.
     assert "grid-template-columns: repeat(7, minmax(0, 1fr))" in css
@@ -898,6 +893,27 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "Volatility Quality" in js
     assert "grid-column: 1 / -1" in css
 
+    # MH-3: Health Score ring + Universe Breadth + sparklines from summary API.
+    assert 'id="market-health-score-ring"' in html
+    assert 'id="market-health-score-value"' in html
+    assert 'id="market-breadth-pct"' in html
+    assert 'id="market-breadth-counts"' in html
+    assert 'id="market-sparkline-nifty"' in html
+    assert 'id="market-sparkline-vix"' in html
+    assert "Universe Breadth" in html
+    assert "function renderMarketHealthScore" in js
+    assert "function renderUniverseBreadth" in js
+    assert "function renderMarketSparklines" in js
+    assert "function renderMarketSummaryHero" in js
+    assert ".market-summary-metrics" in css
+    assert ".market-health-score-value" in css
+    assert "Unavailable — score needs all six F-5 components" in js
+    assert "Universe breadth" in js
+    # Never invent a display number client-side.
+    assert "84/100" not in js
+    assert 'regime.trend || "TREND_UNKNOWN"' in js
+    assert 'regime.volatility || "VOLATILITY_UNKNOWN"' in js
+    assert 'regime.gap || "GAP_UNKNOWN"' in js
     # MI-3 (Market Intelligence redesign): Today's Validation text strip
     # replaced with a typed Validation Pipeline funnel (Universe→Eligible→
     # Filtered→Watch→Trade) backed by GET /api/v1/pipelines/validation-funnel.

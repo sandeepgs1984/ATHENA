@@ -312,10 +312,10 @@
                     </div>
                 </div>
 
-                <!-- Market Intelligence Tab — MI-5 layout: Market Summary band;
-                     main row splits Validation Pipeline | Universe (scrollable);
-                     right rail holds Quick Actions, Recent Activity, Saved Symbols.
-                     Export / numeric Health-Breadth gauges omitted (no real data). -->
+                <!-- Market Intelligence Tab — MI-5 layout + MH-3 Market Summary:
+                     Regime/Health row retained; second metrics row shows real
+                     F-5 score ring, Universe Breadth, and NIFTY/VIX sparklines
+                     (Unavailable when persisted data is absent — never fabricated). -->
                 <div id="tab-market" class="tab-pane">
                     <div class="market-workstation market-workstation-mi5">
                         <div class="market-summary-band">
@@ -345,6 +345,40 @@
                                         <span class="regime-field-label">Market Health</span>
                                         <div id="market-health-grid" class="context-metric-grid">
                                             <div class="text-muted">Loading...</div>
+                                        </div>
+                                    </div>
+
+                                    <div class="market-summary-metrics" aria-live="polite">
+                                        <div class="market-health-score-panel">
+                                            <span class="brief-gauge-label">Health Score</span>
+                                            <div class="market-health-score-ring" id="market-health-score-ring">
+                                                <strong id="market-health-score-value" class="market-health-score-value">—</strong>
+                                                <span class="market-health-score-denom">/100</span>
+                                            </div>
+                                            <div class="brief-gauge-bar market-health-score-bar" aria-hidden="true">
+                                                <div id="market-health-score-fill" class="brief-gauge-fill" style="width: 0%"></div>
+                                            </div>
+                                            <span id="market-health-score-caption" class="market-metric-caption text-muted">Unavailable</span>
+                                        </div>
+                                        <div class="market-breadth-panel">
+                                            <span class="brief-gauge-label">Universe Breadth</span>
+                                            <strong id="market-breadth-pct" class="market-breadth-pct">—</strong>
+                                            <div id="market-breadth-counts" class="market-breadth-counts text-muted">ADV — · DEC — · NEU —</div>
+                                            <span id="market-breadth-caption" class="market-metric-caption text-muted">Unavailable</span>
+                                        </div>
+                                        <div class="market-sparkline-panel">
+                                            <span class="brief-gauge-label">NIFTY · VIX</span>
+                                            <div class="market-sparkline-row">
+                                                <div class="market-sparkline-block">
+                                                    <span class="market-sparkline-tag">NIFTY</span>
+                                                    <svg id="market-sparkline-nifty" class="market-sparkline-svg" viewBox="0 0 120 28" preserveAspectRatio="none" aria-hidden="true"></svg>
+                                                </div>
+                                                <div class="market-sparkline-block">
+                                                    <span class="market-sparkline-tag">VIX</span>
+                                                    <svg id="market-sparkline-vix" class="market-sparkline-svg" viewBox="0 0 120 28" preserveAspectRatio="none" aria-hidden="true"></svg>
+                                                </div>
+                                            </div>
+                                            <div id="market-vix-level" class="market-vix-level text-muted"></div>
                                         </div>
                                     </div>
 

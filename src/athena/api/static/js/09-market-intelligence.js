@@ -210,6 +210,171 @@
             .join("");
     }
 
+    // MH-3: Health Score ring from persisted MarketHealthScore.total only.
+    function renderMarketHealthScore(health) {
+        const valueEl = document.getElementById("market-health-score-value");
+        const fillEl = document.getElementById("market-health-score-fill");
+        const captionEl = document.getElementById("market-health-score-caption");
+        const denomEl = document.querySelector(".market-health-score-denom");
+        if (!valueEl || !fillEl || !captionEl) return;
+
+        const score = health && health.score != null ? Number(health.score) : null;
+        if (score == null || Number.isNaN(score)) {
+            valueEl.textContent = "—";
+            valueEl.classList.add("is-unavailable");
+            if (denomEl) denomEl.hidden = true;
+            fillEl.style.width = "0%";
+            captionEl.textContent = (health && health.unavailable_reason)
+                || "Unavailable — score needs all six F-5 components";
+            valueEl.title = captionEl.textContent;
+            return;
+        }
+        valueEl.textContent = String(Math.round(score));
+        valueEl.classList.remove("is-unavailable");
+        if (denomEl) denomEl.hidden = false;
+        fillEl.style.width = `${Math.max(0, Math.min(100, score))}%`;
+        captionEl.textContent = health.explanation
+            ? "From MarketHealthScore"
+            : "Persisted F-5 total";
+        valueEl.title = health.explanation || captionEl.textContent;
+    }
+
+    // MH-3: Universe ADV/DEC/neutral — never imply exchange-wide NSE breadth.
+    function renderUniverseBreadth(breadth) {
+        const pctEl = document.getElementById("market-breadth-pct");
+        const countsEl = document.getElementById("market-breadth-counts");
+        const captionEl = document.getElementById("market-breadth-caption");
+        if (!pctEl || !countsEl || !captionEl) return;
+
+        if (!breadth) {
+            pctEl.textContent = "—";
+            countsEl.textContent = "ADV — · DEC — · NEU —";
+            captionEl.textContent = "Unavailable — run validation to compute universe breadth";
+            return;
+        }
+        const pct = breadth.advance_pct == null ? null : Number(breadth.advance_pct);
+        pctEl.textContent = pct == null || Number.isNaN(pct)
+            ? "—"
+            : `${pct.toFixed(1)}%`;
+        countsEl.textContent =
+            `ADV ${breadth.advances} · DEC ${breadth.declines} · NEU ${breadth.neutral}`;
+        const coverage = breadth.coverage == null ? null : Number(breadth.coverage);
+        const covLabel = coverage == null || Number.isNaN(coverage)
+            ? ""
+            : ` · coverage ${(coverage * 100).toFixed(0)}%`;
+        captionEl.textContent = `${breadth.label || "Universe breadth"}${covLabel}`;
+    }
+
+    function renderCloseSparkline(svgEl, closes) {
+        if (!svgEl) return;
+        const values = (closes || []).map(Number).filter((n) => !Number.isNaN(n));
+        if (values.length < 2) {
+            svgEl.innerHTML = "";
+            svgEl.classList.add("is-empty");
+            return;
+        }
+        svgEl.classList.remove("is-empty");
+        const w = 120;
+        const h = 28;
+        const pad = 2;
+        const min = Math.min(...values);
+        const max = Math.max(...values);
+        const span = max - min || 1;
+        const points = values.map((v, i) => {
+            const x = pad + (i / (values.length - 1)) * (w - pad * 2);
+            const y = h - pad - ((v - min) / span) * (h - pad * 2);
+            return `${x.toFixed(1)},${y.toFixed(1)}`;
+        }).join(" ");
+        svgEl.setAttribute("viewBox", `0 0 ${w} ${h}`);
+        svgEl.innerHTML = `<polyline points="${points}"></polyline>`;
+    }
+
+    function renderMarketSparklines(summary) {
+        const niftySvg = document.getElementById("market-sparkline-nifty");
+        const vixSvg = document.getElementById("market-sparkline-vix");
+        const vixEl = document.getElementById("market-vix-level");
+        const sparks = (summary && summary.sparklines) || {};
+        renderCloseSparkline(niftySvg, sparks.nifty_closes);
+        renderCloseSparkline(vixSvg, sparks.vix_closes);
+        if (!vixEl) return;
+        const vix = summary && summary.vix;
+        if (!vix || vix.level == null) {
+            vixEl.textContent = "VIX —";
+            return;
+        }
+        const level = Number(vix.level);
+        const change = vix.change_pct == null ? null : Number(vix.change_pct);
+        const changeLabel = change == null || Number.isNaN(change)
+            ? ""
+            : ` (${change >= 0 ? "+" : ""}${change.toFixed(2)}%)`;
+        vixEl.textContent = `VIX ${level.toFixed(2)}${changeLabel}`;
+    }
+
+    function renderMarketSummaryHero(summary) {
+        const trendBadge = document.getElementById("regime-trend-badge");
+        const volBadge = document.getElementById("regime-vol-badge");
+        const gapBadge = document.getElementById("regime-gap-badge");
+        const evidenceText = document.getElementById("regime-evidence-text");
+        const asOfEl = document.getElementById("market-summary-asof");
+        if (!trendBadge || !volBadge || !gapBadge || !evidenceText) return;
+
+        const regime = summary && summary.regime;
+        const health = (summary && summary.market_health) || {};
+
+        if (asOfEl) {
+            asOfEl.textContent = summary && summary.as_of
+                ? `As of ${formatDecisionTime(summary.as_of)}`
+                : "";
+        }
+
+        if (regime) {
+            const trendRaw = regime.trend || "TREND_UNKNOWN";
+            trendBadge.textContent = friendlyLabel(trendRaw);
+            trendBadge.className = `hero-metric-band tone-${contextChipTone(trendRaw)}-text`;
+
+            const volRaw = regime.volatility || "VOLATILITY_UNKNOWN";
+            volBadge.textContent = friendlyLabel(volRaw);
+            volBadge.className = `hero-metric-band tone-${contextChipTone(volRaw)}-text`;
+
+            const gapRaw = regime.gap || "GAP_UNKNOWN";
+            gapBadge.textContent = friendlyLabel(gapRaw);
+            gapBadge.className = `hero-metric-band tone-${contextChipTone(gapRaw)}-text`;
+
+            let evidence = regime.explanation || health.explanation
+                || "No attribution summary available.";
+            evidence = evidence
+                .replace(/NORMAL_VOLATILITY/g, "Normal volatility")
+                .replace(/HIGH_VOLATILITY/g, "High volatility")
+                .replace(/LOW_VOLATILITY/g, "Low volatility")
+                .replace(/VOLATILITY_UNKNOWN/g, "Volatility unknown (VIX missing)")
+                .replace(/BULL_TREND/g, "Bullish")
+                .replace(/BEAR_TREND/g, "Bearish")
+                .replace(/GAP_DOWN/g, "Gap down")
+                .replace(/GAP_UP/g, "Gap up")
+                .replace(/NO_GAP/g, "No gap")
+                .replace(/SIDEWAYS/g, "Sideways");
+            if (health.unavailable_reason && health.score == null) {
+                evidence = `${evidence} Health score: ${health.unavailable_reason}`;
+            }
+            evidenceText.textContent = evidence;
+        } else {
+            trendBadge.textContent = "Unknown";
+            trendBadge.className = "hero-metric-band tone-unknown-text";
+            volBadge.textContent = "Unknown";
+            volBadge.className = "hero-metric-band tone-unknown-text";
+            gapBadge.textContent = "Unknown";
+            gapBadge.className = "hero-metric-band tone-unknown-text";
+            evidenceText.textContent =
+                "No regime assessment from the latest validation run yet. " +
+                "Re-run ./athena-daily or Validate All — regime and F-5 inputs are written from validation.";
+        }
+
+        renderMarketHealthGrid(health.dimensions || {});
+        renderMarketHealthScore(health);
+        renderUniverseBreadth(summary && summary.breadth);
+        renderMarketSparklines(summary);
+    }
+
     // MI-3: Validation Pipeline funnel — typed stages from
     // GET /api/v1/pipelines/validation-funnel (Universe→Eligible→Filtered→
     // Watch→Trade). Filtered is server-side arithmetic; UI never recomputes.
@@ -272,15 +437,16 @@
             await loadCandidateList();
             await loadSavedSymbols();
 
-            // 1. Fetch Volatility Regime / Universe from latest Pipeline run,
-            //    and the typed Validation Pipeline funnel (MI-3) in parallel.
-            const [runsRes, funnelRes] = await Promise.all([
+            // 1. Fetch Market Summary (MH-3), Validation Pipeline funnel, and
+            //    pipeline runs (Universe / Recent Activity) in parallel.
+            const [summaryRes, runsRes, funnelRes] = await Promise.all([
+                apiRequest("/api/v1/market/summary").catch(() => null),
                 apiRequest("/api/v1/pipelines/runs").catch(() => null),
                 apiRequest("/api/v1/pipelines/validation-funnel").catch(() => null),
             ]);
             renderValidationFunnel(funnelRes && funnelRes.data ? funnelRes.data : null);
-            let regime = null;
-            let regimeAsOf = null;
+            renderMarketSummaryHero(summaryRes && summaryRes.data ? summaryRes.data : null);
+
             let universe = {};
             let qualified = [];
             let universeNote = null;
@@ -298,10 +464,6 @@
                 const runs = [...runsRes.data].sort(
                     (a, b) => new Date(b.as_of || 0) - new Date(a.as_of || 0)
                 );
-                const isUnknownVol = (reg) => {
-                    const v = String((reg && reg.volatility) || "").toUpperCase();
-                    return !v || v.includes("UNKNOWN");
-                };
 
                 // A scoped validate writes a run holding only the symbols it was
                 // asked about, so reading the newest run alone showed just that
@@ -316,20 +478,7 @@
                     const data = extractData(r);
                     const members = data.universe_members || {};
                     const hasMembers = Object.keys(members).length > 0;
-                    const reg = data.regime_assessment || null;
 
-                    if (!regime && reg) {
-                        regime = reg;
-                        regimeAsOf = r.as_of || null;
-                    } else if (
-                        regime &&
-                        isUnknownVol(regime) &&
-                        reg &&
-                        !isUnknownVol(reg)
-                    ) {
-                        regime = reg;
-                        regimeAsOf = r.as_of || null;
-                    }
                     if (!hasMembers) continue;
                     if (!leading) {
                         leading = r;
@@ -363,79 +512,18 @@
                 universeCache = universe;
             }
 
-            // 2. Render Market Summary Hero (MI-2). Trend/Volatility/Gap reuse
-            // the exact contextChipTone()/friendlyLabel() tone logic already
-            // established for the Decision Brief's own regime rendering — one
-            // tone system for the same RegimeLabel enum, not two parallel ones.
-            const trendBadge = document.getElementById("regime-trend-badge");
-            const volBadge = document.getElementById("regime-vol-badge");
-            const gapBadge = document.getElementById("regime-gap-badge");
-            const evidenceText = document.getElementById("regime-evidence-text");
-            const asOfEl = document.getElementById("market-summary-asof");
-
-            if (regime && trendBadge && volBadge && gapBadge && evidenceText) {
-                if (asOfEl) {
-                    asOfEl.textContent = regimeAsOf ? `As of ${formatDecisionTime(regimeAsOf)}` : "";
-                }
-
-                // Falls back to each dimension's own *_UNKNOWN sentinel, never a
-                // specific assessed-looking state (e.g. "no gap"/"normal
-                // volatility") for a field that's actually just missing.
-                const trendRaw = regime.trend || "TREND_UNKNOWN";
-                trendBadge.textContent = friendlyLabel(trendRaw);
-                trendBadge.className = `hero-metric-band tone-${contextChipTone(trendRaw)}-text`;
-
-                const volRaw = regime.volatility || "VOLATILITY_UNKNOWN";
-                volBadge.textContent = friendlyLabel(volRaw);
-                volBadge.className = `hero-metric-band tone-${contextChipTone(volRaw)}-text`;
-
-                const gapRaw = regime.gap || "GAP_UNKNOWN";
-                gapBadge.textContent = friendlyLabel(gapRaw);
-                gapBadge.className = `hero-metric-band tone-${contextChipTone(gapRaw)}-text`;
-
-                renderMarketHealthGrid(regime.market_health);
-
-                // Explanation — soften raw enum tokens for display
-                let evidence = regime.explanation || "No attribution summary available.";
-                evidence = evidence
-                    .replace(/NORMAL_VOLATILITY/g, "Normal volatility")
-                    .replace(/HIGH_VOLATILITY/g, "High volatility")
-                    .replace(/LOW_VOLATILITY/g, "Low volatility")
-                    .replace(/VOLATILITY_UNKNOWN/g, "Volatility unknown (VIX missing)")
-                    .replace(/BULL_TREND/g, "Bullish")
-                    .replace(/BEAR_TREND/g, "Bearish")
-                    .replace(/GAP_DOWN/g, "Gap down")
-                    .replace(/GAP_UP/g, "Gap up")
-                    .replace(/NO_GAP/g, "No gap")
-                    .replace(/SIDEWAYS/g, "Sideways");
-                evidenceText.textContent = evidence;
-            } else if (trendBadge && volBadge && gapBadge && evidenceText) {
-                if (asOfEl) asOfEl.textContent = "";
-                trendBadge.textContent = "Unknown";
-                trendBadge.className = "hero-metric-band tone-unknown-text";
-                volBadge.textContent = "Unknown";
-                volBadge.className = "hero-metric-band tone-unknown-text";
-                gapBadge.textContent = "Unknown";
-                gapBadge.className = "hero-metric-band tone-unknown-text";
-                renderMarketHealthGrid({});
-                evidenceText.textContent =
-                    "No regime assessment from the latest validation run yet. " +
-                    "Re-run ./athena-daily smoke (after the latest update) — regime is written from the scan. " +
-                    "Volatility can stay unavailable without India VIX in the snapshot.";
-            }
-
-            // 3. Fetch and Render Calendar Grid & Events
+            // 2. Fetch and Render Calendar Grid & Events
             const calRes = await apiRequest("/api/v1/dashboard/calendar").catch(() => null);
             if (calRes && calRes.data) {
                 renderCalendar(calRes.data);
                 renderUpcomingEvents(calRes.data);
             }
 
-            // 4. Render Universe list table + qualified layer
+            // 3. Render Universe list table + qualified layer
             renderUniverseTable(universe, universeNote);
             renderQualifiedToday(qualified);
 
-            // 5. MI-5: Recent Activity from the same runs we already fetched.
+            // 4. MI-5: Recent Activity from the same runs we already fetched.
             if (runsRes && runsRes.data) {
                 renderRecentActivity(runsRes.data);
             } else {

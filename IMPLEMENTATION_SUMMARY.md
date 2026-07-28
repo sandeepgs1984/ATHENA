@@ -6,7 +6,34 @@ status updated on approval.
 
 ---
 
-## MH-2 — Exact F-5 `MarketHealthScore` (READY FOR REVIEW)
+## MH-3 — Market Summary API + mock-faithful UI (READY FOR REVIEW)
+
+| | |
+|---|---|
+| Completed | 2026-07-28 |
+| Objective | Expose persisted F-5 score / universe breadth / sparklines via a dedicated summary read model and render them honestly on Market Intelligence |
+| Scope | `GET /api/v1/market/summary` + DTOs; `MarketSummaryService`; Market Summary second metrics row (score ring, Universe Breadth, NIFTY/VIX sparklines); keep Regime + categorical Health row |
+| Public APIs added | `MarketSummaryDTO` (+ nested); `MarketSummaryService.market_summary()`; `GET /api/v1/market/summary` |
+| Tests | `tests/api/v1/test_market_summary.py` + dashboard hosting MH-3 assertions. Full suite **1095 passed** |
+| Coverage | Unit: empty → Unavailable; score+breadth+sparklines from seeded run detail; partial score null with reason. Hosting: summary fetch + ring/breadth/sparkline markup |
+| Architecture compliance | F-5 §8; ADR-005 honesty (null ≠ 0); no client-side score reconstruction; label “Universe breadth” |
+| ADR compliance | Consumes MH-1/MH-2 persisted artifacts only; no new providers |
+| Risks discovered | Score often Unavailable until institutional + coverage + gap window are complete — UI caption surfaces `unavailable_reason` |
+| Technical debt introduced | None intentional. Recent Activity still uses `/pipelines/runs` (acceptable; summary is separate) |
+| Suggested improvements | Optional ticker chip when score present; collapse categorical Health into tooltip when score is live |
+| Remaining work | Track closed after approval — no further MH milestones |
+| Status | 🔄 Ready for review (2026-07-28) |
+| Branch | feature/live-dashboard |
+
+### Scope completed
+
+- Dedicated summary read model reads latest completed validation run’s `market_health_score`, `market_metric_inputs`, `regime_assessment`, plus D1 closes for sparklines and snapshot VIX.
+- Market Summary UI: Health Score ring + bar, Universe Breadth ADV/DEC/NEU + advance %, NIFTY/VIX sparklines — all Unavailable when data absent.
+- Existing 7-cell Regime + categorical Health row retained; Evidence footer appends score unavailability when relevant.
+
+---
+
+## MH-2 — Exact F-5 `MarketHealthScore` (APPROVED)
 
 | | |
 |---|---|
@@ -21,8 +48,8 @@ status updated on approval.
 | Risks discovered | Live score often unavailable until institutional flow + full-window gap + coverage gates are met — UI must keep showing Unavailable until then (MH-3) |
 | Technical debt introduced | Risk engine still averages categorical labels (F-5 §7 listed scoring cutover; risk left on shim intentionally). Calendar-day staleness for FII/DII (not trading-session count) |
 | Suggested improvements | Trading-day age for institutional max_age; optional risk cutover to inverted score; NSDL finalization |
-| Remaining work | MH-3 Market Summary API + mock-faithful ring/ADV-DEC UI |
-| Status | 🔄 Ready for review (2026-07-28) |
+| Remaining work | Completed — MH-3 owns Market Summary API + UI |
+| Status | ✅ Approved (2026-07-28) |
 | Branch | feature/live-dashboard |
 
 ### Scope completed

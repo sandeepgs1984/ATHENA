@@ -118,7 +118,7 @@ its milestone is approved — check §5):
 |---|---|
 | Foundations | `domain/` (frozen canonical model), `config/`, `calendar/` (sole trading-day/session authority), `observability/`, `errors.py` |
 | Data | `data/` (providers incl. institutional flow file/NSE adapters, validation, corporate actions, SQLite `store/repository`) |
-| Market Intelligence | `regime/`, `market_health/` (categorical engine + MH-1 aggregates + MH-2 `score.py` F-5 constructor), `sector_health/`, `universe/` |
+| Market Intelligence | `regime/`, `market_health/` (categorical + F-5 score), `sector_health/`, `universe/`; dashboard `GET /api/v1/market/summary` (MH-3) |
 | Decision Intelligence | `evidence/`, `indicators/`, `scoring/`, `confidence/`, `risk/`, `decision/`, `reporting/` (decision trace explanations *and* generic operational reports) |
 | Orchestration & Ops | `orchestration/`, `scanner/`, `watchlist/`, `strategy/`, `backtest/`, `scheduling/` |
 | Portfolio & planning (no execution) | `portfolio/`, `allocation/`, `sizing/`, `orders/` (planning only), `brokers/` (abstraction only), `execution/` |

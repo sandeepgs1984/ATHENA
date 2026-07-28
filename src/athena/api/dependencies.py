@@ -65,6 +65,7 @@ from athena.api.v1.services.decisions_service import DecisionsService
 from athena.api.v1.services.exports_service import ExportsService
 from athena.api.v1.services.health_service import HealthService
 from athena.api.v1.services.market_history_service import MarketHistoryService
+from athena.api.v1.services.market_summary_service import MarketSummaryService
 from athena.api.v1.services.metrics_service import MetricsService
 from athena.api.v1.services.ops_service import OpsService
 from athena.api.v1.services.pipelines_service import PipelinesService
@@ -241,6 +242,14 @@ def get_market_history_service(request: Request) -> MarketHistoryService:
         config_dir=_find_repo_root() / "config",
         repo=repo,
     )
+
+
+def get_market_summary_service(request: Request) -> MarketSummaryService:
+    """Dependency provider for Market Summary hero read model (MH-3)."""
+    repo = getattr(request.app.state, "sqlite_repo", None)
+    if repo is None:
+        raise RuntimeError("sqlite_repo is required for market summary")
+    return MarketSummaryService(repo)
 
 
 def get_portfolio_service(request: Request) -> PortfolioService:

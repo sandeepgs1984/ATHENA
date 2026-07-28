@@ -502,8 +502,8 @@ Literal Market Summary mock fidelity requires real numeric inputs the MI track d
 |---|---|---|
 | **MH-0** Design — FII/DII source + F-5 scoring contract | DD-11 institutional-flow source decision; ADR-008 (provider Protocol); F-5 scoring / unknown-data / persistence / API history specification | ✅ Approved |
 | **MH-1** Canonical inputs + persistence | Approved FII/DII ingest; universe breadth (+ neutral); liquidity + gap-stability aggregates; snapshot/history read paths | ✅ Approved |
-| **MH-2** Exact F-5 `MarketHealthScore` | Construct + persist authoritative six-component score; align scoring/risk/decision consumers; ADR-005 evidence | 🔄 Ready for review |
-| **MH-3** Market Summary API + mock-faithful UI | Dedicated summary read model; sparklines/rings/ADV-DEC/evidence panel from real persisted data only | ⏳ Pending MH-2 |
+| **MH-2** Exact F-5 `MarketHealthScore` | Construct + persist authoritative six-component score; align scoring/risk/decision consumers; ADR-005 evidence | ✅ Approved |
+| **MH-3** Market Summary API + mock-faithful UI | Dedicated summary read model; sparklines/rings/ADV-DEC/evidence panel from real persisted data only | 🔄 Ready for review |
 
 Design artifacts (MH-0):
 
@@ -530,6 +530,16 @@ Constructs the authoritative six-component numeric score from MH-1 inputs, persi
 |---|---|
 | Scope | **Config**: F-5 component point maps + weights (sum 100). **Pure construction**: `market_health/score.py` maps trend/breadth/liquidity/volatility/institutional/gap → points or absent; emits `MarketHealthScore` only when all six present (F-5 §4). **Persistence**: run `detail_json.market_health_score` (+ component diagnostics). **Cutover**: `ScoringEngine._market_quality` prefers score total; categorical label average remains compat shim. |
 | Tests | Component band mapping, unavailable-when-any-absent, weighted total, scoring cutover, config validation. Full suite **1091 passed** |
+| Status | ✅ Approved (2026-07-28) |
+
+#### MH-3 — Market Summary API + mock-faithful UI
+
+Dedicated read model exposes persisted F-5 score, universe breadth, VIX, and sparklines; Market Summary UI renders them honestly (Unavailable when absent).
+
+| | |
+|---|---|
+| Scope | **API**: `GET /api/v1/market/summary` + `MarketSummaryDTO` (F-5 §8). **Service**: reads latest completed validation run detail (`market_health_score`, `market_metric_inputs`, `regime_assessment`) + D1 candle closes for sparklines. **UI**: second summary row — Health Score ring, Universe Breadth ADV/DEC/neutral, NIFTY/VIX sparklines; keep existing Regime + categorical Health row. |
+| Tests | Service unit + authenticated HTTP + dashboard hosting assertions. Full suite **1095 passed** |
 | Status | 🔄 Ready for review (2026-07-28) |
 
 ---

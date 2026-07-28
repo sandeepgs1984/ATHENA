@@ -136,11 +136,8 @@ class MarketIndexTickerDTO(BaseModel):
 
 class MarketTickerDTO(BaseModel):
     """Header market ticker (DT-2, owner UX workstation refactor). Deliberately
-    excludes market breadth (ADV/DEC) and an overall market-health score —
-    neither exists as real data anywhere in ATHENA today (breadth is
-    hardcoded 0/0 by the Kite provider; there is no aggregate health score,
-    only 4 per-decision categorical dimension labels) — tracked as future
-    scope rather than fabricated here."""
+    excludes market breadth (ADV/DEC) and an overall market-health score from
+    this compact strip — those live on ``GET /market/summary`` (MH-3 / F-5)."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -148,3 +145,81 @@ class MarketTickerDTO(BaseModel):
     bank_nifty: MarketIndexTickerDTO
     india_vix: MarketIndexTickerDTO
     as_of: datetime | None = None
+
+
+class MarketRegimeSummaryDTO(BaseModel):
+    """Regime labels from the latest validation run (F-5 §8)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    trend: str
+    volatility: str
+    gap: str
+    explanation: str | None = None
+    evidence: tuple[str, ...] = ()
+
+
+class MarketHealthSummaryDTO(BaseModel):
+    """Numeric F-5 score when complete, plus honest categorical dimensions."""
+
+    model_config = ConfigDict(frozen=True)
+
+    score: int | None = None
+    components: dict[str, int] | None = None
+    explanation: str | None = None
+    unavailable_reason: str | None = None
+    dimensions: dict[str, str] = Field(default_factory=dict)
+
+
+class MarketBreadthSummaryDTO(BaseModel):
+    """Universe ADV/DEC/neutral — never exchange-wide NSE breadth."""
+
+    model_config = ConfigDict(frozen=True)
+
+    advances: int
+    declines: int
+    neutral: int
+    advance_pct: Decimal | None = None
+    universe_size: int
+    scored: int
+    coverage: Decimal | None = None
+    label: str = "Universe breadth"
+
+
+class MarketGapDetailDTO(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    points: int | None = None
+    pct: Decimal | None = None
+
+
+class MarketVixSummaryDTO(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    level: Decimal | None = None
+    change_pct: Decimal | None = None
+
+
+class MarketSparklinesDTO(BaseModel):
+    """Persisted D1 closes only — empty when history is missing."""
+
+    model_config = ConfigDict(frozen=True)
+
+    nifty_closes: tuple[Decimal, ...] = ()
+    vix_closes: tuple[Decimal, ...] = ()
+
+
+class MarketSummaryDTO(BaseModel):
+    """Market Summary hero read model (MH-3 / F-5 §8). Nulls mean Unavailable."""
+
+    model_config = ConfigDict(frozen=True)
+
+    as_of: datetime | None = None
+    available: bool = False
+    run_id: str | None = None
+    regime: MarketRegimeSummaryDTO | None = None
+    market_health: MarketHealthSummaryDTO
+    breadth: MarketBreadthSummaryDTO | None = None
+    gap_detail: MarketGapDetailDTO | None = None
+    vix: MarketVixSummaryDTO | None = None
+    sparklines: MarketSparklinesDTO = Field(default_factory=MarketSparklinesDTO)
