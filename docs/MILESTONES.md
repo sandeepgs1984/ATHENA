@@ -376,7 +376,7 @@ Full redesign of the Market Intelligence tab into a "Market Command Center," mat
 
 Before any implementation, a full data-source inventory was done across every mock element (see MI-2 below for the two biggest findings). Owner-confirmed scope decisions (before MI-1 started):
 
-- Market Health Score ("84/100" ring) and Breadth ("72%"/"1458/526") are both confirmed gaps (hardcoded `0`/`0` upstream, no numeric `MarketHealthScore` ever constructed anywhere in the codebase) — owner chose to show the real 4-dimension categorical labels `MarketHealthEngine` already computes instead of either fabricating a number or omitting the section entirely (MI-2).
+- Market Health Score ("84/100" ring) and Breadth ("72%"/"1458/526") are both confirmed gaps (hardcoded `0`/`0` upstream, no numeric `MarketHealthScore` ever constructed anywhere in the codebase) — owner chose to show the real 4-dimension categorical labels `MarketHealthEngine` already computes instead of either fabricating a number or omitting the section entirely (MI-2). **Post-MI track:** both gaps are now owned by **Market Metrics Completion** (MH-0+), with locked owner choices: universe ADV/DEC/neutral breadth, exact F-5 six-component score, external FII/DII for institutional strength.
 - Recent Market Activity will be a real chronological feed (validation runs + VIX/index snapshot history) — no synthesized "regime reaffirmed"/"breadth improved" diff-events, since no comparison logic for those exists anywhere (MI-5).
 - Universe table's Sector column — a fixable gap (same shape as DT-3's company-name fix): the seed CSV's real `Industry` column is silently discarded during ingestion. Owner approved fixing it (MI-4).
 - "Run Full Validation" — a real engine (`OwnerValidationPipeline.run()`) with zero endpoint/button today; owner approved wiring a new endpoint despite it being the one mutating (not just read) action in this otherwise presentation-only redesign (MI-5).
@@ -389,7 +389,7 @@ Before any implementation, a full data-source inventory was done across every mo
 | **MI-2** Market Summary Hero + Market Regime & Context | Larger-presentation Trend/Volatility/Gap/Evidence Attribution (real); Market Health Score/Breadth gap handled via real categorical labels | ✅ Approved |
 | **MI-3** Validation Pipeline funnel | New small dedicated endpoint exposing the already-computed Universe→Evaluated→Eligible/Excluded→decision_counts breakdown as a typed 5-stage funnel | ✅ Approved |
 | **MI-4** Universe table redesign | Reuse real Symbol/Status/Actions; add Sector via the ingestion fix; scope Eligibility-per-row/Last-Validated-per-row | ✅ Approved |
-| **MI-5** Recent Activity + Quick Actions + Saved Symbols | Real chronological activity feed; Quick Actions consolidated (Add Symbol reuse, new Run Full Validation endpoint, Refresh Market Data relabeled honestly, Export omitted); Saved Symbols relocated to a secondary panel. Also absorbs the owner-requested "Validate All" — same operation as Run Full Validation — plus Kite pacing/429 handling | 🔄 Ready for review |
+| **MI-5** Recent Activity + Quick Actions + Saved Symbols | Real chronological activity feed; Quick Actions consolidated (Add Symbol reuse, new Run Full Validation endpoint, Refresh Market Data relabeled honestly, Export omitted); Saved Symbols relocated to a secondary panel. Also absorbs the owner-requested "Validate All" — same operation as Run Full Validation — plus Kite pacing/429 handling | ✅ Approved |
 
 #### MI-1 — Shared ticker strip + Trading Calendar relocation
 
@@ -484,7 +484,32 @@ Closes the Market Intelligence redesign. Delivers the mock's Quick Actions and R
 | Scope | **Pacing**: `KiteRateLimitConfig` in `kite.json` / `KiteProviderConfig`; `UrllibKiteTransport` enforces per-class min intervals (historical 3/s, quote 1/s, other 10/s) and bounded 429 backoff. **Job**: `ServeRuntime.full_validation` + `ops/full_validation.py` (daemon thread, `CycleRunnerLock` single-flight, own DB connection); `POST/GET /api/v1/market/validate-all` (202 / poll); `CycleBusyError` → 409. Scoped `POST /market/validate` unchanged. **UI**: mock-aligned seven-cell Market Summary row (three regime metrics + four real categorical health dimensions) and Evidence footer; compact Validation KPI blocks beside the primary Universe workspace (~63% main width, sticky-header internal scroll); utility rail ordered Recent Activity → Saved Symbols → Quick Actions; Run Full Validation / Validate All / Add Symbol / Refresh Market View preserved. Export omitted (not implemented). |
 | Tests | Transport pacing + 429 retry; full-validation lock/busy guards; validate-all 202/409 API; dashboard hosting for new controls. Full suite **1072 passed** |
 | Coverage | Self-verified via tests and static browser measurement at 1920×1080: Universe 818px of 1304px main width (62.7%) with 553px visible internal table viewport; Summary 172px; compact Pipeline 173px. Assets `v9.62.0`; full-validation progress polls every 3s. |
-| Status | 🔄 Ready for review (2026-07-28) |
+| Status | ✅ Approved (2026-07-28) |
+
+**ATHENA Market Intelligence Redesign track closed (2026-07-28):** owner approved MI-5, the last of the 5 milestones (MI-1 through MI-5). Presentation-layer Market Command Center is complete: shared ticker, Market Summary categorical hero, Validation Pipeline funnel, Universe table + sector ingestion, Quick Actions / Recent Activity / Saved Symbols rail, and ADR-007 full-universe validation with Kite pacing. Confirmed data gaps that the mock still shows literally — numeric Market Health Score (F-5) and real breadth ADV/DEC — move to the **Market Metrics Completion** track below (never fabricated in MI).
+
+---
+
+### Market Metrics Completion (owner assignment, 2026-07-28)
+
+Literal Market Summary mock fidelity requires real numeric inputs the MI track deliberately deferred (ADR-005). Owner decisions locked before MH-0:
+
+- **Breadth:** Nifty-500 / owner-universe advances vs declines from latest two D1 closes; unchanged closes count as **neutral** (not exchange-wide NSE breadth; Kite cannot supply that).
+- **Market Health Score:** exact frozen F-5 six components — `trend_quality`, `breadth`, `liquidity`, `volatility`, `institutional_strength`, `gap_stability` — not a four-label rollup and not a display-only mapping.
+- **Institutional strength:** external FII/DII cash-flow source (no price-volume proxy).
+
+| Milestone | Scope | Status |
+|---|---|---|
+| **MH-0** Design — FII/DII source + F-5 scoring contract | DD-11 institutional-flow source decision; ADR-008 Proposed (provider Protocol); F-5 scoring / unknown-data / persistence / API history specification; stop for owner approval before any engine code | 🔄 Ready for review |
+| **MH-1** Canonical inputs + persistence | Approved FII/DII ingest; universe breadth (+ neutral); liquidity + gap-stability aggregates; snapshot/history read paths | ⏳ Pending MH-0 |
+| **MH-2** Exact F-5 `MarketHealthScore` | Construct + persist authoritative six-component score; align scoring/risk/decision consumers; ADR-005 evidence | ⏳ Pending MH-1 |
+| **MH-3** Market Summary API + mock-faithful UI | Dedicated summary read model; sparklines/rings/ADV-DEC/evidence panel from real persisted data only | ⏳ Pending MH-2 |
+
+Design artifacts (MH-0):
+
+- `docs/decisions/DD-11-institutional-flow-fii-dii.md`
+- `docs/adr/ADR-008-institutional-flow-provider.md` (Proposed)
+- `docs/design/F5-MARKET-HEALTH-SCORE.md`
 
 ---
 

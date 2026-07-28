@@ -110,8 +110,8 @@ status updated on approval.
 | Risks discovered | Progress mid-ingest cannot honestly report per-symbol completion without instrumenting `LiveIngestionEngine` — UI shows stage + total, completed jumps to total on success |
 | Technical debt introduced | None intentional. Revisit ServeRuntime progress before multi-worker deploy (documented in ADR-007) |
 | Suggested improvements | Optional per-symbol progress callbacks in ingestion; cancel-running-job control |
-| Remaining work | None for this milestone — Market Intelligence redesign track complete pending approval |
-| Status | 🔄 Ready for review (2026-07-28) |
+| Remaining work | None — Market Intelligence redesign track closed. Numeric Health Score + real breadth deferred to Market Metrics Completion (MH-0+) |
+| Status | ✅ Approved (2026-07-28) |
 | Branch | feature/live-dashboard |
 
 ### Scope completed
@@ -119,6 +119,27 @@ status updated on approval.
 - **Provider pacing**: configurable intervals + 429 retry with exponential backoff; injectable sleep/clock for tests; wired through `KiteProvider.from_config_dir`.
 - **Background job**: single-flight via advisory lock; transient progress on `ServeRuntime`; durable outcome is the usual run record.
 - **UI**: Mock-aligned Market Summary with one seven-cell row (Regime/Volatility/Gap + four real health dimensions) and a full-width Evidence footer; compact horizontal Validation KPI blocks; Universe at ~63% of the main workspace with sticky-header internal scrolling; utility rail reordered Recent Activity → Saved Symbols → Quick Actions; assets `v9.63.0`.
+
+---
+
+## MH-0 — FII/DII source + F-5 scoring design (READY FOR REVIEW)
+
+| | |
+|---|---|
+| Completed | 2026-07-28 (design only — no engine code) |
+| Objective | First milestone of Market Metrics Completion: lock the institutional-flow data source, provider boundary, and exact F-5 six-component scoring/persistence/API contracts before any implementation |
+| Scope | `docs/decisions/DD-11-institutional-flow-fii-dii.md`, `docs/adr/ADR-008-institutional-flow-provider.md` (Proposed), `docs/design/F5-MARKET-HEALTH-SCORE.md`, `docs/MILESTONES.md` track intro |
+| Public APIs added | None (design) |
+| Tests | N/A — design milestone |
+| Coverage | Specs cover source criteria, FileProvider-first replay path, NSE official primary live source, NSDL finalization note, unknown-data policy, component formulas, single authoritative score vs scoring `market_quality`, snapshot field addition (`breadth_neutral`), and MH-1…MH-3 exit criteria |
+| Architecture compliance | No code change. Separates institutional flow from `MarketDataProvider` (ADR-002) via proposed ADR-008. Breadth uses frozen `MarketSnapshot` fields + reviewed additive `breadth_neutral`. Score uses already-frozen `MarketHealthScore` |
+| ADR compliance | ADR-005: score/rings only from persisted engine output. ADR-002: no broker Protocol pollution — new flow Protocol proposed. ADR-007 unchanged |
+| Risks discovered | NSE HTML/CSV scrape fragility; evening FII figures are provisional until custodian confirmation; third-party aggregators are convenience only, not canonical |
+| Technical debt introduced | None — MH-1 blocked until DD-11 + ADR-008 + F-5 spec are owner-accepted |
+| Suggested improvements | None before approval |
+| Remaining work | Owner accept DD-11 + ADR-008 + F-5 spec → authorize MH-1 |
+| Status | 🔄 Ready for review (2026-07-28) |
+| Branch | feature/live-dashboard |
 
 ---
 
