@@ -50,7 +50,7 @@ def _opt_date(value: str | None) -> date | None:
 
 def instrument_to_row(i: Instrument) -> tuple:
     return (
-        i.instrument_id, i.isin, i.symbol, i.exchange, i.series, i.name,
+        i.instrument_id, i.isin, i.symbol, i.exchange, i.series, i.name, i.sector,
         i.lot_size, str(i.tick_size), i.status,
         i.listed_date.isoformat() if i.listed_date else None,
         i.delisted_date.isoformat() if i.delisted_date else None,
@@ -60,8 +60,8 @@ def instrument_to_row(i: Instrument) -> tuple:
 def row_to_instrument(r: Sequence[Any]) -> Instrument:
     return Instrument(
         instrument_id=r[0], isin=r[1], symbol=r[2], exchange=r[3], series=r[4],
-        name=r[5], lot_size=int(r[6]), tick_size=Decimal(r[7]), status=r[8],
-        listed_date=_opt_date(r[9]), delisted_date=_opt_date(r[10]),
+        name=r[5], sector=r[6], lot_size=int(r[7]), tick_size=Decimal(r[8]), status=r[9],
+        listed_date=_opt_date(r[10]), delisted_date=_opt_date(r[11]),
     )
 
 

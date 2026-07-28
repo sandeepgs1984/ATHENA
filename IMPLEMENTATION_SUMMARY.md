@@ -6,6 +6,40 @@ status updated on approval.
 
 ---
 
+## MI-4 — Universe table redesign + Sector ingestion fix
+
+| | |
+|---|---|
+| Completed | 2026-07-28 |
+| Objective | Fourth milestone of the Market Intelligence Redesign: redesign Stock List into the Universe table and surface Sector via the seed-CSV Industry ingestion fix |
+| Scope | `src/athena/domain/market.py`, `src/athena/data/store/{schema,serialization,repository}.py`, `src/athena/ops/{constituents,candidate_seed}.py`, `src/athena/api/v1/{dtos/market.py,services/candidates_service.py}`, `src/athena/api/static/{index.html,js/09-market-intelligence.js,css/06-market-intelligence.css}`, tests listed below |
+| Public APIs added | None new — `GET /api/v1/market/candidates` now optionally returns `sector`, `status`, `eligibility_summary`, `last_validated_ts` |
+| Tests | Sector parse/migration/kite-preserve/seed backfill; candidates enrichment; scoped-validate verdict merge; Qualified Today dedupe (write + read path); dashboard hosting. Full suite **1055 passed** |
+| Coverage | Self-verified. Live needs host restart + seed sector backfill (`./athena-daily` / candidate seed — Industry applied even on once-per-day skip) |
+| Architecture compliance | No architecture change. Additive `Instrument.sector` (same class as DT-3 `name`). Sector sourced from NSE seed CSV only — Kite has none |
+| ADR compliance | ADR-005: missing sector/status/last-validated render as `—`/Pending, never fabricated |
+| Risks discovered | Sector stays null until instruments exist and seed runs with `instrument_repo` attached; once-per-day skip still refreshes sectors |
+| Technical debt introduced | None |
+| Suggested improvements | Optional client-side paging if Universe grows far past ~500; Inspect Trace FAIL-badge parsing honesty (pre-existing, flagged in MI-3) |
+| Remaining work | None for this milestone |
+| Status | 🔄 Ready for review (2026-07-28) |
+| Branch | feature/live-dashboard |
+
+### Scope completed
+
+- **Ingestion**: `parse_nifty_constituent_rows()` keeps Industry; `CandidateSeeder` backfills `instruments.sector` via `update_instrument_sector` even when candidate merge is skipped for the day; kite upserts use `COALESCE`-style preserve so catalog refresh cannot wipe seed-written sector.
+- **Schema**: SCHEMA_VERSION 10 + idempotent `ALTER TABLE instruments ADD COLUMN sector TEXT`.
+- **API enrichment**: `CandidatesService.list_candidates` joins sector map, per-symbol universe verdict (Eligible/Excluded/Pending + eligibility_summary), and last-validated timestamp.
+- **UI**: Stock List → Universe table with search + status/sector filters; actions Validate / Inspect Trace / Remove.
+
+### Owner-reported fixes (same milestone, before approval)
+
+- **Universe status collapsed after every scoped validate**: the verdict lookup read a single run, but a scoped validate persists a run whose `universe_members` covers only the symbols it was asked about — so validating one symbol flipped all others back to Pending. `_universe_verdicts()` now merges newest-run-first across recent completed runs, first-wins per symbol, stopping early once every candidate is covered. Excluded symbols (which never produce a Decision) take Last Validated from the run that judged them, so the column is no longer blank for them.
+- **Duplicate symbols under Qualified Today**: `_qualified_from_repo` listed every same-day Decision, so each re-validate of a symbol added another identical row. It now keeps each symbol's newest same-day verdict only, and reads WATCH/TRADE from that newest verdict — a name later downgraded to NO_TRADE no longer resurfaces from its earlier qualifying run.
+- **Read path hardened for already-persisted runs**: the write-path fix only affects new runs, so `SqlitePipelineRunProvider._dedupe_qualified` collapses `qualified_today` to one row per symbol (newest first) when serving run detail. Run history recorded before the fix — e.g. today's runs holding 2 and 7 copies of one symbol — renders honestly without a re-validate.
+
+---
+
 ## MI-3 — Validation Pipeline funnel (APPROVED)
 
 | | |

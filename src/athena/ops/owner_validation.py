@@ -604,11 +604,21 @@ class OwnerValidationPipeline:
         included = set(included_ids)
         day = as_of.date()
         out: list[dict[str, object]] = []
+        # Re-validating the same symbol several times in one day writes one
+        # Decision per run, so an un-deduplicated read listed the same name
+        # once per re-validate. Keep only each symbol's newest same-day
+        # verdict (list_decisions is ts DESC) — and decide WATCH/TRADE from
+        # that newest verdict, so a name later downgraded to NO_TRADE does
+        # not keep surfacing from its earlier qualifying run.
+        seen: set[str] = set()
         for decision in self._repo.list_decisions(limit=2000):
             if decision.instrument_id not in included:
                 continue
             if decision.ts.date() != day:
                 continue
+            if decision.instrument_id in seen:
+                continue
+            seen.add(decision.instrument_id)
             if decision.decision_type not in (DecisionType.WATCH, DecisionType.TRADE):
                 continue
             out.append(

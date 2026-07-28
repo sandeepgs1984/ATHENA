@@ -11,7 +11,8 @@ import pytest
 
 from athena.data.ingestion.models import IngestionResult
 from athena.data.store.repository import SqliteRepository
-from athena.domain.enums import DecisionType, RunTrigger, Timeframe
+from athena.domain.decision import Decision
+from athena.domain.enums import DecisionType, Direction, RunTrigger, Timeframe
 from athena.domain.market import Candle, Instrument
 from athena.ops.owner_candidates import SqliteCandidateStore, normalize_candidate_symbol
 from athena.ops.owner_validation import OwnerValidationPipeline
@@ -201,3 +202,51 @@ class TestOwnerValidationPipeline:
         decisions = {d.instrument_id: d for d in repo.list_decisions(limit=50)}
         assert decisions["NSE:AAA"].run_id == "run-refresh-A"
         assert decisions["NSE:BBB"].run_id == "run-refresh-B"
+
+    def test_qualified_today_keeps_one_row_per_symbol(
+        self, repo: SqliteRepository, config_dir: Path
+    ) -> None:
+        """Owner-reported bug: re-validating the same symbol several times in
+        one day listed it once per re-validate under Qualified Today. Only the
+        newest same-day verdict per symbol may appear, exactly once."""
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        for idx in range(3):
+            repo.save_decision(
+                Decision(
+                    decision_id=f"d-aaa-{idx}",
+                    ts=AS_OF.replace(hour=10, minute=idx),
+                    run_id=f"run-{idx}",
+                    cycle_id="cyc",
+                    decision_type=DecisionType.WATCH,
+                    explanation=f"pass {idx}",
+                    instrument_id="NSE:AAA",
+                    direction=Direction.LONG,
+                )
+            )
+
+        qualified = pipe._qualified_from_repo(AS_OF, ["NSE:AAA"])
+        assert [row["symbol"] for row in qualified] == ["AAA"]
+        assert qualified[0]["decision_id"] == "d-aaa-2"
+        assert qualified[0]["explanation"] == "pass 2"
+
+    def test_qualified_today_drops_symbol_downgraded_to_no_trade(
+        self, repo: SqliteRepository, config_dir: Path
+    ) -> None:
+        """A name whose newest same-day verdict is NO_TRADE must not keep
+        surfacing from its earlier qualifying run."""
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        for idx, decision_type in enumerate((DecisionType.WATCH, DecisionType.NO_TRADE)):
+            repo.save_decision(
+                Decision(
+                    decision_id=f"d-bbb-{idx}",
+                    ts=AS_OF.replace(hour=11, minute=idx),
+                    run_id=f"run-b{idx}",
+                    cycle_id="cyc",
+                    decision_type=decision_type,
+                    explanation=f"pass {idx}",
+                    instrument_id="NSE:BBB",
+                    direction=Direction.LONG,
+                )
+            )
+
+        assert pipe._qualified_from_repo(AS_OF, ["NSE:BBB"]) == []

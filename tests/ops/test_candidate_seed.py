@@ -13,8 +13,10 @@ from athena.ops.constituents import (
     CandidateSeedConfig,
     CandidateSeeder,
     parse_nifty_constituent_csv,
+    parse_nifty_constituent_rows,
 )
 from athena.ops.owner_candidates import InMemoryCandidateStore, SqliteCandidateStore
+from athena.domain.market import Instrument
 
 IST = ZoneInfo("Asia/Kolkata")
 AS_OF = datetime(2026, 7, 24, 8, 30, tzinfo=IST)
@@ -32,6 +34,41 @@ class TestParseConstituents:
         symbols = parse_nifty_constituent_csv(text)
         assert symbols == ("ALPHA", "BETA", "GAMMA", "DELTA")
 
+    def test_parse_sample_csv_keeps_industry(self) -> None:
+        text = SAMPLE.read_text(encoding="utf-8")
+        rows = parse_nifty_constituent_rows(text)
+        assert [(r.symbol, r.industry) for r in rows] == [
+            ("ALPHA", "IT"),
+            ("BETA", "Bank"),
+            ("GAMMA", "Auto"),
+            ("DELTA", "IT"),
+        ]
+
+    def test_seeder_backfills_instrument_sector(self, tmp_path: Path) -> None:
+        repo = SqliteRepository(tmp_path / "s.db")
+        repo.initialize()
+        for sym in ("ALPHA", "BETA"):
+            repo.upsert_instrument(
+                Instrument(instrument_id=f"NSE:{sym}", symbol=sym, exchange="NSE", series="EQ")
+            )
+        store = SqliteCandidateStore(repo)
+        cfg = CandidateSeedConfig(source="NIFTY500", local_file=str(SAMPLE), once_per_day=False)
+        seeder = CandidateSeeder(
+            store,
+            cfg,
+            repo_root=Path("/"),
+            instrument_repo=repo,
+        )
+        result = seeder.run(as_of=AS_OF)
+        assert result.status == "seeded"
+        assert repo.get_instrument("NSE:ALPHA").sector == "IT"
+        assert repo.get_instrument("NSE:BETA").sector == "Bank"
+        # Second run still refreshes sectors even when candidates already present.
+        repo.update_instrument_sector("ALPHA", "Stale")
+        again = seeder.run(as_of=AS_OF)
+        assert again.status == "seeded"
+        assert repo.get_instrument("NSE:ALPHA").sector == "IT"
+        repo.close()
 
 class TestCandidateSeeder:
     def test_merge_unique_and_once_per_day(self, tmp_path: Path) -> None:

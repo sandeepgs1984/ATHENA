@@ -21,6 +21,7 @@ class Instrument:
     series: str
     isin: str | None = None
     name: str | None = None
+    sector: str | None = None
     lot_size: int = 1
     tick_size: Decimal = Decimal("0.05")
     status: str = "ACTIVE"

@@ -77,6 +77,7 @@ class SqliteRepository:
                     for statement in ddl_statements():
                         self._conn.execute(statement)
                     self._migrate_instruments_name_column()
+                    self._migrate_instruments_sector_column()
                     row = self._conn.execute("SELECT version FROM schema_version").fetchone()
                     if row is None:
                         self._conn.execute(
@@ -102,6 +103,15 @@ class SqliteRepository:
         cols = {row[1] for row in self._conn.execute("PRAGMA table_info(instruments)")}
         if "name" not in cols:
             self._conn.execute("ALTER TABLE instruments ADD COLUMN name TEXT")
+
+    def _migrate_instruments_sector_column(self) -> None:
+        """SCHEMA_VERSION 10: instruments.sector — NSE Nifty-500 CSV Industry
+        (MI-4), previously discarded by parse_nifty_constituent_csv. Additive
+        nullable column; seed backfills via update_instrument_sector. Kite has
+        no sector field, so kite upserts must not wipe a seed-written value."""
+        cols = {row[1] for row in self._conn.execute("PRAGMA table_info(instruments)")}
+        if "sector" not in cols:
+            self._conn.execute("ALTER TABLE instruments ADD COLUMN sector TEXT")
 
     def close(self) -> None:
         with self._lock:
@@ -169,19 +179,44 @@ class SqliteRepository:
     def upsert_instrument(self, instrument: Instrument) -> None:
         self._write(
             "INSERT INTO instruments "
-            "(instrument_id, isin, symbol, exchange, series, name, lot_size, tick_size, status, "
-            " listed_date, delisted_date) VALUES (?,?,?,?,?,?,?,?,?,?,?) "
+            "(instrument_id, isin, symbol, exchange, series, name, sector, lot_size, tick_size, status, "
+            " listed_date, delisted_date) VALUES (?,?,?,?,?,?,?,?,?,?,?,?) "
             "ON CONFLICT(instrument_id) DO UPDATE SET "
             "isin=excluded.isin, symbol=excluded.symbol, exchange=excluded.exchange, "
-            "series=excluded.series, name=excluded.name, lot_size=excluded.lot_size, "
+            "series=excluded.series, name=excluded.name, "
+            "sector=CASE WHEN excluded.sector IS NOT NULL THEN excluded.sector ELSE instruments.sector END, "
+            "lot_size=excluded.lot_size, "
             "tick_size=excluded.tick_size, status=excluded.status, "
             "listed_date=excluded.listed_date, delisted_date=excluded.delisted_date",
             ser.instrument_to_row(instrument),
         )
 
+    def update_instrument_sector(
+        self, symbol: str, sector: str, *, exchange: str = "NSE"
+    ) -> int:
+        """MI-4: write NSE Industry onto matching instrument rows (seed backfill).
+
+        Returns the number of rows updated. Symbols with no instruments yet
+        stay untouched — sector appears once the catalog row exists.
+        """
+        bare = symbol.strip().upper()
+        clean = sector.strip()
+        if not bare or not clean:
+            return 0
+        try:
+            with self._lock:
+                with self._conn:
+                    cur = self._conn.execute(
+                        "UPDATE instruments SET sector=? WHERE UPPER(symbol)=? AND UPPER(exchange)=?",
+                        (clean, bare, exchange.strip().upper()),
+                    )
+                    return int(cur.rowcount or 0)
+        except sqlite3.Error as exc:
+            raise RepositoryError(f"write failed: {exc}") from exc
+
     def get_instrument(self, instrument_id: str) -> Instrument | None:
         row = self._query_one(
-            "SELECT instrument_id, isin, symbol, exchange, series, name, lot_size, tick_size, "
+            "SELECT instrument_id, isin, symbol, exchange, series, name, sector, lot_size, tick_size, "
             "status, listed_date, delisted_date FROM instruments WHERE instrument_id=?",
             (instrument_id,),
         )
@@ -189,7 +224,7 @@ class SqliteRepository:
 
     def list_instruments(self) -> list[Instrument]:
         rows = self._query_all(
-            "SELECT instrument_id, isin, symbol, exchange, series, name, lot_size, tick_size, "
+            "SELECT instrument_id, isin, symbol, exchange, series, name, sector, lot_size, tick_size, "
             "status, listed_date, delisted_date FROM instruments ORDER BY instrument_id"
         )
         return [ser.row_to_instrument(r) for r in rows]

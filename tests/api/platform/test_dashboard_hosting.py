@@ -925,7 +925,7 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     universe_idx = html.find('id="universe-list-body"')
     assert modal_idx != -1 and universe_idx != -1
     assert modal_idx < universe_idx
-    assert 'class="card candidate-card market-stock-list-card"' in html
+    assert 'class="card candidate-card market-stock-list-card market-universe-card"' in html
     assert "market-saved-symbols-details" in html
     assert 'closeModal(document.getElementById("validation-funnel-modal"))' in js
     # Inspect Trace is reached only from inside the funnel details modal, and
@@ -934,6 +934,23 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert 'id="trace-modal" class="modal-overlay modal-stacked"' in html
     assert ".modal-overlay.modal-stacked" in css
     assert ".modal-overlay.modal-stacked.active" in js
+
+    # MI-4: Stock List redesigned into Universe table — Sector from seed CSV
+    # Industry (instruments.sector), Status/Eligibility from latest validation
+    # members, Last Validated from decisions.ts.
+    assert "<h3>Universe</h3>" in html
+    assert "<h3>Stock List</h3>" not in html
+    assert 'id="candidate-list-body"' in html
+    assert 'id="universe-status-filter"' in html
+    assert 'id="universe-sector-filter"' in html
+    assert "<th>Sector</th>" in html
+    assert "<th>Eligibility</th>" in html
+    assert "<th>Last Validated</th>" in html
+    assert "function applyUniverseFilters" in js
+    assert "populateUniverseSectorFilter" in js
+    assert ".market-universe-table" in css
+    assert "last_validated_ts" in js
+    assert "eligibility_summary" in js
 
     # DT-2 — Quick Summary: the UX-6 sidebar strip (score/confidence/risk
     # only) expanded into a richer card (R:R Potential, Expected Return,

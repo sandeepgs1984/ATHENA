@@ -66,6 +66,23 @@ def default_http_get(url: str, *, timeout: float = 30.0) -> str:
 
 def parse_nifty_constituent_csv(text: str) -> tuple[str, ...]:
     """Parse NSE/niftyindices constituent CSV → unique bare trading symbols."""
+    return tuple(row.symbol for row in parse_nifty_constituent_rows(text))
+
+
+@dataclass(frozen=True, slots=True)
+class NiftyConstituentRow:
+    """One NSE index-constituent row — Symbol + Industry (MI-4 sector source)."""
+
+    symbol: str
+    industry: str | None = None
+
+
+def parse_nifty_constituent_rows(text: str) -> tuple[NiftyConstituentRow, ...]:
+    """Parse NSE/niftyindices constituent CSV → unique (symbol, industry) rows.
+
+    Industry is the NSE CSV column that ATHENA labels Sector in the Universe
+    table. Absent/blank Industry stays None — never fabricated.
+    """
     reader = csv.DictReader(io.StringIO(text))
     if not reader.fieldnames:
         raise ConstituentFetchError("constituent CSV has no header")
@@ -75,8 +92,9 @@ def parse_nifty_constituent_csv(text: str) -> tuple[str, ...]:
         raise ConstituentFetchError(
             f"constituent CSV missing Symbol column; got {list(reader.fieldnames)}"
         )
+    industry_key = fields.get("industry")
     seen: set[str] = set()
-    ordered: list[str] = []
+    ordered: list[NiftyConstituentRow] = []
     for row in reader:
         raw = (row.get(symbol_key) or "").strip()
         if not raw:
@@ -88,7 +106,13 @@ def parse_nifty_constituent_csv(text: str) -> tuple[str, ...]:
         if sym in seen:
             continue
         seen.add(sym)
-        ordered.append(sym)
+        industry_raw = (row.get(industry_key) or "").strip() if industry_key else ""
+        ordered.append(
+            NiftyConstituentRow(
+                symbol=sym,
+                industry=industry_raw or None,
+            )
+        )
     if not ordered:
         raise ConstituentFetchError("constituent CSV produced zero symbols")
     return tuple(ordered)
@@ -171,6 +195,7 @@ class CandidateSeeder:
         http_get: HttpGet | None = None,
         meta_get: Callable[[str], str | None] | None = None,
         meta_set: Callable[[str, str], None] | None = None,
+        instrument_repo: object | None = None,
     ) -> None:
         self._store = store
         self._config = config
@@ -178,6 +203,8 @@ class CandidateSeeder:
         self._http_get = http_get or default_http_get
         self._meta_get = meta_get
         self._meta_set = meta_set
+        # Optional SqliteRepository — used only for MI-4 sector backfill.
+        self._instrument_repo = instrument_repo
 
     def run(self, *, as_of: datetime) -> CandidateSeedResult:
         if as_of.tzinfo is None:
@@ -196,6 +223,12 @@ class CandidateSeeder:
             )
 
         meta_key = f"candidate_seed:{cfg.source}:last_date"
+        rows, url_used = self._load_rows()
+        # MI-4: Industry→instruments.sector always, even when candidate merge
+        # is skipped for the day — otherwise sector stays null forever after
+        # the first once-per-day seed.
+        sectors_written = self._apply_sectors(rows)
+
         if cfg.once_per_day and self._meta_get is not None:
             last = self._meta_get(meta_key)
             if last == day.isoformat():
@@ -203,20 +236,24 @@ class CandidateSeeder:
                     source=cfg.source,
                     status="skipped_already_today",
                     as_of_date=day,
-                    fetched=0,
+                    fetched=len(rows),
                     added=0,
                     already_present=0,
-                    detail=f"already seeded for {day.isoformat()}",
+                    url_used=url_used,
+                    detail=(
+                        f"already seeded for {day.isoformat()}"
+                        + (f"; sector backfill updated {sectors_written} instruments" if sectors_written else "")
+                    ),
                 )
 
-        symbols, url_used = self._load_symbols()
         existing = {
             c.symbol for c in self._store.list_candidates(active_only=False)
         }
         added = 0
         already = 0
         ts = as_of if as_of.tzinfo else as_of.replace(tzinfo=timezone.utc)
-        for sym in symbols:
+        for row in rows:
+            sym = row.symbol
             if sym in existing:
                 already += 1
                 continue
@@ -235,18 +272,32 @@ class CandidateSeeder:
         if self._meta_set is not None:
             self._meta_set(meta_key, day.isoformat())
 
+        detail = f"merge-unique: added {added}, already present {already}"
+        if sectors_written:
+            detail = f"{detail}; sector backfill updated {sectors_written} instruments"
         return CandidateSeedResult(
             source=cfg.source,
             status="seeded",
             as_of_date=day,
-            fetched=len(symbols),
+            fetched=len(rows),
             added=added,
             already_present=already,
             url_used=url_used,
-            detail=f"merge-unique: added {added}, already present {already}",
+            detail=detail,
         )
 
-    def _load_symbols(self) -> tuple[Sequence[str], str | None]:
+    def _apply_sectors(self, rows: Sequence[NiftyConstituentRow]) -> int:
+        repo = self._instrument_repo
+        if repo is None:
+            return 0
+        updated = 0
+        for row in rows:
+            if not row.industry:
+                continue
+            updated += int(repo.update_instrument_sector(row.symbol, row.industry) or 0)
+        return updated
+
+    def _load_rows(self) -> tuple[Sequence[NiftyConstituentRow], str | None]:
         cfg = self._config
         if cfg.local_file:
             path = Path(cfg.local_file)
@@ -255,7 +306,7 @@ class CandidateSeeder:
             if not path.is_file():
                 raise ConstituentFetchError(f"constituents local_file missing: {path}")
             text = path.read_text(encoding="utf-8-sig")
-            return parse_nifty_constituent_csv(text), str(path)
+            return parse_nifty_constituent_rows(text), str(path)
 
         errors: list[str] = []
         for url in (cfg.url, cfg.fallback_url):
@@ -263,7 +314,7 @@ class CandidateSeeder:
                 continue
             try:
                 text = self._http_get(url, timeout=cfg.http_timeout_seconds)
-                return parse_nifty_constituent_csv(text), url
+                return parse_nifty_constituent_rows(text), url
             except ConstituentFetchError as exc:
                 errors.append(str(exc))
         raise ConstituentFetchError(

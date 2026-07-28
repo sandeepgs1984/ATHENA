@@ -96,6 +96,35 @@ class TestInstruments:
         repo.upsert_instrument(_instrument())
         assert repo.get_instrument(INST).name is None
 
+    def test_sector_column_roundtrips(self, repo):
+        """SCHEMA_VERSION 10: instruments.sector — NSE Industry from the
+        Nifty 500 seed CSV (MI-4), previously discarded on parse."""
+        repo.upsert_instrument(
+            Instrument(instrument_id=INST, symbol="AAA", exchange="NSE", series="EQ",
+                       sector="IT")
+        )
+        assert repo.get_instrument(INST).sector == "IT"
+        assert repo.list_instruments()[0].sector == "IT"
+
+    def test_kite_upsert_preserves_existing_sector(self, repo):
+        repo.upsert_instrument(
+            Instrument(instrument_id=INST, symbol="AAA", exchange="NSE", series="EQ",
+                       sector="IT")
+        )
+        # Kite catalog refresh has no sector — must not wipe the seed value.
+        repo.upsert_instrument(
+            Instrument(instrument_id=INST, symbol="AAA", exchange="NSE", series="EQ",
+                       name="Alpha Alloys Limited", sector=None)
+        )
+        got = repo.get_instrument(INST)
+        assert got.name == "Alpha Alloys Limited"
+        assert got.sector == "IT"
+
+    def test_update_instrument_sector_by_symbol(self, repo):
+        repo.upsert_instrument(_instrument())
+        assert repo.update_instrument_sector("AAA", "Financial Services") == 1
+        assert repo.get_instrument(INST).sector == "Financial Services"
+
     def test_initialize_migrates_pre_existing_db_missing_name_column(self, tmp_path):
         """A database created before SCHEMA_VERSION 9 (instruments table has
         no `name` column) must not break — initialize() adds it in place,
@@ -127,11 +156,14 @@ class TestInstruments:
         assert pre_existing is not None
         assert pre_existing.symbol == "OLD"
         assert pre_existing.name is None
+        assert pre_existing.sector is None
         migrated.upsert_instrument(
             Instrument(instrument_id="LEGACY-1", symbol="OLD", exchange="NSE", series="EQ",
-                       name="Old Co Ltd")
+                       name="Old Co Ltd", sector="Capital Goods")
         )
-        assert migrated.get_instrument("LEGACY-1").name == "Old Co Ltd"
+        got = migrated.get_instrument("LEGACY-1")
+        assert got.name == "Old Co Ltd"
+        assert got.sector == "Capital Goods"
         migrated.close()
 
 

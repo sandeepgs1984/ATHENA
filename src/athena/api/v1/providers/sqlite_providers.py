@@ -452,6 +452,31 @@ class SqlitePipelineRunProvider:
             final_context=ctx,
         )
 
+    @staticmethod
+    def _dedupe_qualified(rows: object) -> object:
+        """Collapse Qualified Today to one row per symbol, newest first.
+
+        Runs persisted before the write-path fix repeated a symbol once per
+        same-day re-validate, and the panel lists qualified *names* — so the
+        read path must not show the same name several times. Entries arrive
+        newest-first per symbol, so the first occurrence is the current verdict.
+        """
+        if not isinstance(rows, list):
+            return rows
+        seen: set[str] = set()
+        out: list[object] = []
+        for row in rows:
+            if not isinstance(row, dict):
+                out.append(row)
+                continue
+            key = str(row.get("instrument_id") or row.get("symbol") or "").upper()
+            if key and key in seen:
+                continue
+            if key:
+                seen.add(key)
+            out.append(row)
+        return out
+
     def _extract_context_data(self, detail: dict) -> dict[str, object]:
         """Pull regime/universe from run detail, else configured ingest symbols."""
         data: dict[str, object] = {}
@@ -484,6 +509,8 @@ class SqlitePipelineRunProvider:
             data["universe_members"] = detail["universe_members"]
         if "qualified_today" in detail and "qualified_today" not in data:
             data["qualified_today"] = detail["qualified_today"]
+        if "qualified_today" in data:
+            data["qualified_today"] = self._dedupe_qualified(data["qualified_today"])
         if "universe_members" not in data:
             # No eligibility payload in this run — do not pretend kite.json symbols are Eligible.
             data["universe_members"] = {}

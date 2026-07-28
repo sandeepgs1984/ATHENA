@@ -272,3 +272,45 @@ class TestSqliteProviders:
         assert data["universe_source"] == "no_validation_run"
         assert data["configured_ingest_symbols"] == ["INFY", "TCS"]
         repo.close()
+
+    def test_pipeline_provider_dedupes_qualified_today(self, tmp_path: Path) -> None:
+        """Runs persisted before the write-path fix repeat a symbol once per
+        same-day re-validate. The read path must show each qualified name once,
+        keeping the newest verdict, so existing run history renders honestly."""
+        repo = SqliteRepository(tmp_path / "q.db")
+        repo.initialize()
+        now = datetime(2026, 7, 28, 10, 0, tzinfo=timezone.utc)
+        repo.save_run(
+            RunRecord(
+                run_id="run-dupe",
+                cycle_id="c1",
+                trigger=RunTrigger.REFRESH,
+                started_ts=now,
+                status=RunStatus.COMPLETED,
+                software_version="0",
+                blueprint_version="0",
+                strategy_profile="default",
+                strategy_profile_version="1",
+                indicator_versions={},
+                config_snapshot_id="cfg",
+                finished_ts=now,
+            ),
+            detail={
+                "pipeline": {
+                    "universe_members": {"DIXON": {"symbol": "DIXON", "included": True}},
+                    "qualified_today": [
+                        {"symbol": "DIXON", "instrument_id": "NSE:DIXON", "decision_id": "d-new"},
+                        {"symbol": "DIXON", "instrument_id": "NSE:DIXON", "decision_id": "d-old"},
+                        {"symbol": "INFY", "instrument_id": "NSE:INFY", "decision_id": "d-infy"},
+                    ],
+                }
+            },
+        )
+
+        result = SqlitePipelineRunProvider(repo, config_dir=tmp_path / "config").get_run(
+            "run-dupe"
+        )
+        assert result is not None
+        qualified = result.final_context.data["qualified_today"]
+        assert [row["decision_id"] for row in qualified] == ["d-new", "d-infy"]
+        repo.close()

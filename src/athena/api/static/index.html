@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.56.3">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.57.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -392,10 +392,10 @@
                                 </div>
                             </div>
 
-                            <div class="card candidate-card market-stock-list-card">
+                            <div class="card candidate-card market-stock-list-card market-universe-card">
                                 <div class="card-header candidate-card-header">
                                     <div>
-                                        <h3>Stock List</h3>
+                                        <h3>Universe</h3>
                                         <p class="metric-desc">Nifty 500 seed + your additions</p>
                                     </div>
                                     <span id="candidate-count" class="meta-chip score-chip">0 symbols</span>
@@ -407,14 +407,41 @@
                                             <i class="fas fa-plus"></i> Add &amp; validate
                                         </button>
                                     </div>
-                                    <div class="search-bar-container candidate-search">
-                                        <i class="fas fa-search search-icon"></i>
-                                        <input type="text" id="candidate-search-input" placeholder="Search the full stock list..." />
+                                    <div class="universe-table-toolbar">
+                                        <div class="search-bar-container candidate-search">
+                                            <i class="fas fa-search search-icon"></i>
+                                            <input type="text" id="candidate-search-input" placeholder="Search symbol..." />
+                                        </div>
+                                        <select id="universe-status-filter" class="universe-filter-select" aria-label="Filter by status">
+                                            <option value="all">All statuses</option>
+                                            <option value="ELIGIBLE">Eligible</option>
+                                            <option value="EXCLUDED">Excluded</option>
+                                            <option value="PENDING">Pending</option>
+                                        </select>
+                                        <select id="universe-sector-filter" class="universe-filter-select" aria-label="Filter by sector">
+                                            <option value="all">All sectors</option>
+                                        </select>
                                     </div>
                                     <div id="candidate-list-empty" class="text-muted text-center candidate-empty">
                                         Add symbols to validate.
                                     </div>
-                                    <ul id="candidate-list" class="candidate-list"></ul>
+                                    <div class="universe-table-wrapper market-universe-scroll">
+                                        <table class="universe-table market-universe-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Symbol</th>
+                                                    <th>Sector</th>
+                                                    <th>Status</th>
+                                                    <th>Eligibility</th>
+                                                    <th>Last Validated</th>
+                                                    <th>Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="candidate-list-body">
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <ul id="candidate-list" class="candidate-list" hidden></ul>
                                 </div>
                             </div>
 
@@ -1138,6 +1165,6 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.56.3"></script>
+    <script src="/dashboard/dashboard.js?v=9.57.0"></script>
 </body>
 </html>

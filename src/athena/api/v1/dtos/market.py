@@ -16,6 +16,11 @@ class OwnerCandidateDTO(BaseModel):
     added_ts: datetime
     notes: str = ""
     active: bool = True
+    # MI-4 Universe table enrichments — all optional, never fabricated.
+    sector: str | None = None
+    status: Literal["ELIGIBLE", "EXCLUDED", "PENDING"] | None = None
+    eligibility_summary: str | None = None
+    last_validated_ts: datetime | None = None
 
 
 class OwnerCandidateListDTO(BaseModel):

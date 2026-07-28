@@ -682,101 +682,174 @@
     }
 
     async function loadCandidateList() {
-        const listEl = document.getElementById("candidate-list");
+        const bodyEl = document.getElementById("candidate-list-body");
         const emptyEl = document.getElementById("candidate-list-empty");
         const countEl = document.getElementById("candidate-count");
         const candidateSearch = document.getElementById("candidate-search-input");
-        if (!listEl) return;
+        if (!bodyEl) return;
         try {
             const res = await apiRequest("/api/v1/market/candidates");
             const rows = (res && res.data && res.data.candidates) ? res.data.candidates : [];
-            listEl.innerHTML = "";
+            bodyEl.innerHTML = "";
+            populateUniverseSectorFilter(rows);
             if (countEl) {
                 countEl.textContent = `${rows.length} symbol${rows.length === 1 ? "" : "s"}`;
             }
             if (rows.length === 0) {
                 if (emptyEl) {
-                    emptyEl.textContent = "No symbols in the stock list.";
+                    emptyEl.textContent = "No symbols in the universe yet.";
                     emptyEl.style.display = "block";
                 }
                 return;
             }
             if (emptyEl) emptyEl.style.display = "none";
             rows.forEach(c => {
-                const li = document.createElement("li");
-                li.className = "candidate-row";
-                li.dataset.symbol = String(c.symbol || "").toUpperCase();
-                li.innerHTML = `
-                    <span class="symbol-name-col">${c.symbol}</span>
-                    <div class="candidate-row-actions">
-                        <button type="button" class="inspect-btn candidate-validate-btn" data-symbol="${c.symbol}" title="Re-run ingest + score">
-                            <i class="fas fa-bolt"></i> Validate
-                        </button>
-                        <button type="button" class="inspect-btn candidate-remove-btn" data-symbol="${c.symbol}">
-                            <i class="fas fa-times"></i> Remove
-                        </button>
-                    </div>
+                const tr = document.createElement("tr");
+                const status = String(c.status || "PENDING").toUpperCase();
+                const sector = c.sector || "";
+                tr.dataset.symbol = String(c.symbol || "").toUpperCase();
+                tr.dataset.status = status;
+                tr.dataset.sector = sector.toUpperCase();
+                const statusClass = status === "ELIGIBLE"
+                    ? "included"
+                    : status === "EXCLUDED"
+                        ? "excluded"
+                        : "pending";
+                const statusLabel = status === "ELIGIBLE"
+                    ? "Eligible"
+                    : status === "EXCLUDED"
+                        ? "Excluded"
+                        : "Pending";
+                const eligibility = c.eligibility_summary
+                    ? String(c.eligibility_summary)
+                    : "—";
+                const eligibilityShort = eligibility.length > 42
+                    ? `${eligibility.slice(0, 40)}…`
+                    : eligibility;
+                const lastValidated = c.last_validated_ts
+                    ? formatDecisionTime(c.last_validated_ts)
+                    : "—";
+                const canTrace = status === "ELIGIBLE" || status === "EXCLUDED";
+                tr.innerHTML = `
+                    <td><strong class="symbol-name-col">${c.symbol}</strong></td>
+                    <td class="text-muted">${sector || "—"}</td>
+                    <td>
+                        <span class="symbol-status-badge ${statusClass}">
+                            <i class="fas ${status === "ELIGIBLE" ? "fa-check" : status === "EXCLUDED" ? "fa-ban" : "fa-clock"}"></i>
+                            ${statusLabel}
+                        </span>
+                    </td>
+                    <td class="universe-eligibility-cell" title="${eligibility.replace(/"/g, "&quot;")}">${eligibilityShort}</td>
+                    <td class="text-muted">${lastValidated}</td>
+                    <td>
+                        <div class="candidate-row-actions">
+                            <button type="button" class="inspect-btn candidate-validate-btn" data-symbol="${c.symbol}" title="Re-run ingest + score">
+                                <i class="fas fa-bolt"></i>
+                            </button>
+                            ${canTrace ? `<button type="button" class="inspect-btn candidate-trace-btn" data-symbol="${c.symbol}" title="Inspect Trace"><i class="fas fa-search"></i></button>` : ""}
+                            <button type="button" class="inspect-btn candidate-remove-btn" data-symbol="${c.symbol}" title="Remove candidate">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    </td>
                 `;
-                listEl.appendChild(li);
+                bodyEl.appendChild(tr);
             });
-            if (candidateSearch && candidateSearch.value) {
-                filterCandidateList(candidateSearch.value);
-            }
-            listEl.querySelectorAll(".candidate-validate-btn").forEach(btn => {
+            applyUniverseFilters();
+            bodyEl.querySelectorAll(".candidate-validate-btn").forEach(btn => {
                 btn.addEventListener("click", async () => {
                     const sym = btn.getAttribute("data-symbol");
                     await validateSymbolsNow([sym], { button: btn, refreshDecisions: true });
                 });
             });
-            listEl.querySelectorAll(".candidate-remove-btn").forEach(btn => {
+            bodyEl.querySelectorAll(".candidate-remove-btn").forEach(btn => {
                 btn.addEventListener("click", async () => {
                     const sym = btn.getAttribute("data-symbol");
                     await removeCandidateNow(sym, { button: btn });
+                });
+            });
+            bodyEl.querySelectorAll(".candidate-trace-btn").forEach(btn => {
+                btn.addEventListener("click", () => {
+                    const sym = btn.getAttribute("data-symbol");
+                    if (sym && typeof window.openTraceModal === "function") {
+                        window.openTraceModal(sym);
+                    }
                 });
             });
         } catch (err) {
             console.error("Failed to load candidates", err);
             if (emptyEl) {
                 emptyEl.style.display = "block";
-                emptyEl.textContent = "Failed to load validation list.";
+                emptyEl.textContent = "Failed to load universe list.";
             }
             if (countEl) countEl.textContent = "Unavailable";
         }
     }
 
-    function filterCandidateList(rawQuery) {
-        const listEl = document.getElementById("candidate-list");
+    function populateUniverseSectorFilter(rows) {
+        const select = document.getElementById("universe-sector-filter");
+        if (!select) return;
+        const current = select.value || "all";
+        const sectors = [...new Set(
+            rows.map(r => String(r.sector || "").trim()).filter(Boolean)
+        )].sort((a, b) => a.localeCompare(b));
+        select.innerHTML = '<option value="all">All sectors</option>' +
+            sectors.map(s => `<option value="${s}">${s}</option>`).join("");
+        select.value = sectors.includes(current) ? current : "all";
+    }
+
+    function applyUniverseFilters() {
+        const bodyEl = document.getElementById("candidate-list-body");
         const emptyEl = document.getElementById("candidate-list-empty");
         const countEl = document.getElementById("candidate-count");
-        if (!listEl) return;
-        const query = String(rawQuery || "").trim().toUpperCase();
-        const rows = Array.from(listEl.querySelectorAll(".candidate-row"));
+        const searchEl = document.getElementById("candidate-search-input");
+        const statusEl = document.getElementById("universe-status-filter");
+        const sectorEl = document.getElementById("universe-sector-filter");
+        if (!bodyEl) return;
+        const query = String((searchEl && searchEl.value) || "").trim().toUpperCase();
+        const statusFilter = String((statusEl && statusEl.value) || "all").toUpperCase();
+        const sectorFilter = String((sectorEl && sectorEl.value) || "all").toUpperCase();
+        const rows = Array.from(bodyEl.querySelectorAll("tr"));
         let visible = 0;
         rows.forEach(row => {
-            const matches = !query || (row.dataset.symbol || "").includes(query);
-            row.hidden = !matches;
-            if (matches) visible += 1;
+            const matchesQuery = !query || (row.dataset.symbol || "").includes(query);
+            const matchesStatus = statusFilter === "ALL" || (row.dataset.status || "") === statusFilter;
+            const matchesSector = sectorFilter === "ALL" || (row.dataset.sector || "") === sectorFilter;
+            const show = matchesQuery && matchesStatus && matchesSector;
+            row.hidden = !show;
+            if (show) visible += 1;
         });
         if (countEl) {
-            countEl.textContent = query
+            const filtering = query || statusFilter !== "ALL" || sectorFilter !== "ALL";
+            countEl.textContent = filtering
                 ? `${visible} of ${rows.length}`
                 : `${rows.length} symbol${rows.length === 1 ? "" : "s"}`;
         }
         if (emptyEl) {
-            emptyEl.textContent = query
-                ? `No symbols match “${rawQuery}”.`
-                : "No symbols in the stock list.";
+            emptyEl.textContent = visible === 0
+                ? (rows.length === 0 ? "No symbols in the universe yet." : "No symbols match the current filters.")
+                : "No symbols in the universe yet.";
             emptyEl.style.display = visible === 0 ? "block" : "none";
         }
+    }
+
+    function filterCandidateList(rawQuery) {
+        applyUniverseFilters();
     }
 
     const candidateAddBtn = document.getElementById("candidate-add-btn");
     const candidateInput = document.getElementById("candidate-symbol-input");
     const candidateSearchInput = document.getElementById("candidate-search-input");
     if (candidateSearchInput) {
-        candidateSearchInput.addEventListener("input", (e) => {
-            filterCandidateList(e.target.value);
-        });
+        candidateSearchInput.addEventListener("input", () => applyUniverseFilters());
+    }
+    const universeStatusFilter = document.getElementById("universe-status-filter");
+    if (universeStatusFilter) {
+        universeStatusFilter.addEventListener("change", () => applyUniverseFilters());
+    }
+    const universeSectorFilter = document.getElementById("universe-sector-filter");
+    if (universeSectorFilter) {
+        universeSectorFilter.addEventListener("change", () => applyUniverseFilters());
     }
     if (candidateAddBtn && candidateInput) {
         const addAndValidateCandidate = async () => {

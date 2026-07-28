@@ -388,8 +388,8 @@ Before any implementation, a full data-source inventory was done across every mo
 | **MI-1** Shared ticker strip + Trading Calendar relocation | Generalize the Decisions & Trace header ticker to also render on Market Intelligence (one shared component/endpoint via `TICKER_TABS`, not two); relocate Trading Calendar out of the primary grid into a collapsed-by-default `<details>` panel, same rendering functions/ids untouched | ✅ Approved |
 | **MI-2** Market Summary Hero + Market Regime & Context | Larger-presentation Trend/Volatility/Gap/Evidence Attribution (real); Market Health Score/Breadth gap handled via real categorical labels | ✅ Approved |
 | **MI-3** Validation Pipeline funnel | New small dedicated endpoint exposing the already-computed Universe→Evaluated→Eligible/Excluded→decision_counts breakdown as a typed 5-stage funnel | ✅ Approved |
-| **MI-4** Universe table redesign | Reuse real Symbol/Status/Actions; add Sector via the ingestion fix; scope Eligibility-per-row/Last-Validated-per-row | 🔄 Design |
-| **MI-5** Recent Activity + Quick Actions + Saved Symbols | Real chronological activity feed; Quick Actions consolidated (Add Symbol reuse, new Run Full Validation endpoint, Refresh Market Data relabeled honestly, Export omitted); Saved Symbols relocated to a secondary panel | ⏳ Planned |
+| **MI-4** Universe table redesign | Reuse real Symbol/Status/Actions; add Sector via the ingestion fix; scope Eligibility-per-row/Last-Validated-per-row | 🔄 Ready for review |
+| **MI-5** Recent Activity + Quick Actions + Saved Symbols | Real chronological activity feed; Quick Actions consolidated (Add Symbol reuse, new Run Full Validation endpoint, Refresh Market Data relabeled honestly, Export omitted); Saved Symbols relocated to a secondary panel. Also absorbs the owner-requested "Validate All" — same operation as Run Full Validation — plus Kite pacing/429 handling | ⏸ Blocked on **ADR-007 (Proposed)** — owner-triggered background validation job |
 
 #### MI-1 — Shared ticker strip + Trading Calendar relocation
 
@@ -434,6 +434,20 @@ Replaced the "Today's Validation" text summary strip with a horizontal 5-stage V
 | Tests | 3 new pipeline API tests (empty / Filtered math + newest-run preference / auth). ~20 new dashboard-hosting assertions. Full suite **1045 passed** |
 | Coverage | Live-verified: funnel populated after host restart (real production validation_summary); UI polish iterations for mock alignment, viewport scroll, and stacked Inspect Trace modal. |
 | Status | ✅ Approved (2026-07-28) |
+
+---
+
+#### MI-4 — Universe table redesign + Sector ingestion fix
+
+Replaced the Stock List (symbol + Validate/Remove) with the mock’s Universe table. Sector comes from the Nifty 500 CSV `Industry` column that `parse_nifty_constituent_csv` previously discarded — same class of fix as DT-3’s company-name ingestion, but sourced from the seed CSV (Kite has no sector). Last Validated uses the latest real `decisions.ts` per symbol (no new write-path field).
+
+| | |
+|---|---|
+| Scope | **Backend**: `Instrument.sector`; SCHEMA_VERSION 9→10 + idempotent migration; `parse_nifty_constituent_rows()`; seed backfills sector even on once-per-day skip; kite upserts preserve existing sector; `OwnerCandidateDTO` enriched with `sector`/`status`/`eligibility_summary`/`last_validated_ts` via `CandidatesService` (no new endpoint). **Frontend**: Stock List → Universe table (Symbol/Sector/Status/Eligibility/Last Validated/Actions) with status+sector filters; Validate/Remove/Inspect Trace actions. |
+| Tests | Sector parse/migration/preserve/backfill; candidates enrichment; scoped-validate verdict merge; Qualified Today dedupe (write + read path). Full suite **1055 passed** |
+| Coverage | Self-verified via tests, plus replayed against a copy of the live DB: 16 Eligible / 10 Excluded / 481 Pending with real per-symbol timestamps, Qualified Today collapsed to one row per name, and the seed path backfilling sector onto 500 instruments (20 distinct sectors). Live: restart the host — a host started before these files were saved serves the old Python and shows every row Pending — then `./athena-daily` for the sector backfill. |
+| Owner-reported fixes | Universe status no longer collapses to Pending after a scoped validate (per-symbol verdict merged newest-run-first, Excluded rows take Last Validated from the judging run); Qualified Today keeps one row per symbol (newest same-day verdict), so repeat validates stop duplicating names. |
+| Status | 🔄 Ready for review (2026-07-28) — implemented and self-verified, awaiting owner approval |
 
 ---
 

@@ -30,5 +30,6 @@ def seed_owner_candidates(
         repo_root=repo_root,
         meta_get=repo.get_ops_meta,
         meta_set=lambda k, v: repo.set_ops_meta(k, v, updated_ts=as_of),
+        instrument_repo=repo,
     )
     return seeder.run(as_of=as_of)
