@@ -6,7 +6,43 @@ status updated on approval.
 
 ---
 
-## MH-1 — Canonical inputs + persistence (READY FOR REVIEW)
+## MH-2 — Exact F-5 `MarketHealthScore` (READY FOR REVIEW)
+
+| | |
+|---|---|
+| Completed | 2026-07-28 |
+| Objective | Construct + persist the authoritative six-component F-5 `MarketHealthScore`, and cut scoring's `market_quality` over to `total` when present |
+| Scope | Config point maps + weights; pure `market_health/score.py`; owner_validation persistence; ScoringEngine cutover with categorical compat shim |
+| Public APIs added | `construct_market_health_score`, `MarketHealthScoreBuild`, `ComponentScoreDetail`. Run detail key `market_health_score`. Scoring `score(..., market_health_score=)` |
+| Tests | `tests/market_intel/test_market_health_score.py`. Full suite **1091 passed** |
+| Coverage | Unit: band mapping, coverage/staleness unavailable, weighted total, scoring prefer-score vs shim, weights-sum validation |
+| Architecture compliance | F-5 §4 honesty (absent ≠ 50; no score if any component missing); config-driven weights/points; no UI fabrication (MH-3); categorical engine retained |
+| ADR compliance | ADR-005: score + per-component diagnostics on run detail. ADR-008 / DD-11 inputs consumed. F-5 Accepted |
+| Risks discovered | Live score often unavailable until institutional flow + full-window gap + coverage gates are met — UI must keep showing Unavailable until then (MH-3) |
+| Technical debt introduced | Risk engine still averages categorical labels (F-5 §7 listed scoring cutover; risk left on shim intentionally). Calendar-day staleness for FII/DII (not trading-session count) |
+| Suggested improvements | Trading-day age for institutional max_age; optional risk cutover to inverted score; NSDL finalization |
+| Remaining work | MH-3 Market Summary API + mock-faithful ring/ADV-DEC UI |
+| Status | 🔄 Ready for review (2026-07-28) |
+| Branch | feature/live-dashboard |
+
+### Scope completed
+
+- F-5 component point maps + weights (sum 100) in `config/market_health.json` / `MarketHealthConfig`.
+- Pure constructor maps trend/breadth/liquidity/volatility/institutional/gap → points or absent; emits domain `MarketHealthScore` only when all six present.
+- Owner validation assesses categorical health once, builds score, persists `market_health_score` diagnostics on run detail, shares score into scan scoring.
+- `ScoringEngine._market_quality` prefers `MarketHealthScore.total`; categorical label average remains the compat shim.
+
+### Deferred by owner — pre-existing test-suite warnings (observed 2026-07-28, unrelated to MH-2)
+
+All three are warnings only; the suite is green at 1091 passed.
+
+1. `InsecureKeyLengthWarning` — `SecurityConfig.jwt_secret` defaults to the 29-byte `"secret-change-in-prod-seeding"`, below the 32-byte HS256 minimum. Tests build settings without env vars so they hit that default. Production is safe only when `ATHENA_JWT_SECRET` or `ATHENA_OWNER_PASSWORD_HASH` is set (the latter derives a 64-char SHA-256 key). Candidate fix: fail loudly at startup when the effective secret is under 32 bytes.
+2. `StarletteDeprecationWarning` — `HTTP_422_UNPROCESSABLE_ENTITY` is renamed to `HTTP_422_UNPROCESSABLE_CONTENT`; referenced once at `src/athena/api/app.py:173`. Cosmetic, behaviour identical.
+3. `PytestUnraisableExceptionWarning` — the fake 429 response `_Body` in `tests/data_layer/test_kite_provider.py` implements only `read()`, so garbage-collecting the `HTTPError` raises `AttributeError: no attribute 'close'` at GC time. One-line no-op `close()` on the stub fixes it; `UrllibKiteTransport` itself is correct.
+
+---
+
+## MH-1 — Canonical inputs + persistence (APPROVED)
 
 | | |
 |---|---|
@@ -21,8 +57,8 @@ status updated on approval.
 | Risks discovered | NSE HTML/cookie warm-up fragility — mitigated by file fallback + non-aborting ingest. Adding a config key while a host is already running makes every `extra="forbid"` reload fail: `/ops/kite/status` 500s and the dashboard shows a false "Connect Kite" blocker until the host restarts |
 | Technical debt introduced | None intentional. Score construction explicitly deferred to MH-2 |
 | Suggested improvements | Optional NSDL finalization adapter; cookie jar persistence for NSE; deferred by owner — make `checkKiteGate()` distinguish a 5xx status-check failure from a genuinely disconnected session so config/code skew is not reported as a Kite re-login |
-| Remaining work | MH-2 `MarketHealthScore` construction + consumer cutover |
-| Status | 🔄 Ready for review (2026-07-28) |
+| Remaining work | Completed — MH-2 owns score construction |
+| Status | ✅ Approved (2026-07-28) |
 | Branch | feature/live-dashboard |
 
 ### Scope completed

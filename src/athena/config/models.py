@@ -511,9 +511,89 @@ class InstitutionalInputCfg(_Strict):
     mild_sell_cr: float = -500.0
     strong_sell_cr: float = -2000.0
 
+    @model_validator(mode="after")
+    def _ordered(self) -> InstitutionalInputCfg:
+        if not (
+            self.strong_sell_cr
+            < self.mild_sell_cr
+            < self.mild_buy_cr
+            < self.strong_buy_cr
+        ):
+            raise ValueError(
+                "institutional bands must satisfy "
+                "strong_sell_cr < mild_sell_cr < mild_buy_cr < strong_buy_cr"
+            )
+        return self
+
+
+class TriBandPointsCfg(_Strict):
+    """Strong / mid / weak point map (0..100)."""
+
+    strong: int = Field(default=80, ge=0, le=100)
+    mid: int = Field(default=50, ge=0, le=100)
+    weak: int = Field(default=20, ge=0, le=100)
+
+
+class LiquidityPointsCfg(_Strict):
+    healthy: int = Field(default=80, ge=0, le=100)
+    mid: int = Field(default=50, ge=0, le=100)
+    weak: int = Field(default=20, ge=0, le=100)
+
+
+class VolatilityPointsCfg(_Strict):
+    calm: int = Field(default=70, ge=0, le=100)
+    normal: int = Field(default=55, ge=0, le=100)
+    elevated: int = Field(default=30, ge=0, le=100)
+
+
+class InstitutionalPointsCfg(_Strict):
+    strong_buy: int = Field(default=90, ge=0, le=100)
+    mild_buy: int = Field(default=70, ge=0, le=100)
+    balanced: int = Field(default=50, ge=0, le=100)
+    mild_sell: int = Field(default=30, ge=0, le=100)
+    strong_sell: int = Field(default=10, ge=0, le=100)
+
+
+class F5ComponentPointsCfg(_Strict):
+    """Per-component point maps for F-5 MarketHealthScore (MH-2)."""
+
+    trend_quality: TriBandPointsCfg = Field(default_factory=TriBandPointsCfg)
+    breadth: TriBandPointsCfg = Field(default_factory=TriBandPointsCfg)
+    liquidity: LiquidityPointsCfg = Field(default_factory=LiquidityPointsCfg)
+    volatility: VolatilityPointsCfg = Field(default_factory=VolatilityPointsCfg)
+    institutional_strength: InstitutionalPointsCfg = Field(
+        default_factory=InstitutionalPointsCfg
+    )
+    gap_stability: TriBandPointsCfg = Field(default_factory=TriBandPointsCfg)
+
+
+class F5WeightsCfg(_Strict):
+    """F-5 component weights — must sum to 100."""
+
+    trend_quality: int = Field(default=20, ge=0, le=100)
+    breadth: int = Field(default=20, ge=0, le=100)
+    liquidity: int = Field(default=15, ge=0, le=100)
+    volatility: int = Field(default=15, ge=0, le=100)
+    institutional_strength: int = Field(default=15, ge=0, le=100)
+    gap_stability: int = Field(default=15, ge=0, le=100)
+
+    @model_validator(mode="after")
+    def _sum_100(self) -> F5WeightsCfg:
+        total = (
+            self.trend_quality
+            + self.breadth
+            + self.liquidity
+            + self.volatility
+            + self.institutional_strength
+            + self.gap_stability
+        )
+        if total != 100:
+            raise ValueError(f"F-5 weights must sum to 100, got {total}")
+        return self
+
 
 class MarketHealthConfig(_Strict):
-    """Market Health Engine thresholds (M2.2) + F-5 input aggregates (MH-1)."""
+    """Market Health Engine thresholds (M2.2) + F-5 inputs/score (MH-1/MH-2)."""
 
     breadth: BreadthCfg
     momentum: MomentumCfg
@@ -522,6 +602,8 @@ class MarketHealthConfig(_Strict):
     liquidity: LiquidityAggregateCfg = Field(default_factory=LiquidityAggregateCfg)
     gap_stability: GapStabilityInputCfg = Field(default_factory=GapStabilityInputCfg)
     institutional: InstitutionalInputCfg = Field(default_factory=InstitutionalInputCfg)
+    component_points: F5ComponentPointsCfg = Field(default_factory=F5ComponentPointsCfg)
+    weights: F5WeightsCfg = Field(default_factory=F5WeightsCfg)
 
 
 class SectorTrendCfg(_Strict):

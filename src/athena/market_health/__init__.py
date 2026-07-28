@@ -7,11 +7,21 @@ from athena.market_health.models import (
     MarketHealthLabel,
     MarketHealthResult,
 )
+from athena.market_health.score import (
+    ComponentScoreDetail,
+    F5_COMPONENTS,
+    MarketHealthScoreBuild,
+    construct_market_health_score,
+)
 
 __all__ = [
+    "ComponentScoreDetail",
+    "F5_COMPONENTS",
     "HealthEvidence",
     "MarketHealthAssessment",
     "MarketHealthEngine",
     "MarketHealthLabel",
     "MarketHealthResult",
+    "MarketHealthScoreBuild",
+    "construct_market_health_score",
 ]

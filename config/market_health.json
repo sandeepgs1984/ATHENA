@@ -1,7 +1,7 @@
 {
   "_meta": {
     "layer": 3,
-    "description": "Market Health Engine thresholds (M2.2) + F-5 MH-1 input aggregates. Component point maps land in MH-2."
+    "description": "Market Health Engine thresholds (M2.2) + F-5 MH-1 aggregates + MH-2 component points/weights."
   },
   "breadth": {
     "strong_ratio": 0.60,
@@ -41,5 +41,27 @@
     "mild_buy_cr": 500.0,
     "mild_sell_cr": -500.0,
     "strong_sell_cr": -2000.0
+  },
+  "component_points": {
+    "trend_quality": {"strong": 80, "mid": 50, "weak": 20},
+    "breadth": {"strong": 80, "mid": 50, "weak": 20},
+    "liquidity": {"healthy": 80, "mid": 50, "weak": 20},
+    "volatility": {"calm": 70, "normal": 55, "elevated": 30},
+    "institutional_strength": {
+      "strong_buy": 90,
+      "mild_buy": 70,
+      "balanced": 50,
+      "mild_sell": 30,
+      "strong_sell": 10
+    },
+    "gap_stability": {"strong": 80, "mid": 50, "weak": 20}
+  },
+  "weights": {
+    "trend_quality": 20,
+    "breadth": 20,
+    "liquidity": 15,
+    "volatility": 15,
+    "institutional_strength": 15,
+    "gap_stability": 15
   }
 }

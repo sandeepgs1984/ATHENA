@@ -28,6 +28,8 @@ from athena.market_health.aggregates import (
     compute_liquidity_aggregate,
     compute_universe_breadth,
 )
+from athena.market_health.engine import MarketHealthEngine
+from athena.market_health.score import construct_market_health_score
 from athena.ops.owner_candidates import (
     DEFAULT_EXCHANGE,
     SqliteCandidateStore,
@@ -215,6 +217,30 @@ class OwnerValidationPipeline:
         enriched_snap = self._apply_universe_breadth(base_snap, breadth, as_of=as_of)
         self._persist_enriched_snapshot(enriched_snap)
 
+        # MH-2: construct F-5 MarketHealthScore once per validation (shared by
+        # every scanned symbol). Categorical assessment feeds trend/volatility
+        # points; breadth/liquidity/institutional/gap use MH-1 aggregates.
+        health_result = None
+        if index_candles_for_gap:
+            index_id_for_health = index_candles_for_gap[0].instrument_id
+            health_result = MarketHealthEngine(health_cfg).assess(
+                index_id_for_health,
+                index_candles_for_gap,
+                enriched_snap,
+                as_of=as_of,
+            )
+        score_build = construct_market_health_score(
+            as_of=as_of,
+            config=health_cfg,
+            breadth=breadth,
+            liquidity=liquidity,
+            gap_stability=gap_stability,
+            institutional_flow=self._repo.get_latest_institutional_flow(
+                prefer_final=True
+            ),
+            health_result=health_result,
+        )
+
         qualified: list[dict[str, object]] = []
         scan_stats: dict[str, object] = {
             "total": 0,
@@ -246,6 +272,8 @@ class OwnerValidationPipeline:
                 candles_by_id=candles_by_id,
                 snapshot=enriched_snap,
                 cfg=cfg,
+                market_health=health_result,
+                market_health_score=score_build.score,
             )
             scan_stats = {
                 "total": scan_report.statistics.total,
@@ -295,6 +323,7 @@ class OwnerValidationPipeline:
                 "institutional_error": ingestion.institutional_error,
             },
             "market_metric_inputs": metric_inputs,
+            "market_health_score": score_build.to_payload(),
         }
         if regime_payload is not None:
             detail["regime_assessment"] = regime_payload
@@ -498,7 +527,9 @@ class OwnerValidationPipeline:
         return None
 
     @staticmethod
-    def _regime_to_payload(regime, market_health=None) -> dict[str, object]:
+    def _regime_to_payload(
+        regime, market_health=None, market_health_score=None
+    ) -> dict[str, object]:
         labels = list(regime.assessment.labels)
         trend = next(
             (lb for lb in labels if "TREND" in lb or lb == "SIDEWAYS"), "UNKNOWN"
@@ -508,16 +539,12 @@ class OwnerValidationPipeline:
         explanation = regime.assessment.explanation or "; ".join(
             e.explanation for e in regime.evidence[:3]
         )
-        # MI-2: real 4-dimension categorical labels (breadth/trend_quality/
-        # momentum/volatility) from the already-computed MarketHealthResult —
-        # replaces a hardcoded numeric 0. There is no real numeric 0-100
-        # score anywhere in ATHENA (MarketHealthScore is never constructed),
-        # so this is honestly {} rather than fabricated, until the caller
-        # (reg_stage) has one to pass in.
+        # Categorical 4-dim labels remain for MI-2 / legacy consumers.
+        # MH-2 adds the numeric F-5 score when all six components are present.
         health_dimensions = (
             dict(market_health.assessment.dimensions) if market_health is not None else {}
         )
-        return {
+        payload: dict[str, object] = {
             "trend": trend,
             "volatility": vol,
             "gap": gap,
@@ -525,6 +552,14 @@ class OwnerValidationPipeline:
             "explanation": explanation
             or "Regime assessed from available daily candles.",
         }
+        if market_health_score is not None:
+            payload["market_health_score"] = {
+                "ts": market_health_score.ts.isoformat(),
+                "components": dict(market_health_score.components),
+                "total": market_health_score.total,
+                "explanation": market_health_score.explanation,
+            }
+        return payload
 
     def _scan_eligible(
         self,
@@ -536,6 +571,8 @@ class OwnerValidationPipeline:
         candles_by_id: Mapping[str, Sequence[Candle]],
         snapshot: MarketSnapshot,
         cfg,
+        market_health=None,
+        market_health_score=None,
     ):
         from athena.confidence import ConfidenceEngine
         from athena.config.loader import (
@@ -578,7 +615,8 @@ class OwnerValidationPipeline:
             index_candles = list(candles_by_id.get(included_ids[0], ()))
 
         captured_regime: dict[str, object] = {"payload": None}
-        shared_market_health: dict[str, object] = {"value": None}
+        shared_market_health: dict[str, object] = {"value": market_health}
+        shared_score: dict[str, object] = {"value": market_health_score}
 
         def builder(instrument_id: str) -> InstrumentPlan:
             cs = list(candles_by_id.get(instrument_id, ()))
@@ -615,7 +653,9 @@ class OwnerValidationPipeline:
                     )
                 if captured_regime["payload"] is None:
                     captured_regime["payload"] = self._regime_to_payload(
-                        regime, market_health=shared_market_health["value"]
+                        regime,
+                        market_health=shared_market_health["value"],
+                        market_health_score=shared_score["value"],
                     )
                 return {
                     "regime": regime,
@@ -630,6 +670,7 @@ class OwnerValidationPipeline:
                         indicators=ctx.get("indicators"),
                         regime=ctx.get("regime"),
                         market_health=ctx.get("market_health"),
+                        market_health_score=shared_score["value"],
                     )
                 }
 

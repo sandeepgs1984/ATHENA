@@ -16,6 +16,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from athena.config.models import ScoringConfig
+from athena.domain.market import MarketHealthScore
 from athena.indicators.models import IndicatorName, IndicatorResult, IndicatorStatus
 from athena.market_health.models import MarketHealthResult
 from athena.regime.models import RegimeResult
@@ -66,13 +67,14 @@ class ScoringEngine:
         indicators: Mapping[IndicatorName, IndicatorResult] | None = None,
         regime: RegimeResult | None = None,
         market_health: MarketHealthResult | None = None,
+        market_health_score: MarketHealthScore | None = None,
         sector_health: SectorHealthResult | None = None,
     ) -> ScoringResult:
         indicators = dict(indicators or {})
         components = {
             "trend": self._trend(regime, indicators),
             "momentum": self._momentum(indicators),
-            "market_quality": self._market_quality(market_health),
+            "market_quality": self._market_quality(market_health, market_health_score),
             "sector_quality": self._sector_quality(sector_health),
             "liquidity": self._liquidity(indicators),
             "technical_structure": self._technical_structure(indicators),
@@ -135,9 +137,32 @@ class ScoringEngine:
                                  f"(bands weak {cfg.weak}, strong {cfg.strong})", Decimal(pts))]
         return _ok("momentum", Decimal(pts), contribs, f"momentum score {pts} from RSI")
 
-    def _market_quality(self, market_health) -> ComponentScore:
+    def _market_quality(
+        self,
+        market_health,
+        market_health_score: MarketHealthScore | None = None,
+    ) -> ComponentScore:
+        # F-5 / MH-2 cutover: authoritative numeric score wins when present.
+        if market_health_score is not None:
+            total = market_health_score.total
+            contribs = [
+                Contribution(
+                    f"market_health_score:{name}",
+                    str(pts),
+                    f"{name}={pts} pts",
+                    Decimal(pts),
+                )
+                for name, pts in sorted(market_health_score.components.items())
+            ]
+            return _ok(
+                "market_quality",
+                Decimal(total),
+                contribs,
+                f"market_quality {total} from MarketHealthScore.total",
+            )
         if market_health is None:
             return _unknown("market_quality", "no market health assessment available")
+        # Compat shim: categorical label average until a score is available.
         return self._quality_from_dimensions(
             "market_quality", "market_health", market_health.assessment.dimensions)
 

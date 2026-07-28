@@ -501,8 +501,8 @@ Literal Market Summary mock fidelity requires real numeric inputs the MI track d
 | Milestone | Scope | Status |
 |---|---|---|
 | **MH-0** Design — FII/DII source + F-5 scoring contract | DD-11 institutional-flow source decision; ADR-008 (provider Protocol); F-5 scoring / unknown-data / persistence / API history specification | ✅ Approved |
-| **MH-1** Canonical inputs + persistence | Approved FII/DII ingest; universe breadth (+ neutral); liquidity + gap-stability aggregates; snapshot/history read paths | 🔄 Ready for review |
-| **MH-2** Exact F-5 `MarketHealthScore` | Construct + persist authoritative six-component score; align scoring/risk/decision consumers; ADR-005 evidence | ⏳ Pending MH-1 |
+| **MH-1** Canonical inputs + persistence | Approved FII/DII ingest; universe breadth (+ neutral); liquidity + gap-stability aggregates; snapshot/history read paths | ✅ Approved |
+| **MH-2** Exact F-5 `MarketHealthScore` | Construct + persist authoritative six-component score; align scoring/risk/decision consumers; ADR-005 evidence | 🔄 Ready for review |
 | **MH-3** Market Summary API + mock-faithful UI | Dedicated summary read model; sparklines/rings/ADV-DEC/evidence panel from real persisted data only | ⏳ Pending MH-2 |
 
 Design artifacts (MH-0):
@@ -520,6 +520,16 @@ Delivers the real inputs F-5 needs before any numeric score is constructed: inst
 | Scope | **Domain**: `InstitutionalFlowSession`; `MarketSnapshot.breadth_neutral` (blueprint §4 additive). **Provider**: `InstitutionalFlowProvider` Protocol; file + NSE adapters; config `ingestion.institutional_flow_provider`. **Persistence**: SCHEMA_VERSION 11 `institutional_flows` append-only; `list_snapshots_recent`; flow query helpers. **Pure aggregates**: `market_health/aggregates.py` (breadth/liquidity/gap). **Wiring**: ingest best-effort institutional fetch (never aborts cycle); owner validation enriches snapshot + persists `market_metric_inputs` on run detail. |
 | Tests | File/NSE parse+provider; repository flow + snapshot history; breadth/liquidity/gap pure tests; SCHEMA_VERSION 11. Full suite **1081 passed** |
 | Coverage | Self-verified via unit/integration tests. Live NSE fetch is best-effort (ProviderError → `institutional_error`, cycle continues). Flip `institutional_flow_provider` to `nse` when ready for live FII/DII. |
+| Status | ✅ Approved (2026-07-28) |
+
+#### MH-2 — Exact F-5 `MarketHealthScore`
+
+Constructs the authoritative six-component numeric score from MH-1 inputs, persists it on the validation run, and cuts scoring's `market_quality` over to `MarketHealthScore.total` when present.
+
+| | |
+|---|---|
+| Scope | **Config**: F-5 component point maps + weights (sum 100). **Pure construction**: `market_health/score.py` maps trend/breadth/liquidity/volatility/institutional/gap → points or absent; emits `MarketHealthScore` only when all six present (F-5 §4). **Persistence**: run `detail_json.market_health_score` (+ component diagnostics). **Cutover**: `ScoringEngine._market_quality` prefers score total; categorical label average remains compat shim. |
+| Tests | Component band mapping, unavailable-when-any-absent, weighted total, scoring cutover, config validation. Full suite **1091 passed** |
 | Status | 🔄 Ready for review (2026-07-28) |
 
 ---
