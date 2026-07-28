@@ -343,6 +343,11 @@
     background: rgba(148, 163, 184, 0.12);
 }
 
+.symbol-status-badge.unresolved {
+    color: var(--warning);
+    background: rgba(255, 171, 0, 0.12);
+}
+
 .market-universe-table .candidate-row-actions {
     display: flex;
     gap: 4px;

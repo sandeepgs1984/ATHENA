@@ -74,33 +74,93 @@ class PipelinesService:
         return self._map_to_system_dto(r)
 
     def validation_funnel(self) -> ValidationFunnelDTO:
-        """MI-3: expose the latest owner_validation count breakdown as a typed
-        5-stage funnel. Reads already-persisted run context only — no new
-        scan, no mutation. Filtered = max(0, eligible − watch − trade)."""
-        empty = self._empty_funnel()
+        """MI-3: the day's owner_validation coverage as a typed 5-stage funnel.
+
+        Reads already-persisted run context only — no new scan, no mutation.
+        Filtered = max(0, eligible − watch − trade).
+
+        A scoped validate writes a run whose ``universe_members`` holds only the
+        symbols it was asked about, so reading the newest run alone collapsed the
+        funnel to "Universe 1" and hid every symbol validated earlier the same
+        day. Stages count distinct symbols across that day's completed runs,
+        each keeping the verdict of the newest run that covered it — never the
+        sum of per-run counts, which would count re-validations twice.
+        """
         spec = QuerySpecification(
             filters=PipelineRunFilterParams(),
             sort=SortParams(sort_by="as_of", sort_dir="desc"),
             pagination=PaginationParams(page=1, page_size=50),
         )
-        result = self._provider.get_runs(spec)
-        for run in result.items:
-            status = (
-                run.overall_status.value
-                if hasattr(run.overall_status, "value")
-                else str(run.overall_status)
-            )
-            if str(status).upper() in {"FAILED", "RUNNING"}:
+        runs = [
+            run
+            for run in self._provider.get_runs(spec).items
+            if not self._is_incomplete(run)
+        ]
+        runs.sort(key=lambda r: r.as_of, reverse=True)
+
+        leading = next(
+            (run for run in runs if self._extract_members(run)),
+            None,
+        )
+        if leading is None:
+            # Older runs recorded counts without per-symbol members: report the
+            # newest such run's own breakdown rather than nothing at all.
+            for run in runs:
+                summary = self._extract_validation_summary(run)
+                if summary is not None:
+                    return self._funnel_from_summary(
+                        summary, run_id=run.run_id, as_of=run.as_of
+                    )
+            return self._empty_funnel()
+
+        day = leading.as_of.date()
+        verdicts: dict[str, bool] = {}
+        decisions: dict[str, str] = {}
+        for run in runs:
+            if run.as_of.date() != day:
                 continue
-            summary = self._extract_validation_summary(run)
-            if summary is None:
+            members = self._extract_members(run)
+            if not members:
                 continue
-            return self._funnel_from_summary(
-                summary,
-                run_id=run.run_id,
-                as_of=run.as_of,
-            )
-        return empty
+            qualified = self._extract_qualified(run)
+            for symbol, included in members.items():
+                if symbol in verdicts:
+                    continue
+                verdicts[symbol] = included
+                # A symbol's decision is read from the same run that judged it:
+                # a name later re-validated without qualifying must not keep the
+                # WATCH/TRADE it earned in an earlier run.
+                decision = qualified.get(symbol)
+                if decision is not None:
+                    decisions[symbol] = decision
+
+        universe = len(verdicts)
+        eligible = sum(1 for included in verdicts.values() if included)
+        watch = sum(1 for decision in decisions.values() if decision == "WATCH")
+        trade = sum(1 for decision in decisions.values() if decision == "TRADE")
+        if not decisions:
+            # Older runs recorded decision counts without a qualified list.
+            watch, trade = self._qualified_counts(leading)
+        return self._funnel(
+            {
+                "universe": universe,
+                "eligible": eligible,
+                "filtered": max(0, eligible - watch - trade),
+                "watch": watch,
+                "trade": trade,
+            },
+            run_id=leading.run_id,
+            as_of=leading.as_of,
+        )
+
+    @staticmethod
+    def _is_incomplete(run: SystemPipelineResult) -> bool:
+        status = (
+            run.overall_status.value
+            if hasattr(run.overall_status, "value")
+            else str(run.overall_status)
+        )
+        return str(status).upper() in {"FAILED", "RUNNING"}
 
     def _empty_funnel(self) -> ValidationFunnelDTO:
         stages = [
@@ -109,23 +169,71 @@ class PipelinesService:
         ]
         return ValidationFunnelDTO(stages=stages, available=False)
 
-    def _extract_validation_summary(
-        self, run: SystemPipelineResult
-    ) -> dict[str, Any] | None:
-        contexts: list[Mapping[str, object]] = []
+    def _contexts(self, run: SystemPipelineResult) -> list[Mapping[str, object]]:
         # Prefer system final_context, then each pipeline run's context —
         # mirrors the Market Intelligence tab's existing extractData() path.
+        contexts: list[Mapping[str, object]] = []
         if run.final_context is not None:
             contexts.append(run.final_context.data)
         for pr in run.pipeline_runs:
             contexts.append(pr.final_context.data)
-        for data in contexts:
-            if not data:
-                continue
+        return [data for data in contexts if data]
+
+    def _extract_validation_summary(
+        self, run: SystemPipelineResult
+    ) -> dict[str, Any] | None:
+        for data in self._contexts(run):
             raw = data.get("validation_summary")
             if isinstance(raw, dict):
                 return dict(raw)
         return None
+
+    def _extract_members(self, run: SystemPipelineResult) -> dict[str, bool]:
+        """One run's per-symbol eligibility verdicts, keyed by display symbol."""
+        for data in self._contexts(run):
+            raw = data.get("universe_members")
+            if not isinstance(raw, dict) or not raw:
+                continue
+            out: dict[str, bool] = {}
+            for key, member in raw.items():
+                if not isinstance(member, dict):
+                    continue
+                symbol = str(member.get("symbol") or key).upper()
+                out[symbol] = bool(member.get("included"))
+            if out:
+                return out
+        return {}
+
+    def _extract_qualified(self, run: SystemPipelineResult) -> dict[str, str]:
+        """One run's WATCH/TRADE decisions, keyed by display symbol."""
+        for data in self._contexts(run):
+            rows = data.get("qualified_today")
+            if not isinstance(rows, list) or not rows:
+                continue
+            out: dict[str, str] = {}
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                symbol = str(row.get("symbol") or "").upper()
+                decision = str(row.get("decision_type") or "").upper()
+                if symbol and decision in {"WATCH", "TRADE"}:
+                    out[symbol] = decision
+            if out:
+                return out
+        return {}
+
+    def _qualified_counts(self, run: SystemPipelineResult) -> tuple[int, int]:
+        """WATCH/TRADE counts from the run's own qualified list, else its counts."""
+        qualified = self._extract_qualified(run)
+        if qualified:
+            return (
+                sum(1 for d in qualified.values() if d == "WATCH"),
+                sum(1 for d in qualified.values() if d == "TRADE"),
+            )
+        summary = self._extract_validation_summary(run) or {}
+        counts_raw = summary.get("decision_counts")
+        counts: dict[str, Any] = counts_raw if isinstance(counts_raw, dict) else {}
+        return _as_nonneg_int(counts.get("WATCH")), _as_nonneg_int(counts.get("TRADE"))
 
     def _funnel_from_summary(
         self,
@@ -145,14 +253,26 @@ class PipelinesService:
         counts: dict[str, Any] = counts_raw if isinstance(counts_raw, dict) else {}
         watch = _as_nonneg_int(counts.get("WATCH"))
         trade = _as_nonneg_int(counts.get("TRADE"))
-        filtered = max(0, eligible - watch - trade)
-        values = {
-            "universe": universe,
-            "eligible": eligible,
-            "filtered": filtered,
-            "watch": watch,
-            "trade": trade,
-        }
+        return self._funnel(
+            {
+                "universe": universe,
+                "eligible": eligible,
+                "filtered": max(0, eligible - watch - trade),
+                "watch": watch,
+                "trade": trade,
+            },
+            run_id=run_id,
+            as_of=as_of,
+        )
+
+    def _funnel(
+        self,
+        values: Mapping[str, int],
+        *,
+        run_id: str,
+        as_of: datetime,
+    ) -> ValidationFunnelDTO:
+        universe = values["universe"]
         stages = [
             ValidationFunnelStageDTO(
                 id=sid,

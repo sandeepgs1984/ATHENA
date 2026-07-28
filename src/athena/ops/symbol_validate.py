@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -19,6 +20,7 @@ from athena.data.providers import build_market_data_provider
 from athena.data.store.repository import SqliteRepository
 from athena.data.validation import QuarantineRegistry
 from athena.domain.enums import RunTrigger
+from athena.domain.interfaces import MarketDataProvider
 from athena.errors import AthenaError, ConfigError, DataValidationError
 from athena.ops.owner_candidates import (
     SqliteCandidateStore,
@@ -57,6 +59,40 @@ class SymbolValidateResult:
         }
 
 
+def resolve_against_catalog(
+    config_dir: Path,
+    symbols: Sequence[str],
+    *,
+    repo_root: Path | None = None,
+) -> tuple[MarketDataProvider, dict[str, str], list[str]]:
+    """Resolve bare symbols against the Kite catalog.
+
+    Returns the scoped provider (so callers reuse one catalog fetch), a
+    bare-symbol → instrument_id map for the symbols that exist, and the symbols
+    the exchange does not list. Raises ``ConfigError`` when the configured
+    provider has no catalog to consult.
+    """
+    ingest_cfg = load_ingestion_config(config_dir)
+    if ingest_cfg.provider != "kite":
+        raise ConfigError(
+            f"symbol catalog lookup requires ingestion.provider=kite, "
+            f"got {ingest_cfg.provider!r}"
+        )
+    bare = [normalize_candidate_symbol(s) for s in symbols]
+    provider = build_market_data_provider(
+        config_dir,
+        base_dir=Path(repo_root) if repo_root else Path.cwd(),
+        provider_name="kite",
+        kite_symbols=bare,
+    )
+    catalog = provider.instruments()
+    by_symbol = {display_symbol(i.instrument_id): i.instrument_id for i in catalog}
+    by_symbol.update({i.symbol.upper(): i.instrument_id for i in catalog})
+    resolved = {sym: by_symbol[sym] for sym in bare if sym in by_symbol}
+    unresolved = [sym for sym in bare if sym not in by_symbol]
+    return provider, resolved, unresolved
+
+
 def validate_symbols(
     repo: SqliteRepository,
     config_dir: Path,
@@ -89,29 +125,15 @@ def validate_symbols(
             f"symbol validate requires ingestion.provider=kite, got {ingest_cfg.provider!r}"
         )
 
-    provider = build_market_data_provider(
-        config_dir,
-        base_dir=root,
-        provider_name="kite",
-        kite_symbols=bare,
+    provider, by_symbol, unresolved = resolve_against_catalog(
+        config_dir, bare, repo_root=root
     )
-    catalog = provider.instruments()
-    by_symbol = {
-        display_symbol(i.instrument_id): i.instrument_id for i in catalog
-    }
-    by_symbol.update({i.symbol.upper(): i.instrument_id for i in catalog})
-    resolved: list[str] = []
-    unresolved: list[str] = []
-    for sym in bare:
-        iid = by_symbol.get(sym)
-        if iid is None:
-            unresolved.append(sym)
-        else:
-            resolved.append(iid)
     if unresolved:
         raise DataValidationError(
             "symbols not in Kite catalog: " + ", ".join(unresolved)
         )
+    resolved = [by_symbol[sym] for sym in bare]
+    catalog = provider.instruments()
 
     try:
         kite_cfg = load_kite_provider_config(config_dir)

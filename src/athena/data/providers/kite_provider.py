@@ -68,10 +68,17 @@ def _decimal(value: object, field: str) -> Decimal:
 class KiteProvider:
     """A ``MarketDataProvider`` backed by Kite Connect market-data GETs."""
 
-    def __init__(self, config: KiteProviderConfig, transport: KiteTransport) -> None:
+    def __init__(
+        self,
+        config: KiteProviderConfig,
+        transport: KiteTransport,
+        *,
+        strict_symbol_filter: bool = True,
+    ) -> None:
         self.name = "kite"
         self._config = config
         self._transport = transport
+        self._strict_symbol_filter = strict_symbol_filter
         self._capabilities = ProviderCapabilities(
             timeframes=tuple(Timeframe(t) for t in config.capabilities.timeframes),
             max_history_days=config.capabilities.max_history_days,
@@ -89,6 +96,7 @@ class KiteProvider:
         *,
         transport: KiteTransport | None = None,
         symbols: list[str] | None = None,
+        strict_symbol_filter: bool = True,
     ) -> KiteProvider:
         from athena.config.loader import load_kite_provider_config
 
@@ -101,7 +109,7 @@ class KiteProvider:
                 api_key=os.environ.get("KITE_API_KEY", ""),
                 access_token=os.environ.get("KITE_ACCESS_TOKEN", ""),
             )
-        return cls(config, transport)
+        return cls(config, transport, strict_symbol_filter=strict_symbol_filter)
 
     # ---------------------------------------------------------------- contract
 
@@ -305,7 +313,7 @@ class KiteProvider:
             )
             tokens[instrument_id] = token
 
-        if symbol_filter:
+        if symbol_filter and self._strict_symbol_filter:
             have = {k.split(":", 1)[-1].upper() for k in instruments}
             missing = [sym for sym in self._config.symbols if sym.upper() not in have]
             if missing:

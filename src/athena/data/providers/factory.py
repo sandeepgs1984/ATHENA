@@ -28,7 +28,15 @@ def build_market_data_provider(
     if name == "file":
         return FileProvider.from_config_dir(config_dir, base_dir=base_dir)
     if name == "kite":
-        return KiteProvider.from_config_dir(config_dir, symbols=kite_symbols)
+        # A candidate-scope list is owner data, not configuration: one symbol the
+        # exchange does not list must not abort an entire cycle. Callers that pass
+        # a scope resolve it against the catalog and report the misses themselves,
+        # so only kite.json's own symbols keep the strict fail-loud check.
+        return KiteProvider.from_config_dir(
+            config_dir,
+            symbols=kite_symbols,
+            strict_symbol_filter=kite_symbols is None,
+        )
     raise ConfigError(
         f"ingestion.provider '{name}' is not supported; allowed: 'file', 'kite'"
     )

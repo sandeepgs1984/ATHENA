@@ -21,9 +21,9 @@ from athena.calendar.engine import CalendarEngine
 from athena.calendar.resolve_as_of import resolve_validate_as_of
 from athena.config.loader import load_config
 from athena.data.store.repository import SqliteRepository
-from athena.errors import AthenaError
+from athena.errors import AthenaError, DataValidationError
 from athena.ops.owner_candidates import CandidateStore, normalize_candidate_symbol
-from athena.ops.symbol_validate import validate_symbols
+from athena.ops.symbol_validate import resolve_against_catalog, validate_symbols
 
 _RUN_SCAN_LIMIT = 50
 _DECISION_SCAN_LIMIT = 2000
@@ -35,9 +35,9 @@ class CandidateNotFoundError(ResourceNotFoundError):
 
 @dataclass(frozen=True, slots=True)
 class _UniverseVerdict:
-    """One symbol's eligibility outcome from the newest run that covered it."""
+    """One symbol's outcome from the newest run that covered it."""
 
-    included: bool
+    status: str
     eligibility_summary: str | None
     validated_ts: datetime
 
@@ -46,14 +46,19 @@ def _bare_symbol(value: str) -> str:
     return value.upper().replace("NSE:", "").replace("BSE:", "")
 
 
+def _from_detail(detail: object, key: str) -> object:
+    """Read one key from a run detail, whether nested under ``pipeline`` or flat."""
+    if not isinstance(detail, dict):
+        return None
+    pipeline = detail.get("pipeline")
+    if isinstance(pipeline, dict) and key in pipeline:
+        return pipeline[key]
+    return detail.get(key)
+
+
 def _members_from_detail(detail: object) -> dict[str, dict[str, Any]]:
     """Extract ``universe_members`` keyed by bare symbol from one run detail."""
-    if not isinstance(detail, dict):
-        return {}
-    pipeline = detail.get("pipeline")
-    members_raw = pipeline.get("universe_members") if isinstance(pipeline, dict) else None
-    if members_raw is None:
-        members_raw = detail.get("universe_members")
+    members_raw = _from_detail(detail, "universe_members")
     if not isinstance(members_raw, dict):
         return {}
     out: dict[str, dict[str, Any]] = {}
@@ -61,6 +66,22 @@ def _members_from_detail(detail: object) -> dict[str, dict[str, Any]]:
         if not isinstance(val, dict):
             continue
         out[_bare_symbol(str(val.get("symbol") or key))] = val
+    return out
+
+
+def _unresolved_from_detail(detail: object) -> dict[str, str]:
+    """Extract ``unresolved_candidates`` as bare symbol → reason."""
+    rows = _from_detail(detail, "unresolved_candidates")
+    if not isinstance(rows, list):
+        return {}
+    out: dict[str, str] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        symbol = str(row.get("symbol") or row.get("instrument_id") or "")
+        if not symbol:
+            continue
+        out[_bare_symbol(symbol)] = str(row.get("reason") or "unresolved symbol")
     return out
 
 
@@ -99,12 +120,37 @@ class CandidatesService:
         return OwnerCandidateListDTO(candidates=dtos, count=len(dtos))
 
     def upsert_candidate(self, body: UpsertCandidateRequest) -> OwnerCandidateDTO:
+        self._reject_unlisted_symbol(body.symbol)
         row = self._store.upsert_candidate(
             symbol=body.symbol,
             notes=body.notes,
             active=body.active,
         )
         return self._to_dto(row.symbol, row.added_ts, row.notes, row.active)
+
+    def _reject_unlisted_symbol(self, symbol: str) -> None:
+        """Refuse to store a symbol the exchange does not list.
+
+        A typo used to survive its own failed validation and stay in the
+        universe, where it then aborted every later cycle. Best effort by
+        design: when the catalog cannot be consulted (no credentials, offline,
+        non-kite provider) the add proceeds and the symbol shows up as
+        Unresolved after the next run instead of being silently trusted.
+        """
+        bare = normalize_candidate_symbol(symbol)
+        try:
+            _provider, _resolved, unresolved = resolve_against_catalog(
+                self._config_dir, [bare], repo_root=self._repo_root
+            )
+        except Exception:
+            # Any failure to consult the catalog (config, credentials, network)
+            # leaves the symbol unproven, not proven wrong: allow the add.
+            return
+        if unresolved:
+            raise DataValidationError(
+                f"{bare} is not listed on the exchange — check the trading symbol "
+                "(nothing was added to the universe)"
+            )
 
     def delete_candidate(self, symbol: str) -> DeleteCandidateResultDTO:
         bare = normalize_candidate_symbol(symbol)
@@ -164,7 +210,7 @@ class CandidatesService:
             if verdict is None:
                 status = "PENDING"
             else:
-                status = "ELIGIBLE" if verdict.included else "EXCLUDED"
+                status = verdict.status
                 eligibility_summary = verdict.eligibility_summary
                 # Excluded symbols never produce a Decision, so the run that
                 # judged them is the only real "last validated" evidence.
@@ -209,15 +255,22 @@ class CandidatesService:
             status = run.status.value if hasattr(run.status, "value") else str(run.status)
             if str(status).upper() not in {"COMPLETED", "SUCCESS"}:
                 continue
-            for sym, member in _members_from_detail(
-                self._repo.get_run_detail(run.run_id)
-            ).items():
+            detail = self._repo.get_run_detail(run.run_id)
+            for sym, member in _members_from_detail(detail).items():
                 if sym not in symbols or sym in out:
                     continue
                 summary = member.get("eligibility_summary")
                 out[sym] = _UniverseVerdict(
-                    included=bool(member.get("included")),
+                    status="ELIGIBLE" if bool(member.get("included")) else "EXCLUDED",
                     eligibility_summary=str(summary) if summary else None,
+                    validated_ts=run.started_ts,
+                )
+            for sym, reason in _unresolved_from_detail(detail).items():
+                if sym not in symbols or sym in out:
+                    continue
+                out[sym] = _UniverseVerdict(
+                    status="UNRESOLVED",
+                    eligibility_summary=reason,
                     validated_ts=run.started_ts,
                 )
             if len(out) >= len(symbols):

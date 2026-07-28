@@ -451,6 +451,30 @@ Replaced the Stock List (symbol + Validate/Remove) with the mock’s Universe ta
 
 ---
 
+#### Fix pass: unlisted candidate symbols (owner-reported, 2026-07-28)
+
+`./athena-daily` aborted with `ERROR: kite symbols not found on NSE: ['INFSDFSD']` — a typo'd candidate, added through the dashboard, blocked every subsequent cycle for the whole 507-symbol universe. Two separate defects: nothing stopped an unlisted symbol from being stored, and the provider treated a candidate scope list like configuration.
+
+| | |
+|---|---|
+| Scope | `kite_provider.py`: `strict_symbol_filter` (default `True`) — `kite.json`'s own symbols still fail loudly, while a caller-supplied scope no longer raises; `factory.py` passes `strict_symbol_filter=kite_symbols is None`, so the CLI's existing resolve-and-warn path (and `validate_symbols`' own 422) is finally reachable. `symbol_validate.py`: catalog resolution extracted into `resolve_against_catalog()` (one catalog fetch, reused by its caller). `candidates_service.py`: `upsert_candidate` rejects a symbol the exchange does not list (422, nothing persisted), best effort — an unreachable catalog allows the add. `owner_validation.py`: a candidate with no catalog row and no ingested bar is reported in a new `unresolved_candidates` detail key instead of being judged as a synthesized instrument (which read as "Excluded: failed rules"). `candidates_service.py`/`sqlite_providers.py`/`index.html`/`09-market-intelligence.js`/`06-market-intelligence.css`: new `UNRESOLVED` status, badge, and filter option in the Universe table. |
+| Tests | Provider strict/non-strict filter behaviour; pipeline reports-not-judges an unresolvable candidate; service maps `unresolved_candidates` → `UNRESOLVED` while a never-validated symbol stays `PENDING`; add-time rejection persists nothing; add proceeds when the catalog cannot be consulted. Full suite **1064 passed** |
+| Coverage | Reproduced from the owner's own `./athena-daily` failure and replayed against a copy of the live DB. |
+
+---
+
+#### Fix pass: Validation Pipeline shows the day, not the last run (owner-reported, 2026-07-28)
+
+Owner: "validation pipeline always lists only recent symbol and overrides previous one — I want the previous validation list as well." A scoped validate writes a run whose `universe_members` holds only the symbol it was asked about, so the funnel collapsed to "Universe 1 Symbols" and the details modal listed that one name, hiding everything validated earlier the same day.
+
+| | |
+|---|---|
+| Scope | `owner_validation.py`: `_qualified_from_repo()` no longer restricts the day's WATCH/TRADE decisions to the current run's own symbols (still newest verdict per symbol, so a name downgraded to NO_TRADE drops out). `pipelines_service.py`: `validation_funnel()` counts distinct symbols across the day's completed runs, each keeping the verdict of the newest run that covered it, with each symbol's WATCH/TRADE read from that same run — never summed per-run counts, which would count re-validations twice; runs that recorded counts without per-symbol members keep the previous summary-based reading. `09-market-intelligence.js`: the details modal merges the day's runs by the same rule, so its Eligible/Excluded and Qualified Today lists match the funnel. |
+| Tests | Funnel merges the day's runs and ignores a previous day's; re-validating replaces a symbol's verdict rather than adding a row; Qualified Today keeps symbols from earlier runs, one row per symbol, same day only. Full suite **1064 passed** |
+| Coverage | Replayed against a copy of the live DB: the funnel went from Universe 1 / Eligible 1 (the last scoped validate) to Universe 16 / Eligible 9 / Watch 5 / Trade 4 for the day, reconstructed from runs already persisted — no re-validation needed. |
+
+---
+
 | | |
 |---|---|
 | Scope | `index.html`: new `.decisions-workstation` (3-column grid) replacing `.trace-workstation` (2-column); new `.symbols-panel` (search + icon-triggered filter/sort/clear-all popover + summary strip + collapsible outcome groups), replacing the old toolbar card + `#decisions-carousel-groups` carousel container. `12-decisions-list.js`: `renderDecisionCarousels` rewritten to build vertical rows instead of a horizontal scroll-snap track (nav-arrow buttons and `wireCarouselOverflow` removed as dead code); `renderDeckCard` renamed `renderSymbolRow`; left-panel scroll position preserved across re-renders. `13-decision-brief-core.js`'s `selectBriefing`: resets only the center panel's scroll to top on a new selection, leaves left/right panels untouched. `09-decision-brief-shell.css`/`12-decision-cards-dag.css`: new grid + row/group styling, strong selected-state (accent wash, left indicator, glow, bolder symbol text). Two disabled nav placeholders added to the global sidebar |

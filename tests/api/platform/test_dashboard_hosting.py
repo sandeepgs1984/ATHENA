@@ -918,6 +918,11 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     load_mi_body = js[load_mi_start:load_mi_end]
     assert "renderValidationFunnel(" in load_mi_body
     assert "/api/v1/pipelines/validation-funnel" in load_mi_body
+    # A scoped validate's run holds only its own symbol, so the details modal
+    # merges the day's runs (newest verdict per symbol) instead of rendering the
+    # newest run alone — same rule as the funnel counts.
+    assert "if (sym in universe) continue;" in load_mi_body
+    assert "dayKey(r.as_of) !== dayKey(leading.as_of)" in load_mi_body
     # Eligible/Excluded + Qualified live in the details modal (same ids).
     assert 'id="universe-list-body"' in html
     assert 'id="qualified-today-body"' in html
@@ -943,6 +948,10 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert 'id="candidate-list-body"' in html
     assert 'id="universe-status-filter"' in html
     assert 'id="universe-sector-filter"' in html
+    # Symbols the exchange does not list get their own status, so they can be
+    # spotted and removed instead of looking like never-validated symbols.
+    assert '<option value="UNRESOLVED">Unresolved</option>' in html
+    assert "symbol-status-badge.unresolved" in css
     assert "<th>Sector</th>" in html
     assert "<th>Eligibility</th>" in html
     assert "<th>Last Validated</th>" in html

@@ -170,6 +170,29 @@ class TestKiteProviderUnit:
         with pytest.raises(ProviderError, match=r"NOTREAL"):
             prov.instruments()
 
+    def test_non_strict_filter_keeps_resolvable_symbols(self):
+        """Owner candidate lists are data, not configuration: one typo'd symbol
+        must not abort a whole cycle. Callers passing a scope resolve and report
+        the misses themselves, so the provider returns what the exchange lists."""
+        prov = KiteProvider(
+            _config(symbols=["INFY", "NOTREAL"]),
+            FakeKiteTransport(),
+            strict_symbol_filter=False,
+        )
+        ids = {i.instrument_id for i in prov.instruments()}
+        assert "NSE:INFY" in ids
+        assert not any("NOTREAL" in i for i in ids)
+
+    def test_non_strict_filter_returns_no_equity_when_nothing_resolves(self):
+        """Nothing to trade is not the provider's call to make: it returns the
+        snapshot indices only, and the caller that supplied the scope raises."""
+        prov = KiteProvider(
+            _config(symbols=["NOTREAL"]),
+            FakeKiteTransport(),
+            strict_symbol_filter=False,
+        )
+        assert [i.instrument_id for i in prov.instruments() if i.series == "EQ"] == []
+
     def test_transport_refuses_order_paths(self):
         with pytest.raises(ProviderError, match=r"refused path"):
             _assert_allowed("/orders")

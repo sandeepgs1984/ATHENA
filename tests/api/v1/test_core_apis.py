@@ -1058,6 +1058,106 @@ class TestPipelinesAPI:
         assert by_id["trade"]["count"] == 4
         assert by_id["trade"]["pct_of_universe"] == 0.8
 
+    def test_validation_funnel_merges_the_days_runs(self, client) -> None:
+        """A scoped validate writes a run holding only its own symbol. Reading
+        the newest run alone collapsed the funnel to "Universe 1" and hid every
+        symbol validated earlier the same day; counts must be distinct symbols
+        across the day, and must not leak in a previous day's run."""
+        headers = get_auth_headers(client, Role.ANALYST)
+        run_p = get_pipeline_run_provider()
+
+        def _run(run_id: str, as_of: datetime, data: dict) -> SystemPipelineResult:
+            return SystemPipelineResult(
+                run_id=run_id,
+                as_of=as_of,
+                pipeline_runs=(),
+                workspace_snapshot=None,
+                overall_status=PipelineStatus.SUCCESS,
+                final_context=PipelineContext(run_id=run_id, as_of=as_of, data=data),
+            )
+
+        def _member(symbol: str, included: bool) -> dict:
+            return {"symbol": symbol, "included": included}
+
+        run_p.runs.extend(  # type: ignore[attr-defined]
+            [
+                _run(
+                    "run-prev-day",
+                    datetime(2026, 7, 27, 10, 0, tzinfo=timezone.utc),
+                    {"universe_members": {"OLD": _member("OLD", True)}},
+                ),
+                _run(
+                    "run-morning",
+                    datetime(2026, 7, 28, 9, 30, tzinfo=timezone.utc),
+                    {
+                        "universe_members": {
+                            "AAA": _member("AAA", True),
+                            "BBB": _member("BBB", False),
+                        },
+                        "qualified_today": [
+                            {"symbol": "AAA", "decision_type": "WATCH"},
+                        ],
+                    },
+                ),
+                _run(
+                    "run-scoped",
+                    datetime(2026, 7, 28, 14, 0, tzinfo=timezone.utc),
+                    {
+                        "universe_members": {"CCC": _member("CCC", True)},
+                        "qualified_today": [
+                            {"symbol": "AAA", "decision_type": "WATCH"},
+                            {"symbol": "CCC", "decision_type": "TRADE"},
+                        ],
+                    },
+                ),
+            ]
+        )
+
+        data = client.get(
+            "/api/v1/pipelines/validation-funnel", headers=headers
+        ).json()["data"]
+        assert data["available"] is True
+        assert data["run_id"] == "run-scoped"
+        by_id = {s["id"]: s for s in data["stages"]}
+        assert by_id["universe"]["count"] == 3
+        assert by_id["eligible"]["count"] == 2
+        assert by_id["watch"]["count"] == 1
+        assert by_id["trade"]["count"] == 1
+        assert by_id["filtered"]["count"] == 0
+
+    def test_validation_funnel_keeps_newest_verdict_per_symbol(self, client) -> None:
+        """Re-validating a symbol must replace its verdict, not add a second row."""
+        headers = get_auth_headers(client, Role.ANALYST)
+        run_p = get_pipeline_run_provider()
+        day = datetime(2026, 7, 28, 9, 0, tzinfo=timezone.utc)
+        for idx, included in ((0, False), (1, True)):
+            as_of = day.replace(hour=9 + idx)
+            run_p.runs.append(  # type: ignore[attr-defined]
+                SystemPipelineResult(
+                    run_id=f"run-{idx}",
+                    as_of=as_of,
+                    pipeline_runs=(),
+                    workspace_snapshot=None,
+                    overall_status=PipelineStatus.SUCCESS,
+                    final_context=PipelineContext(
+                        run_id=f"run-{idx}",
+                        as_of=as_of,
+                        data={
+                            "universe_members": {
+                                "AAA": {"symbol": "AAA", "included": included}
+                            }
+                        },
+                    ),
+                )
+            )
+
+        data = client.get(
+            "/api/v1/pipelines/validation-funnel", headers=headers
+        ).json()["data"]
+        by_id = {s["id"]: s for s in data["stages"]}
+        assert by_id["universe"]["count"] == 1
+        assert by_id["eligible"]["count"] == 1
+
     def test_validation_funnel_requires_auth(self, client) -> None:
         response = client.get("/api/v1/pipelines/validation-funnel")
         assert response.status_code in (401, 403)

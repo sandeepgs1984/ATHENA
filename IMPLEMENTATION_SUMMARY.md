@@ -40,6 +40,61 @@ status updated on approval.
 
 ---
 
+## Fix pass — unlisted candidate symbols
+
+| | |
+|---|---|
+| Completed | 2026-07-28 |
+| Objective | A typo'd candidate (`INFSDFSD`) added through the dashboard aborted `./athena-daily` for the entire 507-symbol universe: stop storing symbols the exchange does not list, and stop one bad name from failing a whole cycle |
+| Scope | `src/athena/data/providers/{kite_provider,factory}.py`, `src/athena/ops/{symbol_validate,owner_validation}.py`, `src/athena/api/v1/{dtos/market.py,services/candidates_service.py,providers/sqlite_providers.py}`, `src/athena/api/static/{index.html,js/09-market-intelligence.js,css/06-market-intelligence.css}`, tests below |
+| Public APIs added | None. `POST /api/v1/market/candidates` can now return 422 for a symbol the exchange does not list; `OwnerCandidateDTO.status` gains `UNRESOLVED` |
+| Tests | `tests/data_layer/test_kite_provider.py` (strict vs scope filter), `tests/ops/test_owner_validation.py` (reports-not-judges), `tests/api/v1/test_owner_candidates.py` (UNRESOLVED mapping, add-time rejection, offline fallback), `tests/api/platform/test_dashboard_hosting.py`. Full suite **1064 passed** |
+| Coverage | Reproduced from the owner's own failing `./athena-daily` output; replayed against a copy of the live DB |
+| Architecture compliance | No architecture change. Provider independence preserved: the pipeline decides "unresolved" from repo evidence (no catalog row, no ingested bar), never by consulting Kite |
+| ADR compliance | ADR-005: an unresolvable symbol is reported as `UNRESOLVED` with the run's own reason, not dressed up as an eligibility verdict it never earned |
+| Risks discovered | Add-time rejection is best effort — it cannot run when the catalog is unreachable, which is why the pipeline-side reporting exists as the second line of defence |
+| Technical debt introduced | None |
+| Suggested improvements | Offer a one-click remove from the Unresolved filter view once MI-5's Quick Actions land |
+| Remaining work | None |
+| Status | 🔄 Ready for review (2026-07-28) |
+| Branch | feature/live-dashboard |
+
+### Scope completed
+
+- **Provider**: `KiteProvider(strict_symbol_filter=True)` keeps `kite.json`'s own symbols failing loudly; the factory turns it off for caller-supplied scopes, which unblocks the resolve-and-warn code the CLI already had (it was unreachable because `_ensure_catalog` raised first) and lets `validate_symbols` return its own 422 instead of a 502.
+- **Add time**: `resolve_against_catalog()` extracted from `validate_symbols` (one catalog fetch, no duplicate logic) and used by `upsert_candidate` to refuse an unlisted symbol before anything is stored.
+- **Pipeline**: a candidate with no catalog row and no ingested bar is listed in `unresolved_candidates` instead of being judged as a synthesized instrument, which had reported it as "Excluded: failed rules".
+- **UI**: `UNRESOLVED` status badge and filter option in the Universe table; failed adds surface the server's message instead of an unhandled rejection.
+
+---
+
+## Fix pass — Validation Pipeline shows the day, not the last run
+
+| | |
+|---|---|
+| Completed | 2026-07-28 |
+| Objective | Owner: "validation pipeline always lists only recent symbol and overrides previous one — I want the previous validation list as well" |
+| Scope | `src/athena/ops/owner_validation.py`, `src/athena/api/v1/services/pipelines_service.py`, `src/athena/api/static/js/09-market-intelligence.js`, tests below |
+| Public APIs added | None. `GET /api/v1/pipelines/validation-funnel` keeps its shape; its counts now cover the day rather than one run |
+| Tests | `tests/api/v1/test_core_apis.py` (day merge, previous day excluded, re-validate replaces a verdict), `tests/ops/test_owner_validation.py` (Qualified Today keeps earlier runs, one row per symbol, same day only), `tests/api/platform/test_dashboard_hosting.py`. Full suite **1064 passed** |
+| Coverage | Replayed against a copy of the live DB: Universe 1 / Eligible 1 → Universe 16 / Eligible 9 / Watch 5 / Trade 4 for the day, rebuilt from runs already persisted |
+| Architecture compliance | No architecture change. Read-model aggregation only — no new scan, no mutation, no new endpoint |
+| ADR compliance | ADR-005: counts are distinct real symbols, never summed per-run counts (which would count re-validations twice) and never carried across a day boundary |
+| Risks discovered | The funnel is day-scoped while the Universe table keeps each symbol's latest known verdict regardless of day, so the two can legitimately differ — both are labelled |
+| Technical debt introduced | None |
+| Suggested improvements | Once MI-5's full-universe run exists, one run will cover the whole universe and the merge becomes a safety net rather than the main path |
+| Remaining work | None |
+| Status | 🔄 Ready for review (2026-07-28) |
+| Branch | feature/live-dashboard |
+
+### Scope completed
+
+- **Write path**: `_qualified_from_repo()` reports every WATCH/TRADE decision made today instead of only the current run's symbols, still keeping each symbol's newest verdict (a name downgraded to NO_TRADE drops out).
+- **Funnel**: `validation_funnel()` merges the day's completed runs — each symbol keeps the verdict of the newest run that covered it, and its WATCH/TRADE is read from that same run, so a name re-validated without qualifying loses the decision it earned earlier. Runs that recorded counts without per-symbol members keep the previous summary-based reading.
+- **Details modal**: the dashboard applies the same merge, so Eligible/Excluded and Qualified Today agree with the funnel instead of showing the last scoped symbol alone.
+
+---
+
 ## MI-3 — Validation Pipeline funnel (APPROVED)
 
 | | |

@@ -203,6 +203,39 @@ class TestOwnerValidationPipeline:
         assert decisions["NSE:AAA"].run_id == "run-refresh-A"
         assert decisions["NSE:BBB"].run_id == "run-refresh-B"
 
+    def test_unresolvable_candidate_reported_not_judged(
+        self, repo: SqliteRepository, config_dir: Path
+    ) -> None:
+        """A typo'd symbol has no catalog row and no ingested bar. Feeding a
+        synthesized instrument to UniverseEngine would report it as "Excluded:
+        failed rules", implying real market data said no — it must be reported
+        as unresolved instead, and must not abort the run for real symbols."""
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        store.upsert_candidate(symbol="INFSDFSD")
+        repo.upsert_instrument(
+            Instrument(
+                instrument_id="NSE:AAA", symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE"
+            )
+        )
+        repo.add_candles(_candles("NSE:AAA", seed=100))
+
+        detail = OwnerValidationPipeline(repo, config_dir).run(
+            RunTrigger.REFRESH,
+            as_of=AS_OF,
+            ingestion=IngestionResult(
+                as_of=AS_OF, instruments_upserted=1, candles_fetched=80, candles_written=80,
+                quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+            ),
+            run_id="run-unresolved",
+        )
+
+        assert "AAA" in detail["universe_members"]
+        assert "INFSDFSD" not in detail["universe_members"]
+        unresolved = detail["unresolved_candidates"]
+        assert [row["symbol"] for row in unresolved] == ["INFSDFSD"]
+        assert "may not exist" in str(unresolved[0]["reason"])
+
     def test_qualified_today_keeps_one_row_per_symbol(
         self, repo: SqliteRepository, config_dir: Path
     ) -> None:
@@ -224,7 +257,7 @@ class TestOwnerValidationPipeline:
                 )
             )
 
-        qualified = pipe._qualified_from_repo(AS_OF, ["NSE:AAA"])
+        qualified = pipe._qualified_from_repo(AS_OF)
         assert [row["symbol"] for row in qualified] == ["AAA"]
         assert qualified[0]["decision_id"] == "d-aaa-2"
         assert qualified[0]["explanation"] == "pass 2"
@@ -249,4 +282,40 @@ class TestOwnerValidationPipeline:
                 )
             )
 
-        assert pipe._qualified_from_repo(AS_OF, ["NSE:BBB"]) == []
+        assert pipe._qualified_from_repo(AS_OF) == []
+
+    def test_qualified_today_keeps_symbols_from_earlier_runs(
+        self, repo: SqliteRepository, config_dir: Path
+    ) -> None:
+        """Qualified Today is the day's list, not the current run's: validating
+        one symbol used to rewrite it down to that symbol, hiding names that
+        qualified earlier the same day."""
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        for symbol, hour in (("NSE:AAA", 10), ("NSE:BBB", 14)):
+            repo.save_decision(
+                Decision(
+                    decision_id=f"d-{symbol[-3:].lower()}",
+                    ts=AS_OF.replace(hour=hour, minute=0),
+                    run_id=f"run-{hour}",
+                    cycle_id="cyc",
+                    decision_type=DecisionType.WATCH,
+                    explanation="qualified",
+                    instrument_id=symbol,
+                    direction=Direction.LONG,
+                )
+            )
+        repo.save_decision(
+            Decision(
+                decision_id="d-yesterday",
+                ts=AS_OF.replace(day=AS_OF.day - 1, hour=10),
+                run_id="run-prev",
+                cycle_id="cyc",
+                decision_type=DecisionType.WATCH,
+                explanation="yesterday",
+                instrument_id="NSE:CCC",
+                direction=Direction.LONG,
+            )
+        )
+
+        qualified = pipe._qualified_from_repo(AS_OF)
+        assert [row["symbol"] for row in qualified] == ["AAA", "BBB"]

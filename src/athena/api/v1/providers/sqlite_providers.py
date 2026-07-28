@@ -488,6 +488,7 @@ class SqlitePipelineRunProvider:
                 "qualified_today",
                 "universe_source",
                 "universe_summary",
+                "unresolved_candidates",
                 "validation_summary",
                 "final_context",
             ):

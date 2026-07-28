@@ -40,11 +40,23 @@
         showValidateOverlay(list);
         try {
             for (const symbol of list) {
-                await apiRequest("/api/v1/market/candidates", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ symbol }),
-                });
+                try {
+                    await apiRequest("/api/v1/market/candidates", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ symbol }),
+                        skipToast: true,
+                    });
+                } catch (err) {
+                    const detail = err?.data?.detail;
+                    showToast(
+                        typeof detail === "string" && detail.trim()
+                            ? detail
+                            : `Could not add ${symbol}`,
+                        "danger"
+                    );
+                    return null;
+                }
             }
             showToast(
                 `Validating ${list.join(", ")} — live during session; after hours uses last session close…`,
@@ -286,6 +298,13 @@
                     return !v || v.includes("UNKNOWN");
                 };
 
+                // A scoped validate writes a run holding only the symbols it was
+                // asked about, so reading the newest run alone showed just that
+                // symbol and hid everything validated earlier the same day. Each
+                // symbol keeps the verdict of the newest run that covered it —
+                // the same merge the Universe table and the funnel counts use.
+                const dayKey = (iso) => new Date(iso || 0).toDateString();
+                let leading = null;
                 for (const r of runs) {
                     const status = (r.overall_status || "").toString().toUpperCase();
                     if (status === "FAILED" || status === "RUNNING") continue;
@@ -306,9 +325,9 @@
                         regime = reg;
                         regimeAsOf = r.as_of || null;
                     }
-                    if (Object.keys(universe).length === 0 && hasMembers) {
-                        universe = members;
-                        qualified = data.qualified_today || [];
+                    if (!hasMembers) continue;
+                    if (!leading) {
+                        leading = r;
                         universeNote = data.universe_note || null;
                         const summary = data.universe_summary || {};
                         if (!universeNote && summary.excluded != null && summary.included === 0 && summary.evaluated > 0) {
@@ -316,26 +335,26 @@
                                 `All ${summary.evaluated} evaluated symbols were Excluded (e.g. need ≥30 daily bars). ` +
                                 "Inspect Trace for rule evidence. Increase ingestion lookback_days if history is short.";
                         }
-                    } else if (hasMembers && (!qualified || !qualified.length) && data.qualified_today) {
-                        qualified = data.qualified_today;
+                    } else if (dayKey(r.as_of) !== dayKey(leading.as_of)) {
+                        continue;
                     }
-                }
-                // Fallback: any run with members if still empty
-                if (Object.keys(universe).length === 0) {
-                    for (const r of runs) {
-                        const data = extractData(r);
-                        if (Object.keys(data.universe_members || {}).length > 0) {
-                            universe = data.universe_members;
-                            qualified = data.qualified_today || [];
-                            universeNote = data.universe_note || null;
-                            if (!regime) {
-                                regime = data.regime_assessment || null;
-                                regimeAsOf = r.as_of || null;
+                    // A symbol's decision comes from the same run that judged
+                    // it, so a name re-validated without qualifying does not
+                    // keep the WATCH/TRADE it earned in an earlier run.
+                    const runQualified = data.qualified_today || [];
+                    for (const [sym, member] of Object.entries(members)) {
+                        if (sym in universe) continue;
+                        universe[sym] = member;
+                        for (const row of runQualified) {
+                            if (String(row.symbol || "").toUpperCase() === sym.toUpperCase()) {
+                                qualified.push(row);
                             }
-                            break;
                         }
                     }
                 }
+                qualified.sort((a, b) =>
+                    String(a.symbol || "").localeCompare(String(b.symbol || ""))
+                );
                 universeCache = universe;
             }
 
@@ -714,12 +733,23 @@
                     ? "included"
                     : status === "EXCLUDED"
                         ? "excluded"
-                        : "pending";
+                        : status === "UNRESOLVED"
+                            ? "unresolved"
+                            : "pending";
                 const statusLabel = status === "ELIGIBLE"
                     ? "Eligible"
                     : status === "EXCLUDED"
                         ? "Excluded"
-                        : "Pending";
+                        : status === "UNRESOLVED"
+                            ? "Unresolved"
+                            : "Pending";
+                const statusIcon = status === "ELIGIBLE"
+                    ? "fa-check"
+                    : status === "EXCLUDED"
+                        ? "fa-ban"
+                        : status === "UNRESOLVED"
+                            ? "fa-triangle-exclamation"
+                            : "fa-clock";
                 const eligibility = c.eligibility_summary
                     ? String(c.eligibility_summary)
                     : "—";
@@ -735,7 +765,7 @@
                     <td class="text-muted">${sector || "—"}</td>
                     <td>
                         <span class="symbol-status-badge ${statusClass}">
-                            <i class="fas ${status === "ELIGIBLE" ? "fa-check" : status === "EXCLUDED" ? "fa-ban" : "fa-clock"}"></i>
+                            <i class="fas ${statusIcon}"></i>
                             ${statusLabel}
                         </span>
                     </td>

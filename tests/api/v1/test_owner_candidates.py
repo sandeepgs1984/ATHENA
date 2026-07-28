@@ -4,12 +4,16 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest import mock
 
+import pytest
 from fastapi.testclient import TestClient
 
 from athena.api.security.models import Role
+from athena.api.v1.dtos.market import UpsertCandidateRequest
 from athena.api.v1.services.candidates_service import CandidatesService
 from athena.data.store.repository import SqliteRepository
+from athena.errors import ConfigError, DataValidationError
 from athena.domain.enums import DecisionType, Direction, RunStatus, RunTrigger
 from athena.domain.decision import Decision
 from athena.domain.market import Instrument
@@ -165,6 +169,92 @@ class TestOwnerCandidatesAPI:
         assert by_sym["WIPRO"].status == "PENDING"
         assert by_sym["WIPRO"].eligibility_summary is None
         assert by_sym["WIPRO"].last_validated_ts is None
+        repo.close()
+
+    def test_unresolved_candidates_surface_as_unresolved_not_pending(
+        self, tmp_path: Path
+    ) -> None:
+        """A symbol the exchange does not list must be visibly Unresolved with
+        the run's own reason, so it can be removed — not left indistinguishable
+        from a symbol simply awaiting its first validation."""
+        repo = SqliteRepository(tmp_path / "u.db")
+        repo.initialize()
+        store = SqliteCandidateStore(repo)
+        now = datetime(2026, 7, 28, 10, 0, tzinfo=timezone.utc)
+        store.upsert_candidate(symbol="INFSDFSD", notes="typo", added_ts=now)
+        store.upsert_candidate(symbol="NEWNAME", notes="not validated yet", added_ts=now)
+        repo.save_run(
+            RunRecord(
+                run_id="run-unresolved",
+                cycle_id="cyc",
+                trigger=RunTrigger.REFRESH,
+                started_ts=now,
+                finished_ts=now,
+                status=RunStatus.COMPLETED,
+                software_version="t",
+                blueprint_version="t",
+                strategy_profile="t",
+                strategy_profile_version="t",
+                indicator_versions={},
+                config_snapshot_id="t",
+            ),
+            detail={
+                "pipeline": {
+                    "universe_members": {},
+                    "unresolved_candidates": [
+                        {"symbol": "INFSDFSD", "reason": "the symbol may not exist"}
+                    ],
+                }
+            },
+        )
+
+        by_sym = {
+            c.symbol: c
+            for c in CandidatesService(store, repo=repo).list_candidates().candidates
+        }
+        assert by_sym["INFSDFSD"].status == "UNRESOLVED"
+        assert by_sym["INFSDFSD"].eligibility_summary == "the symbol may not exist"
+        assert by_sym["INFSDFSD"].last_validated_ts == now
+        assert by_sym["NEWNAME"].status == "PENDING"
+        repo.close()
+
+    def test_add_rejects_symbol_the_exchange_does_not_list(self, tmp_path: Path) -> None:
+        """Add-time guard: a typo used to persist, survive its failed validation
+        and then abort every later cycle. Nothing may be stored when the catalog
+        definitively lacks the symbol."""
+        repo = SqliteRepository(tmp_path / "r.db")
+        repo.initialize()
+        store = SqliteCandidateStore(repo)
+        svc = CandidatesService(store, repo=repo)
+
+        def _reject(_config_dir, symbols, *, repo_root=None):
+            return object(), {}, [str(symbols[0]).upper()]
+
+        with mock.patch(
+            "athena.api.v1.services.candidates_service.resolve_against_catalog", _reject
+        ):
+            with pytest.raises(DataValidationError, match="INFSDFSD"):
+                svc.upsert_candidate(UpsertCandidateRequest(symbol="INFSDFSD"))
+        assert store.list_candidates(active_only=False) == []
+        repo.close()
+
+    def test_add_proceeds_when_catalog_cannot_be_consulted(self, tmp_path: Path) -> None:
+        """Best effort by design: offline or non-kite setups must still be able
+        to build a universe; the symbol surfaces as Unresolved after a run."""
+        repo = SqliteRepository(tmp_path / "o.db")
+        repo.initialize()
+        store = SqliteCandidateStore(repo)
+        svc = CandidatesService(store, repo=repo)
+
+        def _unavailable(_config_dir, _symbols, *, repo_root=None):
+            raise ConfigError("catalog lookup requires ingestion.provider=kite")
+
+        with mock.patch(
+            "athena.api.v1.services.candidates_service.resolve_against_catalog", _unavailable
+        ):
+            dto = svc.upsert_candidate(UpsertCandidateRequest(symbol="infy"))
+        assert dto.symbol == "INFY"
+        assert [c.symbol for c in store.list_candidates(active_only=False)] == ["INFY"]
         repo.close()
 
     def test_scoped_validate_does_not_reset_other_symbols_to_pending(

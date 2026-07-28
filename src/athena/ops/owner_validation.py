@@ -98,12 +98,44 @@ class OwnerValidationPipeline:
 
         instruments: list[Instrument] = []
         candles_by_id: dict[str, list[Candle]] = {}
+        unresolved: list[dict[str, object]] = []
         for cand in candidates:
             inst = self._resolve_instrument(cand.symbol)
-            instruments.append(inst)
-            candles_by_id[inst.instrument_id] = self._repo.list_candles_recent(
+            candles = self._repo.list_candles_recent(
                 inst.instrument_id, Timeframe.D1, limit=500
             )
+            # A candidate with neither a catalog row nor a single ingested bar was
+            # never resolvable — typically a typo that the exchange does not list.
+            # Judging a synthesized instrument would report it as "Excluded: failed
+            # rules", implying real market data said no. Report it as unresolved.
+            if not candles and self._repo.get_instrument(inst.instrument_id) is None:
+                unresolved.append(
+                    {
+                        "symbol": display_symbol(inst.instrument_id),
+                        "instrument_id": inst.instrument_id,
+                        "reason": (
+                            "no instrument in the catalog and no ingested market data — "
+                            "the symbol may not exist on the exchange"
+                        ),
+                    }
+                )
+                continue
+            instruments.append(inst)
+            candles_by_id[inst.instrument_id] = candles
+
+        if not instruments:
+            return {
+                "mode": "ingest_only",
+                "reason": "no_resolvable_owner_candidates",
+                "universe_members": {},
+                "universe_source": "empty",
+                "qualified_today": [],
+                "unresolved_candidates": unresolved,
+                "message": (
+                    "None of the candidate symbols resolved to ingested market data. "
+                    "Remove unresolved symbols or run an ingest cycle."
+                ),
+            }
 
         universe_engine = UniverseEngine(cfg.universe)
         result = universe_engine.build(
@@ -191,7 +223,7 @@ class OwnerValidationPipeline:
                 "skipped": scan_report.statistics.skipped,
             }
             decision_counts = dict(scan_report.summary.decision_counts)
-            qualified = self._qualified_from_repo(as_of, included_ids)
+            qualified = self._qualified_from_repo(as_of)
             decision_reports = {
                 result.report.decision_id: result.report.to_dict()
                 for result in scan_report.results
@@ -210,6 +242,7 @@ class OwnerValidationPipeline:
             "mode": "owner_validation",
             "universe_members": universe_members,
             "universe_source": "owner_candidates",
+            "unresolved_candidates": unresolved,
             "universe_summary": dict(result.summary),
             "validation_summary": {
                 "candidates": len(candidates),
@@ -598,12 +631,13 @@ class OwnerValidationPipeline:
         report = scanner.scan(list(included_ids), as_of=as_of, pipeline_builder=builder)
         return report, captured_regime["payload"]
 
-    def _qualified_from_repo(
-        self, as_of: datetime, included_ids: Sequence[str]
-    ) -> list[dict[str, object]]:
-        included = set(included_ids)
+    def _qualified_from_repo(self, as_of: datetime) -> list[dict[str, object]]:
         day = as_of.date()
         out: list[dict[str, object]] = []
+        # Every WATCH/TRADE decision made today, not just this run's own
+        # symbols: validating one symbol used to rewrite the day's list down to
+        # that symbol, hiding names qualified earlier the same day.
+        #
         # Re-validating the same symbol several times in one day writes one
         # Decision per run, so an un-deduplicated read listed the same name
         # once per re-validate. Keep only each symbol's newest same-day
@@ -612,8 +646,6 @@ class OwnerValidationPipeline:
         # not keep surfacing from its earlier qualifying run.
         seen: set[str] = set()
         for decision in self._repo.list_decisions(limit=2000):
-            if decision.instrument_id not in included:
-                continue
             if decision.ts.date() != day:
                 continue
             if decision.instrument_id in seen:
