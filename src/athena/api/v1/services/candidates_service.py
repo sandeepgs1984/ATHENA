@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 from athena.api.exceptions import ResourceNotFoundError
 from athena.api.v1.dtos.market import (
     DeleteCandidateResultDTO,
+    EligibilityRuleDTO,
     FullValidationProgressDTO,
     OwnerCandidateDTO,
     OwnerCandidateListDTO,
@@ -40,6 +41,7 @@ class _UniverseVerdict:
 
     status: str
     eligibility_summary: str | None
+    eligibility_evidence: tuple[EligibilityRuleDTO, ...]
     validated_ts: datetime
 
 
@@ -239,6 +241,7 @@ class CandidatesService:
         sector = None if sectors is None else sectors.get(bare)
         status = None
         eligibility_summary = None
+        eligibility_evidence: tuple[EligibilityRuleDTO, ...] = ()
         validated = None if last_validated is None else last_validated.get(bare)
         if verdicts is not None:
             verdict = verdicts.get(bare)
@@ -247,6 +250,7 @@ class CandidatesService:
             else:
                 status = verdict.status
                 eligibility_summary = verdict.eligibility_summary
+                eligibility_evidence = verdict.eligibility_evidence
                 # Excluded symbols never produce a Decision, so the run that
                 # judged them is the only real "last validated" evidence.
                 validated = verdict.validated_ts
@@ -258,6 +262,7 @@ class CandidatesService:
             sector=sector,
             status=status,
             eligibility_summary=eligibility_summary,
+            eligibility_evidence=eligibility_evidence,
             last_validated_ts=validated,
         )
 
@@ -295,9 +300,20 @@ class CandidatesService:
                 if sym not in symbols or sym in out:
                     continue
                 summary = member.get("eligibility_summary")
+                evidence_raw = member.get("evidence")
+                evidence = tuple(
+                    EligibilityRuleDTO(
+                        rule=str(item.get("rule") or "unknown"),
+                        passed=bool(item.get("passed")),
+                        explanation=str(item.get("explanation") or ""),
+                    )
+                    for item in evidence_raw
+                    if isinstance(item, dict)
+                ) if isinstance(evidence_raw, list) else ()
                 out[sym] = _UniverseVerdict(
                     status="ELIGIBLE" if bool(member.get("included")) else "EXCLUDED",
                     eligibility_summary=str(summary) if summary else None,
+                    eligibility_evidence=evidence,
                     validated_ts=run.started_ts,
                 )
             for sym, reason in _unresolved_from_detail(detail).items():
@@ -306,6 +322,7 @@ class CandidatesService:
                 out[sym] = _UniverseVerdict(
                     status="UNRESOLVED",
                     eligibility_summary=reason,
+                    eligibility_evidence=(),
                     validated_ts=run.started_ts,
                 )
             if len(out) >= len(symbols):

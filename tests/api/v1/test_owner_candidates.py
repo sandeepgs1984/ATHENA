@@ -141,6 +141,18 @@ class TestOwnerCandidatesAPI:
                             "symbol": "INFY",
                             "included": True,
                             "eligibility_summary": "included: passed all 7 eligibility rules",
+                            "evidence": [
+                                {
+                                    "rule": "minimum_price",
+                                    "passed": True,
+                                    "explanation": "close is above the configured minimum",
+                                },
+                                {
+                                    "rule": "minimum_liquidity",
+                                    "passed": True,
+                                    "explanation": "turnover is above the configured minimum",
+                                },
+                            ],
                         }
                     }
                 }
@@ -164,10 +176,16 @@ class TestOwnerCandidatesAPI:
         assert by_sym["INFY"].sector == "IT"
         assert by_sym["INFY"].status == "ELIGIBLE"
         assert "passed all" in (by_sym["INFY"].eligibility_summary or "")
+        assert [item.rule for item in by_sym["INFY"].eligibility_evidence] == [
+            "minimum_price",
+            "minimum_liquidity",
+        ]
+        assert all(item.passed for item in by_sym["INFY"].eligibility_evidence)
         assert by_sym["INFY"].last_validated_ts == now
         assert by_sym["WIPRO"].sector == "IT"
         assert by_sym["WIPRO"].status == "PENDING"
         assert by_sym["WIPRO"].eligibility_summary is None
+        assert by_sym["WIPRO"].eligibility_evidence == ()
         assert by_sym["WIPRO"].last_validated_ts is None
         repo.close()
 

@@ -1,4 +1,5 @@
-
+    const savedSymbolSet = new Set();
+    const eligibilityDetailBySymbol = new Map();
 
     // Blocking overlay while a validate (ingest + score) is in flight (owner
     // UX request) — otherwise only the clicked button showed a spinner while
@@ -962,6 +963,140 @@
         });
     }
 
+    function compactEligibilitySummary(value) {
+        const text = String(value || "").trim();
+        if (!text) return "—";
+        const passed = text.match(/passed all\s+(\d+)/i);
+        if (passed) return `${passed[1]}/${passed[1]} passed`;
+        const failed = text.match(/failed\s+(\d+)\s*\/\s*(\d+)/i);
+        if (failed) return `${failed[1]}/${failed[2]} failed`;
+        const withoutOutcome = text.replace(/^(included|excluded)\s*:\s*/i, "");
+        return withoutOutcome.length > 20
+            ? `${withoutOutcome.slice(0, 18)}…`
+            : withoutOutcome;
+    }
+
+    function compactUniverseTime(value) {
+        const parsed = new Date(value);
+        if (Number.isNaN(parsed.getTime())) return "—";
+        const date = parsed.toLocaleDateString("en-IN", {
+            day: "2-digit",
+            month: "short",
+        });
+        const time = parsed.toLocaleTimeString("en-IN", {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+        });
+        return `${date} · ${time}`;
+    }
+
+    function friendlyEligibilityRule(value) {
+        return String(value || "Rule")
+            .replace(/[_-]+/g, " ")
+            .replace(/\b\w/g, ch => ch.toUpperCase());
+    }
+
+    function showEligibilityDetail(symbol) {
+        const bare = String(symbol || "").toUpperCase();
+        const detail = eligibilityDetailBySymbol.get(bare);
+        const modal = document.getElementById("eligibility-detail-modal");
+        const title = document.getElementById("eligibility-detail-title");
+        const summary = document.getElementById("eligibility-detail-summary");
+        const body = document.getElementById("eligibility-detail-body");
+        if (!modal || !title || !summary || !body || !detail) return;
+
+        title.textContent = `${bare} eligibility`;
+        summary.textContent = detail.summary || "Eligibility evidence unavailable.";
+        body.innerHTML = "";
+        const evidence = Array.isArray(detail.evidence) ? detail.evidence : [];
+        if (evidence.length === 0) {
+            const empty = document.createElement("p");
+            empty.className = "eligibility-detail-empty";
+            empty.textContent = "Rule-level evidence is unavailable for this historical validation.";
+            body.appendChild(empty);
+        } else {
+            evidence.forEach(item => {
+                const passed = Boolean(item.passed);
+                const row = document.createElement("div");
+                row.className = `eligibility-rule-row ${passed ? "is-passed" : "is-failed"}`;
+
+                const icon = document.createElement("span");
+                icon.className = "eligibility-rule-icon";
+                icon.setAttribute("aria-hidden", "true");
+                icon.innerHTML = `<i class="fa-solid ${passed ? "fa-check" : "fa-xmark"}"></i>`;
+
+                const copy = document.createElement("div");
+                copy.className = "eligibility-rule-copy";
+                const name = document.createElement("strong");
+                name.textContent = friendlyEligibilityRule(item.rule);
+                const explanation = document.createElement("span");
+                explanation.textContent = String(item.explanation || "No explanation recorded.");
+                copy.append(name, explanation);
+
+                const outcome = document.createElement("span");
+                outcome.className = "eligibility-rule-outcome";
+                outcome.textContent = passed ? "Passed" : "Failed";
+
+                row.append(icon, copy, outcome);
+                body.appendChild(row);
+            });
+        }
+        openModal(modal);
+    }
+
+    function syncUniverseSavedStars() {
+        document.querySelectorAll(".candidate-save-toggle-btn").forEach(btn => {
+            const symbol = String(btn.getAttribute("data-symbol") || "").toUpperCase();
+            const isSaved = savedSymbolSet.has(symbol);
+            btn.classList.toggle("is-saved", isSaved);
+            btn.title = isSaved ? `Remove ${symbol} from Saved Symbols` : `Save ${symbol}`;
+            btn.setAttribute("aria-label", btn.title);
+            btn.setAttribute("aria-pressed", isSaved ? "true" : "false");
+            btn.innerHTML = `<i class="${isSaved ? "fa-solid" : "fa-regular"} fa-star"></i>`;
+        });
+    }
+
+    async function toggleSavedSymbolNow(symbol, { button = null } = {}) {
+        const bare = String(symbol || "").trim().toUpperCase().replace(/^NSE:|^BSE:/, "");
+        if (!bare) return;
+        const wasSaved = savedSymbolSet.has(bare);
+        if (button) {
+            button.disabled = true;
+            button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        }
+        try {
+            if (wasSaved) {
+                await apiRequest(`/api/v1/saved-symbols/${encodeURIComponent(bare)}`, {
+                    method: "DELETE",
+                    skipToast: true,
+                });
+                savedSymbolSet.delete(bare);
+                showToast(`${bare} removed from Saved Symbols`, "success");
+            } else {
+                await apiRequest("/api/v1/saved-symbols", {
+                    method: "POST",
+                    body: JSON.stringify({ symbol: bare }),
+                    skipToast: true,
+                });
+                savedSymbolSet.add(bare);
+                showToast(`${bare} saved to your watch list`, "success");
+            }
+            await loadSavedSymbols();
+        } catch (err) {
+            const detail = err?.data?.detail;
+            showToast(
+                typeof detail === "string" && detail.trim()
+                    ? detail
+                    : `Failed to ${wasSaved ? "remove" : "save"} ${bare}`,
+                "danger"
+            );
+        } finally {
+            if (button) button.disabled = false;
+            syncUniverseSavedStars();
+        }
+    }
+
     function renderQualifiedToday(qualified) {
         const body = document.getElementById("qualified-today-body");
         if (!body) return;
@@ -1019,6 +1154,7 @@
                 return;
             }
             if (emptyEl) emptyEl.style.display = "none";
+            eligibilityDetailBySymbol.clear();
             rows.forEach(c => {
                 const tr = document.createElement("tr");
                 const status = String(c.status || "PENDING").toUpperCase();
@@ -1050,24 +1186,41 @@
                 const eligibility = c.eligibility_summary
                     ? String(c.eligibility_summary)
                     : "—";
-                const eligibilityShort = eligibility.length > 42
-                    ? `${eligibility.slice(0, 40)}…`
-                    : eligibility;
+                const eligibilityShort = compactEligibilitySummary(eligibility);
                 const lastValidated = c.last_validated_ts
                     ? formatDecisionTime(c.last_validated_ts)
                     : "—";
+                const lastValidatedShort = c.last_validated_ts
+                    ? compactUniverseTime(c.last_validated_ts)
+                    : "—";
                 const canTrace = status === "ELIGIBLE" || status === "EXCLUDED";
+                const symbol = String(c.symbol || "").toUpperCase();
+                eligibilityDetailBySymbol.set(symbol, {
+                    summary: eligibility,
+                    evidence: Array.isArray(c.eligibility_evidence)
+                        ? c.eligibility_evidence
+                        : [],
+                });
                 tr.innerHTML = `
-                    <td><strong class="symbol-name-col">${c.symbol}</strong></td>
-                    <td class="text-muted">${sector || "—"}</td>
+                    <td>
+                        <div class="universe-symbol-cell">
+                            <button type="button" class="candidate-save-toggle-btn" data-symbol="${c.symbol}"></button>
+                            <strong class="symbol-name-col">${c.symbol}</strong>
+                        </div>
+                    </td>
+                    <td class="text-muted universe-sector-cell" title="${String(sector || "—").replace(/"/g, "&quot;")}">${sector || "—"}</td>
                     <td>
                         <span class="symbol-status-badge ${statusClass}">
                             <i class="fas ${statusIcon}"></i>
                             ${statusLabel}
                         </span>
                     </td>
-                    <td class="universe-eligibility-cell" title="${eligibility.replace(/"/g, "&quot;")}">${eligibilityShort}</td>
-                    <td class="text-muted">${lastValidated}</td>
+                    <td class="universe-eligibility-cell">
+                        ${eligibility === "—"
+                            ? "—"
+                            : `<button type="button" class="eligibility-metric-btn" data-symbol="${c.symbol}" title="View passed and failed eligibility rules">${eligibilityShort}</button>`}
+                    </td>
+                    <td class="text-muted universe-validated-cell" title="${lastValidated.replace(/"/g, "&quot;")}">${lastValidatedShort}</td>
                     <td>
                         <div class="candidate-row-actions">
                             <button type="button" class="inspect-btn candidate-validate-btn" data-symbol="${c.symbol}" title="Re-run ingest + score">
@@ -1082,7 +1235,19 @@
                 `;
                 bodyEl.appendChild(tr);
             });
+            syncUniverseSavedStars();
             applyUniverseFilters();
+            bodyEl.querySelectorAll(".candidate-save-toggle-btn").forEach(btn => {
+                btn.addEventListener("click", async () => {
+                    const sym = btn.getAttribute("data-symbol");
+                    await toggleSavedSymbolNow(sym, { button: btn });
+                });
+            });
+            bodyEl.querySelectorAll(".eligibility-metric-btn").forEach(btn => {
+                btn.addEventListener("click", () => {
+                    showEligibilityDetail(btn.getAttribute("data-symbol"));
+                });
+            });
             bodyEl.querySelectorAll(".candidate-validate-btn").forEach(btn => {
                 btn.addEventListener("click", async () => {
                     const sym = btn.getAttribute("data-symbol");
@@ -1165,8 +1330,8 @@
     }
 
     const candidateAddBtn = document.getElementById("candidate-add-btn");
-    const candidateInput = document.getElementById("candidate-symbol-input");
     const candidateSearchInput = document.getElementById("candidate-search-input");
+    const candidateInput = candidateSearchInput;
     if (candidateSearchInput) {
         candidateSearchInput.addEventListener("input", () => applyUniverseFilters());
     }
@@ -1186,15 +1351,10 @@
                 return;
             }
             candidateInput.value = "";
+            applyUniverseFilters();
             await validateSymbolsNow([symbol], { button: candidateAddBtn, refreshDecisions: true });
         };
         candidateAddBtn.addEventListener("click", addAndValidateCandidate);
-        candidateInput.addEventListener("keydown", (e) => {
-            if (e.key === "Enter") {
-                e.preventDefault();
-                addAndValidateCandidate();
-            }
-        });
     }
 
     // UX-9b: "Saved Symbols" — a passive personal watch list, deliberately
@@ -1246,6 +1406,12 @@
         try {
             const res = await apiRequest("/api/v1/saved-symbols");
             const rows = (res && res.data && res.data.symbols) ? res.data.symbols : [];
+            savedSymbolSet.clear();
+            rows.forEach(s => {
+                const symbol = String(s.symbol || "").trim().toUpperCase();
+                if (symbol) savedSymbolSet.add(symbol);
+            });
+            syncUniverseSavedStars();
             listEl.innerHTML = "";
             if (countEl) {
                 countEl.textContent = `${rows.length} symbol${rows.length === 1 ? "" : "s"}`;
@@ -1365,7 +1531,7 @@
     }
     if (focusAddSymbolBtn) {
         focusAddSymbolBtn.addEventListener("click", () => {
-            const input = document.getElementById("candidate-symbol-input");
+            const input = document.getElementById("candidate-search-input");
             if (input) {
                 input.focus();
                 input.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -1397,7 +1563,13 @@
     const traceModalClose = document.getElementById("trace-modal-close");
     const traceModalTitle = document.getElementById("trace-modal-title");
     const traceModalBody = document.getElementById("trace-modal-body");
+    const eligibilityDetailModal = document.getElementById("eligibility-detail-modal");
+    const eligibilityDetailClose = document.getElementById("eligibility-detail-close");
 
+    // Rule outcomes come from the persisted `evidence` array only. A previous
+    // version inferred them by searching each explanation for "(PASS)", a
+    // marker the UniverseEngine never writes, so every real rule rendered FAIL
+    // — including for symbols that passed all of them.
     window.openTraceModal = function(symbol) {
         const member = universeCache[symbol];
         if (!member) return;
@@ -1408,25 +1580,42 @@
         const traceList = document.createElement("div");
         traceList.className = "trace-logs-list";
 
-        if (member.trace && member.trace.length > 0) {
-            member.trace.forEach(logLine => {
+        const evidence = Array.isArray(member.evidence) ? member.evidence : [];
+        const traceLines = Array.isArray(member.trace) ? member.trace : [];
+
+        if (evidence.length > 0) {
+            evidence.forEach(item => {
+                const isPass = Boolean(item.passed);
                 const step = document.createElement("div");
-                
-                const isPass = logLine.includes("(PASS)");
-                step.className = `trace-step-item ${isPass ? 'pass' : 'fail'}`;
+                step.className = `trace-step-item ${isPass ? "pass" : "fail"}`;
 
-                // Parse rule name and outcome detail
-                const idx = logLine.indexOf("(");
-                const ruleText = idx !== -1 ? logLine.substring(0, idx).trim() : logLine;
-                const outcome = isPass ? "PASS" : "FAIL";
+                const header = document.createElement("div");
+                header.className = "trace-step-header";
+                const rule = document.createElement("span");
+                rule.className = "trace-step-rule";
+                rule.textContent = friendlyEligibilityRule(item.rule);
+                const status = document.createElement("span");
+                status.className = `trace-step-status ${isPass ? "pass" : "fail"}`;
+                status.textContent = isPass ? "PASS" : "FAIL";
+                header.append(rule, status);
 
-                step.innerHTML = `
-                    <div class="trace-step-header">
-                        <span class="trace-step-rule">${ruleText}</span>
-                        <span class="trace-step-status ${isPass ? 'pass' : 'fail'}">${outcome}</span>
-                    </div>
-                    <span class="trace-step-detail">Eligibility validation check executed for ${symbol}</span>
-                `;
+                const detail = document.createElement("span");
+                detail.className = "trace-step-detail";
+                detail.textContent = String(item.explanation || "No explanation recorded.");
+
+                step.append(header, detail);
+                traceList.appendChild(step);
+            });
+        } else if (traceLines.length > 0) {
+            // Older runs persisted explanations without per-rule outcomes. Show
+            // them verbatim rather than guessing a pass/fail state.
+            traceLines.forEach(logLine => {
+                const step = document.createElement("div");
+                step.className = "trace-step-item";
+                const detail = document.createElement("span");
+                detail.className = "trace-step-detail";
+                detail.textContent = String(logLine);
+                step.appendChild(detail);
                 traceList.appendChild(step);
             });
         } else {
@@ -1442,8 +1631,16 @@
             closeModal(traceModal);
         });
     }
+    if (eligibilityDetailClose && eligibilityDetailModal) {
+        eligibilityDetailClose.addEventListener("click", () => {
+            closeModal(eligibilityDetailModal);
+        });
+    }
     window.addEventListener("click", (e) => {
         if (e.target === traceModal) {
             closeModal(traceModal);
+        }
+        if (e.target === eligibilityDetailModal) {
+            closeModal(eligibilityDetailModal);
         }
     });

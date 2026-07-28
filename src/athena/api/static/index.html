@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.63.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.66.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -436,12 +436,6 @@
                                     </div>
                                 </div>
                                 <div class="card-body candidate-card-body">
-                                    <div class="candidate-add-row">
-                                        <input type="text" id="candidate-symbol-input" placeholder="Add symbol (e.g. INFY)" />
-                                        <button type="button" id="candidate-add-btn" class="inspect-btn">
-                                            <i class="fas fa-plus"></i> Add &amp; validate
-                                        </button>
-                                    </div>
                                     <div class="universe-table-toolbar">
                                         <div class="search-bar-container candidate-search">
                                             <i class="fas fa-search search-icon"></i>
@@ -457,6 +451,9 @@
                                         <select id="universe-sector-filter" class="universe-filter-select" aria-label="Filter by sector">
                                             <option value="all">All sectors</option>
                                         </select>
+                                        <button type="button" id="candidate-add-btn" class="inspect-btn universe-add-validate-btn" title="Add the entered symbol to the universe and validate it">
+                                            <i class="fas fa-plus"></i> Add &amp; validate
+                                        </button>
                                     </div>
                                     <div id="candidate-list-empty" class="text-muted text-center candidate-empty">
                                         Add symbols to validate.
@@ -465,7 +462,7 @@
                                         <table class="universe-table market-universe-table">
                                             <thead>
                                                 <tr>
-                                                    <th>Symbol</th>
+                                                    <th><span class="universe-symbol-heading"><span aria-hidden="true"></span>Symbol</span></th>
                                                     <th>Sector</th>
                                                     <th>Status</th>
                                                     <th>Eligibility</th>
@@ -1081,6 +1078,19 @@
         </div>
     </div>
 
+    <div id="eligibility-detail-modal" class="modal-overlay modal-stacked" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="eligibility-detail-title">
+        <div class="modal-container eligibility-detail-modal-container">
+            <div class="modal-header">
+                <div>
+                    <h3 id="eligibility-detail-title">Eligibility details</h3>
+                    <p id="eligibility-detail-summary" class="eligibility-detail-summary"></p>
+                </div>
+                <button id="eligibility-detail-close" class="modal-close-btn" type="button" aria-label="Close eligibility details">&times;</button>
+            </div>
+            <div class="modal-body eligibility-detail-body" id="eligibility-detail-body"></div>
+        </div>
+    </div>
+
     <!-- MI-3 polish: Validation Pipeline details live in a modal so expanding
          Eligible/Excluded never forces the Market Intelligence column to scroll. -->
     <div id="validation-funnel-modal" class="modal-overlay" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="validation-funnel-modal-title">
@@ -1238,6 +1248,6 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.63.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.66.0"></script>
 </body>
 </html>

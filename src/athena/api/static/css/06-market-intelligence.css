@@ -671,21 +671,26 @@
 }
 
 .universe-table-toolbar {
-    display: flex;
-    gap: var(--space-8);
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns:
+        minmax(170px, 1.3fr)
+        minmax(108px, 0.8fr)
+        minmax(160px, 1.3fr)
+        minmax(128px, 0.8fr);
+    gap: var(--space-12);
     align-items: center;
     flex-shrink: 0;
+    width: 100%;
+    min-width: 0;
 }
 
 .universe-table-toolbar .candidate-search {
-    flex: 1 1 160px;
-    min-width: 140px;
+    min-width: 0;
 }
 
 .universe-filter-select {
-    flex: 0 1 140px;
-    min-width: 120px;
+    width: 100%;
+    min-width: 0;
     background: rgba(15, 22, 38, 0.55);
     border: 1px solid rgba(148, 163, 184, 0.2);
     color: var(--text-primary);
@@ -697,16 +702,199 @@
 .market-universe-scroll {
     flex: 1 1 auto;
     min-height: 0;
-    overflow: auto;
+    overflow-x: hidden;
+    overflow-y: auto;
 }
 
 .market-universe-table {
     width: 100%;
+    table-layout: fixed;
 }
 
 .market-universe-table th,
 .market-universe-table td {
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.market-universe-table th:nth-child(1),
+.market-universe-table td:nth-child(1) {
+    width: 16%;
+}
+
+.market-universe-table th:nth-child(2),
+.market-universe-table td:nth-child(2) {
+    width: 28%;
+}
+
+.market-universe-table th:nth-child(3),
+.market-universe-table td:nth-child(3) {
+    width: 12%;
+}
+
+.market-universe-table th:nth-child(4),
+.market-universe-table td:nth-child(4) {
+    width: 12%;
+}
+
+.market-universe-table th:nth-child(5),
+.market-universe-table td:nth-child(5) {
+    width: 20%;
+}
+
+.market-universe-table th:nth-child(6),
+.market-universe-table td:nth-child(6) {
+    width: 12%;
+}
+
+.universe-symbol-cell {
+    display: flex;
+    align-items: center;
+    gap: var(--space-6);
+    min-width: 0;
+}
+
+.universe-symbol-heading {
+    display: flex;
+    align-items: center;
+    gap: var(--space-6);
+}
+
+.universe-symbol-heading > span {
+    flex: 0 0 24px;
+    width: 24px;
+}
+
+.universe-symbol-cell .symbol-name-col {
+    flex: 0 0 auto;
+    overflow: visible;
+    text-overflow: clip;
+}
+
+.candidate-save-toggle-btn {
+    flex: 0 0 24px;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: color var(--transition-speed) ease, background var(--transition-speed) ease;
+}
+
+.candidate-save-toggle-btn:hover,
+.candidate-save-toggle-btn:focus-visible {
+    color: var(--warning);
+    background: rgba(245, 158, 11, 0.1);
+    outline: none;
+}
+
+.candidate-save-toggle-btn.is-saved {
+    color: var(--warning);
+}
+
+.candidate-save-toggle-btn:disabled {
+    cursor: wait;
+    opacity: 0.65;
+}
+
+.market-universe-table .universe-sector-cell,
+.market-universe-table .universe-validated-cell {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.eligibility-metric-btn {
+    max-width: 100%;
+    padding: 2px 0;
+    border: 0;
+    border-bottom: 1px dotted rgba(148, 163, 184, 0.45);
+    background: transparent;
+    color: var(--text-muted);
+    font: inherit;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.eligibility-metric-btn:hover,
+.eligibility-metric-btn:focus-visible {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+    outline: none;
+}
+
+.eligibility-detail-modal-container {
+    width: min(620px, calc(100vw - 32px));
+}
+
+.eligibility-detail-summary {
+    margin: var(--space-4) 0 0;
+    color: var(--text-muted);
+    font-size: var(--text-0-8);
+}
+
+.eligibility-detail-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-8);
+}
+
+.eligibility-rule-row {
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--space-10);
+    padding: var(--space-10) var(--space-12);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: rgba(15, 23, 42, 0.45);
+}
+
+.eligibility-rule-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+}
+
+.eligibility-rule-row.is-passed .eligibility-rule-icon,
+.eligibility-rule-row.is-passed .eligibility-rule-outcome {
+    color: var(--success);
+}
+
+.eligibility-rule-row.is-failed .eligibility-rule-icon,
+.eligibility-rule-row.is-failed .eligibility-rule-outcome {
+    color: var(--danger);
+}
+
+.eligibility-rule-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.eligibility-rule-copy strong {
+    color: var(--text-primary);
+    font-size: var(--text-0-85);
+}
+
+.eligibility-rule-copy span,
+.eligibility-detail-empty {
+    color: var(--text-muted);
+    font-size: var(--text-0-75);
+    line-height: 1.4;
+}
+
+.eligibility-rule-outcome {
+    font-size: var(--text-0-75);
+    font-weight: 700;
+    text-transform: uppercase;
 }
 
 .market-universe-table .universe-eligibility-cell {
@@ -734,6 +922,15 @@
     justify-content: flex-end;
 }
 
+.market-universe-table .candidate-row-actions .inspect-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+}
+
 @media (max-width: 1100px) {
     .validation-funnel {
         grid-template-columns: repeat(5, minmax(78px, 1fr));
@@ -756,6 +953,14 @@
 
 .candidate-card-header {
     flex-shrink: 0;
+}
+
+.market-universe-card > .candidate-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-16);
+    padding: var(--space-20) var(--space-24);
 }
 
 .candidate-card-header > div {
@@ -1271,7 +1476,25 @@
 .universe-header-actions {
     display: flex;
     align-items: center;
-    gap: var(--space-10);
+    gap: var(--space-12);
+    flex: 0 0 auto;
+}
+
+.universe-header-actions .mi-primary-btn,
+.universe-header-actions .score-chip {
+    min-height: 42px;
+    box-sizing: border-box;
+}
+
+.universe-header-actions .score-chip {
+    padding-inline: var(--space-20);
+}
+
+.universe-add-validate-btn {
+    width: 100%;
+    min-width: 0;
+    justify-self: stretch;
+    white-space: nowrap;
 }
 
 .market-saved-symbols-card {
@@ -1304,6 +1527,11 @@
     padding: var(--space-8) var(--space-12);
 }
 
+.market-main-split .market-universe-card > .candidate-card-header {
+    min-height: 82px;
+    padding: var(--space-20) var(--space-16);
+}
+
 .market-side-rail .card-body {
     padding: var(--space-10) var(--space-12);
 }
@@ -1334,14 +1562,24 @@
 
 .market-main-split .market-universe-card .candidate-card-body {
     gap: var(--space-7) !important;
-    padding: var(--space-10) !important;
+    padding: var(--space-16) var(--space-12) !important;
 }
 
-.market-main-split .candidate-add-row input,
-.market-main-split .candidate-add-row button,
+.market-main-split .universe-add-validate-btn,
 .market-main-split .universe-filter-select,
 .market-main-split .candidate-search input {
-    min-height: 30px;
+    min-height: 42px;
+}
+
+@media (max-width: 860px) {
+    .universe-table-toolbar {
+        grid-template-columns: minmax(180px, 1.35fr) repeat(3, minmax(112px, 1fr));
+    }
+
+    .universe-add-validate-btn {
+        grid-column: auto;
+        justify-self: stretch;
+    }
 }
 
 .market-main-split .market-universe-table th {

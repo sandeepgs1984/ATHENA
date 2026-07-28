@@ -34,6 +34,8 @@ status updated on approval.
 - Repeated enum words are removed only at display time (`NORMAL_VOLATILITY` → `NORMAL`, `HEALTHY_MOMENTUM` → `HEALTHY`); categorical labels remain unchanged in data/evidence.
 - Evidence Attribution is a compact read-only footer; the reference chevron was omitted because there is no hidden evidence body to disclose.
 - Final visual pass places the title/timestamp on one line, gives all eight cells shared label/value/indicator rows, strengthens primary-value hierarchy, and left-aligns the Market Health ring with the same geometry as the other cells.
+- Post-approval Universe polish matches the reference header: title/subtitle and Validate All/count share one row; search/status/sector/Add & validate share one responsive row. The search field is also the explicit add target, removing the redundant second symbol input without changing validation behavior. The six-column table now fits without horizontal scrolling, prioritizes full symbol/sector names, trims redundant eligibility/date display text, and adds a persisted Saved Symbols star toggle at the start of every symbol row. Tapping an eligibility metric opens the persisted per-rule pass/fail evidence and explanation; the UI never reconstructs rule outcomes.
+- Fixed a live honesty bug in the Inspect Trace modal (ADR-005): it derived each rule's outcome by searching the explanation text for `(PASS)`, a marker only the in-memory demo fixture writes, so every real rule rendered FAIL — including for symbols that passed all six — and the detail line was filler text rather than the recorded explanation. It now renders the persisted `evidence` outcomes and explanations, and falls back to showing older `trace` lines verbatim rather than guessing a state.
 
 ---
 

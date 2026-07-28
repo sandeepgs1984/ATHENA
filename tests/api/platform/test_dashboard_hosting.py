@@ -974,6 +974,39 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert 'id="candidate-list-body"' in html
     assert 'id="universe-status-filter"' in html
     assert 'id="universe-sector-filter"' in html
+    # Mock-faithful Universe chrome: title actions share one header row and
+    # search/status/sector/add-and-validate share one toolbar row. The search
+    # field doubles as the explicit add target, avoiding a redundant input row.
+    assert 'id="candidate-symbol-input"' not in html
+    toolbar = html[html.find('<div class="universe-table-toolbar">'):]
+    toolbar = toolbar[:toolbar.find("</div>", toolbar.find("</select>")) + 500]
+    assert toolbar.find('id="candidate-search-input"') < toolbar.find('id="universe-status-filter"')
+    assert toolbar.find('id="universe-status-filter"') < toolbar.find('id="universe-sector-filter"')
+    assert toolbar.find('id="universe-sector-filter"') < toolbar.find('id="candidate-add-btn"')
+    assert "minmax(170px, 1.3fr)" in css
+    assert ".market-universe-card > .candidate-card-header" in css
+    assert "const candidateInput = candidateSearchInput;" in js
+    assert "table-layout: fixed" in css
+    assert "overflow-x: hidden" in css
+    assert "function compactEligibilitySummary" in js
+    assert "function compactUniverseTime" in js
+    assert "eligibility_evidence" in js
+    assert "function showEligibilityDetail" in js
+    assert 'id="eligibility-detail-modal"' in html
+    assert 'class="eligibility-metric-btn"' in js
+    assert ".eligibility-rule-row" in css
+    assert "candidate-save-toggle-btn" in js
+    assert "function toggleSavedSymbolNow" in js
+    assert 'class="${isSaved ? "fa-solid" : "fa-regular"} fa-star"' in js
+    assert "universe-symbol-heading" in html
+    assert "width: 28%" in css
+    # The Inspect Trace modal must read persisted per-rule outcomes. It used to
+    # infer them by searching each explanation for "(PASS)" — a marker only the
+    # in-memory demo fixture writes — so every real rule rendered FAIL, even for
+    # symbols that passed all of them.
+    assert 'logLine.includes("(PASS)")' not in js
+    assert "Eligibility validation check executed for" not in js
+    assert "const evidence = Array.isArray(member.evidence) ? member.evidence : [];" in js
     # Symbols the exchange does not list get their own status, so they can be
     # spotted and removed instead of looking like never-validated symbols.
     assert '<option value="UNRESOLVED">Unresolved</option>' in html

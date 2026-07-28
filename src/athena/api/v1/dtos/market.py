@@ -9,6 +9,16 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class EligibilityRuleDTO(BaseModel):
+    """Persisted outcome for one universe-eligibility rule."""
+
+    model_config = ConfigDict(frozen=True)
+
+    rule: str
+    passed: bool
+    explanation: str
+
+
 class OwnerCandidateDTO(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -20,6 +30,7 @@ class OwnerCandidateDTO(BaseModel):
     sector: str | None = None
     status: Literal["ELIGIBLE", "EXCLUDED", "PENDING", "UNRESOLVED"] | None = None
     eligibility_summary: str | None = None
+    eligibility_evidence: tuple[EligibilityRuleDTO, ...] = ()
     last_validated_ts: datetime | None = None
 
 
