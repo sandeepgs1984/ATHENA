@@ -854,60 +854,58 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert '"main rail"' in css
     assert "minmax(0, 1fr) 280px" in css
 
-    # MI-2 (Market Intelligence redesign): "Volatility Regime & Health" card
-    # replaced with a "Market Summary" hero — Trend/Volatility/Gap reuse the
-    # exact .brief-gauge/.hero-metric-band tile language and contextChipTone/
-    # friendlyLabel tone logic already established for Decisions & Trace's
-    # own regime rendering (one tone system, not two parallel ones). Market
-    # Health shows the real 4-dimension categorical breakdown; MH-3 adds the
-    # numeric F-5 ring + Universe Breadth from GET /api/v1/market/summary.
+    # MH-3 refined Market Summary: mock-aligned 8-cell hero. Every visual uses
+    # summary API values or categorical labels; no display-only market score.
     assert "<h3>Market Summary</h3>" in html
     assert "Volatility Regime & Health" not in html
     assert 'id="market-summary-asof"' in html
-    assert 'class="market-summary-gauges"' in html
-    assert 'id="market-health-grid" class="context-metric-grid"' in html
-    assert 'class="brief-gauge"' in html
-    assert 'id="regime-trend-badge" class="hero-metric-band"' in html
-    assert "function renderMarketHealthGrid" in js
+    assert 'class="card-body market-summary-body" aria-live="polite"' in html
+    assert 'id="regime-trend-badge" class="market-hero-value"' in html
     assert "function formatVolatilityLabel" not in js
     assert '"regime-badge' not in js
     assert ".regime-badge" not in css
     assert ".health-bar-fill" not in css
     assert ".health-gauge-container" not in css
-    assert ".market-summary-gauges" in css
-    render_health_start = js.find("function renderMarketHealthGrid")
-    render_health_end = js.find("\n    function ", render_health_start + 1)
-    render_health_body = js[render_health_start:render_health_end]
-    assert "contextMetricCard(" in render_health_body
-    assert "contextChipTone(" in render_health_body
-    assert "friendlyLabel(" in render_health_body
+    assert ".market-hero-metric" in css
+    assert "function conciseMarketLabel" in js
+    assert "function renderCategoricalIndicator" in js
+    assert 'replace(/_?VOLATILITY/g, "")' in js
+    assert 'gap: value === "NO_GAP" ? "NONE" : value.replace(/^GAP_?/, "")' in js
+    assert 'replace(/_?MOMENTUM/g, "")' in js
+    assert 'replace(/_?TREND_QUALITY/g, "")' in js
     load_mi_start = js.find("async function loadMarketIntelligence")
     load_mi_end = js.find("\n    async function ", load_mi_start + 1)
     load_mi_body = js[load_mi_start:load_mi_end]
     assert "/api/v1/market/summary" in load_mi_body
     assert "renderMarketSummaryHero(" in load_mi_body
-    # Updated reference: 3 regime metrics + 4 real categorical health metrics
-    # form one dense seven-cell row; Evidence Attribution is the footer strip.
-    assert "grid-template-columns: repeat(7, minmax(0, 1fr))" in css
-    assert ".market-summary-gauges" in css and "display: contents" in css
-    assert "Volatility Quality" in js
+    assert "repeat(8, minmax(118px, 1fr))" in css
     assert "grid-column: 1 / -1" in css
 
-    # MH-3: Health Score ring + Universe Breadth + sparklines from summary API.
+    # Real indicators: score/breadth rings, NIFTY/VIX sparklines, categorical
+    # bars/dots, gap direction, and read-only attribution footer.
     assert 'id="market-health-score-ring"' in html
     assert 'id="market-health-score-value"' in html
+    assert 'id="market-breadth-ring"' in html
     assert 'id="market-breadth-pct"' in html
     assert 'id="market-breadth-counts"' in html
     assert 'id="market-sparkline-nifty"' in html
     assert 'id="market-sparkline-vix"' in html
-    assert "Universe Breadth" in html
+    assert 'id="market-gap-indicator"' in html
+    assert 'id="market-momentum-indicator"' in html
+    assert 'id="market-trend-quality-indicator"' in html
+    assert 'id="market-volatility-quality-indicator"' in html
+    assert '<div class="regime-explanation">' in html
+    assert "fa-chevron-down" not in html[html.find('<div class="regime-explanation">'):html.find('<div class="regime-explanation">') + 300]
+    assert "countsEl.hidden = true" in js
     assert "function renderMarketHealthScore" in js
     assert "function renderUniverseBreadth" in js
     assert "function renderMarketSparklines" in js
     assert "function renderMarketSummaryHero" in js
-    assert ".market-summary-metrics" in css
+    assert ".market-ring" in css
+    assert ".market-mini-sparkline" in css
+    assert ".market-dot-indicator" in css
+    assert ".market-bar-indicator" in css
     assert ".market-health-score-value" in css
-    assert "Unavailable — score needs all six F-5 components" in js
     assert "Universe breadth" in js
     # Never invent a display number client-side.
     assert "84/100" not in js

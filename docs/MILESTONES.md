@@ -538,7 +538,7 @@ Dedicated read model exposes persisted F-5 score, universe breadth, VIX, and spa
 
 | | |
 |---|---|
-| Scope | **API**: `GET /api/v1/market/summary` + `MarketSummaryDTO` (F-5 §8). **Service**: reads latest completed validation run detail (`market_health_score`, `market_metric_inputs`, `regime_assessment`) + D1 candle closes for sparklines. **UI**: second summary row — Health Score ring, Universe Breadth ADV/DEC/neutral, NIFTY/VIX sparklines; keep existing Regime + categorical Health row. |
+| Scope | **API**: `GET /api/v1/market/summary` + `MarketSummaryDTO` (F-5 §8). **Service**: reads latest completed validation run detail (`market_health_score`, `market_metric_inputs`, `regime_assessment`) + D1 candle closes for sparklines. **UI**: mock-aligned single 8-cell band — Regime (NIFTY sparkline), Volatility (VIX sparkline), Gap indicator, real Universe Breadth ring, categorical Momentum/Trend/Volatility indicators, and persisted F-5 Market Health ring; concise display labels remove only redundant dimension words. |
 | Tests | Service unit + authenticated HTTP + dashboard hosting assertions. Full suite **1095 passed** |
 | Status | 🔄 Ready for review (2026-07-28) |
 

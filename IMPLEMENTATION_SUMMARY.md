@@ -12,7 +12,7 @@ status updated on approval.
 |---|---|
 | Completed | 2026-07-28 |
 | Objective | Expose persisted F-5 score / universe breadth / sparklines via a dedicated summary read model and render them honestly on Market Intelligence |
-| Scope | `GET /api/v1/market/summary` + DTOs; `MarketSummaryService`; Market Summary second metrics row (score ring, Universe Breadth, NIFTY/VIX sparklines); keep Regime + categorical Health row |
+| Scope | `GET /api/v1/market/summary` + DTOs; `MarketSummaryService`; mock-aligned 8-cell hero with real NIFTY/VIX sparklines, universe-breadth ring, categorical indicators, and F-5 score ring |
 | Public APIs added | `MarketSummaryDTO` (+ nested); `MarketSummaryService.market_summary()`; `GET /api/v1/market/summary` |
 | Tests | `tests/api/v1/test_market_summary.py` + dashboard hosting MH-3 assertions. Full suite **1095 passed** |
 | Coverage | Unit: empty → Unavailable; score+breadth+sparklines from seeded run detail; partial score null with reason. Hosting: summary fetch + ring/breadth/sparkline markup |
@@ -28,8 +28,11 @@ status updated on approval.
 ### Scope completed
 
 - Dedicated summary read model reads latest completed validation run’s `market_health_score`, `market_metric_inputs`, `regime_assessment`, plus D1 closes for sparklines and snapshot VIX.
-- Market Summary UI: Health Score ring + bar, Universe Breadth ADV/DEC/NEU + advance %, NIFTY/VIX sparklines — all Unavailable when data absent.
-- Existing 7-cell Regime + categorical Health row retained; Evidence footer appends score unavailability when relevant.
+- Market Summary UI: one mock-aligned 8-cell band (Regime, Volatility, Gap, Breadth, Momentum, Trend Quality, Volatility Quality, Market Health), with real persisted values or explicit Unavailable states.
+- NIFTY and VIX daily-close sparklines live inside their relevant cells; breadth uses real ADV/DEC/NEU and advance %, while Market Health uses only persisted F-5 total.
+- Repeated enum words are removed only at display time (`NORMAL_VOLATILITY` → `NORMAL`, `HEALTHY_MOMENTUM` → `HEALTHY`); categorical labels remain unchanged in data/evidence.
+- Evidence Attribution is a compact read-only footer; the reference chevron was omitted because there is no hidden evidence body to disclose.
+- Final visual pass places the title/timestamp on one line, gives all eight cells shared label/value/indicator rows, strengthens primary-value hierarchy, and left-aligns the Market Health ring with the same geometry as the other cells.
 
 ---
 

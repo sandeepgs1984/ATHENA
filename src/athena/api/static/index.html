@@ -312,10 +312,8 @@
                     </div>
                 </div>
 
-                <!-- Market Intelligence Tab — MI-5 layout + MH-3 Market Summary:
-                     Regime/Health row retained; second metrics row shows real
-                     F-5 score ring, Universe Breadth, and NIFTY/VIX sparklines
-                     (Unavailable when persisted data is absent — never fabricated). -->
+                <!-- Market Intelligence Tab — MH-3 Market Summary:
+                     mock-aligned 8-cell hero using persisted values only. -->
                 <div id="tab-market" class="tab-pane">
                     <div class="market-workstation market-workstation-mi5">
                         <div class="market-summary-band">
@@ -325,65 +323,74 @@
                                     <h3>Market Summary</h3>
                                     <span id="market-summary-asof" class="text-muted market-summary-asof"></span>
                                 </div>
-                                <div class="card-body market-summary-body">
-                                    <div class="market-summary-gauges">
-                                        <div class="brief-gauge">
-                                            <span class="brief-gauge-label">Regime</span>
-                                            <strong id="regime-trend-badge" class="hero-metric-band">Loading...</strong>
-                                        </div>
-                                        <div class="brief-gauge">
-                                            <span class="brief-gauge-label">Volatility</span>
-                                            <strong id="regime-vol-badge" class="hero-metric-band">Loading...</strong>
-                                        </div>
-                                        <div class="brief-gauge">
-                                            <span class="brief-gauge-label">Gap</span>
-                                            <strong id="regime-gap-badge" class="hero-metric-band">Loading...</strong>
+                                <div class="card-body market-summary-body" aria-live="polite">
+                                    <div class="market-hero-metric market-regime-metric">
+                                        <span class="market-hero-label">Regime</span>
+                                        <div class="market-hero-content">
+                                            <strong id="regime-trend-badge" class="market-hero-value">Loading...</strong>
+                                            <svg id="market-sparkline-nifty" class="market-mini-sparkline" viewBox="0 0 72 32" preserveAspectRatio="none" aria-label="Persisted NIFTY daily closes"></svg>
                                         </div>
                                     </div>
-
-                                    <div class="market-health-section">
-                                        <span class="regime-field-label">Market Health</span>
-                                        <div id="market-health-grid" class="context-metric-grid">
-                                            <div class="text-muted">Loading...</div>
+                                    <div class="market-hero-metric market-volatility-metric">
+                                        <span class="market-hero-label">Volatility</span>
+                                        <div class="market-hero-content">
+                                            <div>
+                                                <strong id="regime-vol-badge" class="market-hero-value">Loading...</strong>
+                                                <span id="market-vix-level" class="market-hero-subvalue text-muted"></span>
+                                            </div>
+                                            <svg id="market-sparkline-vix" class="market-mini-sparkline" viewBox="0 0 72 32" preserveAspectRatio="none" aria-label="Persisted India VIX daily closes"></svg>
                                         </div>
                                     </div>
-
-                                    <div class="market-summary-metrics" aria-live="polite">
-                                        <div class="market-health-score-panel">
-                                            <span class="brief-gauge-label">Health Score</span>
-                                            <div class="market-health-score-ring" id="market-health-score-ring">
-                                                <strong id="market-health-score-value" class="market-health-score-value">—</strong>
-                                                <span class="market-health-score-denom">/100</span>
-                                            </div>
-                                            <div class="brief-gauge-bar market-health-score-bar" aria-hidden="true">
-                                                <div id="market-health-score-fill" class="brief-gauge-fill" style="width: 0%"></div>
-                                            </div>
-                                            <span id="market-health-score-caption" class="market-metric-caption text-muted">Unavailable</span>
+                                    <div class="market-hero-metric market-gap-metric">
+                                        <span class="market-hero-label">Gap</span>
+                                        <div class="market-hero-content">
+                                            <strong id="regime-gap-badge" class="market-hero-value">Loading...</strong>
+                                            <i id="market-gap-indicator" class="fas fa-minus market-gap-indicator" aria-hidden="true"></i>
                                         </div>
-                                        <div class="market-breadth-panel">
-                                            <span class="brief-gauge-label">Universe Breadth</span>
-                                            <strong id="market-breadth-pct" class="market-breadth-pct">—</strong>
-                                            <div id="market-breadth-counts" class="market-breadth-counts text-muted">ADV — · DEC — · NEU —</div>
-                                            <span id="market-breadth-caption" class="market-metric-caption text-muted">Unavailable</span>
-                                        </div>
-                                        <div class="market-sparkline-panel">
-                                            <span class="brief-gauge-label">NIFTY · VIX</span>
-                                            <div class="market-sparkline-row">
-                                                <div class="market-sparkline-block">
-                                                    <span class="market-sparkline-tag">NIFTY</span>
-                                                    <svg id="market-sparkline-nifty" class="market-sparkline-svg" viewBox="0 0 120 28" preserveAspectRatio="none" aria-hidden="true"></svg>
-                                                </div>
-                                                <div class="market-sparkline-block">
-                                                    <span class="market-sparkline-tag">VIX</span>
-                                                    <svg id="market-sparkline-vix" class="market-sparkline-svg" viewBox="0 0 120 28" preserveAspectRatio="none" aria-hidden="true"></svg>
-                                                </div>
+                                    </div>
+                                    <div class="market-hero-metric market-breadth-metric">
+                                        <span class="market-hero-label">Breadth</span>
+                                        <div class="market-hero-content">
+                                            <div>
+                                                <strong id="market-breadth-pct" class="market-hero-value">—</strong>
+                                                <span id="market-breadth-caption" class="market-hero-subvalue text-muted">Unavailable</span>
                                             </div>
-                                            <div id="market-vix-level" class="market-vix-level text-muted"></div>
+                                            <div id="market-breadth-ring" class="market-ring market-breadth-ring" style="--metric-progress: 0" aria-label="Universe breadth unavailable"></div>
                                         </div>
+                                        <span id="market-breadth-counts" class="market-hero-detail text-muted">ADV — · DEC — · NEU —</span>
+                                    </div>
+                                    <div class="market-hero-metric">
+                                        <span class="market-hero-label">Momentum</span>
+                                        <strong id="market-momentum-value" class="market-hero-value">Loading...</strong>
+                                        <div id="market-momentum-indicator" class="market-bar-indicator" aria-hidden="true">
+                                            <span></span><span></span><span></span><span></span>
+                                        </div>
+                                    </div>
+                                    <div class="market-hero-metric">
+                                        <span class="market-hero-label">Trend Quality</span>
+                                        <strong id="market-trend-quality-value" class="market-hero-value">Loading...</strong>
+                                        <div id="market-trend-quality-indicator" class="market-dot-indicator" aria-hidden="true">
+                                            <span></span><span></span><span></span><span></span>
+                                        </div>
+                                    </div>
+                                    <div class="market-hero-metric">
+                                        <span class="market-hero-label">Volatility Quality</span>
+                                        <strong id="market-volatility-quality-value" class="market-hero-value">Loading...</strong>
+                                        <div id="market-volatility-quality-indicator" class="market-dot-indicator" aria-hidden="true">
+                                            <span></span><span></span><span></span><span></span>
+                                        </div>
+                                    </div>
+                                    <div class="market-hero-metric market-health-metric">
+                                        <span class="market-hero-label">Market Health</span>
+                                        <div id="market-health-score-ring" class="market-ring market-health-score-ring" style="--metric-progress: 0" aria-label="Market Health Score unavailable">
+                                            <strong id="market-health-score-value" class="market-health-score-value">—</strong>
+                                            <span class="market-health-score-denom">/100</span>
+                                        </div>
+                                        <span id="market-health-score-caption" class="market-hero-detail text-muted">Unavailable</span>
                                     </div>
 
                                     <div class="regime-explanation">
-                                        <h4>Evidence Attribution</h4>
+                                        <span>Evidence Attribution</span>
                                         <p id="regime-evidence-text">No active run loaded.</p>
                                     </div>
                                 </div>

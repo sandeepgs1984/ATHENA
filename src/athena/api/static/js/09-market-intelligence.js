@@ -187,82 +187,128 @@
     // Cache for universe trace results to speed up detail views
     let universeCache = {};
 
-    // MI-2: real 4-dimension categorical Market Health breakdown (breadth/
-    // trend_quality/momentum/volatility) — reuses the exact contextMetricCard/
-    // contextChipTone/friendlyLabel helpers already established for the
-    // Decision Brief's own Market Context rendering (15-decision-brief-
-    // context.js), same MarketHealthLabel enum, one component language.
-    function renderMarketHealthGrid(dimensions) {
-        const host = document.getElementById("market-health-grid");
+    // Remove only the dimension words already present in the header. Stored
+    // enum values remain unchanged and continue to drive tone/evidence.
+    function conciseMarketLabel(dimension, rawLabel) {
+        const value = String(rawLabel || "").toUpperCase();
+        if (!value) return "Unknown";
+        const concise = {
+            volatility: value.replace(/_?VOLATILITY/g, ""),
+            gap: value === "NO_GAP" ? "NONE" : value.replace(/^GAP_?/, ""),
+            momentum: value.replace(/_?MOMENTUM/g, ""),
+            trend_quality: value.replace(/_?TREND_QUALITY/g, ""),
+            volatility_quality: value.replace(/^VOLATILITY_?/, ""),
+            breadth: value.replace(/_?BREADTH/g, ""),
+        }[dimension] || value;
+        return friendlyLabel(concise || "UNKNOWN");
+    }
+
+    function setMarketHeroValue(elementId, dimension, rawLabel) {
+        const el = document.getElementById(elementId);
+        if (!el) return;
+        const raw = rawLabel || `${dimension.toUpperCase()}_UNKNOWN`;
+        el.textContent = conciseMarketLabel(dimension, raw);
+        el.className = `market-hero-value tone-${contextChipTone(raw)}-text`;
+    }
+
+    // Dots/bars visualize the persisted categorical result; they do not
+    // create or imply a new numeric score.
+    function categoricalIndicatorLevel(rawLabel) {
+        const value = String(rawLabel || "").toUpperCase();
+        if (!value || value.includes("UNKNOWN")) return 0;
+        if (/STRONG|HEALTHY|CALM/.test(value)) return 4;
+        if (/MIXED|NORMAL|FLAT/.test(value)) return 2;
+        if (/WEAK|ELEVATED/.test(value)) return 1;
+        return 0;
+    }
+
+    function renderCategoricalIndicator(elementId, rawLabel) {
+        const host = document.getElementById(elementId);
         if (!host) return;
-        const entries = Object.entries(dimensions || {});
-        if (!entries.length) {
-            host.innerHTML = '<p class="context-caption unknown">Not available yet — re-run validation to capture a market-health assessment.</p>';
-            return;
-        }
-        host.innerHTML = entries
-            .map(([key, label]) => {
-                const displayName = key === "volatility"
-                    ? "Volatility Quality"
-                    : friendlyLabel(key);
-                return contextMetricCard(displayName, label, contextChipTone(label));
-            })
-            .join("");
+        const baseClass = host.classList.contains("market-bar-indicator")
+            ? "market-bar-indicator"
+            : "market-dot-indicator";
+        host.className = `${baseClass} tone-${contextChipTone(rawLabel)}-text`;
+        const level = categoricalIndicatorLevel(rawLabel);
+        [...host.children].forEach((node, index) => {
+            node.classList.toggle("is-active", index < level);
+        });
+        host.title = rawLabel
+            ? `Categorical assessment: ${friendlyLabel(rawLabel)}`
+            : "Categorical assessment unavailable";
     }
 
     // MH-3: Health Score ring from persisted MarketHealthScore.total only.
     function renderMarketHealthScore(health) {
         const valueEl = document.getElementById("market-health-score-value");
-        const fillEl = document.getElementById("market-health-score-fill");
+        const ringEl = document.getElementById("market-health-score-ring");
         const captionEl = document.getElementById("market-health-score-caption");
-        const denomEl = document.querySelector(".market-health-score-denom");
-        if (!valueEl || !fillEl || !captionEl) return;
+        const denomEl = ringEl && ringEl.querySelector(".market-health-score-denom");
+        if (!valueEl || !ringEl || !captionEl) return;
 
         const score = health && health.score != null ? Number(health.score) : null;
         if (score == null || Number.isNaN(score)) {
             valueEl.textContent = "—";
             valueEl.classList.add("is-unavailable");
             if (denomEl) denomEl.hidden = true;
-            fillEl.style.width = "0%";
-            captionEl.textContent = (health && health.unavailable_reason)
-                || "Unavailable — score needs all six F-5 components";
-            valueEl.title = captionEl.textContent;
+            ringEl.style.setProperty("--metric-progress", "0");
+            ringEl.className = "market-ring market-health-score-ring is-unavailable";
+            captionEl.textContent = "Unavailable";
+            ringEl.title = (health && health.unavailable_reason)
+                || "Score needs all six F-5 components";
+            ringEl.setAttribute("aria-label", ringEl.title);
             return;
         }
         valueEl.textContent = String(Math.round(score));
         valueEl.classList.remove("is-unavailable");
         if (denomEl) denomEl.hidden = false;
-        fillEl.style.width = `${Math.max(0, Math.min(100, score))}%`;
-        captionEl.textContent = health.explanation
-            ? "From MarketHealthScore"
-            : "Persisted F-5 total";
-        valueEl.title = health.explanation || captionEl.textContent;
+        ringEl.style.setProperty("--metric-progress", String(Math.max(0, Math.min(100, score))));
+        const scoreTone = score >= 70 ? "good" : score >= 45 ? "warn" : "bad";
+        ringEl.className = `market-ring market-health-score-ring tone-${scoreTone}-text`;
+        captionEl.textContent = "F-5 total";
+        ringEl.title = health.explanation || `Persisted F-5 score ${score}/100`;
+        ringEl.setAttribute("aria-label", ringEl.title);
     }
 
     // MH-3: Universe ADV/DEC/neutral — never imply exchange-wide NSE breadth.
-    function renderUniverseBreadth(breadth) {
+    function renderUniverseBreadth(breadth, breadthLabel) {
         const pctEl = document.getElementById("market-breadth-pct");
         const countsEl = document.getElementById("market-breadth-counts");
         const captionEl = document.getElementById("market-breadth-caption");
-        if (!pctEl || !countsEl || !captionEl) return;
+        const ringEl = document.getElementById("market-breadth-ring");
+        if (!pctEl || !countsEl || !captionEl || !ringEl) return;
 
         if (!breadth) {
             pctEl.textContent = "—";
-            countsEl.textContent = "ADV — · DEC — · NEU —";
-            captionEl.textContent = "Unavailable — run validation to compute universe breadth";
+            pctEl.className = "market-hero-value tone-unknown-text";
+            countsEl.textContent = "";
+            countsEl.hidden = true;
+            captionEl.textContent = "Run validation";
+            ringEl.style.setProperty("--metric-progress", "0");
+            ringEl.className = "market-ring market-breadth-ring is-unavailable";
+            ringEl.title = "Run validation to compute universe breadth";
+            ringEl.setAttribute("aria-label", ringEl.title);
             return;
         }
         const pct = breadth.advance_pct == null ? null : Number(breadth.advance_pct);
         pctEl.textContent = pct == null || Number.isNaN(pct)
             ? "—"
-            : `${pct.toFixed(1)}%`;
+            : `${pct.toFixed(0)}%`;
+        pctEl.className = `market-hero-value tone-${contextChipTone(breadthLabel)}-text`;
+        countsEl.hidden = false;
         countsEl.textContent =
             `ADV ${breadth.advances} · DEC ${breadth.declines} · NEU ${breadth.neutral}`;
-        const coverage = breadth.coverage == null ? null : Number(breadth.coverage);
-        const covLabel = coverage == null || Number.isNaN(coverage)
-            ? ""
-            : ` · coverage ${(coverage * 100).toFixed(0)}%`;
-        captionEl.textContent = `${breadth.label || "Universe breadth"}${covLabel}`;
+        captionEl.textContent = conciseMarketLabel("breadth", breadthLabel || "BREADTH_UNKNOWN");
+        const progress = pct == null || Number.isNaN(pct)
+            ? 0
+            : Math.max(0, Math.min(100, pct));
+        ringEl.style.setProperty("--metric-progress", String(progress));
+        ringEl.className = `market-ring market-breadth-ring tone-${contextChipTone(breadthLabel)}-text`;
+        const coverage = breadth.coverage == null
+            ? "unknown"
+            : `${(Number(breadth.coverage) * 100).toFixed(0)}%`;
+        ringEl.title = `Universe breadth ${pctEl.textContent}; coverage ${coverage}`;
+        ringEl.setAttribute("aria-label", ringEl.title);
     }
 
     function renderCloseSparkline(svgEl, closes) {
@@ -330,15 +376,23 @@
         if (regime) {
             const trendRaw = regime.trend || "TREND_UNKNOWN";
             trendBadge.textContent = friendlyLabel(trendRaw);
-            trendBadge.className = `hero-metric-band tone-${contextChipTone(trendRaw)}-text`;
+            trendBadge.className = `market-hero-value tone-${contextChipTone(trendRaw)}-text`;
 
             const volRaw = regime.volatility || "VOLATILITY_UNKNOWN";
-            volBadge.textContent = friendlyLabel(volRaw);
-            volBadge.className = `hero-metric-band tone-${contextChipTone(volRaw)}-text`;
+            setMarketHeroValue("regime-vol-badge", "volatility", volRaw);
 
             const gapRaw = regime.gap || "GAP_UNKNOWN";
-            gapBadge.textContent = friendlyLabel(gapRaw);
-            gapBadge.className = `hero-metric-band tone-${contextChipTone(gapRaw)}-text`;
+            setMarketHeroValue("regime-gap-badge", "gap", gapRaw);
+            const gapIndicator = document.getElementById("market-gap-indicator");
+            if (gapIndicator) {
+                const icon = gapRaw === "GAP_UP"
+                    ? "fa-arrow-up"
+                    : gapRaw === "GAP_DOWN"
+                        ? "fa-arrow-down"
+                        : "fa-minus";
+                gapIndicator.className =
+                    `fas ${icon} market-gap-indicator tone-${contextChipTone(gapRaw)}-text`;
+            }
 
             let evidence = regime.explanation || health.explanation
                 || "No attribution summary available.";
@@ -359,19 +413,33 @@
             evidenceText.textContent = evidence;
         } else {
             trendBadge.textContent = "Unknown";
-            trendBadge.className = "hero-metric-band tone-unknown-text";
+            trendBadge.className = "market-hero-value tone-unknown-text";
             volBadge.textContent = "Unknown";
-            volBadge.className = "hero-metric-band tone-unknown-text";
+            volBadge.className = "market-hero-value tone-unknown-text";
             gapBadge.textContent = "Unknown";
-            gapBadge.className = "hero-metric-band tone-unknown-text";
+            gapBadge.className = "market-hero-value tone-unknown-text";
             evidenceText.textContent =
                 "No regime assessment from the latest validation run yet. " +
                 "Re-run ./athena-daily or Validate All — regime and F-5 inputs are written from validation.";
         }
 
-        renderMarketHealthGrid(health.dimensions || {});
+        const dimensions = health.dimensions || {};
+        const momentum = dimensions.momentum || "MOMENTUM_UNKNOWN";
+        const trendQuality = dimensions.trend_quality || "TREND_QUALITY_UNKNOWN";
+        const volatilityQuality = dimensions.volatility || "VOLATILITY_UNKNOWN";
+        const breadthLabel = dimensions.breadth || "BREADTH_UNKNOWN";
+        setMarketHeroValue("market-momentum-value", "momentum", momentum);
+        setMarketHeroValue("market-trend-quality-value", "trend_quality", trendQuality);
+        setMarketHeroValue(
+            "market-volatility-quality-value",
+            "volatility_quality",
+            volatilityQuality
+        );
+        renderCategoricalIndicator("market-momentum-indicator", momentum);
+        renderCategoricalIndicator("market-trend-quality-indicator", trendQuality);
+        renderCategoricalIndicator("market-volatility-quality-indicator", volatilityQuality);
         renderMarketHealthScore(health);
-        renderUniverseBreadth(summary && summary.breadth);
+        renderUniverseBreadth(summary && summary.breadth, breadthLabel);
         renderMarketSparklines(summary);
     }
 
