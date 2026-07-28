@@ -6,7 +6,7 @@ status updated on approval.
 
 ---
 
-## MI-2 — Market Summary Hero + Market Regime & Context
+## MI-2 — Market Summary Hero + Market Regime & Context (APPROVED)
 
 | | |
 |---|---|
@@ -22,7 +22,7 @@ status updated on approval.
 | Technical debt introduced | None — a small amount was removed (`formatVolatilityLabel()` dead code, parallel bull/bear/neutral tone logic unified into the single `contextChipTone()` system) |
 | Suggested improvements | None identified beyond what's already tracked (`MarketHealthScore` real implementation, if ever wanted) |
 | Remaining work | None — both scope items (hero redesign, real market health) complete |
-| Status | 🔄 Ready for review (2026-07-27) — implemented and self-verified, awaiting owner approval |
+| Status | **✅ Approved** (2026-07-28) |
 | Branch | feature/live-dashboard |
 
 ### Scope completed
