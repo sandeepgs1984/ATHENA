@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.55.1">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.56.3">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -363,63 +363,36 @@
                             </div>
                         </div>
 
-                        <!-- Column 2: independent validation + stock-list panels
-                             (MI-3 will redesign Today's Validation into the
-                             Validation Pipeline funnel; MI-4 will redesign Stock
-                             List into the Universe table; MI-5 will relocate
-                             Saved Symbols and add Recent Activity/Quick Actions) -->
+                        <!-- Column 2: compact Validation Pipeline (MI-3) + Stock
+                             List as the primary scroll region. View Details opens
+                             a modal (not an inline expand) so the funnel never
+                             steals vertical space. Saved Symbols is collapsed by
+                             default (same secondary-panel pattern as Trading
+                             Calendar; MI-5 will relocate it fully). MI-4 will
+                             redesign Stock List into the Universe table. -->
                         <div class="workstation-column market-validation-column">
                             <div class="card validation-card">
                                 <div class="card-header">
-                                    <div class="card-title-icon"><i class="fas fa-user-shield"></i></div>
-                                    <h3>Today's Validation</h3>
+                                    <div class="card-title-icon"><i class="fas fa-filter"></i></div>
+                                    <h3>Validation Pipeline <span class="validation-funnel-period">(Today)</span></h3>
                                 </div>
                                 <div class="card-body">
-                                    <div id="validation-summary-strip" class="text-muted" style="font-size: 0.85rem; margin-bottom: 12px;">
-                                        Run <code>./athena-daily smoke</code> or <code>./athena-daily</code> to populate.
+                                    <div id="validation-funnel" class="validation-funnel" aria-live="polite">
+                                        <div class="text-muted">Loading funnel…</div>
                                     </div>
-
-                                    <div class="card-header" style="padding: 0; margin-bottom: 8px;">
-                                        <h3 style="font-size: 1rem; margin: 0;">Eligible / Excluded (this cycle)</h3>
-                                    </div>
-                                    <div class="universe-inspector-body">
-                                        <div class="search-bar-container">
-                                            <i class="fas fa-search search-icon"></i>
-                                            <input type="text" id="universe-search" placeholder="Filter validation results..." />
-                                        </div>
-                                        <div class="universe-table-wrapper validation-results-scroll">
-                                            <table class="universe-table">
-                                                <thead>
-                                                    <tr>
-                                                        <th>Symbol</th>
-                                                        <th>Status</th>
-                                                        <th>Actions</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody id="universe-list-body">
-                                                    <tr>
-                                                        <td colspan="3" class="text-muted text-center" style="padding: 24px;">Loading universe members...</td>
-                                                    </tr>
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-
-                                    <div class="qualified-section">
-                                        <div class="card-header" style="padding: 0; margin-bottom: 8px;">
-                                            <h3 style="font-size: 1rem; margin: 0;">Qualified Today (WATCH / TRADE)</h3>
-                                        </div>
-                                        <p class="text-muted" style="font-size: 0.8rem; margin-bottom: 8px;">
-                                            Only Eligible names that cleared scoring thresholds.
-                                        </p>
-                                        <div id="qualified-today-body" class="text-muted text-center" style="padding: 12px 0; font-size: 0.85rem;">
-                                            No qualified names yet.
-                                        </div>
+                                    <div class="validation-funnel-footer">
+                                        <span id="validation-funnel-asof" class="validation-funnel-updated text-muted"></span>
+                                        <span id="validation-funnel-empty" class="validation-funnel-empty text-muted">
+                                            Run <code>./athena-daily smoke</code> or <code>./athena-daily</code> to populate.
+                                        </span>
+                                        <button type="button" id="validation-funnel-details-btn" class="inspect-btn validation-funnel-details-btn" aria-haspopup="dialog" aria-controls="validation-funnel-modal">
+                                            View Details
+                                        </button>
                                     </div>
                                 </div>
                             </div>
 
-                            <div class="card candidate-card">
+                            <div class="card candidate-card market-stock-list-card">
                                 <div class="card-header candidate-card-header">
                                     <div>
                                         <h3>Stock List</h3>
@@ -445,19 +418,19 @@
                                 </div>
                             </div>
 
-                            <!-- UX-9b: personal "Saved Symbols" watch list — deliberately
-                                 separate from the Stock List card above (owner validation
-                                 candidates, seeds the ingest/scoring pipeline). Saving a
-                                 symbol here has no pipeline effect; it's a passive bookmark
-                                 list only. -->
-                            <div class="card candidate-card">
-                                <div class="card-header candidate-card-header">
-                                    <div>
+                            <!-- UX-9b: personal watch list — collapsed by default so
+                                 the Stock List keeps the remaining viewport height.
+                                 Saving a symbol here has no pipeline effect. -->
+                            <details class="card candidate-card market-saved-symbols-details">
+                                <summary class="market-saved-symbols-summary">
+                                    <div class="card-title-icon"><i class="fas fa-bookmark"></i></div>
+                                    <div class="market-saved-symbols-summary-copy">
                                         <h3>Saved Symbols</h3>
                                         <p class="metric-desc">Your personal watch list</p>
                                     </div>
                                     <span id="saved-symbols-count" class="meta-chip score-chip">0 symbols</span>
-                                </div>
+                                    <i class="fas fa-chevron-down market-calendar-chevron" aria-hidden="true"></i>
+                                </summary>
                                 <div class="card-body candidate-card-body">
                                     <div class="candidate-add-row">
                                         <input type="text" id="saved-symbol-input" placeholder="Save symbol (e.g. INFY)" />
@@ -470,7 +443,7 @@
                                     </div>
                                     <ul id="saved-symbols-list" class="candidate-list"></ul>
                                 </div>
-                            </div>
+                            </details>
                         </div>
                     </div>
 
@@ -996,7 +969,7 @@
     </div>
 
     <!-- Modals live outside #app so they never participate in tab document flow -->
-    <div id="trace-modal" class="modal-overlay" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="trace-modal-title">
+    <div id="trace-modal" class="modal-overlay modal-stacked" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="trace-modal-title">
         <div class="modal-container">
             <div class="modal-header">
                 <h3 id="trace-modal-title">Universe Inclusion Trace</h3>
@@ -1004,6 +977,56 @@
             </div>
             <div class="modal-body" id="trace-modal-body">
                 <!-- Trace logs will be dynamically built here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- MI-3 polish: Validation Pipeline details live in a modal so expanding
+         Eligible/Excluded never forces the Market Intelligence column to scroll. -->
+    <div id="validation-funnel-modal" class="modal-overlay" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="validation-funnel-modal-title">
+        <div class="modal-container validation-funnel-modal-container">
+            <div class="modal-header">
+                <h3 id="validation-funnel-modal-title">Validation Pipeline — Details</h3>
+                <button id="validation-funnel-modal-close" class="modal-close-btn" type="button" aria-label="Close validation details">&times;</button>
+            </div>
+            <div class="modal-body validation-funnel-modal-body">
+                <div class="card-header" style="padding: 0; margin-bottom: 8px;">
+                    <h3 style="font-size: 1rem; margin: 0;">Eligible / Excluded (this cycle)</h3>
+                </div>
+                <div class="universe-inspector-body">
+                    <div class="search-bar-container">
+                        <i class="fas fa-search search-icon"></i>
+                        <input type="text" id="universe-search" placeholder="Filter validation results..." />
+                    </div>
+                    <div class="universe-table-wrapper validation-results-scroll">
+                        <table class="universe-table">
+                            <thead>
+                                <tr>
+                                    <th>Symbol</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="universe-list-body">
+                                <tr>
+                                    <td colspan="3" class="text-muted text-center" style="padding: 24px;">Loading universe members...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="qualified-section">
+                    <div class="card-header" style="padding: 0; margin-bottom: 8px;">
+                        <h3 style="font-size: 1rem; margin: 0;">Qualified Today (WATCH / TRADE)</h3>
+                    </div>
+                    <p class="text-muted" style="font-size: 0.8rem; margin-bottom: 8px;">
+                        Only Eligible names that cleared scoring thresholds.
+                    </p>
+                    <div id="qualified-today-body" class="text-muted text-center" style="padding: 12px 0; font-size: 0.85rem;">
+                        No qualified names yet.
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -1115,6 +1138,6 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.55.1"></script>
+    <script src="/dashboard/dashboard.js?v=9.56.3"></script>
 </body>
 </html>

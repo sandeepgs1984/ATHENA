@@ -6,6 +6,34 @@ status updated on approval.
 
 ---
 
+## MI-3 — Validation Pipeline funnel (APPROVED)
+
+| | |
+|---|---|
+| Completed | 2026-07-28 |
+| Objective | Third milestone of the Market Intelligence Redesign: replace Today's Validation text strip with a horizontal Universe→Eligible→Filtered→Watch→Trade funnel backed by a typed READ endpoint over already-persisted validation counts |
+| Scope | `src/athena/api/v1/dtos/pipelines.py`, `src/athena/api/v1/dtos/__init__.py`, `src/athena/api/v1/services/pipelines_service.py`, `src/athena/api/v1/routers/pipelines.py`, `src/athena/api/static/{index.html,js/09-market-intelligence.js,css/06-market-intelligence.css}`, `tests/api/v1/test_core_apis.py`, `tests/api/platform/test_dashboard_hosting.py` |
+| Public APIs added | `GET /api/v1/pipelines/validation-funnel` → `ValidationFunnelDTO` (READ). Stages always returned (stable UI contract); `available=false` when no owner_validation `validation_summary` exists |
+| Tests | 3 new pipeline API tests + ~20 dashboard-hosting assertions. Full suite **1045 passed** |
+| Coverage | API self-verified with real-shaped summary (Filtered = Eligible−Watch−Trade). Live-browser check needs server restart after this backend change |
+| Architecture compliance | No architecture change. Priority-2 expose-already-computed pattern (same family as DT-2 ticker). No mutation, no new provider, no new scan |
+| ADR compliance | ADR-005: Filtered is honest arithmetic over real counts, not a fabricated upstream stage; empty state is explicit (`available=false`), never invented percentages when Universe is 0 |
+| Risks discovered | None new. Confirm live against production `db/athena.db` after restart — endpoint prefers newest non-failed run with a `validation_summary` |
+| Technical debt introduced | None. Eligible/Excluded + Qualified remain under View Details until MI-4 (intentional bridge, not debt) |
+| Suggested improvements | None beyond MI-4/MI-5 already tracked |
+| Remaining work | None for this milestone |
+| Status | **✅ Approved** (2026-07-28) |
+| Branch | feature/live-dashboard |
+
+### Scope completed
+
+- **Backend**: `PipelinesService.validation_funnel()` walks newest successful runs (same preference as the Market Intelligence tab), extracts `validation_summary`, maps Universe (`candidates`, falling back to `evaluated`), Eligible, Watch/Trade from `decision_counts`, and Filtered as `max(0, eligible − watch − trade)`. `% of Universe` to 1 decimal, or `None` when Universe is 0.
+- **Frontend**: "Today's Validation" → "Validation Pipeline"; horizontal 5-stage funnel with Trade accent; as-of timestamp; empty guidance when `available=false`; View Details opens Eligible/Excluded + Qualified in a modal (kept out of the primary column so the Stock List remains the scroll region); Saved Symbols collapsed by default; Inspect Trace uses a stacked modal layer so it renders above the funnel details.
+- **Fetch**: `loadMarketIntelligence` loads `/pipelines/validation-funnel` in parallel with `/pipelines/runs` (runs still needed for regime + universe members).
+- **Polish (owner live review)**: funnel icons/chevrons/(TODAY)/Last Updated footer; column layout auto/1fr/auto with no outer column scroll; Market Summary height-to-content; `.modal-stacked` z-index for Trace-over-Details; Escape closes topmost stacked modal first.
+
+---
+
 ## MI-2 — Market Summary Hero + Market Regime & Context (APPROVED)
 
 | | |

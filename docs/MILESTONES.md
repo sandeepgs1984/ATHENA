@@ -387,8 +387,8 @@ Before any implementation, a full data-source inventory was done across every mo
 |---|---|---|
 | **MI-1** Shared ticker strip + Trading Calendar relocation | Generalize the Decisions & Trace header ticker to also render on Market Intelligence (one shared component/endpoint via `TICKER_TABS`, not two); relocate Trading Calendar out of the primary grid into a collapsed-by-default `<details>` panel, same rendering functions/ids untouched | ✅ Approved |
 | **MI-2** Market Summary Hero + Market Regime & Context | Larger-presentation Trend/Volatility/Gap/Evidence Attribution (real); Market Health Score/Breadth gap handled via real categorical labels | ✅ Approved |
-| **MI-3** Validation Pipeline funnel | New small dedicated endpoint exposing the already-computed Universe→Evaluated→Eligible/Excluded→decision_counts breakdown as a typed 5-stage funnel | ⏳ Planned |
-| **MI-4** Universe table redesign | Reuse real Symbol/Status/Actions; add Sector via the ingestion fix; scope Eligibility-per-row/Last-Validated-per-row | ⏳ Planned |
+| **MI-3** Validation Pipeline funnel | New small dedicated endpoint exposing the already-computed Universe→Evaluated→Eligible/Excluded→decision_counts breakdown as a typed 5-stage funnel | ✅ Approved |
+| **MI-4** Universe table redesign | Reuse real Symbol/Status/Actions; add Sector via the ingestion fix; scope Eligibility-per-row/Last-Validated-per-row | 🔄 Design |
 | **MI-5** Recent Activity + Quick Actions + Saved Symbols | Real chronological activity feed; Quick Actions consolidated (Add Symbol reuse, new Run Full Validation endpoint, Refresh Market Data relabeled honestly, Export omitted); Saved Symbols relocated to a secondary panel | ⏳ Planned |
 
 #### MI-1 — Shared ticker strip + Trading Calendar relocation
@@ -420,6 +420,19 @@ Verified against the real production `db/athena.db` (not just synthetic tests): 
 | Scope | **Backend**: `src/athena/ops/owner_validation.py` — `_regime_to_payload()` signature + body, `reg_stage` ordering, `run()`'s `regime_payload`/`scan_regime` precedence. **Frontend**: `index.html` — card renamed "Market Summary" with an as-of timestamp; Trend/Volatility/Gap rebuilt as `.brief-gauge`/`.hero-metric-band` tiles (the exact same tile language as Decisions & Trace's hero gauges, not a new one); Market Health rebuilt as a `.context-metric-grid` (the exact same cards the Decision Brief's own Market Context uses). `09-market-intelligence.js` — new `renderMarketHealthGrid()` reusing `contextMetricCard`/`contextChipTone`/`friendlyLabel` verbatim from the Decision Brief's context rendering (one tone system for the same RegimeLabel/MarketHealthLabel enums, not two parallel ones); `regimeAsOf` tracked and rendered; the old parallel bull/bear/neutral tone-classification logic removed in favor of `contextChipTone`; each of Trend/Volatility/Gap now falls back to its own `*_UNKNOWN` sentinel instead of a specific fabricated state (previously an absent field defaulted to "Normal volatility"/"No gap" — an assessed-looking state for data that was actually just missing). `07-decision-format.js` — `formatVolatilityLabel()` removed (its only caller was replaced). `06-market-intelligence.css` — dead `.regime-badge`/`.regime-field`/`.health-*` rules removed; new `.market-summary-gauges` (3-equal-column grid) and a scoped label-wrap override (`.brief-gauge-label` defaults to single-line ellipsis tuned for a 4-column grid's short labels — 3 columns here are narrower still, and "Volatility" alone could truncate at real workstation widths). |
 | Tests | New `tests/ops/test_owner_validation.py` assertion locking in the real 4-dimension `market_health` dict. ~30 new/updated dashboard-hosting assertions. Full suite **1042 passed** |
 | Coverage | Live-browser verified after a required server restart (backend Python touched): real production-data confirmation via a direct `OwnerValidationPipeline.run()` call (above); frontend rendering confirmed using that exact real payload — Trend/Volatility/Gap tiles tone-colored correctly (Bear Trend/Gap Down red, Normal Volatility neutral), Market Health's 4 real dimension cards rendered with correct tones (Mixed Trend Quality amber, Weak Momentum red, Breadth Unknown muted). Caught and fixed a real truncation bug via DOM measurement (not just eyeballing): tile labels clipped at realistic narrower workstation widths — fixed with shorter labels + a scoped wrap override, then re-measured to confirm zero truncation. Zero uncaught console errors beyond the expected unauthenticated-fetch logging. |
+| Status | ✅ Approved (2026-07-28) |
+
+---
+
+#### MI-3 — Validation Pipeline funnel
+
+Replaced the "Today's Validation" text summary strip with a horizontal 5-stage Validation Pipeline funnel matching the Market Intelligence reference mock. Added a small READ endpoint that maps the already-persisted `validation_summary` on the latest successful owner_validation run into typed stages — no new scan, no mutation, no fabricated upstream "Filtered" field.
+
+| | |
+|---|---|
+| Scope | **Backend**: `ValidationFunnelDTO`/`ValidationFunnelStageDTO`; `PipelinesService.validation_funnel()`; `GET /api/v1/pipelines/validation-funnel`. Stages Universe→Eligible→Filtered→Watch→Trade; Filtered = `max(0, eligible − WATCH − TRADE)`; `% of Universe` with `None` when Universe is 0. **Frontend**: card renamed "Validation Pipeline"; `#validation-funnel` horizontal stage row (Trade accented); View Details toggles existing Eligible/Excluded + Qualified panels (preserved until MI-4); parallel fetch alongside `/pipelines/runs`. |
+| Tests | 3 new pipeline API tests (empty / Filtered math + newest-run preference / auth). ~20 new dashboard-hosting assertions. Full suite **1045 passed** |
+| Coverage | Live-verified: funnel populated after host restart (real production validation_summary); UI polish iterations for mock alignment, viewport scroll, and stacked Inspect Trace modal. |
 | Status | ✅ Approved (2026-07-28) |
 
 ---

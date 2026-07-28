@@ -16,11 +16,37 @@ from athena.api.v1.dtos import (
     ResponseMeta,
     SortParams,
     SystemPipelineResultDTO,
+    ValidationFunnelDTO,
 )
 from athena.api.v1.dtos.base import PaginationMeta
 from athena.api.v1.services.pipelines_service import PipelinesService
 
 router = APIRouter(prefix="/pipelines", tags=["Pipelines"])
+
+
+@router.get(
+    "/validation-funnel",
+    response_model=AthenaResponse[ValidationFunnelDTO],
+    summary="Validation Pipeline funnel (Universe→Eligible→Filtered→Watch→Trade)",
+    status_code=status.HTTP_200_OK,
+    operation_id="getValidationFunnel",
+)
+def get_validation_funnel(
+    request: Request,
+    service: PipelinesService = Depends(get_pipelines_service),  # noqa: B008
+    principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.READ)),  # noqa: B008
+) -> AthenaResponse[ValidationFunnelDTO]:
+    """MI-3: typed 5-stage funnel over the latest owner_validation run's
+    already-persisted validation_summary. Filtered is arithmetic
+    (Eligible − Watch − Trade). READ only — no new scan."""
+    data = service.validation_funnel()
+    request_id = getattr(request.state, "request_id", "unknown")
+    meta = ResponseMeta(
+        request_id=request_id,
+        api_version="v1",
+        as_of=datetime.now(tz=timezone.utc),
+    )
+    return AthenaResponse(status="success", data=data, meta=meta)
 
 
 @router.get(

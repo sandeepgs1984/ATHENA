@@ -74,3 +74,33 @@ class PipelineRunFilterParams(FilterParams):
     overall_status: str | None = Field(
         default=None, description="Filter by overall pipeline status (SUCCESS, FAILED)"
     )
+
+
+class ValidationFunnelStageDTO(BaseModel):
+    """One stage of the Market Intelligence Validation Pipeline funnel (MI-3)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    label: str
+    count: int
+    pct_of_universe: float | None = Field(
+        default=None,
+        description="Percent of Universe count; None when Universe is 0 (never divide-by-zero).",
+    )
+
+
+class ValidationFunnelDTO(BaseModel):
+    """Typed 5-stage funnel over already-persisted owner_validation counts.
+
+    Stages: Universe → Eligible → Filtered → Watch → Trade.
+    Filtered is pure arithmetic (Eligible − Watch − Trade), never a new
+    upstream field — per the MI track's owner-confirmed scope.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    run_id: str | None = None
+    as_of: datetime | None = None
+    stages: list[ValidationFunnelStageDTO] = Field(default_factory=list)
+    available: bool = False

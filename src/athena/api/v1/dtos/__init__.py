@@ -99,6 +99,8 @@ from athena.api.v1.dtos.pipelines import (
     PipelineRunFilterParams,
     StageResultDTO,
     SystemPipelineResultDTO,
+    ValidationFunnelDTO,
+    ValidationFunnelStageDTO,
 )
 from athena.api.v1.dtos.portfolio import (
     PortfolioDTO,
@@ -220,6 +222,8 @@ __all__ = [
     "TradePerformanceDTO",
     "TradePlanDTO",
     "TradePlanFreshnessDTO",
+    "ValidationFunnelDTO",
+    "ValidationFunnelStageDTO",
     "WorkspaceEntryDTO",
     "WorkspaceFilterParams",
     "WorkspaceReferencesDTO",

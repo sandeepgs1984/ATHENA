@@ -160,6 +160,15 @@
     transition: opacity var(--transition-speed) ease;
 }
 
+/* A modal opened as a drill-down from inside another modal. All overlays
+   otherwise share one z-index, so the later-in-DOM one always wins the paint
+   order regardless of which was opened last — the Inspect Trace modal is
+   reached only from inside the Validation Pipeline details modal, so it must
+   sit one layer above it (still below the validate/Kite/unlock gates). */
+.modal-overlay.modal-stacked {
+    z-index: 2100;
+}
+
 /* Blocking overlay while a validate (ingest + score) is in flight (owner
    UX request) — previously only the clicked button showed a spinner while
    everything else on the page stayed fully clickable, risking acting on

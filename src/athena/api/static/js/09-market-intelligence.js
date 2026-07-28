@@ -193,19 +193,80 @@
             .join("");
     }
 
+    // MI-3: Validation Pipeline funnel — typed stages from
+    // GET /api/v1/pipelines/validation-funnel (Universe→Eligible→Filtered→
+    // Watch→Trade). Filtered is server-side arithmetic; UI never recomputes.
+    function renderValidationFunnel(funnel) {
+        const host = document.getElementById("validation-funnel");
+        const asOfEl = document.getElementById("validation-funnel-asof");
+        const emptyEl = document.getElementById("validation-funnel-empty");
+        if (!host) return;
+
+        const stages = (funnel && funnel.stages) || [];
+        const available = !!(funnel && funnel.available);
+
+        if (asOfEl) {
+            asOfEl.textContent = available && funnel.as_of
+                ? `Last Updated: ${formatDecisionTime(funnel.as_of)}`
+                : "";
+        }
+        if (emptyEl) {
+            emptyEl.hidden = available;
+        }
+
+        if (!stages.length) {
+            host.innerHTML = '<div class="text-muted">No funnel data.</div>';
+            return;
+        }
+
+        host.innerHTML = stages.map((stage) => {
+            const iconByStage = {
+                universe: "fa-circle-nodes",
+                eligible: "fa-tags",
+                filtered: "fa-filter-circle-xmark",
+                watch: "fa-tag",
+                trade: "fa-stamp",
+            };
+            const pct = stage.pct_of_universe == null
+                ? "—"
+                : `${Number(stage.pct_of_universe).toFixed(1)}%`;
+            const tradeClass = stage.id === "trade" ? " is-trade" : "";
+            const countLabel = stage.id === "universe"
+                ? `${stage.count} Symbols`
+                : String(stage.count);
+            // Labels/ids come from the typed ValidationFunnel DTO only —
+            // never free-form user input. Still coerce via String().
+            const id = String(stage.id || "");
+            const label = String(stage.label || "");
+            return (
+                `<div class="validation-funnel-stage${tradeClass}" data-stage="${id}">` +
+                `<span class="validation-funnel-stage-icon" aria-hidden="true">` +
+                `<i class="fa-solid ${iconByStage[id] || "fa-circle"}"></i></span>` +
+                `<span class="validation-funnel-stage-label">${label}</span>` +
+                `<strong class="validation-funnel-stage-count">${countLabel}</strong>` +
+                `<span class="validation-funnel-stage-pct">${pct}</span>` +
+                `</div>`
+            );
+        }).join("");
+    }
+
     async function loadMarketIntelligence() {
         try {
             await loadCandidateList();
             await loadSavedSymbols();
 
-            // 1. Fetch Volatility Regime and Universe from the latest Pipeline run
-            const runsRes = await apiRequest("/api/v1/pipelines/runs").catch(() => null);
+            // 1. Fetch Volatility Regime / Universe from latest Pipeline run,
+            //    and the typed Validation Pipeline funnel (MI-3) in parallel.
+            const [runsRes, funnelRes] = await Promise.all([
+                apiRequest("/api/v1/pipelines/runs").catch(() => null),
+                apiRequest("/api/v1/pipelines/validation-funnel").catch(() => null),
+            ]);
+            renderValidationFunnel(funnelRes && funnelRes.data ? funnelRes.data : null);
             let regime = null;
             let regimeAsOf = null;
             let universe = {};
             let qualified = [];
             let universeNote = null;
-            let validationSummary = null;
 
             if (runsRes && runsRes.data && runsRes.data.length > 0) {
                 const extractData = (r) => {
@@ -249,7 +310,6 @@
                         universe = members;
                         qualified = data.qualified_today || [];
                         universeNote = data.universe_note || null;
-                        validationSummary = data.validation_summary || null;
                         const summary = data.universe_summary || {};
                         if (!universeNote && summary.excluded != null && summary.included === 0 && summary.evaluated > 0) {
                             universeNote =
@@ -258,9 +318,6 @@
                         }
                     } else if (hasMembers && (!qualified || !qualified.length) && data.qualified_today) {
                         qualified = data.qualified_today;
-                    }
-                    if (!validationSummary && data.validation_summary) {
-                        validationSummary = data.validation_summary;
                     }
                 }
                 // Fallback: any run with members if still empty
@@ -271,7 +328,6 @@
                             universe = data.universe_members;
                             qualified = data.qualified_today || [];
                             universeNote = data.universe_note || null;
-                            validationSummary = data.validation_summary || null;
                             if (!regime) {
                                 regime = data.regime_assessment || null;
                                 regimeAsOf = r.as_of || null;
@@ -281,26 +337,6 @@
                     }
                 }
                 universeCache = universe;
-            }
-
-            const summaryStrip = document.getElementById("validation-summary-strip");
-            if (summaryStrip) {
-                if (validationSummary) {
-                    const counts = validationSummary.decision_counts || {};
-                    summaryStrip.innerHTML =
-                        `<strong>${validationSummary.eligible ?? 0}</strong> Eligible · ` +
-                        `<strong>${validationSummary.excluded ?? 0}</strong> Excluded · ` +
-                        `<strong>${validationSummary.qualified_watch_trade ?? 0}</strong> WATCH/TRADE · ` +
-                        `NO_TRADE ${counts.NO_TRADE || 0} · evaluated ${validationSummary.evaluated ?? 0}`;
-                } else if (Object.keys(universe).length > 0) {
-                    const eligible = Object.values(universe).filter(m => m.included).length;
-                    const excluded = Object.keys(universe).length - eligible;
-                    summaryStrip.innerHTML =
-                        `<strong>${eligible}</strong> Eligible · <strong>${excluded}</strong> Excluded in latest cycle`;
-                } else {
-                    summaryStrip.innerHTML =
-                        `Run <code>./athena-daily smoke</code> or <code>./athena-daily</code> to populate Eligible / Excluded.`;
-                }
             }
 
             // 2. Render Market Summary Hero (MI-2). Trend/Volatility/Gap reuse
@@ -907,6 +943,24 @@
                     row.style.display = "none";
                 }
             });
+        });
+    }
+
+    // MI-3 polish: View Details opens a modal (Eligible/Excluded + Qualified)
+    // instead of expanding inline — keeps the funnel compact and the Stock List
+    // as the only primary scroll region in the right column.
+    const funnelDetailsBtn = document.getElementById("validation-funnel-details-btn");
+    const funnelDetailsModal = document.getElementById("validation-funnel-modal");
+    const funnelDetailsClose = document.getElementById("validation-funnel-modal-close");
+    if (funnelDetailsBtn && funnelDetailsModal) {
+        funnelDetailsBtn.addEventListener("click", () => openModal(funnelDetailsModal));
+    }
+    if (funnelDetailsClose) {
+        funnelDetailsClose.addEventListener("click", () => closeModal(funnelDetailsModal));
+    }
+    if (funnelDetailsModal) {
+        funnelDetailsModal.addEventListener("click", (event) => {
+            if (event.target === funnelDetailsModal) closeModal(funnelDetailsModal);
         });
     }
 

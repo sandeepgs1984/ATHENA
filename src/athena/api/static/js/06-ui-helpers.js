@@ -51,5 +51,6 @@
         closeModal(document.getElementById("chart-modal"));
         closeModal(document.getElementById("compare-modal"));
         closeModal(document.getElementById("executive-summary-modal"));
+        closeModal(document.getElementById("validation-funnel-modal"));
         if (!state.kiteBlocking) hideKiteGate();
     }

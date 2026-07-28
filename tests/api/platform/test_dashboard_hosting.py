@@ -68,7 +68,9 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     # Modals are present once each and marked inert at rest
     assert html.count('id="trace-modal"') == 1
     assert html.count('id="backtest-modal"') == 1
-    assert 'id="trace-modal" class="modal-overlay" hidden' in html
+    # trace-modal also carries .modal-stacked (drill-down layer, MI-3 polish);
+    # what matters here is that it is still hidden/inert at rest.
+    assert 'id="trace-modal" class="modal-overlay modal-stacked" hidden' in html
     assert 'id="backtest-modal" class="modal-overlay" hidden' in html
     assert 'aria-hidden="true"' in html
 
@@ -885,6 +887,53 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert 'regime.trend || "TREND_UNKNOWN"' in load_mi_body
     assert 'regime.volatility || "VOLATILITY_UNKNOWN"' in load_mi_body
     assert 'regime.gap || "GAP_UNKNOWN"' in load_mi_body
+
+    # MI-3 (Market Intelligence redesign): Today's Validation text strip
+    # replaced with a typed Validation Pipeline funnel (Universe→Eligible→
+    # Filtered→Watch→Trade) backed by GET /api/v1/pipelines/validation-funnel.
+    # Filtered is server-side Eligible−Watch−Trade arithmetic; View Details
+    # keeps Eligible/Excluded + Qualified panels until MI-4 redesigns them.
+    assert "Validation Pipeline <span" in html
+    assert "(Today)</span>" in html
+    assert "Today's Validation" not in html
+    assert 'id="validation-funnel"' in html
+    assert 'id="validation-funnel-asof"' in html
+    assert 'id="validation-funnel-details-btn"' in html
+    assert 'id="validation-funnel-modal"' in html
+    assert 'id="validation-summary-strip"' not in html
+    assert "function renderValidationFunnel" in js
+    assert "/api/v1/pipelines/validation-funnel" in js
+    assert "validation-funnel-stage" in js
+    assert "validation-funnel-stage-icon" in js
+    assert "Last Updated:" in js
+    assert ".validation-funnel" in css
+    assert ".validation-funnel-stage.is-trade" in css
+    assert "grid-template-columns: repeat(5, minmax(0, 1fr))" in css
+    assert "grid-template-rows: auto minmax(0, 1fr) auto" in css
+    assert "View Details" in html
+    assert "openModal(funnelDetailsModal)" in js
+    assert 'id="validation-funnel-details"' not in html
+    load_mi_start = js.find("async function loadMarketIntelligence")
+    load_mi_end = js.find("\n    async function ", load_mi_start + 1)
+    load_mi_body = js[load_mi_start:load_mi_end]
+    assert "renderValidationFunnel(" in load_mi_body
+    assert "/api/v1/pipelines/validation-funnel" in load_mi_body
+    # Eligible/Excluded + Qualified live in the details modal (same ids).
+    assert 'id="universe-list-body"' in html
+    assert 'id="qualified-today-body"' in html
+    modal_idx = html.find('id="validation-funnel-modal"')
+    universe_idx = html.find('id="universe-list-body"')
+    assert modal_idx != -1 and universe_idx != -1
+    assert modal_idx < universe_idx
+    assert 'class="card candidate-card market-stock-list-card"' in html
+    assert "market-saved-symbols-details" in html
+    assert 'closeModal(document.getElementById("validation-funnel-modal"))' in js
+    # Inspect Trace is reached only from inside the funnel details modal, and
+    # all overlays otherwise share one z-index (later-in-DOM wins), so the
+    # trace modal needs its own higher layer or it renders behind its parent.
+    assert 'id="trace-modal" class="modal-overlay modal-stacked"' in html
+    assert ".modal-overlay.modal-stacked" in css
+    assert ".modal-overlay.modal-stacked.active" in js
 
     # DT-2 — Quick Summary: the UX-6 sidebar strip (score/confidence/risk
     # only) expanded into a richer card (R:R Potential, Expected Return,

@@ -969,6 +969,99 @@ class TestPipelinesAPI:
         assert response.status_code == 404
         assert response.json()["title"] == "Pipeline Run Not Found"
 
+    def test_validation_funnel_empty_when_no_summary(self, client) -> None:
+        headers = get_auth_headers(client, Role.ANALYST)
+        response = client.get("/api/v1/pipelines/validation-funnel", headers=headers)
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["available"] is False
+        assert data["run_id"] is None
+        assert [s["id"] for s in data["stages"]] == [
+            "universe",
+            "eligible",
+            "filtered",
+            "watch",
+            "trade",
+        ]
+        assert all(s["count"] == 0 for s in data["stages"])
+        assert all(s["pct_of_universe"] is None for s in data["stages"])
+
+    def test_validation_funnel_maps_summary_and_filtered(self, client) -> None:
+        headers = get_auth_headers(client, Role.ANALYST)
+        run_p = get_pipeline_run_provider()
+
+        older = datetime(2026, 7, 27, 10, 0, tzinfo=timezone.utc)
+        newer = datetime(2026, 7, 28, 8, 45, tzinfo=timezone.utc)
+        # Older run with a summary — must lose to the newer one.
+        run_p.runs.append(  # type: ignore[attr-defined]
+            SystemPipelineResult(
+                run_id="run-old",
+                as_of=older,
+                pipeline_runs=(),
+                workspace_snapshot=None,
+                overall_status=PipelineStatus.SUCCESS,
+                final_context=PipelineContext(
+                    run_id="run-old",
+                    as_of=older,
+                    data={
+                        "validation_summary": {
+                            "candidates": 10,
+                            "eligible": 5,
+                            "decision_counts": {"WATCH": 1, "TRADE": 1},
+                        }
+                    },
+                ),
+            )
+        )
+        run_p.runs.append(  # type: ignore[attr-defined]
+            SystemPipelineResult(
+                run_id="run-new",
+                as_of=newer,
+                pipeline_runs=(),
+                workspace_snapshot=None,
+                overall_status=PipelineStatus.SUCCESS,
+                final_context=PipelineContext(
+                    run_id="run-new",
+                    as_of=newer,
+                    data={
+                        "validation_summary": {
+                            "candidates": 506,
+                            "evaluated": 506,
+                            "eligible": 220,
+                            "excluded": 286,
+                            "qualified_watch_trade": 22,
+                            "decision_counts": {
+                                "WATCH": 18,
+                                "TRADE": 4,
+                                "NO_TRADE": 180,
+                            },
+                        }
+                    },
+                ),
+            )
+        )
+
+        response = client.get("/api/v1/pipelines/validation-funnel", headers=headers)
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["available"] is True
+        assert data["run_id"] == "run-new"
+        by_id = {s["id"]: s for s in data["stages"]}
+        assert by_id["universe"]["count"] == 506
+        assert by_id["universe"]["pct_of_universe"] == 100.0
+        assert by_id["eligible"]["count"] == 220
+        assert by_id["eligible"]["pct_of_universe"] == 43.5
+        # Filtered = Eligible − Watch − Trade = 220 − 18 − 4 = 198
+        assert by_id["filtered"]["count"] == 198
+        assert by_id["filtered"]["pct_of_universe"] == 39.1
+        assert by_id["watch"]["count"] == 18
+        assert by_id["trade"]["count"] == 4
+        assert by_id["trade"]["pct_of_universe"] == 0.8
+
+    def test_validation_funnel_requires_auth(self, client) -> None:
+        response = client.get("/api/v1/pipelines/validation-funnel")
+        assert response.status_code in (401, 403)
+
 
 class TestSchedulerAPI:
     def test_list_history_success(self, client) -> None:
