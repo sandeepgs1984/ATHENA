@@ -372,6 +372,8 @@ Owner-confirmed scope decisions (before DT-1 started):
 
 Full redesign of the Market Intelligence tab into a "Market Command Center," matching the design language, component hierarchy, and workstation layout established by the ATHENA Workstation Refactor above. Same golden rule as that track: reuse existing ViewModels/APIs/business logic wherever possible, never fabricate a value with no real data source — hide the field instead and track as future scope. Split into 5 reviewable milestones; one in flight at a time.
 
+**Reference mock:** `docs/design/ATHENA-MARKET-INTELLIGENCE-REFERENCE.jpg` (committed to the repo — the primary visual target for MI-2 through MI-5, especially the still-unbuilt Validation Pipeline funnel, Universe table, and Recent Activity/Quick Actions layouts in MI-3–MI-5). Sibling reference for the earlier Decisions & Trace track: `docs/design/ATHENA-DECISION-TRACE-REFERENCE.jpg`. Per this track's own rule, the mock is directional, not literal — omit/hide anything it shows with no real backing data.
+
 Before any implementation, a full data-source inventory was done across every mock element (see MI-2 below for the two biggest findings). Owner-confirmed scope decisions (before MI-1 started):
 
 - Market Health Score ("84/100" ring) and Breadth ("72%"/"1458/526") are both confirmed gaps (hardcoded `0`/`0` upstream, no numeric `MarketHealthScore` ever constructed anywhere in the codebase) — owner chose to show the real 4-dimension categorical labels `MarketHealthEngine` already computes instead of either fabricating a number or omitting the section entirely (MI-2).
