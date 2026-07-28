@@ -170,7 +170,7 @@ def _register_exception_handlers(app: FastAPI) -> None:
         detail = ProblemDetail(
             type="https://athena.internal/errors/validation-error",
             title="Validation Failed",
-            status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=detail_msg,
             instance=str(request.url.path),
             request_id=request_id,
@@ -240,6 +240,13 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     load_dotenv()
 
     settings = settings or api_settings_from_env()
+    _secret_bytes = len(settings.security.jwt_secret.encode("utf-8"))
+    if _secret_bytes < 32:
+        raise ValueError(
+            "security.jwt_secret must be at least 32 UTF-8 bytes for HS256 "
+            f"(got {_secret_bytes}). Set ATHENA_JWT_SECRET or "
+            "ATHENA_OWNER_PASSWORD_HASH."
+        )
 
     app = FastAPI(
         title=settings.app.title,

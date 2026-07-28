@@ -79,5 +79,17 @@ def test_production_settings_derive_jwt_secret_from_owner_hash(
 
 def test_explicit_jwt_secret_wins(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ATHENA_OWNER_PASSWORD_HASH", "$2b$12$owner-hash")
-    monkeypatch.setenv("ATHENA_JWT_SECRET", "explicit-secret")
-    assert api_settings_from_env().security.jwt_secret == "explicit-secret"
+    monkeypatch.setenv("ATHENA_JWT_SECRET", "explicit-secret-at-least-32-bytes!!")
+    assert (
+        api_settings_from_env().security.jwt_secret
+        == "explicit-secret-at-least-32-bytes!!"
+    )
+
+
+def test_create_app_rejects_short_jwt_secret() -> None:
+    from athena.api.app import create_app
+    from athena.api.config import APISettings, SecurityConfig
+
+    short = SecurityConfig(jwt_secret="too-short-for-hs256")
+    with pytest.raises(ValueError, match="at least 32 UTF-8 bytes"):
+        create_app(APISettings(security=short))

@@ -268,6 +268,9 @@ class TestKiteProviderUnit:
             def read(self) -> bytes:
                 return b"rate limited"
 
+            def close(self) -> None:
+                return None
+
         def fake_open_with_body(*_a, **_k):
             attempts["n"] += 1
             raise urllib.error.HTTPError(

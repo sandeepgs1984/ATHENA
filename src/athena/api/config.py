@@ -52,7 +52,8 @@ class SecurityConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    jwt_secret: str = "secret-change-in-prod-seeding"
+    # ≥32 UTF-8 bytes required for HS256 (PyJWT); keep the label clearly non-production.
+    jwt_secret: str = "secret-change-in-prod-seeding!!!"
     jwt_algorithm: str = "HS256"
     jwt_issuer: str = "athena-platform"
     jwt_audience: str = "athena-dashboard"
