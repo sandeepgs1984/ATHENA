@@ -12,28 +12,6 @@
         return DECISION_TYPE_PRIORITY[t] ?? 9;
     }
 
-    function formatVolatilityLabel(volStr) {
-        const key = String(volStr || "").toUpperCase();
-        const map = {
-            HIGH_VOLATILITY: { label: "High", cls: "bear", hint: "India VIX above high band" },
-            LOW_VOLATILITY: { label: "Low", cls: "bull", hint: "India VIX below low band" },
-            NORMAL_VOLATILITY: { label: "Normal", cls: "neutral", hint: "India VIX in normal band" },
-            VOLATILITY_UNKNOWN: {
-                label: "Unknown",
-                cls: "neutral",
-                hint: "India VIX was not in the market snapshot — re-run validate/smoke after this update",
-            },
-            UNKNOWN: {
-                label: "Unknown",
-                cls: "neutral",
-                hint: "Volatility not assessed yet",
-            },
-        };
-        if (map[key]) return map[key];
-        const cleaned = key.replace(/_VOLATILITY$/, "").replace(/_/g, " ");
-        return { label: cleaned || "Unknown", cls: "neutral", hint: "" };
-    }
-
     function decisionStance(type, direction) {
         const t = String(type || "").toUpperCase();
         const dir = String(direction || "NONE").toUpperCase();

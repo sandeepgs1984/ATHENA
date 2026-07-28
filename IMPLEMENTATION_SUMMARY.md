@@ -6,6 +6,35 @@ status updated on approval.
 
 ---
 
+## MI-2 — Market Summary Hero + Market Regime & Context
+
+| | |
+|---|---|
+| Completed | 2026-07-27 |
+| Objective | Second milestone of the Market Intelligence Redesign: replace "Volatility Regime & Health" with a larger-presentation "Market Summary" hero, and surface the real Market Health categorical breakdown instead of a fabricated numeric score |
+| Scope | `src/athena/ops/owner_validation.py`, `src/athena/api/static/{index.html,js/09-market-intelligence.js,js/07-decision-format.js,css/06-market-intelligence.css}`, `tests/ops/test_owner_validation.py`, `tests/api/platform/test_dashboard_hosting.py` |
+| Public APIs added | None — `_regime_to_payload()` signature change is internal; the same `/api/v1/pipelines/runs` endpoint the page already used now carries a real `market_health` dict instead of a hardcoded `0` |
+| Tests | 1 new backend assertion locking in the real 4-dimension dict against the production repository shape. ~30 new/updated dashboard-hosting assertions. Full suite **1042 passed** |
+| Coverage | Live-verified against real production data: ran `OwnerValidationPipeline.run()` directly against `db/athena.db` for a real symbol, confirmed `market_health` came back as a real dict; loaded that exact payload into the live-served frontend and confirmed correct tone-coloring on all 7 fields (3 regime + 4 health dimensions). Caught and fixed a real label-truncation bug via DOM measurement at realistic narrower workstation widths |
+| Architecture compliance | No architecture change. Backend fix is corrective (surfacing an already-computed value that was being silently discarded), not new business logic |
+| ADR compliance | ADR-005: the fabricated numeric gauge (`market_health: 0`, always) is replaced with real data; where no real numeric score exists (`MarketHealthScore` is never constructed anywhere in ATHENA), the honest categorical labels are shown instead of inventing a number |
+| Risks discovered | None new. Confirmed `MarketHealthScore` (frozen domain type) has been entirely unimplemented since it was designed — worth flagging if a future milestone ever wants a real aggregate score, since it would need actual computation logic defined, not just wiring |
+| Technical debt introduced | None — a small amount was removed (`formatVolatilityLabel()` dead code, parallel bull/bear/neutral tone logic unified into the single `contextChipTone()` system) |
+| Suggested improvements | None identified beyond what's already tracked (`MarketHealthScore` real implementation, if ever wanted) |
+| Remaining work | None — both scope items (hero redesign, real market health) complete |
+| Status | 🔄 Ready for review (2026-07-27) — implemented and self-verified, awaiting owner approval |
+| Branch | feature/live-dashboard |
+
+### Scope completed
+
+- **Backend fix, two parts (the second caught only by re-running tests after the first)**: `_regime_to_payload()` now accepts a `market_health` param and builds a real `{breadth, trend_quality, momentum, volatility}` dict from it instead of hardcoding `0`; `reg_stage` reordered so market health is computed before the payload captures it. That alone didn't reach the frontend — `run()`'s eager `_maybe_regime()` call (regime-only, no market health) was being preferred over the scan's own richer payload every time a scan had eligible symbols, because the fallback condition (`if regime_payload is None`) was almost never true. Flipped the precedence to prefer the scan's payload whenever a scan actually ran.
+- **Frontend**: card renamed "Market Summary" with a real as-of timestamp (`regimeAsOf`, tracked from the winning pipeline run). Trend/Volatility/Gap rebuilt as `.brief-gauge`/`.hero-metric-band` tiles — the exact tile language Decisions & Trace's own hero gauges use, tone-colored via `contextChipTone()`/`friendlyLabel()` (the same functions, same RegimeLabel enum, already fixed for the descriptor-prefix bug earlier this session) instead of a parallel, duplicate bull/bear/neutral classifier. Market Health rebuilt as a `.context-metric-grid` — the exact cards the Decision Brief's own Market Context uses for the same `MarketHealthLabel` enum, via a new `renderMarketHealthGrid()` that reuses `contextMetricCard`/`contextChipTone`/`friendlyLabel` verbatim.
+- **Honesty fix, found while unifying the tone logic**: each of Trend/Volatility/Gap previously defaulted an absent field to a *specific assessed state* (`"NEUTRAL"`, `"NORMAL_VOLATILITY"`, `"NO_GAP"`) rather than "unknown" — meaning a genuinely missing value could render as a plausible-looking real result. Changed all three fallbacks to their own `*_UNKNOWN` sentinel.
+- **Dead code removed**: `formatVolatilityLabel()` (07-decision-format.js) — its only caller was this rendering block, now replaced; `.regime-badge`/`.regime-field`/`.health-gauge-container`/`.health-bar-fill`/`.health-score-value` CSS (06-market-intelligence.css) — all confirmed zero remaining references before deletion.
+- **Truncation bug caught via DOM measurement, not eyeballing**: at realistic narrower workstation widths, even a single-word label ("Volatility") could truncate in the 3-column hero grid (`.brief-gauge-label` defaults to single-line ellipsis, tuned for the 4-column Decision Brief context's shorter labels). Fixed with shorter labels ("Market Regime" → "Regime", "Opening Gap" → "Gap") plus a scoped wrap override for this grid, then re-measured (`scrollWidth` vs `clientWidth`) to confirm zero truncation.
+
+---
+
 ## MI-1 — Shared ticker strip + Trading Calendar relocation (APPROVED)
 
 | | |

@@ -203,91 +203,44 @@
     }
 }
 
-/* Regime Indicators */
-.regime-indicators {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-16);
-}
-
-.regime-field {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+/* MI-2: Market Summary Hero — Trend/Volatility/Gap tiles reuse the exact
+   .brief-gauge/.hero-metric-band language from Decisions & Trace (see
+   09-decision-brief-shell.css), only the grid column count is local here
+   (3 equal tiles vs. that page's 4). Color comes entirely from the shared
+   .tone-*-text utility classes (13-context-history.css) applied directly
+   to .hero-metric-band — no local color rules needed. */
+.market-summary-gauges {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-12);
     padding-bottom: var(--space-12);
+    border-bottom: 1px solid var(--border-color);
 }
 
-.regime-field-label {
-    color: var(--text-secondary);
-    font-size: var(--text-0-9);
+/* .brief-gauge-label defaults to single-line ellipsis, tuned for that
+   page's short labels (Score/Confidence/Risk) in a 4-column grid — 3
+   columns here are narrower still, and "Volatility" alone can truncate at
+   real workstation widths. Wrap instead of clipping; the tile has height
+   to spare. */
+.market-summary-gauges .brief-gauge-label {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+}
+
+.market-summary-asof {
+    font-size: var(--text-0-72);
     font-weight: 500;
 }
 
-.regime-badge {
-    padding: var(--space-6) var(--space-14);
-    border-radius: 100px;
-    font-size: var(--text-0-8);
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.regime-badge.bull {
-    background-color: var(--success-glow);
-    border: 1px solid rgba(0, 230, 118, 0.2);
-    color: var(--success);
-    text-shadow: 0 0 5px var(--success-glow);
-}
-
-.regime-badge.bear {
-    background-color: var(--danger-glow);
-    border: 1px solid rgba(255, 78, 80, 0.2);
-    color: var(--danger);
-    text-shadow: 0 0 5px var(--danger-glow);
-}
-
-.regime-badge.neutral {
-    background-color: var(--warning-glow);
-    border: 1px solid rgba(255, 208, 0, 0.2);
-    color: var(--warning);
-    text-shadow: 0 0 5px var(--warning-glow);
-}
-
-/* Market Health Score */
+/* Market Health — real 4-dimension categorical breakdown, not a fabricated
+   numeric score. Uses the shared .context-metric-grid/.context-metric
+   (13-context-history.css), the exact same cards the Decision Brief's own
+   Market Context uses for the same MarketHealthLabel dimensions. */
 .market-health-section {
     display: flex;
     flex-direction: column;
     gap: var(--space-8);
-}
-
-.health-gauge-container {
-    display: flex;
-    align-items: center;
-    gap: var(--space-16);
-}
-
-.health-bar-bg {
-    flex-grow: 1;
-    height: 10px;
-    background-color: rgba(255, 255, 255, 0.05);
-    border-radius: 100px;
-    overflow: hidden;
-}
-
-.health-bar-fill {
-    height: 100%;
-    background: linear-gradient(90deg, var(--accent), var(--success));
-    border-radius: 100px;
-    transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1);
-    box-shadow: var(--glow-success-soft);
-}
-
-.health-score-value {
-    font-weight: 700;
-    color: var(--success);
-    font-size: var(--text-0-95);
-    font-family: var(--font-mono);
 }
 
 /* Regime Explanation */

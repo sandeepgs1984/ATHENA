@@ -146,6 +146,17 @@ class TestOwnerValidationPipeline:
         }
         assert any(d.confidence_ref for d in decisions)
         assert any(d.risk_ref for d in decisions)
+        # MI-2 (Market Intelligence redesign): regime_assessment.market_health
+        # must be the real 4-dimension categorical breakdown MarketHealthEngine
+        # already computes (breadth/trend_quality/momentum/volatility), not a
+        # hardcoded 0 — the numeric MarketHealthScore domain type is never
+        # constructed anywhere in ATHENA, so a real dict is the honest shape.
+        regime_assessment = detail.get("regime_assessment")
+        assert regime_assessment is not None
+        health = regime_assessment["market_health"]
+        assert isinstance(health, dict)
+        assert set(health) == {"breadth", "trend_quality", "momentum", "volatility"}
+        assert all(isinstance(v, str) and v for v in health.values())
         # Regression: each persisted decision must carry the actual run_id
         # passed into this call, not a locally-recomputed one derived from
         # (trigger, as_of) — see test_repeat_validate_with_same_as_of_does_

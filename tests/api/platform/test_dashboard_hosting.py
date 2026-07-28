@@ -848,6 +848,44 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     market_workstation_end = css.find("\n}", market_workstation_start)
     assert "grid-template-columns: 1fr 1fr;" in css[market_workstation_start:market_workstation_end]
 
+    # MI-2 (Market Intelligence redesign): "Volatility Regime & Health" card
+    # replaced with a "Market Summary" hero — Trend/Volatility/Gap reuse the
+    # exact .brief-gauge/.hero-metric-band tile language and contextChipTone/
+    # friendlyLabel tone logic already established for Decisions & Trace's
+    # own regime rendering (one tone system, not two parallel ones). Market
+    # Health shows the real 4-dimension categorical breakdown instead of a
+    # fabricated numeric score/gauge — MarketHealthScore (the frozen domain's
+    # numeric 0-100 type) is never constructed anywhere in ATHENA.
+    assert "<h3>Market Summary</h3>" in html
+    assert "Volatility Regime & Health" not in html
+    assert 'id="market-summary-asof"' in html
+    assert 'class="market-summary-gauges"' in html
+    assert 'id="market-health-grid" class="context-metric-grid"' in html
+    assert 'class="brief-gauge"' in html
+    assert 'id="regime-trend-badge" class="hero-metric-band"' in html
+    assert "function renderMarketHealthGrid" in js
+    assert "function formatVolatilityLabel" not in js
+    assert '"regime-badge' not in js
+    assert ".regime-badge" not in css
+    assert ".health-bar-fill" not in css
+    assert ".health-score-value" not in css
+    assert ".health-gauge-container" not in css
+    assert ".market-summary-gauges" in css
+    render_health_start = js.find("function renderMarketHealthGrid")
+    render_health_end = js.find("\n    function ", render_health_start + 1)
+    render_health_body = js[render_health_start:render_health_end]
+    assert "contextMetricCard(" in render_health_body
+    assert "contextChipTone(" in render_health_body
+    assert "friendlyLabel(" in render_health_body
+    load_mi_start = js.find("async function loadMarketIntelligence")
+    load_mi_end = js.find("\n    async function ", load_mi_start + 1)
+    load_mi_body = js[load_mi_start:load_mi_end]
+    assert "regimeAsOf" in load_mi_body
+    assert "renderMarketHealthGrid(regime.market_health)" in load_mi_body
+    assert 'regime.trend || "TREND_UNKNOWN"' in load_mi_body
+    assert 'regime.volatility || "VOLATILITY_UNKNOWN"' in load_mi_body
+    assert 'regime.gap || "GAP_UNKNOWN"' in load_mi_body
+
     # DT-2 — Quick Summary: the UX-6 sidebar strip (score/confidence/risk
     # only) expanded into a richer card (R:R Potential, Expected Return,
     # Win Rate/Avg Holding — all historical-analogs-labeled honestly) rather

@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.54.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.55.1">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -315,40 +315,46 @@
                 <!-- Market Intelligence Tab -->
                 <div id="tab-market" class="tab-pane">
                     <div class="market-workstation">
-                        <!-- Column 1: Regime & Health (MI-2 will redesign this into
-                             the Market Summary Hero + Market Context card) -->
+                        <!-- Column 1: Market Summary Hero (MI-2). Trend/Volatility/
+                             Gap reuse the exact .brief-gauge/.hero-metric-band tile
+                             language already established for Decisions & Trace, tone-
+                             colored via the same contextChipTone() used there — same
+                             RegimeLabel enum, one tone system, not a parallel one.
+                             Market Health shows the real 4-dimension categorical
+                             breakdown (breadth/trend quality/momentum/volatility) —
+                             there is no real numeric 0-100 score anywhere in ATHENA
+                             (MarketHealthScore is never constructed), so a fabricated
+                             gauge was replaced with real data instead, per ADR-005. -->
                         <div class="workstation-column">
                             <div class="card">
                                 <div class="card-header">
                                     <div class="card-title-icon"><i class="fas fa-chart-line"></i></div>
-                                    <h3>Volatility Regime & Health</h3>
+                                    <h3>Market Summary</h3>
+                                    <span id="market-summary-asof" class="text-muted market-summary-asof"></span>
                                 </div>
                                 <div class="card-body">
-                                    <div class="regime-indicators">
-                                        <div class="regime-field">
-                                            <span class="regime-field-label">Trend Direction</span>
-                                            <div id="regime-trend-badge" class="regime-badge neutral">Loading...</div>
+                                    <div class="market-summary-gauges">
+                                        <div class="brief-gauge">
+                                            <span class="brief-gauge-label">Regime</span>
+                                            <strong id="regime-trend-badge" class="hero-metric-band">Loading...</strong>
                                         </div>
-                                        <div class="regime-field">
-                                            <span class="regime-field-label">Volatility Level</span>
-                                            <div id="regime-vol-badge" class="regime-badge neutral">Loading...</div>
+                                        <div class="brief-gauge">
+                                            <span class="brief-gauge-label">Volatility</span>
+                                            <strong id="regime-vol-badge" class="hero-metric-band">Loading...</strong>
                                         </div>
-                                        <div class="regime-field">
-                                            <span class="regime-field-label">Opening Gap</span>
-                                            <div id="regime-gap-badge" class="regime-badge neutral">Loading...</div>
+                                        <div class="brief-gauge">
+                                            <span class="brief-gauge-label">Gap</span>
+                                            <strong id="regime-gap-badge" class="hero-metric-band">Loading...</strong>
                                         </div>
                                     </div>
-                                    
+
                                     <div class="market-health-section">
-                                        <span class="regime-field-label">Market Health Score</span>
-                                        <div class="health-gauge-container">
-                                            <div class="health-bar-bg">
-                                                <div id="market-health-bar" class="health-bar-fill" style="width: 0%;"></div>
-                                            </div>
-                                            <span id="market-health-value" class="health-score-value">0/100</span>
+                                        <span class="regime-field-label">Market Health</span>
+                                        <div id="market-health-grid" class="context-metric-grid">
+                                            <div class="text-muted">Loading...</div>
                                         </div>
                                     </div>
-                                    
+
                                     <div class="regime-explanation">
                                         <h4>Evidence Attribution</h4>
                                         <p id="regime-evidence-text">No active run loaded.</p>
@@ -1109,6 +1115,6 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.54.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.55.1"></script>
 </body>
 </html>

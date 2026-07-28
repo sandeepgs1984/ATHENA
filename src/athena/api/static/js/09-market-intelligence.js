@@ -175,6 +175,24 @@
     // Cache for universe trace results to speed up detail views
     let universeCache = {};
 
+    // MI-2: real 4-dimension categorical Market Health breakdown (breadth/
+    // trend_quality/momentum/volatility) — reuses the exact contextMetricCard/
+    // contextChipTone/friendlyLabel helpers already established for the
+    // Decision Brief's own Market Context rendering (15-decision-brief-
+    // context.js), same MarketHealthLabel enum, one component language.
+    function renderMarketHealthGrid(dimensions) {
+        const host = document.getElementById("market-health-grid");
+        if (!host) return;
+        const entries = Object.entries(dimensions || {});
+        if (!entries.length) {
+            host.innerHTML = '<p class="context-caption unknown">Not available yet — re-run validation to capture a market-health assessment.</p>';
+            return;
+        }
+        host.innerHTML = entries
+            .map(([key, label]) => contextMetricCard(friendlyLabel(key), label, contextChipTone(label)))
+            .join("");
+    }
+
     async function loadMarketIntelligence() {
         try {
             await loadCandidateList();
@@ -183,6 +201,7 @@
             // 1. Fetch Volatility Regime and Universe from the latest Pipeline run
             const runsRes = await apiRequest("/api/v1/pipelines/runs").catch(() => null);
             let regime = null;
+            let regimeAsOf = null;
             let universe = {};
             let qualified = [];
             let universeNote = null;
@@ -216,6 +235,7 @@
 
                     if (!regime && reg) {
                         regime = reg;
+                        regimeAsOf = r.as_of || null;
                     } else if (
                         regime &&
                         isUnknownVol(regime) &&
@@ -223,6 +243,7 @@
                         !isUnknownVol(reg)
                     ) {
                         regime = reg;
+                        regimeAsOf = r.as_of || null;
                     }
                     if (Object.keys(universe).length === 0 && hasMembers) {
                         universe = members;
@@ -251,7 +272,10 @@
                             qualified = data.qualified_today || [];
                             universeNote = data.universe_note || null;
                             validationSummary = data.validation_summary || null;
-                            if (!regime) regime = data.regime_assessment || null;
+                            if (!regime) {
+                                regime = data.regime_assessment || null;
+                                regimeAsOf = r.as_of || null;
+                            }
                             break;
                         }
                     }
@@ -279,43 +303,37 @@
                 }
             }
 
-            // 2. Render Volatility Regime Indicators
+            // 2. Render Market Summary Hero (MI-2). Trend/Volatility/Gap reuse
+            // the exact contextChipTone()/friendlyLabel() tone logic already
+            // established for the Decision Brief's own regime rendering — one
+            // tone system for the same RegimeLabel enum, not two parallel ones.
             const trendBadge = document.getElementById("regime-trend-badge");
             const volBadge = document.getElementById("regime-vol-badge");
             const gapBadge = document.getElementById("regime-gap-badge");
-            const healthBar = document.getElementById("market-health-bar");
-            const healthValue = document.getElementById("market-health-value");
             const evidenceText = document.getElementById("regime-evidence-text");
+            const asOfEl = document.getElementById("market-summary-asof");
 
-            if (regime && trendBadge && volBadge && gapBadge && healthBar && healthValue && evidenceText) {
-                // Trend Class badge
-                const trendStr = (regime.trend || "NEUTRAL").replace("_TREND", "");
-                const trendLabel = ({ BULL: "Bullish", BEAR: "Bearish", SIDEWAYS: "Sideways", NEUTRAL: "Neutral", UNKNOWN: "Unknown" })[trendStr] || trendStr;
-                trendBadge.textContent = trendLabel;
-                trendBadge.className = `regime-badge ${trendStr === "BULL" ? "bull" : trendStr === "BEAR" ? "bear" : "neutral"}`;
+            if (regime && trendBadge && volBadge && gapBadge && evidenceText) {
+                if (asOfEl) {
+                    asOfEl.textContent = regimeAsOf ? `As of ${formatDecisionTime(regimeAsOf)}` : "";
+                }
 
-                // Volatility level badge (friendly labels; UNKNOWN = missing India VIX)
-                const volStr = regime.volatility || "NORMAL_VOLATILITY";
-                const volMeta = formatVolatilityLabel(volStr);
-                volBadge.textContent = volMeta.label;
-                volBadge.title = volMeta.hint || "";
-                volBadge.className = `regime-badge ${volMeta.cls}`;
+                // Falls back to each dimension's own *_UNKNOWN sentinel, never a
+                // specific assessed-looking state (e.g. "no gap"/"normal
+                // volatility") for a field that's actually just missing.
+                const trendRaw = regime.trend || "TREND_UNKNOWN";
+                trendBadge.textContent = friendlyLabel(trendRaw);
+                trendBadge.className = `hero-metric-band tone-${contextChipTone(trendRaw)}-text`;
 
-                // Gap state badge
-                const gapRaw = regime.gap || "NO_GAP";
-                const gapMeta = {
-                    NO_GAP: { label: "No gap", cls: "bull" },
-                    GAP_UP: { label: "Gap up", cls: "neutral" },
-                    GAP_DOWN: { label: "Gap down", cls: "neutral" },
-                    GAP_UNKNOWN: { label: "Gap unknown", cls: "neutral" },
-                }[gapRaw] || { label: String(gapRaw).replace(/_/g, " "), cls: "neutral" };
-                gapBadge.textContent = gapMeta.label;
-                gapBadge.className = `regime-badge ${gapMeta.cls}`;
+                const volRaw = regime.volatility || "VOLATILITY_UNKNOWN";
+                volBadge.textContent = friendlyLabel(volRaw);
+                volBadge.className = `hero-metric-band tone-${contextChipTone(volRaw)}-text`;
 
-                // Health gauge
-                const score = regime.market_health || 0;
-                healthBar.style.width = `${score}%`;
-                healthValue.textContent = `${score}/100`;
+                const gapRaw = regime.gap || "GAP_UNKNOWN";
+                gapBadge.textContent = friendlyLabel(gapRaw);
+                gapBadge.className = `hero-metric-band tone-${contextChipTone(gapRaw)}-text`;
+
+                renderMarketHealthGrid(regime.market_health);
 
                 // Explanation — soften raw enum tokens for display
                 let evidence = regime.explanation || "No attribution summary available.";
@@ -331,15 +349,15 @@
                     .replace(/NO_GAP/g, "No gap")
                     .replace(/SIDEWAYS/g, "Sideways");
                 evidenceText.textContent = evidence;
-            } else if (trendBadge && volBadge && gapBadge && healthBar && healthValue && evidenceText) {
+            } else if (trendBadge && volBadge && gapBadge && evidenceText) {
+                if (asOfEl) asOfEl.textContent = "";
                 trendBadge.textContent = "Unknown";
-                trendBadge.className = "regime-badge neutral";
+                trendBadge.className = "hero-metric-band tone-unknown-text";
                 volBadge.textContent = "Unknown";
-                volBadge.className = "regime-badge neutral";
+                volBadge.className = "hero-metric-band tone-unknown-text";
                 gapBadge.textContent = "Unknown";
-                gapBadge.className = "regime-badge neutral";
-                healthBar.style.width = "0%";
-                healthValue.textContent = "0/100";
+                gapBadge.className = "hero-metric-band tone-unknown-text";
+                renderMarketHealthGrid({});
                 evidenceText.textContent =
                     "No regime assessment from the latest validation run yet. " +
                     "Re-run ./athena-daily smoke (after the latest update) — regime is written from the scan. " +

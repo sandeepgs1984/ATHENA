@@ -198,7 +198,12 @@ class OwnerValidationPipeline:
                 if result.report is not None
             }
 
-        if regime_payload is None and scan_regime is not None:
+        # MI-2: prefer the scan's own regime payload over the earlier,
+        # eager `_maybe_regime` one whenever a scan actually ran — only the
+        # scan path computes market_health (reg_stage), so preferring the
+        # eager one (as before) silently discarded real market_health on
+        # every cycle that had eligible symbols to scan.
+        if scan_regime is not None:
             regime_payload = scan_regime
 
         detail: dict[str, object] = {
@@ -362,7 +367,7 @@ class OwnerValidationPipeline:
         return None
 
     @staticmethod
-    def _regime_to_payload(regime) -> dict[str, object]:
+    def _regime_to_payload(regime, market_health=None) -> dict[str, object]:
         labels = list(regime.assessment.labels)
         trend = next(
             (lb for lb in labels if "TREND" in lb or lb == "SIDEWAYS"), "UNKNOWN"
@@ -372,11 +377,20 @@ class OwnerValidationPipeline:
         explanation = regime.assessment.explanation or "; ".join(
             e.explanation for e in regime.evidence[:3]
         )
+        # MI-2: real 4-dimension categorical labels (breadth/trend_quality/
+        # momentum/volatility) from the already-computed MarketHealthResult —
+        # replaces a hardcoded numeric 0. There is no real numeric 0-100
+        # score anywhere in ATHENA (MarketHealthScore is never constructed),
+        # so this is honestly {} rather than fabricated, until the caller
+        # (reg_stage) has one to pass in.
+        health_dimensions = (
+            dict(market_health.assessment.dimensions) if market_health is not None else {}
+        )
         return {
             "trend": trend,
             "volatility": vol,
             "gap": gap,
-            "market_health": 0,
+            "market_health": health_dimensions,
             "explanation": explanation
             or "Regime assessed from available daily candles.",
         }
@@ -460,8 +474,6 @@ class OwnerValidationPipeline:
                 regime = regime_engine.assess(
                     index_id, series, snapshot, as_of=ctx.as_of
                 )
-                if captured_regime["payload"] is None:
-                    captured_regime["payload"] = self._regime_to_payload(regime)
                 if shared_market_health["value"] is None:
                     shared_market_health["value"] = market_health_engine.assess(
                         index_id,
@@ -469,6 +481,10 @@ class OwnerValidationPipeline:
                         snapshot,
                         as_of=ctx.as_of,
                         regime=regime,
+                    )
+                if captured_regime["payload"] is None:
+                    captured_regime["payload"] = self._regime_to_payload(
+                        regime, market_health=shared_market_health["value"]
                     )
                 return {
                     "regime": regime,
