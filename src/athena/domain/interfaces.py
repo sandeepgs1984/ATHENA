@@ -13,7 +13,7 @@ from typing import Protocol, runtime_checkable
 
 from athena.domain.context import ContextDelta, PipelineContext
 from athena.domain.enums import HealthStatus, Timeframe
-from athena.domain.market import Candle, Instrument, MarketSnapshot, Quote
+from athena.domain.market import Candle, Instrument, InstitutionalFlowSession, MarketSnapshot, Quote
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,6 +90,23 @@ class MarketDataProvider(Protocol):
     def quotes(self, instrument_ids: list[str]) -> list[Quote]: ...
 
     def market_snapshot(self) -> MarketSnapshot: ...
+
+    def health(self) -> ProviderHealth: ...
+
+
+@runtime_checkable
+class InstitutionalFlowProvider(Protocol):
+    """FII/DII cash-flow source (ADR-008 / DD-11). Read-only by construction.
+
+    Separate from MarketDataProvider — institutional reports are not quotes/candles.
+    NO ORDER METHODS. Engines consume persisted rows; adapters may perform I/O.
+    """
+
+    name: str
+
+    def latest_session(self) -> InstitutionalFlowSession: ...
+
+    def sessions(self, start: date, end: date) -> list[InstitutionalFlowSession]: ...
 
     def health(self) -> ProviderHealth: ...
 

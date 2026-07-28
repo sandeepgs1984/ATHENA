@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from athena.config.models import GapConfig, IngestionConfig, ValidationConfig
+from athena.data.ingestion.institutional_flow import InstitutionalFlowIngestor
 from athena.data.ingestion.models import IngestionResult
 from athena.data.store.repository import SqliteRepository
 from athena.data.validation.dataset_validator import DatasetValidator
@@ -18,7 +19,7 @@ from athena.data.validation.quarantine import QuarantineRegistry
 from athena.data.validation.reports import ValidationSummary, ValidationType
 from athena.data.validation.validators import validate_quotes
 from athena.domain.enums import Timeframe
-from athena.domain.interfaces import MarketDataProvider
+from athena.domain.interfaces import InstitutionalFlowProvider, MarketDataProvider
 from athena.domain.market import Candle, Quote
 from athena.errors import DataStaleError, DataValidationError
 
@@ -54,6 +55,7 @@ class LiveIngestionEngine:
         validation_config: ValidationConfig,
         *,
         tzinfo: ZoneInfo,
+        institutional_provider: InstitutionalFlowProvider | None = None,
     ) -> None:
         self._provider = provider
         self._repo = repo
@@ -62,6 +64,7 @@ class LiveIngestionEngine:
         self._config = config
         self._validation_config = validation_config
         self._tzinfo = tzinfo
+        self._institutional_provider = institutional_provider
 
     def run_cycle(self, *, as_of: datetime) -> IngestionResult:
         if as_of.tzinfo is None:
@@ -198,6 +201,15 @@ class LiveIngestionEngine:
                     self._repo.add_snapshot(snapshot)
                     snapshots_written = 1
 
+        institutional_written = 0
+        institutional_error: str | None = None
+        if self._institutional_provider is not None:
+            flow = InstitutionalFlowIngestor(
+                self._repo, self._institutional_provider
+            ).run(as_of=as_of)
+            institutional_written = 1 if flow.written else 0
+            institutional_error = flow.error
+
         return IngestionResult(
             as_of=as_of,
             instruments_upserted=len(selected),
@@ -208,6 +220,8 @@ class LiveIngestionEngine:
             datasets_validated=len(candle_batches) + (1 if self._config.include_quotes else 0),
             datasets_skipped_empty=skipped_empty,
             snapshots_written=snapshots_written,
+            institutional_written=institutional_written,
+            institutional_error=institutional_error,
         )
 
 

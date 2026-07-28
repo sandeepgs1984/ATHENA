@@ -500,16 +500,27 @@ Literal Market Summary mock fidelity requires real numeric inputs the MI track d
 
 | Milestone | Scope | Status |
 |---|---|---|
-| **MH-0** Design — FII/DII source + F-5 scoring contract | DD-11 institutional-flow source decision; ADR-008 Proposed (provider Protocol); F-5 scoring / unknown-data / persistence / API history specification; stop for owner approval before any engine code | 🔄 Ready for review |
-| **MH-1** Canonical inputs + persistence | Approved FII/DII ingest; universe breadth (+ neutral); liquidity + gap-stability aggregates; snapshot/history read paths | ⏳ Pending MH-0 |
+| **MH-0** Design — FII/DII source + F-5 scoring contract | DD-11 institutional-flow source decision; ADR-008 (provider Protocol); F-5 scoring / unknown-data / persistence / API history specification | ✅ Approved |
+| **MH-1** Canonical inputs + persistence | Approved FII/DII ingest; universe breadth (+ neutral); liquidity + gap-stability aggregates; snapshot/history read paths | 🔄 Ready for review |
 | **MH-2** Exact F-5 `MarketHealthScore` | Construct + persist authoritative six-component score; align scoring/risk/decision consumers; ADR-005 evidence | ⏳ Pending MH-1 |
 | **MH-3** Market Summary API + mock-faithful UI | Dedicated summary read model; sparklines/rings/ADV-DEC/evidence panel from real persisted data only | ⏳ Pending MH-2 |
 
 Design artifacts (MH-0):
 
-- `docs/decisions/DD-11-institutional-flow-fii-dii.md`
-- `docs/adr/ADR-008-institutional-flow-provider.md` (Proposed)
-- `docs/design/F5-MARKET-HEALTH-SCORE.md`
+- `docs/decisions/DD-11-institutional-flow-fii-dii.md` (Accepted)
+- `docs/adr/ADR-008-institutional-flow-provider.md` (Accepted)
+- `docs/design/F5-MARKET-HEALTH-SCORE.md` (Accepted)
+
+#### MH-1 — Canonical inputs + persistence
+
+Delivers the real inputs F-5 needs before any numeric score is constructed: institutional FII/DII rows, universe ADV/DEC/neutral breadth on `MarketSnapshot`, liquidity + gap-stability aggregates, and snapshot history reads.
+
+| | |
+|---|---|
+| Scope | **Domain**: `InstitutionalFlowSession`; `MarketSnapshot.breadth_neutral` (blueprint §4 additive). **Provider**: `InstitutionalFlowProvider` Protocol; file + NSE adapters; config `ingestion.institutional_flow_provider`. **Persistence**: SCHEMA_VERSION 11 `institutional_flows` append-only; `list_snapshots_recent`; flow query helpers. **Pure aggregates**: `market_health/aggregates.py` (breadth/liquidity/gap). **Wiring**: ingest best-effort institutional fetch (never aborts cycle); owner validation enriches snapshot + persists `market_metric_inputs` on run detail. |
+| Tests | File/NSE parse+provider; repository flow + snapshot history; breadth/liquidity/gap pure tests; SCHEMA_VERSION 11. Full suite **1081 passed** |
+| Coverage | Self-verified via unit/integration tests. Live NSE fetch is best-effort (ProviderError → `institutional_error`, cycle continues). Flip `institutional_flow_provider` to `nse` when ready for live FII/DII. |
+| Status | 🔄 Ready for review (2026-07-28) |
 
 ---
 

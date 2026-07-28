@@ -262,6 +262,7 @@ class FileProvider:
                 breadth_declines=int(data.get("breadth_declines", 0)),
                 india_vix=(_decimal(str(data["india_vix"]), "india_vix", str(path))
                            if data.get("india_vix") is not None else None),
+                breadth_neutral=int(data.get("breadth_neutral", 0)),
             )
         except (KeyError, ValueError) as exc:
             raise ProviderError(f"corrupted market snapshot {path}: {exc}") from exc

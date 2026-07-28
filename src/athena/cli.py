@@ -209,8 +209,29 @@ def _build_ingest_engine(
         ingest_cfg = ingest_cfg.model_copy(update={"instrument_ids": resolved})
 
     validator = build_ingest_validator(calendar, validation, ingest_cfg, tz)
+    institutional = None
+    try:
+        from athena.data.providers import build_institutional_flow_provider
+
+        institutional = build_institutional_flow_provider(
+            config_dir, base_dir=_repo_root()
+        )
+    except Exception as exc:
+        import sys
+
+        print(
+            f"WARNING: institutional flow provider unavailable (continuing): {exc}",
+            file=sys.stderr,
+        )
     return LiveIngestionEngine(
-        provider, repo, validator, QuarantineRegistry(), ingest_cfg, validation, tzinfo=tz,
+        provider,
+        repo,
+        validator,
+        QuarantineRegistry(),
+        ingest_cfg,
+        validation,
+        tzinfo=tz,
+        institutional_provider=institutional,
     ), ingest_cfg
 
 

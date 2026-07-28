@@ -19,6 +19,8 @@ class IngestionResult:
     datasets_validated: int
     datasets_skipped_empty: int
     snapshots_written: int = 0
+    institutional_written: int = 0
+    institutional_error: str | None = None
 
     def __post_init__(self) -> None:
         if self.as_of.tzinfo is None:

@@ -287,6 +287,15 @@ def _build_scoped_ingest_engine(
     calendar = CalendarEngine.from_config_dir(config_dir, cfg.market)
     validation = load_validation_config(config_dir)
     validator = build_ingest_validator(calendar, validation, ingest_cfg, tz)
+    institutional = None
+    try:
+        from athena.data.providers import build_institutional_flow_provider
+
+        institutional = build_institutional_flow_provider(
+            config_dir, base_dir=repo_root
+        )
+    except Exception:
+        institutional = None
     return LiveIngestionEngine(
         provider,
         repo,
@@ -295,4 +304,5 @@ def _build_scoped_ingest_engine(
         ingest_cfg,
         validation,
         tzinfo=tz,
+        institutional_provider=institutional,
     )

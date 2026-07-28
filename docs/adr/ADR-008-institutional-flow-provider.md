@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| Status | **Proposed** |
+| Status | **Accepted** |
 | Date | 2026-07-28 |
-| Deciders | sandeep (owner) — awaiting acceptance with MH-0 / DD-11 |
+| Deciders | sandeep (owner) — accepted with MH-0 / DD-11; gate cleared for MH-1 |
 | Related | [ADR-002](ADR-002-broker-abstraction.md), [DD-11](../decisions/DD-11-institutional-flow-fii-dii.md), [F-5 spec](../design/F5-MARKET-HEALTH-SCORE.md) |
 
 ## Context
@@ -49,4 +49,4 @@ Persistence is append-only (new table or typed payload under an existing intelli
 
 ## Gate
 
-No MH-1 implementation until this ADR is **Accepted** and DD-11 is **Accepted**.
+Cleared 2026-07-28 — ADR Accepted and DD-11 Accepted; MH-1 authorized.

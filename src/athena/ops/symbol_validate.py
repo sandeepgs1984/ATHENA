@@ -148,6 +148,15 @@ def validate_symbols(
     calendar = CalendarEngine.from_config_dir(config_dir, cfg.market)
     validation = load_validation_config(config_dir)
     validator = build_ingest_validator(calendar, validation, ingest_cfg, tz)
+    institutional = None
+    try:
+        from athena.data.providers import build_institutional_flow_provider
+
+        institutional = build_institutional_flow_provider(
+            config_dir, base_dir=config_dir.resolve().parent
+        )
+    except Exception:
+        institutional = None
     engine = LiveIngestionEngine(
         provider,
         repo,
@@ -156,6 +165,7 @@ def validate_symbols(
         ingest_cfg,
         validation,
         tzinfo=tz,
+        institutional_provider=institutional,
     )
     pipeline = OwnerValidationPipeline(
         repo, config_dir, symbols_filter=bare

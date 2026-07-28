@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | **PROPOSED** — awaiting owner acceptance (MH-0) |
+| Status | **ACCEPTED** — Owner approved 2026-07-28 (proceed MH-1) |
 | Date | 2026-07-28 |
 | Blueprint | ATHENA-002 §4 `MarketHealthScore`; ATHENA-002R **F-5** |
 | ADR | ADR-005 (persist explanation); ADR-008 (institutional flow input) |

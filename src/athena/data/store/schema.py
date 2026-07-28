@@ -10,7 +10,7 @@ append-only by discipline (inserts only; duplicates rejected by primary key).
 from __future__ import annotations
 
 #: Bump when the schema changes; enables future explicit migrations.
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 _DDL = (
     "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)",
@@ -66,6 +66,25 @@ _DDL = (
         payload_json TEXT NOT NULL
     )
     """,
+
+    """
+    CREATE TABLE IF NOT EXISTS institutional_flows (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_date  TEXT NOT NULL,
+        fii_buy       TEXT NOT NULL,
+        fii_sell      TEXT NOT NULL,
+        fii_net       TEXT NOT NULL,
+        dii_buy       TEXT NOT NULL,
+        dii_sell      TEXT NOT NULL,
+        dii_net       TEXT NOT NULL,
+        provisional   INTEGER NOT NULL,
+        source_id     TEXT NOT NULL,
+        fetched_at    TEXT NOT NULL,
+        run_id        TEXT NOT NULL DEFAULT ''
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_institutional_flows_session "
+    "ON institutional_flows(session_date, fetched_at)",
 
     """
     CREATE TABLE IF NOT EXISTS corporate_actions (

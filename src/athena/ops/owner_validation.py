@@ -18,11 +18,16 @@ from pathlib import Path
 from typing import Any
 
 from athena.calendar.engine import CalendarEngine
-from athena.config.loader import load_config
+from athena.config.loader import load_config, load_market_health_config
 from athena.data.ingestion.models import IngestionResult
 from athena.data.store.repository import SqliteRepository
 from athena.domain.enums import DecisionType, RunTrigger, Timeframe
 from athena.domain.market import Candle, Instrument, MarketSnapshot
+from athena.market_health.aggregates import (
+    compute_gap_stability,
+    compute_liquidity_aggregate,
+    compute_universe_breadth,
+)
 from athena.ops.owner_candidates import (
     DEFAULT_EXCHANGE,
     SqliteCandidateStore,
@@ -146,6 +151,26 @@ class OwnerValidationPipeline:
             cycle_id=trigger.value.lower(),
         )
 
+        health_cfg = load_market_health_config(self._config_dir)
+        breadth = compute_universe_breadth(candles_by_id)
+        liquidity = compute_liquidity_aggregate(
+            candles_by_id,
+            lookback_days=health_cfg.liquidity.lookback_days,
+            method=health_cfg.liquidity.method,
+        )
+        index_candles_for_gap = self._index_candles_for_metrics(candles_by_id)
+        gap_stability = compute_gap_stability(
+            index_candles_for_gap,
+            window=health_cfg.gap_stability.window,
+            gap_pct_threshold=Decimal(str(health_cfg.gap_stability.gap_pct_threshold)),
+        )
+        metric_inputs = {
+            "breadth": breadth.to_payload(),
+            "liquidity": liquidity.to_payload(),
+            "gap_stability": gap_stability.to_payload(),
+            "institutional_flow": self._institutional_flow_payload(),
+        }
+
         universe_members: dict[str, dict[str, object]] = {}
         included_ids: list[str] = []
         for assessment in result.assessments:
@@ -175,6 +200,21 @@ class OwnerValidationPipeline:
             cfg, as_of=as_of, candles_by_id=candles_by_id
         )
 
+        # Always enrich + persist universe breadth onto a snapshot row when possible
+        # (even if no scan runs — MI/MH consumers read market_snapshots).
+        base_snap = self._resolve_snapshot(as_of, candles_by_id)
+        if base_snap is None:
+            base_snap = MarketSnapshot(
+                ts=as_of,
+                indices={},
+                breadth_advances=0,
+                breadth_declines=0,
+                india_vix=None,
+                breadth_neutral=0,
+            )
+        enriched_snap = self._apply_universe_breadth(base_snap, breadth, as_of=as_of)
+        self._persist_enriched_snapshot(enriched_snap)
+
         qualified: list[dict[str, object]] = []
         scan_stats: dict[str, object] = {
             "total": 0,
@@ -198,22 +238,13 @@ class OwnerValidationPipeline:
             # Score/Confidence/Risk still showing "Unknown" even after a
             # freshly-succeeded re-validate.
             cycle_id = f"{as_of.date().isoformat()}-{trigger.value.lower()}"
-            snap = self._resolve_snapshot(as_of, candles_by_id)
-            if snap is None:
-                snap = MarketSnapshot(
-                    ts=as_of,
-                    indices={},
-                    breadth_advances=0,
-                    breadth_declines=0,
-                    india_vix=None,
-                )
             scan_report, scan_regime = self._scan_eligible(
                 included_ids,
                 as_of=as_of,
                 run_id=run_id,
                 cycle_id=cycle_id,
                 candles_by_id=candles_by_id,
-                snapshot=snap,
+                snapshot=enriched_snap,
                 cfg=cfg,
             )
             scan_stats = {
@@ -260,11 +291,76 @@ class OwnerValidationPipeline:
             "ingestion": {
                 "candles_written": ingestion.candles_written,
                 "quotes_written": ingestion.quotes_written,
+                "institutional_written": ingestion.institutional_written,
+                "institutional_error": ingestion.institutional_error,
             },
+            "market_metric_inputs": metric_inputs,
         }
         if regime_payload is not None:
             detail["regime_assessment"] = regime_payload
         return detail
+
+    def _apply_universe_breadth(
+        self,
+        snap: MarketSnapshot,
+        breadth,
+        *,
+        as_of: datetime,
+    ) -> MarketSnapshot:
+        """Overlay universe ADV/DEC/neutral onto snapshot (F-5 §3.2 / MH-1)."""
+        return MarketSnapshot(
+            ts=as_of,
+            indices=dict(snap.indices),
+            breadth_advances=breadth.advances,
+            breadth_declines=breadth.declines,
+            india_vix=snap.india_vix,
+            breadth_neutral=breadth.neutral,
+        )
+
+    def _persist_enriched_snapshot(self, snap: MarketSnapshot) -> None:
+        latest = self._repo.get_latest_snapshot()
+        if latest is not None and latest.ts == snap.ts:
+            # Same timestamp — cannot UPDATE append-only table; keep in-memory only.
+            return
+        try:
+            self._repo.add_snapshot(snap)
+        except Exception:
+            # Validation must not fail because a duplicate snapshot collided.
+            return
+
+    def _institutional_flow_payload(self) -> dict[str, object] | None:
+        flow = self._repo.get_latest_institutional_flow(prefer_final=True)
+        if flow is None:
+            return None
+        return {
+            "session_date": flow.session_date.isoformat(),
+            "fii_net": str(flow.fii_net),
+            "dii_net": str(flow.dii_net),
+            "combined_net": str(flow.fii_net + flow.dii_net),
+            "provisional": flow.provisional,
+            "source_id": flow.source_id,
+            "fetched_at": flow.fetched_at.isoformat(),
+        }
+
+    def _index_candles_for_metrics(
+        self, candles_by_id: Mapping[str, Sequence[Candle]]
+    ) -> list[Candle]:
+        candidates: list[str] = []
+        try:
+            from athena.config.loader import load_kite_provider_config
+
+            kite = load_kite_provider_config(self._config_dir)
+            candidates.extend(kite.index_instruments)
+        except Exception:
+            pass
+        candidates.extend(["NSE:NIFTY 50", "NIFTY 50", "NIFTY50"])
+        for iid in candidates:
+            series = list(candles_by_id.get(iid, ()))
+            if not series:
+                series = self._repo.list_candles_recent(iid, Timeframe.D1, limit=60)
+            if series:
+                return series
+        return []
 
     def _resolve_instrument(self, symbol: str) -> Instrument:
         iid = to_instrument_id(symbol, exchange=self._exchange)
@@ -358,6 +454,7 @@ class OwnerValidationPipeline:
                 breadth_advances=0,
                 breadth_declines=0,
                 india_vix=vix,
+                breadth_neutral=0,
             )
         if snap.india_vix is None and vix is not None:
             return MarketSnapshot(
@@ -366,6 +463,7 @@ class OwnerValidationPipeline:
                 breadth_advances=snap.breadth_advances,
                 breadth_declines=snap.breadth_declines,
                 india_vix=vix,
+                breadth_neutral=snap.breadth_neutral,
             )
         return snap
 

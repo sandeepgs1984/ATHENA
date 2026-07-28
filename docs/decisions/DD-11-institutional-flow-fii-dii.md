@@ -2,11 +2,11 @@
 
 | | |
 |---|---|
-| Status | **PROPOSED** — awaiting owner acceptance (MH-0) |
+| Status | **ACCEPTED** — Owner approved 2026-07-28 (proceed MH-1) |
 | Date | 2026-07-28 |
 | Trigger | Market Metrics Completion — F-5 `institutional_strength` cannot be computed from Kite price/volume data |
-| ADR context | [ADR-008](../adr/ADR-008-institutional-flow-provider.md) (Proposed) — separate Protocol from ADR-002 `MarketDataProvider` |
-| Code impact | None until MH-1 (blocked on DD-11 + ADR-008 + [F-5 spec](../design/F5-MARKET-HEALTH-SCORE.md) acceptance) |
+| ADR context | [ADR-008](../adr/ADR-008-institutional-flow-provider.md) (Accepted) — separate Protocol from ADR-002 `MarketDataProvider` |
+| Code impact | MH-1 — InstitutionalFlowProvider + append-only persistence + universe breadth inputs |
 
 ---
 

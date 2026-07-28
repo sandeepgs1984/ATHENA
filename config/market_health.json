@@ -1,11 +1,12 @@
 {
   "_meta": {
     "layer": 3,
-    "description": "Market Health Engine thresholds (M2.2). Descriptive market-quality settings."
+    "description": "Market Health Engine thresholds (M2.2) + F-5 MH-1 input aggregates. Component point maps land in MH-2."
   },
   "breadth": {
     "strong_ratio": 0.60,
-    "weak_ratio": 0.40
+    "weak_ratio": 0.40,
+    "min_coverage": 0.70
   },
   "momentum": {
     "period": 10,
@@ -19,5 +20,26 @@
   "volatility": {
     "calm_vix": 12.0,
     "elevated_vix": 20.0
+  },
+  "liquidity": {
+    "lookback_days": 20,
+    "method": "median",
+    "min_members": 50,
+    "healthy_median_turnover": 50000000.0,
+    "weak_median_turnover": 10000000.0
+  },
+  "gap_stability": {
+    "window": 20,
+    "gap_pct_threshold": 0.5,
+    "strong_stability": 0.80,
+    "weak_stability": 0.50
+  },
+  "institutional": {
+    "lookback_sessions": 1,
+    "max_age_sessions": 3,
+    "strong_buy_cr": 2000.0,
+    "mild_buy_cr": 500.0,
+    "mild_sell_cr": -500.0,
+    "strong_sell_cr": -2000.0
   }
 }

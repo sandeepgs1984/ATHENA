@@ -6,6 +6,34 @@ status updated on approval.
 
 ---
 
+## MH-1 — Canonical inputs + persistence (READY FOR REVIEW)
+
+| | |
+|---|---|
+| Completed | 2026-07-28 |
+| Objective | First implementation milestone of Market Metrics Completion: persist real FII/DII flows, universe breadth (+ neutral), liquidity/gap aggregates, and snapshot history reads — without constructing `MarketHealthScore` yet |
+| Scope | Domain `InstitutionalFlowSession` + `MarketSnapshot.breadth_neutral`; `InstitutionalFlowProvider` (file/nse); SCHEMA_VERSION 11 `institutional_flows`; `market_health/aggregates.py`; ingest + owner_validation wiring; config extensions |
+| Public APIs added | Repository: `add_institutional_flow`, `get_latest_institutional_flow`, `list_institutional_flows_recent`, `list_snapshots_recent`. Providers: `build_institutional_flow_provider`. Run detail key `market_metric_inputs` |
+| Tests | `tests/data_layer/test_institutional_flow.py` (+ SCHEMA_VERSION bumps). Full suite **1081 passed** |
+| Coverage | Unit/integration self-verified. Live NSE optional via `ingestion.institutional_flow_provider=nse` (default `file`) |
+| Architecture compliance | ADR-008 separate Protocol; no MarketDataProvider pollution; cycle continues on flow fetch failure; additive blueprint field only |
+| ADR compliance | ADR-005: inputs persisted for MH-2 score construction; no fabricated Health ring. ADR-008 Accepted. DD-11 Accepted |
+| Risks discovered | NSE HTML/cookie warm-up fragility — mitigated by file fallback + non-aborting ingest. Adding a config key while a host is already running makes every `extra="forbid"` reload fail: `/ops/kite/status` 500s and the dashboard shows a false "Connect Kite" blocker until the host restarts |
+| Technical debt introduced | None intentional. Score construction explicitly deferred to MH-2 |
+| Suggested improvements | Optional NSDL finalization adapter; cookie jar persistence for NSE; deferred by owner — make `checkKiteGate()` distinguish a 5xx status-check failure from a genuinely disconnected session so config/code skew is not reported as a Kite re-login |
+| Remaining work | MH-2 `MarketHealthScore` construction + consumer cutover |
+| Status | 🔄 Ready for review (2026-07-28) |
+| Branch | feature/live-dashboard |
+
+### Scope completed
+
+- Institutional flow Protocol + file CSV + NSE JSON adapters; append-only SQLite table; best-effort ingest hook.
+- Universe ADV/DEC/neutral overlay onto `MarketSnapshot` during owner validation; `breadth_neutral` round-trips in serialization.
+- Liquidity median turnover + rolling gap-stability pure aggregates; thresholds in `config/market_health.json`.
+- `list_snapshots_recent` for MH-3 sparklines / Recent Activity history.
+
+---
+
 ## MI-4 — Universe table redesign + Sector ingestion fix
 
 | | |
@@ -122,23 +150,23 @@ status updated on approval.
 
 ---
 
-## MH-0 — FII/DII source + F-5 scoring design (READY FOR REVIEW)
+## MH-0 — FII/DII source + F-5 scoring design (APPROVED)
 
 | | |
 |---|---|
 | Completed | 2026-07-28 (design only — no engine code) |
 | Objective | First milestone of Market Metrics Completion: lock the institutional-flow data source, provider boundary, and exact F-5 six-component scoring/persistence/API contracts before any implementation |
-| Scope | `docs/decisions/DD-11-institutional-flow-fii-dii.md`, `docs/adr/ADR-008-institutional-flow-provider.md` (Proposed), `docs/design/F5-MARKET-HEALTH-SCORE.md`, `docs/MILESTONES.md` track intro |
+| Scope | `docs/decisions/DD-11-institutional-flow-fii-dii.md`, `docs/adr/ADR-008-institutional-flow-provider.md` (Accepted), `docs/design/F5-MARKET-HEALTH-SCORE.md`, `docs/MILESTONES.md` track intro |
 | Public APIs added | None (design) |
 | Tests | N/A — design milestone |
 | Coverage | Specs cover source criteria, FileProvider-first replay path, NSE official primary live source, NSDL finalization note, unknown-data policy, component formulas, single authoritative score vs scoring `market_quality`, snapshot field addition (`breadth_neutral`), and MH-1…MH-3 exit criteria |
-| Architecture compliance | No code change. Separates institutional flow from `MarketDataProvider` (ADR-002) via proposed ADR-008. Breadth uses frozen `MarketSnapshot` fields + reviewed additive `breadth_neutral`. Score uses already-frozen `MarketHealthScore` |
-| ADR compliance | ADR-005: score/rings only from persisted engine output. ADR-002: no broker Protocol pollution — new flow Protocol proposed. ADR-007 unchanged |
+| Architecture compliance | No code change at design time. Separates institutional flow from `MarketDataProvider` (ADR-002) via ADR-008. Breadth uses frozen `MarketSnapshot` fields + reviewed additive `breadth_neutral`. Score uses already-frozen `MarketHealthScore` |
+| ADR compliance | ADR-005: score/rings only from persisted engine output. ADR-002: no broker Protocol pollution — new flow Protocol. ADR-007 unchanged |
 | Risks discovered | NSE HTML/CSV scrape fragility; evening FII figures are provisional until custodian confirmation; third-party aggregators are convenience only, not canonical |
-| Technical debt introduced | None — MH-1 blocked until DD-11 + ADR-008 + F-5 spec are owner-accepted |
-| Suggested improvements | None before approval |
-| Remaining work | Owner accept DD-11 + ADR-008 + F-5 spec → authorize MH-1 |
-| Status | 🔄 Ready for review (2026-07-28) |
+| Technical debt introduced | None |
+| Suggested improvements | None |
+| Remaining work | Completed — owner accepted; MH-1 authorized |
+| Status | ✅ Approved (2026-07-28) |
 | Branch | feature/live-dashboard |
 
 ---

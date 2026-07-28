@@ -126,10 +126,36 @@ class MarketSnapshot:
     breadth_advances: int = 0
     breadth_declines: int = 0
     india_vix: Decimal | None = None
+    breadth_neutral: int = 0
 
     def __post_init__(self) -> None:
         if self.ts.tzinfo is None:
             raise ValueError("MarketSnapshot.ts must be timezone-aware")
+        if self.breadth_advances < 0 or self.breadth_declines < 0 or self.breadth_neutral < 0:
+            raise ValueError("MarketSnapshot breadth counts must be >= 0")
+
+
+@dataclass(frozen=True, slots=True)
+class InstitutionalFlowSession:
+    """One session's FII/DII cash-market flow (DD-11 / ADR-008). Append-only."""
+
+    session_date: date
+    fii_buy: Decimal
+    fii_sell: Decimal
+    fii_net: Decimal
+    dii_buy: Decimal
+    dii_sell: Decimal
+    dii_net: Decimal
+    provisional: bool
+    source_id: str
+    fetched_at: datetime
+    run_id: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.source_id:
+            raise ValueError("InstitutionalFlowSession.source_id is mandatory")
+        if self.fetched_at.tzinfo is None:
+            raise ValueError("InstitutionalFlowSession.fetched_at must be timezone-aware")
 
 
 @dataclass(frozen=True, slots=True)

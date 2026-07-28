@@ -38,7 +38,14 @@ from athena.domain.enums import (
     Timeframe,
     UserAction,
 )
-from athena.domain.market import Candle, CorporateAction, Instrument, MarketSnapshot, Quote
+from athena.domain.market import (
+    Candle,
+    CorporateAction,
+    Instrument,
+    InstitutionalFlowSession,
+    MarketSnapshot,
+    Quote,
+)
 from athena.domain.run import RunRecord
 
 
@@ -103,6 +110,7 @@ def snapshot_to_payload(s: MarketSnapshot) -> str:
         "indices": {k: str(v) for k, v in s.indices.items()},
         "breadth_advances": s.breadth_advances,
         "breadth_declines": s.breadth_declines,
+        "breadth_neutral": s.breadth_neutral,
         "india_vix": str(s.india_vix) if s.india_vix is not None else None,
     }, sort_keys=True)
 
@@ -115,6 +123,31 @@ def payload_to_snapshot(payload: str) -> MarketSnapshot:
         breadth_advances=int(data["breadth_advances"]),
         breadth_declines=int(data["breadth_declines"]),
         india_vix=Decimal(data["india_vix"]) if data["india_vix"] is not None else None,
+        breadth_neutral=int(data.get("breadth_neutral", 0)),
+    )
+
+
+def institutional_flow_to_row(s: InstitutionalFlowSession) -> tuple:
+    return (
+        s.session_date.isoformat(),
+        str(s.fii_buy), str(s.fii_sell), str(s.fii_net),
+        str(s.dii_buy), str(s.dii_sell), str(s.dii_net),
+        1 if s.provisional else 0,
+        s.source_id,
+        s.fetched_at.isoformat(),
+        s.run_id or "",
+    )
+
+
+def row_to_institutional_flow(r: Sequence[Any]) -> InstitutionalFlowSession:
+    return InstitutionalFlowSession(
+        session_date=date.fromisoformat(r[0]),
+        fii_buy=Decimal(r[1]), fii_sell=Decimal(r[2]), fii_net=Decimal(r[3]),
+        dii_buy=Decimal(r[4]), dii_sell=Decimal(r[5]), dii_net=Decimal(r[6]),
+        provisional=bool(int(r[7])),
+        source_id=r[8],
+        fetched_at=datetime.fromisoformat(r[9]),
+        run_id=r[10] or "",
     )
 
 

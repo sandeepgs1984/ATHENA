@@ -121,7 +121,7 @@ All objects are frozen dataclasses (or pydantic models where validation is neede
 | `Candle` | OHLCV bar, any timeframe | instrument_id, timeframe (1m/5m/15m/1d), ts_open, o/h/l/c, volume, source, adjusted flag |
 | `CorporateAction` | Split/bonus/dividend/rename | instrument_id, type, ex_date, ratio/amount, raw details |
 | `CalendarContext` | Today's market awareness | date, session_type (normal/holiday/muhurat/special), open/close times, expiry flags, events[] |
-| `MarketSnapshot` | Index-level state at a moment | ts, index values, breadth, India-VIX, advance/decline, gap stats |
+| `MarketSnapshot` | Index-level state at a moment | ts, index values, breadth_advances, breadth_declines, breadth_neutral (universe unchanged closes; MH-1), India-VIX |
 | `SectorSnapshot` | Sector-level state | ts, sector, relative strength, breadth, leaders[] |
 | `RegimeAssessment` | Output of regime engine | ts, labels[] (e.g. BULL_TREND, GAP_UP, HIGH_VOLATILITY, EXPIRY_DAY), evidence_ids[], explanation |
 | `Universe` | Today's trading universe | date, cycle_id, instrument_ids[], filter_trace per inclusion (why each symbol is in) |

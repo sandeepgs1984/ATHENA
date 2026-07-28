@@ -34,8 +34,7 @@ the trader approves" — ATHENA never acts autonomously on capital.
 - **Provider independence.** Broker/price-data concerns live behind
   `MarketDataProvider`/broker abstraction Protocols (ADR-002);
   institutional cash-flow (FII/DII) is a separate Protocol under ADR-008
-  (Proposed until accepted) — business logic never imports a concrete
-  provider.
+  — business logic never imports a concrete provider.
 - **Architecture is FROZEN.** `ATHENA-002-System-Blueprint.md` is the single
   source of truth for module boundaries. A genuine architectural limitation
   means: stop, write an ADR proposal, wait for owner approval — never
@@ -73,7 +72,7 @@ the trader approves" — ATHENA never acts autonomously on capital.
 | `ATHENA-000-Master-Architecture.md` | The constitution: why ATHENA exists, product philosophy, what it must never do | You need to justify a product-level decision or check a first-principles rule |
 | `ATHENA-001-Engineering-Review.md` + `ATHENA-001R-Owner-Review.md` | Engineering review across 7 roles, disagreements resolved, accepted amendments | You need the *reasoning* behind an engineering rule (referenced as "ATHENA-001 amendment N") |
 | `ATHENA-002-System-Blueprint.md` + `ATHENA-002R-Owner-Review.md` | The frozen architecture: module boundaries, phase plan, Definition of Done per phase | Before writing **any** code — confirm the relevant section and Definition of Done |
-| `docs/adr/ADR-00{1..8}-*.md` | Architecture Decision Records: modular monolith, broker abstraction, pipeline context, static-HTML-first, explainability-as-data, circuit limits, owner-triggered background validation, institutional-flow provider (ADR-008 Proposed until owner accepts) | You're unsure whether a pattern is intentional or need to cite the decision that made it so |
+| `docs/adr/ADR-00{1..8}-*.md` | Architecture Decision Records: modular monolith, broker abstraction, pipeline context, static-HTML-first, explainability-as-data, circuit limits, owner-triggered background validation, institutional-flow provider (ADR-008 Accepted) | You're unsure whether a pattern is intentional or need to cite the decision that made it so |
 | `docs/decisions/DD-*.md` | Deferred Decision resolutions (e.g. DD-1 broker/data vendor = Zerodha Kite Connect, DD-9 alerting = webhook+file, DD-11 FII/DII institutional flow) | Before assuming something is "still undecided" — check here first, it may already be resolved |
 | `docs/design/F5-MARKET-HEALTH-SCORE.md` | Exact F-5 six-component Market Health Score contract (formulas, unknown-data policy, persistence, consumer alignment) | Working on Market Metrics Completion / Market Summary numeric fidelity |
 | `docs/PRODUCTION_READINESS_ROADMAP.md` | R1–R6 daily-advisory-use readiness tracks | Working on live/ops-facing concerns |
@@ -118,8 +117,8 @@ its milestone is approved — check §5):
 | Concern | Packages |
 |---|---|
 | Foundations | `domain/` (frozen canonical model), `config/`, `calendar/` (sole trading-day/session authority), `observability/`, `errors.py` |
-| Data | `data/` (providers, validation, corporate actions, SQLite `store/repository`) |
-| Market Intelligence | `regime/`, `market_health/`, `sector_health/`, `universe/` |
+| Data | `data/` (providers incl. institutional flow file/NSE adapters, validation, corporate actions, SQLite `store/repository`) |
+| Market Intelligence | `regime/`, `market_health/` (categorical engine + MH-1 aggregates), `sector_health/`, `universe/` |
 | Decision Intelligence | `evidence/`, `indicators/`, `scoring/`, `confidence/`, `risk/`, `decision/`, `reporting/` (decision trace explanations *and* generic operational reports) |
 | Orchestration & Ops | `orchestration/`, `scanner/`, `watchlist/`, `strategy/`, `backtest/`, `scheduling/` |
 | Portfolio & planning (no execution) | `portfolio/`, `allocation/`, `sizing/`, `orders/` (planning only), `brokers/` (abstraction only), `execution/` |

@@ -380,6 +380,7 @@ class IngestionConfig(_Strict):
     """Live ingest cycle settings (M10.1 / R4). Provider selected by name; default file."""
 
     provider: Literal["file", "kite"] = "file"
+    institutional_flow_provider: Literal["file", "nse"] = "file"
     timeframes: list[str] = Field(default_factory=lambda: ["5m"])
     lookback_minutes: int = Field(default=30, ge=1, le=1440)
     lookback_days: int = Field(default=5, ge=1, le=365)
@@ -404,9 +405,29 @@ class IngestionConfig(_Strict):
         return v
 
 
+class InstitutionalFileProviderConfig(_Strict):
+    """File-backed FII/DII rows for replay/CI (ADR-008)."""
+
+    data_root: str = "data/file_provider"
+    flows_file: str = "institutional_flows.csv"
+
+
+class InstitutionalNseProviderConfig(_Strict):
+    """Official NSE FII/DII Capital Market JSON endpoint (DD-11)."""
+
+    home_url: str = "https://www.nseindia.com"
+    api_url: str = "https://www.nseindia.com/api/fiidiiTradeReact"
+    source_id: str = "nse"
+    timeout_seconds: float = Field(default=20.0, gt=0)
+    user_agent: str = (
+        "Mozilla/5.0 (compatible; ATHENA/1.0; +https://localhost; research)"
+    )
+
+
 class BreadthCfg(_Strict):
     strong_ratio: float = Field(gt=0, lt=1)
     weak_ratio: float = Field(gt=0, lt=1)
+    min_coverage: float = Field(default=0.70, gt=0, le=1)
 
     @model_validator(mode="after")
     def _ordered(self) -> BreadthCfg:
@@ -447,13 +468,60 @@ class VolatilityHealthCfg(_Strict):
         return self
 
 
+class LiquidityAggregateCfg(_Strict):
+    """Market-level liquidity aggregate inputs (F-5 §3.3 / MH-1)."""
+
+    lookback_days: int = Field(default=20, ge=1)
+    method: Literal["median"] = "median"
+    min_members: int = Field(default=50, ge=1)
+    healthy_median_turnover: float = Field(default=50_000_000.0, gt=0)
+    weak_median_turnover: float = Field(default=10_000_000.0, gt=0)
+
+    @model_validator(mode="after")
+    def _ordered(self) -> LiquidityAggregateCfg:
+        if self.weak_median_turnover >= self.healthy_median_turnover:
+            raise ValueError(
+                "liquidity weak_median_turnover must be < healthy_median_turnover"
+            )
+        return self
+
+
+class GapStabilityInputCfg(_Strict):
+    """Rolling gap-stability inputs (F-5 §3.6 / MH-1)."""
+
+    window: int = Field(default=20, ge=2)
+    gap_pct_threshold: float = Field(default=0.5, gt=0)
+    strong_stability: float = Field(default=0.80, gt=0, le=1)
+    weak_stability: float = Field(default=0.50, gt=0, le=1)
+
+    @model_validator(mode="after")
+    def _ordered(self) -> GapStabilityInputCfg:
+        if self.weak_stability >= self.strong_stability:
+            raise ValueError("gap_stability weak_stability must be < strong_stability")
+        return self
+
+
+class InstitutionalInputCfg(_Strict):
+    """Institutional-strength input bands (F-5 §3.5 / MH-1; points in MH-2)."""
+
+    lookback_sessions: int = Field(default=1, ge=1)
+    max_age_sessions: int = Field(default=3, ge=1)
+    strong_buy_cr: float = 2000.0
+    mild_buy_cr: float = 500.0
+    mild_sell_cr: float = -500.0
+    strong_sell_cr: float = -2000.0
+
+
 class MarketHealthConfig(_Strict):
-    """Market Health Engine thresholds (M2.2)."""
+    """Market Health Engine thresholds (M2.2) + F-5 input aggregates (MH-1)."""
 
     breadth: BreadthCfg
     momentum: MomentumCfg
     trend_quality: TrendQualityCfg
     volatility: VolatilityHealthCfg
+    liquidity: LiquidityAggregateCfg = Field(default_factory=LiquidityAggregateCfg)
+    gap_stability: GapStabilityInputCfg = Field(default_factory=GapStabilityInputCfg)
+    institutional: InstitutionalInputCfg = Field(default_factory=InstitutionalInputCfg)
 
 
 class SectorTrendCfg(_Strict):

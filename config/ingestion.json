@@ -1,9 +1,10 @@
 {
   "_meta": {
     "layer": 3,
-    "description": "Live ingest cycle settings (M10.1 / R4). provider: file (default) or kite. Kite secrets in .env only."
+    "description": "Live ingest cycle settings (M10.1 / R4). provider: file (default) or kite. institutional_flow_provider: file (default) or nse. Kite secrets in .env only."
   },
   "provider": "kite",
+  "institutional_flow_provider": "file",
   "timeframes": ["5m"],
   "lookback_minutes": 30,
   "lookback_days": 90,

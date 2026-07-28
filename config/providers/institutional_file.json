@@ -1,0 +1,8 @@
+{
+  "_meta": {
+    "layer": 3,
+    "description": "File-backed FII/DII cash flows for replay/CI (ADR-008 / DD-11)."
+  },
+  "data_root": "data/file_provider",
+  "flows_file": "institutional_flows.csv"
+}

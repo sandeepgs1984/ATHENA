@@ -39,6 +39,7 @@ from athena.domain.evidence import (
 )
 from athena.domain.health import HealthCheck, SystemHealthReport
 from athena.domain.interfaces import (
+    InstitutionalFlowProvider,
     IntelligenceModule,
     MarketDataProvider,
     ProviderCapabilities,
@@ -50,6 +51,7 @@ from athena.domain.market import (
     Candle,
     CorporateAction,
     Instrument,
+    InstitutionalFlowSession,
     MarketHealthScore,
     MarketSnapshot,
     Quote,
@@ -66,7 +68,9 @@ __all__ = [
     "ConfigurationSnapshot", "ContextDelta", "CorporateAction", "Decision",
     "DecisionJournalEntry", "DecisionTrace", "DecisionType", "Direction", "Evidence",
     "EvidenceCategory", "ExplainabilityReport", "GateResult", "HealthCheck", "HealthStatus",
-    "Instrument", "IntelligenceModule", "MarketDataProvider", "MarketHealthScore",
+    "Instrument", "InstitutionalFlowProvider", "InstitutionalFlowSession",
+    "IntelligenceModule", "MarketDataProvider",
+    "MarketHealthScore",
     "MarketSnapshot", "PipelineContext", "Portfolio", "Position", "ProviderCapabilities",
     "ProviderHealth", "QualityGate", "Quote", "RegimeAssessment", "RiskEvaluation",
     "RunRecord", "RunStatus", "RunTrigger", "Score", "SectorHealthScore", "SectorSnapshot",

@@ -26,7 +26,14 @@ from athena.domain.decision import (
     TradeOutcome,
 )
 from athena.domain.enums import Timeframe
-from athena.domain.market import Candle, CorporateAction, Instrument, MarketSnapshot, Quote
+from athena.domain.market import (
+    Candle,
+    CorporateAction,
+    Instrument,
+    InstitutionalFlowSession,
+    MarketSnapshot,
+    Quote,
+)
 from athena.domain.run import RunRecord
 from athena.errors import RepositoryError
 
@@ -78,6 +85,8 @@ class SqliteRepository:
                         self._conn.execute(statement)
                     self._migrate_instruments_name_column()
                     self._migrate_instruments_sector_column()
+                    # SCHEMA_VERSION 11 tables (institutional_flows) are created
+                    # by CREATE TABLE IF NOT EXISTS in ddl_statements above.
                     row = self._conn.execute("SELECT version FROM schema_version").fetchone()
                     if row is None:
                         self._conn.execute(
@@ -283,6 +292,57 @@ class SqliteRepository:
             "SELECT payload_json FROM market_snapshots ORDER BY ts DESC LIMIT 1", ()
         )
         return ser.payload_to_snapshot(row[0]) if row else None
+
+    def list_snapshots_recent(self, *, limit: int = 30) -> list[MarketSnapshot]:
+        """Newest-first market snapshots, then returned oldest→newest for sparklines."""
+        if limit < 1:
+            raise ValueError(f"list_snapshots_recent limit must be >= 1, got {limit}")
+        rows = self._query_all(
+            "SELECT payload_json FROM market_snapshots ORDER BY ts DESC LIMIT ?",
+            (limit,),
+        )
+        snaps = [ser.payload_to_snapshot(r[0]) for r in rows]
+        snaps.reverse()
+        return snaps
+
+    # ------------------------------------------------------------- institutional flows
+
+    def add_institutional_flow(self, session: InstitutionalFlowSession) -> None:
+        """Append one FII/DII session row (never UPDATE — ADR-008 / DD-11)."""
+        self._write(
+            "INSERT INTO institutional_flows "
+            "(session_date, fii_buy, fii_sell, fii_net, dii_buy, dii_sell, dii_net, "
+            "provisional, source_id, fetched_at, run_id) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            ser.institutional_flow_to_row(session),
+        )
+
+    def get_latest_institutional_flow(
+        self, *, prefer_final: bool = True
+    ) -> InstitutionalFlowSession | None:
+        """Newest session date; when prefer_final, non-provisional beats provisional."""
+        row = self._query_one(
+            "SELECT session_date, fii_buy, fii_sell, fii_net, dii_buy, dii_sell, dii_net, "
+            "provisional, source_id, fetched_at, run_id FROM institutional_flows "
+            "ORDER BY session_date DESC, "
+            "CASE WHEN ? = 1 THEN provisional ELSE 0 END ASC, "
+            "fetched_at DESC LIMIT 1",
+            (1 if prefer_final else 0,),
+        )
+        return ser.row_to_institutional_flow(row) if row else None
+
+    def list_institutional_flows_recent(
+        self, *, limit: int = 60
+    ) -> list[InstitutionalFlowSession]:
+        if limit < 1:
+            raise ValueError(f"list_institutional_flows_recent limit must be >= 1, got {limit}")
+        rows = self._query_all(
+            "SELECT session_date, fii_buy, fii_sell, fii_net, dii_buy, dii_sell, dii_net, "
+            "provisional, source_id, fetched_at, run_id FROM institutional_flows "
+            "ORDER BY session_date DESC, fetched_at DESC LIMIT ?",
+            (limit,),
+        )
+        return [ser.row_to_institutional_flow(r) for r in rows]
 
     # ------------------------------------------------------------- corporate actions
 

@@ -1,0 +1,11 @@
+{
+  "_meta": {
+    "layer": 3,
+    "description": "Official NSE FII/FPI & DII Capital Market JSON (DD-11)."
+  },
+  "home_url": "https://www.nseindia.com",
+  "api_url": "https://www.nseindia.com/api/fiidiiTradeReact",
+  "source_id": "nse",
+  "timeout_seconds": 20.0,
+  "user_agent": "Mozilla/5.0 (compatible; ATHENA/1.0; +https://localhost; research)"
+}

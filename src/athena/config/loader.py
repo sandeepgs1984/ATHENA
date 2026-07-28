@@ -35,6 +35,8 @@ from athena.config.models import (
     HolidaysFile,
     HostOpsConfig,
     IngestionConfig,
+    InstitutionalFileProviderConfig,
+    InstitutionalNseProviderConfig,
     KiteProviderConfig,
     MarketHealthConfig,
     MonitoringConfig,
@@ -173,6 +175,30 @@ def load_kite_provider_config(config_dir: Path) -> KiteProviderConfig:
     path = Path(config_dir) / "providers" / "kite.json"
     try:
         return KiteProviderConfig.model_validate(_read_json(path))
+    except ValidationError as exc:
+        raise ConfigError(_validation_message(str(path), exc)) from exc
+
+
+def load_institutional_file_provider_config(
+    config_dir: Path,
+) -> InstitutionalFileProviderConfig:
+    """Load file-backed FII/DII settings (config/providers/institutional_file.json)."""
+
+    path = Path(config_dir) / "providers" / "institutional_file.json"
+    try:
+        return InstitutionalFileProviderConfig.model_validate(_read_json(path))
+    except ValidationError as exc:
+        raise ConfigError(_validation_message(str(path), exc)) from exc
+
+
+def load_institutional_nse_provider_config(
+    config_dir: Path,
+) -> InstitutionalNseProviderConfig:
+    """Load NSE FII/DII settings (config/providers/institutional_nse.json)."""
+
+    path = Path(config_dir) / "providers" / "institutional_nse.json"
+    try:
+        return InstitutionalNseProviderConfig.model_validate(_read_json(path))
     except ValidationError as exc:
         raise ConfigError(_validation_message(str(path), exc)) from exc
 
