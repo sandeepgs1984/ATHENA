@@ -149,6 +149,7 @@
             activeJournalEntry = journalRes && journalRes.data;
             activeTradeOutcome = outcomeRes && outcomeRes.data;
             renderJournalPanel(decisionId);
+            if (typeof refreshActiveDecisionChart === "function") refreshActiveDecisionChart();
         } catch (err) {
             if (activeDecisionId !== decisionId) return;
             console.error(`Failed to load journal/outcome for ${decisionId}`, err);
@@ -167,6 +168,7 @@
             activeJournalEntry = res && res.data;
             showToast(`Response recorded: ${userAction}`, "success");
             renderJournalPanel(decisionId);
+            if (typeof refreshActiveDecisionChart === "function") refreshActiveDecisionChart();
         } catch (err) {
             console.error(`Failed to record journal entry for ${decisionId}`, err);
         } finally {
@@ -201,6 +203,7 @@
             activeTradeOutcome = res && res.data;
             showToast("Outcome logged.", "success");
             renderJournalPanel(decisionId);
+            if (typeof refreshActiveDecisionChart === "function") refreshActiveDecisionChart();
         } catch (err) {
             console.error(`Failed to record trade outcome for ${decisionId}`, err);
             showToast("Failed to log outcome.", "danger");

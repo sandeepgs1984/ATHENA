@@ -7,6 +7,7 @@
     const DEFAULT_CHART_PREFS = Object.freeze({ timeframe: "5m", limit: 120 });
     let activeChartInstrumentId = null;
     let activeChartDecisionId = null;
+    let activeInspectionHostId = null;
 
     function chartPreferences() {
         try {
@@ -190,6 +191,73 @@
         return `${chartPriceLabel(plan.entry_low)}-${chartPriceLabel(plan.entry_high)}`;
     }
 
+    function chartInspectionValue(value, formatter = chartPriceLabel) {
+        const n = chartNumericOrNull(value);
+        return n === null ? "Unavailable" : formatter(n);
+    }
+
+    function chartPlanInspection(plan) {
+        if (!plan) return "Plan unavailable";
+        const targets = Array.isArray(plan.targets) ? plan.targets : [];
+        const firstTarget = targets.length ? chartPriceLabel(targets[0]) : "Unavailable";
+        return `Entry ${chartPlanEntryLabel(plan)} · Stop ${chartPriceLabel(plan.stop_loss)} · T1 ${firstTarget}`;
+    }
+
+    function chartTimeframeMs(timeframe) {
+        if (timeframe === "15m") return 15 * 60 * 1000;
+        if (timeframe === "1m") return 60 * 1000;
+        return 5 * 60 * 1000;
+    }
+
+    function chartPersistedEvents() {
+        const events = [];
+        const meta = activeDecisionData && activeDecisionData.metadata;
+        if (meta && meta.ts) {
+            events.push({
+                kind: "decision",
+                label: "Decision",
+                ts: meta.ts,
+                title: `Decision ${meta.decision_id} · ${formatDecisionTime(meta.ts)}`,
+            });
+        }
+        if (activeJournalEntry && activeJournalEntry.action_ts) {
+            events.push({
+                kind: "journal",
+                label: activeJournalEntry.user_action || "Response",
+                ts: activeJournalEntry.action_ts,
+                title: `Journal ${activeJournalEntry.user_action || "response"} · ${formatDecisionTime(activeJournalEntry.action_ts)}`,
+            });
+        }
+        if (activeTradeOutcome && activeTradeOutcome.closed_ts) {
+            events.push({
+                kind: "outcome",
+                label: "Outcome",
+                ts: activeTradeOutcome.closed_ts,
+                title: `Outcome closed · ${formatDecisionTime(activeTradeOutcome.closed_ts)}`,
+            });
+        }
+        return events;
+    }
+
+    function nearestCandleIndexForTs(candles, ts, timeframe) {
+        const eventTime = new Date(ts).getTime();
+        if (!Number.isFinite(eventTime) || !candles.length) return null;
+        const first = new Date(candles[0].ts_open).getTime();
+        const last = new Date(candles[candles.length - 1].ts_open).getTime();
+        const tolerance = chartTimeframeMs(timeframe) / 2;
+        if (eventTime < first - tolerance || eventTime > last + chartTimeframeMs(timeframe)) return null;
+        let bestIndex = 0;
+        let bestDistance = Math.abs(eventTime - first);
+        candles.forEach((candle, index) => {
+            const distance = Math.abs(eventTime - new Date(candle.ts_open).getTime());
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                bestIndex = index;
+            }
+        });
+        return bestIndex;
+    }
+
     function chartNormalizeInstrumentId(value) {
         return String(value || "").trim().toUpperCase().replace(/^NSE:|^BSE:/, "");
     }
@@ -211,6 +279,10 @@
         constructor(hostId) {
             this.hostId = hostId;
             this.host = document.getElementById(hostId);
+            this.series = null;
+            this.plan = null;
+            this.layout = null;
+            this.lastInspectionIndex = null;
         }
 
         render(series, plan) {
@@ -261,6 +333,21 @@
             const slot = plotWidth / candles.length;
             const bodyWidth = Math.max(2.5, Math.min(9, slot * 0.62));
             const xAt = index => margin.left + slot * index + slot / 2;
+            this.series = series;
+            this.plan = plan;
+            this.layout = {
+                margin,
+                plotWidth,
+                plotRight,
+                priceHeight,
+                volumeTop,
+                volumeHeight,
+                minPrice,
+                maxPrice,
+                slot,
+                xAt,
+                y,
+            };
 
             const grid = Array.from({ length: 6 }, (_, index) => {
                 const ratio = index / 5;
@@ -408,15 +495,37 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
             const low = Math.min(...candles.map(c => Number(c.low)));
             const planStrip = this.renderPlanStrip(plan);
             const rangeLabel = chartReturnedRangeLabel(series, candles.length);
+            const eventMarkers = chartPersistedEvents().map(event => {
+                const index = nearestCandleIndexForTs(candles, event.ts, series.timeframe);
+                if (index === null) return "";
+                const x = xAt(index);
+                const yTop = margin.top + 10;
+                return `
+                    <g class="decision-chart-event-marker ${escapeDecisionHtml(event.kind)}">
+                        <line x1="${x}" y1="${margin.top}" x2="${x}" y2="${volumeTop + volumeHeight}" />
+                        <path d="M ${x - 6} ${yTop} L ${x + 6} ${yTop} L ${x} ${yTop + 9} Z" />
+                        <text x="${x + 8}" y="${yTop + 4}">${escapeDecisionHtml(event.label)}</text>
+                        <title>${escapeDecisionHtml(event.title)}</title>
+                    </g>
+                `;
+            }).join("");
 
             this.host.innerHTML = `
-                <div class="decision-chart-shell" data-chart-host="${escapeDecisionHtml(this.hostId)}">
+                <div class="decision-chart-shell" data-chart-host="${escapeDecisionHtml(this.hostId)}"
+                    tabindex="0" role="group" aria-label="Inspect candles with pointer or arrow keys">
                     <div class="decision-chart-topline">
                         <span>${escapeDecisionHtml(series.timeframe || chartPreferences().timeframe)} · ${escapeDecisionHtml(rangeLabel)}</span>
                         <span>${escapeDecisionHtml(markerLabel)} ${chartPriceLabel(markerPrice)} · Candle close ${chartPriceLabel(latestClose)}</span>
                         <span>High ${chartPriceLabel(high)} · Low ${chartPriceLabel(low)}</span>
                     </div>
                     ${planStrip}
+                    <div class="decision-chart-inspector" data-chart-inspector="${escapeDecisionHtml(this.hostId)}" aria-live="polite">
+                        <span data-chart-inspector-copy>Latest candle selected.</span>
+                        <button type="button" class="decision-chart-reset" data-chart-reset="${escapeDecisionHtml(this.hostId)}"
+                            aria-label="Reset chart inspection to latest candle" title="Reset chart inspection">
+                            <i class="fa-solid fa-rotate-left"></i>
+                        </button>
+                    </div>
                     <svg class="decision-candlestick-chart decision-chart-svg" viewBox="0 0 ${width} ${height}"
                         preserveAspectRatio="none"
                         role="img" aria-label="${escapeDecisionHtml(series.instrument_id)} ${escapeDecisionHtml(series.timeframe || "5m")} candlestick chart">
@@ -434,6 +543,7 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
                         <line x1="${margin.left}" y1="${priceBottom}" x2="${plotRight}" y2="${priceBottom}"
                             class="decision-chart-panel-separator" />
                         ${sessionSeparators}
+                        ${eventMarkers}
                         ${entryZone}
                         ${atrBand}
                         ${bars}
@@ -453,9 +563,86 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
                         <text x="${plotRight + 43}" y="${markerY + 4}" text-anchor="middle"
                             class="decision-chart-price-marker-text">${chartPriceLabel(markerPrice)}</text>
                         ${timeLabels}
+                        <g class="decision-chart-crosshair" data-chart-crosshair="${escapeDecisionHtml(this.hostId)}" hidden>
+                            <line data-chart-crosshair-x x1="${xAt(candles.length - 1)}" y1="${margin.top}"
+                                x2="${xAt(candles.length - 1)}" y2="${volumeTop + volumeHeight}" />
+                            <line data-chart-crosshair-y x1="${margin.left}" y1="${y(latestClose)}"
+                                x2="${plotRight}" y2="${y(latestClose)}" />
+                            <circle data-chart-crosshair-dot cx="${xAt(candles.length - 1)}" cy="${y(latestClose)}" r="4" />
+                        </g>
+                        <rect x="${margin.left}" y="${margin.top}" width="${plotWidth}" height="${volumeTop + volumeHeight - margin.top}"
+                            class="decision-chart-hit-area" data-chart-host-id="${escapeDecisionHtml(this.hostId)}" />
                     </svg>
                 </div>
             `;
+            this.inspectAtIndex(candles.length - 1, { revealCrosshair: false });
+        }
+
+        inspectAtIndex(index, options = {}) {
+            const candles = this.series && Array.isArray(this.series.candles) ? this.series.candles : [];
+            if (!this.host || !candles.length || !this.layout) return;
+            const safeIndex = Math.max(0, Math.min(candles.length - 1, Number(index) || 0));
+            this.lastInspectionIndex = safeIndex;
+            const candle = candles[safeIndex];
+            const ma = chartInspectionValue(candle.moving_average);
+            const atr = chartInspectionValue(candle.atr);
+            const volume = chartInspectionValue(candle.volume, v => v.toLocaleString("en-IN", { maximumFractionDigits: 0 }));
+            const inspector = this.host.querySelector("[data-chart-inspector-copy]");
+            if (inspector) {
+                inspector.innerHTML = `
+                    <strong>${escapeDecisionHtml(formatDecisionTime(candle.ts_open))}</strong>
+                    <span>O ${chartPriceLabel(candle.open)}</span>
+                    <span>H ${chartPriceLabel(candle.high)}</span>
+                    <span>L ${chartPriceLabel(candle.low)}</span>
+                    <span>C ${chartPriceLabel(candle.close)}</span>
+                    <span>Vol ${escapeDecisionHtml(volume)}</span>
+                    <span>SMA ${escapeDecisionHtml(ma)}</span>
+                    <span>ATR ${escapeDecisionHtml(atr)}</span>
+                    <span>${escapeDecisionHtml(chartPlanInspection(this.plan))}</span>
+                `;
+            }
+            const crosshair = this.host.querySelector("[data-chart-crosshair]");
+            const shell = this.host.querySelector("[data-chart-host]");
+            const x = this.layout.xAt(safeIndex);
+            const y = this.layout.y(candle.close);
+            if (crosshair) {
+                crosshair.hidden = options.revealCrosshair === false ? true : false;
+                crosshair.querySelector("[data-chart-crosshair-x]")?.setAttribute("x1", x);
+                crosshair.querySelector("[data-chart-crosshair-x]")?.setAttribute("x2", x);
+                crosshair.querySelector("[data-chart-crosshair-y]")?.setAttribute("y1", y);
+                crosshair.querySelector("[data-chart-crosshair-y]")?.setAttribute("y2", y);
+                crosshair.querySelector("[data-chart-crosshair-dot]")?.setAttribute("cx", x);
+                crosshair.querySelector("[data-chart-crosshair-dot]")?.setAttribute("cy", y);
+            }
+            if (shell) {
+                shell.setAttribute(
+                    "aria-label",
+                    `Inspect candles with pointer or arrow keys. Selected ${safeIndex + 1} of ${candles.length}, ${formatDecisionTime(candle.ts_open)}, close ${chartPriceLabel(candle.close)}`
+                );
+            }
+        }
+
+        inspectFromPointer(event, hitArea) {
+            const candles = this.series && Array.isArray(this.series.candles) ? this.series.candles : [];
+            if (!candles.length || !this.layout || !hitArea) return;
+            const rect = hitArea.getBoundingClientRect();
+            if (!rect.width) return;
+            const localX = this.layout.margin.left
+                + ((event.clientX - rect.left) / rect.width) * this.layout.plotWidth;
+            const raw = (localX - this.layout.margin.left) / this.layout.slot;
+            this.inspectAtIndex(Math.floor(raw));
+        }
+
+        focusShell() {
+            if (!this.host) return;
+            activeInspectionHostId = this.hostId;
+            this.host.querySelector("[data-chart-host]")?.focus({ preventScroll: true });
+        }
+
+        hideCrosshair() {
+            if (!this.host) return;
+            const crosshair = this.host.querySelector("[data-chart-crosshair]");
+            if (crosshair) crosshair.hidden = true;
         }
 
         renderPlanStrip(plan) {
@@ -732,7 +919,82 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         if (event.target === chartModalEl) closeModal(chartModalEl);
     });
 
+    document.addEventListener("pointermove", event => {
+        const hitArea = event.target.closest("[data-chart-host-id]");
+        if (!hitArea) return;
+        const controller = decisionChartControllers.get(hitArea.getAttribute("data-chart-host-id"));
+        if (controller) controller.inspectFromPointer(event, hitArea);
+    });
+
+    document.addEventListener("pointerdown", event => {
+        const hitArea = event.target.closest("[data-chart-host-id]");
+        if (!hitArea) return;
+        const controller = decisionChartControllers.get(hitArea.getAttribute("data-chart-host-id"));
+        if (!controller) return;
+        controller.inspectFromPointer(event, hitArea);
+        controller.focusShell();
+    });
+
     document.addEventListener("click", event => {
+        const hitArea = event.target.closest("[data-chart-host-id]");
+        if (!hitArea) return;
+        const controller = decisionChartControllers.get(hitArea.getAttribute("data-chart-host-id"));
+        if (!controller) return;
+        controller.inspectFromPointer(event, hitArea);
+        controller.focusShell();
+    });
+
+    document.addEventListener("pointerleave", event => {
+        const hitArea = event.target.closest("[data-chart-host-id]");
+        if (!hitArea) return;
+        const controller = decisionChartControllers.get(hitArea.getAttribute("data-chart-host-id"));
+        if (controller) controller.hideCrosshair();
+    }, true);
+
+    document.addEventListener("focusin", event => {
+        const shell = event.target.closest("[data-chart-host]");
+        if (!shell) return;
+        activeInspectionHostId = shell.getAttribute("data-chart-host");
+        const controller = decisionChartControllers.get(shell.getAttribute("data-chart-host"));
+        if (!controller) return;
+        const candles = controller.series && Array.isArray(controller.series.candles)
+            ? controller.series.candles
+            : [];
+        controller.inspectAtIndex(controller.lastInspectionIndex ?? candles.length - 1);
+    });
+
+    document.addEventListener("keydown", event => {
+        const shell = event.target.closest("[data-chart-host]");
+        const passiveFocus = event.target === document.body || event.target === document.documentElement;
+        const hostId = shell ? shell.getAttribute("data-chart-host") : activeInspectionHostId;
+        if (!hostId || (!shell && !passiveFocus)) return;
+        const controller = decisionChartControllers.get(hostId);
+        if (!controller || !controller.series || !Array.isArray(controller.series.candles)) return;
+        const last = controller.series.candles.length - 1;
+        const current = controller.lastInspectionIndex ?? last;
+        let next = null;
+        if (event.key === "ArrowLeft") next = current - 1;
+        if (event.key === "ArrowRight") next = current + 1;
+        if (event.key === "Home") next = 0;
+        if (event.key === "End" || event.key.toLowerCase() === "r") next = last;
+        if (next === null) return;
+        event.preventDefault();
+        controller.inspectAtIndex(next);
+    });
+
+    document.addEventListener("click", event => {
+        const resetButton = event.target.closest("[data-chart-reset]");
+        if (resetButton) {
+            const controller = decisionChartControllers.get(resetButton.getAttribute("data-chart-reset"));
+            const candles = controller && controller.series && Array.isArray(controller.series.candles)
+                ? controller.series.candles
+                : [];
+            if (controller && candles.length) {
+                controller.inspectAtIndex(candles.length - 1);
+                controller.focusShell();
+            }
+            return;
+        }
         const fullscreenButton = event.target.closest("#decision-chart-open-fullscreen");
         if (fullscreenButton) {
             openChartModal();

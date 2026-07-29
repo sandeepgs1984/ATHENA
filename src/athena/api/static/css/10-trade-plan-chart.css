@@ -392,6 +392,14 @@
     width: 100%;
 }
 
+.decision-chart-shell:focus {
+    outline: none;
+}
+
+.decision-chart-shell:focus-visible .decision-chart-inspector {
+    box-shadow: inset 0 0 0 1px rgba(94, 234, 212, 0.32);
+}
+
 .decision-chart-topline {
     align-items: center;
     background: rgba(2, 6, 23, 0.46);
@@ -489,6 +497,52 @@
     color: var(--tone-bad-text);
 }
 
+.decision-chart-inspector {
+    align-items: center;
+    background: rgba(2, 6, 23, 0.34);
+    border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+    color: var(--text-muted);
+    display: flex;
+    font-family: var(--font-mono);
+    font-size: var(--text-0-62);
+    gap: var(--space-8);
+    justify-content: space-between;
+    min-height: 30px;
+    padding: var(--space-7) var(--space-10);
+}
+
+.decision-chart-inspector span[data-chart-inspector-copy] {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-8);
+}
+
+.decision-chart-inspector strong {
+    color: var(--text-secondary);
+    font-weight: 850;
+}
+
+.decision-chart-reset {
+    align-items: center;
+    background: rgba(15, 23, 42, 0.75);
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    border-radius: 4px;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: inline-flex;
+    flex: 0 0 auto;
+    height: 24px;
+    justify-content: center;
+    width: 28px;
+}
+
+.decision-chart-reset:hover,
+.decision-chart-reset:focus-visible {
+    border-color: rgba(94, 234, 212, 0.42);
+    color: var(--accent-cyan);
+}
+
 .decision-candlestick-chart {
     display: block;
     flex: 1;
@@ -532,6 +586,43 @@
     font-family: var(--font-mono);
     font-size: var(--text-0-5625);
     font-weight: 750;
+}
+
+.decision-chart-event-marker line {
+    stroke: rgba(250, 204, 21, 0.6);
+    stroke-dasharray: 2 5;
+    stroke-width: 1;
+}
+
+.decision-chart-event-marker path {
+    fill: rgba(250, 204, 21, 0.88);
+    stroke: rgba(15, 23, 42, 0.8);
+    stroke-width: 1;
+}
+
+.decision-chart-event-marker text {
+    fill: var(--tone-warn-text);
+    font-family: var(--font-mono);
+    font-size: var(--text-0-5625);
+    font-weight: 800;
+}
+
+.decision-chart-event-marker.journal line,
+.decision-chart-event-marker.journal path {
+    stroke: rgba(56, 189, 248, 0.65);
+}
+
+.decision-chart-event-marker.journal path {
+    fill: rgba(56, 189, 248, 0.86);
+}
+
+.decision-chart-event-marker.outcome line,
+.decision-chart-event-marker.outcome path {
+    stroke: rgba(34, 197, 94, 0.65);
+}
+
+.decision-chart-event-marker.outcome path {
+    fill: rgba(34, 197, 94, 0.86);
 }
 
 .decision-candle line {
@@ -639,6 +730,26 @@
     font-family: var(--font-mono);
     font-size: var(--text-0-5625);
     font-weight: 800;
+}
+
+.decision-chart-crosshair line {
+    pointer-events: none;
+    stroke: rgba(226, 232, 240, 0.48);
+    stroke-dasharray: 4 4;
+    stroke-width: 1;
+}
+
+.decision-chart-crosshair circle {
+    fill: rgba(94, 234, 212, 0.84);
+    pointer-events: none;
+    stroke: rgba(15, 23, 42, 0.9);
+    stroke-width: 1.5;
+}
+
+.decision-chart-hit-area {
+    cursor: crosshair;
+    fill: transparent;
+    pointer-events: all;
 }
 
 .decision-chart-legend {

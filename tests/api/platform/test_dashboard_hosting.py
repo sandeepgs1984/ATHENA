@@ -119,6 +119,20 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "function saveChartPreferences" in js
     assert "function renderChartControlState" in js
     assert "function chartReturnedRangeLabel" in js
+    assert "function chartInspectionValue" in js
+    assert "function chartPlanInspection" in js
+    assert "inspectAtIndex" in js
+    assert "inspectFromPointer" in js
+    assert "hideCrosshair" in js
+    assert "focusShell" in js
+    assert "activeInspectionHostId" in js
+    assert "hitArea.getBoundingClientRect()" in js
+    assert "event.currentTarget.getBoundingClientRect()" not in js
+    assert 'role="slider"' not in js
+    assert 'tabindex="0" role="slider"' not in js
+    assert 'tabindex="0" role="group"' in js
+    assert "pointerdown" in js
+    assert "pointer-events: all" in css
     assert "function reloadActiveDecisionChart" in js
     assert "data-chart-timeframe=\"1m\"" not in js
     assert "data-chart-timeframe=\"1m\"" not in html
@@ -129,8 +143,25 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert 'class="decision-chart-controls chart-modal-controls"' in html
     assert "No persisted ${escapeDecisionHtml(timeframe)} candles" in js
     assert "of ${requested} requested" in js
+    assert "data-chart-inspector-copy" in js
+    assert "decision-chart-hit-area" in js
+    assert "decision-chart-crosshair" in js
+    assert "data-chart-reset" in js
+    assert "Keyboard" not in html
+    assert "Unavailable" in js
+    assert "ArrowLeft" in js
+    assert "ArrowRight" in js
     assert "timeframe=${encodeURIComponent(prefs.timeframe)}&limit=${encodeURIComponent(prefs.limit)}" in js
     assert "decision-chart-session-separator" in js
+    assert "function chartPersistedEvents" in js
+    assert "function nearestCandleIndexForTs" in js
+    assert "decision-chart-event-marker" in js
+    assert "activeJournalEntry.action_ts" in js
+    assert "activeTradeOutcome.closed_ts" in js
+    assert "return null" in js
+    assert ".decision-chart-event-marker" in css
+    assert ".decision-chart-event-marker.journal" in css
+    assert ".decision-chart-event-marker.outcome" in css
     assert "latest candle" in js
     assert "skipToast: true" in js
     assert "session-close analysis" in js
@@ -164,8 +195,13 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "decision-chart-price-marker-line" in css
     assert "decision-chart-price-marker-box" in css
     assert "decision-chart-shell" in css
-    assert "dashboard.css?v=9.79.0" in html
-    assert "dashboard.js?v=9.79.0" in html
+    assert "width: 80vw" in css
+    assert "height: 80vh" in css
+    assert ".chart-modal-container .modal-body" in css
+    assert "overflow: hidden" in css
+    assert ".chart-modal-canvas .decision-chart-shell" in css
+    assert "dashboard.css?v=9.85.0" in html
+    assert "dashboard.js?v=9.85.0" in html
     assert "function chartPlanLevelPct" in js
     assert "function chartPlanValidityLabel" in js
     assert "function refreshActiveDecisionChart" in js

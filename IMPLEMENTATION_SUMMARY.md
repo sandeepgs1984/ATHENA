@@ -6,6 +6,52 @@ status updated on approval.
 
 ---
 
+## CH-5 — Decision and event chart markers (ready for owner review)
+
+| | |
+|---|---|
+| Completed | 2026-07-29 |
+| Objective | Connect price action with ATHENA's persisted decision timeline without manufacturing signals |
+| Scope | Added chart event markers for selected decision timestamp, owner journal response timestamp, and realized outcome close timestamp when those persisted records exist and fall on or near the rendered candle window; omitted markers for unavailable or out-of-window records; refreshed chart markers when journal/outcome data loads or changes |
+| Files created | None |
+| Files modified | `src/athena/api/static/js/16-decision-brief-chart.js`, `src/athena/api/static/js/19-decision-brief-history.js`, `src/athena/api/static/css/10-trade-plan-chart.css`, `src/athena/api/static/css/08-strategies-backtest.css`, `src/athena/api/static/index.html`, `tests/api/platform/test_dashboard_hosting.py`, `docs/design/ATHENA-SYMBOL-CHART-ROADMAP.md`, `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md` |
+| Public APIs added | None |
+| Tests | `rtk node --check src/athena/api/static/js/16-decision-brief-chart.js` — passed; `rtk node --check src/athena/api/static/js/19-decision-brief-history.js` — passed; `rtk pytest tests/api/platform/test_dashboard_hosting.py -q` — 3 passed; `rtk git diff HEAD --check` — passed; `rtk pytest -q` — 1118 passed |
+| Coverage | Static hosting regression locks in persisted event source functions, nearest-candle timestamp mapping, event marker classes, journal/outcome marker refresh, modal viewport sizing, and `9.84.0` asset cache-busters |
+| Architecture compliance | No backend, provider, broker, scoring, risk, or domain contract changes. CH-5 consumes only existing selected-decision, journal, outcome, and candle payload/state |
+| ADR compliance | ADR-005 preserved: markers are created only from persisted record timestamps; no placeholder revalidation markers were added because the existing payload does not expose a distinct persisted revalidation timestamp |
+| Risks discovered | Revalidation markers require an additive read-only persisted event source or DTO field in a future owner-reviewed milestone/ADR path; this milestone deliberately skips them rather than inferring them |
+| Technical debt introduced | None |
+| Suggested improvements | CH-6 should browser-verify normal/modal marker visibility and no-data/stale states across desktop and compact widths |
+| Remaining work | Owner review of CH-5; CH-6 blocked until approval |
+| Status | 🔄 Ready for owner review |
+| Branch | feature/live-dashboard |
+
+---
+
+## CH-4 — Interactive chart inspection (approved)
+
+| | |
+|---|---|
+| Completed | 2026-07-29 |
+| Objective | Make the Decision Brief chart precise enough for candle-by-candle decision review without adding new chart-derived signals |
+| Scope | Added a persistent chart inspector row, pointer crosshair, OHLCV readout, SMA/ATR readout with unavailable handling for missing warmup values, TradePlan level readout, latest-candle reset affordance, stable pointer/tap and keyboard inspection controls for embedded and dedicated chart contexts, and enlarged the dedicated chart modal to roughly 80% of the viewport |
+| Files created | None |
+| Files modified | `src/athena/api/static/js/16-decision-brief-chart.js`, `src/athena/api/static/css/10-trade-plan-chart.css`, `src/athena/api/static/index.html`, `tests/api/platform/test_dashboard_hosting.py`, `docs/design/ATHENA-SYMBOL-CHART-ROADMAP.md`, `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md` |
+| Public APIs added | None |
+| Tests | `rtk node --check src/athena/api/static/js/13-decision-brief-core.js` — passed; `rtk node --check src/athena/api/static/js/16-decision-brief-chart.js` — passed; `rtk pytest tests/api/platform/test_dashboard_hosting.py -q` — 3 passed; `rtk git diff HEAD --check` — passed; `rtk pytest -q` — 1118 passed |
+| Coverage | Static hosting regression locks in the inspector helper functions, pointer inspection, delegated hit-area coordinate math, crosshair elements, reset control, keyboard arrow handling, unavailable indicator wording, dedicated modal viewport sizing, and asset cache-busters through `9.84.0` |
+| Architecture compliance | No backend, provider, broker, scoring, risk, or domain contract changes. CH-4 reads only candle, indicator, and selected TradePlan values already present in the existing chart payload/state |
+| ADR compliance | ADR-004 preserved: static HTML/CSS/vanilla JS only. ADR-005 preserved: missing indicator values render as `Unavailable`, never zero or inferred values |
+| Risks discovered | Initial CH-4 pointer inspection used delegated document event coordinates instead of the SVG hit-area rectangle, which broke tap selection and made keyboard state inconsistent; fixed by mapping coordinates from the actual hit area and keeping focus on the chart shell. Authenticated visual inspection remains owner-side because the running workstation is behind the owner unlock gate; static regression and syntax checks cover the shipped shell and interaction wiring |
+| Technical debt introduced | None |
+| Suggested improvements | CH-5 should add decision/event markers only from persisted decision/revalidation/journal/outcome records, with an ADR if existing payloads are insufficient |
+| Remaining work | None; CH-5 implemented after approval |
+| Status | ✅ Approved by owner on 2026-07-29 |
+| Branch | feature/live-dashboard |
+
+---
+
 ## CH-3 — Timeframe, range, and session controls (ready for owner review)
 
 | | |
@@ -23,8 +69,8 @@ status updated on approval.
 | Risks discovered | Local SQLite verification showed `NSE:TATACAP` currently has 56 persisted `5m` candles, 62 daily candles, and no persisted `15m` candles yet; 15m will populate after the next live ingestion cycle with the updated config. The active provider does not declare 1m capability, so unsupported 1m controls were removed. Range controls cannot display more bars than the ledger contains. Authenticated click-through visual verification remains owner-side because the running workstation is behind the owner unlock gate; TestClient verification confirmed the updated shell asset versions |
 | Technical debt introduced | None |
 | Suggested improvements | CH-4 should add crosshair/inspection behavior with OHLCV and rendered indicator readouts without adding new data sources |
-| Remaining work | Owner review of CH-3; CH-4 blocked until approval |
-| Status | 🔄 Ready for owner review |
+| Remaining work | None; CH-4 implemented after approval |
+| Status | ✅ Approved by owner on 2026-07-29 |
 | Branch | feature/live-dashboard |
 
 ---

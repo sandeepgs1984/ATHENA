@@ -240,16 +240,40 @@
 
 /* Open Chart / Compare quick actions (UX-9) */
 .chart-modal-container {
-    max-width: 960px;
-    width: 95%;
+    height: 80vh;
+    max-height: 82vh;
+    max-width: 80vw;
+    width: 80vw;
+}
+
+.chart-modal-container .modal-body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
 }
 
 .chart-modal-canvas {
-    min-height: 360px;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.chart-modal-canvas .decision-chart-shell {
+    height: 100%;
+    min-height: 0;
 }
 
 .chart-modal-canvas .decision-candlestick-chart {
-    height: 520px;
+    flex: 1 1 auto;
+    height: auto;
+    min-height: 0;
+}
+
+.chart-modal-container .decision-chart-legend,
+.chart-modal-container .chart-modal-controls {
+    flex: 0 0 auto;
 }
 
 .compare-modal-container {

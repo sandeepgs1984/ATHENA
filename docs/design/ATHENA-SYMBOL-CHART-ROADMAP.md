@@ -1,6 +1,6 @@
 # ATHENA Symbol Chart Excellence Roadmap
 
-**Status:** CH-0, CH-1, and CH-2 approved; CH-3 ready for owner review
+**Status:** CH-0 through CH-4 approved; CH-5 ready for owner review
 **Date:** 2026-07-29
 **Scope:** Decision Brief symbol chart presentation only
 **Owner goal:** World-class, trading-grade chart presentation without adding
@@ -221,7 +221,7 @@ resolutions without leaving the Decision Brief.
 - All labels use the correct local trading-session interpretation.
 - Tests cover query construction and fallback behavior.
 
-**Status:** Implemented on 2026-07-29; ready for owner review.
+**Status:** Approved by owner on 2026-07-29.
 
 ---
 
@@ -243,6 +243,8 @@ resolutions without leaving the Decision Brief.
 - Missing indicator values display as unavailable, not zero.
 - Interaction works in normal and modal chart contexts.
 - Visual QA covers desktop and compact widths.
+
+**Status:** Approved by owner on 2026-07-29.
 
 ---
 
@@ -270,6 +272,8 @@ manufacturing signals.
 - Every marker is traceable to a persisted record.
 - Marker tooltip identifies source record type and timestamp.
 - Empty history shows no markers rather than placeholder examples.
+
+**Status:** Implemented on 2026-07-29; ready for owner review.
 
 ---
 
