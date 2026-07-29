@@ -675,4 +675,141 @@ Re-confirmed sector/market-cap category are genuine gaps (re-checked `Instrument
 
 ---
 
+### PROPOSAL — Scoring differentiation & unwired engine inputs (owner-reported, 2026-07-29)
+
+**Status: proposal only. No code written. Awaiting owner approval before any implementation.**
+
+Owner report: "values like score, risk, confidence are same for all the
+symbols until unless i click re-validate." Audited against the live
+`db/athena.db`, batch run `run-refresh-20260729T091348-73723088`
+(363 symbols). **The report is correct, and it is a backend data defect,
+not a UI defect.**
+
+#### Audit evidence
+
+Persistence and the API read path are healthy: all 363 decisions resolve
+to their own `decision_reports[decision_id]` entry, so the 2026-07-26
+run_id-collision class of bug is **not** recurring here. The frontend is
+also clear — `selectBriefing` nulls `activeDepth` and `loadDecisionDepth`
+carries a correct `activeDecisionId !== decisionId` race guard. The
+persisted values themselves are genuinely near-identical:
+
+| Metric | Distinct values across 363 symbols |
+|---|---|
+| `risk.overall` | **2** — 328 symbols at 45.67, 35 at 61.67 |
+| `confidence.overall` | 10 |
+| `score.composite` | 21 |
+
+Risk's degeneracy is mathematically forced, and was verified as an exact
+1:1 mapping: of its six dimensions, two are permanently UNKNOWN
+(`event_risk`, `concentration_indicator`), three are identical for every
+symbol because they derive from index-wide regime/market health
+(`volatility_risk` 50, `gap_risk` 70, `market_environment_risk` 48.75),
+and exactly one varies (`liquidity_risk`, a binary 20-or-80 volume
+threshold). One binary input can only produce two outcomes. Confidence
+degenerates the same way: three constant dimensions, one permanently
+UNKNOWN (`data_freshness`), and only `cross_engine_agreement` and
+`consistency` moving.
+
+Re-validate does not correct anything — it re-runs one symbol at a newer
+timestamp against fresher intraday data, so that symbol may cross a band
+boundary and merely *look* distinct. Observed: ZEEL scored 65.00 in the
+09:13 batch and 63.24 when re-validated at 09:31.
+
+#### Root cause: three engine inputs that are accepted but never passed
+
+| # | Engine parameter | Consequence | Data available today? |
+|---|---|---|---|
+| D-1 | `RiskEngine.assess(calendar_context=...)` | `event_risk` permanently UNKNOWN | **Yes** — `CalendarEngine` already built at `owner_validation.py:104` |
+| D-2 | `RiskEngine.assess(universe=...)` | `concentration_indicator` permanently UNKNOWN | **Yes** — `UniverseResult` already built at `owner_validation.py:148` |
+| D-3 | `ScoringEngine.score(sector_health=...)` | `sector_quality` (**weight 15 of 100**) permanently UNKNOWN for every symbol ever scored — every report shows `completeness: 0.85` | **No** — see blocker below |
+
+D-1 and D-2 are pure wiring: both objects already exist inside
+`OwnerValidationPipeline.run()` (lines 75–331) but are out of scope in
+`_scan_eligible()` (lines 564–772), so they need threading through as
+two parameters. No new data source, no contract change.
+
+**D-3 is blocked on data, not on wiring.** `SectorHealthEngine` was built
+and approved under M2.3 and `config/sector_health.json` exists, but its
+trend/momentum/volatility dimensions consume a *sector index* candle
+series, and the repository holds candles for only three non-equity
+instruments: `NSE:NIFTY 50`, `NSE:NIFTY BANK`, `NSE:INDIA VIX`. No
+sector indices (NIFTY IT, NIFTY PHARMA, …) are ingested. Sector
+*metadata* is present and good (`instruments.sector`, 15+ sectors, only
+10 nulls), so a constituent-derived sector aggregate is feasible — but
+that is a new computation method, not the approved M2.3 engine, and
+would need its own design decision.
+
+#### Expected impact of enabling `sector_quality` — this is the risk
+
+Because the composite is a weighted mean over *known* components only,
+enabling a weight-15 dimension rescales every score in the system:
+`new = 0.85 × current + 0.15 × sector_value`. Modelled against the 363
+live decisions (current mix: TRADE 159, WATCH 167, NO_TRADE 37):
+
+| Sector value | Resulting mix | Symbols whose decision changes |
+|---|---|---|
+| 20 (weak sector) | TRADE 70, WATCH 203, NO_TRADE 90 | **142 / 363 (39.1%)** |
+| 50 (mixed sector) | TRADE 149, WATCH 177, NO_TRADE 37 | 10 / 363 (2.8%) |
+| 80 (strong sector) | TRADE 203, WATCH 155, NO_TRADE 5 | 76 / 363 (20.9%) |
+
+**218 of 363 symbols (60.1%) would have their TRADE/WATCH/NO_TRADE band
+determined by their sector score alone.** This is not a cosmetic change
+and must not ship without owner sign-off on the recalibration.
+
+#### Proposed milestones (small, independently reviewable)
+
+| Milestone | Scope | Gate | Status |
+|---|---|---|---|
+| **SD-1** Wire calendar + universe into Risk | Thread the existing `CalendarContext` and `UniverseResult` from `run()` into `_scan_eligible()` → `RiskEngine.assess()`. Activates `event_risk` and `concentration_indicator`. Note: `concentration_indicator` is universe-breadth-derived and therefore shared across symbols — it raises risk *completeness* and honesty, it does **not** add per-symbol differentiation. Only `event_risk` can vary per symbol, and only on instruments with calendar events | None — existing objects, existing parameters, no contract/schema change | ⏳ Proposed |
+| **SD-2** Sector health data decision | Owner decision, not an AI call: either (a) ingest real NSE sector indices via Kite (new data source → **DD-gated**), or (b) derive sector aggregates from the constituent candles already held, using `instruments.sector` (new method → needs a design decision / ADR since M2.3's engine contract assumes an index series) | **DD or ADR** depending on option chosen | ⏳ Proposed — blocked on owner direction |
+| **SD-3** Wire sector_quality + recalibrate thresholds | Only after SD-2 lands. Pass `sector_health` into `ScoringEngine.score()`, then re-tune `config/decision.json` watch/trade thresholds against the impact table above so the change doesn't silently reclassify 20–39% of the book. Ships with a before/after replay diff | Config change to decision thresholds — **owner approval required** | ⏳ Proposed — blocked on SD-2 |
+| **SD-4** Scoring granularity analysis | Analysis + written proposal only, no code (see below) | None — analysis deliverable | ⏳ Proposed |
+
+#### SD-4 — coarse banding analysis (owner asked for analysis, no code)
+
+Even with all three inputs wired, per-symbol differentiation stays
+chunky, because `config/scoring.json` collapses continuous signals into
+a handful of fixed buckets:
+
+| Component | Weight | Current mapping | Distinct values observed |
+|---|---|---|---|
+| `momentum` | 20 | RSI → 3 buckets at thresholds 40 / 60 (20 / 50 / 80 pts) | 3 |
+| `liquidity` | 10 | Volume MA vs a single 500k threshold (30 / 70 pts) | 2 |
+| `technical_structure` | 15 | Above/below MA (30 / 70) + fixed MACD bonus 10 | 4 |
+| `trend` | 20 | Index regime label + fixed ADX>25 bonus 10 | 2 |
+| `market_quality` | 20 | Index-wide — **identical for all 363 symbols** (51.25) | 1 |
+
+A symbol at RSI 40.1 and one at RSI 59.9 receive the exact same 50
+momentum points, and a symbol at RSI 59.9 versus 60.1 jumps a full 30
+points on a rounding-width difference — the bands are simultaneously too
+flat inside and too cliff-edged at the boundary. SD-4 will produce a
+written proposal for continuous (piecewise-linear interpolation between
+the existing anchor points) scoring that preserves the current anchor
+values exactly at the band centres, so it is a strict refinement rather
+than a re-weighting, plus a replay-based before/after distribution diff.
+No code until that proposal is approved.
+
+#### Migration / re-validation plan (applies to SD-3)
+
+Any change to scoring output makes every already-persisted decision
+non-comparable with new ones. Proposed sequence: (1) take a repository
+backup via the existing backup path; (2) land the change behind a full
+replay of the current day's universe so the before/after diff is
+reviewable *before* it becomes the live book; (3) once approved, use the
+existing "Clear all" admin utility for a clean slate rather than leaving
+a mix of old-formula and new-formula decisions side by side — the same
+clean-slate approach already adopted for the 2026-07-26 collision fix.
+
+#### Incidental finding (not the reported bug, not fixed)
+
+`loadDecisionDepth`'s catch block calls `renderDecisionDepth(null)` but
+not `renderSidebarQuickSummary()`, so a depth-load *failure* can leave
+the right-rail quick summary showing the previously selected symbol's
+numbers. Not the cause of the owner's report (all 363 depth loads
+resolve successfully), but worth folding into whichever milestone
+touches this file next.
+
+---
+
 *Status legend: a milestone is "In Progress" (🔄) when actively being designed or built, "Approved" (✅) only when the owner signs off. Never two milestones in flight.*
