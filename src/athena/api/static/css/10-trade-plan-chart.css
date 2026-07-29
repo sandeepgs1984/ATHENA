@@ -41,6 +41,38 @@
     overflow-wrap: anywhere;
 }
 
+.trade-plan-level {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--space-6);
+    flex-wrap: wrap;
+}
+
+.trade-plan-hero-metric.target .trade-plan-hero-value {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+}
+
+.trade-plan-level-delta {
+    border-radius: 999px;
+    font-size: var(--text-0-62);
+    font-weight: 800;
+    line-height: 1;
+    padding: var(--space-3) var(--space-6);
+    white-space: nowrap;
+}
+
+.trade-plan-level-delta.stop {
+    background: rgba(239, 68, 68, 0.12);
+    color: var(--tone-bad-text);
+}
+
+.trade-plan-level-delta.target {
+    background: rgba(34, 197, 94, 0.12);
+    color: var(--tone-good-text);
+}
+
 .trade-plan-hero-caption {
     display: block;
     color: var(--text-muted);
@@ -670,4 +702,3 @@
     font-size: var(--text-0-9);
     color: var(--text-primary);
 }
-

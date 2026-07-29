@@ -14,6 +14,30 @@
         return isShort ? ((entryMid - target) / entryMid) * 100 : ((target - entryMid) / entryMid) * 100;
     }
 
+    function computeTradePlanLevelPct(plan, price, direction) {
+        const entryMid = (Number(plan && plan.entry_low) + Number(plan && plan.entry_high)) / 2;
+        const level = Number(price);
+        if (!Number.isFinite(entryMid) || entryMid === 0 || !Number.isFinite(level)) return null;
+        const isShort = String(direction || "").toUpperCase() === "SHORT";
+        return isShort ? ((entryMid - level) / entryMid) * 100 : ((level - entryMid) / entryMid) * 100;
+    }
+
+    function formatTradePlanLevelPct(pct) {
+        if (pct === null || pct === undefined || !Number.isFinite(Number(pct))) return "";
+        const n = Number(pct);
+        return `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`;
+    }
+
+    function renderTradePlanLevel(price, pct, tone) {
+        const pctLabel = formatTradePlanLevelPct(pct);
+        return `
+            <span class="trade-plan-level">
+                <span>${formatDecisionPrice(price)}</span>
+                ${pctLabel ? `<span class="trade-plan-level-delta ${tone}">${escapeDecisionHtml(pctLabel)}</span>` : ""}
+            </span>
+        `;
+    }
+
     function renderTradePlan(plan, decisionType, direction) {
         if (!plan) {
             const label = decisionType ? friendlyAnalysisName(decisionType) : "non-Trade";
@@ -42,7 +66,14 @@
             statusClass = "pending";
         }
         const targetList = Array.isArray(plan.targets) ? plan.targets : [];
-        const targets = targetList.length ? targetList.map(formatDecisionPrice).join(" · ") : "—";
+        const stopDeltaPct = computeTradePlanLevelPct(plan, plan.stop_loss, direction);
+        const targets = targetList.length
+            ? targetList.map(target => renderTradePlanLevel(
+                target,
+                computeTradePlanLevelPct(plan, target, direction),
+                "target"
+            )).join("")
+            : "—";
         const returnPct = computeExpectedReturnPct(plan, direction);
         const returnLabel = returnPct !== null
             ? `${returnPct >= 0 ? "+" : ""}${returnPct.toFixed(1)}%`
@@ -67,7 +98,7 @@
                     </div>
                     <div class="trade-plan-hero-metric invalidation">
                         <span class="trade-plan-hero-label">Stop</span>
-                        <strong class="trade-plan-hero-value">${formatDecisionPrice(plan.stop_loss)}</strong>
+                        <strong class="trade-plan-hero-value">${renderTradePlanLevel(plan.stop_loss, stopDeltaPct, "stop")}</strong>
                     </div>
                     <div class="trade-plan-hero-metric target">
                         <span class="trade-plan-hero-label">${targetList.length > 1 ? "Targets" : "Target"}</span>
@@ -494,9 +525,19 @@
         if (recommendationBandEl) recommendationBandEl.textContent = "—";
     }
 
-    function gaugeToneColor(view) {
+    function scoreBandColor(band) {
+        if (band === "Excellent" || band === "Strong") return "var(--success)";
+        if (band === "Good") return "var(--accent)";
+        if (band === "Fair") return "var(--warning)";
+        if (band === "Weak") return "var(--danger)";
+        return "var(--text-muted)";
+    }
+
+    function gaugeToneColor(view, band = null) {
+        if (view.status !== "OK") return "var(--text-muted)";
+        if (view.tone === "score") return scoreBandColor(band || qualityBand(view.data.value));
         const level = String(view.level || "").toUpperCase();
-        if (view.status !== "OK" || !level) return "var(--text-muted)";
+        if (!level) return "var(--text-muted)";
         const highIsGood = view.tone !== "risk";
         if (level.includes("HIGH") || level.includes("STRONG")) {
             return highIsGood ? "var(--success)" : "var(--danger)";
@@ -522,10 +563,10 @@
             // never actually computed (owner-reported mismatch: banner said
             // 66.92, gauge said 0.0/Weak).
             const known = view.status === "OK";
-            const color = known ? gaugeToneColor(view) : "var(--text-muted)";
             const band = known
                 ? (tone === "risk" ? riskBand(view.data.value) : qualityBand(view.data.value))
                 : null;
+            const color = known ? gaugeToneColor(view, band) : "var(--text-muted)";
             if (valueEl) valueEl.textContent = known ? view.valueLabel : "—";
             if (bandEl) {
                 bandEl.textContent = band || "Unknown";

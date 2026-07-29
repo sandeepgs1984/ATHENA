@@ -216,7 +216,10 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "DECISION_CAROUSEL_SECTIONS" in js
     assert "function decisionTypePriority" in js
     assert "regardless of timestamp" in js
+    assert "linear-gradient(${section.wash}, ${section.wash}), rgba(15, 23, 42, 0.92)" in js
     assert ".decision-carousel-section" in css
+    assert ".decision-carousel-head" in css
+    assert "position: sticky" in css
     assert ".symbol-row" in css
 
     # Sticky cockpit header: live score/confidence/risk gauges + a five-tab
@@ -287,13 +290,27 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".risk-summary-row" in css
     assert ".quality-ladder" in css
     assert ".safety-checklist-summary" in css
+    # Owner-requested: Score has no backend `level`, so the header Score
+    # gauge must color from the existing client-side score quality band
+    # instead of falling through to muted grey forever.
+    assert "function scoreBandColor" in js
+    assert "view.tone === \"score\"" in js
+    assert "band || qualityBand(view.data.value)" in js
 
     # UX-3: Trade Plan visual redesign (owner UX audit) — bigger numbers,
     # plus a genuinely new Expected Return % computed from the plan's own
     # persisted entry/target values, never fabricated
     assert "function computeExpectedReturnPct" in js
+    assert "function computeTradePlanLevelPct" in js
+    assert "function renderTradePlanLevel" in js
+    assert "trade-plan-level-delta ${tone}" in js
+    assert "renderTradePlanLevel(plan.stop_loss, stopDeltaPct, \"stop\")" in js
+    assert "computeTradePlanLevelPct(plan, target, direction)" in js
+    assert "\"target\"" in js
     assert ".trade-plan-hero-grid" in css
     assert ".trade-plan-hero-value" in css
+    assert ".trade-plan-level-delta.stop" in css
+    assert ".trade-plan-level-delta.target" in css
 
     # UX-3b: chart ATR/moving-average/volume overlay — plotted from the
     # candle-level atr/moving_average fields the API now serves, honestly
@@ -739,7 +756,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "accent: \"rgba(34, 197, 94," in js  # Trade
     assert "accent: \"rgba(245, 158, 11," in js  # Watch
     assert "accent: \"rgba(148, 163, 184," in js  # No trade / Insufficient data
-    assert "background: ${section.wash}; border-left-color: ${section.accent}" in js
+    assert "linear-gradient(${section.wash}, ${section.wash}), rgba(15, 23, 42, 0.92)" in js
+    assert "border-left-color: ${section.accent}" in js
     assert "filter: brightness(1.25)" in css
 
     # Fourth fix pass (owner follow-up, same day): even the header's thin

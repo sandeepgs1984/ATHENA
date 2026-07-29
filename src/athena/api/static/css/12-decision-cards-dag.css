@@ -216,6 +216,11 @@
     border-left: 3px solid transparent;
     filter: brightness(1);
     transition: filter var(--transition-speed) ease;
+    position: sticky;
+    top: 0;
+    z-index: 4;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
 }
 
 .decision-carousel-head:hover {
@@ -1037,4 +1042,3 @@
     flex-wrap: wrap;
     gap: var(--space-6);
 }
-

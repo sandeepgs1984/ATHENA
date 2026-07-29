@@ -340,7 +340,7 @@
             sectionEl.className = "decision-carousel-section";
             sectionEl.setAttribute("data-section", section.type);
             sectionEl.innerHTML = `
-                <div class="decision-carousel-head" data-toggle style="background: ${section.wash}; border-left-color: ${section.accent}">
+                <div class="decision-carousel-head" data-toggle style="background: linear-gradient(${section.wash}, ${section.wash}), rgba(15, 23, 42, 0.92); border-left-color: ${section.accent}">
                     <span class="decision-carousel-dot" style="background: ${section.dot}"></span>
                     <span class="decision-carousel-name">${escapeDecisionHtml(section.label)}</span>
                     <span class="decision-carousel-count">${rows.length}</span>
