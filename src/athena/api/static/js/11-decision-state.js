@@ -14,6 +14,7 @@
     let activePlanFreshness = null;
     let activeChartSeries = null;
     let activeChartPlan = null;
+    let activeBriefQuote = null;
     let selectedStageId = null;
     // Persists across decision switches on purpose — flipping through several
     // decisions to compare the same aspect (e.g. Analysis) should not keep

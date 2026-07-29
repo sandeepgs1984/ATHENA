@@ -145,8 +145,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "decision-chart-price-marker-line" in css
     assert "decision-chart-price-marker-box" in css
     assert "decision-chart-shell" in css
-    assert "dashboard.css?v=9.74.0" in html
-    assert "dashboard.js?v=9.74.0" in html
+    assert "dashboard.css?v=9.75.0" in html
+    assert "dashboard.js?v=9.75.0" in html
     assert "function chartPlanLevelPct" in js
     assert "function chartPlanValidityLabel" in js
     assert "function refreshActiveDecisionChart" in js
@@ -155,6 +155,10 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "decision-chart-plan-chip stop" in js
     assert "decision-chart-plan-chip target" in js
     assert "Plan expires in" in js
+    assert "activeBriefQuote" in js
+    assert "function activeQuoteForSeries" in js
+    assert "${escapeDecisionHtml(markerLabel)} ${chartPriceLabel(markerPrice)} · Candle close" in js
+    assert "Candle close ${chartPriceLabel(latestClose)}" in js
     assert ".decision-chart-plan-strip" in css
     assert ".decision-chart-plan-chip.stop" in css
     assert ".decision-chart-plan-chip.target" in css

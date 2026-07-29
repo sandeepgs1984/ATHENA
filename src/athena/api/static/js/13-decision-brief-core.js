@@ -50,6 +50,7 @@
 
     function renderBriefLivePrice(quote) {
         if (!decisionBriefLivePrice || !decisionBriefLivePriceValue) return;
+        activeBriefQuote = quote || null;
         const price = quote && quote.last_price != null ? Number(quote.last_price) : NaN;
         if (!Number.isFinite(price)) {
             decisionBriefLivePrice.hidden = false;
@@ -59,6 +60,7 @@
                 decisionBriefLivePriceChange.className = "decision-brief-live-price-change";
             }
             decisionBriefLivePrice.title = "Current market price unavailable";
+            if (typeof refreshActiveDecisionChart === "function") refreshActiveDecisionChart();
             return;
         }
         decisionBriefLivePrice.hidden = false;
@@ -85,9 +87,11 @@
             ? ` · ${formatDecisionTime(quote.as_of)}`
             : "";
         decisionBriefLivePrice.title = `${source}${asOf}`;
+        if (typeof refreshActiveDecisionChart === "function") refreshActiveDecisionChart();
     }
 
     function clearBriefLivePrice() {
+        activeBriefQuote = null;
         if (decisionBriefLivePrice) decisionBriefLivePrice.hidden = true;
         if (decisionBriefLivePriceValue) decisionBriefLivePriceValue.textContent = "—";
         if (decisionBriefLivePriceChange) {
@@ -768,6 +772,7 @@
         activePlanFreshness = null;
         activeChartSeries = null;
         activeChartPlan = null;
+        activeBriefQuote = null;
         // Toggle the active row across every symbol group in the left panel,
         // and bring the selected row into view only if it isn't already
         // (graceful selection — never yanks the panel's scroll position

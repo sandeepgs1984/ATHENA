@@ -106,6 +106,19 @@
         return `${chartPriceLabel(plan.entry_low)}-${chartPriceLabel(plan.entry_high)}`;
     }
 
+    function chartNormalizeInstrumentId(value) {
+        return String(value || "").trim().toUpperCase().replace(/^NSE:|^BSE:/, "");
+    }
+
+    function activeQuoteForSeries(series) {
+        if (!series || !activeBriefQuote) return null;
+        if (chartNormalizeInstrumentId(series.instrument_id) !== chartNormalizeInstrumentId(activeBriefQuote.instrument_id)) {
+            return null;
+        }
+        const price = Number(activeBriefQuote.last_price);
+        return Number.isFinite(price) ? activeBriefQuote : null;
+    }
+
     function scaledPath(indexes, xAt, yAt, values) {
         return indexes.map(index => `${xAt(index)},${yAt(values[index])}`).join(" ");
     }
@@ -149,6 +162,9 @@
 
             const prices = candles.flatMap(candle => [Number(candle.high), Number(candle.low)]);
             prices.push(...chartLevelValues(plan), ...bandPrices);
+            const activeQuote = activeQuoteForSeries(series);
+            const quotePrice = activeQuote ? Number(activeQuote.last_price) : null;
+            if (Number.isFinite(quotePrice)) prices.push(quotePrice);
             let minPrice = Math.min(...prices);
             let maxPrice = Math.max(...prices);
             const span = Math.max(maxPrice - minPrice, Math.abs(maxPrice || 1) * 0.005);
@@ -284,8 +300,13 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
 
             const latestCandle = candles[candles.length - 1];
             const latestClose = Number(latestCandle.close);
-            const latestY = y(latestClose);
-            const latestTone = latestClose >= Number(latestCandle.open) ? "up" : "down";
+            const markerPrice = Number.isFinite(quotePrice) ? quotePrice : latestClose;
+            const markerY = y(markerPrice);
+            const latestTone = markerPrice >= latestClose ? "up" : "down";
+            const markerLabel = activeQuote ? "Quote" : "Candle close";
+            const markerTitle = activeQuote
+                ? `${activeQuote.source === "kite_live" ? "Live Kite quote" : "Last persisted quote"}${activeQuote.as_of ? ` · ${formatDecisionTime(activeQuote.as_of)}` : ""}`
+                : `Latest persisted ${series.timeframe || "5m"} candle close · ${formatDecisionTime(latestCandle.ts_open)}`;
             const high = Math.max(...candles.map(c => Number(c.high)));
             const low = Math.min(...candles.map(c => Number(c.low)));
             const planStrip = this.renderPlanStrip(plan);
@@ -294,6 +315,7 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
                 <div class="decision-chart-shell" data-chart-host="${escapeDecisionHtml(this.hostId)}">
                     <div class="decision-chart-topline">
                         <span>${escapeDecisionHtml(series.timeframe || "5m")} · ${candles.length} bars</span>
+                        <span>${escapeDecisionHtml(markerLabel)} ${chartPriceLabel(markerPrice)} · Candle close ${chartPriceLabel(latestClose)}</span>
                         <span>High ${chartPriceLabel(high)} · Low ${chartPriceLabel(low)}</span>
                     </div>
                     ${planStrip}
@@ -321,12 +343,16 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
                         ${volumeBars}
                         <text x="${margin.left}" y="${volumeTop - 6}"
                             class="decision-chart-axis-label">VOLUME</text>
-                        <line x1="${margin.left}" y1="${latestY}" x2="${plotRight}" y2="${latestY}"
-                            class="decision-chart-price-marker-line ${latestTone}" />
-                        <rect x="${plotRight + 6}" y="${latestY - 10}" width="74" height="20" rx="3"
-                            class="decision-chart-price-marker-box ${latestTone}" />
-                        <text x="${plotRight + 43}" y="${latestY + 4}" text-anchor="middle"
-                            class="decision-chart-price-marker-text">${chartPriceLabel(latestClose)}</text>
+                        <line x1="${margin.left}" y1="${markerY}" x2="${plotRight}" y2="${markerY}"
+                            class="decision-chart-price-marker-line ${latestTone}">
+                            <title>${escapeDecisionHtml(markerTitle)}</title>
+                        </line>
+                        <rect x="${plotRight + 6}" y="${markerY - 10}" width="74" height="20" rx="3"
+                            class="decision-chart-price-marker-box ${latestTone}">
+                            <title>${escapeDecisionHtml(markerTitle)}</title>
+                        </rect>
+                        <text x="${plotRight + 43}" y="${markerY + 4}" text-anchor="middle"
+                            class="decision-chart-price-marker-text">${chartPriceLabel(markerPrice)}</text>
                         ${timeLabels}
                     </svg>
                 </div>
