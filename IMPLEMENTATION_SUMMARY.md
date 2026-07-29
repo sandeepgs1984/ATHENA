@@ -6,7 +6,30 @@ status updated on approval.
 
 ---
 
-## CH-5 — Decision and event chart markers (ready for owner review)
+## CH-6 — Chart resilience and release gate (ready for owner review)
+
+| | |
+|---|---|
+| Completed | 2026-07-29 |
+| Objective | Harden the symbol chart before treating it as a trusted trading decision surface |
+| Scope | Added chart release-gate regressions for nonblank SVG/DOM contracts, no-data and unavailable fallback states, stable tap/keyboard interaction wiring, no-scroll modal layout, compact viewport sizing, persisted-only event markers, and max 500-candle rendering budget contracts; hardened the dedicated chart modal to avoid internal vertical scrolling in fullscreen presentation |
+| Files created | `tests/api/platform/test_decision_chart_release_gate.py` |
+| Files modified | `src/athena/api/static/css/08-strategies-backtest.css`, `src/athena/api/static/index.html`, `tests/api/platform/test_dashboard_hosting.py`, `docs/design/ATHENA-SYMBOL-CHART-ROADMAP.md`, `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md` |
+| Public APIs added | None |
+| Tests | `rtk node --check src/athena/api/static/js/16-decision-brief-chart.js` — passed; `rtk node --check src/athena/api/static/js/19-decision-brief-history.js` — passed; `rtk pytest tests/api/platform/test_decision_chart_release_gate.py tests/api/platform/test_dashboard_hosting.py -q` — 8 passed; `rtk git diff HEAD --check` — passed; `rtk pytest -q` — 1123 passed |
+| Coverage | New release-gate test suite locks in nonblank chart rendering strings, empty/unavailable states, hit-area coordinate regression, pointer/tap fallback, bounded keyboard focus, modal overflow suppression, compact 96vw/88vh modal sizing, persisted-only marker sources, absence of marker placeholders/revalidation inference, and `9.86.0` asset cache-busters |
+| Architecture compliance | No backend, provider, broker, scoring, risk, or domain contract changes. CH-6 adds tests and layout hardening only |
+| ADR compliance | ADR-004 preserved: static HTML/CSS/vanilla JS only. ADR-005 preserved: tests enforce persisted-only marker sources and no fabricated placeholders |
+| Risks discovered | Live authenticated visual QA remains owner-side because the workstation is behind the owner unlock gate; automated static release-gate tests now cover the no-scroll, no-blank, fallback, and interaction contracts that previously regressed |
+| Technical debt introduced | None |
+| Suggested improvements | If future chart work needs real revalidation markers, add a persisted read-only event source under owner review rather than deriving timestamps in the frontend |
+| Remaining work | Owner review of CH-6; chart track can close after approval |
+| Status | 🔄 Ready for owner review |
+| Branch | feature/live-dashboard |
+
+---
+
+## CH-5 — Decision and event chart markers (approved)
 
 | | |
 |---|---|
@@ -17,14 +40,14 @@ status updated on approval.
 | Files modified | `src/athena/api/static/js/16-decision-brief-chart.js`, `src/athena/api/static/js/19-decision-brief-history.js`, `src/athena/api/static/css/10-trade-plan-chart.css`, `src/athena/api/static/css/08-strategies-backtest.css`, `src/athena/api/static/index.html`, `tests/api/platform/test_dashboard_hosting.py`, `docs/design/ATHENA-SYMBOL-CHART-ROADMAP.md`, `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md` |
 | Public APIs added | None |
 | Tests | `rtk node --check src/athena/api/static/js/16-decision-brief-chart.js` — passed; `rtk node --check src/athena/api/static/js/19-decision-brief-history.js` — passed; `rtk pytest tests/api/platform/test_dashboard_hosting.py -q` — 3 passed; `rtk git diff HEAD --check` — passed; `rtk pytest -q` — 1118 passed |
-| Coverage | Static hosting regression locks in persisted event source functions, nearest-candle timestamp mapping, event marker classes, journal/outcome marker refresh, modal viewport sizing, and `9.84.0` asset cache-busters |
+| Coverage | Static hosting regression locks in persisted event source functions, nearest-candle timestamp mapping, event marker classes, journal/outcome marker refresh, modal viewport sizing, and asset cache-busters through `9.86.0` |
 | Architecture compliance | No backend, provider, broker, scoring, risk, or domain contract changes. CH-5 consumes only existing selected-decision, journal, outcome, and candle payload/state |
 | ADR compliance | ADR-005 preserved: markers are created only from persisted record timestamps; no placeholder revalidation markers were added because the existing payload does not expose a distinct persisted revalidation timestamp |
 | Risks discovered | Revalidation markers require an additive read-only persisted event source or DTO field in a future owner-reviewed milestone/ADR path; this milestone deliberately skips them rather than inferring them |
 | Technical debt introduced | None |
 | Suggested improvements | CH-6 should browser-verify normal/modal marker visibility and no-data/stale states across desktop and compact widths |
-| Remaining work | Owner review of CH-5; CH-6 blocked until approval |
-| Status | 🔄 Ready for owner review |
+| Remaining work | None; CH-6 implemented after approval |
+| Status | ✅ Approved by owner on 2026-07-29 |
 | Branch | feature/live-dashboard |
 
 ---

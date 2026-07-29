@@ -203,8 +203,8 @@ overlay as data.
 | **CH-2** TradePlan overlays & validity layer | Entry band, stop/target price lines with percentage deltas, risk/reward chip, and expiry/freshness affordance from existing plan data | None | ✅ Approved (2026-07-29) |
 | **CH-3** Timeframe, range, and session controls | Configured 5m/15m timeframe controls in embedded/modal charts, local chart preference, session separators, requested-vs-returned bar counts, timeframe-specific no-data wording, visible last-candle timestamp | None | ✅ Approved (2026-07-29) |
 | **CH-4** Interactive inspection | Crosshair OHLCV legend, rendered indicator readouts, plan-level readouts, reset affordance, keyboard focus/accessibility pass, enlarged dedicated chart modal | None | ✅ Approved (2026-07-29) |
-| **CH-5** Decision & event markers | Persisted decision/journal/outcome markers on the chart; revalidation markers deferred until a persisted timestamp is exposed | Additive read-only endpoint only if existing payloads are insufficient; ADR required for frozen contract/domain expansion | 🔄 Ready for review |
-| **CH-6** Resilience, visual QA, and release gate | Browser visual QA, nonblank checks, stale/no-data states, performance budget, fallback testing | Owner review after QA evidence | ⏳ Planned |
+| **CH-5** Decision & event markers | Persisted decision/journal/outcome markers on the chart; revalidation markers deferred until a persisted timestamp is exposed | Additive read-only endpoint only if existing payloads are insufficient; ADR required for frozen contract/domain expansion | ✅ Approved (2026-07-29) |
+| **CH-6** Resilience, visual QA, and release gate | Release-gate regression tests for nonblank rendering, no-data/fallback states, interaction wiring, modal no-scroll layout, persisted-only markers, and max-limit budget contracts | Owner review after QA evidence | 🔄 Ready for review |
 
 **Implementation rule:** CH-0 must be owner-approved before CH-1 starts; after
 that, exactly one chart milestone is implemented and reviewed at a time.

@@ -1,6 +1,6 @@
 # ATHENA Symbol Chart Excellence Roadmap
 
-**Status:** CH-0 through CH-4 approved; CH-5 ready for owner review
+**Status:** CH-0 through CH-5 approved; CH-6 ready for owner review
 **Date:** 2026-07-29
 **Scope:** Decision Brief symbol chart presentation only
 **Owner goal:** World-class, trading-grade chart presentation without adding
@@ -273,7 +273,7 @@ manufacturing signals.
 - Marker tooltip identifies source record type and timestamp.
 - Empty history shows no markers rather than placeholder examples.
 
-**Status:** Implemented on 2026-07-29; ready for owner review.
+**Status:** Approved by owner on 2026-07-29.
 
 ---
 
@@ -297,6 +297,8 @@ decision surface.
 - Visual QA evidence is recorded in the milestone review summary.
 - No stale plan/data state can look fresh.
 - No chart failure hides the rest of the Decision Brief.
+
+**Status:** Implemented on 2026-07-29; ready for owner review.
 
 ---
 
