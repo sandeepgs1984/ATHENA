@@ -897,4 +897,58 @@ touches this file next.
 
 ---
 
+#### Fix pass: scoped re-validate inflated risk via concentration_indicator (owner-reported, 2026-07-29)
+
+Owner: "im seeing risk value of 31.3 for most of the symbols which are
+exist in the decision list... if i re-validate again, then the risk
+value changes." Two distinct findings:
+
+1. **31.3 for most symbols during a full cycle — by design, not a bug.**
+   4 of the Risk Engine's 6 dimensions (`volatility_risk`, `gap_risk`,
+   `market_environment_risk`, `concentration_indicator`) are inherently
+   market-wide — identical for every symbol scanned in the same cycle by
+   design (they measure market conditions, not stock-specific ones).
+   Only `liquidity_risk` genuinely varies per symbol, and it's a coarse
+   binary (below/above a volume threshold), so most similarly-liquid
+   stocks converge on the same overall weighted risk.
+2. **Re-validating changes the value — a real bug, and a gap SD-1 didn't
+   catch.** A `symbols_filter`-scoped run (single-symbol Re-validate /
+   Add & validate) narrows the universe scan to just that one
+   instrument, so `concentration_indicator`'s "eligible instrument count"
+   collapses to 1 → always `concentrated_risk` (70, HIGH), regardless of
+   real market breadth. Confirmed directly against `db/athena.db`: a
+   scoped TCS re-validate showed `concentration indicator 70 (1 eligible
+   instruments)` — an artifact of that call's own narrow scope, not of
+   the market. SD-1's own before/after modeling assumed the diversified
+   (30) case throughout, since it was validated against full-cycle data;
+   it never exercised the scoped single-symbol path.
+
+Owner-approved fix: reuse the last real FULL (unscoped) cycle's universe
+breadth for concentration purposes when this run is itself scoped, never
+fabricate one when no prior full cycle exists yet (ADR-005).
+
+| | |
+|---|---|
+| Scope | `owner_validation.py`: `detail["universe_scope"]` (`"full"`/`"scoped"`) added to the persisted run detail; new `_last_full_universe_summary()` — scans `list_runs()`/`get_run_detail()` for the most recent COMPLETED/DEGRADED run marked `"full"`, returns its real `universe_summary` wrapped in a new `_UniverseSummaryStandIn` (duck-types `UniverseResult` for `RiskEngine._concentration_indicator`, which only reads `.summary`); `_scan_eligible` computes `concentration_universe` once per call — the scan's own `universe_result` when unscoped, `_last_full_universe_summary()` when `symbols_filter` is set — and `risk_stage` now passes that instead of the raw scoped result. |
+| Tests | 2 new regression tests: a scoped re-validate reuses the prior full cycle's real breadth (not its own 1-symbol scope); with no prior full cycle, concentration is honestly `UNKNOWN`, never fabricated. Full suite **1109 passed** |
+| Coverage | Verified against real production `db/athena.db`: a scoped TCS re-validate went from `concentration_indicator: 70 (HIGH, "1 eligible instruments")` to `UNKNOWN` (`_last_full_universe_summary()` correctly found no prior run carrying the new marker — honest degradation, not a crash); overall risk dropped from the inflated 42.75 to 39.72, completeness 0.9 (5/6 known). |
+| Status | ✅ Fixed, superseded by two follow-ups below |
+
+**Follow-up 1 — the fix above never actually fired in production (owner re-tested, still broken).** `_last_full_universe_summary()` checked `detail.get("universe_scope")` at the top level of a run's persisted `detail_json` — correct for a direct test call, but `DryRunCycleOrchestrator.run_cycle()` (`scheduling/dry_run.py`, the real code path behind both the scheduled cycle and the "Run Full Validation" button) persists this pipeline's own returned dict nested one level down, under a `"pipeline"` key, alongside `"phase"`/`"duration_seconds"`/`"ingestion"`. Every real production run's marker lived at `detail["pipeline"]["universe_scope"]`, which the lookup never checked, so it always fell through to `None` — concentration stayed `UNKNOWN` forever, and its low-risk anchor being dropped from the weighted mean was still inflating individual re-validate risk versus the full cycle. Fixed: `_last_full_universe_summary()` now checks the nested `"pipeline"` shape first, falling back to flat for direct callers (tests). New regression test locks in the real nested shape specifically. Verified against `db/athena.db` after a required server restart: a scoped ZENSARTECH re-validate's `concentration_indicator` went from `70 (HIGH)` to the real full cycle's `30 (LOW, "362 eligible instruments")`.
+
+**Follow-up 2 — a second, deeper bug found while diagnosing the first: `gap_risk` differed between a full cycle and a re-validate even after Follow-up 1, with every other dimension identical.** Root cause, found via direct dimension-by-dimension comparison: `_scan_eligible` resolved its regime-benchmark index as `index_id = next(iter(snapshot.indices.keys()))` — but `MarketSnapshot.indices` keys are bare labels (`"NIFTY 50"`), while the `candles` table stores everything under the full instrument_id (`"NSE:NIFTY 50"`). `self._repo.list_candles_recent("NIFTY 50", ...)` (no prefix) always returned zero rows, so the code fell through to its last-resort fallback — `candles_by_id.get(included_ids[0], ())` — **an arbitrary individual stock's own candles standing in for "the market index."** Which stock won depended entirely on scan scope: the first eligible symbol (alphabetically/whatever order) in a 362-symbol full cycle, versus the target symbol itself in a single-symbol re-validate — silently fabricating a different "market regime" reading every time, the opposite of ADR-005. Confirmed directly: the full cycle's "index candles" showed a price series around ₹1,130 (some unrelated stock); the ZENSARTECH re-validate's showed ₹524–533 (ZENSARTECH's own price) — neither is NIFTY 50 (~24,000).
+
+Fix: new `_resolve_index_candles()` — always tries the configured index instruments (`config/providers/kite.json`'s `index_instruments`, correctly prefixed) in order via the repo, requiring genuine candle history before accepting one; never falls back to an unrelated instrument's own candles. Shared by both `_scan_eligible` and `_maybe_regime` (removing a near-duplicate second copy of this same resolution logic). 2 new regression tests (resolves the real index, not a random stock; honestly empty — not fabricated — when no index data exists at all). Full suite **1112 passed**.
+
+**Final verification (both follow-ups together, real production data, post-restart):** a full cycle and a scoped ZENSARTECH re-validate now produce **identical** risk across all 6 dimensions — `volatility_risk 50, liquidity_risk 20, gap_risk 70, event_risk 20, market_environment_risk 41.25, concentration_indicator 30` — both landing on **overall risk 38.75**. (Note: `gap_risk 70`/GAP_UP is the mathematically correct reading of NIFTY 50's real open-vs-prior-close, 0.75% against a 0.5% threshold — the earlier `NO_GAP` some runs showed was itself wrong, an artifact of the random-stock substitution, not a legitimate alternate reading.)
+
+| | |
+|---|---|
+| Scope | `owner_validation.py`: `_last_full_universe_summary()` checks the nested `"pipeline"` detail shape; new `_resolve_index_candles()` replacing the broken snapshot-label-based index resolution in both `_scan_eligible` and `_maybe_regime` |
+| Tests | 3 new regression tests (nested-shape lookup; real-index-not-random-stock; honest empty with no index data). Full suite **1112 passed** |
+| Coverage | Verified against real production `db/athena.db` after each fix, and again with both together: full cycle vs. scoped re-validate now match on every one of the 6 risk dimensions, not just concentration |
+| Status | ✅ Fixed (2026-07-29) |
+
+---
+
 *Status legend: a milestone is "In Progress" (🔄) when actively being designed or built, "Approved" (✅) only when the owner signs off. Never two milestones in flight.*

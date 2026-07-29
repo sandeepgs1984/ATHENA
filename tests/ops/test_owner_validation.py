@@ -9,11 +9,13 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from athena import BLUEPRINT_VERSION, __version__
 from athena.data.ingestion.models import IngestionResult
 from athena.data.store.repository import SqliteRepository
 from athena.domain.decision import Decision
-from athena.domain.enums import DecisionType, Direction, RunTrigger, Timeframe
+from athena.domain.enums import DecisionType, Direction, RunStatus, RunTrigger, Timeframe
 from athena.domain.market import Candle, Instrument
+from athena.domain.run import RunRecord
 from athena.ops.owner_candidates import SqliteCandidateStore, normalize_candidate_symbol
 from athena.ops.owner_validation import OwnerValidationPipeline
 
@@ -41,6 +43,30 @@ def _candles(instrument_id: str, n: int = 80, seed: int = 100) -> list[Candle]:
             )
         )
     return out
+
+
+def _persist_run(repo: SqliteRepository, run_id: str, as_of: datetime, detail: dict) -> None:
+    """Mimics DryRunOrchestrator's own repo.save_run() call (scheduling/
+    dry_run.py) — OwnerValidationPipeline.run() itself never persists to the
+    runs table; that only happens one layer up in production. Needed here to
+    exercise _last_full_universe_summary(), which reads real persisted runs."""
+    repo.save_run(
+        RunRecord(
+            run_id=run_id,
+            cycle_id=run_id,
+            trigger=RunTrigger.REFRESH,
+            started_ts=as_of,
+            status=RunStatus.COMPLETED,
+            software_version=__version__,
+            blueprint_version=BLUEPRINT_VERSION,
+            strategy_profile="intraday-momentum",
+            strategy_profile_version="1",
+            indicator_versions={},
+            config_snapshot_id="cfg",
+            finished_ts=as_of,
+        ),
+        detail=detail,
+    )
 
 
 @pytest.fixture()
@@ -260,6 +286,194 @@ class TestOwnerValidationPipeline:
             # series yields VOLATILITY_UNKNOWN from the regime engine — a
             # property of the synthetic candles, not of the wiring.
             assert Decimal(report["risk"]["completeness"]) > Decimal("0.75")
+
+    def test_resolve_index_candles_uses_real_index_not_a_random_stock(
+        self, repo: SqliteRepository, config_dir: Path
+    ) -> None:
+        """Owner-reported bug (2026-07-29), the deeper of two root causes:
+        `MarketSnapshot.indices` keys are bare labels ("NIFTY 50"), while the
+        `candles` table stores everything under the full instrument_id
+        ("NSE:NIFTY 50") — so the old `index_id = next(iter(snapshot.
+        indices.keys()))` could never find real candles under that bare
+        label, and _scan_eligible fell through to
+        `candles_by_id.get(included_ids[0], ())` — an ARBITRARY INDIVIDUAL
+        STOCK's own candles standing in for "the market index." Which stock
+        won depended on scan scope (the first eligible symbol in a full
+        cycle vs. the target symbol itself in a single-symbol re-validate),
+        producing a different, fabricated "market regime" reading each time
+        — the opposite of ADR-005. _resolve_index_candles() must always
+        resolve the configured index's own real candles (via the correctly-
+        prefixed instrument_id), never another instrument's."""
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        repo.upsert_instrument(
+            Instrument(
+                instrument_id="NSE:NIFTY 50", symbol="NIFTY 50", exchange="NSE",
+                series="EQ", status="ACTIVE",
+            )
+        )
+        nifty_candles = _candles("NSE:NIFTY 50", seed=24000)
+        repo.add_candles(nifty_candles)
+        stock_candles = _candles("NSE:SOMESTOCK", seed=500)
+
+        # candles_by_id here mimics a real scan scope: the index itself is
+        # never one of the tracked owner_candidates, so it's absent from
+        # this dict — only reachable via the repo (as in production).
+        candles_by_id = {"NSE:SOMESTOCK": stock_candles}
+        index_id, resolved = pipe._resolve_index_candles(candles_by_id)
+        assert index_id == "NSE:NIFTY 50"
+        assert resolved == nifty_candles
+        # Never the unrelated stock's own candles standing in for the index.
+        assert resolved != stock_candles
+
+    def test_resolve_index_candles_honestly_empty_when_no_index_data_exists(
+        self, repo: SqliteRepository, config_dir: Path
+    ) -> None:
+        """ADR-005: with zero real index candle history anywhere (not even
+        via the repo), _resolve_index_candles() must return empty candles —
+        never silently substitute an unrelated instrument's own candles as
+        a stand-in for "the market index." The regime engine already
+        degrades every dimension to its own *_UNKNOWN label for empty input."""
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        stock_candles = _candles("NSE:SOMESTOCK", seed=500)
+        candles_by_id = {"NSE:SOMESTOCK": stock_candles}
+        _index_id, resolved = pipe._resolve_index_candles(candles_by_id)
+        assert resolved == []
+
+    def test_scoped_revalidate_reuses_last_full_cycle_concentration(
+        self, repo: SqliteRepository, config_dir: Path
+    ) -> None:
+        """Owner-reported bug (2026-07-29): re-validating a single symbol
+        showed a much higher risk than the same symbol had during the full
+        daily cycle, and the value kept changing on every re-validate. Root
+        cause: a symbols_filter-scoped run's own universe_result only ever
+        has 1 "eligible" instrument (itself), which always tripped
+        concentrated_risk (70) regardless of real market breadth — SD-1
+        wired concentration_indicator through correctly, but a scoped run's
+        own narrow scan scope was never the right input for a market-wide
+        breadth measure. Fix: a scoped run now reuses the last real FULL
+        (unscoped) cycle's universe_summary instead of its own scan scope."""
+        store = SqliteCandidateStore(repo)
+        symbols = ["AAA", "BBB", "CCC"]
+        for i, sym in enumerate(symbols):
+            store.upsert_candidate(symbol=sym)
+            iid = f"NSE:{sym}"
+            repo.upsert_instrument(
+                Instrument(instrument_id=iid, symbol=sym, exchange="NSE", series="EQ", status="ACTIVE")
+            )
+            repo.add_candles(_candles(iid, seed=100 + i * 100))
+        ingestion = IngestionResult(
+            as_of=AS_OF, instruments_upserted=3, candles_fetched=240, candles_written=240,
+            quotes_fetched=0, quotes_written=0, datasets_validated=3, datasets_skipped_empty=0,
+        )
+
+        # A full (unscoped) cycle first — this is the "last known real
+        # breadth" a later scoped re-validate should fall back to.
+        full_pipe = OwnerValidationPipeline(repo, config_dir)
+        full_detail = full_pipe.run(
+            RunTrigger.PREMARKET, as_of=AS_OF, ingestion=ingestion, run_id="run-full-cycle"
+        )
+        _persist_run(repo, "run-full-cycle", AS_OF, full_detail)
+        full_reports = full_detail["decision_reports"]
+        full_dims = {d["name"]: d for r in full_reports.values() for d in r["risk"]["dimensions"]}
+        full_concentration_desc = full_dims["concentration_indicator"]["contributions"][0]["description"]
+        assert "3 eligible instrument(s)" in full_concentration_desc
+
+        # Now a symbols_filter-scoped re-validate of just one symbol — its
+        # own scan scope only ever has 1 eligible instrument, but its
+        # concentration_indicator must reuse the full cycle's real breadth.
+        scoped_pipe = OwnerValidationPipeline(repo, config_dir, symbols_filter=["AAA"])
+        scoped_detail = scoped_pipe.run(
+            RunTrigger.REFRESH, as_of=AS_OF, ingestion=ingestion, run_id="run-scoped-revalidate"
+        )
+        scoped_report = next(iter(scoped_detail["decision_reports"].values()))
+        scoped_dims = {d["name"]: d for d in scoped_report["risk"]["dimensions"]}
+        scoped_concentration = scoped_dims["concentration_indicator"]
+        assert scoped_concentration["status"] == "OK"
+        assert "1 eligible instrument(s)" not in scoped_concentration["contributions"][0]["description"]
+        assert "3 eligible instrument(s)" in scoped_concentration["contributions"][0]["description"]
+        # Same real breadth → same concentration risk value as the full cycle.
+        assert scoped_concentration["value"] == full_dims["concentration_indicator"]["value"]
+
+    def test_scoped_revalidate_finds_full_cycle_nested_under_pipeline_key(
+        self, repo: SqliteRepository, config_dir: Path
+    ) -> None:
+        """Regression for the exact owner-reported bug surviving the first
+        fix attempt: DryRunCycleOrchestrator.run_cycle() (scheduling/
+        dry_run.py, the real code path behind both the scheduled cycle and
+        the "Run Full Validation" button) persists this pipeline's own
+        returned dict nested one level down, under a "pipeline" key,
+        alongside "phase"/"duration_seconds"/"ingestion" — never as the
+        top-level detail_json. The first fix checked only the flat
+        top-level shape, so it worked in a direct-call test but never
+        found a real production run, leaving concentration_indicator
+        perpetually UNKNOWN (and re-validate risk correspondingly inflated)
+        in the actual running system. _last_full_universe_summary() must
+        find the real breadth through this nesting."""
+        store = SqliteCandidateStore(repo)
+        symbols = ["AAA", "BBB", "CCC"]
+        for i, sym in enumerate(symbols):
+            store.upsert_candidate(symbol=sym)
+            iid = f"NSE:{sym}"
+            repo.upsert_instrument(
+                Instrument(instrument_id=iid, symbol=sym, exchange="NSE", series="EQ", status="ACTIVE")
+            )
+            repo.add_candles(_candles(iid, seed=100 + i * 100))
+        ingestion = IngestionResult(
+            as_of=AS_OF, instruments_upserted=3, candles_fetched=240, candles_written=240,
+            quotes_fetched=0, quotes_written=0, datasets_validated=3, datasets_skipped_empty=0,
+        )
+
+        full_pipe = OwnerValidationPipeline(repo, config_dir)
+        full_detail = full_pipe.run(
+            RunTrigger.PREMARKET, as_of=AS_OF, ingestion=ingestion, run_id="run-full-cycle-nested"
+        )
+        # Persist exactly as DryRunCycleOrchestrator.run_cycle() does: the
+        # pipeline's own dict nested under "pipeline", not top-level.
+        _persist_run(
+            repo, "run-full-cycle-nested", AS_OF,
+            {"phase": "finished", "duration_seconds": 1.0, "pipeline": full_detail, "ingestion": None},
+        )
+
+        scoped_pipe = OwnerValidationPipeline(repo, config_dir, symbols_filter=["AAA"])
+        scoped_detail = scoped_pipe.run(
+            RunTrigger.REFRESH, as_of=AS_OF, ingestion=ingestion, run_id="run-scoped-nested"
+        )
+        scoped_report = next(iter(scoped_detail["decision_reports"].values()))
+        scoped_dims = {d["name"]: d for d in scoped_report["risk"]["dimensions"]}
+        scoped_concentration = scoped_dims["concentration_indicator"]
+        assert scoped_concentration["status"] == "OK", (
+            "concentration_indicator was UNKNOWN — _last_full_universe_summary() "
+            "failed to find the full cycle nested under the real pipeline key"
+        )
+        assert "3 eligible instrument(s)" in scoped_concentration["contributions"][0]["description"]
+
+    def test_scoped_revalidate_concentration_unknown_with_no_prior_full_cycle(
+        self, repo: SqliteRepository, config_dir: Path
+    ) -> None:
+        """Honest fallback (ADR-005): if a symbols_filter-scoped run is the
+        very first run ever (no prior full cycle to borrow breadth from),
+        concentration_indicator must be UNKNOWN, never fabricated from the
+        scoped run's own 1-symbol sample."""
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        iid = "NSE:AAA"
+        repo.upsert_instrument(
+            Instrument(instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE")
+        )
+        repo.add_candles(_candles(iid, seed=100))
+        ingestion = IngestionResult(
+            as_of=AS_OF, instruments_upserted=1, candles_fetched=80, candles_written=80,
+            quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+        )
+
+        pipe = OwnerValidationPipeline(repo, config_dir, symbols_filter=["AAA"])
+        detail = pipe.run(
+            RunTrigger.REFRESH, as_of=AS_OF, ingestion=ingestion, run_id="run-first-ever-scoped"
+        )
+        report = next(iter(detail["decision_reports"].values()))
+        dims = {d["name"]: d for d in report["risk"]["dimensions"]}
+        assert dims["concentration_indicator"]["status"] == "UNKNOWN"
+        assert dims["concentration_indicator"]["value"] is None
 
     def test_unresolvable_candidate_reported_not_judged(
         self, repo: SqliteRepository, config_dir: Path

@@ -166,6 +166,8 @@
     // list.js) and the reasoning-trace stage-detail panel.
     const decisionBriefOverflowToggle = document.getElementById("decision-brief-overflow-toggle");
     const decisionBriefOverflowMenu = document.getElementById("decision-brief-overflow-menu");
+    const decisionBriefOpenChart = document.getElementById("decision-brief-open-chart");
+    const decisionBriefCompare = document.getElementById("decision-brief-compare");
 
     function closeOverflowMenu() {
         if (!decisionBriefOverflowMenu || !decisionBriefOverflowToggle) return;
@@ -277,6 +279,7 @@
         if (gaugeRecommendationStance) gaugeRecommendationStance.textContent = "—";
         resetCockpitGauges();
         setHeaderRevalidateEnabled(false);
+        setHeaderActionsEnabled(false);
         // Owner-reported: after "Clear all", the main brief correctly went
         // empty but the Reasoning Trace sidebar kept showing the previously
         // selected symbol's quick-summary chips and DAG stage-detail card —
@@ -730,6 +733,7 @@
         loadDecisionCounterfactual(meta.decision_id);
         loadDecisionPlanFreshness(meta.decision_id);
         setHeaderRevalidateEnabled(true);
+        setHeaderActionsEnabled(true);
     }
 
     async function loadDecisionDetail(decisionId) {
@@ -795,6 +799,17 @@
         decisionBriefRevalidateHeader.disabled = !enabled;
     }
 
+    // Owner-reported: with no decision selected (empty state, zero-filter-
+    // results, or a failed load), Open Chart/Compare/the "more" overflow
+    // toggle stayed clickable — there's nothing for them to act on, so they
+    // must disable together with Re-validate rather than being a separate,
+    // easily-missed case.
+    function setHeaderActionsEnabled(enabled) {
+        if (decisionBriefOpenChart) decisionBriefOpenChart.disabled = !enabled;
+        if (decisionBriefCompare) decisionBriefCompare.disabled = !enabled;
+        if (decisionBriefOverflowToggle) decisionBriefOverflowToggle.disabled = !enabled;
+    }
+
     decisionBriefRevalidateHeader?.addEventListener("click", event => {
         const instrumentId = activeDecisionData && activeDecisionData.metadata
             ? activeDecisionData.metadata.instrument_id
@@ -834,12 +849,12 @@
         if (!decisionId) return;
         exportDecisionBrief(decisionId, event.currentTarget);
     });
-    document.getElementById("decision-brief-open-chart")?.addEventListener("click", () => {
+    decisionBriefOpenChart?.addEventListener("click", () => {
         openChartModal();
     });
     document.getElementById("decision-brief-news")?.addEventListener("click", () => {
         switchBriefTab("context");
     });
-    document.getElementById("decision-brief-compare")?.addEventListener("click", () => {
+    decisionBriefCompare?.addEventListener("click", () => {
         openCompareModal();
     });

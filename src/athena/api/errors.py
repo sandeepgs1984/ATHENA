@@ -35,7 +35,6 @@ from athena.api.exceptions import (
     SchedulerRunNotFoundError,
     WorkspaceSnapshotNotFoundError,
 )
-from athena.ops.full_validation import CycleBusyError
 from athena.api.platform.problem_details import ProblemDetail
 from athena.api.security.exceptions import (
     AuthenticationError,
@@ -67,6 +66,8 @@ from athena.errors import (
     SizingError,
     WorkspaceError,
 )
+from athena.ops.full_validation import CycleBusyError
+from athena.ops.serve_runtime import RestartUnavailableError
 
 logger = logging.getLogger(__name__)
 
@@ -147,6 +148,7 @@ class AthenaExceptionMapper:
         ExceptionMapping(PortfolioUnavailableError, 503, "portfolio-unavailable", "Portfolio Unavailable"),
         ExceptionMapping(ExportGenerationError, 400, "export-generation-failed", "Export Generation Failed"),
         ExceptionMapping(CycleBusyError, 409, "cycle-busy", "Cycle Busy"),
+        ExceptionMapping(RestartUnavailableError, 501, "restart-unavailable", "Restart Unavailable"),
         ExceptionMapping(APIResourceError, 400, "api-resource-error", "API Resource Error"),
         # Security Errors (P8.2)
         ExceptionMapping(AuthenticationLockedError, 429, "authentication-locked", "Unlock Temporarily Locked"),

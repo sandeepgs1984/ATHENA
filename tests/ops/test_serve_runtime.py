@@ -14,10 +14,12 @@ from athena.ops.serve_runtime import (
     CycleRunnerLock,
     CycleWorker,
     LastCycleSnapshot,
+    RestartUnavailableError,
     ServeRuntime,
     get_serve_runtime,
     kite_token_status_from_env,
     set_serve_runtime,
+    trigger_restart,
 )
 
 
@@ -111,3 +113,47 @@ def test_serve_cli_help() -> None:
     with pytest.raises(SystemExit) as exc:
         main(["serve", "--help"])
     assert exc.value.code == 0
+
+
+def test_trigger_restart_raises_without_a_known_command() -> None:
+    """Owner-requested "restart ATHENA" action (2026-07-29): a ServeRuntime
+    not started via the CLI (e.g. default-constructed, as in most tests)
+    has no restart_command — refuse rather than guess an invocation."""
+    runtime = ServeRuntime()
+    with pytest.raises(RestartUnavailableError):
+        trigger_restart(runtime)
+
+
+def test_trigger_restart_re_execs_with_the_recorded_command(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verifies the actual re-exec mechanism WITHOUT ever calling the real
+    os.execv (which would replace this test process's own image) — patches
+    it at the athena.ops.serve_runtime module level, where trigger_restart
+    looks it up, and drives the background thread to completion via join()
+    instead of relying on the real (short) delay."""
+    import threading
+
+    import athena.ops.serve_runtime as serve_runtime_module
+
+    calls: list[list[str]] = []
+
+    def fake_execv(executable: str, args: list[str]) -> None:
+        calls.append(list(args))
+
+    monkeypatch.setattr(serve_runtime_module.os, "execv", fake_execv)
+    monkeypatch.setattr(serve_runtime_module.time, "sleep", lambda _seconds: None)
+
+    runtime = ServeRuntime(
+        restart_command=("python3", "-m", "athena.cli", "serve", "--with-cycles")
+    )
+    trigger_restart(runtime, delay_seconds=0)
+
+    # trigger_restart starts a background (non-daemon) thread named
+    # "athena-restart"; join it explicitly instead of sleeping, so the test
+    # is fast and deterministic.
+    for t in threading.enumerate():
+        if t.name == "athena-restart":
+            t.join(timeout=2)
+
+    assert calls == [["python3", "-m", "athena.cli", "serve", "--with-cycles"]]

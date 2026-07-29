@@ -521,6 +521,43 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".decision-brief-header-actions" in css
     assert ".btn-sm" in css
 
+    # Owner-reported: with no decision selected, Open Chart/Compare/the
+    # "more" overflow toggle stayed clickable even though there was nothing
+    # for them to act on. Disabled by default in static HTML (matches
+    # Re-validate's own existing pattern) and toggled together via a new
+    # setHeaderActionsEnabled(), called from both the empty-state render
+    # (false) and a loaded decision (true).
+    assert 'id="decision-brief-open-chart"' in html
+    assert re.search(r'id="decision-brief-open-chart"[^>]*disabled', html)
+    assert re.search(r'id="decision-brief-compare"[^>]*disabled', html)
+    assert re.search(r'id="decision-brief-overflow-toggle"[^>]*disabled', html)
+    assert "function setHeaderActionsEnabled" in js
+    set_actions_start = js.find("function setHeaderActionsEnabled")
+    set_actions_end = js.find("\n    function ", set_actions_start + 1)
+    set_actions_body = js[set_actions_start:set_actions_end]
+    assert "decisionBriefOpenChart.disabled" in set_actions_body
+    assert "decisionBriefCompare.disabled" in set_actions_body
+    assert "decisionBriefOverflowToggle.disabled" in set_actions_body
+    render_empty_start = js.find("function renderDecisionBriefEmpty")
+    render_empty_end = js.find("\n    function ", render_empty_start + 1)
+    assert "setHeaderActionsEnabled(false)" in js[render_empty_start:render_empty_end]
+
+    # Owner-requested (2026-07-29): "kill everything and restart fresh" — a
+    # header button, confirmed first (window.confirm), POSTs
+    # /api/v1/ops/restart, then polls /health until the relaunched process
+    # answers before reloading.
+    assert 'id="restart-server-trigger"' in html
+    assert "restartServerTrigger" in js
+    assert "/api/v1/ops/restart" in js
+    assert "window.confirm(" in js
+    assert "function awaitServerRestartThenReload" in js
+    restart_handler_start = js.find('restartServerTrigger?.addEventListener("click"')
+    restart_handler_end = js.find("\n    async function ", restart_handler_start + 1)
+    restart_handler_body = js[restart_handler_start:restart_handler_end]
+    assert "window.confirm(" in restart_handler_body
+    assert "/api/v1/ops/restart" in restart_handler_body
+    assert "awaitServerRestartThenReload()" in restart_handler_body
+
     # M-X0: owner response + realized outcome capture — closes the gap where
     # DecisionJournalEntry/TradeOutcome existed but were never wired to any action
     assert 'id="decision-journal-panel"' in js

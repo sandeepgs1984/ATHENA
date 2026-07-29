@@ -270,3 +270,59 @@
         loadTabData(state.activeTab);
         showToast("Workstation workspace refreshed", "success");
     });
+
+    // Owner-requested (2026-07-29): "kill everything and restart fresh" —
+    // a stuck background job (Run Full Validation, or the cycle worker)
+    // can only be reliably killed by ending the whole process, since a
+    // single Python thread blocked in a slow call can't be force-killed in
+    // isolation. Confirmed first (briefly interrupts the whole console),
+    // then POSTs /api/v1/ops/restart (the process re-execs itself with its
+    // original flags — see serve_runtime.trigger_restart), then polls the
+    // unauthenticated /health endpoint until the new process answers, and
+    // reloads. skipToast/try-catch on the POST itself because the
+    // connection dropping mid-response (the process ending) is the
+    // expected, successful outcome, not an error to surface.
+    restartServerTrigger?.addEventListener("click", async () => {
+        if (!window.confirm(
+            "Restart ATHENA?\n\nThis kills any stuck background job and the cycle " +
+            "worker, then relaunches the server fresh. The console will be briefly " +
+            "unreachable while it restarts."
+        )) {
+            return;
+        }
+        restartServerTrigger.disabled = true;
+        showToast("Restarting ATHENA…", "info");
+        try {
+            await apiRequest("/api/v1/ops/restart", { method: "POST", skipToast: true });
+        } catch (err) {
+            // Expected: the process can end before the response finishes.
+        }
+        awaitServerRestartThenReload();
+    });
+
+    async function awaitServerRestartThenReload() {
+        const pollIntervalMs = 1500;
+        const maxAttempts = 40; // ~60s
+        // Give the old process a moment to actually exit before polling,
+        // so the first attempt isn't a false "it's already back" against
+        // the still-dying old process.
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            try {
+                const res = await fetch("/health", { cache: "no-store" });
+                if (res.ok) {
+                    window.location.reload();
+                    return;
+                }
+            } catch (err) {
+                // Expected while the old process is down and the new one
+                // hasn't started listening yet.
+            }
+            await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+        }
+        showToast(
+            "ATHENA is taking longer than expected to come back — check the terminal.",
+            "danger"
+        );
+        if (restartServerTrigger) restartServerTrigger.disabled = false;
+    }

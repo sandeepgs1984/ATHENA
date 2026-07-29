@@ -6,6 +6,41 @@ status updated on approval.
 
 ---
 
+## Fix pass: scoped re-validate inflated risk — two root causes (owner-reported, APPROVED)
+
+| | |
+|---|---|
+| Completed | 2026-07-29 |
+| Objective | Owner-reported: risk value showed as ~31.3 for most symbols in the decision list, and changed on re-validate (e.g. INFY → 42.8, ZENSARTECH → 38.8 vs its full-cycle 31.3). Audit + fix. Took 3 rounds: an initial fix, a follow-up when the owner reported it still broken after restart, and a second, deeper bug found while diagnosing the follow-up. |
+| Scope | `src/athena/ops/owner_validation.py`, `tests/ops/test_owner_validation.py` |
+| Public APIs added | None |
+| Tests | 5 new regression tests across the 3 rounds. Full suite **1112 passed** |
+| Coverage | Verified against real production `db/athena.db` after every round, including a final check with both fixes together: a full cycle and a scoped re-validate now produce identical values across all 6 risk dimensions (38.75 overall, both) |
+| Architecture compliance | No architecture change — corrective wiring/resolution logic inside the already-frozen `OwnerValidationPipeline`/`RiskEngine` contract |
+| ADR compliance | ADR-005: never fabricate — concentration is honestly `UNKNOWN` when no real full-cycle breadth exists yet; the regime benchmark index resolves to real configured index candles or is honestly absent, never another instrument's own candles standing in for it |
+| Risks discovered | The kind of two-round miss here (a fix that works in a direct-call test but never fires against the real orchestrator's nested persistence shape) is worth remembering when testing any code that reads back its own previously-persisted `runs.detail_json` — the real caller may wrap it differently than a test calling the pipeline directly |
+| Technical debt introduced | None — removed a near-duplicate copy of index-resolution logic between `_scan_eligible` and `_maybe_regime` |
+| Suggested improvements | None beyond what's already tracked |
+| Remaining work | None |
+| Status | **✅ Fixed** (2026-07-29) |
+| Branch | feature/live-dashboard |
+
+### Root cause 1 (initial report): concentration_indicator distorted by scan scope
+
+4 of the Risk Engine's 6 dimensions are inherently market-wide (identical for every symbol in one cycle by design) — only `liquidity_risk` genuinely varies per symbol. Separately, a real bug: a `symbols_filter`-scoped run (single-symbol Re-validate) narrows the universe scan to just that one instrument, so `concentration_indicator`'s "eligible instrument count" collapsed to 1, always tripping `concentrated_risk` (70, HIGH). Fix: `_last_full_universe_summary()` reuses the last real full-cycle's universe breadth for a scoped run instead of its own narrow scope.
+
+### Root cause 1, follow-up: the fix never fired in production
+
+`_last_full_universe_summary()` checked the top-level `detail_json`, but `DryRunCycleOrchestrator.run_cycle()` (the real code path behind both the scheduled cycle and "Run Full Validation") persists the pipeline's own dict nested under a `"pipeline"` key. Every real run's marker lived at `detail["pipeline"]["universe_scope"]`, never found by the original check — concentration stayed `UNKNOWN` in production even though the direct-call test passed. Fixed to check the nested shape first, flat as a fallback for direct callers.
+
+### Root cause 2 (found while diagnosing the follow-up): index resolution used a random stock's own candles
+
+Comparing a full cycle against a ZENSARTECH re-validate dimension-by-dimension (after root cause 1's fix) showed every dimension identical **except** `gap_risk` (20 vs 70). Traced to `index_id = next(iter(snapshot.indices.keys()))`: `MarketSnapshot.indices` keys are bare labels (`"NIFTY 50"`), while the `candles` table stores the full instrument_id (`"NSE:NIFTY 50"`) — so the DB lookup for index candles always returned zero rows, and the code fell through to `candles_by_id.get(included_ids[0], ())`, using **whichever stock happened to be first in that particular scan's own scope** as a stand-in for "the market index." A full 362-symbol cycle and a single-symbol re-validate pick a different "first" stock, so this silently fabricated a different market regime reading each time. Confirmed directly: one run's "index candles" were priced around ₹1,130, another's around ₹530 — neither is NIFTY 50 (~24,000).
+
+Fix: new `_resolve_index_candles()`, shared by `_scan_eligible` and `_maybe_regime` (removing a near-duplicate copy of the same resolution logic), always tries the configured index instruments in order via the repo, requiring genuine candle history before accepting one — never substitutes an unrelated instrument's candles, honestly empty when no index data exists at all.
+
+---
+
 ## SD-4 — Continuous scoring ramps (owner-approved design, 2026-07-29)
 
 | | |

@@ -264,3 +264,65 @@ class TestOpsBackups:
         )
         assert response.status_code == 404
         assert response.json()["title"] == "Backup Not Found"
+
+
+class TestOpsRestart:
+    """Owner-requested (2026-07-29) "kill everything and restart fresh"
+    action. Every test here patches os.execv at the athena.ops.serve_runtime
+    module level so the real process image is never replaced."""
+
+    def test_restart_requires_auth(self, client: TestClient) -> None:
+        response = client.post("/api/v1/ops/restart")
+        assert response.status_code == 401
+
+    def test_restart_requires_admin(self, client: TestClient) -> None:
+        headers = get_auth_headers(client, Role.READONLY)
+        response = client.post("/api/v1/ops/restart", headers=headers)
+        assert response.status_code == 403
+
+    def test_restart_unavailable_without_a_known_command(
+        self, client: TestClient
+    ) -> None:
+        from athena.ops.serve_runtime import ServeRuntime, set_serve_runtime
+
+        set_serve_runtime(ServeRuntime())
+        try:
+            headers = get_auth_headers(client, Role.ADMIN)
+            response = client.post("/api/v1/ops/restart", headers=headers)
+            assert response.status_code == 501
+            assert response.json()["title"] == "Restart Unavailable"
+        finally:
+            set_serve_runtime(None)
+
+    def test_restart_schedules_reexec_with_the_recorded_command(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import threading
+
+        import athena.ops.serve_runtime as serve_runtime_module
+        from athena.ops.serve_runtime import ServeRuntime, set_serve_runtime
+
+        calls: list[list[str]] = []
+        monkeypatch.setattr(
+            serve_runtime_module.os, "execv", lambda exe, args: calls.append(list(args))
+        )
+        monkeypatch.setattr(serve_runtime_module.time, "sleep", lambda _s: None)
+
+        set_serve_runtime(
+            ServeRuntime(
+                restart_command=("python3", "-m", "athena.cli", "serve", "--with-cycles")
+            )
+        )
+        try:
+            headers = get_auth_headers(client, Role.ADMIN)
+            response = client.post("/api/v1/ops/restart", headers=headers)
+            assert response.status_code == 202
+            data = response.json()["data"]
+            assert data["restarting"] is True
+
+            for t in threading.enumerate():
+                if t.name == "athena-restart":
+                    t.join(timeout=2)
+            assert calls == [["python3", "-m", "athena.cli", "serve", "--with-cycles"]]
+        finally:
+            set_serve_runtime(None)

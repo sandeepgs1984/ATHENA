@@ -44,3 +44,5 @@ Per ATHENA-001 §2 D-3.
 ## Project context
 
 Single-user decision-intelligence platform for NSE/BSE swing trading. Constitution: ATHENA-000. Engineering review and 12 accepted amendments: ATHENA-001. Never add order-placement code. Secrets in `.env` only. See README for stack decisions. See `ATHENA_BRIEFING.md` for the full AI-agent orientation map (what ATHENA is, governing docs, how to find current status, repo map) — read it first, every session.
+
+## Imported Claude Cowork project instructions

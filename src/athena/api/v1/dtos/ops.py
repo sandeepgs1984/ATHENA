@@ -135,3 +135,15 @@ class RestoreResultDTO(BaseModel):
     ts: datetime
     explanation: str
     issues: list[str] = Field(default_factory=list)
+
+
+class RestartResultDTO(BaseModel):
+    """Acknowledgement that a full process restart has been scheduled
+    (owner-requested "kill everything and restart fresh," 2026-07-29) —
+    the process itself is about to end, so this is the last response it
+    sends before doing so, not a claim that it already finished."""
+
+    model_config = ConfigDict(frozen=True)
+
+    restarting: bool
+    detail: str

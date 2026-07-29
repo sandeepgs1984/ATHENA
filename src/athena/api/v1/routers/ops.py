@@ -18,11 +18,17 @@ from athena.api.v1.dtos.ops import (
     KiteAuthStartDTO,
     KiteStatusDTO,
     OpsTelemetryDTO,
+    RestartResultDTO,
     RestoreRequestDTO,
     RestoreResultDTO,
 )
 from athena.api.v1.services.ops_service import OpsService
 from athena.ops.kite_session import KiteSessionService, KiteSessionStatus
+from athena.ops.serve_runtime import (
+    RestartUnavailableError,
+    get_serve_runtime,
+    trigger_restart,
+)
 
 router = APIRouter(prefix="/ops", tags=["Operations"])
 
@@ -237,3 +243,35 @@ def restore_ops_backup(
     """Restore live DB from backup. Requires confirmation token CONFIRM."""
     data = service.restore_backup_now(backup_id, body.confirmation)
     return AthenaResponse(status="success", data=data, meta=_meta(request))
+
+
+@router.post(
+    "/restart",
+    response_model=AthenaResponse[RestartResultDTO],
+    summary="Restart the ATHENA server process",
+    status_code=status.HTTP_202_ACCEPTED,
+    operation_id="restartServer",
+)
+def restart_server(
+    request: Request,
+    principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.ADMIN)),  # noqa: B008
+) -> AthenaResponse[RestartResultDTO]:
+    """Owner-requested (2026-07-29): "kill everything and restart fresh" —
+    the only reliable way to end a genuinely stuck background job (a
+    Python thread cannot be force-killed in isolation) is to end the whole
+    process. Relaunches with the exact flags this process itself was
+    started with (RestartUnavailableError/501 if that isn't known, e.g.
+    a ServeRuntime not started via the CLI). The process exits shortly
+    after this response is sent — expect the connection to drop."""
+    runtime = get_serve_runtime()
+    if runtime is None:
+        raise RestartUnavailableError("no ServeRuntime attached to this process")
+    trigger_restart(runtime)
+    return AthenaResponse(
+        status="success",
+        data=RestartResultDTO(
+            restarting=True,
+            detail="ATHENA is restarting — the console will reconnect automatically.",
+        ),
+        meta=_meta(request),
+    )

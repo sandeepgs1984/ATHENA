@@ -577,10 +577,21 @@ def _cmd_serve(args: argparse.Namespace) -> int:
             print(f"ERROR: {label} does not exist: {path}", file=sys.stderr)
             return 2
 
+    # Reconstructed explicitly from the parsed args — not raw sys.argv,
+    # whose argv[0] is ambiguous under `-m` — so a later "Restart ATHENA"
+    # action (owner-requested, 2026-07-29) relaunches with the exact same
+    # configuration this process itself was started with.
+    restart_command = [sys.executable, "-m", "athena.cli", "serve", "--host", host, "--port", str(port)]
+    if args.with_cycles:
+        restart_command += ["--with-cycles", "--cycle-interval", str(args.cycle_interval)]
+    if ssl_certfile is not None:
+        restart_command += ["--ssl-certfile", str(ssl_certfile), "--ssl-keyfile", str(ssl_keyfile)]
+
     runtime = ServeRuntime(
         cycles_enabled=bool(args.with_cycles),
         host=host,
         port=port,
+        restart_command=tuple(restart_command),
     )
     set_serve_runtime(runtime)
 

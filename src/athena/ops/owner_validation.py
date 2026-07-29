@@ -21,7 +21,7 @@ from athena.calendar.engine import CalendarEngine
 from athena.config.loader import load_config, load_market_health_config
 from athena.data.ingestion.models import IngestionResult
 from athena.data.store.repository import SqliteRepository
-from athena.domain.enums import DecisionType, RunTrigger, Timeframe
+from athena.domain.enums import DecisionType, RunStatus, RunTrigger, Timeframe
 from athena.domain.market import Candle, Instrument, MarketSnapshot
 from athena.market_health.aggregates import (
     compute_gap_stability,
@@ -47,6 +47,21 @@ class _MonoClock:
     def __call__(self) -> float:
         self._t += 1.0
         return self._t
+
+
+class _UniverseSummaryStandIn:
+    """Duck-types UniverseResult for RiskEngine._concentration_indicator,
+    which only ever reads `.summary` — used to substitute the most recent
+    FULL (unscoped) cycle's real eligible-instrument count when this run is
+    itself symbols_filter-scoped to one/few symbols (owner-reported bug,
+    2026-07-29). A scoped scan's own universe result reflects only how
+    narrow that particular call was (e.g. 1 for a single-symbol re-validate,
+    always triggering concentrated_risk regardless of real market breadth),
+    not the true market-wide universe breadth concentration_indicator is
+    meant to measure."""
+
+    def __init__(self, summary: Mapping[str, int]) -> None:
+        self.summary = summary
 
 
 class OwnerValidationPipeline:
@@ -310,6 +325,12 @@ class OwnerValidationPipeline:
             "universe_source": "owner_candidates",
             "unresolved_candidates": unresolved,
             "universe_summary": dict(result.summary),
+            # Marks whether this run scanned the full active-candidate
+            # universe or was symbols_filter-scoped to one/few symbols —
+            # lets a later scoped run find the last real, full-universe
+            # breadth for concentration_indicator instead of using its own
+            # narrow (misleadingly "concentrated") scan scope.
+            "universe_scope": "scoped" if self._symbols_filter else "full",
             "validation_summary": {
                 "candidates": len(candidates),
                 "evaluated": int(result.summary.get("evaluated", 0)),
@@ -426,37 +447,19 @@ class OwnerValidationPipeline:
         from athena.regime import RegimeEngine
 
         snap = self._resolve_snapshot(as_of, candles_by_id)
-        index_candidates: list[str] = []
-        if snap is not None and snap.indices:
-            index_candidates.extend(snap.indices.keys())
-        try:
-            from athena.config.loader import load_kite_provider_config
-
-            kite = load_kite_provider_config(self._config_dir)
-            index_candidates.extend(kite.index_instruments)
-        except Exception:
-            pass
-        index_candidates.extend(["NSE:NIFTY 50", "NIFTY50"])
-
-        seen: set[str] = set()
-        for index_id in index_candidates:
-            if not index_id or index_id in seen:
-                continue
-            seen.add(index_id)
-            index_candles = list(candles_by_id.get(index_id, ()))
-            if len(index_candles) < 2:
-                index_candles = self._repo.list_candles_recent(
-                    index_id, Timeframe.D1, limit=500
-                )
-            if len(index_candles) < 2:
-                continue
+        # Shared with _scan_eligible via _resolve_index_candles() — always
+        # the configured index's own real candle history, never a snapshot
+        # label mismatch or another instrument's own candles (see that
+        # method's docstring for the two owner-reported bugs this fixes).
+        index_id, index_candles = self._resolve_index_candles(candles_by_id)
+        if len(index_candles) >= 2:
             try:
                 regime = RegimeEngine(cfg.regime).assess(
                     index_id, index_candles, snap, as_of=as_of
                 )
+                return self._regime_to_payload(regime)
             except Exception:
-                continue
-            return self._regime_to_payload(regime)
+                pass
 
         # Fall back: any equity series with enough bars (trend/gap still useful)
         for iid, series in candles_by_id.items():
@@ -470,6 +473,61 @@ class OwnerValidationPipeline:
                 continue
             return self._regime_to_payload(regime)
         return None
+
+    def _resolve_index_candles(
+        self, candles_by_id: Mapping[str, Sequence[Candle]], *, min_candles: int = 2
+    ) -> tuple[str, list[Candle]]:
+        """Real market-benchmark index candles for regime assessment.
+
+        Two owner-reported bugs (2026-07-29), found together:
+
+        1. The previous `index_id = next(iter(snapshot.indices.keys()))`
+           picked whichever index happened to be first in that snapshot's
+           own dict — not a configured choice, not guaranteed stable across
+           snapshots — so regime (gap/trend/volatility) could silently flip
+           between a NIFTY 50-based and a BANK NIFTY-based reading between
+           two runs that should have been identical.
+        2. Deeper: `MarketSnapshot.indices` keys are bare labels ("NIFTY
+           50"), while the `candles` table stores everything under the
+           full instrument_id ("NSE:NIFTY 50") — so a lookup keyed off
+           `snapshot.indices` could never find real candles at all, and the
+           code fell through to `candles_by_id.get(included_ids[0], ())` —
+           using an ARBITRARY INDIVIDUAL STOCK's own candles as a stand-in
+           for "the market index" (whichever stock happened to be first in
+           this particular scan's own scope — a different one for a full
+           506-symbol cycle than for a single-symbol re-validate). This
+           silently fabricated a market-wide reading from single-stock
+           data, the opposite of ADR-005.
+
+        Fix: always resolve via the configured index instruments (their
+        real, correctly-prefixed instrument_id — never a snapshot's own
+        label, never another instrument's own candles), trying each in
+        order and requiring genuine candle history before accepting one.
+        Returns real, empty candles (never fabricated from an unrelated
+        instrument) when no configured index has enough history yet — the
+        regime engine already degrades every dimension to its own
+        `*_UNKNOWN` label for that case."""
+        candidates: list[str] = []
+        try:
+            from athena.config.loader import load_kite_provider_config
+
+            kite = load_kite_provider_config(self._config_dir)
+            candidates.extend(kite.index_instruments)
+        except Exception:
+            pass
+        candidates.extend(["NSE:NIFTY 50", "NIFTY50"])
+
+        seen: set[str] = set()
+        for index_id in candidates:
+            if not index_id or index_id in seen:
+                continue
+            seen.add(index_id)
+            series = list(candles_by_id.get(index_id, ()))
+            if len(series) < min_candles:
+                series = self._repo.list_candles_recent(index_id, Timeframe.D1, limit=500)
+            if len(series) >= min_candles:
+                return index_id, series
+        return (candidates[0] if candidates else "NIFTY50"), []
 
     def _resolve_snapshot(
         self,
@@ -531,6 +589,34 @@ class OwnerValidationPipeline:
                 return Decimal(str(last.close))
             except Exception:
                 continue
+        return None
+
+    def _last_full_universe_summary(self) -> _UniverseSummaryStandIn | None:
+        """Most recent FULL (unscoped) cycle's real universe_summary, for a
+        symbols_filter-scoped run's concentration_indicator — a scoped run's
+        own universe result only ever has 1 (or a few) "eligible" instrument,
+        which isn't the real market-wide breadth. Honestly None (→ UNKNOWN,
+        never fabricated) if no prior full cycle exists yet.
+
+        DryRunCycleOrchestrator.run_cycle() (scheduling/dry_run.py) persists
+        this pipeline's own returned dict nested one level down, under a
+        "pipeline" key, alongside "phase"/"duration_seconds"/"ingestion" —
+        not as the top-level detail_json. A caller that invokes this
+        pipeline directly (bypassing that orchestrator, e.g. a test) may
+        persist the flat dict instead — check both shapes so this works
+        for every real call site, not just the one under test."""
+        for record in self._repo.list_runs(limit=50):
+            if record.status not in (RunStatus.COMPLETED, RunStatus.DEGRADED):
+                continue
+            detail = self._repo.get_run_detail(record.run_id)
+            pipeline_detail = detail.get("pipeline")
+            if not isinstance(pipeline_detail, dict):
+                pipeline_detail = detail
+            if pipeline_detail.get("universe_scope") != "full":
+                continue
+            summary = pipeline_detail.get("universe_summary")
+            if isinstance(summary, dict) and summary:
+                return _UniverseSummaryStandIn(summary)
         return None
 
     @staticmethod
@@ -616,16 +702,21 @@ class OwnerValidationPipeline:
         decision_engine = DecisionEngine(decision_cfg)
         scanner = DailyMarketScanner(WorkflowEngine(clock=_MonoClock()))
 
-        index_id = next(iter(snapshot.indices.keys()), "NIFTY50")
-        index_candles = list(candles_by_id.get(index_id, ()))
-        if not index_candles:
-            index_candles = self._repo.list_candles_recent(index_id, Timeframe.D1, limit=500)
-        if not index_candles and included_ids:
-            index_candles = list(candles_by_id.get(included_ids[0], ()))
+        index_id, index_candles = self._resolve_index_candles(candles_by_id)
 
         captured_regime: dict[str, object] = {"payload": None}
         shared_market_health: dict[str, object] = {"value": market_health}
         shared_score: dict[str, object] = {"value": market_health_score}
+        # Owner-reported bug (2026-07-29): a symbols_filter-scoped run (e.g.
+        # single-symbol Re-validate) only ever has 1 "eligible" instrument in
+        # its own universe_result, which always trips concentrated_risk
+        # regardless of real market breadth. Substitute the last real FULL
+        # cycle's universe breadth for concentration purposes in that case.
+        concentration_universe = (
+            self._last_full_universe_summary()
+            if self._symbols_filter is not None
+            else universe_result
+        )
 
         def builder(instrument_id: str) -> InstrumentPlan:
             cs = list(candles_by_id.get(instrument_id, ()))
@@ -710,7 +801,7 @@ class OwnerValidationPipeline:
                         market_health=ctx.get("market_health"),
                         indicators=ctx.get("indicators"),
                         calendar_context=calendar_context,
-                        universe=universe_result,
+                        universe=concentration_universe,
                     )
                 }
 

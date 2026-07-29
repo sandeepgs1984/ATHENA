@@ -12,6 +12,7 @@ from __future__ import annotations
 import fcntl
 import logging
 import os
+import sys
 import threading
 import time
 from dataclasses import dataclass, field
@@ -72,6 +73,13 @@ class ServeRuntime:
     last_cycle: LastCycleSnapshot | None = None
     last_error: str | None = None
     full_validation: FullValidationProgress = field(default_factory=FullValidationProgress)
+    # Owner-requested (2026-07-29): the exact argv this process was started
+    # with (host/port/--with-cycles/--cycle-interval/ssl, reconstructed
+    # explicitly in _cmd_serve — not read back from raw sys.argv, which is
+    # ambiguous under `-m`) — lets a dashboard "Restart ATHENA" action
+    # relaunch with the identical configuration. None when the runtime
+    # wasn't started via the CLI (e.g. under test).
+    restart_command: tuple[str, ...] | None = None
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     def record_cycle(self, snapshot: LastCycleSnapshot) -> None:
@@ -225,3 +233,38 @@ class CycleWorker:
 
 def default_cycle_lock_path(repo_root: Path) -> Path:
     return Path(repo_root) / "artifacts" / "locks" / "cycle-runner.lock"
+
+
+class RestartUnavailableError(Exception):
+    """Raised when a restart is requested but this runtime has no known
+    restart_command (e.g. ServeRuntime constructed outside the CLI, as in
+    tests) — never guess an invocation, refuse instead."""
+
+
+def trigger_restart(runtime: ServeRuntime, *, delay_seconds: float = 0.75) -> None:
+    """Owner-requested (2026-07-29): "kill everything and restart fresh" —
+    the only reliable way to stop a genuinely stuck background job (a
+    Python thread blocked in a slow/hung network call cannot be force-
+    killed in isolation) is to end the whole process. `os.execv` replaces
+    this process's image in place (same PID): every thread — the cycle
+    worker, any in-flight full-validation job — ends immediately, every
+    file descriptor not marked close-on-exec (including the cycle-runner
+    flock) closes with it, and the new process starts with a clean slate.
+
+    Runs in a background thread after a short delay so the HTTP response
+    confirming the restart has time to reach the browser first — the
+    delay is deliberately short (not a guarantee), since the whole point
+    is that nothing else needs to run cleanly first.
+    """
+    if not runtime.restart_command:
+        raise RestartUnavailableError(
+            "no restart_command recorded on this runtime — was it started via the CLI?"
+        )
+    command = list(runtime.restart_command)
+
+    def _reexec() -> None:
+        time.sleep(delay_seconds)
+        logger.info("Restarting ATHENA: %s", " ".join(command))
+        os.execv(sys.executable, command)
+
+    threading.Thread(target=_reexec, name="athena-restart", daemon=False).start()

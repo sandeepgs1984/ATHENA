@@ -28,6 +28,7 @@
     const pageTitle = document.getElementById("page-title");
     const refreshTrigger = document.getElementById("refresh-trigger");
     const healthIndicator = document.getElementById("system-health-indicator");
+    const restartServerTrigger = document.getElementById("restart-server-trigger");
     const appShell = document.getElementById("app");
     const unlockGate = document.getElementById("unlock-gate");
     const unlockForm = document.getElementById("unlock-form");
