@@ -742,16 +742,19 @@ boundary and merely *look* distinct. Observed: ZEEL scored 65.00 in the
 
 #### Root cause: three engine inputs that are accepted but never passed
 
-| # | Engine parameter | Consequence | Data available today? |
+| # | Engine parameter | Original consequence | Current status |
 |---|---|---|---|
-| D-1 | `RiskEngine.assess(calendar_context=...)` | `event_risk` permanently UNKNOWN | **Yes** — `CalendarEngine` already built at `owner_validation.py:104` |
-| D-2 | `RiskEngine.assess(universe=...)` | `concentration_indicator` permanently UNKNOWN | **Yes** — `UniverseResult` already built at `owner_validation.py:148` |
-| D-3 | `ScoringEngine.score(sector_health=...)` | `sector_quality` (**weight 15 of 100**) permanently UNKNOWN for every symbol ever scored — every report shows `completeness: 0.85` | **No** — see blocker below |
+| D-1 | `RiskEngine.assess(calendar_context=...)` | `event_risk` permanently UNKNOWN | ✅ Closed — `CalendarContext` now threaded from `OwnerValidationPipeline.run()` |
+| D-2 | `RiskEngine.assess(universe=...)` | `concentration_indicator` permanently UNKNOWN | ✅ Closed — `UniverseResult` now threaded, with scoped re-validate fix using last full-cycle breadth |
+| D-3 | `ScoringEngine.score(sector_health=...)` | `sector_quality` (**weight 15 of 100**) permanently UNKNOWN for every symbol ever scored — every report shows `completeness: 0.85` | ⏳ Blocked — see sector data decision below |
 
-D-1 and D-2 are pure wiring: both objects already exist inside
-`OwnerValidationPipeline.run()` (lines 75–331) but are out of scope in
-`_scan_eligible()` (lines 564–772), so they need threading through as
-two parameters. No new data source, no contract change.
+D-1 and D-2 are now closed. `OwnerValidationPipeline.run()` threads the
+existing `CalendarContext` and `UniverseResult` into `_scan_eligible()`,
+which passes them into `RiskEngine.assess()`. The follow-up scoped
+re-validate bug is also fixed: scoped runs use the last real full-cycle
+universe breadth for `concentration_indicator`, and regime/gap context
+uses real configured index candles instead of falling back to an
+arbitrary stock. No new data source, no contract change.
 
 **D-3 is blocked on data, not on wiring.** `SectorHealthEngine` was built
 and approved under M2.3 and `config/sector_health.json` exists, but its
@@ -785,10 +788,10 @@ and must not ship without owner sign-off on the recalibration.
 
 | Milestone | Scope | Gate | Status |
 |---|---|---|---|
-| **SD-1** Wire calendar + universe into Risk | Thread the existing `CalendarContext` and `UniverseResult` from `run()` into `_scan_eligible()` → `RiskEngine.assess()`. Activates `event_risk` and `concentration_indicator`. Note: `concentration_indicator` is universe-breadth-derived and therefore shared across symbols — it raises risk *completeness* and honesty, it does **not** add per-symbol differentiation. Only `event_risk` can vary per symbol, and only on instruments with calendar events | None — existing objects, existing parameters, no contract/schema change | 🔄 Implemented, ready for review — **blocked on the `max_risk_for_trade` decision below** |
+| **SD-1** Wire calendar + universe into Risk | Thread the existing `CalendarContext` and `UniverseResult` from `run()` into `_scan_eligible()` → `RiskEngine.assess()`. Activates `event_risk` and `concentration_indicator`. Includes the approved follow-up fix for scoped re-validations: use last full-cycle breadth for concentration and real configured index candles for regime/gap context. Note: `concentration_indicator` is universe-breadth-derived and therefore shared across symbols — it raises risk *completeness* and honesty, it does **not** add per-symbol differentiation. Only `event_risk` can vary per symbol, and only on instruments with calendar events | None — existing objects, existing parameters, no contract/schema change | ✅ Completed / approved (2026-07-29) |
 | **SD-2** Sector health data decision | Owner decision, not an AI call: either (a) ingest real NSE sector indices via Kite (new data source → **DD-gated**), or (b) derive sector aggregates from the constituent candles already held, using `instruments.sector` (new method → needs a design decision / ADR since M2.3's engine contract assumes an index series) | **DD or ADR** depending on option chosen | ⏳ Proposed — blocked on owner direction |
 | **SD-3** Wire sector_quality + recalibrate thresholds | Only after SD-2 lands. Pass `sector_health` into `ScoringEngine.score()`, then re-tune `config/decision.json` watch/trade thresholds against the impact table above so the change doesn't silently reclassify 20–39% of the book. Ships with a before/after replay diff | Config change to decision thresholds — **owner approval required** | ⏳ Proposed — blocked on SD-2 |
-| **SD-4** Scoring granularity (continuous ramps) | Replace RSI/liquidity/ADX step functions with anchor-preserving linear ramps. Distinct composite scores rise from 21 → 248 across the live book. `technical_structure` deferred (needs a normalizing band with no existing anchor). | Config: `adx.weak`, `liquidity.low_volume_floor_ratio` | 🔄 Implemented, ready for review |
+| **SD-4** Scoring granularity (continuous ramps) | Replace RSI/liquidity/ADX step functions with anchor-preserving linear ramps. Distinct composite scores rise from 21 → 248 across the live book. `technical_structure` deferred (needs a normalizing band with no existing anchor). | Config: `adx.weak`, `liquidity.low_volume_floor_ratio` | ✅ Completed / approved (2026-07-29) |
 
 #### SD-1 consequence found during implementation: `max_risk_for_trade` was tuned against an incomplete denominator
 
@@ -820,7 +823,7 @@ setups on the least liquid stocks in the book.
 Strictness-preserving recalibration: **`max_risk_for_trade: 60 → 50`**
 reproduces today's exact pass/fail partition across all three calendar
 scenarios (40.25/47.75/49.25 pass; 52.25/59.75/61.25 fail). Owner
-decision required — this is a risk-appetite call, not an engineering one.
+approved this risk-appetite choice and the live config now uses 50.
 
 #### SD-4 — continuous scoring (design approved, implemented 2026-07-29)
 
@@ -841,10 +844,10 @@ momentum points, and a symbol at RSI 59.9 versus 60.1 jumps a full 30
 points on a rounding-width difference — the bands are simultaneously too
 flat inside and too cliff-edged at the boundary.
 
-**Proposed design (analysis complete 2026-07-29, no code written).**
-Replace the step functions with linear ramps that pass exactly through
-the anchor values already in `config/scoring.json`, so this is a strict
-refinement of the existing calibration rather than a re-weighting:
+**Approved design (implemented 2026-07-29).** Replace the step functions
+with linear ramps that pass exactly through the anchor values already in
+`config/scoring.json`, so this is a strict refinement of the existing
+calibration rather than a re-weighting:
 
 - **momentum** — `pts = 20 + 3 × (RSI − 40)`, clamped to `[20, 80]`.
   This reproduces all three configured anchors exactly: RSI 40 → 20
@@ -888,27 +891,27 @@ point above the weak threshold, is currently scored as mid-band, and
 clears the trade level on that basis. Under the ramp it scores as what
 it is — barely-not-weak — and correctly falls out of TRADE.
 
-**Owner approval required before implementation** — this changes 9.4% of
-decisions and adds two config fields.
+Owner approval was required because this changes 9.4% of decisions and
+adds two config fields; approval was received before implementation.
 
-**Implemented 2026-07-29** (awaiting owner review): `_linear_ramp` in
+**Implemented and approved 2026-07-29**: `_linear_ramp` in
 `scoring/engine.py`; `adx.weak: 15.0` and `liquidity.low_volume_floor_ratio:
 0.5` added to config + models; RSI `mid_points` validated as the honest
 mid-band anchor on the continuous ramp. Six new anchor/ramp regression
-tests in `tests/decision/test_scoring.py`. Full suite 1107 passed.
+tests in `tests/decision/test_scoring.py`. Full suite 1107 passed at the
+time of implementation; focused SD regression tests currently pass.
 
 ---
 
 #### Migration / re-validation plan (applies to SD-3 and SD-4)
 
 Any change to scoring output makes every already-persisted decision
-non-comparable with new ones. Proposed sequence: (1) take a repository
-backup via the existing backup path; (2) land the change behind a full
-replay of the current day's universe so the before/after diff is
-reviewable *before* it becomes the live book; (3) once approved, use the
-existing "Clear all" admin utility for a clean slate rather than leaving
-a mix of old-formula and new-formula decisions side by side — the same
-clean-slate approach already adopted for the 2026-07-26 collision fix.
+non-comparable with new ones. SD-4 is now implemented, so operational
+use should start from a clean book: take a repository backup via the
+existing backup path, use the existing "Clear all" admin utility, then
+run a fresh full validation. Apply the same clean-slate approach when
+SD-3 eventually lands, because sector-quality wiring will also change
+score comparability.
 
 #### Incidental finding (not the reported bug, not fixed)
 

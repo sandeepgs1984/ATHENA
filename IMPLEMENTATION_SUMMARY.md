@@ -202,7 +202,7 @@ Fix: new `_resolve_index_candles()`, shared by `_scan_eligible` and `_maybe_regi
 
 ---
 
-## SD-4 — Continuous scoring ramps (owner-approved design, 2026-07-29)
+## SD-4 — Continuous scoring ramps (approved, 2026-07-29)
 
 | | |
 |---|---|
@@ -235,10 +235,10 @@ liquidity no longer cliffs. Full suite **1107 passed**, ruff clean on touched fi
 
 Existing decisions still carry pre-ramp scores — use "Clear all" + fresh
 validation for a clean book, same migration path as SD-1. SD-2/SD-3
-(sector_quality) still blocked on sector-index data. Thresholds may need a
-final review once sector lands.
+(sector_quality) remain blocked on the sector-health data decision.
+Thresholds may need a final review once sector lands.
 
-| Status | 🔄 Implemented, tested, ready for owner review |
+| Status | ✅ Completed / approved (2026-07-29) |
 
 ---
 
@@ -298,10 +298,11 @@ Full suite **1101 passed**, ruff clean.
 fixtures (a property of the fixture, not the wiring — production data
 yields a real value). SD-1 adds **no per-symbol differentiation**: both
 newly-activated dimensions are date-wide or universe-wide, so they raise
-honesty and completeness only. The owner's original report is addressed
-by SD-3 (sector) and SD-4 (continuous scoring), both still pending.
+honesty and completeness only. The scoped re-validate inconsistency is
+closed by the approved fix pass above. Remaining symbol differentiation
+work is SD-3 sector quality after SD-2 selects a real data path.
 
-| Status | 🔄 Implemented, tested, ready for owner review |
+| Status | ✅ Completed / approved (2026-07-29) |
 
 ---
 
