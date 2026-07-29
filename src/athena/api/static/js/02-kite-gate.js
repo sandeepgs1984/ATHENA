@@ -17,6 +17,9 @@
             kiteStatusBtn.className = "btn btn-kite required";
             kiteStatusLabel.textContent = "KITE · RECONNECT";
             kiteStatusBtn.title = "Kite market-data session required. Click to connect.";
+            if (typeof setAdvisorPulse === "function") {
+                setAdvisorPulse("Kite reconnect required · Live quotes may be unavailable", "warning", 0);
+            }
         }
     }
 

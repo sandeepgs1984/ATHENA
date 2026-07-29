@@ -42,6 +42,9 @@
         }
         if (tabId !== "decisions") {
             stopBriefPriceRefresh();
+            if (typeof clearAdvisorPulsePriority === "function") {
+                clearAdvisorPulsePriority(1);
+            }
         }
 
         // 3. Trigger API data loading for specific tab
@@ -195,6 +198,24 @@
         changeEl.className = `ticker-change ${positive ? "positive" : "negative"}`;
     }
 
+    function updateMarketPulse(data) {
+        if (typeof setAdvisorPulse !== "function") return;
+        const hasTicker = Boolean(
+            (data.nifty && data.nifty.level != null)
+            || (data.bank_nifty && data.bank_nifty.level != null)
+            || (data.india_vix && data.india_vix.level != null)
+        );
+        if (!hasTicker) {
+            setAdvisorPulse("Market pulse unavailable · Review before acting", "warning", 0);
+            return;
+        }
+        const kiteText = state.kiteRequired
+            ? (state.kiteConnected ? "Kite connected · advisor ready" : "Kite reconnect required")
+            : "Advisor ready · market pulse updated";
+        const tone = state.kiteRequired && !state.kiteConnected ? "warning" : "good";
+        setAdvisorPulse(kiteText, tone, 0);
+    }
+
     async function loadMarketTicker() {
         if (!headerMarketTicker) return;
         try {
@@ -203,8 +224,12 @@
             renderTickerIndex("nifty", data.nifty || {});
             renderTickerIndex("banknifty", data.bank_nifty || {});
             renderTickerIndex("vix", data.india_vix || {});
+            updateMarketPulse(data);
         } catch (err) {
             console.error("Failed to load market ticker", err);
+            if (typeof setAdvisorPulse === "function") {
+                setAdvisorPulse("Market pulse unavailable · Check connection before acting", "warning", 0);
+            }
         }
     }
 

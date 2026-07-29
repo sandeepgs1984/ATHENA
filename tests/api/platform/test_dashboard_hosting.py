@@ -200,8 +200,18 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.86.0" in html
-    assert "dashboard.js?v=9.86.0" in html
+    assert "dashboard.css?v=9.87.0" in html
+    assert "dashboard.js?v=9.87.0" in html
+    assert 'id="advisor-pulse"' in html
+    assert 'id="header-diagnostics-popover"' in html
+    assert 'id="decision-actionability-banner"' in html
+    assert "function setAdvisorPulse" in js
+    assert "function renderDecisionActionability" in js
+    assert "Plan expired · re-validate" in js
+    assert "Re-validate before using entry/stop/target levels" in js
+    assert ".advisor-pulse" in css
+    assert ".diagnostics-popover" in css
+    assert ".decision-actionability-banner.tone-danger" in css
     assert "function chartPlanLevelPct" in js
     assert "function chartPlanValidityLabel" in js
     assert "function refreshActiveDecisionChart" in js

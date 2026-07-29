@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.86.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.87.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -139,18 +139,10 @@
                 </div>
 
                 <div class="header-right">
-                    <div class="telemetry-bar">
-                        <div class="telemetry-item">
-                            <span class="telemetry-label">REQ-ID</span>
-                            <span id="header-req-id" class="telemetry-value font-mono">unknown</span>
-                        </div>
-                        <div class="telemetry-item">
-                            <span class="telemetry-label">CORR-ID</span>
-                            <span id="header-corr-id" class="telemetry-value font-mono">unknown</span>
-                        </div>
-                        <div class="telemetry-item">
-                            <span class="telemetry-label">LATENCY</span>
-                            <span id="header-latency" class="telemetry-value font-mono">-- ms</span>
+                    <div id="advisor-pulse" class="advisor-pulse" aria-live="polite">
+                        <i class="fa-solid fa-bolt" aria-hidden="true"></i>
+                        <div class="advisor-pulse-viewport">
+                            <span id="advisor-pulse-message" class="advisor-pulse-message">ATHENA advisor ready · Select a symbol to review actionability</span>
                         </div>
                     </div>
 
@@ -159,6 +151,25 @@
                             <i class="fa-solid fa-link"></i>
                             <span id="kite-status-label">KITE</span>
                         </button>
+                        <div class="diagnostics-menu">
+                            <button id="header-diagnostics-toggle" class="btn btn-icon" type="button" title="Diagnostics" aria-label="Diagnostics" aria-haspopup="true" aria-expanded="false">
+                                <i class="fa-solid fa-wave-square" aria-hidden="true"></i>
+                            </button>
+                            <div id="header-diagnostics-popover" class="diagnostics-popover" hidden>
+                                <div class="telemetry-item">
+                                    <span class="telemetry-label">REQ-ID</span>
+                                    <span id="header-req-id" class="telemetry-value font-mono">unknown</span>
+                                </div>
+                                <div class="telemetry-item">
+                                    <span class="telemetry-label">CORR-ID</span>
+                                    <span id="header-corr-id" class="telemetry-value font-mono">unknown</span>
+                                </div>
+                                <div class="telemetry-item">
+                                    <span class="telemetry-label">LATENCY</span>
+                                    <span id="header-latency" class="telemetry-value font-mono">-- ms</span>
+                                </div>
+                            </div>
+                        </div>
                         <button id="refresh-trigger" class="btn btn-icon" title="Force Refresh" aria-label="Force refresh">
                             <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i>
                         </button>
@@ -862,6 +873,16 @@
                                         </div>
                                         <p id="decision-summary-headline" class="decision-banner-reason"></p>
                                     </div>
+                                    <div id="decision-actionability-banner" class="decision-actionability-banner" hidden>
+                                        <div class="decision-actionability-icon">
+                                            <i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i>
+                                        </div>
+                                        <div class="decision-actionability-copy">
+                                            <span id="decision-actionability-label" class="decision-actionability-label">Advisor status</span>
+                                            <strong id="decision-actionability-status" class="decision-actionability-status">Review required</strong>
+                                            <p id="decision-actionability-detail" class="decision-actionability-detail"></p>
+                                        </div>
+                                    </div>
                                     <div class="decision-brief-tabstrip" id="decision-brief-tabstrip" hidden>
                                         <button class="brief-tab active" data-brief-tab="setup" type="button"><i class="fa-solid fa-route"></i> <span>Trade Plan</span></button>
                                         <button class="brief-tab" data-brief-tab="analysis" type="button"><i class="fa-solid fa-chart-bar"></i> <span>Analysis</span></button>
@@ -1274,6 +1295,6 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.86.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.87.0"></script>
 </body>
 </html>

@@ -19,6 +19,10 @@
     const gaugeRecommendationStance = document.getElementById("gauge-recommendation-stance");
     const decisionSummaryCard = document.getElementById("decision-summary-card");
     const decisionSummaryHeadline = document.getElementById("decision-summary-headline");
+    const decisionActionabilityBanner = document.getElementById("decision-actionability-banner");
+    const decisionActionabilityLabel = document.getElementById("decision-actionability-label");
+    const decisionActionabilityStatus = document.getElementById("decision-actionability-status");
+    const decisionActionabilityDetail = document.getElementById("decision-actionability-detail");
 
     // ATHENA Summary "View Details" opens the same executive-summary bullet
     // list previously shown inline on every tab — now a modal, following the
@@ -279,8 +283,19 @@
         if (decisionBriefTabstrip) decisionBriefTabstrip.hidden = true;
         if (decisionSummaryCard) decisionSummaryCard.hidden = true;
         if (decisionSummaryHeadline) decisionSummaryHeadline.textContent = "";
+        if (decisionActionabilityBanner) decisionActionabilityBanner.hidden = true;
+        if (decisionActionabilityStatus) decisionActionabilityStatus.textContent = "Review required";
+        if (decisionActionabilityDetail) decisionActionabilityDetail.textContent = "";
         if (gaugeRecommendationTile) gaugeRecommendationTile.className = "brief-gauge brief-gauge-recommendation";
         if (gaugeRecommendationStance) gaugeRecommendationStance.textContent = "—";
+        if (typeof clearAdvisorPulsePriority === "function") clearAdvisorPulsePriority(1);
+        if (typeof setAdvisorPulse === "function") {
+            setAdvisorPulse(
+                "ATHENA advisor ready · Select a symbol to review actionability",
+                "neutral",
+                0
+            );
+        }
         resetCockpitGauges();
         setHeaderRevalidateEnabled(false);
         setHeaderActionsEnabled(false);
@@ -457,6 +472,95 @@
         `;
     }
 
+    function actionabilityStatusFromPlan(decision, freshness = null) {
+        const plan = decision && decision.trade_plan;
+        if (!decision || !decision.metadata || !plan) return null;
+        const stance = decisionStance(
+            decision.metadata.decision_type,
+            decision.metadata.direction
+        );
+        const rawSymbol = String(decision.metadata.instrument_id || "");
+        const symbol = rawSymbol.includes(":") ? rawSymbol.split(":").pop() : rawSymbol;
+        const status = String(freshness && freshness.status || "").toUpperCase();
+        const validUntil = new Date(plan.valid_until);
+        const now = new Date();
+        const inferredExpired = !Number.isNaN(validUntil.getTime()) && now > validUntil;
+        const remaining = freshness && freshness.remaining_seconds != null
+            ? Number(freshness.remaining_seconds)
+            : Number.isNaN(validUntil.getTime())
+                ? null
+                : Math.round((validUntil.getTime() - now.getTime()) / 1000);
+        const remainingLabel = remaining != null && Number.isFinite(remaining)
+            ? formatTradePlanRelativeDuration(Math.abs(remaining))
+            : "";
+
+        if (status === "EXPIRED" || inferredExpired) {
+            return {
+                tone: "danger",
+                status: "Plan expired · re-validate",
+                detail: `Expired${
+                    remainingLabel ? ` ${remainingLabel} ago` : ""
+                }. Re-validate before using entry/stop/target levels.`,
+                pulse: `${symbol ? `${symbol} · ` : ""}expired${
+                    remainingLabel ? ` ${remainingLabel} ago` : ""
+                } · re-validate`,
+                priority: 2,
+            };
+        }
+        if (status === "STALE") {
+            return {
+                tone: "warning",
+                status: "Plan stale · confirm first",
+                detail: `Validity window is nearly exhausted. Re-validate before entry.`,
+                pulse: `${symbol ? `${symbol} · ` : ""}plan stale · confirm first`,
+                priority: 2,
+            };
+        }
+        if (status === "AGING") {
+            return {
+                tone: "warning",
+                status: "Plan aging",
+                detail: `TradePlan expires${remainingLabel ? ` in ${remainingLabel}` : " this session"}. Confirm live quote before entry.`,
+                pulse: `${symbol ? `${symbol} · ` : ""}expires in ${remainingLabel || "this session"}`,
+                priority: 1,
+            };
+        }
+        return {
+            tone: "good",
+            status: "Plan valid",
+            detail: `TradePlan is valid${remainingLabel ? ` for ${remainingLabel}` : ""}. ATHENA is advisory only; confirm live quote before manual action.`,
+            pulse: `${symbol ? `${symbol} · ` : ""}plan valid${remainingLabel ? ` ${remainingLabel}` : ""}`,
+            priority: 1,
+        };
+    }
+
+    function renderDecisionActionability(freshness = null) {
+        const view = actionabilityStatusFromPlan(activeDecisionData, freshness);
+        if (!decisionActionabilityBanner || !view) {
+            if (decisionActionabilityBanner) decisionActionabilityBanner.hidden = true;
+            if (typeof clearAdvisorPulsePriority === "function") clearAdvisorPulsePriority(1);
+            if (typeof setAdvisorPulse === "function") {
+                setAdvisorPulse(
+                    "ATHENA advisor ready · Select a symbol to review actionability",
+                    "neutral",
+                    0
+                );
+            }
+            return;
+        }
+        decisionActionabilityBanner.hidden = false;
+        decisionActionabilityBanner.className = `decision-actionability-banner tone-${view.tone}`;
+        if (decisionActionabilityLabel) decisionActionabilityLabel.textContent = "Advisor status";
+        if (decisionActionabilityStatus) decisionActionabilityStatus.textContent = view.status;
+        if (decisionActionabilityDetail) decisionActionabilityDetail.textContent = view.detail;
+        if (typeof clearAdvisorPulsePriority === "function" && view.priority <= 1) {
+            clearAdvisorPulsePriority(2);
+        }
+        if (typeof setAdvisorPulse === "function") {
+            setAdvisorPulse(view.pulse, view.tone, view.priority);
+        }
+    }
+
     function renderDecisionBrief(decision) {
         if (!decisionBriefBody || !decision || !decision.metadata) return;
         activeDecisionData = decision;
@@ -544,6 +648,7 @@
             decisionSummaryHeadline.textContent = summary.headline;
             decisionSummaryHeadline.title = summary.headline;
         }
+        renderDecisionActionability();
 
         const gateRows = gates.length
             ? gates.map(gate => `
@@ -792,6 +897,8 @@
         activeChartSeries = null;
         activeChartPlan = null;
         activeBriefQuote = null;
+        if (decisionActionabilityBanner) decisionActionabilityBanner.hidden = true;
+        if (typeof clearAdvisorPulsePriority === "function") clearAdvisorPulsePriority(1);
         // Toggle the active row across every symbol group in the left panel,
         // and bring the selected row into view only if it isn't already
         // (graceful selection — never yanks the panel's scroll position

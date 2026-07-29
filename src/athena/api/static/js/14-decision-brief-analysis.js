@@ -211,6 +211,7 @@
             if (activeDecisionId !== decisionId) return;
             activePlanFreshness = response && response.data;
             renderPlanFreshnessBadge(activePlanFreshness);
+            renderDecisionActionability(activePlanFreshness);
             refreshActiveDecisionChart();
         } catch (err) {
             if (activeDecisionId !== decisionId) return;

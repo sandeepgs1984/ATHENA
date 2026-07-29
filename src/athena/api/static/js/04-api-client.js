@@ -76,13 +76,76 @@
         }
     }
 
+    function advisorLatencyTone(latency) {
+        const ms = Number(latency);
+        if (!Number.isFinite(ms)) return "neutral";
+        if (ms >= 2500) return "danger";
+        if (ms >= 1000) return "warning";
+        return "good";
+    }
+
+    function setAdvisorPulse(message, tone = "neutral", priority = 0) {
+        if (Number(priority) < Number(state.advisorPulse.priority || 0)) return;
+        const text = String(message || "").trim()
+            || "ATHENA advisor ready · Select a symbol to review actionability";
+        state.advisorPulse = { message: text, tone, priority };
+        if (advisorPulseMessage) advisorPulseMessage.textContent = text;
+        if (advisorPulse) {
+            advisorPulse.className = `advisor-pulse tone-${tone}`;
+            advisorPulse.title = text;
+        }
+    }
+
+    function clearAdvisorPulsePriority(priority = 1) {
+        if (Number(state.advisorPulse.priority || 0) >= Number(priority)) {
+            state.advisorPulse.priority = 0;
+        }
+    }
+
+    function closeDiagnosticsPopover() {
+        if (!diagnosticsPopover || !diagnosticsToggle) return;
+        diagnosticsPopover.hidden = true;
+        diagnosticsToggle.setAttribute("aria-expanded", "false");
+    }
+
+    diagnosticsToggle?.addEventListener("click", event => {
+        event.stopPropagation();
+        if (!diagnosticsPopover) return;
+        const opening = diagnosticsPopover.hidden;
+        diagnosticsPopover.hidden = !opening;
+        diagnosticsToggle.setAttribute("aria-expanded", opening ? "true" : "false");
+    });
+
+    document.addEventListener("click", event => {
+        if (diagnosticsPopover && !diagnosticsPopover.hidden
+            && !diagnosticsPopover.contains(event.target)
+            && event.target !== diagnosticsToggle) {
+            closeDiagnosticsPopover();
+        }
+    });
+
+    document.addEventListener("keydown", event => {
+        if (event.key === "Escape") closeDiagnosticsPopover();
+    });
+
     function updateTelemetry(reqId, corrId, latency) {
         state.telemetry = { requestId: reqId, correlationId: corrId, latencyMs: latency };
         
-        // Update DOM
-        reqIdElement.textContent = reqId.slice(0, 8) + "...";
-        reqIdElement.title = reqId;
-        corrIdElement.textContent = corrId.slice(0, 8) + "...";
-        corrIdElement.title = corrId;
-        latencyElement.textContent = `${latency} ms`;
+        if (reqIdElement) {
+            reqIdElement.textContent = reqId.slice(0, 8) + "...";
+            reqIdElement.title = reqId;
+        }
+        if (corrIdElement) {
+            corrIdElement.textContent = corrId.slice(0, 8) + "...";
+            corrIdElement.title = corrId;
+        }
+        if (latencyElement) {
+            latencyElement.textContent = `${latency} ms`;
+            latencyElement.className = `telemetry-value font-mono latency-${advisorLatencyTone(latency)}`;
+        }
+        if (diagnosticsToggle) {
+            diagnosticsToggle.classList.remove("latency-good", "latency-warning", "latency-danger", "latency-neutral");
+            diagnosticsToggle.classList.add(`latency-${advisorLatencyTone(latency)}`);
+            diagnosticsToggle.title = `Diagnostics · last request ${latency} ms`;
+        }
     }

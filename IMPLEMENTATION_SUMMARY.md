@@ -6,6 +6,29 @@ status updated on approval.
 
 ---
 
+## AS-1 — Header pulse and actionability foundation (ready for owner review)
+
+| | |
+|---|---|
+| Completed | 2026-07-29 |
+| Objective | Shift Decisions & Trace from visible engineering diagnostics toward a safer intraday advisor surface |
+| Scope | Added the Advisor Status Layer track; replaced always-visible `REQ-ID` / `CORR-ID` / latency with a header advisor pulse plus diagnostics popover; added latency severity coloring inside diagnostics; added a selected-symbol Advisor Status banner that warns when a TradePlan is expired/stale and tells the owner to re-validate before considering manual action; tightened the screenshot-reviewed header/pulse/banner layout so it does not duplicate ticker data or read like loose body copy; wired TradePlan freshness DTO updates into the banner/pulse; bumped dashboard asset cache-busters |
+| Files created | None |
+| Files modified | `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md`, `src/athena/api/static/index.html`, `src/athena/api/static/js/00-state-and-dom.js`, `src/athena/api/static/js/02-kite-gate.js`, `src/athena/api/static/js/03-app-shell.js`, `src/athena/api/static/js/04-api-client.js`, `src/athena/api/static/js/13-decision-brief-core.js`, `src/athena/api/static/js/14-decision-brief-analysis.js`, `src/athena/api/static/css/03-shell.css`, `src/athena/api/static/css/09-decision-brief-shell.css`, `tests/api/platform/test_dashboard_hosting.py`, `tests/api/platform/test_decision_chart_release_gate.py` |
+| Public APIs added | None |
+| Tests | `rtk node --check src/athena/api/static/js/00-state-and-dom.js` — passed; `rtk node --check src/athena/api/static/js/02-kite-gate.js` — passed; `rtk node --check src/athena/api/static/js/03-app-shell.js` — passed; `rtk node --check src/athena/api/static/js/04-api-client.js` — passed; `rtk node --check src/athena/api/static/js/13-decision-brief-core.js` — passed; `rtk node --check src/athena/api/static/js/14-decision-brief-analysis.js` — passed; `rtk pytest tests/api/platform/test_dashboard_hosting.py tests/api/platform/test_decision_chart_release_gate.py -q` — 8 passed; `rtk git diff --check` — passed; `rtk pytest -q` — 1123 passed |
+| Coverage | Hosting tests lock in the advisor pulse, diagnostics popover, actionability banner, expired-plan warning copy, release-gated `9.87.0` cache-busters, and the existing chart release gate |
+| Architecture compliance | Presentation-only. No backend, provider, broker, scoring, risk, decision-policy, frozen domain, or schema changes. The banner does not alter ATHENA's recommendation; it only adds actionability wording over existing selected decision and TradePlan freshness data |
+| ADR compliance | ADR-004 preserved: static HTML/CSS/vanilla JS. ADR-005 preserved: actionability wording consumes existing TradePlan/freshness fields and does not invent a next market session or new analytical rationale |
+| Risks discovered | The owner-requested “market closed · next live date” message needs a real calendar/session payload; AS-1 deliberately defers that to AS-3 rather than guessing from browser time. Left-list and Quick Summary freshness propagation remain separate reviewable work in AS-2 |
+| Technical debt introduced | None |
+| Suggested improvements | AS-2 should surface plan validity directly in Quick Summary and symbol rows so expired setups are visible before opening each brief |
+| Remaining work | Owner review of AS-1; AS-2/AS-3/AS-4 remain planned |
+| Status | 🔄 Ready for owner review |
+| Branch | feature/live-dashboard |
+
+---
+
 ## CH-6 — Chart resilience and release gate (ready for owner review)
 
 | | |

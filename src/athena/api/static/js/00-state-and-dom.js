@@ -17,6 +17,11 @@
             requestId: "unknown",
             correlationId: "unknown",
             latencyMs: 0
+        },
+        advisorPulse: {
+            message: "ATHENA advisor ready · Select a symbol to review actionability",
+            tone: "neutral",
+            priority: 0
         }
     };
 
@@ -54,6 +59,10 @@
     const kiteRequestToken = document.getElementById("kite-request-token");
     const kiteStatusBtn = document.getElementById("kite-status-btn");
     const kiteStatusLabel = document.getElementById("kite-status-label");
+    const advisorPulse = document.getElementById("advisor-pulse");
+    const advisorPulseMessage = document.getElementById("advisor-pulse-message");
+    const diagnosticsToggle = document.getElementById("header-diagnostics-toggle");
+    const diagnosticsPopover = document.getElementById("header-diagnostics-popover");
     
     // Telemetry DOM Bindings
     const reqIdElement = document.getElementById("header-req-id");

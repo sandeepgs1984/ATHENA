@@ -211,6 +211,47 @@ that, exactly one chart milestone is implemented and reviewed at a time.
 
 ---
 
+### Advisor Status Layer track (owner direction, 2026-07-29)
+
+Moves Decisions & Trace from an engineering-console feel toward an intraday
+advisor surface. Presentation-only: consumes existing ticker/session/telemetry,
+selected-decision, and TradePlan freshness data; does not change scoring,
+risk, decision policy, providers, frozen domain contracts, or order behavior.
+
+| Milestone | Scope | Gate | Status |
+|---|---|---|---|
+| **AS-0** Advisor status plan | Audit screenshot, define actionability states, diagnostics boundary, pulse-strip content, staged rollout | Owner approval | ✅ Approved (2026-07-29) |
+| **AS-1** Header pulse + actionability foundation | Replace always-visible REQ/CORR/LATENCY with advisor pulse + diagnostics popover; add selected-symbol actionability banner that can override a green BUY-looking setup when market/plan state makes it non-actionable | None — frontend presentation over existing data only | 🔄 Ready for review |
+| **AS-2** Freshness propagation | Add plan/actionability state to Quick Summary and the symbol list so expired/stale plans are visible before opening each brief | None — reuse selected/list payloads and plan freshness where available; no fabricated timestamps | ⏳ Planned |
+| **AS-3** Market closed review mode | Surface market-closed/next-session messaging and review-mode wording across header and detail pane once existing calendar/session data is exposed to the dashboard | Additive read-only API only if existing payloads are insufficient | ⏳ Planned |
+| **AS-4** Release gate | Regression tests for diagnostics privacy, actionability overrides, reduced-motion pulse behavior, and expired-plan visual dominance | Owner review after QA evidence | ⏳ Planned |
+
+**Implementation rule:** one AS milestone at a time. AS must never create
+trading signals, alter ATHENA's recommendation, or imply order execution.
+
+#### AS-1 — header pulse + actionability foundation (ready for review, 2026-07-29)
+
+Scope completed: the primary header now uses an advisor pulse strip for
+market/Kite/selected-plan messages, while exact `REQ-ID`/`CORR-ID`/latency
+remain available in a diagnostics popover. Selected TradePlans now render an
+Advisor Status banner in the Decision Brief header. If the plan is expired or
+stale, the banner and pulse explicitly say the setup is not actionable /
+requires re-validation before any manual action, without changing the
+underlying ATHENA recommendation. Reduced-motion users get a static truncated
+pulse message instead of scrolling text.
+
+Owner screenshot review fix pass: the AS-1 header pulse was tightened to avoid
+duplicating the market ticker, the diagnostics popover was compacted, and the
+expired-plan banner was restyled with shorter action-first wording so the
+advisor warning does not read like loose body copy.
+
+Deferred deliberately to AS-2/AS-3: propagating plan freshness into every left
+symbol row, adding it to Quick Summary, and showing a real market-closed / next
+live-session date. AS-1 does not fabricate a next session from browser time;
+that must come from ATHENA's calendar/session authority.
+
+---
+
 ### Intraday Edge Program (post M-D4, owner direction 2026-07-25)
 
 AI-driven roadmap toward a "no compromise" world-class intraday analyzer.
