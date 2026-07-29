@@ -187,6 +187,30 @@ Re-validate). M-D5 remains deferred until DD-5/provider approval.
 
 ---
 
+### Symbol Chart Excellence track (owner direction, 2026-07-29)
+
+World-class symbol chart presentation for the Decision Brief, governed by
+`docs/design/ATHENA-SYMBOL-CHART-ROADMAP.md`. This track improves chart
+inspection quality only; it does not change ATHENA scoring, create orders,
+invent signals, or add broker write behavior. ADR-004 already permits static
+HTML/vanilla JS/Lightweight Charts on this surface, and ADR-005 governs every
+overlay as data.
+
+| Milestone | Scope | Gate | Status |
+|---|---|---|---|
+| **CH-0** Design & architecture gate | Current chart audit, target experience, staged roadmap, no-fabrication/no-order-placement boundaries | Owner approval of roadmap and chart-library dependency approach | 🔄 Ready for review |
+| **CH-1** Professional chart foundation | Replace hand-rolled SVG with a reusable professional chart controller over the existing candles endpoint; candles, volume, SMA, responsive normal/modal views | None if dependency approach is approved under ADR-004 | ⏳ Planned |
+| **CH-2** TradePlan overlays & validity layer | Entry band, stop/target price lines, percentage deltas, risk/reward label, expiry/freshness affordance from existing plan data | None | ⏳ Planned |
+| **CH-3** Timeframe, range, and session controls | Existing timeframe/range controls, local chart preference, session separators, visible last-candle timestamp | None | ⏳ Planned |
+| **CH-4** Interactive inspection | Crosshair OHLCV legend, rendered indicator readouts, plan-level readouts, zoom/pan reset, accessibility pass | None | ⏳ Planned |
+| **CH-5** Decision & event markers | Persisted decision/revalidation/journal/outcome markers on the chart | Additive read-only endpoint only if existing payloads are insufficient; ADR required for frozen contract/domain expansion | ⏳ Planned |
+| **CH-6** Resilience, visual QA, and release gate | Browser visual QA, nonblank checks, stale/no-data states, performance budget, fallback testing | Owner review after QA evidence | ⏳ Planned |
+
+**Implementation rule:** CH-0 must be owner-approved before CH-1 starts; after
+that, exactly one chart milestone is implemented and reviewed at a time.
+
+---
+
 ### Intraday Edge Program (post M-D4, owner direction 2026-07-25)
 
 AI-driven roadmap toward a "no compromise" world-class intraday analyzer.

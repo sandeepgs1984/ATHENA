@@ -6,6 +6,29 @@ status updated on approval.
 
 ---
 
+## CH-0 — Symbol Chart Excellence roadmap (ready for owner review)
+
+| | |
+|---|---|
+| Completed | 2026-07-29 |
+| Objective | Convert the owner request for world-class symbol chart presentation into a staged, review-gated implementation plan suitable for a money-sensitive decision surface |
+| Scope | Documentation-only design milestone: current chart audit, governing constraints, target experience, CH-1 through CH-6 milestone sequence, explicit risk controls |
+| Files created | `docs/design/ATHENA-SYMBOL-CHART-ROADMAP.md` |
+| Files modified | `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md` |
+| Public APIs added | None |
+| Tests | Not run — documentation-only milestone. `rtk git diff --check` passed |
+| Coverage | Not applicable |
+| Architecture compliance | No architecture change. Roadmap keeps chart work inside the existing read-only dashboard/reporting boundary and does not alter scoring, risk, provider, broker, or domain contracts |
+| ADR compliance | ADR-004 permits the static HTML/vanilla JS/Lightweight Charts surface; ADR-005 is carried forward as the rule that every chart overlay must come from persisted or explicitly returned data |
+| Risks discovered | Chart polish can create false confidence if unsupported overlays are introduced; the roadmap blocks AI-drawn trendlines, invented support/resistance, hidden strategy annotations, and any order-placement behavior |
+| Technical debt introduced | None |
+| Suggested improvements | Owner should approve the chart-library dependency approach before CH-1: vendored static asset with documented source/version, or CDN with graceful unavailable-library handling |
+| Remaining work | CH-1 Professional chart foundation after owner approval of CH-0 |
+| Status | 🔄 Ready for owner review |
+| Branch | feature/live-dashboard |
+
+---
+
 ## Fix pass: scoped re-validate inflated risk — two root causes (owner-reported, APPROVED)
 
 | | |
