@@ -32,6 +32,80 @@
         minute: "2-digit",
     });
 
+    function chartFormatDuration(seconds) {
+        const totalSeconds = Math.max(0, Math.round(Number(seconds)));
+        if (!Number.isFinite(totalSeconds)) return "";
+        if (totalSeconds < 60) return "under 1m";
+        const days = Math.floor(totalSeconds / 86400);
+        const hours = Math.floor((totalSeconds % 86400) / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const parts = [];
+        if (days) parts.push(`${days}d`);
+        if (hours) parts.push(`${hours}h`);
+        if (minutes && parts.length < 2) parts.push(`${minutes}m`);
+        return parts.slice(0, 2).join(" ");
+    }
+
+    function chartPlanDirection() {
+        const meta = activeDecisionData && activeDecisionData.metadata;
+        return String(meta && meta.direction || "").toUpperCase();
+    }
+
+    function chartPlanLevelPct(plan, price) {
+        const entryMid = (Number(plan && plan.entry_low) + Number(plan && plan.entry_high)) / 2;
+        const level = Number(price);
+        if (!Number.isFinite(entryMid) || entryMid === 0 || !Number.isFinite(level)) return null;
+        return chartPlanDirection() === "SHORT"
+            ? ((entryMid - level) / entryMid) * 100
+            : ((level - entryMid) / entryMid) * 100;
+    }
+
+    function chartPlanLevelPctLabel(plan, price) {
+        const pct = chartPlanLevelPct(plan, price);
+        if (pct === null || pct === undefined || !Number.isFinite(Number(pct))) return "";
+        return `${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%`;
+    }
+
+    function chartPlanValidityLabel(plan, freshness) {
+        const status = String(freshness && freshness.status || "").toUpperCase();
+        if (status === "EXPIRED") {
+            const asOf = new Date(freshness.as_of);
+            const validUntil = new Date(freshness.valid_until);
+            const expiredSeconds = (asOf.getTime() - validUntil.getTime()) / 1000;
+            const ago = chartFormatDuration(expiredSeconds);
+            return ago ? `Expired · ${ago} ago` : "Expired";
+        }
+        const remaining = Number(freshness && freshness.remaining_seconds);
+        if (Number.isFinite(remaining)) {
+            const expiresIn = chartFormatDuration(remaining);
+            return expiresIn ? `Plan expires in ${expiresIn}` : friendlyLabel(status || "ACTIVE");
+        }
+
+        const validUntil = new Date(plan && plan.valid_until);
+        if (Number.isNaN(validUntil.getTime())) return "";
+        const seconds = (validUntil.getTime() - Date.now()) / 1000;
+        if (seconds < 0) {
+            const ago = chartFormatDuration(Math.abs(seconds));
+            return ago ? `Expired · ${ago} ago` : "Expired";
+        }
+        const expiresIn = chartFormatDuration(seconds);
+        return expiresIn ? `Plan expires in ${expiresIn}` : "Plan active";
+    }
+
+    function chartPlanValidityClass(plan, freshness) {
+        const status = String(freshness && freshness.status || "").toLowerCase();
+        if (status) return status;
+        const validUntil = new Date(plan && plan.valid_until);
+        if (!Number.isNaN(validUntil.getTime()) && Date.now() > validUntil.getTime()) return "expired";
+        return "fresh";
+    }
+
+    function chartPlanEntryLabel(plan) {
+        if (!plan) return "";
+        if (Number(plan.entry_low) === Number(plan.entry_high)) return chartPriceLabel(plan.entry_low);
+        return `${chartPriceLabel(plan.entry_low)}-${chartPriceLabel(plan.entry_high)}`;
+    }
+
     function scaledPath(indexes, xAt, yAt, values) {
         return indexes.map(index => `${xAt(index)},${yAt(values[index])}`).join(" ");
     }
@@ -124,12 +198,16 @@
                 ];
                 planLines = levels.map(level => {
                     const yy = y(level.value);
+                    const pctLabel = chartPlanLevelPctLabel(plan, level.value);
+                    const label = pctLabel
+                        ? `${level.label} ${chartPriceLabel(level.value)} ${pctLabel}`
+                        : `${level.label} ${chartPriceLabel(level.value)}`;
                     return `
                         <line x1="${margin.left}" y1="${yy}" x2="${plotRight}" y2="${yy}"
                             class="decision-chart-plan-line ${level.cls}" />
                         <text x="${margin.left + 8}" y="${yy - 6}"
                             class="decision-chart-plan-label ${level.cls}">
-                            ${level.label} ${chartPriceLabel(level.value)}
+                            ${escapeDecisionHtml(label)}
                         </text>
                     `;
                 }).join("");
@@ -210,6 +288,7 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
             const latestTone = latestClose >= Number(latestCandle.open) ? "up" : "down";
             const high = Math.max(...candles.map(c => Number(c.high)));
             const low = Math.min(...candles.map(c => Number(c.low)));
+            const planStrip = this.renderPlanStrip(plan);
 
             this.host.innerHTML = `
                 <div class="decision-chart-shell" data-chart-host="${escapeDecisionHtml(this.hostId)}">
@@ -217,6 +296,7 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
                         <span>${escapeDecisionHtml(series.timeframe || "5m")} · ${candles.length} bars</span>
                         <span>High ${chartPriceLabel(high)} · Low ${chartPriceLabel(low)}</span>
                     </div>
+                    ${planStrip}
                     <svg class="decision-candlestick-chart decision-chart-svg" viewBox="0 0 ${width} ${height}"
                         preserveAspectRatio="none"
                         role="img" aria-label="${escapeDecisionHtml(series.instrument_id)} ${escapeDecisionHtml(series.timeframe || "5m")} candlestick chart">
@@ -252,6 +332,46 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
                 </div>
             `;
         }
+
+        renderPlanStrip(plan) {
+            if (!plan) return "";
+            const freshness = activePlanFreshness;
+            const targetList = Array.isArray(plan.targets) ? plan.targets : [];
+            const firstTarget = targetList.length ? targetList[0] : null;
+            const stopPct = chartPlanLevelPctLabel(plan, plan.stop_loss);
+            const targetPct = firstTarget !== null ? chartPlanLevelPctLabel(plan, firstTarget) : "";
+            const validity = chartPlanValidityLabel(plan, freshness);
+            const validityClass = chartPlanValidityClass(plan, freshness);
+            const validityTitle = freshness && typeof formatTradePlanFreshnessTitle === "function"
+                ? formatTradePlanFreshnessTitle(freshness)
+                : "";
+            return `
+                <div class="decision-chart-plan-strip">
+                    <span class="decision-chart-plan-chip entry">
+                        Entry ${escapeDecisionHtml(chartPlanEntryLabel(plan))}
+                    </span>
+                    <span class="decision-chart-plan-chip stop">
+                        Stop ${escapeDecisionHtml(chartPriceLabel(plan.stop_loss))}
+                        ${stopPct ? `<strong>${escapeDecisionHtml(stopPct)}</strong>` : ""}
+                    </span>
+                    ${firstTarget !== null ? `
+                        <span class="decision-chart-plan-chip target">
+                            T1 ${escapeDecisionHtml(chartPriceLabel(firstTarget))}
+                            ${targetPct ? `<strong>${escapeDecisionHtml(targetPct)}</strong>` : ""}
+                        </span>
+                    ` : ""}
+                    <span class="decision-chart-plan-chip rr">
+                        R:R ${escapeDecisionHtml(formatDecisionRatio(plan.risk_reward))}
+                    </span>
+                    ${validity ? `
+                        <span class="decision-chart-plan-chip validity ${escapeDecisionHtml(validityClass)}"
+                            title="${escapeDecisionHtml(validityTitle)}">
+                            ${escapeDecisionHtml(validity)}
+                        </span>
+                    ` : ""}
+                </div>
+            `;
+        }
     }
 
     function chartControllerFor(hostId) {
@@ -269,6 +389,15 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
 
     function renderCandlestickSvg(series, plan, hostId = "decision-chart-canvas") {
         renderProfessionalDecisionChart(series, plan, hostId);
+    }
+
+    function refreshActiveDecisionChart() {
+        if (!activeChartSeries) return;
+        renderProfessionalDecisionChart(activeChartSeries, activeChartPlan);
+        const modal = document.getElementById("chart-modal");
+        if (modal && !modal.hidden) {
+            renderProfessionalDecisionChart(activeChartSeries, activeChartPlan, "chart-modal-canvas");
+        }
     }
 
     function renderChartFreshness(series) {

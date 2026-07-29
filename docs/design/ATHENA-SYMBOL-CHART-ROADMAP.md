@@ -1,6 +1,6 @@
 # ATHENA Symbol Chart Excellence Roadmap
 
-**Status:** CH-0 approved; CH-1 ready for owner review
+**Status:** CH-0 and CH-1 approved; CH-2 ready for owner review
 **Date:** 2026-07-29
 **Scope:** Decision Brief symbol chart presentation only
 **Owner goal:** World-class, trading-grade chart presentation without adding
@@ -157,7 +157,7 @@ while preserving the same truthful data surface.
 - Chart displays the same OHLCV/SMA information as before, without invented
   overlays.
 
-**Status:** Implemented on 2026-07-29; ready for owner review.
+**Status:** Approved by owner on 2026-07-29.
 
 ---
 
@@ -184,6 +184,8 @@ while preserving the same truthful data surface.
 - If any plan value is unavailable, the chart degrades honestly rather than
   fabricating a substitute.
 - Tests cover plan overlay rendering inputs and expired-plan wording.
+
+**Status:** Implemented on 2026-07-29; ready for owner review.
 
 ---
 

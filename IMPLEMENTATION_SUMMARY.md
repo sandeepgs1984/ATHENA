@@ -6,6 +6,29 @@ status updated on approval.
 
 ---
 
+## CH-2 — TradePlan overlays & validity layer (ready for owner review)
+
+| | |
+|---|---|
+| Completed | 2026-07-29 |
+| Objective | Make ATHENA's TradePlan levels and validity state legible directly in the Decision Brief chart without adding new trading logic |
+| Scope | Added chart-level TradePlan strip with entry, stop, T1, risk/reward, and expiry/freshness chips; added stop/target percentage deltas to SVG plan-line labels; re-rendered the chart after `/plan-freshness` returns so the chart validity chip uses the same DTO as the TradePlan card; bumped dashboard CSS/JS asset versions |
+| Files created | None |
+| Files modified | `src/athena/api/static/js/16-decision-brief-chart.js`, `src/athena/api/static/js/14-decision-brief-analysis.js`, `src/athena/api/static/css/10-trade-plan-chart.css`, `src/athena/api/static/index.html`, `tests/api/platform/test_dashboard_hosting.py`, `docs/design/ATHENA-SYMBOL-CHART-ROADMAP.md`, `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md` |
+| Public APIs added | None |
+| Tests | `rtk node --check src/athena/api/static/js/16-decision-brief-chart.js` — passed; `rtk node --check src/athena/api/static/js/14-decision-brief-analysis.js` — passed; `rtk pytest tests/api/platform/test_dashboard_hosting.py -q` — 3 passed; `rtk git diff HEAD --check` — passed; `rtk pytest -q` — 1118 passed |
+| Coverage | Static hosting regression now locks in chart-level plan delta calculations, plan strip rendering, validity chip classes, refresh-on-plan-freshness, and `9.74.0` asset cache-busters |
+| Architecture compliance | No backend, provider, broker, scoring, risk, or domain contract changes. The chart still renders only existing candles, indicators, selected decision TradePlan values, and the existing plan-freshness DTO |
+| ADR compliance | ADR-005 preserved: stop/target percentages are pure arithmetic over persisted entry/level values and direction; expiry/freshness comes from the existing read-only DTO when available and otherwise degrades to plan timestamps |
+| Risks discovered | Authenticated visual review remains owner-side because the running workstation is protected by the owner unlock gate; browser verification confirmed updated asset versions and no pre-unlock console errors |
+| Technical debt introduced | None |
+| Suggested improvements | CH-3 should add timeframe/range/session controls, still using the existing candles endpoint and visible selected timeframe/last-candle timestamps |
+| Remaining work | Owner review of CH-2; CH-3 blocked until approval |
+| Status | 🔄 Ready for owner review |
+| Branch | feature/live-dashboard |
+
+---
+
 ## CH-1 — Professional chart foundation (ready for owner review)
 
 | | |
@@ -24,7 +47,7 @@ status updated on approval.
 | Technical debt introduced | None |
 | Suggested improvements | CH-2 should move the existing plan overlays into clearer chart-level affordances for validity, stop/target deltas, and risk/reward without changing data sources |
 | Remaining work | Owner review of CH-1; CH-2 blocked until approval |
-| Status | 🔄 Ready for owner review |
+| Status | ✅ Approved by owner on 2026-07-29 |
 | Branch | feature/live-dashboard |
 
 ---

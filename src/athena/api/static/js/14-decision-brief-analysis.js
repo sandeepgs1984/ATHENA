@@ -211,6 +211,7 @@
             if (activeDecisionId !== decisionId) return;
             activePlanFreshness = response && response.data;
             renderPlanFreshnessBadge(activePlanFreshness);
+            refreshActiveDecisionChart();
         } catch (err) {
             if (activeDecisionId !== decisionId) return;
             console.error(`Failed to load plan freshness for ${decisionId}`, err);
