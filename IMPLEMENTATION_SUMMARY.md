@@ -6,6 +6,29 @@ status updated on approval.
 
 ---
 
+## CH-1 — Professional chart foundation (ready for owner review)
+
+| | |
+|---|---|
+| Completed | 2026-07-29 |
+| Objective | Improve the Decision Brief symbol chart foundation while preserving ATHENA's existing read-only candle and TradePlan data boundaries |
+| Scope | Reworked the chart renderer into a reusable `DecisionChartController`; added a professional chart shell with distinct price and volume panels, richer axis/grid treatment, latest-price marker, high/low topline, and shared normal/modal rendering; bumped dashboard CSS/JS asset versions |
+| Files created | None |
+| Files modified | `src/athena/api/static/js/16-decision-brief-chart.js`, `src/athena/api/static/css/10-trade-plan-chart.css`, `src/athena/api/static/css/08-strategies-backtest.css`, `src/athena/api/static/index.html`, `tests/api/platform/test_dashboard_hosting.py`, `docs/design/ATHENA-SYMBOL-CHART-ROADMAP.md`, `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md` |
+| Public APIs added | None |
+| Tests | `rtk pytest tests/api/platform/test_dashboard_hosting.py -q` — 3 passed; `rtk node --check src/athena/api/static/js/16-decision-brief-chart.js` — passed; `rtk git diff HEAD --check` — passed; `rtk pytest -q` — 1118 passed |
+| Coverage | Static hosting regression now locks in the chart controller boundary, professional renderer, price/volume panels, latest-price marker, and aligned asset cache-busters |
+| Architecture compliance | No backend, provider, broker, scoring, risk, or domain contract changes. Chart still consumes the existing candles endpoint and selected decision TradePlan data only |
+| ADR compliance | ADR-004: remains static HTML/CSS/vanilla JS; no new library/dependency was added in CH-1. ADR-005: no fabricated overlays; existing candle, SMA/ATR, and TradePlan values remain the only rendered data sources |
+| Risks discovered | Live visual chart inspection is blocked by the configured owner unlock gate without credentials; browser verification confirmed served asset versions and no pre-unlock console errors, while full authenticated chart review remains an owner-side review task |
+| Technical debt introduced | None |
+| Suggested improvements | CH-2 should move the existing plan overlays into clearer chart-level affordances for validity, stop/target deltas, and risk/reward without changing data sources |
+| Remaining work | Owner review of CH-1; CH-2 blocked until approval |
+| Status | 🔄 Ready for owner review |
+| Branch | feature/live-dashboard |
+
+---
+
 ## CH-0 — Symbol Chart Excellence roadmap (ready for owner review)
 
 | | |
@@ -24,7 +47,7 @@ status updated on approval.
 | Technical debt introduced | None |
 | Suggested improvements | Owner should approve the chart-library dependency approach before CH-1: vendored static asset with documented source/version, or CDN with graceful unavailable-library handling |
 | Remaining work | CH-1 Professional chart foundation after owner approval of CH-0 |
-| Status | 🔄 Ready for owner review |
+| Status | ✅ Approved by owner on 2026-07-29 |
 | Branch | feature/live-dashboard |
 
 ---

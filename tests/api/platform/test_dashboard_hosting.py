@@ -108,6 +108,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "Decision history and replay evidence are never deleted" in js
     # M-D2 renders persisted candles with plan overlays and explicit freshness
     assert "function loadDecisionChart" in js
+    assert "class DecisionChartController" in js
+    assert "function renderProfessionalDecisionChart" in js
     assert "function renderCandlestickSvg" in js
     assert "function renderChartFreshness" in js
     assert "/candles?timeframe=5m&limit=120" in js
@@ -138,6 +140,13 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "Restart ATHENA (Dock/athena-serve)" in js
     assert "decision-chart-entry-zone" in css
     assert "decision-chart-plan-line" in css
+    assert "decision-chart-price-panel" in css
+    assert "decision-chart-volume-panel" in css
+    assert "decision-chart-price-marker-line" in css
+    assert "decision-chart-price-marker-box" in css
+    assert "decision-chart-shell" in css
+    assert "dashboard.css?v=9.73.0" in html
+    assert "dashboard.js?v=9.73.0" in html
 
     # M-D4 renders session/calendar, regime/market-health context, curated links, and export
     assert 'id="decision-context-lane"' in js
@@ -329,6 +338,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "decision-chart-ma-line" in js
     assert "decision-chart-atr-band" in js
     assert "decision-chart-volume-bar" in js
+    assert "decisionChartControllers" in js
+    assert "chartControllerFor" in js
     assert ".decision-chart-ma-line" in css
     assert ".decision-chart-atr-band" in css
     assert ".decision-chart-volume-bar" in css

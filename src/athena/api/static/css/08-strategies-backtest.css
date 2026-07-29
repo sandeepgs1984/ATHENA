@@ -248,6 +248,10 @@
     min-height: 360px;
 }
 
+.chart-modal-canvas .decision-candlestick-chart {
+    height: 520px;
+}
+
 .compare-modal-container {
     max-width: 760px;
     width: 95%;
@@ -428,4 +432,3 @@
     box-shadow: var(--glow-accent-sm);
     transition: width 0.6s ease;
 }
-

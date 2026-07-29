@@ -198,8 +198,8 @@ overlay as data.
 
 | Milestone | Scope | Gate | Status |
 |---|---|---|---|
-| **CH-0** Design & architecture gate | Current chart audit, target experience, staged roadmap, no-fabrication/no-order-placement boundaries | Owner approval of roadmap and chart-library dependency approach | 🔄 Ready for review |
-| **CH-1** Professional chart foundation | Replace hand-rolled SVG with a reusable professional chart controller over the existing candles endpoint; candles, volume, SMA, responsive normal/modal views | None if dependency approach is approved under ADR-004 | ⏳ Planned |
+| **CH-0** Design & architecture gate | Current chart audit, target experience, staged roadmap, no-fabrication/no-order-placement boundaries | Owner approval of roadmap and chart-library dependency approach | ✅ Approved (2026-07-29) |
+| **CH-1** Professional chart foundation | Reusable professional chart controller over the existing candles endpoint; candles, volume, SMA, responsive normal/modal views, latest-price marker, aligned asset cache-busters | None — implemented with local static JS/CSS, no new dependency | 🔄 Ready for review |
 | **CH-2** TradePlan overlays & validity layer | Entry band, stop/target price lines, percentage deltas, risk/reward label, expiry/freshness affordance from existing plan data | None | ⏳ Planned |
 | **CH-3** Timeframe, range, and session controls | Existing timeframe/range controls, local chart preference, session separators, visible last-candle timestamp | None | ⏳ Planned |
 | **CH-4** Interactive inspection | Crosshair OHLCV legend, rendered indicator readouts, plan-level readouts, zoom/pan reset, accessibility pass | None | ⏳ Planned |

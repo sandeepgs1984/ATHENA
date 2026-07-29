@@ -1,5 +1,7 @@
 
 
+    const decisionChartControllers = new Map();
+
     function chartLevelValues(plan) {
         if (!plan) return [];
         return [
@@ -10,202 +12,263 @@
         ].filter(Number.isFinite);
     }
 
-    function renderCandlestickSvg(series, plan, hostId = "decision-chart-canvas") {
-        const host = document.getElementById(hostId);
-        if (!host) return;
-        const candles = Array.isArray(series.candles) ? series.candles : [];
-        if (!candles.length) {
-            host.innerHTML = `
-                <div class="decision-chart-empty">
-                    No persisted 5-minute candles for ${escapeDecisionHtml(series.instrument_id)}.
-                    Re-validate after Kite ingestion.
-                </div>
-            `;
-            return;
+    // Number(null) is 0 in JavaScript, not NaN — a warmup candle's
+    // genuinely-absent atr/moving_average (JSON null) would otherwise
+    // silently become a fake reading of exactly 0.
+    const chartNumericOrNull = value => {
+        if (value === null || value === undefined) return null;
+        const n = Number(value);
+        return Number.isFinite(n) ? n : null;
+    };
+
+    const chartPriceLabel = value => Number(value).toLocaleString("en-IN", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    });
+
+    const chartTimeLabel = value => new Date(value).toLocaleTimeString("en-IN", {
+        timeZone: "Asia/Kolkata",
+        hour: "2-digit",
+        minute: "2-digit",
+    });
+
+    function scaledPath(indexes, xAt, yAt, values) {
+        return indexes.map(index => `${xAt(index)},${yAt(values[index])}`).join(" ");
+    }
+
+    class DecisionChartController {
+        constructor(hostId) {
+            this.hostId = hostId;
+            this.host = document.getElementById(hostId);
         }
 
-        const width = 900;
-        const height = 390;
-        const margin = { top: 20, right: 72, bottom: 34, left: 12 };
-        // Volume subplot (UX-3b) takes a fixed band above the time axis;
-        // the price plot fills whatever height remains.
-        const volumeHeight = 56;
-        const volumeGap = 10;
-        const plotWidth = width - margin.left - margin.right;
-        const plotHeight = height - margin.top - margin.bottom - volumeHeight - volumeGap;
-        const volumeTop = margin.top + plotHeight + volumeGap;
+        render(series, plan) {
+            if (!this.host) return;
+            const candles = Array.isArray(series.candles) ? series.candles : [];
+            if (!candles.length) {
+                this.host.innerHTML = `
+                    <div class="decision-chart-empty">
+                        No persisted 5-minute candles for ${escapeDecisionHtml(series.instrument_id)}.
+                        Re-validate after Kite ingestion.
+                    </div>
+                `;
+                return;
+            }
 
-        // Number(null) is 0 in JavaScript, not NaN — a warmup candle's
-        // genuinely-absent atr/moving_average (JSON null) would otherwise
-        // silently become a fake reading of exactly 0, corrupting both the
-        // rendered line/band and the Y-axis autoscale (owner-reported: axis
-        // spanning -907 to 16,026 for a ~13-15k stock).
-        const numericOrNull = value => {
-            if (value === null || value === undefined) return null;
-            const n = Number(value);
-            return Number.isFinite(n) ? n : null;
-        };
-        const maValues = candles.map(c => numericOrNull(c.moving_average));
-        const atrValues = candles.map(c => numericOrNull(c.atr));
-        const bandPrices = candles.flatMap((c, i) => {
-            if (maValues[i] === null || atrValues[i] === null) return [];
-            return [maValues[i] + atrValues[i], maValues[i] - atrValues[i]];
-        });
+            const width = 1040;
+            const height = 440;
+            const margin = { top: 24, right: 86, bottom: 32, left: 16 };
+            const volumeHeight = 72;
+            const panelGap = 18;
+            const plotWidth = width - margin.left - margin.right;
+            const priceHeight = height - margin.top - margin.bottom - volumeHeight - panelGap;
+            const volumeTop = margin.top + priceHeight + panelGap;
+            const priceBottom = margin.top + priceHeight;
+            const plotRight = margin.left + plotWidth;
 
-        const prices = candles.flatMap(candle => [Number(candle.high), Number(candle.low)]);
-        prices.push(...chartLevelValues(plan), ...bandPrices);
-        let minPrice = Math.min(...prices);
-        let maxPrice = Math.max(...prices);
-        const span = Math.max(maxPrice - minPrice, Math.abs(maxPrice || 1) * 0.005);
-        minPrice -= span * 0.06;
-        maxPrice += span * 0.06;
+            const maValues = candles.map(c => chartNumericOrNull(c.moving_average));
+            const atrValues = candles.map(c => chartNumericOrNull(c.atr));
+            const bandPrices = candles.flatMap((c, i) => {
+                if (maValues[i] === null || atrValues[i] === null) return [];
+                return [maValues[i] + atrValues[i], maValues[i] - atrValues[i]];
+            });
 
-        const y = price => margin.top
-            + ((maxPrice - Number(price)) / (maxPrice - minPrice)) * plotHeight;
-        const slot = plotWidth / candles.length;
-        const bodyWidth = Math.max(2, Math.min(8, slot * 0.58));
-        const xAt = index => margin.left + slot * index + slot / 2;
-        const priceLabel = value => Number(value).toLocaleString("en-IN", {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-        });
+            const prices = candles.flatMap(candle => [Number(candle.high), Number(candle.low)]);
+            prices.push(...chartLevelValues(plan), ...bandPrices);
+            let minPrice = Math.min(...prices);
+            let maxPrice = Math.max(...prices);
+            const span = Math.max(maxPrice - minPrice, Math.abs(maxPrice || 1) * 0.005);
+            minPrice -= span * 0.08;
+            maxPrice += span * 0.08;
 
-        const grid = Array.from({ length: 5 }, (_, index) => {
-            const ratio = index / 4;
-            const price = maxPrice - (maxPrice - minPrice) * ratio;
-            const yy = margin.top + plotHeight * ratio;
-            return `
-                <line x1="${margin.left}" y1="${yy}" x2="${margin.left + plotWidth}" y2="${yy}"
-                    class="decision-chart-gridline" />
-                <text x="${margin.left + plotWidth + 7}" y="${yy + 4}"
-                    class="decision-chart-axis-label">${priceLabel(price)}</text>
-            `;
-        }).join("");
+            const y = price => margin.top
+                + ((maxPrice - Number(price)) / (maxPrice - minPrice)) * priceHeight;
+            const slot = plotWidth / candles.length;
+            const bodyWidth = Math.max(2.5, Math.min(9, slot * 0.62));
+            const xAt = index => margin.left + slot * index + slot / 2;
 
-        let entryZone = "";
-        let planLines = "";
-        if (plan) {
-            const entryLowY = y(plan.entry_low);
-            const entryHighY = y(plan.entry_high);
-            const zoneY = Math.min(entryLowY, entryHighY);
-            const zoneHeight = Math.max(2, Math.abs(entryLowY - entryHighY));
-            entryZone = `
-                <rect x="${margin.left}" y="${zoneY}" width="${plotWidth}" height="${zoneHeight}"
-                    class="decision-chart-entry-zone" />
-                <text x="${margin.left + 6}" y="${Math.max(margin.top + 11, zoneY - 4)}"
-                    class="decision-chart-plan-label entry">ENTRY ZONE</text>
-            `;
-            const levels = [
-                { value: plan.stop_loss, label: "STOP", cls: "stop" },
-                ...(Array.isArray(plan.targets)
-                    ? plan.targets.map((target, index) => ({
-                        value: target,
-                        label: `T${index + 1}`,
-                        cls: "target",
-                    }))
-                    : []),
-            ];
-            planLines = levels.map(level => {
-                const yy = y(level.value);
+            const grid = Array.from({ length: 6 }, (_, index) => {
+                const ratio = index / 5;
+                const price = maxPrice - (maxPrice - minPrice) * ratio;
+                const yy = margin.top + priceHeight * ratio;
                 return `
-                    <line x1="${margin.left}" y1="${yy}" x2="${margin.left + plotWidth}" y2="${yy}"
-                        class="decision-chart-plan-line ${level.cls}" />
-                    <text x="${margin.left + 6}" y="${yy - 4}"
-                        class="decision-chart-plan-label ${level.cls}">
-                        ${level.label} ${priceLabel(level.value)}
-                    </text>
+                    <line x1="${margin.left}" y1="${yy}" x2="${plotRight}" y2="${yy}"
+                        class="decision-chart-gridline" />
+                    <text x="${plotRight + 10}" y="${yy + 4}"
+                        class="decision-chart-axis-label">${chartPriceLabel(price)}</text>
                 `;
             }).join("");
-        }
 
-        // ATR envelope (moving average +/- ATR) — a volatility band, not a
-        // price level. None during warmup, so the band only spans indices
-        // where both values were actually computed (never interpolated
-        // across a gap, never invented for a bar that had no history yet).
-        let atrBand = "";
-        let maLine = "";
-        const bandIndexes = candles
-            .map((_, i) => i)
-            .filter(i => maValues[i] !== null && atrValues[i] !== null);
-        if (bandIndexes.length > 1) {
-            const upper = bandIndexes.map(i => `${xAt(i)},${y(maValues[i] + atrValues[i])}`);
-            const lower = [...bandIndexes].reverse()
-                .map(i => `${xAt(i)},${y(maValues[i] - atrValues[i])}`);
-            atrBand = `<polygon class="decision-chart-atr-band" points="${upper.concat(lower).join(" ")}" />`;
-        }
-        const maIndexes = candles.map((_, i) => i).filter(i => maValues[i] !== null);
-        if (maIndexes.length > 1) {
-            const points = maIndexes.map(i => `${xAt(i)},${y(maValues[i])}`).join(" ");
-            maLine = `<polyline class="decision-chart-ma-line" points="${points}" />`;
-        }
+            let entryZone = "";
+            let planLines = "";
+            if (plan) {
+                const entryLowY = y(plan.entry_low);
+                const entryHighY = y(plan.entry_high);
+                const zoneY = Math.min(entryLowY, entryHighY);
+                const zoneHeight = Math.max(2, Math.abs(entryLowY - entryHighY));
+                entryZone = `
+                    <rect x="${margin.left}" y="${zoneY}" width="${plotWidth}" height="${zoneHeight}"
+                        class="decision-chart-entry-zone" />
+                    <text x="${margin.left + 8}" y="${Math.max(margin.top + 13, zoneY - 6)}"
+                        class="decision-chart-plan-label entry">ENTRY ZONE</text>
+                `;
+                const levels = [
+                    { value: plan.stop_loss, label: "STOP", cls: "stop" },
+                    ...(Array.isArray(plan.targets)
+                        ? plan.targets.map((target, index) => ({
+                            value: target,
+                            label: `T${index + 1}`,
+                            cls: "target",
+                        }))
+                        : []),
+                ];
+                planLines = levels.map(level => {
+                    const yy = y(level.value);
+                    return `
+                        <line x1="${margin.left}" y1="${yy}" x2="${plotRight}" y2="${yy}"
+                            class="decision-chart-plan-line ${level.cls}" />
+                        <text x="${margin.left + 8}" y="${yy - 6}"
+                            class="decision-chart-plan-label ${level.cls}">
+                            ${level.label} ${chartPriceLabel(level.value)}
+                        </text>
+                    `;
+                }).join("");
+            }
 
-        const bars = candles.map((candle, index) => {
-            const open = Number(candle.open);
-            const close = Number(candle.close);
-            const high = Number(candle.high);
-            const low = Number(candle.low);
-            const rising = close >= open;
-            const x = xAt(index);
-            const bodyY = Math.min(y(open), y(close));
-            const bodyHeight = Math.max(1.5, Math.abs(y(open) - y(close)));
-            const cls = rising ? "up" : "down";
-            return `
-                <g class="decision-candle ${cls}">
-                    <line x1="${x}" y1="${y(high)}" x2="${x}" y2="${y(low)}" />
-                    <rect x="${x - bodyWidth / 2}" y="${bodyY}"
-                        width="${bodyWidth}" height="${bodyHeight}" />
-                    <title>${escapeDecisionHtml(formatDecisionTime(candle.ts_open))}
-O ${priceLabel(open)} · H ${priceLabel(high)} · L ${priceLabel(low)} · C ${priceLabel(close)}
+            // ATR envelope (moving average +/- ATR) is a volatility band, not
+            // a price level. It only spans bars where both inputs exist.
+            let atrBand = "";
+            let maLine = "";
+            const bandIndexes = candles
+                .map((_, i) => i)
+                .filter(i => maValues[i] !== null && atrValues[i] !== null);
+            if (bandIndexes.length > 1) {
+                const upper = bandIndexes.map(i => `${xAt(i)},${y(maValues[i] + atrValues[i])}`);
+                const lower = [...bandIndexes].reverse()
+                    .map(i => `${xAt(i)},${y(maValues[i] - atrValues[i])}`);
+                atrBand = `<polygon class="decision-chart-atr-band" points="${upper.concat(lower).join(" ")}" />`;
+            }
+            const maIndexes = candles.map((_, i) => i).filter(i => maValues[i] !== null);
+            if (maIndexes.length > 1) {
+                maLine = `<polyline class="decision-chart-ma-line"
+                    points="${scaledPath(maIndexes, xAt, y, maValues)}" />`;
+            }
+
+            const bars = candles.map((candle, index) => {
+                const open = Number(candle.open);
+                const close = Number(candle.close);
+                const high = Number(candle.high);
+                const low = Number(candle.low);
+                const rising = close >= open;
+                const x = xAt(index);
+                const bodyY = Math.min(y(open), y(close));
+                const bodyHeight = Math.max(1.8, Math.abs(y(open) - y(close)));
+                const cls = rising ? "up" : "down";
+                return `
+                    <g class="decision-candle ${cls}">
+                        <line x1="${x}" y1="${y(high)}" x2="${x}" y2="${y(low)}" />
+                        <rect x="${x - bodyWidth / 2}" y="${bodyY}"
+                            width="${bodyWidth}" height="${bodyHeight}" rx="1.2" />
+                        <title>${escapeDecisionHtml(formatDecisionTime(candle.ts_open))}
+O ${chartPriceLabel(open)} · H ${chartPriceLabel(high)} · L ${chartPriceLabel(low)} · C ${chartPriceLabel(close)}
 Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
-                </g>
+                    </g>
+                `;
+            }).join("");
+
+            const volumes = candles.map(c => Number(c.volume) || 0);
+            const maxVolume = Math.max(1, ...volumes);
+            const volY = v => volumeTop + volumeHeight - (v / maxVolume) * volumeHeight;
+            const volumeBars = candles.map((candle, index) => {
+                const rising = Number(candle.close) >= Number(candle.open);
+                const x = xAt(index);
+                const vy = volY(volumes[index]);
+                return `
+                    <rect x="${x - bodyWidth / 2}" y="${vy}"
+                        width="${bodyWidth}" height="${Math.max(1.5, volumeTop + volumeHeight - vy)}"
+                        rx="1.2" class="decision-chart-volume-bar ${rising ? "up" : "down"}" />
+                `;
+            }).join("");
+
+            const labelIndexes = [...new Set([
+                0,
+                Math.floor((candles.length - 1) * 0.25),
+                Math.floor((candles.length - 1) * 0.5),
+                Math.floor((candles.length - 1) * 0.75),
+                candles.length - 1,
+            ])];
+            const timeLabels = labelIndexes.map(index => {
+                const candle = candles[index];
+                const x = xAt(index);
+                return `<text x="${x}" y="${height - 9}" text-anchor="middle"
+                    class="decision-chart-axis-label">${escapeDecisionHtml(chartTimeLabel(candle.ts_open))}</text>`;
+            }).join("");
+
+            const latestCandle = candles[candles.length - 1];
+            const latestClose = Number(latestCandle.close);
+            const latestY = y(latestClose);
+            const latestTone = latestClose >= Number(latestCandle.open) ? "up" : "down";
+            const high = Math.max(...candles.map(c => Number(c.high)));
+            const low = Math.min(...candles.map(c => Number(c.low)));
+
+            this.host.innerHTML = `
+                <div class="decision-chart-shell" data-chart-host="${escapeDecisionHtml(this.hostId)}">
+                    <div class="decision-chart-topline">
+                        <span>${escapeDecisionHtml(series.timeframe || "5m")} · ${candles.length} bars</span>
+                        <span>High ${chartPriceLabel(high)} · Low ${chartPriceLabel(low)}</span>
+                    </div>
+                    <svg class="decision-candlestick-chart decision-chart-svg" viewBox="0 0 ${width} ${height}"
+                        preserveAspectRatio="none"
+                        role="img" aria-label="${escapeDecisionHtml(series.instrument_id)} ${escapeDecisionHtml(series.timeframe || "5m")} candlestick chart">
+                        <defs>
+                            <linearGradient id="chartPanelGradient-${escapeDecisionHtml(this.hostId)}" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stop-color="rgba(15, 23, 42, 0.88)" />
+                                <stop offset="100%" stop-color="rgba(2, 6, 23, 0.7)" />
+                            </linearGradient>
+                        </defs>
+                        <rect x="${margin.left}" y="${margin.top}" width="${plotWidth}" height="${priceHeight}"
+                            class="decision-chart-price-panel" />
+                        <rect x="${margin.left}" y="${volumeTop}" width="${plotWidth}" height="${volumeHeight}"
+                            class="decision-chart-volume-panel" />
+                        ${grid}
+                        <line x1="${margin.left}" y1="${priceBottom}" x2="${plotRight}" y2="${priceBottom}"
+                            class="decision-chart-panel-separator" />
+                        ${entryZone}
+                        ${atrBand}
+                        ${bars}
+                        ${maLine}
+                        ${planLines}
+                        ${volumeBars}
+                        <text x="${margin.left}" y="${volumeTop - 6}"
+                            class="decision-chart-axis-label">VOLUME</text>
+                        <line x1="${margin.left}" y1="${latestY}" x2="${plotRight}" y2="${latestY}"
+                            class="decision-chart-price-marker-line ${latestTone}" />
+                        <rect x="${plotRight + 6}" y="${latestY - 10}" width="74" height="20" rx="3"
+                            class="decision-chart-price-marker-box ${latestTone}" />
+                        <text x="${plotRight + 43}" y="${latestY + 4}" text-anchor="middle"
+                            class="decision-chart-price-marker-text">${chartPriceLabel(latestClose)}</text>
+                        ${timeLabels}
+                    </svg>
+                </div>
             `;
-        }).join("");
+        }
+    }
 
-        // Volume subplot — same up/down coloring as the candle bodies above it.
-        const volumes = candles.map(c => Number(c.volume) || 0);
-        const maxVolume = Math.max(1, ...volumes);
-        const volY = v => volumeTop + volumeHeight - (v / maxVolume) * volumeHeight;
-        const volumeBars = candles.map((candle, index) => {
-            const rising = Number(candle.close) >= Number(candle.open);
-            const x = xAt(index);
-            const vy = volY(volumes[index]);
-            return `
-                <rect x="${x - bodyWidth / 2}" y="${vy}"
-                    width="${bodyWidth}" height="${Math.max(1, volumeTop + volumeHeight - vy)}"
-                    class="decision-chart-volume-bar ${rising ? "up" : "down"}" />
-            `;
-        }).join("");
-        const volumeLabel = `<text x="${margin.left}" y="${volumeTop - 3}"
-            class="decision-chart-axis-label">VOLUME</text>`;
+    function chartControllerFor(hostId) {
+        const currentHost = document.getElementById(hostId);
+        const existing = decisionChartControllers.get(hostId);
+        if (existing && existing.host === currentHost) return existing;
+        const controller = new DecisionChartController(hostId);
+        decisionChartControllers.set(hostId, controller);
+        return controller;
+    }
 
-        const labelIndexes = [...new Set([0, Math.floor((candles.length - 1) / 2), candles.length - 1])];
-        const timeLabels = labelIndexes.map(index => {
-            const candle = candles[index];
-            const x = xAt(index);
-            const date = new Date(candle.ts_open);
-            const label = date.toLocaleTimeString("en-IN", {
-                timeZone: "Asia/Kolkata",
-                hour: "2-digit",
-                minute: "2-digit",
-            });
-            return `<text x="${x}" y="${height - 9}" text-anchor="middle"
-                class="decision-chart-axis-label">${escapeDecisionHtml(label)}</text>`;
-        }).join("");
+    function renderProfessionalDecisionChart(series, plan, hostId = "decision-chart-canvas") {
+        chartControllerFor(hostId).render(series, plan);
+    }
 
-        host.innerHTML = `
-            <svg class="decision-candlestick-chart" viewBox="0 0 ${width} ${height}"
-                role="img" aria-label="${escapeDecisionHtml(series.instrument_id)} 5-minute candlestick chart">
-                ${grid}
-                ${entryZone}
-                ${atrBand}
-                ${bars}
-                ${maLine}
-                ${planLines}
-                ${volumeLabel}
-                ${volumeBars}
-                ${timeLabels}
-            </svg>
-        `;
+    function renderCandlestickSvg(series, plan, hostId = "decision-chart-canvas") {
+        renderProfessionalDecisionChart(series, plan, hostId);
     }
 
     function renderChartFreshness(series) {

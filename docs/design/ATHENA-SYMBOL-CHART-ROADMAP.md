@@ -1,8 +1,8 @@
 # ATHENA Symbol Chart Excellence Roadmap
 
-**Status:** Proposed for owner review  
-**Date:** 2026-07-29  
-**Scope:** Decision Brief symbol chart presentation only  
+**Status:** CH-0 approved; CH-1 ready for owner review
+**Date:** 2026-07-29
+**Scope:** Decision Brief symbol chart presentation only
 **Owner goal:** World-class, trading-grade chart presentation without adding
 order placement, fabricated signals, or unreviewed architecture changes.
 
@@ -128,7 +128,7 @@ drama. A beautiful chart that implies unsupported signals is unacceptable.
     with source/version documented; or
   - alternative: CDN load with a graceful unavailable-library state.
 
-**Status:** Ready for owner review.
+**Status:** Approved by owner on 2026-07-29.
 
 ---
 
@@ -156,6 +156,8 @@ while preserving the same truthful data surface.
   states.
 - Chart displays the same OHLCV/SMA information as before, without invented
   overlays.
+
+**Status:** Implemented on 2026-07-29; ready for owner review.
 
 ---
 
