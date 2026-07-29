@@ -38,6 +38,61 @@
         `;
     }
 
+    function formatTradePlanValidityPeriod(validFrom, validUntil) {
+        const start = new Date(validFrom);
+        const end = new Date(validUntil);
+        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return "";
+        const totalMinutes = Math.round((end.getTime() - start.getTime()) / 60000);
+        if (totalMinutes <= 0) return "";
+        const days = Math.floor(totalMinutes / 1440);
+        const hours = Math.floor((totalMinutes % 1440) / 60);
+        const minutes = totalMinutes % 60;
+        const parts = [];
+        if (days) parts.push(`${days}d`);
+        if (hours) parts.push(`${hours}h`);
+        if (minutes || parts.length === 0) parts.push(`${minutes}m`);
+        return `Valid for ${parts.join(" ")}`;
+    }
+
+    function formatTradePlanRelativeDuration(seconds) {
+        const totalSeconds = Math.max(0, Math.round(Number(seconds)));
+        if (!Number.isFinite(totalSeconds)) return "";
+        if (totalSeconds < 60) return "under 1m";
+        const days = Math.floor(totalSeconds / 86400);
+        const hours = Math.floor((totalSeconds % 86400) / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const parts = [];
+        if (days) parts.push(`${days}d`);
+        if (hours) parts.push(`${hours}h`);
+        if (minutes && parts.length < 2) parts.push(`${minutes}m`);
+        return parts.slice(0, 2).join(" ");
+    }
+
+    function formatTradePlanFreshnessBadge(data) {
+        const status = String(data && data.status || "").toUpperCase();
+        const label = friendlyLabel(status);
+        if (status === "EXPIRED") {
+            const asOf = new Date(data.as_of);
+            const validUntil = new Date(data.valid_until);
+            const expiredSeconds = (asOf.getTime() - validUntil.getTime()) / 1000;
+            const ago = formatTradePlanRelativeDuration(expiredSeconds);
+            return ago ? `${label} · expired ${ago} ago` : label;
+        }
+        const remaining = Number(data && data.remaining_seconds);
+        const expiresIn = formatTradePlanRelativeDuration(remaining);
+        return expiresIn ? `${label} · expires in ${expiresIn}` : label;
+    }
+
+    function formatTradePlanFreshnessTitle(data) {
+        const pct = data && data.decay_fraction !== null && data.decay_fraction !== undefined
+            ? Math.round(Number(data.decay_fraction) * 100)
+            : null;
+        const parts = [];
+        if (Number.isFinite(pct)) parts.push(`${pct}% of the validity window elapsed`);
+        if (data && data.valid_until) parts.push(`Valid until ${formatDecisionTime(data.valid_until)}`);
+        return parts.join(" · ");
+    }
+
     function renderTradePlan(plan, decisionType, direction) {
         if (!plan) {
             const label = decisionType ? friendlyAnalysisName(decisionType) : "non-Trade";
@@ -84,6 +139,7 @@
         const entryZoneLabel = Number(plan.entry_low) === Number(plan.entry_high)
             ? formatDecisionPrice(plan.entry_low)
             : `${formatDecisionPrice(plan.entry_low)} – ${formatDecisionPrice(plan.entry_high)}`;
+        const validityPeriodLabel = formatTradePlanValidityPeriod(plan.valid_from, plan.valid_until);
 
         return `
             <div class="decision-brief-section">
@@ -119,7 +175,10 @@
                     <strong>${escapeDecisionHtml(plan.position_size || 0)} · ${formatDecisionPrice(plan.risk_amount)}</strong>
                 </div>
                 <div class="trade-plan-validity">
-                    <span>${formatDecisionTime(plan.valid_from)} → ${formatDecisionTime(plan.valid_until)}</span>
+                    <span class="trade-plan-validity-window">
+                        ${validityPeriodLabel ? `<strong>${escapeDecisionHtml(validityPeriodLabel)}</strong>` : ""}
+                        <span>${formatDecisionTime(plan.valid_from)} → ${formatDecisionTime(plan.valid_until)}</span>
+                    </span>
                     <span class="plan-status-group">
                         <span class="plan-status ${statusClass}">${statusLabel}</span>
                         <span id="trade-plan-freshness-badge" class="plan-freshness-badge"></span>
@@ -138,11 +197,9 @@
             badge.className = "plan-freshness-badge";
             return;
         }
-        const pct = data.decay_fraction !== null && data.decay_fraction !== undefined
-            ? Math.round(Number(data.decay_fraction) * 100) : null;
         badge.className = `plan-freshness-badge tone-${String(data.status).toLowerCase()}`;
-        badge.textContent = pct !== null ? `${pct}% decayed` : friendlyLabel(data.status);
-        badge.title = data.summary || "";
+        badge.textContent = formatTradePlanFreshnessBadge(data);
+        badge.title = formatTradePlanFreshnessTitle(data);
     }
 
     async function loadDecisionPlanFreshness(decisionId) {

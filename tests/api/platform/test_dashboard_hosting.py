@@ -308,12 +308,16 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "function computeExpectedReturnPct" in js
     assert "function computeTradePlanLevelPct" in js
     assert "function renderTradePlanLevel" in js
+    assert "function formatTradePlanValidityPeriod" in js
+    assert "Valid for" in js
+    assert "trade-plan-validity-window" in js
     assert "trade-plan-level-delta ${tone}" in js
     assert "renderTradePlanLevel(plan.stop_loss, stopDeltaPct, \"stop\")" in js
     assert "computeTradePlanLevelPct(plan, target, direction)" in js
     assert "\"target\"" in js
     assert ".trade-plan-hero-grid" in css
     assert ".trade-plan-hero-value" in css
+    assert ".trade-plan-validity-window" in css
     assert ".trade-plan-level-delta.stop" in css
     assert ".trade-plan-level-delta.target" in css
 
@@ -635,9 +639,15 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     # M-X3: deterministic decay clock for TradePlan validity-window staleness
     assert 'id="trade-plan-freshness-badge"' in js
     assert "function renderPlanFreshnessBadge" in js
+    assert "function formatTradePlanFreshnessBadge" in js
+    assert "function formatTradePlanRelativeDuration" in js
+    assert "expires in" in js
+    assert "expired ${ago} ago" in js
+    assert "decayed" not in js
     assert "function loadDecisionPlanFreshness" in js
     assert "/plan-freshness" in js
     assert ".plan-freshness-badge" in css
+    assert "text-transform: none" in css
 
     # Operations console (P9.7) is live — warnings feed + backup panel, not a fake loader
     assert 'id="ops-warnings-feed"' in html

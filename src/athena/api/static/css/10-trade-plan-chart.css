@@ -99,9 +99,26 @@
 .trade-plan-validity {
     border-top: 1px solid var(--border-color);
     color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-10);
     font-size: var(--text-0-68);
     margin-top: var(--space-10);
     padding-top: var(--space-10);
+}
+
+.trade-plan-validity-window {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-width: 0;
+}
+
+.trade-plan-validity-window strong {
+    color: var(--text-primary);
+    font-size: var(--text-0-74);
+    font-weight: 750;
 }
 
 .plan-status {
@@ -130,6 +147,8 @@
 .plan-status-group {
     display: flex;
     align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
     gap: var(--space-6);
 }
 
@@ -138,7 +157,8 @@
     font-size: var(--text-0-62);
     font-weight: 700;
     padding: var(--space-3) var(--space-7);
-    text-transform: uppercase;
+    text-transform: none;
+    white-space: nowrap;
 }
 
 .plan-freshness-badge:empty {
