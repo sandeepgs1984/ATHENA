@@ -6,6 +6,46 @@ status updated on approval.
 
 ---
 
+## SD-4 — Continuous scoring ramps (owner-approved design, 2026-07-29)
+
+| | |
+|---|---|
+| Completed | 2026-07-29 |
+| Objective | Replace coarse RSI / liquidity / ADX step functions with anchor-preserving linear ramps so per-symbol scores stop collapsing into a handful of identical buckets |
+| Scope | `_linear_ramp` helper; continuous `_momentum`, `_liquidity`, ADX bonus inside `_trend`. New config: `adx.weak` (15.0), `liquidity.low_volume_floor_ratio` (0.5). RSI `mid_points` now validated as the honest mid-band ramp anchor. `technical_structure` left discrete (deferred — needs a normalizing band with no existing anchor) |
+| Files modified | `src/athena/scoring/engine.py`, `src/athena/config/models.py`, `config/scoring.json`, `tests/decision/test_scoring.py` |
+| Public APIs added | None (scoring behaviour change only; same `ScoringResult` contract) |
+
+### Behaviour
+
+| Component | Formula | Preserved anchors |
+|---|---|---|
+| momentum | linear RSI `weak→strong` → `weak_points→strong_points` | RSI 40→20, 50→50, 60→80 |
+| liquidity | linear Volume MA `0.5×min→min` → `low_points→ok_points` | 250k→30, 500k→70 |
+| ADX bonus | linear ADX `weak→strong` → `0→bonus` | ADX 15→0, 25→+10 |
+
+Replay against the live 363-symbol book (pre-implementation model): distinct
+composites 21 → 248; 34 symbols (9.4%) change TRADE/WATCH/NO_TRADE band,
+correctly in both tails (e.g. NTPC RSI 40.02 drops out of TRADE; APLAPOLLO
+0.5% under the volume floor rises from cliff-penalty to near-full liquidity).
+
+### Tests added (6)
+
+Anchor equivalence at every configured endpoint (including below/above band
+clamps); mid-band ramp points for RSI 55 → 65 and ADX 20 → +5; near-floor
+liquidity no longer cliffs. Full suite **1107 passed**, ruff clean on touched files.
+
+### Remaining work
+
+Existing decisions still carry pre-ramp scores — use "Clear all" + fresh
+validation for a clean book, same migration path as SD-1. SD-2/SD-3
+(sector_quality) still blocked on sector-index data. Thresholds may need a
+final review once sector lands.
+
+| Status | 🔄 Implemented, tested, ready for owner review |
+
+---
+
 ## SD-1 — Risk Engine: wire calendar context + universe result (owner-reported, 2026-07-29)
 
 | | |

@@ -764,7 +764,7 @@ and must not ship without owner sign-off on the recalibration.
 | **SD-1** Wire calendar + universe into Risk | Thread the existing `CalendarContext` and `UniverseResult` from `run()` into `_scan_eligible()` → `RiskEngine.assess()`. Activates `event_risk` and `concentration_indicator`. Note: `concentration_indicator` is universe-breadth-derived and therefore shared across symbols — it raises risk *completeness* and honesty, it does **not** add per-symbol differentiation. Only `event_risk` can vary per symbol, and only on instruments with calendar events | None — existing objects, existing parameters, no contract/schema change | 🔄 Implemented, ready for review — **blocked on the `max_risk_for_trade` decision below** |
 | **SD-2** Sector health data decision | Owner decision, not an AI call: either (a) ingest real NSE sector indices via Kite (new data source → **DD-gated**), or (b) derive sector aggregates from the constituent candles already held, using `instruments.sector` (new method → needs a design decision / ADR since M2.3's engine contract assumes an index series) | **DD or ADR** depending on option chosen | ⏳ Proposed — blocked on owner direction |
 | **SD-3** Wire sector_quality + recalibrate thresholds | Only after SD-2 lands. Pass `sector_health` into `ScoringEngine.score()`, then re-tune `config/decision.json` watch/trade thresholds against the impact table above so the change doesn't silently reclassify 20–39% of the book. Ships with a before/after replay diff | Config change to decision thresholds — **owner approval required** | ⏳ Proposed — blocked on SD-2 |
-| **SD-4** Scoring granularity analysis | Analysis + written proposal only, no code (see below) | None — analysis deliverable | ⏳ Proposed |
+| **SD-4** Scoring granularity (continuous ramps) | Replace RSI/liquidity/ADX step functions with anchor-preserving linear ramps. Distinct composite scores rise from 21 → 248 across the live book. `technical_structure` deferred (needs a normalizing band with no existing anchor). | Config: `adx.weak`, `liquidity.low_volume_floor_ratio` | 🔄 Implemented, ready for review |
 
 #### SD-1 consequence found during implementation: `max_risk_for_trade` was tuned against an incomplete denominator
 
@@ -798,7 +798,7 @@ reproduces today's exact pass/fail partition across all three calendar
 scenarios (40.25/47.75/49.25 pass; 52.25/59.75/61.25 fail). Owner
 decision required — this is a risk-appetite call, not an engineering one.
 
-#### SD-4 — coarse banding analysis (owner asked for analysis, no code)
+#### SD-4 — continuous scoring (design approved, implemented 2026-07-29)
 
 Even with all three inputs wired, per-symbol differentiation stays
 chunky, because `config/scoring.json` collapses continuous signals into
@@ -867,7 +867,15 @@ it is — barely-not-weak — and correctly falls out of TRADE.
 **Owner approval required before implementation** — this changes 9.4% of
 decisions and adds two config fields.
 
-#### Migration / re-validation plan (applies to SD-3)
+**Implemented 2026-07-29** (awaiting owner review): `_linear_ramp` in
+`scoring/engine.py`; `adx.weak: 15.0` and `liquidity.low_volume_floor_ratio:
+0.5` added to config + models; RSI `mid_points` validated as the honest
+mid-band anchor on the continuous ramp. Six new anchor/ramp regression
+tests in `tests/decision/test_scoring.py`. Full suite 1107 passed.
+
+---
+
+#### Migration / re-validation plan (applies to SD-3 and SD-4)
 
 Any change to scoring output makes every already-persisted decision
 non-comparable with new ones. Proposed sequence: (1) take a repository

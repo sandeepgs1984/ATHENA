@@ -21,6 +21,7 @@ from athena.domain.enums import Timeframe
 from athena.domain.market import Candle, MarketSnapshot
 from athena.errors import ConfigError
 from athena.indicators import IndicatorEngine, IndicatorName
+from athena.indicators.models import IndicatorEvidence, IndicatorResult, IndicatorStatus
 from athena.market_health import MarketHealthEngine
 from athena.regime import RegimeEngine
 from athena.scoring import ScoreStatus, ScoringEngine
@@ -29,6 +30,19 @@ from athena.sector_health import SectorHealthEngine
 IST = ZoneInfo("Asia/Kolkata")
 AS_OF = datetime(2026, 3, 2, 8, 30, tzinfo=IST)
 REPO = Path(__file__).resolve().parents[2]
+
+
+def _ind(name: IndicatorName, values: dict[str, Decimal]) -> IndicatorResult:
+    """Minimal OK IndicatorResult for unit tests that need exact input values."""
+    return IndicatorResult(
+        name=name,
+        status=IndicatorStatus.OK,
+        parameters={},
+        window_used=14,
+        values=values,
+        evidence=IndicatorEvidence(formula="test", inputs={}, explanation="test fixture"),
+        ts=AS_OF,
+    )
 
 
 @pytest.fixture()
@@ -121,6 +135,95 @@ class TestComponents:
         ts = result.components["technical_structure"]
         assert ts.status is ScoreStatus.OK
         assert ts.value >= Decimal("70")
+
+
+class TestContinuousScoringAnchors:
+    """SD-4: ramps must reproduce the pre-ramp anchors exactly."""
+
+    def test_momentum_anchors_at_weak_mid_strong(self, scoring):
+        cfg = scoring._config.rsi
+        for rsi_val, expected in (
+            (Decimal(str(cfg.weak)), Decimal(cfg.weak_points)),
+            (Decimal(str((cfg.weak + cfg.strong) / 2)), Decimal(cfg.mid_points)),
+            (Decimal(str(cfg.strong)), Decimal(cfg.strong_points)),
+            (Decimal("0"), Decimal(cfg.weak_points)),    # below band
+            (Decimal("100"), Decimal(cfg.strong_points)),  # above band
+        ):
+            result = scoring.score(
+                "X", as_of=AS_OF, indicators={IndicatorName.RSI: _ind(IndicatorName.RSI, {"value": rsi_val})}
+            )
+            assert result.components["momentum"].value == expected, (
+                f"RSI {rsi_val} → {result.components['momentum'].value}, expected {expected}"
+            )
+
+    def test_momentum_ramps_inside_band(self, scoring):
+        # Halfway between mid and strong: RSI 55 → 65 pts under the production ramp.
+        result = scoring.score(
+            "X", as_of=AS_OF,
+            indicators={IndicatorName.RSI: _ind(IndicatorName.RSI, {"value": Decimal("55")})},
+        )
+        assert result.components["momentum"].value == Decimal("65")
+
+    def test_liquidity_anchors_at_floor_and_min(self, scoring):
+        cfg = scoring._config.liquidity
+        floor = Decimal(cfg.min_volume_ma)
+        for vma, expected in (
+            (floor * Decimal(str(cfg.low_volume_floor_ratio)), Decimal(cfg.low_points)),
+            (floor, Decimal(cfg.ok_points)),
+            (floor * Decimal("2"), Decimal(cfg.ok_points)),  # above min
+            (floor * Decimal("0.1"), Decimal(cfg.low_points)),  # below floor
+        ):
+            result = scoring.score(
+                "X", as_of=AS_OF,
+                indicators={IndicatorName.VOLUME_MA: _ind(IndicatorName.VOLUME_MA, {"value": vma})},
+            )
+            assert result.components["liquidity"].value == expected, (
+                f"Volume MA {vma} → {result.components['liquidity'].value}, expected {expected}"
+            )
+
+    def test_liquidity_ramps_just_under_min(self, scoring):
+        # 0.5% under the floor used to cliff to low_points (30); now ~69.6.
+        result = scoring.score(
+            "X", as_of=AS_OF,
+            indicators={
+                IndicatorName.VOLUME_MA: _ind(
+                    IndicatorName.VOLUME_MA, {"value": Decimal("497500")}
+                )
+            },
+        )
+        pts = result.components["liquidity"].value
+        assert pts is not None
+        assert Decimal("69") < pts < Decimal("70")
+
+    def test_adx_bonus_anchors(self, scoring, config_dir):
+        candles = _candles(range(100, 160))  # BULL_TREND base 80
+        regime = _regime(config_dir, candles)
+        cfg = scoring._config.adx
+        base = Decimal("80")  # BULL_TREND label points
+        for adx_val, expected_bonus in (
+            (Decimal(str(cfg.weak)), Decimal(0)),
+            (Decimal(str(cfg.strong)), Decimal(cfg.bonus)),
+            (Decimal("5"), Decimal(0)),   # below weak
+            (Decimal("40"), Decimal(cfg.bonus)),  # above strong
+        ):
+            result = scoring.score(
+                "X", as_of=AS_OF, regime=regime,
+                indicators={IndicatorName.ADX: _ind(IndicatorName.ADX, {"adx": adx_val})},
+            )
+            assert result.components["trend"].value == base + expected_bonus, (
+                f"ADX {adx_val} → trend {result.components['trend'].value}, "
+                f"expected {base + expected_bonus}"
+            )
+
+    def test_adx_bonus_ramps_mid_band(self, scoring, config_dir):
+        candles = _candles(range(100, 160))
+        regime = _regime(config_dir, candles)
+        # Midway ADX 20 on a 15→25 / 0→10 ramp → +5.
+        result = scoring.score(
+            "X", as_of=AS_OF, regime=regime,
+            indicators={IndicatorName.ADX: _ind(IndicatorName.ADX, {"adx": Decimal("20")})},
+        )
+        assert result.components["trend"].value == Decimal("85")
 
 
 class TestComposite:

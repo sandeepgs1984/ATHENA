@@ -43,6 +43,26 @@ def _fmt2(value: Decimal) -> str:
     return format(value.quantize(_TWO_DP), "f")
 
 
+def _linear_ramp(
+    x: Decimal,
+    *,
+    x_lo: Decimal,
+    x_hi: Decimal,
+    y_lo: Decimal,
+    y_hi: Decimal,
+) -> Decimal:
+    """Piecewise-linear map of ``x`` onto ``[y_lo, y_hi]``.
+
+    Clamps outside the input band. Reproduces ``y_lo`` at ``x_lo`` and
+    ``y_hi`` at ``x_hi`` exactly (SD-4 anchor-preserving continuous scoring).
+    """
+    if x <= x_lo:
+        return y_lo
+    if x >= x_hi:
+        return y_hi
+    return y_lo + (y_hi - y_lo) * (x - x_lo) / (x_hi - x_lo)
+
+
 def _ok(dimension, value, contributions, explanation) -> ComponentScore:
     return ComponentScore(dimension=dimension, status=ScoreStatus.OK, value=_clamp(value),
                           contributions=tuple(contributions), explanation=explanation)
@@ -111,12 +131,24 @@ class ScoringEngine:
         contribs = [Contribution("regime:trend", f"regime-{trend_label}",
                                  f"regime trend {trend_label} → {base} pts", Decimal(base))]
         adx = self._known_indicator(indicators, IndicatorName.ADX)
-        if adx is not None and adx.values["adx"] >= Decimal(str(self._config.adx.strong)):
-            bonus = Decimal(self._config.adx.bonus)
-            value += bonus
-            contribs.append(Contribution("indicator:ADX", "ADX",
-                                         f"ADX {adx.values['adx']} >= {self._config.adx.strong} "
-                                         f"→ +{bonus} pts", bonus))
+        if adx is not None:
+            adx_val = adx.values["adx"]
+            cfg = self._config.adx
+            bonus = _linear_ramp(
+                adx_val,
+                x_lo=Decimal(str(cfg.weak)),
+                x_hi=Decimal(str(cfg.strong)),
+                y_lo=_ZERO,
+                y_hi=Decimal(cfg.bonus),
+            )
+            if bonus > _ZERO:
+                value += bonus
+                contribs.append(Contribution(
+                    "indicator:ADX", "ADX",
+                    f"ADX {adx_val} → +{_fmt2(bonus)} pts "
+                    f"(ramp {cfg.weak}→{cfg.strong})",
+                    bonus,
+                ))
         return _ok("trend", value, contribs,
                    f"trend score {_clamp(value)} from regime trend + ADX strength")
 
@@ -126,16 +158,26 @@ class ScoringEngine:
             return _unknown("momentum", "RSI indicator unavailable")
         cfg = self._config.rsi
         rsi_val = rsi.values["value"]
-        if rsi_val >= Decimal(str(cfg.strong)):
-            pts = cfg.strong_points
-        elif rsi_val <= Decimal(str(cfg.weak)):
-            pts = cfg.weak_points
-        else:
-            pts = cfg.mid_points
-        contribs = [Contribution("indicator:RSI", "RSI",
-                                 f"RSI {rsi_val} → {pts} pts "
-                                 f"(bands weak {cfg.weak}, strong {cfg.strong})", Decimal(pts))]
-        return _ok("momentum", Decimal(pts), contribs, f"momentum score {pts} from RSI")
+        # Continuous ramp through the three configured anchors (SD-4):
+        # RSI weak → weak_points, mid → mid_points, strong → strong_points.
+        # The mid anchor is the arithmetic midpoint of the band when
+        # mid_points sits halfway between weak_points and strong_points —
+        # which the production config does (40→20, 50→50, 60→80).
+        pts = _linear_ramp(
+            rsi_val,
+            x_lo=Decimal(str(cfg.weak)),
+            x_hi=Decimal(str(cfg.strong)),
+            y_lo=Decimal(cfg.weak_points),
+            y_hi=Decimal(cfg.strong_points),
+        )
+        contribs = [Contribution(
+            "indicator:RSI", "RSI",
+            f"RSI {rsi_val} → {_fmt2(pts)} pts "
+            f"(ramp {cfg.weak}→{cfg.strong})",
+            pts,
+        )]
+        return _ok("momentum", pts, contribs,
+                   f"momentum score {_fmt2(pts)} from RSI")
 
     def _market_quality(
         self,
@@ -194,11 +236,25 @@ class ScoringEngine:
             return _unknown("liquidity", "Volume MA indicator unavailable")
         cfg = self._config.liquidity
         vma_val = vma.values["value"]
-        pts = cfg.ok_points if vma_val >= Decimal(cfg.min_volume_ma) else cfg.low_points
-        contribs = [Contribution("indicator:VOLUME_MA", "VOLUME_MA",
-                                 f"Volume MA {vma_val} vs min {cfg.min_volume_ma} → {pts} pts",
-                                 Decimal(pts))]
-        return _ok("liquidity", Decimal(pts), contribs, f"liquidity score {pts} from Volume MA")
+        floor = Decimal(cfg.min_volume_ma)
+        # Continuous ramp (SD-4): low_points at floor_ratio * min_volume_ma,
+        # ok_points at min_volume_ma. Both endpoints preserve the pre-ramp
+        # anchors; anything at or above the floor still scores ok_points.
+        pts = _linear_ramp(
+            vma_val,
+            x_lo=floor * Decimal(str(cfg.low_volume_floor_ratio)),
+            x_hi=floor,
+            y_lo=Decimal(cfg.low_points),
+            y_hi=Decimal(cfg.ok_points),
+        )
+        contribs = [Contribution(
+            "indicator:VOLUME_MA", "VOLUME_MA",
+            f"Volume MA {vma_val} vs min {cfg.min_volume_ma} → {_fmt2(pts)} pts "
+            f"(ramp {cfg.low_volume_floor_ratio}x→1.0x)",
+            pts,
+        )]
+        return _ok("liquidity", pts, contribs,
+                   f"liquidity score {_fmt2(pts)} from Volume MA")
 
     def _technical_structure(self, indicators) -> ComponentScore:
         sma = self._known_indicator(indicators, IndicatorName.SMA)

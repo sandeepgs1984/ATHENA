@@ -26,7 +26,12 @@
     "strong": 60.0, "weak": 40.0,
     "strong_points": 80, "mid_points": 50, "weak_points": 20
   },
-  "adx": { "strong": 25.0, "bonus": 10 },
-  "liquidity": { "min_volume_ma": 500000, "ok_points": 70, "low_points": 30 },
+  "adx": { "strong": 25.0, "weak": 15.0, "bonus": 10 },
+  "liquidity": {
+    "min_volume_ma": 500000,
+    "ok_points": 70,
+    "low_points": 30,
+    "low_volume_floor_ratio": 0.5
+  },
   "technical": { "above_ma_points": 70, "below_ma_points": 30, "macd_pos_bonus": 10 }
 }

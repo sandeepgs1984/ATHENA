@@ -657,6 +657,10 @@ class ScoringWeightsCfg(_Strict):
 
 
 class RsiScoringCfg(_Strict):
+    """RSI momentum score. Points ramp linearly from ``weak_points`` at ``weak``
+    to ``strong_points`` at ``strong`` (SD-4). ``mid_points`` is the preserved
+    mid-band anchor and must equal the ramp value at the band midpoint."""
+
     strong: float = Field(gt=0, lt=100)
     weak: float = Field(gt=0, lt=100)
     strong_points: int = Field(ge=0, le=100)
@@ -667,18 +671,57 @@ class RsiScoringCfg(_Strict):
     def _ordered(self) -> RsiScoringCfg:
         if self.weak >= self.strong:
             raise ValueError(f"rsi weak ({self.weak}) must be < strong ({self.strong})")
+        # mid_points must sit on the weak→strong ramp at the band midpoint,
+        # otherwise the documented mid-band anchor is a lie.
+        mid_x = (self.weak + self.strong) / 2.0
+        expected = (
+            self.weak_points
+            + (self.strong_points - self.weak_points)
+            * (mid_x - self.weak)
+            / (self.strong - self.weak)
+        )
+        if abs(expected - self.mid_points) > 1e-9:
+            raise ValueError(
+                f"rsi mid_points ({self.mid_points}) must equal the continuous ramp "
+                f"at midpoint RSI {mid_x} ({expected:g}) so all three anchors stay honest"
+            )
         return self
 
 
 class AdxScoringCfg(_Strict):
+    """ADX trend-strength bonus. Points ramp linearly from 0 at ``weak`` to
+    ``bonus`` at ``strong`` (SD-4). The configured ``bonus`` at ``strong`` is
+    the preserved anchor from the pre-ramp step function."""
+
     strong: float = Field(gt=0)
+    weak: float = Field(default=15.0, ge=0)
     bonus: int = Field(ge=0, le=100)
+
+    @model_validator(mode="after")
+    def _ordered(self) -> AdxScoringCfg:
+        if self.weak >= self.strong:
+            raise ValueError(f"adx weak ({self.weak}) must be < strong ({self.strong})")
+        return self
 
 
 class LiquidityScoringCfg(_Strict):
+    """Volume-MA liquidity score. Points ramp linearly from ``low_points`` at
+    ``low_volume_floor_ratio * min_volume_ma`` to ``ok_points`` at
+    ``min_volume_ma`` (SD-4). Both endpoints preserve the pre-ramp anchors."""
+
     min_volume_ma: int = Field(ge=0)
     ok_points: int = Field(ge=0, le=100)
     low_points: int = Field(ge=0, le=100)
+    low_volume_floor_ratio: float = Field(default=0.5, gt=0, le=1)
+
+    @model_validator(mode="after")
+    def _ordered(self) -> LiquidityScoringCfg:
+        if self.low_volume_floor_ratio >= 1.0:
+            raise ValueError(
+                "liquidity low_volume_floor_ratio must be < 1.0 "
+                "(1.0 would collapse the ramp to a step)"
+            )
+        return self
 
 
 class TechnicalScoringCfg(_Strict):
