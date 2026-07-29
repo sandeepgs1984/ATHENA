@@ -257,6 +257,11 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert 'id="decision-executive-summary"' in html
     assert "function qualityBand" in js
     assert "function riskBand" in js
+    risk_band_start = js.find("function riskBand")
+    risk_band_end = js.find("\n    function ", risk_band_start + 1)
+    risk_band_body = js[risk_band_start:risk_band_end]
+    assert "if (n < 40) return \"Low\";" in risk_band_body
+    assert "if (n < 70) return \"Medium\";" in risk_band_body
     assert "function buildExecutiveSummaryLines" in js
     assert "function renderExecutiveSummary" in js
     assert "never generated" in js

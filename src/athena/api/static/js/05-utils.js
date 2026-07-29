@@ -62,13 +62,14 @@
         return "Weak";
     }
 
-    // Risk reads as a hazard level (Low/Medium/High), not a quality score —
-    // a "Weak risk" would be nonsensical, so it gets its own 3-band scale.
+    // Risk reads as a hazard level (Low/Medium/High), not a quality score.
+    // Keep these cutoffs aligned with config/risk_assessment.json:
+    // levels.low_below = 40, levels.high_at_or_above = 70.
     function riskBand(value) {
         const n = Number(value);
         if (!Number.isFinite(n)) return null;
-        if (n < 35) return "Low";
-        if (n < 65) return "Medium";
+        if (n < 40) return "Low";
+        if (n < 70) return "Medium";
         return "High";
     }
 
