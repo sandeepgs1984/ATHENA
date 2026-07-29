@@ -780,10 +780,10 @@ class TestDecisionsAPI:
         assert gates_by_name["CONFIDENCE"]["current"] == "40.0"
         assert gates_by_name["CONFIDENCE"]["gap"] == "10.0"  # 50 - 40
         assert gates_by_name["RISK"]["current"] == "65.0"
-        assert gates_by_name["RISK"]["gap"] == "5.0"  # 65 - 60
+        assert gates_by_name["RISK"]["gap"] == "15.0"  # 65 - 50
         # Summary text explicitly formats to 2dp regardless of stored precision
         assert "confidence +10.00" in data["summary"]
-        assert "risk -5.00" in data["summary"]
+        assert "risk -15.00" in data["summary"]
 
     def test_counterfactual_direction_blocker_when_no_numeric_gap(self, client) -> None:
         """All gates pass and score clears the trade level, but no trend

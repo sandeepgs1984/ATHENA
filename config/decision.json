@@ -7,7 +7,7 @@
     "min_composite_for_trade": 60,
     "watch_composite": 50,
     "min_confidence_for_trade": 50,
-    "max_risk_for_trade": 60,
+    "max_risk_for_trade": 50,
     "min_evidence_completeness": 0.5,
     "market_floor": 40
   },

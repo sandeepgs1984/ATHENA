@@ -6,6 +6,69 @@ status updated on approval.
 
 ---
 
+## SD-1 — Risk Engine: wire calendar context + universe result (owner-reported, 2026-07-29)
+
+| | |
+|---|---|
+| Completed | 2026-07-29 |
+| Objective | Activate `event_risk` and `concentration_indicator`, which had been permanently UNKNOWN on every decision ATHENA has ever produced |
+| Root cause | `RiskEngine.assess()` accepts `calendar_context` and `universe`, but `OwnerValidationPipeline` never passed either. Both objects already existed in `run()` (the `CalendarEngine` at line 104, the `UniverseResult` at line 148) — they were simply out of scope inside `_scan_eligible()`, so risk was a weighted mean over 4 of 6 dimensions (completeness 0.75) for every symbol |
+| Scope | `run()` now computes `calendar.context_for(as_of.date())` and threads it plus the universe result into `_scan_eligible()` → `risk_stage` → `RiskEngine.assess()`. Recalibrated `config/decision.json` `max_risk_for_trade` 60 → 50 (see below). No API, DTO, domain, or schema change |
+| Files modified | `src/athena/ops/owner_validation.py` (+11 lines), `config/decision.json` (1 value), `tests/ops/test_owner_validation.py`, `tests/api/v1/test_core_apis.py` |
+| Public APIs added | None |
+
+### Threshold recalibration — why it shipped in the same change set
+
+Risk is a weighted mean over *known* dimensions, so a 75-of-100 divisor
+inflated every risk score. Completing the vector adds two genuinely
+low-risk inputs (`event_risk` 20 on a normal day, `concentration_indicator`
+30 for a diversified universe) and mechanically deflates the result:
+liquid names move 45.67 → 40.25, illiquid names 61.67 → 52.25.
+
+`max_risk_for_trade: 60` had therefore been implicitly calibrated against
+the broken 4-dimension scale. Shipping the wiring alone would have
+silently *loosened* the trade gate, flipping 6 symbols WATCH → TRADE
+(AIIL, APLAPOLLO, CREDITACC, JSL, LALPATHLAB, MANKIND) — every one a name
+whose volume sits just under the 500k liquidity floor. Owner chose the
+strictness-preserving recalibration to 50.
+
+### Verification
+
+A simulator of the risk and decision logic was validated against the live
+`db/athena.db` batch run of 363 decisions and reproduced every persisted
+risk value and the exact 153 TRADE / 173 WATCH / 37 NO_TRADE split with
+**0 mismatches**. Against that validated baseline, SD-1 plus
+`max_risk_for_trade: 50` produces **0 per-symbol decision drift** across
+all three calendar scenarios (normal day, expiry session, scheduled
+events). One earlier simulation run was discarded as unsound: it keyed
+off the persisted `trade_plan` field, which is null for every non-TRADE
+decision by construction and therefore structurally concealed WATCH →
+TRADE flips.
+
+### Tests added (1 new, 1 updated)
+
+`test_risk_scores_every_dimension_from_calendar_and_universe` asserts both
+dimensions report `OK` with non-empty contributions, and that risk
+completeness exceeds the old 0.75. It further asserts the calendar
+contribution references the run's own trading date and the concentration
+contribution reports the run's actual universe size, so passing
+placeholder objects would not satisfy it. `test_counterfactual_quantifies_
+confidence_and_risk_gap` updated for the new threshold (risk gap 65−50).
+Full suite **1101 passed**, ruff clean.
+
+### Remaining work / risks
+
+`volatility_risk` still reports UNKNOWN under synthetic linear-price test
+fixtures (a property of the fixture, not the wiring — production data
+yields a real value). SD-1 adds **no per-symbol differentiation**: both
+newly-activated dimensions are date-wide or universe-wide, so they raise
+honesty and completeness only. The owner's original report is addressed
+by SD-3 (sector) and SD-4 (continuous scoring), both still pending.
+
+| Status | 🔄 Implemented, tested, ready for owner review |
+
+---
+
 ## Decisions & Trace — header live price (owner request, 2026-07-29)
 
 | | |

@@ -761,10 +761,42 @@ and must not ship without owner sign-off on the recalibration.
 
 | Milestone | Scope | Gate | Status |
 |---|---|---|---|
-| **SD-1** Wire calendar + universe into Risk | Thread the existing `CalendarContext` and `UniverseResult` from `run()` into `_scan_eligible()` → `RiskEngine.assess()`. Activates `event_risk` and `concentration_indicator`. Note: `concentration_indicator` is universe-breadth-derived and therefore shared across symbols — it raises risk *completeness* and honesty, it does **not** add per-symbol differentiation. Only `event_risk` can vary per symbol, and only on instruments with calendar events | None — existing objects, existing parameters, no contract/schema change | ⏳ Proposed |
+| **SD-1** Wire calendar + universe into Risk | Thread the existing `CalendarContext` and `UniverseResult` from `run()` into `_scan_eligible()` → `RiskEngine.assess()`. Activates `event_risk` and `concentration_indicator`. Note: `concentration_indicator` is universe-breadth-derived and therefore shared across symbols — it raises risk *completeness* and honesty, it does **not** add per-symbol differentiation. Only `event_risk` can vary per symbol, and only on instruments with calendar events | None — existing objects, existing parameters, no contract/schema change | 🔄 Implemented, ready for review — **blocked on the `max_risk_for_trade` decision below** |
 | **SD-2** Sector health data decision | Owner decision, not an AI call: either (a) ingest real NSE sector indices via Kite (new data source → **DD-gated**), or (b) derive sector aggregates from the constituent candles already held, using `instruments.sector` (new method → needs a design decision / ADR since M2.3's engine contract assumes an index series) | **DD or ADR** depending on option chosen | ⏳ Proposed — blocked on owner direction |
 | **SD-3** Wire sector_quality + recalibrate thresholds | Only after SD-2 lands. Pass `sector_health` into `ScoringEngine.score()`, then re-tune `config/decision.json` watch/trade thresholds against the impact table above so the change doesn't silently reclassify 20–39% of the book. Ships with a before/after replay diff | Config change to decision thresholds — **owner approval required** | ⏳ Proposed — blocked on SD-2 |
 | **SD-4** Scoring granularity analysis | Analysis + written proposal only, no code (see below) | None — analysis deliverable | ⏳ Proposed |
+
+#### SD-1 consequence found during implementation: `max_risk_for_trade` was tuned against an incomplete denominator
+
+Modelled against all 363 live decisions with a simulator validated to
+reproduce the persisted risk values and TRADE/WATCH/NO_TRADE split
+**exactly** (0 mismatches on 363 rows, baseline 153/173/37).
+
+Risk is a weighted mean over *known* dimensions only. With two of six
+dimensions permanently UNKNOWN, the divisor was 75 of 100 weight, which
+inflated every risk score. Completing the vector adds two genuinely
+low-risk inputs (`event_risk` 20 on a normal day, `concentration_indicator`
+30 for a diversified universe) and mechanically deflates the result:
+
+| | risk (liquid names) | risk (illiquid names) | RISK gate at max 60 |
+|---|---|---|---|
+| Before SD-1 | 45.67 | 61.67 | 35 symbols fail |
+| After SD-1, normal day | 40.25 | 52.25 | 0 fail |
+| After SD-1, expiry | 47.75 | 59.75 | 0 fail |
+| After SD-1, scheduled events | 49.25 | 61.25 | 35 fail |
+
+**The `max_risk_for_trade: 60` threshold was implicitly calibrated
+against the incomplete 4-dimension scale.** Shipping the wiring alone
+therefore silently *loosens* the trade gate: 6 symbols flip WATCH → TRADE
+(AIIL, APLAPOLLO, CREDITACC, JSL, LALPATHLAB, MANKIND) — all of them
+names whose 20-week volume sits just under the 500k liquidity floor
+(CREDITACC is 485,186, a 3% shortfall). These would become live BUY
+setups on the least liquid stocks in the book.
+
+Strictness-preserving recalibration: **`max_risk_for_trade: 60 → 50`**
+reproduces today's exact pass/fail partition across all three calendar
+scenarios (40.25/47.75/49.25 pass; 52.25/59.75/61.25 fail). Owner
+decision required — this is a risk-appetite call, not an engineering one.
 
 #### SD-4 — coarse banding analysis (owner asked for analysis, no code)
 
@@ -783,12 +815,57 @@ a handful of fixed buckets:
 A symbol at RSI 40.1 and one at RSI 59.9 receive the exact same 50
 momentum points, and a symbol at RSI 59.9 versus 60.1 jumps a full 30
 points on a rounding-width difference — the bands are simultaneously too
-flat inside and too cliff-edged at the boundary. SD-4 will produce a
-written proposal for continuous (piecewise-linear interpolation between
-the existing anchor points) scoring that preserves the current anchor
-values exactly at the band centres, so it is a strict refinement rather
-than a re-weighting, plus a replay-based before/after distribution diff.
-No code until that proposal is approved.
+flat inside and too cliff-edged at the boundary.
+
+**Proposed design (analysis complete 2026-07-29, no code written).**
+Replace the step functions with linear ramps that pass exactly through
+the anchor values already in `config/scoring.json`, so this is a strict
+refinement of the existing calibration rather than a re-weighting:
+
+- **momentum** — `pts = 20 + 3 × (RSI − 40)`, clamped to `[20, 80]`.
+  This reproduces all three configured anchors exactly: RSI 40 → 20
+  (`weak_points`), RSI 50 → 50 (`mid_points`), RSI 60 → 80
+  (`strong_points`). **No new config field required.**
+- **liquidity** — ramp the volume ratio `vma / min_volume_ma` from 0.5×
+  to 1.0× across `low_points` → `ok_points` (30 → 70), preserving the
+  anchor at exactly 1.0× → 70. Requires **one new config field** for the
+  lower ratio bound (proposed `low_volume_floor_ratio: 0.5`).
+- **trend (ADX bonus)** — ramp `0 → bonus` across ADX 15 → 25 instead of
+  a binary switch at 25, preserving the anchor at ADX 25 → full bonus.
+  Requires one new config field for the lower bound.
+- **technical_structure** — deferred. Making MA distance continuous needs
+  a normalizing band (likely ATR-relative) that has no existing anchor to
+  preserve, so it is a genuine calibration decision rather than a
+  refinement. Left discrete pending its own proposal.
+
+**Replayed against all 363 live decisions** (momentum + liquidity ramps):
+
+| | current | proposed |
+|---|---|---|
+| distinct momentum values | 3 | **232** |
+| distinct liquidity values | 2 | **34** |
+| distinct composite scores | 21 | **248** |
+| band mix | TRADE 159 / WATCH 167 / NO_TRADE 37 | TRADE 159 / WATCH 149 / NO_TRADE 55 |
+
+34 of 363 symbols (9.4%) change band. The direction of travel is
+correct in both tails — it penalises names that are genuinely weak but
+currently hidden inside the flat mid-band, and rewards genuinely strong
+ones:
+
+| Symbol | Input | Current | Proposed | Score |
+|---|---|---|---|---|
+| NSE:APLAPOLLO | volume MA 497,699 (0.5% under floor) | liquidity 30 | 69.6 | 60.29 → 69.65 |
+| NSE:CREDITACC | volume MA 485,186 | liquidity 30 | 67.6 | 69.71 → 74.13 |
+| NSE:NTPC | RSI 40.02 (at the weak edge) | momentum 50 | 20.1 | 60.29 → **53.25, drops out of TRADE** |
+| NSE:SAILIFE | RSI 59.86 (at the strong edge) | momentum 50 | 79.6 | 58.53 → 67.35 |
+
+NTPC is the clearest illustration: at RSI 40.02 it sits a fifth of a
+point above the weak threshold, is currently scored as mid-band, and
+clears the trade level on that basis. Under the ramp it scores as what
+it is — barely-not-weak — and correctly falls out of TRADE.
+
+**Owner approval required before implementation** — this changes 9.4% of
+decisions and adds two config fields.
 
 #### Migration / re-validation plan (applies to SD-3)
 

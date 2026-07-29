@@ -203,6 +203,64 @@ class TestOwnerValidationPipeline:
         assert decisions["NSE:AAA"].run_id == "run-refresh-A"
         assert decisions["NSE:BBB"].run_id == "run-refresh-B"
 
+    def test_risk_scores_every_dimension_from_calendar_and_universe(
+        self, repo: SqliteRepository, config_dir: Path
+    ) -> None:
+        """Regression (SD-1): RiskEngine.assess accepts a calendar context and
+        the universe result for its event_risk / concentration_indicator
+        dimensions, but this pipeline never passed either — so both were
+        permanently UNKNOWN and every risk score was a mean over only 4 of the
+        6 configured dimensions (completeness 0.75). Both objects already
+        existed in run(); they were merely out of scope inside _scan_eligible.
+        """
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        store.upsert_candidate(symbol="BBB")
+        for sym, seed in (("AAA", 100), ("BBB", 200)):
+            iid = f"NSE:{sym}"
+            repo.upsert_instrument(
+                Instrument(
+                    instrument_id=iid, symbol=sym, exchange="NSE", series="EQ", status="ACTIVE"
+                )
+            )
+            repo.add_candles(_candles(iid, seed=seed))
+        ingestion = IngestionResult(
+            as_of=AS_OF, instruments_upserted=2, candles_fetched=160, candles_written=160,
+            quotes_fetched=0, quotes_written=0, datasets_validated=2, datasets_skipped_empty=0,
+        )
+
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        detail = pipe.run(
+            RunTrigger.PREMARKET, as_of=AS_OF, ingestion=ingestion, run_id="run-test-risk-dims"
+        )
+
+        reports = detail["decision_reports"]
+        assert reports
+        for report in reports.values():
+            dims = {d["name"]: d for d in report["risk"]["dimensions"]}
+            # The two dimensions that were silently blank on every decision.
+            for name in ("event_risk", "concentration_indicator"):
+                assert dims[name]["status"] == "OK", f"{name} still UNKNOWN"
+                assert dims[name]["value"] is not None
+                # A known dimension must carry its own evidence, not just a value.
+                assert dims[name]["contributions"]
+            # Prove the *real* objects were threaded through, not placeholders:
+            # the calendar context must be for this run's own trading date...
+            assert (
+                dims["event_risk"]["contributions"][0]["reference"]
+                == AS_OF.date().isoformat()
+            )
+            # ...and concentration must reflect this run's actual universe size.
+            assert "2 eligible instrument(s)" in (
+                dims["concentration_indicator"]["contributions"][0]["description"]
+            )
+            # Both now contribute to the weighted mean, so completeness must
+            # exceed the 0.75 that four-of-six dimensions produced before.
+            # It is not 1.0 here only because this fixture's linear price
+            # series yields VOLATILITY_UNKNOWN from the regime engine — a
+            # property of the synthetic candles, not of the wiring.
+            assert Decimal(report["risk"]["completeness"]) > Decimal("0.75")
+
     def test_unresolvable_candidate_reported_not_judged(
         self, repo: SqliteRepository, config_dir: Path
     ) -> None:

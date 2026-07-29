@@ -264,6 +264,11 @@ class OwnerValidationPipeline:
             # Score/Confidence/Risk still showing "Unknown" even after a
             # freshly-succeeded re-validate.
             cycle_id = f"{as_of.date().isoformat()}-{trigger.value.lower()}"
+            # RiskEngine accepts a calendar context and the universe result for
+            # its event_risk / concentration_indicator dimensions, but this
+            # pipeline never passed them — leaving both permanently UNKNOWN on
+            # every decision ever scored here. Both objects already exist above;
+            # they were simply out of scope inside _scan_eligible.
             scan_report, scan_regime = self._scan_eligible(
                 included_ids,
                 as_of=as_of,
@@ -274,6 +279,8 @@ class OwnerValidationPipeline:
                 cfg=cfg,
                 market_health=health_result,
                 market_health_score=score_build.score,
+                calendar_context=calendar.context_for(as_of.date()),
+                universe_result=result,
             )
             scan_stats = {
                 "total": scan_report.statistics.total,
@@ -573,6 +580,8 @@ class OwnerValidationPipeline:
         cfg,
         market_health=None,
         market_health_score=None,
+        calendar_context=None,
+        universe_result=None,
     ):
         from athena.confidence import ConfidenceEngine
         from athena.config.loader import (
@@ -700,6 +709,8 @@ class OwnerValidationPipeline:
                         regime=ctx.get("regime"),
                         market_health=ctx.get("market_health"),
                         indicators=ctx.get("indicators"),
+                        calendar_context=calendar_context,
+                        universe=universe_result,
                     )
                 }
 
