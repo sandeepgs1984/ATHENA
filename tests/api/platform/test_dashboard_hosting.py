@@ -145,8 +145,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "decision-chart-price-marker-line" in css
     assert "decision-chart-price-marker-box" in css
     assert "decision-chart-shell" in css
-    assert "dashboard.css?v=9.75.0" in html
-    assert "dashboard.js?v=9.75.0" in html
+    assert "dashboard.css?v=9.76.0" in html
+    assert "dashboard.js?v=9.76.0" in html
     assert "function chartPlanLevelPct" in js
     assert "function chartPlanValidityLabel" in js
     assert "function refreshActiveDecisionChart" in js
@@ -159,10 +159,13 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "function activeQuoteForSeries" in js
     assert "${escapeDecisionHtml(markerLabel)} ${chartPriceLabel(markerPrice)} · Candle close" in js
     assert "Candle close ${chartPriceLabel(latestClose)}" in js
+    assert "Marker color: quote above/below candle close" in html
+    assert "Marker color: quote above/below candle close" in js
     assert ".decision-chart-plan-strip" in css
     assert ".decision-chart-plan-chip.stop" in css
     assert ".decision-chart-plan-chip.target" in css
     assert ".decision-chart-plan-chip.validity.expired" in css
+    assert ".legend-price-marker" in css
 
     # M-D4 renders session/calendar, regime/market-health context, curated links, and export
     assert 'id="decision-context-lane"' in js

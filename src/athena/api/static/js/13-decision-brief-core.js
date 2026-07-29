@@ -610,6 +610,7 @@
                         <span><i class="legend-line ma"></i> Moving average</span>
                         <span><i class="legend-box atr"></i> ATR band</span>
                         <span><i class="legend-box volume"></i> Volume</span>
+                        <span class="legend-note"><i class="legend-price-marker"></i> Marker color: quote above/below candle close</span>
                     </div>
                 </section>
             </div>

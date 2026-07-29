@@ -606,6 +606,19 @@
     height: 7px;
 }
 
+.legend-note {
+    color: var(--text-subtle);
+}
+
+.legend-price-marker {
+    background: linear-gradient(90deg, var(--tone-good-solid) 0 50%, var(--tone-bad-solid) 50% 100%);
+    border: 1px solid rgba(148, 163, 184, 0.32);
+    border-radius: 999px;
+    display: inline-block;
+    height: 8px;
+    width: 16px;
+}
+
 .provenance-chip {
     border: 1px solid rgba(148, 163, 184, 0.22);
     border-radius: 4px;
