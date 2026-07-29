@@ -597,12 +597,30 @@
 
                 <section class="decision-brief-section decision-chart-section">
                     <div class="decision-brief-section-header">
-                        <h4>Intraday price context · 5 minute</h4>
+                        <h4 id="decision-chart-title">Intraday price context · 5 minute</h4>
                         <span id="decision-chart-status" class="chart-freshness-badge no_data">LOADING</span>
+                    </div>
+                    <div class="decision-chart-controls" aria-label="Chart controls">
+                        <div class="decision-chart-control-group" aria-label="Timeframe">
+                            <button type="button" class="decision-chart-control" data-chart-timeframe="5m">5m</button>
+                            <button type="button" class="decision-chart-control" data-chart-timeframe="15m">15m</button>
+                        </div>
+                        <div class="decision-chart-control-group" aria-label="Bar range">
+                            <button type="button" class="decision-chart-control" data-chart-limit="60">60</button>
+                            <button type="button" class="decision-chart-control" data-chart-limit="120">120</button>
+                            <button type="button" class="decision-chart-control" data-chart-limit="300">300</button>
+                            <button type="button" class="decision-chart-control" data-chart-limit="500">500</button>
+                        </div>
                     </div>
                     <p id="decision-chart-meta" class="decision-chart-meta">Loading persisted OHLCV…</p>
                     <div id="decision-chart-warning" class="decision-chart-warning" hidden></div>
-                    <div id="decision-chart-canvas" class="decision-chart-canvas"></div>
+                    <div class="decision-chart-frame">
+                        <div id="decision-chart-canvas" class="decision-chart-canvas"></div>
+                        <button id="decision-chart-open-fullscreen" class="decision-chart-open-fullscreen" type="button"
+                            aria-label="Open dedicated price chart" title="Open dedicated price chart">
+                            <i class="fa-solid fa-expand"></i>
+                        </button>
+                    </div>
                     <div class="decision-chart-legend">
                         <span><i class="legend-box entry"></i> Entry zone</span>
                         <span><i class="legend-line stop"></i> Invalidation</span>

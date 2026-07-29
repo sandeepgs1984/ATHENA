@@ -283,6 +283,56 @@
     padding: var(--space-8) var(--space-10);
 }
 
+.decision-chart-controls {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-8);
+    justify-content: space-between;
+    margin: -2px 0 var(--space-8);
+}
+
+.decision-chart-control-group {
+    align-items: center;
+    background: rgba(2, 6, 23, 0.3);
+    border: 1px solid rgba(148, 163, 184, 0.12);
+    border-radius: 6px;
+    display: inline-flex;
+    gap: var(--space-4);
+    padding: var(--space-4);
+}
+
+.decision-chart-control {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: var(--text-0-62);
+    font-weight: 750;
+    line-height: 1;
+    min-height: 24px;
+    min-width: 34px;
+    padding: var(--space-5) var(--space-7);
+}
+
+.decision-chart-control:hover,
+.decision-chart-control:focus-visible {
+    border-color: rgba(94, 234, 212, 0.28);
+    color: var(--text-secondary);
+}
+
+.decision-chart-control.active {
+    background: rgba(94, 234, 212, 0.14);
+    border-color: rgba(94, 234, 212, 0.35);
+    color: var(--accent-cyan);
+}
+
+.decision-chart-frame {
+    position: relative;
+}
+
 .decision-chart-canvas {
     background:
         linear-gradient(rgba(15, 23, 42, 0.35), rgba(2, 6, 23, 0.5)),
@@ -291,6 +341,35 @@
     border-radius: 6px;
     min-height: 300px;
     overflow: hidden;
+}
+
+.decision-chart-open-fullscreen {
+    align-items: center;
+    background: rgba(15, 23, 42, 0.88);
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: 4px;
+    bottom: 10px;
+    box-shadow: var(--shadow-md);
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: inline-flex;
+    height: 32px;
+    justify-content: center;
+    position: absolute;
+    right: 10px;
+    width: 32px;
+}
+
+.decision-chart-open-fullscreen:hover,
+.decision-chart-open-fullscreen:focus-visible {
+    border-color: rgba(94, 234, 212, 0.42);
+    color: var(--accent-cyan);
+}
+
+.chart-modal-controls {
+    justify-content: space-between;
+    margin-bottom: var(--space-10);
+    width: 100%;
 }
 
 .decision-chart-empty {
@@ -440,6 +519,19 @@
     fill: var(--text-muted);
     font-family: var(--font-mono);
     font-size: var(--text-0-625);
+}
+
+.decision-chart-session-separator {
+    stroke: rgba(94, 234, 212, 0.28);
+    stroke-dasharray: 4 5;
+    stroke-width: 1;
+}
+
+.decision-chart-session-label {
+    fill: var(--tone-info-text);
+    font-family: var(--font-mono);
+    font-size: var(--text-0-5625);
+    font-weight: 750;
 }
 
 .decision-candle line {

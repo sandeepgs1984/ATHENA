@@ -5,7 +5,7 @@
   },
   "provider": "kite",
   "institutional_flow_provider": "file",
-  "timeframes": ["5m"],
+  "timeframes": ["5m", "15m"],
   "lookback_minutes": 30,
   "lookback_days": 90,
   "include_daily": true,

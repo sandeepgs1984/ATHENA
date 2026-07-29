@@ -1,6 +1,73 @@
 
 
     const decisionChartControllers = new Map();
+    const CHART_PREF_KEY = "athena.decision-chart-preferences";
+    const CHART_TIMEFRAMES = ["5m", "15m"];
+    const CHART_LIMITS = [60, 120, 300, 500];
+    const DEFAULT_CHART_PREFS = Object.freeze({ timeframe: "5m", limit: 120 });
+    let activeChartInstrumentId = null;
+    let activeChartDecisionId = null;
+
+    function chartPreferences() {
+        try {
+            const raw = JSON.parse(localStorage.getItem(CHART_PREF_KEY) || "{}");
+            const timeframe = CHART_TIMEFRAMES.includes(raw.timeframe)
+                ? raw.timeframe
+                : DEFAULT_CHART_PREFS.timeframe;
+            const limit = CHART_LIMITS.includes(Number(raw.limit))
+                ? Number(raw.limit)
+                : DEFAULT_CHART_PREFS.limit;
+            return { timeframe, limit };
+        } catch (_err) {
+            return { ...DEFAULT_CHART_PREFS };
+        }
+    }
+
+    function saveChartPreferences(nextPrefs) {
+        const prefs = {
+            timeframe: CHART_TIMEFRAMES.includes(nextPrefs.timeframe)
+                ? nextPrefs.timeframe
+                : DEFAULT_CHART_PREFS.timeframe,
+            limit: CHART_LIMITS.includes(Number(nextPrefs.limit))
+                ? Number(nextPrefs.limit)
+                : DEFAULT_CHART_PREFS.limit,
+        };
+        try {
+            localStorage.setItem(CHART_PREF_KEY, JSON.stringify(prefs));
+        } catch (_err) {
+            // Preference persistence is nice-to-have; chart rendering must continue.
+        }
+        return prefs;
+    }
+
+    function chartTimeframeLabel(timeframe) {
+        return timeframe === "1m" ? "1 minute" : timeframe === "15m" ? "15 minute" : "5 minute";
+    }
+
+    function renderChartControlState(prefs = chartPreferences()) {
+        document.querySelectorAll("[data-chart-timeframe]").forEach(button => {
+            const active = button.getAttribute("data-chart-timeframe") === prefs.timeframe;
+            button.classList.toggle("active", active);
+            button.setAttribute("aria-pressed", active ? "true" : "false");
+        });
+        document.querySelectorAll("[data-chart-limit]").forEach(button => {
+            const active = Number(button.getAttribute("data-chart-limit")) === Number(prefs.limit);
+            button.classList.toggle("active", active);
+            button.setAttribute("aria-pressed", active ? "true" : "false");
+        });
+        const title = document.getElementById("decision-chart-title");
+        if (title) title.textContent = `Intraday price context · ${chartTimeframeLabel(prefs.timeframe)}`;
+    }
+
+    function chartReturnedRangeLabel(series, candleCount) {
+        const prefs = chartPreferences();
+        const requested = Number(series && series.requested_limit) || prefs.limit;
+        const count = Number(series && series.count) || candleCount;
+        if (requested > 0 && count > 0 && count < requested) {
+            return `${count} of ${requested} requested`;
+        }
+        return `${candleCount} bars`;
+    }
 
     function chartLevelValues(plan) {
         if (!plan) return [];
@@ -31,6 +98,23 @@
         hour: "2-digit",
         minute: "2-digit",
     });
+
+    const chartDateKey = value => {
+        const parts = new Intl.DateTimeFormat("en-CA", {
+            timeZone: "Asia/Kolkata",
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+        }).formatToParts(new Date(value));
+        const data = Object.fromEntries(parts.map(part => [part.type, part.value]));
+        return `${data.year}-${data.month}-${data.day}`;
+    };
+
+    const chartDateLabel = value => new Intl.DateTimeFormat("en-IN", {
+        timeZone: "Asia/Kolkata",
+        day: "2-digit",
+        month: "short",
+    }).format(new Date(value));
 
     function chartFormatDuration(seconds) {
         const totalSeconds = Math.max(0, Math.round(Number(seconds)));
@@ -133,10 +217,11 @@
             if (!this.host) return;
             const candles = Array.isArray(series.candles) ? series.candles : [];
             if (!candles.length) {
+                const timeframe = chartTimeframeLabel(series.timeframe || chartPreferences().timeframe).toLowerCase();
                 this.host.innerHTML = `
                     <div class="decision-chart-empty">
-                        No persisted 5-minute candles for ${escapeDecisionHtml(series.instrument_id)}.
-                        Re-validate after Kite ingestion.
+                        No persisted ${escapeDecisionHtml(timeframe)} candles for ${escapeDecisionHtml(series.instrument_id)}.
+                        Switch timeframe or re-validate after Kite ingestion.
                     </div>
                 `;
                 return;
@@ -297,6 +382,18 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
                 return `<text x="${x}" y="${height - 9}" text-anchor="middle"
                     class="decision-chart-axis-label">${escapeDecisionHtml(chartTimeLabel(candle.ts_open))}</text>`;
             }).join("");
+            const sessionSeparators = candles.map((candle, index) => {
+                if (index === 0) return "";
+                const prev = candles[index - 1];
+                if (chartDateKey(prev.ts_open) === chartDateKey(candle.ts_open)) return "";
+                const x = xAt(index) - slot / 2;
+                return `
+                    <line x1="${x}" y1="${margin.top}" x2="${x}" y2="${volumeTop + volumeHeight}"
+                        class="decision-chart-session-separator" />
+                    <text x="${x + 5}" y="${margin.top + 12}"
+                        class="decision-chart-session-label">${escapeDecisionHtml(chartDateLabel(candle.ts_open))}</text>
+                `;
+            }).join("");
 
             const latestCandle = candles[candles.length - 1];
             const latestClose = Number(latestCandle.close);
@@ -310,11 +407,12 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
             const high = Math.max(...candles.map(c => Number(c.high)));
             const low = Math.min(...candles.map(c => Number(c.low)));
             const planStrip = this.renderPlanStrip(plan);
+            const rangeLabel = chartReturnedRangeLabel(series, candles.length);
 
             this.host.innerHTML = `
                 <div class="decision-chart-shell" data-chart-host="${escapeDecisionHtml(this.hostId)}">
                     <div class="decision-chart-topline">
-                        <span>${escapeDecisionHtml(series.timeframe || "5m")} · ${candles.length} bars</span>
+                        <span>${escapeDecisionHtml(series.timeframe || chartPreferences().timeframe)} · ${escapeDecisionHtml(rangeLabel)}</span>
                         <span>${escapeDecisionHtml(markerLabel)} ${chartPriceLabel(markerPrice)} · Candle close ${chartPriceLabel(latestClose)}</span>
                         <span>High ${chartPriceLabel(high)} · Low ${chartPriceLabel(low)}</span>
                     </div>
@@ -335,6 +433,7 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
                         ${grid}
                         <line x1="${margin.left}" y1="${priceBottom}" x2="${plotRight}" y2="${priceBottom}"
                             class="decision-chart-panel-separator" />
+                        ${sessionSeparators}
                         ${entryZone}
                         ${atrBand}
                         ${bars}
@@ -440,8 +539,9 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         const source = latestCandle && latestCandle.source
             ? ` · ${latestCandle.source}`
             : "";
+        const rangeLabel = chartReturnedRangeLabel(series, Array.isArray(series.candles) ? series.candles.length : 0);
         meta.textContent = series.latest_ts
-            ? `${series.count} × ${series.timeframe} bars · latest ${formatDecisionTime(series.latest_ts)}${source}`
+            ? `${rangeLabel} · ${series.timeframe} bars · latest candle ${formatDecisionTime(series.latest_ts)}${source}`
             : `No ${series.timeframe} candles persisted`;
         if (state === "STALE") {
             warning.hidden = false;
@@ -457,6 +557,10 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
     async function loadDecisionChart(instrumentId, plan, decisionId) {
         const host = document.getElementById("decision-chart-canvas");
         if (!host) return;
+        activeChartInstrumentId = instrumentId;
+        activeChartDecisionId = decisionId;
+        const prefs = chartPreferences();
+        renderChartControlState(prefs);
         host.innerHTML =
             '<div class="decision-chart-empty"><i class="fa-solid fa-circle-notch fa-spin"></i> Loading persisted candles…</div>';
         try {
@@ -466,7 +570,7 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
             let series = null;
             let lastError = null;
             for (const candidateId of candidates) {
-                const path = `/api/v1/market/instruments/${encodeURIComponent(candidateId)}/candles?timeframe=5m&limit=120`;
+                const path = `/api/v1/market/instruments/${encodeURIComponent(candidateId)}/candles?timeframe=${encodeURIComponent(prefs.timeframe)}&limit=${encodeURIComponent(prefs.limit)}`;
                 try {
                     // Chart panel owns empty/404/stale UI — do not toast on select.
                     const response = await apiRequest(path, { skipToast: true });
@@ -482,9 +586,9 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
                 throw new Error("candles response missing data");
             }
             renderChartFreshness(series);
-            renderCandlestickSvg(series, plan);
             activeChartSeries = series;
             activeChartPlan = plan;
+            refreshActiveDecisionChart();
         } catch (err) {
             if (activeDecisionId !== decisionId) return;
             console.error(`Failed to load candles for ${instrumentId}`, err);
@@ -514,6 +618,11 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
                     : "Candles request failed";
             }
         }
+    }
+
+    function reloadActiveDecisionChart() {
+        if (!activeChartInstrumentId || !activeChartDecisionId) return;
+        loadDecisionChart(activeChartInstrumentId, activeChartPlan, activeChartDecisionId);
     }
 
     // Latest real close for an instrument (UX-9 Portfolio Impact) — same
@@ -608,6 +717,7 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
         const meta = activeDecisionData && activeDecisionData.metadata;
         const symbol = meta ? String(meta.instrument_id || "").split(":").pop() : "";
         if (title) title.textContent = symbol ? `${symbol} — Price Chart` : "Price Chart";
+        renderChartControlState();
         if (!activeChartSeries) {
             canvas.innerHTML = '<div class="decision-chart-empty">Chart hasn\'t loaded yet for this decision.</div>';
         } else {
@@ -620,4 +730,29 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
     document.getElementById("chart-modal-close")?.addEventListener("click", () => closeModal(chartModalEl));
     window.addEventListener("click", event => {
         if (event.target === chartModalEl) closeModal(chartModalEl);
+    });
+
+    document.addEventListener("click", event => {
+        const fullscreenButton = event.target.closest("#decision-chart-open-fullscreen");
+        if (fullscreenButton) {
+            openChartModal();
+            return;
+        }
+        const timeframeButton = event.target.closest("[data-chart-timeframe]");
+        if (timeframeButton) {
+            const current = chartPreferences();
+            const timeframe = timeframeButton.getAttribute("data-chart-timeframe");
+            saveChartPreferences({ ...current, timeframe });
+            renderChartControlState();
+            reloadActiveDecisionChart();
+            return;
+        }
+        const limitButton = event.target.closest("[data-chart-limit]");
+        if (limitButton) {
+            const current = chartPreferences();
+            const limit = Number(limitButton.getAttribute("data-chart-limit"));
+            saveChartPreferences({ ...current, limit });
+            renderChartControlState();
+            reloadActiveDecisionChart();
+        }
     });

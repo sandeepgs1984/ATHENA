@@ -1,6 +1,6 @@
 # ATHENA Symbol Chart Excellence Roadmap
 
-**Status:** CH-0 and CH-1 approved; CH-2 ready for owner review
+**Status:** CH-0, CH-1, and CH-2 approved; CH-3 ready for owner review
 **Date:** 2026-07-29
 **Scope:** Decision Brief symbol chart presentation only
 **Owner goal:** World-class, trading-grade chart presentation without adding
@@ -42,8 +42,9 @@ complete.
   - `GET /api/v1/market/instruments/{instrument_id}/candles`
   - query params include `timeframe` and `limit`.
   - current UI uses `timeframe=5m&limit=120`.
-- Supported timeframe behavior currently covers intraday windows already used by
-  the dashboard, including `1m`, `5m`, and `15m`; limits are capped.
+- Chart controls expose only timeframes supported by the active provider and
+  live ingestion configuration. Current controls use `5m` and `15m`; `1m` is
+  not shown because the provider capability config does not declare it.
 - `MarketHistoryService.recent_candles` returns persisted OHLCV candles,
   freshness information, ATR series, and SMA series.
 - Trade plan levels and validity are loaded from the selected decision/depth
@@ -185,7 +186,7 @@ while preserving the same truthful data surface.
   fabricating a substitute.
 - Tests cover plan overlay rendering inputs and expired-plan wording.
 
-**Status:** Implemented on 2026-07-29; ready for owner review.
+**Status:** Approved by owner on 2026-07-29.
 
 ---
 
@@ -196,20 +197,31 @@ resolutions without leaving the Decision Brief.
 
 **Scope:**
 
-- Add timeframe controls for existing supported intervals.
+- Add timeframe controls for configured supported intervals.
 - Add bar-range controls within current API limits.
+- Show requested-vs-returned bar counts when the ledger contains fewer bars
+  than the selected range.
+- Provide the same controls in the dedicated chart modal.
 - Remember chart preference locally in browser storage.
 - Add session/day separators when supported by candle timestamps.
 - Clearly show the selected timeframe and last candle timestamp.
+- Keep unavailable timeframe messages tied to the selected timeframe, never a
+  hardcoded default.
 
 **No new provider dependency.**
 
 **Acceptance criteria:**
 
 - Switching timeframe reloads only the selected symbol chart.
+- Embedded and dedicated chart contexts expose the same timeframe/range
+  controls.
 - Invalid timeframe/range choices fail visibly and safely.
+- Persisted-data shortages are visible and never backfilled with fabricated
+  candles.
 - All labels use the correct local trading-session interpretation.
 - Tests cover query construction and fallback behavior.
+
+**Status:** Implemented on 2026-07-29; ready for owner review.
 
 ---
 

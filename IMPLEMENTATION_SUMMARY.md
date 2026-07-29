@@ -6,7 +6,30 @@ status updated on approval.
 
 ---
 
-## CH-2 — TradePlan overlays & validity layer (ready for owner review)
+## CH-3 — Timeframe, range, and session controls (ready for owner review)
+
+| | |
+|---|---|
+| Completed | 2026-07-29 |
+| Objective | Let the owner inspect a selected symbol across existing intraday resolutions and bar windows without leaving the Decision Brief |
+| Scope | Added configured 5m/15m timeframe controls in embedded and dedicated chart contexts, enabled 15m live ingestion alongside existing 5m ingestion, added 60/120/300/500 bar-range controls, `localStorage` preference persistence, dynamic candles query construction, requested-vs-returned bar count labels, timeframe-specific no-data wording, a detail-pane fullscreen trigger, title/meta updates for selected timeframe and latest candle timestamp, and IST day/session separators when returned candles cross sessions |
+| Files created | None |
+| Files modified | `src/athena/api/static/js/16-decision-brief-chart.js`, `src/athena/api/static/js/13-decision-brief-core.js`, `src/athena/api/static/css/10-trade-plan-chart.css`, `src/athena/api/static/index.html`, `tests/api/platform/test_dashboard_hosting.py`, `docs/design/ATHENA-SYMBOL-CHART-ROADMAP.md`, `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md` |
+| Public APIs added | None |
+| Tests | `rtk node --check src/athena/api/static/js/13-decision-brief-core.js` — passed; `rtk node --check src/athena/api/static/js/16-decision-brief-chart.js` — passed; `rtk pytest tests/api/platform/test_dashboard_hosting.py -q` — 3 passed; `rtk git diff HEAD --check` — passed; `rtk pytest -q` — 1118 passed |
+| Coverage | Static hosting regression locks in configured 5m/15m timeframe controls, absence of unsupported 1m chart controls, range sets, preference key, dynamic query construction, embedded/modal control markup, fullscreen trigger, range-shortage label, timeframe-specific empty-state wording, session separator rendering, latest-candle wording, and `9.79.0` asset cache-busters |
+| Architecture compliance | No backend, provider, broker, scoring, risk, or domain contract changes. CH-3 uses only the existing candles endpoint's supported `timeframe` and `limit` query parameters |
+| ADR compliance | ADR-004 preserved: static HTML/CSS/vanilla JS only. ADR-005 preserved: all chart values remain rendered from returned candle/quote/TradePlan/freshness data; session separators are derived only from candle timestamps |
+| Risks discovered | Local SQLite verification showed `NSE:TATACAP` currently has 56 persisted `5m` candles, 62 daily candles, and no persisted `15m` candles yet; 15m will populate after the next live ingestion cycle with the updated config. The active provider does not declare 1m capability, so unsupported 1m controls were removed. Range controls cannot display more bars than the ledger contains. Authenticated click-through visual verification remains owner-side because the running workstation is behind the owner unlock gate; TestClient verification confirmed the updated shell asset versions |
+| Technical debt introduced | None |
+| Suggested improvements | CH-4 should add crosshair/inspection behavior with OHLCV and rendered indicator readouts without adding new data sources |
+| Remaining work | Owner review of CH-3; CH-4 blocked until approval |
+| Status | 🔄 Ready for owner review |
+| Branch | feature/live-dashboard |
+
+---
+
+## CH-2 — TradePlan overlays & validity layer (approved)
 
 | | |
 |---|---|
@@ -23,8 +46,8 @@ status updated on approval.
 | Risks discovered | Header price and chart marker previously used different real data sources: the header showed quote/LTP while the chart marker showed latest persisted candle close. Fixed by using the quote for the chart marker when available and labeling candle close separately. Authenticated visual review remains owner-side because the running workstation is protected by the owner unlock gate |
 | Technical debt introduced | None |
 | Suggested improvements | CH-3 should add timeframe/range/session controls, still using the existing candles endpoint and visible selected timeframe/last-candle timestamps |
-| Remaining work | Owner review of CH-2; CH-3 blocked until approval |
-| Status | 🔄 Ready for owner review |
+| Remaining work | None; CH-3 implemented after approval |
+| Status | ✅ Approved by owner on 2026-07-29 |
 | Branch | feature/live-dashboard |
 
 ---

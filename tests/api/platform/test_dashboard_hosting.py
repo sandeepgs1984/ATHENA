@@ -112,7 +112,26 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "function renderProfessionalDecisionChart" in js
     assert "function renderCandlestickSvg" in js
     assert "function renderChartFreshness" in js
-    assert "/candles?timeframe=5m&limit=120" in js
+    assert "CHART_TIMEFRAMES = [\"5m\", \"15m\"]" in js
+    assert "CHART_LIMITS = [60, 120, 300, 500]" in js
+    assert "athena.decision-chart-preferences" in js
+    assert "function chartPreferences" in js
+    assert "function saveChartPreferences" in js
+    assert "function renderChartControlState" in js
+    assert "function chartReturnedRangeLabel" in js
+    assert "function reloadActiveDecisionChart" in js
+    assert "data-chart-timeframe=\"1m\"" not in js
+    assert "data-chart-timeframe=\"1m\"" not in html
+    assert "data-chart-timeframe=\"5m\"" in js
+    assert "data-chart-timeframe=\"15m\"" in js
+    assert "data-chart-limit=\"500\"" in js
+    assert 'id="decision-chart-open-fullscreen"' in js
+    assert 'class="decision-chart-controls chart-modal-controls"' in html
+    assert "No persisted ${escapeDecisionHtml(timeframe)} candles" in js
+    assert "of ${requested} requested" in js
+    assert "timeframe=${encodeURIComponent(prefs.timeframe)}&limit=${encodeURIComponent(prefs.limit)}" in js
+    assert "decision-chart-session-separator" in js
+    assert "latest candle" in js
     assert "skipToast: true" in js
     assert "session-close analysis" in js
     # M-D3 renders persisted eligibility/analysis/history and safe candidate removal
@@ -145,8 +164,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "decision-chart-price-marker-line" in css
     assert "decision-chart-price-marker-box" in css
     assert "decision-chart-shell" in css
-    assert "dashboard.css?v=9.76.0" in html
-    assert "dashboard.js?v=9.76.0" in html
+    assert "dashboard.css?v=9.79.0" in html
+    assert "dashboard.js?v=9.79.0" in html
     assert "function chartPlanLevelPct" in js
     assert "function chartPlanValidityLabel" in js
     assert "function refreshActiveDecisionChart" in js
@@ -166,6 +185,9 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".decision-chart-plan-chip.target" in css
     assert ".decision-chart-plan-chip.validity.expired" in css
     assert ".legend-price-marker" in css
+    assert ".decision-chart-controls" in css
+    assert ".decision-chart-control.active" in css
+    assert ".decision-chart-session-separator" in css
 
     # M-D4 renders session/calendar, regime/market-health context, curated links, and export
     assert 'id="decision-context-lane"' in js
@@ -481,6 +503,7 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert 'id="decision-brief-compare"' in html
     assert 'id="decision-brief-news"' in html
     assert 'id="chart-modal"' in html
+    assert 'class="decision-chart-controls chart-modal-controls"' in html
     assert 'id="compare-modal"' in html
     assert "function openChartModal" in js
     assert "function openCompareModal" in js
