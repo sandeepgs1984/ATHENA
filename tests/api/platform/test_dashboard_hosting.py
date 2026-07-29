@@ -1251,6 +1251,15 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ">Open Chart<" not in header_actions_body  # icon-only, no label
     assert ">Compare<" not in header_actions_body
     assert ".header-icon-btn" in css
+    # Header LTP — single-symbol 10s poll, paused off Decisions / when hidden.
+    assert 'id="decision-brief-live-price"' in header_actions_body
+    assert 'id="decision-brief-live-price-value"' in html
+    assert "function startBriefPriceRefresh" in js
+    assert "function stopBriefPriceRefresh" in js
+    assert "BRIEF_PRICE_REFRESH_MS = 10000" in js
+    assert "/api/v1/market/instruments/" in js and "/quote" in js
+    assert "stopBriefPriceRefresh()" in js
+    assert ".decision-brief-live-price" in css
 
     # DT-4 (owner reference-mock screenshot): Reasoning Trace redesigned
     # from an auto-fit grid + dynamically-computed SVG connector lines into

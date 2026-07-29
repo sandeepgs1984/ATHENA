@@ -158,6 +158,23 @@ class MarketTickerDTO(BaseModel):
     as_of: datetime | None = None
 
 
+class InstrumentQuoteDTO(BaseModel):
+    """Single-instrument last price for the Decisions & Trace header.
+
+    Prefer a live Kite ``/quote`` when credentials are present; otherwise the
+    newest persisted SQLite quote. Every numeric field is ``None`` when no real
+    value exists (ADR-005 — never fabricate 0).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    instrument_id: str
+    last_price: Decimal | None = None
+    change_pct: Decimal | None = None
+    as_of: datetime | None = None
+    source: Literal["kite_live", "persisted"] | None = None
+
+
 class MarketRegimeSummaryDTO(BaseModel):
     """Regime labels from the latest validation run (F-5 §8)."""
 

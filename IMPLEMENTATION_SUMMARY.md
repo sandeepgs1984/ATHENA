@@ -6,6 +6,21 @@ status updated on approval.
 
 ---
 
+## Decisions & Trace — header live price (owner request, 2026-07-29)
+
+| | |
+|---|---|
+| Completed | 2026-07-29 |
+| Objective | Show the selected symbol's current market price in the Decision Brief header, auto-refreshed every 10s, without heavy load |
+| Scope | `GET /api/v1/market/instruments/{id}/quote`; lightweight Kite `/quote` (no instruments CSV); persisted-quote fallback; 10s client poll scoped to Decisions tab + visible document |
+| Public APIs added | `InstrumentQuoteDTO`; `MarketHistoryService.instrument_quote`; `GET .../quote` |
+| Tests | Service unit (live preferred / persisted fallback / empty) + auth endpoint + dashboard hosting markers. Full suite green |
+| Architecture compliance | ADR-005: null fields when unavailable; never fabricate 0. Single-id `/quote` only — no catalog download per tick. Server 5s coalescing cache. Client in-flight guard + visibility/tab stop |
+| Status | ✅ Built (owner request; not a numbered milestone) |
+| Branch | feature/live-dashboard |
+
+---
+
 ## MH-3 — Market Summary API + mock-faithful UI (APPROVED)
 
 | | |

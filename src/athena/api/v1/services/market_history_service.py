@@ -6,19 +6,30 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
+import threading
+import time
 from typing import Literal
 
 from athena.api.v1.dtos.market import (
     CandleDTO,
     CandleSeriesDTO,
+    InstrumentQuoteDTO,
     MarketIndexTickerDTO,
     MarketTickerDTO,
 )
 from athena.api.v1.providers.base import CandleHistoryProvider
 from athena.config.loader import load_config
+from athena.data.providers.kite_ltp import fetch_live_quote
 from athena.data.store.repository import SqliteRepository
 from athena.domain.enums import Timeframe
+from athena.errors import ConfigError, ProviderError
 from athena.indicators.calculations import align_trailing_series, atr_series, sma_series
+
+# Process-local coalescing so a double-render or overlapping polls never hit
+# Kite twice for the same symbol within a short window (10s UI interval ≫ TTL).
+_LIVE_QUOTE_CACHE_TTL_SECONDS = 5.0
+_live_quote_cache: dict[str, tuple[float, InstrumentQuoteDTO]] = {}
+_live_quote_lock = threading.Lock()
 
 # Fixed Kite instrument ids for the header ticker (DT-2) — the snapshot's own
 # `indices` dict uses the short tradingsymbol ("NIFTY 50") as its key, but
@@ -150,6 +161,80 @@ class MarketHistoryService:
             india_vix=vix_ticker,
             as_of=snapshot.ts,
         )
+
+    def instrument_quote(self, instrument_id: str) -> InstrumentQuoteDTO:
+        """Live LTP for one symbol when Kite is reachable; else persisted quote.
+
+        Load bounds: one ``/quote`` request for a single id (no instruments CSV),
+        coalesced by a short process-local TTL so overlapping polls are free.
+        """
+        normalized = instrument_id.strip().upper()
+        if not normalized:
+            raise ValueError("instrument_id must be non-empty")
+        if ":" not in normalized:
+            normalized = f"NSE:{normalized}"
+
+        empty = InstrumentQuoteDTO(instrument_id=normalized)
+
+        with _live_quote_lock:
+            cached = _live_quote_cache.get(normalized)
+            if cached is not None:
+                expires_at, dto = cached
+                if time.monotonic() < expires_at:
+                    return dto
+
+        live = self._try_live_quote(normalized)
+        if live is not None:
+            with _live_quote_lock:
+                _live_quote_cache[normalized] = (
+                    time.monotonic() + _LIVE_QUOTE_CACHE_TTL_SECONDS,
+                    live,
+                )
+            return live
+
+        persisted = self._persisted_quote(normalized)
+        if persisted is not None:
+            return persisted
+        return empty
+
+    def _try_live_quote(self, instrument_id: str) -> InstrumentQuoteDTO | None:
+        try:
+            quote, change_pct = fetch_live_quote(
+                instrument_id, config_dir=self._config_dir
+            )
+        except (ProviderError, ConfigError, OSError, ValueError):
+            return None
+        return InstrumentQuoteDTO(
+            instrument_id=quote.instrument_id,
+            last_price=quote.last_price,
+            change_pct=change_pct,
+            as_of=quote.ts,
+            source="kite_live",
+        )
+
+    def _persisted_quote(self, instrument_id: str) -> InstrumentQuoteDTO | None:
+        if self._repo is None:
+            return None
+        candidates = [instrument_id]
+        if instrument_id.startswith("NSE:"):
+            candidates.append(instrument_id.removeprefix("NSE:"))
+        elif ":" not in instrument_id:
+            candidates.append(f"NSE:{instrument_id}")
+        for iid in candidates:
+            quotes = self._repo.get_quotes(iid)
+            if not quotes:
+                continue
+            latest = quotes[-1]
+            if latest.last_price <= 0:
+                continue
+            return InstrumentQuoteDTO(
+                instrument_id=latest.instrument_id,
+                last_price=latest.last_price,
+                change_pct=None,
+                as_of=latest.ts,
+                source="persisted",
+            )
+        return None
 
     def _index_ticker(
         self,

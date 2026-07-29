@@ -279,3 +279,138 @@ class TestMarketTicker:
         assert set(data.keys()) == {"nifty", "bank_nifty", "india_vix", "as_of"}
         for key in ("nifty", "bank_nifty", "india_vix"):
             assert set(data[key].keys()) == {"label", "level", "change_pct"}
+
+
+class TestInstrumentQuote:
+    """Decisions & Trace header LTP — live preferred, persisted fallback."""
+
+    def test_persisted_quote_used_when_live_unavailable(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        from athena.domain.market import Quote
+        from athena.errors import ProviderError
+
+        repo = SqliteRepository(tmp_path / "q.db")
+        repo.initialize()
+        ts = datetime(2026, 7, 29, 3, 50, tzinfo=timezone.utc)
+        _register_index_instrument(repo, "NSE:TEJASNET")
+        repo.add_quotes(
+            [
+                Quote(
+                    instrument_id="NSE:TEJASNET",
+                    ts=ts,
+                    last_price=Decimal("512.35"),
+                    volume=1000,
+                    source="kite",
+                )
+            ]
+        )
+
+        def _boom(*_a, **_k):
+            raise ProviderError("no kite")
+
+        monkeypatch.setattr(
+            "athena.api.v1.services.market_history_service.fetch_live_quote",
+            _boom,
+        )
+        service = MarketHistoryService(
+            InMemoryCandleHistoryProvider(),
+            freshness_threshold_minutes=20,
+            repo=repo,
+        )
+        quote = service.instrument_quote("TEJASNET")
+        assert quote.instrument_id == "NSE:TEJASNET"
+        assert quote.last_price == Decimal("512.35")
+        assert quote.source == "persisted"
+        assert quote.change_pct is None
+        assert quote.as_of == ts
+        repo.close()
+
+    def test_empty_quote_when_no_live_and_no_persisted(self, monkeypatch) -> None:
+        from athena.errors import ProviderError
+
+        monkeypatch.setattr(
+            "athena.api.v1.services.market_history_service.fetch_live_quote",
+            lambda *_a, **_k: (_ for _ in ()).throw(ProviderError("no kite")),
+        )
+        service = MarketHistoryService(
+            InMemoryCandleHistoryProvider(),
+            freshness_threshold_minutes=20,
+        )
+        quote = service.instrument_quote("NSE:MISSING")
+        assert quote.last_price is None
+        assert quote.source is None
+        assert quote.change_pct is None
+
+    def test_live_quote_preferred_over_persisted(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        from athena.domain.market import Quote
+
+        repo = SqliteRepository(tmp_path / "q.db")
+        repo.initialize()
+        stale_ts = datetime(2026, 7, 28, 10, 0, tzinfo=timezone.utc)
+        live_ts = datetime(2026, 7, 29, 3, 50, tzinfo=timezone.utc)
+        _register_index_instrument(repo, "NSE:TEJASNET")
+        repo.add_quotes(
+            [
+                Quote(
+                    instrument_id="NSE:TEJASNET",
+                    ts=stale_ts,
+                    last_price=Decimal("500.00"),
+                    volume=1,
+                    source="kite",
+                )
+            ]
+        )
+
+        def _live(instrument_id: str, *, config_dir):
+            return (
+                Quote(
+                    instrument_id="NSE:TEJASNET",
+                    ts=live_ts,
+                    last_price=Decimal("512.35"),
+                    volume=10,
+                    source="kite",
+                ),
+                Decimal("1.25"),
+            )
+
+        monkeypatch.setattr(
+            "athena.api.v1.services.market_history_service.fetch_live_quote",
+            _live,
+        )
+        # Clear any prior coalescing cache for this symbol.
+        from athena.api.v1.services import market_history_service as mhs
+
+        with mhs._live_quote_lock:
+            mhs._live_quote_cache.clear()
+
+        service = MarketHistoryService(
+            InMemoryCandleHistoryProvider(),
+            freshness_threshold_minutes=20,
+            repo=repo,
+            config_dir=tmp_path,
+        )
+        quote = service.instrument_quote("NSE:TEJASNET")
+        assert quote.last_price == Decimal("512.35")
+        assert quote.change_pct == Decimal("1.25")
+        assert quote.source == "kite_live"
+        assert quote.as_of == live_ts
+        repo.close()
+
+    def test_quote_endpoint_requires_auth(self, client: TestClient) -> None:
+        unauthenticated = client.get("/api/v1/market/instruments/NSE:INFY/quote")
+        assert unauthenticated.status_code == 401
+
+        headers = get_auth_headers(client, Role.READONLY)
+        ok = client.get("/api/v1/market/instruments/NSE:INFY/quote", headers=headers)
+        assert ok.status_code == 200
+        data = ok.json()["data"]
+        assert set(data.keys()) == {
+            "instrument_id",
+            "last_price",
+            "change_pct",
+            "as_of",
+            "source",
+        }

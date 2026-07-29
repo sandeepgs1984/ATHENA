@@ -40,6 +40,9 @@
         } else {
             stopTickerRefresh();
         }
+        if (tabId !== "decisions") {
+            stopBriefPriceRefresh();
+        }
 
         // 3. Trigger API data loading for specific tab
         if (tabId !== "operations") {

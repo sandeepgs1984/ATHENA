@@ -8,6 +8,9 @@
     const decisionBriefExchangeSymbol = document.getElementById("decision-brief-exchange-symbol");
     const decisionBriefFavoriteToggle = document.getElementById("decision-brief-favorite-toggle");
     const decisionBriefAsOf = document.getElementById("decision-brief-asof");
+    const decisionBriefLivePrice = document.getElementById("decision-brief-live-price");
+    const decisionBriefLivePriceValue = document.getElementById("decision-brief-live-price-value");
+    const decisionBriefLivePriceChange = document.getElementById("decision-brief-live-price-change");
     const decisionBriefBody = document.getElementById("decision-brief-body");
     const decisionBriefGauges = document.getElementById("decision-brief-gauges");
     const decisionBriefTabstrip = document.getElementById("decision-brief-tabstrip");
@@ -26,6 +29,134 @@
     document.getElementById("executive-summary-modal-close")?.addEventListener("click", () => closeModal(executiveSummaryModalEl));
     window.addEventListener("click", event => {
         if (event.target === executiveSummaryModalEl) closeModal(executiveSummaryModalEl);
+    });
+
+    // Header LTP poll — one symbol, 10s, only while Decisions is active and the
+    // document is visible. Server coalesces duplicate hits for 5s; client never
+    // stacks in-flight requests. Stops on empty brief / tab leave / hide.
+    const BRIEF_PRICE_REFRESH_MS = 10000;
+    let briefPriceInstrumentId = null;
+    let briefPriceIntervalId = null;
+    let briefPriceInFlight = false;
+
+    function formatBriefPrice(value) {
+        const num = Number(value);
+        if (!Number.isFinite(num)) return "—";
+        return `₹${num.toLocaleString("en-IN", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        })}`;
+    }
+
+    function renderBriefLivePrice(quote) {
+        if (!decisionBriefLivePrice || !decisionBriefLivePriceValue) return;
+        const price = quote && quote.last_price != null ? Number(quote.last_price) : NaN;
+        if (!Number.isFinite(price)) {
+            decisionBriefLivePrice.hidden = false;
+            decisionBriefLivePriceValue.textContent = "—";
+            if (decisionBriefLivePriceChange) {
+                decisionBriefLivePriceChange.textContent = "";
+                decisionBriefLivePriceChange.className = "decision-brief-live-price-change";
+            }
+            decisionBriefLivePrice.title = "Current market price unavailable";
+            return;
+        }
+        decisionBriefLivePrice.hidden = false;
+        decisionBriefLivePriceValue.textContent = formatBriefPrice(price);
+        const change = quote && quote.change_pct != null ? Number(quote.change_pct) : NaN;
+        if (decisionBriefLivePriceChange) {
+            if (!Number.isFinite(change)) {
+                decisionBriefLivePriceChange.textContent = "";
+                decisionBriefLivePriceChange.className = "decision-brief-live-price-change";
+            } else {
+                const sign = change > 0 ? "+" : "";
+                decisionBriefLivePriceChange.textContent = `${sign}${change.toFixed(2)}%`;
+                decisionBriefLivePriceChange.className = `decision-brief-live-price-change ${
+                    change > 0 ? "is-up" : change < 0 ? "is-down" : "is-flat"
+                }`;
+            }
+        }
+        const source = quote && quote.source === "kite_live"
+            ? "Live Kite"
+            : quote && quote.source === "persisted"
+                ? "Last persisted quote"
+                : "Unavailable";
+        const asOf = quote && quote.as_of
+            ? ` · ${formatDecisionTime(quote.as_of)}`
+            : "";
+        decisionBriefLivePrice.title = `${source}${asOf}`;
+    }
+
+    function clearBriefLivePrice() {
+        if (decisionBriefLivePrice) decisionBriefLivePrice.hidden = true;
+        if (decisionBriefLivePriceValue) decisionBriefLivePriceValue.textContent = "—";
+        if (decisionBriefLivePriceChange) {
+            decisionBriefLivePriceChange.textContent = "";
+            decisionBriefLivePriceChange.className = "decision-brief-live-price-change";
+        }
+    }
+
+    async function loadBriefLivePrice() {
+        if (!briefPriceInstrumentId || briefPriceInFlight) return;
+        if (document.hidden || (typeof state !== "undefined" && state.activeTab !== "decisions")) {
+            return;
+        }
+        briefPriceInFlight = true;
+        try {
+            const res = await apiRequest(
+                `/api/v1/market/instruments/${encodeURIComponent(briefPriceInstrumentId)}/quote`,
+                { skipToast: true }
+            );
+            if (!briefPriceInstrumentId) return;
+            if (res && res.status === "success" && res.data) {
+                renderBriefLivePrice(res.data);
+            }
+        } catch (err) {
+            console.error("Failed to load brief live price", err);
+        } finally {
+            briefPriceInFlight = false;
+        }
+    }
+
+    function stopBriefPriceRefresh() {
+        briefPriceInstrumentId = null;
+        if (briefPriceIntervalId != null) {
+            clearInterval(briefPriceIntervalId);
+            briefPriceIntervalId = null;
+        }
+        clearBriefLivePrice();
+    }
+
+    function startBriefPriceRefresh(instrumentId) {
+        const iid = String(instrumentId || "").trim().toUpperCase();
+        if (!iid || iid === "INDEX") {
+            stopBriefPriceRefresh();
+            return;
+        }
+        const normalized = iid.includes(":") ? iid : `NSE:${iid}`;
+        if (briefPriceInstrumentId === normalized && briefPriceIntervalId != null) {
+            loadBriefLivePrice();
+            return;
+        }
+        if (briefPriceIntervalId != null) {
+            clearInterval(briefPriceIntervalId);
+            briefPriceIntervalId = null;
+        }
+        briefPriceInstrumentId = normalized;
+        if (decisionBriefLivePrice) decisionBriefLivePrice.hidden = false;
+        if (decisionBriefLivePriceValue) decisionBriefLivePriceValue.textContent = "—";
+        if (decisionBriefLivePriceChange) {
+            decisionBriefLivePriceChange.textContent = "";
+            decisionBriefLivePriceChange.className = "decision-brief-live-price-change";
+        }
+        loadBriefLivePrice();
+        briefPriceIntervalId = setInterval(loadBriefLivePrice, BRIEF_PRICE_REFRESH_MS);
+    }
+
+    document.addEventListener("visibilitychange", () => {
+        if (!document.hidden && briefPriceInstrumentId && state.activeTab === "decisions") {
+            loadBriefLivePrice();
+        }
     });
 
     // Owner reference-mock: secondary actions (Dismiss today/Remove
@@ -128,6 +259,7 @@
             decisionBriefTitle.title = "";
         }
         if (decisionBriefAsOf) decisionBriefAsOf.textContent = "Select a symbol";
+        stopBriefPriceRefresh();
         if (decisionBriefCompanyName) decisionBriefCompanyName.textContent = "";
         if (decisionBriefMetaRow) decisionBriefMetaRow.hidden = true;
         if (decisionBriefExchangeSymbol) decisionBriefExchangeSymbol.textContent = "";
@@ -336,6 +468,7 @@
             decisionBriefTitle.title = rawSymbol;
         }
         if (decisionBriefAsOf) decisionBriefAsOf.textContent = `As of ${formatDecisionTime(meta.ts)}`;
+        startBriefPriceRefresh(rawSymbol);
         // Owner reference-mock: company name (real instruments.name — absent
         // for instruments the catalog hasn't re-synced since it was added,
         // never fabricated) instead of the BUY/TRADE badges, which are now

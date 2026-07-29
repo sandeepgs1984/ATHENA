@@ -137,6 +137,42 @@
     white-space: nowrap;
 }
 
+.decision-brief-live-price {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--space-6);
+    min-width: 0;
+    padding: 2px 0;
+}
+
+.decision-brief-live-price-value {
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: var(--text-1-05);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    white-space: nowrap;
+}
+
+.decision-brief-live-price-change {
+    font-family: var(--font-mono);
+    font-size: var(--text-0-72);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.decision-brief-live-price-change.is-up {
+    color: var(--tone-good-text);
+}
+
+.decision-brief-live-price-change.is-down {
+    color: var(--tone-bad-text);
+}
+
+.decision-brief-live-price-change.is-flat {
+    color: var(--text-muted);
+}
+
 /* Owner reference-mock screenshot (2026-07-27): identity row redesign —
    star favorite toggle (Saved Symbols), company name, "EXCHANGE: SYMBOL"
    meta row, and a "more" overflow menu replacing the BUY/TRADE badges

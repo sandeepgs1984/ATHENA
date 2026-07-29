@@ -19,6 +19,7 @@ from athena.api.v1.dtos.market import (
     CandleSeriesDTO,
     DeleteCandidateResultDTO,
     FullValidationProgressDTO,
+    InstrumentQuoteDTO,
     MarketSummaryDTO,
     MarketTickerDTO,
     OwnerCandidateDTO,
@@ -65,6 +66,29 @@ def get_instrument_candles(
         Timeframe(timeframe),
         limit=limit,
     )
+    return AthenaResponse(status="success", data=data, meta=_meta(request))
+
+
+@router.get(
+    "/instruments/{instrument_id}/quote",
+    response_model=AthenaResponse[InstrumentQuoteDTO],
+    summary="Current last price for one instrument (live Kite or persisted)",
+    status_code=status.HTTP_200_OK,
+    operation_id="getInstrumentQuote",
+)
+def get_instrument_quote(
+    instrument_id: str,
+    request: Request,
+    service: MarketHistoryService = Depends(get_market_history_service),  # noqa: B008
+    principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.READ)),  # noqa: B008
+) -> AthenaResponse[InstrumentQuoteDTO]:
+    """Single-symbol LTP for the Decisions & Trace header poll.
+
+    Prefers a live Kite ``/quote`` for this one id (no catalog download). Falls
+    back to the newest persisted SQLite quote. Fields are null when neither is
+    available — never a fabricated 0 (ADR-005).
+    """
+    data = service.instrument_quote(instrument_id)
     return AthenaResponse(status="success", data=data, meta=_meta(request))
 
 
