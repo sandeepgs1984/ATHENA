@@ -6,6 +6,29 @@ status updated on approval.
 
 ---
 
+## AW-1 — Entry readiness indicator (ready for review)
+
+| | |
+|---|---|
+| Completed | 2026-07-30 |
+| Objective | Show whether the selected symbol's current price is inside its persisted TradePlan entry zone |
+| Scope | Added the Advisor Workbench Polish roadmap; registered the AW track; added a Decision Brief header entry-readiness chip next to live price; compared existing live quote with `trade_plan.entry_low` / `entry_high`; added states for Entry ready, Wait for entry, Chasing risk, No current entry, and Waiting for quote; refreshed the chip on selected-symbol render, live quote update, quote clear, and authoritative plan-freshness update; bumped dashboard cache-busters |
+| Files created | `docs/design/ATHENA-ADVISOR-WORKBENCH-POLISH-ROADMAP.md` |
+| Files modified | `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md`, `src/athena/api/static/index.html`, `src/athena/api/static/css/09-decision-brief-shell.css`, `src/athena/api/static/js/13-decision-brief-core.js`, `src/athena/api/static/js/14-decision-brief-analysis.js`, `tests/api/platform/test_dashboard_hosting.py` |
+| Public APIs added | None |
+| Tests | `rtk node --check src/athena/api/static/js/13-decision-brief-core.js` — passed; `rtk node --check src/athena/api/static/js/14-decision-brief-analysis.js` — passed; `rtk pytest tests/api/platform/test_dashboard_hosting.py -q` — 4 passed |
+| Coverage | Dashboard hosting tests lock the AW-1 chip DOM, cache-busters, entry-readiness helper, five states, advisory/broker-confirmation wording, quote/freshness refresh hooks, and good/warning/danger styling |
+| Architecture compliance | Frontend presentation only over existing live quote, Decision, TradePlan, and freshness data. No provider, broker, order, scoring, confidence, risk, decision-policy, TradePlan value, schema, backend endpoint, or frozen domain contract changes |
+| ADR compliance | ADR-004 preserved: static HTML/CSS/vanilla JS. ADR-005 preserved: the chip reads existing persisted TradePlan values and live quote state; it does not fabricate signals or alter recommendations |
+| Risks discovered | A price-in-zone chip can be mistaken for an instruction if copy is too strong. The title text therefore keeps broker confirmation/manual action language, and non-current plans never show an actionable state |
+| Technical debt introduced | None |
+| Suggested improvements | AW-2 should add saved-symbol validation and result reporting with report popups disabled for Decision-detail revalidation |
+| Remaining work | Owner review of AW-1; full-suite validation after freeing disk space |
+| Status | 🔄 Ready for owner review |
+| Branch | feature/live-dashboard |
+
+---
+
 ## TP-4 — Intraday SOP surface (approved)
 
 | | |

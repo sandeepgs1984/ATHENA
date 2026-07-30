@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.94.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.95.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -776,6 +776,10 @@
                                                 <strong id="decision-brief-live-price-value" class="decision-brief-live-price-value">—</strong>
                                                 <span id="decision-brief-live-price-change" class="decision-brief-live-price-change"></span>
                                             </div>
+                                            <div id="decision-entry-readiness" class="decision-entry-readiness tone-neutral" hidden aria-live="polite">
+                                                <i class="fa-solid fa-location-crosshairs" aria-hidden="true"></i>
+                                                <span id="decision-entry-readiness-label">No current entry</span>
+                                            </div>
                                             <span id="decision-brief-asof" class="decision-brief-asof">Select a symbol</span>
                                             <!-- Owner screenshot follow-up: Market Intelligence dropped
                                                  entirely (redundant with the sidebar nav item of the same
@@ -1376,6 +1380,6 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.94.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.95.0"></script>
 </body>
 </html>

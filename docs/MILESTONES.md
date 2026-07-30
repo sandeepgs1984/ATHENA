@@ -455,6 +455,45 @@ TP work requires a new owner-approved milestone entry before implementation.
 
 ---
 
+### Advisor Workbench Polish track (owner direction, 2026-07-30)
+
+Improves the completed intraday advisor cockpit around entry readiness and
+Market Intelligence validation workflows. Presentation-first unless a milestone
+explicitly states an additive read-only API need. This track does not change
+scoring, confidence, risk, decision policy, TradePlan values, providers, frozen
+domain contracts, or broker behavior. Governing plan:
+`docs/design/ATHENA-ADVISOR-WORKBENCH-POLISH-ROADMAP.md`.
+
+| Milestone | Scope | Gate | Status |
+|---|---|---|---|
+| **AW-1** Entry Readiness Indicator | Compare selected live price with persisted TradePlan entry zone and show whether entry is ready, waiting, chasing, or unavailable | Owner review; no new recommendation logic | 🔄 Ready for review |
+| **AW-2** Saved Symbol Validation and Result Report | Add Saved Symbols validate action and a single-symbol validation report modal for Market Intelligence callers only | Owner review; Decision-detail revalidation must stay inline | ⏳ Planned |
+| **AW-3** Validation Pipeline Workbench | Revamp the Validation Pipeline card and detail modal into a daily-use validation diagnostic workbench | Owner review; no fabricated blocker data | ⏳ Planned |
+| **AW-4** Advisor Workbench Visual QA | Screenshot/interaction QA across Decisions and Market Intelligence workbench paths | Owner review | ⏳ Planned |
+
+**Implementation rule:** one AW milestone at a time. AW must never create order
+placement, broker write actions, new signals, or changes to ATHENA's analytical
+engines.
+
+#### AW-1 — entry readiness indicator (ready for review, 2026-07-30)
+
+Scope completed: the Decision Brief header now includes an entry-readiness chip
+next to the live price. The chip compares the current live quote with the
+selected decision's persisted TradePlan entry zone and refreshes when the
+selected decision, live quote, quote clear, or authoritative plan freshness
+changes. It shows `Entry ready`, `Wait for entry`, `Chasing risk`,
+`No current entry`, or `Waiting for quote` using existing quote, TradePlan, and
+freshness data only.
+
+Architectural note: AW-1 is frontend presentation only. It adds no broker write
+action, no order placement, no analytical-engine change, no TradePlan value
+change, no backend endpoint, and no new recommendation logic.
+
+Validation note: focused dashboard hosting checks pass. The full suite remains
+deferred locally until the live DB/storage pressure is cleaned up.
+
+---
+
 ### Intraday Edge Program (post M-D4, owner direction 2026-07-25)
 
 AI-driven roadmap toward a "no compromise" world-class intraday analyzer.

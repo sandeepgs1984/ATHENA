@@ -205,6 +205,50 @@
     color: var(--text-muted);
 }
 
+.decision-entry-readiness {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-5);
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    border-radius: 999px;
+    padding: var(--space-4) var(--space-8);
+    font-size: var(--text-0-68);
+    font-weight: 750;
+    white-space: nowrap;
+}
+
+.decision-entry-readiness[hidden] {
+    display: none;
+}
+
+.decision-entry-readiness i {
+    font-size: var(--text-0-62);
+}
+
+.decision-entry-readiness.tone-good {
+    border-color: rgba(34, 197, 94, 0.35);
+    background: rgba(34, 197, 94, 0.1);
+    color: var(--tone-good-text);
+}
+
+.decision-entry-readiness.tone-warning {
+    border-color: rgba(245, 158, 11, 0.36);
+    background: rgba(245, 158, 11, 0.1);
+    color: var(--tone-warn-text);
+}
+
+.decision-entry-readiness.tone-danger {
+    border-color: rgba(248, 113, 113, 0.38);
+    background: rgba(248, 113, 113, 0.11);
+    color: var(--tone-bad-text);
+}
+
+.decision-entry-readiness.tone-neutral {
+    border-color: rgba(148, 163, 184, 0.22);
+    background: rgba(148, 163, 184, 0.08);
+    color: var(--text-muted);
+}
+
 /* Owner reference-mock screenshot (2026-07-27): identity row redesign —
    star favorite toggle (Saved Symbols), company name, "EXCHANGE: SYMBOL"
    meta row, and a "more" overflow menu replacing the BUY/TRADE badges

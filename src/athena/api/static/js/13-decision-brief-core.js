@@ -11,6 +11,8 @@
     const decisionBriefLivePrice = document.getElementById("decision-brief-live-price");
     const decisionBriefLivePriceValue = document.getElementById("decision-brief-live-price-value");
     const decisionBriefLivePriceChange = document.getElementById("decision-brief-live-price-change");
+    const decisionEntryReadiness = document.getElementById("decision-entry-readiness");
+    const decisionEntryReadinessLabel = document.getElementById("decision-entry-readiness-label");
     const decisionBriefBody = document.getElementById("decision-brief-body");
     const decisionBriefHeader = document.querySelector(".decision-brief-header");
     const decisionBriefGauges = document.getElementById("decision-brief-gauges");
@@ -62,6 +64,93 @@
         })}`;
     }
 
+    function formatEntryZone(plan) {
+        if (!plan) return "entry zone";
+        const low = Number(plan.entry_low);
+        const high = Number(plan.entry_high);
+        if (!Number.isFinite(low) || !Number.isFinite(high)) return "entry zone";
+        if (low === high) return formatBriefPrice(low);
+        return `${formatBriefPrice(Math.min(low, high))}-${formatBriefPrice(Math.max(low, high))}`;
+    }
+
+    function entryReadinessView(decision, quote, freshness = null) {
+        const plan = decision && decision.trade_plan ? decision.trade_plan : null;
+        const planFreshness = decisionTradePlanFreshness(decision, freshness);
+        const status = String(planFreshness && planFreshness.status || "").toUpperCase();
+        if (!decision || !plan || !decisionHasCurrentActionableTradePlan(decision, planFreshness)) {
+            return {
+                tone: "neutral",
+                label: "No current entry",
+                title: "No valid current TradePlan entry zone is available for this symbol.",
+            };
+        }
+        if (!(status === "FRESH" || status === "AGING")) {
+            return {
+                tone: "neutral",
+                label: "No current entry",
+                title: "TradePlan is not current. Re-validate before considering entry.",
+            };
+        }
+        const entryLow = Number(plan.entry_low);
+        const entryHigh = Number(plan.entry_high);
+        const low = Math.min(entryLow, entryHigh);
+        const high = Math.max(entryLow, entryHigh);
+        if (!Number.isFinite(low) || !Number.isFinite(high)) {
+            return {
+                tone: "neutral",
+                label: "No entry zone",
+                title: "TradePlan entry zone is unavailable.",
+            };
+        }
+        const price = quote && quote.last_price != null ? Number(quote.last_price) : NaN;
+        if (!Number.isFinite(price)) {
+            return {
+                tone: "neutral",
+                label: "Waiting for quote",
+                title: `Entry zone ${formatEntryZone(plan)}. Current price is unavailable.`,
+            };
+        }
+        const zone = formatEntryZone(plan);
+        if (price >= low && price <= high) {
+            return {
+                tone: "good",
+                label: "Entry ready",
+                title: `Live price ${formatBriefPrice(price)} is inside the ${zone} entry zone. Confirm broker quote before manual action.`,
+            };
+        }
+        const direction = String(decision.metadata && decision.metadata.direction || "LONG").toUpperCase();
+        const isShort = direction === "SHORT";
+        const isWaiting = isShort ? price > high : price < low;
+        if (isWaiting) {
+            return {
+                tone: "warning",
+                label: "Wait for entry",
+                title: `Live price ${formatBriefPrice(price)} is outside the ${zone} entry zone. Wait; do not force entry.`,
+            };
+        }
+        return {
+            tone: "danger",
+            label: "Chasing risk",
+            title: `Live price ${formatBriefPrice(price)} has moved beyond the ${zone} entry zone. Avoid chasing unless ATHENA re-validates.`,
+        };
+    }
+
+    function renderEntryReadiness(freshness = null) {
+        if (!decisionEntryReadiness || !decisionEntryReadinessLabel) return;
+        if (!activeDecisionData || !activeDecisionData.metadata) {
+            decisionEntryReadiness.hidden = true;
+            decisionEntryReadinessLabel.textContent = "No current entry";
+            decisionEntryReadiness.className = "decision-entry-readiness tone-neutral";
+            decisionEntryReadiness.title = "";
+            return;
+        }
+        const view = entryReadinessView(activeDecisionData, activeBriefQuote, freshness || activePlanFreshness);
+        decisionEntryReadiness.hidden = false;
+        decisionEntryReadiness.className = `decision-entry-readiness tone-${view.tone}`;
+        decisionEntryReadinessLabel.textContent = view.label;
+        decisionEntryReadiness.title = view.title;
+    }
+
     function renderBriefLivePrice(quote) {
         if (!decisionBriefLivePrice || !decisionBriefLivePriceValue) return;
         activeBriefQuote = quote || null;
@@ -74,6 +163,7 @@
                 decisionBriefLivePriceChange.className = "decision-brief-live-price-change";
             }
             decisionBriefLivePrice.title = "Current market price unavailable";
+            renderEntryReadiness();
             if (typeof refreshActiveDecisionChart === "function") refreshActiveDecisionChart();
             return;
         }
@@ -101,6 +191,7 @@
             ? ` · ${formatDecisionTime(quote.as_of)}`
             : "";
         decisionBriefLivePrice.title = `${source}${asOf}`;
+        renderEntryReadiness();
         if (typeof refreshActiveDecisionChart === "function") refreshActiveDecisionChart();
     }
 
@@ -112,6 +203,7 @@
             decisionBriefLivePriceChange.textContent = "";
             decisionBriefLivePriceChange.className = "decision-brief-live-price-change";
         }
+        renderEntryReadiness();
     }
 
     async function loadBriefLivePrice() {
@@ -813,6 +905,7 @@
             decisionSummaryHeadline.title = summary.headline;
         }
         renderDecisionActionability();
+        renderEntryReadiness();
 
         const gateRows = gates.length
             ? gates.map(gate => `

@@ -200,8 +200,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.94.0" in html
-    assert "dashboard.js?v=9.94.0" in html
+    assert "dashboard.css?v=9.95.0" in html
+    assert "dashboard.js?v=9.95.0" in html
     assert 'id="advisor-pulse"' in html
     assert 'id="header-diagnostics-popover"' in html
     assert 'id="decision-actionability-banner"' in html
@@ -302,6 +302,25 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".intraday-sop-grid" in css
     assert ".intraday-sop-alert" in css
     assert ".intraday-sop-footer" in css
+    assert 'id="decision-entry-readiness"' in html
+    assert 'id="decision-entry-readiness-label"' in html
+    assert "function entryReadinessView" in js
+    assert "function renderEntryReadiness" in js
+    assert "formatEntryZone(plan)" in js
+    assert "decisionHasCurrentActionableTradePlan(decision, planFreshness)" in js
+    assert "Entry ready" in js
+    assert "Wait for entry" in js
+    assert "Chasing risk" in js
+    assert "No current entry" in js
+    assert "Waiting for quote" in js
+    assert "Confirm broker quote before manual action" in js
+    assert "Avoid chasing unless ATHENA re-validates" in js
+    assert "renderEntryReadiness();" in js
+    assert 'if (typeof renderEntryReadiness === "function") renderEntryReadiness(activePlanFreshness);' in js
+    assert ".decision-entry-readiness" in css
+    assert ".decision-entry-readiness.tone-good" in css
+    assert ".decision-entry-readiness.tone-warning" in css
+    assert ".decision-entry-readiness.tone-danger" in css
     assert "/api/v1/dashboard/session-status" in js
     assert "state.marketSession" in js
     assert "Review mode · market closed" in js

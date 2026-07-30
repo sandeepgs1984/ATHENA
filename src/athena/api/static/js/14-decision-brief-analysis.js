@@ -185,6 +185,7 @@
             activePlanFreshness = response && response.data;
             renderPlanFreshnessBadge(activePlanFreshness);
             renderDecisionActionability(activePlanFreshness);
+            if (typeof renderEntryReadiness === "function") renderEntryReadiness(activePlanFreshness);
             renderSidebarQuickSummary();
             refreshTradePlaybook(activePlanFreshness);
             refreshActiveDecisionChart();
