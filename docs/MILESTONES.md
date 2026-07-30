@@ -335,7 +335,7 @@ Governing plan: `docs/design/ATHENA-INTRADAY-ADVISOR-UX-ROADMAP.md`.
 | **TP-1** Trade Playbook foundation | Move symbol revalidation into Advisor Status; add selected-symbol Trading Steps with entry/stop/target/no-fill/expiry/close/revalidation rules | Owner review after UX/test evidence | 🔄 Ready for review |
 | **TP-2** Current Board controls | Add Re-validate Visible for current-board symbols with progress/result summary | Owner review; must not validate hidden historical rows | 🔄 Ready for review |
 | **TP-3** Top Current Setups | Add top 10 current valid/aging setups sorted by existing score/confidence/risk/return data | Owner review; no expired/stale/no-plan rows | 🔄 Ready for review |
-| **TP-4** Intraday SOP surface | Add persistent intraday SOP/help surface for day workflow and manual execution boundaries | Owner review | ⏳ Planned |
+| **TP-4** Intraday SOP surface | Add persistent intraday SOP/help surface for day workflow and manual execution boundaries | Owner review | 🔄 Ready for review |
 
 **Implementation rule:** one TP milestone at a time. TP must never create order
 placement, broker write actions, new signals, or changes to ATHENA's analytical
@@ -421,6 +421,28 @@ moved into hover/title text, preserving scan space for setup rows.
 Architectural note: TP-3 adds no broker write action, no order placement, no
 analytical-engine change, no TradePlan value change, and no new recommendation
 logic. It is a frontend review queue over the existing current board.
+
+Validation note: focused dashboard hosting checks pass. The full suite remains
+deferred locally until the live DB/storage pressure is cleaned up.
+
+#### TP-4 — intraday SOP surface (ready for review, 2026-07-30)
+
+Scope completed: ATHENA now has a persistent `Intraday operating guide`
+reachable from the global header without selecting a symbol. The guide is a
+modal operating manual, not another sticky panel, so it does not reduce the
+selected-symbol reading area. It covers before-market checks, building the work
+queue, before-entry checks, no-fill handling, after-entry handling, end-of-day
+rules, and the manual broker boundary in plain language.
+
+Owner copy requirement: the SOP avoids internal terms and uses normal trading
+language such as check, skip, entry zone, stop, target, exit, and market close.
+It explicitly states that ATHENA is advisory only, does not place orders, does
+not guarantee profit, and leaves the final action, position size, broker order
+type, and exit to the owner.
+
+Architectural note: TP-4 is static frontend guidance only. It adds no broker
+write action, no order placement, no analytical-engine change, no TradePlan
+value change, no backend endpoint, and no new recommendation logic.
 
 Validation note: focused dashboard hosting checks pass. The full suite remains
 deferred locally until the live DB/storage pressure is cleaned up.

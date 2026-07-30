@@ -200,8 +200,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.93.0" in html
-    assert "dashboard.js?v=9.93.0" in html
+    assert "dashboard.css?v=9.94.0" in html
+    assert "dashboard.js?v=9.94.0" in html
     assert 'id="advisor-pulse"' in html
     assert 'id="header-diagnostics-popover"' in html
     assert 'id="decision-actionability-banner"' in html
@@ -277,6 +277,31 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".top-current-setups-head" in css
     assert ".top-current-setups-note" in css
     assert ".symbols-summary-help" in css
+    assert 'id="intraday-sop-trigger"' in html
+    assert 'id="intraday-sop-modal"' in html
+    assert 'id="intraday-sop-close"' in html
+    assert "Intraday operating guide" in html
+    assert "ATHENA is advisory only." in html
+    assert "It does not place orders, does not guarantee profit" in html
+    assert "Before market opens" in html
+    assert "Build the work queue" in html
+    assert "Before entry" in html
+    assert "If price does not enter" in html
+    assert "After entry" in html
+    assert "End of day" in html
+    assert "Manual boundary:" in html
+    assert "Do not chase price outside the entry zone" in html
+    assert "Do not treat an intraday setup as an overnight hold" in html
+    assert "const intradaySopModalEl" in js
+    assert "intraday-sop-trigger" in js
+    assert "intraday-sop-close" in js
+    assert "openModal(intradaySopModalEl)" in js
+    assert "closeModal(intradaySopModalEl)" in js
+    assert 'closeModal(document.getElementById("intraday-sop-modal"))' in js
+    assert ".intraday-sop-modal-container" in css
+    assert ".intraday-sop-grid" in css
+    assert ".intraday-sop-alert" in css
+    assert ".intraday-sop-footer" in css
     assert "/api/v1/dashboard/session-status" in js
     assert "state.marketSession" in js
     assert "Review mode · market closed" in js

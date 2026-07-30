@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.93.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.94.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -172,6 +172,9 @@
                         </div>
                         <button id="refresh-trigger" class="btn btn-icon" title="Force Refresh" aria-label="Force refresh">
                             <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i>
+                        </button>
+                        <button id="intraday-sop-trigger" class="btn btn-icon" title="Intraday operating guide" aria-label="Open intraday operating guide">
+                            <i class="fa-solid fa-book-open" aria-hidden="true"></i>
                         </button>
                         <!-- Owner-requested (2026-07-29): a stuck background job
                              (Run Full Validation, or the cycle worker) can only be
@@ -1271,6 +1274,78 @@
         </div>
     </div>
 
+    <div id="intraday-sop-modal" class="modal-overlay" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="intraday-sop-title">
+        <div class="modal-container intraday-sop-modal-container">
+            <div class="modal-header">
+                <h3 id="intraday-sop-title">Intraday operating guide</h3>
+                <button id="intraday-sop-close" class="modal-close-btn" type="button" aria-label="Close intraday operating guide">&times;</button>
+            </div>
+            <div class="modal-body intraday-sop-body">
+                <div class="intraday-sop-alert">
+                    <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
+                    <div>
+                        <strong>ATHENA is advisory only.</strong>
+                        <span>It does not place orders, does not guarantee profit, and does not remove your manual responsibility.</span>
+                    </div>
+                </div>
+                <div class="intraday-sop-grid">
+                    <section class="intraday-sop-card">
+                        <h4>1. Before market opens</h4>
+                        <ul>
+                            <li>Confirm Kite is connected and ATHENA is healthy.</li>
+                            <li>Check the market pulse: NIFTY, BANK NIFTY, and VIX.</li>
+                            <li>Use the guide as preparation only until live prices start.</li>
+                        </ul>
+                    </section>
+                    <section class="intraday-sop-card">
+                        <h4>2. Build the work queue</h4>
+                        <ul>
+                            <li>Start with Top Current Setups, then review Trade and Watch.</li>
+                            <li>Prefer rows marked Valid or Aging. Skip expired, stale, and no-plan rows.</li>
+                            <li>Use Re-validate Visible when the list feels old, then respect the cooldown.</li>
+                        </ul>
+                    </section>
+                    <section class="intraday-sop-card">
+                        <h4>3. Before entry</h4>
+                        <ul>
+                            <li>Open the symbol and read Advisor Status first.</li>
+                            <li>Enter only if the live price is inside the entry zone.</li>
+                            <li>Confirm the plan is still valid before placing any manual broker order.</li>
+                        </ul>
+                    </section>
+                    <section class="intraday-sop-card">
+                        <h4>4. If price does not enter</h4>
+                        <ul>
+                            <li>Do not chase price outside the entry zone.</li>
+                            <li>If the plan expires before entry, skip it.</li>
+                            <li>Check again only after ATHENA re-validates the symbol.</li>
+                        </ul>
+                    </section>
+                    <section class="intraday-sop-card">
+                        <h4>5. After entry</h4>
+                        <ul>
+                            <li>If price reaches the stop, the setup failed. Exit manually.</li>
+                            <li>If price reaches the target, review profit-taking manually.</li>
+                            <li>Do not invent new targets from the screen.</li>
+                        </ul>
+                    </section>
+                    <section class="intraday-sop-card">
+                        <h4>6. End of day</h4>
+                        <ul>
+                            <li>Do not treat an intraday setup as an overnight hold.</li>
+                            <li>Review or exit before market close unless you have a separate swing plan.</li>
+                            <li>After market close, use ATHENA for review, not new intraday entry.</li>
+                        </ul>
+                    </section>
+                </div>
+                <div class="intraday-sop-footer">
+                    <strong>Manual boundary:</strong>
+                    <span>You choose the final action, position size, broker order type, and exit. ATHENA only shows the advisory setup and safety context.</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div id="decisions-clear-all-modal" class="modal-overlay" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="decisions-clear-all-title">
         <div class="modal-container">
             <div class="modal-header">
@@ -1301,6 +1376,6 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.93.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.94.0"></script>
 </body>
 </html>

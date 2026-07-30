@@ -24,6 +24,7 @@
     const decisionActionabilityLabel = document.getElementById("decision-actionability-label");
     const decisionActionabilityStatus = document.getElementById("decision-actionability-status");
     const decisionActionabilityDetail = document.getElementById("decision-actionability-detail");
+    const intradaySopModalEl = document.getElementById("intraday-sop-modal");
 
     // ATHENA Summary "View Details" opens the same executive-summary bullet
     // list previously shown inline on every tab — now a modal, following the
@@ -34,6 +35,14 @@
     document.getElementById("executive-summary-modal-close")?.addEventListener("click", () => closeModal(executiveSummaryModalEl));
     window.addEventListener("click", event => {
         if (event.target === executiveSummaryModalEl) closeModal(executiveSummaryModalEl);
+    });
+
+    // TP-4: non-symbol-specific operating guide. It is reachable without a
+    // selected decision and carries the manual/advisory boundary for the day.
+    document.getElementById("intraday-sop-trigger")?.addEventListener("click", () => openModal(intradaySopModalEl));
+    document.getElementById("intraday-sop-close")?.addEventListener("click", () => closeModal(intradaySopModalEl));
+    window.addEventListener("click", event => {
+        if (event.target === intradaySopModalEl) closeModal(intradaySopModalEl);
     });
 
     // Header LTP poll — one symbol, 10s, only while Decisions is active and the

@@ -6,6 +6,29 @@ status updated on approval.
 
 ---
 
+## TP-4 — Intraday SOP surface (ready for review)
+
+| | |
+|---|---|
+| Completed | 2026-07-30 |
+| Objective | Give the owner a persistent, plain-language intraday operating guide that is reachable without selecting a symbol |
+| Scope | Added a global-header `Intraday operating guide` icon; added a modal SOP surface covering before-market checks, work-queue review, before-entry checks, no-fill handling, after-entry stop/target handling, end-of-day handling, and manual broker boundaries; kept the guide non-symbol-specific and separate from the selected-symbol Trading Steps panel; reused existing modal helpers and close-all behavior; styled the guide as a compact operator manual; bumped dashboard cache-busters |
+| Files created | None |
+| Files modified | `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md`, `src/athena/api/static/index.html`, `src/athena/api/static/css/12-decision-cards-dag.css`, `src/athena/api/static/js/06-ui-helpers.js`, `src/athena/api/static/js/13-decision-brief-core.js`, `tests/api/platform/test_dashboard_hosting.py` |
+| Public APIs added | None |
+| Tests | `rtk node --check src/athena/api/static/js/06-ui-helpers.js` — passed; `rtk node --check src/athena/api/static/js/13-decision-brief-core.js` — passed; `rtk pytest tests/api/platform/test_dashboard_hosting.py -q` — 4 passed |
+| Coverage | Dashboard hosting tests lock the SOP trigger/modal/close IDs, advisory-only copy, no-order/no-guarantee boundary, pre-open/live/no-fill/entry/exit/end-of-day sections, modal wiring, close-all integration, CSS shell, and `9.94.0` asset cache-busters |
+| Architecture compliance | Static frontend guidance only. No provider, broker, order, scoring, confidence, risk, decision-policy, TradePlan value, schema, backend endpoint, or frozen domain contract changes |
+| ADR compliance | ADR-004 preserved: static HTML/CSS/vanilla JS. ADR-005 preserved: the SOP explains how to use existing Decisions/TradePlans and does not fabricate signals, targets, exits, or recommendations |
+| Risks discovered | Global guidance must not look like a broker workflow or promise a fixed outcome. The SOP should stay separate from sticky symbol detail content so it does not worsen the central-panel scroll experience |
+| Technical debt introduced | None |
+| Suggested improvements | After owner review, the TP track can be closed or followed by a visual QA pass on the complete intraday advisor workflow |
+| Remaining work | Owner review of TP-4; full-suite validation after freeing disk space |
+| Status | 🔄 Ready for owner review |
+| Branch | feature/live-dashboard |
+
+---
+
 ## TP-3 — Top current setups (ready for review)
 
 | | |
