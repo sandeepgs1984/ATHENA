@@ -5,6 +5,14 @@
     // ---------------------------------------------------------------------------
     const decisionsCarouselContainer = document.getElementById("decisions-carousel-groups");
     const briefingSearch = document.getElementById("briefing-search");
+    const decisionsRevalidateVisibleBtn = document.getElementById("decisions-revalidate-visible-btn");
+    const decisionsRevalidateStatus = document.getElementById("decisions-revalidate-status");
+    const QUICK_VISIBLE_REVALIDATE_LIMIT = 5;
+    const QUICK_VISIBLE_REVALIDATE_COOLDOWN_MS = 60000;
+    let nextBoardRevalidateAllowedAt = 0;
+    let boardRevalidateCooldownTimer = null;
+    const BOARD_REVALIDATE_READY_HTML = '<i class="fa-solid fa-arrows-rotate"></i>';
+    let boardRevalidateStatusTone = "neutral";
 
     function dismissDecisionForToday(decision) {
         const key = decisionInstrumentKey(decision);
@@ -207,6 +215,172 @@
         }
     }
 
+    function boardSymbolFromInstrument(value) {
+        return String(value || "").trim().toUpperCase().replace(/^NSE:|^BSE:/, "");
+    }
+
+    function currentVisibleBoardSymbols() {
+        if (!decisionsCarouselContainer) return [];
+        const containerRect = decisionsCarouselContainer.getBoundingClientRect();
+        const symbols = [];
+        decisionsCarouselContainer.querySelectorAll(".symbol-row[data-symbol]").forEach(row => {
+            if (row.offsetParent === null) return;
+            const rowRect = row.getBoundingClientRect();
+            const isInViewport = rowRect.bottom > containerRect.top && rowRect.top < containerRect.bottom;
+            if (!isInViewport) return;
+            const symbol = boardSymbolFromInstrument(row.getAttribute("data-symbol"));
+            if (symbol) symbols.push(symbol);
+        });
+        return [...new Set(symbols)];
+    }
+
+    function currentBoardOutcomeCounts() {
+        const counts = { trade: 0, watch: 0, noTrade: 0, other: 0 };
+        if (!decisionsCarouselContainer) return counts;
+        decisionsCarouselContainer.querySelectorAll(".decision-carousel-section").forEach(section => {
+            const rows = section.querySelectorAll(".symbol-row[data-symbol]").length;
+            const type = String(section.getAttribute("data-section") || "").toUpperCase();
+            if (type === "TRADE") counts.trade += rows;
+            else if (type === "WATCH") counts.watch += rows;
+            else if (type === "NO_TRADE") counts.noTrade += rows;
+            else counts.other += rows;
+        });
+        return counts;
+    }
+
+    function setBoardRevalidateStatus(message, tone = "neutral") {
+        if (!decisionsRevalidateStatus) return;
+        boardRevalidateStatusTone = tone;
+        decisionsRevalidateStatus.hidden = !message;
+        decisionsRevalidateStatus.className = `symbols-revalidate-status tone-${tone}`;
+        decisionsRevalidateStatus.textContent = message || "";
+    }
+
+    function clearBoardRevalidateStatusAfterCooldown() {
+        if (!decisionsRevalidateStatus || decisionsRevalidateStatus.hidden) return;
+        const text = decisionsRevalidateStatus.textContent || "";
+        const cooldownOnly = /cooling down|Retry visible refresh/i.test(text);
+        const lowSeverity = boardRevalidateStatusTone === "success"
+            || boardRevalidateStatusTone === "info"
+            || boardRevalidateStatusTone === "warning";
+        if (cooldownOnly && lowSeverity) {
+            setBoardRevalidateStatus("", "neutral");
+        }
+    }
+
+    function readableBoardRevalidateError(error) {
+        const detail = error?.data?.detail;
+        const title = error?.data?.title;
+        if (typeof error?.userMessage === "string" && error.userMessage.trim()) {
+            return error.userMessage;
+        }
+        if (typeof detail === "string" && detail.trim()) return detail;
+        if (detail && typeof detail === "object" && typeof detail.title === "string") {
+            return detail.title;
+        }
+        if (typeof title === "string" && title.trim()) return title;
+        return "Validation failed. Treat existing rows as stale until you retry.";
+    }
+
+    function isKiteRateLimitError(error) {
+        const text = [
+            error?.userMessage,
+            error?.data?.detail,
+            error?.data?.title,
+        ].map(v => typeof v === "string" ? v : "").join(" ");
+        return /kite rate limit|kite HTTP 429|too many requests|NetworkException/i.test(text);
+    }
+
+    function formatBoardCooldown(seconds) {
+        const safeSeconds = Math.max(1, Math.ceil(Number(seconds) || 0));
+        return `${safeSeconds}s`;
+    }
+
+    function syncBoardRevalidateCooldownButton() {
+        if (!decisionsRevalidateVisibleBtn) return;
+        const remainingMs = nextBoardRevalidateAllowedAt - Date.now();
+        if (remainingMs <= 0) {
+            nextBoardRevalidateAllowedAt = 0;
+            decisionsRevalidateVisibleBtn.disabled = false;
+            decisionsRevalidateVisibleBtn.innerHTML = BOARD_REVALIDATE_READY_HTML;
+            decisionsRevalidateVisibleBtn.title = "Re-validate only the rows currently visible in this list";
+            decisionsRevalidateVisibleBtn.setAttribute("aria-label", "Re-validate visible current-board rows");
+            if (boardRevalidateCooldownTimer != null) {
+                clearInterval(boardRevalidateCooldownTimer);
+                boardRevalidateCooldownTimer = null;
+            }
+            clearBoardRevalidateStatusAfterCooldown();
+            return;
+        }
+        const wait = formatBoardCooldown(remainingMs / 1000);
+        decisionsRevalidateVisibleBtn.disabled = true;
+        decisionsRevalidateVisibleBtn.innerHTML = '<i class="fa-solid fa-hourglass-half"></i>';
+        decisionsRevalidateVisibleBtn.title = `Cooling down · retry in ${wait}`;
+        decisionsRevalidateVisibleBtn.setAttribute("aria-label", `Cooling down. Retry visible refresh in ${wait}`);
+    }
+
+    function startBoardRevalidateCooldown() {
+        nextBoardRevalidateAllowedAt = Date.now() + QUICK_VISIBLE_REVALIDATE_COOLDOWN_MS;
+        syncBoardRevalidateCooldownButton();
+        if (boardRevalidateCooldownTimer != null) clearInterval(boardRevalidateCooldownTimer);
+        boardRevalidateCooldownTimer = setInterval(syncBoardRevalidateCooldownButton, 1000);
+    }
+
+    async function revalidateVisibleDecisionBoard() {
+        if (!decisionsRevalidateVisibleBtn) return;
+        if (typeof validateSymbolsNow !== "function") {
+            showToast("Validation controls are not ready yet — reload ATHENA.", "danger");
+            setBoardRevalidateStatus("Validation controls are not ready. Reload ATHENA.", "danger");
+            return;
+        }
+        const now = Date.now();
+        if (now < nextBoardRevalidateAllowedAt) {
+            const waitSeconds = (nextBoardRevalidateAllowedAt - now) / 1000;
+            const message = `Kite is cooling down. Retry visible refresh in ${formatBoardCooldown(waitSeconds)}.`;
+            showToast(message, "warning");
+            setBoardRevalidateStatus(message, "warning");
+            return;
+        }
+        const onScreenSymbols = currentVisibleBoardSymbols();
+        if (!onScreenSymbols.length) {
+            showToast("No on-screen current-board rows to re-validate", "warning");
+            setBoardRevalidateStatus("No on-screen current-board rows to re-validate.", "warning");
+            return;
+        }
+        const symbols = onScreenSymbols.slice(0, QUICK_VISIBLE_REVALIDATE_LIMIT);
+        const capped = onScreenSymbols.length > symbols.length;
+        const capCopy = capped
+            ? ` first ${symbols.length} of ${onScreenSymbols.length} on-screen`
+            : ` ${symbols.length} on-screen`;
+        setBoardRevalidateStatus(`Re-validating${capCopy} symbol${symbols.length === 1 ? "" : "s"}…`, "info");
+        decisionsRevalidateVisibleBtn.disabled = true;
+        decisionsRevalidateVisibleBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+        try {
+            const res = await validateSymbolsNow(symbols, {
+                refreshDecisions: true,
+            });
+            if (!res || !res.data) {
+                startBoardRevalidateCooldown();
+                setBoardRevalidateStatus("Re-validation did not complete. Current rows were left unchanged.", "warning");
+                return;
+            }
+            const data = res.data || {};
+            const counts = currentBoardOutcomeCounts();
+            const excluded = Number.isFinite(Number(data.excluded)) ? Number(data.excluded) : 0;
+            setBoardRevalidateStatus(
+                `Validated${capCopy} · Trade ${counts.trade} · Watch ${counts.watch} · No trade ${counts.noTrade} · Excluded ${excluded} · cooling down 60s`,
+                String(data.as_of_mode || "").toLowerCase() === "session_close" ? "warning" : "success"
+            );
+            startBoardRevalidateCooldown();
+        } catch (err) {
+            console.error("Visible board re-validation failed", err);
+            startBoardRevalidateCooldown();
+            setBoardRevalidateStatus(readableBoardRevalidateError(err), isKiteRateLimitError(err) ? "warning" : "danger");
+        } finally {
+            syncBoardRevalidateCooldownButton();
+        }
+    }
+
     // Priority order always — Trade first, then Watch, then No trade, then
     // Insufficient data — regardless of timestamp (owner: 2026-07-25). Any
     // decision_type not in this list still gets its own carousel, appended
@@ -268,6 +442,7 @@
         const row = document.createElement("div");
         row.className = "symbol-row";
         row.setAttribute("data-id", d.metadata.decision_id);
+        row.setAttribute("data-symbol", symbol);
         // Keyboard-operable (UX-7 accessibility) — this was a plain click-only
         // div with no way for a keyboard user to reach or activate it.
         row.setAttribute("tabindex", "0");
@@ -422,6 +597,8 @@
         }
     };
     wireDecisionsControls();
+
+    decisionsRevalidateVisibleBtn?.addEventListener("click", revalidateVisibleDecisionBoard);
 
     // DT-1: stance/type/sort moved off the toolbar (removed, per the
     // workstation redesign) into a small popover behind an icon button, so

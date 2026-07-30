@@ -200,8 +200,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.91.0" in html
-    assert "dashboard.js?v=9.91.0" in html
+    assert "dashboard.css?v=9.92.0" in html
+    assert "dashboard.js?v=9.92.0" in html
     assert 'id="advisor-pulse"' in html
     assert 'id="header-diagnostics-popover"' in html
     assert 'id="decision-actionability-banner"' in html
@@ -217,6 +217,43 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "TRADE_PLAN_FRESHNESS_STALE_FRACTION = 0.8" in js
     assert ".symbol-row-plan-status.tone-expired" in css
     assert ".quick-summary-plan-status.tone-expired" in css
+    assert 'id="decisions-revalidate-visible-btn"' in html
+    assert 'id="decisions-revalidate-status"' in html
+    assert "QUICK_VISIBLE_REVALIDATE_LIMIT = 5" in js
+    assert "QUICK_VISIBLE_REVALIDATE_COOLDOWN_MS = 60000" in js
+    assert "function currentVisibleBoardSymbols" in js
+    assert "decisionsCarouselContainer.getBoundingClientRect()" in js
+    assert "row.getBoundingClientRect()" in js
+    assert "rowRect.bottom > containerRect.top" in js
+    assert "rowRect.top < containerRect.bottom" in js
+    assert "row.offsetParent === null" in js
+    assert "const symbols = onScreenSymbols.slice(0, QUICK_VISIBLE_REVALIDATE_LIMIT)" in js
+    assert "first ${symbols.length} of ${onScreenSymbols.length} on-screen" in js
+    assert "validateSymbolsNow(symbols" in js
+    assert "refreshDecisions: true" in js
+    assert "Validated${capCopy}" in js
+    assert "cooling down 60s" in js
+    assert "No on-screen current-board rows to re-validate" in js
+    assert "function clearBoardRevalidateStatusAfterCooldown" in js
+    assert "/cooling down|Retry visible refresh/i" in js
+    assert 'setBoardRevalidateStatus("", "neutral")' in js
+    assert "function readableBoardRevalidateError" in js
+    assert "function isKiteRateLimitError" in js
+    assert "function syncBoardRevalidateCooldownButton" in js
+    assert "function startBoardRevalidateCooldown" in js
+    assert "boardRevalidateCooldownTimer" in js
+    assert "setInterval(syncBoardRevalidateCooldownButton, 1000)" in js
+    assert "clearInterval(boardRevalidateCooldownTimer)" in js
+    assert "nextBoardRevalidateAllowedAt" in js
+    assert "fa-hourglass-half" in js
+    assert "Cooling down · retry in" in js
+    assert "Kite is cooling down. Retry visible refresh in" in js
+    assert "error.userMessage" in js
+    assert "err.userMessage = message" in js
+    assert "Kite rate limit hit. Wait about a minute" in js
+    assert "Validation failed. Treat existing rows as stale until you retry" in js
+    assert ".symbols-revalidate-status.tone-success" in css
+    assert ".symbols-revalidate-status.tone-danger" in css
     assert "/api/v1/dashboard/session-status" in js
     assert "state.marketSession" in js
     assert "Review mode · market closed" in js
@@ -810,26 +847,41 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "loadOperationsWorkspace" in js
     assert "startOpsStream" in js
 
-    # Owner-requested full-viewport blocking overlay during validate (owner
-    # feedback: other UI stayed interactive mid-run, risking acting on stale
-    # state). Non-dismissible by design — no cancel affordance, since the
-    # backend call can't be aborted once started. Centralized inside
-    # validateSymbolsNow so all 4 call sites (Portfolio row, Market
-    # Intelligence row, "Add & validate", Decision Brief "Re-validate")
-    # get it automatically.
+    # Owner-requested full-viewport progress overlay during validate. Close
+    # hides progress only; it does not cancel the backend validation once
+    # started. Centralized inside validateSymbolsNow so all callers get the
+    # same readable symbol summary, elapsed timer, and close behavior.
     assert 'id="validate-overlay"' in html
+    assert 'id="validate-overlay-close"' in html
     assert 'id="validate-overlay-symbols"' in html
+    assert 'id="validate-overlay-timer"' in html
     assert 'id="validate-overlay-detail"' in html
     assert 'role="alertdialog"' in html
+    assert "const validateOverlayTimer" in js
+    assert "const validateOverlayClose" in js
+    assert "function formatValidationSymbolSummary" in js
+    assert "+${list.length - limit} more" in js
+    assert "function updateValidateOverlayTimer" in js
+    assert "Elapsed ${elapsedSeconds}s" in js
+    assert "setInterval(updateValidateOverlayTimer, 1000)" in js
+    assert "clearInterval(validateOverlayTimerId)" in js
     assert "function showValidateOverlay" in js
     assert "function hideValidateOverlay" in js
+    assert "validateOverlayClose?.addEventListener" in js
+    assert "Validation continues in the background" in js
     assert "showValidateOverlay(list);" in js
     assert "hideValidateOverlay();" in js
+    assert "Validating ${formatValidationSymbolSummary(list)}" in js
     assert "function latestValidationExclusion" in js
     assert "latest revalidation excluded it; no current TradePlan" in js
     assert "no current plan" in js
     assert ".validate-overlay" in css
     assert ".validate-overlay-panel" in css
+    assert "max-height: calc(100vh - 64px)" in css
+    assert ".validate-overlay-close" in css
+    assert ".validate-overlay-timer" in css
+    assert ".validate-overlay-symbols" in css
+    assert "overflow-wrap: anywhere" in css
     assert "validate-spin" in css
 
     # UX-9b: owner-curated "Saved Symbols" personal watch list — deliberately

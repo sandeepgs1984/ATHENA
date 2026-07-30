@@ -193,7 +193,9 @@
 }
 
 .validate-overlay-panel {
+    position: relative;
     width: min(360px, calc(100vw - 32px));
+    max-height: calc(100vh - 64px);
     padding: var(--space-32);
     display: flex;
     flex-direction: column;
@@ -204,6 +206,28 @@
     border-radius: 14px;
     background: var(--bg-sidebar);
     box-shadow: var(--shadow-xl);
+}
+
+.validate-overlay-close {
+    position: absolute;
+    top: var(--space-10);
+    right: var(--space-10);
+    width: 30px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 7px;
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    background: rgba(15, 23, 42, 0.75);
+    color: var(--text-muted);
+    cursor: pointer;
+}
+
+.validate-overlay-close:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-glow);
 }
 
 .validate-overlay-mark {
@@ -248,12 +272,23 @@
     font-size: var(--text-0-95);
     color: var(--accent);
     font-weight: 700;
+    max-width: 100%;
+    max-height: 5.8em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    overflow-wrap: anywhere;
 }
 
 .validate-overlay-detail {
     color: var(--text-secondary);
     font-size: var(--text-0-8);
     line-height: 1.5;
+}
+
+.validate-overlay-timer {
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: var(--text-0-72);
 }
 
 /* Kite morning gate (Live Entry M-E3) */
@@ -471,4 +506,3 @@
     overflow-y: auto;
     padding: var(--space-24);
 }
-

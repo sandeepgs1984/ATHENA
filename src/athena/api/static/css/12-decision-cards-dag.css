@@ -39,6 +39,22 @@
     background: var(--accent-glow);
 }
 
+.symbols-icon-btn:disabled {
+    opacity: 0.58;
+    cursor: not-allowed;
+}
+
+.symbols-icon-btn-action {
+    color: var(--accent);
+    border-color: rgba(0, 242, 254, 0.26);
+}
+
+.symbols-icon-btn-action:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-glow);
+}
+
 /* Fix pass (owner screenshot, 2026-07-27): a destructive data action ("Clear
    all") deserves its own distinct, always-visible, danger-styled affordance —
    not a control tucked inside the view-only filter popover, which read as
@@ -161,6 +177,47 @@
     font-size: var(--text-0-72);
     line-height: 1.4;
     flex-shrink: 0;
+}
+
+.symbols-revalidate-status {
+    margin: 0 var(--space-14) var(--space-10);
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    border-left: 3px solid var(--border-color);
+    border-radius: 7px;
+    padding: var(--space-7) var(--space-9);
+    background: rgba(15, 23, 42, 0.55);
+    color: var(--text-secondary);
+    font-size: var(--text-0-68);
+    line-height: 1.35;
+    flex-shrink: 0;
+}
+
+.symbols-revalidate-status[hidden] {
+    display: none;
+}
+
+.symbols-revalidate-status.tone-info {
+    border-left-color: var(--tone-info-solid);
+    color: var(--tone-info-text);
+    background: rgba(56, 189, 248, 0.07);
+}
+
+.symbols-revalidate-status.tone-success {
+    border-left-color: var(--tone-good-solid);
+    color: var(--tone-good-text);
+    background: rgba(34, 197, 94, 0.07);
+}
+
+.symbols-revalidate-status.tone-warning {
+    border-left-color: var(--tone-warn-solid);
+    color: var(--tone-warn-text);
+    background: rgba(245, 158, 11, 0.08);
+}
+
+.symbols-revalidate-status.tone-danger {
+    border-left-color: var(--tone-bad-solid);
+    color: var(--tone-bad-text);
+    background: rgba(239, 68, 68, 0.08);
 }
 
 .symbols-groups {

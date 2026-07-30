@@ -333,7 +333,7 @@ Governing plan: `docs/design/ATHENA-INTRADAY-ADVISOR-UX-ROADMAP.md`.
 | Milestone | Scope | Gate | Status |
 |---|---|---|---|
 | **TP-1** Trade Playbook foundation | Move symbol revalidation into Advisor Status; add selected-symbol Trading Steps with entry/stop/target/no-fill/expiry/close/revalidation rules | Owner review after UX/test evidence | 🔄 Ready for review |
-| **TP-2** Current Board controls | Add Re-validate Visible for current-board symbols with progress/result summary | Owner review; must not validate hidden historical rows | ⏳ Planned |
+| **TP-2** Current Board controls | Add Re-validate Visible for current-board symbols with progress/result summary | Owner review; must not validate hidden historical rows | 🔄 Ready for review |
 | **TP-3** Top Current Setups | Add top 10 current valid/aging setups sorted by existing score/confidence/risk/return data | Owner review; no expired/stale/no-plan rows | ⏳ Planned |
 | **TP-4** Intraday SOP surface | Add persistent intraday SOP/help surface for day workflow and manual execution boundaries | Owner review | ⏳ Planned |
 
@@ -359,6 +359,44 @@ Architectural note: TP-1 is presentation-only over existing Decision,
 TradePlan, freshness, quote/session, and validation state. It does not add
 orders, broker write actions, new signals, scoring/risk/decision changes, or
 domain/API contract changes.
+
+Validation note: focused dashboard hosting checks pass. The full suite remains
+deferred locally until the live DB/storage pressure is cleaned up.
+
+#### TP-2 — current board controls (ready for review, 2026-07-30)
+
+Scope completed: the Decisions left rail now includes a `Re-validate visible`
+control for the on-screen current-board rows in the left list viewport. It
+collects only row symbols intersecting the visible scroll area, reuses the
+existing scoped validation workflow, shows the same blocking validation
+overlay, refreshes the workspace after completion, and writes a result strip
+with validated count plus Trade/Watch/No trade/Excluded summary. Failed
+validation leaves an explicit warning that existing rows should be treated as
+stale until retry. Owner live test fixes capped long validation symbol lists in
+the overlay/toast and corrected the visible-row batch from "all rendered rows"
+to actual viewport-visible rows, avoiding 300+ symbol multi-minute runs from
+the left-rail shortcut. Follow-up live test fix capped the quick action to the
+first 5 on-screen rows because scoped validation is a synchronous ingest +
+eligibility + decision cycle; larger batches belong in a dedicated/background
+flow, not the quick refresh affordance.
+Every quick refresh outcome now starts a 60-second local cooldown, preventing
+habitual repeat taps from reaching Kite's rate limit in normal use. Kite
+429/rate-limit responses are mapped to plain user copy and use the same
+cooldown. The button is disabled during cooldown, switches to an hourglass, and
+its tooltip/accessible label carries the retry countdown. Larger refreshes
+remain intentionally out of scope for this shortcut and should use a
+dedicated/background flow.
+The validation overlay now includes an elapsed timer and a close control. Close
+hides the progress screen only; the already-started validation continues and
+the left-list status strip reports the result/cooldown.
+Cooldown-only status messages clear automatically when cooldown ends. Actual
+error/rate-limit guidance stays visible until the next user action.
+
+Architectural note: TP-2 is frontend orchestration over the existing scoped
+candidate validation endpoint. It adds no broker write action, no order
+placement, no analytical engine change, and no new recommendation logic.
+Hidden historical expired TradePlans are not present in the rendered current
+board and are therefore not included in the visible-symbol batch.
 
 Validation note: focused dashboard hosting checks pass. The full suite remains
 deferred locally until the live DB/storage pressure is cleaned up.

@@ -6,6 +6,29 @@ status updated on approval.
 
 ---
 
+## TP-2 — Current board controls (ready for review)
+
+| | |
+|---|---|
+| Completed | 2026-07-30 |
+| Objective | Let the owner refresh the current Decisions board without validating hidden historical rows |
+| Scope | Added a left-rail `Re-validate visible` icon action; collected only on-screen current-board row symbols from the left list viewport; capped the quick action to the first 5 on-screen rows; reused the existing scoped validation workflow and dismissible validation overlay; added overlay elapsed timer and close control; refreshed the Decisions workspace after completion; added a result strip with validated count plus Trade/Watch/No trade/Excluded summary; cleared cooldown-only status messages when cooldown ends; added explicit failure copy using the backend error reason when available; added a proactive 60-second cooldown after every quick refresh; disabled the button during cooldown with an hourglass icon plus retry countdown tooltip/aria label; mapped Kite 429/rate-limit errors to plain action copy using the same cooldown; capped large validation symbol lists in the overlay/toast so visible-board batches stay readable; bumped dashboard cache-busters |
+| Files created | None |
+| Files modified | `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md`, `src/athena/api/static/index.html`, `src/athena/api/static/css/07-universe-modals.css`, `src/athena/api/static/css/12-decision-cards-dag.css`, `src/athena/api/static/js/09-market-intelligence.js`, `src/athena/api/static/js/12-decisions-list.js`, `tests/api/platform/test_dashboard_hosting.py` |
+| Public APIs added | None |
+| Tests | `rtk node --check src/athena/api/static/js/09-market-intelligence.js` — passed; `rtk node --check src/athena/api/static/js/12-decisions-list.js` — passed; `rtk pytest tests/api/platform/test_dashboard_hosting.py -q` — 4 passed; `rtk git diff --check` — passed |
+| Coverage | Dashboard hosting tests lock the button/status DOM, viewport-visible row collection, quick-action batch cap, proactive cooldown timer, disabled hourglass state, retry countdown tooltip, cooldown-only status cleanup, rate-limit cooldown copy, hidden-row skip guard, scoped validation reuse, workspace refresh, backend-error display, stale-on-failure fallback copy, result summary copy, status-strip tones, capped long validation overlay/toast copy, overlay elapsed timer, overlay close behavior, overlay viewport bounds, and `9.92.0` asset cache-busters |
+| Architecture compliance | Frontend orchestration only. No provider, broker, order, scoring, confidence, risk, decision-policy, TradePlan value, schema, or frozen domain contract changes |
+| ADR compliance | ADR-004 preserved: static HTML/CSS/vanilla JS. ADR-005 preserved: the control reuses existing persisted/current decision rows and the existing scoped validation endpoint rather than inventing signals or summaries |
+| Risks discovered | The icon action must stay icon-only while the blocking overlay and status strip carry the progress text; putting validation text inside the 34px rail button would overflow. Large visible-board batches can contain 100+ symbols, so progress surfaces must summarize rather than print the entire symbol set. "Visible" must mean viewport-visible, not merely rendered inside the scroll container. Scoped validation is synchronous and can still take noticeable time, so the quick action must stay capped; larger refreshes need a dedicated/background flow. Users naturally repeat-tap refresh controls, so ATHENA must cool down proactively instead of waiting for Kite 429 |
+| Technical debt introduced | None |
+| Suggested improvements | TP-3 should add a ranked review queue above the normal groups, but only for current valid/aging TradePlans |
+| Remaining work | Owner review of TP-2; full-suite validation after freeing disk space |
+| Status | 🔄 Ready for owner review |
+| Branch | feature/live-dashboard |
+
+---
+
 ## TP-1 — Trade playbook foundation (ready for review)
 
 | | |

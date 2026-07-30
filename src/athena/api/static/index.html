@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.91.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.92.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -675,6 +675,9 @@
                                     <button id="symbols-filter-toggle" class="symbols-icon-btn" type="button" title="Filter &amp; sort" aria-expanded="false" aria-controls="symbols-filter-popover">
                                         <i class="fa-solid fa-sliders"></i>
                                     </button>
+                                    <button id="decisions-revalidate-visible-btn" class="symbols-icon-btn symbols-icon-btn-action" type="button" title="Re-validate only the rows currently visible in this list">
+                                        <i class="fa-solid fa-arrows-rotate"></i>
+                                    </button>
                                     <!-- Separate from the filter popover on purpose (owner feedback:
                                          "Clear all" sitting inside the filter panel read as "clear the
                                          filters", not "wipe my decisions"). Same button/id/modal as
@@ -738,6 +741,7 @@
                                     <div id="decisions-summary-strip" class="text-muted symbols-summary-strip">
                                         Loading…
                                     </div>
+                                    <div id="decisions-revalidate-status" class="symbols-revalidate-status" hidden></div>
                                     <!-- Today's decisions, grouped by outcome: Trade → Watch → No trade →
                                          Insufficient data, in that priority order always (never by
                                          timestamp) -->
@@ -1081,18 +1085,20 @@
         </div>
     </div>
 
-    <!-- Blocking overlay while a validate (ingest + score) is in flight —
-         the trader could otherwise click other candidates/decisions mid-run
-         and act on stale or half-updated state. Non-dismissible by design:
-         there is no cancel affordance because the backend call itself
-         can't be aborted once started. -->
+    <!-- Blocking overlay while a validate (ingest + score) is in flight.
+         Close hides the progress screen only; it does not cancel the backend
+         validation call once started. -->
     <div id="validate-overlay" class="validate-overlay" hidden aria-hidden="true" role="alertdialog" aria-modal="true" aria-labelledby="validate-overlay-title">
         <div class="validate-overlay-panel">
+            <button id="validate-overlay-close" class="validate-overlay-close" type="button" title="Hide validation progress" aria-label="Hide validation progress">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
             <div class="validate-overlay-mark">
                 <i class="fa-solid fa-circle-nodes"></i>
             </div>
             <h2 id="validate-overlay-title" class="validate-overlay-title">Validating</h2>
             <p id="validate-overlay-symbols" class="validate-overlay-symbols">—</p>
+            <p id="validate-overlay-timer" class="validate-overlay-timer">Elapsed 0s</p>
             <p id="validate-overlay-detail" class="validate-overlay-detail" aria-live="polite">
                 Ingesting quotes and recomputing the decision…
             </p>
@@ -1295,6 +1301,6 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.91.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.92.0"></script>
 </body>
 </html>

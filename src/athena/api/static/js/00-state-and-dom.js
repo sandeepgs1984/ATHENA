@@ -47,7 +47,9 @@
     const profileRole = document.getElementById("profile-role");
     const validateOverlay = document.getElementById("validate-overlay");
     const validateOverlaySymbols = document.getElementById("validate-overlay-symbols");
+    const validateOverlayTimer = document.getElementById("validate-overlay-timer");
     const validateOverlayDetail = document.getElementById("validate-overlay-detail");
+    const validateOverlayClose = document.getElementById("validate-overlay-close");
     const kiteGate = document.getElementById("kite-gate");
     const kiteGateDetail = document.getElementById("kite-gate-detail");
     const kiteGateTitle = document.getElementById("kite-gate-title");

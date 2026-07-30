@@ -1,14 +1,40 @@
     const savedSymbolSet = new Set();
     const eligibilityDetailBySymbol = new Map();
+    let validateOverlayStartedAt = 0;
+    let validateOverlayTimerId = null;
 
     // Blocking overlay while a validate (ingest + score) is in flight (owner
     // UX request) — otherwise only the clicked button showed a spinner while
     // the rest of the page stayed fully interactive, risking the trader
     // acting on stale/half-updated state mid-run. Centralized here so every
     // caller of validateSymbolsNow gets it for free.
+    function formatValidationSymbolSummary(symbols, limit = 8) {
+        const list = [...new Set(
+            (symbols || [])
+                .map(s => String(s || "").trim().toUpperCase().replace(/^NSE:|^BSE:/, ""))
+                .filter(Boolean)
+        )];
+        if (!list.length) return "No symbols";
+        if (list.length <= limit) return list.join(", ");
+        return `${list.length} symbols · ${list.slice(0, limit).join(", ")} +${list.length - limit} more`;
+    }
+
+    function updateValidateOverlayTimer() {
+        if (!validateOverlayTimer || !validateOverlayStartedAt) return;
+        const elapsedSeconds = Math.max(0, Math.floor((Date.now() - validateOverlayStartedAt) / 1000));
+        validateOverlayTimer.textContent = `Elapsed ${elapsedSeconds}s`;
+    }
+
     function showValidateOverlay(symbols) {
         if (!validateOverlay) return;
-        if (validateOverlaySymbols) validateOverlaySymbols.textContent = symbols.join(", ");
+        validateOverlayStartedAt = Date.now();
+        if (validateOverlaySymbols) {
+            validateOverlaySymbols.textContent = formatValidationSymbolSummary(symbols);
+            validateOverlaySymbols.title = (symbols || []).join(", ");
+        }
+        updateValidateOverlayTimer();
+        if (validateOverlayTimerId != null) clearInterval(validateOverlayTimerId);
+        validateOverlayTimerId = setInterval(updateValidateOverlayTimer, 1000);
         if (validateOverlayDetail) {
             validateOverlayDetail.textContent = "Ingesting quotes and recomputing the decision…";
         }
@@ -20,7 +46,16 @@
         if (!validateOverlay) return;
         validateOverlay.hidden = true;
         validateOverlay.setAttribute("aria-hidden", "true");
+        if (validateOverlayTimerId != null) {
+            clearInterval(validateOverlayTimerId);
+            validateOverlayTimerId = null;
+        }
     }
+
+    validateOverlayClose?.addEventListener("click", () => {
+        hideValidateOverlay();
+        showToast("Validation continues in the background. Watch the list status for the result.", "info");
+    });
 
     function latestValidationExclusion(data, symbol) {
         const bare = String(symbol || "").trim().toUpperCase().replace(/^NSE:|^BSE:/, "");
@@ -79,7 +114,7 @@
                 }
             }
             showToast(
-                `Validating ${list.join(", ")} — live during session; after hours uses last session close…`,
+                `Validating ${formatValidationSymbolSummary(list)} — live during session; after hours uses last session close…`,
                 "success"
             );
             let valRes;
@@ -102,7 +137,12 @@
                         "Quotes are too old relative to the validation clock. " +
                         "After hours, ATHENA uses last session close — if this still fails, " +
                         "Kite has no usable session quotes yet. Retry during market hours.";
+                } else if (/kite HTTP 429|too many requests|NetworkException/i.test(message)) {
+                    message =
+                        "Kite rate limit hit. Wait about a minute, then re-validate fewer symbols. " +
+                        "Existing rows may be stale until refresh succeeds.";
                 }
+                err.userMessage = message;
                 showToast(message, "danger");
                 throw err;
             }
