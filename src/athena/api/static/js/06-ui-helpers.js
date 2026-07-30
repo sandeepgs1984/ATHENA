@@ -53,5 +53,6 @@
         closeModal(document.getElementById("executive-summary-modal"));
         closeModal(document.getElementById("intraday-sop-modal"));
         closeModal(document.getElementById("validation-funnel-modal"));
+        closeModal(document.getElementById("validation-report-modal"));
         if (!state.kiteBlocking) hideKiteGate();
     }

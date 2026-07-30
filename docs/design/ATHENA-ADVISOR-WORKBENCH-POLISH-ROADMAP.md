@@ -1,6 +1,6 @@
 # ATHENA Advisor Workbench Polish Roadmap
 
-**Status:** approved for AW-1 start on 2026-07-30  
+**Status:** AW-1 approved; AW-2 ready for owner review on 2026-07-30
 **Scope:** Decisions & Trace entry readiness plus Market Intelligence daily-use polish  
 **Owner goal:** make ATHENA easier to use during a live trading day without
 adding order placement, fabricated signals, or unreviewed analytical changes.
@@ -73,9 +73,14 @@ Scope:
 Acceptance:
 
 - Saved Symbols can be validated without moving to the Universe table.
+- Saved Symbols never create horizontal scrolling in the Market Intelligence
+  side rail; row actions stay compact and discoverable.
 - Decision-detail revalidation does not open the report popup; it refreshes
   inline.
 - Batch/visible/full validation does not open per-symbol popups.
+- `Open decision` from a report switches to Decisions & Trace and selects the
+  validated symbol, not just the tab.
+- Report metrics and plan status do not truncate at normal desktop widths.
 
 ### AW-3 — Validation Pipeline Workbench
 
@@ -120,4 +125,3 @@ Acceptance:
   generation, or OMS integration.
 - New scoring, confidence, risk, decision, or TradePlan rules.
 - Fabricated validation blockers, targets, exits, or symbol outcomes.
-

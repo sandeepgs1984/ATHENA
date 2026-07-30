@@ -3,6 +3,14 @@
     let validateOverlayStartedAt = 0;
     let validateOverlayTimerId = null;
 
+    const validationReportModal = document.getElementById("validation-report-modal");
+    const validationReportTitle = document.getElementById("validation-report-title");
+    const validationReportBody = document.getElementById("validation-report-body");
+    document.getElementById("validation-report-close")?.addEventListener("click", () => closeModal(validationReportModal));
+    window.addEventListener("click", event => {
+        if (event.target === validationReportModal) closeModal(validationReportModal);
+    });
+
     // Blocking overlay while a validate (ingest + score) is in flight (owner
     // UX request) — otherwise only the clicked button showed a spinner while
     // the rest of the page stayed fully interactive, risking the trader
@@ -76,8 +84,141 @@
         };
     }
 
+    function latestDecisionForSymbol(symbol) {
+        const bare = String(symbol || "").trim().toUpperCase().replace(/^NSE:|^BSE:/, "");
+        const rows = Array.isArray(traceDecisionsList) ? traceDecisionsList : [];
+        return rows.find(d => {
+            const instrument = String(d && d.metadata && d.metadata.instrument_id || "")
+                .toUpperCase()
+                .replace(/^NSE:|^BSE:/, "");
+            return instrument === bare;
+        }) || null;
+    }
+
+    function validationReportOutcome(data, symbol) {
+        const bare = String(symbol || "").trim().toUpperCase().replace(/^NSE:|^BSE:/, "");
+        const decision = latestDecisionForSymbol(bare);
+        const exclusion = latestValidationExclusion(data, bare);
+        if (exclusion) {
+            return {
+                label: "Excluded",
+                tone: "danger",
+                detail: exclusion.reason || exclusion.summary || "Latest validation excluded this symbol.",
+                decision,
+            };
+        }
+        if (decision && decision.metadata) {
+            const type = decisionListSectionType(decision);
+            const stance = decisionStance(decision.metadata.decision_type, decision.metadata.direction);
+            if (type === "TRADE") {
+                return { label: stance.label || "Trade", tone: "good", detail: "Current TradePlan available. Review Advisor Status before action.", decision };
+            }
+            if (type === "WATCH") {
+                return { label: "Watch", tone: "warning", detail: "Interesting setup, but ATHENA did not authorize entry yet.", decision };
+            }
+            if (type === "NO_TRADE") {
+                return { label: "No trade", tone: "neutral", detail: "ATHENA found no current manual action for this symbol.", decision };
+            }
+            return { label: friendlyLabel(type), tone: "neutral", detail: "Validation completed. Review the decision for details.", decision };
+        }
+        const status = String(data && data.status || "").toUpperCase();
+        if (status && status !== "COMPLETED") {
+            return { label: status, tone: "warning", detail: "Validation did not complete cleanly. Treat existing rows as stale.", decision: null };
+        }
+        return { label: "Validated", tone: "neutral", detail: "Validation completed, but no current decision row was available yet.", decision: null };
+    }
+
+    function validationReportMetricValue(decision, key) {
+        const source = decision && decision[key] ? decision[key] : {};
+        const candidates = key === "confidence"
+            ? [source.score, source.confidence, source.confidence_score, source.overall, decision?.metadata?.confidence]
+            : [source.score, source.risk_score, source.total_risk_score, source.overall, decision?.metadata?.risk];
+        for (const candidate of candidates) {
+            const value = Number(candidate);
+            if (Number.isFinite(value)) return value;
+        }
+        return NaN;
+    }
+
+    function renderValidationReport(symbol, response) {
+        if (!validationReportModal || !validationReportBody) return;
+        const bare = String(symbol || "").trim().toUpperCase().replace(/^NSE:|^BSE:/, "");
+        const data = response && response.data ? response.data : {};
+        const outcome = validationReportOutcome(data, bare);
+        const decision = outcome.decision;
+        const score = decision ? decisionScoreValue(decision) : NaN;
+        const confidence = validationReportMetricValue(decision, "confidence");
+        const risk = validationReportMetricValue(decision, "risk");
+        const freshness = decision ? inferTradePlanFreshness(decision.trade_plan) : null;
+        const planLabel = freshness && freshness.has_trade_plan ? formatTradePlanFreshnessBadge(freshness) : "No plan";
+        const mode = String(data.as_of_mode || "").toLowerCase();
+        const modeLabel = mode === "live" ? "Live" : mode === "session_close" ? "Session close" : "Validation";
+        const asOf = data.as_of ? formatDecisionTime(data.as_of) : "Unknown time";
+        const isSaved = savedSymbolSet.has(bare);
+        const canInspectTrace = Boolean(universeCache[bare]);
+
+        if (validationReportTitle) validationReportTitle.textContent = `${bare} — Validation Report`;
+        validationReportBody.innerHTML = `
+            <div class="validation-report-hero tone-${outcome.tone}">
+                <div>
+                    <span class="validation-report-kicker">${escapeDecisionHtml(modeLabel)} · ${escapeDecisionHtml(asOf)}</span>
+                    <strong>${escapeDecisionHtml(outcome.label)}</strong>
+                    <p>${escapeDecisionHtml(outcome.detail)}</p>
+                </div>
+            </div>
+            <div class="validation-report-metrics">
+                <div class="validation-report-metric"><span>Score</span><strong>${Number.isFinite(score) ? score.toFixed(1) : "—"}</strong></div>
+                <div class="validation-report-metric"><span>Confidence</span><strong>${Number.isFinite(confidence) ? `${confidence.toFixed(1)}%` : "—"}</strong></div>
+                <div class="validation-report-metric"><span>Risk</span><strong>${Number.isFinite(risk) ? `${risk.toFixed(1)}` : "—"}</strong></div>
+                <div class="validation-report-metric validation-report-plan-metric"><span>Plan status</span><strong>${escapeDecisionHtml(planLabel)}</strong></div>
+            </div>
+            <div class="validation-report-actions">
+                <button type="button" id="validation-report-open-decision" class="inspect-btn" ${decision ? "" : "disabled"}>
+                    <i class="fa-solid fa-brain"></i> Open decision
+                </button>
+                <button type="button" id="validation-report-trace" class="inspect-btn" ${canInspectTrace ? "" : "disabled"}>
+                    <i class="fa-solid fa-search"></i> Inspect trace
+                </button>
+                <button type="button" id="validation-report-save" class="inspect-btn">
+                    <i class="fa-solid fa-bookmark"></i> ${isSaved ? "Remove saved" : "Save symbol"}
+                </button>
+                <button type="button" id="validation-report-revalidate" class="inspect-btn">
+                    <i class="fa-solid fa-arrows-rotate"></i> Re-validate
+                </button>
+            </div>
+        `;
+        document.getElementById("validation-report-open-decision")?.addEventListener("click", async () => {
+            closeModal(validationReportModal);
+            if (typeof switchTab === "function") {
+                window.history.pushState({ tabId: "decisions" }, "", "/dashboard/decisions");
+                const tabLoad = switchTab("decisions");
+                if (tabLoad && typeof tabLoad.then === "function") {
+                    await tabLoad;
+                }
+            }
+            if (typeof loadDecisionsWorkspace === "function") {
+                await loadDecisionsWorkspace({ preferInstrumentId: bare });
+            }
+        });
+        document.getElementById("validation-report-trace")?.addEventListener("click", () => {
+            if (typeof window.openTraceModal === "function") window.openTraceModal(bare);
+        });
+        document.getElementById("validation-report-save")?.addEventListener("click", async event => {
+            await toggleSavedSymbolNow(bare, { button: event.currentTarget });
+            renderValidationReport(bare, response);
+        });
+        document.getElementById("validation-report-revalidate")?.addEventListener("click", async event => {
+            await validateSymbolsNow([bare], {
+                button: event.currentTarget,
+                refreshDecisions: true,
+                showReport: true,
+            });
+        });
+        openModal(validationReportModal);
+    }
+
     /** Ensure candidates exist, then run scoped validate (ingest + score). */
-    async function validateSymbolsNow(symbols, { button = null, refreshDecisions = false } = {}) {
+    async function validateSymbolsNow(symbols, { button = null, refreshDecisions = false, showReport = false } = {}) {
         const list = [...new Set(
             (symbols || [])
                 .map(s => String(s || "").trim().toUpperCase().replace(/^NSE:|^BSE:/, ""))
@@ -199,6 +340,9 @@
                         );
                     }
                 }
+            }
+            if (showReport && list.length === 1) {
+                renderValidationReport(list[0], valRes);
             }
             return valRes;
         } finally {
@@ -1326,7 +1470,7 @@
             bodyEl.querySelectorAll(".candidate-validate-btn").forEach(btn => {
                 btn.addEventListener("click", async () => {
                     const sym = btn.getAttribute("data-symbol");
-                    await validateSymbolsNow([sym], { button: btn, refreshDecisions: true });
+                    await validateSymbolsNow([sym], { button: btn, refreshDecisions: true, showReport: true });
                 });
             });
             bodyEl.querySelectorAll(".candidate-remove-btn").forEach(btn => {
@@ -1427,7 +1571,7 @@
             }
             candidateInput.value = "";
             applyUniverseFilters();
-            await validateSymbolsNow([symbol], { button: candidateAddBtn, refreshDecisions: true });
+            await validateSymbolsNow([symbol], { button: candidateAddBtn, refreshDecisions: true, showReport: true });
         };
         candidateAddBtn.addEventListener("click", addAndValidateCandidate);
     }
@@ -1503,12 +1647,21 @@
                 li.innerHTML = `
                     <span class="symbol-name-col">${s.symbol}</span>
                     <div class="candidate-row-actions">
-                        <button type="button" class="inspect-btn saved-symbol-remove-btn" data-symbol="${s.symbol}">
-                            <i class="fas fa-times"></i> Remove
+                        <button type="button" class="inspect-btn saved-symbol-action-btn saved-symbol-validate-btn" data-symbol="${s.symbol}" title="Validate saved symbol" aria-label="Validate ${s.symbol}">
+                            <i class="fas fa-bolt" aria-hidden="true"></i>
+                        </button>
+                        <button type="button" class="inspect-btn saved-symbol-action-btn saved-symbol-remove-btn" data-symbol="${s.symbol}" title="Remove saved symbol" aria-label="Remove ${s.symbol}">
+                            <i class="fas fa-times" aria-hidden="true"></i>
                         </button>
                     </div>
                 `;
                 listEl.appendChild(li);
+            });
+            listEl.querySelectorAll(".saved-symbol-validate-btn").forEach(btn => {
+                btn.addEventListener("click", async () => {
+                    const sym = btn.getAttribute("data-symbol");
+                    await validateSymbolsNow([sym], { button: btn, refreshDecisions: true, showReport: true });
+                });
             });
             listEl.querySelectorAll(".saved-symbol-remove-btn").forEach(btn => {
                 btn.addEventListener("click", async () => {

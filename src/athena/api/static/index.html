@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.95.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.97.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -1188,6 +1188,18 @@
         </div>
     </div>
 
+    <div id="validation-report-modal" class="modal-overlay" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="validation-report-title">
+        <div class="modal-container validation-report-modal-container">
+            <div class="modal-header">
+                <h3 id="validation-report-title">Validation Report</h3>
+                <button id="validation-report-close" class="modal-close-btn" type="button" aria-label="Close validation report">&times;</button>
+            </div>
+            <div class="modal-body validation-report-body" id="validation-report-body">
+                <div class="text-muted">Validate a symbol to see the report.</div>
+            </div>
+        </div>
+    </div>
+
     <div id="backtest-modal" class="modal-overlay" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="backtest-modal-title">
         <div class="modal-container backtest-modal-container">
             <div class="modal-header">
@@ -1380,6 +1392,6 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.95.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.97.0"></script>
 </body>
 </html>

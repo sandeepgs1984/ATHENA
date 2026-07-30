@@ -200,8 +200,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.95.0" in html
-    assert "dashboard.js?v=9.95.0" in html
+    assert "dashboard.css?v=9.97.0" in html
+    assert "dashboard.js?v=9.97.0" in html
     assert 'id="advisor-pulse"' in html
     assert 'id="header-diagnostics-popover"' in html
     assert 'id="decision-actionability-banner"' in html
@@ -321,6 +321,33 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".decision-entry-readiness.tone-good" in css
     assert ".decision-entry-readiness.tone-warning" in css
     assert ".decision-entry-readiness.tone-danger" in css
+    assert 'id="validation-report-modal"' in html
+    assert 'id="validation-report-title"' in html
+    assert 'id="validation-report-body"' in html
+    assert 'id="validation-report-close"' in html
+    assert "function renderValidationReport" in js
+    assert "function validationReportOutcome" in js
+    assert "function latestDecisionForSymbol" in js
+    assert "function validationReportMetricValue" in js
+    assert "showReport = false" in js
+    assert "if (showReport && list.length === 1)" in js
+    assert "saved-symbol-validate-btn" in js
+    assert "saved-symbol-action-btn" in js
+    assert "aria-label=\"Validate ${s.symbol}\"" in js
+    assert "showReport: true" in js
+    assert "Decision-detail revalidation" not in js
+    assert "validateSymbolsNow([bareSymbol], { button: event.currentTarget, refreshDecisions: true });" in js
+    assert "Open decision" in js
+    assert "await loadDecisionsWorkspace({ preferInstrumentId: bare });" in js
+    assert "Inspect trace" in js
+    assert "Save symbol" in js
+    assert "Remove saved" in js
+    assert ".validation-report-modal-container" in css
+    assert ".validation-report-hero.tone-good" in css
+    assert ".validation-report-metrics" in css
+    assert ".validation-report-plan-metric" in css
+    assert ".saved-symbol-action-btn" in css
+    assert 'closeModal(document.getElementById("validation-report-modal"))' in js
     assert "/api/v1/dashboard/session-status" in js
     assert "state.marketSession" in js
     assert "Review mode · market closed" in js
@@ -1168,6 +1195,7 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "startTickerRefresh();" in switch_tab_body
     assert "stopTickerRefresh();" in switch_tab_body
     assert "TICKER_TABS.has(tabId)" in switch_tab_body
+    assert "return loadTabData(tabId);" in switch_tab_body
 
     # MI-1: Market Intelligence's own tab also loads the shared ticker.
     load_tab_data_start = js.find("async function loadTabData(tabId)")

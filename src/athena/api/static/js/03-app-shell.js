@@ -51,7 +51,7 @@
         if (tabId !== "operations") {
             stopOpsStream();
         }
-        loadTabData(tabId);
+        return loadTabData(tabId);
     }
 
     // Bind sidebar clicks

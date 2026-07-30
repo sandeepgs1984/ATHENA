@@ -466,8 +466,8 @@ domain contracts, or broker behavior. Governing plan:
 
 | Milestone | Scope | Gate | Status |
 |---|---|---|---|
-| **AW-1** Entry Readiness Indicator | Compare selected live price with persisted TradePlan entry zone and show whether entry is ready, waiting, chasing, or unavailable | Owner review; no new recommendation logic | 🔄 Ready for review |
-| **AW-2** Saved Symbol Validation and Result Report | Add Saved Symbols validate action and a single-symbol validation report modal for Market Intelligence callers only | Owner review; Decision-detail revalidation must stay inline | ⏳ Planned |
+| **AW-1** Entry Readiness Indicator | Compare selected live price with persisted TradePlan entry zone and show whether entry is ready, waiting, chasing, or unavailable | Owner review; no new recommendation logic | ✅ Approved |
+| **AW-2** Saved Symbol Validation and Result Report | Add Saved Symbols validate action and a single-symbol validation report modal for Market Intelligence callers only | Owner review; Decision-detail revalidation must stay inline | 🔄 Ready for review |
 | **AW-3** Validation Pipeline Workbench | Revamp the Validation Pipeline card and detail modal into a daily-use validation diagnostic workbench | Owner review; no fabricated blocker data | ⏳ Planned |
 | **AW-4** Advisor Workbench Visual QA | Screenshot/interaction QA across Decisions and Market Intelligence workbench paths | Owner review | ⏳ Planned |
 
@@ -475,7 +475,7 @@ domain contracts, or broker behavior. Governing plan:
 placement, broker write actions, new signals, or changes to ATHENA's analytical
 engines.
 
-#### AW-1 — entry readiness indicator (ready for review, 2026-07-30)
+#### AW-1 — entry readiness indicator (approved, 2026-07-30)
 
 Scope completed: the Decision Brief header now includes an entry-readiness chip
 next to the live price. The chip compares the current live quote with the
@@ -488,6 +488,36 @@ freshness data only.
 Architectural note: AW-1 is frontend presentation only. It adds no broker write
 action, no order placement, no analytical-engine change, no TradePlan value
 change, no backend endpoint, and no new recommendation logic.
+
+Validation note: focused dashboard hosting checks pass. The full suite remains
+deferred locally until the live DB/storage pressure is cleaned up.
+
+#### AW-2 — saved symbol validation and result report (ready for review, 2026-07-30)
+
+Scope completed: Saved Symbols rows now include a `Validate` action. Market
+Intelligence single-symbol validations (Saved Symbols, Universe row validate,
+and Add & validate) opt into a validation report modal after the existing
+validation workflow refreshes Market Intelligence and Decisions. The report
+summarizes the symbol, validation time/mode, outcome, score, confidence, risk,
+plan status, and useful next actions: open decision, inspect trace, save/remove
+saved symbol, re-validate, or close.
+
+Owner review fix: Saved Symbols row actions are now icon-only with tooltips and
+accessible labels so the side rail no longer scrolls horizontally. The report
+modal was widened and rebalanced: score/confidence/risk use compact metric
+cards, plan status spans the full row to avoid truncation, and the action grid
+has consistent spacing. `Open decision` now waits for the Decisions tab load and
+then selects the validated symbol explicitly, preventing the previous race where
+the tab switched but the symbol was not selected.
+
+Owner UX rule preserved: Decision detail revalidation does not open the report
+popup. Visible-board refresh, batch validation, and full validation also keep
+their existing summary/progress surfaces instead of opening per-symbol reports.
+
+Architectural note: AW-2 is frontend presentation/orchestration over existing
+validation, saved-symbol, universe, decision, and trace data. It adds no broker
+write action, no order placement, no analytical-engine change, no TradePlan
+value change, no backend endpoint, and no new recommendation logic.
 
 Validation note: focused dashboard hosting checks pass. The full suite remains
 deferred locally until the live DB/storage pressure is cleaned up.

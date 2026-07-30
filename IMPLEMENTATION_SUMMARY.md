@@ -6,7 +6,30 @@ status updated on approval.
 
 ---
 
-## AW-1 — Entry readiness indicator (ready for review)
+## AW-2 — Saved symbol validation and result report (ready for review)
+
+| | |
+|---|---|
+| Completed | 2026-07-30 |
+| Objective | Let the owner validate saved/watch-list symbols directly and see a useful single-symbol result report |
+| Scope | Added a validation report modal; extended `validateSymbolsNow` with an explicit `showReport` option defaulting to `false`; opted in Saved Symbols, Universe row validate, and Add & validate single-symbol Market Intelligence flows; added compact icon-only Saved Symbols row validation/remove actions; built the report from existing validation response, latest current decision row, universe member/exclusion data, saved-symbol state, and TradePlan freshness; added report actions for Open decision, Inspect trace, Save/Remove saved, and Re-validate; widened/rebalanced the report to prevent text truncation; made Open decision wait for the Decisions tab load and then select the validated symbol; kept Decision-detail revalidation, visible-board refresh, and batch/full validation report-free; bumped dashboard cache-busters |
+| Files created | None |
+| Files modified | `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md`, `src/athena/api/static/index.html`, `src/athena/api/static/css/06-market-intelligence.css`, `src/athena/api/static/js/03-app-shell.js`, `src/athena/api/static/js/06-ui-helpers.js`, `src/athena/api/static/js/09-market-intelligence.js`, `tests/api/platform/test_dashboard_hosting.py` |
+| Public APIs added | None |
+| Tests | `rtk node --check src/athena/api/static/js/09-market-intelligence.js` — passed; `rtk node --check src/athena/api/static/js/03-app-shell.js` — passed; `rtk node --check src/athena/api/static/js/06-ui-helpers.js` — passed; `rtk pytest tests/api/platform/test_dashboard_hosting.py -q` — 4 passed; `rtk git diff --check` — passed |
+| Coverage | Dashboard hosting tests lock the report modal DOM, close-all integration, `showReport` default-off contract, Market Intelligence opt-in callers, compact Saved Symbols validate action, Decision-detail revalidation inline behavior, deterministic Open decision selection, report actions, report CSS, and `9.97.0` asset cache-busters |
+| Architecture compliance | Frontend presentation/orchestration only over existing validation, saved-symbol, universe, decision, trace, and TradePlan freshness data. No provider, broker, order, scoring, confidence, risk, decision-policy, TradePlan value, schema, backend endpoint, or frozen domain contract changes |
+| ADR compliance | ADR-004 preserved: static HTML/CSS/vanilla JS. ADR-005 preserved: the report summarizes already refreshed persisted/current data and does not fabricate signals, validation blockers, or recommendations |
+| Risks discovered | Report popups are useful after Market Intelligence single-symbol validation but disruptive inside the selected-symbol Decision detail surface. `showReport` therefore defaults to false and only explicit MI callers opt in. Owner review also caught side-rail horizontal scrolling and a tab-selection race; both are now covered by regression assertions |
+| Technical debt introduced | None |
+| Suggested improvements | AW-3 should revamp Validation Pipeline into a workbench using existing funnel/run data and clearly documenting any missing blocker fields |
+| Remaining work | Owner review of AW-2; full-suite validation after freeing disk space |
+| Status | 🔄 Ready for owner review |
+| Branch | feature/live-dashboard |
+
+---
+
+## AW-1 — Entry readiness indicator (approved)
 
 | | |
 |---|---|
@@ -23,8 +46,8 @@ status updated on approval.
 | Risks discovered | A price-in-zone chip can be mistaken for an instruction if copy is too strong. The title text therefore keeps broker confirmation/manual action language, and non-current plans never show an actionable state |
 | Technical debt introduced | None |
 | Suggested improvements | AW-2 should add saved-symbol validation and result reporting with report popups disabled for Decision-detail revalidation |
-| Remaining work | Owner review of AW-1; full-suite validation after freeing disk space |
-| Status | 🔄 Ready for owner review |
+| Remaining work | Full-suite validation after freeing disk space |
+| Status | ✅ Approved (2026-07-30) |
 | Branch | feature/live-dashboard |
 
 ---
