@@ -89,6 +89,38 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-14);
+    transition: gap var(--transition-speed) ease;
+}
+
+/* TP-1 owner review fix: the detail pane should start with full advisory
+   context, then become a compact cockpit once the user scrolls into the
+   Trade Plan content. This keeps the symbol, live price, status, CTA, and
+   tab navigation visible without permanently consuming the reading area. */
+.decision-brief-header.is-compact {
+    gap: var(--space-8);
+}
+
+.decision-brief-header.is-compact .decision-brief-meta-row,
+.decision-brief-header.is-compact #decision-brief-gauges,
+.decision-brief-header.is-compact #decision-summary-card {
+    display: none;
+}
+
+.decision-brief-header.is-compact .decision-actionability-banner {
+    grid-template-columns: 22px minmax(0, 1fr) auto;
+    padding: var(--space-7) var(--space-10);
+}
+
+.decision-brief-header.is-compact .decision-actionability-detail {
+    display: none;
+}
+
+.decision-brief-header.is-compact .decision-actionability-label {
+    font-size: var(--text-0-58);
+}
+
+.decision-brief-header.is-compact .decision-actionability-status {
+    font-size: var(--text-0-8);
 }
 
 .decision-brief-header-row1 {
@@ -554,7 +586,7 @@
 
 .decision-actionability-banner {
     display: grid;
-    grid-template-columns: 24px minmax(0, 1fr);
+    grid-template-columns: 24px minmax(0, 1fr) auto;
     align-items: center;
     gap: var(--space-10);
     border: 1px solid rgba(148, 163, 184, 0.2);
@@ -635,6 +667,73 @@
     font-size: var(--text-0-78);
     line-height: 1.35;
     margin: var(--space-2) 0 0;
+}
+
+.decision-actionability-cta {
+    justify-self: end;
+    white-space: nowrap;
+}
+
+.trade-playbook-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-10);
+}
+
+.trade-playbook-rule {
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    border-radius: 8px;
+    background: rgba(15, 23, 42, 0.35);
+    padding: var(--space-10);
+}
+
+.trade-playbook-rule strong {
+    display: block;
+    color: var(--text-primary);
+    font-size: var(--text-0-78);
+    margin-bottom: var(--space-4);
+}
+
+.trade-playbook-rule span {
+    color: var(--text-secondary);
+    display: block;
+    font-size: var(--text-0-75);
+    line-height: 1.4;
+}
+
+.trade-playbook-status {
+    border-left: 3px solid var(--tone-info-solid);
+    color: var(--text-secondary);
+    font-size: var(--text-0-78);
+    line-height: 1.45;
+    margin: 0 0 var(--space-10);
+    padding: var(--space-8) var(--space-10);
+    background: rgba(56, 189, 248, 0.06);
+}
+
+.trade-playbook-status.blocked {
+    border-left-color: var(--tone-bad-solid);
+    background: rgba(239, 68, 68, 0.08);
+}
+
+.trade-playbook-status.review {
+    border-left-color: var(--tone-warn-solid);
+    background: rgba(245, 158, 11, 0.08);
+}
+
+@media (max-width: 1200px) {
+    .decision-actionability-banner {
+        grid-template-columns: 24px minmax(0, 1fr);
+    }
+
+    .decision-actionability-cta {
+        grid-column: 2;
+        justify-self: start;
+    }
+
+    .trade-playbook-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 /* DT-3 refinement: Recommendation tile merged into the gauges row — same

@@ -186,6 +186,7 @@
             renderPlanFreshnessBadge(activePlanFreshness);
             renderDecisionActionability(activePlanFreshness);
             renderSidebarQuickSummary();
+            refreshTradePlaybook(activePlanFreshness);
             refreshActiveDecisionChart();
         } catch (err) {
             if (activeDecisionId !== decisionId) return;

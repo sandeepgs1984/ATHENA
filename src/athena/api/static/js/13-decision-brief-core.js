@@ -12,6 +12,7 @@
     const decisionBriefLivePriceValue = document.getElementById("decision-brief-live-price-value");
     const decisionBriefLivePriceChange = document.getElementById("decision-brief-live-price-change");
     const decisionBriefBody = document.getElementById("decision-brief-body");
+    const decisionBriefHeader = document.querySelector(".decision-brief-header");
     const decisionBriefGauges = document.getElementById("decision-brief-gauges");
     const decisionBriefTabstrip = document.getElementById("decision-brief-tabstrip");
     const decisionBriefRevalidateHeader = document.getElementById("decision-brief-revalidate-header");
@@ -167,6 +168,18 @@
         }
     });
 
+    function updateDecisionBriefHeaderDensity() {
+        const isCompact = Boolean(decisionBriefBody && decisionBriefBody.scrollTop > 16);
+        decisionBriefHeader?.classList.toggle("is-compact", isCompact);
+    }
+
+    function resetDecisionBriefHeaderDensity() {
+        if (decisionBriefBody) decisionBriefBody.scrollTop = 0;
+        decisionBriefHeader?.classList.remove("is-compact");
+    }
+
+    decisionBriefBody?.addEventListener("scroll", updateDecisionBriefHeaderDensity, { passive: true });
+
     // Owner reference-mock: secondary actions (Dismiss today/Remove
     // candidate/Export/News) consolidated behind a "more" popover instead of
     // cluttering the action bar — same toggle/backdrop-click/Escape pattern
@@ -264,6 +277,7 @@
     });
 
     function renderDecisionBriefEmpty(title, detail) {
+        resetDecisionBriefHeaderDensity();
         if (decisionBriefTitle) {
             decisionBriefTitle.textContent = "Select a symbol";
             decisionBriefTitle.title = "";
@@ -532,6 +546,7 @@
                 pulse: `${symbol ? `${symbol} · ` : ""}expired${
                     expiredLabel ? ` ${expiredLabel} ago` : ""
                 } · re-validate`,
+                cta: "Re-validate plan",
                 priority: 2,
             };
         }
@@ -545,6 +560,7 @@
                 pulse: marketClosed
                     ? `${symbol ? `${symbol} · ` : ""}review mode · plan stale`
                     : `${symbol ? `${symbol} · ` : ""}plan stale · confirm first`,
+                cta: "Re-validate plan",
                 priority: 2,
             };
         }
@@ -554,6 +570,7 @@
                 status: "Review mode · market closed",
                 detail: `${sessionMessage}. Review the thesis only; confirm live quote and re-validate before entry.`,
                 pulse: `${symbol ? `${symbol} · ` : ""}review mode · market closed`,
+                cta: "Re-check at open",
                 priority: 1,
             };
         }
@@ -563,6 +580,7 @@
                 status: "Plan aging",
                 detail: `TradePlan expires${remainingLabel ? ` in ${remainingLabel}` : " this session"}. Confirm live quote before entry.`,
                 pulse: `${symbol ? `${symbol} · ` : ""}expires in ${remainingLabel || "this session"}`,
+                cta: "Refresh thesis",
                 priority: 1,
             };
         }
@@ -571,6 +589,7 @@
             status: "Plan valid",
             detail: `TradePlan is valid${remainingLabel ? ` for ${remainingLabel}` : ""}. ATHENA is advisory only; confirm live quote before manual action.`,
             pulse: `${symbol ? `${symbol} · ` : ""}plan valid${remainingLabel ? ` ${remainingLabel}` : ""}`,
+            cta: "Refresh thesis",
             priority: 1,
         };
     }
@@ -594,12 +613,95 @@
         if (decisionActionabilityLabel) decisionActionabilityLabel.textContent = "Advisor status";
         if (decisionActionabilityStatus) decisionActionabilityStatus.textContent = view.status;
         if (decisionActionabilityDetail) decisionActionabilityDetail.textContent = view.detail;
+        if (decisionBriefRevalidateHeader) {
+            const label = decisionBriefRevalidateHeader.querySelector("span");
+            if (label) label.textContent = view.cta || "Re-validate plan";
+            decisionBriefRevalidateHeader.title = view.cta || "Re-validate this symbol";
+        }
         if (typeof clearAdvisorPulsePriority === "function" && view.priority <= 1) {
             clearAdvisorPulsePriority(2);
         }
         if (typeof setAdvisorPulse === "function") {
             setAdvisorPulse(view.pulse, view.tone, view.priority);
         }
+    }
+
+    function renderTradePlaybook(decision, freshness = null) {
+        const plan = decision && decision.trade_plan;
+        const meta = decision && decision.metadata ? decision.metadata : {};
+        const status = String(freshness && freshness.status || "").toUpperCase();
+        const session = state && state.marketSession ? state.marketSession : null;
+        const marketClosed = session && session.is_market_open === false;
+        const historical = decisionHasHistoricalTradePlan(decision, freshness);
+        const validLike = decisionHasCurrentActionableTradePlan(decision, freshness);
+        const statusClass = historical ? "blocked" : (marketClosed || status === "STALE" ? "review" : "");
+        const statusText = historical
+            ? "This plan is old. Do not use these entry, stop, or target prices until ATHENA checks the symbol again."
+            : marketClosed
+                ? "Market is closed. Review only; check again after the market opens."
+                : validLike
+                    ? "Use these steps before taking any manual trade."
+                    : "There is no current trade plan for this symbol.";
+        const entryText = plan
+            ? "Enter only if the live price is inside the entry zone and the plan is still valid."
+            : "Do not enter; ATHENA has not given an entry zone.";
+        const stopText = plan
+            ? "If price reaches the stop, the setup has failed. Exit manually."
+            : "There is no stop price without a trade plan.";
+        const targetText = plan
+            ? "Use the first target as the planned profit area. Do not make up extra targets."
+            : "There is no target price without a trade plan.";
+        const noFillText = plan
+            ? "If price never reaches the entry zone before the plan expires, skip the trade."
+            : "If there is no plan, wait until ATHENA checks the symbol again.";
+        const closeText = "For intraday trading, do not treat this as an overnight hold. Review or exit before market close unless you have a separate swing plan.";
+        const recheckText = marketClosed
+            ? "Check again after the market opens before any entry."
+            : "Check again after expiry, stale price data, a large price move, or a broad market change.";
+        return `
+            <section class="decision-brief-section trade-playbook-section" id="trade-playbook-section">
+                <div class="decision-brief-section-header">
+                    <h4>Trading steps</h4>
+                    <span class="trade-plan-label">Manual advisory workflow</span>
+                </div>
+                <p class="trade-playbook-status ${statusClass}">${escapeDecisionHtml(statusText)}</p>
+                <div class="trade-playbook-grid">
+                    <div class="trade-playbook-rule">
+                        <strong>1. Entry</strong>
+                        <span>${escapeDecisionHtml(entryText)}</span>
+                    </div>
+                    <div class="trade-playbook-rule">
+                        <strong>2. Stop</strong>
+                        <span>${escapeDecisionHtml(stopText)}</span>
+                    </div>
+                    <div class="trade-playbook-rule">
+                        <strong>3. Target</strong>
+                        <span>${escapeDecisionHtml(targetText)}</span>
+                    </div>
+                    <div class="trade-playbook-rule">
+                        <strong>4. No fill</strong>
+                        <span>${escapeDecisionHtml(noFillText)}</span>
+                    </div>
+                    <div class="trade-playbook-rule">
+                        <strong>5. End of day</strong>
+                        <span>${escapeDecisionHtml(closeText)}</span>
+                    </div>
+                    <div class="trade-playbook-rule">
+                        <strong>6. Re-check</strong>
+                        <span>${escapeDecisionHtml(recheckText)}</span>
+                    </div>
+                </div>
+            </section>
+        `;
+    }
+
+    function refreshTradePlaybook(freshness = null) {
+        const host = document.getElementById("trade-playbook-section");
+        if (!host || !activeDecisionData) return;
+        host.outerHTML = renderTradePlaybook(
+            activeDecisionData,
+            freshness || decisionTradePlanFreshness(activeDecisionData)
+        );
     }
 
     function renderDecisionBrief(decision) {
@@ -741,6 +843,8 @@
                         <i class="fa-solid fa-circle-notch fa-spin"></i> Loading persisted assessment…
                     </div>
                 </section>
+
+                ${renderTradePlaybook(decision, decisionTradePlanFreshness(decision))}
 
                 ${renderTradePlan(decision.trade_plan, meta.decision_type, meta.direction, decisionTradePlanFreshness(decision))}
 
@@ -969,15 +1073,15 @@
         // Selecting a symbol resets only the center detail panel to the top —
         // the left symbol list and right Reasoning Trace panel keep whatever
         // scroll position they were already at (owner requirement).
-        if (decisionBriefBody) decisionBriefBody.scrollTop = 0;
+        resetDecisionBriefHeaderDensity();
 
         // Load selected instrument brief and its independent reasoning trace.
         loadDecisionDetail(decisionId);
         loadDecisionTrace(decisionId);
     }
 
-    // Header Re-validate — always visible next to the "as of" timestamp,
-    // rather than buried at the bottom of the brief (owner feedback).
+    // Symbol Re-validate now lives inside Advisor Status, where the stale /
+    // expired / review-mode reason is shown next to the corrective action.
     function setHeaderRevalidateEnabled(enabled) {
         if (!decisionBriefRevalidateHeader) return;
         decisionBriefRevalidateHeader.disabled = !enabled;

@@ -322,6 +322,49 @@ current-action-board contract for the left rail.
 
 ---
 
+### Intraday Advisor UX track (owner direction, 2026-07-30)
+
+Turns ATHENA's intraday recommendation surface into an explicit manual trading
+workflow. Presentation-only unless a later milestone states an additive
+read-only API need. This track does not change scoring, risk, decision policy,
+TradePlan values, providers, frozen domain contracts, or broker behavior.
+Governing plan: `docs/design/ATHENA-INTRADAY-ADVISOR-UX-ROADMAP.md`.
+
+| Milestone | Scope | Gate | Status |
+|---|---|---|---|
+| **TP-1** Trade Playbook foundation | Move symbol revalidation into Advisor Status; add selected-symbol Trading Steps with entry/stop/target/no-fill/expiry/close/revalidation rules | Owner review after UX/test evidence | 🔄 Ready for review |
+| **TP-2** Current Board controls | Add Re-validate Visible for current-board symbols with progress/result summary | Owner review; must not validate hidden historical rows | ⏳ Planned |
+| **TP-3** Top Current Setups | Add top 10 current valid/aging setups sorted by existing score/confidence/risk/return data | Owner review; no expired/stale/no-plan rows | ⏳ Planned |
+| **TP-4** Intraday SOP surface | Add persistent intraday SOP/help surface for day workflow and manual execution boundaries | Owner review | ⏳ Planned |
+
+**Implementation rule:** one TP milestone at a time. TP must never create order
+placement, broker write actions, new signals, or changes to ATHENA's analytical
+engines.
+
+#### TP-1 — trade playbook foundation (ready for review, 2026-07-30)
+
+Scope completed: symbol-specific `Re-validate` moved from the generic
+Decision Brief header into Advisor Status, where the stale/expired/review-mode
+reason is visible next to the corrective action. The setup tab now includes a
+Trading Steps panel before TradePlan levels, covering entry, stop, target,
+no-fill, end-of-day, and re-check rules. The panel adapts wording for current
+plans, market-closed review mode, and expired historical plans without
+changing ATHENA's underlying recommendation or persisted TradePlan values.
+Owner-review usability pass added a scroll-aware compact cockpit: when the
+selected-symbol detail pane scrolls, the sticky header collapses non-essential
+context while keeping symbol, live price, Advisor Status, corrective action,
+and tab navigation visible.
+
+Architectural note: TP-1 is presentation-only over existing Decision,
+TradePlan, freshness, quote/session, and validation state. It does not add
+orders, broker write actions, new signals, scoring/risk/decision changes, or
+domain/API contract changes.
+
+Validation note: focused dashboard hosting checks pass. The full suite remains
+deferred locally until the live DB/storage pressure is cleaned up.
+
+---
+
 ### Intraday Edge Program (post M-D4, owner direction 2026-07-25)
 
 AI-driven roadmap toward a "no compromise" world-class intraday analyzer.

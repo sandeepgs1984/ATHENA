@@ -6,6 +6,29 @@ status updated on approval.
 
 ---
 
+## TP-1 — Trade playbook foundation (ready for review)
+
+| | |
+|---|---|
+| Completed | 2026-07-30 |
+| Objective | Make the selected symbol's intraday manual-trading steps clear before the owner reads price levels |
+| Scope | Added the Intraday Advisor UX roadmap; registered the TP track in `docs/MILESTONES.md`; moved symbol-specific Re-validate from the generic Decision Brief header into Advisor Status; added a plain-language Trading Steps panel before TradePlan levels; covered entry, stop, target, no-fill, end-of-day, and re-check rules; refreshed the playbook after authoritative plan-freshness data loads; added a scroll-aware compact cockpit so the sticky header frees reading space after the selected-symbol detail pane scrolls; bumped dashboard cache-busters |
+| Files created | `docs/design/ATHENA-INTRADAY-ADVISOR-UX-ROADMAP.md` |
+| Files modified | `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md`, `src/athena/api/static/index.html`, `src/athena/api/static/css/09-decision-brief-shell.css`, `src/athena/api/static/js/13-decision-brief-core.js`, `src/athena/api/static/js/14-decision-brief-analysis.js`, `tests/api/platform/test_dashboard_hosting.py` |
+| Public APIs added | None |
+| Tests | `rtk node --check src/athena/api/static/js/13-decision-brief-core.js` — passed; `rtk node --check src/athena/api/static/js/14-decision-brief-analysis.js` — passed; `rtk pytest tests/api/platform/test_dashboard_hosting.py -q` — 4 passed |
+| Coverage | Dashboard hosting tests lock the Advisor Status CTA location, removed header revalidate, Trading Steps renderer, playbook refresh after `/plan-freshness`, plain-language entry/no-fill/end-of-day rules, scroll-aware compact cockpit selectors/wiring, and `9.91.0` asset cache-busters |
+| Architecture compliance | Presentation-only. No provider, broker, order, scoring, confidence, risk, decision-policy, TradePlan value, schema, or frozen domain contract changes |
+| ADR compliance | ADR-004 preserved: static HTML/CSS/vanilla JS. ADR-005 preserved: the playbook renders guidance around existing Decision/TradePlan/freshness/session state and does not fabricate levels, signals, or rationale |
+| Risks discovered | Trading instructions can become too technical if they mirror internal names. TP roadmap now requires normal-audience copy and avoids terms like pipeline, persisted artifact, validation cycle, and thesis in visible playbook/SOP text |
+| Technical debt introduced | None |
+| Suggested improvements | TP-2 should add current-board revalidation controls only after the selected-symbol playbook is owner-reviewed |
+| Remaining work | Owner review of TP-1; full-suite validation after freeing disk space |
+| Status | 🔄 Ready for owner review |
+| Branch | feature/live-dashboard |
+
+---
+
 ## AS-4 — Advisor status release gate (approved)
 
 | | |

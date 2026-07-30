@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.89.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.91.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -770,9 +770,6 @@
                                                 <span id="decision-brief-live-price-change" class="decision-brief-live-price-change"></span>
                                             </div>
                                             <span id="decision-brief-asof" class="decision-brief-asof">Select a symbol</span>
-                                            <button id="decision-brief-revalidate-header" class="btn btn-outline btn-sm" type="button" title="Re-validate this symbol" disabled>
-                                                <i class="fa-solid fa-arrows-rotate"></i> Re-validate
-                                            </button>
                                             <!-- Owner screenshot follow-up: Market Intelligence dropped
                                                  entirely (redundant with the sidebar nav item of the same
                                                  name); Open Chart/Compare relocated here as icon-only buttons
@@ -882,6 +879,9 @@
                                             <strong id="decision-actionability-status" class="decision-actionability-status">Review required</strong>
                                             <p id="decision-actionability-detail" class="decision-actionability-detail"></p>
                                         </div>
+                                        <button id="decision-brief-revalidate-header" class="btn btn-outline btn-sm decision-actionability-cta" type="button" title="Re-validate this symbol" disabled>
+                                            <i class="fa-solid fa-arrows-rotate"></i> <span>Re-validate plan</span>
+                                        </button>
                                     </div>
                                     <div class="decision-brief-tabstrip" id="decision-brief-tabstrip" hidden>
                                         <button class="brief-tab active" data-brief-tab="setup" type="button"><i class="fa-solid fa-route"></i> <span>Trade Plan</span></button>
@@ -1295,6 +1295,6 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.89.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.91.0"></script>
 </body>
 </html>

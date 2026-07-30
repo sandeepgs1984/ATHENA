@@ -200,8 +200,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.89.0" in html
-    assert "dashboard.js?v=9.89.0" in html
+    assert "dashboard.css?v=9.91.0" in html
+    assert "dashboard.js?v=9.91.0" in html
     assert 'id="advisor-pulse"' in html
     assert 'id="header-diagnostics-popover"' in html
     assert 'id="decision-actionability-banner"' in html
@@ -426,6 +426,21 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "function computeTradePlanLevelPct" in js
     assert "function renderTradePlanLevel" in js
     assert "function formatTradePlanValidityPeriod" in js
+    assert "function renderTradePlaybook" in js
+    assert "function refreshTradePlaybook" in js
+    assert "Trading steps" in js
+    assert "Manual advisory workflow" in js
+    assert "Enter only if the live price is inside the entry zone" in js
+    assert "If price never reaches the entry zone before the plan expires" in js
+    assert "do not treat this as an overnight hold" in js
+    assert "function updateDecisionBriefHeaderDensity" in js
+    assert "decisionBriefBody?.addEventListener(\"scroll\", updateDecisionBriefHeaderDensity" in js
+    assert "resetDecisionBriefHeaderDensity()" in js
+    assert "refreshTradePlaybook(activePlanFreshness)" in js
+    render_brief_start = js.find("function renderDecisionBrief(decision)")
+    render_brief_end = js.find("\n    // ", render_brief_start + 1)
+    render_brief_body = js[render_brief_start:render_brief_end]
+    assert render_brief_body.find("renderTradePlaybook") < render_brief_body.find("renderTradePlan")
     assert "Valid for" in js
     assert "trade-plan-validity-window" in js
     assert "trade-plan-level-delta ${tone}" in js
@@ -436,6 +451,10 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".trade-plan-hero-value" in css
     assert ".trade-plan-validity-window" in css
     assert ".trade-plan-level-delta.stop" in css
+    assert ".decision-brief-header.is-compact" in css
+    assert ".decision-brief-header.is-compact #decision-brief-gauges" in css
+    assert ".decision-brief-header.is-compact #decision-summary-card" in css
+    assert ".decision-brief-header.is-compact .decision-actionability-detail" in css
     assert ".trade-plan-level-delta.target" in css
 
     # UX-3b: chart ATR/moving-average/volume overlay — plotted from the
@@ -659,12 +678,16 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "function decisionAccuracyLabel" in js
     assert ".outcome-accuracy-badge" in css
 
-    # Re-validate moved to the Decision Brief header — always visible, not buried
-    # at the bottom of the brief (owner feedback: "no idea of where it exists")
-    assert 'id="decision-brief-revalidate-header"' in html
+    # TP-1: symbol revalidation belongs in Advisor Status, next to the reason
+    # it is needed, not in the generic header action row.
+    actionability_start = html.find('id="decision-actionability-banner"')
+    actionability_end = html.find('id="decision-brief-tabstrip"', actionability_start)
+    actionability_html = html[actionability_start:actionability_end]
+    assert 'id="decision-brief-revalidate-header"' in actionability_html
+    assert "Re-validate plan" in actionability_html
     assert 'id="decision-brief-revalidate"' not in js
     assert "function setHeaderRevalidateEnabled" in js
-    assert ".decision-brief-header-actions" in css
+    assert ".decision-actionability-cta" in css
     assert ".btn-sm" in css
 
     # Owner-reported: with no decision selected, Open Chart/Compare/the
@@ -1449,11 +1472,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     # Owner screenshot follow-up (2026-07-27): Market Intelligence dropped
     # entirely (redundant with the sidebar nav item of the same name — no
     # button anywhere replaces it); Open Chart/Compare relocated as icon-
-    # only buttons next to Re-validate ("icons are also sufficient" per the
-    # owner) instead of full-width labeled buttons in a dedicated action
-    # bar — same ids/click handlers, so nothing needed rewiring except the
-    # container. The action bar itself is gone (it held only these 3
-    # buttons), a further real vertical-space win.
+    # only buttons in the header. TP-1 later moved symbol Re-validate into
+    # Advisor Status, so the header remains display/system actions only.
     assert 'id="decision-brief-actionbar"' not in html
     assert 'id="decision-brief-market"' not in html
     assert "function switchTab" in js  # still used pervasively elsewhere
@@ -1462,6 +1482,7 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     header_actions_body = html[header_actions_start:header_actions_end]
     assert 'id="decision-brief-open-chart"' in header_actions_body
     assert 'id="decision-brief-compare"' in header_actions_body
+    assert 'id="decision-brief-revalidate-header"' not in header_actions_body
     assert ">Open Chart<" not in header_actions_body  # icon-only, no label
     assert ">Compare<" not in header_actions_body
     assert ".header-icon-btn" in css
