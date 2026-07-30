@@ -735,6 +735,24 @@
     display: flex;
     align-items: center;
     gap: var(--space-8);
+    flex-wrap: wrap;
+}
+
+.qualified-row-top .symbol-name-col {
+    flex: 1 1 140px;
+}
+
+.qualified-row-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-8);
+    margin-left: auto;
+}
+
+.qualified-row-actions .inspect-btn {
+    min-height: 28px;
+    padding: var(--space-5) var(--space-8);
+    white-space: nowrap;
 }
 
 .qualified-summary {

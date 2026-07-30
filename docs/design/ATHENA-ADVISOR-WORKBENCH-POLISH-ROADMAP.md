@@ -102,6 +102,16 @@ Acceptance:
 - The detail view remains useful after scoped single-symbol validations.
 - No stage, blocker, or symbol detail is fabricated.
 
+Implementation note: AW-3 groups blockers only from existing
+`exclusion_reasons` / `eligibility_summary` values in loaded validation rows.
+When older payloads do not carry reason detail, the workbench must say the data
+is unavailable instead of inventing a blocker.
+
+Owner review note: report and workbench `Open decision` actions must only be
+enabled for symbols that have a current Decisions row. Excluded/no-current
+validation outcomes keep the action visibly disabled; valid rows use strict
+symbol selection before the previously active decision, without a fallback row.
+
 ### AW-4 — Advisor Workbench Visual QA
 
 **Goal:** Verify the complete Decisions + Market Intelligence workflow as a

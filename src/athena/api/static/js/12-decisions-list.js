@@ -90,7 +90,7 @@
             allTraceDecisionsList = raw;
             // Latest decision per instrument for "Today's Decisions" (avoid duplicate cards)
             traceDecisionsList = latestDecisionPerInstrument(raw);
-            applyDecisionsView(options);
+            return applyDecisionsView(options);
         } catch (err) {
             console.error("Failed to load decisions", err);
             if (decisionsCarouselContainer) {
@@ -100,6 +100,7 @@
                 dagNodesContainer.innerHTML = '<div class="text-muted text-center" style="padding: 48px;">Decision trace unavailable until briefings load.</div>';
             }
             showToast("Failed to load decisions workspace", "danger");
+            return null;
         }
     }
 
@@ -286,9 +287,18 @@
 
         renderDecisionCarousels(rows);
         if (rows.length > 0) {
-            let next = preferDecisionId
-                ? rows.find(d => d.metadata && d.metadata.decision_id === preferDecisionId)
-                : null;
+            let next = null;
+            if (preferInstrumentId && options.strictPreferInstrumentId) {
+                next = rows.find(d => {
+                    const instrument = String(d.metadata && d.metadata.instrument_id || "")
+                        .toUpperCase()
+                        .replace(/^NSE:|^BSE:/, "");
+                    return instrument === preferInstrumentId;
+                });
+            }
+            if (!next && preferDecisionId) {
+                next = rows.find(d => d.metadata && d.metadata.decision_id === preferDecisionId);
+            }
             if (!next && preferInstrumentId) {
                 next = rows.find(d => {
                     const instrument = String(d.metadata && d.metadata.instrument_id || "")
@@ -296,6 +306,13 @@
                         .replace(/^NSE:|^BSE:/, "");
                     return instrument === preferInstrumentId;
                 });
+            }
+            if (preferInstrumentId && options.strictPreferInstrumentId && !next) {
+                renderDecisionBriefEmpty(
+                    "No current decision",
+                    `${preferInstrumentId} is not available in the current Decisions list.`
+                );
+                return null;
             }
             // Default selection follows outcome priority (Trade -> Watch ->
             // No trade -> everything else), never plain recency, matching the
@@ -305,10 +322,12 @@
                 rows[0]
             );
             selectBriefing(fallback.metadata.decision_id);
+            return fallback;
         } else if (dagNodesContainer) {
             dagNodesContainer.innerHTML = '<div class="text-muted text-center" style="padding: 48px;">No decisions match the current filters.</div>';
             renderDecisionBriefEmpty("No visible decision", "Restore dismissed symbols or change the filters.");
         }
+        return null;
     }
 
     function boardSymbolFromInstrument(value) {

@@ -8,7 +8,7 @@
     // Intelligence — one component/endpoint, not two.
     const TICKER_TABS = new Set(["decisions", "market"]);
 
-    function switchTab(tabId) {
+    function switchTab(tabId, options = {}) {
         state.activeTab = tabId;
 
         // 1. Toggle Active Nav Link
@@ -50,6 +50,9 @@
         // 3. Trigger API data loading for specific tab
         if (tabId !== "operations") {
             stopOpsStream();
+        }
+        if (options.skipLoad) {
+            return Promise.resolve();
         }
         return loadTabData(tabId);
     }

@@ -363,6 +363,26 @@ domain/API contract changes.
 Validation note: focused dashboard hosting checks pass. The full suite remains
 deferred locally until the live DB/storage pressure is cleaned up.
 
+Owner screenshot fix: the main card summary was reduced from three cramped
+mini-cards to a single compact status strip; blocker text on the card now uses a
+short plain label while preserving exact rule evidence inside the modal; the
+workbench modal explicitly overrides the shared 600px modal cap, resets to
+Overview, and scrolls to the top every time View Details opens.
+
+Second owner screenshot fix: Qualified Today rows no longer render duplicate
+decision chips (`TRADE TRADE`). Each row now shows one decision chip plus Open
+decision and Save/Saved actions, using the existing deterministic Decisions
+selection flow and Saved Symbols service.
+
+Third owner screenshot fix: the next-action summary now spans the full
+Validation Pipeline card width and wraps normally, avoiding the clipped
+`Review 177 current T...` state.
+
+Fourth owner fix: Open decision now clears Decisions filters, uses a strict
+symbol-selection load, and refuses to silently fall back to another symbol.
+Validation reports disable Open decision when the latest validation outcome has
+no current decision row to open, including Excluded outcomes.
+
 #### TP-2 — current board controls (ready for review, 2026-07-30)
 
 Scope completed: the Decisions left rail now includes a `Re-validate visible`
@@ -467,8 +487,8 @@ domain contracts, or broker behavior. Governing plan:
 | Milestone | Scope | Gate | Status |
 |---|---|---|---|
 | **AW-1** Entry Readiness Indicator | Compare selected live price with persisted TradePlan entry zone and show whether entry is ready, waiting, chasing, or unavailable | Owner review; no new recommendation logic | ✅ Approved |
-| **AW-2** Saved Symbol Validation and Result Report | Add Saved Symbols validate action and a single-symbol validation report modal for Market Intelligence callers only | Owner review; Decision-detail revalidation must stay inline | 🔄 Ready for review |
-| **AW-3** Validation Pipeline Workbench | Revamp the Validation Pipeline card and detail modal into a daily-use validation diagnostic workbench | Owner review; no fabricated blocker data | ⏳ Planned |
+| **AW-2** Saved Symbol Validation and Result Report | Add Saved Symbols validate action and a single-symbol validation report modal for Market Intelligence callers only | Owner review; Decision-detail revalidation must stay inline | ✅ Approved |
+| **AW-3** Validation Pipeline Workbench | Revamp the Validation Pipeline card and detail modal into a daily-use validation diagnostic workbench | Owner review; no fabricated blocker data | 🔄 Ready for review |
 | **AW-4** Advisor Workbench Visual QA | Screenshot/interaction QA across Decisions and Market Intelligence workbench paths | Owner review | ⏳ Planned |
 
 **Implementation rule:** one AW milestone at a time. AW must never create order
@@ -518,6 +538,42 @@ Architectural note: AW-2 is frontend presentation/orchestration over existing
 validation, saved-symbol, universe, decision, and trace data. It adds no broker
 write action, no order placement, no analytical-engine change, no TradePlan
 value change, no backend endpoint, and no new recommendation logic.
+
+Validation note: focused dashboard hosting checks pass. The full suite remains
+deferred locally until the live DB/storage pressure is cleaned up.
+
+#### AW-3 — validation pipeline workbench (ready for review, 2026-07-30)
+
+Scope completed: the Market Intelligence Validation Pipeline card now includes
+an operational summary below the funnel: latest run status/time, top blocker,
+and next action. The detail modal is now a workbench with Overview, Blockers,
+Symbols, and Runs sections. Overview summarizes today's conversion and next
+action; Blockers groups real exclusion reasons from the loaded universe rows;
+Symbols preserves the existing eligible/excluded table and Qualified Today
+list; Runs shows recent validation run status/time.
+
+Owner review fix: validation-report `Open decision` now enables only when the
+symbol has a current, openable Decisions row. Excluded/no-current reports show a
+visibly disabled action instead of a dead click. The Decisions handoff now
+activates the tab without an extra fallback load, and
+`loadDecisionsWorkspace()` returns the strictly selected row so valid symbols no
+longer show a false "not in current Decisions list" warning.
+
+Follow-up owner fix: strict symbol opens now select by requested symbol before
+considering the previously active `decision_id`. This prevents a report opened
+from Market Intelligence from switching tabs but leaving the old selected symbol
+in the Decision Brief.
+
+Data boundary: AW-3 uses the existing `/api/v1/pipelines/validation-funnel`,
+`/api/v1/pipelines/runs`, merged current-day `universe_members`,
+`qualified_today`, and run metadata only. Top blockers are derived only from
+persisted `exclusion_reasons` or `eligibility_summary`; if those are absent,
+the UI says blocker data is unavailable. No blocker, stage, or symbol outcome is
+fabricated.
+
+Architectural note: AW-3 is frontend presentation/orchestration only. It adds no
+broker write action, no order placement, no analytical-engine change, no
+TradePlan value change, no backend endpoint, and no new validation logic.
 
 Validation note: focused dashboard hosting checks pass. The full suite remains
 deferred locally until the live DB/storage pressure is cleaned up.

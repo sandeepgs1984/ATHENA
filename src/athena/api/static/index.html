@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.97.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.104.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -432,6 +432,19 @@
                                 <div class="card-body validation-card-body">
                                     <div id="validation-funnel" class="validation-funnel validation-funnel-vertical" aria-live="polite">
                                         <div class="text-muted">Loading funnel…</div>
+                                    </div>
+                                    <div id="validation-workbench-summary" class="validation-workbench-summary" aria-live="polite">
+                                        <div class="validation-workbench-summary-item">
+                                            <span>Latest</span>
+                                            <strong>Loading…</strong>
+                                        </div>
+                                        <div class="validation-workbench-summary-item">
+                                            <span>Blocker</span>
+                                            <strong>Loading…</strong>
+                                        </div>
+                                        <div class="validation-workbench-summary-action">
+                                            Loading…
+                                        </div>
                                     </div>
                                     <div class="validation-funnel-footer">
                                         <span id="validation-funnel-asof" class="validation-funnel-updated text-muted"></span>
@@ -1138,52 +1151,97 @@
         </div>
     </div>
 
-    <!-- MI-3 polish: Validation Pipeline details live in a modal so expanding
-         Eligible/Excluded never forces the Market Intelligence column to scroll. -->
+    <!-- AW-3: Validation Pipeline details live in a workbench modal so the
+         owner can inspect conversion, blockers, symbols, and recent runs
+         without reading raw run payloads. -->
     <div id="validation-funnel-modal" class="modal-overlay" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="validation-funnel-modal-title">
         <div class="modal-container validation-funnel-modal-container">
             <div class="modal-header">
-                <h3 id="validation-funnel-modal-title">Validation Pipeline — Details</h3>
+                <h3 id="validation-funnel-modal-title">Validation Pipeline — Workbench</h3>
                 <button id="validation-funnel-modal-close" class="modal-close-btn" type="button" aria-label="Close validation details">&times;</button>
             </div>
             <div class="modal-body validation-funnel-modal-body">
-                <div class="card-header" style="padding: 0; margin-bottom: 8px;">
-                    <h3 style="font-size: 1rem; margin: 0;">Eligible / Excluded (this cycle)</h3>
-                </div>
-                <div class="universe-inspector-body">
-                    <div class="search-bar-container">
-                        <i class="fas fa-search search-icon"></i>
-                        <input type="text" id="universe-search" placeholder="Filter validation results..." />
+                <div id="validation-workbench-overview" class="validation-workbench-overview">
+                    <div class="validation-workbench-tile">
+                        <span>Latest run</span>
+                        <strong id="validation-workbench-latest">Loading…</strong>
+                        <small id="validation-workbench-latest-meta"></small>
                     </div>
-                    <div class="universe-table-wrapper validation-results-scroll">
-                        <table class="universe-table">
-                            <thead>
-                                <tr>
-                                    <th>Symbol</th>
-                                    <th>Status</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody id="universe-list-body">
-                                <tr>
-                                    <td colspan="3" class="text-muted text-center" style="padding: 24px;">Loading universe members...</td>
-                                </tr>
-                            </tbody>
-                        </table>
+                    <div class="validation-workbench-tile">
+                        <span>Conversion</span>
+                        <strong id="validation-workbench-conversion">Loading…</strong>
+                        <small id="validation-workbench-conversion-meta"></small>
+                    </div>
+                    <div class="validation-workbench-tile">
+                        <span>Top blocker</span>
+                        <strong id="validation-workbench-top-blocker">Loading…</strong>
+                        <small id="validation-workbench-top-blocker-meta"></small>
                     </div>
                 </div>
 
-                <div class="qualified-section">
-                    <div class="card-header" style="padding: 0; margin-bottom: 8px;">
-                        <h3 style="font-size: 1rem; margin: 0;">Qualified Today (WATCH / TRADE)</h3>
-                    </div>
-                    <p class="text-muted" style="font-size: 0.8rem; margin-bottom: 8px;">
-                        Only Eligible names that cleared scoring thresholds.
-                    </p>
-                    <div id="qualified-today-body" class="text-muted text-center" style="padding: 12px 0; font-size: 0.85rem;">
-                        No qualified names yet.
-                    </div>
+                <div id="validation-workbench-next-action" class="validation-workbench-next-action">
+                    Loading next action…
                 </div>
+
+                <div class="validation-workbench-tabs" role="tablist" aria-label="Validation workbench sections">
+                    <button type="button" class="validation-workbench-tab is-active" data-validation-workbench-tab="overview">Overview</button>
+                    <button type="button" class="validation-workbench-tab" data-validation-workbench-tab="blockers">Blockers</button>
+                    <button type="button" class="validation-workbench-tab" data-validation-workbench-tab="symbols">Symbols</button>
+                    <button type="button" class="validation-workbench-tab" data-validation-workbench-tab="runs">Runs</button>
+                </div>
+
+                <section class="validation-workbench-pane is-active" data-validation-workbench-pane="overview">
+                    <div id="validation-workbench-overview-detail" class="validation-workbench-copy">
+                        Select View Details after the pipeline loads.
+                    </div>
+                </section>
+
+                <section class="validation-workbench-pane" data-validation-workbench-pane="blockers" hidden>
+                    <div id="validation-blockers-list" class="validation-blockers-list">
+                        <div class="text-muted">No blocker data loaded yet.</div>
+                    </div>
+                </section>
+
+                <section class="validation-workbench-pane" data-validation-workbench-pane="symbols" hidden>
+                    <div class="universe-inspector-body">
+                        <div class="search-bar-container">
+                            <i class="fas fa-search search-icon"></i>
+                            <input type="text" id="universe-search" placeholder="Filter validation results..." />
+                        </div>
+                        <div class="universe-table-wrapper validation-results-scroll">
+                            <table class="universe-table">
+                                <thead>
+                                    <tr>
+                                        <th>Symbol</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="universe-list-body">
+                                    <tr>
+                                        <td colspan="3" class="text-muted text-center" style="padding: 24px;">Loading universe members...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="qualified-section">
+                        <div class="validation-workbench-section-heading">
+                            <h4>Qualified Today</h4>
+                            <span>WATCH / TRADE only</span>
+                        </div>
+                        <div id="qualified-today-body" class="text-muted text-center" style="padding: 12px 0; font-size: 0.85rem;">
+                            No qualified names yet.
+                        </div>
+                    </div>
+                </section>
+
+                <section class="validation-workbench-pane" data-validation-workbench-pane="runs" hidden>
+                    <div id="validation-runs-list" class="validation-runs-list">
+                        <div class="text-muted">No validation runs yet.</div>
+                    </div>
+                </section>
             </div>
         </div>
     </div>
@@ -1392,6 +1450,6 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.97.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.104.0"></script>
 </body>
 </html>

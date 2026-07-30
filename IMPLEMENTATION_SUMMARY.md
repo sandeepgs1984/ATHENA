@@ -6,6 +6,29 @@ status updated on approval.
 
 ---
 
+## AW-3 — Validation pipeline workbench (ready for review)
+
+| | |
+|---|---|
+| Completed | 2026-07-30 |
+| Objective | Make the Market Intelligence Validation Pipeline useful as a daily diagnostic workbench |
+| Scope | Added a compact workbench summary to the Validation Pipeline card; rebuilt the detail modal into Overview, Blockers, Symbols, and Runs sections; summarized latest run status/time, stage conversion, top blocker, and next action; grouped blockers from real loaded exclusion data; preserved the existing eligible/excluded table, Inspect Trace action, and Qualified Today list; added recent run rows; fixed owner-reported screenshot issues by replacing cramped main-card tiles with a compact strip, using short blocker labels outside the modal, widening the modal past the shared 600px cap, resetting the modal to Overview/top on every open, making the next-action strip span the full card width to avoid clipping, removing duplicate Qualified Today decision chips, adding Open decision plus Save/Saved actions to each qualified row, making Open decision clear filters/use strict symbol selection without falling back to another symbol, returning the strict selected row from Decisions loading, prioritizing strict requested-symbol selection before the previously active decision row, disabling report Open decision for Excluded/no-current outcomes, and adding a visible disabled action style; bumped dashboard cache-busters |
+| Files created | None |
+| Files modified | `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md`, `docs/design/ATHENA-ADVISOR-WORKBENCH-POLISH-ROADMAP.md`, `src/athena/api/static/index.html`, `src/athena/api/static/css/06-market-intelligence.css`, `src/athena/api/static/css/07-universe-modals.css`, `src/athena/api/static/css/12-decision-cards-dag.css`, `src/athena/api/static/js/03-app-shell.js`, `src/athena/api/static/js/09-market-intelligence.js`, `src/athena/api/static/js/12-decisions-list.js`, `tests/api/platform/test_dashboard_hosting.py` |
+| Public APIs added | None |
+| Tests | `rtk node --check src/athena/api/static/js/03-app-shell.js` — passed; `rtk node --check src/athena/api/static/js/09-market-intelligence.js` — passed; `rtk node --check src/athena/api/static/js/12-decisions-list.js` — passed; `rtk pytest tests/api/platform/test_dashboard_hosting.py -q` — 4 passed; `rtk git diff --check` — passed |
+| Coverage | Dashboard hosting tests lock the workbench summary, non-clipping next-action strip, modal sections, tabs, blocker/runs lists, real blocker extraction from `exclusion_reasons`, modal reset-to-overview/top behavior, Qualified Today Open decision and Save/Saved actions, strict Open decision selection/no-fallback behavior, strict symbol-before-active-decision priority, strict selection return value, disabled report action styling for Excluded/no-current outcomes, existing funnel endpoint usage, existing merged-day symbol behavior, and `9.104.0` asset cache-busters |
+| Architecture compliance | Frontend presentation/orchestration only over existing validation funnel, pipeline runs, universe members, qualified rows, and run metadata. No provider, broker, order, scoring, confidence, risk, decision-policy, TradePlan value, schema, backend endpoint, or frozen domain contract changes |
+| ADR compliance | ADR-004 preserved: static HTML/CSS/vanilla JS. ADR-005 preserved: blocker/next-action copy is derived from existing persisted validation data and explicitly avoids fabricated blocker detail when data is absent |
+| Risks discovered | `exclusion_reasons` are only as useful as the persisted validation payload. When older payloads lack reason detail, the workbench can only report that blocker data is unavailable without backend scope |
+| Technical debt introduced | None |
+| Suggested improvements | AW-4 should run screenshot and interaction QA across the full Decisions + Market Intelligence workbench flow and fix any remaining layout or stale-copy issues |
+| Remaining work | Owner review of AW-3; full-suite validation after freeing disk space |
+| Status | 🔄 Ready for owner review |
+| Branch | feature/live-dashboard |
+
+---
+
 ## AW-2 — Saved symbol validation and result report (ready for review)
 
 | | |
@@ -24,7 +47,7 @@ status updated on approval.
 | Technical debt introduced | None |
 | Suggested improvements | AW-3 should revamp Validation Pipeline into a workbench using existing funnel/run data and clearly documenting any missing blocker fields |
 | Remaining work | Owner review of AW-2; full-suite validation after freeing disk space |
-| Status | 🔄 Ready for owner review |
+| Status | ✅ Approved (2026-07-30) |
 | Branch | feature/live-dashboard |
 
 ---

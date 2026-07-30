@@ -2,6 +2,13 @@
     const eligibilityDetailBySymbol = new Map();
     let validateOverlayStartedAt = 0;
     let validateOverlayTimerId = null;
+    let validationWorkbenchState = {
+        funnel: null,
+        runs: [],
+        universe: {},
+        qualified: [],
+        universeNote: null,
+    };
 
     const validationReportModal = document.getElementById("validation-report-modal");
     const validationReportTitle = document.getElementById("validation-report-title");
@@ -95,6 +102,20 @@
         }) || null;
     }
 
+    function currentOpenableDecisionForSymbol(symbol) {
+        const bare = String(symbol || "").trim().toUpperCase().replace(/^NSE:|^BSE:/, "");
+        if (!bare || !Array.isArray(traceDecisionsList)) return null;
+        return traceDecisionsList.find(d => {
+            if (!d || !d.metadata) return false;
+            if (typeof isCurrentDecisionListRow === "function" && !isCurrentDecisionListRow(d)) return false;
+            if (typeof decisionInstrumentKey === "function" && dismissedDecisionSymbols.has(decisionInstrumentKey(d))) return false;
+            const instrument = String(d.metadata.instrument_id || "")
+                .toUpperCase()
+                .replace(/^NSE:|^BSE:/, "");
+            return instrument === bare;
+        }) || null;
+    }
+
     function validationReportOutcome(data, symbol) {
         const bare = String(symbol || "").trim().toUpperCase().replace(/^NSE:|^BSE:/, "");
         const decision = latestDecisionForSymbol(bare);
@@ -146,6 +167,7 @@
         const data = response && response.data ? response.data : {};
         const outcome = validationReportOutcome(data, bare);
         const decision = outcome.decision;
+        const currentDecision = currentOpenableDecisionForSymbol(bare);
         const score = decision ? decisionScoreValue(decision) : NaN;
         const confidence = validationReportMetricValue(decision, "confidence");
         const risk = validationReportMetricValue(decision, "risk");
@@ -156,6 +178,7 @@
         const asOf = data.as_of ? formatDecisionTime(data.as_of) : "Unknown time";
         const isSaved = savedSymbolSet.has(bare);
         const canInspectTrace = Boolean(universeCache[bare]);
+        const reportDecisionOpenable = Boolean(currentDecision && outcome.label !== "Excluded");
 
         if (validationReportTitle) validationReportTitle.textContent = `${bare} — Validation Report`;
         validationReportBody.innerHTML = `
@@ -173,7 +196,7 @@
                 <div class="validation-report-metric validation-report-plan-metric"><span>Plan status</span><strong>${escapeDecisionHtml(planLabel)}</strong></div>
             </div>
             <div class="validation-report-actions">
-                <button type="button" id="validation-report-open-decision" class="inspect-btn" ${decision ? "" : "disabled"}>
+                <button type="button" id="validation-report-open-decision" class="inspect-btn" ${reportDecisionOpenable ? "" : "disabled"} title="${reportDecisionOpenable ? "Open current decision" : "No current decision row to open"}">
                     <i class="fa-solid fa-brain"></i> Open decision
                 </button>
                 <button type="button" id="validation-report-trace" class="inspect-btn" ${canInspectTrace ? "" : "disabled"}>
@@ -189,16 +212,7 @@
         `;
         document.getElementById("validation-report-open-decision")?.addEventListener("click", async () => {
             closeModal(validationReportModal);
-            if (typeof switchTab === "function") {
-                window.history.pushState({ tabId: "decisions" }, "", "/dashboard/decisions");
-                const tabLoad = switchTab("decisions");
-                if (tabLoad && typeof tabLoad.then === "function") {
-                    await tabLoad;
-                }
-            }
-            if (typeof loadDecisionsWorkspace === "function") {
-                await loadDecisionsWorkspace({ preferInstrumentId: bare });
-            }
+            await openDecisionForSymbol(bare);
         });
         document.getElementById("validation-report-trace")?.addEventListener("click", () => {
             if (typeof window.openTraceModal === "function") window.openTraceModal(bare);
@@ -215,6 +229,35 @@
             });
         });
         openModal(validationReportModal);
+    }
+
+    async function openDecisionForSymbol(symbol) {
+        const bare = String(symbol || "").trim().toUpperCase().replace(/^NSE:|^BSE:/, "");
+        if (!bare) return;
+        const searchEl = document.getElementById("briefing-search");
+        const stanceEl = document.getElementById("decisions-filter-stance");
+        const typeEl = document.getElementById("decisions-filter-type");
+        const sortEl = document.getElementById("decisions-sort");
+        if (searchEl) searchEl.value = "";
+        if (stanceEl) stanceEl.value = "all";
+        if (typeEl) typeEl.value = "all";
+        if (sortEl) sortEl.value = "newest";
+        if (typeof switchTab === "function") {
+            window.history.pushState({ tabId: "decisions" }, "", "/dashboard/decisions");
+            const tabLoad = switchTab("decisions", { skipLoad: true });
+            if (tabLoad && typeof tabLoad.then === "function") {
+                await tabLoad;
+            }
+        }
+        if (typeof loadDecisionsWorkspace === "function") {
+            const selected = await loadDecisionsWorkspace({
+                preferInstrumentId: bare,
+                strictPreferInstrumentId: true,
+            });
+            if (!selected) {
+                showToast(`${bare} is not in the current Decisions list`, "warning");
+            }
+        }
     }
 
     /** Ensure candidates exist, then run scoped validate (ingest + score). */
@@ -720,6 +763,191 @@
         }).join("");
     }
 
+    function validationStageMap(funnel) {
+        const out = {};
+        ((funnel && funnel.stages) || []).forEach(stage => {
+            out[String(stage.id || "")] = stage;
+        });
+        return out;
+    }
+
+    function validationStageCount(funnel, id) {
+        const stage = validationStageMap(funnel)[id];
+        return stage ? Number(stage.count || 0) : 0;
+    }
+
+    function validationRunLabel(run) {
+        if (!run) return "No run yet";
+        const status = String(run.overall_status || "unknown").toUpperCase();
+        if (status === "SUCCESS") return "Completed";
+        if (status === "FAILED") return "Failed";
+        if (status === "RUNNING") return "Running";
+        return friendlyLabel(status);
+    }
+
+    function validationMemberBlocker(member) {
+        if (!member || member.included) return "";
+        const reasons = Array.isArray(member.exclusion_reasons)
+            ? member.exclusion_reasons.map(String).filter(Boolean)
+            : [];
+        if (reasons.length) return reasons[0];
+        const summary = String(member.eligibility_summary || "").trim();
+        if (summary) return summary.replace(/^excluded\s*:\s*/i, "");
+        return "Excluded by eligibility rules";
+    }
+
+    function validationTopBlockers(universe) {
+        const counts = new Map();
+        Object.values(universe || {}).forEach(member => {
+            const blocker = validationMemberBlocker(member);
+            if (!blocker) return;
+            counts.set(blocker, (counts.get(blocker) || 0) + 1);
+        });
+        return [...counts.entries()]
+            .map(([reason, count]) => ({ reason, count }))
+            .sort((a, b) => b.count - a.count || a.reason.localeCompare(b.reason));
+    }
+
+    function validationShortBlockerLabel(blocker) {
+        if (!blocker) return "No blocker";
+        const reason = String(blocker.reason || "").toLowerCase();
+        let label = "eligibility blocker";
+        if (reason.includes("liquid") || reason.includes("volume")) {
+            label = "liquidity blocker";
+        } else if (reason.includes("history") || reason.includes("daily bar")) {
+            label = "history blocker";
+        } else if (reason.includes("price")) {
+            label = "price blocker";
+        } else if (reason.includes("sector")) {
+            label = "sector blocker";
+        }
+        return `${blocker.count} ${label}${blocker.count === 1 ? "" : "s"}`;
+    }
+
+    function validationNextAction(funnel, runs, blockers) {
+        const available = Boolean(funnel && funnel.available);
+        const latest = Array.isArray(runs) && runs.length ? runs[0] : null;
+        const status = String(latest && latest.overall_status || "").toUpperCase();
+        const trade = validationStageCount(funnel, "trade");
+        const watch = validationStageCount(funnel, "watch");
+        const eligible = validationStageCount(funnel, "eligible");
+        if (!available) return "Run Validate All to build today's validation picture.";
+        if (status === "FAILED") return "Open Runs, review the failure, then retry after fixing the cause.";
+        if (trade > 0) return `Review ${trade} current Trade setup${trade === 1 ? "" : "s"} in Decisions & Trace.`;
+        if (watch > 0) return `Monitor ${watch} Watch setup${watch === 1 ? "" : "s"}; no entry until ATHENA authorizes.`;
+        if (eligible > 0) return "Eligible symbols exist, but none cleared Watch or Trade thresholds.";
+        if (blockers.length) return "Open Blockers to see why symbols failed validation.";
+        return "Refresh Market View or run Validate All if this looks stale.";
+    }
+
+    function renderValidationWorkbench({ funnel, runs, universe, qualified, universeNote }) {
+        validationWorkbenchState = {
+            funnel: funnel || null,
+            runs: Array.isArray(runs) ? runs : [],
+            universe: universe || {},
+            qualified: Array.isArray(qualified) ? qualified : [],
+            universeNote: universeNote || null,
+        };
+        const stages = validationStageMap(funnel);
+        const latest = validationWorkbenchState.runs[0] || null;
+        const blockers = validationTopBlockers(validationWorkbenchState.universe);
+        const topBlocker = blockers[0] || null;
+        const universeCount = validationStageCount(funnel, "universe");
+        const eligibleCount = validationStageCount(funnel, "eligible");
+        const tradeCount = validationStageCount(funnel, "trade");
+        const eligiblePct = stages.eligible && stages.eligible.pct_of_universe != null
+            ? `${Number(stages.eligible.pct_of_universe).toFixed(1)}% eligible`
+            : "Eligibility pending";
+        const tradePct = stages.trade && stages.trade.pct_of_universe != null
+            ? `${Number(stages.trade.pct_of_universe).toFixed(1)}% trade`
+            : "Trade rate pending";
+        const nextAction = validationNextAction(funnel, validationWorkbenchState.runs, blockers);
+
+        const summary = document.getElementById("validation-workbench-summary");
+        if (summary) {
+            summary.innerHTML = `
+                <div class="validation-workbench-summary-item">
+                    <span>Latest</span>
+                    <strong>${escapeDecisionHtml(validationRunLabel(latest))}</strong>
+                </div>
+                <div class="validation-workbench-summary-item" title="${topBlocker ? escapeDecisionHtml(topBlocker.reason) : ""}">
+                    <span>Blocker</span>
+                    <strong>${escapeDecisionHtml(validationShortBlockerLabel(topBlocker))}</strong>
+                </div>
+                <div class="validation-workbench-summary-action">
+                    ${escapeDecisionHtml(nextAction)}
+                </div>
+            `;
+        }
+
+        const latestEl = document.getElementById("validation-workbench-latest");
+        const latestMetaEl = document.getElementById("validation-workbench-latest-meta");
+        const conversionEl = document.getElementById("validation-workbench-conversion");
+        const conversionMetaEl = document.getElementById("validation-workbench-conversion-meta");
+        const blockerEl = document.getElementById("validation-workbench-top-blocker");
+        const blockerMetaEl = document.getElementById("validation-workbench-top-blocker-meta");
+        const nextEl = document.getElementById("validation-workbench-next-action");
+        if (latestEl) latestEl.textContent = validationRunLabel(latest);
+        if (latestMetaEl) {
+            latestMetaEl.textContent = latest
+                ? `${latest.run_id || "run"} · ${latest.as_of ? formatDecisionTime(latest.as_of) : "time unknown"}`
+                : "No completed validation run loaded.";
+        }
+        if (conversionEl) conversionEl.textContent = `${eligibleCount}/${universeCount || 0} eligible · ${tradeCount} trade`;
+        if (conversionMetaEl) conversionMetaEl.textContent = `${eligiblePct} · ${tradePct}`;
+        if (blockerEl) blockerEl.textContent = topBlocker ? validationShortBlockerLabel(topBlocker) : "No blocker in loaded rows";
+        if (blockerMetaEl) {
+            blockerMetaEl.textContent = topBlocker
+                ? topBlocker.reason
+                : (universeNote || "No exclusion reason available from the current payload.");
+        }
+        if (nextEl) nextEl.textContent = nextAction;
+
+        const overviewDetail = document.getElementById("validation-workbench-overview-detail");
+        if (overviewDetail) {
+            overviewDetail.innerHTML = `
+                <p><strong>Today:</strong> ${universeCount || 0} symbols validated, ${eligibleCount} eligible, ${validationStageCount(funnel, "watch")} watch, ${tradeCount} trade.</p>
+                <p><strong>Use this:</strong> start with Trade setups when they exist; otherwise use Blockers to understand why the list is thin before running more validations.</p>
+                ${universeNote ? `<p><strong>Note:</strong> ${escapeDecisionHtml(universeNote)}</p>` : ""}
+            `;
+        }
+
+        const blockersEl = document.getElementById("validation-blockers-list");
+        if (blockersEl) {
+            blockersEl.innerHTML = blockers.length
+                ? blockers.slice(0, 8).map(item => `
+                    <div class="validation-blocker-row">
+                        <div>
+                            <strong>${escapeDecisionHtml(item.reason)}</strong>
+                            <span>Real exclusion reason from latest loaded validation rows.</span>
+                        </div>
+                        <span class="meta-chip score-chip">${item.count}</span>
+                    </div>
+                `).join("")
+                : '<div class="text-muted">No exclusion blockers are available from the loaded rows.</div>';
+        }
+
+        const runsEl = document.getElementById("validation-runs-list");
+        if (runsEl) {
+            const rows = validationWorkbenchState.runs.slice(0, 10);
+            runsEl.innerHTML = rows.length
+                ? rows.map(run => {
+                    const status = String(run.overall_status || "unknown").toUpperCase();
+                    const failed = status === "FAILED";
+                    return `
+                        <div class="validation-run-row ${failed ? "is-failed" : ""}">
+                            <div>
+                                <strong>${escapeDecisionHtml(validationRunLabel(run))}</strong>
+                                <span>${escapeDecisionHtml(run.run_id || "run")}</span>
+                            </div>
+                            <span>${run.as_of ? escapeDecisionHtml(formatDecisionTime(run.as_of)) : "—"}</span>
+                        </div>
+                    `;
+                }).join("")
+                : '<div class="text-muted">No validation run history loaded.</div>';
+        }
+    }
+
     async function loadMarketIntelligence() {
         try {
             await loadCandidateList();
@@ -738,6 +966,7 @@
             let universe = {};
             let qualified = [];
             let universeNote = null;
+            let sortedRuns = [];
 
             if (runsRes && runsRes.data && runsRes.data.length > 0) {
                 const extractData = (r) => {
@@ -752,6 +981,7 @@
                 const runs = [...runsRes.data].sort(
                     (a, b) => new Date(b.as_of || 0) - new Date(a.as_of || 0)
                 );
+                sortedRuns = runs;
 
                 // A scoped validate writes a run holding only the symbols it was
                 // asked about, so reading the newest run alone showed just that
@@ -810,6 +1040,13 @@
             // 3. Render Universe list table + qualified layer
             renderUniverseTable(universe, universeNote);
             renderQualifiedToday(qualified);
+            renderValidationWorkbench({
+                funnel: funnelRes && funnelRes.data ? funnelRes.data : null,
+                runs: sortedRuns,
+                universe,
+                qualified,
+                universeNote,
+            });
 
             // 4. MI-5: Recent Activity from the same runs we already fetched.
             if (runsRes && runsRes.data) {
@@ -1334,12 +1571,21 @@
                     const type = r.decision_type || "";
                     const stance = decisionStance(type, r.direction || "NONE");
                     const summary = formatDecisionSummary(r.explanation || "", type, []);
+                    const symbol = String(r.symbol || r.instrument_id || "").toUpperCase().replace(/^NSE:|^BSE:/, "");
+                    const isSaved = savedSymbolSet.has(symbol);
                     return `
-                        <div class="qualified-row">
+                        <div class="qualified-row" data-qualified-symbol="${escapeDecisionHtml(symbol)}">
                             <div class="qualified-row-top">
-                                <span class="symbol-name-col">${r.symbol || r.instrument_id || ""}</span>
-                                <span class="stance-chip ${stance.cls}">${stance.label}</span>
-                                <span class="type-chip type-${String(type).toLowerCase()}">${type ? escapeDecisionHtml(friendlyAnalysisName(type)) : "—"}</span>
+                                <span class="symbol-name-col">${escapeDecisionHtml(symbol)}</span>
+                                <span class="type-chip type-${String(type).toLowerCase()}">${type ? escapeDecisionHtml(friendlyAnalysisName(type)) : escapeDecisionHtml(stance.label)}</span>
+                                <div class="qualified-row-actions">
+                                    <button type="button" class="inspect-btn qualified-open-decision-btn" data-symbol="${escapeDecisionHtml(symbol)}" title="Open ${escapeDecisionHtml(symbol)} in Decisions & Trace">
+                                        <i class="fa-solid fa-brain" aria-hidden="true"></i> Open decision
+                                    </button>
+                                    <button type="button" class="inspect-btn qualified-save-btn" data-symbol="${escapeDecisionHtml(symbol)}" title="${isSaved ? "Remove from Saved Symbols" : "Save symbol"}">
+                                        <i class="${isSaved ? "fa-solid" : "fa-regular"} fa-bookmark" aria-hidden="true"></i> ${isSaved ? "Saved" : "Save"}
+                                    </button>
+                                </div>
                             </div>
                             <p class="qualified-summary">${summary.headline}</p>
                             ${summary.scoreChip}
@@ -1349,6 +1595,20 @@
                 }).join("")}
             </div>
         `;
+        body.querySelectorAll(".qualified-open-decision-btn").forEach(btn => {
+            btn.addEventListener("click", async () => {
+                const symbol = btn.getAttribute("data-symbol");
+                closeModal(document.getElementById("validation-funnel-modal"));
+                await openDecisionForSymbol(symbol);
+            });
+        });
+        body.querySelectorAll(".qualified-save-btn").forEach(btn => {
+            btn.addEventListener("click", async () => {
+                const symbol = btn.getAttribute("data-symbol");
+                await toggleSavedSymbolNow(symbol, { button: btn });
+                renderQualifiedToday(validationWorkbenchState.qualified);
+            });
+        });
     }
 
     async function loadCandidateList() {
@@ -1775,8 +2035,29 @@
         });
     }
     if (funnelDetailsBtn && funnelDetailsModal) {
-        funnelDetailsBtn.addEventListener("click", () => openModal(funnelDetailsModal));
+        funnelDetailsBtn.addEventListener("click", () => {
+            setValidationWorkbenchTab("overview");
+            const body = funnelDetailsModal.querySelector(".validation-funnel-modal-body");
+            if (body) body.scrollTop = 0;
+            openModal(funnelDetailsModal);
+        });
     }
+    function setValidationWorkbenchTab(target) {
+        document.querySelectorAll("[data-validation-workbench-tab]").forEach(btn => {
+            const active = btn.getAttribute("data-validation-workbench-tab") === target;
+            btn.classList.toggle("is-active", active);
+        });
+        document.querySelectorAll("[data-validation-workbench-pane]").forEach(pane => {
+            const active = pane.getAttribute("data-validation-workbench-pane") === target;
+            pane.classList.toggle("is-active", active);
+            pane.hidden = !active;
+        });
+    }
+    document.querySelectorAll("[data-validation-workbench-tab]").forEach(tab => {
+        tab.addEventListener("click", () => {
+            setValidationWorkbenchTab(tab.getAttribute("data-validation-workbench-tab"));
+        });
+    });
     if (funnelDetailsClose) {
         funnelDetailsClose.addEventListener("click", () => closeModal(funnelDetailsModal));
     }

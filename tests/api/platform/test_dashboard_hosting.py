@@ -200,8 +200,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.97.0" in html
-    assert "dashboard.js?v=9.97.0" in html
+    assert "dashboard.css?v=9.104.0" in html
+    assert "dashboard.js?v=9.104.0" in html
     assert 'id="advisor-pulse"' in html
     assert 'id="header-diagnostics-popover"' in html
     assert 'id="decision-actionability-banner"' in html
@@ -338,7 +338,18 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "Decision-detail revalidation" not in js
     assert "validateSymbolsNow([bareSymbol], { button: event.currentTarget, refreshDecisions: true });" in js
     assert "Open decision" in js
-    assert "await loadDecisionsWorkspace({ preferInstrumentId: bare });" in js
+    assert "function openDecisionForSymbol" in js
+    assert "strictPreferInstrumentId: true" in js
+    assert 'switchTab("decisions", { skipLoad: true })' in js
+    assert "return applyDecisionsView(options);" in js
+    strict_symbol_start = js.find("if (preferInstrumentId && options.strictPreferInstrumentId)")
+    active_decision_start = js.find("if (!next && preferDecisionId)")
+    assert strict_symbol_start != -1
+    assert active_decision_start != -1
+    assert strict_symbol_start < active_decision_start
+    assert "reportDecisionOpenable" in js
+    assert 'currentDecision && outcome.label !== "Excluded"' in js
+    assert ".inspect-btn:disabled" in css
     assert "Inspect trace" in js
     assert "Save symbol" in js
     assert "Remove saved" in js
@@ -1189,12 +1200,13 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "function stopTickerRefresh" in js
     assert "TICKER_REFRESH_INTERVAL_MS = 60000" in js
     assert "setInterval(loadMarketTicker, TICKER_REFRESH_INTERVAL_MS)" in js
-    switch_tab_start = js.find("function switchTab(tabId)")
+    switch_tab_start = js.find("function switchTab(tabId, options = {})")
     switch_tab_end = js.find("\n    function ", switch_tab_start + 1)
     switch_tab_body = js[switch_tab_start:switch_tab_end]
     assert "startTickerRefresh();" in switch_tab_body
     assert "stopTickerRefresh();" in switch_tab_body
     assert "TICKER_TABS.has(tabId)" in switch_tab_body
+    assert "if (options.skipLoad)" in switch_tab_body
     assert "return loadTabData(tabId);" in switch_tab_body
 
     # MI-1: Market Intelligence's own tab also loads the shared ticker.
@@ -1288,8 +1300,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     # MI-3 (Market Intelligence redesign): Today's Validation text strip
     # replaced with a typed Validation Pipeline funnel (Universe→Eligible→
     # Filtered→Watch→Trade) backed by GET /api/v1/pipelines/validation-funnel.
-    # Filtered is server-side Eligible−Watch−Trade arithmetic; View Details
-    # keeps Eligible/Excluded + Qualified panels until MI-4 redesigns them.
+    # Filtered is server-side Eligible−Watch−Trade arithmetic; AW-3 turns View
+    # Details into a daily-use workbench over the same existing data.
     assert "Validation Pipeline <span" in html
     assert "(Today)</span>" in html
     assert "Today's Validation" not in html
@@ -1297,18 +1309,50 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert 'id="validation-funnel-asof"' in html
     assert 'id="validation-funnel-details-btn"' in html
     assert 'id="validation-funnel-modal"' in html
+    assert 'id="validation-workbench-summary"' in html
+    assert "validation-workbench-summary-action" in html
+    assert 'id="validation-workbench-overview"' in html
+    assert 'id="validation-workbench-next-action"' in html
+    assert 'id="validation-blockers-list"' in html
+    assert 'id="validation-runs-list"' in html
+    assert 'data-validation-workbench-tab="blockers"' in html
+    assert 'data-validation-workbench-pane="symbols"' in html
     assert 'id="validation-summary-strip"' not in html
     assert "function renderValidationFunnel" in js
+    assert "function renderValidationWorkbench" in js
+    assert "function validationTopBlockers" in js
+    assert "function validationNextAction" in js
+    assert "function validationShortBlockerLabel" in js
     assert "/api/v1/pipelines/validation-funnel" in js
     assert "validation-funnel-stage" in js
     assert "validation-funnel-stage-icon" in js
     assert "Last Updated:" in js
     assert ".validation-funnel" in css
     assert ".validation-funnel-stage.is-trade" in css
+    assert ".validation-workbench-summary" in css
+    assert ".validation-workbench-summary-action" in css
+    assert "grid-column: 1 / -1" in css
+    assert "white-space: normal" in css
+    assert ".validation-workbench-tabs" in css
+    assert ".validation-blocker-row" in css
+    assert ".validation-run-row.is-failed" in css
     assert "grid-template-columns: repeat(5, minmax(0, 1fr))" in css
     assert "grid-template-rows: auto minmax(0, 1fr) auto" in css
     assert "View Details" in html
     assert "openModal(funnelDetailsModal)" in js
+    assert 'setValidationWorkbenchTab("overview")' in js
+    assert "body.scrollTop = 0" in js
+    assert "renderValidationWorkbench({" in js
+    assert "validationMemberBlocker" in js
+    assert "exclusion_reasons" in js
+    assert "data-validation-workbench-pane" in js
+    assert "qualified-open-decision-btn" in js
+    assert "qualified-save-btn" in js
+    assert "openDecisionForSymbol(symbol)" in js
+    assert "renderQualifiedToday(validationWorkbenchState.qualified)" in js
+    assert "qualified-row-actions" in css
+    assert "strictPreferInstrumentId" in js
+    assert "No current decision" in js
     assert 'id="validation-funnel-details"' not in html
     load_mi_start = js.find("async function loadMarketIntelligence")
     load_mi_end = js.find("\n    async function ", load_mi_start + 1)
