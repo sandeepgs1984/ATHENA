@@ -489,7 +489,7 @@ domain contracts, or broker behavior. Governing plan:
 | **AW-1** Entry Readiness Indicator | Compare selected live price with persisted TradePlan entry zone and show whether entry is ready, waiting, chasing, or unavailable | Owner review; no new recommendation logic | ✅ Approved |
 | **AW-2** Saved Symbol Validation and Result Report | Add Saved Symbols validate action and a single-symbol validation report modal for Market Intelligence callers only | Owner review; Decision-detail revalidation must stay inline | ✅ Approved |
 | **AW-3** Validation Pipeline Workbench | Revamp the Validation Pipeline card and detail modal into a daily-use validation diagnostic workbench | Owner review; no fabricated blocker data | 🔄 Ready for review |
-| **AW-4** Advisor Workbench Visual QA | Screenshot/interaction QA across Decisions and Market Intelligence workbench paths | Owner review | ⏳ Planned |
+| **AW-4** Advisor Workbench Visual QA | Screenshot/interaction QA across Decisions and Market Intelligence workbench paths | Owner review | 🔄 In progress |
 
 **Implementation rule:** one AW milestone at a time. AW must never create order
 placement, broker write actions, new signals, or changes to ATHENA's analytical
@@ -595,6 +595,19 @@ TradePlan value change, no backend endpoint, and no new validation logic.
 
 Validation note: focused dashboard hosting checks pass. The full suite remains
 deferred locally until the live DB/storage pressure is cleaned up.
+
+#### AW-4 — advisor workbench visual QA (in progress, 2026-07-30)
+
+Owner screenshot fix: `Watch` and `No trade` decisions with no current
+TradePlan now still render the Advisor Status strip with a neutral
+`No current trade plan` state and a `Re-check symbol` action. This preserves
+the TP-1 placement rule that symbol revalidation belongs in Advisor Status
+instead of the generic header, while ensuring non-trade symbols are still
+refreshable without implying they are actionable trades.
+
+Validation note: focused dashboard hosting checks pass. Browser shell-load QA
+confirmed the dashboard assets serve, but unlocked in-dashboard visual QA
+remains pending owner-session access.
 
 ---
 

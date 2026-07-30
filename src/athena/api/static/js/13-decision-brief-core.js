@@ -604,13 +604,23 @@
 
     function actionabilityStatusFromPlan(decision, freshness = null) {
         const plan = decision && decision.trade_plan;
-        if (!decision || !decision.metadata || !plan) return null;
+        if (!decision || !decision.metadata) return null;
         const stance = decisionStance(
             decision.metadata.decision_type,
             decision.metadata.direction
         );
         const rawSymbol = String(decision.metadata.instrument_id || "");
         const symbol = rawSymbol.includes(":") ? rawSymbol.split(":").pop() : rawSymbol;
+        if (!plan) {
+            return {
+                tone: "neutral",
+                status: "No current trade plan",
+                detail: `${stance.label} setup has no entry, stop, or target yet. Re-check the symbol when you want ATHENA to refresh the thesis.`,
+                pulse: `${symbol ? `${symbol} · ` : ""}no current entry`,
+                cta: "Re-check symbol",
+                priority: 1,
+            };
+        }
         const status = String(freshness && freshness.status || "").toUpperCase();
         const validUntil = new Date(plan.valid_until);
         const now = new Date();

@@ -1,6 +1,6 @@
 # ATHENA Advisor Workbench Polish Roadmap
 
-**Status:** AW-1 approved; AW-2 ready for owner review on 2026-07-30
+**Status:** AW-1/AW-2 approved; AW-3 ready for review; AW-4 in progress on 2026-07-30
 **Scope:** Decisions & Trace entry readiness plus Market Intelligence daily-use polish  
 **Owner goal:** make ATHENA easier to use during a live trading day without
 adding order placement, fabricated signals, or unreviewed analytical changes.
@@ -130,6 +130,10 @@ Acceptance:
 
 - No overlapping text, blocked controls, stale actionable copy, or confusing
   validation feedback remains in the reviewed workflow.
+
+Owner QA note: `Watch` and `No trade` decisions with no current TradePlan must
+still expose symbol revalidation from Advisor Status. The state should read as
+neutral review/re-check copy, not as a trade entry instruction.
 
 ## 4. Non-Goals
 

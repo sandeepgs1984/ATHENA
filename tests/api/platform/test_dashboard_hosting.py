@@ -831,6 +831,9 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "function setHeaderRevalidateEnabled" in js
     assert ".decision-actionability-cta" in css
     assert ".btn-sm" in css
+    assert 'status: "No current trade plan"' in js
+    assert 'cta: "Re-check symbol"' in js
+    assert ".decision-actionability-banner.tone-neutral" in css
 
     # Owner-reported: with no decision selected, Open Chart/Compare/the
     # "more" overflow toggle stayed clickable even though there was nothing
@@ -1776,15 +1779,18 @@ def test_advisor_status_release_gate(client: TestClient) -> None:
     actionability_start = js.find("function actionabilityStatusFromPlan")
     actionability_end = js.find("\n    function ", actionability_start + 1)
     actionability_body = js[actionability_start:actionability_end]
+    no_plan_idx = actionability_body.find('status: "No current trade plan"')
     expired_idx = actionability_body.find('status === "EXPIRED"')
     stale_idx = actionability_body.find('status === "STALE"')
     market_closed_idx = actionability_body.find("if (marketClosed)")
     aging_idx = actionability_body.find('status === "AGING"')
     valid_idx = actionability_body.find('status: "Plan valid"')
-    assert -1 not in (expired_idx, stale_idx, market_closed_idx, aging_idx, valid_idx)
-    assert expired_idx < stale_idx < market_closed_idx < aging_idx < valid_idx
+    assert -1 not in (no_plan_idx, expired_idx, stale_idx, market_closed_idx, aging_idx, valid_idx)
+    assert no_plan_idx < expired_idx < stale_idx < market_closed_idx < aging_idx < valid_idx
     expired_branch = actionability_body[expired_idx:stale_idx]
     assert "tone: \"danger\"" in expired_branch
+    assert "tone: \"neutral\"" in actionability_body[:expired_idx]
+    assert "Re-check the symbol when you want ATHENA to refresh the thesis" in actionability_body
     assert "Re-validate before using entry/stop/target levels" in actionability_body
     assert "ATHENA is advisory only; confirm live quote before manual action" in actionability_body
 

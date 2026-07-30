@@ -1080,23 +1080,6 @@
         overflow-x: auto;
     }
 
-    .validation-results-head {
-        display: none;
-    }
-
-    .validation-result-row {
-        grid-template-columns: 1fr;
-    }
-
-    .validation-result-symbol span,
-    .validation-result-plan {
-        white-space: normal;
-    }
-
-    .validation-result-actions {
-        justify-content: flex-start;
-    }
-
     .validation-report-metrics {
         grid-template-columns: 1fr;
     }
