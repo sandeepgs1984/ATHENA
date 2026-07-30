@@ -549,8 +549,10 @@ an operational summary below the funnel: latest run status/time, top blocker,
 and next action. The detail modal is now a workbench with Overview, Blockers,
 Symbols, and Runs sections. Overview summarizes today's conversion and next
 action; Blockers groups real exclusion reasons from the loaded universe rows;
-Symbols preserves the existing eligible/excluded table and Qualified Today
-list; Runs shows recent validation run status/time.
+Results combines eligibility, blocker, Watch/Trade outcome, score, plan
+freshness, Open decision, Save, and Trace actions into one searchable section
+instead of splitting eligible/excluded rows from a separate Qualified Today
+block. Runs shows recent validation run status/time.
 
 Owner review fix: validation-report `Open decision` now enables only when the
 symbol has a current, openable Decisions row. Excluded/no-current reports show a
@@ -563,6 +565,22 @@ Follow-up owner fix: strict symbol opens now select by requested symbol before
 considering the previously active `decision_id`. This prevents a report opened
 from Market Intelligence from switching tabs but leaving the old selected symbol
 in the Decision Brief.
+
+Workbench polish fix: the former bottom Qualified Today list is merged into the
+Results section, so validation screening happens in one dense list without a
+second competing subsection.
+
+Owner screenshot fix: the workbench modal width override now lives after the
+shared modal cap, so the Results grid uses the available screen width without
+horizontal scrolling. Results `Open decision` now depends on a refreshed
+read-only current Decisions cache; rows that are not on the current board are
+disabled instead of switching tabs and failing with "not found".
+
+Owner readability fix: the Results tab now uses self-contained result cards
+instead of a table-style header/column grid. Symbol explanations wrap normally,
+score is recovered from the current decision, qualified payload, or explanation
+text, plan state is shown as a labelled card metric, and actions stay pinned to
+a consistent right edge without a drifting Actions header.
 
 Data boundary: AW-3 uses the existing `/api/v1/pipelines/validation-funnel`,
 `/api/v1/pipelines/runs`, merged current-day `universe_members`,

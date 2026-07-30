@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.104.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.107.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -1186,7 +1186,7 @@
                 <div class="validation-workbench-tabs" role="tablist" aria-label="Validation workbench sections">
                     <button type="button" class="validation-workbench-tab is-active" data-validation-workbench-tab="overview">Overview</button>
                     <button type="button" class="validation-workbench-tab" data-validation-workbench-tab="blockers">Blockers</button>
-                    <button type="button" class="validation-workbench-tab" data-validation-workbench-tab="symbols">Symbols</button>
+                    <button type="button" class="validation-workbench-tab" data-validation-workbench-tab="symbols">Results</button>
                     <button type="button" class="validation-workbench-tab" data-validation-workbench-tab="runs">Runs</button>
                 </div>
 
@@ -1208,33 +1208,13 @@
                             <i class="fas fa-search search-icon"></i>
                             <input type="text" id="universe-search" placeholder="Filter validation results..." />
                         </div>
-                        <div class="universe-table-wrapper validation-results-scroll">
-                            <table class="universe-table">
-                                <thead>
-                                    <tr>
-                                        <th>Symbol</th>
-                                        <th>Status</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="universe-list-body">
-                                    <tr>
-                                        <td colspan="3" class="text-muted text-center" style="padding: 24px;">Loading universe members...</td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                        <div id="qualified-today-body" class="validation-results-list">
+                            <div class="text-muted text-center" style="padding: 24px;">Loading validation results...</div>
                         </div>
                     </div>
-
-                    <div class="qualified-section">
-                        <div class="validation-workbench-section-heading">
-                            <h4>Qualified Today</h4>
-                            <span>WATCH / TRADE only</span>
-                        </div>
-                        <div id="qualified-today-body" class="text-muted text-center" style="padding: 12px 0; font-size: 0.85rem;">
-                            No qualified names yet.
-                        </div>
-                    </div>
+                    <table class="universe-table validation-legacy-table" hidden aria-hidden="true">
+                        <tbody id="universe-list-body"></tbody>
+                    </table>
                 </section>
 
                 <section class="validation-workbench-pane" data-validation-workbench-pane="runs" hidden>
@@ -1450,6 +1430,6 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.104.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.107.0"></script>
 </body>
 </html>

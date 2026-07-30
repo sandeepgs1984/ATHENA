@@ -124,6 +124,11 @@
     color: var(--danger);
 }
 
+.symbol-status-badge.neutral {
+    background-color: rgba(148, 163, 184, 0.1);
+    color: var(--text-secondary);
+}
+
 .inspect-btn {
     background: none;
     border: 1px solid rgba(255, 255, 255, 0.1);
@@ -489,6 +494,11 @@
 
 .modal-overlay.active .modal-container {
     transform: scale(1);
+}
+
+.validation-funnel-modal-container {
+    max-width: min(1120px, 94vw);
+    width: min(1120px, 94vw);
 }
 
 .modal-header {

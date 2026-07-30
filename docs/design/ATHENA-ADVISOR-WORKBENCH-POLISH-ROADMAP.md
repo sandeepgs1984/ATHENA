@@ -111,6 +111,8 @@ Owner review note: report and workbench `Open decision` actions must only be
 enabled for symbols that have a current Decisions row. Excluded/no-current
 validation outcomes keep the action visibly disabled; valid rows use strict
 symbol selection before the previously active decision, without a fallback row.
+The workbench Results section must fit inside the modal without horizontal
+scrolling; the shared modal width cap must not override the workbench width.
 
 ### AW-4 — Advisor Workbench Visual QA
 

@@ -200,8 +200,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.104.0" in html
-    assert "dashboard.js?v=9.104.0" in html
+    assert "dashboard.css?v=9.107.0" in html
+    assert "dashboard.js?v=9.107.0" in html
     assert 'id="advisor-pulse"' in html
     assert 'id="header-diagnostics-popover"' in html
     assert 'id="decision-actionability-banner"' in html
@@ -1346,11 +1346,38 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "validationMemberBlocker" in js
     assert "exclusion_reasons" in js
     assert "data-validation-workbench-pane" in js
+    assert "renderValidationResults(universe, qualified, universeNote)" in js
+    assert "function validationResultRows" in js
+    assert "function validationResultOutcome" in js
+    assert "function validationScoreFromExplanation" in js
+    assert "function validationResultPlan" in js
+    assert "function refreshDecisionCacheForValidationResults" in js
+    assert "await refreshDecisionCacheForValidationResults();" in js
+    assert "allTraceDecisionsList = raw;" in js
+    assert "traceDecisionsList = latestDecisionPerInstrument(raw);" in js
+    assert "validation-results-head" not in html
+    assert "validation-results-list" in html
+    assert "data-validation-result-symbol" in js
+    assert "validation-result-summary" in js
+    assert "validation-result-metric" in js
     assert "qualified-open-decision-btn" in js
     assert "qualified-save-btn" in js
+    assert "qualified-trace-btn" in js
+    assert "const canOpen = Boolean(decision);" in js
+    assert "Not on the current Decisions board" in js
     assert "openDecisionForSymbol(symbol)" in js
-    assert "renderQualifiedToday(validationWorkbenchState.qualified)" in js
-    assert "qualified-row-actions" in css
+    assert "renderValidationResults(validationWorkbenchState.universe, validationWorkbenchState.qualified, validationWorkbenchState.universeNote)" in js
+    assert ".validation-result-row" in css
+    assert ".validation-result-main" in css
+    assert ".validation-result-summary" in css
+    assert ".validation-result-meta" in css
+    assert ".validation-result-metric" in css
+    assert ".validation-result-actions" in css
+    assert ".validation-legacy-table" in css
+    assert "width: min(1120px, 94vw)" in css
+    assert "overflow-x: hidden" in css
+    assert "overflow-wrap: anywhere" in css
+    assert "Qualified Today" not in html
     assert "strictPreferInstrumentId" in js
     assert "No current decision" in js
     assert 'id="validation-funnel-details"' not in html

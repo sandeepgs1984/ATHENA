@@ -116,6 +116,19 @@
         }) || null;
     }
 
+    async function refreshDecisionCacheForValidationResults() {
+        if (typeof fetchAllDecisionPages !== "function" || typeof latestDecisionPerInstrument !== "function") {
+            return;
+        }
+        try {
+            const raw = await fetchAllDecisionPages();
+            allTraceDecisionsList = raw;
+            traceDecisionsList = latestDecisionPerInstrument(raw);
+        } catch (err) {
+            console.warn("Validation workbench could not refresh Decisions cache", err);
+        }
+    }
+
     function validationReportOutcome(data, symbol) {
         const bare = String(symbol || "").trim().toUpperCase().replace(/^NSE:|^BSE:/, "");
         const decision = latestDecisionForSymbol(bare);
@@ -1030,16 +1043,19 @@
                 universeCache = universe;
             }
 
-            // 2. Fetch and Render Calendar Grid & Events
+            // 2. Refresh read-only Decisions cache for result-row actions.
+            await refreshDecisionCacheForValidationResults();
+
+            // 3. Fetch and Render Calendar Grid & Events
             const calRes = await apiRequest("/api/v1/dashboard/calendar").catch(() => null);
             if (calRes && calRes.data) {
                 renderCalendar(calRes.data);
                 renderUpcomingEvents(calRes.data);
             }
 
-            // 3. Render Universe list table + qualified layer
+            // 4. Render Universe list table + qualified layer
             renderUniverseTable(universe, universeNote);
-            renderQualifiedToday(qualified);
+            renderValidationResults(universe, qualified, universeNote);
             renderValidationWorkbench({
                 funnel: funnelRes && funnelRes.data ? funnelRes.data : null,
                 runs: sortedRuns,
@@ -1048,7 +1064,7 @@
                 universeNote,
             });
 
-            // 4. MI-5: Recent Activity from the same runs we already fetched.
+            // 5. MI-5: Recent Activity from the same runs we already fetched.
             if (runsRes && runsRes.data) {
                 renderRecentActivity(runsRes.data);
             } else {
@@ -1553,50 +1569,180 @@
         }
     }
 
-    function renderQualifiedToday(qualified) {
+    function validationResultRows(universeMembers, qualified) {
+        const bySymbol = new Map();
+        Object.entries(universeMembers || {}).forEach(([symbol, member]) => {
+            const bare = String(symbol || member?.symbol || member?.instrument_id || "")
+                .toUpperCase()
+                .replace(/^NSE:|^BSE:/, "");
+            if (!bare) return;
+            bySymbol.set(bare, { symbol: bare, member, qualified: null });
+        });
+        (Array.isArray(qualified) ? qualified : []).forEach(row => {
+            const bare = String(row.symbol || row.instrument_id || "")
+                .toUpperCase()
+                .replace(/^NSE:|^BSE:/, "");
+            if (!bare) return;
+            const existing = bySymbol.get(bare) || { symbol: bare, member: null, qualified: null };
+            existing.qualified = row;
+            bySymbol.set(bare, existing);
+        });
+        const priority = (row) => {
+            const decision = currentOpenableDecisionForSymbol(row.symbol) || latestDecisionForSymbol(row.symbol);
+            const type = String(row.qualified?.decision_type || decision?.metadata?.decision_type || "").toUpperCase();
+            if (type === "TRADE") return 0;
+            if (type === "WATCH") return 1;
+            if (row.member && row.member.included === true) return 2;
+            if (row.member && row.member.included === false) return 3;
+            return 4;
+        };
+        return Array.from(bySymbol.values()).sort((a, b) => {
+            const rank = priority(a) - priority(b);
+            return rank || a.symbol.localeCompare(b.symbol);
+        });
+    }
+
+    function validationResultStatus(member) {
+        if (!member) {
+            return {
+                html: '<span class="symbol-status-badge neutral">Validated</span>',
+                text: "Validated",
+            };
+        }
+        if (member.included === true) {
+            return {
+                html: '<span class="symbol-status-badge included"><i class="fas fa-check"></i> Eligible</span>',
+                text: "Eligible",
+            };
+        }
+        const reason = validationMemberBlocker(member);
+        return {
+            html: `<span class="symbol-status-badge excluded" title="${escapeDecisionHtml(reason)}"><i class="fas fa-ban"></i> Excluded</span>`,
+            text: reason || "Excluded",
+        };
+    }
+
+    function validationResultOutcome(row, decision) {
+        const type = String(row.qualified?.decision_type || decision?.metadata?.decision_type || "").toUpperCase();
+        if (type === "TRADE" || type === "WATCH" || type === "NO_TRADE") {
+            return {
+                html: `<span class="type-chip type-${type.toLowerCase()}">${escapeDecisionHtml(friendlyAnalysisName(type))}</span>`,
+                rank: type === "TRADE" ? 0 : type === "WATCH" ? 1 : 3,
+            };
+        }
+        if (row.member && row.member.included === true) {
+            return {
+                html: '<span class="type-chip type-hold">Eligible only</span>',
+                rank: 2,
+            };
+        }
+        if (row.member && row.member.included === false) {
+            return {
+                html: '<span class="type-chip type-pass">Blocked</span>',
+                rank: 4,
+            };
+        }
+        return { html: '<span class="type-chip type-pass">No current row</span>', rank: 5 };
+    }
+
+    function validationScoreCandidateValue(value) {
+        const score = Number(value);
+        return Number.isFinite(score) && score >= 0 ? score : null;
+    }
+
+    function validationScoreFromExplanation(text) {
+        const match = String(text || "").match(/score\s+(\d+(?:\.\d+)?)/i);
+        if (!match) return null;
+        return validationScoreCandidateValue(match[1]);
+    }
+
+    function validationResultScore(row, decision) {
+        const decisionScore = decision ? decisionScoreValue(decision) : null;
+        const candidates = [
+            validationScoreCandidateValue(decisionScore),
+            validationScoreCandidateValue(row.qualified?.score),
+            validationScoreCandidateValue(row.qualified?.score_value),
+            validationScoreCandidateValue(row.qualified?.score_total),
+            validationScoreCandidateValue(row.qualified?.scoring?.score),
+            validationScoreCandidateValue(row.qualified?.score_summary?.score),
+            validationScoreFromExplanation(row.qualified?.explanation),
+        ];
+        const score = candidates.find(value => Number.isFinite(value));
+        return Number.isFinite(score) ? score.toFixed(1) : "Not scored";
+    }
+
+    function validationResultPlan(decision, row) {
+        if (!decision) return row.qualified ? "No current plan" : "No plan";
+        const freshness = inferTradePlanFreshness(decision.trade_plan);
+        return freshness && freshness.has_trade_plan ? formatTradePlanFreshnessBadge(freshness) : "No plan";
+    }
+
+    function renderValidationResults(universeMembers, qualified, universeNote) {
         const body = document.getElementById("qualified-today-body");
         if (!body) return;
-        const rows = Array.isArray(qualified) ? qualified : [];
+        const rows = validationResultRows(universeMembers || {}, qualified || []);
         if (rows.length === 0) {
-            body.className = "text-muted text-center";
-            body.style.padding = "12px 0";
-            body.innerHTML = "No Watch or Trade candidates from the latest validation run.";
+            body.className = "validation-results-list";
+            body.innerHTML = `<div class="text-muted text-center" style="padding: 24px;">${escapeDecisionHtml(universeNote || "No validation results are available yet.")}</div>`;
             return;
         }
-        body.className = "";
-        body.style.padding = "0";
-        body.innerHTML = `
-            <div class="qualified-list">
-                ${rows.map(r => {
-                    const type = r.decision_type || "";
-                    const stance = decisionStance(type, r.direction || "NONE");
-                    const summary = formatDecisionSummary(r.explanation || "", type, []);
-                    const symbol = String(r.symbol || r.instrument_id || "").toUpperCase().replace(/^NSE:|^BSE:/, "");
-                    const isSaved = savedSymbolSet.has(symbol);
-                    return `
-                        <div class="qualified-row" data-qualified-symbol="${escapeDecisionHtml(symbol)}">
-                            <div class="qualified-row-top">
-                                <span class="symbol-name-col">${escapeDecisionHtml(symbol)}</span>
-                                <span class="type-chip type-${String(type).toLowerCase()}">${type ? escapeDecisionHtml(friendlyAnalysisName(type)) : escapeDecisionHtml(stance.label)}</span>
-                                <div class="qualified-row-actions">
-                                    <button type="button" class="inspect-btn qualified-open-decision-btn" data-symbol="${escapeDecisionHtml(symbol)}" title="Open ${escapeDecisionHtml(symbol)} in Decisions & Trace">
-                                        <i class="fa-solid fa-brain" aria-hidden="true"></i> Open decision
-                                    </button>
-                                    <button type="button" class="inspect-btn qualified-save-btn" data-symbol="${escapeDecisionHtml(symbol)}" title="${isSaved ? "Remove from Saved Symbols" : "Save symbol"}">
-                                        <i class="${isSaved ? "fa-solid" : "fa-regular"} fa-bookmark" aria-hidden="true"></i> ${isSaved ? "Saved" : "Save"}
-                                    </button>
-                                </div>
-                            </div>
-                            <p class="qualified-summary">${summary.headline}</p>
-                            ${summary.scoreChip}
-                            ${summary.gateChips}
+        body.className = "validation-results-list";
+        body.innerHTML = rows.map(row => {
+            const symbol = row.symbol;
+            const decision = currentOpenableDecisionForSymbol(symbol);
+            const latestDecision = decision || latestDecisionForSymbol(symbol);
+            const status = validationResultStatus(row.member);
+            const outcome = validationResultOutcome(row, latestDecision);
+            const score = validationResultScore(row, latestDecision);
+            const plan = validationResultPlan(decision, row);
+            const blocker = row.member && row.member.included === false
+                ? validationMemberBlocker(row.member)
+                : "";
+            const summary = row.qualified
+                ? formatDecisionSummary(row.qualified.explanation || "", row.qualified.decision_type || "", [])
+                : null;
+            const summaryText = summary
+                ? summary.headline
+                : (blocker || compactEligibilitySummary(row.member?.eligibility_summary || status.text));
+            const isSaved = savedSymbolSet.has(symbol);
+            const canOpen = Boolean(decision);
+            return `
+                <div class="validation-result-row" data-validation-result-symbol="${escapeDecisionHtml(symbol)}" title="${escapeDecisionHtml(blocker || status.text || "")}">
+                    <div class="validation-result-main">
+                        <div class="validation-result-title">
+                            <strong>${escapeDecisionHtml(symbol)}</strong>
+                            ${status.html}
+                            ${outcome.html}
                         </div>
-                    `;
-                }).join("")}
-            </div>
-        `;
+                        <p class="validation-result-summary">${escapeDecisionHtml(summaryText)}</p>
+                    </div>
+                    <div class="validation-result-meta" aria-label="${escapeDecisionHtml(symbol)} validation details">
+                        <span class="validation-result-metric">
+                            <span>Score</span>
+                            <strong>${escapeDecisionHtml(score)}</strong>
+                        </span>
+                        <span class="validation-result-metric">
+                            <span>Plan</span>
+                            <strong>${escapeDecisionHtml(plan)}</strong>
+                        </span>
+                    </div>
+                    <div class="validation-result-actions">
+                        <button type="button" class="inspect-btn qualified-open-decision-btn" data-symbol="${escapeDecisionHtml(symbol)}" ${canOpen ? "" : "disabled"} title="${canOpen ? `Open ${escapeDecisionHtml(symbol)} in Decisions & Trace` : "Not on the current Decisions board"}" aria-label="Open ${escapeDecisionHtml(symbol)} decision">
+                            <i class="fa-solid fa-brain" aria-hidden="true"></i>
+                        </button>
+                        <button type="button" class="inspect-btn qualified-save-btn" data-symbol="${escapeDecisionHtml(symbol)}" title="${isSaved ? "Remove from Saved Symbols" : "Save symbol"}" aria-label="${isSaved ? "Remove saved" : "Save"} ${escapeDecisionHtml(symbol)}">
+                            <i class="${isSaved ? "fa-solid" : "fa-regular"} fa-bookmark" aria-hidden="true"></i>
+                        </button>
+                        <button type="button" class="inspect-btn qualified-trace-btn" data-symbol="${escapeDecisionHtml(symbol)}" title="Inspect ${escapeDecisionHtml(symbol)} trace" aria-label="Inspect ${escapeDecisionHtml(symbol)} trace">
+                            <i class="fa-solid fa-search-plus" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+        }).join("");
         body.querySelectorAll(".qualified-open-decision-btn").forEach(btn => {
             btn.addEventListener("click", async () => {
+                if (btn.disabled) return;
                 const symbol = btn.getAttribute("data-symbol");
                 closeModal(document.getElementById("validation-funnel-modal"));
                 await openDecisionForSymbol(symbol);
@@ -1606,7 +1752,13 @@
             btn.addEventListener("click", async () => {
                 const symbol = btn.getAttribute("data-symbol");
                 await toggleSavedSymbolNow(symbol, { button: btn });
-                renderQualifiedToday(validationWorkbenchState.qualified);
+                renderValidationResults(validationWorkbenchState.universe, validationWorkbenchState.qualified, validationWorkbenchState.universeNote);
+            });
+        });
+        body.querySelectorAll(".qualified-trace-btn").forEach(btn => {
+            btn.addEventListener("click", () => {
+                const symbol = btn.getAttribute("data-symbol");
+                if (typeof window.openTraceModal === "function") window.openTraceModal(symbol);
             });
         });
     }
@@ -1987,10 +2139,10 @@
     if (searchInput) {
         searchInput.addEventListener("keyup", (e) => {
             const query = e.target.value.toUpperCase();
-            const rows = document.querySelectorAll("#universe-list-body tr");
+            const rows = document.querySelectorAll("#qualified-today-body [data-validation-result-symbol]");
             
             rows.forEach(row => {
-                const sym = row.getAttribute("data-symbol") || "";
+                const sym = row.getAttribute("data-validation-result-symbol") || "";
                 if (sym.includes(query)) {
                     row.style.display = "";
                 } else {
