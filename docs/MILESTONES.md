@@ -335,7 +335,7 @@ Governing plan: `docs/design/ATHENA-INTRADAY-ADVISOR-UX-ROADMAP.md`.
 | **TP-1** Trade Playbook foundation | Move symbol revalidation into Advisor Status; add selected-symbol Trading Steps with entry/stop/target/no-fill/expiry/close/revalidation rules | Owner review after UX/test evidence | 🔄 Ready for review |
 | **TP-2** Current Board controls | Add Re-validate Visible for current-board symbols with progress/result summary | Owner review; must not validate hidden historical rows | 🔄 Ready for review |
 | **TP-3** Top Current Setups | Add top 10 current valid/aging setups sorted by existing score/confidence/risk/return data | Owner review; no expired/stale/no-plan rows | 🔄 Ready for review |
-| **TP-4** Intraday SOP surface | Add persistent intraday SOP/help surface for day workflow and manual execution boundaries | Owner review | 🔄 Ready for review |
+| **TP-4** Intraday SOP surface | Add persistent intraday SOP/help surface for day workflow and manual execution boundaries | Owner review | ✅ Approved |
 
 **Implementation rule:** one TP milestone at a time. TP must never create order
 placement, broker write actions, new signals, or changes to ATHENA's analytical
@@ -425,7 +425,7 @@ logic. It is a frontend review queue over the existing current board.
 Validation note: focused dashboard hosting checks pass. The full suite remains
 deferred locally until the live DB/storage pressure is cleaned up.
 
-#### TP-4 — intraday SOP surface (ready for review, 2026-07-30)
+#### TP-4 — intraday SOP surface (approved, 2026-07-30)
 
 Scope completed: ATHENA now has a persistent `Intraday operating guide`
 reachable from the global header without selecting a symbol. The guide is a
@@ -446,6 +446,12 @@ value change, no backend endpoint, and no new recommendation logic.
 
 Validation note: focused dashboard hosting checks pass. The full suite remains
 deferred locally until the live DB/storage pressure is cleaned up.
+
+**Intraday Advisor UX track closed (2026-07-30):** owner approved TP-4, the
+final approved TP milestone. The Decisions & Trace advisor workflow now has
+selected-symbol trading steps, current-board refresh controls, a top current
+setup review queue, and a persistent intraday operating guide. Any additional
+TP work requires a new owner-approved milestone entry before implementation.
 
 ---
 

@@ -6,7 +6,7 @@ status updated on approval.
 
 ---
 
-## TP-4 — Intraday SOP surface (ready for review)
+## TP-4 — Intraday SOP surface (approved)
 
 | | |
 |---|---|
@@ -22,9 +22,9 @@ status updated on approval.
 | ADR compliance | ADR-004 preserved: static HTML/CSS/vanilla JS. ADR-005 preserved: the SOP explains how to use existing Decisions/TradePlans and does not fabricate signals, targets, exits, or recommendations |
 | Risks discovered | Global guidance must not look like a broker workflow or promise a fixed outcome. The SOP should stay separate from sticky symbol detail content so it does not worsen the central-panel scroll experience |
 | Technical debt introduced | None |
-| Suggested improvements | After owner review, the TP track can be closed or followed by a visual QA pass on the complete intraday advisor workflow |
-| Remaining work | Owner review of TP-4; full-suite validation after freeing disk space |
-| Status | 🔄 Ready for owner review |
+| Suggested improvements | Run a full visual QA pass on the complete intraday advisor workflow before treating the dashboard as day-to-day production advisory-ready |
+| Remaining work | Full-suite validation after freeing disk space; any further TP work requires a new owner-approved milestone |
+| Status | ✅ Approved (2026-07-30) — closes Intraday Advisor UX track |
 | Branch | feature/live-dashboard |
 
 ---
