@@ -39,6 +39,7 @@ from athena.api.v1.dtos.common import (
 )
 from athena.api.v1.dtos.dashboard import (
     DashboardSummaryDTO,
+    MarketSessionStatusDTO,
 )
 from athena.api.v1.dtos.decisions import (
     AnalysisBlockDTO,
@@ -178,6 +179,7 @@ __all__ = [
     "HealthResponse",
     "JournalEntryDTO",
     "MarketHealthContextDTO",
+    "MarketSessionStatusDTO",
     "MetricsResponse",
     "OpsTelemetryDTO",
     "OpsWarningDTO",

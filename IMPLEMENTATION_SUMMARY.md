@@ -6,7 +6,30 @@ status updated on approval.
 
 ---
 
-## AS-2 — Freshness propagation (ready for owner review)
+## AS-3 — Market closed review mode (implemented; validation blocked)
+
+| | |
+|---|---|
+| Completed | 2026-07-30 |
+| Objective | Make closed-market review mode explicit and show the next live session from ATHENA's calendar authority |
+| Scope | Added a read-only dashboard session-status DTO and endpoint; computed current exchange phase and next live session from `CalendarEngine` plus configured NSE session times; wired the header advisor pulse to show market closed / next-live wording; added Decision Brief review-mode wording for selected plans when the market is closed; hardened owner-candidate list enrichment so optional repository context cannot block listing candidate symbols; bumped dashboard asset cache-busters |
+| Files created | None |
+| Files modified | `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md`, `src/athena/api/v1/dtos/__init__.py`, `src/athena/api/v1/dtos/dashboard.py`, `src/athena/api/v1/routers/dashboard.py`, `src/athena/api/v1/services/candidates_service.py`, `src/athena/api/v1/services/dashboard_service.py`, `src/athena/api/static/index.html`, `src/athena/api/static/js/00-state-and-dom.js`, `src/athena/api/static/js/03-app-shell.js`, `src/athena/api/static/js/13-decision-brief-core.js`, `tests/api/v1/test_core_apis.py`, `tests/api/platform/test_dashboard_hosting.py`, `tests/api/platform/test_decision_chart_release_gate.py` |
+| Public APIs added | `GET /api/v1/dashboard/session-status` returning exchange, timezone, current session phase, open/close timestamps, next live timestamps, and a display-safe message |
+| Tests | `rtk python3 -m py_compile src/athena/api/v1/services/candidates_service.py src/athena/api/v1/dtos/dashboard.py src/athena/api/v1/services/dashboard_service.py src/athena/api/v1/routers/dashboard.py src/athena/api/v1/dtos/__init__.py` — passed; `rtk node --check src/athena/api/static/js/00-state-and-dom.js` — passed; `rtk node --check src/athena/api/static/js/03-app-shell.js` — passed; `rtk node --check src/athena/api/static/js/13-decision-brief-core.js` — passed; `rtk pytest tests/api/v1/test_saved_symbols.py::TestSavedSymbolsAPI::test_saved_symbols_independent_of_owner_candidates tests/api/v1/test_owner_candidates.py::TestOwnerCandidatesAPI::test_crud_normalize_and_list -q` — 2 passed; `rtk pytest tests/api/v1/test_core_apis.py::TestDashboardAPI tests/api/platform/test_dashboard_hosting.py tests/api/platform/test_decision_chart_release_gate.py -q` — 10 passed; `rtk git diff --check` — passed; `rtk pytest -q` blocked by local disk capacity (`df -h`: only ~115 MiB free; `db/` is ~9.8 GiB), producing unrelated SQLite `disk I/O error` failures |
+| Coverage | API test locks open and closed NSE session behavior with deterministic `as_of`; dashboard-hosting tests lock the endpoint wiring, review-mode copy, session state, and `9.89.0` static asset cache-busters |
+| Architecture compliance | Additive read-only dashboard API plus static dashboard rendering. Candidate-list fallback only degrades optional UI enrichment when repository context is unavailable. No provider, broker, scoring, risk, decision-policy, TradePlan, analytical schema, or frozen domain contract changes |
+| ADR compliance | ADR-004 preserved: dashboard remains static HTML/CSS/vanilla JS. ADR-005 preserved: market session status is sourced from `CalendarEngine` and config, not reconstructed from browser assumptions |
+| Risks discovered | Session-status search is bounded to configured calendar coverage; if future-year calendar files are missing, the endpoint reports no next live session instead of guessing. Validation exposed that optional owner-candidate enrichment could 503 candidate listing when the live SQLite repo was unhealthy; AS-3 hardens that display path to return base candidate rows. Final full-suite validation needs local disk cleanup before it can be trusted |
+| Technical debt introduced | None |
+| Suggested improvements | AS-4 should add release-gate coverage for diagnostics privacy, actionability dominance, session-status review mode, and reduced-motion/readability regressions |
+| Remaining work | Free local disk space, rerun full suite, then owner review of AS-3; AS-4 remains planned |
+| Status | ⚠️ Implemented; full-suite validation blocked |
+| Branch | feature/live-dashboard |
+
+---
+
+## AS-2 — Freshness propagation (approved)
 
 | | |
 |---|---|
@@ -23,8 +46,8 @@ status updated on approval.
 | Risks discovered | The static frontend mirrors the configured warn/stale fractions (`0.5` / `0.8`) for pre-open list hints; a future config change should update both the backend config and the dashboard mirror in one reviewed change |
 | Technical debt introduced | None |
 | Suggested improvements | AS-3 should replace generic market-ready wording with a true market-closed / next-session message sourced from ATHENA's calendar/session authority |
-| Remaining work | Owner review of AS-2; AS-3/AS-4 remain planned |
-| Status | 🔄 Ready for owner review |
+| Remaining work | AS-3 completed for review; AS-4 remains planned |
+| Status | ✅ Approved (2026-07-30) |
 | Branch | feature/live-dashboard |
 
 ---

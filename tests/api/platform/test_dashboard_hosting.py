@@ -200,8 +200,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.88.0" in html
-    assert "dashboard.js?v=9.88.0" in html
+    assert "dashboard.css?v=9.89.0" in html
+    assert "dashboard.js?v=9.89.0" in html
     assert 'id="advisor-pulse"' in html
     assert 'id="header-diagnostics-popover"' in html
     assert 'id="decision-actionability-banner"' in html
@@ -217,6 +217,10 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "TRADE_PLAN_FRESHNESS_STALE_FRACTION = 0.8" in js
     assert ".symbol-row-plan-status.tone-expired" in css
     assert ".quick-summary-plan-status.tone-expired" in css
+    assert "/api/v1/dashboard/session-status" in js
+    assert "state.marketSession" in js
+    assert "Review mode · market closed" in js
+    assert "Review the thesis only; confirm live quote and re-validate before entry" in js
     assert "function chartPlanLevelPct" in js
     assert "function chartPlanValidityLabel" in js
     assert "function refreshActiveDecisionChart" in js

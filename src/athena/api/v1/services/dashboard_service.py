@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime, timezone
+from datetime import datetime, time, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING
+from zoneinfo import ZoneInfo
 
 from athena.api.v1.dtos.analytics import EmptyFilterParams
 from athena.api.v1.dtos.base import (
@@ -18,11 +19,14 @@ from athena.api.v1.dtos.dashboard import (
     CalendarDataDTO,
     CalendarEventDTO,
     CalendarHolidayDTO,
+    MarketSessionStatusDTO,
     CalendarSpecialSessionDTO,
     DashboardSummaryDTO,
 )
+from athena.calendar.engine import CalendarEngine
 from athena.api.v1.dtos.pipelines import PipelineRunFilterParams
-from athena.config.loader import load_calendar_files
+from athena.config.loader import load_calendar_files, load_config
+from athena.errors import CalendarError
 
 if TYPE_CHECKING:
     from athena.api.v1.providers.base import (
@@ -98,6 +102,118 @@ class DashboardService:
             monthly_expiries=expiries_file.monthly,
             events=events,
         )
+
+    def get_market_session_status(
+        self,
+        *,
+        as_of: datetime | None = None,
+    ) -> MarketSessionStatusDTO:
+        """Return live/review-mode exchange status from the configured calendar.
+
+        This is a read-only dashboard adapter over CalendarEngine + market
+        session config. It does not infer holidays/weekends in JavaScript and
+        does not read provider state or trading signals.
+        """
+        config_dir = self._resolve_config_dir()
+        cfg = load_config(config_dir)
+        tz = ZoneInfo(cfg.market.timezone)
+        now = as_of or datetime.now(tz=timezone.utc)
+        if now.tzinfo is None:
+            now = now.replace(tzinfo=timezone.utc)
+        local_now = now.astimezone(tz)
+        calendar = CalendarEngine.from_config_dir(config_dir, cfg.market)
+        ctx = calendar.context_for(local_now.date())
+
+        session_open = self._session_dt(ctx.context_date, ctx.open_time, tz)
+        session_close = self._session_dt(ctx.context_date, ctx.close_time, tz)
+        is_open = bool(
+            ctx.is_trading_session
+            and session_open
+            and session_close
+            and session_open <= local_now < session_close
+        )
+        if is_open:
+            phase = "OPEN"
+        elif ctx.is_trading_session and session_open and local_now < session_open:
+            phase = "PRE_OPEN"
+        elif ctx.is_trading_session:
+            phase = "CLOSED"
+        else:
+            phase = "NO_SESSION"
+
+        next_open, next_close = self._next_market_session(calendar, local_now, tz)
+        message = self._session_message(
+            ctx.session_type.value,
+            is_open=is_open,
+            phase=phase,
+            next_open=next_open,
+            holiday_name=ctx.holiday_name,
+        )
+
+        return MarketSessionStatusDTO(
+            exchange=ctx.exchange,
+            timezone=ctx.timezone,
+            as_of=local_now,
+            context_date=ctx.context_date.isoformat(),
+            session_type=ctx.session_type.value,
+            is_trading_session=ctx.is_trading_session,
+            is_market_open=is_open,
+            phase=phase,
+            session_open=session_open,
+            session_close=session_close,
+            next_open=next_open,
+            next_close=next_close,
+            holiday_name=ctx.holiday_name,
+            message=message,
+        )
+
+    @staticmethod
+    def _session_dt(day, clock: time | None, tz) -> datetime | None:
+        if clock is None:
+            return None
+        return datetime.combine(day, clock, tzinfo=tz)
+
+    def _next_market_session(
+        self,
+        calendar: CalendarEngine,
+        local_now: datetime,
+        tz,
+    ) -> tuple[datetime | None, datetime | None]:
+        for offset in range(0, 370):
+            day = local_now.date() + timedelta(days=offset)
+            try:
+                ctx = calendar.context_for(day)
+            except CalendarError:
+                break
+            open_dt = self._session_dt(ctx.context_date, ctx.open_time, tz)
+            close_dt = self._session_dt(ctx.context_date, ctx.close_time, tz)
+            if not ctx.is_trading_session or open_dt is None or close_dt is None:
+                continue
+            if close_dt <= local_now:
+                continue
+            if open_dt <= local_now < close_dt:
+                return open_dt, close_dt
+            if local_now < open_dt:
+                return open_dt, close_dt
+        return None, None
+
+    @staticmethod
+    def _session_message(
+        session_type: str,
+        *,
+        is_open: bool,
+        phase: str,
+        next_open: datetime | None,
+        holiday_name: str | None,
+    ) -> str:
+        if is_open:
+            return "Market live"
+        if phase == "PRE_OPEN" and next_open:
+            return f"Market opens at {next_open.strftime('%d %b, %I:%M %p IST')}"
+        if next_open:
+            reason = holiday_name if session_type == "HOLIDAY" and holiday_name else "Market closed"
+            return f"{reason} · next live {next_open.strftime('%d %b, %I:%M %p IST')}"
+        return "Market closed · next live session unavailable"
 
     def _build_exposure_map(
         self,

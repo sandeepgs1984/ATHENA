@@ -200,6 +200,11 @@
 
     function updateMarketPulse(data) {
         if (typeof setAdvisorPulse !== "function") return;
+        const session = state.marketSession;
+        if (session && session.is_market_open === false) {
+            setAdvisorPulse(session.message || "Market closed · review mode", "warning", 0);
+            return;
+        }
         const hasTicker = Boolean(
             (data.nifty && data.nifty.level != null)
             || (data.bank_nifty && data.bank_nifty.level != null)
@@ -210,15 +215,31 @@
             return;
         }
         const kiteText = state.kiteRequired
-            ? (state.kiteConnected ? "Kite connected · advisor ready" : "Kite reconnect required")
-            : "Advisor ready · market pulse updated";
+            ? (state.kiteConnected ? "Market live · Kite connected" : "Kite reconnect required")
+            : "Market live · advisor ready";
         const tone = state.kiteRequired && !state.kiteConnected ? "warning" : "good";
         setAdvisorPulse(kiteText, tone, 0);
+    }
+
+    async function loadMarketSessionStatus() {
+        try {
+            const res = await apiRequest("/api/v1/dashboard/session-status", { skipToast: true });
+            state.marketSession = res && res.data ? res.data : null;
+            if (typeof renderDecisionActionability === "function") {
+                renderDecisionActionability(activePlanFreshness);
+            }
+            return state.marketSession;
+        } catch (err) {
+            console.error("Failed to load market session status", err);
+            state.marketSession = null;
+            return null;
+        }
     }
 
     async function loadMarketTicker() {
         if (!headerMarketTicker) return;
         try {
+            await loadMarketSessionStatus();
             const res = await apiRequest("/api/v1/market/ticker", { skipToast: true });
             const data = (res && res.data) ? res.data : {};
             renderTickerIndex("nifty", data.nifty || {});

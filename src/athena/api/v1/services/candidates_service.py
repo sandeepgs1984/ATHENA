@@ -104,17 +104,25 @@ class CandidatesService:
 
     def list_candidates(self, *, active_only: bool = True) -> OwnerCandidateListDTO:
         rows = self._store.list_candidates(active_only=active_only)
-        enrich = self._repo is not None
-        verdicts = self._universe_verdicts({_bare_symbol(c.symbol) for c in rows})
-        last_validated = self._latest_decision_ts_by_symbol()
-        sectors = self._sector_by_symbol()
+        verdicts: dict[str, _UniverseVerdict] | None = None
+        last_validated: dict[str, datetime] | None = None
+        sectors: dict[str, str] | None = None
+        if self._repo is not None:
+            try:
+                verdicts = self._universe_verdicts({_bare_symbol(c.symbol) for c in rows})
+                last_validated = self._latest_decision_ts_by_symbol()
+                sectors = self._sector_by_symbol()
+            except AthenaError:
+                verdicts = None
+                last_validated = None
+                sectors = None
         dtos = tuple(
             self._to_dto(
                 c.symbol,
                 c.added_ts,
                 c.notes,
                 c.active,
-                verdicts=verdicts if enrich else None,
+                verdicts=verdicts,
                 last_validated=last_validated,
                 sectors=sectors,
             )

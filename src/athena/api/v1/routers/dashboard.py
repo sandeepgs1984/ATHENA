@@ -8,7 +8,11 @@ from fastapi import APIRouter, Depends, Request, status
 
 from athena.api.dependencies import get_dashboard_service
 from athena.api.v1.dtos import AthenaResponse, ResponseMeta
-from athena.api.v1.dtos.dashboard import CalendarDataDTO, DashboardSummaryDTO
+from athena.api.v1.dtos.dashboard import (
+    CalendarDataDTO,
+    DashboardSummaryDTO,
+    MarketSessionStatusDTO,
+)
 from athena.api.v1.services.dashboard_service import DashboardService
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
@@ -55,6 +59,35 @@ def get_calendar_data(
 ) -> AthenaResponse[CalendarDataDTO]:
     """Retrieve holidays, weekly/monthly expiries, special trading sessions, and scheduled macroeconomic events."""
     data = service.get_calendar_data()
+    request_id = getattr(request.state, "request_id", "unknown")
+
+    meta = ResponseMeta(
+        request_id=request_id,
+        api_version="v1",
+        as_of=datetime.now(tz=timezone.utc),
+    )
+
+    return AthenaResponse(
+        status="success",
+        data=data,
+        meta=meta,
+    )
+
+
+@router.get(
+    "/session-status",
+    response_model=AthenaResponse[MarketSessionStatusDTO],
+    summary="Get current exchange session status",
+    status_code=status.HTTP_200_OK,
+    operation_id="getMarketSessionStatus",
+)
+def get_market_session_status(
+    request: Request,
+    as_of: datetime | None = None,
+    service: DashboardService = Depends(get_dashboard_service),  # noqa: B008
+) -> AthenaResponse[MarketSessionStatusDTO]:
+    """Retrieve market-live/review-mode status from ATHENA's Calendar Engine."""
+    data = service.get_market_session_status(as_of=as_of)
     request_id = getattr(request.state, "request_id", "unknown")
 
     meta = ResponseMeta(

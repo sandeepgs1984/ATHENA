@@ -22,7 +22,8 @@
             message: "ATHENA advisor ready · Select a symbol to review actionability",
             tone: "neutral",
             priority: 0
-        }
+        },
+        marketSession: null
     };
 
     // ---------------------------------------------------------------------------

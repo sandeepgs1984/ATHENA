@@ -504,6 +504,9 @@
         const remainingLabel = remaining != null && Number.isFinite(remaining)
             ? formatTradePlanRelativeDuration(Math.abs(remaining))
             : "";
+        const session = state && state.marketSession ? state.marketSession : null;
+        const marketClosed = session && session.is_market_open === false;
+        const sessionMessage = session && session.message ? String(session.message) : "Market closed";
 
         if (status === "EXPIRED" || inferredExpired) {
             return {
@@ -522,9 +525,22 @@
             return {
                 tone: "warning",
                 status: "Plan stale · confirm first",
-                detail: `Validity window is nearly exhausted. Re-validate before entry.`,
-                pulse: `${symbol ? `${symbol} · ` : ""}plan stale · confirm first`,
+                detail: marketClosed
+                    ? `${sessionMessage}. Re-validate after market opens before entry.`
+                    : `Validity window is nearly exhausted. Re-validate before entry.`,
+                pulse: marketClosed
+                    ? `${symbol ? `${symbol} · ` : ""}review mode · plan stale`
+                    : `${symbol ? `${symbol} · ` : ""}plan stale · confirm first`,
                 priority: 2,
+            };
+        }
+        if (marketClosed) {
+            return {
+                tone: "warning",
+                status: "Review mode · market closed",
+                detail: `${sessionMessage}. Review the thesis only; confirm live quote and re-validate before entry.`,
+                pulse: `${symbol ? `${symbol} · ` : ""}review mode · market closed`,
+                priority: 1,
             };
         }
         if (status === "AGING") {

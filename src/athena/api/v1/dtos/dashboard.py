@@ -70,3 +70,24 @@ class CalendarDataDTO(BaseModel):
     weekly_expiries: list[str]
     monthly_expiries: list[str]
     events: list[CalendarEventDTO]
+
+
+class MarketSessionStatusDTO(BaseModel):
+    """Current exchange-session status computed from ATHENA's Calendar Engine."""
+
+    model_config = ConfigDict(frozen=True)
+
+    exchange: str
+    timezone: str
+    as_of: datetime
+    context_date: str
+    session_type: str
+    is_trading_session: bool
+    is_market_open: bool
+    phase: str
+    session_open: datetime | None = None
+    session_close: datetime | None = None
+    next_open: datetime | None = None
+    next_close: datetime | None = None
+    holiday_name: str | None = None
+    message: str

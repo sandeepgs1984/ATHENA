@@ -222,8 +222,8 @@ risk, decision policy, providers, frozen domain contracts, or order behavior.
 |---|---|---|---|
 | **AS-0** Advisor status plan | Audit screenshot, define actionability states, diagnostics boundary, pulse-strip content, staged rollout | Owner approval | ✅ Approved (2026-07-29) |
 | **AS-1** Header pulse + actionability foundation | Replace always-visible REQ/CORR/LATENCY with advisor pulse + diagnostics popover; add selected-symbol actionability banner that can override a green BUY-looking setup when market/plan state makes it non-actionable | None — frontend presentation over existing data only | ✅ Approved (2026-07-30) |
-| **AS-2** Freshness propagation | Add plan/actionability state to Quick Summary and the symbol list so expired/stale plans are visible before opening each brief | None — reuse selected/list payloads and plan freshness where available; no fabricated timestamps | 🔄 Ready for review |
-| **AS-3** Market closed review mode | Surface market-closed/next-session messaging and review-mode wording across header and detail pane once existing calendar/session data is exposed to the dashboard | Additive read-only API only if existing payloads are insufficient | ⏳ Planned |
+| **AS-2** Freshness propagation | Add plan/actionability state to Quick Summary and the symbol list so expired/stale plans are visible before opening each brief | None — reuse selected/list payloads and plan freshness where available; no fabricated timestamps | ✅ Approved (2026-07-30) |
+| **AS-3** Market closed review mode | Surface market-closed/next-session messaging and review-mode wording across header and detail pane once existing calendar/session data is exposed to the dashboard | Additive read-only API only if existing payloads are insufficient | ⚠️ Implemented; full-suite blocked by local disk capacity |
 | **AS-4** Release gate | Regression tests for diagnostics privacy, actionability overrides, reduced-motion pulse behavior, and expired-plan visual dominance | Owner review after QA evidence | ⏳ Planned |
 
 **Implementation rule:** one AS milestone at a time. AS must never create
@@ -251,7 +251,7 @@ market-closed / next live-session date remains AS-3. AS-1 does not fabricate a
 next session from browser time; that must come from ATHENA's calendar/session
 authority.
 
-#### AS-2 — freshness propagation (ready for review, 2026-07-30)
+#### AS-2 — freshness propagation (approved, 2026-07-30)
 
 Scope completed: the Decisions symbol list now shows a compact TradePlan
 freshness chip per row (`Valid`, `Aging`, `Stale`, `Expired`, or `No plan`)
@@ -266,6 +266,27 @@ or broker behavior. List-row freshness uses only persisted `valid_from` /
 `valid_until` and the same configured freshness fractions as the backend
 service (`0.5` warn, `0.8` stale); the selected brief remains authoritative via
 the existing API DTO.
+
+#### AS-3 — market closed review mode (implemented; validation blocked, 2026-07-30)
+
+Scope completed: the dashboard now exposes a read-only
+`/api/v1/dashboard/session-status` endpoint that computes live/review-mode
+exchange status from `CalendarEngine` and configured NSE session times. The
+header advisor pulse now shows server-provided market closed / next-live
+wording outside live hours. The selected Decision Brief Advisor Status banner
+switches valid plans into review mode when the market is closed, while expired
+and stale plan warnings remain stronger and continue to require re-validation.
+
+Architectural note: AS-3 adds only a read-only dashboard DTO/endpoint and
+presentation wiring. It does not change scoring, risk, decision policy,
+TradePlan values, provider behavior, schemas used by analytical engines, or
+broker behavior. The next-live date is computed by the backend from ATHENA's
+calendar/session authority; the frontend never fabricates market dates.
+
+Validation note: focused API/dashboard checks pass, but the full suite is
+blocked on this machine because the filesystem is effectively full
+(`db/` is ~9.8 GiB; only ~115 MiB free), causing unrelated SQLite `disk I/O
+error` failures in repository tests and live-repo-backed shape tests.
 
 ---
 

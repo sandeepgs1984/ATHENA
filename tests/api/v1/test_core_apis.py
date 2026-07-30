@@ -1294,3 +1294,31 @@ class TestDashboardAPI:
         assert isinstance(cal["weekly_expiries"], list)
         assert isinstance(cal["monthly_expiries"], list)
 
+    def test_get_dashboard_session_status_open_and_closed(self, client) -> None:
+        headers = get_auth_headers(client, Role.READONLY)
+
+        live = client.get(
+            "/api/v1/dashboard/session-status?as_of=2026-07-30T10:00:00%2B05:30",
+            headers=headers,
+        )
+        assert live.status_code == 200
+        live_data = live.json()["data"]
+        assert live_data["exchange"] == "NSE"
+        assert live_data["timezone"] == "Asia/Kolkata"
+        assert live_data["context_date"] == "2026-07-30"
+        assert live_data["session_type"] == "NORMAL"
+        assert live_data["is_trading_session"] is True
+        assert live_data["is_market_open"] is True
+        assert live_data["phase"] == "OPEN"
+        assert live_data["message"] == "Market live"
+
+        closed = client.get(
+            "/api/v1/dashboard/session-status?as_of=2026-07-30T16:00:00%2B05:30",
+            headers=headers,
+        )
+        assert closed.status_code == 200
+        closed_data = closed.json()["data"]
+        assert closed_data["is_market_open"] is False
+        assert closed_data["phase"] == "CLOSED"
+        assert closed_data["next_open"].startswith("2026-07-31T09:15:00")
+        assert "next live 31 Jul, 09:15 AM IST" in closed_data["message"]
