@@ -221,15 +221,15 @@ risk, decision policy, providers, frozen domain contracts, or order behavior.
 | Milestone | Scope | Gate | Status |
 |---|---|---|---|
 | **AS-0** Advisor status plan | Audit screenshot, define actionability states, diagnostics boundary, pulse-strip content, staged rollout | Owner approval | ✅ Approved (2026-07-29) |
-| **AS-1** Header pulse + actionability foundation | Replace always-visible REQ/CORR/LATENCY with advisor pulse + diagnostics popover; add selected-symbol actionability banner that can override a green BUY-looking setup when market/plan state makes it non-actionable | None — frontend presentation over existing data only | 🔄 Ready for review |
-| **AS-2** Freshness propagation | Add plan/actionability state to Quick Summary and the symbol list so expired/stale plans are visible before opening each brief | None — reuse selected/list payloads and plan freshness where available; no fabricated timestamps | ⏳ Planned |
+| **AS-1** Header pulse + actionability foundation | Replace always-visible REQ/CORR/LATENCY with advisor pulse + diagnostics popover; add selected-symbol actionability banner that can override a green BUY-looking setup when market/plan state makes it non-actionable | None — frontend presentation over existing data only | ✅ Approved (2026-07-30) |
+| **AS-2** Freshness propagation | Add plan/actionability state to Quick Summary and the symbol list so expired/stale plans are visible before opening each brief | None — reuse selected/list payloads and plan freshness where available; no fabricated timestamps | 🔄 Ready for review |
 | **AS-3** Market closed review mode | Surface market-closed/next-session messaging and review-mode wording across header and detail pane once existing calendar/session data is exposed to the dashboard | Additive read-only API only if existing payloads are insufficient | ⏳ Planned |
 | **AS-4** Release gate | Regression tests for diagnostics privacy, actionability overrides, reduced-motion pulse behavior, and expired-plan visual dominance | Owner review after QA evidence | ⏳ Planned |
 
 **Implementation rule:** one AS milestone at a time. AS must never create
 trading signals, alter ATHENA's recommendation, or imply order execution.
 
-#### AS-1 — header pulse + actionability foundation (ready for review, 2026-07-29)
+#### AS-1 — header pulse + actionability foundation (approved, 2026-07-30)
 
 Scope completed: the primary header now uses an advisor pulse strip for
 market/Kite/selected-plan messages, while exact `REQ-ID`/`CORR-ID`/latency
@@ -245,10 +245,27 @@ duplicating the market ticker, the diagnostics popover was compacted, and the
 expired-plan banner was restyled with shorter action-first wording so the
 advisor warning does not read like loose body copy.
 
-Deferred deliberately to AS-2/AS-3: propagating plan freshness into every left
-symbol row, adding it to Quick Summary, and showing a real market-closed / next
-live-session date. AS-1 does not fabricate a next session from browser time;
-that must come from ATHENA's calendar/session authority.
+Deferred deliberately at AS-1 close: propagating plan freshness into every
+left symbol row and adding it to Quick Summary moved to AS-2; showing a real
+market-closed / next live-session date remains AS-3. AS-1 does not fabricate a
+next session from browser time; that must come from ATHENA's calendar/session
+authority.
+
+#### AS-2 — freshness propagation (ready for review, 2026-07-30)
+
+Scope completed: the Decisions symbol list now shows a compact TradePlan
+freshness chip per row (`Valid`, `Aging`, `Stale`, `Expired`, or `No plan`)
+before opening the brief. Quick Summary now includes a `Plan Status` row using
+the same freshness wording. The selected brief first infers status from the
+persisted TradePlan validity window, then refreshes Quick Summary with the
+authoritative `/plan-freshness` DTO after it loads.
+
+Architectural note: AS-2 is frontend presentation only. It does not alter
+decision type, score, confidence, risk, TradePlan values, providers, schemas,
+or broker behavior. List-row freshness uses only persisted `valid_from` /
+`valid_until` and the same configured freshness fractions as the backend
+service (`0.5` warn, `0.8` stale); the selected brief remains authoritative via
+the existing API DTO.
 
 ---
 

@@ -435,6 +435,16 @@
         const expectedReturnRow = expectedReturnPct != null && Number.isFinite(expectedReturnPct)
             ? `<div class="quick-summary-row"><span>Expected Return</span><strong class="${expectedReturnPct >= 0 ? "tone-good-text" : "tone-bad-text"}">${expectedReturnPct >= 0 ? "+" : ""}${expectedReturnPct.toFixed(2)}%</strong></div>`
             : "";
+        const planFreshness = activePlanFreshness && activePlanFreshness.has_trade_plan
+            ? activePlanFreshness
+            : inferTradePlanFreshness(plan);
+        const planTone = String(planFreshness.status || "unknown").toLowerCase();
+        const planLabel = formatTradePlanFreshnessBadge(planFreshness);
+        const planTitle = formatTradePlanFreshnessTitle(planFreshness)
+            || "TradePlan freshness uses the persisted validity window.";
+        const planStatusRow = plan
+            ? `<div class="quick-summary-row quick-summary-plan-row"><span>Plan Status</span><strong class="quick-summary-plan-status tone-${escapeDecisionHtml(planTone)}" title="${escapeDecisionHtml(planTitle)}">${escapeDecisionHtml(planLabel)}</strong></div>`
+            : `<div class="quick-summary-row quick-summary-plan-row"><span>Plan Status</span><strong class="quick-summary-plan-status tone-no_plan">No plan</strong></div>`;
 
         // Historical Analogs aggregate (UX-6) — explicitly labeled
         // "(Historical)" since there is no forward-looking, per-decision
@@ -469,6 +479,7 @@
             ${winRateRow}
             ${expectedReturnRow}
             ${rrRow}
+            ${planStatusRow}
         `;
     }
 

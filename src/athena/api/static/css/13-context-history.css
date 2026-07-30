@@ -466,6 +466,39 @@
     font-weight: 700;
 }
 
+.quick-summary-plan-status {
+    border-radius: 999px;
+    font-size: var(--text-0-62);
+    padding: var(--space-2) var(--space-7);
+    white-space: nowrap;
+}
+
+.quick-summary-plan-status.tone-fresh {
+    background: rgba(34, 197, 94, 0.1);
+    color: var(--tone-good-text);
+}
+
+.quick-summary-plan-status.tone-aging {
+    background: rgba(56, 189, 248, 0.1);
+    color: var(--tone-info-text);
+}
+
+.quick-summary-plan-status.tone-stale {
+    background: rgba(245, 158, 11, 0.12);
+    color: var(--tone-warn-text);
+}
+
+.quick-summary-plan-status.tone-expired {
+    background: rgba(248, 113, 113, 0.14);
+    color: var(--tone-bad-text);
+}
+
+.quick-summary-plan-status.tone-no_plan,
+.quick-summary-plan-status.tone-unknown {
+    background: rgba(148, 163, 184, 0.1);
+    color: var(--text-muted);
+}
+
 .decision-counterfactual-panel {
     display: flex;
     flex-direction: column;
@@ -524,6 +557,5 @@
     font-size: var(--text-0-78);
     color: var(--text-muted);
 }
-
 
 

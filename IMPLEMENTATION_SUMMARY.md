@@ -6,7 +6,30 @@ status updated on approval.
 
 ---
 
-## AS-1 — Header pulse and actionability foundation (ready for owner review)
+## AS-2 — Freshness propagation (ready for owner review)
+
+| | |
+|---|---|
+| Completed | 2026-07-30 |
+| Objective | Surface TradePlan freshness before and during brief review so expired/stale setups are visible earlier |
+| Scope | Added shared dashboard freshness helpers; added compact TradePlan freshness chips to Decisions symbol rows; added a `Plan Status` row to Quick Summary; refreshed Quick Summary after the selected `/plan-freshness` DTO loads; bumped dashboard asset cache-busters |
+| Files created | None |
+| Files modified | `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md`, `src/athena/api/static/index.html`, `src/athena/api/static/js/05-utils.js`, `src/athena/api/static/js/12-decisions-list.js`, `src/athena/api/static/js/13-decision-brief-core.js`, `src/athena/api/static/js/14-decision-brief-analysis.js`, `src/athena/api/static/css/12-decision-cards-dag.css`, `src/athena/api/static/css/13-context-history.css`, `tests/api/platform/test_dashboard_hosting.py`, `tests/api/platform/test_decision_chart_release_gate.py` |
+| Public APIs added | None |
+| Tests | `rtk node --check src/athena/api/static/js/05-utils.js` — passed; `rtk node --check src/athena/api/static/js/12-decisions-list.js` — passed; `rtk node --check src/athena/api/static/js/13-decision-brief-core.js` — passed; `rtk node --check src/athena/api/static/js/14-decision-brief-analysis.js` — passed; `rtk pytest tests/api/platform/test_dashboard_hosting.py tests/api/platform/test_decision_chart_release_gate.py -q` — 8 passed; `rtk git diff --check` — passed; `rtk pytest -q` — 1123 passed |
+| Coverage | Hosting tests lock in the shared freshness helpers, configured freshness fractions, left-list freshness chips, Quick Summary `Plan Status`, selected DTO refresh, and `9.88.0` static asset cache-busters |
+| Architecture compliance | Presentation-only. No backend, provider, broker, scoring, risk, decision-policy, frozen domain, or schema changes. Symbol-row freshness uses persisted TradePlan validity fields; the selected brief remains authoritative via the existing freshness DTO |
+| ADR compliance | ADR-004 preserved: static HTML/CSS/vanilla JS. ADR-005 preserved: every displayed value comes from persisted TradePlan fields or the existing `/plan-freshness` explainability DTO; no new analytical rationale is reconstructed |
+| Risks discovered | The static frontend mirrors the configured warn/stale fractions (`0.5` / `0.8`) for pre-open list hints; a future config change should update both the backend config and the dashboard mirror in one reviewed change |
+| Technical debt introduced | None |
+| Suggested improvements | AS-3 should replace generic market-ready wording with a true market-closed / next-session message sourced from ATHENA's calendar/session authority |
+| Remaining work | Owner review of AS-2; AS-3/AS-4 remain planned |
+| Status | 🔄 Ready for owner review |
+| Branch | feature/live-dashboard |
+
+---
+
+## AS-1 — Header pulse and actionability foundation (approved)
 
 | | |
 |---|---|
@@ -23,8 +46,8 @@ status updated on approval.
 | Risks discovered | The owner-requested “market closed · next live date” message needs a real calendar/session payload; AS-1 deliberately defers that to AS-3 rather than guessing from browser time. Left-list and Quick Summary freshness propagation remain separate reviewable work in AS-2 |
 | Technical debt introduced | None |
 | Suggested improvements | AS-2 should surface plan validity directly in Quick Summary and symbol rows so expired setups are visible before opening each brief |
-| Remaining work | Owner review of AS-1; AS-2/AS-3/AS-4 remain planned |
-| Status | 🔄 Ready for owner review |
+| Remaining work | AS-2 completed for review; AS-3/AS-4 remain planned |
+| Status | ✅ Approved (2026-07-30) |
 | Branch | feature/live-dashboard |
 
 ---

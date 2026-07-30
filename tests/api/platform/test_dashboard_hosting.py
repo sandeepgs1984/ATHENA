@@ -200,8 +200,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.87.0" in html
-    assert "dashboard.js?v=9.87.0" in html
+    assert "dashboard.css?v=9.88.0" in html
+    assert "dashboard.js?v=9.88.0" in html
     assert 'id="advisor-pulse"' in html
     assert 'id="header-diagnostics-popover"' in html
     assert 'id="decision-actionability-banner"' in html
@@ -212,6 +212,11 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".advisor-pulse" in css
     assert ".diagnostics-popover" in css
     assert ".decision-actionability-banner.tone-danger" in css
+    assert "function inferTradePlanFreshness" in js
+    assert "TRADE_PLAN_FRESHNESS_WARN_FRACTION = 0.5" in js
+    assert "TRADE_PLAN_FRESHNESS_STALE_FRACTION = 0.8" in js
+    assert ".symbol-row-plan-status.tone-expired" in css
+    assert ".quick-summary-plan-status.tone-expired" in css
     assert "function chartPlanLevelPct" in js
     assert "function chartPlanValidityLabel" in js
     assert "function refreshActiveDecisionChart" in js
@@ -1242,6 +1247,7 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".quick-summary-card-header" in css
     assert "R:R Potential" in js
     assert "Expected Return" in js
+    assert "Plan Status" in js
     assert "Win Rate (Historical)" in js
     assert "Holding Period (Historical)" in js
     assert ".quick-summary-row" in css
@@ -1269,6 +1275,12 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "tone-warn-text" in quick_summary_fn_body
     assert "tone-bad-text" in quick_summary_fn_body
     assert "rr.toFixed(1)" in quick_summary_fn_body
+    assert "inferTradePlanFreshness(plan)" in quick_summary_fn_body
+    assert "activePlanFreshness" in quick_summary_fn_body
+    assert "quick-summary-plan-status" in quick_summary_fn_body
+    freshness_fn_start = js.find("async function loadDecisionPlanFreshness")
+    freshness_fn_end = js.find("\n    // ", freshness_fn_start + 1)
+    assert "renderSidebarQuickSummary();" in js[freshness_fn_start:freshness_fn_end]
 
     # Owner follow-up (2026-07-27): "does ATHENA have a real Holding Period
     # (days)?" — checked, and each analog's own outcome_holding_days is

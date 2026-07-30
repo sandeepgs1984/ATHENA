@@ -54,45 +54,6 @@
         return `Valid for ${parts.join(" ")}`;
     }
 
-    function formatTradePlanRelativeDuration(seconds) {
-        const totalSeconds = Math.max(0, Math.round(Number(seconds)));
-        if (!Number.isFinite(totalSeconds)) return "";
-        if (totalSeconds < 60) return "under 1m";
-        const days = Math.floor(totalSeconds / 86400);
-        const hours = Math.floor((totalSeconds % 86400) / 3600);
-        const minutes = Math.floor((totalSeconds % 3600) / 60);
-        const parts = [];
-        if (days) parts.push(`${days}d`);
-        if (hours) parts.push(`${hours}h`);
-        if (minutes && parts.length < 2) parts.push(`${minutes}m`);
-        return parts.slice(0, 2).join(" ");
-    }
-
-    function formatTradePlanFreshnessBadge(data) {
-        const status = String(data && data.status || "").toUpperCase();
-        const label = friendlyLabel(status);
-        if (status === "EXPIRED") {
-            const asOf = new Date(data.as_of);
-            const validUntil = new Date(data.valid_until);
-            const expiredSeconds = (asOf.getTime() - validUntil.getTime()) / 1000;
-            const ago = formatTradePlanRelativeDuration(expiredSeconds);
-            return ago ? `${label} · expired ${ago} ago` : label;
-        }
-        const remaining = Number(data && data.remaining_seconds);
-        const expiresIn = formatTradePlanRelativeDuration(remaining);
-        return expiresIn ? `${label} · expires in ${expiresIn}` : label;
-    }
-
-    function formatTradePlanFreshnessTitle(data) {
-        const pct = data && data.decay_fraction !== null && data.decay_fraction !== undefined
-            ? Math.round(Number(data.decay_fraction) * 100)
-            : null;
-        const parts = [];
-        if (Number.isFinite(pct)) parts.push(`${pct}% of the validity window elapsed`);
-        if (data && data.valid_until) parts.push(`Valid until ${formatDecisionTime(data.valid_until)}`);
-        return parts.join(" · ");
-    }
-
     function renderTradePlan(plan, decisionType, direction) {
         if (!plan) {
             const label = decisionType ? friendlyAnalysisName(decisionType) : "non-Trade";
@@ -212,6 +173,7 @@
             activePlanFreshness = response && response.data;
             renderPlanFreshnessBadge(activePlanFreshness);
             renderDecisionActionability(activePlanFreshness);
+            renderSidebarQuickSummary();
             refreshActiveDecisionChart();
         } catch (err) {
             if (activeDecisionId !== decisionId) return;

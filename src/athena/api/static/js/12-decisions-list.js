@@ -224,6 +224,12 @@
         const noteTone = gates.length === 0
             ? ""
             : (failed.length === 0 ? "tone-good-text" : (failed.length <= 2 ? "tone-warn-text" : "tone-bad-text"));
+        const planFreshness = inferTradePlanFreshness(d.trade_plan);
+        const planStatus = formatTradePlanFreshnessShort(planFreshness);
+        const planStatusClass = String(planFreshness.status || "unknown").toLowerCase();
+        const planStatusTitle = planFreshness.has_trade_plan
+            ? formatTradePlanFreshnessBadge(planFreshness)
+            : "No authorized TradePlan for this decision";
 
         const row = document.createElement("div");
         row.className = "symbol-row";
@@ -245,6 +251,7 @@
                 </div>
                 <div class="symbol-row-mid">
                     <span class="symbol-row-score">${escapeDecisionHtml(scoreLabel)}</span>
+                    <span class="symbol-row-plan-status tone-${escapeDecisionHtml(planStatusClass)}" title="${escapeDecisionHtml(planStatusTitle)}">${escapeDecisionHtml(planStatus)}</span>
                     <span class="symbol-row-time">${escapeDecisionHtml(dateStr)}</span>
                 </div>
                 <div class="symbol-row-note ${noteTone}" title="${escapeDecisionHtml(noteTitle)}">${escapeDecisionHtml(noteText)}</div>
