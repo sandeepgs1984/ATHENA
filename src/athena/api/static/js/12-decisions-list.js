@@ -9,6 +9,7 @@
     const decisionsRevalidateStatus = document.getElementById("decisions-revalidate-status");
     const QUICK_VISIBLE_REVALIDATE_LIMIT = 5;
     const QUICK_VISIBLE_REVALIDATE_COOLDOWN_MS = 60000;
+    const TOP_CURRENT_SETUPS_LIMIT = 10;
     let nextBoardRevalidateAllowedAt = 0;
     let boardRevalidateCooldownTimer = null;
     const BOARD_REVALIDATE_READY_HTML = '<i class="fa-solid fa-arrows-rotate"></i>';
@@ -121,6 +122,101 @@
         // historical TRADE records stay available in audit/history, but they
         // must not keep reappearing in the board or in Restore.
         return !decisionHasHistoricalTradePlan(d);
+    }
+
+    function topSetupNumericValue(...values) {
+        for (const value of values) {
+            const n = Number(value);
+            if (Number.isFinite(n)) return n;
+        }
+        return null;
+    }
+
+    function decisionConfidenceValue(d) {
+        const confidence = d && d.confidence ? d.confidence : {};
+        return topSetupNumericValue(
+            confidence.score,
+            confidence.confidence,
+            confidence.confidence_score,
+            confidence.overall,
+            d && d.metadata && d.metadata.confidence
+        );
+    }
+
+    function decisionRiskValue(d) {
+        const risk = d && d.risk ? d.risk : {};
+        return topSetupNumericValue(
+            risk.score,
+            risk.risk_score,
+            risk.overall,
+            d && d.metadata && d.metadata.risk
+        );
+    }
+
+    function decisionExpectedReturnPctValue(d) {
+        const plan = d && d.trade_plan ? d.trade_plan : null;
+        if (!plan) return null;
+        const persisted = topSetupNumericValue(plan.expected_return_pct, plan.expected_return);
+        if (persisted !== null) return persisted;
+
+        const entryMid = (Number(plan.entry_low) + Number(plan.entry_high)) / 2;
+        const target = Array.isArray(plan.targets) && plan.targets.length
+            ? Number(plan.targets[0])
+            : topSetupNumericValue(plan.target, plan.target_price);
+        if (!Number.isFinite(entryMid) || entryMid === 0 || !Number.isFinite(target)) return null;
+        const direction = d && d.metadata ? d.metadata.direction : "";
+        const isShort = String(direction || "").toUpperCase() === "SHORT";
+        return isShort ? ((entryMid - target) / entryMid) * 100 : ((target - entryMid) / entryMid) * 100;
+    }
+
+    function decisionRiskRewardValue(d) {
+        const plan = d && d.trade_plan ? d.trade_plan : {};
+        const numeric = topSetupNumericValue(
+            plan.risk_reward,
+            plan.risk_reward_ratio,
+            plan.risk_reward_multiple,
+            plan.reward_risk
+        );
+        if (numeric !== null) return numeric;
+        const text = String(plan.risk_reward || plan.risk_reward_ratio || "");
+        const match = text.match(/(\d+(?:\.\d+)?)\s*:/);
+        return match ? Number(match[1]) : null;
+    }
+
+    function isTopCurrentSetup(d) {
+        const freshness = inferTradePlanFreshness(d && d.trade_plan);
+        const status = String(freshness && freshness.status || "").toUpperCase();
+        return isCurrentDecisionListRow(d)
+            && decisionListSectionType(d) === "TRADE"
+            && decisionHasCurrentActionableTradePlan(d, freshness)
+            && (status === "FRESH" || status === "AGING");
+    }
+
+    function sortTopCurrentSetups(a, b) {
+        const score = decisionScoreValue(b) - decisionScoreValue(a);
+        if (score) return score;
+        const confidence = (decisionConfidenceValue(b) ?? -1) - (decisionConfidenceValue(a) ?? -1);
+        if (confidence) return confidence;
+        const risk = (decisionRiskValue(a) ?? 999) - (decisionRiskValue(b) ?? 999);
+        if (risk) return risk;
+        const expectedReturn = (decisionExpectedReturnPctValue(b) ?? -999) - (decisionExpectedReturnPctValue(a) ?? -999);
+        if (expectedReturn) return expectedReturn;
+        const riskReward = (decisionRiskRewardValue(b) ?? -1) - (decisionRiskRewardValue(a) ?? -1);
+        if (riskReward) return riskReward;
+        const ta = new Date((a.metadata && a.metadata.ts) || 0).getTime();
+        const tb = new Date((b.metadata && b.metadata.ts) || 0).getTime();
+        if (tb !== ta) return tb - ta;
+        const sa = (a.metadata && a.metadata.instrument_id) || "";
+        const sb = (b.metadata && b.metadata.instrument_id) || "";
+        return sa.localeCompare(sb);
+    }
+
+    function topCurrentSetups(decisions) {
+        return (decisions || [])
+            .filter(isTopCurrentSetup)
+            .slice()
+            .sort(sortTopCurrentSetups)
+            .slice(0, TOP_CURRENT_SETUPS_LIMIT);
     }
 
     function applyDecisionsView(options = {}) {
@@ -240,6 +336,7 @@
         decisionsCarouselContainer.querySelectorAll(".decision-carousel-section").forEach(section => {
             const rows = section.querySelectorAll(".symbol-row[data-symbol]").length;
             const type = String(section.getAttribute("data-section") || "").toUpperCase();
+            if (type === "TOP_CURRENT_SETUPS") return;
             if (type === "TRADE") counts.trade += rows;
             else if (type === "WATCH") counts.watch += rows;
             else if (type === "NO_TRADE") counts.noTrade += rows;
@@ -503,18 +600,30 @@
                     ? "No visible decisions — restore dismissed symbols or change filters."
                     : "No decisions yet — run ./athena-daily smoke after Kite auth.";
             } else {
+                const tradeCount = counts.TRADE || 0;
+                const watchCount = counts.WATCH || 0;
+                const passCount = counts.NO_TRADE || 0;
+                const otherCount = decisions.length - tradeCount - watchCount - passCount;
+                const details = [
+                    "Current board only.",
+                    "expired historical TradePlans are hidden from this list.",
+                    "HOLD = interesting but blocked.",
+                    "PASS = below watch score.",
+                ];
+                if (hiddenHistoricalCount > 0) {
+                    details.push(`${hiddenHistoricalCount} historical expired plan${
+                        hiddenHistoricalCount === 1 ? "" : "s"
+                    } hidden.`);
+                }
+                summaryEl.setAttribute("title", details.join(" "));
                 summaryEl.innerHTML =
-                    `<strong>${decisions.length}</strong> symbols (latest each) · ` +
-                    `BUY/SELL ${counts.TRADE || 0} · HOLD ${counts.WATCH || 0} · ` +
-                    `PASS ${counts.NO_TRADE || 0} · other ${
-                        decisions.length - (counts.TRADE || 0) - (counts.WATCH || 0) - (counts.NO_TRADE || 0)
-                    }. ` +
-                    `<span class="text-muted">Current board only; expired historical TradePlans are hidden from this list. HOLD = interesting but blocked; PASS = below watch score.</span>`;
+                    `<strong>${decisions.length}</strong> current · ` +
+                    `Trade ${tradeCount} · Watch ${watchCount} · No trade ${passCount}` +
+                    (otherCount > 0 ? ` · Other ${otherCount}` : "") +
+                    ` <span class="symbols-summary-help" aria-hidden="true"><i class="fa-solid fa-circle-info"></i></span>`;
                 if (hiddenHistoricalCount > 0) {
                     summaryEl.innerHTML +=
-                        ` <span class="text-muted">${hiddenHistoricalCount} historical expired plan${
-                            hiddenHistoricalCount === 1 ? "" : "s"
-                        } hidden.</span>`;
+                        ` <span class="text-muted">· ${hiddenHistoricalCount} archived</span>`;
                 }
             }
             if (dismissedCount > 0) {
@@ -536,6 +645,32 @@
         if (decisions.length === 0) {
             decisionsCarouselContainer.innerHTML = '<div class="text-muted text-center" style="padding: 24px;">No decisions match query.</div>';
             return;
+        }
+
+        const topRows = topCurrentSetups(decisions);
+        if (topRows.length > 0) {
+            const topSection = document.createElement("div");
+            topSection.className = "decision-carousel-section top-current-setups-section";
+            topSection.setAttribute("data-section", "TOP_CURRENT_SETUPS");
+            topSection.innerHTML = `
+                <div class="decision-carousel-head top-current-setups-head" data-toggle>
+                    <i class="fa-solid fa-ranking-star top-current-setups-icon"></i>
+                    <span class="decision-carousel-name">Top Current Setups</span>
+                    <span class="decision-carousel-count">${topRows.length}</span>
+                    <span class="decision-carousel-hint">ranked review queue</span>
+                    <i class="fa-solid fa-chevron-down decision-carousel-chevron"></i>
+                </div>
+                <div class="top-current-setups-note">
+                    Current valid/aging TradePlans only. Confirm live price and plan status before action.
+                </div>
+                <div class="decision-carousel-body"></div>
+            `;
+            const topBody = topSection.querySelector(".decision-carousel-body");
+            topRows.forEach(d => topBody.appendChild(renderSymbolRow(d)));
+            topSection.querySelector("[data-toggle]").addEventListener("click", () => {
+                topSection.classList.toggle("collapsed");
+            });
+            decisionsCarouselContainer.appendChild(topSection);
         }
 
         const byType = new Map();

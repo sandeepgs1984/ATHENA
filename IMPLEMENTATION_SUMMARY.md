@@ -6,6 +6,29 @@ status updated on approval.
 
 ---
 
+## TP-3 — Top current setups (ready for review)
+
+| | |
+|---|---|
+| Completed | 2026-07-30 |
+| Objective | Give the owner a fast ranked review queue without mixing expired, stale, or no-plan rows into actionable setup discovery |
+| Scope | Added a `Top Current Setups` section above the normal Decisions board groups; ranks up to 10 current setups using existing score, confidence, risk, expected-return, risk/reward, timestamp, and symbol data; admits only current-board TRADE rows with fresh or aging actionable TradePlans; excludes expired, stale, no-plan, historical, dismissed, and filtered-out rows; keeps normal Trade/Watch/No trade sections unchanged below; avoids double-counting the top section in visible-refresh outcome totals; adjusted duplicate active-row scrolling so selecting a setup does not jump between duplicated Top/Trade rows; compacted the left-list summary strip and moved explanatory board semantics into hover/title text; bumped dashboard cache-busters |
+| Files created | None |
+| Files modified | `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md`, `src/athena/api/static/index.html`, `src/athena/api/static/css/12-decision-cards-dag.css`, `src/athena/api/static/js/12-decisions-list.js`, `src/athena/api/static/js/13-decision-brief-core.js`, `tests/api/platform/test_dashboard_hosting.py` |
+| Public APIs added | None |
+| Tests | `rtk node --check src/athena/api/static/js/12-decisions-list.js` — passed; `rtk node --check src/athena/api/static/js/13-decision-brief-core.js` — passed; `rtk pytest tests/api/platform/test_dashboard_hosting.py -q` — 4 passed |
+| Coverage | Dashboard hosting tests lock the top-10 limit, current/actionable/fresh-or-aging guardrails, ranking helper names, no expired/stale/no-plan admission path, section copy, duplicate active-row scroll handling, compact summary strip behavior, and `9.93.0` asset cache-busters |
+| Architecture compliance | Frontend ranking/presentation only over already-rendered current Decisions data. No provider, broker, order, scoring, confidence, risk, decision-policy, TradePlan value, schema, or frozen domain contract changes |
+| ADR compliance | ADR-004 preserved: static HTML/CSS/vanilla JS. ADR-005 preserved: the section reuses persisted Decision/TradePlan/freshness fields and does not invent new signals or alter recommendations |
+| Risks discovered | A top section duplicates symbols already present under Trade, so selection scrolling must target the visible duplicate instead of scrolling both. The summary strip can materially reduce left-list scanability if it carries explanatory prose inline |
+| Technical debt introduced | None |
+| Suggested improvements | TP-4 should host the persistent intraday SOP/help surface outside the cramped left rail, with plain-language guidance for normal users |
+| Remaining work | Owner review of TP-3; full-suite validation after freeing disk space |
+| Status | 🔄 Ready for owner review |
+| Branch | feature/live-dashboard |
+
+---
+
 ## TP-2 — Current board controls (ready for review)
 
 | | |

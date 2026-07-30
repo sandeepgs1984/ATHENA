@@ -1061,13 +1061,19 @@
         // (graceful selection — never yanks the panel's scroll position
         // around for a row that's already visible).
         if (decisionsCarouselContainer) {
+            const activeRows = [];
             decisionsCarouselContainer.querySelectorAll(".symbol-row").forEach(c => {
                 const isActive = c.getAttribute("data-id") === decisionId;
                 c.classList.toggle("active", isActive);
-                if (isActive) {
-                    c.scrollIntoView({ inline: "nearest", block: "nearest", behavior: "smooth" });
-                }
+                if (isActive) activeRows.push(c);
             });
+            const containerRect = decisionsCarouselContainer.getBoundingClientRect();
+            const visibleActiveRow = activeRows.find(c => {
+                const rowRect = c.getBoundingClientRect();
+                return rowRect.bottom > containerRect.top && rowRect.top < containerRect.bottom;
+            });
+            const rowToScroll = visibleActiveRow || activeRows[0];
+            rowToScroll?.scrollIntoView({ inline: "nearest", block: "nearest", behavior: "smooth" });
         }
 
         // Selecting a symbol resets only the center detail panel to the top —

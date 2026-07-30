@@ -334,7 +334,7 @@ Governing plan: `docs/design/ATHENA-INTRADAY-ADVISOR-UX-ROADMAP.md`.
 |---|---|---|---|
 | **TP-1** Trade Playbook foundation | Move symbol revalidation into Advisor Status; add selected-symbol Trading Steps with entry/stop/target/no-fill/expiry/close/revalidation rules | Owner review after UX/test evidence | 🔄 Ready for review |
 | **TP-2** Current Board controls | Add Re-validate Visible for current-board symbols with progress/result summary | Owner review; must not validate hidden historical rows | 🔄 Ready for review |
-| **TP-3** Top Current Setups | Add top 10 current valid/aging setups sorted by existing score/confidence/risk/return data | Owner review; no expired/stale/no-plan rows | ⏳ Planned |
+| **TP-3** Top Current Setups | Add top 10 current valid/aging setups sorted by existing score/confidence/risk/return data | Owner review; no expired/stale/no-plan rows | 🔄 Ready for review |
 | **TP-4** Intraday SOP surface | Add persistent intraday SOP/help surface for day workflow and manual execution boundaries | Owner review | ⏳ Planned |
 
 **Implementation rule:** one TP milestone at a time. TP must never create order
@@ -397,6 +397,30 @@ candidate validation endpoint. It adds no broker write action, no order
 placement, no analytical engine change, and no new recommendation logic.
 Hidden historical expired TradePlans are not present in the rendered current
 board and are therefore not included in the visible-symbol batch.
+
+Validation note: focused dashboard hosting checks pass. The full suite remains
+deferred locally until the live DB/storage pressure is cleaned up.
+
+#### TP-3 — top current setups (ready for review, 2026-07-30)
+
+Scope completed: the Decisions left rail now starts with a `Top Current Setups`
+review queue when current qualifying rows exist. The queue is capped at 10 and
+is built only from the same filtered/dismissal-aware current-board rows already
+visible to the owner. Admission is deliberately strict: a row must still be an
+actionable `TRADE` with a `FRESH` or `AGING` TradePlan. Expired, stale,
+no-plan, historical, dismissed, and filtered-out rows cannot enter the top
+queue. Ranking is presentation-only over existing persisted/display data:
+score first, then confidence, lower risk, expected return, risk/reward,
+timestamp, and symbol. The normal Trade/Watch/No trade sections remain below
+the queue for complete board context.
+
+Owner UX adjustment: the long left-list explanation was compacted into a short
+count line (`current · Trade · Watch · No trade`) with explanatory semantics
+moved into hover/title text, preserving scan space for setup rows.
+
+Architectural note: TP-3 adds no broker write action, no order placement, no
+analytical-engine change, no TradePlan value change, and no new recommendation
+logic. It is a frontend review queue over the existing current board.
 
 Validation note: focused dashboard hosting checks pass. The full suite remains
 deferred locally until the live DB/storage pressure is cleaned up.

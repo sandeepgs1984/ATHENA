@@ -200,8 +200,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.92.0" in html
-    assert "dashboard.js?v=9.92.0" in html
+    assert "dashboard.css?v=9.93.0" in html
+    assert "dashboard.js?v=9.93.0" in html
     assert 'id="advisor-pulse"' in html
     assert 'id="header-diagnostics-popover"' in html
     assert 'id="decision-actionability-banner"' in html
@@ -254,6 +254,29 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "Validation failed. Treat existing rows as stale until you retry" in js
     assert ".symbols-revalidate-status.tone-success" in css
     assert ".symbols-revalidate-status.tone-danger" in css
+    assert "TOP_CURRENT_SETUPS_LIMIT = 10" in js
+    assert "function isTopCurrentSetup" in js
+    assert 'decisionListSectionType(d) === "TRADE"' in js
+    assert "decisionHasCurrentActionableTradePlan(d, freshness)" in js
+    assert 'status === "FRESH" || status === "AGING"' in js
+    assert "function sortTopCurrentSetups" in js
+    assert "decisionScoreValue(b) - decisionScoreValue(a)" in js
+    assert "function decisionConfidenceValue" in js
+    assert "function decisionRiskValue" in js
+    assert "function decisionExpectedReturnPctValue" in js
+    assert "function decisionRiskRewardValue" in js
+    assert ".slice(0, TOP_CURRENT_SETUPS_LIMIT)" in js
+    assert "Top Current Setups" in js
+    assert "ranked review queue" in js
+    assert "Current valid/aging TradePlans only" in js
+    assert 'type === "TOP_CURRENT_SETUPS"' in js
+    assert "rowToScroll?.scrollIntoView" in js
+    assert "symbols-summary-help" in js
+    assert "summaryEl.setAttribute(\"title\", details.join(\" \"))" in js
+    assert ".top-current-setups-section" in css
+    assert ".top-current-setups-head" in css
+    assert ".top-current-setups-note" in css
+    assert ".symbols-summary-help" in css
     assert "/api/v1/dashboard/session-status" in js
     assert "state.marketSession" in js
     assert "Review mode · market closed" in js
