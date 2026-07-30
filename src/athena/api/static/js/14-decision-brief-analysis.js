@@ -54,7 +54,7 @@
         return `Valid for ${parts.join(" ")}`;
     }
 
-    function renderTradePlan(plan, decisionType, direction) {
+    function renderTradePlan(plan, decisionType, direction, freshness = null) {
         if (!plan) {
             const label = decisionType ? friendlyAnalysisName(decisionType) : "non-Trade";
             return `
@@ -81,6 +81,12 @@
             statusLabel = "Pending";
             statusClass = "pending";
         }
+        const freshnessStatus = String(freshness && freshness.status || statusLabel).toUpperCase();
+        const historicalPlan = ["EXPIRED", "STALE", "UNKNOWN"].includes(freshnessStatus);
+        const title = historicalPlan ? "Historical TradePlan" : "ATHENA TradePlan";
+        const advisoryLabel = historicalPlan
+            ? `${friendlyAnalysisName(freshnessStatus)} · re-validate before use`
+            : "Advisory · not an order";
         const targetList = Array.isArray(plan.targets) ? plan.targets : [];
         const stopDeltaPct = computeTradePlanLevelPct(plan, plan.stop_loss, direction);
         const targets = targetList.length
@@ -105,9 +111,15 @@
         return `
             <div class="decision-brief-section">
                 <div class="decision-brief-section-header">
-                    <h4>ATHENA TradePlan</h4>
-                    <span class="trade-plan-label">Advisory · not an order</span>
+                    <h4>${escapeDecisionHtml(title)}</h4>
+                    <span class="trade-plan-label">${escapeDecisionHtml(advisoryLabel)}</span>
                 </div>
+                ${historicalPlan ? `
+                    <div class="no-trade-plan">
+                        This persisted plan is not current. Re-validate before considering these entry,
+                        stop, or target levels.
+                    </div>
+                ` : ""}
                 <div class="trade-plan-hero-grid">
                     <div class="trade-plan-hero-metric">
                         <span class="trade-plan-hero-label">Entry zone</span>
@@ -272,11 +284,17 @@
             status === "INCLUDED" ? "included" : (status === "EXCLUDED" ? "excluded" : "unknown");
         const exclusions = Array.isArray(data.exclusion_reasons) ? data.exclusion_reasons : [];
         const rules = Array.isArray(data.rules) ? data.rules : [];
+        const historicalPlan = decisionHasHistoricalTradePlan(activeDecisionData, activePlanFreshness);
         host.innerHTML = `
             <div class="eligibility-summary">
                 <span class="depth-status ${statusClass}">${escapeDecisionHtml(friendlyEligibilityLabel(status))}</span>
                 <span>${escapeDecisionHtml(data.summary || "No eligibility assessment recorded for this decision.")}</span>
             </div>
+            ${historicalPlan ? `
+                <div class="eligibility-exclusions">
+                    <span>Persisted assessment from the historical decision run; use latest revalidation before acting.</span>
+                </div>
+            ` : ""}
             ${exclusions.length ? `
                 <div class="eligibility-exclusions">
                     ${exclusions.map(reason => `<span>${escapeDecisionHtml(reason)}</span>`).join("")}
@@ -602,7 +620,11 @@
             // independently-derived word.
             if (tone === "score") {
                 const recommendationBandEl = document.getElementById("gauge-recommendation-band");
-                if (recommendationBandEl) recommendationBandEl.textContent = band ? `${band} Setup` : "—";
+                if (recommendationBandEl) {
+                    recommendationBandEl.textContent = decisionHasHistoricalTradePlan(activeDecisionData, activePlanFreshness)
+                        ? "Plan not current"
+                        : (band ? `${band} Setup` : "—");
+                }
             }
         });
         renderExecutiveSummary();
@@ -660,7 +682,9 @@
             }
         });
         const suitability = {
-            TRADE: "All safety checks cleared — ready for entry.",
+            TRADE: decisionHasHistoricalTradePlan(decision)
+                ? "Historical trade thesis only — current TradePlan is not actionable."
+                : "All safety checks cleared — ready for entry.",
             WATCH: "Above the watch threshold, not yet ready to trade.",
             NO_TRADE: "Below the bar for a trade right now.",
             INSUFFICIENT_DATA: "Not enough data to assess yet.",

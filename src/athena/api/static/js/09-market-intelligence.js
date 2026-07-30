@@ -22,6 +22,25 @@
         validateOverlay.setAttribute("aria-hidden", "true");
     }
 
+    function latestValidationExclusion(data, symbol) {
+        const bare = String(symbol || "").trim().toUpperCase().replace(/^NSE:|^BSE:/, "");
+        const pipeline = data && data.detail && data.detail.pipeline ? data.detail.pipeline : {};
+        const members = pipeline && pipeline.universe_members ? pipeline.universe_members : {};
+        const member = members[bare] || Object.values(members).find(item => {
+            if (!item || typeof item !== "object") return false;
+            const memberSymbol = String(item.symbol || "").toUpperCase();
+            const memberInstrument = String(item.instrument_id || "").toUpperCase();
+            return memberSymbol === bare || memberInstrument === `NSE:${bare}` || memberInstrument.endsWith(`:${bare}`);
+        });
+        if (!member || member.included !== false) return null;
+        const reasons = Array.isArray(member.exclusion_reasons) ? member.exclusion_reasons : [];
+        return {
+            symbol: bare,
+            summary: String(member.eligibility_summary || "excluded by latest validation"),
+            reason: reasons.length ? String(reasons[0]) : "",
+        };
+    }
+
     /** Ensure candidates exist, then run scoped validate (ingest + score). */
     async function validateSymbolsNow(symbols, { button = null, refreshDecisions = false } = {}) {
         const list = [...new Set(
@@ -124,6 +143,22 @@
                 await loadDecisionsWorkspace({
                     preferInstrumentId: list.length === 1 ? list[0] : null,
                 });
+            }
+            if (list.length === 1) {
+                const exclusion = latestValidationExclusion(d, list[0]);
+                if (exclusion) {
+                    showToast(
+                        `${exclusion.symbol}: latest revalidation excluded it; no current TradePlan.`,
+                        "warning"
+                    );
+                    if (typeof setAdvisorPulse === "function") {
+                        setAdvisorPulse(
+                            `${exclusion.symbol} · no current plan · ${exclusion.reason || exclusion.summary}`,
+                            "warning",
+                            3
+                        );
+                    }
+                }
             }
             return valRes;
         } finally {

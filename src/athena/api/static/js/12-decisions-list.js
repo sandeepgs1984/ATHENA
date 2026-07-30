@@ -94,6 +94,27 @@
         }
     }
 
+    function decisionListSectionType(d) {
+        const rawType = String((d && d.metadata && d.metadata.decision_type) || "OTHER").toUpperCase();
+        if (rawType !== "TRADE") return rawType;
+        // The list is an action board, not the audit log. A historical TRADE
+        // whose plan is no longer usable must not remain under the actionable
+        // Trade section; the detail pane still preserves the original thesis.
+        return decisionHasCurrentActionableTradePlan(d) ? "TRADE" : "NO_TRADE";
+    }
+
+    function decisionListPriority(d) {
+        const t = decisionListSectionType(d);
+        return DECISION_TYPE_PRIORITY[t] ?? 9;
+    }
+
+    function isCurrentDecisionListRow(d) {
+        // Decisions & Trace's left rail is a current action board. Expired
+        // historical TRADE records stay available in audit/history, but they
+        // must not keep reappearing in the board or in Restore.
+        return !decisionHasHistoricalTradePlan(d);
+    }
+
     function applyDecisionsView(options = {}) {
         const query = (briefingSearch && briefingSearch.value || "").toLowerCase().trim();
         const stanceFilter = (document.getElementById("decisions-filter-stance") || {}).value || "all";
@@ -115,14 +136,15 @@
             }
         }
 
-        let rows = [...traceDecisionsList];
+        let rows = traceDecisionsList.filter(isCurrentDecisionListRow);
         rows = rows.filter(d => {
             if (dismissedDecisionSymbols.has(decisionInstrumentKey(d))) return false;
             const type = (d.metadata && d.metadata.decision_type) || "";
+            const sectionType = decisionListSectionType(d);
             const dir = (d.metadata && d.metadata.direction) || "NONE";
             const stance = decisionStance(type, dir).label;
             if (stanceFilter !== "all" && stance !== stanceFilter) return false;
-            if (typeFilter !== "all" && String(type).toUpperCase() !== typeFilter) return false;
+            if (typeFilter !== "all" && sectionType !== typeFilter) return false;
             if (!query) return true;
             const symbol = (d.metadata.instrument_id || "INDEX").toLowerCase();
             const exp = (d.explanation || "").toLowerCase();
@@ -140,6 +162,8 @@
             const scoreB = decisionScoreValue(b);
             const stanceA = decisionStance(a.metadata.decision_type, a.metadata.direction).label;
             const stanceB = decisionStance(b.metadata.decision_type, b.metadata.direction).label;
+            const sectionA = decisionListSectionType(a);
+            const sectionB = decisionListSectionType(b);
             switch (sortMode) {
                 case "oldest": return ta - tb;
                 case "symbol-asc": return sa.localeCompare(sb);
@@ -147,7 +171,9 @@
                 case "score-desc": return scoreB - scoreA || tb - ta;
                 case "score-asc": return scoreA - scoreB || tb - ta;
                 case "stance":
-                    return (stanceRank[stanceA] ?? 9) - (stanceRank[stanceB] ?? 9) || tb - ta;
+                    return (DECISION_TYPE_PRIORITY[sectionA] ?? 9) - (DECISION_TYPE_PRIORITY[sectionB] ?? 9)
+                        || (stanceRank[stanceA] ?? 9) - (stanceRank[stanceB] ?? 9)
+                        || tb - ta;
                 case "newest":
                 default:
                     return tb - ta;
@@ -171,7 +197,7 @@
             // No trade -> everything else), never plain recency, matching the
             // carousel display order (owner: 2026-07-25, regardless of timestamp).
             const fallback = next || rows.reduce(
-                (best, d) => (decisionTypePriority(d) < decisionTypePriority(best) ? d : best),
+                (best, d) => (decisionListPriority(d) < decisionListPriority(best) ? d : best),
                 rows[0]
             );
             selectBriefing(fallback.metadata.decision_id);
@@ -213,23 +239,31 @@
         const failed = gates.filter(g => g && g.passed === false);
         const score = decisionScoreValue(d);
         const scoreLabel = score >= 0 ? score.toFixed(1) : "—";
-        const noteText = gates.length === 0
-            ? "no gates recorded"
-            : (failed.length ? `${failed.length} of ${gates.length} gates open` : "all gates cleared");
-        const noteTitle = failed.length
-            ? `Needs ${failed.map(g => friendlyGateName(g.gate)).join(", ")}`
-            : noteText;
-        // Quick-glance severity without a hover — many cards otherwise show
-        // the same generic "N of M gates open" in identical muted gray.
-        const noteTone = gates.length === 0
-            ? ""
-            : (failed.length === 0 ? "tone-good-text" : (failed.length <= 2 ? "tone-warn-text" : "tone-bad-text"));
         const planFreshness = inferTradePlanFreshness(d.trade_plan);
         const planStatus = formatTradePlanFreshnessShort(planFreshness);
         const planStatusClass = String(planFreshness.status || "unknown").toLowerCase();
         const planStatusTitle = planFreshness.has_trade_plan
             ? formatTradePlanFreshnessBadge(planFreshness)
             : "No authorized TradePlan for this decision";
+        const rawType = String((d.metadata && d.metadata.decision_type) || "").toUpperCase();
+        const currentPlanBlocked = decisionHasHistoricalTradePlan(d);
+        const noteText = currentPlanBlocked
+            ? "plan not current"
+            : gates.length === 0
+            ? "no gates recorded"
+            : (failed.length ? `${failed.length} of ${gates.length} gates open` : "all gates cleared");
+        const noteTitle = currentPlanBlocked
+            ? "Do not use this historical TradePlan without re-validation"
+            : failed.length
+            ? `Needs ${failed.map(g => friendlyGateName(g.gate)).join(", ")}`
+            : noteText;
+        // Quick-glance severity without a hover — many cards otherwise show
+        // the same generic "N of M gates open" in identical muted gray.
+        const noteTone = currentPlanBlocked
+            ? "tone-bad-text"
+            : gates.length === 0
+            ? ""
+            : (failed.length === 0 ? "tone-good-text" : (failed.length <= 2 ? "tone-warn-text" : "tone-bad-text"));
 
         const row = document.createElement("div");
         row.className = "symbol-row";
@@ -281,11 +315,12 @@
         const summaryEl = document.getElementById("decisions-summary-strip");
         if (summaryEl) {
             const dismissedCount = traceDecisionsList.filter(
-                d => dismissedDecisionSymbols.has(decisionInstrumentKey(d))
+                d => isCurrentDecisionListRow(d) && dismissedDecisionSymbols.has(decisionInstrumentKey(d))
             ).length;
+            const hiddenHistoricalCount = traceDecisionsList.filter(d => !isCurrentDecisionListRow(d)).length;
             const counts = {};
             decisions.forEach(d => {
-                const t = (d.metadata && d.metadata.decision_type) || "OTHER";
+                const t = decisionListSectionType(d);
                 counts[t] = (counts[t] || 0) + 1;
             });
             if (decisions.length === 0) {
@@ -299,7 +334,13 @@
                     `PASS ${counts.NO_TRADE || 0} · other ${
                         decisions.length - (counts.TRADE || 0) - (counts.WATCH || 0) - (counts.NO_TRADE || 0)
                     }. ` +
-                    `<span class="text-muted">HOLD = interesting but blocked; PASS = below watch score. Grouped by outcome below — Trade first, always.</span>`;
+                    `<span class="text-muted">Current board only; expired historical TradePlans are hidden from this list. HOLD = interesting but blocked; PASS = below watch score.</span>`;
+                if (hiddenHistoricalCount > 0) {
+                    summaryEl.innerHTML +=
+                        ` <span class="text-muted">${hiddenHistoricalCount} historical expired plan${
+                            hiddenHistoricalCount === 1 ? "" : "s"
+                        } hidden.</span>`;
+                }
             }
             if (dismissedCount > 0) {
                 summaryEl.innerHTML +=
@@ -324,7 +365,7 @@
 
         const byType = new Map();
         decisions.forEach(d => {
-            const t = String((d.metadata && d.metadata.decision_type) || "OTHER").toUpperCase();
+            const t = decisionListSectionType(d);
             if (!byType.has(t)) byType.set(t, []);
             byType.get(t).push(d);
         });

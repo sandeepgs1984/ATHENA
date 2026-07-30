@@ -181,3 +181,22 @@
         if (status === "FRESH") return "Valid";
         return "Plan";
     }
+
+    function decisionTradePlanFreshness(decision, freshness = null) {
+        if (freshness && freshness.has_trade_plan) return freshness;
+        return inferTradePlanFreshness(decision && decision.trade_plan);
+    }
+
+    function decisionHasCurrentActionableTradePlan(decision, freshness = null) {
+        const rawType = String(decision && decision.metadata && decision.metadata.decision_type || "").toUpperCase();
+        if (rawType !== "TRADE") return false;
+        const planFreshness = decisionTradePlanFreshness(decision, freshness);
+        const status = String(planFreshness && planFreshness.status || "UNKNOWN").toUpperCase();
+        return Boolean(planFreshness && planFreshness.has_trade_plan)
+            && (status === "FRESH" || status === "AGING");
+    }
+
+    function decisionHasHistoricalTradePlan(decision, freshness = null) {
+        const rawType = String(decision && decision.metadata && decision.metadata.decision_type || "").toUpperCase();
+        return rawType === "TRADE" && !decisionHasCurrentActionableTradePlan(decision, freshness);
+    }

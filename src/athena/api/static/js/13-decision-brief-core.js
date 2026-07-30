@@ -390,6 +390,10 @@
         }
         const meta = decision.metadata;
         const stance = decisionStance(meta.decision_type, meta.direction);
+        const historicalPlan = decisionHasHistoricalTradePlan(decision, activePlanFreshness);
+        const displayStance = historicalPlan
+            ? { label: "Not actionable", cls: "stance-pass" }
+            : stance;
         const depth = activeDepth;
 
         // Score/Confidence/Risk reuse the exact same status/level/value
@@ -467,8 +471,8 @@
             : "";
 
         if (quickSummaryStanceEl) {
-            quickSummaryStanceEl.textContent = stance.label;
-            quickSummaryStanceEl.className = `stance-chip ${stance.cls}`;
+            quickSummaryStanceEl.textContent = displayStance.label;
+            quickSummaryStanceEl.className = `stance-chip ${displayStance.cls}`;
         }
         if (quickSummaryCard) quickSummaryCard.style.display = "flex";
         dagQuickSummary.innerHTML = `
@@ -504,6 +508,16 @@
         const remainingLabel = remaining != null && Number.isFinite(remaining)
             ? formatTradePlanRelativeDuration(Math.abs(remaining))
             : "";
+        const expiredLabel = (() => {
+            const asOf = freshness && freshness.as_of ? new Date(freshness.as_of) : now;
+            const expiry = freshness && freshness.valid_until
+                ? new Date(freshness.valid_until)
+                : validUntil;
+            if (Number.isNaN(asOf.getTime()) || Number.isNaN(expiry.getTime())) {
+                return remainingLabel;
+            }
+            return formatTradePlanRelativeDuration((asOf.getTime() - expiry.getTime()) / 1000);
+        })();
         const session = state && state.marketSession ? state.marketSession : null;
         const marketClosed = session && session.is_market_open === false;
         const sessionMessage = session && session.message ? String(session.message) : "Market closed";
@@ -513,10 +527,10 @@
                 tone: "danger",
                 status: "Plan expired · re-validate",
                 detail: `Expired${
-                    remainingLabel ? ` ${remainingLabel} ago` : ""
+                    expiredLabel ? ` ${expiredLabel} ago` : ""
                 }. Re-validate before using entry/stop/target levels.`,
                 pulse: `${symbol ? `${symbol} · ` : ""}expired${
-                    remainingLabel ? ` ${remainingLabel} ago` : ""
+                    expiredLabel ? ` ${expiredLabel} ago` : ""
                 } · re-validate`,
                 priority: 2,
             };
@@ -596,10 +610,22 @@
         const rawSymbol = meta.instrument_id || "INDEX";
         const symbol = rawSymbol.includes(":") ? rawSymbol.split(":").pop() : rawSymbol;
         const stance = decisionStance(meta.decision_type, meta.direction);
+        const historicalPlan = decisionHasHistoricalTradePlan(decision);
+        const displayStance = historicalPlan
+            ? { label: "Not actionable", cls: "stance-pass" }
+            : stance;
         const gates = decision.analysis && Array.isArray(decision.analysis.gate_results)
             ? decision.analysis.gate_results
             : [];
-        const summary = formatDecisionSummary(decision.explanation, meta.decision_type, gates);
+        const summary = historicalPlan
+            ? {
+                headline: "Historical BUY setup — current TradePlan is not actionable.",
+                bullets: [
+                    "Re-validate before using entry, stop, or target levels.",
+                    "The original persisted decision remains available for audit and replay.",
+                ],
+            }
+            : formatDecisionSummary(decision.explanation, meta.decision_type, gates);
 
         if (decisionBriefTitle) {
             decisionBriefTitle.textContent = symbol;
@@ -656,10 +682,10 @@
         // alongside the Score tile's own band, reusing that exact same
         // computed value.
         if (gaugeRecommendationTile) {
-            gaugeRecommendationTile.className = `brief-gauge brief-gauge-recommendation ${stance.cls}`;
+            gaugeRecommendationTile.className = `brief-gauge brief-gauge-recommendation ${displayStance.cls}`;
         }
         if (gaugeRecommendationStance) {
-            gaugeRecommendationStance.textContent = stance.label;
+            gaugeRecommendationStance.textContent = displayStance.label;
         }
 
         // ATHENA Summary card: the same real headline previously shown
@@ -668,7 +694,7 @@
         // header, collapsed behind a "View Details" button rather than
         // permanently repeating the full bullet breakdown on every tab.
         if (decisionSummaryCard) {
-            decisionSummaryCard.className = `decision-banner ${stance.cls}`;
+            decisionSummaryCard.className = `decision-banner ${displayStance.cls}`;
             decisionSummaryCard.hidden = false;
         }
         if (decisionSummaryHeadline) {
@@ -710,13 +736,13 @@
         decisionBriefBody.innerHTML = `
             <div class="tabpane${paneActive("setup")}" id="brief-pane-setup" data-brief-pane="setup">
                 <section class="decision-brief-section">
-                    <h4>Universe eligibility</h4>
+                    <h4>${historicalPlan ? "Historical universe eligibility" : "Universe eligibility"}</h4>
                     <div id="decision-eligibility-depth" class="decision-depth-loading">
                         <i class="fa-solid fa-circle-notch fa-spin"></i> Loading persisted assessment…
                     </div>
                 </section>
 
-                ${renderTradePlan(decision.trade_plan, meta.decision_type, meta.direction)}
+                ${renderTradePlan(decision.trade_plan, meta.decision_type, meta.direction, decisionTradePlanFreshness(decision))}
 
                 <section class="decision-brief-section" id="decision-portfolio-impact-section">
                     <h4>Portfolio impact</h4>

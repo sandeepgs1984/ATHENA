@@ -320,6 +320,18 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "function renderSymbolRow" in js
     assert "DECISION_CAROUSEL_SECTIONS" in js
     assert "function decisionTypePriority" in js
+    assert "function decisionListSectionType" in js
+    assert "function decisionListPriority" in js
+    assert "function isCurrentDecisionListRow" in js
+    assert "function decisionHasCurrentActionableTradePlan" in js
+    assert "function decisionHasHistoricalTradePlan" in js
+    assert "return !decisionHasHistoricalTradePlan(d);" in js
+    assert "traceDecisionsList.filter(isCurrentDecisionListRow)" in js
+    assert "isCurrentDecisionListRow(d) && dismissedDecisionSymbols.has" in js
+    assert "expired historical TradePlans are hidden from this list" in js
+    assert "currentPlanBlocked" in js
+    assert "plan not current" in js
+    assert "Do not use this historical TradePlan without re-validation" in js
     assert "regardless of timestamp" in js
     assert "linear-gradient(${section.wash}, ${section.wash}), rgba(15, 23, 42, 0.92)" in js
     assert ".decision-carousel-section" in css
@@ -751,6 +763,16 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "function formatTradePlanRelativeDuration" in js
     assert "expires in" in js
     assert "expired ${ago} ago" in js
+    actionability_fn_start = js.find("function actionabilityStatusFromPlan")
+    actionability_fn_end = js.find("\n    function ", actionability_fn_start + 1)
+    actionability_fn_body = js[actionability_fn_start:actionability_fn_end]
+    expired_branch_start = actionability_fn_body.find('if (status === "EXPIRED"')
+    stale_branch_start = actionability_fn_body.find('if (status === "STALE"', expired_branch_start)
+    expired_branch = actionability_fn_body[expired_branch_start:stale_branch_start]
+    assert "expiredLabel" in expired_branch
+    assert "freshness.valid_until" in actionability_fn_body
+    assert "freshness.as_of" in actionability_fn_body
+    assert "remainingLabel" not in expired_branch
     assert "decayed" not in js
     assert "function loadDecisionPlanFreshness" in js
     assert "/plan-freshness" in js
@@ -780,6 +802,9 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "function hideValidateOverlay" in js
     assert "showValidateOverlay(list);" in js
     assert "hideValidateOverlay();" in js
+    assert "function latestValidationExclusion" in js
+    assert "latest revalidation excluded it; no current TradePlan" in js
+    assert "no current plan" in js
     assert ".validate-overlay" in css
     assert ".validate-overlay-panel" in css
     assert "validate-spin" in css
@@ -1345,17 +1370,21 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert 'id="gauge-recommendation-tile"' in html
     assert 'id="gauge-recommendation-stance"' in html
     assert 'id="gauge-recommendation-band"' in html
-    assert "gaugeRecommendationStance.textContent = stance.label" in js
+    assert "gaugeRecommendationStance.textContent = displayStance.label" in js
+    assert "Not actionable" in js
+    assert "Historical universe eligibility" in js
+    assert "Historical BUY setup" in js
     cockpit_fn_start = js.find("function renderCockpitGauges(depth)")
     cockpit_fn_end = js.find("\n    function ", cockpit_fn_start + 1)
     cockpit_fn_body = js[cockpit_fn_start:cockpit_fn_end]
     assert "gauge-recommendation-band" in cockpit_fn_body
     assert "${band} Setup" in cockpit_fn_body
+    assert "Plan not current" in cockpit_fn_body
     # Fix pass (owner screenshot): a small pill badge read as just another
     # gauge tile — the whole tile is now stance-tinted (same tone treatment
     # .decision-banner.stance-* already uses), not a plain dark tile with a
     # chip inside.
-    assert 'gaugeRecommendationTile.className = `brief-gauge brief-gauge-recommendation ${stance.cls}`' in js
+    assert 'gaugeRecommendationTile.className = `brief-gauge brief-gauge-recommendation ${displayStance.cls}`' in js
     assert ".brief-gauge-recommendation.stance-buy" in css
     assert ".brief-gauge-recommendation.stance-buy #gauge-recommendation-stance" in css
 
