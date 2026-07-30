@@ -6,6 +6,29 @@ status updated on approval.
 
 ---
 
+## AS-4 — Advisor status release gate (ready for review)
+
+| | |
+|---|---|
+| Completed | 2026-07-30 |
+| Objective | Lock the Advisor Status Layer into a safe release shape for live intraday use |
+| Scope | Added a dedicated advisor-status release-gate regression test; hid expired historical TRADE decisions from the current Decisions board instead of treating them as restorable dismissals; added shared helpers for current-actionable versus historical TradePlans; made expired historical plans read as Not actionable / Plan not current / Historical TradePlan across cockpit, Quick Summary, eligibility, summary, and TradePlan presentation; surfaced scoped revalidation exclusions as no-current-TradePlan warnings; fixed expired duration copy to use `as_of - valid_until` rather than clamped remaining seconds |
+| Files created | None |
+| Files modified | `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md`, `src/athena/api/static/js/05-utils.js`, `src/athena/api/static/js/09-market-intelligence.js`, `src/athena/api/static/js/12-decisions-list.js`, `src/athena/api/static/js/13-decision-brief-core.js`, `src/athena/api/static/js/14-decision-brief-analysis.js`, `tests/api/platform/test_dashboard_hosting.py` |
+| Public APIs added | None |
+| Tests | `rtk node --check src/athena/api/static/js/05-utils.js` — passed; `rtk node --check src/athena/api/static/js/09-market-intelligence.js` — passed; `rtk node --check src/athena/api/static/js/12-decisions-list.js` — passed; `rtk node --check src/athena/api/static/js/13-decision-brief-core.js` — passed; `rtk node --check src/athena/api/static/js/14-decision-brief-analysis.js` — passed; `rtk pytest tests/api/platform/test_dashboard_hosting.py::test_advisor_status_release_gate -q` — 1 passed; `rtk pytest tests/api/platform/test_dashboard_hosting.py -q` — 4 passed |
+| Coverage | AS-4 regression locks diagnostics privacy, reduced-motion static pulse behavior, expired/stale warning dominance over review-mode/valid copy, historical TradePlan removal from the current board, non-restorable handling for hidden historical rows, and detail-pane historical/not-actionable dominance |
+| Architecture compliance | Presentation and test hardening only. No provider, broker, order, scoring, confidence, risk, decision-policy, TradePlan value, schema, or frozen domain contract changes |
+| ADR compliance | ADR-004 preserved: static HTML/CSS/vanilla JS dashboard. ADR-005 preserved: the UI consumes persisted decisions, TradePlan freshness fields, selected quote/candle data, and latest validation detail; it does not fabricate signals, revalidation events, or new rationale |
+| Risks discovered | A scoped revalidation can legitimately exclude a symbol after an older TRADE decision; without explicit presentation rules this looks like an active BUY. The left rail must remain a current action board, while audit/history preserves the old decision separately |
+| Technical debt introduced | None |
+| Suggested improvements | After local disk cleanup, rerun the full suite and consider a separate historical-decision browser/filter if the owner wants easy access to expired plans without polluting the current board |
+| Remaining work | Owner review of AS-4; full-suite validation after freeing disk space |
+| Status | 🔄 Ready for owner review |
+| Branch | feature/live-dashboard |
+
+---
+
 ## AS-3 — Market closed review mode (implemented; validation blocked)
 
 | | |

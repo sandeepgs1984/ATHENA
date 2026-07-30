@@ -1500,6 +1500,73 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "selectNode(stage.stage_id, { userInitiated: true })" in render_trace_dag_body
 
 
+def test_advisor_status_release_gate(client: TestClient) -> None:
+    """AS-4: advisor status must stay privacy-safe and de-action expired plans."""
+    html = client.get("/dashboard/").text
+    css = _fetch_full_css(client)
+    js = client.get("/dashboard/dashboard.js").text
+
+    # Diagnostics privacy: correlation IDs and latency remain available, but
+    # only inside an explicitly opened popover rather than the permanent header.
+    header_start = html.find('<header class="console-header">')
+    header_end = html.find("</header>", header_start)
+    header_html = html[header_start:header_end]
+    assert 'id="advisor-pulse"' in header_html
+    assert 'id="header-diagnostics-toggle"' in header_html
+    assert 'id="header-diagnostics-popover" class="diagnostics-popover" hidden' in header_html
+    assert header_html.count("REQ-ID") == 1
+    assert header_html.count("CORR-ID") == 1
+    assert header_html.count("LATENCY") == 1
+    assert header_html.find('id="advisor-pulse"') < header_html.find('id="header-diagnostics-popover"')
+    assert "diagnosticsPopover.hidden = !opening" in js
+    assert 'diagnosticsToggle.setAttribute("aria-expanded", opening ? "true" : "false")' in js
+
+    # Reduced-motion users must never get a moving advisor marquee.
+    reduced_motion_start = css.find(
+        "@media (prefers-reduced-motion: reduce)",
+        css.find(".advisor-pulse-message"),
+    )
+    assert reduced_motion_start != -1
+    reduced_motion_css = css[reduced_motion_start: css.find("}", css.find(".advisor-pulse-message", reduced_motion_start)) + 1]
+    assert ".advisor-pulse-message" in reduced_motion_css
+    assert "animation: none" in reduced_motion_css
+    assert "text-overflow: ellipsis" in reduced_motion_css
+
+    # Actionability dominance: expired/stale warnings must win before
+    # market-closed review mode or green "plan valid" messaging.
+    actionability_start = js.find("function actionabilityStatusFromPlan")
+    actionability_end = js.find("\n    function ", actionability_start + 1)
+    actionability_body = js[actionability_start:actionability_end]
+    expired_idx = actionability_body.find('status === "EXPIRED"')
+    stale_idx = actionability_body.find('status === "STALE"')
+    market_closed_idx = actionability_body.find("if (marketClosed)")
+    aging_idx = actionability_body.find('status === "AGING"')
+    valid_idx = actionability_body.find('status: "Plan valid"')
+    assert -1 not in (expired_idx, stale_idx, market_closed_idx, aging_idx, valid_idx)
+    assert expired_idx < stale_idx < market_closed_idx < aging_idx < valid_idx
+    expired_branch = actionability_body[expired_idx:stale_idx]
+    assert "tone: \"danger\"" in expired_branch
+    assert "Re-validate before using entry/stop/target levels" in actionability_body
+    assert "ATHENA is advisory only; confirm live quote before manual action" in actionability_body
+
+    # Expired historical TRADE records are audit/history records, not current
+    # action-board rows. They must not become restorable dismissals.
+    assert "function isCurrentDecisionListRow" in js
+    assert "return !decisionHasHistoricalTradePlan(d);" in js
+    assert "traceDecisionsList.filter(isCurrentDecisionListRow)" in js
+    assert "isCurrentDecisionListRow(d) && dismissedDecisionSymbols.has" in js
+    assert "expired historical TradePlans are hidden from this list" in js
+
+    # Detail-pane dominance: preserve the thesis, but label every top-level
+    # cue as historical/not-actionable for blocked TradePlans.
+    assert "Historical BUY setup — current TradePlan is not actionable" in js
+    assert "Historical universe eligibility" in js
+    assert "Historical TradePlan" in js
+    assert "Plan not current" in js
+    assert "Not actionable" in js
+    assert "re-validate before use" in js
+
+
 def test_dashboard_js_assembled_losslessly_from_concern_split(client: TestClient) -> None:
     """dashboard.js (owner-flagged: 6,100+ lines in one file) was split into
     22 concern-based files under static/js/ (mirrors the earlier dashboard.css
