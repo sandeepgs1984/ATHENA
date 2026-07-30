@@ -6,7 +6,7 @@ status updated on approval.
 
 ---
 
-## AS-4 — Advisor status release gate (ready for review)
+## AS-4 — Advisor status release gate (approved)
 
 | | |
 |---|---|
@@ -23,8 +23,8 @@ status updated on approval.
 | Risks discovered | A scoped revalidation can legitimately exclude a symbol after an older TRADE decision; without explicit presentation rules this looks like an active BUY. The left rail must remain a current action board, while audit/history preserves the old decision separately |
 | Technical debt introduced | None |
 | Suggested improvements | After local disk cleanup, rerun the full suite and consider a separate historical-decision browser/filter if the owner wants easy access to expired plans without polluting the current board |
-| Remaining work | Owner review of AS-4; full-suite validation after freeing disk space |
-| Status | 🔄 Ready for owner review |
+| Remaining work | Full-suite validation after freeing disk space |
+| Status | ✅ Approved (2026-07-30) — closes Advisor Status Layer track |
 | Branch | feature/live-dashboard |
 
 ---

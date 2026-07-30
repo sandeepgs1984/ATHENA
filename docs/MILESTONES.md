@@ -224,7 +224,7 @@ risk, decision policy, providers, frozen domain contracts, or order behavior.
 | **AS-1** Header pulse + actionability foundation | Replace always-visible REQ/CORR/LATENCY with advisor pulse + diagnostics popover; add selected-symbol actionability banner that can override a green BUY-looking setup when market/plan state makes it non-actionable | None — frontend presentation over existing data only | ✅ Approved (2026-07-30) |
 | **AS-2** Freshness propagation | Add plan/actionability state to Quick Summary and the symbol list so expired/stale plans are visible before opening each brief | None — reuse selected/list payloads and plan freshness where available; no fabricated timestamps | ✅ Approved (2026-07-30) |
 | **AS-3** Market closed review mode | Surface market-closed/next-session messaging and review-mode wording across header and detail pane once existing calendar/session data is exposed to the dashboard | Additive read-only API only if existing payloads are insufficient | ⚠️ Implemented; full-suite blocked by local disk capacity |
-| **AS-4** Release gate | Regression tests for diagnostics privacy, actionability overrides, reduced-motion pulse behavior, and expired-plan visual dominance | Owner review after QA evidence | 🔄 Ready for review |
+| **AS-4** Release gate | Regression tests for diagnostics privacy, actionability overrides, reduced-motion pulse behavior, and expired-plan visual dominance | Owner review after QA evidence | ✅ Approved (2026-07-30) |
 
 **Implementation rule:** one AS milestone at a time. AS must never create
 trading signals, alter ATHENA's recommendation, or imply order execution.
@@ -288,7 +288,7 @@ blocked on this machine because the filesystem is effectively full
 (`db/` is ~9.8 GiB; only ~115 MiB free), causing unrelated SQLite `disk I/O
 error` failures in repository tests and live-repo-backed shape tests.
 
-#### AS-4 — advisor status release gate (ready for review, 2026-07-30)
+#### AS-4 — advisor status release gate (approved, 2026-07-30)
 
 Scope completed: added a dedicated Advisor Status release-gate regression test
 for diagnostics privacy, reduced-motion pulse behavior, actionability
@@ -314,6 +314,11 @@ Validation note: focused dashboard checks pass (`tests/api/platform/
 test_dashboard_hosting.py`), but the full suite remains blocked locally by
 critically low disk space (hundreds of MiB free on a repository with a ~9.8 GiB
 live `db/`).
+
+**Advisor Status Layer track closed (2026-07-30):** owner approved AS-4. The
+Decisions & Trace advisor surface now has release-gated diagnostics privacy,
+market/revalidation actionability wording, expired-plan dominance, and a
+current-action-board contract for the left rail.
 
 ---
 
