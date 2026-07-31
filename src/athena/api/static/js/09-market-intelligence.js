@@ -9,6 +9,7 @@
         qualified: [],
         universeNote: null,
     };
+    let validationResultsRenderTimerId = null;
 
     const validationReportModal = document.getElementById("validation-report-modal");
     const validationReportTitle = document.getElementById("validation-report-title");
@@ -1677,61 +1678,196 @@
         return freshness && freshness.has_trade_plan ? formatTradePlanFreshnessBadge(freshness) : "No plan";
     }
 
+    function validationResultPlanType(decision, row) {
+        if (!decision) return row.qualified ? "no-current-plan" : "no-plan";
+        const freshness = inferTradePlanFreshness(decision.trade_plan);
+        if (!freshness || !freshness.has_trade_plan) return "no-plan";
+        const status = String(freshness.status || "").toLowerCase();
+        if (status === "fresh" || status === "aging" || status === "expired") return status;
+        if (status === "stale") return "expired";
+        return "fresh";
+    }
+
+    function validationResultOutcomeType(row, decision) {
+        const type = String(row.qualified?.decision_type || decision?.metadata?.decision_type || "").toUpperCase();
+        if (type === "TRADE") return "trade";
+        if (type === "WATCH") return "watch";
+        if (type === "NO_TRADE") return "no-trade";
+        if (row.member && row.member.included === true) return "eligible";
+        if (row.member && row.member.included === false) return "blocked";
+        return "none";
+    }
+
+    function validationWorkbenchFilters() {
+        return {
+            query: String(document.getElementById("universe-search")?.value || "").trim().toUpperCase(),
+            outcome: document.getElementById("validation-results-outcome-filter")?.value || "all",
+            plan: document.getElementById("validation-results-plan-filter")?.value || "all",
+            sort: document.getElementById("validation-results-sort")?.value || "score-desc",
+        };
+    }
+
+    function validationResultScoreNumber(score) {
+        const value = Number(score);
+        return Number.isFinite(value) ? value : null;
+    }
+
+    function validationResultRowView(row) {
+        const symbol = row.symbol;
+        const decision = currentOpenableDecisionForSymbol(symbol);
+        const latestDecision = decision || latestDecisionForSymbol(symbol);
+        const status = validationResultStatus(row.member);
+        const outcome = validationResultOutcome(row, latestDecision);
+        const score = validationResultScore(row, latestDecision);
+        const plan = validationResultPlan(decision, row);
+        const blocker = row.member && row.member.included === false
+            ? validationMemberBlocker(row.member)
+            : "";
+        const summary = row.qualified
+            ? formatDecisionSummary(row.qualified.explanation || "", row.qualified.decision_type || "", [])
+            : null;
+        const summaryText = summary
+            ? summary.headline
+            : (blocker || compactEligibilitySummary(row.member?.eligibility_summary || status.text));
+        return {
+            row,
+            symbol,
+            status,
+            outcome,
+            outcomeType: validationResultOutcomeType(row, latestDecision),
+            score,
+            scoreValue: validationResultScoreNumber(score),
+            plan,
+            planType: validationResultPlanType(decision, row),
+            blocker,
+            summaryText,
+            isSaved: savedSymbolSet.has(symbol),
+            canOpen: Boolean(decision),
+        };
+    }
+
+    function validationResultMatchesFilters(view, filters) {
+        if (filters.query) {
+            const haystack = [
+                view.symbol,
+                view.summaryText,
+                view.status?.text,
+                view.blocker,
+                view.plan,
+                view.outcomeType,
+            ].join(" ").toUpperCase();
+            if (!haystack.includes(filters.query)) return false;
+        }
+        if (filters.outcome !== "all" && view.outcomeType !== filters.outcome) return false;
+        if (filters.plan !== "all" && view.planType !== filters.plan) return false;
+        return true;
+    }
+
+    function validationPlanSortRank(planType) {
+        if (planType === "fresh") return 0;
+        if (planType === "aging") return 1;
+        if (planType === "expired") return 2;
+        if (planType === "no-current-plan") return 3;
+        return 4;
+    }
+
+    function compareValidationResultViews(a, b, sort) {
+        const scoreA = Number.isFinite(a.scoreValue) ? a.scoreValue : -Infinity;
+        const scoreB = Number.isFinite(b.scoreValue) ? b.scoreValue : -Infinity;
+        if (sort === "score-asc") {
+            return (scoreA - scoreB) || a.symbol.localeCompare(b.symbol);
+        }
+        if (sort === "symbol-asc") return a.symbol.localeCompare(b.symbol);
+        if (sort === "symbol-desc") return b.symbol.localeCompare(a.symbol);
+        if (sort === "outcome-priority") {
+            return (a.outcome.rank - b.outcome.rank) || (scoreB - scoreA) || a.symbol.localeCompare(b.symbol);
+        }
+        if (sort === "plan-status") {
+            return (validationPlanSortRank(a.planType) - validationPlanSortRank(b.planType))
+                || (scoreB - scoreA)
+                || a.symbol.localeCompare(b.symbol);
+        }
+        return (scoreB - scoreA) || a.symbol.localeCompare(b.symbol);
+    }
+
+    function filteredValidationResultViews(rows, filters) {
+        return rows
+            .map(validationResultRowView)
+            .filter(view => validationResultMatchesFilters(view, filters))
+            .sort((a, b) => compareValidationResultViews(a, b, filters.sort));
+    }
+
+    function setValidationResultsBusy(isBusy) {
+        const body = document.getElementById("qualified-today-body");
+        const busy = document.getElementById("validation-results-busy");
+        const controls = [
+            document.getElementById("validation-results-outcome-filter"),
+            document.getElementById("validation-results-plan-filter"),
+            document.getElementById("validation-results-sort"),
+            document.getElementById("validation-results-reset"),
+        ];
+        if (body) {
+            body.classList.toggle("is-filtering", isBusy);
+            body.setAttribute("aria-busy", isBusy ? "true" : "false");
+        }
+        if (busy) {
+            busy.hidden = !isBusy;
+            busy.setAttribute("aria-hidden", isBusy ? "false" : "true");
+        }
+        controls.forEach(control => {
+            if (control) control.disabled = isBusy;
+        });
+    }
+
     function renderValidationResults(universeMembers, qualified, universeNote) {
         const body = document.getElementById("qualified-today-body");
         if (!body) return;
         const rows = validationResultRows(universeMembers || {}, qualified || []);
+        const countEl = document.getElementById("validation-results-count");
         if (rows.length === 0) {
             body.className = "validation-results-list";
             body.innerHTML = `<div class="text-muted text-center" style="padding: 24px;">${escapeDecisionHtml(universeNote || "No validation results are available yet.")}</div>`;
+            if (countEl) countEl.textContent = "Showing 0";
             return;
         }
+        const filters = validationWorkbenchFilters();
+        const views = filteredValidationResultViews(rows, filters);
+        if (countEl) {
+            countEl.textContent = `Showing ${views.length} of ${rows.length}`;
+        }
         body.className = "validation-results-list";
-        body.innerHTML = rows.map(row => {
-            const symbol = row.symbol;
-            const decision = currentOpenableDecisionForSymbol(symbol);
-            const latestDecision = decision || latestDecisionForSymbol(symbol);
-            const status = validationResultStatus(row.member);
-            const outcome = validationResultOutcome(row, latestDecision);
-            const score = validationResultScore(row, latestDecision);
-            const plan = validationResultPlan(decision, row);
-            const blocker = row.member && row.member.included === false
-                ? validationMemberBlocker(row.member)
-                : "";
-            const summary = row.qualified
-                ? formatDecisionSummary(row.qualified.explanation || "", row.qualified.decision_type || "", [])
-                : null;
-            const summaryText = summary
-                ? summary.headline
-                : (blocker || compactEligibilitySummary(row.member?.eligibility_summary || status.text));
-            const isSaved = savedSymbolSet.has(symbol);
-            const canOpen = Boolean(decision);
+        if (views.length === 0) {
+            body.innerHTML = '<div class="text-muted text-center" style="padding: 24px;">No validation results match these filters.</div>';
+            return;
+        }
+        body.innerHTML = views.map(view => {
+            const symbol = view.symbol;
             return `
-                <div class="validation-result-row" data-validation-result-symbol="${escapeDecisionHtml(symbol)}" title="${escapeDecisionHtml(blocker || status.text || "")}">
+                <div class="validation-result-row" data-validation-result-symbol="${escapeDecisionHtml(symbol)}" title="${escapeDecisionHtml(view.blocker || view.status.text || "")}">
                     <div class="validation-result-main">
                         <div class="validation-result-title">
                             <strong>${escapeDecisionHtml(symbol)}</strong>
-                            ${status.html}
-                            ${outcome.html}
+                            ${view.status.html}
+                            ${view.outcome.html}
                         </div>
-                        <p class="validation-result-summary">${escapeDecisionHtml(summaryText)}</p>
+                        <p class="validation-result-summary">${escapeDecisionHtml(view.summaryText)}</p>
                     </div>
                     <div class="validation-result-meta" aria-label="${escapeDecisionHtml(symbol)} validation details">
                         <span class="validation-result-metric">
                             <span>Score</span>
-                            <strong>${escapeDecisionHtml(score)}</strong>
+                            <strong>${escapeDecisionHtml(view.score)}</strong>
                         </span>
                         <span class="validation-result-metric">
                             <span>Plan</span>
-                            <strong>${escapeDecisionHtml(plan)}</strong>
+                            <strong>${escapeDecisionHtml(view.plan)}</strong>
                         </span>
                     </div>
                     <div class="validation-result-actions">
-                        <button type="button" class="inspect-btn qualified-open-decision-btn" data-symbol="${escapeDecisionHtml(symbol)}" ${canOpen ? "" : "disabled"} title="${canOpen ? `Open ${escapeDecisionHtml(symbol)} in Decisions & Trace` : "Not on the current Decisions board"}" aria-label="Open ${escapeDecisionHtml(symbol)} decision">
+                        <button type="button" class="inspect-btn qualified-open-decision-btn" data-symbol="${escapeDecisionHtml(symbol)}" ${view.canOpen ? "" : "disabled"} title="${view.canOpen ? `Open ${escapeDecisionHtml(symbol)} in Decisions & Trace` : "Not on the current Decisions board"}" aria-label="Open ${escapeDecisionHtml(symbol)} decision">
                             <i class="fa-solid fa-brain" aria-hidden="true"></i>
                         </button>
-                        <button type="button" class="inspect-btn qualified-save-btn" data-symbol="${escapeDecisionHtml(symbol)}" title="${isSaved ? "Remove from Saved Symbols" : "Save symbol"}" aria-label="${isSaved ? "Remove saved" : "Save"} ${escapeDecisionHtml(symbol)}">
-                            <i class="${isSaved ? "fa-solid" : "fa-regular"} fa-bookmark" aria-hidden="true"></i>
+                        <button type="button" class="inspect-btn qualified-save-btn" data-symbol="${escapeDecisionHtml(symbol)}" title="${view.isSaved ? "Remove from Saved Symbols" : "Save symbol"}" aria-label="${view.isSaved ? "Remove saved" : "Save"} ${escapeDecisionHtml(symbol)}">
+                            <i class="${view.isSaved ? "fa-solid" : "fa-regular"} fa-bookmark" aria-hidden="true"></i>
                         </button>
                         <button type="button" class="inspect-btn qualified-trace-btn" data-symbol="${escapeDecisionHtml(symbol)}" title="Inspect ${escapeDecisionHtml(symbol)} trace" aria-label="Inspect ${escapeDecisionHtml(symbol)} trace">
                             <i class="fa-solid fa-search-plus" aria-hidden="true"></i>
@@ -2134,21 +2270,47 @@
         });
     }
 
-    // Attach search event
-    const searchInput = document.getElementById("universe-search");
-    if (searchInput) {
-        searchInput.addEventListener("keyup", (e) => {
-            const query = e.target.value.toUpperCase();
-            const rows = document.querySelectorAll("#qualified-today-body [data-validation-result-symbol]");
-            
-            rows.forEach(row => {
-                const sym = row.getAttribute("data-validation-result-symbol") || "";
-                if (sym.includes(query)) {
-                    row.style.display = "";
-                } else {
-                    row.style.display = "none";
+    function renderCurrentValidationResults() {
+        renderValidationResults(
+            validationWorkbenchState.universe,
+            validationWorkbenchState.qualified,
+            validationWorkbenchState.universeNote
+        );
+    }
+
+    function scheduleValidationResultsRender() {
+        if (validationResultsRenderTimerId) window.clearTimeout(validationResultsRenderTimerId);
+        setValidationResultsBusy(true);
+        validationResultsRenderTimerId = window.setTimeout(() => {
+            window.requestAnimationFrame(() => {
+                try {
+                    renderCurrentValidationResults();
+                } finally {
+                    setValidationResultsBusy(false);
+                    validationResultsRenderTimerId = null;
                 }
             });
+        }, 90);
+    }
+
+    const validationResultsSearch = document.getElementById("universe-search");
+    const validationResultsOutcomeFilter = document.getElementById("validation-results-outcome-filter");
+    const validationResultsPlanFilter = document.getElementById("validation-results-plan-filter");
+    const validationResultsSort = document.getElementById("validation-results-sort");
+    const validationResultsReset = document.getElementById("validation-results-reset");
+    if (validationResultsSearch) {
+        validationResultsSearch.addEventListener("input", scheduleValidationResultsRender);
+    }
+    [validationResultsOutcomeFilter, validationResultsPlanFilter, validationResultsSort].forEach(control => {
+        if (control) control.addEventListener("change", scheduleValidationResultsRender);
+    });
+    if (validationResultsReset) {
+        validationResultsReset.addEventListener("click", () => {
+            if (validationResultsSearch) validationResultsSearch.value = "";
+            if (validationResultsOutcomeFilter) validationResultsOutcomeFilter.value = "all";
+            if (validationResultsPlanFilter) validationResultsPlanFilter.value = "all";
+            if (validationResultsSort) validationResultsSort.value = "score-desc";
+            scheduleValidationResultsRender();
         });
     }
 

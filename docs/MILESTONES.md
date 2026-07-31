@@ -588,6 +588,14 @@ disabled instead of switching tabs and failing with "not found".
 Owner readability fix: the Results tab now uses self-contained result cards
 instead of a table-style header/column grid. Symbol explanations wrap normally,
 score is recovered from the current decision, qualified payload, or explanation
+without truncating the primary screening text.
+
+Owner screening fix: the Results tab now includes compact search, outcome
+filter, plan-status filter, sort order, visible result count, and reset controls.
+The controls operate only on the loaded validation/decision data in the modal, so
+screening large daily lists is faster without changing validation, scoring, or
+TradePlan logic. Filter and sort changes now show an inline Applying indicator
+and dim the result list while the client redraws large result sets.
 text, plan state is shown as a labelled card metric, and actions stay pinned to
 a consistent right edge without a drifting Actions header.
 

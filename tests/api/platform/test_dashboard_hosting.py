@@ -200,8 +200,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.120.0" in html
-    assert "dashboard.js?v=9.120.0" in html
+    assert "dashboard.css?v=9.122.0" in html
+    assert "dashboard.js?v=9.122.0" in html
     assert 'id="advisor-pulse"' in html
     assert 'id="header-diagnostics-popover"' in html
     assert 'id="decision-actionability-banner"' in html
@@ -1380,6 +1380,12 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert 'id="validation-runs-list"' in html
     assert 'data-validation-workbench-tab="blockers"' in html
     assert 'data-validation-workbench-pane="symbols"' in html
+    assert 'id="validation-results-outcome-filter"' in html
+    assert 'id="validation-results-plan-filter"' in html
+    assert 'id="validation-results-sort"' in html
+    assert 'id="validation-results-count"' in html
+    assert 'id="validation-results-busy"' in html
+    assert 'id="validation-results-reset"' in html
     assert 'id="validation-summary-strip"' not in html
     assert "function renderValidationFunnel" in js
     assert "function renderValidationWorkbench" in js
@@ -1397,6 +1403,12 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "grid-column: 1 / -1" in css
     assert "white-space: normal" in css
     assert ".validation-workbench-tabs" in css
+    assert ".validation-results-toolbar" in css
+    assert ".validation-results-select" in css
+    assert ".validation-results-count" in css
+    assert ".validation-results-busy" in css
+    assert ".validation-results-list.is-filtering" in css
+    assert ".validation-results-reset" in css
     assert ".validation-blocker-row" in css
     assert ".validation-run-row.is-failed" in css
     assert "grid-template-columns: repeat(5, minmax(0, 1fr))" in css
@@ -1414,6 +1426,21 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "function validationResultOutcome" in js
     assert "function validationScoreFromExplanation" in js
     assert "function validationResultPlan" in js
+    assert "function validationWorkbenchFilters" in js
+    assert "function validationResultRowView" in js
+    assert "function filteredValidationResultViews" in js
+    assert "function renderCurrentValidationResults" in js
+    assert "function setValidationResultsBusy" in js
+    assert "function scheduleValidationResultsRender" in js
+    assert "score-desc" in js
+    assert "No validation results match these filters" in js
+    assert "setValidationResultsBusy(true)" in js
+    assert "setValidationResultsBusy(false)" in js
+    assert "window.setTimeout" in js
+    assert "validationResultsOutcomeFilter" in js
+    assert "validationResultsPlanFilter" in js
+    assert "validationResultsSort" in js
+    assert "validationResultsReset" in js
     assert "function refreshDecisionCacheForValidationResults" in js
     assert "await refreshDecisionCacheForValidationResults();" in js
     assert "allTraceDecisionsList = raw;" in js
@@ -1426,7 +1453,7 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "qualified-open-decision-btn" in js
     assert "qualified-save-btn" in js
     assert "qualified-trace-btn" in js
-    assert "const canOpen = Boolean(decision);" in js
+    assert "canOpen: Boolean(decision)" in js
     assert "Not on the current Decisions board" in js
     assert "openDecisionForSymbol(symbol)" in js
     assert "renderValidationResults(validationWorkbenchState.universe, validationWorkbenchState.qualified, validationWorkbenchState.universeNote)" in js
