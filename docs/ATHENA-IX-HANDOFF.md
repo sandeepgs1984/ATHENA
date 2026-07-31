@@ -3,10 +3,9 @@
 **Snapshot date:** 2026-07-31  
 **Branch observed:** `feature/live-dashboard`  
 **Latest committed IX milestone:** IX-2 (`61fc8e5`)  
-**Current working milestone:** IX-3 ready for owner review; changes are not yet
-committed  
-**Next milestone:** IX-4 remains planned and must not start without explicit
-owner approval
+**Current working milestone:** None; IX-3 is approved and the IX track is paused  
+**Next milestone:** IX-4 remains planned and must not start until the owner
+explicitly resumes and authorizes it
 
 This document is a continuity aid for the IX track. It is not the authority for
 milestone status. Before acting, read `ATHENA_BRIEFING.md`, then verify
@@ -30,13 +29,14 @@ ADR, and owner approval. SD-2 is not silently resolved by this track.
 |---|---|---|
 | IX-1 | Approved | Twelve-index quote-only catalog, persisted observations, and read-only API |
 | IX-2 | Approved | Session-aware Index Leadership ribbon and detail modal |
-| IX-3 | Ready for owner review | Official versioned constituents, exact resolution, and fail-closed current-board breadth |
+| IX-3 | Approved | Official versioned constituents, exact resolution, and fail-closed current-board breadth |
 | IX-4 | Planned | Index-aware discovery across Universe, Workbench, and Decisions |
 | IX-5 | Planned | Informational index backdrop in the selected-symbol brief |
 | IX-6 | Planned and ADR-gated | Replay study and decision on analytical influence |
 
-Do not infer approval from implemented code or this handoff. IX-3 remains at
-the owner-review gate until the owner explicitly approves it.
+IX-3 was explicitly approved by the owner on 2026-07-31. The IX track is now
+paused. Do not begin IX-4 merely because IX-3 is approved; wait for a separate
+owner instruction to resume and authorize IX-4.
 
 ## 3. Implemented Data Flow
 
@@ -157,8 +157,9 @@ Tests and tracking:
 
 ## 9. IX-4 Pickup Contract
 
-Start IX-4 only after explicit IX-3 owner approval. Complete its Design step
-before editing code and confirm alignment with the relevant ATHENA-002 sections.
+Start IX-4 only after the owner explicitly resumes the paused IX track and
+authorizes IX-4. Complete its Design step before editing code and confirm
+alignment with the relevant ATHENA-002 sections.
 
 Approved roadmap scope:
 
@@ -220,4 +221,3 @@ then update `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md`, and this handoff.
 7. Work on exactly one IX milestone through Design, Implement, Test,
    Self-Validate, and Milestone Review Summary.
 8. Stop at the next owner-approval gate.
-

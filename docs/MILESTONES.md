@@ -695,7 +695,7 @@ ADR authorize analytical use. It does not silently resolve SD-2, activate
 |---|---|---|---|
 | **IX-1** Tracked-Index Data Foundation | Separate quote-only snapshot coverage from benchmark history ingestion; add validated index catalog and read-only API | Owner review; no scoring/domain/protocol change | ✅ Approved |
 | **IX-2** Index Leadership Surface | Compact, session-aware broad-market and sector leadership view in Market Intelligence | Owner review and visual QA | ✅ Approved |
-| **IX-3** Versioned Constituents and Index Breadth | Official provenance-tagged memberships, resolution audit, breadth/current-board counts | Data review; no inferred membership | 🔄 Ready for owner review |
+| **IX-3** Versioned Constituents and Index Breadth | Official provenance-tagged memberships, resolution audit, breadth/current-board counts | Data review; no inferred membership | ✅ Approved |
 | **IX-4** Index-Aware Discovery | Index filters and best current ATHENA setups across Universe, Workbench, and Decisions | Owner review; current-plan safety rules | ⏳ Planned |
 | **IX-5** Symbol Index Backdrop | Plain-language index alignment/divergence context in Decision Brief | Owner review; informational only | ⏳ Planned |
 | **IX-6** Evidence Review and Scoring Decision | Replay impact study and ADR proposal for any analytical influence | ADR + owner approval before code | ⏳ Planned |
@@ -806,7 +806,7 @@ session uses the prior-session snapshot and never a same-day observation.
 Owner approval: IX-2 was approved on 2026-07-31 before IX-3 implementation
 began.
 
-#### IX-3 — versioned constituents and index breadth (ready for review, 2026-07-31)
+#### IX-3 — versioned constituents and index breadth (approved, 2026-07-31)
 
 Scope completed: added an immutable 2026-07-31 constituent snapshot for all
 twelve configured broad-market and sector indices. Each source file is the
@@ -857,7 +857,11 @@ coverage ribbon, closed-session copy, complete NIFTY BANK breadth, fail-closed
 incomplete peers with affected-symbol disclosure, official source links, and
 no visible horizontal clipping. Authenticated automated browser interaction
 remained blocked at Workstation Unlock; narrow-layout behavior remains covered
-by dashboard regression assertions. IX-3 remains at the owner approval gate.
+by dashboard regression assertions.
+
+Owner approval: IX-3 was approved on 2026-07-31. The IX track is paused at the
+owner's direction; IX-4 remains planned and must not begin until the owner
+explicitly resumes and authorizes it.
 
 ---
 

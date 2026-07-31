@@ -6,7 +6,7 @@ status updated on approval.
 
 ---
 
-## IX-3 — Versioned constituents and index breadth (ready for review)
+## IX-3 — Versioned constituents and index breadth (approved)
 
 | | |
 |---|---|
@@ -23,8 +23,8 @@ status updated on approval.
 | Risks discovered | Official constituent files are point-in-time snapshots and must be deliberately refreshed when NSE composition changes. Latest Watch/No trade rows follow the existing current-board model, while Trade additionally requires a current validity window. Owner desktop visual QA passed; authenticated automated browser interaction remained blocked by Workstation Unlock, so interaction can be repeated when that session is available |
 | Technical debt introduced | None. Constituent refresh automation is intentionally outside IX-3; a new snapshot must remain reviewed and versioned rather than silently replacing evidence |
 | Suggested improvements | After owner approval, IX-4 may use this exact membership map for index filters and discovery while retaining current-plan safety and unavailable-data rules |
-| Remaining work | Owner data/UI review of IX-3. IX-4 through IX-6 remain separately gated and must not begin without approval |
-| Status | 🔄 Ready for owner review |
+| Remaining work | IX track paused by owner. IX-4 through IX-6 remain separately gated and must not begin until the owner explicitly resumes and authorizes the next milestone |
+| Status | ✅ Approved by owner on 2026-07-31 |
 | Branch | feature/live-dashboard |
 
 ---
