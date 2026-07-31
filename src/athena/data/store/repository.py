@@ -531,6 +531,24 @@ class SqliteRepository:
         )
         return [ser.row_to_decision(r) for r in rows]
 
+    def list_latest_decisions_by_instrument(self) -> list[Decision]:
+        """Return exactly one newest persisted decision per instrument.
+
+        Timestamp ties use decision_id descending, matching ``list_decisions``.
+        The query is intentionally unbounded so index coverage cannot silently
+        become incomplete as decision history grows.
+        """
+        rows = self._query_all(
+            "SELECT d.decision_id, d.ts, d.run_id, d.cycle_id, d.decision_type, "
+            "d.explanation, d.instrument_id, d.direction, d.score_ref, "
+            "d.confidence_ref, d.risk_ref, d.gate_results_json, d.trade_plan_json "
+            "FROM decisions d WHERE d.instrument_id IS NOT NULL AND NOT EXISTS ("
+            "SELECT 1 FROM decisions newer WHERE newer.instrument_id=d.instrument_id "
+            "AND (newer.ts>d.ts OR (newer.ts=d.ts AND newer.decision_id>d.decision_id))"
+            ") ORDER BY d.instrument_id"
+        )
+        return [ser.row_to_decision(r) for r in rows]
+
     def save_journal_entry(self, entry: DecisionJournalEntry) -> None:
         self._write(
             "INSERT INTO decision_journal (entry_id, decision_ref, user_action, action_ts, notes) "

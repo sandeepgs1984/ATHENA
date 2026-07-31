@@ -6,7 +6,30 @@ status updated on approval.
 
 ---
 
-## IX-2 — Index leadership surface (ready for review)
+## IX-3 — Versioned constituents and index breadth (ready for review)
+
+| | |
+|---|---|
+| Completed | 2026-07-31 |
+| Objective | Add trustworthy index membership and current-board breadth without inferring constituents or turning index context into a trade signal |
+| Scope | Captured official NSE constituent CSVs for four broad-market and eight sector indices in a versioned snapshot; added manifest provenance, effective date, retrieval time, member counts, SHA-256 checksums, and deterministic overlap policy; added a fail-loud loader; resolved only exact active NSE EQ symbols; selected one latest persisted decision per instrument with deterministic timestamp/decision-id tie-breaking; counted Trade only while its TradePlan is current; published Trade/Watch/No trade composition only with complete instrument and decision coverage; exposed membership age, resolution audit, affected symbols, coverage, breadth, and source links in the existing API and Index Leadership modal |
+| Files created | `data/index_constituents/2026-07-31/manifest.json`, twelve official CSV snapshots under `data/index_constituents/2026-07-31/`, `src/athena/data/index_constituents.py`, `tests/data/test_index_constituents.py` |
+| Files modified | `ATHENA_BRIEFING.md`, `config/index_intelligence.json`, `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md`, `src/athena/config/models.py`, `src/athena/data/store/repository.py`, `src/athena/api/v1/dtos/market.py`, `src/athena/api/v1/services/market_history_service.py`, `src/athena/api/static/index.html`, `src/athena/api/static/css/06-market-intelligence.css`, `src/athena/api/static/js/09-market-intelligence.js`, `tests/data_layer/test_decision_journal.py`, `tests/api/v1/test_market_history.py`, `tests/api/platform/test_dashboard_hosting.py`, `tests/api/platform/test_decision_chart_release_gate.py` |
+| Public APIs added | Additive `constituents` field on each `GET /api/v1/market/index-intelligence` row; `IndexConstituentContextDTO`; `IndexIntelligenceConfig.constituent_manifest`; `SqliteRepository.list_latest_decisions_by_instrument()`; `load_index_constituent_snapshot()` |
+| Tests | Focused IX-3 suite — 43 passed; `rtk pytest -q` — 1,140 passed with one existing Starlette/httpx deprecation warning; IX-3-owned Ruff check — passed; `rtk mypy` — no issues; JavaScript parse and final diff check — passed |
+| Coverage | Production snapshot verifies all 12 configured indices, all checksums, and 351 membership assignments; loader rejects checksum and catalog-key drift; repository test locks latest timestamp and decision-id tie behavior; service tests cover complete per-index overlap, unresolved instruments, missing decisions, current TradePlan validity, and fail-closed breadth; dashboard tests lock constituent metadata, incomplete-state copy, official-source links, responsive no-overflow styling, and `9.126.0` cache-busters |
+| Architecture compliance | Additive immutable source data, strict loader, deterministic read-only repository query, API DTO fields, and dashboard rendering only. Frozen domain objects, persistence schema, provider Protocols, ingestion, replay, scoring, confidence, risk, decision policy, TradePlan values, and broker behavior are unchanged |
+| ADR compliance | ADR-005 preserved: memberships require exact identity and checksum-backed provenance; incomplete instrument or decision coverage suppresses all breadth values. ADR-004 preserved through the existing static HTML/CSS/vanilla-JS dashboard |
+| Risks discovered | Official constituent files are point-in-time snapshots and must be deliberately refreshed when NSE composition changes. Latest Watch/No trade rows follow the existing current-board model, while Trade additionally requires a current validity window. Browser interaction QA was blocked by Workstation Unlock in the available browser session; no authenticated visual pass is claimed |
+| Technical debt introduced | None. Constituent refresh automation is intentionally outside IX-3; a new snapshot must remain reviewed and versioned rather than silently replacing evidence |
+| Suggested improvements | After owner approval, IX-4 may use this exact membership map for index filters and discovery while retaining current-plan safety and unavailable-data rules |
+| Remaining work | Owner data/UI review of IX-3. IX-4 through IX-6 remain separately gated and must not begin without approval |
+| Status | 🔄 Ready for owner review |
+| Branch | feature/live-dashboard |
+
+---
+
+## IX-2 — Index leadership surface (approved)
 
 | | |
 |---|---|
@@ -23,8 +46,8 @@ status updated on approval.
 | Risks discovered | A viewport breakpoint alone did not protect the ribbon inside the narrower Market Summary column; container-aware layout was required. Null JavaScript values coerce to numeric zero, so IX-2 now rejects null/empty values before formatting. Exactly one comparable sector cannot establish leadership or laggard rankings. Static dashboard assets may update while an old server process still lacks the IX-1 route; request failure must not masquerade as a configured catalog with zero indices or suppress an otherwise valid session response. Quote-only indices have no daily-candle baseline, so the first rollout session cannot calculate their change; later sessions use a persisted prior-session snapshot without extra provider calls |
 | Technical debt introduced | None. The application shell's pre-existing phone-width layout remains outside IX-2; the IX-2 modal itself is responsive and horizontally stable |
 | Suggested improvements | IX-3 should add provenance-tagged constituent membership and breadth only after the owner approves this presentation layer |
-| Remaining work | Owner review of IX-2. IX-3 through IX-6 remain separately gated and must not begin without approval |
-| Status | 🔄 Ready for owner review |
+| Remaining work | IX-3 is implemented and awaiting owner review. IX-4 through IX-6 remain separately gated |
+| Status | ✅ Approved by owner on 2026-07-31 |
 | Branch | feature/live-dashboard |
 
 ---

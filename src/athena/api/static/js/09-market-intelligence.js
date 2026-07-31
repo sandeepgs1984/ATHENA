@@ -778,6 +778,63 @@
         return `Market hours unavailable · ${observed}`;
     }
 
+    function indexConstituentContextMarkup(context) {
+        if (!context) {
+            return '<div class="index-membership is-incomplete">Membership snapshot unavailable</div>';
+        }
+        const total = Number(context.total_members) || 0;
+        const resolved = Number(context.resolved_members) || 0;
+        const covered = Number(context.decision_covered_members) || 0;
+        const age = Math.max(0, Number(context.membership_age_days) || 0);
+        const effective = escapeDecisionHtml(context.effective_date || "Unknown date");
+        const source = typeof context.source_url === "string" && context.source_url.startsWith("https://")
+            ? context.source_url
+            : null;
+        const provenance = source
+            ? `<a href="${escapeDecisionHtml(source)}" target="_blank" rel="noopener noreferrer">Official membership</a>`
+            : "Official membership source unavailable";
+        const snapshotLabel = age === 0 ? "updated today" : `${age}d old`;
+
+        if (context.breadth_status === "AVAILABLE") {
+            return `
+                <div class="index-membership">
+                    <div class="index-membership-meta">
+                        <span>${total} members · ${resolved} resolved</span>
+                        <span>${effective} · ${snapshotLabel}</span>
+                    </div>
+                    <div class="index-board-breadth" aria-label="Current ATHENA board composition">
+                        <strong>${escapeDecisionHtml(context.trade_breadth_pct)}% Trade breadth</strong>
+                        <span>Trade ${Number(context.trade_count) || 0} · Watch ${Number(context.watch_count) || 0} · No trade ${Number(context.no_trade_count) || 0}</span>
+                    </div>
+                    <small>${provenance}</small>
+                </div>
+            `;
+        }
+
+        const unresolved = Array.isArray(context.unresolved_symbols) ? context.unresolved_symbols : [];
+        const missing = Array.isArray(context.missing_decision_symbols) ? context.missing_decision_symbols : [];
+        const issueLabel = unresolved.length
+            ? `${unresolved.length} unresolved instrument${unresolved.length === 1 ? "" : "s"}`
+            : `${missing.length} current decision${missing.length === 1 ? "" : "s"} missing`;
+        const issueSymbols = unresolved.length ? unresolved : missing;
+        return `
+            <div class="index-membership is-incomplete">
+                <div class="index-membership-meta">
+                    <span>${total} members · ${resolved} resolved · ${covered} covered</span>
+                    <span>${effective} · ${snapshotLabel}</span>
+                </div>
+                <strong>Breadth unavailable · ${escapeDecisionHtml(issueLabel)}</strong>
+                ${issueSymbols.length ? `
+                    <details>
+                        <summary>Review affected symbols</summary>
+                        <span>${issueSymbols.map(symbol => escapeDecisionHtml(symbol)).join(", ")}</span>
+                    </details>
+                ` : ""}
+                <small>${provenance}</small>
+            </div>
+        `;
+    }
+
     function indexObservationMarkup(item, compact = false) {
         const change = indexChangeLabel(item && item.change_pct);
         const tone = indexChangeTone(item && item.change_pct);
@@ -788,6 +845,7 @@
                 <span class="index-observation-label">${escapeDecisionHtml(item.label)}</span>
                 <strong>${escapeDecisionHtml(change)}</strong>
                 ${compact ? "" : `<small>${escapeDecisionHtml(level)}</small>`}
+                ${compact ? "" : indexConstituentContextMarkup(item.constituents)}
             </div>
         `;
     }

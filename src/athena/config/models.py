@@ -382,6 +382,15 @@ class IndexIntelligenceConfig(_Strict):
     """Configured index coverage for the read-only intelligence surface."""
 
     tracked_indices: list[TrackedIndexConfig] = Field(min_length=1)
+    constituent_manifest: str | None = None
+
+    @field_validator("constituent_manifest")
+    @classmethod
+    def _trim_manifest_path(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        return cleaned or None
 
     @model_validator(mode="after")
     def _unique_identity(self) -> IndexIntelligenceConfig:

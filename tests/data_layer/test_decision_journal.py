@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from dataclasses import replace
+from datetime import datetime, timedelta
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
@@ -85,6 +86,36 @@ class TestDecisionPersistence:
         assert loaded == decision
         assert repo.get_trace(decision.decision_id) == trace
         repo.close()
+
+    def test_latest_decisions_by_instrument_is_deterministic(self, tmp_path):
+        repo = SqliteRepository(tmp_path / "a.db")
+        repo.initialize()
+        base, _ = _watch("d-base")
+        tied = replace(base, decision_id="d-tied", decision_type=DecisionType.NO_TRADE)
+        later = replace(
+            base,
+            decision_id="d-later",
+            ts=AS_OF + timedelta(minutes=1),
+            decision_type=DecisionType.WATCH,
+        )
+        other = replace(base, decision_id="d-other", instrument_id="SYN-BBB")
+        for decision in (base, tied, later, other):
+            repo.save_decision(decision)
+
+        latest = repo.list_latest_decisions_by_instrument()
+
+        assert [(item.instrument_id, item.decision_id) for item in latest] == [
+            ("SYN-AAA", "d-later"),
+            ("SYN-BBB", "d-other"),
+        ]
+        repo.close()
+
+        tie_repo = SqliteRepository(tmp_path / "tie.db")
+        tie_repo.initialize()
+        tie_repo.save_decision(base)
+        tie_repo.save_decision(tied)
+        assert tie_repo.list_latest_decisions_by_instrument()[0].decision_id == "d-tied"
+        tie_repo.close()
 
     def test_trade_plan_round_trip(self, tmp_path):
         repo = SqliteRepository(tmp_path / "a.db")

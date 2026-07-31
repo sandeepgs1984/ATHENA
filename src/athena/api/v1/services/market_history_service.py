@@ -9,10 +9,12 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 from typing import Literal
+from zoneinfo import ZoneInfo
 
 from athena.api.v1.dtos.market import (
     CandleDTO,
     CandleSeriesDTO,
+    IndexConstituentContextDTO,
     IndexIntelligenceDTO,
     IndexIntelligenceItemDTO,
     InstrumentQuoteDTO,
@@ -21,9 +23,12 @@ from athena.api.v1.dtos.market import (
 )
 from athena.api.v1.providers.base import CandleHistoryProvider
 from athena.config.loader import load_config, load_index_intelligence_config
+from athena.config.models import IndexIntelligenceConfig, TrackedIndexConfig
+from athena.data.index_constituents import load_index_constituent_snapshot
 from athena.data.providers.kite_ltp import fetch_live_quote
 from athena.data.store.repository import SqliteRepository
-from athena.domain.enums import Timeframe
+from athena.domain.decision import Decision
+from athena.domain.enums import DecisionType, Timeframe
 from athena.domain.market import MarketSnapshot
 from athena.errors import ConfigError, ProviderError
 from athena.indicators.calculations import align_trailing_series, atr_series, sma_series
@@ -180,6 +185,7 @@ class MarketHistoryService:
         prior_session_snapshot = (
             self._prior_session_snapshot(snapshot.ts) if snapshot is not None else None
         )
+        constituent_contexts = self._index_constituent_contexts(config, tracked)
 
         items: list[IndexIntelligenceItemDTO] = []
         for item in tracked:
@@ -204,6 +210,7 @@ class MarketHistoryService:
                     level=level,
                     change_pct=change_pct,
                     data_status="AVAILABLE" if level is not None else "NO_DATA",
+                    constituents=constituent_contexts.get(item.key),
                 )
             )
 
@@ -214,6 +221,127 @@ class MarketHistoryService:
             as_of=snapshot.ts if snapshot is not None else None,
             source="persisted_market_snapshot",
         )
+
+    def _index_constituent_contexts(
+        self,
+        config: IndexIntelligenceConfig,
+        tracked: list[TrackedIndexConfig],
+    ) -> dict[str, IndexConstituentContextDTO]:
+        manifest_setting = config.constituent_manifest
+        if not manifest_setting:
+            return {}
+        enabled_keys = {item.key for item in tracked}
+        manifest_path = Path(str(manifest_setting))
+        if not manifest_path.is_absolute():
+            manifest_path = self._config_dir.parent / manifest_path
+        membership = load_index_constituent_snapshot(
+            manifest_path,
+            expected_index_keys=enabled_keys,
+        )
+        now = self._now()
+        if now.tzinfo is None:
+            raise ValueError("market history clock must be timezone-aware")
+        observed_date = now.astimezone(ZoneInfo("Asia/Kolkata")).date()
+        if membership.effective_date > observed_date:
+            raise ConfigError(
+                "index constituent effective_date cannot be after the service clock"
+            )
+
+        instruments_by_symbol: dict[str, list[str]] = {}
+        if self._repo is not None:
+            for instrument in self._repo.list_instruments():
+                if (
+                    instrument.exchange.upper() == "NSE"
+                    and instrument.series.upper() == "EQ"
+                    and instrument.status.upper() == "ACTIVE"
+                ):
+                    instruments_by_symbol.setdefault(
+                        instrument.symbol.upper(), []
+                    ).append(instrument.instrument_id)
+        latest_decisions = {
+            decision.instrument_id: decision
+            for decision in (
+                self._repo.list_latest_decisions_by_instrument()
+                if self._repo is not None
+                else []
+            )
+            if decision.instrument_id is not None
+        }
+
+        contexts: dict[str, IndexConstituentContextDTO] = {}
+        for index_set in membership.indices:
+            resolved: dict[str, str] = {}
+            unresolved: list[str] = []
+            for symbol in index_set.symbols:
+                matches = sorted(set(instruments_by_symbol.get(symbol, [])))
+                if len(matches) == 1:
+                    resolved[symbol] = matches[0]
+                else:
+                    unresolved.append(symbol)
+
+            buckets: dict[str, str] = {}
+            decisions_as_of: datetime | None = None
+            missing_decisions: list[str] = []
+            for symbol, instrument_id in resolved.items():
+                decision = latest_decisions.get(instrument_id)
+                bucket = self._current_board_bucket(decision, now)
+                if bucket is None:
+                    missing_decisions.append(symbol)
+                    continue
+                buckets[symbol] = bucket
+                if decisions_as_of is None or decision.ts > decisions_as_of:
+                    decisions_as_of = decision.ts
+
+            if unresolved:
+                breadth_status = "INCOMPLETE_INSTRUMENTS"
+            elif missing_decisions:
+                breadth_status = "INCOMPLETE_DECISIONS"
+            else:
+                breadth_status = "AVAILABLE"
+            complete = breadth_status == "AVAILABLE"
+            trade_count = sum(bucket == "TRADE" for bucket in buckets.values())
+            watch_count = sum(bucket == "WATCH" for bucket in buckets.values())
+            no_trade_count = sum(bucket == "NO_TRADE" for bucket in buckets.values())
+            contexts[index_set.key] = IndexConstituentContextDTO(
+                effective_date=membership.effective_date,
+                membership_age_days=(observed_date - membership.effective_date).days,
+                source_url=index_set.source_url,
+                source_sha256=index_set.sha256,
+                overlap_policy=membership.overlap_policy,
+                total_members=len(index_set.symbols),
+                resolved_members=len(resolved),
+                unresolved_symbols=tuple(unresolved),
+                decision_covered_members=len(buckets),
+                missing_decision_symbols=tuple(missing_decisions),
+                breadth_status=breadth_status,
+                trade_count=trade_count if complete else None,
+                watch_count=watch_count if complete else None,
+                no_trade_count=no_trade_count if complete else None,
+                trade_breadth_pct=(
+                    (Decimal(trade_count) * Decimal(100) / Decimal(len(index_set.symbols))).quantize(
+                        Decimal("0.1")
+                    )
+                    if complete and index_set.symbols
+                    else None
+                ),
+                decisions_as_of=decisions_as_of,
+            )
+        return contexts
+
+    @staticmethod
+    def _current_board_bucket(decision: Decision | None, now: datetime) -> str | None:
+        if decision is None:
+            return None
+        if decision.decision_type is DecisionType.TRADE:
+            plan = decision.trade_plan
+            if plan is not None and plan.valid_from <= now < plan.valid_until:
+                return "TRADE"
+            return None
+        if decision.decision_type is DecisionType.WATCH:
+            return "WATCH"
+        if decision.decision_type is DecisionType.NO_TRADE:
+            return "NO_TRADE"
+        return None
 
     def instrument_quote(self, instrument_id: str) -> InstrumentQuoteDTO:
         """Live LTP for one symbol when Kite is reachable; else persisted quote.

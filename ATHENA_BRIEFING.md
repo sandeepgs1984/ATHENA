@@ -106,6 +106,9 @@ procedure to find it, so it can't go stale:
 Non-code:
 - `config/*.json` — all runtime configuration. Never hardcode a threshold,
   weight, or path that belongs here.
+- `data/index_constituents/<effective-date>/` — immutable official NSE index
+  membership snapshots plus checksum/provenance manifest; never overwrite an
+  existing effective-date directory.
 - `tests/` — mirrors `src/athena/` structure, 1000+ tests. Full suite must
   pass before any milestone is considered done.
 - `docs/` — see table above.
@@ -117,7 +120,7 @@ its milestone is approved — check §5):
 | Concern | Packages |
 |---|---|
 | Foundations | `domain/` (frozen canonical model), `config/`, `calendar/` (sole trading-day/session authority), `observability/`, `errors.py` |
-| Data | `data/` (providers incl. institutional flow file/NSE adapters, validation, corporate actions, SQLite `store/repository`) |
+| Data | `data/` (providers incl. institutional flow file/NSE adapters, validation, corporate actions, strict versioned index-constituent loader, SQLite `store/repository`) |
 | Market Intelligence | `regime/`, `market_health/` (categorical + F-5 score), `sector_health/`, `universe/`; dashboard `GET /api/v1/market/summary` (MH-3) |
 | Decision Intelligence | `evidence/`, `indicators/`, `scoring/`, `confidence/`, `risk/`, `decision/`, `reporting/` (decision trace explanations *and* generic operational reports) |
 | Orchestration & Ops | `orchestration/`, `scanner/`, `watchlist/`, `strategy/`, `backtest/`, `scheduling/` |

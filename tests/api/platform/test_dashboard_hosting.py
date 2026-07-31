@@ -200,8 +200,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.125.0" in html
-    assert "dashboard.js?v=9.125.0" in html
+    assert "dashboard.css?v=9.126.0" in html
+    assert "dashboard.js?v=9.126.0" in html
     assert 'id="advisor-pulse"' in html
     assert 'id="header-diagnostics-popover"' in html
     assert 'id="decision-actionability-banner"' in html
@@ -1344,7 +1344,7 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert 'id="index-leadership-retry"' in html
     assert 'id="index-broad-market-grid"' in html
     assert 'id="index-sector-grid"' in html
-    assert "Market context only. Index movement is not an ATHENA trade signal." in html
+    assert "Market context only. Index movement and board breadth are not ATHENA trade signals." in html
     assert "function renderIndexLeadership" in js
     assert "function loadIndexLeadership" in js
     assert "Promise.allSettled" in js
@@ -1361,6 +1361,13 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "Change unavailable" in js
     assert "Leading sector" in js
     assert "Lagging sector" in js
+    assert "function indexConstituentContextMarkup" in js
+    assert "Trade breadth" in js
+    assert "Breadth unavailable" in js
+    assert "Official membership" in js
+    assert "Review affected symbols" in js
+    assert ".index-membership" in css
+    assert ".index-board-breadth" in css
     assert 'state.activeTab === "market"' in js
     assert ".index-leadership-ribbon" in css
     assert "container-type: inline-size" in css

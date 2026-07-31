@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "provider": "NSE Indices Limited",
+  "effective_date": "2026-07-31",
+  "retrieved_at": "2026-07-31T10:23:06Z",
+  "overlap_policy": "COUNT_ONCE_PER_INDEX_INDEPENDENT_ACROSS_INDICES",
+  "indices": [
+    {
+      "key": "nifty_50",
+      "file": "nifty_50.csv",
+      "source_url": "https://archives.nseindia.com/content/indices/ind_nifty50list.csv",
+      "sha256": "9fb8832853c279448d2bc05f0e7dd5f460ed2ff35332fea8c40fc1250362ad28",
+      "member_count": 50
+    },
+    {
+      "key": "nifty_bank",
+      "file": "nifty_bank.csv",
+      "source_url": "https://archives.nseindia.com/content/indices/ind_niftybanklist.csv",
+      "sha256": "eac5d4d5a1d9cfdbfceca604b274bcc999a1f1f36405263569cc2466ef55c64f",
+      "member_count": 14
+    },
+    {
+      "key": "nifty_next_50",
+      "file": "nifty_next_50.csv",
+      "source_url": "https://archives.nseindia.com/content/indices/ind_niftynext50list.csv",
+      "sha256": "e4654c80b911e3eaeb8044ec3a9e61d89b9db0702cc98b80e5a8fe86fbf83d5e",
+      "member_count": 50
+    },
+    {
+      "key": "nifty_midcap_100",
+      "file": "nifty_midcap_100.csv",
+      "source_url": "https://archives.nseindia.com/content/indices/ind_niftymidcap100list.csv",
+      "sha256": "ced40adb5ac0986a62b3bf64821bdf0b63e9eea83446d5f2e08193c96d24cac4",
+      "member_count": 100
+    },
+    {
+      "key": "nifty_it",
+      "file": "nifty_it.csv",
+      "source_url": "https://archives.nseindia.com/content/indices/ind_niftyitlist.csv",
+      "sha256": "22d3781a4d27ac42fb4d6d537c54341ea6afa62fda02509375c4243671eb7d60",
+      "member_count": 10
+    },
+    {
+      "key": "nifty_auto",
+      "file": "nifty_auto.csv",
+      "source_url": "https://archives.nseindia.com/content/indices/ind_niftyautolist.csv",
+      "sha256": "0c68e2cbf122b779d5717737382d544d7f706137687269804b425c605c93d7a7",
+      "member_count": 15
+    },
+    {
+      "key": "nifty_pharma",
+      "file": "nifty_pharma.csv",
+      "source_url": "https://archives.nseindia.com/content/indices/ind_niftypharmalist.csv",
+      "sha256": "9013c84ddc85388dae3554d0e0cef4c56114e622d72ca2b0fdb3e544137a9f89",
+      "member_count": 20
+    },
+    {
+      "key": "nifty_fmcg",
+      "file": "nifty_fmcg.csv",
+      "source_url": "https://archives.nseindia.com/content/indices/ind_niftyfmcglist.csv",
+      "sha256": "66e6e108972bde449a20a7ffffec5d395f338fa7510e24c80e803c245323e686",
+      "member_count": 15
+    },
+    {
+      "key": "nifty_metal",
+      "file": "nifty_metal.csv",
+      "source_url": "https://archives.nseindia.com/content/indices/ind_niftymetallist.csv",
+      "sha256": "0596a027d970c4e9d4551ca1972ec0fd13e8724a27b41e9fa8aee9d9a6640cba",
+      "member_count": 15
+    },
+    {
+      "key": "nifty_realty",
+      "file": "nifty_realty.csv",
+      "source_url": "https://archives.nseindia.com/content/indices/ind_niftyrealtylist.csv",
+      "sha256": "4ca77c907a374f8d7deaa1534012809a5049a8304554cd4a4411cec6aec0563b",
+      "member_count": 10
+    },
+    {
+      "key": "nifty_energy",
+      "file": "nifty_energy.csv",
+      "source_url": "https://archives.nseindia.com/content/indices/ind_niftyenergylist.csv",
+      "sha256": "65aeb062a400b57ff045a3ae101939ed704478b80dcdeefe9504a0432c3b4805",
+      "member_count": 40
+    },
+    {
+      "key": "nifty_psu_bank",
+      "file": "nifty_psu_bank.csv",
+      "source_url": "https://archives.nseindia.com/content/indices/ind_niftypsubanklist.csv",
+      "sha256": "2358aa7e864324e4798d3176fecddf2dd5f6829420a1c9c98e082fb59c4944c8",
+      "member_count": 12
+    }
+  ]
+}

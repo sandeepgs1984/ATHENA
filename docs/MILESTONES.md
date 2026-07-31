@@ -690,8 +690,8 @@ ADR authorize analytical use. It does not silently resolve SD-2, activate
 | Milestone | Scope | Gate | Status |
 |---|---|---|---|
 | **IX-1** Tracked-Index Data Foundation | Separate quote-only snapshot coverage from benchmark history ingestion; add validated index catalog and read-only API | Owner review; no scoring/domain/protocol change | ✅ Approved |
-| **IX-2** Index Leadership Surface | Compact, session-aware broad-market and sector leadership view in Market Intelligence | Owner review and visual QA | 🔄 Ready for owner review |
-| **IX-3** Versioned Constituents and Index Breadth | Official provenance-tagged memberships, resolution audit, breadth/current-board counts | Data review; no inferred membership | ⏳ Planned |
+| **IX-2** Index Leadership Surface | Compact, session-aware broad-market and sector leadership view in Market Intelligence | Owner review and visual QA | ✅ Approved |
+| **IX-3** Versioned Constituents and Index Breadth | Official provenance-tagged memberships, resolution audit, breadth/current-board counts | Data review; no inferred membership | 🔄 Ready for owner review |
 | **IX-4** Index-Aware Discovery | Index filters and best current ATHENA setups across Universe, Workbench, and Decisions | Owner review; current-plan safety rules | ⏳ Planned |
 | **IX-5** Symbol Index Backdrop | Plain-language index alignment/divergence context in Decision Brief | Owner review; informational only | ⏳ Planned |
 | **IX-6** Evidence Review and Scoring Decision | Replay impact study and ADR proposal for any analytical influence | ADR + owner approval before code | ⏳ Planned |
@@ -742,7 +742,7 @@ where day-change percentage is intentionally unavailable. IX-1 now leaves
 `index_intelligence.json`; focused regression coverage verifies production
 config compatibility and live snapshot resolution.
 
-#### IX-2 — index leadership surface (ready for review, 2026-07-31)
+#### IX-2 — index leadership surface (approved, 2026-07-31)
 
 Scope completed: added a compact Index Leadership ribbon inside Market
 Summary, backed only by the persisted IX-1 index-intelligence endpoint. The
@@ -798,6 +798,59 @@ real prior-close changes; the remaining ten correctly showed `Change
 unavailable` because IX-1 was deployed during the current session and no older
 snapshot baseline existed yet. Regression coverage verifies that the next
 session uses the prior-session snapshot and never a same-day observation.
+
+Owner approval: IX-2 was approved on 2026-07-31 before IX-3 implementation
+began.
+
+#### IX-3 — versioned constituents and index breadth (ready for review, 2026-07-31)
+
+Scope completed: added an immutable 2026-07-31 constituent snapshot for all
+twelve configured broad-market and sector indices. Each source file is the
+official NSE CSV captured from its archive URL. The colocated manifest records
+provider, retrieval time, effective date, member count, source URL, SHA-256
+checksum, and the explicit overlap policy. The loader rejects malformed
+manifests, missing/unknown index keys, duplicate keys, path traversal,
+checksum drift, CSV parse failures, and member-count drift.
+
+Resolution is exact and fail-closed. A constituent symbol resolves only when
+there is exactly one active NSE EQ instrument with that symbol. ATHENA does not
+guess from company names, sectors, aliases, or partial matches. Every index
+reports total, resolved, and unresolved membership plus snapshot age and
+official source provenance. Symbols appearing in multiple indices are counted
+once inside each index and independently across indices, matching the manifest
+policy.
+
+Breadth is read-only current-board composition, not market-price breadth and
+not a trading signal. ATHENA selects exactly one latest persisted decision per
+instrument using timestamp and decision-id tie-breaking. A Trade decision is
+counted only while its TradePlan is current; Watch and No trade retain their
+current-board categories. Trade, Watch, No trade, and Trade-breadth values are
+published only when every constituent resolves and every resolved member has a
+current board decision. Otherwise all breadth values remain unavailable and
+the response identifies unresolved instruments or missing current decisions.
+
+Presentation note: the existing Index Leadership detail modal now shows
+membership date/age, resolution and decision coverage, composition when
+complete, affected symbols when incomplete, and an official-source link. The
+compact Market Summary ribbon remains leadership-focused and does not gain
+high-density constituent detail. Responsive styling keeps the added context
+inside the modal without horizontal scrolling.
+
+Architecture note: IX-3 adds versioned source data, a strict data loader, one
+deterministic read-only repository query, additive API fields, and dashboard
+presentation. It changes no frozen domain object, persistence schema, provider
+protocol, ingestion behavior, scoring, confidence, risk, decision policy,
+TradePlan calculation, or broker boundary. No ADR is required.
+
+Validation note: 43 focused constituent, repository, market-history,
+dashboard-hosting, and chart release-gate tests pass. The full suite passes
+(1,140 tests; one existing Starlette/httpx deprecation warning). JavaScript
+syntax, final diff whitespace, and IX-3-owned Ruff checks pass; MyPy reports no
+issues. Repository-wide Ruff still reports the pre-existing duplicate
+`SizingConfig`, repository import/SIM findings, and older dashboard assertion
+formatting findings. Authenticated browser QA could not be completed because
+the connected browser stopped at Workstation Unlock and no signed-in external
+browser was available; owner visual review remains the IX-3 gate.
 
 ---
 

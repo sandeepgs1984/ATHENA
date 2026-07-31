@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
@@ -158,6 +158,33 @@ class MarketTickerDTO(BaseModel):
     as_of: datetime | None = None
 
 
+class IndexConstituentContextDTO(BaseModel):
+    """Versioned membership plus persisted current-board coverage for one index."""
+
+    model_config = ConfigDict(frozen=True)
+
+    effective_date: date
+    membership_age_days: int
+    source_url: str
+    source_sha256: str
+    overlap_policy: Literal["COUNT_ONCE_PER_INDEX_INDEPENDENT_ACROSS_INDICES"]
+    total_members: int
+    resolved_members: int
+    unresolved_symbols: tuple[str, ...]
+    decision_covered_members: int
+    missing_decision_symbols: tuple[str, ...]
+    breadth_status: Literal[
+        "AVAILABLE",
+        "INCOMPLETE_INSTRUMENTS",
+        "INCOMPLETE_DECISIONS",
+    ]
+    trade_count: int | None = None
+    watch_count: int | None = None
+    no_trade_count: int | None = None
+    trade_breadth_pct: Decimal | None = None
+    decisions_as_of: datetime | None = None
+
+
 class IndexIntelligenceItemDTO(BaseModel):
     """One configured broad-market or sector-index observation."""
 
@@ -170,6 +197,7 @@ class IndexIntelligenceItemDTO(BaseModel):
     level: Decimal | None = None
     change_pct: Decimal | None = None
     data_status: Literal["AVAILABLE", "NO_DATA"]
+    constituents: IndexConstituentContextDTO | None = None
 
 
 class IndexIntelligenceDTO(BaseModel):

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -20,7 +21,8 @@ from athena.config.loader import (
     load_kite_provider_config,
 )
 from athena.data.store.repository import SqliteRepository
-from athena.domain.enums import Timeframe
+from athena.domain.decision import Decision, TradePlan
+from athena.domain.enums import DecisionType, Direction, Timeframe
 from athena.domain.market import Candle, Instrument, MarketSnapshot
 from athena.errors import ConfigError
 from athena.indicators.calculations import align_trailing_series, atr_series, sma_series
@@ -288,11 +290,16 @@ class TestMarketTicker:
             assert set(data[key].keys()) == {"label", "level", "change_pct"}
 
 
-def _write_index_intelligence_config(config_dir: Path) -> None:
+def _write_index_intelligence_config(
+    config_dir: Path,
+    *,
+    constituent_manifest: str | None = None,
+) -> None:
     config_dir.mkdir(parents=True, exist_ok=True)
     (config_dir / "index_intelligence.json").write_text(
         json.dumps(
             {
+                "constituent_manifest": constituent_manifest,
                 "tracked_indices": [
                     {
                         "key": "nifty_it",
@@ -322,6 +329,84 @@ def _write_index_intelligence_config(config_dir: Path) -> None:
             }
         ),
         encoding="utf-8",
+    )
+
+
+def _write_constituent_fixture(
+    config_dir: Path,
+    members_by_key: dict[str, tuple[str, ...]],
+) -> None:
+    constituent_dir = config_dir / "constituents"
+    constituent_dir.mkdir()
+    entries = []
+    for key, symbols in members_by_key.items():
+        file_name = f"{key}.csv"
+        payload = "Company Name,Industry,Symbol,Series,ISIN Code\n" + "".join(
+            f"{symbol} Ltd,Test,{symbol},EQ,INE{position:09d}\n"
+            for position, symbol in enumerate(symbols, start=1)
+        )
+        (constituent_dir / file_name).write_text(payload, encoding="utf-8")
+        entries.append(
+            {
+                "key": key,
+                "file": file_name,
+                "source_url": f"https://archives.nseindia.com/{file_name}",
+                "sha256": hashlib.sha256(payload.encode()).hexdigest(),
+                "member_count": len(symbols),
+            }
+        )
+    (constituent_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "provider": "NSE Indices Limited",
+                "effective_date": "2026-07-31",
+                "retrieved_at": "2026-07-31T05:00:00Z",
+                "overlap_policy": "COUNT_ONCE_PER_INDEX_INDEPENDENT_ACROSS_INDICES",
+                "indices": entries,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def _register_equity(repo: SqliteRepository, symbol: str) -> None:
+    repo.upsert_instrument(
+        Instrument(
+            instrument_id=f"NSE:{symbol}",
+            symbol=symbol,
+            exchange="NSE",
+            series="EQ",
+        )
+    )
+
+
+def _decision(symbol: str, decision_type: DecisionType, ts: datetime) -> Decision:
+    trade_plan = None
+    direction = Direction.NONE
+    if decision_type is DecisionType.TRADE:
+        direction = Direction.LONG
+        trade_plan = TradePlan(
+            entry_low=Decimal("100"),
+            entry_high=Decimal("101"),
+            stop_loss=Decimal("95"),
+            targets=(Decimal("110"),),
+            position_size=1,
+            risk_amount=Decimal("5"),
+            risk_reward=Decimal("2"),
+            valid_from=ts - timedelta(minutes=1),
+            valid_until=ts + timedelta(hours=1),
+        )
+    return Decision(
+        decision_id=f"decision-{symbol}-{decision_type.value}",
+        ts=ts,
+        run_id="run-index-context",
+        cycle_id="cycle-index-context",
+        decision_type=decision_type,
+        explanation="Deterministic index context fixture.",
+        instrument_id=f"NSE:{symbol}",
+        direction=direction,
+        trade_plan=trade_plan,
     )
 
 
@@ -455,7 +540,116 @@ class TestIndexIntelligence:
             "level",
             "change_pct",
             "data_status",
+            "constituents",
         }
+
+    def test_constituent_breadth_is_complete_and_overlap_is_per_index(
+        self, tmp_path: Path
+    ) -> None:
+        _write_constituent_fixture(
+            tmp_path,
+            {"nifty_50": ("AAA", "BBB"), "nifty_it": ("AAA",)},
+        )
+        _write_index_intelligence_config(
+            tmp_path,
+            constituent_manifest=str(tmp_path / "constituents" / "manifest.json"),
+        )
+        repo = SqliteRepository(tmp_path / "indices.db")
+        repo.initialize()
+        now = datetime(2026, 7, 31, 6, 30, tzinfo=timezone.utc)
+        _register_equity(repo, "AAA")
+        _register_equity(repo, "BBB")
+        repo.save_decision(_decision("AAA", DecisionType.TRADE, now))
+        repo.save_decision(_decision("BBB", DecisionType.WATCH, now))
+
+        result = MarketHistoryService(
+            InMemoryCandleHistoryProvider(),
+            freshness_threshold_minutes=20,
+            now_fn=lambda: now,
+            config_dir=tmp_path,
+            repo=repo,
+        ).index_intelligence()
+
+        contexts = {item.key: item.constituents for item in result.indices}
+        broad = contexts["nifty_50"]
+        sector = contexts["nifty_it"]
+        assert broad is not None and sector is not None
+        assert broad.breadth_status == "AVAILABLE"
+        assert (broad.trade_count, broad.watch_count, broad.no_trade_count) == (1, 1, 0)
+        assert broad.trade_breadth_pct == Decimal("50.0")
+        assert sector.trade_count == 1
+        assert sector.trade_breadth_pct == Decimal("100.0")
+        assert broad.overlap_policy == "COUNT_ONCE_PER_INDEX_INDEPENDENT_ACROSS_INDICES"
+        repo.close()
+
+    def test_constituent_breadth_suppressed_for_unresolved_instrument(
+        self, tmp_path: Path
+    ) -> None:
+        _write_constituent_fixture(
+            tmp_path,
+            {"nifty_50": ("AAA", "MISSING"), "nifty_it": ("AAA",)},
+        )
+        _write_index_intelligence_config(
+            tmp_path,
+            constituent_manifest=str(tmp_path / "constituents" / "manifest.json"),
+        )
+        repo = SqliteRepository(tmp_path / "indices.db")
+        repo.initialize()
+        now = datetime(2026, 7, 31, 6, 30, tzinfo=timezone.utc)
+        _register_equity(repo, "AAA")
+        repo.save_decision(_decision("AAA", DecisionType.WATCH, now))
+
+        result = MarketHistoryService(
+            InMemoryCandleHistoryProvider(),
+            freshness_threshold_minutes=20,
+            now_fn=lambda: now,
+            config_dir=tmp_path,
+            repo=repo,
+        ).index_intelligence()
+
+        context = result.indices[0].constituents
+        assert context is not None
+        assert context.breadth_status == "INCOMPLETE_INSTRUMENTS"
+        assert context.unresolved_symbols == ("MISSING",)
+        assert context.resolved_members == 1
+        assert context.trade_breadth_pct is None
+        assert context.trade_count is None
+        repo.close()
+
+    def test_constituent_breadth_suppressed_for_missing_current_decision(
+        self, tmp_path: Path
+    ) -> None:
+        _write_constituent_fixture(
+            tmp_path,
+            {"nifty_50": ("AAA", "BBB"), "nifty_it": ("AAA",)},
+        )
+        _write_index_intelligence_config(
+            tmp_path,
+            constituent_manifest=str(tmp_path / "constituents" / "manifest.json"),
+        )
+        repo = SqliteRepository(tmp_path / "indices.db")
+        repo.initialize()
+        now = datetime(2026, 7, 31, 6, 30, tzinfo=timezone.utc)
+        _register_equity(repo, "AAA")
+        _register_equity(repo, "BBB")
+        repo.save_decision(_decision("AAA", DecisionType.NO_TRADE, now))
+
+        result = MarketHistoryService(
+            InMemoryCandleHistoryProvider(),
+            freshness_threshold_minutes=20,
+            now_fn=lambda: now,
+            config_dir=tmp_path,
+            repo=repo,
+        ).index_intelligence()
+
+        context = result.indices[0].constituents
+        assert context is not None
+        assert context.breadth_status == "INCOMPLETE_DECISIONS"
+        assert context.missing_decision_symbols == ("BBB",)
+        assert context.decision_covered_members == 1
+        assert context.no_trade_count is None
+        assert context.trade_breadth_pct is None
+        repo.close()
 
     def test_production_catalog_matches_kite_snapshot_coverage(self) -> None:
         config_dir = Path(__file__).resolve().parents[3] / "config"
