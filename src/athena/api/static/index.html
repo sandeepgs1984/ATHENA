@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.122.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.125.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -417,6 +417,18 @@
                                         <p id="regime-evidence-text">No active run loaded.</p>
                                     </div>
                                 </div>
+                                <section class="index-leadership-ribbon" aria-labelledby="index-leadership-title">
+                                    <div class="index-leadership-heading">
+                                        <span class="index-leadership-kicker">Index Leadership</span>
+                                        <strong id="index-leadership-title">Loading index context…</strong>
+                                        <small id="index-leadership-session"></small>
+                                    </div>
+                                    <div id="index-leadership-broad" class="index-leadership-broad" aria-label="Broad-market indices"></div>
+                                    <div id="index-leadership-sector" class="index-leadership-sector" aria-label="Sector leaders and laggards"></div>
+                                    <button type="button" id="index-leadership-open" class="inspect-btn index-leadership-open" aria-haspopup="dialog" aria-controls="index-leadership-modal">
+                                        View all indices
+                                    </button>
+                                </section>
                             </div>
                         </div>
 
@@ -1153,6 +1165,42 @@
         </div>
     </div>
 
+    <!-- IX-2: full index observations remain outside page flow so the
+         Validation Pipeline keeps its daily-workspace height. -->
+    <div id="index-leadership-modal" class="modal-overlay" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="index-leadership-modal-title">
+        <div class="modal-container index-leadership-modal-container">
+            <div class="modal-header">
+                <div>
+                    <h3 id="index-leadership-modal-title">Index Leadership</h3>
+                    <p id="index-leadership-modal-session" class="index-leadership-modal-session"></p>
+                </div>
+                <button id="index-leadership-modal-close" class="modal-close-btn" type="button" aria-label="Close index leadership">&times;</button>
+            </div>
+            <div class="modal-body index-leadership-modal-body">
+                <div class="index-leadership-notice">
+                    <span>Market context only. Index movement is not an ATHENA trade signal.</span>
+                    <button type="button" id="index-leadership-retry" class="inspect-btn">
+                        <i class="fa-solid fa-arrows-rotate"></i> Refresh
+                    </button>
+                </div>
+                <section class="index-leadership-group" aria-labelledby="index-broad-market-title">
+                    <div class="index-leadership-group-header">
+                        <h4 id="index-broad-market-title">Broad Market</h4>
+                        <span id="index-broad-market-count"></span>
+                    </div>
+                    <div id="index-broad-market-grid" class="index-leadership-grid"></div>
+                </section>
+                <section class="index-leadership-group" aria-labelledby="index-sector-title">
+                    <div class="index-leadership-group-header">
+                        <h4 id="index-sector-title">Sectors</h4>
+                        <span id="index-sector-count"></span>
+                    </div>
+                    <div id="index-sector-grid" class="index-leadership-grid"></div>
+                </section>
+            </div>
+        </div>
+    </div>
+
     <!-- AW-3: Validation Pipeline details live in a workbench modal so the
          owner can inspect conversion, blockers, symbols, and recent runs
          without reading raw run payloads. -->
@@ -1478,6 +1526,6 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.122.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.125.0"></script>
 </body>
 </html>

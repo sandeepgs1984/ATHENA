@@ -1,6 +1,6 @@
 # ATHENA Index and Sector Intelligence Roadmap
 
-**Status:** IX-1 in implementation on 2026-07-31  
+**Status:** IX-2 ready for owner review on 2026-07-31  
 **Scope:** Read-only broad-market and sector-index intelligence for Market
 Intelligence and Decisions & Trace  
 **Owner goal:** show which parts of the market are leading, then help the owner
@@ -75,6 +75,8 @@ Scope:
 - Add a read-only index-intelligence API returning configured order, level,
   prior-session change when a real baseline exists, data availability, source,
   and timestamp.
+- Prefer persisted daily candles for prior-session change, then use the latest
+  snapshot before the current trading day for quote-only display indices.
 - Preserve the fixed NIFTY 50 / BANK NIFTY / VIX header ticker contract.
 
 Acceptance:
@@ -83,6 +85,7 @@ Acceptance:
   validation.
 - One missing provider quote does not hide other available indices.
 - Missing snapshots or prior closes produce explicit `NO_DATA` / null fields.
+- Same-day snapshots are never used as the prior-session comparison baseline.
 - Catalog keys and instrument ids are unique and invalid config fails loudly.
 - Existing provider, ticker, and market-history tests continue to pass.
 - Re-validation and selected-symbol live quotes continue to work when an

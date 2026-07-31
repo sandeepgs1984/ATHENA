@@ -689,8 +689,8 @@ ADR authorize analytical use. It does not silently resolve SD-2, activate
 
 | Milestone | Scope | Gate | Status |
 |---|---|---|---|
-| **IX-1** Tracked-Index Data Foundation | Separate quote-only snapshot coverage from benchmark history ingestion; add validated index catalog and read-only API | Owner review; no scoring/domain/protocol change | 🔄 Ready for review |
-| **IX-2** Index Leadership Surface | Compact, session-aware broad-market and sector leadership view in Market Intelligence | Owner review and visual QA | ⏳ Planned |
+| **IX-1** Tracked-Index Data Foundation | Separate quote-only snapshot coverage from benchmark history ingestion; add validated index catalog and read-only API | Owner review; no scoring/domain/protocol change | ✅ Approved |
+| **IX-2** Index Leadership Surface | Compact, session-aware broad-market and sector leadership view in Market Intelligence | Owner review and visual QA | 🔄 Ready for owner review |
 | **IX-3** Versioned Constituents and Index Breadth | Official provenance-tagged memberships, resolution audit, breadth/current-board counts | Data review; no inferred membership | ⏳ Planned |
 | **IX-4** Index-Aware Discovery | Index filters and best current ATHENA setups across Universe, Workbench, and Decisions | Owner review; current-plan safety rules | ⏳ Planned |
 | **IX-5** Symbol Index Backdrop | Plain-language index alignment/divergence context in Decision Brief | Owner review; informational only | ⏳ Planned |
@@ -700,7 +700,7 @@ ADR authorize analytical use. It does not silently resolve SD-2, activate
 automatically a trade, and a strong sector may not override an expired plan,
 failed safety gate, weak symbol score, or unavailable data.
 
-#### IX-1 — tracked-index data foundation (ready for review, 2026-07-31)
+#### IX-1 — tracked-index data foundation (approved, 2026-07-31)
 
 Scope completed: added a validated twelve-index catalog covering NIFTY 50,
 NIFTY BANK, NIFTY NEXT 50, NIFTY MIDCAP 100, and eight sector indices. The
@@ -741,6 +741,63 @@ where day-change percentage is intentionally unavailable. IX-1 now leaves
 `kite.json` unchanged and loads snapshot coverage from
 `index_intelligence.json`; focused regression coverage verifies production
 config compatibility and live snapshot resolution.
+
+#### IX-2 — index leadership surface (ready for review, 2026-07-31)
+
+Scope completed: added a compact Index Leadership ribbon inside Market
+Summary, backed only by the persisted IX-1 index-intelligence endpoint. The
+ribbon reports tracked-data coverage, broad-market movement, and sector
+leadership/laggard context when trustworthy changes exist. A dedicated modal
+shows all four broad-market and eight sector indices in deterministic groups
+with level, change, observation time, and explicit unavailable states.
+
+Session wording comes from the existing Calendar Engine session endpoint.
+Market-open state is not inferred from Kite connectivity, and closed-session
+copy includes the next live-session guidance supplied by that service. Missing
+prior-session baselines render as `Change unavailable`; they never become
+`0.00%`. Daily candles remain the preferred comparison source. Quote-only
+display indices without daily candles use the latest persisted snapshot before
+the current trading day, so no extra Kite history request is required. On the
+first rollout day, those indices remain honestly unavailable until a real
+prior-session snapshot exists. A single comparable sector is labeled `Sector
+observed` instead of being misrepresented as both leader and laggard.
+
+Refresh and layout notes: persisted index observations refresh with the
+existing 60-second Market-tab ticker cycle, only while Market Intelligence is
+active. IX-2 never polls Kite directly. Container-aware compact layouts keep
+the ribbon within the narrower Market Summary column, while the grouped modal
+uses a responsive one-column layout on narrow screens and has no horizontal
+scroll.
+
+Architecture note: IX-2 is frontend presentation/orchestration over
+`GET /api/v1/market/index-intelligence` and
+`GET /api/v1/dashboard/session-status`. It changes no provider protocol,
+historical ingestion, persistence schema, scoring, confidence, risk,
+decision policy, TradePlan, frozen domain object, or broker behavior. Index
+movement remains explicitly labeled as market context, not an ATHENA trade
+signal. No ADR is required.
+
+Validation note: focused market-history/dashboard/release-gate tests pass (28
+tests), and the full suite passes (1,133 tests). Browser QA with persisted data verified the
+compact desktop ribbon, grouped desktop modal, narrow-screen modal, modal
+open/close behavior, zero horizontal overflow in supported layouts, and no
+browser console errors. MyPy reports no issues. Ruff reports only seven
+pre-existing findings in the hosting regression file; IX-2 adds no new Ruff
+finding.
+
+Owner-QA correction: the dashboard assets can update without restarting an
+already-running API process, so the new ribbon may initially call an IX-1
+route that the old process has not registered. That failure previously looked
+like a legitimate empty catalog (`0 of 0`) and also hid a successful market
+session response. IX-2 now loads the index and session endpoints independently,
+labels index request failures as `Index data unavailable`, preserves valid
+session wording, and offers a retry action. A live localhost check against the
+current code/config returned all 12 configured index levels after the restarted
+ingestion process persisted its next snapshot. NIFTY 50 and NIFTY BANK also had
+real prior-close changes; the remaining ten correctly showed `Change
+unavailable` because IX-1 was deployed during the current session and no older
+snapshot baseline existed yet. Regression coverage verifies that the next
+session uses the prior-session snapshot and never a same-day observation.
 
 ---
 

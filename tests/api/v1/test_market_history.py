@@ -386,6 +386,53 @@ class TestIndexIntelligence:
         assert all(item.level is None for item in result.indices)
         assert result.as_of is None
 
+    def test_uses_prior_session_snapshot_when_daily_candle_is_missing(
+        self, tmp_path: Path
+    ) -> None:
+        _write_index_intelligence_config(tmp_path)
+        repo = SqliteRepository(tmp_path / "indices.db")
+        repo.initialize()
+        ist = timezone(timedelta(hours=5, minutes=30))
+        prior_session = datetime(2026, 7, 30, 15, 30, tzinfo=ist)
+        same_session = datetime(2026, 7, 31, 9, 15, tzinfo=ist)
+        current = datetime(2026, 7, 31, 12, 0, tzinfo=ist)
+        repo.add_snapshot(
+            MarketSnapshot(
+                ts=prior_session,
+                indices={"NIFTY IT": Decimal("35000")},
+                breadth_advances=0,
+                breadth_declines=0,
+            )
+        )
+        repo.add_snapshot(
+            MarketSnapshot(
+                ts=same_session,
+                indices={"NIFTY IT": Decimal("35600")},
+                breadth_advances=0,
+                breadth_declines=0,
+            )
+        )
+        repo.add_snapshot(
+            MarketSnapshot(
+                ts=current,
+                indices={"NIFTY IT": Decimal("35700")},
+                breadth_advances=0,
+                breadth_declines=0,
+            )
+        )
+        service = MarketHistoryService(
+            InMemoryCandleHistoryProvider(),
+            freshness_threshold_minutes=20,
+            config_dir=tmp_path,
+            repo=repo,
+        )
+
+        result = service.index_intelligence()
+
+        nifty_it = next(item for item in result.indices if item.key == "nifty_it")
+        assert nifty_it.change_pct == Decimal("2.00")
+        repo.close()
+
     def test_endpoint_requires_auth_and_exposes_stable_shape(
         self, client: TestClient
     ) -> None:

@@ -10,6 +10,26 @@
         universeNote: null,
     };
     let validationResultsRenderTimerId = null;
+    const indexLeadershipModal = document.getElementById("index-leadership-modal");
+    const indexLeadershipOpen = document.getElementById("index-leadership-open");
+    const indexLeadershipClose = document.getElementById("index-leadership-modal-close");
+    const indexLeadershipRetry = document.getElementById("index-leadership-retry");
+
+    indexLeadershipOpen?.addEventListener("click", () => openModal(indexLeadershipModal));
+    indexLeadershipClose?.addEventListener("click", () => closeModal(indexLeadershipModal));
+    indexLeadershipRetry?.addEventListener("click", async () => {
+        indexLeadershipRetry.disabled = true;
+        indexLeadershipRetry.classList.add("is-loading");
+        try {
+            await loadIndexLeadership();
+        } finally {
+            indexLeadershipRetry.disabled = false;
+            indexLeadershipRetry.classList.remove("is-loading");
+        }
+    });
+    window.addEventListener("click", event => {
+        if (event.target === indexLeadershipModal) closeModal(indexLeadershipModal);
+    });
 
     const validationReportModal = document.getElementById("validation-report-modal");
     const validationReportTitle = document.getElementById("validation-report-title");
@@ -720,6 +740,170 @@
         renderMarketSparklines(summary);
     }
 
+    function indexNumericValue(value) {
+        if (value == null || value === "") return null;
+        const number = Number(value);
+        return Number.isFinite(number) ? number : null;
+    }
+
+    function indexLevelLabel(value) {
+        const number = indexNumericValue(value);
+        if (number === null) return "Level unavailable";
+        return new Intl.NumberFormat("en-IN", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        }).format(number);
+    }
+
+    function indexChangeLabel(value) {
+        const number = indexNumericValue(value);
+        if (number === null) return "Change unavailable";
+        return `${number >= 0 ? "+" : ""}${number.toFixed(2)}%`;
+    }
+
+    function indexChangeTone(value) {
+        const number = indexNumericValue(value);
+        if (number === null || number === 0) return "neutral";
+        return number > 0 ? "positive" : "negative";
+    }
+
+    function indexSessionLabel(session, asOf) {
+        const observed = asOf ? `Observed ${formatDecisionTime(asOf)}` : "Observation unavailable";
+        if (session && session.is_market_open === true) {
+            return `Market live · ${observed}`;
+        }
+        if (session && session.is_market_open === false) {
+            return `${session.message || "Market closed"} · ${observed}`;
+        }
+        return `Market hours unavailable · ${observed}`;
+    }
+
+    function indexObservationMarkup(item, compact = false) {
+        const change = indexChangeLabel(item && item.change_pct);
+        const tone = indexChangeTone(item && item.change_pct);
+        const level = indexLevelLabel(item && item.level);
+        const status = item && item.data_status === "AVAILABLE" ? "" : " is-unavailable";
+        return `
+            <div class="index-observation ${tone}${status}" aria-label="${escapeDecisionHtml(item.label)}: ${escapeDecisionHtml(level)}, ${escapeDecisionHtml(change)}">
+                <span class="index-observation-label">${escapeDecisionHtml(item.label)}</span>
+                <strong>${escapeDecisionHtml(change)}</strong>
+                ${compact ? "" : `<small>${escapeDecisionHtml(level)}</small>`}
+            </div>
+        `;
+    }
+
+    function renderIndexLeadership(payload, session, options = {}) {
+        const loadFailed = options.loadFailed === true;
+        const indices = Array.isArray(payload && payload.indices) ? payload.indices : [];
+        const broad = indices.filter(item => item.family === "broad_market");
+        const sectors = indices.filter(item => item.family === "sectoral");
+        const comparableSectors = sectors
+            .filter(item => indexNumericValue(item.change_pct) !== null)
+            .sort(
+                (a, b) =>
+                    indexNumericValue(b.change_pct) - indexNumericValue(a.change_pct),
+            );
+        const leader = comparableSectors.length ? comparableSectors[0] : null;
+        const laggard = comparableSectors.length > 1
+            ? comparableSectors[comparableSectors.length - 1]
+            : null;
+        const sessionLabel = indexSessionLabel(session, payload && payload.as_of);
+        const availableCount = Number(payload && payload.available_count) || 0;
+
+        const title = document.getElementById("index-leadership-title");
+        const sessionEl = document.getElementById("index-leadership-session");
+        const broadEl = document.getElementById("index-leadership-broad");
+        const sectorEl = document.getElementById("index-leadership-sector");
+        if (indexLeadershipRetry) {
+            indexLeadershipRetry.innerHTML = loadFailed
+                ? '<i class="fa-solid fa-arrows-rotate"></i> Retry'
+                : '<i class="fa-solid fa-arrows-rotate"></i> Refresh';
+        }
+        if (title) {
+            title.textContent = loadFailed
+                ? "Index data unavailable"
+                : `${availableCount} of ${indices.length} levels available`;
+        }
+        if (sessionEl) sessionEl.textContent = sessionLabel;
+        if (broadEl) {
+            broadEl.innerHTML = broad.length
+                ? broad.map(item => indexObservationMarkup(item, true)).join("")
+                : `<span class="index-leadership-empty">${loadFailed ? "Index service unavailable" : "Broad-market data unavailable"}</span>`;
+        }
+        if (sectorEl) {
+            if (leader && laggard) {
+                sectorEl.innerHTML = `
+                    <div class="index-sector-extreme">
+                        <span>Leading sector</span>
+                        <strong>${escapeDecisionHtml(leader.label)}</strong>
+                        <em class="${indexChangeTone(leader.change_pct)}">${escapeDecisionHtml(indexChangeLabel(leader.change_pct))}</em>
+                    </div>
+                    <div class="index-sector-extreme">
+                        <span>Lagging sector</span>
+                        <strong>${escapeDecisionHtml(laggard.label)}</strong>
+                        <em class="${indexChangeTone(laggard.change_pct)}">${escapeDecisionHtml(indexChangeLabel(laggard.change_pct))}</em>
+                    </div>
+                `;
+            } else if (leader) {
+                sectorEl.innerHTML = `
+                    <div class="index-sector-extreme">
+                        <span>Sector observed</span>
+                        <strong>${escapeDecisionHtml(leader.label)}</strong>
+                        <em class="${indexChangeTone(leader.change_pct)}">${escapeDecisionHtml(indexChangeLabel(leader.change_pct))}</em>
+                    </div>
+                `;
+            } else {
+                sectorEl.innerHTML = `<span class="index-leadership-empty">${loadFailed ? "Retry index data" : "Sector change unavailable"}</span>`;
+            }
+        }
+
+        const modalSession = document.getElementById("index-leadership-modal-session");
+        const broadGrid = document.getElementById("index-broad-market-grid");
+        const sectorGrid = document.getElementById("index-sector-grid");
+        const broadCount = document.getElementById("index-broad-market-count");
+        const sectorCount = document.getElementById("index-sector-count");
+        if (modalSession) modalSession.textContent = sessionLabel;
+        if (broadCount) broadCount.textContent = loadFailed ? "Unavailable" : `${broad.length} tracked`;
+        if (sectorCount) sectorCount.textContent = loadFailed ? "Unavailable" : `${sectors.length} tracked`;
+        if (broadGrid) {
+            broadGrid.innerHTML = broad.length
+                ? broad.map(item => indexObservationMarkup(item)).join("")
+                : `<div class="index-leadership-empty">${loadFailed ? "Index data could not be loaded. Retry after the ATHENA service is updated or restarted." : "No broad-market indices configured."}</div>`;
+        }
+        if (sectorGrid) {
+            sectorGrid.innerHTML = sectors.length
+                ? sectors.map(item => indexObservationMarkup(item)).join("")
+                : `<div class="index-leadership-empty">${loadFailed ? "Sector data is unavailable because the index request failed." : "No sector indices configured."}</div>`;
+        }
+    }
+
+    async function loadIndexLeadership() {
+        const [indexResult, sessionResult] = await Promise.allSettled([
+            apiRequest("/api/v1/market/index-intelligence", { skipToast: true }),
+            apiRequest("/api/v1/dashboard/session-status", { skipToast: true }),
+        ]);
+        if (sessionResult.status === "fulfilled") {
+            const sessionResponse = sessionResult.value;
+            state.marketSession = sessionResponse && sessionResponse.data
+                ? sessionResponse.data
+                : state.marketSession;
+        } else {
+            console.error("Failed to load index session status", sessionResult.reason);
+        }
+        if (indexResult.status === "fulfilled") {
+            const indexResponse = indexResult.value;
+            const payload = indexResponse && indexResponse.data ? indexResponse.data : null;
+            renderIndexLeadership(
+                payload,
+                state.marketSession,
+                { loadFailed: !payload || !Array.isArray(payload.indices) },
+            );
+        } else {
+            console.error("Failed to load index leadership", indexResult.reason);
+            renderIndexLeadership(null, state.marketSession, { loadFailed: true });
+        }
+    }
+
     // MI-3: Validation Pipeline funnel — typed stages from
     // GET /api/v1/pipelines/validation-funnel (Universe→Eligible→Filtered→
     // Watch→Trade). Filtered is server-side arithmetic; UI never recomputes.
@@ -966,6 +1150,7 @@
         try {
             await loadCandidateList();
             await loadSavedSymbols();
+            const indexLeadershipPromise = loadIndexLeadership();
 
             // 1. Fetch Market Summary (MH-3), Validation Pipeline funnel, and
             //    pipeline runs (Universe / Recent Activity) in parallel.
@@ -976,6 +1161,7 @@
             ]);
             renderValidationFunnel(funnelRes && funnelRes.data ? funnelRes.data : null);
             renderMarketSummaryHero(summaryRes && summaryRes.data ? summaryRes.data : null);
+            await indexLeadershipPromise;
 
             let universe = {};
             let qualified = [];

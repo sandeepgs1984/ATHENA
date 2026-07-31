@@ -274,17 +274,20 @@
     // Auto-refresh (owner-requested, 2026-07-27): the ticker otherwise only
     // updated on tab-switch or a manual refresh click, same as every other
     // tab in ATHENA — no polling exists anywhere else in this dashboard.
-    // Scoped tightly to the ticker only (not the decisions list/briefing —
-    // re-fetching those every tick would reset scroll position/selection,
-    // which was never asked for) and only while one of TICKER_TABS is the
-    // active tab, mirroring the existing start/stop pattern already used
-    // for the Operations tab's live stream (see stopOpsStream).
+    // Scoped to read-only market observations (not the decisions
+    // list/briefing, whose refresh would reset scroll position/selection).
+    // Index context refreshes only while Market Intelligence is active.
     const TICKER_REFRESH_INTERVAL_MS = 60000;
     let tickerRefreshIntervalId = null;
 
     function startTickerRefresh() {
         stopTickerRefresh();
-        tickerRefreshIntervalId = setInterval(loadMarketTicker, TICKER_REFRESH_INTERVAL_MS);
+        tickerRefreshIntervalId = setInterval(() => {
+            loadMarketTicker();
+            if (state.activeTab === "market" && typeof loadIndexLeadership === "function") {
+                loadIndexLeadership();
+            }
+        }, TICKER_REFRESH_INTERVAL_MS);
     }
 
     function stopTickerRefresh() {

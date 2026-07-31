@@ -200,8 +200,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.122.0" in html
-    assert "dashboard.js?v=9.122.0" in html
+    assert "dashboard.css?v=9.125.0" in html
+    assert "dashboard.js?v=9.125.0" in html
     assert 'id="advisor-pulse"' in html
     assert 'id="header-diagnostics-popover"' in html
     assert 'id="decision-actionability-banner"' in html
@@ -1259,10 +1259,15 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     # scroll position/selection on every tick) and only while one of
     # TICKER_TABS is the active tab, mirroring the existing start/stop
     # pattern already used for the Operations tab's live stream (stopOpsStream).
+    # IX-2 also refreshes persisted index context while Market Intelligence
+    # is active, without reloading the validation workspace.
     assert "function startTickerRefresh" in js
     assert "function stopTickerRefresh" in js
     assert "TICKER_REFRESH_INTERVAL_MS = 60000" in js
-    assert "setInterval(loadMarketTicker, TICKER_REFRESH_INTERVAL_MS)" in js
+    assert "tickerRefreshIntervalId = setInterval(() => {" in js
+    assert "loadMarketTicker();" in js
+    assert 'state.activeTab === "market"' in js
+    assert "loadIndexLeadership();" in js
     switch_tab_start = js.find("function switchTab(tabId, options = {})")
     switch_tab_end = js.find("\n    function ", switch_tab_start + 1)
     switch_tab_body = js[switch_tab_start:switch_tab_end]
@@ -1328,6 +1333,42 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "renderMarketSummaryHero(" in load_mi_body
     assert "repeat(8, minmax(118px, 1fr))" in css
     assert "grid-column: 1 / -1" in css
+
+    # IX-2: compact persisted index leadership stays inside the Market Summary
+    # card; complete grouped observations open outside workspace flow.
+    assert 'id="index-leadership-title"' in html
+    assert 'id="index-leadership-broad"' in html
+    assert 'id="index-leadership-sector"' in html
+    assert 'id="index-leadership-open"' in html
+    assert 'id="index-leadership-modal"' in html
+    assert 'id="index-leadership-retry"' in html
+    assert 'id="index-broad-market-grid"' in html
+    assert 'id="index-sector-grid"' in html
+    assert "Market context only. Index movement is not an ATHENA trade signal." in html
+    assert "function renderIndexLeadership" in js
+    assert "function loadIndexLeadership" in js
+    assert "Promise.allSettled" in js
+    assert 'renderIndexLeadership(null, state.marketSession, { loadFailed: true });' in js
+    assert '{ loadFailed: !payload || !Array.isArray(payload.indices) }' in js
+    assert 'title.textContent = loadFailed' in js
+    assert "levels available" in js
+    assert "indexLeadershipRetry.innerHTML = loadFailed" in js
+    assert "Index data unavailable" in js
+    assert "Index service unavailable" in js
+    assert "/api/v1/market/index-intelligence" in js
+    assert "/api/v1/dashboard/session-status" in js
+    assert 'if (value == null || value === "") return null;' in js
+    assert "Change unavailable" in js
+    assert "Leading sector" in js
+    assert "Lagging sector" in js
+    assert 'state.activeTab === "market"' in js
+    assert ".index-leadership-ribbon" in css
+    assert "container-type: inline-size" in css
+    assert "@container (max-width: 900px)" in css
+    assert ".index-leadership-modal-container" in css
+    assert "overflow-x: auto" not in css[
+        css.find(".index-leadership-ribbon"):css.find(".index-leadership-modal-container")
+    ]
 
     # Real indicators: score/breadth rings, NIFTY/VIX sparklines, categorical
     # bars/dots, gap direction, and read-only attribution footer.

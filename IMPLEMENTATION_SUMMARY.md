@@ -6,7 +6,30 @@ status updated on approval.
 
 ---
 
-## IX-1 — Tracked-index data foundation (ready for review)
+## IX-2 — Index leadership surface (ready for review)
+
+| | |
+|---|---|
+| Completed | 2026-07-31 |
+| Objective | Make broad-market and sector-index direction glanceable in Market Intelligence without turning market context into an ATHENA signal |
+| Scope | Added a compact Index Leadership ribbon within Market Summary; report tracked-data coverage, broad-market changes, and sector leader/laggard context only when comparable changes exist; added a grouped detail modal covering four broad-market and eight sector indices with level, change, observation time, and explicit unavailable states; derive live/closed wording from Calendar Engine session status; refresh persisted observations with the existing Market-tab ticker cycle; handle one-sector partial coverage without a false leader/laggard comparison; load index/session endpoints independently; distinguish request failure from an empty catalog and provide retry; add container-aware and narrow-screen layouts; derive quote-only index changes from the latest prior-session snapshot when no daily candle exists |
+| Files created | None |
+| Files modified | `docs/design/ATHENA-INDEX-SECTOR-INTELLIGENCE-ROADMAP.md`, `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md`, `src/athena/api/static/index.html`, `src/athena/api/static/css/06-market-intelligence.css`, `src/athena/api/static/js/03-app-shell.js`, `src/athena/api/static/js/06-ui-helpers.js`, `src/athena/api/static/js/09-market-intelligence.js`, `src/athena/api/v1/services/market_history_service.py`, `src/athena/data/store/repository.py`, `tests/api/v1/test_market_history.py`, `tests/api/platform/test_dashboard_hosting.py`, `tests/api/platform/test_decision_chart_release_gate.py` |
+| Public APIs added | None |
+| Tests | `rtk pytest tests/api/v1/test_market_history.py tests/api/platform/test_dashboard_hosting.py tests/api/platform/test_decision_chart_release_gate.py -q` — 28 passed; `rtk pytest -q` — 1,133 passed; `rtk mypy` — no issues; Ruff reports seven pre-existing findings in `test_dashboard_hosting.py` and no IX-2 finding; final diff check passed |
+| Coverage | Regression assertions lock the Index Leadership DOM, persisted index/session endpoint use, independent partial-failure handling, context-aware Refresh/Retry action, Market-only timed refresh, unavailable-copy contract, modal close-all integration, responsive styles, context-only disclaimer, and `9.125.0` cache-busters. Service coverage verifies daily-candle precedence, prior-session snapshot fallback, and rejection of same-day snapshots as a comparison baseline. Browser QA used persisted index observations and verified compact desktop layout, desktop modal, narrow-screen modal, open/close behavior, no horizontal overflow in supported layouts, and zero console errors. A live persisted snapshot check returned all 12 configured levels; only NIFTY 50 and NIFTY BANK had a real comparison baseline on the first rollout day, so the other ten correctly remained `Change unavailable` |
+| Architecture compliance | Frontend presentation/orchestration only over the IX-1 read-only index API and existing Calendar Engine session API. No direct Kite polling, provider/protocol change, historical-ingestion expansion, schema change, scoring/confidence/risk/decision-policy influence, TradePlan change, frozen-domain change, or broker write path |
+| ADR compliance | ADR-004 preserved through the existing static HTML/CSS/vanilla-JS dashboard. ADR-005 preserved: missing levels and baselines stay unavailable, session state comes from the authoritative calendar response, and one comparable sector is not falsely ranked against itself |
+| Risks discovered | A viewport breakpoint alone did not protect the ribbon inside the narrower Market Summary column; container-aware layout was required. Null JavaScript values coerce to numeric zero, so IX-2 now rejects null/empty values before formatting. Exactly one comparable sector cannot establish leadership or laggard rankings. Static dashboard assets may update while an old server process still lacks the IX-1 route; request failure must not masquerade as a configured catalog with zero indices or suppress an otherwise valid session response. Quote-only indices have no daily-candle baseline, so the first rollout session cannot calculate their change; later sessions use a persisted prior-session snapshot without extra provider calls |
+| Technical debt introduced | None. The application shell's pre-existing phone-width layout remains outside IX-2; the IX-2 modal itself is responsive and horizontally stable |
+| Suggested improvements | IX-3 should add provenance-tagged constituent membership and breadth only after the owner approves this presentation layer |
+| Remaining work | Owner review of IX-2. IX-3 through IX-6 remain separately gated and must not begin without approval |
+| Status | 🔄 Ready for owner review |
+| Branch | feature/live-dashboard |
+
+---
+
+## IX-1 — Tracked-index data foundation (approved)
 
 | | |
 |---|---|
@@ -23,8 +46,8 @@ status updated on approval.
 | Risks discovered | The existing `index_instruments` field is consumed by scoped historical ingestion, so using it for a large display catalog would create avoidable Kite latency/rate-limit pressure. Adding a new key to strict `kite.json` also breaks already-running processes on re-validation and indirectly removes live day-change display by triggering persisted-quote fallback. IX-1 avoids both couplings by loading quote-only coverage from the separate tracked-index catalog |
 | Technical debt introduced | Snapshot-only indices may initially have null `change_pct` until trustworthy prior daily candles exist; IX-2 must display that honestly rather than infer a baseline. Repository-wide Ruff still reports the pre-existing duplicate `SizingConfig` definition in `config/models.py`; IX-1 does not alter that unrelated contract |
 | Suggested improvements | IX-2 should add a compact session-aware leadership surface using this persisted API, with no direct provider polling and no horizontal overflow |
-| Remaining work | Owner review of IX-1; IX-2 through IX-6 require separate approval; index constituent provenance and analytical scoring remain later gated work |
-| Status | 🔄 Ready for owner review |
+| Remaining work | IX-2 approved for implementation; IX-3 through IX-6 require separate approval; index constituent provenance and analytical scoring remain later gated work |
+| Status | ✅ Approved by owner on 2026-07-31 |
 | Branch | feature/live-dashboard |
 
 ---

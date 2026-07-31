@@ -24,6 +24,7 @@ from athena.config.loader import load_config, load_index_intelligence_config
 from athena.data.providers.kite_ltp import fetch_live_quote
 from athena.data.store.repository import SqliteRepository
 from athena.domain.enums import Timeframe
+from athena.domain.market import MarketSnapshot
 from athena.errors import ConfigError, ProviderError
 from athena.indicators.calculations import align_trailing_series, atr_series, sma_series
 
@@ -176,16 +177,19 @@ class MarketHistoryService:
             key=lambda item: (item.display_order, item.key),
         )
         snapshot = self._repo.get_latest_snapshot() if self._repo is not None else None
+        prior_session_snapshot = (
+            self._prior_session_snapshot(snapshot.ts) if snapshot is not None else None
+        )
 
         items: list[IndexIntelligenceItemDTO] = []
         for item in tracked:
             snapshot_key = item.instrument_id.split(":", 1)[-1]
             level = snapshot.indices.get(snapshot_key) if snapshot is not None else None
-            baseline = (
-                self._prior_close(item.instrument_id, snapshot.ts)
-                if snapshot is not None and level is not None
-                else None
-            )
+            baseline = None
+            if snapshot is not None and level is not None:
+                baseline = self._prior_close(item.instrument_id, snapshot.ts)
+                if baseline is None and prior_session_snapshot is not None:
+                    baseline = prior_session_snapshot.indices.get(snapshot_key)
             change_pct = (
                 (level - baseline) / baseline * Decimal(100)
                 if level is not None and baseline is not None and baseline > 0
@@ -311,3 +315,10 @@ class MarketHistoryService:
         snapshot_date = snapshot_ts.astimezone(snapshot_ts.tzinfo).date()
         prior = [c for c in candles if c.ts_open.astimezone(snapshot_ts.tzinfo).date() < snapshot_date]
         return prior[-1].close if prior else None
+
+    def _prior_session_snapshot(self, snapshot_ts: datetime) -> MarketSnapshot | None:
+        """Latest snapshot before the current snapshot's local trading day."""
+        if self._repo is None:
+            return None
+        day_start = snapshot_ts.replace(hour=0, minute=0, second=0, microsecond=0)
+        return self._repo.get_latest_snapshot_before(day_start)

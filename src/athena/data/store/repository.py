@@ -293,6 +293,15 @@ class SqliteRepository:
         )
         return ser.payload_to_snapshot(row[0]) if row else None
 
+    def get_latest_snapshot_before(self, before: datetime) -> MarketSnapshot | None:
+        """Return the newest persisted snapshot strictly before ``before``."""
+        row = self._query_one(
+            "SELECT payload_json FROM market_snapshots "
+            "WHERE datetime(ts) < datetime(?) ORDER BY datetime(ts) DESC LIMIT 1",
+            (before.isoformat(),),
+        )
+        return ser.payload_to_snapshot(row[0]) if row else None
+
     def list_snapshots_recent(self, *, limit: int = 30) -> list[MarketSnapshot]:
         """Newest-first market snapshots, then returned oldest→newest for sparklines."""
         if limit < 1:
