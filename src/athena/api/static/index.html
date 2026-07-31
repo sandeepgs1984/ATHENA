@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.114.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.118.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -835,23 +835,16 @@
                                             </div>
                                         </div>
                                     </div>
-                                </div>
-                                <div id="decision-brief-scroll-region" class="decision-brief-scroll-region">
-                                    <!-- "NSE: DIXON" — trivial split of instrument_id, already available.
-                                         Sector/market-cap badges from the reference mock are a genuine
-                                         data gap (nothing in ATHENA or Kite's feed maps a symbol to a
-                                         sector/cap category) — omitted rather than fabricated, tracked as
-                                         future scope. This row gracefully holds just the one real pill for
-                                         now and can take more later without a layout change. -->
+                                    <!-- Exchange/symbol and company name are fixed instrument identity
+                                         metadata, not part of the ticker title. Keep this as its own row
+                                         so long names can use the full header width without fighting the
+                                         live price/actions cluster. -->
                                     <div id="decision-brief-meta-row" class="decision-brief-meta-row" hidden>
                                         <span id="decision-brief-exchange-symbol" class="decision-brief-exchange-symbol"></span>
-                                        <!-- Fix pass (owner screenshot): company name was truncating on the
-                                             identity row (cramped next to the star/ticker/asof/buttons in a
-                                             narrow center column) — moved here, where the row has much more
-                                             width to itself, so long real names ("Sandhar Technologies
-                                             Limited") show in full instead of "SANDHA…". -->
                                         <span id="decision-brief-company-name" class="decision-brief-company-name"></span>
                                     </div>
+                                </div>
+                                <div id="decision-brief-scroll-region" class="decision-brief-scroll-region">
                                     <div id="decision-brief-gauges" class="decision-brief-gauges" hidden>
                                         <!-- DT-3 refinement (owner reference mock): Recommendation merged into
                                              the gauges row as its own tile, reusing the same stance badge shown
@@ -1436,6 +1429,6 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.114.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.118.0"></script>
 </body>
 </html>

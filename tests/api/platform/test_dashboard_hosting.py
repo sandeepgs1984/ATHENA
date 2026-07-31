@@ -200,8 +200,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.114.0" in html
-    assert "dashboard.js?v=9.114.0" in html
+    assert "dashboard.css?v=9.118.0" in html
+    assert "dashboard.js?v=9.118.0" in html
     assert 'id="advisor-pulse"' in html
     assert 'id="header-diagnostics-popover"' in html
     assert 'id="decision-actionability-banner"' in html
@@ -1712,6 +1712,18 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert 'id="decision-brief-company-name"' in html
     assert 'id="decision-brief-meta-row"' in html
     assert 'id="decision-brief-exchange-symbol"' in html
+    header_start = html.find('class="card-header decision-brief-header"')
+    row1_start = html.find('class="decision-brief-header-row1"', header_start)
+    identity_start = html.find('class="decision-brief-identity"', row1_start)
+    identity_end = html.find('class="decision-brief-header-actions"', identity_start)
+    row1_end = html.find('id="decision-brief-meta-row"', identity_end)
+    identity_body = html[identity_start:identity_end]
+    assert 'id="decision-brief-title"' in identity_body
+    assert 'id="decision-brief-meta-row"' not in identity_body
+    scroll_region_start = html.find('id="decision-brief-scroll-region"')
+    meta_row_start = html.find('id="decision-brief-meta-row"')
+    assert header_start < row1_start < identity_start < identity_end < row1_end
+    assert identity_end < meta_row_start < scroll_region_start
     assert "function loadSavedSymbolsCache" in js
     assert "/api/v1/saved-symbols" in js
     render_fn_start2 = js.find("function renderDecisionBrief(decision)")
@@ -1719,8 +1731,32 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     render_fn_body2 = js[render_fn_start2:render_fn_end2]
     assert "meta.instrument_name" in render_fn_body2
     assert "decisionBriefExchangeSymbol.textContent" in render_fn_body2
+    assert "exchangePrefix || \"\"" in render_fn_body2
+    assert "`${exchangePrefix}: ${symbol}`" not in render_fn_body2
     assert ".favorite-toggle-btn" in css
     assert ".is-saved" in css
+    assert ".decision-brief-identity-copy" not in css
+    identity_css_start = css.find(".decision-brief-identity {")
+    identity_css_end = css.find("\n}", identity_css_start)
+    identity_css = css[identity_css_start:identity_css_end]
+    assert "flex: 0 1 auto" in identity_css
+    symbol_css_start = css.find(".decision-brief-symbol-lg {")
+    symbol_css_end = css.find("\n}", symbol_css_start)
+    symbol_css = css[symbol_css_start:symbol_css_end]
+    assert "max-width: clamp(160px, 22vw, 340px)" in symbol_css
+    assert "max-width: 220px" not in symbol_css
+    meta_css_start = css.find(".decision-brief-meta-row {")
+    meta_css_end = css.find("\n}", meta_css_start)
+    meta_css = css[meta_css_start:meta_css_end]
+    assert "flex-wrap: wrap" in meta_css
+    assert "width: 100%" in meta_css
+    assert "padding-left: calc(28px + var(--space-10))" in meta_css
+    assert ".decision-brief-meta-row[hidden]" in css
+    company_css_start = css.find(".decision-brief-company-name {")
+    company_css_end = css.find("\n}", company_css_start)
+    company_css = css[company_css_start:company_css_end]
+    assert "white-space: normal" in company_css
+    assert "text-overflow: clip" in company_css
 
     # Overflow menu — same moved buttons (ids/classes/click handlers
     # unchanged), only their container changed; toggle/backdrop-click/
@@ -1744,7 +1780,7 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert 'id="decision-brief-market"' not in html
     assert "function switchTab" in js  # still used pervasively elsewhere
     header_actions_start = html.find('class="decision-brief-header-actions"')
-    header_actions_end = html.find("decision-brief-meta-row", header_actions_start)
+    header_actions_end = html.find('id="decision-brief-scroll-region"', header_actions_start)
     header_actions_body = html[header_actions_start:header_actions_end]
     assert 'id="decision-brief-open-chart"' in header_actions_body
     assert 'id="decision-brief-compare"' in header_actions_body

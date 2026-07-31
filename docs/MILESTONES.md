@@ -635,6 +635,15 @@ Owner long-list usability fix: the Decisions symbol rail now has an in-list
 the current board. It scrolls the symbol list itself back to the top without
 touching the selected Decision Brief or the rest of the workstation.
 
+Owner identity placement fix: the fixed Decision Brief header now treats
+exchange and real company name as their own instrument metadata row
+(`NSE · COMPANY NAME`), separate from the ticker title. The identity line is no
+longer part of the scrolling detail content or attached to the symbol-name
+stack, so it can use the available header width and wrap cleanly without
+fighting the live price/actions cluster. Because the ticker already appears as
+the primary title, the metadata row does not repeat the symbol as
+`NSE: SYMBOL`.
+
 Owner correctness fix: the global advisor pulse no longer says `Market live`
 just because Kite/ticker data is available. The pulse now treats
 `/api/v1/dashboard/session-status` as the source of truth: open sessions show

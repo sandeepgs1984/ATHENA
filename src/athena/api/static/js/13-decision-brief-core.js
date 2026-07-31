@@ -846,10 +846,12 @@
         if (decisionBriefCompanyName) {
             decisionBriefCompanyName.textContent = meta.instrument_name || "";
         }
-        // "NSE: DIXON" — trivial split of instrument_id, already available.
+        // Exchange is enough here because the ticker is already the primary
+        // header title. Repeating it in the metadata row makes the identity
+        // read noisy: "ZYDUSLIFE" + "NSE: ZYDUSLIFE".
         const exchangePrefix = rawSymbol.includes(":") ? rawSymbol.split(":")[0] : null;
         if (decisionBriefExchangeSymbol) {
-            decisionBriefExchangeSymbol.textContent = exchangePrefix ? `${exchangePrefix}: ${symbol}` : symbol;
+            decisionBriefExchangeSymbol.textContent = exchangePrefix || "";
         }
         if (decisionBriefMetaRow) decisionBriefMetaRow.hidden = false;
         // Favorite (Saved Symbols) toggle — bare symbol, matching the same

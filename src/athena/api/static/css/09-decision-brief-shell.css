@@ -88,7 +88,7 @@
 .decision-brief-header {
     display: flex;
     flex-direction: column;
-    gap: 0;
+    gap: var(--space-8);
     flex: 0 0 auto;
 }
 
@@ -103,6 +103,7 @@
     display: flex;
     align-items: center;
     gap: var(--space-10);
+    flex: 0 1 auto;
     min-width: 0;
 }
 
@@ -115,7 +116,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    max-width: 220px;
+    max-width: clamp(160px, 22vw, 340px);
     /* Fix pass (owner reference-mock screenshot): the ticker is the primary
        identifier and must never lose space to the company name — without
        an explicit flex-shrink:0, flexbox's default shrink-both-siblings
@@ -256,14 +257,16 @@
     color: var(--text-muted);
     font-size: var(--text-0-72);
     font-weight: 400;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    line-height: 1.35;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+    flex: 1 1 auto;
     min-width: 0;
 }
 
-/* Small divider between "NSE: SYMBOL" and the company name, now that both
-   sit in the wider meta row instead of cramped next to the ticker. */
+/* Small divider between "NSE: SYMBOL" and the company name in the fixed
+   selected-symbol identity line. */
 .decision-brief-company-name:not(:empty)::before {
     content: "·";
     margin-right: var(--space-8);
@@ -273,8 +276,16 @@
 .decision-brief-meta-row {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: var(--space-8);
-    margin-top: var(--space-2);
+    width: 100%;
+    min-width: 0;
+    padding-left: calc(28px + var(--space-10));
+    padding-right: var(--space-4);
+}
+
+.decision-brief-meta-row[hidden] {
+    display: none;
 }
 
 .decision-brief-exchange-symbol {
@@ -380,10 +391,6 @@
 .decision-brief-gauges[hidden],
 .decision-brief-tabstrip[hidden] {
     display: none;
-}
-
-.decision-brief-meta-row {
-    order: 4;
 }
 
 .brief-gauge {
