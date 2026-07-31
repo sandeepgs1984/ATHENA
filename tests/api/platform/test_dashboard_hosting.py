@@ -200,8 +200,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.113.0" in html
-    assert "dashboard.js?v=9.113.0" in html
+    assert "dashboard.css?v=9.114.0" in html
+    assert "dashboard.js?v=9.114.0" in html
     assert 'id="advisor-pulse"' in html
     assert 'id="header-diagnostics-popover"' in html
     assert 'id="decision-actionability-banner"' in html
@@ -1195,6 +1195,14 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     # resets to top on every new selection; right panel untouched by either.
     assert "const previousScrollTop = decisionsCarouselContainer.scrollTop;" in js
     assert "decisionsCarouselContainer.scrollTop = previousScrollTop;" in js
+    assert 'id="decisions-scroll-top"' in html
+    assert ".symbols-scroll-top" in css
+    assert ".symbols-scroll-top[hidden]" in css
+    assert "function updateDecisionListScrollTopButton" in js
+    assert "decisionsCarouselContainer.scrollTop < 180" in js
+    assert "decisionsCarouselContainer.scrollTo({ top: 0, behavior: \"smooth\" });" in js
+    assert "decisionsCarouselContainer?.addEventListener(\"scroll\", updateDecisionListScrollTopButton" in js
+    assert "decisionsScrollTopBtn?.addEventListener(\"click\", scrollDecisionListToTop)" in js
     assert "resetDecisionBriefScroll();" in js
 
     # Owner-requested (2026-07-27): collapsible global sidebar — icon-only

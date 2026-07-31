@@ -4,6 +4,7 @@
     // Decisions & Trace DAG Handlers
     // ---------------------------------------------------------------------------
     const decisionsCarouselContainer = document.getElementById("decisions-carousel-groups");
+    const decisionsScrollTopBtn = document.getElementById("decisions-scroll-top");
     const briefingSearch = document.getElementById("briefing-search");
     const decisionsRevalidateVisibleBtn = document.getElementById("decisions-revalidate-visible-btn");
     const decisionsRevalidateStatus = document.getElementById("decisions-revalidate-status");
@@ -14,6 +15,17 @@
     let boardRevalidateCooldownTimer = null;
     const BOARD_REVALIDATE_READY_HTML = '<i class="fa-solid fa-arrows-rotate"></i>';
     let boardRevalidateStatusTone = "neutral";
+
+    function updateDecisionListScrollTopButton() {
+        if (!decisionsScrollTopBtn || !decisionsCarouselContainer) return;
+        decisionsScrollTopBtn.hidden = decisionsCarouselContainer.scrollTop < 180;
+    }
+
+    function scrollDecisionListToTop() {
+        if (!decisionsCarouselContainer) return;
+        decisionsCarouselContainer.scrollTo({ top: 0, behavior: "smooth" });
+        decisionsScrollTopBtn.hidden = true;
+    }
 
     function dismissDecisionForToday(decision) {
         const key = decisionInstrumentKey(decision);
@@ -738,6 +750,7 @@
         });
 
         decisionsCarouselContainer.scrollTop = previousScrollTop;
+        updateDecisionListScrollTopButton();
     }
 
     // Search / filter / sort for Today's Decisions
@@ -753,6 +766,8 @@
     wireDecisionsControls();
 
     decisionsRevalidateVisibleBtn?.addEventListener("click", revalidateVisibleDecisionBoard);
+    decisionsCarouselContainer?.addEventListener("scroll", updateDecisionListScrollTopButton, { passive: true });
+    decisionsScrollTopBtn?.addEventListener("click", scrollDecisionListToTop);
 
     // DT-1: stance/type/sort moved off the toolbar (removed, per the
     // workstation redesign) into a small popover behind an icon button, so

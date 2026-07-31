@@ -630,6 +630,11 @@ Recommendation/score/confidence/risk gauges and the ATHENA Summary remain
 available below the active tab content as explanation, not as the landing
 experience repeated for every symbol.
 
+Owner long-list usability fix: the Decisions symbol rail now has an in-list
+`Top` affordance that appears only after the owner scrolls meaningfully down
+the current board. It scrolls the symbol list itself back to the top without
+touching the selected Decision Brief or the rest of the workstation.
+
 Owner correctness fix: the global advisor pulse no longer says `Market live`
 just because Kite/ticker data is available. The pulse now treats
 `/api/v1/dashboard/session-status` as the source of truth: open sessions show

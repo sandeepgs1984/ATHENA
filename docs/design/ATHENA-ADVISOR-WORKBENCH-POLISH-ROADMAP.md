@@ -131,6 +131,8 @@ Scope:
 - Decision Brief first fold must behave like an action cockpit: current status,
   entry/stop/target/R:R, and chart context come before explanatory score/gate
   reporting.
+- Long Decisions lists must provide a low-friction way back to the first rows
+  without resetting symbol selection or the detail pane.
 
 Acceptance:
 

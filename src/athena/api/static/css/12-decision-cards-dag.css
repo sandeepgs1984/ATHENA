@@ -235,6 +235,43 @@
     gap: var(--space-10);
 }
 
+.symbols-scroll-top {
+    position: absolute;
+    right: var(--space-14);
+    bottom: var(--space-14);
+    z-index: 9;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-6);
+    border: 1px solid rgba(0, 242, 254, 0.36);
+    border-radius: 999px;
+    padding: var(--space-7) var(--space-10);
+    background: rgba(15, 23, 42, 0.92);
+    box-shadow: var(--shadow-lg), var(--glow-accent-sm);
+    color: var(--accent);
+    font-family: var(--font-sans);
+    font-size: var(--text-0-72);
+    font-weight: 750;
+    cursor: pointer;
+    transition:
+        background-color var(--transition-speed) ease,
+        border-color var(--transition-speed) ease,
+        color var(--transition-speed) ease,
+        transform var(--transition-speed) ease;
+}
+
+.symbols-scroll-top:hover,
+.symbols-scroll-top:focus-visible {
+    background: rgba(8, 145, 178, 0.22);
+    border-color: rgba(0, 242, 254, 0.62);
+    color: var(--text-primary);
+    transform: translateY(-1px);
+}
+
+.symbols-scroll-top[hidden] {
+    display: none;
+}
+
 /* Owner-reported: with no backdrop, the symbol list stayed fully visible
    and clickable underneath the open filter popover — no visual
    differentiation, and rows were still interactive. This dims the list and
