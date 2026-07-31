@@ -1,7 +1,8 @@
 /* Decisions & Trace Workstation Layout (DT-1: 3-pane — symbols | brief | trace,
    replacing the old 2-column trace-workstation that had carousels stacked
-   above it). Left and right panes are sticky/full-height; only the center
-   brief content scrolls (via .decision-brief-body's own overflow-y below). */
+   above it). Left and right panes are sticky/full-height; in the center,
+   only the selected symbol title/price row stays fixed while the advisory
+   context, tabs, and active tab content scroll together. */
 .decisions-workstation {
     display: grid;
     grid-template-columns:
@@ -80,47 +81,15 @@
     gap: var(--space-8);
 }
 
-/* Sticky cockpit header: identity row, gauges, tab strip, action bar — all
-   always visible regardless of which tab or scroll position is active.
-   DT-2 spacing/hierarchy polish (owner assignment: "large: stock name...
-   more whitespace instead of extra separators") — same elements, same
-   data, no content moved; only sizing/spacing/grouping changed. */
+/* Fixed selected-symbol header: keep only the identity/price/actions row
+   outside the scroll surface. The previous scroll-aware compact cockpit
+   changed header height while the user scrolled, which made short tabs such
+   as Market Context flicker/bounce. */
 .decision-brief-header {
     display: flex;
     flex-direction: column;
-    gap: var(--space-14);
-    transition: gap var(--transition-speed) ease;
-}
-
-/* TP-1 owner review fix: the detail pane should start with full advisory
-   context, then become a compact cockpit once the user scrolls into the
-   Trade Plan content. This keeps the symbol, live price, status, CTA, and
-   tab navigation visible without permanently consuming the reading area. */
-.decision-brief-header.is-compact {
-    gap: var(--space-8);
-}
-
-.decision-brief-header.is-compact .decision-brief-meta-row,
-.decision-brief-header.is-compact #decision-brief-gauges,
-.decision-brief-header.is-compact #decision-summary-card {
-    display: none;
-}
-
-.decision-brief-header.is-compact .decision-actionability-banner {
-    grid-template-columns: 22px minmax(0, 1fr) auto;
-    padding: var(--space-7) var(--space-10);
-}
-
-.decision-brief-header.is-compact .decision-actionability-detail {
-    display: none;
-}
-
-.decision-brief-header.is-compact .decision-actionability-label {
-    font-size: var(--text-0-58);
-}
-
-.decision-brief-header.is-compact .decision-actionability-status {
-    font-size: var(--text-0-8);
+    gap: 0;
+    flex: 0 0 auto;
 }
 
 .decision-brief-header-row1 {
@@ -482,6 +451,8 @@
     gap: var(--space-2);
     border-bottom: 1px solid var(--border-color);
     overflow-x: auto;
+    flex: 0 0 auto;
+    min-height: 38px;
 }
 
 .brief-tab {
@@ -511,12 +482,22 @@
 }
 
 .decision-brief-body {
-    min-height: 0;
-    overflow-y: auto;
+    min-height: auto;
+    overflow: visible;
     display: flex;
     flex-direction: column;
     gap: var(--space-14);
-    padding: var(--space-18);
+    padding: 0;
+}
+
+.decision-brief-scroll-region {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: var(--space-12);
+    min-height: 0;
+    overflow-y: auto;
+    padding: var(--space-14) var(--space-18) var(--space-18);
 }
 
 .decision-brief-empty {

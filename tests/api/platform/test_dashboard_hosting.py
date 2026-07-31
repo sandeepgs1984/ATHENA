@@ -200,8 +200,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.107.0" in html
-    assert "dashboard.js?v=9.107.0" in html
+    assert "dashboard.css?v=9.112.0" in html
+    assert "dashboard.js?v=9.112.0" in html
     assert 'id="advisor-pulse"' in html
     assert 'id="header-diagnostics-popover"' in html
     assert 'id="decision-actionability-banner"' in html
@@ -361,6 +361,19 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert 'closeModal(document.getElementById("validation-report-modal"))' in js
     assert "/api/v1/dashboard/session-status" in js
     assert "state.marketSession" in js
+    assert "function marketSessionPulse" in js
+    market_pulse_start = js.find("function marketSessionPulse")
+    market_pulse_end = js.find("\n    function ", market_pulse_start + 1)
+    market_pulse_body = js[market_pulse_start:market_pulse_end]
+    assert "session && session.is_market_open === true" in market_pulse_body
+    assert "session && session.is_market_open === false" in market_pulse_body
+    assert "Checking market hours" in market_pulse_body
+    assert "Kite connected" in market_pulse_body
+    update_market_pulse_start = js.find("function updateMarketPulse")
+    update_market_pulse_end = js.find("\n    async function ", update_market_pulse_start + 1)
+    update_market_pulse_body = js[update_market_pulse_start:update_market_pulse_end]
+    assert "marketSessionPulse(state.marketSession)" in update_market_pulse_body
+    assert 'state.kiteConnected ? "Market live · Kite connected"' not in update_market_pulse_body
     assert "Review mode · market closed" in js
     assert "Review the thesis only; confirm live quote and re-validate before entry" in js
     assert "function chartPlanLevelPct" in js
@@ -440,7 +453,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     # whatever scroll offset the previous tab happened to be at.
     switch_brief_tab_start = js.find("function switchBriefTab")
     switch_brief_tab_end = js.find("\n    function ", switch_brief_tab_start + 1)
-    assert "decisionBriefBody.scrollTop = 0" in js[switch_brief_tab_start:switch_brief_tab_end]
+    assert "decisionBriefScrollRegion || decisionBriefBody" in js[switch_brief_tab_start:switch_brief_tab_end]
+    assert "scrollTarget.scrollTop = 0" in js[switch_brief_tab_start:switch_brief_tab_end]
     assert "opened automatically" in js
     assert "activeDepth" in js
     assert "activeContextData" in js
@@ -575,14 +589,28 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "Enter only if the live price is inside the entry zone" in js
     assert "If price never reaches the entry zone before the plan expires" in js
     assert "do not treat this as an overnight hold" in js
-    assert "function updateDecisionBriefHeaderDensity" in js
-    assert "decisionBriefBody?.addEventListener(\"scroll\", updateDecisionBriefHeaderDensity" in js
-    assert "resetDecisionBriefHeaderDensity()" in js
+    assert 'id="decision-brief-scroll-region"' in html
+    header_start = html.find('class="card-header decision-brief-header"')
+    header_end = html.find('id="decision-brief-scroll-region"')
+    scroll_region_end = html.find('id="decision-brief-body"')
+    assert header_start != -1
+    assert header_end != -1
+    assert header_start < header_end < scroll_region_end
+    assert "const decisionBriefScrollRegion = document.getElementById(\"decision-brief-scroll-region\")" in js
+    assert "function resetDecisionBriefScroll" in js
+    assert "function updateDecisionBriefHeaderDensity" not in js
+    assert "decisionBriefBody?.addEventListener(\"scroll\", updateDecisionBriefHeaderDensity" not in js
     assert "refreshTradePlaybook(activePlanFreshness)" in js
     render_brief_start = js.find("function renderDecisionBrief(decision)")
     render_brief_end = js.find("\n    // ", render_brief_start + 1)
     render_brief_body = js[render_brief_start:render_brief_end]
-    assert render_brief_body.find("renderTradePlaybook") < render_brief_body.find("renderTradePlan")
+    playbook_idx = render_brief_body.find("renderTradePlaybook")
+    trade_plan_idx = render_brief_body.find("renderTradePlan")
+    chart_idx = render_brief_body.find("decision-chart-section")
+    portfolio_idx = render_brief_body.find("decision-portfolio-impact-section")
+    eligibility_idx = render_brief_body.find("decision-eligibility-depth")
+    assert -1 not in {playbook_idx, trade_plan_idx, chart_idx, portfolio_idx, eligibility_idx}
+    assert playbook_idx < trade_plan_idx < chart_idx < portfolio_idx < eligibility_idx
     assert "Valid for" in js
     assert "trade-plan-validity-window" in js
     assert "trade-plan-level-delta ${tone}" in js
@@ -593,10 +621,15 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".trade-plan-hero-value" in css
     assert ".trade-plan-validity-window" in css
     assert ".trade-plan-level-delta.stop" in css
-    assert ".decision-brief-header.is-compact" in css
-    assert ".decision-brief-header.is-compact #decision-brief-gauges" in css
-    assert ".decision-brief-header.is-compact #decision-summary-card" in css
-    assert ".decision-brief-header.is-compact .decision-actionability-detail" in css
+    assert ".decision-brief-scroll-region" in css
+    tabstrip_start = css.find(".decision-brief-tabstrip {")
+    tabstrip_end = css.find("\n}", tabstrip_start)
+    tabstrip_css = css[tabstrip_start:tabstrip_end]
+    assert "position: sticky" not in tabstrip_css
+    assert "flex: 0 0 auto" in tabstrip_css
+    assert "min-height: 38px" in tabstrip_css
+    assert "resetDecisionBriefScroll();" in render_brief_body
+    assert ".decision-brief-header.is-compact" not in css
     assert ".trade-plan-level-delta.target" in css
 
     # UX-3b: chart ATR/moving-average/volume overlay — plotted from the
@@ -1158,7 +1191,7 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     # resets to top on every new selection; right panel untouched by either.
     assert "const previousScrollTop = decisionsCarouselContainer.scrollTop;" in js
     assert "decisionsCarouselContainer.scrollTop = previousScrollTop;" in js
-    assert "decisionBriefBody.scrollTop = 0;" in js
+    assert "resetDecisionBriefScroll();" in js
 
     # Owner-requested (2026-07-27): collapsible global sidebar — icon-only
     # when collapsed, .console-main (flex-grow: 1) reflows automatically via

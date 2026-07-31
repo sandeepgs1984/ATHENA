@@ -299,7 +299,7 @@
             });
             // Each tab reads as its own page — land at the top, not wherever
             // the previous tab's content happened to be scrolled to.
-            decisionBriefBody.scrollTop = 0;
+            const scrollTarget = decisionBriefScrollRegion || decisionBriefBody;
+            if (scrollTarget) scrollTarget.scrollTop = 0;
         }
     }
-

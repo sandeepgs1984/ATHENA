@@ -14,7 +14,7 @@
     const decisionEntryReadiness = document.getElementById("decision-entry-readiness");
     const decisionEntryReadinessLabel = document.getElementById("decision-entry-readiness-label");
     const decisionBriefBody = document.getElementById("decision-brief-body");
-    const decisionBriefHeader = document.querySelector(".decision-brief-header");
+    const decisionBriefScrollRegion = document.getElementById("decision-brief-scroll-region");
     const decisionBriefGauges = document.getElementById("decision-brief-gauges");
     const decisionBriefTabstrip = document.getElementById("decision-brief-tabstrip");
     const decisionBriefRevalidateHeader = document.getElementById("decision-brief-revalidate-header");
@@ -269,17 +269,10 @@
         }
     });
 
-    function updateDecisionBriefHeaderDensity() {
-        const isCompact = Boolean(decisionBriefBody && decisionBriefBody.scrollTop > 16);
-        decisionBriefHeader?.classList.toggle("is-compact", isCompact);
+    function resetDecisionBriefScroll() {
+        const scrollTarget = decisionBriefScrollRegion || decisionBriefBody;
+        if (scrollTarget) scrollTarget.scrollTop = 0;
     }
-
-    function resetDecisionBriefHeaderDensity() {
-        if (decisionBriefBody) decisionBriefBody.scrollTop = 0;
-        decisionBriefHeader?.classList.remove("is-compact");
-    }
-
-    decisionBriefBody?.addEventListener("scroll", updateDecisionBriefHeaderDensity, { passive: true });
 
     // Owner reference-mock: secondary actions (Dismiss today/Remove
     // candidate/Export/News) consolidated behind a "more" popover instead of
@@ -378,7 +371,7 @@
     });
 
     function renderDecisionBriefEmpty(title, detail) {
-        resetDecisionBriefHeaderDensity();
+        resetDecisionBriefScroll();
         if (decisionBriefTitle) {
             decisionBriefTitle.textContent = "Select a symbol";
             decisionBriefTitle.title = "";
@@ -874,6 +867,7 @@
         }
         if (decisionBriefGauges) decisionBriefGauges.hidden = false;
         if (decisionBriefTabstrip) decisionBriefTabstrip.hidden = false;
+        resetDecisionBriefScroll();
         resetCockpitGauges();
         resetActionButtons();
 
@@ -949,25 +943,9 @@
 
         decisionBriefBody.innerHTML = `
             <div class="tabpane${paneActive("setup")}" id="brief-pane-setup" data-brief-pane="setup">
-                <section class="decision-brief-section">
-                    <h4>${historicalPlan ? "Historical universe eligibility" : "Universe eligibility"}</h4>
-                    <div id="decision-eligibility-depth" class="decision-depth-loading">
-                        <i class="fa-solid fa-circle-notch fa-spin"></i> Loading persisted assessment…
-                    </div>
-                </section>
-
                 ${renderTradePlaybook(decision, decisionTradePlanFreshness(decision))}
 
                 ${renderTradePlan(decision.trade_plan, meta.decision_type, meta.direction, decisionTradePlanFreshness(decision))}
-
-                <section class="decision-brief-section" id="decision-portfolio-impact-section">
-                    <h4>Portfolio impact</h4>
-                    <div id="decision-portfolio-impact" class="decision-portfolio-impact">
-                        <div class="decision-depth-loading">
-                            <i class="fa-solid fa-circle-notch fa-spin"></i> Checking your holdings…
-                        </div>
-                    </div>
-                </section>
 
                 <section class="decision-brief-section decision-chart-section">
                     <div class="decision-brief-section-header">
@@ -1003,6 +981,22 @@
                         <span><i class="legend-box atr"></i> ATR band</span>
                         <span><i class="legend-box volume"></i> Volume</span>
                         <span class="legend-note"><i class="legend-price-marker"></i> Marker color: quote above/below candle close</span>
+                    </div>
+                </section>
+
+                <section class="decision-brief-section" id="decision-portfolio-impact-section">
+                    <h4>Portfolio impact</h4>
+                    <div id="decision-portfolio-impact" class="decision-portfolio-impact">
+                        <div class="decision-depth-loading">
+                            <i class="fa-solid fa-circle-notch fa-spin"></i> Checking your holdings…
+                        </div>
+                    </div>
+                </section>
+
+                <section class="decision-brief-section">
+                    <h4>${historicalPlan ? "Historical universe eligibility" : "Universe eligibility"}</h4>
+                    <div id="decision-eligibility-depth" class="decision-depth-loading">
+                        <i class="fa-solid fa-circle-notch fa-spin"></i> Loading persisted assessment…
                     </div>
                 </section>
             </div>
@@ -1191,7 +1185,7 @@
         // Selecting a symbol resets only the center detail panel to the top —
         // the left symbol list and right Reasoning Trace panel keep whatever
         // scroll position they were already at (owner requirement).
-        resetDecisionBriefHeaderDensity();
+        resetDecisionBriefScroll();
 
         // Load selected instrument brief and its independent reasoning trace.
         loadDecisionDetail(decisionId);

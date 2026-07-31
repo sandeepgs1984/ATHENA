@@ -350,10 +350,11 @@ Trading Steps panel before TradePlan levels, covering entry, stop, target,
 no-fill, end-of-day, and re-check rules. The panel adapts wording for current
 plans, market-closed review mode, and expired historical plans without
 changing ATHENA's underlying recommendation or persisted TradePlan values.
-Owner-review usability pass added a scroll-aware compact cockpit: when the
-selected-symbol detail pane scrolls, the sticky header collapses non-essential
-context while keeping symbol, live price, Advisor Status, corrective action,
-and tab navigation visible.
+Owner-review usability pass initially added a scroll-aware compact cockpit, but
+AW-4 replaced that with a steadier detail shell: only the selected
+symbol/current-price row stays fixed, while metadata, gauges, Advisor Status,
+tabs, and active tab content scroll together. This avoids scroll flicker on
+short tabs such as Market Context.
 
 Architectural note: TP-1 is presentation-only over existing Decision,
 TradePlan, freshness, quote/session, and validation state. It does not add
@@ -604,6 +605,30 @@ TradePlan now still render the Advisor Status strip with a neutral
 the TP-1 placement rule that symbol revalidation belongs in Advisor Status
 instead of the generic header, while ensuring non-trade symbols are still
 refreshable without implying they are actionable trades.
+
+Owner usability fix: the Decision Brief detail pane now keeps only the
+symbol/current-price header row fixed. Metadata, gauges, summary, Advisor
+Status, tabs, and tab content live inside one scroll region, and the old
+scroll-triggered compact header behavior was removed to stop Market Context and
+other short tabs from flickering or feeling stuck during vertical scroll.
+Follow-up owner screenshot fix: the tab strip remains part of the same scroll
+surface as a full-height normal row, not a separate sticky strip, so
+`Trade Plan`, `Analysis`, `Market Context`, `Response`, and `History` are not
+clipped between Advisor Status and the first detail card.
+
+Owner priority-order fix: the `Trade Plan` tab now reads in trader action
+order — `Trading Steps` first, then `ATHENA TradePlan` levels, then
+`Intraday price context`, then `Portfolio impact`, with `Universe eligibility`
+last as supporting audit evidence. This keeps execution guidance and live
+decision context above internal validation details without changing any
+ATHENA calculations.
+
+Owner correctness fix: the global advisor pulse no longer says `Market live`
+just because Kite/ticker data is available. The pulse now treats
+`/api/v1/dashboard/session-status` as the source of truth: open sessions show
+live wording, closed/pre-open/no-session states show the server calendar
+message such as `Market closed · next live 31 Jul, 09:15 AM IST`, and Kite is
+only appended as connectivity context.
 
 Validation note: focused dashboard hosting checks pass. Browser shell-load QA
 confirmed the dashboard assets serve, but unlocked in-dashboard visual QA

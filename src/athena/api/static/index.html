@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.107.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.112.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -831,6 +831,8 @@
                                             </div>
                                         </div>
                                     </div>
+                                </div>
+                                <div id="decision-brief-scroll-region" class="decision-brief-scroll-region">
                                     <!-- "NSE: DIXON" — trivial split of instrument_id, already available.
                                          Sector/market-cap badges from the reference mock are a genuine
                                          data gap (nothing in ATHENA or Kite's feed maps a symbol to a
@@ -914,12 +916,12 @@
                                         <button class="brief-tab" data-brief-tab="response" type="button"><i class="fa-solid fa-comment-dots"></i> <span>Response</span></button>
                                         <button class="brief-tab" data-brief-tab="history" type="button"><i class="fa-solid fa-clock-rotate-left"></i> <span>History</span></button>
                                     </div>
-                                              </div>
-                                <div id="decision-brief-body" class="card-body decision-brief-body">
-                                    <div class="decision-brief-empty">
-                                        <i class="fa-solid fa-chart-line"></i>
-                                        <strong>Select a decision</strong>
-                                        <span>ATHENA will show the current thesis, safety gates, and advisory TradePlan.</span>
+                                    <div id="decision-brief-body" class="card-body decision-brief-body">
+                                        <div class="decision-brief-empty">
+                                            <i class="fa-solid fa-chart-line"></i>
+                                            <strong>Select a decision</strong>
+                                            <span>ATHENA will show the current thesis, safety gates, and advisory TradePlan.</span>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -1430,6 +1432,6 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.107.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.112.0"></script>
 </body>
 </html>

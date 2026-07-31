@@ -201,27 +201,41 @@
         changeEl.className = `ticker-change ${positive ? "positive" : "negative"}`;
     }
 
+    function marketSessionPulse(session) {
+        const kiteSuffix = state.kiteRequired
+            ? (state.kiteConnected ? " · Kite connected" : " · Kite reconnect required")
+            : "";
+        if (session && session.is_market_open === true) {
+            return {
+                message: `Market live${kiteSuffix}`,
+                tone: state.kiteRequired && !state.kiteConnected ? "warning" : "good",
+            };
+        }
+        if (session && session.is_market_open === false) {
+            return {
+                message: `${session.message || "Market closed · review mode"}${kiteSuffix}`,
+                tone: "warning",
+            };
+        }
+        return {
+            message: `Checking market hours${kiteSuffix || " · advisor ready"}`,
+            tone: "warning",
+        };
+    }
+
     function updateMarketPulse(data) {
         if (typeof setAdvisorPulse !== "function") return;
-        const session = state.marketSession;
-        if (session && session.is_market_open === false) {
-            setAdvisorPulse(session.message || "Market closed · review mode", "warning", 0);
-            return;
-        }
+        const sessionView = marketSessionPulse(state.marketSession);
         const hasTicker = Boolean(
             (data.nifty && data.nifty.level != null)
             || (data.bank_nifty && data.bank_nifty.level != null)
             || (data.india_vix && data.india_vix.level != null)
         );
         if (!hasTicker) {
-            setAdvisorPulse("Market pulse unavailable · Review before acting", "warning", 0);
+            setAdvisorPulse(`${sessionView.message} · Market pulse unavailable`, "warning", 0);
             return;
         }
-        const kiteText = state.kiteRequired
-            ? (state.kiteConnected ? "Market live · Kite connected" : "Kite reconnect required")
-            : "Market live · advisor ready";
-        const tone = state.kiteRequired && !state.kiteConnected ? "warning" : "good";
-        setAdvisorPulse(kiteText, tone, 0);
+        setAdvisorPulse(sessionView.message, sessionView.tone, 0);
     }
 
     async function loadMarketSessionStatus() {

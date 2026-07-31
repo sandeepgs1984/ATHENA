@@ -125,6 +125,9 @@ Scope:
   validation, result report, and validation pipeline.
 - Regression coverage for the complete Advisor Workbench path.
 - Fix layout/text issues found during QA.
+- Decision Brief vertical scrolling must use one stable detail scroll surface:
+  symbol/current-price header fixed, all advisory context and tab content
+  scrolling together, with no scroll-triggered header resizing.
 
 Acceptance:
 
