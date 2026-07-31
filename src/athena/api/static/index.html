@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.118.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.119.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -687,6 +687,9 @@
                                     <div class="search-input-wrapper symbols-search">
                                         <i class="fas fa-search search-icon"></i>
                                         <input type="text" id="briefing-search" class="search-input" placeholder="Search symbol or decision...">
+                                        <button id="briefing-search-clear" class="symbols-search-clear" type="button" title="Clear search" aria-label="Clear decision list search" hidden>
+                                            <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                                        </button>
                                     </div>
                                     <button id="symbols-filter-toggle" class="symbols-icon-btn" type="button" title="Filter &amp; sort" aria-expanded="false" aria-controls="symbols-filter-popover">
                                         <i class="fa-solid fa-sliders"></i>
@@ -1429,6 +1432,6 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.118.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.119.0"></script>
 </body>
 </html>

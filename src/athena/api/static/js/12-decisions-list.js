@@ -6,6 +6,7 @@
     const decisionsCarouselContainer = document.getElementById("decisions-carousel-groups");
     const decisionsScrollTopBtn = document.getElementById("decisions-scroll-top");
     const briefingSearch = document.getElementById("briefing-search");
+    const briefingSearchClear = document.getElementById("briefing-search-clear");
     const decisionsRevalidateVisibleBtn = document.getElementById("decisions-revalidate-visible-btn");
     const decisionsRevalidateStatus = document.getElementById("decisions-revalidate-status");
     const QUICK_VISIBLE_REVALIDATE_LIMIT = 5;
@@ -25,6 +26,19 @@
         if (!decisionsCarouselContainer) return;
         decisionsCarouselContainer.scrollTo({ top: 0, behavior: "smooth" });
         decisionsScrollTopBtn.hidden = true;
+    }
+
+    function updateBriefingSearchClear() {
+        if (!briefingSearch || !briefingSearchClear) return;
+        briefingSearchClear.hidden = !briefingSearch.value.trim();
+    }
+
+    function clearBriefingSearch() {
+        if (!briefingSearch) return;
+        briefingSearch.value = "";
+        updateBriefingSearchClear();
+        applyDecisionsView();
+        briefingSearch.focus();
     }
 
     function dismissDecisionForToday(decision) {
@@ -760,8 +774,13 @@
             if (el) el.addEventListener("change", applyDecisionsView);
         });
         if (briefingSearch) {
-            briefingSearch.addEventListener("input", applyDecisionsView);
+            briefingSearch.addEventListener("input", () => {
+                updateBriefingSearchClear();
+                applyDecisionsView();
+            });
+            updateBriefingSearchClear();
         }
+        briefingSearchClear?.addEventListener("click", clearBriefingSearch);
     };
     wireDecisionsControls();
 

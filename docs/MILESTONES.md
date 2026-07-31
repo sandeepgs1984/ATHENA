@@ -634,6 +634,9 @@ Owner long-list usability fix: the Decisions symbol rail now has an in-list
 `Top` affordance that appears only after the owner scrolls meaningfully down
 the current board. It scrolls the symbol list itself back to the top without
 touching the selected Decision Brief or the rest of the workstation.
+The Decisions symbol search now also has an inline clear affordance that
+appears only while a query is active, clears the filter in one click, and
+returns focus to the search field.
 
 Owner identity placement fix: the fixed Decision Brief header now treats
 exchange and real company name as their own instrument metadata row

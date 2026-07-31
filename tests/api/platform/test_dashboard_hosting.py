@@ -200,8 +200,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.118.0" in html
-    assert "dashboard.js?v=9.118.0" in html
+    assert "dashboard.css?v=9.119.0" in html
+    assert "dashboard.js?v=9.119.0" in html
     assert 'id="advisor-pulse"' in html
     assert 'id="header-diagnostics-popover"' in html
     assert 'id="decision-actionability-banner"' in html
@@ -1100,12 +1100,19 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert 'id="symbols-filter-toggle"' in html
     assert 'id="symbols-filter-popover"' in html
     assert 'id="briefing-search"' in html
+    assert 'id="briefing-search-clear"' in html
     assert 'id="decisions-clear-all-btn"' in html
     assert ".decisions-workstation" in css
     assert ".symbols-panel" in css
     assert ".symbols-filter-popover" in css
+    assert ".symbols-search-clear" in css
+    assert ".symbols-search-clear[hidden]" in css
     assert ".symbol-row.active" in css
     assert "function renderSymbolRow" in js
+    assert "const briefingSearchClear = document.getElementById(\"briefing-search-clear\")" in js
+    assert "function updateBriefingSearchClear" in js
+    assert "function clearBriefingSearch" in js
+    assert "briefingSearchClear?.addEventListener(\"click\", clearBriefingSearch)" in js
 
     # Fix pass (owner screenshot, 2026-07-27): section headers (Trade/Watch/
     # No trade/...) had no background — flush with the rows below them, no
