@@ -200,8 +200,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.112.0" in html
-    assert "dashboard.js?v=9.112.0" in html
+    assert "dashboard.css?v=9.113.0" in html
+    assert "dashboard.js?v=9.113.0" in html
     assert 'id="advisor-pulse"' in html
     assert 'id="header-diagnostics-popover"' in html
     assert 'id="decision-actionability-banner"' in html
@@ -604,13 +604,13 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     render_brief_start = js.find("function renderDecisionBrief(decision)")
     render_brief_end = js.find("\n    // ", render_brief_start + 1)
     render_brief_body = js[render_brief_start:render_brief_end]
-    playbook_idx = render_brief_body.find("renderTradePlaybook")
     trade_plan_idx = render_brief_body.find("renderTradePlan")
     chart_idx = render_brief_body.find("decision-chart-section")
+    playbook_idx = render_brief_body.find("renderTradePlaybook")
     portfolio_idx = render_brief_body.find("decision-portfolio-impact-section")
     eligibility_idx = render_brief_body.find("decision-eligibility-depth")
     assert -1 not in {playbook_idx, trade_plan_idx, chart_idx, portfolio_idx, eligibility_idx}
-    assert playbook_idx < trade_plan_idx < chart_idx < portfolio_idx < eligibility_idx
+    assert trade_plan_idx < chart_idx < playbook_idx < portfolio_idx < eligibility_idx
     assert "Valid for" in js
     assert "trade-plan-validity-window" in js
     assert "trade-plan-level-delta ${tone}" in js
@@ -622,6 +622,10 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".trade-plan-validity-window" in css
     assert ".trade-plan-level-delta.stop" in css
     assert ".decision-brief-scroll-region" in css
+    assert "order: 1" in css[css.find(".decision-brief-tabstrip {"):css.find("\n}", css.find(".decision-brief-tabstrip {"))]
+    assert "order: 2" in css[css.find(".decision-actionability-banner {"):css.find("\n}", css.find(".decision-actionability-banner {"))]
+    assert "order: 3" in css[css.find(".decision-brief-body {"):css.find("\n}", css.find(".decision-brief-body {"))]
+    assert "order: 5" in css[css.find(".decision-brief-gauges {"):css.find("\n}", css.find(".decision-brief-gauges {"))]
     tabstrip_start = css.find(".decision-brief-tabstrip {")
     tabstrip_end = css.find("\n}", tabstrip_start)
     tabstrip_css = css[tabstrip_start:tabstrip_end]

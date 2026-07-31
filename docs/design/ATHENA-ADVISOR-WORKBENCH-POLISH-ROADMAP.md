@@ -128,6 +128,9 @@ Scope:
 - Decision Brief vertical scrolling must use one stable detail scroll surface:
   symbol/current-price header fixed, all advisory context and tab content
   scrolling together, with no scroll-triggered header resizing.
+- Decision Brief first fold must behave like an action cockpit: current status,
+  entry/stop/target/R:R, and chart context come before explanatory score/gate
+  reporting.
 
 Acceptance:
 

@@ -943,8 +943,6 @@
 
         decisionBriefBody.innerHTML = `
             <div class="tabpane${paneActive("setup")}" id="brief-pane-setup" data-brief-pane="setup">
-                ${renderTradePlaybook(decision, decisionTradePlanFreshness(decision))}
-
                 ${renderTradePlan(decision.trade_plan, meta.decision_type, meta.direction, decisionTradePlanFreshness(decision))}
 
                 <section class="decision-brief-section decision-chart-section">
@@ -983,6 +981,8 @@
                         <span class="legend-note"><i class="legend-price-marker"></i> Marker color: quote above/below candle close</span>
                     </div>
                 </section>
+
+                ${renderTradePlaybook(decision, decisionTradePlanFreshness(decision))}
 
                 <section class="decision-brief-section" id="decision-portfolio-impact-section">
                     <h4>Portfolio impact</h4>

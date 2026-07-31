@@ -617,11 +617,18 @@ surface as a full-height normal row, not a separate sticky strip, so
 clipped between Advisor Status and the first detail card.
 
 Owner priority-order fix: the `Trade Plan` tab now reads in trader action
-order — `Trading Steps` first, then `ATHENA TradePlan` levels, then
-`Intraday price context`, then `Portfolio impact`, with `Universe eligibility`
-last as supporting audit evidence. This keeps execution guidance and live
-decision context above internal validation details without changing any
-ATHENA calculations.
+order — `ATHENA TradePlan` levels first, then `Intraday price context`, then
+`Trading Steps`, then `Portfolio impact`, with `Universe eligibility` last as
+supporting audit evidence. This keeps entry/stop/target and live chart context
+above internal validation details without changing any ATHENA calculations.
+
+Owner first-fold cockpit fix: the Decision Brief no longer opens with the
+full score/report stack before the actionable plan. The scroll surface now
+prioritizes tabs, Advisor Status, the current TradePlan ticket, and the
+intraday chart before the trading guide and supporting audit sections.
+Recommendation/score/confidence/risk gauges and the ATHENA Summary remain
+available below the active tab content as explanation, not as the landing
+experience repeated for every symbol.
 
 Owner correctness fix: the global advisor pulse no longer says `Market live`
 just because Kite/ticker data is available. The pulse now treats

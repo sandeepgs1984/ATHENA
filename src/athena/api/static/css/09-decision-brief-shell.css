@@ -361,6 +361,7 @@
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: var(--space-12);
+    order: 5;
     padding-top: var(--space-12);
     border-top: 1px solid var(--border-color);
 }
@@ -379,6 +380,10 @@
 .decision-brief-gauges[hidden],
 .decision-brief-tabstrip[hidden] {
     display: none;
+}
+
+.decision-brief-meta-row {
+    order: 4;
 }
 
 .brief-gauge {
@@ -453,6 +458,7 @@
     overflow-x: auto;
     flex: 0 0 auto;
     min-height: 38px;
+    order: 1;
 }
 
 .brief-tab {
@@ -487,6 +493,7 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-14);
+    order: 3;
     padding: 0;
 }
 
@@ -526,6 +533,7 @@
     border: 1px solid var(--border-color);
     border-left: 3px solid var(--border-color);
     border-radius: 8px;
+    order: 6;
     padding: var(--space-14) var(--space-16);
     background: rgba(15, 23, 42, 0.38);
 }
@@ -617,6 +625,7 @@
     border: 1px solid rgba(148, 163, 184, 0.2);
     border-left: 3px solid var(--border-color);
     border-radius: 8px;
+    order: 2;
     padding: var(--space-10) var(--space-12);
     background: rgba(15, 23, 42, 0.62);
 }
