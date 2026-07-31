@@ -505,6 +505,14 @@ selected decision, live quote, quote clear, or authoritative plan freshness
 changes. It shows `Entry ready`, `Wait for entry`, `Chasing risk`,
 `No current entry`, or `Waiting for quote` using existing quote, TradePlan, and
 freshness data only.
+Follow-up owner safety fix: the chip no longer treats one tick above a
+single-point BUY entry as automatic `Chasing risk`. It now keeps `Entry ready`
+strictly for price inside the persisted entry zone, adds `Entry acceptable`
+only when price is within 0.25% beyond the entry boundary and live reward:risk
+from the current quote to the persisted stop/first target remains at least
+1.8:1, and shows `Avoid entry` when price has already crossed the stop or
+target boundary. No TradePlan values, thresholds, score, or recommendation
+logic are changed.
 
 Architectural note: AW-1 is frontend presentation only. It adds no broker write
 action, no order placement, no analytical-engine change, no TradePlan value

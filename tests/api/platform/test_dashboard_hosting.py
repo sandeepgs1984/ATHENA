@@ -200,8 +200,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.119.0" in html
-    assert "dashboard.js?v=9.119.0" in html
+    assert "dashboard.css?v=9.120.0" in html
+    assert "dashboard.js?v=9.120.0" in html
     assert 'id="advisor-pulse"' in html
     assert 'id="header-diagnostics-popover"' in html
     assert 'id="decision-actionability-banner"' in html
@@ -309,10 +309,18 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "formatEntryZone(plan)" in js
     assert "decisionHasCurrentActionableTradePlan(decision, planFreshness)" in js
     assert "Entry ready" in js
+    assert "Entry acceptable" in js
     assert "Wait for entry" in js
     assert "Chasing risk" in js
+    assert "Avoid entry" in js
     assert "No current entry" in js
     assert "Waiting for quote" in js
+    assert "const ENTRY_ACCEPTABLE_MIN_RR = 1.8" in js
+    assert "const ENTRY_ACCEPTABLE_MAX_CHASE_PCT = 0.25" in js
+    assert "function liveRewardRisk" in js
+    assert "function priceHasInvalidatedEntry" in js
+    assert "liveRr >= ENTRY_ACCEPTABLE_MIN_RR" in js
+    assert "chasePct <= ENTRY_ACCEPTABLE_MAX_CHASE_PCT" in js
     assert "Confirm broker quote before manual action" in js
     assert "Avoid chasing unless ATHENA re-validates" in js
     assert "renderEntryReadiness();" in js

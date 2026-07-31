@@ -51,6 +51,8 @@
     // document is visible. Server coalesces duplicate hits for 5s; client never
     // stacks in-flight requests. Stops on empty brief / tab leave / hide.
     const BRIEF_PRICE_REFRESH_MS = 10000;
+    const ENTRY_ACCEPTABLE_MIN_RR = 1.8;
+    const ENTRY_ACCEPTABLE_MAX_CHASE_PCT = 0.25;
     let briefPriceInstrumentId = null;
     let briefPriceIntervalId = null;
     let briefPriceInFlight = false;
@@ -71,6 +73,38 @@
         if (!Number.isFinite(low) || !Number.isFinite(high)) return "entry zone";
         if (low === high) return formatBriefPrice(low);
         return `${formatBriefPrice(Math.min(low, high))}-${formatBriefPrice(Math.max(low, high))}`;
+    }
+
+    function formatLiveRewardRisk(value) {
+        const num = Number(value);
+        if (!Number.isFinite(num)) return "—";
+        return `${num.toFixed(2)}:1`;
+    }
+
+    function firstTradePlanTarget(plan) {
+        if (!plan || !Array.isArray(plan.targets) || !plan.targets.length) return NaN;
+        return Number(plan.targets[0]);
+    }
+
+    function liveRewardRisk(price, plan, isShort) {
+        const stop = Number(plan && plan.stop_loss);
+        const target = firstTradePlanTarget(plan);
+        if (!Number.isFinite(price) || !Number.isFinite(stop) || !Number.isFinite(target)) {
+            return NaN;
+        }
+        const reward = isShort ? price - target : target - price;
+        const risk = isShort ? stop - price : price - stop;
+        if (reward <= 0 || risk <= 0) return NaN;
+        return reward / risk;
+    }
+
+    function priceHasInvalidatedEntry(price, plan, isShort) {
+        const stop = Number(plan && plan.stop_loss);
+        const target = firstTradePlanTarget(plan);
+        if (!Number.isFinite(price) || !Number.isFinite(stop) || !Number.isFinite(target)) {
+            return false;
+        }
+        return isShort ? price >= stop || price <= target : price <= stop || price >= target;
     }
 
     function entryReadinessView(decision, quote, freshness = null) {
@@ -111,6 +145,15 @@
             };
         }
         const zone = formatEntryZone(plan);
+        const direction = String(decision.metadata && decision.metadata.direction || "LONG").toUpperCase();
+        const isShort = direction === "SHORT";
+        if (priceHasInvalidatedEntry(price, plan, isShort)) {
+            return {
+                tone: "danger",
+                label: "Avoid entry",
+                title: `Live price ${formatBriefPrice(price)} has already crossed the stop or target boundary. Re-validate before considering entry.`,
+            };
+        }
         if (price >= low && price <= high) {
             return {
                 tone: "good",
@@ -118,8 +161,6 @@
                 title: `Live price ${formatBriefPrice(price)} is inside the ${zone} entry zone. Confirm broker quote before manual action.`,
             };
         }
-        const direction = String(decision.metadata && decision.metadata.direction || "LONG").toUpperCase();
-        const isShort = direction === "SHORT";
         const isWaiting = isShort ? price > high : price < low;
         if (isWaiting) {
             return {
@@ -128,10 +169,24 @@
                 title: `Live price ${formatBriefPrice(price)} is outside the ${zone} entry zone. Wait; do not force entry.`,
             };
         }
+        const liveRr = liveRewardRisk(price, plan, isShort);
+        const boundary = isShort ? low : high;
+        const chasePct = boundary > 0 ? (Math.abs(price - boundary) / boundary) * 100 : Infinity;
+        if (
+            Number.isFinite(liveRr)
+            && liveRr >= ENTRY_ACCEPTABLE_MIN_RR
+            && chasePct <= ENTRY_ACCEPTABLE_MAX_CHASE_PCT
+        ) {
+            return {
+                tone: "warning",
+                label: "Entry acceptable",
+                title: `Live price ${formatBriefPrice(price)} is just outside the ${zone} entry zone. Live reward:risk is ${formatLiveRewardRisk(liveRr)}, still above ${formatLiveRewardRisk(ENTRY_ACCEPTABLE_MIN_RR)}. Confirm broker quote before manual action.`,
+            };
+        }
         return {
             tone: "danger",
             label: "Chasing risk",
-            title: `Live price ${formatBriefPrice(price)} has moved beyond the ${zone} entry zone. Avoid chasing unless ATHENA re-validates.`,
+            title: `Live price ${formatBriefPrice(price)} has moved beyond the ${zone} entry zone. Live reward:risk is ${formatLiveRewardRisk(liveRr)} or price is more than ${ENTRY_ACCEPTABLE_MAX_CHASE_PCT.toFixed(2)}% past entry. Avoid chasing unless ATHENA re-validates.`,
         };
     }
 
