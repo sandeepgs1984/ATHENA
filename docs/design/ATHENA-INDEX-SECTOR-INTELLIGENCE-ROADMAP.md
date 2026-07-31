@@ -1,11 +1,14 @@
 # ATHENA Index and Sector Intelligence Roadmap
 
-**Status:** IX-2 ready for owner review on 2026-07-31  
+**Status:** IX-3 ready for owner review on 2026-07-31  
 **Scope:** Read-only broad-market and sector-index intelligence for Market
 Intelligence and Decisions & Trace  
 **Owner goal:** show which parts of the market are leading, then help the owner
 find ATHENA-qualified symbols inside those areas without changing the approved
 recommendation engines prematurely.
+
+**Agent continuity:** read `docs/ATHENA-IX-HANDOFF.md` after verifying live
+status in `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md`, and git.
 
 ## 1. Product Questions
 

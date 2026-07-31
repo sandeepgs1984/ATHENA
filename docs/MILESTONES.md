@@ -683,6 +683,10 @@ then connects that context to current ATHENA setups in later review-gated
 milestones. Governing plan:
 `docs/design/ATHENA-INDEX-SECTOR-INTELLIGENCE-ROADMAP.md`.
 
+Agent continuity snapshot: `docs/ATHENA-IX-HANDOFF.md`. Verify this dated
+handoff against this milestone table, `IMPLEMENTATION_SUMMARY.md`, and git
+before continuing the IX track.
+
 This track is presentation-only until a separately approved evidence review and
 ADR authorize analytical use. It does not silently resolve SD-2, activate
 `sector_quality`, alter scoring/decision thresholds, or add broker write paths.
@@ -848,9 +852,12 @@ dashboard-hosting, and chart release-gate tests pass. The full suite passes
 syntax, final diff whitespace, and IX-3-owned Ruff checks pass; MyPy reports no
 issues. Repository-wide Ruff still reports the pre-existing duplicate
 `SizingConfig`, repository import/SIM findings, and older dashboard assertion
-formatting findings. Authenticated browser QA could not be completed because
-the connected browser stopped at Workstation Unlock and no signed-in external
-browser was available; owner visual review remains the IX-3 gate.
+formatting findings. Owner-supplied desktop screenshots verify the 12-index
+coverage ribbon, closed-session copy, complete NIFTY BANK breadth, fail-closed
+incomplete peers with affected-symbol disclosure, official source links, and
+no visible horizontal clipping. Authenticated automated browser interaction
+remained blocked at Workstation Unlock; narrow-layout behavior remains covered
+by dashboard regression assertions. IX-3 remains at the owner approval gate.
 
 ---
 
