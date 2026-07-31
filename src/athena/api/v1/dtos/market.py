@@ -158,6 +158,32 @@ class MarketTickerDTO(BaseModel):
     as_of: datetime | None = None
 
 
+class IndexIntelligenceItemDTO(BaseModel):
+    """One configured broad-market or sector-index observation."""
+
+    model_config = ConfigDict(frozen=True)
+
+    key: str
+    label: str
+    instrument_id: str
+    family: Literal["broad_market", "sectoral"]
+    level: Decimal | None = None
+    change_pct: Decimal | None = None
+    data_status: Literal["AVAILABLE", "NO_DATA"]
+
+
+class IndexIntelligenceDTO(BaseModel):
+    """Deterministically ordered index observations from one persisted snapshot."""
+
+    model_config = ConfigDict(frozen=True)
+
+    indices: tuple[IndexIntelligenceItemDTO, ...]
+    count: int
+    available_count: int
+    as_of: datetime | None = None
+    source: Literal["persisted_market_snapshot"]
+
+
 class InstrumentQuoteDTO(BaseModel):
     """Single-instrument last price for the Decisions & Trace header.
 

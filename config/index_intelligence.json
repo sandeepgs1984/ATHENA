@@ -1,0 +1,104 @@
+{
+  "_meta": {
+    "description": "Read-only broad-market and sector indices displayed by ATHENA. Provider ids must match Kite tradingsymbols exactly.",
+    "layer": "market intelligence"
+  },
+  "tracked_indices": [
+    {
+      "key": "nifty_50",
+      "label": "NIFTY 50",
+      "instrument_id": "NSE:NIFTY 50",
+      "family": "broad_market",
+      "display_order": 10,
+      "enabled": true
+    },
+    {
+      "key": "nifty_bank",
+      "label": "NIFTY BANK",
+      "instrument_id": "NSE:NIFTY BANK",
+      "family": "broad_market",
+      "display_order": 20,
+      "enabled": true
+    },
+    {
+      "key": "nifty_next_50",
+      "label": "NIFTY NEXT 50",
+      "instrument_id": "NSE:NIFTY NEXT 50",
+      "family": "broad_market",
+      "display_order": 30,
+      "enabled": true
+    },
+    {
+      "key": "nifty_midcap_100",
+      "label": "NIFTY MIDCAP 100",
+      "instrument_id": "NSE:NIFTY MIDCAP 100",
+      "family": "broad_market",
+      "display_order": 40,
+      "enabled": true
+    },
+    {
+      "key": "nifty_it",
+      "label": "NIFTY IT",
+      "instrument_id": "NSE:NIFTY IT",
+      "family": "sectoral",
+      "display_order": 100,
+      "enabled": true
+    },
+    {
+      "key": "nifty_auto",
+      "label": "NIFTY AUTO",
+      "instrument_id": "NSE:NIFTY AUTO",
+      "family": "sectoral",
+      "display_order": 110,
+      "enabled": true
+    },
+    {
+      "key": "nifty_pharma",
+      "label": "NIFTY PHARMA",
+      "instrument_id": "NSE:NIFTY PHARMA",
+      "family": "sectoral",
+      "display_order": 120,
+      "enabled": true
+    },
+    {
+      "key": "nifty_fmcg",
+      "label": "NIFTY FMCG",
+      "instrument_id": "NSE:NIFTY FMCG",
+      "family": "sectoral",
+      "display_order": 130,
+      "enabled": true
+    },
+    {
+      "key": "nifty_metal",
+      "label": "NIFTY METAL",
+      "instrument_id": "NSE:NIFTY METAL",
+      "family": "sectoral",
+      "display_order": 140,
+      "enabled": true
+    },
+    {
+      "key": "nifty_realty",
+      "label": "NIFTY REALTY",
+      "instrument_id": "NSE:NIFTY REALTY",
+      "family": "sectoral",
+      "display_order": 150,
+      "enabled": true
+    },
+    {
+      "key": "nifty_energy",
+      "label": "NIFTY ENERGY",
+      "instrument_id": "NSE:NIFTY ENERGY",
+      "family": "sectoral",
+      "display_order": 160,
+      "enabled": true
+    },
+    {
+      "key": "nifty_psu_bank",
+      "label": "NIFTY PSU BANK",
+      "instrument_id": "NSE:NIFTY PSU BANK",
+      "family": "sectoral",
+      "display_order": 170,
+      "enabled": true
+    }
+  ]
+}

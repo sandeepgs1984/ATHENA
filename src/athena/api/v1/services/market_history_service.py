@@ -2,23 +2,25 @@
 
 from __future__ import annotations
 
+import threading
+import time
 from collections.abc import Callable
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
-import threading
-import time
 from typing import Literal
 
 from athena.api.v1.dtos.market import (
     CandleDTO,
     CandleSeriesDTO,
+    IndexIntelligenceDTO,
+    IndexIntelligenceItemDTO,
     InstrumentQuoteDTO,
     MarketIndexTickerDTO,
     MarketTickerDTO,
 )
 from athena.api.v1.providers.base import CandleHistoryProvider
-from athena.config.loader import load_config
+from athena.config.loader import load_config, load_index_intelligence_config
 from athena.data.providers.kite_ltp import fetch_live_quote
 from athena.data.store.repository import SqliteRepository
 from athena.domain.enums import Timeframe
@@ -160,6 +162,53 @@ class MarketHistoryService:
             bank_nifty=index_tickers["BANK NIFTY"],
             india_vix=vix_ticker,
             as_of=snapshot.ts,
+        )
+
+    def index_intelligence(self) -> IndexIntelligenceDTO:
+        """Configured broad-market and sector indices from persisted data.
+
+        Catalog order is configuration-owned. A missing quote or prior close is
+        represented explicitly rather than inferred from another index.
+        """
+        config = load_index_intelligence_config(self._config_dir)
+        tracked = sorted(
+            (item for item in config.tracked_indices if item.enabled),
+            key=lambda item: (item.display_order, item.key),
+        )
+        snapshot = self._repo.get_latest_snapshot() if self._repo is not None else None
+
+        items: list[IndexIntelligenceItemDTO] = []
+        for item in tracked:
+            snapshot_key = item.instrument_id.split(":", 1)[-1]
+            level = snapshot.indices.get(snapshot_key) if snapshot is not None else None
+            baseline = (
+                self._prior_close(item.instrument_id, snapshot.ts)
+                if snapshot is not None and level is not None
+                else None
+            )
+            change_pct = (
+                (level - baseline) / baseline * Decimal(100)
+                if level is not None and baseline is not None and baseline > 0
+                else None
+            )
+            items.append(
+                IndexIntelligenceItemDTO(
+                    key=item.key,
+                    label=item.label,
+                    instrument_id=item.instrument_id,
+                    family=item.family,
+                    level=level,
+                    change_pct=change_pct,
+                    data_status="AVAILABLE" if level is not None else "NO_DATA",
+                )
+            )
+
+        return IndexIntelligenceDTO(
+            indices=tuple(items),
+            count=len(items),
+            available_count=sum(item.data_status == "AVAILABLE" for item in items),
+            as_of=snapshot.ts if snapshot is not None else None,
+            source="persisted_market_snapshot",
         )
 
     def instrument_quote(self, instrument_id: str) -> InstrumentQuoteDTO:

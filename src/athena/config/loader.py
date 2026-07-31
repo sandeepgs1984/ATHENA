@@ -34,6 +34,7 @@ from athena.config.models import (
     FileProviderConfig,
     HolidaysFile,
     HostOpsConfig,
+    IndexIntelligenceConfig,
     IngestionConfig,
     InstitutionalFileProviderConfig,
     InstitutionalNseProviderConfig,
@@ -175,6 +176,16 @@ def load_kite_provider_config(config_dir: Path) -> KiteProviderConfig:
     path = Path(config_dir) / "providers" / "kite.json"
     try:
         return KiteProviderConfig.model_validate(_read_json(path))
+    except ValidationError as exc:
+        raise ConfigError(_validation_message(str(path), exc)) from exc
+
+
+def load_index_intelligence_config(config_dir: Path) -> IndexIntelligenceConfig:
+    """Load the tracked broad-market/sector index catalog."""
+
+    path = Path(config_dir) / "index_intelligence.json"
+    try:
+        return IndexIntelligenceConfig.model_validate(_read_json(path))
     except ValidationError as exc:
         raise ConfigError(_validation_message(str(path), exc)) from exc
 

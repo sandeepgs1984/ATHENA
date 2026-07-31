@@ -676,6 +676,74 @@ remains pending owner-session access.
 
 ---
 
+### Index and Sector Intelligence track (owner direction, 2026-07-31)
+
+Adds trustworthy broad-market and sector-index context to Market Intelligence,
+then connects that context to current ATHENA setups in later review-gated
+milestones. Governing plan:
+`docs/design/ATHENA-INDEX-SECTOR-INTELLIGENCE-ROADMAP.md`.
+
+This track is presentation-only until a separately approved evidence review and
+ADR authorize analytical use. It does not silently resolve SD-2, activate
+`sector_quality`, alter scoring/decision thresholds, or add broker write paths.
+
+| Milestone | Scope | Gate | Status |
+|---|---|---|---|
+| **IX-1** Tracked-Index Data Foundation | Separate quote-only snapshot coverage from benchmark history ingestion; add validated index catalog and read-only API | Owner review; no scoring/domain/protocol change | 🔄 Ready for review |
+| **IX-2** Index Leadership Surface | Compact, session-aware broad-market and sector leadership view in Market Intelligence | Owner review and visual QA | ⏳ Planned |
+| **IX-3** Versioned Constituents and Index Breadth | Official provenance-tagged memberships, resolution audit, breadth/current-board counts | Data review; no inferred membership | ⏳ Planned |
+| **IX-4** Index-Aware Discovery | Index filters and best current ATHENA setups across Universe, Workbench, and Decisions | Owner review; current-plan safety rules | ⏳ Planned |
+| **IX-5** Symbol Index Backdrop | Plain-language index alignment/divergence context in Decision Brief | Owner review; informational only | ⏳ Planned |
+| **IX-6** Evidence Review and Scoring Decision | Replay impact study and ADR proposal for any analytical influence | ADR + owner approval before code | ⏳ Planned |
+
+**Implementation rule:** one IX milestone at a time. A market leader is not
+automatically a trade, and a strong sector may not override an expired plan,
+failed safety gate, weak symbol score, or unavailable data.
+
+#### IX-1 — tracked-index data foundation (ready for review, 2026-07-31)
+
+Scope completed: added a validated twelve-index catalog covering NIFTY 50,
+NIFTY BANK, NIFTY NEXT 50, NIFTY MIDCAP 100, and eight sector indices. The
+Kite provider loads quote-only snapshot coverage from that separate catalog
+while preserving the existing strict `kite.json` benchmark-history contract.
+Market snapshots quote the larger display set together, while scoped symbol
+validation continues to ingest historical candles only for the existing
+benchmark pair plus VIX.
+
+Added `GET /api/v1/market/index-intelligence`, a read-only response ordered by
+configuration. Each row reports stable identity, family, persisted level,
+prior-session change only when a real daily baseline exists, and explicit
+`AVAILABLE` / `NO_DATA` state. The response exposes its persisted-snapshot
+source and observation time. Missing index quotes remain isolated; they do not
+erase available peers or become fabricated zeroes.
+
+Rate-limit note: IX-1 adds the display indices to the existing bounded snapshot
+quote request. It does not add those indices to per-symbol daily/5m/15m
+historical ingestion. IX-2 must consume the persisted API and must not poll Kite
+directly.
+
+Architecture note: IX-1 is additive provider configuration and a read-only API
+over the existing `MarketSnapshot`/candle ledger. `MarketSnapshot`,
+`MarketDataProvider`, persistence schema, scoring, confidence, risk, decision
+policy, TradePlan, and broker behavior are unchanged. No ADR is required.
+
+Validation note: focused Kite provider and market-history/API tests pass
+(37 tests). The full suite passes (1,132 tests); its only initial failure was
+an older chart release-gate assertion pinned to asset version `9.89.0`, which
+was aligned with the already-current `9.122.0` dashboard assets without
+changing chart behavior.
+
+Owner-QA correction: an initial IX-1 draft added
+`snapshot_index_instruments` to strict `kite.json`. An already-running server
+using the previous strict model rejected the new key during re-validation.
+That same failure forced selected-symbol quote loading onto persisted data,
+where day-change percentage is intentionally unavailable. IX-1 now leaves
+`kite.json` unchanged and loads snapshot coverage from
+`index_intelligence.json`; focused regression coverage verifies production
+config compatibility and live snapshot resolution.
+
+---
+
 ### Intraday Edge Program (post M-D4, owner direction 2026-07-25)
 
 AI-driven roadmap toward a "no compromise" world-class intraday analyzer.

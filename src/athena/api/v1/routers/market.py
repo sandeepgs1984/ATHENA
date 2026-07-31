@@ -19,6 +19,7 @@ from athena.api.v1.dtos.market import (
     CandleSeriesDTO,
     DeleteCandidateResultDTO,
     FullValidationProgressDTO,
+    IndexIntelligenceDTO,
     InstrumentQuoteDTO,
     MarketSummaryDTO,
     MarketTickerDTO,
@@ -125,6 +126,27 @@ def get_market_ticker(
     snapshot and daily candles only — no new provider, no new calculations
     beyond simple arithmetic over already-persisted values."""
     data = service.market_ticker()
+    return AthenaResponse(status="success", data=data, meta=_meta(request))
+
+
+@router.get(
+    "/index-intelligence",
+    response_model=AthenaResponse[IndexIntelligenceDTO],
+    summary="Configured broad-market and sector-index observations",
+    status_code=status.HTTP_200_OK,
+    operation_id="getIndexIntelligence",
+)
+def get_index_intelligence(
+    request: Request,
+    service: MarketHistoryService = Depends(get_market_history_service),  # noqa: B008
+    principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.READ)),  # noqa: B008
+) -> AthenaResponse[IndexIntelligenceDTO]:
+    """Read persisted index levels and trustworthy prior-session changes.
+
+    Missing quotes or baselines remain explicit nulls. This endpoint is
+    presentation context only and does not influence ATHENA decisions.
+    """
+    data = service.index_intelligence()
     return AthenaResponse(status="success", data=data, meta=_meta(request))
 
 

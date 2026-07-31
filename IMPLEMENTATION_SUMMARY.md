@@ -6,6 +6,29 @@ status updated on approval.
 
 ---
 
+## IX-1 — Tracked-index data foundation (ready for review)
+
+| | |
+|---|---|
+| Completed | 2026-07-31 |
+| Objective | Establish trustworthy, rate-limit-safe broad-market and sector-index data before building index leadership or symbol discovery UX |
+| Scope | Added a validated twelve-index catalog; wired Kite quote-only snapshot coverage from that separate catalog while preserving the strict benchmark-history `kite.json` contract; extended market snapshots/catalog resolution to the display set without expanding scoped historical ingestion; added deterministic index-intelligence DTOs, service mapping, and authenticated read-only endpoint; report persisted level and prior-session change only from real snapshot/candle data with explicit missing-data state |
+| Files created | `config/index_intelligence.json`, `docs/design/ATHENA-INDEX-SECTOR-INTELLIGENCE-ROADMAP.md` |
+| Files modified | `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md`, `src/athena/config/models.py`, `src/athena/config/loader.py`, `src/athena/data/providers/kite_provider.py`, `src/athena/api/v1/dtos/market.py`, `src/athena/api/v1/services/market_history_service.py`, `src/athena/api/v1/routers/market.py`, `tests/data_layer/test_kite_provider.py`, `tests/api/v1/test_market_history.py`, `tests/api/platform/test_decision_chart_release_gate.py` |
+| Public APIs added | `GET /api/v1/market/index-intelligence`; `IndexIntelligenceConfig`, `TrackedIndexConfig`; `load_index_intelligence_config`; `IndexIntelligenceDTO`, `IndexIntelligenceItemDTO`; `MarketHistoryService.index_intelligence()` |
+| Tests | `rtk pytest tests/data_layer/test_kite_provider.py tests/api/v1/test_market_history.py -q` — 37 passed; `rtk pytest tests/api/platform/test_decision_chart_release_gate.py -q` — 5 passed; `rtk pytest -q` — 1,132 passed; changed-file Ruff check — passed with the repository's pre-existing duplicate `SizingConfig` (`F811`) excluded; `rtk mypy` — passed; `rtk git diff --check` — passed |
+| Coverage | Quote-only display indices remain separate from benchmark history inputs and from the strict Kite config schema; production config loads through the legacy-compatible path; configured snapshot indices resolve through the separate catalog; one quote call returns multiple configured indices; catalog/API ordering is deterministic; disabled indices are omitted; real prior-close change is calculated; missing baselines stay null; missing snapshots retain catalog rows as `NO_DATA`; duplicate identities fail config loading; endpoint requires authentication and keeps a stable response shape |
+| Architecture compliance | Additive configuration and read-only presentation contract over the existing `MarketSnapshot` and candle ledger. Frozen domain objects, provider Protocol, persistence schema, validation pipeline, replay behavior, scoring, confidence, risk, decision policy, TradePlan, and broker boundaries are unchanged |
+| ADR compliance | ADR-005 preserved: unavailable quote/baseline data remains explicit and is never fabricated. Existing DD-1 Kite read-only provider remains the source; IX-1 adds instruments, not a new provider. SD-2 remains unresolved because quote visibility does not authorize sector-health scoring |
+| Risks discovered | The existing `index_instruments` field is consumed by scoped historical ingestion, so using it for a large display catalog would create avoidable Kite latency/rate-limit pressure. Adding a new key to strict `kite.json` also breaks already-running processes on re-validation and indirectly removes live day-change display by triggering persisted-quote fallback. IX-1 avoids both couplings by loading quote-only coverage from the separate tracked-index catalog |
+| Technical debt introduced | Snapshot-only indices may initially have null `change_pct` until trustworthy prior daily candles exist; IX-2 must display that honestly rather than infer a baseline. Repository-wide Ruff still reports the pre-existing duplicate `SizingConfig` definition in `config/models.py`; IX-1 does not alter that unrelated contract |
+| Suggested improvements | IX-2 should add a compact session-aware leadership surface using this persisted API, with no direct provider polling and no horizontal overflow |
+| Remaining work | Owner review of IX-1; IX-2 through IX-6 require separate approval; index constituent provenance and analytical scoring remain later gated work |
+| Status | 🔄 Ready for owner review |
+| Branch | feature/live-dashboard |
+
+---
+
 ## AW-3 — Validation pipeline workbench (ready for review)
 
 | | |

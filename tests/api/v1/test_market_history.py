@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 from tests.api.v1.test_core_apis import get_auth_headers
 
@@ -13,9 +15,14 @@ from athena.api.dependencies import get_candle_history_provider
 from athena.api.security.models import Role
 from athena.api.v1.providers.in_memory import InMemoryCandleHistoryProvider
 from athena.api.v1.services.market_history_service import MarketHistoryService
+from athena.config.loader import (
+    load_index_intelligence_config,
+    load_kite_provider_config,
+)
 from athena.data.store.repository import SqliteRepository
 from athena.domain.enums import Timeframe
 from athena.domain.market import Candle, Instrument, MarketSnapshot
+from athena.errors import ConfigError
 from athena.indicators.calculations import align_trailing_series, atr_series, sma_series
 
 
@@ -279,6 +286,167 @@ class TestMarketTicker:
         assert set(data.keys()) == {"nifty", "bank_nifty", "india_vix", "as_of"}
         for key in ("nifty", "bank_nifty", "india_vix"):
             assert set(data[key].keys()) == {"label", "level", "change_pct"}
+
+
+def _write_index_intelligence_config(config_dir: Path) -> None:
+    config_dir.mkdir(parents=True, exist_ok=True)
+    (config_dir / "index_intelligence.json").write_text(
+        json.dumps(
+            {
+                "tracked_indices": [
+                    {
+                        "key": "nifty_it",
+                        "label": "NIFTY IT",
+                        "instrument_id": "NSE:NIFTY IT",
+                        "family": "sectoral",
+                        "display_order": 20,
+                        "enabled": True,
+                    },
+                    {
+                        "key": "nifty_50",
+                        "label": "NIFTY 50",
+                        "instrument_id": "NSE:NIFTY 50",
+                        "family": "broad_market",
+                        "display_order": 10,
+                        "enabled": True,
+                    },
+                    {
+                        "key": "disabled",
+                        "label": "DISABLED",
+                        "instrument_id": "NSE:DISABLED",
+                        "family": "sectoral",
+                        "display_order": 5,
+                        "enabled": False,
+                    },
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+class TestIndexIntelligence:
+    """IX-1 configured index observations stay deterministic and honest."""
+
+    def test_returns_configured_order_and_real_availability(
+        self, tmp_path: Path
+    ) -> None:
+        _write_index_intelligence_config(tmp_path)
+        repo = SqliteRepository(tmp_path / "indices.db")
+        repo.initialize()
+        prior = datetime(2026, 7, 30, 10, 0, tzinfo=timezone.utc)
+        current = datetime(2026, 7, 31, 6, 30, tzinfo=timezone.utc)
+        _register_index_instrument(repo, "NSE:NIFTY 50")
+        repo.add_candles([_index_candle("NSE:NIFTY 50", prior, "24000")])
+        repo.add_snapshot(
+            MarketSnapshot(
+                ts=current,
+                indices={
+                    "NIFTY 50": Decimal("24240"),
+                    "NIFTY IT": Decimal("35500"),
+                },
+                breadth_advances=0,
+                breadth_declines=0,
+            )
+        )
+        service = MarketHistoryService(
+            InMemoryCandleHistoryProvider(),
+            freshness_threshold_minutes=20,
+            config_dir=tmp_path,
+            repo=repo,
+        )
+
+        result = service.index_intelligence()
+
+        assert [item.key for item in result.indices] == ["nifty_50", "nifty_it"]
+        assert result.count == 2
+        assert result.available_count == 2
+        assert result.indices[0].change_pct == Decimal("1.00")
+        assert result.indices[1].change_pct is None
+        assert result.indices[1].data_status == "AVAILABLE"
+        assert result.as_of == current
+        assert result.source == "persisted_market_snapshot"
+        repo.close()
+
+    def test_no_snapshot_keeps_catalog_but_reports_no_data(
+        self, tmp_path: Path
+    ) -> None:
+        _write_index_intelligence_config(tmp_path)
+        service = MarketHistoryService(
+            InMemoryCandleHistoryProvider(),
+            freshness_threshold_minutes=20,
+            config_dir=tmp_path,
+        )
+
+        result = service.index_intelligence()
+
+        assert result.count == 2
+        assert result.available_count == 0
+        assert all(item.data_status == "NO_DATA" for item in result.indices)
+        assert all(item.level is None for item in result.indices)
+        assert result.as_of is None
+
+    def test_endpoint_requires_auth_and_exposes_stable_shape(
+        self, client: TestClient
+    ) -> None:
+        assert client.get("/api/v1/market/index-intelligence").status_code == 401
+
+        response = client.get(
+            "/api/v1/market/index-intelligence",
+            headers=get_auth_headers(client, Role.READONLY),
+        )
+
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["count"] == 12
+        assert data["source"] == "persisted_market_snapshot"
+        assert set(data["indices"][0]) == {
+            "key",
+            "label",
+            "instrument_id",
+            "family",
+            "level",
+            "change_pct",
+            "data_status",
+        }
+
+    def test_production_catalog_matches_kite_snapshot_coverage(self) -> None:
+        config_dir = Path(__file__).resolve().parents[3] / "config"
+        catalog = load_index_intelligence_config(config_dir)
+        kite = load_kite_provider_config(config_dir)
+
+        enabled_ids = {
+            item.instrument_id for item in catalog.tracked_indices if item.enabled
+        }
+        assert set(kite.index_instruments) <= enabled_ids
+
+    def test_duplicate_catalog_identity_fails_loudly(self, tmp_path: Path) -> None:
+        (tmp_path / "index_intelligence.json").write_text(
+            json.dumps(
+                {
+                    "tracked_indices": [
+                        {
+                            "key": "one",
+                            "label": "ONE",
+                            "instrument_id": "NSE:ONE",
+                            "family": "sectoral",
+                            "display_order": 1,
+                        },
+                        {
+                            "key": "two",
+                            "label": "TWO",
+                            "instrument_id": "NSE:ONE",
+                            "family": "sectoral",
+                            "display_order": 2,
+                        },
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        with pytest.raises(ConfigError, match="duplicate tracked index instrument ids"):
+            load_index_intelligence_config(tmp_path)
 
 
 class TestInstrumentQuote:

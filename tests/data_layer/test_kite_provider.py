@@ -25,6 +25,7 @@ instrument_token,exchange_token,tradingsymbol,name,last_price,expiry,strike,tick
 408065,1594,INFY,INFOSYS,0,,,0.05,1,EQ,NSE,NSE
 738561,2885,RELIANCE,RELIANCE,0,,,0.05,1,EQ,NSE,NSE
 256265,1001,NIFTY 50,NIFTY 50,0,,,0.05,1,INDEX,INDICES,NSE
+999001,1002,NIFTY IT,NIFTY IT,0,,,0.05,1,INDEX,INDICES,NSE
 264969,1035,INDIA VIX,INDIA VIX,0,,,0.05,1,INDEX,INDICES,NSE
 """
 
@@ -76,6 +77,12 @@ class FakeKiteTransport:
                     "instrument_token": 256265,
                     "timestamp": "2026-02-12 15:30:00",
                     "last_price": 22000.0,
+                    "volume": 0,
+                },
+                "NSE:NIFTY IT": {
+                    "instrument_token": 999001,
+                    "timestamp": "2026-02-12 15:30:00",
+                    "last_price": 35500.0,
                     "volume": 0,
                 },
                 "NSE:INDIA VIX": {
@@ -158,6 +165,52 @@ class TestKiteProviderUnit:
         assert "NIFTY 50" in snap.indices
         assert snap.india_vix == Decimal("12.5")
         assert snap.breadth_advances == 0
+
+    def test_snapshot_indices_do_not_expand_benchmark_history_set(self):
+        transport = FakeKiteTransport()
+        config = _config(
+            index_instruments=["NSE:NIFTY 50"],
+        )
+        provider = KiteProvider(
+            config,
+            transport,
+            snapshot_index_instruments=["NSE:NIFTY 50", "NSE:NIFTY IT"],
+        )
+
+        ids = {item.instrument_id for item in provider.instruments()}
+        snapshot = provider.market_snapshot()
+
+        assert config.index_instruments == ["NSE:NIFTY 50"]
+        assert "NSE:NIFTY IT" in ids
+        assert snapshot.indices == {
+            "NIFTY 50": Decimal("22000.0"),
+            "NIFTY IT": Decimal("35500.0"),
+        }
+        quote_call = next(call for call in transport.calls if call[0] == "/quote")
+        assert quote_call[1] == [
+            ("i", "NSE:NIFTY 50"),
+            ("i", "NSE:NIFTY IT"),
+            ("i", "NSE:INDIA VIX"),
+        ]
+
+    def test_from_config_dir_loads_snapshot_catalog_separately(self):
+        config_dir = Path(__file__).resolve().parents[2] / "config"
+        transport = FakeKiteTransport()
+        provider = KiteProvider.from_config_dir(
+            config_dir,
+            transport=transport,
+            symbols=["INFY"],
+        )
+
+        snapshot = provider.market_snapshot()
+        quote_call = next(call for call in transport.calls if call[0] == "/quote")
+        requested = [value for key, value in quote_call[1] if key == "i"]
+
+        assert "NIFTY 50" in snapshot.indices
+        assert "NIFTY IT" in snapshot.indices
+        assert "NSE:NIFTY MIDCAP 100" in requested
+        assert "NSE:NIFTY PSU BANK" in requested
+        assert requested[-1] == "NSE:INDIA VIX"
 
     def test_health_ok(self, provider: KiteProvider):
         health = provider.health()
@@ -256,9 +309,10 @@ class TestKiteProviderUnit:
         assert sleeps and sleeps[0] == pytest.approx(0.8, abs=0.01)
 
     def test_429_retries_then_fails_loudly(self, monkeypatch: pytest.MonkeyPatch):
+        import urllib.error
+
         from athena.config.models import KiteRateLimitConfig
         from athena.data.providers.kite_transport import UrllibKiteTransport
-        import urllib.error
 
         attempts = {"n": 0}
         sleeps: list[float] = []

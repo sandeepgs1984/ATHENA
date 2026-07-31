@@ -350,13 +350,48 @@ class KiteProviderConfig(_Strict):
             raise ValueError(f"duplicate instrument_types: {v}")
         return v
 
-    @field_validator("symbols")
+    @field_validator("symbols", "index_instruments")
     @classmethod
-    def _unique_symbols(cls, v: list[str]) -> list[str]:
+    def _unique_instrument_ids(cls, v: list[str]) -> list[str]:
         cleaned = [s.strip() for s in v if s and s.strip()]
         if len(cleaned) != len(set(cleaned)):
-            raise ValueError(f"duplicate kite.symbols: {v}")
+            raise ValueError(f"duplicate Kite instrument ids: {v}")
         return cleaned
+
+
+class TrackedIndexConfig(_Strict):
+    """One display index observed through persisted market snapshots."""
+
+    key: str = Field(min_length=1, pattern=r"^[a-z0-9_]+$")
+    label: str = Field(min_length=1)
+    instrument_id: str = Field(min_length=1, pattern=r"^[A-Z]+:.+$")
+    family: Literal["broad_market", "sectoral"]
+    display_order: int = Field(ge=0)
+    enabled: bool = True
+
+    @field_validator("label", "instrument_id")
+    @classmethod
+    def _trim_required_text(cls, v: str) -> str:
+        cleaned = v.strip()
+        if not cleaned:
+            raise ValueError("tracked index text fields must be non-empty")
+        return cleaned
+
+
+class IndexIntelligenceConfig(_Strict):
+    """Configured index coverage for the read-only intelligence surface."""
+
+    tracked_indices: list[TrackedIndexConfig] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _unique_identity(self) -> IndexIntelligenceConfig:
+        keys = [item.key for item in self.tracked_indices]
+        instrument_ids = [item.instrument_id for item in self.tracked_indices]
+        if len(keys) != len(set(keys)):
+            raise ValueError(f"duplicate tracked index keys: {keys}")
+        if len(instrument_ids) != len(set(instrument_ids)):
+            raise ValueError(f"duplicate tracked index instrument ids: {instrument_ids}")
+        return self
 
 
 class FreshnessConfig(_Strict):

@@ -73,12 +73,16 @@ class KiteProvider:
         config: KiteProviderConfig,
         transport: KiteTransport,
         *,
+        snapshot_index_instruments: list[str] | None = None,
         strict_symbol_filter: bool = True,
     ) -> None:
         self.name = "kite"
         self._config = config
         self._transport = transport
         self._strict_symbol_filter = strict_symbol_filter
+        self._snapshot_index_instruments = tuple(
+            snapshot_index_instruments or config.index_instruments
+        )
         self._capabilities = ProviderCapabilities(
             timeframes=tuple(Timeframe(t) for t in config.capabilities.timeframes),
             max_history_days=config.capabilities.max_history_days,
@@ -98,9 +102,21 @@ class KiteProvider:
         symbols: list[str] | None = None,
         strict_symbol_filter: bool = True,
     ) -> KiteProvider:
-        from athena.config.loader import load_kite_provider_config
+        from athena.config.loader import (
+            load_index_intelligence_config,
+            load_kite_provider_config,
+        )
 
         config = load_kite_provider_config(config_dir)
+        index_catalog_path = Path(config_dir) / "index_intelligence.json"
+        snapshot_indices = list(config.index_instruments)
+        if index_catalog_path.is_file():
+            index_config = load_index_intelligence_config(config_dir)
+            snapshot_indices = [
+                item.instrument_id
+                for item in index_config.tracked_indices
+                if item.enabled
+            ]
         if symbols is not None:
             config = config.model_copy(update={"symbols": list(symbols)})
         if transport is None:
@@ -110,7 +126,12 @@ class KiteProvider:
                 access_token=os.environ.get("KITE_ACCESS_TOKEN", ""),
                 rate_limit=config.rate_limit,
             )
-        return cls(config, transport, strict_symbol_filter=strict_symbol_filter)
+        return cls(
+            config,
+            transport,
+            snapshot_index_instruments=snapshot_indices,
+            strict_symbol_filter=strict_symbol_filter,
+        )
 
     # ---------------------------------------------------------------- contract
 
@@ -192,7 +213,7 @@ class KiteProvider:
     def market_snapshot(self) -> MarketSnapshot:
         if not self._capabilities.supports_market_snapshot:
             raise ProviderError(f"provider '{self.name}' does not support market snapshot")
-        keys = list(self._config.index_instruments)
+        keys = list(self._snapshot_index_instruments)
         vix_key = self._config.india_vix_instrument.strip()
         if vix_key and vix_key not in keys:
             keys.append(vix_key)
@@ -226,7 +247,7 @@ class KiteProvider:
         if not indices:
             raise ProviderError(
                 "kite market snapshot empty: no index quotes returned "
-                f"(requested {self._config.index_instruments})"
+                f"(requested {keys})"
             )
         if latest is None:
             latest = datetime.now(IST)
@@ -267,6 +288,10 @@ class KiteProvider:
 
         wanted_types = {t.upper() for t in self._config.instrument_types}
         symbol_filter = {s.upper() for s in self._config.symbols}
+        configured_indices = {
+            *self._config.index_instruments,
+            *self._snapshot_index_instruments,
+        }
 
         instruments: dict[str, Instrument] = {}
         tokens: dict[str, int] = {}
@@ -284,8 +309,9 @@ class KiteProvider:
             include = itype in wanted_types
             if symbol_filter:
                 include = include and tradingsymbol.upper() in symbol_filter
-            # Always index configured snapshot keys if present in dump.
-            if instrument_id in self._config.index_instruments or instrument_id == self._config.india_vix_instrument:
+            # Benchmark history and quote-only snapshot indices must remain
+            # resolvable even when the equity universe filter excludes them.
+            if instrument_id in configured_indices or instrument_id == self._config.india_vix_instrument:
                 include = True
             if not include:
                 continue
