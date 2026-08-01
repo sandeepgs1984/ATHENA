@@ -147,6 +147,53 @@ Establishes live scheduled paper-trading operations, real-time market data inges
 
 SOP: [`docs/ops/FILE_BACKED_DAILY_OPS.md`](ops/FILE_BACKED_DAILY_OPS.md) · Smoke: `./scripts/smoke_file_backed_day.sh`
 
+#### Fix pass: host scheduler ran REFRESH/CLOSING cycles on weekends/holidays (owner-reported, 2026-08-01)
+
+**Root cause, confirmed against the live database:** every one of 24 pipeline
+runs on 2026-08-01 (a Saturday) failed with the identical error —
+`ingest rejected dataset 'quotes': FRESHNESS: quotes are N min behind as_of
+(threshold 20 min)`, with `N` growing linearly with wall-clock time. Kite's
+`/quote` API correctly returns the last real trade (Friday 2026-07-31, 3:30
+PM IST market close) — there is no fresher quote to have on a day the
+exchange isn't open. The actual bug: `is_premarket_due()`/`is_refresh_due()`/
+`is_closing_due()` (`src/athena/scheduling/cadence.py`) only ever checked
+wall-clock time-of-day against configured session hours; nothing in the path
+the host's ~15-minute cron (`athena run-due` → `HostDueRunner`) takes ever
+consulted `CalendarEngine` — the module explicitly documented elsewhere as
+"the sole trading-day/session authority" — to check whether the day itself
+was even a trading day. Every non-trading day, the scheduler fires cycles
+all day that are destined to fail, which also degrades unrelated features by
+flooding `runs` with noise (this is the same root cause behind the earlier
+"Showing 0" Validation Workbench bug this session — a losing streak of
+failed runs pushes the last real successful run out of the frontend's
+recent-runs window).
+
+**Fix:** added an explicit `is_trading_day: bool = True` parameter to all
+four cadence functions (default preserves every existing caller's exact
+prior behavior — this is additive, not a breaking signature change).
+`HostDueRunner` now accepts an optional, injectable `calendar`/`config_dir`
+(matching the existing `pipeline` injection pattern) and resolves
+`is_trading_day` from `CalendarEngine.context_for(as_of.date()).session_type`
+before calling `due_triggers()`, suppressing all three trigger types on
+`WEEKEND`/`HOLIDAY`. The diagnostic `athena due` CLI command was updated the
+same way and now also prints the resolved `session` type.
+
+Architectural note: this is a scheduling/ops bug fix, not a scoring, domain,
+or frozen-contract change — it wires an already-existing, already-approved
+calendar authority into a caller that should have consulted it but didn't.
+No ADR required.
+
+Validation note: full suite — 1,160 passed (8 new tests: 5 in
+`tests/runtime/test_dry_run_schedule.py` locking the `is_trading_day=False`
+suppression on all 4 functions plus the default-`True` backward-compat case;
+3 in `tests/ops/test_host_ops.py` locking `HostDueRunner`'s calendar
+resolution, including the no-calendar-wired backward-compat path). Ruff
+clean. Live-verified against the real, running environment (not just
+synthetic tests) via `PYTHONPATH=src python3 -c "...athena.cli main()..."`
+with `due` on today's real date: reports `session: WEEKEND`, `due: (none)` —
+confirming the fix engages correctly against the actual current calendar
+config and actual current time, not a mock.
+
 ### Dashboard ops extensions (post Phase 9/10)
 
 | Milestone | Scope | Status |
@@ -770,6 +817,8 @@ ADR authorize analytical use. It does not silently resolve SD-2, activate
 | **IX-4c** Decisions index filter + selected-index view | Decisions index filter, selected-index Trade/Watch/No-trade view, ranking reuse, strict symbol handoff | Owner review; current-plan safety rules | ✅ Approved |
 | **IX-5** Symbol Index Backdrop | Plain-language index alignment/divergence context in Decision Brief | Owner review; informational only | ✅ Approved |
 | **IX-6** Evidence Review and Scoring Decision | Replay impact study and ADR proposal for any analytical influence | ADR + owner approval before code | ⏳ Planned |
+| **IX-7** Relative-strength Symbol Index Backdrop | Magnitude-based outperform/lag reading for IX-5, reusing already-fetched data | Owner review; presentation-only, no new data/endpoint | ✅ Approved |
+| **IX-8** Sector Leadership + Decision Breadth Combined View | Show decision breadth alongside the leading/lagging sector's price move, reusing already-fetched data | Owner review; presentation-only, no new data/endpoint | ✅ Approved |
 
 **Implementation rule:** one IX milestone at a time. A market leader is not
 automatically a trade, and a strong sector may not override an expired plan,

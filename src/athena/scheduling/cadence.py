@@ -25,10 +25,13 @@ def is_premarket_due(
     sessions: SessionsConfig,
     config: SchedulingConfig,
     last_premarket_date: date | None,
+    is_trading_day: bool = True,
 ) -> bool:
     """True once per calendar day at/after ``premarket.run_at``, before open."""
     if as_of.tzinfo is None:
         raise ValueError("as_of must be timezone-aware")
+    if not is_trading_day:
+        return False
     if not config.premarket.enabled:
         return False
     local = as_of
@@ -48,11 +51,14 @@ def is_refresh_due(
     config: SchedulingConfig,
     base_interval_minutes: int,
     last_refresh_ts: datetime | None,
+    is_trading_day: bool = True,
 ) -> bool:
     """True every N minutes while the regular session is open (inclusive open,
     exclusive close)."""
     if as_of.tzinfo is None:
         raise ValueError("as_of must be timezone-aware")
+    if not is_trading_day:
+        return False
     if not config.refresh.enabled:
         return False
     clock = as_of.time()
@@ -72,10 +78,13 @@ def is_closing_due(
     sessions: SessionsConfig,
     config: SchedulingConfig,
     last_closing_date: date | None,
+    is_trading_day: bool = True,
 ) -> bool:
     """True once per calendar day at/after session close and ``closing.run_at``."""
     if as_of.tzinfo is None:
         raise ValueError("as_of must be timezone-aware")
+    if not is_trading_day:
+        return False
     if not config.closing.enabled:
         return False
     local = as_of
@@ -99,20 +108,41 @@ def due_triggers(
     last_premarket_date: date | None = None,
     last_refresh_ts: datetime | None = None,
     last_closing_date: date | None = None,
+    is_trading_day: bool = True,
 ) -> tuple[RunTrigger, ...]:
-    """Ordered triggers due at ``as_of`` (premarket → refresh → closing)."""
+    """Ordered triggers due at ``as_of`` (premarket → refresh → closing).
+
+    Owner-reported (2026-08-01): on a weekend/holiday, Kite's quotes are
+    legitimately frozen at the last real session's close — every REFRESH/
+    CLOSING cycle the host cron fired anyway failed the ingestion freshness
+    check, all day, for as long as the market stayed shut. These functions
+    only ever checked wall-clock time-of-day against configured session
+    hours; nothing here knew the difference between "market is briefly
+    outside hours" and "the exchange isn't open at all today." ``is_trading_day``
+    is an explicit, caller-resolved input (this module stays a pure function
+    of its arguments, per its own docstring — no hidden clock, no calendar
+    import) so a caller with calendar access (``CalendarEngine.context_for``)
+    can suppress every trigger type in one place. Defaults to ``True`` so
+    every existing caller that doesn't pass it keeps its exact prior
+    behavior.
+    """
+    if not is_trading_day:
+        return ()
     due: list[RunTrigger] = []
     if is_premarket_due(
         as_of, sessions=sessions, config=config, last_premarket_date=last_premarket_date,
+        is_trading_day=is_trading_day,
     ):
         due.append(RunTrigger.PREMARKET)
     if is_refresh_due(
         as_of, sessions=sessions, config=config,
         base_interval_minutes=base_interval_minutes, last_refresh_ts=last_refresh_ts,
+        is_trading_day=is_trading_day,
     ):
         due.append(RunTrigger.REFRESH)
     if is_closing_due(
         as_of, sessions=sessions, config=config, last_closing_date=last_closing_date,
+        is_trading_day=is_trading_day,
     ):
         due.append(RunTrigger.CLOSING)
     return tuple(due)

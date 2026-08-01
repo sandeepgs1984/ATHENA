@@ -131,18 +131,27 @@
         `;
     }
 
-    // IX-5: plain sign comparison of two already-real numbers — no magnitude
-    // threshold, no new numeric constant, never fabricated when either side
-    // is unavailable.
+    // IX-7: relative strength (stock's day change minus its index's day
+    // change) of two already-real numbers — replaces IX-5's original bare
+    // same/opposite-day sign compare with a magnitude reading, using data
+    // this function already had (no new fetch, no new DTO field). Bands are
+    // round, fixed percentage-point thresholds so the reasoning is directly
+    // inspectable; never a fabricated value when either side is unavailable.
     function indexBackdropAlignment(stockChangePct, indexChangePct) {
         if (!Number.isFinite(stockChangePct) || !Number.isFinite(indexChangePct)) return null;
-        if (stockChangePct === 0 || indexChangePct === 0) {
-            return { label: "Flat move", tone: "neutral" };
+        const relativeStrength = stockChangePct - indexChangePct;
+        const magnitude = Math.abs(relativeStrength);
+        if (magnitude < 0.5) {
+            return { label: "In line with its index", tone: "neutral" };
         }
-        const sameDirection = (stockChangePct > 0) === (indexChangePct > 0);
-        return sameDirection
-            ? { label: "With index", tone: "good" }
-            : { label: "Against index", tone: "warn" };
+        if (relativeStrength > 0) {
+            return magnitude >= 1.5
+                ? { label: "Strongly outperforming its index", tone: "good" }
+                : { label: "Outperforming its index", tone: "good" };
+        }
+        return magnitude >= 1.5
+            ? { label: "Strongly lagging its index", tone: "warn" }
+            : { label: "Lagging its index", tone: "warn" };
     }
 
     function renderIndexBackdrop(data, options = {}) {

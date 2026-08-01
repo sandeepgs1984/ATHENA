@@ -6,6 +6,52 @@ status updated on approval.
 
 ---
 
+## Fix pass: host scheduler ran REFRESH/CLOSING on weekends/holidays (ready for review)
+
+| | |
+|---|---|
+| Completed | 2026-08-01 |
+| Objective | Owner reported every pipeline run failing all day; investigation traced it to the host cron firing REFRESH/CLOSING cycles on a non-trading day (Saturday), each one destined to fail an ingestion freshness check that has no way to pass when the exchange isn't open |
+| Scope | Confirmed root cause against the live database: all 24 of today's runs failed with `FRESHNESS: quotes are N min behind as_of`, N growing linearly with wall-clock time — Kite's quotes were correctly frozen at Friday's close. Traced this to `is_premarket_due()`/`is_refresh_due()`/`is_closing_due()` (`src/athena/scheduling/cadence.py`) only checking wall-clock time-of-day, never whether the day itself was a trading day, and `HostDueRunner` (`src/athena/ops/scheduled_run.py`) never consulting `CalendarEngine` — the codebase's own designated "sole trading-day/session authority" — before evaluating due triggers. Added an additive `is_trading_day: bool = True` parameter to all four cadence functions (default preserves every existing caller's exact behavior) and wired `HostDueRunner` + the `athena due` CLI diagnostic to resolve it via an optional, injectable `CalendarEngine`/`config_dir` (matching the existing `pipeline` injection pattern), suppressing all three trigger types on `WEEKEND`/`HOLIDAY` |
+| Files created | None |
+| Files modified | `src/athena/scheduling/cadence.py`, `src/athena/ops/scheduled_run.py`, `src/athena/cli.py`, `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md`, `tests/runtime/test_dry_run_schedule.py`, `tests/ops/test_host_ops.py` |
+| Public APIs added | None — additive optional parameters only (`is_trading_day` on 4 cadence functions, `calendar`/`config_dir` on `HostDueRunner.__init__`), no signature became required, no existing call site needed updating |
+| Tests | Full suite — 1,160 passed (8 new: 5 cadence-level testing `is_trading_day=False` suppression on all 4 functions plus a default-`True` backward-compat case; 3 `HostDueRunner`-level testing weekend suppression, normal-day pass-through, and the no-calendar-wired backward-compat path). Ruff clean on every touched file |
+| Coverage | Verified two ways: unit tests isolate the boolean-suppression logic synthetically; separately ran the real `athena due` CLI command against today's actual date with no mocking (`PYTHONPATH=src python3 -c "...main()..."`) — correctly printed `session: WEEKEND`, `due: (none)`, confirming the fix engages against the real calendar config and real wall clock, not just a test double |
+| Architecture compliance | Scheduling/ops bug fix only — wires an already-existing, already-approved calendar authority (`CalendarEngine`, ADR-002/R-3) into a caller that should have consulted it but didn't. No scoring, domain, decision-policy, or frozen-contract change |
+| ADR compliance | Not required — no frozen contract changed; `CalendarEngine` itself is untouched, only referenced from a new call site |
+| Risks discovered | This was also the underlying cause of the earlier "Showing 0" Validation Workbench bug fixed this session — a losing streak of failed weekend/holiday runs pushes the last real successful run outside the frontend's recent-runs window. That earlier fix (raising `page_size` to 100) remains a good defense-in-depth measure independent of this one |
+| Technical debt introduced | None |
+| Suggested improvements | None identified — the fix is narrowly scoped to the confirmed root cause |
+| Remaining work | Owner confirmation that the host cron behaves correctly through the next weekend/holiday in practice |
+| Status | 🔄 Ready for owner review |
+| Branch | feature/live-dashboard |
+
+---
+
+## IX-7 + IX-8 — Index intelligence Tier-1 polish (approved)
+
+| | |
+|---|---|
+| Completed | 2026-08-01 |
+| Objective | Owner asked how to use ATHENA's index data for better intraday picks. Before proposing anything, audited what actually influences a Decision today (regime, market health) vs. what's presentation-only or fully inert (sector health, the whole IX track) — see `docs/design/ATHENA-INDEX-SECTOR-INTELLIGENCE-ROADMAP.md` §6 for the full audit and tiered roadmap. This entry covers Tier 1: two small, safe enhancements that reuse data already fetched/computed today, with zero backend change and zero scoring/ADR involvement |
+| Scope | **IX-7:** replaced IX-5's bare same/opposite-day sign comparison (`indexBackdropAlignment()`) with a magnitude-based relative-strength reading (`stockChangePct − indexChangePct`), banded into 5 tiers (strongly outperforming / outperforming / in line / lagging / strongly lagging its index) at round 0.5pp/1.5pp thresholds. **IX-8:** extended the Index Leadership card's leader/laggard summary (`renderIndexLeadership()`) to show a compact decision-breadth chip ("12 Trade · 34 Watch") next to the sector's price move, via a new `indexLeadershipBreadthChip()` helper, shown only when `breadth_status === "AVAILABLE"` (omitted, not faked, otherwise). Both reuse fields already present in data these functions already receive — no new fetch, no new endpoint, no new DTO field, for either one |
+| Files created | None |
+| Files modified | `docs/design/ATHENA-INDEX-SECTOR-INTELLIGENCE-ROADMAP.md`, `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md`, `src/athena/api/static/index.html`, `src/athena/api/static/js/09-market-intelligence.js`, `src/athena/api/static/js/15-decision-brief-context.js`, `src/athena/api/static/css/06-market-intelligence.css`, `tests/api/platform/test_dashboard_hosting.py`, `tests/api/platform/test_decision_chart_release_gate.py` |
+| Public APIs added | None — both are pure frontend rendering changes over already-fetched payloads |
+| Tests | Full suite — 1,152 passed. New assertions lock the exact relative-strength formula and all 5 tier labels (IX-7), and `indexLeadershipBreadthChip()`'s `breadth_status !== "AVAILABLE"` guard plus both call sites (IX-8) |
+| Coverage | Verified both functions directly (extracted from the live-served `dashboard.js`, run under Node) against boundary cases: strongly-outperforming/outperforming/in-line/lagging/strongly-lagging inputs and the NaN-input → `null` case for IX-7; AVAILABLE → rendered chip, INCOMPLETE_DECISIONS → empty string, `null` constituents → empty string for IX-8 |
+| Architecture compliance | Presentation-only. No provider, broker, order, scoring, confidence, risk, decision-policy, TradePlan, schema, or frozen domain contract change. Zero new backend code |
+| ADR compliance | ADR-004 preserved (static HTML/CSS/vanilla JS). ADR-005 preserved — both compute directly from already-real, already-fetched numbers; no fabricated value, no estimate, and both explicitly propagate "unavailable" rather than guessing |
+| Risks discovered | None. The design doc's own audit found the real leverage point here is Tier 2 (`SD-2` — ingesting sector index history to unblock Sector Health), which is explicitly the owner's decision, not implemented in this entry |
+| Technical debt introduced | None |
+| Suggested improvements | Revisit `SD-2` now that IX-1's tracked-index infrastructure exists — likely materially less work than when it was first raised, and it is the highest-leverage lever on the tiered roadmap (unlocks the already-built, already-tested Sector Health engine and its weight-15 `sector_quality` scoring component) |
+| Remaining work | None — approved 2026-08-01 |
+| Status | ✅ Approved by owner on 2026-08-01 |
+| Branch | feature/live-dashboard |
+
+---
+
 ## Fix pass: Workbench Results data + popover fixes, third round (ready for review)
 
 | | |

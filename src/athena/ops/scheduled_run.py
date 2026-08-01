@@ -10,16 +10,22 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from athena.calendar.engine import CalendarEngine
 from athena.config.models import AthenaConfig, HostOpsConfig, NotificationsConfig, SchedulingConfig
 from athena.data.ingestion.engine import LiveIngestionEngine
 from athena.data.store.repository import SqliteRepository
-from athena.domain.enums import RunTrigger
+from athena.domain.enums import RunTrigger, SessionType
 from athena.errors import AthenaError
 from athena.notifications import BriefingDispatcher
 from athena.notifications.decision_source import SqliteDecisionSummarySource
 from athena.ops.failure_alerts import FailureAlertDispatcher
 from athena.scheduling import DryRunCycleOrchestrator, due_triggers
 from athena.scheduling.dry_run import DryRunCycleResult, DryRunPipeline
+
+# Session types where the exchange genuinely isn't open — no live quote can
+# ever be "fresh" on these days, so no PREMARKET/REFRESH/CLOSING trigger
+# should ever fire regardless of configured session hours.
+_NON_TRADING_SESSION_TYPES = frozenset({SessionType.WEEKEND, SessionType.HOLIDAY})
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +55,8 @@ class HostDueRunner:
         strategy_profile: str,
         alert_dispatcher: FailureAlertDispatcher | None = None,
         pipeline: DryRunPipeline | None = None,
+        calendar: CalendarEngine | None = None,
+        config_dir: Path | None = None,
     ) -> None:
         self._cfg = cfg
         self._sched = sched
@@ -60,11 +68,33 @@ class HostDueRunner:
         self._tzinfo = tzinfo
         self._strategy_profile = strategy_profile
         self._pipeline = pipeline
+        # Owner-reported (2026-08-01): both optional and independently
+        # injectable (matching `pipeline` above) so every existing caller
+        # that passes neither keeps running exactly as before — this is an
+        # opt-in fix, not a behavior change for anyone who hasn't wired the
+        # calendar through yet. Pass `calendar` directly (e.g. from a test)
+        # or `config_dir` to build one from `cfg.market` at call time.
+        self._calendar = calendar
+        self._config_dir = config_dir
         self._alerts = alert_dispatcher or FailureAlertDispatcher(
             host_ops.failure_alerts,
             repo_root=self._repo_root,
             tzinfo=tzinfo,
         )
+
+    def _is_trading_day(self, as_of: datetime) -> bool:
+        """True unless the calendar authority says today is a weekend/holiday.
+
+        No calendar wired in (neither `calendar` nor `config_dir` given) —
+        preserve the pre-fix behavior exactly rather than guessing.
+        """
+        calendar = self._calendar
+        if calendar is None:
+            if self._config_dir is None:
+                return True
+            calendar = CalendarEngine.from_config_dir(self._config_dir, self._cfg.market)
+        context = calendar.context_for(as_of.date())
+        return context.session_type not in _NON_TRADING_SESSION_TYPES
 
     def run(self, *, as_of: datetime, send_brief: bool | None = None, alert: bool = True) -> HostDueRunResult:
         if as_of.tzinfo is None:
@@ -91,6 +121,7 @@ class HostDueRunner:
             last_premarket_date=last_premarket_date,
             last_refresh_ts=last_refresh_ts,
             last_closing_date=last_closing_date,
+            is_trading_day=self._is_trading_day(as_of),
         )
 
         do_brief = self._host_ops.brief_after_cycles if send_brief is None else send_brief

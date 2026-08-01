@@ -167,6 +167,15 @@
     font-weight: 700;
 }
 
+/* IX-8: ATHENA's own decision breadth for the leading/lagging sector,
+   alongside its price move — omitted entirely (no empty grid row) when
+   breadth is unavailable, since indexLeadershipBreadthChip() returns "". */
+.index-sector-breadth {
+    grid-column: 1 / -1;
+    color: var(--text-muted);
+    font-size: var(--text-0-68);
+}
+
 .index-leadership-open {
     white-space: nowrap;
 }

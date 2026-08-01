@@ -877,6 +877,20 @@
         `;
     }
 
+    // IX-8: the leader/laggard summary already renders each item's own
+    // change_pct; this surfaces ATHENA's already-computed decision breadth
+    // for that same sector alongside it (item.constituents is already part
+    // of the same /market/index-intelligence payload — no new fetch, no new
+    // endpoint). Omitted (not a fabricated "unavailable" chip) unless the
+    // breadth is actually AVAILABLE, matching indexConstituentContextMarkup's
+    // own AVAILABLE-only guard.
+    function indexLeadershipBreadthChip(constituents) {
+        if (!constituents || constituents.breadth_status !== "AVAILABLE") return "";
+        const trade = Number(constituents.trade_count) || 0;
+        const watch = Number(constituents.watch_count) || 0;
+        return `<small class="index-sector-breadth">${trade} Trade · ${watch} Watch</small>`;
+    }
+
     function indexObservationMarkup(item, compact = false) {
         const change = indexChangeLabel(item && item.change_pct);
         const tone = indexChangeTone(item && item.change_pct);
@@ -937,11 +951,13 @@
                         <span>Leading sector</span>
                         <strong>${escapeDecisionHtml(leader.label)}</strong>
                         <em class="${indexChangeTone(leader.change_pct)}">${escapeDecisionHtml(indexChangeLabel(leader.change_pct))}</em>
+                        ${indexLeadershipBreadthChip(leader.constituents)}
                     </div>
                     <div class="index-sector-extreme">
                         <span>Lagging sector</span>
                         <strong>${escapeDecisionHtml(laggard.label)}</strong>
                         <em class="${indexChangeTone(laggard.change_pct)}">${escapeDecisionHtml(indexChangeLabel(laggard.change_pct))}</em>
+                        ${indexLeadershipBreadthChip(laggard.constituents)}
                     </div>
                 `;
             } else if (leader) {
@@ -950,6 +966,7 @@
                         <span>Sector observed</span>
                         <strong>${escapeDecisionHtml(leader.label)}</strong>
                         <em class="${indexChangeTone(leader.change_pct)}">${escapeDecisionHtml(indexChangeLabel(leader.change_pct))}</em>
+                        ${indexLeadershipBreadthChip(leader.constituents)}
                     </div>
                 `;
             } else {

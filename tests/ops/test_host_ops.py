@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from athena.config.models import FailureAlertsConfig, HostOpsConfig
-from athena.domain.enums import RunStatus, RunTrigger
+from athena.domain.enums import RunStatus, RunTrigger, SessionType
 from athena.domain.run import RunRecord
 from athena.errors import AthenaError
 from athena.ops.failure_alerts import FailureAlertDispatcher, resolve_alert_webhook_url
@@ -133,6 +133,110 @@ def test_host_due_runner_idle_no_alert():
         result = runner.run(as_of=as_of, alert=True)
     assert result.idle is True
     assert result.cycles == ()
+
+
+# Owner-reported (2026-08-01): on a weekend/holiday, Kite's quotes are
+# legitimately frozen at the last real session's close, so the host's
+# ~15-minute cron kept firing REFRESH/CLOSING cycles all day — every one
+# failed the ingestion freshness check, since due_triggers() only ever
+# checked wall-clock time-of-day, never whether the exchange was open at
+# all that day. HostDueRunner now resolves is_trading_day via an
+# injectable CalendarEngine before calling due_triggers().
+def _cfg_and_sched_for_due_at_daytime():
+    cfg = MagicMock()
+    cfg.market.sessions.open = __import__("datetime").time(9, 15)
+    cfg.market.sessions.close = __import__("datetime").time(15, 30)
+    cfg.base.refresh_interval_minutes = 15
+    sched = MagicMock()
+    sched.premarket.enabled = True
+    sched.premarket.run_at = __import__("datetime").time(8, 15)
+    sched.refresh.enabled = True
+    sched.refresh.interval_minutes = 15
+    return cfg, sched
+
+
+def test_host_due_runner_suppresses_cycles_on_weekend():
+    repo = MagicMock()
+    repo.latest_run.return_value = None
+    cfg, sched = _cfg_and_sched_for_due_at_daytime()
+    calendar = MagicMock()
+    calendar.context_for.return_value.session_type = SessionType.WEEKEND
+
+    # Midday on a Saturday — would fire REFRESH if only time-of-day mattered.
+    as_of = datetime(2026, 8, 1, 12, 0, tzinfo=IST)
+    runner = HostDueRunner(
+        cfg=cfg,
+        sched=sched,
+        host_ops=HostOpsConfig(brief_when_idle=False),
+        notify_cfg=MagicMock(),
+        repo=repo,
+        ingest_engine=MagicMock(),
+        repo_root=Path("/tmp"),
+        tzinfo=IST,
+        strategy_profile="p",
+        alert_dispatcher=MagicMock(),
+        calendar=calendar,
+    )
+    with patch("athena.ops.scheduled_run.due_triggers") as mock_due:
+        mock_due.return_value = ()
+        result = runner.run(as_of=as_of, alert=True)
+        assert mock_due.call_args.kwargs["is_trading_day"] is False
+    calendar.context_for.assert_called_once_with(as_of.date())
+    assert result.idle is True
+    assert result.cycles == ()
+
+
+def test_host_due_runner_allows_cycles_on_normal_trading_day():
+    repo = MagicMock()
+    repo.latest_run.return_value = None
+    cfg, sched = _cfg_and_sched_for_due_at_daytime()
+    calendar = MagicMock()
+    calendar.context_for.return_value.session_type = SessionType.NORMAL
+
+    as_of = datetime(2026, 7, 31, 12, 0, tzinfo=IST)  # a Friday
+    runner = HostDueRunner(
+        cfg=cfg,
+        sched=sched,
+        host_ops=HostOpsConfig(brief_when_idle=False),
+        notify_cfg=MagicMock(),
+        repo=repo,
+        ingest_engine=MagicMock(),
+        repo_root=Path("/tmp"),
+        tzinfo=IST,
+        strategy_profile="p",
+        alert_dispatcher=MagicMock(),
+        calendar=calendar,
+    )
+    with patch("athena.ops.scheduled_run.due_triggers") as mock_due:
+        mock_due.return_value = ()
+        runner.run(as_of=as_of, alert=True)
+        assert mock_due.call_args.kwargs["is_trading_day"] is True
+
+
+def test_host_due_runner_defaults_to_trading_day_true_without_calendar():
+    """No `calendar`/`config_dir` wired in — every existing caller must see
+    exactly its pre-fix behavior, not a new failure mode."""
+    repo = MagicMock()
+    repo.latest_run.return_value = None
+    cfg, sched = _cfg_and_sched_for_due_at_daytime()
+
+    as_of = datetime(2026, 8, 1, 12, 0, tzinfo=IST)  # a Saturday
+    runner = HostDueRunner(
+        cfg=cfg,
+        sched=sched,
+        host_ops=HostOpsConfig(brief_when_idle=False),
+        notify_cfg=MagicMock(),
+        repo=repo,
+        ingest_engine=MagicMock(),
+        repo_root=Path("/tmp"),
+        tzinfo=IST,
+        strategy_profile="p",
+        alert_dispatcher=MagicMock(),
+    )
+    with patch("athena.ops.scheduled_run.due_triggers") as mock_due:
+        mock_due.return_value = ()
+        runner.run(as_of=as_of, alert=True)
+        assert mock_due.call_args.kwargs["is_trading_day"] is True
 
 
 def test_host_due_runner_alerts_on_cycle_failure(tmp_path: Path):

@@ -30,7 +30,7 @@ from athena.data.providers import build_market_data_provider
 from athena.data.store import SqliteRepository
 from athena.data.validation import QuarantineRegistry
 from athena.diagnostics import PlaybookDiagnosticsService
-from athena.domain.enums import HealthStatus, RunTrigger
+from athena.domain.enums import HealthStatus, RunTrigger, SessionType
 from athena.errors import AthenaError
 from athena.notifications import BriefingDispatcher
 from athena.notifications.decision_source import SqliteDecisionSummarySource
@@ -280,6 +280,9 @@ def _cmd_due(args: argparse.Namespace) -> int:
         if closing is not None:
             last_closing_date = closing.started_ts.astimezone(tz).date()
 
+    calendar = CalendarEngine.from_config_dir(config_dir, cfg.market)
+    session_type = calendar.context_for(as_of.date()).session_type
+    is_trading_day = session_type not in (SessionType.WEEKEND, SessionType.HOLIDAY)
     due = due_triggers(
         as_of,
         sessions=cfg.market.sessions,
@@ -288,8 +291,10 @@ def _cmd_due(args: argparse.Namespace) -> int:
         last_premarket_date=last_premarket_date,
         last_refresh_ts=last_refresh_ts,
         last_closing_date=last_closing_date,
+        is_trading_day=is_trading_day,
     )
     print(f"as_of           : {as_of.isoformat()}")
+    print(f"session         : {session_type.value}")
     if due:
         print(f"due             : {', '.join(t.value for t in due)}")
     else:
@@ -455,6 +460,7 @@ def _execute_run_due(
             tzinfo=tz,
             strategy_profile=cfg.base.active_profile,
             pipeline=_owner_validation_pipeline(repo, config_dir),
+            config_dir=config_dir,
         )
         return runner.run(
             as_of=as_of,

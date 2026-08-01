@@ -142,6 +142,56 @@ class TestCadence:
         )
         assert due == (RunTrigger.CLOSING,)
 
+    # Owner-reported (2026-08-01): on a weekend/holiday, Kite's quotes are
+    # legitimately frozen at the last real session's close, so every
+    # REFRESH/CLOSING cycle failed the ingestion freshness check all day —
+    # these functions only ever checked wall-clock time-of-day, never
+    # whether the exchange was open at all that day. Each `as_of` below
+    # falls squarely inside a window that would otherwise fire (matching
+    # the corresponding "due" test above); `is_trading_day=False` must
+    # suppress it regardless.
+    def test_premarket_not_due_when_not_trading_day(self):
+        as_of = datetime(2026, 2, 13, 8, 20, tzinfo=IST)
+        assert not is_premarket_due(
+            as_of, sessions=SESSIONS, config=_sched(), last_premarket_date=None,
+            is_trading_day=False,
+        )
+
+    def test_refresh_not_due_when_not_trading_day(self):
+        as_of = datetime(2026, 2, 13, 10, 0, tzinfo=IST)
+        assert not is_refresh_due(
+            as_of, sessions=SESSIONS, config=_sched(),
+            base_interval_minutes=15, last_refresh_ts=None,
+            is_trading_day=False,
+        )
+
+    def test_closing_not_due_when_not_trading_day(self):
+        as_of = datetime(2026, 2, 13, 15, 50, tzinfo=IST)
+        assert not is_closing_due(
+            as_of, sessions=SESSIONS, config=_sched(), last_closing_date=None,
+            is_trading_day=False,
+        )
+
+    def test_due_triggers_empty_when_not_trading_day(self):
+        # Saturday, matching sessions/config that would otherwise fire
+        # PREMARKET (see test_due_triggers_order above).
+        as_of = datetime(2026, 2, 14, 8, 20, tzinfo=IST)
+        due = due_triggers(
+            as_of, sessions=SESSIONS, config=_sched(),
+            base_interval_minutes=15, is_trading_day=False,
+        )
+        assert due == ()
+
+    def test_due_triggers_default_is_trading_day_true(self):
+        # No existing caller passes is_trading_day; the default must
+        # reproduce every pre-fix result exactly.
+        as_of = datetime(2026, 2, 13, 8, 20, tzinfo=IST)
+        due = due_triggers(
+            as_of, sessions=SESSIONS, config=_sched(),
+            base_interval_minutes=15,
+        )
+        assert due == (RunTrigger.PREMARKET,)
+
 
 class TestSchedulingConfigLoad:
     def test_loads_extended_scheduling_config(self, config_dir):

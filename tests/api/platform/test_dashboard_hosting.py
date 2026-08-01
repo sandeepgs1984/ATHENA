@@ -232,8 +232,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.139.0" in html
-    assert "dashboard.js?v=9.139.0" in html
+    assert "dashboard.css?v=9.140.0" in html
+    assert "dashboard.js?v=9.140.0" in html
     assert 'id="advisor-pulse"' in html
     assert 'id="header-diagnostics-popover"' in html
     assert 'id="decision-actionability-banner"' in html
@@ -1397,6 +1397,19 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "Trade breadth" in js
     assert "Breadth unavailable" in js
     assert "Official membership" in js
+
+    # IX-8: leader/laggard summary shows ATHENA's own decision breadth for
+    # that sector alongside its price move — reuses item.constituents
+    # already present in the same /market/index-intelligence payload, no
+    # second fetch/endpoint, and omits the chip (not a fabricated
+    # "unavailable" line) unless breadth_status is actually AVAILABLE.
+    assert "function indexLeadershipBreadthChip" in js
+    breadth_chip_fn_start = js.find("function indexLeadershipBreadthChip")
+    breadth_chip_fn_body = js[breadth_chip_fn_start:breadth_chip_fn_start + 500]
+    assert 'constituents.breadth_status !== "AVAILABLE") return ""' in breadth_chip_fn_body
+    assert "indexLeadershipBreadthChip(leader.constituents)" in js
+    assert "indexLeadershipBreadthChip(laggard.constituents)" in js
+    assert ".index-sector-breadth" in css
     assert "Review affected symbols" in js
     assert ".index-membership" in css
     assert ".index-board-breadth" in css
@@ -1787,6 +1800,17 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "function renderIndexBackdrop" in js
     assert "async function loadIndexBackdrop" in js
     assert "function indexBackdropAlignment" in js
+    # IX-7: relative strength (stockChangePct - indexChangePct), not a bare
+    # same/opposite-day sign compare — reuses the same two already-fetched
+    # numbers, no new fetch/DTO field.
+    alignment_fn_start = js.find("function indexBackdropAlignment")
+    alignment_fn_body = js[alignment_fn_start:alignment_fn_start + 900]
+    assert "stockChangePct - indexChangePct" in alignment_fn_body
+    assert "Strongly outperforming its index" in alignment_fn_body
+    assert "Outperforming its index" in alignment_fn_body
+    assert "In line with its index" in alignment_fn_body
+    assert "Lagging its index" in alignment_fn_body
+    assert "Strongly lagging its index" in alignment_fn_body
     assert "loadIndexBackdrop(rawSymbol, meta.decision_id)" in js
     assert "/index-backdrop" in js
     backdrop_render_start = js.find("function renderIndexBackdrop")
