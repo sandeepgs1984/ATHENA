@@ -200,8 +200,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.127.0" in html
-    assert "dashboard.js?v=9.127.0" in html
+    assert "dashboard.css?v=9.128.0" in html
+    assert "dashboard.js?v=9.128.0" in html
     assert 'id="advisor-pulse"' in html
     assert 'id="header-diagnostics-popover"' in html
     assert 'id="decision-actionability-banner"' in html
@@ -1585,6 +1585,28 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "validateSymbolsNow" not in index_filter_fn_body
     assert ".universe-index-filter-note" in css
     assert ".universe-filter-select:disabled" in css
+
+    # IX-4b: Validation Workbench Results index filter — reuses IX-4a's exact
+    # membership endpoint/cache, never a second fetch or mapping.
+    results_toolbar = html[html.find('<div class="validation-results-toolbar"'):]
+    results_toolbar = results_toolbar[:results_toolbar.find("</div>", results_toolbar.rfind("</select>")) + 200]
+    assert 'id="validation-results-index-filter"' in results_toolbar
+    assert 'id="validation-results-index-filter-note"' in results_toolbar
+    assert (
+        results_toolbar.find('id="validation-results-plan-filter"')
+        < results_toolbar.find('id="validation-results-index-filter"')
+        < results_toolbar.find('id="validation-results-sort"')
+    )
+    assert "function populateValidationResultsIndexFilter" in js
+    assert "function applyValidationResultsIndexFilterSelection" in js
+    assert "function renderValidationResultsIndexFilterNote" in js
+    assert "async function fetchIndexMembers" in js
+    # Both surfaces share one fetch/cache — IX-4b must not re-implement it.
+    assert js.count("await apiRequest(\n            `/api/v1/market/index-intelligence/") == 1
+    assert 'document.getElementById("validation-results-index-filter"),' in js
+    results_filter_fn_start = js.find("async function applyValidationResultsIndexFilterSelection")
+    results_filter_fn_body = js[results_filter_fn_start:results_filter_fn_start + 2000]
+    assert "validateSymbolsNow" not in results_filter_fn_body
     assert "minmax(170px, 1.3fr)" in css
     assert ".market-universe-card > .candidate-card-header" in css
     assert "const candidateInput = candidateSearchInput;" in js

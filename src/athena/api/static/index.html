@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.127.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.128.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -1286,6 +1286,13 @@
                                 </select>
                             </label>
                             <label class="validation-results-control">
+                                <span>Index</span>
+                                <select id="validation-results-index-filter" class="validation-results-select" aria-label="Filter by index membership">
+                                    <option value="all">All indices</option>
+                                </select>
+                            </label>
+                            <span id="validation-results-index-filter-note" class="universe-index-filter-note" style="display:none;"></span>
+                            <label class="validation-results-control">
                                 <span>Sort</span>
                                 <select id="validation-results-sort" class="validation-results-select">
                                     <option value="score-desc">Score high to low</option>
@@ -1530,6 +1537,6 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.127.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.128.0"></script>
 </body>
 </html>

@@ -1,10 +1,28 @@
     const savedSymbolSet = new Set();
     const eligibilityDetailBySymbol = new Map();
-    // IX-4a: Universe index filter — catalog from the already-fetched
-    // index-intelligence payload, members lazily fetched/cached per key.
+    // IX-4a/IX-4b: shared index-filter catalog/cache — one fetch per index
+    // key, reused by both the Universe filter and the Workbench Results
+    // filter, never a second membership mapping.
     let universeIndexCatalog = [];
     const universeIndexMembersCache = new Map();
     let universeIndexMembersRequestToken = 0;
+
+    async function fetchIndexMembers(key) {
+        if (universeIndexMembersCache.has(key)) return universeIndexMembersCache.get(key);
+        const res = await apiRequest(
+            `/api/v1/market/index-intelligence/${encodeURIComponent(key)}/members`,
+            { skipToast: true },
+        );
+        const data = res && res.data ? res.data : null;
+        const members = data && Array.isArray(data.members) ? data.members : [];
+        const symbols = new Set(
+            members.filter(m => m.resolved).map(m => String(m.symbol).toUpperCase())
+        );
+        const unresolvedCount = members.filter(m => !m.resolved).length;
+        const cacheEntry = { symbols, unresolvedCount };
+        universeIndexMembersCache.set(key, cacheEntry);
+        return cacheEntry;
+    }
     let validateOverlayStartedAt = 0;
     let validateOverlayTimerId = null;
     let validationWorkbenchState = {
@@ -959,6 +977,7 @@
             if (payload && Array.isArray(payload.indices)) {
                 universeIndexCatalog = payload.indices.map(item => ({ key: item.key, label: item.label }));
                 populateUniverseIndexFilter();
+                populateValidationResultsIndexFilter();
             }
             renderIndexLeadership(
                 payload,
@@ -1956,6 +1975,7 @@
             query: String(document.getElementById("universe-search")?.value || "").trim().toUpperCase(),
             outcome: document.getElementById("validation-results-outcome-filter")?.value || "all",
             plan: document.getElementById("validation-results-plan-filter")?.value || "all",
+            index: document.getElementById("validation-results-index-filter")?.value || "all",
             sort: document.getElementById("validation-results-sort")?.value || "score-desc",
         };
     }
@@ -2013,6 +2033,11 @@
         }
         if (filters.outcome !== "all" && view.outcomeType !== filters.outcome) return false;
         if (filters.plan !== "all" && view.planType !== filters.plan) return false;
+        if (filters.index !== "all") {
+            if (!validationResultsIndexMemberSymbols || !validationResultsIndexMemberSymbols.has(view.symbol)) {
+                return false;
+            }
+        }
         return true;
     }
 
@@ -2056,6 +2081,7 @@
         const controls = [
             document.getElementById("validation-results-outcome-filter"),
             document.getElementById("validation-results-plan-filter"),
+            document.getElementById("validation-results-index-filter"),
             document.getElementById("validation-results-sort"),
             document.getElementById("validation-results-reset"),
         ];
@@ -2332,8 +2358,8 @@
             applyUniverseFilters();
             return;
         }
-        if (universeIndexMembersCache.has(key)) {
-            const cached = universeIndexMembersCache.get(key);
+        const cached = universeIndexMembersCache.get(key);
+        if (cached) {
             universeIndexFilterMemberSymbols = cached.symbols;
             renderUniverseIndexFilterNote(cached);
             applyUniverseFilters();
@@ -2346,21 +2372,10 @@
             noteEl.style.display = "inline";
         }
         try {
-            const res = await apiRequest(
-                `/api/v1/market/index-intelligence/${encodeURIComponent(key)}/members`,
-                { skipToast: true },
-            );
+            const entry = await fetchIndexMembers(key);
             if (requestToken !== universeIndexMembersRequestToken) return;
-            const data = res && res.data ? res.data : null;
-            const members = data && Array.isArray(data.members) ? data.members : [];
-            const symbols = new Set(
-                members.filter(m => m.resolved).map(m => String(m.symbol).toUpperCase())
-            );
-            const unresolvedCount = members.filter(m => !m.resolved).length;
-            const cacheEntry = { symbols, unresolvedCount };
-            universeIndexMembersCache.set(key, cacheEntry);
-            universeIndexFilterMemberSymbols = symbols;
-            renderUniverseIndexFilterNote(cacheEntry);
+            universeIndexFilterMemberSymbols = entry.symbols;
+            renderUniverseIndexFilterNote(entry);
         } catch (err) {
             console.error("Failed to load index members", err);
             if (requestToken !== universeIndexMembersRequestToken) return;
@@ -2373,6 +2388,72 @@
             if (requestToken === universeIndexMembersRequestToken) {
                 if (select) select.disabled = false;
                 applyUniverseFilters();
+            }
+        }
+    }
+
+    // IX-4b: Validation Workbench Results index filter — same catalog/cache
+    // as the Universe filter above, independent selection state per surface.
+    let validationResultsIndexFilterKey = "all";
+    let validationResultsIndexMemberSymbols = null;
+
+    function populateValidationResultsIndexFilter() {
+        const select = document.getElementById("validation-results-index-filter");
+        if (!select) return;
+        const current = select.value || "all";
+        select.innerHTML = '<option value="all">All indices</option>' +
+            universeIndexCatalog.map(item => `<option value="${item.key}">${item.label}</option>`).join("");
+        select.value = universeIndexCatalog.some(item => item.key === current) ? current : "all";
+    }
+
+    function renderValidationResultsIndexFilterNote(cacheEntry) {
+        const noteEl = document.getElementById("validation-results-index-filter-note");
+        if (!noteEl) return;
+        if (cacheEntry && cacheEntry.unresolvedCount > 0) {
+            noteEl.textContent = `${cacheEntry.unresolvedCount} unresolved symbol${cacheEntry.unresolvedCount === 1 ? "" : "s"} not shown`;
+            noteEl.style.display = "inline";
+        } else {
+            noteEl.textContent = "";
+            noteEl.style.display = "none";
+        }
+    }
+
+    async function applyValidationResultsIndexFilterSelection(key) {
+        validationResultsIndexFilterKey = key;
+        if (key === "all") {
+            validationResultsIndexMemberSymbols = null;
+            renderValidationResultsIndexFilterNote(null);
+            scheduleValidationResultsRender();
+            return;
+        }
+        const cached = universeIndexMembersCache.get(key);
+        if (cached) {
+            validationResultsIndexMemberSymbols = cached.symbols;
+            renderValidationResultsIndexFilterNote(cached);
+            scheduleValidationResultsRender();
+            return;
+        }
+        const requestToken = ++universeIndexMembersRequestToken;
+        setValidationResultsBusy(true);
+        try {
+            const entry = await fetchIndexMembers(key);
+            if (requestToken !== universeIndexMembersRequestToken) return;
+            validationResultsIndexMemberSymbols = entry.symbols;
+            renderValidationResultsIndexFilterNote(entry);
+        } catch (err) {
+            console.error("Failed to load index members", err);
+            if (requestToken !== universeIndexMembersRequestToken) return;
+            validationResultsIndexMemberSymbols = new Set();
+            const noteEl = document.getElementById("validation-results-index-filter-note");
+            if (noteEl) {
+                noteEl.textContent = "Index membership unavailable.";
+                noteEl.style.display = "inline";
+            }
+        } finally {
+            if (requestToken === universeIndexMembersRequestToken) {
+                // scheduleValidationResultsRender's own busy toggle re-enables
+                // this control once the debounced render completes.
+                scheduleValidationResultsRender();
             }
         }
     }
@@ -2639,6 +2720,7 @@
     const validationResultsSearch = document.getElementById("universe-search");
     const validationResultsOutcomeFilter = document.getElementById("validation-results-outcome-filter");
     const validationResultsPlanFilter = document.getElementById("validation-results-plan-filter");
+    const validationResultsIndexFilter = document.getElementById("validation-results-index-filter");
     const validationResultsSort = document.getElementById("validation-results-sort");
     const validationResultsReset = document.getElementById("validation-results-reset");
     if (validationResultsSearch) {
@@ -2647,11 +2729,20 @@
     [validationResultsOutcomeFilter, validationResultsPlanFilter, validationResultsSort].forEach(control => {
         if (control) control.addEventListener("change", scheduleValidationResultsRender);
     });
+    if (validationResultsIndexFilter) {
+        validationResultsIndexFilter.addEventListener("change", () => {
+            applyValidationResultsIndexFilterSelection(validationResultsIndexFilter.value || "all");
+        });
+    }
     if (validationResultsReset) {
         validationResultsReset.addEventListener("click", () => {
             if (validationResultsSearch) validationResultsSearch.value = "";
             if (validationResultsOutcomeFilter) validationResultsOutcomeFilter.value = "all";
             if (validationResultsPlanFilter) validationResultsPlanFilter.value = "all";
+            if (validationResultsIndexFilter) validationResultsIndexFilter.value = "all";
+            validationResultsIndexFilterKey = "all";
+            validationResultsIndexMemberSymbols = null;
+            renderValidationResultsIndexFilterNote(null);
             if (validationResultsSort) validationResultsSort.value = "score-desc";
             scheduleValidationResultsRender();
         });

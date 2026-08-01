@@ -6,7 +6,30 @@ status updated on approval.
 
 ---
 
-## IX-4a — Index members endpoint + Universe filter (ready for review)
+## IX-4b — Validation Workbench Results index filter (ready for review)
+
+| | |
+|---|---|
+| Completed | 2026-08-01 |
+| Objective | Let the owner filter the Validation Pipeline Workbench's Results list by official index membership, reusing IX-4a's exact endpoint/cache rather than a second fetch or mapping |
+| Scope | Owner approved IX-4a and authorized IX-4b on 2026-08-01. Extracted a shared `fetchIndexMembers(key)` helper so the Universe filter (IX-4a) and the new Workbench Results index filter draw from one fetch/cache; added an "Index" filter control to the Results toolbar (between Plan and Sort) with an unresolved-symbol-count note; wired `filters.index` into `validationWorkbenchFilters()`/`validationResultMatchesFilters()`; the new control participates in the existing `setValidationResultsBusy()` progress-feedback/disable mechanism and the existing Reset control |
+| Files created | None |
+| Files modified | `docs/MILESTONES.md`, `docs/ATHENA-IX-HANDOFF.md`, `IMPLEMENTATION_SUMMARY.md`, `src/athena/api/static/index.html`, `src/athena/api/static/js/09-market-intelligence.js`, `tests/api/platform/test_dashboard_hosting.py`, `tests/api/platform/test_decision_chart_release_gate.py` |
+| Public APIs added | None (reuses IX-4a's `GET /api/v1/market/index-intelligence/{index_key}/members`) |
+| Tests | Full suite — 1,147 passed; Ruff clean (same 7 pre-existing `test_dashboard_hosting.py` findings as IX-4a, unrelated); no backend Python changed so no MyPy-relevant surface |
+| Coverage | Dashboard tests lock toolbar ordering (Plan < Index < Sort), function presence, that both surfaces share one `fetchIndexMembers` implementation (only one endpoint-template occurrence in the served JS), and that the filter path never calls validation |
+| Architecture compliance | Frontend-only change over the existing IX-4a endpoint. No broker write action, no order placement, no scoring/confidence/risk/decision change, no TradePlan value change, no backend/DTO/endpoint change. Filtering never calls validation or mutates a result |
+| ADR compliance | ADR-005 preserved: unresolved symbols stay visible via the same unresolved-count note pattern as IX-4a. ADR-004 preserved through the existing static HTML/CSS/vanilla-JS dashboard |
+| Risks discovered | None new |
+| Technical debt introduced | None |
+| Suggested improvements | IX-4c should reuse the same `fetchIndexMembers`/cache for its Decisions filter and selected-index view |
+| Remaining work | IX-4c (Decisions index filter + selected-index Trade/Watch/No-trade view + strict symbol handoff) remains separately gated; live interaction with real membership data could not be fully exercised without owner credentials (same limitation IX-3/IX-4a recorded) |
+| Status | 🔄 Ready for owner review |
+| Branch | feature/live-dashboard |
+
+---
+
+## IX-4a — Index members endpoint + Universe filter (approved)
 
 | | |
 |---|---|
@@ -24,7 +47,7 @@ status updated on approval.
 | Technical debt introduced | None |
 | Suggested improvements | IX-4b/IX-4c should reuse the same new endpoint and client-side caching pattern rather than re-fetching membership per surface |
 | Remaining work | IX-4b (Validation Workbench Results index filter) and IX-4c (Decisions index filter + selected-index view) remain separately gated; IX-4a live interaction with real membership data could not be fully exercised without owner credentials (same limitation IX-3 recorded) — an authenticated pass can be repeated when that session is available |
-| Status | 🔄 Ready for owner review |
+| Status | ✅ Approved by owner on 2026-08-01, committed as `3d19596` |
 | Branch | feature/live-dashboard |
 
 ---

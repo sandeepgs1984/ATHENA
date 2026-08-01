@@ -696,8 +696,8 @@ ADR authorize analytical use. It does not silently resolve SD-2, activate
 | **IX-1** Tracked-Index Data Foundation | Separate quote-only snapshot coverage from benchmark history ingestion; add validated index catalog and read-only API | Owner review; no scoring/domain/protocol change | ✅ Approved |
 | **IX-2** Index Leadership Surface | Compact, session-aware broad-market and sector leadership view in Market Intelligence | Owner review and visual QA | ✅ Approved |
 | **IX-3** Versioned Constituents and Index Breadth | Official provenance-tagged memberships, resolution audit, breadth/current-board counts | Data review; no inferred membership | ✅ Approved |
-| **IX-4a** Index members endpoint + Universe filter | New read-only per-symbol index membership endpoint (reusing IX-3's exact resolution); Universe tab index filter | Owner review; no inferred mapping, no scoring/domain change | 🔄 Ready for review |
-| **IX-4b** Validation Workbench Results index filter | Index filter on the Workbench Results list, same membership data as IX-4a | Owner review; presentation-only | ⏳ Planned |
+| **IX-4a** Index members endpoint + Universe filter | New read-only per-symbol index membership endpoint (reusing IX-3's exact resolution); Universe tab index filter | Owner review; no inferred mapping, no scoring/domain change | ✅ Approved |
+| **IX-4b** Validation Workbench Results index filter | Index filter on the Workbench Results list, same membership data as IX-4a | Owner review; presentation-only | 🔄 Ready for review |
 | **IX-4c** Decisions index filter + selected-index view | Decisions index filter, selected-index Trade/Watch/No-trade view, ranking reuse, strict symbol handoff | Owner review; current-plan safety rules | ⏳ Planned |
 | **IX-5** Symbol Index Backdrop | Plain-language index alignment/divergence context in Decision Brief | Owner review; informational only | ⏳ Planned |
 | **IX-6** Evidence Review and Scoring Decision | Replay impact study and ADR proposal for any analytical influence | ADR + owner approval before code | ⏳ Planned |
@@ -868,7 +868,7 @@ Owner approval: IX-3 was approved on 2026-07-31. The IX track is paused at the
 owner's direction; IX-4 remains planned and must not begin until the owner
 explicitly resumes and authorizes it.
 
-#### IX-4a — index members endpoint + Universe filter (ready for review, 2026-08-01)
+#### IX-4a — index members endpoint + Universe filter (approved, 2026-08-01)
 
 Owner resume/authorization: the owner explicitly resumed and authorized IX-4
 on 2026-08-01. IX-4's combined scope was judged too large for one review
@@ -916,6 +916,50 @@ path correctly shows "Index membership unavailable." while re-enabling the
 control rather than leaving it stuck disabled. Full authenticated interaction
 with real membership data was not possible without owner credentials, same
 limitation IX-3 recorded.
+
+Owner approval: IX-4a was approved on 2026-08-01, committed as `3d19596`.
+
+#### IX-4b — validation workbench results index filter (ready for review, 2026-08-01)
+
+Owner authorization: the owner approved IX-4a and authorized starting IX-4b
+on 2026-08-01.
+
+Design: the Validation Pipeline Workbench's Results section
+(`validationWorkbenchFilters()`, `validationResultRowView()`,
+`compareValidationResultViews()`, `validationResultMatchesFilters()`,
+`setValidationResultsBusy()` in `09-market-intelligence.js`) already reads
+query/outcome/plan/sort filters and computes score/plan-freshness/outcome per
+row — exactly the existing-fields ranking IX-4 requires. IX-4b adds one more
+filter control of the same shape, reusing IX-4a's endpoint and client-side
+membership cache rather than a second fetch/mapping.
+
+Scope completed: extracted a shared `fetchIndexMembers(key)` helper so the
+Universe filter (IX-4a) and this new Workbench Results index filter draw from
+exactly one fetch/cache — never a second membership mapping. Added an "Index"
+filter control to the Results toolbar (between Plan and Sort), a
+`validation-results-index-filter-note` for unresolved-symbol counts, and
+`filters.index` support in `validationWorkbenchFilters()`/
+`validationResultMatchesFilters()` matching on the same bare-uppercase symbol
+shape the Results rows already use. The new control participates in the
+existing `setValidationResultsBusy()` disable/progress-feedback mechanism and
+the existing Reset control, rather than introducing a second one.
+
+Architectural note: IX-4b is frontend-only — no backend, DTO, or endpoint
+changes (IX-4a's endpoint is reused as-is). It adds no broker write action,
+no order placement, no scoring/confidence/risk/decision change, no TradePlan
+value change. Filtering is presentation-only; selecting an index never calls
+validation or mutates a result.
+
+Validation note: full suite 1,147 passed; Ruff clean (same 7 pre-existing
+`test_dashboard_hosting.py` findings, unrelated, confirmed via prior
+IX-4a diff comparison — nothing new). No backend Python changed, so no
+server restart was needed; confirmed the running server already served the
+bumped cache-buster directly from disk. Live-verified in-browser (DOM-bypass,
+same limitation as IX-3/IX-4a — no owner credentials available): opened the
+Validation Pipeline Workbench, switched to the Results tab, confirmed the
+Index filter renders between Plan and Sort with no clipping, and confirmed
+selecting an index issues the identical IX-4a endpoint call and shows "Index
+membership unavailable." on the expected 401 in this environment.
 
 ---
 
