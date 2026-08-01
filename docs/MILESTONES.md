@@ -697,8 +697,8 @@ ADR authorize analytical use. It does not silently resolve SD-2, activate
 | **IX-2** Index Leadership Surface | Compact, session-aware broad-market and sector leadership view in Market Intelligence | Owner review and visual QA | ✅ Approved |
 | **IX-3** Versioned Constituents and Index Breadth | Official provenance-tagged memberships, resolution audit, breadth/current-board counts | Data review; no inferred membership | ✅ Approved |
 | **IX-4a** Index members endpoint + Universe filter | New read-only per-symbol index membership endpoint (reusing IX-3's exact resolution); Universe tab index filter | Owner review; no inferred mapping, no scoring/domain change | ✅ Approved |
-| **IX-4b** Validation Workbench Results index filter | Index filter on the Workbench Results list, same membership data as IX-4a | Owner review; presentation-only | 🔄 Ready for review |
-| **IX-4c** Decisions index filter + selected-index view | Decisions index filter, selected-index Trade/Watch/No-trade view, ranking reuse, strict symbol handoff | Owner review; current-plan safety rules | ⏳ Planned |
+| **IX-4b** Validation Workbench Results index filter | Index filter on the Workbench Results list, same membership data as IX-4a | Owner review; presentation-only | ✅ Approved |
+| **IX-4c** Decisions index filter + selected-index view | Decisions index filter, selected-index Trade/Watch/No-trade view, ranking reuse, strict symbol handoff | Owner review; current-plan safety rules | 🔄 Ready for review |
 | **IX-5** Symbol Index Backdrop | Plain-language index alignment/divergence context in Decision Brief | Owner review; informational only | ⏳ Planned |
 | **IX-6** Evidence Review and Scoring Decision | Replay impact study and ADR proposal for any analytical influence | ADR + owner approval before code | ⏳ Planned |
 
@@ -919,7 +919,7 @@ limitation IX-3 recorded.
 
 Owner approval: IX-4a was approved on 2026-08-01, committed as `3d19596`.
 
-#### IX-4b — validation workbench results index filter (ready for review, 2026-08-01)
+#### IX-4b — validation workbench results index filter (approved, 2026-08-01)
 
 Owner authorization: the owner approved IX-4a and authorized starting IX-4b
 on 2026-08-01.
@@ -960,6 +960,77 @@ Validation Pipeline Workbench, switched to the Results tab, confirmed the
 Index filter renders between Plan and Sort with no clipping, and confirmed
 selecting an index issues the identical IX-4a endpoint call and shows "Index
 membership unavailable." on the expected 401 in this environment.
+
+Owner approval: IX-4b was approved on 2026-08-01, committed as `d407260`.
+
+#### IX-4c — Decisions index filter + selected-index view (ready for review, 2026-08-01)
+
+Owner authorization: the owner approved IX-4b and authorized starting IX-4c
+on 2026-08-01.
+
+Design finding: `applyDecisionsView()` (`12-decisions-list.js`) already
+filters `traceDecisionsList` down to `rows` by stance/type/query, sorts by
+existing fields, and passes that same `rows` array to BOTH
+`renderDecisionCarousels(rows)` (which already sections by TRADE/WATCH/
+NO_TRADE and renders the summary strip) AND `topCurrentSetups(rows)` (TP-3's
+existing score/confidence/risk/return/freshness ranking, reused verbatim).
+This means IX-4c's "selected-index view of current Trade/Watch/No-trade" and
+"rank only with existing fields" requirements are already satisfied by the
+current architecture — adding one more membership predicate to `rows` (same
+shape as the existing stance/type predicates) automatically scopes both the
+carousels and the Top Current Setups queue to the selected index, with no new
+view component or ranking algorithm needed. "Strict symbol handoff" is
+likewise unchanged code (`preferInstrumentId`/`strictPreferInstrumentId`
+already operate over whatever `rows` currently contains) — filtering by index
+narrows `rows` the same way stance/type filters already do, so the handoff
+mechanism itself needs no changes.
+
+Scope: add a "Index" filter control to the Decisions filter popover (between
+Type and Sort), reusing the exact same `fetchIndexMembers(key)` shared
+cache/fetch introduced in IX-4b (no third membership mapping). The dashboard
+JS files concatenate into one shared scope (confirmed: `12-decisions-list.js`
+already calls `decisionScoreValue()` from `07-decision-format.js` verbatim),
+so `09-market-intelligence.js`'s `fetchIndexMembers`/`universeIndexCatalog`
+are directly reusable here without duplication.
+
+Scope completed: added the "Index" filter control (with an unresolved-count
+note), `populateDecisionsIndexFilter()`, `renderDecisionsIndexFilterNote()`,
+and `applyDecisionsIndexFilterSelection()` to `12-decisions-list.js`, all
+reusing IX-4a/b's `fetchIndexMembers`/`universeIndexMembersCache` verbatim —
+zero new backend code, zero new fetch/cache implementation. Added one
+membership predicate into `applyDecisionsView()`'s existing row filter
+(alongside the pre-existing stance/type predicates), matching each row's bare
+uppercase `instrument_id` against the selected index's resolved-member set.
+Because that same filtered `rows` array already feeds both
+`renderDecisionCarousels()` (which already sections by TRADE/WATCH/NO_TRADE
+and drives the summary strip) and `topCurrentSetups()` (TP-3's existing
+score/confidence/risk/return/freshness ranking), the selected-index
+Trade/Watch/No-trade view and existing-fields ranking requirements are
+satisfied with no new view component or ranking algorithm. The existing
+`preferInstrumentId`/`strictPreferInstrumentId` handoff logic is unchanged
+code operating over whatever `rows` currently contains, so strict symbol
+handoff is preserved by construction, the same way it already was for the
+pre-existing stance/type filters.
+
+Architectural note: IX-4c is frontend-only — no backend, DTO, or endpoint
+changes (IX-4a's endpoint/cache is reused as-is for the third time). It adds
+no broker write action, no order placement, no scoring/confidence/risk/
+decision change, no TradePlan value change. Filtering is presentation-only;
+selecting an index never calls validation, never mutates a decision or plan.
+
+Validation note: full suite 1,147 passed; Ruff clean (same 7 pre-existing
+`test_dashboard_hosting.py` findings, unrelated). No backend Python changed,
+so no server restart was needed; confirmed the running server served the
+bumped cache-buster directly from disk. Live-verified in-browser (DOM-bypass,
+same limitation as IX-3/IX-4a/IX-4b — no owner credentials available):
+opened the Decisions & Trace Filters popover, confirmed the Index control
+renders between Type and Sort with no clipping, and confirmed selecting an
+index issues the identical shared endpoint call and shows "Index membership
+unavailable." on the expected 401 in this environment. Decisions themselves
+could not load without auth, so the carousel/Top-Current-Setups filtering
+behavior with real data was verified by code reading (single shared `rows`
+array) rather than live pixel inspection — the same limitation recorded by
+every prior IX milestone in this environment.
 
 ---
 

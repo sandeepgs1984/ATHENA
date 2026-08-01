@@ -6,7 +6,30 @@ status updated on approval.
 
 ---
 
-## IX-4b — Validation Workbench Results index filter (ready for review)
+## IX-4c — Decisions index filter + selected-index view (ready for review)
+
+| | |
+|---|---|
+| Completed | 2026-08-01 |
+| Objective | Let the owner filter Decisions & Trace by official index membership, with a selected-index Trade/Watch/No-trade view, reusing IX-4a/b's exact endpoint/cache — no third membership mapping |
+| Scope | Owner approved IX-4b and authorized IX-4c on 2026-08-01, the final IX-4 sub-milestone. Added an "Index" filter control (between Type and Sort) plus `populateDecisionsIndexFilter()`/`renderDecisionsIndexFilterNote()`/`applyDecisionsIndexFilterSelection()` to `12-decisions-list.js`, reusing IX-4a/b's `fetchIndexMembers()`/`universeIndexMembersCache` verbatim. Added one membership predicate into `applyDecisionsView()`'s existing row filter. Because the same filtered `rows` array already feeds both `renderDecisionCarousels()` (sectioned by TRADE/WATCH/NO_TRADE) and `topCurrentSetups()` (TP-3's existing score/confidence/risk/return/freshness ranking), the selected-index view and ranking-reuse requirements were satisfied with no new view component or ranking algorithm. The pre-existing `preferInstrumentId`/`strictPreferInstrumentId` handoff logic is unchanged, preserving strict symbol handoff by construction |
+| Files created | None |
+| Files modified | `docs/MILESTONES.md`, `docs/ATHENA-IX-HANDOFF.md`, `IMPLEMENTATION_SUMMARY.md`, `src/athena/api/static/index.html`, `src/athena/api/static/js/12-decisions-list.js`, `src/athena/api/static/css/12-decision-cards-dag.css`, `tests/api/platform/test_dashboard_hosting.py`, `tests/api/platform/test_decision_chart_release_gate.py` |
+| Public APIs added | None (reuses IX-4a's `GET /api/v1/market/index-intelligence/{index_key}/members`) |
+| Tests | Full suite — 1,147 passed; Ruff clean (same 7 pre-existing `test_dashboard_hosting.py` findings as IX-4a/b, unrelated); no backend Python changed |
+| Coverage | Dashboard tests lock toolbar ordering (Type < Index < Sort), function presence, that exactly one `fetchIndexMembers` implementation exists across all three surfaces, and that the filter path never calls validation |
+| Architecture compliance | Frontend-only change over the existing IX-4a endpoint and the existing `rows`-filtering architecture. No broker write action, no order placement, no scoring/confidence/risk/decision change, no TradePlan value change, no backend/DTO/endpoint change. Filtering never calls validation or mutates a decision/plan |
+| ADR compliance | ADR-005 preserved: unresolved symbols stay visible via the same unresolved-count note pattern as IX-4a/b. ADR-004 preserved through the existing static HTML/CSS/vanilla-JS dashboard |
+| Risks discovered | None new |
+| Technical debt introduced | None |
+| Suggested improvements | IX-5 (Symbol Index Backdrop) can reuse the same `fetchIndexMembers`/cache and IX-3's constituent context for its Decision Brief section |
+| Remaining work | IX-4 track (IX-4a/b/c) is now complete pending this final owner review. IX-5/IX-6 remain separately gated and require a new owner resume/authorization. Live interaction with real membership/decision data could not be fully exercised without owner credentials (same limitation every prior IX milestone recorded) |
+| Status | 🔄 Ready for owner review |
+| Branch | feature/live-dashboard |
+
+---
+
+## IX-4b — Validation Workbench Results index filter (approved)
 
 | | |
 |---|---|
@@ -24,7 +47,7 @@ status updated on approval.
 | Technical debt introduced | None |
 | Suggested improvements | IX-4c should reuse the same `fetchIndexMembers`/cache for its Decisions filter and selected-index view |
 | Remaining work | IX-4c (Decisions index filter + selected-index Trade/Watch/No-trade view + strict symbol handoff) remains separately gated; live interaction with real membership data could not be fully exercised without owner credentials (same limitation IX-3/IX-4a recorded) |
-| Status | 🔄 Ready for owner review |
+| Status | ✅ Approved by owner on 2026-08-01, committed as `d407260` |
 | Branch | feature/live-dashboard |
 
 ---

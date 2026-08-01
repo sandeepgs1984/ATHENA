@@ -188,6 +188,11 @@
     font-size: var(--text-0-8);
 }
 
+.decisions-select:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}
+
 /* Fix pass (owner screenshot, 2026-07-27): positioning/z-index context for
    the filter backdrop below — scoped to the list area only, so the header
    (search/filter/clear-all) stays outside it and always interactive. */

@@ -978,6 +978,7 @@
                 universeIndexCatalog = payload.indices.map(item => ({ key: item.key, label: item.label }));
                 populateUniverseIndexFilter();
                 populateValidationResultsIndexFilter();
+                populateDecisionsIndexFilter();
             }
             renderIndexLeadership(
                 payload,

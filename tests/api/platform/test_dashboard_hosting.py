@@ -200,8 +200,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.128.0" in html
-    assert "dashboard.js?v=9.128.0" in html
+    assert "dashboard.css?v=9.129.0" in html
+    assert "dashboard.js?v=9.129.0" in html
     assert 'id="advisor-pulse"' in html
     assert 'id="header-diagnostics-popover"' in html
     assert 'id="decision-actionability-banner"' in html
@@ -1607,6 +1607,31 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     results_filter_fn_start = js.find("async function applyValidationResultsIndexFilterSelection")
     results_filter_fn_body = js[results_filter_fn_start:results_filter_fn_start + 2000]
     assert "validateSymbolsNow" not in results_filter_fn_body
+
+    # IX-4c: Decisions index filter — reuses IX-4a/b's exact
+    # fetchIndexMembers/universeIndexCatalog (a third mapping is not built).
+    # Selected-index Trade/Watch/No-trade view and existing-fields ranking
+    # come for free: this predicate narrows the same `rows` array already
+    # passed to renderDecisionCarousels()/topCurrentSetups().
+    decisions_popover = html[html.find('id="symbols-filter-popover"'):]
+    decisions_popover = decisions_popover[:decisions_popover.find("</div>", decisions_popover.rfind("</select>")) + 200]
+    assert 'id="decisions-filter-index"' in decisions_popover
+    assert 'id="decisions-filter-index-note"' in decisions_popover
+    assert (
+        decisions_popover.find('id="decisions-filter-type"')
+        < decisions_popover.find('id="decisions-filter-index"')
+        < decisions_popover.find('id="decisions-sort"')
+    )
+    assert "function populateDecisionsIndexFilter" in js
+    assert "function applyDecisionsIndexFilterSelection" in js
+    assert "function renderDecisionsIndexFilterNote" in js
+    # All three surfaces (Universe/Workbench/Decisions) share exactly one
+    # fetch/cache implementation — never a third copy.
+    assert js.count("async function fetchIndexMembers") == 1
+    decisions_filter_fn_start = js.find("async function applyDecisionsIndexFilterSelection")
+    decisions_filter_fn_body = js[decisions_filter_fn_start:decisions_filter_fn_start + 2000]
+    assert "validateSymbolsNow" not in decisions_filter_fn_body
+    assert ".decisions-select:disabled" in css
     assert "minmax(170px, 1.3fr)" in css
     assert ".market-universe-card > .candidate-card-header" in css
     assert "const candidateInput = candidateSearchInput;" in js

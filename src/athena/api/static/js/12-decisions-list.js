@@ -16,6 +16,77 @@
     let boardRevalidateCooldownTimer = null;
     const BOARD_REVALIDATE_READY_HTML = '<i class="fa-solid fa-arrows-rotate"></i>';
     let boardRevalidateStatusTone = "neutral";
+    // IX-4c: Decisions index filter — reuses the exact fetchIndexMembers/
+    // universeIndexCatalog shared state from 09-market-intelligence.js
+    // (concatenated into the same scope); never a third membership mapping.
+    let decisionsIndexFilterKey = "all";
+    let decisionsIndexMemberSymbols = null;
+
+    function populateDecisionsIndexFilter() {
+        const select = document.getElementById("decisions-filter-index");
+        if (!select) return;
+        const current = select.value || "all";
+        select.innerHTML = '<option value="all">All</option>' +
+            universeIndexCatalog.map(item => `<option value="${item.key}">${item.label}</option>`).join("");
+        select.value = universeIndexCatalog.some(item => item.key === current) ? current : "all";
+    }
+
+    function renderDecisionsIndexFilterNote(cacheEntry) {
+        const noteEl = document.getElementById("decisions-filter-index-note");
+        if (!noteEl) return;
+        if (cacheEntry && cacheEntry.unresolvedCount > 0) {
+            noteEl.textContent = `${cacheEntry.unresolvedCount} unresolved symbol${cacheEntry.unresolvedCount === 1 ? "" : "s"} not shown`;
+            noteEl.style.display = "inline";
+        } else {
+            noteEl.textContent = "";
+            noteEl.style.display = "none";
+        }
+    }
+
+    async function applyDecisionsIndexFilterSelection(key) {
+        const select = document.getElementById("decisions-filter-index");
+        decisionsIndexFilterKey = key;
+        if (key === "all") {
+            decisionsIndexMemberSymbols = null;
+            renderDecisionsIndexFilterNote(null);
+            applyDecisionsView();
+            return;
+        }
+        const cached = universeIndexMembersCache.get(key);
+        if (cached) {
+            decisionsIndexMemberSymbols = cached.symbols;
+            renderDecisionsIndexFilterNote(cached);
+            applyDecisionsView();
+            return;
+        }
+        const requestToken = ++universeIndexMembersRequestToken;
+        if (select) select.disabled = true;
+        renderDecisionsIndexFilterNote(null);
+        const noteEl = document.getElementById("decisions-filter-index-note");
+        if (noteEl) {
+            noteEl.textContent = "Loading membership…";
+            noteEl.style.display = "inline";
+        }
+        try {
+            const entry = await fetchIndexMembers(key);
+            if (requestToken !== universeIndexMembersRequestToken) return;
+            decisionsIndexMemberSymbols = entry.symbols;
+            renderDecisionsIndexFilterNote(entry);
+        } catch (err) {
+            console.error("Failed to load index members", err);
+            if (requestToken !== universeIndexMembersRequestToken) return;
+            decisionsIndexMemberSymbols = new Set();
+            if (noteEl) {
+                noteEl.textContent = "Index membership unavailable.";
+                noteEl.style.display = "inline";
+            }
+        } finally {
+            if (requestToken === universeIndexMembersRequestToken) {
+                if (select) select.disabled = false;
+                applyDecisionsView();
+            }
+        }
+    }
 
     function updateDecisionListScrollTopButton() {
         if (!decisionsScrollTopBtn || !decisionsCarouselContainer) return;
@@ -250,6 +321,7 @@
         const query = (briefingSearch && briefingSearch.value || "").toLowerCase().trim();
         const stanceFilter = (document.getElementById("decisions-filter-stance") || {}).value || "all";
         const typeFilter = (document.getElementById("decisions-filter-type") || {}).value || "all";
+        const indexFilter = (document.getElementById("decisions-filter-index") || {}).value || "all";
         const sortMode = (document.getElementById("decisions-sort") || {}).value || "newest";
         const preferDecisionId = options.preferDecisionId || activeDecisionId || null;
         let preferInstrumentId = options.preferInstrumentId
@@ -276,6 +348,12 @@
             const stance = decisionStance(type, dir).label;
             if (stanceFilter !== "all" && stance !== stanceFilter) return false;
             if (typeFilter !== "all" && sectionType !== typeFilter) return false;
+            if (indexFilter !== "all") {
+                const bare = String(d.metadata && d.metadata.instrument_id || "")
+                    .toUpperCase()
+                    .replace(/^NSE:|^BSE:/, "");
+                if (!decisionsIndexMemberSymbols || !decisionsIndexMemberSymbols.has(bare)) return false;
+            }
             if (!query) return true;
             const symbol = (d.metadata.instrument_id || "INDEX").toLowerCase();
             const exp = (d.explanation || "").toLowerCase();
@@ -773,6 +851,12 @@
             const el = document.getElementById(id);
             if (el) el.addEventListener("change", applyDecisionsView);
         });
+        const decisionsIndexFilterEl = document.getElementById("decisions-filter-index");
+        if (decisionsIndexFilterEl) {
+            decisionsIndexFilterEl.addEventListener("change", () => {
+                applyDecisionsIndexFilterSelection(decisionsIndexFilterEl.value || "all");
+            });
+        }
         if (briefingSearch) {
             briefingSearch.addEventListener("input", () => {
                 updateBriefingSearchClear();
@@ -844,9 +928,14 @@
     symbolsFilterReset?.addEventListener("click", () => {
         const stanceEl = document.getElementById("decisions-filter-stance");
         const typeEl = document.getElementById("decisions-filter-type");
+        const indexEl = document.getElementById("decisions-filter-index");
         const sortEl = document.getElementById("decisions-sort");
         if (stanceEl) stanceEl.value = "all";
         if (typeEl) typeEl.value = "all";
+        if (indexEl) indexEl.value = "all";
+        decisionsIndexFilterKey = "all";
+        decisionsIndexMemberSymbols = null;
+        renderDecisionsIndexFilterNote(null);
         if (sortEl) sortEl.value = "newest";
         applyDecisionsView();
         closeSymbolsFilterPopover();
