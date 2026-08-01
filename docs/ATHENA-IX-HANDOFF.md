@@ -1,11 +1,14 @@
 # ATHENA IX Track Handoff
 
-**Snapshot date:** 2026-07-31  
+**Snapshot date:** 2026-08-01  
 **Branch observed:** `feature/live-dashboard`  
-**Latest committed IX milestone:** IX-2 (`61fc8e5`)  
-**Current working milestone:** None; IX-3 is approved and the IX track is paused  
-**Next milestone:** IX-4 remains planned and must not start until the owner
-explicitly resumes and authorizes it
+**Latest committed IX milestone:** IX-3 (`b86d5ea`)  
+**Current working milestone:** IX-4a (ready for review) — owner resumed and
+authorized IX-4 on 2026-08-01; IX-4 is split into IX-4a/IX-4b/IX-4c (design in
+`docs/design/ATHENA-INDEX-SECTOR-INTELLIGENCE-ROADMAP.md`), one at a time.
+IX-4a is implemented, tested (1,147 full suite), and live-verified via the
+DOM-bypass technique; awaiting owner review/approval.  
+**Next milestone:** IX-4b, only after IX-4a is reviewed and approved
 
 This document is a continuity aid for the IX track. It is not the authority for
 milestone status. Before acting, read `ATHENA_BRIEFING.md`, then verify

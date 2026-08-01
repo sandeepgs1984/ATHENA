@@ -14,6 +14,7 @@ from tests.api.v1.test_core_apis import get_auth_headers
 
 from athena.api.dependencies import get_candle_history_provider
 from athena.api.security.models import Role
+from athena.api.v1.dtos.market import IndexMemberDTO
 from athena.api.v1.providers.in_memory import InMemoryCandleHistoryProvider
 from athena.api.v1.services.market_history_service import MarketHistoryService
 from athena.config.loader import (
@@ -688,6 +689,147 @@ class TestIndexIntelligence:
 
         with pytest.raises(ConfigError, match="duplicate tracked index instrument ids"):
             load_index_intelligence_config(tmp_path)
+
+
+class TestIndexMembers:
+    """IX-4a: per-symbol membership, reusing IX-3's exact resolution."""
+
+    def test_members_match_ix3_aggregate_resolution(self, tmp_path: Path) -> None:
+        _write_constituent_fixture(
+            tmp_path,
+            {"nifty_50": ("AAA", "BBB", "MISSING"), "nifty_it": ("AAA",)},
+        )
+        _write_index_intelligence_config(
+            tmp_path,
+            constituent_manifest=str(tmp_path / "constituents" / "manifest.json"),
+        )
+        repo = SqliteRepository(tmp_path / "indices.db")
+        repo.initialize()
+        now = datetime(2026, 7, 31, 6, 30, tzinfo=timezone.utc)
+        _register_equity(repo, "AAA")
+        _register_equity(repo, "BBB")
+        repo.save_decision(_decision("AAA", DecisionType.TRADE, now))
+        repo.save_decision(_decision("BBB", DecisionType.WATCH, now))
+        service = MarketHistoryService(
+            InMemoryCandleHistoryProvider(),
+            freshness_threshold_minutes=20,
+            now_fn=lambda: now,
+            config_dir=tmp_path,
+            repo=repo,
+        )
+
+        members_result = service.index_members("nifty_50")
+        aggregate = service.index_intelligence()
+        broad_context = next(
+            item.constituents for item in aggregate.indices if item.key == "nifty_50"
+        )
+
+        assert members_result is not None
+        assert members_result.key == "nifty_50"
+        assert members_result.label == "NIFTY 50"
+        assert members_result.effective_date == broad_context.effective_date
+        by_symbol = {m.symbol: m for m in members_result.members}
+        assert by_symbol["AAA"].resolved is True
+        assert by_symbol["AAA"].instrument_id == "NSE:AAA"
+        assert by_symbol["AAA"].bucket == "TRADE"
+        assert by_symbol["BBB"].bucket == "WATCH"
+        assert by_symbol["MISSING"].resolved is False
+        assert by_symbol["MISSING"].instrument_id is None
+        assert by_symbol["MISSING"].bucket is None
+        # No divergence between the per-symbol listing and IX-3's own counts.
+        resolved_count = sum(m.resolved for m in members_result.members)
+        assert resolved_count == broad_context.resolved_members
+        assert broad_context.unresolved_symbols == ("MISSING",)
+        repo.close()
+
+    def test_unresolved_member_without_current_decision_has_no_bucket(
+        self, tmp_path: Path
+    ) -> None:
+        _write_constituent_fixture(tmp_path, {"nifty_50": ("AAA",), "nifty_it": ("AAA",)})
+        _write_index_intelligence_config(
+            tmp_path,
+            constituent_manifest=str(tmp_path / "constituents" / "manifest.json"),
+        )
+        repo = SqliteRepository(tmp_path / "indices.db")
+        repo.initialize()
+        now = datetime(2026, 7, 31, 6, 30, tzinfo=timezone.utc)
+        _register_equity(repo, "AAA")
+        service = MarketHistoryService(
+            InMemoryCandleHistoryProvider(),
+            freshness_threshold_minutes=20,
+            now_fn=lambda: now,
+            config_dir=tmp_path,
+            repo=repo,
+        )
+
+        result = service.index_members("nifty_50")
+
+        assert result is not None
+        assert result.members == (
+            IndexMemberDTO(symbol="AAA", instrument_id="NSE:AAA", resolved=True, bucket=None),
+        )
+        repo.close()
+
+    def test_unknown_index_key_returns_none(self, tmp_path: Path) -> None:
+        _write_constituent_fixture(tmp_path, {"nifty_50": ("AAA",), "nifty_it": ("AAA",)})
+        _write_index_intelligence_config(
+            tmp_path,
+            constituent_manifest=str(tmp_path / "constituents" / "manifest.json"),
+        )
+        service = MarketHistoryService(
+            InMemoryCandleHistoryProvider(),
+            freshness_threshold_minutes=20,
+            config_dir=tmp_path,
+        )
+
+        assert service.index_members("not_a_real_key") is None
+
+    def test_disabled_index_key_returns_none(self, tmp_path: Path) -> None:
+        _write_index_intelligence_config(tmp_path)
+
+        service = MarketHistoryService(
+            InMemoryCandleHistoryProvider(),
+            freshness_threshold_minutes=20,
+            config_dir=tmp_path,
+        )
+
+        assert service.index_members("disabled") is None
+
+    def test_no_constituent_manifest_configured_returns_none(self, tmp_path: Path) -> None:
+        _write_index_intelligence_config(tmp_path)  # no constituent_manifest set
+
+        service = MarketHistoryService(
+            InMemoryCandleHistoryProvider(),
+            freshness_threshold_minutes=20,
+            config_dir=tmp_path,
+        )
+
+        assert service.index_members("nifty_50") is None
+
+    def test_endpoint_requires_auth_and_returns_members(
+        self, client: TestClient
+    ) -> None:
+        unauthenticated = client.get("/api/v1/market/index-intelligence/nifty_50/members")
+        assert unauthenticated.status_code == 401
+
+        response = client.get(
+            "/api/v1/market/index-intelligence/nifty_50/members",
+            headers=get_auth_headers(client, Role.READONLY),
+        )
+
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["key"] == "nifty_50"
+        assert isinstance(data["members"], list)
+        assert set(data["members"][0]) == {"symbol", "instrument_id", "resolved", "bucket"}
+
+    def test_endpoint_404_for_unknown_index_key(self, client: TestClient) -> None:
+        response = client.get(
+            "/api/v1/market/index-intelligence/not_a_real_key/members",
+            headers=get_auth_headers(client, Role.READONLY),
+        )
+
+        assert response.status_code == 404
 
 
 class TestInstrumentQuote:

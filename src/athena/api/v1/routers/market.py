@@ -12,6 +12,7 @@ from athena.api.dependencies import (
     get_market_history_service,
     get_market_summary_service,
 )
+from athena.api.exceptions import IndexNotFoundError
 from athena.api.security import Permission, RequirePermission
 from athena.api.security.models import AuthenticatedPrincipal
 from athena.api.v1.dtos import AthenaResponse, ResponseMeta
@@ -20,6 +21,7 @@ from athena.api.v1.dtos.market import (
     DeleteCandidateResultDTO,
     FullValidationProgressDTO,
     IndexIntelligenceDTO,
+    IndexMembersDTO,
     InstrumentQuoteDTO,
     MarketSummaryDTO,
     MarketTickerDTO,
@@ -147,6 +149,31 @@ def get_index_intelligence(
     presentation context only and does not influence ATHENA decisions.
     """
     data = service.index_intelligence()
+    return AthenaResponse(status="success", data=data, meta=_meta(request))
+
+
+@router.get(
+    "/index-intelligence/{index_key}/members",
+    response_model=AthenaResponse[IndexMembersDTO],
+    summary="Per-symbol membership and current-board bucket for one index",
+    status_code=status.HTTP_200_OK,
+    operation_id="getIndexMembers",
+)
+def get_index_members(
+    index_key: str,
+    request: Request,
+    service: MarketHistoryService = Depends(get_market_history_service),  # noqa: B008
+    principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.READ)),  # noqa: B008
+) -> AthenaResponse[IndexMembersDTO]:
+    """Read-only per-symbol membership for one official index (IX-4a).
+
+    Reuses IX-3's exact resolution — never a second, inferred mapping. An
+    unresolved constituent is still returned with ``resolved=False``; it is
+    never silently dropped from the list.
+    """
+    data = service.index_members(index_key)
+    if data is None:
+        raise IndexNotFoundError(f"Index '{index_key}' not found or not enabled")
     return AthenaResponse(status="success", data=data, meta=_meta(request))
 
 

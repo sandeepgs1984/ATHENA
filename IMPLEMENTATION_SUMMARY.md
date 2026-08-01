@@ -6,6 +6,29 @@ status updated on approval.
 
 ---
 
+## IX-4a — Index members endpoint + Universe filter (ready for review)
+
+| | |
+|---|---|
+| Completed | 2026-08-01 |
+| Objective | Let the owner filter the Universe table by official index membership, without inferring a second membership mapping or turning index context into a trade signal |
+| Scope | Owner explicitly resumed and authorized IX-4 on 2026-08-01; its combined scope (three dashboard surfaces plus a new selected-index view) was judged too large for one review sitting and split into IX-4a/IX-4b/IX-4c. IX-4a: refactored `_index_constituent_contexts` to derive its aggregate breadth counts from a shared per-symbol resolution helper instead of computing and discarding that per-symbol map; added a read-only endpoint serializing that same resolution per index; added a Universe-tab index filter mirroring the existing sector-filter pattern exactly — populated from the already-fetched index-intelligence catalog, lazily fetching and client-side caching each index's member list only on first selection, disabling the control while in flight, and surfacing the unresolved-symbol count rather than dropping it silently |
+| Files created | None |
+| Files modified | `docs/design/ATHENA-INDEX-SECTOR-INTELLIGENCE-ROADMAP.md`, `docs/MILESTONES.md`, `docs/ATHENA-IX-HANDOFF.md`, `IMPLEMENTATION_SUMMARY.md`, `src/athena/api/v1/dtos/market.py`, `src/athena/api/v1/services/market_history_service.py`, `src/athena/api/v1/routers/market.py`, `src/athena/api/exceptions.py`, `src/athena/api/static/index.html`, `src/athena/api/static/css/06-market-intelligence.css`, `src/athena/api/static/js/09-market-intelligence.js`, `tests/api/v1/test_market_history.py`, `tests/api/platform/test_dashboard_hosting.py`, `tests/api/platform/test_decision_chart_release_gate.py` |
+| Public APIs added | `IndexMemberDTO`, `IndexMembersDTO`, `MarketHistoryService.index_members()`, `GET /api/v1/market/index-intelligence/{index_key}/members`, `IndexNotFoundError` (404) |
+| Tests | Focused `TestIndexMembers`/`TestIndexIntelligence` suite — 29 passed; full suite — 1,147 passed; Ruff clean on all touched files (7 pre-existing findings in `tests/api/platform/test_dashboard_hosting.py` confirmed unrelated via `git show HEAD` diff comparison); MyPy — no issues on touched source files |
+| Coverage | Service tests cover resolved/unresolved/no-current-decision members, exact parity between the new per-symbol listing and IX-3's own aggregate counts, unknown/disabled index keys, and no-manifest-configured — all returning `None` rather than fabricating a result; API tests cover auth requirement and 404 for an unknown key; dashboard tests lock toolbar ordering, function presence, the exact new endpoint URL construction, and that the filter path never calls validation |
+| Architecture compliance | Read-only endpoint over already-computed IX-3 resolution plus frontend presentation/filtering only. No broker write action, no order placement, no scoring/confidence/risk/decision change, no TradePlan value change, no provider protocol change, no frozen domain object change. Filtering never calls validation or mutates eligibility |
+| ADR compliance | ADR-005 preserved: no fabricated membership, unresolved symbols stay visible via the unresolved-count note rather than being silently dropped. ADR-004 preserved through the existing static HTML/CSS/vanilla-JS dashboard |
+| Risks discovered | None new. Confirms IX-3's resolution path is a single source of truth suitable for reuse across IX-4a/b/c |
+| Technical debt introduced | None |
+| Suggested improvements | IX-4b/IX-4c should reuse the same new endpoint and client-side caching pattern rather than re-fetching membership per surface |
+| Remaining work | IX-4b (Validation Workbench Results index filter) and IX-4c (Decisions index filter + selected-index view) remain separately gated; IX-4a live interaction with real membership data could not be fully exercised without owner credentials (same limitation IX-3 recorded) — an authenticated pass can be repeated when that session is available |
+| Status | 🔄 Ready for owner review |
+| Branch | feature/live-dashboard |
+
+---
+
 ## IX-3 — Versioned constituents and index breadth (approved)
 
 | | |

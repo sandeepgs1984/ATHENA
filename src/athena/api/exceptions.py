@@ -64,6 +64,10 @@ class BackupNotFoundError(ResourceNotFoundError):
     """Specific database backup artifact not found."""
 
 
+class IndexNotFoundError(ResourceNotFoundError):
+    """Specific tracked index key not found or disabled (IX-4a)."""
+
+
 class RestoreConfirmationError(APIResourceError):
     """Restore refused because confirmation token was missing or incorrect."""
 

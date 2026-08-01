@@ -696,13 +696,18 @@ ADR authorize analytical use. It does not silently resolve SD-2, activate
 | **IX-1** Tracked-Index Data Foundation | Separate quote-only snapshot coverage from benchmark history ingestion; add validated index catalog and read-only API | Owner review; no scoring/domain/protocol change | ✅ Approved |
 | **IX-2** Index Leadership Surface | Compact, session-aware broad-market and sector leadership view in Market Intelligence | Owner review and visual QA | ✅ Approved |
 | **IX-3** Versioned Constituents and Index Breadth | Official provenance-tagged memberships, resolution audit, breadth/current-board counts | Data review; no inferred membership | ✅ Approved |
-| **IX-4** Index-Aware Discovery | Index filters and best current ATHENA setups across Universe, Workbench, and Decisions | Owner review; current-plan safety rules | ⏳ Planned |
+| **IX-4a** Index members endpoint + Universe filter | New read-only per-symbol index membership endpoint (reusing IX-3's exact resolution); Universe tab index filter | Owner review; no inferred mapping, no scoring/domain change | 🔄 Ready for review |
+| **IX-4b** Validation Workbench Results index filter | Index filter on the Workbench Results list, same membership data as IX-4a | Owner review; presentation-only | ⏳ Planned |
+| **IX-4c** Decisions index filter + selected-index view | Decisions index filter, selected-index Trade/Watch/No-trade view, ranking reuse, strict symbol handoff | Owner review; current-plan safety rules | ⏳ Planned |
 | **IX-5** Symbol Index Backdrop | Plain-language index alignment/divergence context in Decision Brief | Owner review; informational only | ⏳ Planned |
 | **IX-6** Evidence Review and Scoring Decision | Replay impact study and ADR proposal for any analytical influence | ADR + owner approval before code | ⏳ Planned |
 
 **Implementation rule:** one IX milestone at a time. A market leader is not
 automatically a trade, and a strong sector may not override an expired plan,
-failed safety gate, weak symbol score, or unavailable data.
+failed safety gate, weak symbol score, or unavailable data. IX-4 is split into
+IX-4a/IX-4b/IX-4c (owner-approved 2026-08-01, design in
+`docs/design/ATHENA-INDEX-SECTOR-INTELLIGENCE-ROADMAP.md`); each sub-milestone
+gets its own owner-approval gate before the next starts.
 
 #### IX-1 — tracked-index data foundation (approved, 2026-07-31)
 
@@ -862,6 +867,55 @@ by dashboard regression assertions.
 Owner approval: IX-3 was approved on 2026-07-31. The IX track is paused at the
 owner's direction; IX-4 remains planned and must not begin until the owner
 explicitly resumes and authorizes it.
+
+#### IX-4a — index members endpoint + Universe filter (ready for review, 2026-08-01)
+
+Owner resume/authorization: the owner explicitly resumed and authorized IX-4
+on 2026-08-01. IX-4's combined scope was judged too large for one review
+sitting and split into IX-4a/IX-4b/IX-4c (owner-approved 2026-08-01); design
+detail in `docs/design/ATHENA-INDEX-SECTOR-INTELLIGENCE-ROADMAP.md`.
+
+Design finding: IX-3's `_index_constituent_contexts` already resolves every
+official constituent to at most one instrument and its current-board bucket,
+but only serializes aggregate counts to the frontend — the per-symbol map is
+computed and discarded. IX-4a serializes that same resolution via a new
+read-only endpoint rather than building a second inferred mapping.
+
+Scope completed: added `IndexMemberDTO`/`IndexMembersDTO`, a new
+`MarketHistoryService.index_members()` reusing IX-3's exact resolution helper
+(`_index_constituent_contexts` was refactored to derive its own aggregate
+counts from the same per-symbol member list, so there is exactly one
+resolution path, not two), and `GET
+/market/index-intelligence/{index_key}/members` (404 via `IndexNotFoundError`
+for an unknown/disabled key). The Universe tab now has an index-filter
+dropdown mirroring the existing sector-filter pattern exactly: populated from
+the already-fetched index-intelligence catalog, lazily fetching and
+client-side caching each index's member list only on first selection,
+disabling the control while that fetch is in flight, and surfacing the
+unresolved-symbol count next to the filter rather than dropping it silently.
+An index with `INCOMPLETE_INSTRUMENTS`/`INCOMPLETE_DECISIONS` still returns
+its resolved members for filtering; only aggregate breadth stays suppressed.
+
+Architectural note: IX-4a is a read-only endpoint over already-computed IX-3
+resolution plus frontend presentation/filtering. It adds no broker write
+action, no order placement, no scoring/confidence/risk/decision change, no
+TradePlan value change, no provider protocol change, and no frozen domain
+object change. Filtering is presentation-only over already-rendered Universe
+rows; selecting an index never calls validation or mutates eligibility.
+
+Validation note: 29 focused `TestIndexMembers`/`TestIndexIntelligence` tests
+pass; full suite 1,147 passed; Ruff clean on all touched files (7 remaining
+findings in `tests/api/platform/test_dashboard_hosting.py` are pre-existing,
+confirmed via `git show HEAD` comparison, not introduced by this milestone);
+MyPy reports no issues on touched source files. Live-verified in-browser
+(DOM-bypass, matching the IX-3 precedent — no owner credentials available in
+this environment): the toolbar renders search/status/sector/index filter on
+one row without clipping, selecting an index calls the exact new endpoint
+(`GET /market/index-intelligence/{key}/members`), and the 401-driven error
+path correctly shows "Index membership unavailable." while re-enabling the
+control rather than leaving it stuck disabled. Full authenticated interaction
+with real membership data was not possible without owner credentials, same
+limitation IX-3 recorded.
 
 ---
 

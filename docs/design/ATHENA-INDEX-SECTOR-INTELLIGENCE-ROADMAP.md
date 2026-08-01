@@ -139,7 +139,18 @@ Acceptance:
 
 **Goal:** Let the owner move from an index observation to useful ATHENA setups.
 
-Scope:
+**Split (owner-approved 2026-08-01):** IX-4's combined scope (three dashboard
+surfaces plus a new selected-index view) is too large for one review sitting.
+It is split into three independently reviewable sub-milestones, each with its
+own Design → Implement → Test → Self-Validate → Milestone Review Summary →
+owner-approval gate. Only one is in flight at a time.
+
+- **IX-4a** — Index members endpoint + Universe index filter
+- **IX-4b** — Validation Workbench Results index filter
+- **IX-4c** — Decisions index filter + selected-index Trade/Watch/No-trade view
+  + strict symbol handoff
+
+Common scope across all three:
 
 - Add index filters to Universe, Validation Workbench Results, and Decisions.
 - Add a selected-index view of current Trade, Watch, and No trade symbols.
@@ -147,13 +158,67 @@ Scope:
   readiness, score, confidence, risk, and freshness.
 - Preserve strict symbol handoff when opening Decisions & Trace.
 
-Acceptance:
+Acceptance (all three sub-milestones):
 
 - “Best” means best current ATHENA-qualified setup in the selected index; it
   never means largest index gain alone.
 - Expired or unavailable plans cannot appear as actionable top setups.
 - Filtering large lists provides immediate progress feedback and never changes
   the underlying validation result.
+
+#### IX-4a design — index members endpoint + Universe index filter
+
+**Data gap found during Design:** IX-3's `/market/index-intelligence` endpoint
+(`market_history_service.py::_index_constituent_contexts`) already resolves
+every official constituent to at most one instrument and computes its current
+Trade/Watch/No-trade bucket, but it only serializes aggregate counts
+(`IndexConstituentContextDTO`) to the frontend — the actual per-symbol
+`{symbol → instrument_id, bucket}` map is computed and then discarded. IX-4a
+adds a read-only endpoint that serializes that same, already-computed
+resolution instead of a second inferred mapping.
+
+Backend:
+
+- Refactor `_index_constituent_contexts` to extract its per-index resolution
+  (instrument lookup + current-board bucket) into a shared private helper, so
+  the new endpoint reuses the identical resolution path — no second mapping.
+- Add `IndexMemberDTO` (`symbol`, `instrument_id | None`, `resolved: bool`,
+  `bucket: Literal["TRADE","WATCH","NO_TRADE"] | None`) and `IndexMembersDTO`
+  (`key`, `label`, `effective_date`, `members: tuple[IndexMemberDTO, ...]`) in
+  `dtos/market.py`.
+- Add `MarketHistoryService.index_members(index_key)` returning
+  `IndexMembersDTO | None` (None when the key is unknown/disabled).
+- Add `GET /market/index-intelligence/{index_key}/members`
+  (`operation_id="getIndexMembers"`, `Permission.READ`), 404 via the existing
+  resource-not-found pattern when the key is unknown/disabled.
+
+Frontend (Universe tab only):
+
+- Populate an index-filter `<select>` (mirrors the existing sector filter)
+  from the already-fetched `/market/index-intelligence` catalog (key/label) —
+  no new fetch needed just to list indices.
+- On first selection of a given index, lazily fetch and cache its members from
+  the new endpoint; disable the filter control while the fetch is in flight
+  (immediate progress feedback) and reuse the cached list afterward — a purely
+  client-side, presentation-only filter of the existing Universe rows via a
+  new `matchesIndex` clause in `applyUniverseFilters()`, mirroring the
+  existing sector-filter pattern exactly. No validation result is recomputed
+  or mutated.
+- Surface unresolved-symbol counts from the already-fetched
+  `IndexConstituentContextDTO.unresolved_symbols`/`breadth_status` next to the
+  filter so incomplete membership stays visible rather than silently dropped.
+
+Acceptance (IX-4a specific):
+
+- The new endpoint returns the exact same resolution IX-3 already computes —
+  no name/sector/alias-based guessing, no second inferred mapping.
+- An index with `INCOMPLETE_INSTRUMENTS`/`INCOMPLETE_DECISIONS` still returns
+  its resolved members; the incompleteness remains visible via existing
+  IX-3 fields, never silently hidden.
+- Selecting an index filters Universe rows only; it does not call validation,
+  mutate any row's eligibility, or change scoring/decision data.
+- No frozen domain object, provider protocol, or existing IX-1/IX-2/IX-3
+  contract changes.
 
 ### IX-5 — Symbol Index Backdrop
 

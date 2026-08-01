@@ -200,8 +200,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.126.0" in html
-    assert "dashboard.js?v=9.126.0" in html
+    assert "dashboard.css?v=9.127.0" in html
+    assert "dashboard.js?v=9.127.0" in html
     assert 'id="advisor-pulse"' in html
     assert 'id="header-diagnostics-popover"' in html
     assert 'id="decision-actionability-banner"' in html
@@ -1565,6 +1565,26 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert toolbar.find('id="candidate-search-input"') < toolbar.find('id="universe-status-filter"')
     assert toolbar.find('id="universe-status-filter"') < toolbar.find('id="universe-sector-filter"')
     assert toolbar.find('id="universe-sector-filter"') < toolbar.find('id="candidate-add-btn"')
+
+    # IX-4a: Universe index filter — mirrors the sector-filter pattern exactly,
+    # lazily fetches per-index membership from the new read-only endpoint, and
+    # surfaces unresolved-symbol counts rather than dropping them silently.
+    assert 'id="universe-index-filter"' in html
+    assert 'id="universe-index-filter-note"' in html
+    assert toolbar.find('id="universe-sector-filter"') < toolbar.find('id="universe-index-filter"')
+    assert toolbar.find('id="universe-index-filter"') < toolbar.find('id="candidate-add-btn"')
+    assert "function populateUniverseIndexFilter" in js
+    assert "function applyUniverseIndexFilterSelection" in js
+    assert "function renderUniverseIndexFilterNote" in js
+    assert "universeIndexMembersCache" in js
+    assert "/api/v1/market/index-intelligence/${encodeURIComponent(key)}/members" in js
+    # Filtering is presentation-only over already-rendered Universe rows — it
+    # must never trigger a validation call.
+    index_filter_fn_start = js.find("function applyUniverseIndexFilterSelection")
+    index_filter_fn_body = js[index_filter_fn_start:index_filter_fn_start + 2000]
+    assert "validateSymbolsNow" not in index_filter_fn_body
+    assert ".universe-index-filter-note" in css
+    assert ".universe-filter-select:disabled" in css
     assert "minmax(170px, 1.3fr)" in css
     assert ".market-universe-card > .candidate-card-header" in css
     assert "const candidateInput = candidateSearchInput;" in js

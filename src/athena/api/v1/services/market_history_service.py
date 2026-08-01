@@ -17,6 +17,8 @@ from athena.api.v1.dtos.market import (
     IndexConstituentContextDTO,
     IndexIntelligenceDTO,
     IndexIntelligenceItemDTO,
+    IndexMemberDTO,
+    IndexMembersDTO,
     InstrumentQuoteDTO,
     MarketIndexTickerDTO,
     MarketTickerDTO,
@@ -24,7 +26,11 @@ from athena.api.v1.dtos.market import (
 from athena.api.v1.providers.base import CandleHistoryProvider
 from athena.config.loader import load_config, load_index_intelligence_config
 from athena.config.models import IndexIntelligenceConfig, TrackedIndexConfig
-from athena.data.index_constituents import load_index_constituent_snapshot
+from athena.data.index_constituents import (
+    IndexConstituentSet,
+    IndexConstituentSnapshot,
+    load_index_constituent_snapshot,
+)
 from athena.data.providers.kite_ltp import fetch_live_quote
 from athena.data.store.repository import SqliteRepository
 from athena.domain.decision import Decision
@@ -222,14 +228,16 @@ class MarketHistoryService:
             source="persisted_market_snapshot",
         )
 
-    def _index_constituent_contexts(
+    def _load_index_membership_inputs(
         self,
         config: IndexIntelligenceConfig,
         tracked: list[TrackedIndexConfig],
-    ) -> dict[str, IndexConstituentContextDTO]:
+    ) -> tuple[IndexConstituentSnapshot, dict[str, list[str]], dict[str, Decision], datetime] | None:
+        """Shared inputs for both index-breadth counts (IX-3) and per-symbol
+        membership listing (IX-4a) — one resolution path, never two."""
         manifest_setting = config.constituent_manifest
         if not manifest_setting:
-            return {}
+            return None
         enabled_keys = {item.key for item in tracked}
         manifest_path = Path(str(manifest_setting))
         if not manifest_path.is_absolute():
@@ -267,29 +275,69 @@ class MarketHistoryService:
             )
             if decision.instrument_id is not None
         }
+        return membership, instruments_by_symbol, latest_decisions, now
+
+    def _build_index_members(
+        self,
+        index_set: IndexConstituentSet,
+        instruments_by_symbol: dict[str, list[str]],
+        latest_decisions: dict[str, Decision],
+        now: datetime,
+    ) -> tuple[IndexMemberDTO, ...]:
+        members: list[IndexMemberDTO] = []
+        for symbol in index_set.symbols:
+            matches = sorted(set(instruments_by_symbol.get(symbol, [])))
+            if len(matches) != 1:
+                members.append(
+                    IndexMemberDTO(symbol=symbol, instrument_id=None, resolved=False, bucket=None)
+                )
+                continue
+            instrument_id = matches[0]
+            decision = latest_decisions.get(instrument_id)
+            bucket = self._current_board_bucket(decision, now)
+            members.append(
+                IndexMemberDTO(
+                    symbol=symbol,
+                    instrument_id=instrument_id,
+                    resolved=True,
+                    bucket=bucket,
+                )
+            )
+        return tuple(members)
+
+    def _index_constituent_contexts(
+        self,
+        config: IndexIntelligenceConfig,
+        tracked: list[TrackedIndexConfig],
+    ) -> dict[str, IndexConstituentContextDTO]:
+        inputs = self._load_index_membership_inputs(config, tracked)
+        if inputs is None:
+            return {}
+        membership, instruments_by_symbol, latest_decisions, now = inputs
+        observed_date = now.astimezone(ZoneInfo("Asia/Kolkata")).date()
 
         contexts: dict[str, IndexConstituentContextDTO] = {}
         for index_set in membership.indices:
-            resolved: dict[str, str] = {}
-            unresolved: list[str] = []
-            for symbol in index_set.symbols:
-                matches = sorted(set(instruments_by_symbol.get(symbol, [])))
-                if len(matches) == 1:
-                    resolved[symbol] = matches[0]
-                else:
-                    unresolved.append(symbol)
+            members = self._build_index_members(
+                index_set, instruments_by_symbol, latest_decisions, now
+            )
+            unresolved = [member.symbol for member in members if not member.resolved]
+            resolved_count = sum(member.resolved for member in members)
 
             buckets: dict[str, str] = {}
             decisions_as_of: datetime | None = None
             missing_decisions: list[str] = []
-            for symbol, instrument_id in resolved.items():
-                decision = latest_decisions.get(instrument_id)
-                bucket = self._current_board_bucket(decision, now)
-                if bucket is None:
-                    missing_decisions.append(symbol)
+            for member in members:
+                if not member.resolved:
                     continue
-                buckets[symbol] = bucket
-                if decisions_as_of is None or decision.ts > decisions_as_of:
+                if member.bucket is None:
+                    missing_decisions.append(member.symbol)
+                    continue
+                buckets[member.symbol] = member.bucket
+                decision = latest_decisions.get(member.instrument_id)
+                if decision is not None and (
+                    decisions_as_of is None or decision.ts > decisions_as_of
+                ):
                     decisions_as_of = decision.ts
 
             if unresolved:
@@ -309,7 +357,7 @@ class MarketHistoryService:
                 source_sha256=index_set.sha256,
                 overlap_policy=membership.overlap_policy,
                 total_members=len(index_set.symbols),
-                resolved_members=len(resolved),
+                resolved_members=resolved_count,
                 unresolved_symbols=tuple(unresolved),
                 decision_covered_members=len(buckets),
                 missing_decision_symbols=tuple(missing_decisions),
@@ -327,6 +375,37 @@ class MarketHistoryService:
                 decisions_as_of=decisions_as_of,
             )
         return contexts
+
+    def index_members(self, index_key: str) -> IndexMembersDTO | None:
+        """Per-symbol membership + current-board bucket for one official index.
+
+        Reuses the exact resolution ``_index_constituent_contexts`` computes
+        for its aggregate breadth counts (IX-4a) — never a second, inferred
+        membership mapping. Returns ``None`` when the key is unknown or the
+        index is disabled, so the router can respond with 404.
+        """
+        config = load_index_intelligence_config(self._config_dir)
+        tracked = sorted(
+            (item for item in config.tracked_indices if item.enabled),
+            key=lambda item: (item.display_order, item.key),
+        )
+        item = next((tracked_item for tracked_item in tracked if tracked_item.key == index_key), None)
+        if item is None:
+            return None
+        inputs = self._load_index_membership_inputs(config, tracked)
+        if inputs is None:
+            return None
+        membership, instruments_by_symbol, latest_decisions, now = inputs
+        index_set = membership.by_key().get(index_key)
+        if index_set is None:
+            return None
+        members = self._build_index_members(index_set, instruments_by_symbol, latest_decisions, now)
+        return IndexMembersDTO(
+            key=index_key,
+            label=item.label,
+            effective_date=membership.effective_date,
+            members=members,
+        )
 
     @staticmethod
     def _current_board_bucket(decision: Decision | None, now: datetime) -> str | None:

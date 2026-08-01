@@ -212,6 +212,32 @@ class IndexIntelligenceDTO(BaseModel):
     source: Literal["persisted_market_snapshot"]
 
 
+class IndexMemberDTO(BaseModel):
+    """One official constituent's resolution and current-board bucket.
+
+    Reuses the exact resolution IX-3 already computes in
+    ``_index_constituent_contexts`` (IX-4a) — this is not a second, inferred
+    membership mapping."""
+
+    model_config = ConfigDict(frozen=True)
+
+    symbol: str
+    instrument_id: str | None = None
+    resolved: bool
+    bucket: Literal["TRADE", "WATCH", "NO_TRADE"] | None = None
+
+
+class IndexMembersDTO(BaseModel):
+    """Full per-symbol membership list for one official index (IX-4a)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    key: str
+    label: str
+    effective_date: date
+    members: tuple[IndexMemberDTO, ...]
+
+
 class InstrumentQuoteDTO(BaseModel):
     """Single-instrument last price for the Decisions & Trace header.
 

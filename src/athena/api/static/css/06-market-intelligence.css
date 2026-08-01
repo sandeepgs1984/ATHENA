@@ -1605,6 +1605,17 @@
     font-size: 0.8rem;
 }
 
+.universe-filter-select:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}
+
+.universe-index-filter-note {
+    font-size: 0.72rem;
+    color: var(--text-muted, rgba(148, 163, 184, 0.85));
+    white-space: nowrap;
+}
+
 .market-universe-scroll {
     flex: 1 1 auto;
     min-height: 0;

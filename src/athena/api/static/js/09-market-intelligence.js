@@ -1,5 +1,10 @@
     const savedSymbolSet = new Set();
     const eligibilityDetailBySymbol = new Map();
+    // IX-4a: Universe index filter — catalog from the already-fetched
+    // index-intelligence payload, members lazily fetched/cached per key.
+    let universeIndexCatalog = [];
+    const universeIndexMembersCache = new Map();
+    let universeIndexMembersRequestToken = 0;
     let validateOverlayStartedAt = 0;
     let validateOverlayTimerId = null;
     let validationWorkbenchState = {
@@ -951,6 +956,10 @@
         if (indexResult.status === "fulfilled") {
             const indexResponse = indexResult.value;
             const payload = indexResponse && indexResponse.data ? indexResponse.data : null;
+            if (payload && Array.isArray(payload.indices)) {
+                universeIndexCatalog = payload.indices.map(item => ({ key: item.key, label: item.label }));
+                populateUniverseIndexFilter();
+            }
             renderIndexLeadership(
                 payload,
                 state.marketSession,
@@ -2289,6 +2298,85 @@
         }
     }
 
+    let universeIndexFilterKey = "all";
+    let universeIndexFilterMemberSymbols = null;
+
+    function populateUniverseIndexFilter() {
+        const select = document.getElementById("universe-index-filter");
+        if (!select) return;
+        const current = select.value || "all";
+        select.innerHTML = '<option value="all">All indices</option>' +
+            universeIndexCatalog.map(item => `<option value="${item.key}">${item.label}</option>`).join("");
+        select.value = universeIndexCatalog.some(item => item.key === current) ? current : "all";
+    }
+
+    function renderUniverseIndexFilterNote(cacheEntry) {
+        const noteEl = document.getElementById("universe-index-filter-note");
+        if (!noteEl) return;
+        if (cacheEntry && cacheEntry.unresolvedCount > 0) {
+            noteEl.textContent = `${cacheEntry.unresolvedCount} unresolved symbol${cacheEntry.unresolvedCount === 1 ? "" : "s"} not shown`;
+            noteEl.style.display = "inline";
+        } else {
+            noteEl.textContent = "";
+            noteEl.style.display = "none";
+        }
+    }
+
+    async function applyUniverseIndexFilterSelection(key) {
+        const select = document.getElementById("universe-index-filter");
+        const noteEl = document.getElementById("universe-index-filter-note");
+        universeIndexFilterKey = key;
+        if (key === "all") {
+            universeIndexFilterMemberSymbols = null;
+            renderUniverseIndexFilterNote(null);
+            applyUniverseFilters();
+            return;
+        }
+        if (universeIndexMembersCache.has(key)) {
+            const cached = universeIndexMembersCache.get(key);
+            universeIndexFilterMemberSymbols = cached.symbols;
+            renderUniverseIndexFilterNote(cached);
+            applyUniverseFilters();
+            return;
+        }
+        const requestToken = ++universeIndexMembersRequestToken;
+        if (select) select.disabled = true;
+        if (noteEl) {
+            noteEl.textContent = "Loading membership…";
+            noteEl.style.display = "inline";
+        }
+        try {
+            const res = await apiRequest(
+                `/api/v1/market/index-intelligence/${encodeURIComponent(key)}/members`,
+                { skipToast: true },
+            );
+            if (requestToken !== universeIndexMembersRequestToken) return;
+            const data = res && res.data ? res.data : null;
+            const members = data && Array.isArray(data.members) ? data.members : [];
+            const symbols = new Set(
+                members.filter(m => m.resolved).map(m => String(m.symbol).toUpperCase())
+            );
+            const unresolvedCount = members.filter(m => !m.resolved).length;
+            const cacheEntry = { symbols, unresolvedCount };
+            universeIndexMembersCache.set(key, cacheEntry);
+            universeIndexFilterMemberSymbols = symbols;
+            renderUniverseIndexFilterNote(cacheEntry);
+        } catch (err) {
+            console.error("Failed to load index members", err);
+            if (requestToken !== universeIndexMembersRequestToken) return;
+            universeIndexFilterMemberSymbols = new Set();
+            if (noteEl) {
+                noteEl.textContent = "Index membership unavailable.";
+                noteEl.style.display = "inline";
+            }
+        } finally {
+            if (requestToken === universeIndexMembersRequestToken) {
+                if (select) select.disabled = false;
+                applyUniverseFilters();
+            }
+        }
+    }
+
     function populateUniverseSectorFilter(rows) {
         const select = document.getElementById("universe-sector-filter");
         if (!select) return;
@@ -2312,18 +2400,23 @@
         const query = String((searchEl && searchEl.value) || "").trim().toUpperCase();
         const statusFilter = String((statusEl && statusEl.value) || "all").toUpperCase();
         const sectorFilter = String((sectorEl && sectorEl.value) || "all").toUpperCase();
+        const indexFilterActive = universeIndexFilterKey !== "all";
         const rows = Array.from(bodyEl.querySelectorAll("tr"));
         let visible = 0;
         rows.forEach(row => {
             const matchesQuery = !query || (row.dataset.symbol || "").includes(query);
             const matchesStatus = statusFilter === "ALL" || (row.dataset.status || "") === statusFilter;
             const matchesSector = sectorFilter === "ALL" || (row.dataset.sector || "") === sectorFilter;
-            const show = matchesQuery && matchesStatus && matchesSector;
+            const matchesIndex = !indexFilterActive
+                || (universeIndexFilterMemberSymbols
+                    ? universeIndexFilterMemberSymbols.has(row.dataset.symbol || "")
+                    : false);
+            const show = matchesQuery && matchesStatus && matchesSector && matchesIndex;
             row.hidden = !show;
             if (show) visible += 1;
         });
         if (countEl) {
-            const filtering = query || statusFilter !== "ALL" || sectorFilter !== "ALL";
+            const filtering = query || statusFilter !== "ALL" || sectorFilter !== "ALL" || indexFilterActive;
             countEl.textContent = filtering
                 ? `${visible} of ${rows.length}`
                 : `${rows.length} symbol${rows.length === 1 ? "" : "s"}`;
@@ -2353,6 +2446,12 @@
     const universeSectorFilter = document.getElementById("universe-sector-filter");
     if (universeSectorFilter) {
         universeSectorFilter.addEventListener("change", () => applyUniverseFilters());
+    }
+    const universeIndexFilter = document.getElementById("universe-index-filter");
+    if (universeIndexFilter) {
+        universeIndexFilter.addEventListener("change", () => {
+            applyUniverseIndexFilterSelection(universeIndexFilter.value || "all");
+        });
     }
     if (candidateAddBtn && candidateInput) {
         const addAndValidateCandidate = async () => {
