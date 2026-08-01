@@ -71,6 +71,28 @@
     cursor: not-allowed;
 }
 
+/* Owner-reported: no indication that a filter/sort control is currently
+   narrowing the list. A small persistent dot plus a highlighted border,
+   independent of hover/open state (unlike [aria-expanded="true"] above,
+   which only lights up while the popover itself is open). */
+.symbols-icon-btn.has-active-filters {
+    position: relative;
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.symbols-icon-btn.has-active-filters::after {
+    content: "";
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--accent);
+    border: 1.5px solid var(--bg-sidebar);
+}
+
 .symbols-icon-btn-action {
     color: var(--accent);
     border-color: rgba(0, 242, 254, 0.26);
@@ -106,6 +128,11 @@
     right: var(--space-14);
     z-index: 20;
     width: min(260px, calc(100vw - 48px));
+    /* Safety net regardless of positioning context (fixed or absolute,
+       inside a modal or not) — never render past the viewport with no
+       way to scroll to the rest of the controls. */
+    max-height: calc(100vh - 24px);
+    overflow-y: auto;
     display: flex;
     flex-direction: column;
     gap: var(--space-12);

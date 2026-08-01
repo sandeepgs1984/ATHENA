@@ -137,27 +137,18 @@
 
     function latestDecisionForSymbol(symbol) {
         const bare = String(symbol || "").trim().toUpperCase().replace(/^NSE:|^BSE:/, "");
-        const rows = Array.isArray(traceDecisionsList) ? traceDecisionsList : [];
-        return rows.find(d => {
-            const instrument = String(d && d.metadata && d.metadata.instrument_id || "")
-                .toUpperCase()
-                .replace(/^NSE:|^BSE:/, "");
-            return instrument === bare;
-        }) || null;
+        if (!bare) return null;
+        return traceDecisionsBySymbol.get(bare) || null;
     }
 
     function currentOpenableDecisionForSymbol(symbol) {
         const bare = String(symbol || "").trim().toUpperCase().replace(/^NSE:|^BSE:/, "");
-        if (!bare || !Array.isArray(traceDecisionsList)) return null;
-        return traceDecisionsList.find(d => {
-            if (!d || !d.metadata) return false;
-            if (typeof isCurrentDecisionListRow === "function" && !isCurrentDecisionListRow(d)) return false;
-            if (typeof decisionInstrumentKey === "function" && dismissedDecisionSymbols.has(decisionInstrumentKey(d))) return false;
-            const instrument = String(d.metadata.instrument_id || "")
-                .toUpperCase()
-                .replace(/^NSE:|^BSE:/, "");
-            return instrument === bare;
-        }) || null;
+        if (!bare) return null;
+        const d = traceDecisionsBySymbol.get(bare);
+        if (!d || !d.metadata) return null;
+        if (typeof isCurrentDecisionListRow === "function" && !isCurrentDecisionListRow(d)) return null;
+        if (typeof decisionInstrumentKey === "function" && dismissedDecisionSymbols.has(decisionInstrumentKey(d))) return null;
+        return d;
     }
 
     async function refreshDecisionCacheForValidationResults() {
@@ -168,6 +159,7 @@
             const raw = await fetchAllDecisionPages();
             allTraceDecisionsList = raw;
             traceDecisionsList = latestDecisionPerInstrument(raw);
+            rebuildTraceDecisionsBySymbolIndex();
         } catch (err) {
             console.warn("Validation workbench could not refresh Decisions cache", err);
         }
@@ -288,32 +280,53 @@
         openModal(validationReportModal);
     }
 
+    function showDecisionOpenOverlay(symbol) {
+        const overlay = document.getElementById("decision-open-overlay");
+        if (!overlay) return;
+        const symbolEl = document.getElementById("decision-open-overlay-symbol");
+        if (symbolEl) symbolEl.textContent = symbol || "";
+        overlay.hidden = false;
+        overlay.setAttribute("aria-hidden", "false");
+    }
+
+    function hideDecisionOpenOverlay() {
+        const overlay = document.getElementById("decision-open-overlay");
+        if (!overlay) return;
+        overlay.hidden = true;
+        overlay.setAttribute("aria-hidden", "true");
+    }
+
     async function openDecisionForSymbol(symbol) {
         const bare = String(symbol || "").trim().toUpperCase().replace(/^NSE:|^BSE:/, "");
         if (!bare) return;
-        const searchEl = document.getElementById("briefing-search");
-        const stanceEl = document.getElementById("decisions-filter-stance");
-        const typeEl = document.getElementById("decisions-filter-type");
-        const sortEl = document.getElementById("decisions-sort");
-        if (searchEl) searchEl.value = "";
-        if (stanceEl) stanceEl.value = "all";
-        if (typeEl) typeEl.value = "all";
-        if (sortEl) sortEl.value = "newest";
-        if (typeof switchTab === "function") {
-            window.history.pushState({ tabId: "decisions" }, "", "/dashboard/decisions");
-            const tabLoad = switchTab("decisions", { skipLoad: true });
-            if (tabLoad && typeof tabLoad.then === "function") {
-                await tabLoad;
+        showDecisionOpenOverlay(bare);
+        try {
+            const searchEl = document.getElementById("briefing-search");
+            const stanceEl = document.getElementById("decisions-filter-stance");
+            const typeEl = document.getElementById("decisions-filter-type");
+            const sortEl = document.getElementById("decisions-sort");
+            if (searchEl) searchEl.value = "";
+            if (stanceEl) stanceEl.value = "all";
+            if (typeEl) typeEl.value = "all";
+            if (sortEl) sortEl.value = "newest";
+            if (typeof switchTab === "function") {
+                window.history.pushState({ tabId: "decisions" }, "", "/dashboard/decisions");
+                const tabLoad = switchTab("decisions", { skipLoad: true });
+                if (tabLoad && typeof tabLoad.then === "function") {
+                    await tabLoad;
+                }
             }
-        }
-        if (typeof loadDecisionsWorkspace === "function") {
-            const selected = await loadDecisionsWorkspace({
-                preferInstrumentId: bare,
-                strictPreferInstrumentId: true,
-            });
-            if (!selected) {
-                showToast(`${bare} is not in the current Decisions list`, "warning");
+            if (typeof loadDecisionsWorkspace === "function") {
+                const selected = await loadDecisionsWorkspace({
+                    preferInstrumentId: bare,
+                    strictPreferInstrumentId: true,
+                });
+                if (!selected) {
+                    showToast(`${bare} is not in the current Decisions list`, "warning");
+                }
             }
+        } finally {
+            hideDecisionOpenOverlay();
         }
     }
 
@@ -420,8 +433,14 @@
             if (typeof loadMarketIntelligence === "function") {
                 await loadMarketIntelligence();
             }
-            if (refreshDecisions && typeof loadDecisionsWorkspace === "function") {
-                await loadDecisionsWorkspace({
+            // Owner-reported (2026-08-01): this used to also call
+            // loadDecisionsWorkspace(), which re-fetches every decision page
+            // a second time — loadMarketIntelligence() above already
+            // refreshed the exact same shared cache via
+            // refreshDecisionCacheForValidationResults(). Re-apply the view
+            // over that already-fresh cache instead of fetching it twice.
+            if (refreshDecisions && typeof applyDecisionsView === "function") {
+                applyDecisionsView({
                     preferInstrumentId: list.length === 1 ? list[0] : null,
                 });
             }
@@ -958,6 +977,36 @@
         }
     }
 
+    let indexFilterCatalogLoadPromise = null;
+
+    // Owner-reported: the Decisions & Trace Index filter stayed empty with
+    // no explanation until Market Intelligence happened to be visited first
+    // (only loadIndexLeadership() populated the catalog, and it only runs
+    // when the Market Intelligence tab loads). This is a standalone,
+    // idempotent fetch of the same catalog so the filter self-populates
+    // regardless of which tab the owner opens first.
+    async function ensureIndexFilterCatalogLoaded() {
+        if (universeIndexCatalog.length > 0) return;
+        if (indexFilterCatalogLoadPromise) return indexFilterCatalogLoadPromise;
+        indexFilterCatalogLoadPromise = (async () => {
+            try {
+                const indexResponse = await apiRequest("/api/v1/market/index-intelligence", { skipToast: true });
+                const payload = indexResponse && indexResponse.data ? indexResponse.data : null;
+                if (payload && Array.isArray(payload.indices)) {
+                    universeIndexCatalog = payload.indices.map(item => ({ key: item.key, label: item.label }));
+                    populateUniverseIndexFilter();
+                    populateValidationResultsIndexFilter();
+                    populateDecisionsIndexFilter();
+                }
+            } catch (err) {
+                console.error("Failed to load index filter catalog", err);
+            } finally {
+                indexFilterCatalogLoadPromise = null;
+            }
+        })();
+        return indexFilterCatalogLoadPromise;
+    }
+
     async function loadIndexLeadership() {
         const [indexResult, sessionResult] = await Promise.allSettled([
             apiRequest("/api/v1/market/index-intelligence", { skipToast: true }),
@@ -1243,7 +1292,7 @@
             //    pipeline runs (Universe / Recent Activity) in parallel.
             const [summaryRes, runsRes, funnelRes] = await Promise.all([
                 apiRequest("/api/v1/market/summary").catch(() => null),
-                apiRequest("/api/v1/pipelines/runs").catch(() => null),
+                apiRequest("/api/v1/pipelines/runs?page_size=100&sort_by=as_of&sort_dir=desc").catch(() => null),
                 apiRequest("/api/v1/pipelines/validation-funnel").catch(() => null),
             ]);
             renderValidationFunnel(funnelRes && funnelRes.data ? funnelRes.data : null);
@@ -2104,13 +2153,14 @@
         if (!body) return;
         const rows = validationResultRows(universeMembers || {}, qualified || []);
         const countEl = document.getElementById("validation-results-count");
+        const filters = validationWorkbenchFilters();
+        updateValidationResultsFilterToggleActiveState(filters);
         if (rows.length === 0) {
             body.className = "validation-results-list";
             body.innerHTML = `<div class="text-muted text-center" style="padding: 24px;">${escapeDecisionHtml(universeNote || "No validation results are available yet.")}</div>`;
             if (countEl) countEl.textContent = "Showing 0";
             return;
         }
-        const filters = validationWorkbenchFilters();
         const views = filteredValidationResultViews(rows, filters);
         if (countEl) {
             countEl.textContent = `Showing ${views.length} of ${rows.length}`;
@@ -2160,6 +2210,7 @@
             btn.addEventListener("click", async () => {
                 if (btn.disabled) return;
                 const symbol = btn.getAttribute("data-symbol");
+                closeValidationResultsFilterPopover();
                 closeModal(document.getElementById("validation-funnel-modal"));
                 await openDecisionForSymbol(symbol);
             });
@@ -2483,6 +2534,7 @@
         const statusFilter = String((statusEl && statusEl.value) || "all").toUpperCase();
         const sectorFilter = String((sectorEl && sectorEl.value) || "all").toUpperCase();
         const indexFilterActive = universeIndexFilterKey !== "all";
+        updateUniverseFilterToggleActiveState(statusFilter !== "ALL" || sectorFilter !== "ALL" || indexFilterActive);
         const rows = Array.from(bodyEl.querySelectorAll("tr"));
         let visible = 0;
         rows.forEach(row => {
@@ -2517,10 +2569,28 @@
 
     const candidateAddBtn = document.getElementById("candidate-add-btn");
     const candidateSearchInput = document.getElementById("candidate-search-input");
+    const candidateSearchClear = document.getElementById("candidate-search-clear");
     const candidateInput = candidateSearchInput;
-    if (candidateSearchInput) {
-        candidateSearchInput.addEventListener("input", () => applyUniverseFilters());
+
+    function updateCandidateSearchClear() {
+        if (!candidateSearchInput || !candidateSearchClear) return;
+        candidateSearchClear.hidden = !candidateSearchInput.value.trim();
     }
+
+    if (candidateSearchInput) {
+        candidateSearchInput.addEventListener("input", () => {
+            updateCandidateSearchClear();
+            applyUniverseFilters();
+        });
+        updateCandidateSearchClear();
+    }
+    candidateSearchClear?.addEventListener("click", () => {
+        if (!candidateSearchInput) return;
+        candidateSearchInput.value = "";
+        updateCandidateSearchClear();
+        applyUniverseFilters();
+        candidateSearchInput.focus();
+    });
     const universeStatusFilter = document.getElementById("universe-status-filter");
     if (universeStatusFilter) {
         universeStatusFilter.addEventListener("change", () => applyUniverseFilters());
@@ -2535,6 +2605,54 @@
             applyUniverseIndexFilterSelection(universeIndexFilter.value || "all");
         });
     }
+
+    // Owner-reported: search + 3 filter selects + action button wrapped to
+    // two lines. Moves Status/Sector/Index behind a "Filters" popover,
+    // mirroring the exact same toggle/popover/close/Escape pattern already
+    // used by Decisions & Trace (#symbols-filter-toggle/-popover). No
+    // backdrop here — unlike the Decisions left rail, this toolbar has no
+    // large content area to dim, and the existing click-outside listener
+    // below already closes the popover without one.
+    const universeFilterToggle = document.getElementById("universe-filter-toggle");
+    const universeFilterPopover = document.getElementById("universe-filter-popover");
+    const universeFilterClose = document.getElementById("universe-filter-close");
+    const universeFilterReset = document.getElementById("universe-filter-reset");
+
+    function updateUniverseFilterToggleActiveState(active) {
+        universeFilterToggle?.classList.toggle("has-active-filters", active);
+    }
+
+    function closeUniverseFilterPopover() {
+        if (!universeFilterPopover || universeFilterPopover.hidden) return;
+        universeFilterPopover.hidden = true;
+        universeFilterToggle?.setAttribute("aria-expanded", "false");
+    }
+
+    universeFilterToggle?.addEventListener("click", event => {
+        event.stopPropagation();
+        const willOpen = universeFilterPopover.hidden;
+        universeFilterPopover.hidden = !willOpen;
+        universeFilterToggle.setAttribute("aria-expanded", String(willOpen));
+    });
+    universeFilterClose?.addEventListener("click", event => {
+        event.stopPropagation();
+        closeUniverseFilterPopover();
+    });
+    universeFilterReset?.addEventListener("click", () => {
+        if (universeStatusFilter) universeStatusFilter.value = "all";
+        if (universeSectorFilter) universeSectorFilter.value = "all";
+        if (universeIndexFilter) universeIndexFilter.value = "all";
+        applyUniverseIndexFilterSelection("all");
+    });
+    document.addEventListener("click", event => {
+        if (!universeFilterPopover || universeFilterPopover.hidden) return;
+        if (universeFilterPopover.contains(event.target) || event.target === universeFilterToggle) return;
+        closeUniverseFilterPopover();
+    });
+    document.addEventListener("keydown", event => {
+        if (event.key === "Escape") closeUniverseFilterPopover();
+    });
+
     if (candidateAddBtn && candidateInput) {
         const addAndValidateCandidate = async () => {
             const symbol = (candidateInput.value || "").trim().toUpperCase();
@@ -2719,25 +2837,48 @@
     }
 
     const validationResultsSearch = document.getElementById("universe-search");
+    const validationResultsSearchClear = document.getElementById("universe-search-clear");
+
+    function updateValidationResultsSearchClear() {
+        if (!validationResultsSearch || !validationResultsSearchClear) return;
+        validationResultsSearchClear.hidden = !validationResultsSearch.value.trim();
+    }
     const validationResultsOutcomeFilter = document.getElementById("validation-results-outcome-filter");
     const validationResultsPlanFilter = document.getElementById("validation-results-plan-filter");
     const validationResultsIndexFilter = document.getElementById("validation-results-index-filter");
     const validationResultsSort = document.getElementById("validation-results-sort");
-    const validationResultsReset = document.getElementById("validation-results-reset");
+    const validationResultsReset = document.getElementById("validation-results-filter-reset");
     if (validationResultsSearch) {
-        validationResultsSearch.addEventListener("input", scheduleValidationResultsRender);
+        validationResultsSearch.addEventListener("input", () => {
+            updateValidationResultsSearchClear();
+            scheduleValidationResultsRender();
+        });
+        updateValidationResultsSearchClear();
     }
+    validationResultsSearchClear?.addEventListener("click", () => {
+        if (!validationResultsSearch) return;
+        validationResultsSearch.value = "";
+        updateValidationResultsSearchClear();
+        scheduleValidationResultsRender();
+        validationResultsSearch.focus();
+    });
+    // Owner-reported (2026-08-01, third round): picking a value left the
+    // popover open — a completed choice, not a mid-adjustment the owner
+    // needs the panel open for, so each select closes it after applying.
     [validationResultsOutcomeFilter, validationResultsPlanFilter, validationResultsSort].forEach(control => {
-        if (control) control.addEventListener("change", scheduleValidationResultsRender);
+        if (control) control.addEventListener("change", () => {
+            scheduleValidationResultsRender();
+            closeValidationResultsFilterPopover();
+        });
     });
     if (validationResultsIndexFilter) {
         validationResultsIndexFilter.addEventListener("change", () => {
             applyValidationResultsIndexFilterSelection(validationResultsIndexFilter.value || "all");
+            closeValidationResultsFilterPopover();
         });
     }
     if (validationResultsReset) {
         validationResultsReset.addEventListener("click", () => {
-            if (validationResultsSearch) validationResultsSearch.value = "";
             if (validationResultsOutcomeFilter) validationResultsOutcomeFilter.value = "all";
             if (validationResultsPlanFilter) validationResultsPlanFilter.value = "all";
             if (validationResultsIndexFilter) validationResultsIndexFilter.value = "all";
@@ -2748,6 +2889,127 @@
             scheduleValidationResultsRender();
         });
     }
+
+    // Owner-reported: Outcome/Plan/Index/Sort wrapped to two lines. Moves
+    // them behind a "Filters" popover, mirroring the same toggle/backdrop/
+    // close/Escape pattern used by Decisions & Trace and the Universe card.
+    const validationResultsFilterToggle = document.getElementById("validation-results-filter-toggle");
+    const validationResultsFilterPopover = document.getElementById("validation-results-filter-popover");
+    const validationResultsFilterClose = document.getElementById("validation-results-filter-close");
+    const validationResultsFilterPopoverHome = { parent: null, nextSibling: null };
+
+    function updateValidationResultsFilterToggleActiveState(filters) {
+        const active = filters.outcome !== "all" || filters.plan !== "all"
+            || filters.index !== "all" || filters.sort !== "score-desc";
+        validationResultsFilterToggle?.classList.toggle("has-active-filters", active);
+    }
+
+    // Unlike Universe/Decisions, this toggle sits inside a scrollable modal
+    // body (.validation-funnel-modal-body, overflow-y: auto). overflow clips
+    // ANY descendant that visually extends past it — including an absolutely
+    // or fixed positioned popover — regardless of how correct its top/left
+    // math is, because clipping follows DOM containment, not the positioned
+    // element's containing block. No amount of coordinate math escapes that;
+    // the popover has to actually leave that DOM subtree while open.
+    function moveValidationResultsFilterPopoverToBody() {
+        if (!validationResultsFilterPopover || validationResultsFilterPopover.parentElement === document.body) return;
+        validationResultsFilterPopoverHome.parent = validationResultsFilterPopover.parentElement;
+        validationResultsFilterPopoverHome.nextSibling = validationResultsFilterPopover.nextSibling;
+        document.body.appendChild(validationResultsFilterPopover);
+    }
+
+    function restoreValidationResultsFilterPopoverHome() {
+        if (!validationResultsFilterPopover || !validationResultsFilterPopoverHome.parent) return;
+        validationResultsFilterPopoverHome.parent.insertBefore(validationResultsFilterPopover, validationResultsFilterPopoverHome.nextSibling);
+        validationResultsFilterPopoverHome.parent = null;
+        validationResultsFilterPopoverHome.nextSibling = null;
+    }
+
+    function closeValidationResultsFilterPopover() {
+        if (!validationResultsFilterPopover || validationResultsFilterPopover.hidden) return;
+        validationResultsFilterPopover.hidden = true;
+        validationResultsFilterToggle?.setAttribute("aria-expanded", "false");
+        restoreValidationResultsFilterPopoverHome();
+    }
+
+    function openValidationResultsFilterPopover() {
+        if (!validationResultsFilterPopover) return;
+        moveValidationResultsFilterPopoverToBody();
+        // Now a direct child of body (no transformed/overflow-clipping
+        // ancestor in between), so position:fixed is plain viewport math —
+        // no container-relative re-basing needed.
+        validationResultsFilterPopover.style.position = "fixed";
+        // As a body child it's a sibling of .modal-overlay (z-index 2000),
+        // not a descendant of the modal's own stacking context anymore, so
+        // its base z-index: 20 would paint BEHIND the modal it belongs to.
+        // 2200 clears both modal layers (2000/2100 stacked) while staying
+        // below every blocking gate (validate-overlay 9000, Kite/unlock
+        // 10000/11000), which must still cover it if one opens mid-filter.
+        validationResultsFilterPopover.style.zIndex = "2200";
+        const rect = validationResultsFilterToggle.getBoundingClientRect();
+        const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 720;
+        const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 1280;
+        const margin = 8;
+        const minUsableHeight = 160;
+        // Owner-reported: clamping to the full viewport let the popover
+        // visually spill past the dialog card's own right/bottom edge onto
+        // the backdrop — it belongs to this modal, so it must stay inside
+        // the modal's own box, not just somewhere on screen.
+        const modalEl = validationResultsFilterToggle.closest(".modal-container");
+        const modalRect = modalEl ? modalEl.getBoundingClientRect() : null;
+        const boundsTop = Math.max(margin, modalRect ? modalRect.top : margin);
+        const boundsBottom = Math.min(viewportHeight - margin, modalRect ? modalRect.bottom : viewportHeight - margin);
+        const boundsLeft = Math.max(margin, modalRect ? modalRect.left : margin);
+        const boundsRight = Math.min(viewportWidth - margin, modalRect ? modalRect.right : viewportWidth - margin);
+        // Purely geometric (toggle rect vs modal bounds) — never measures the
+        // popover's own box, which would read as zero height while still
+        // `hidden`. Opens below by default; flips above only when there's
+        // truly more room there, so it can never render overlapping or
+        // past the toggle itself.
+        const spaceBelow = boundsBottom - rect.bottom - 4;
+        const spaceAbove = rect.top - boundsTop - 4;
+        // Anchor by the toggle's own left edge (it sits near the LEFT of
+        // this toolbar, unlike Universe/Decisions where it sits near the
+        // right) — right-aligning here would push a 260px-wide popover
+        // off the left edge of the modal entirely. Clamp so it also never
+        // overflows the modal's right edge.
+        const popoverWidth = validationResultsFilterPopover.offsetWidth || 260;
+        const left = Math.min(rect.left, Math.max(boundsLeft, boundsRight - popoverWidth));
+        validationResultsFilterPopover.style.left = `${left}px`;
+        validationResultsFilterPopover.style.right = "auto";
+        if (spaceBelow >= minUsableHeight || spaceBelow >= spaceAbove) {
+            validationResultsFilterPopover.style.bottom = "auto";
+            validationResultsFilterPopover.style.top = `${rect.bottom + 4}px`;
+            validationResultsFilterPopover.style.maxHeight = `${Math.max(minUsableHeight, spaceBelow)}px`;
+        } else {
+            validationResultsFilterPopover.style.top = "auto";
+            validationResultsFilterPopover.style.bottom = `${viewportHeight - rect.top + 4}px`;
+            validationResultsFilterPopover.style.maxHeight = `${Math.max(minUsableHeight, spaceAbove)}px`;
+        }
+        validationResultsFilterPopover.hidden = false;
+        validationResultsFilterToggle.setAttribute("aria-expanded", "true");
+    }
+
+    validationResultsFilterToggle?.addEventListener("click", event => {
+        event.stopPropagation();
+        if (validationResultsFilterPopover.hidden) {
+            openValidationResultsFilterPopover();
+        } else {
+            closeValidationResultsFilterPopover();
+        }
+    });
+    validationResultsFilterClose?.addEventListener("click", event => {
+        event.stopPropagation();
+        closeValidationResultsFilterPopover();
+    });
+    document.addEventListener("click", event => {
+        if (!validationResultsFilterPopover || validationResultsFilterPopover.hidden) return;
+        if (validationResultsFilterPopover.contains(event.target) || event.target === validationResultsFilterToggle) return;
+        closeValidationResultsFilterPopover();
+    });
+    document.addEventListener("keydown", event => {
+        if (event.key === "Escape") closeValidationResultsFilterPopover();
+    });
 
     // MI-3 polish: View Details opens a modal (Eligible/Excluded + Qualified)
     // instead of expanding inline — keeps the funnel compact and the Stock List
@@ -2792,6 +3054,7 @@
         });
     }
     function setValidationWorkbenchTab(target) {
+        if (target !== "symbols") closeValidationResultsFilterPopover();
         document.querySelectorAll("[data-validation-workbench-tab]").forEach(btn => {
             const active = btn.getAttribute("data-validation-workbench-tab") === target;
             btn.classList.toggle("is-active", active);
@@ -2808,11 +3071,17 @@
         });
     });
     if (funnelDetailsClose) {
-        funnelDetailsClose.addEventListener("click", () => closeModal(funnelDetailsModal));
+        funnelDetailsClose.addEventListener("click", () => {
+            closeValidationResultsFilterPopover();
+            closeModal(funnelDetailsModal);
+        });
     }
     if (funnelDetailsModal) {
         funnelDetailsModal.addEventListener("click", (event) => {
-            if (event.target === funnelDetailsModal) closeModal(funnelDetailsModal);
+            if (event.target === funnelDetailsModal) {
+                closeValidationResultsFilterPopover();
+                closeModal(funnelDetailsModal);
+            }
         });
     }
 

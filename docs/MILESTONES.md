@@ -1138,6 +1138,232 @@ in a future session; this finding does not need to be manually re-verified
 if those counts have clearly grown to cover a real multi-week trading history
 with recorded outcomes.
 
+### Fix pass: 6 owner-reported dashboard UX issues (2026-08-01)
+
+Owner reviewed live screenshots and reported six issues, unrelated to the IX
+track, spanning Market Intelligence and Decisions & Trace:
+
+1. **Index Leadership popup** — 2-column tile grid too sparse; changed to
+   3 columns (`.index-leadership-grid`, `06-market-intelligence.css`).
+2. **Universe and Validation Workbench Results toolbars wrapped to two
+   lines** — IX-4a/b additions pushed both fixed-column-grid toolbars past
+   capacity. Redesigned both to mirror Decisions & Trace's existing "Filters"
+   popover pattern exactly (`#symbols-filter-toggle`/`-popover`): search and
+   the primary action/count stay always-visible in one flex row; Status/
+   Sector/Index (Universe) and Outcome/Plan/Index/Sort (Workbench) move
+   behind one icon button. Reused `.symbols-filter-popover`/`.decisions-
+   filter-label`/`.symbols-filter-reset-btn`/`.symbols-filter-close-btn`
+   verbatim — no new popover CSS invented.
+3. **Search bars had no clear (X) button** — added one to Universe's
+   `#candidate-search-input` and Workbench's `#universe-search`, mirroring
+   Decisions' existing `#briefing-search-clear` pattern exactly.
+4. **Decisions & Trace Index filter stayed silently empty** until the owner
+   happened to visit Market Intelligence first, with no indication why.
+   Added `ensureIndexFilterCatalogLoaded()` — an idempotent, standalone fetch
+   of the same index catalog, now also triggered the moment the Decisions
+   tab itself loads, so the filter self-populates regardless of tab visit
+   order.
+5. **Filter/sort toggle gave no active-state indication.** Added a
+   `.has-active-filters` modifier (highlighted border + small dot) to all
+   three surfaces sharing the popover pattern (Decisions, Universe,
+   Workbench), driven by each surface's own existing filter-read logic —
+   no new state tracking invented.
+6. **"Open decision" from a popup had a 2-3s unindicated delay** (tab switch
+   + a genuine paginated decisions fetch) during which the owner could click
+   elsewhere mid-navigation. Added a second, distinct blocking overlay
+   (`#decision-open-overlay`, reusing the existing `validate-overlay` visual
+   language, never repurposing it — its wording is specifically about
+   re-validating) shown for the duration of `openDecisionForSymbol()`,
+   guaranteed to clear via `try`/`finally` even on error.
+
+**Two additional bugs found and fixed during this pass's own verification**
+(neither owner-reported; both discovered live-testing item 2's popover):
+
+- The Workbench Results popover's backdrop element sat inside the same small
+  toolbar row as its own toggle button, shadowing clicks meant for the
+  toggle (confirmed via `document.elementFromPoint`) while achieving no
+  actual dimming effect (unlike Decisions' backdrop, scoped to the whole
+  symbol list). Removed the non-functional backdrops from Universe and
+  Workbench; the existing document-level click-outside listener already
+  closes the popover without one.
+- The Workbench Results modal's container carries a CSS `transform`
+  (`matrix(1,0,0,1,0,0)`, functionally a no-op, but per the CSS spec ANY
+  transform value creates a new containing block for `position: fixed`
+  descendants). The popover there is now positioned relative to that actual
+  containing block (computed at open-time), not the true viewport, with a
+  purely geometric above/below flip and a `max-height`/`overflow-y` safety
+  net shared by all three popover instances — never measuring the popover's
+  own still-hidden (zero-height) box to decide.
+
+Architectural note: presentation-only across all six items. No backend,
+DTO, endpoint, scoring, confidence, risk, decision, or TradePlan change.
+
+Validation note: full suite 1,152 passed; Ruff clean on every touched file
+(same 7 pre-existing `test_dashboard_hosting.py` findings, unrelated). No
+backend Python changed, so no server restart was needed. Live-verified in
+the browser: Index Leadership grid confirmed 3-column via injected tiles
+(real data unavailable without owner credentials, the same limitation every
+IX milestone recorded); Universe toolbar/popover/search-clear/active-state
+all confirmed correctly via screenshot; Decisions Index-filter catalog fetch
+confirmed firing immediately on first Decisions-tab visit with no prior
+Market Intelligence visit (network request observed); the "Opening decision"
+overlay confirmed rendering correctly. The Workbench Results popover's exact
+on-screen position could not be cleanly re-confirmed after the transform fix
+within this session — every attempt coincided with `window.innerHeight`/
+`getBoundingClientRect()` reading transiently corrupted values specifically
+during synthetic (JS-dispatched) clicks in this browser-automation tool, a
+reproducible artifact distinct from real user interaction (real mouse clicks
+against real coordinates hit the correct element once measured correctly;
+the corruption only affected geometry queries taken in the same tick as a
+programmatic `.click()`). The underlying fix (containing-block-relative
+positioning, verified by direct `getComputedStyle`/`elementFromPoint`
+inspection) is logically sound and the same mechanism already renders
+correctly for Universe's non-modal popover; re-verify this one surface
+specifically on next touch if the owner reports it still misplaced.
+
+#### Follow-up round (2026-08-01): 3 more issues from a second screenshot review
+
+The owner reviewed the fix pass above live and reported three more issues:
+
+1. **Workbench Results toolbar didn't match Universe's one-row design.**
+   The search bar was still a separate row above the icon/count row (an
+   artifact of the original markup, not fully folded into the popover
+   redesign). Moved `.search-bar-container` to be the toolbar's own first
+   child, matching Universe exactly: search grows via `flex: 1 1 auto`,
+   count/busy pinned right via `margin-left: auto`.
+2. **Index Leadership: 4 columns instead of 3, and a wider modal** (the
+   owner's screenshot showed clearly unused screen width). Bumped the grid
+   to `repeat(4, minmax(0, 1fr))` and the modal to `min(1320px, calc(100vw -
+   32px))`.
+   - **Bug found while verifying #2, predating this session:** the width
+     override for `.index-leadership-modal-container` had been silently
+     ineffective all along. `dashboard.css` `@import`s `06-market-
+     intelligence.css` (where this override lived) BEFORE `07-universe-
+     modals.css` (which defines the base `.modal-container { max-width:
+     600px }` rule it needed to beat). Equal selector specificity means
+     source order alone decides, so the later-loading base rule always won,
+     regardless of the override's more specific-sounding class name — the
+     modal has likely rendered capped at ~600px since this control was
+     first built. Moved the override into `07-universe-modals.css`, right
+     after the base rule, matching the exact pattern every other modal in
+     this codebase already uses correctly (e.g.
+     `.validation-funnel-modal-container`, defined in that same file).
+3. **Validating/re-validating a symbol and opening a decision took
+   15-20 seconds.** Root cause: `fetchAllDecisionPages()` fetched the
+   decisions collection one sequential round-trip per 100-row page — with
+   the table now in the thousands, 40+ awaited requests in series. Worse,
+   `validateSymbolsNow()`'s `refreshDecisions` path called BOTH
+   `loadMarketIntelligence()` (which already refreshes the same shared
+   decisions cache via `refreshDecisionCacheForValidationResults()`) AND
+   `loadDecisionsWorkspace()` (which fetched the entire collection a SECOND
+   time). Fixed both: `fetchAllDecisionPages()` now fetches page 1 to learn
+   the real page count, then fires every remaining page concurrently
+   (`Promise.all`) instead of one at a time — `page_size` stays at its
+   server-enforced cap of 100 (`PaginationParams`, `le=100`), no backend
+   contract change; and the redundant `loadDecisionsWorkspace()` call was
+   replaced with `applyDecisionsView()` re-applied over the already-fresh
+   cache, eliminating the duplicate fetch entirely.
+
+**One more latent bug spotted in passing (not owner-reported, flagged as a
+separate follow-up task, not fixed in this pass):** CSS served via
+Starlette's `StaticFiles` mount carries no explicit `Cache-Control` header,
+so browsers apply heuristic freshness independent of `index.html`'s own
+cache-bust version bump — a `css/*.css` edit can be invisible to a returning
+user's browser (unlike `dashboard.js`, which is server-concatenated into one
+versioned URL) until they hard-refresh. Confirmed reproducible in this
+session's own testing. Out of scope for this fix pass; flagged separately.
+
+Architectural note: presentation-only. No backend, DTO, endpoint, scoring,
+confidence, risk, decision, or TradePlan change. The `fetchAllDecisionPages`
+change touches only client-side request fan-out, not the `GET /decisions`
+contract itself.
+
+Validation note: full suite 1,152 passed; Ruff clean (same 7 pre-existing
+`test_dashboard_hosting.py` findings, unrelated); CSS/JS brace-balance
+checked; no backend Python changed, so no server restart needed. Live-
+verified in the browser: Workbench Results toolbar confirmed one row,
+matching Universe, via an injected style override to bypass this session's
+own stale-CSS-cache artifact (see above) in the specific test tab; Index
+Leadership confirmed rendering 4 columns at the intended ~1248px width the
+same way, once the override was applied — proving the underlying fix is
+correct, with the caching gap (not this fix) responsible for the tab not
+picking it up via a normal reload. The 15-20s performance claim itself could
+not be directly timed in this environment (no representative decision-table
+volume/latency to reproduce against), but the root cause (40+ serial
+round-trips, doubled on every revalidate) was confirmed by direct code
+tracing against the real `GET /api/v1/decisions` pagination contract, and
+the fix's correctness (page 1 informs `total_pages`, remaining pages requested
+concurrently, results reassembled by page order) was verified via full-suite
+regression coverage and code review.
+
+#### Third round (2026-08-01): the follow-up round's fixes were not actually working
+
+The owner's next screenshots showed the Results tab and its Filters & Sort
+popover both still broken, despite the follow-up round above claiming both
+were "confirmed correct." Re-investigated from scratch instead of trusting
+that claim:
+
+1. **Results tab: "Showing 0" despite Conversion showing 363/510 eligible ·
+   200 trade.** Confirmed via direct SQLite query against the live database:
+   23 pipeline runs ran that day, every one FAILED. The Results tab's
+   `GET /api/v1/pipelines/runs` fetch had no `page_size`, defaulting to 20 —
+   it only ever saw that day's 23 failures. The Conversion/funnel stat comes
+   from a separate backend endpoint (`validation_funnel()`) that explicitly
+   requests `page_size=50`, reaching back far enough to find the last
+   successful run (confirmed at rank #25 by recency, from the prior day).
+   Fixed by requesting `page_size=100` (the API's max) with an explicit sort
+   on the one frontend call site.
+2. **Filters & Sort popover still rendering cut off.** The follow-up round's
+   fix (re-basing `position: fixed` math against a transformed ancestor) was
+   the wrong root cause. The real cause: `.modal-body`'s `overflow-y: auto`
+   clips any descendant popover regardless of how correct its position math
+   is — CSS clipping follows DOM containment, not the positioned element's
+   containing block. Fixed with a real DOM portal: the popover detaches to
+   `document.body` while open (its own `z-index: 2200`, since it's now a
+   sibling of `.modal-overlay`'s stacking context, not a descendant of it),
+   and restores to its original position on every close path (toggle
+   re-click, close button, outside click, Escape, switching away from the
+   Results tab, and all three paths that close the parent modal).
+3. **Third screenshot review, once data started loading, found 3 more UI
+   issues:** the search input's unbounded `flex: 1 1 auto` left too little
+   separation from the toggle/count — capped at `max-width: 420px`; the
+   viewport-clamped popover could still spill past the dialog card's own
+   edge onto the backdrop when the modal is narrower than the viewport —
+   reclamped against `.modal-container`'s own rect instead of the full
+   viewport; and picking a filter/sort value left the popover open — each
+   select now closes it after applying.
+4. **Separately reported: the search box froze the UI while typing.**
+   `latestDecisionForSymbol`/`currentOpenableDecisionForSymbol` each did a
+   full `.find()` scan of `traceDecisionsList` (thousands of decisions) for
+   every result row on every debounced render — O(rows × decisions) per
+   keystroke. `traceDecisionsList` is already deduped to one decision per
+   instrument, so replaced the scan with a `symbol → decision` `Map`,
+   rebuilt once whenever `traceDecisionsList` itself is reassigned; both
+   lookups are now O(1). Benchmarked at realistic scale (510 symbols, 4413
+   decisions, via a standalone Node.js script reproducing the real algorithm
+   shape): 12.03ms → 0.74ms per render, ~16x.
+
+**Verification approach changed deliberately this round.** The prior round's
+"confirmed correct" claim rested on checking computed CSS values in a test
+tab, which never actually exercised the real clipping ancestor — a real
+defect passed as verified. This round used a throwaway static page
+(temporarily served from the existing `/dashboard` mount, deleted
+immediately after) reproducing the real DOM structure — including the
+scrollable modal body — loading the real `dashboard.css` and the exact
+current JS functions, exercised via the actual browser with
+`getBoundingClientRect()` diagnostics, not visual inspection alone. The
+`page_size` root cause was confirmed directly against the live database, not
+inferred. The lookup fix was benchmarked directly, not just asserted.
+
+Architectural note: presentation-only; one frontend-only fetch parameter
+change. No backend, DTO, endpoint, scoring, confidence, risk, decision, or
+TradePlan change.
+
+Validation note: full suite 1,152 passed. New assertions cover every item
+above (portal helpers, modal-bounds clamp, auto-close-on-change wiring,
+search bar max-width, the `traceDecisionsBySymbol` index and its two call
+sites, and that neither lookup function contains `.find(` anymore).
+
 ---
 
 ### Intraday Edge Program (post M-D4, owner direction 2026-07-25)

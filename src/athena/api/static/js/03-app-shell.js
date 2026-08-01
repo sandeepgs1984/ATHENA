@@ -160,6 +160,11 @@
         } else if (tabId === "strategies") {
             await loadStrategiesWorkspace();
         } else if (tabId === "decisions") {
+            // Owner-reported: the Index filter was silently empty until the
+            // owner happened to visit Market Intelligence first, with no
+            // indication why. Loads the same index catalog independently
+            // here so the filter is populated regardless of tab visit order.
+            ensureIndexFilterCatalogLoaded();
             await loadDecisionsWorkspace();
             await loadMarketTicker();
         } else if (tabId === "operations") {

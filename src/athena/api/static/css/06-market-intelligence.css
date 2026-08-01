@@ -176,12 +176,16 @@
     font-size: var(--text-0-72);
 }
 
-.index-leadership-modal-container {
-    width: min(1040px, calc(100vw - 32px));
-    max-width: 1040px;
-    max-height: min(78vh, 760px);
-}
-
+/* Owner-reported (2026-08-01): the width override below was silently
+   ineffective — @import order puts this file BEFORE 07-universe-modals.css,
+   whose base .modal-container rule (max-width: 600px) has equal selector
+   specificity and therefore wins on later-import-order alone, regardless of
+   this class's more specific-sounding name. The real, effective width/
+   max-height override now lives in 07-universe-modals.css, matching the
+   established pattern every other modal in this codebase already uses
+   (e.g. .validation-funnel-modal-container, defined in that same file right
+   after the base rule it overrides). Do not re-add a width/max-width rule
+   for this selector here — it would silently do nothing again. */
 .index-leadership-modal-container .modal-header > div {
     min-width: 0;
 }
@@ -246,7 +250,7 @@
 
 .index-leadership-grid {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: var(--space-12);
 }
 
@@ -328,9 +332,10 @@
     }
 }
 
-@media (max-width: 1100px) {
-    .index-leadership-modal-container { width: min(920px, calc(100vw - 32px)); }
-}
+/* Narrow-screen override for .index-leadership-modal-container's width now
+   lives in 07-universe-modals.css alongside the base rule it overrides —
+   same reason as above, this file's @import happens too early to win the
+   cascade regardless of the media condition. */
 
 @media (max-width: 760px) {
     .index-leadership-grid {
@@ -1046,28 +1051,33 @@
     pointer-events: none;
 }
 
+/* Owner-reported: Outcome/Plan/Index/Sort no longer fit one line and
+   wrapped to two. Mirrors the Decisions "Filters" popover pattern — only
+   the filter-toggle icon and the count/busy indicator stay always-visible
+   in one row; the four selects move into a popover behind the icon. */
 .validation-results-toolbar {
-    align-items: end;
-    display: grid;
-    gap: var(--space-8);
-    grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+    align-items: center;
+    display: flex;
+    gap: var(--space-10);
     margin-top: var(--space-10);
     min-width: 0;
+    position: relative;
 }
 
-.validation-results-control {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-5);
+/* Owner-reported (2026-08-01): search lived on its own row above the
+   icon/count row, unlike Universe's single-row toolbar. Search now grows to
+   fill the row; count/busy stay pinned right via margin-left: auto.
+   Owner-reported (third round): unbounded flex-grow let the input claim
+   the entire row, crowding the toggle/count against its right edge with no
+   breathing room — capped so there's always clear separation. */
+.validation-results-toolbar .search-bar-container {
+    flex: 1 1 auto;
+    max-width: 420px;
     min-width: 0;
 }
 
-.validation-results-control span {
-    color: var(--text-muted);
-    font-size: var(--text-0-62);
-    font-weight: 800;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
+.validation-results-toolbar-end {
+    margin-left: auto;
 }
 
 .validation-results-select {
@@ -1117,28 +1127,6 @@
 
 .validation-results-busy[hidden] {
     display: none;
-}
-
-.validation-results-reset {
-    align-items: center;
-    background: rgba(15, 23, 42, 0.62);
-    border: 1px solid var(--border-color);
-    border-radius: 7px;
-    color: var(--accent);
-    cursor: pointer;
-    display: inline-flex;
-    gap: var(--space-6);
-    font-size: var(--text-0-75);
-    font-weight: 800;
-    justify-content: center;
-    min-height: 34px;
-    padding: var(--space-6) var(--space-10);
-    white-space: nowrap;
-}
-
-.validation-results-reset:hover {
-    background: rgba(34, 211, 238, 0.1);
-    border-color: rgba(34, 211, 238, 0.35);
 }
 
 .validation-result-row {
@@ -1246,15 +1234,6 @@
 }
 
 @media (max-width: 760px) {
-    .validation-results-toolbar {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .validation-results-toolbar-end {
-        grid-column: 1 / -1;
-        justify-content: space-between;
-    }
-
     .validation-result-row {
         grid-template-areas:
             "main"
@@ -1576,21 +1555,23 @@
     max-height: 220px;
 }
 
+/* Owner-reported: search + 3 filter selects + action button no longer fit
+   one line and wrapped to two. Mirrors the Decisions "Filters" popover
+   pattern (symbols-filter-toggle/-popover/-backdrop) instead — search and
+   the primary action stay always-visible in a single flex row; the
+   status/sector/index selects move into a popover behind one icon button. */
 .universe-table-toolbar {
-    display: grid;
-    grid-template-columns:
-        minmax(170px, 1.3fr)
-        minmax(108px, 0.8fr)
-        minmax(160px, 1.3fr)
-        minmax(128px, 0.8fr);
-    gap: var(--space-12);
+    display: flex;
     align-items: center;
+    gap: var(--space-10);
     flex-shrink: 0;
     width: 100%;
     min-width: 0;
+    position: relative;
 }
 
 .universe-table-toolbar .candidate-search {
+    flex: 1 1 auto;
     min-width: 0;
 }
 
@@ -2408,9 +2389,8 @@
 }
 
 .universe-add-validate-btn {
-    width: 100%;
-    min-width: 0;
-    justify-self: stretch;
+    flex: 0 0 auto;
+    width: auto;
     white-space: nowrap;
 }
 
@@ -2511,17 +2491,6 @@
 .market-main-split .universe-filter-select,
 .market-main-split .candidate-search input {
     min-height: 42px;
-}
-
-@media (max-width: 860px) {
-    .universe-table-toolbar {
-        grid-template-columns: minmax(180px, 1.35fr) repeat(3, minmax(112px, 1fr));
-    }
-
-    .universe-add-validate-btn {
-        grid-column: auto;
-        justify-self: stretch;
-    }
 }
 
 .market-main-split .market-universe-table th {

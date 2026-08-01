@@ -152,30 +152,50 @@
      * Default API page_size is 20 (max 100); a single page silently drops symbols
      * after large validate/seed runs.
      */
+    function decisionsPageUrl(page, pageSize) {
+        const qs = new URLSearchParams({
+            page: String(page),
+            page_size: String(pageSize),
+            sort_by: "ts",
+            sort_dir: "desc",
+        });
+        return `/api/v1/decisions?${qs.toString()}`;
+    }
+
+    // Owner-reported (2026-08-01): opening a decision or revalidating a
+    // symbol took 15-20s. Root cause was this function fetching every page
+    // one sequential round-trip at a time — with the decisions table now in
+    // the thousands, that's 40+ awaited requests in series. page_size is
+    // capped at 100 server-side (PaginationParams, le=100), so the fix is to
+    // stop serializing: fetch page 1 to learn the real page count, then fire
+    // every remaining page concurrently and let the browser's own connection
+    // pool pipeline them, instead of this code doing it one at a time.
     async function fetchAllDecisionPages() {
         const pageSize = 100;
         const maxPages = 50;
-        const collected = [];
-        let page = 1;
-        let hasNext = true;
 
-        while (hasNext && page <= maxPages) {
-            const qs = new URLSearchParams({
-                page: String(page),
-                page_size: String(pageSize),
-                sort_by: "ts",
-                sort_dir: "desc",
-            });
-            const res = await apiRequest(`/api/v1/decisions?${qs.toString()}`);
-            if (!res || res.status !== "success") {
-                throw new Error("decisions list returned a non-success envelope");
-            }
-            const batch = Array.isArray(res.data) ? res.data : [];
-            collected.push(...batch);
-            hasNext = Boolean(res.pagination && res.pagination.has_next);
-            page += 1;
-            if (!batch.length) {
-                break;
+        const firstRes = await apiRequest(decisionsPageUrl(1, pageSize));
+        if (!firstRes || firstRes.status !== "success") {
+            throw new Error("decisions list returned a non-success envelope");
+        }
+        const firstBatch = Array.isArray(firstRes.data) ? firstRes.data : [];
+        const collected = [...firstBatch];
+        const totalPages = Math.min(
+            maxPages,
+            Math.max(1, Number(firstRes.pagination && firstRes.pagination.total_pages) || 1)
+        );
+
+        if (totalPages > 1 && firstBatch.length) {
+            const remainingPages = [];
+            for (let page = 2; page <= totalPages; page += 1) remainingPages.push(page);
+            const results = await Promise.all(
+                remainingPages.map(page => apiRequest(decisionsPageUrl(page, pageSize)))
+            );
+            for (const res of results) {
+                if (!res || res.status !== "success") {
+                    throw new Error("decisions list returned a non-success envelope");
+                }
+                collected.push(...(Array.isArray(res.data) ? res.data : []));
             }
         }
         return collected;
@@ -187,6 +207,7 @@
             allTraceDecisionsList = raw;
             // Latest decision per instrument for "Today's Decisions" (avoid duplicate cards)
             traceDecisionsList = latestDecisionPerInstrument(raw);
+            rebuildTraceDecisionsBySymbolIndex();
             return applyDecisionsView(options);
         } catch (err) {
             console.error("Failed to load decisions", err);
@@ -323,6 +344,7 @@
         const typeFilter = (document.getElementById("decisions-filter-type") || {}).value || "all";
         const indexFilter = (document.getElementById("decisions-filter-index") || {}).value || "all";
         const sortMode = (document.getElementById("decisions-sort") || {}).value || "newest";
+        updateSymbolsFilterToggleActiveState(stanceFilter, typeFilter, indexFilter, sortMode);
         const preferDecisionId = options.preferDecisionId || activeDecisionId || null;
         let preferInstrumentId = options.preferInstrumentId
             ? String(options.preferInstrumentId).toUpperCase().replace(/^NSE:|^BSE:/, "")
@@ -888,6 +910,14 @@
     // differentiation, and rows were still interactive. Shown/hidden in
     // lockstep with the popover itself.
     const symbolsFilterBackdrop = document.getElementById("symbols-filter-backdrop");
+
+    // Owner-reported: no way to tell at a glance that a stance/type/index
+    // filter or a non-default sort is currently narrowing the list.
+    function updateSymbolsFilterToggleActiveState(stanceFilter, typeFilter, indexFilter, sortMode) {
+        if (!symbolsFilterToggle) return;
+        const active = stanceFilter !== "all" || typeFilter !== "all" || indexFilter !== "all" || sortMode !== "newest";
+        symbolsFilterToggle.classList.toggle("has-active-filters", active);
+    }
 
     function closeSymbolsFilterPopover() {
         if (!symbolsFilterPopover || symbolsFilterPopover.hidden) return;

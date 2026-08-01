@@ -3,6 +3,25 @@
     let activeTrace = null;
     let allTraceDecisionsList = [];
     let traceDecisionsList = [];
+    // Owner-reported (2026-08-01): typing in the Validation Workbench search
+    // box froze the UI. Root cause — currentOpenableDecisionForSymbol/
+    // latestDecisionForSymbol each did a full .find() scan of
+    // traceDecisionsList (thousands of decisions) for EVERY row on EVERY
+    // render, i.e. O(rows × decisions) on every keystroke. traceDecisionsList
+    // is already deduped to one decision per instrument, so a symbol->decision
+    // Map (rebuilt once whenever the list itself is reassigned) turns every
+    // lookup into O(1), and a render into O(rows + decisions) instead of
+    // O(rows × decisions).
+    let traceDecisionsBySymbol = new Map();
+    function rebuildTraceDecisionsBySymbolIndex() {
+        traceDecisionsBySymbol = new Map();
+        for (const d of traceDecisionsList) {
+            const instrument = String(d && d.metadata && d.metadata.instrument_id || "")
+                .toUpperCase()
+                .replace(/^NSE:|^BSE:/, "");
+            if (instrument) traceDecisionsBySymbol.set(instrument, d);
+        }
+    }
     let activeDecisionId = null;
     let activeDecisionData = null;
     let activeDepth = null;

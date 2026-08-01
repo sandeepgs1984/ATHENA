@@ -501,6 +501,31 @@
     width: min(1120px, 94vw);
 }
 
+/* Owner-reported (2026-08-01): any non-"none" transform on an ancestor
+   (even the no-op scale(1) above) makes it the containing block for
+   position:fixed descendants per spec, so the Filters & Sort popover
+   inside this modal was positioning against the modal box instead of the
+   viewport. transform:none here is visually identical once the open
+   transition settles, but keeps this modal out of that containing-block
+   chain so the popover's plain viewport-relative fixed math is correct. */
+.modal-overlay.active .validation-funnel-modal-container {
+    transform: none;
+}
+
+/* Owner-reported (2026-08-01): moved here (from 06-market-intelligence.css,
+   which @imports BEFORE this file) so this actually wins the cascade over
+   the base .modal-container rule above — same selector specificity, so
+   source order alone decided it, not the more specific-sounding class name. */
+.index-leadership-modal-container {
+    width: min(1320px, calc(100vw - 32px));
+    max-width: 1320px;
+    max-height: min(78vh, 760px);
+}
+
+@media (max-width: 1100px) {
+    .index-leadership-modal-container { width: min(920px, calc(100vw - 32px)); }
+}
+
 .modal-header {
     align-items: center;
     border-bottom: 1px solid var(--border-color);

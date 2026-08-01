@@ -90,12 +90,44 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "function closeModal" in js
     assert "Failed to load strategy profiles" in js
     assert "Failed to load decisions" in js
-    # Decisions workspace must walk every page before latest-per-instrument dedupe
+    # Decisions workspace must walk every page before latest-per-instrument dedupe.
+    # Owner-reported (2026-08-01): the original has_next-driven sequential loop
+    # took 15-20s against a large decisions table (one round-trip per page, in
+    # series). Now fetches page 1 to learn total_pages, then fires every
+    # remaining page concurrently instead of one at a time.
     assert "function fetchAllDecisionPages" in js
     assert "function latestDecisionPerInstrument" in js
     assert "page_size" in js
-    assert "has_next" in js
+    assert "total_pages" in js
     assert 'sort_by: "ts"' in js
+    fetch_all_pages_start = js.find("async function fetchAllDecisionPages")
+    fetch_all_pages_body = js[fetch_all_pages_start:fetch_all_pages_start + 1500]
+    assert "Promise.all" in fetch_all_pages_body
+
+    # Owner-reported (2026-08-01): typing in the Validation Workbench search
+    # box froze the UI. Root cause — latestDecisionForSymbol/
+    # currentOpenableDecisionForSymbol each did a full .find() scan over
+    # traceDecisionsList (thousands of rows) for every result row on every
+    # render, i.e. O(rows * decisions) per keystroke. A symbol->decision Map,
+    # rebuilt once whenever traceDecisionsList itself is reassigned, turns
+    # every lookup into O(1). Benchmarked at realistic scale (510 symbols,
+    # 4413 decisions): ~16x faster per render pass.
+    assert "function rebuildTraceDecisionsBySymbolIndex" in js
+    assert "let traceDecisionsBySymbol = new Map()" in js
+    rebuild_fn_start = js.find("function rebuildTraceDecisionsBySymbolIndex")
+    rebuild_fn_body = js[rebuild_fn_start:rebuild_fn_start + 400]
+    assert "traceDecisionsBySymbol = new Map()" in rebuild_fn_body
+    # Both call sites that reassign traceDecisionsList must rebuild the index
+    # immediately after, or lookups would silently read stale data.
+    assert js.count("traceDecisionsList = latestDecisionPerInstrument(raw);\n            rebuildTraceDecisionsBySymbolIndex();") == 2
+    latest_lookup_start = js.find("function latestDecisionForSymbol")
+    latest_lookup_body = js[latest_lookup_start:latest_lookup_start + 300]
+    assert "traceDecisionsBySymbol.get(bare)" in latest_lookup_body
+    assert ".find(" not in latest_lookup_body
+    openable_lookup_start = js.find("function currentOpenableDecisionForSymbol")
+    openable_lookup_body = js[openable_lookup_start:openable_lookup_start + 500]
+    assert "traceDecisionsBySymbol.get(bare)" in openable_lookup_body
+    assert ".find(" not in openable_lookup_body
 
     # M-D1 instrument brief is selection-driven and never deletes decision history
     assert 'id="decision-brief-body"' in html
@@ -200,8 +232,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.130.0" in html
-    assert "dashboard.js?v=9.130.0" in html
+    assert "dashboard.css?v=9.139.0" in html
+    assert "dashboard.js?v=9.139.0" in html
     assert 'id="advisor-pulse"' in html
     assert 'id="header-diagnostics-popover"' in html
     assert 'id="decision-actionability-banner"' in html
@@ -1433,8 +1465,19 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert 'id="validation-results-sort"' in html
     assert 'id="validation-results-count"' in html
     assert 'id="validation-results-busy"' in html
-    assert 'id="validation-results-reset"' in html
     assert 'id="validation-summary-strip"' not in html
+    # Owner-reported: Outcome/Plan/Index/Sort wrapped to two lines. Moved
+    # behind a "Filters" popover, mirroring the exact Decisions pattern
+    # (symbols-filter-toggle/-popover) rather than a new one. No backdrop —
+    # unlike the Decisions left rail, there's no large content area to dim,
+    # and it sat inside the same small toolbar row as the toggle itself,
+    # which would shadow clicks meant for the toggle.
+    assert 'id="validation-results-filter-toggle"' in html
+    assert 'id="validation-results-filter-popover"' in html
+    assert 'id="validation-results-filter-reset"' in html
+    assert 'id="validation-results-filter-close"' in html
+    assert "function closeValidationResultsFilterPopover" in js
+    assert "function updateValidationResultsFilterToggleActiveState" in js
     assert "function renderValidationFunnel" in js
     assert "function renderValidationWorkbench" in js
     assert "function validationTopBlockers" in js
@@ -1456,7 +1499,6 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".validation-results-count" in css
     assert ".validation-results-busy" in css
     assert ".validation-results-list.is-filtering" in css
-    assert ".validation-results-reset" in css
     assert ".validation-blocker-row" in css
     assert ".validation-run-row.is-failed" in css
     assert "grid-template-columns: repeat(5, minmax(0, 1fr))" in css
@@ -1557,14 +1599,29 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert 'id="universe-status-filter"' in html
     assert 'id="universe-sector-filter"' in html
     # Mock-faithful Universe chrome: title actions share one header row and
-    # search/status/sector/add-and-validate share one toolbar row. The search
-    # field doubles as the explicit add target, avoiding a redundant input row.
+    # search/filter-toggle/add-and-validate share one always-visible toolbar
+    # row. The search field doubles as the explicit add target, avoiding a
+    # redundant input row.
     assert 'id="candidate-symbol-input"' not in html
     toolbar = html[html.find('<div class="universe-table-toolbar">'):]
-    toolbar = toolbar[:toolbar.find("</div>", toolbar.find("</select>")) + 500]
-    assert toolbar.find('id="candidate-search-input"') < toolbar.find('id="universe-status-filter"')
+    toolbar = toolbar[:toolbar.find("</div>", toolbar.rfind("</select>")) + 300]
+    assert toolbar.find('id="candidate-search-input"') < toolbar.find('id="universe-filter-toggle"')
+    assert toolbar.find('id="universe-filter-toggle"') < toolbar.find('id="candidate-add-btn"')
+    assert toolbar.find('id="candidate-add-btn"') < toolbar.find('id="universe-status-filter"')
     assert toolbar.find('id="universe-status-filter"') < toolbar.find('id="universe-sector-filter"')
-    assert toolbar.find('id="universe-sector-filter"') < toolbar.find('id="candidate-add-btn"')
+
+    # Owner-reported: search + 3 filter selects + action button no longer fit
+    # one line and wrapped to two. Moved Status/Sector/Index behind a
+    # "Filters" popover, mirroring the exact Decisions & Trace pattern
+    # (symbols-filter-toggle/-popover) rather than a new one. No backdrop —
+    # this toolbar has no large content area to dim, and one would sit inside
+    # the same small row as the toggle itself, shadowing clicks meant for it.
+    assert 'id="universe-filter-popover"' in toolbar
+    assert 'id="universe-filter-reset"' in toolbar
+    assert 'id="universe-filter-close"' in toolbar
+    assert "function closeUniverseFilterPopover" in js
+    assert "function updateUniverseFilterToggleActiveState" in js
+    assert "universeFilterToggle?.addEventListener(\"click\"" in js
 
     # IX-4a: Universe index filter — mirrors the sector-filter pattern exactly,
     # lazily fetches per-index membership from the new read-only endpoint, and
@@ -1572,7 +1629,6 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert 'id="universe-index-filter"' in html
     assert 'id="universe-index-filter-note"' in html
     assert toolbar.find('id="universe-sector-filter"') < toolbar.find('id="universe-index-filter"')
-    assert toolbar.find('id="universe-index-filter"') < toolbar.find('id="candidate-add-btn"')
     assert "function populateUniverseIndexFilter" in js
     assert "function applyUniverseIndexFilterSelection" in js
     assert "function renderUniverseIndexFilterNote" in js
@@ -1597,10 +1653,92 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
         < results_toolbar.find('id="validation-results-index-filter"')
         < results_toolbar.find('id="validation-results-sort"')
     )
+    assert 'id="validation-results-filter-toggle"' in results_toolbar
+    assert (
+        results_toolbar.find('id="validation-results-filter-toggle"')
+        < results_toolbar.find('id="validation-results-outcome-filter"')
+    )
     assert "function populateValidationResultsIndexFilter" in js
     assert "function applyValidationResultsIndexFilterSelection" in js
     assert "function renderValidationResultsIndexFilterNote" in js
     assert "async function fetchIndexMembers" in js
+    # Owner-reported (2026-08-01): search lived on its own row above the
+    # icon/count row, unlike Universe's single-row toolbar. The search bar is
+    # now the toolbar's own first child, matching Universe exactly.
+    assert results_toolbar.find('id="universe-search"') < results_toolbar.find(
+        'id="validation-results-filter-toggle"'
+    )
+    assert ".validation-results-toolbar .search-bar-container" in css
+
+    # Owner-reported (2026-08-01, second round): Results tab showed "Showing
+    # 0" / "No validation results are available yet." despite Conversion
+    # showing real eligible/trade counts. Root cause: this fetch had no
+    # page_size, defaulting to 20, while every run that day had failed —
+    # the last successful run was rank #25 by recency. The backend funnel
+    # endpoint explicitly requests page_size=50 and found it; this fetch,
+    # capped at 20, never did. Request the API's max (100) explicitly so a
+    # long losing streak of failed runs can't silently empty the tab again.
+    assert 'apiRequest("/api/v1/pipelines/runs?page_size=100&sort_by=as_of&sort_dir=desc")' in js
+
+    # Owner-reported (2026-08-01, second round): the Filters & Sort popover
+    # still rendered clipped/truncated near the viewport edge. Root cause was
+    # NOT the coordinate math — it was .modal-body's overflow-y: auto, which
+    # clips any descendant popover regardless of position:fixed/absolute
+    # math, since clipping follows DOM containment. Fix: detach the popover
+    # to document.body while open (a real portal), then plain viewport-
+    # relative fixed positioning, no container-rect re-basing needed.
+    assert "function moveValidationResultsFilterPopoverToBody" in js
+    assert "function restoreValidationResultsFilterPopoverHome" in js
+    assert "function openValidationResultsFilterPopover" in js
+    move_fn_start = js.find("function moveValidationResultsFilterPopoverToBody")
+    move_fn_body = js[move_fn_start:move_fn_start + 500]
+    assert "document.body.appendChild(validationResultsFilterPopover)" in move_fn_body
+    open_fn_start = js.find("function openValidationResultsFilterPopover")
+    open_fn_body = js[open_fn_start:open_fn_start + 4000]
+    assert 'validationResultsFilterPopover.style.position = "fixed"' in open_fn_body
+    # A body child sits outside .modal-overlay's stacking context (z-index
+    # 2000) entirely, so it needs its own z-index to paint above the modal —
+    # 20 (its base, descendant-of-modal value) would now paint behind it.
+    assert 'validationResultsFilterPopover.style.zIndex = "2200"' in open_fn_body
+    assert "moveValidationResultsFilterPopoverToBody()" in open_fn_body
+    # Every close path must restore it, or a body-detached popover is left
+    # floating over the page after the modal it belongs to disappears.
+    close_fn_start = js.find("function closeValidationResultsFilterPopover")
+    close_fn_body = js[close_fn_start:close_fn_start + 500]
+    assert "restoreValidationResultsFilterPopoverHome()" in close_fn_body
+    assert 'if (target !== "symbols") closeValidationResultsFilterPopover();' in js
+    assert "closeValidationResultsFilterPopover();\n            closeModal(funnelDetailsModal);" in js
+    assert "closeValidationResultsFilterPopover();\n                closeModal(funnelDetailsModal);" in js
+    assert 'closeValidationResultsFilterPopover();\n                closeModal(document.getElementById("validation-funnel-modal"));' in js
+
+    # Owner-reported (2026-08-01, third round): even fixed to the true
+    # viewport, the popover could still render past the dialog card's own
+    # right/bottom edge onto the backdrop when the modal is narrower than
+    # the viewport (.validation-funnel-modal-container caps at
+    # min(1120px, 94vw)) — it belongs to this modal, so it must stay inside
+    # the modal's box, not just somewhere on screen.
+    assert 'validationResultsFilterToggle.closest(".modal-container")' in open_fn_body
+    assert "boundsRight - popoverWidth" in open_fn_body
+    assert "boundsBottom - rect.bottom" in open_fn_body
+
+    # Owner-reported (2026-08-01, third round): picking a value left the
+    # popover open — each select/reset now dismisses it after applying,
+    # since a completed choice is not a mid-adjustment needing the panel.
+    outcome_change_start = js.find('validationResultsOutcomeFilter, validationResultsPlanFilter, validationResultsSort].forEach')
+    outcome_change_body = js[outcome_change_start:outcome_change_start + 300]
+    assert "closeValidationResultsFilterPopover();" in outcome_change_body
+    index_change_start = js.find("validationResultsIndexFilter.addEventListener(\"change\"")
+    index_change_body = js[index_change_start:index_change_start + 300]
+    assert "closeValidationResultsFilterPopover();" in index_change_body
+
+    # Owner-reported (2026-08-01, third round): unbounded flex-grow let the
+    # search input claim the whole toolbar row, crowding the toggle/count
+    # against its right edge with no breathing room.
+    assert ".validation-results-toolbar .search-bar-container" in css
+    search_bar_rule_start = css.find(".validation-results-toolbar .search-bar-container {")
+    search_bar_rule_body = css[search_bar_rule_start:search_bar_rule_start + 200]
+    assert "max-width: 420px;" in search_bar_rule_body
+
     # Both surfaces share one fetch/cache — IX-4b must not re-implement it.
     assert js.count("await apiRequest(\n            `/api/v1/market/index-intelligence/") == 1
     assert 'document.getElementById("validation-results-index-filter"),' in js
@@ -1658,9 +1796,78 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     # come from the reused indexConstituentContextMarkup() call inside
     # indexObservationMarkup(), never a duplicated literal here.
     assert "trade_count" not in backdrop_render_body
-    assert "minmax(170px, 1.3fr)" in css
+    # Universe toolbar: search flexes, filter-toggle/add-button stay fixed —
+    # the old fixed 4-column grid (superseded by the Filters popover above)
+    # is gone, not just hidden behind a media query.
+    universe_toolbar_css_start = css.find(".universe-table-toolbar {")
+    universe_toolbar_css = css[universe_toolbar_css_start:universe_toolbar_css_start + 300]
+    assert "display: flex" in universe_toolbar_css
+    assert "grid-template-columns" not in universe_toolbar_css
     assert ".market-universe-card > .candidate-card-header" in css
     assert "const candidateInput = candidateSearchInput;" in js
+
+    # Owner screenshot fix pass (2026-08-01): 6 UX issues.
+    # 1) Index Leadership popup: originally 2 columns, then 3, then a
+    # follow-up owner review asked for 4 with a wider modal (plenty of
+    # unused screen width was visible in the owner's screenshot).
+    leadership_grid_css_start = css.find(".index-leadership-grid {")
+    leadership_grid_css = css[leadership_grid_css_start:leadership_grid_css_start + 150]
+    assert "repeat(4, minmax(0, 1fr))" in leadership_grid_css
+    assert "width: min(1320px, calc(100vw - 32px))" in css
+    # 3) Search bars gained a clear (X) button — Universe and Workbench
+    # Results mirror the exact Decisions briefing-search-clear pattern.
+    assert 'id="candidate-search-clear"' in html
+    assert 'id="universe-search-clear"' in html
+    assert "function updateCandidateSearchClear" in js
+    assert "function updateValidationResultsSearchClear" in js
+    assert "candidateSearchClear?.addEventListener(\"click\"" in js
+    assert "validationResultsSearchClear?.addEventListener(\"click\"" in js
+    # 4) The Decisions Index filter used to stay silently empty until the
+    # owner happened to visit Market Intelligence first. It now loads the
+    # same catalog independently the moment the Decisions tab itself loads.
+    assert "function ensureIndexFilterCatalogLoaded" in js
+    assert "ensureIndexFilterCatalogLoaded();" in js
+    decisions_branch_start = js.find('tabId === "decisions"')
+    decisions_branch = js[decisions_branch_start:decisions_branch_start + 500]
+    assert "ensureIndexFilterCatalogLoaded()" in decisions_branch
+    # 5) The filter/sort toggle now highlights whenever a non-default
+    # filter or sort is active, on all three surfaces that share the popover
+    # pattern (Decisions, Universe, Workbench Results) — not just Decisions.
+    assert "function updateSymbolsFilterToggleActiveState" in js
+    assert "function updateUniverseFilterToggleActiveState" in js
+    assert "function updateValidationResultsFilterToggleActiveState" in js
+    assert ".symbols-icon-btn.has-active-filters" in css
+    assert ".symbols-icon-btn.has-active-filters::after" in css
+    # 6) "Open decision" from a popup used to switch tabs and then wait on a
+    # genuine 2-3s network round-trip with zero loading feedback. A second,
+    # distinct overlay instance (never a repurposed validate-overlay, whose
+    # wording is specifically about re-validating) now blocks interaction
+    # with an honest "Opening decision" message while that fetch is in
+    # flight, and is guaranteed to clear via try/finally even on error.
+    assert 'id="decision-open-overlay" class="validate-overlay"' in html
+    assert 'id="decision-open-overlay-symbol"' in html
+    assert "Opening decision" in html
+    assert "function showDecisionOpenOverlay" in js
+    assert "function hideDecisionOpenOverlay" in js
+    open_decision_fn_start = js.find("async function openDecisionForSymbol")
+    open_decision_fn_body = js[open_decision_fn_start:open_decision_fn_start + 1800]
+    assert "showDecisionOpenOverlay(bare);" in open_decision_fn_body
+    assert "try {" in open_decision_fn_body
+    assert "} finally {" in open_decision_fn_body
+    assert "hideDecisionOpenOverlay();" in open_decision_fn_body
+
+    # Owner-reported (2026-08-01): validating/re-validating a symbol took
+    # 15-20s. Root cause: validateSymbolsNow() called both
+    # loadMarketIntelligence() (which already refreshes the shared decisions
+    # cache) AND loadDecisionsWorkspace() (which re-fetched every decision
+    # page a second time). Now re-applies the view over the already-fresh
+    # cache instead of fetching it twice.
+    validate_symbols_fn_start = js.find("async function validateSymbolsNow")
+    validate_symbols_fn_body = js[validate_symbols_fn_start:validate_symbols_fn_start + 6000]
+    assert "await loadMarketIntelligence();" in validate_symbols_fn_body
+    assert "applyDecisionsView({" in validate_symbols_fn_body
+    assert "await loadDecisionsWorkspace(" not in validate_symbols_fn_body
+
     assert "table-layout: fixed" in css
     assert "overflow-x: hidden" in css
     assert "function compactEligibilitySummary" in js
