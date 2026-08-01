@@ -2,13 +2,13 @@
 
 **Snapshot date:** 2026-08-01  
 **Branch observed:** `feature/live-dashboard`  
-**Latest committed IX milestone:** IX-4b (`d407260`)  
-**Current working milestone:** IX-4c (ready for review) — owner approved
-IX-4b and authorized IX-4c on 2026-08-01; this is the final IX-4 sub-milestone
-(design in `docs/design/ATHENA-INDEX-SECTOR-INTELLIGENCE-ROADMAP.md`). IX-4c
-is implemented, tested (1,147 full suite), and live-verified via the
+**Latest committed IX milestone:** IX-4c (`f69e4b8`)  
+**Current working milestone:** IX-5 (ready for review) — owner approved IX-4c
+(completing the IX-4 track) and authorized IX-5 on 2026-08-01. IX-5 is
+implemented, tested (1,152 full suite), verified directly against real
+production data (`db/athena.db`/`config/`), and live-verified via the
 DOM-bypass technique; awaiting owner review/approval.  
-**Next milestone:** IX-5, only after IX-4c is reviewed and approved
+**Next milestone:** IX-6, only after IX-5 is reviewed and approved
 
 This document is a continuity aid for the IX track. It is not the authority for
 milestone status. Before acting, read `ATHENA_BRIEFING.md`, then verify
@@ -28,18 +28,23 @@ ADR, and owner approval. SD-2 is not silently resolved by this track.
 
 ## 2. Current IX Status
 
-| Milestone | State on 2026-07-31 | Result |
+| Milestone | State on 2026-08-01 | Result |
 |---|---|---|
 | IX-1 | Approved | Twelve-index quote-only catalog, persisted observations, and read-only API |
 | IX-2 | Approved | Session-aware Index Leadership ribbon and detail modal |
 | IX-3 | Approved | Official versioned constituents, exact resolution, and fail-closed current-board breadth |
-| IX-4 | Planned | Index-aware discovery across Universe, Workbench, and Decisions |
-| IX-5 | Planned | Informational index backdrop in the selected-symbol brief |
+| IX-4a | Approved | Index members endpoint + Universe filter |
+| IX-4b | Approved | Validation Workbench Results index filter |
+| IX-4c | Approved | Decisions index filter + selected-index view (completes the IX-4 track) |
+| IX-5 | Ready for review | Informational index backdrop in the selected-symbol brief — implemented, tested, awaiting owner review |
 | IX-6 | Planned and ADR-gated | Replay study and decision on analytical influence |
 
-IX-3 was explicitly approved by the owner on 2026-07-31. The IX track is now
-paused. Do not begin IX-4 merely because IX-3 is approved; wait for a separate
-owner instruction to resume and authorize IX-4.
+The owner resumed the IX track and authorized IX-4 on 2026-08-01, judged too
+large for one review sitting and split into IX-4a/IX-4b/IX-4c (each separately
+approved the same day). IX-4c completed the track; the owner then authorized
+IX-5 the same day. Do not begin IX-6 merely because IX-5 is implemented; it
+requires a replay study, an ADR, and explicit owner approval before any code
+(per its own gate below), not just a resume instruction.
 
 ## 3. Implemented Data Flow
 

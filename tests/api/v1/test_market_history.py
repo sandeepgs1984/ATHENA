@@ -832,6 +832,113 @@ class TestIndexMembers:
         assert response.status_code == 404
 
 
+class TestSymbolIndexBackdrop:
+    """IX-5: which official indices contain one symbol, informational only."""
+
+    def test_returns_every_index_whose_official_membership_contains_the_symbol(
+        self, tmp_path: Path
+    ) -> None:
+        _write_constituent_fixture(
+            tmp_path,
+            {"nifty_50": ("AAA", "BBB"), "nifty_it": ("AAA",)},
+        )
+        _write_index_intelligence_config(
+            tmp_path,
+            constituent_manifest=str(tmp_path / "constituents" / "manifest.json"),
+        )
+        now = datetime(2026, 7, 31, 6, 30, tzinfo=timezone.utc)
+        service = MarketHistoryService(
+            InMemoryCandleHistoryProvider(),
+            freshness_threshold_minutes=20,
+            now_fn=lambda: now,
+            config_dir=tmp_path,
+        )
+
+        result = service.symbol_index_backdrop("NSE:AAA")
+
+        assert result.instrument_id == "AAA"
+        assert {item.key for item in result.memberships} == {"nifty_50", "nifty_it"}
+        # The returned items are IX-1's exact IndexIntelligenceItemDTO objects,
+        # not a second per-symbol calculation.
+        aggregate = service.index_intelligence()
+        by_key = {item.key: item for item in aggregate.indices}
+        for item in result.memberships:
+            assert item == by_key[item.key]
+
+    def test_symbol_outside_every_official_membership_is_honestly_empty(
+        self, tmp_path: Path
+    ) -> None:
+        _write_constituent_fixture(
+            tmp_path,
+            {"nifty_50": ("AAA",), "nifty_it": ("AAA",)},
+        )
+        _write_index_intelligence_config(
+            tmp_path,
+            constituent_manifest=str(tmp_path / "constituents" / "manifest.json"),
+        )
+        service = MarketHistoryService(
+            InMemoryCandleHistoryProvider(),
+            freshness_threshold_minutes=20,
+            config_dir=tmp_path,
+        )
+
+        result = service.symbol_index_backdrop("NSE:ZZZ")
+
+        assert result.instrument_id == "ZZZ"
+        assert result.memberships == ()
+
+    def test_no_constituent_manifest_configured_is_honestly_empty(
+        self, tmp_path: Path
+    ) -> None:
+        _write_index_intelligence_config(tmp_path)  # no constituent_manifest set
+
+        service = MarketHistoryService(
+            InMemoryCandleHistoryProvider(),
+            freshness_threshold_minutes=20,
+            config_dir=tmp_path,
+        )
+
+        result = service.symbol_index_backdrop("AAA")
+
+        assert result.memberships == ()
+
+    def test_bare_symbol_without_exchange_prefix_resolves_the_same(
+        self, tmp_path: Path
+    ) -> None:
+        _write_constituent_fixture(tmp_path, {"nifty_50": ("AAA",), "nifty_it": ("AAA",)})
+        _write_index_intelligence_config(
+            tmp_path,
+            constituent_manifest=str(tmp_path / "constituents" / "manifest.json"),
+        )
+        service = MarketHistoryService(
+            InMemoryCandleHistoryProvider(),
+            freshness_threshold_minutes=20,
+            config_dir=tmp_path,
+        )
+
+        with_prefix = service.symbol_index_backdrop("NSE:AAA")
+        bare = service.symbol_index_backdrop("aaa")
+
+        assert with_prefix.instrument_id == bare.instrument_id == "AAA"
+        assert {i.key for i in with_prefix.memberships} == {i.key for i in bare.memberships}
+
+    def test_endpoint_requires_auth_and_returns_backdrop(
+        self, client: TestClient
+    ) -> None:
+        unauthenticated = client.get("/api/v1/market/instruments/NSE:INFY/index-backdrop")
+        assert unauthenticated.status_code == 401
+
+        response = client.get(
+            "/api/v1/market/instruments/NSE:INFY/index-backdrop",
+            headers=get_auth_headers(client, Role.READONLY),
+        )
+
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["instrument_id"] == "INFY"
+        assert isinstance(data["memberships"], list)
+
+
 class TestInstrumentQuote:
     """Decisions & Trace header LTP — live preferred, persisted fallback."""
 

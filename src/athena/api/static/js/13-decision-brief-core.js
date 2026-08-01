@@ -1108,6 +1108,21 @@
                 </section>
 
                 <section class="decision-brief-section">
+                    <h4>Index backdrop</h4>
+                    <p class="analysis-section-intro">
+                        Which official broad-market/sector indices this symbol belongs to,
+                        each index's own direction, and whether the stock is currently moving
+                        with or against it. Informational only — never part of the recommendation
+                        above.
+                    </p>
+                    <div id="decision-index-backdrop-lane" class="decision-context-lane">
+                        <div class="decision-depth-loading">
+                            <i class="fa-solid fa-circle-notch fa-spin"></i> Loading index backdrop…
+                        </div>
+                    </div>
+                </section>
+
+                <section class="decision-brief-section">
                     <h4>Data sources</h4>
                     <p class="analysis-section-intro">
                         Exactly which stored records this decision's numbers were pulled from —
@@ -1174,6 +1189,7 @@
         renderExecutiveSummary();
         loadDecisionDepth(meta.decision_id);
         loadDecisionContext(meta.decision_id);
+        loadIndexBackdrop(rawSymbol, meta.decision_id);
         loadDecisionChart(rawSymbol, decision.trade_plan, meta.decision_id);
         loadPortfolioImpact(rawSymbol, meta.decision_id);
         loadJournalPanel(meta.decision_id);

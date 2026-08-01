@@ -1337,6 +1337,31 @@
     font-style: italic;
 }
 
+/* IX-5: Index backdrop rows — reuses .index-observation/.context-chip as-is,
+   just lays them out side by side inside a bordered row. */
+.index-backdrop-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-10);
+}
+
+.index-backdrop-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-10);
+    padding: var(--space-8) var(--space-10);
+    background: rgba(15, 23, 42, 0.35);
+    border: 1px solid var(--border-color);
+    border-radius: 7px;
+    flex-wrap: wrap;
+}
+
+.index-backdrop-row .index-observation {
+    border-left: none;
+    padding-left: 0;
+}
+
 .context-chip-row {
     display: flex;
     flex-wrap: wrap;

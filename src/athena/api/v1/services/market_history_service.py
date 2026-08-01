@@ -22,6 +22,7 @@ from athena.api.v1.dtos.market import (
     InstrumentQuoteDTO,
     MarketIndexTickerDTO,
     MarketTickerDTO,
+    SymbolIndexBackdropDTO,
 )
 from athena.api.v1.providers.base import CandleHistoryProvider
 from athena.config.loader import load_config, load_index_intelligence_config
@@ -406,6 +407,36 @@ class MarketHistoryService:
             effective_date=membership.effective_date,
             members=members,
         )
+
+    def symbol_index_backdrop(self, instrument_id: str) -> SymbolIndexBackdropDTO:
+        """Which official indices contain one symbol (IX-5, informational only).
+
+        Reuses ``index_intelligence()``'s already-computed items verbatim —
+        the only new work is checking whether the bare symbol appears in each
+        index's official CSV membership list (the same data IX-3 already
+        loads). Never a second per-symbol calculation, never influences
+        scoring, confidence, risk, or decision policy.
+        """
+        bare = instrument_id.strip().upper()
+        if ":" in bare:
+            bare = bare.split(":", 1)[-1]
+
+        intelligence = self.index_intelligence()
+        config = load_index_intelligence_config(self._config_dir)
+        tracked = sorted(
+            (item for item in config.tracked_indices if item.enabled),
+            key=lambda item: (item.display_order, item.key),
+        )
+        inputs = self._load_index_membership_inputs(config, tracked)
+        memberships: list[IndexIntelligenceItemDTO] = []
+        if inputs is not None:
+            membership = inputs[0]
+            by_key = membership.by_key()
+            for item in intelligence.indices:
+                index_set = by_key.get(item.key)
+                if index_set is not None and bare in index_set.symbols:
+                    memberships.append(item)
+        return SymbolIndexBackdropDTO(instrument_id=bare, memberships=tuple(memberships))
 
     @staticmethod
     def _current_board_bucket(decision: Decision | None, now: datetime) -> str | None:

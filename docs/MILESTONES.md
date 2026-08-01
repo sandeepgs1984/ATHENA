@@ -698,8 +698,8 @@ ADR authorize analytical use. It does not silently resolve SD-2, activate
 | **IX-3** Versioned Constituents and Index Breadth | Official provenance-tagged memberships, resolution audit, breadth/current-board counts | Data review; no inferred membership | ✅ Approved |
 | **IX-4a** Index members endpoint + Universe filter | New read-only per-symbol index membership endpoint (reusing IX-3's exact resolution); Universe tab index filter | Owner review; no inferred mapping, no scoring/domain change | ✅ Approved |
 | **IX-4b** Validation Workbench Results index filter | Index filter on the Workbench Results list, same membership data as IX-4a | Owner review; presentation-only | ✅ Approved |
-| **IX-4c** Decisions index filter + selected-index view | Decisions index filter, selected-index Trade/Watch/No-trade view, ranking reuse, strict symbol handoff | Owner review; current-plan safety rules | 🔄 Ready for review |
-| **IX-5** Symbol Index Backdrop | Plain-language index alignment/divergence context in Decision Brief | Owner review; informational only | ⏳ Planned |
+| **IX-4c** Decisions index filter + selected-index view | Decisions index filter, selected-index Trade/Watch/No-trade view, ranking reuse, strict symbol handoff | Owner review; current-plan safety rules | ✅ Approved |
+| **IX-5** Symbol Index Backdrop | Plain-language index alignment/divergence context in Decision Brief | Owner review; informational only | 🔄 Ready for review |
 | **IX-6** Evidence Review and Scoring Decision | Replay impact study and ADR proposal for any analytical influence | ADR + owner approval before code | ⏳ Planned |
 
 **Implementation rule:** one IX milestone at a time. A market leader is not
@@ -963,7 +963,7 @@ membership unavailable." on the expected 401 in this environment.
 
 Owner approval: IX-4b was approved on 2026-08-01, committed as `d407260`.
 
-#### IX-4c — Decisions index filter + selected-index view (ready for review, 2026-08-01)
+#### IX-4c — Decisions index filter + selected-index view (approved, 2026-08-01)
 
 Owner authorization: the owner approved IX-4b and authorized starting IX-4c
 on 2026-08-01.
@@ -1031,6 +1031,82 @@ could not load without auth, so the carousel/Top-Current-Setups filtering
 behavior with real data was verified by code reading (single shared `rows`
 array) rather than live pixel inspection — the same limitation recorded by
 every prior IX milestone in this environment.
+
+Owner approval: IX-4c was approved on 2026-08-01, committed as `f69e4b8`.
+The IX-4 track (IX-4a/b/c) is complete.
+
+#### IX-5 — symbol index backdrop (ready for review, 2026-08-01)
+
+Owner authorization: the owner approved IX-4c and authorized starting IX-5
+on 2026-08-01.
+
+Design: reuses `index_intelligence()`'s already-computed
+`IndexIntelligenceItemDTO` items wholesale — no new per-symbol resolution
+logic. The new backend method filters that same list down to the indices
+whose official CSV membership (`membership.by_key()[key].symbols`, IX-3's
+exact loaded data) contains the queried symbol; the returned items are the
+identical objects `index_intelligence()` already returns, unchanged. On the
+frontend, each membership item is rendered with the EXISTING
+`indexObservationMarkup(item)`/`indexConstituentContextMarkup(item.constituents)`
+functions (from IX-2, `09-market-intelligence.js`) — no new level/change/
+breadth rendering code, since the item shape is identical to what those
+functions already consume.
+
+"Aligned vs diverging" is a plain sign comparison between the stock's own
+`change_pct` (already live-polled into `activeBriefQuote`, DT-2/AW-1) and
+each membership's `change_pct` — no magnitude threshold, no new numeric
+constant, never fabricated when either side is unavailable.
+
+Placement: a new section in the Decision Brief's existing "Market Context"
+tab (`13-decision-brief-core.js`, alongside "Session & market context" and
+"Data sources"), which the owner confirmed (via prior tab design) is the
+correct home for supporting context — never the actionable Trade Plan tab.
+
+Scope: new `GET /market/instruments/{instrument_id}/index-backdrop`
+endpoint; `SymbolIndexBackdropDTO` (reusing `IndexIntelligenceItemDTO`
+verbatim for `memberships`); `loadIndexBackdrop()`/`renderIndexBackdrop()` in
+`15-decision-brief-context.js`, called alongside the existing
+`loadDecisionContext()` call in `renderDecisionBrief()`.
+
+Scope completed as designed: `MarketHistoryService.symbol_index_backdrop()`
+and `GET /market/instruments/{instrument_id}/index-backdrop`; a new "Index
+backdrop" section between "Session & market context" and "Data sources" in
+the Market Context tab; `indexBackdropAlignment()` (plain sign comparison of
+the stock's already-live-polled `change_pct` vs. each membership's, no
+magnitude threshold); each membership row renders via the existing
+`indexObservationMarkup(item)`/`indexConstituentContextMarkup()` (IX-2)
+unchanged, and the alignment label via the existing `contextChip()` helper —
+zero new rendering primitives. Honest-absence handling matches the existing
+`context-caption`/`context-caption.unknown` convention (empty membership vs.
+fetch failure are rendered distinctly, never conflated).
+
+Architectural note: IX-5 is presentation-only. It adds one new read-only
+endpoint (`Permission.READ`, same as every other market endpoint) and no
+scoring/confidence/risk/decision/TradePlan change. `memberships` is never
+consumed by any analytical engine.
+
+Validation note: 5 new focused `TestSymbolIndexBackdrop` tests pass (34 total
+in `test_market_history.py`); full suite 1,152 passed; Ruff clean on every
+touched file (same 7 pre-existing `test_dashboard_hosting.py` findings,
+unrelated). MyPy is not installed in this environment (no project venv, no
+global install) and could not be run this round — noted honestly rather than
+claimed. Restarted the server (backend changed this round) and confirmed the
+new endpoint is registered correctly (`401` for an unauthenticated request,
+not `404`/`500`). Directly verified `symbol_index_backdrop()` against the
+real production `db/athena.db`/`config/` (bypassing the API auth layer, the
+same diagnostic pattern used earlier in this project): INFY/TCS → `nifty_50,
+nifty_it`; RELIANCE → `nifty_50, nifty_energy`; SBIN → `nifty_50,
+nifty_bank, nifty_psu_bank` — all matching real NSE index composition, with
+real level/change_pct/breadth values attached to each membership, including
+an honest `INCOMPLETE_INSTRUMENTS`/`INCOMPLETE_DECISIONS` breadth status
+where genuinely incomplete. Live-verified in-browser (DOM-bypass, same
+limitation as every prior IX milestone — no owner credentials available):
+no new console errors beyond expected 401 auth-noise. The populated section
+itself could not be visually inspected because Decisions could not load
+without auth in this environment, and the module-scoped render/load
+functions are not reachable from a separate browser-console execution
+context to synthesize a decision — the dashboard-hosting regression tests
+and the direct production-data check above are the substitute evidence.
 
 ---
 

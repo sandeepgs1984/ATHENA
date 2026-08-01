@@ -6,7 +6,30 @@ status updated on approval.
 
 ---
 
-## IX-4c — Decisions index filter + selected-index view (ready for review)
+## IX-5 — Symbol Index Backdrop (ready for review)
+
+| | |
+|---|---|
+| Completed | 2026-08-01 |
+| Objective | Add a plain-language, informational Decision Brief section showing the selected symbol's official index memberships, each index's direction, and whether the stock is aligned or diverging — visually separate from the actionable recommendation, never fabricated |
+| Scope | Owner approved IX-4c (completing IX-4) and authorized IX-5 on 2026-08-01. Added `MarketHistoryService.symbol_index_backdrop()`, reusing `index_intelligence()`'s already-computed `IndexIntelligenceItemDTO` items verbatim — the only new work is checking whether the bare symbol appears in each index's official CSV membership (the same data IX-3 already loads); no second per-symbol resolution. Added `GET /market/instruments/{instrument_id}/index-backdrop`. Added a new "Index backdrop" section to the Decision Brief's existing Market Context tab (between "Session & market context" and "Data sources"), reusing IX-2's `indexObservationMarkup()`/`indexConstituentContextMarkup()` for level/change/breadth and the existing `contextChip()` helper for the aligned/diverging label — zero new rendering primitives. Alignment is a plain sign comparison of the stock's already-live-polled `change_pct` against each index's, with no magnitude threshold and no new numeric constant |
+| Files created | None |
+| Files modified | `docs/MILESTONES.md`, `docs/ATHENA-IX-HANDOFF.md`, `IMPLEMENTATION_SUMMARY.md`, `src/athena/api/v1/dtos/market.py`, `src/athena/api/v1/services/market_history_service.py`, `src/athena/api/v1/routers/market.py`, `src/athena/api/static/js/13-decision-brief-core.js`, `src/athena/api/static/js/15-decision-brief-context.js`, `src/athena/api/static/css/12-decision-cards-dag.css`, `tests/api/v1/test_market_history.py`, `tests/api/platform/test_dashboard_hosting.py`, `tests/api/platform/test_decision_chart_release_gate.py` |
+| Public APIs added | `SymbolIndexBackdropDTO`, `MarketHistoryService.symbol_index_backdrop()`, `GET /api/v1/market/instruments/{instrument_id}/index-backdrop` |
+| Tests | 5 new focused `TestSymbolIndexBackdrop` tests (34 total in the file); full suite — 1,152 passed; Ruff clean on every touched file (same 7 pre-existing `test_dashboard_hosting.py` findings, unrelated). MyPy is not installed in this environment (no project venv, no global install) and could not be run this round |
+| Coverage | Service tests cover multi-index membership, honest empty results for a symbol outside every membership, no-manifest-configured, and exchange-prefix normalization, plus exact-object-identity assertions proving the returned items are `index_intelligence()`'s own objects, not a recomputation. Dashboard tests lock section placement/ordering, function presence, and that no second breadth-rendering literal (`trade_count`) exists in the new render function |
+| Architecture compliance | One new read-only endpoint (same `Permission.READ` as every other market endpoint) plus Decision Brief presentation. No scoring/confidence/risk/decision/TradePlan change; `memberships` is never consumed by any analytical engine |
+| ADR compliance | ADR-005 preserved: empty membership and fetch failure are rendered as honestly distinct states, never conflated or fabricated. ADR-004 preserved through the existing static HTML/CSS/vanilla-JS dashboard |
+| Risks discovered | None new |
+| Technical debt introduced | None |
+| Suggested improvements | IX-6's replay study can reuse this exact backdrop data as its index-context input |
+| Remaining work | IX-6 (Evidence Review and Scoring Decision) remains ADR-gated and requires a replay study before any code; MyPy should be re-run once available in this environment. The populated section could not be visually inspected live because Decisions could not load without owner credentials in this environment — direct verification against real production `db/athena.db`/`config/` data (INFY/TCS/RELIANCE/SBIN all resolving to their correct real NSE indices) was used as substitute evidence |
+| Status | 🔄 Ready for owner review |
+| Branch | feature/live-dashboard |
+
+---
+
+## IX-4c — Decisions index filter + selected-index view (approved)
 
 | | |
 |---|---|
@@ -24,7 +47,7 @@ status updated on approval.
 | Technical debt introduced | None |
 | Suggested improvements | IX-5 (Symbol Index Backdrop) can reuse the same `fetchIndexMembers`/cache and IX-3's constituent context for its Decision Brief section |
 | Remaining work | IX-4 track (IX-4a/b/c) is now complete pending this final owner review. IX-5/IX-6 remain separately gated and require a new owner resume/authorization. Live interaction with real membership/decision data could not be fully exercised without owner credentials (same limitation every prior IX milestone recorded) |
-| Status | 🔄 Ready for owner review |
+| Status | ✅ Approved by owner on 2026-08-01, committed as `f69e4b8` |
 | Branch | feature/live-dashboard |
 
 ---

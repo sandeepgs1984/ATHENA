@@ -212,6 +212,20 @@ class IndexIntelligenceDTO(BaseModel):
     source: Literal["persisted_market_snapshot"]
 
 
+class SymbolIndexBackdropDTO(BaseModel):
+    """Which official indices contain one symbol, informational only (IX-5).
+
+    `memberships` reuses the exact `IndexIntelligenceItemDTO` objects
+    `index_intelligence()` already computes — never a second per-symbol
+    calculation. Presentation-only context; never consumed by scoring,
+    confidence, risk, or decision policy."""
+
+    model_config = ConfigDict(frozen=True)
+
+    instrument_id: str
+    memberships: tuple[IndexIntelligenceItemDTO, ...]
+
+
 class IndexMemberDTO(BaseModel):
     """One official constituent's resolution and current-board bucket.
 

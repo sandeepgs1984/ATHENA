@@ -131,6 +131,66 @@
         `;
     }
 
+    // IX-5: plain sign comparison of two already-real numbers — no magnitude
+    // threshold, no new numeric constant, never fabricated when either side
+    // is unavailable.
+    function indexBackdropAlignment(stockChangePct, indexChangePct) {
+        if (!Number.isFinite(stockChangePct) || !Number.isFinite(indexChangePct)) return null;
+        if (stockChangePct === 0 || indexChangePct === 0) {
+            return { label: "Flat move", tone: "neutral" };
+        }
+        const sameDirection = (stockChangePct > 0) === (indexChangePct > 0);
+        return sameDirection
+            ? { label: "With index", tone: "good" }
+            : { label: "Against index", tone: "warn" };
+    }
+
+    function renderIndexBackdrop(data, options = {}) {
+        const host = document.getElementById("decision-index-backdrop-lane");
+        if (!host) return;
+        if (options.failed) {
+            host.innerHTML = '<p class="context-caption unknown">Index backdrop unavailable — check your connection and retry.</p>';
+            return;
+        }
+        const memberships = data && Array.isArray(data.memberships) ? data.memberships : [];
+        if (memberships.length === 0) {
+            host.innerHTML = '<p class="context-caption">No official index membership found for this symbol.</p>';
+            return;
+        }
+        const stockChangePct = activeBriefQuote && activeBriefQuote.change_pct != null
+            ? Number(activeBriefQuote.change_pct)
+            : NaN;
+        const rows = memberships.map(item => {
+            const indexChangePct = item && item.change_pct != null ? Number(item.change_pct) : NaN;
+            const alignment = indexBackdropAlignment(stockChangePct, indexChangePct);
+            const alignmentMarkup = alignment
+                ? contextChip(alignment.label, alignment.tone)
+                : '<span class="context-caption">Alignment unavailable — live quote or index change missing.</span>';
+            return `
+                <div class="index-backdrop-row">
+                    ${indexObservationMarkup(item)}
+                    ${alignmentMarkup}
+                </div>
+            `;
+        }).join("");
+        host.innerHTML = `<div class="index-backdrop-list">${rows}</div>`;
+    }
+
+    async function loadIndexBackdrop(rawSymbol, decisionId) {
+        try {
+            const response = await apiRequest(
+                `/api/v1/market/instruments/${encodeURIComponent(rawSymbol)}/index-backdrop`,
+                { skipToast: true }
+            );
+            if (activeDecisionId !== decisionId) return;
+            renderIndexBackdrop(response && response.data);
+        } catch (err) {
+            if (activeDecisionId !== decisionId) return;
+            console.error(`Failed to load index backdrop for ${rawSymbol}`, err);
+            renderIndexBackdrop(null, { failed: true });
+        }
+    }
+
     async function loadDecisionContext(decisionId) {
         try {
             const response = await apiRequest(

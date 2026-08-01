@@ -27,6 +27,7 @@ from athena.api.v1.dtos.market import (
     MarketTickerDTO,
     OwnerCandidateDTO,
     OwnerCandidateListDTO,
+    SymbolIndexBackdropDTO,
     UpsertCandidateRequest,
     ValidateSymbolsRequest,
     ValidateSymbolsResultDTO,
@@ -92,6 +93,30 @@ def get_instrument_quote(
     available — never a fabricated 0 (ADR-005).
     """
     data = service.instrument_quote(instrument_id)
+    return AthenaResponse(status="success", data=data, meta=_meta(request))
+
+
+@router.get(
+    "/instruments/{instrument_id}/index-backdrop",
+    response_model=AthenaResponse[SymbolIndexBackdropDTO],
+    summary="Official index memberships for one symbol (informational only)",
+    status_code=status.HTTP_200_OK,
+    operation_id="getSymbolIndexBackdrop",
+)
+def get_symbol_index_backdrop(
+    instrument_id: str,
+    request: Request,
+    service: MarketHistoryService = Depends(get_market_history_service),  # noqa: B008
+    principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.READ)),  # noqa: B008
+) -> AthenaResponse[SymbolIndexBackdropDTO]:
+    """Read-only official index memberships for one symbol (IX-5).
+
+    Reuses ``index_intelligence()``'s already-computed items verbatim — an
+    empty ``memberships`` tuple honestly means no official membership found,
+    never a fabricated value. Presentation context only; never influences
+    scoring, confidence, risk, or decision policy.
+    """
+    data = service.symbol_index_backdrop(instrument_id)
     return AthenaResponse(status="success", data=data, meta=_meta(request))
 
 

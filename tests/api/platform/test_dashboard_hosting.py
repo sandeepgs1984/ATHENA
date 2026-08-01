@@ -200,8 +200,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.129.0" in html
-    assert "dashboard.js?v=9.129.0" in html
+    assert "dashboard.css?v=9.130.0" in html
+    assert "dashboard.js?v=9.130.0" in html
     assert 'id="advisor-pulse"' in html
     assert 'id="header-diagnostics-popover"' in html
     assert 'id="decision-actionability-banner"' in html
@@ -1632,6 +1632,32 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     decisions_filter_fn_body = js[decisions_filter_fn_start:decisions_filter_fn_start + 2000]
     assert "validateSymbolsNow" not in decisions_filter_fn_body
     assert ".decisions-select:disabled" in css
+
+    # IX-5: Decision Brief "Index backdrop" — informational-only section in
+    # the Market Context tab, never the actionable Trade Plan tab; reuses
+    # IX-1/IX-2's indexObservationMarkup()/indexConstituentContextMarkup()
+    # verbatim rather than a second level/change/breadth renderer.
+    context_pane_start = js.find('data-brief-pane="context"')
+    context_pane = js[context_pane_start:context_pane_start + 2500]
+    assert "Index backdrop" in context_pane
+    assert 'id="decision-index-backdrop-lane"' in context_pane
+    assert (
+        context_pane.find("Session &amp; market context")
+        < context_pane.find("Index backdrop")
+        < context_pane.find("Data sources")
+    )
+    assert "function renderIndexBackdrop" in js
+    assert "async function loadIndexBackdrop" in js
+    assert "function indexBackdropAlignment" in js
+    assert "loadIndexBackdrop(rawSymbol, meta.decision_id)" in js
+    assert "/index-backdrop" in js
+    backdrop_render_start = js.find("function renderIndexBackdrop")
+    backdrop_render_body = js[backdrop_render_start:backdrop_render_start + 1500]
+    assert "indexObservationMarkup(item)" in backdrop_render_body
+    # No second breadth renderer — trade/watch/no-trade counts only ever
+    # come from the reused indexConstituentContextMarkup() call inside
+    # indexObservationMarkup(), never a duplicated literal here.
+    assert "trade_count" not in backdrop_render_body
     assert "minmax(170px, 1.3fr)" in css
     assert ".market-universe-card > .candidate-card-header" in css
     assert "const candidateInput = candidateSearchInput;" in js
