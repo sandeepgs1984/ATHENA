@@ -305,7 +305,7 @@ status updated on approval.
 
 ---
 
-## TP-3 — Top current setups (ready for review)
+## TP-3 — Top current setups (approved)
 
 | | |
 |---|---|
@@ -322,13 +322,13 @@ status updated on approval.
 | Risks discovered | A top section duplicates symbols already present under Trade, so selection scrolling must target the visible duplicate instead of scrolling both. The summary strip can materially reduce left-list scanability if it carries explanatory prose inline |
 | Technical debt introduced | None |
 | Suggested improvements | TP-4 should host the persistent intraday SOP/help surface outside the cramped left rail, with plain-language guidance for normal users |
-| Remaining work | Owner review of TP-3; full-suite validation after freeing disk space |
-| Status | 🔄 Ready for owner review |
+| Remaining work | None — re-verified against the current codebase and approved 2026-08-01 (full suite now passes: 1,152 tests) |
+| Status | ✅ Approved by owner on 2026-08-01 |
 | Branch | feature/live-dashboard |
 
 ---
 
-## TP-2 — Current board controls (ready for review)
+## TP-2 — Current board controls (approved)
 
 | | |
 |---|---|
@@ -345,13 +345,13 @@ status updated on approval.
 | Risks discovered | The icon action must stay icon-only while the blocking overlay and status strip carry the progress text; putting validation text inside the 34px rail button would overflow. Large visible-board batches can contain 100+ symbols, so progress surfaces must summarize rather than print the entire symbol set. "Visible" must mean viewport-visible, not merely rendered inside the scroll container. Scoped validation is synchronous and can still take noticeable time, so the quick action must stay capped; larger refreshes need a dedicated/background flow. Users naturally repeat-tap refresh controls, so ATHENA must cool down proactively instead of waiting for Kite 429 |
 | Technical debt introduced | None |
 | Suggested improvements | TP-3 should add a ranked review queue above the normal groups, but only for current valid/aging TradePlans |
-| Remaining work | Owner review of TP-2; full-suite validation after freeing disk space |
-| Status | 🔄 Ready for owner review |
+| Remaining work | None — re-verified against the current codebase and approved 2026-08-01 (full suite now passes: 1,152 tests) |
+| Status | ✅ Approved by owner on 2026-08-01 |
 | Branch | feature/live-dashboard |
 
 ---
 
-## TP-1 — Trade playbook foundation (ready for review)
+## TP-1 — Trade playbook foundation (approved)
 
 | | |
 |---|---|
@@ -368,8 +368,8 @@ status updated on approval.
 | Risks discovered | Trading instructions can become too technical if they mirror internal names. TP roadmap now requires normal-audience copy and avoids terms like pipeline, persisted artifact, validation cycle, and thesis in visible playbook/SOP text |
 | Technical debt introduced | None |
 | Suggested improvements | TP-2 should add current-board revalidation controls only after the selected-symbol playbook is owner-reviewed |
-| Remaining work | Owner review of TP-1; full-suite validation after freeing disk space |
-| Status | 🔄 Ready for owner review |
+| Remaining work | None — re-verified against the current codebase and approved 2026-08-01 (full suite now passes: 1,152 tests) |
+| Status | ✅ Approved by owner on 2026-08-01 |
 | Branch | feature/live-dashboard |
 
 ---
@@ -466,7 +466,7 @@ status updated on approval.
 
 ---
 
-## CH-6 — Chart resilience and release gate (ready for owner review)
+## CH-6 — Chart resilience and release gate (approved)
 
 | | |
 |---|---|
@@ -483,9 +483,21 @@ status updated on approval.
 | Risks discovered | Live authenticated visual QA remains owner-side because the workstation is behind the owner unlock gate; automated static release-gate tests now cover the no-scroll, no-blank, fallback, and interaction contracts that previously regressed |
 | Technical debt introduced | None |
 | Suggested improvements | If future chart work needs real revalidation markers, add a persisted read-only event source under owner review rather than deriving timestamps in the frontend |
-| Remaining work | Owner review of CH-6; chart track can close after approval |
-| Status | 🔄 Ready for owner review |
+| Remaining work | None — chart track closed 2026-08-01 |
+| Status | ✅ Approved by owner on 2026-08-01 |
 | Branch | feature/live-dashboard |
+
+**Docs-accuracy re-verification (2026-08-01):** re-checked against the
+current codebase, not just this write-up. `tests/api/platform/
+test_decision_chart_release_gate.py` — 5 passed (nonblank/empty-state
+contract, interaction/hit-area/keyboard contract, no-scroll modal contract,
+persisted-only marker contract, limit/rendering-budget contract). Every
+symbol the tests assert on (`CHART_LIMITS`, `chartPersistedEvents()`,
+`.chart-modal-container`, hit-area math) is present and unchanged in
+`js/16-decision-brief-chart.js` and `css/08-strategies-backtest.css`. Git:
+`39dc575 test(decision): add chart release gate hardening`, an ancestor of
+current `HEAD`, untouched since. **Owner approved 2026-08-01** on the
+strength of this evidence.
 
 ---
 
@@ -5658,14 +5670,14 @@ QA follow-up: `test(ops): isolate smoke and document QA verification`
 
 ---
 
-## Nifty 500 daily candidate seed (READY FOR REVIEW)
+## Nifty 500 daily candidate seed (APPROVED)
 
 | | |
 |---|---|
 | Completed | 2026-07-24 |
 | Scope | Once-per-day merge-unique seed of `owner_candidates` from official Nifty 500 constituents CSV |
 | Tests | `tests/ops/test_candidate_seed.py`; schema v6 (`ops_meta`) |
-| Status | **READY FOR REVIEW** |
+| Status | **APPROVED** — Owner approved 2026-08-01 |
 | Branch | develop |
 
 - Config: `config/candidate_seed.json` (`source: NIFTY500`, merge_unique, once_per_day).
@@ -5674,16 +5686,25 @@ QA follow-up: `test(ops): isolate smoke and document QA verification`
 - Wired into `athena cycle`, `./athena-run-due`, and `athena seed-candidates`.
 - SCHEMA_VERSION 6: `ops_meta` tracks last seed date. Seed failure warns and continues with existing list.
 
+**Docs-accuracy re-verification (2026-08-01):** `config/candidate_seed.json`
+and `tests/ops/test_candidate_seed.py` both still exist; schema is now at
+`SCHEMA_VERSION 11` (forward progress from unrelated later work), and the
+`owner_candidates`/`ops_meta` tables this milestone needs are still present.
+Ran `python3 -m pytest -q tests/ops/test_candidate_seed.py` together with the
+D-V1–V3 test files below — all 42 passed. Git: `4e4354b feat(ops): daily
+Nifty 500 merge-seed into owner_candidates` (2026-07-24). **Owner approved
+2026-08-01** on the strength of this evidence.
+
 ---
 
-## Portfolio reset + owner validation list (READY FOR REVIEW)
+## Portfolio reset + owner validation list (APPROVED)
 
 | | |
 |---|---|
 | Completed | 2026-07-24 |
 | Scope | D-P1 portfolio fill reset (open\|all + CONFIRM); D-V1–D-V3 owner candidate list with two-layer daily qualify (UniverseEngine → WATCH/TRADE) |
 | Tests | `tests/api/v1/test_owner_portfolio.py`, `test_owner_candidates.py`, `tests/ops/test_owner_validation.py`; schema v5 asserts updated |
-| Status | **READY FOR REVIEW** |
+| Status | **APPROVED** — Owner approved 2026-08-01 |
 | Branch | develop |
 
 - **D-P1:** `delete_owner_positions(scope=open|all)`; `POST /api/v1/portfolio/positions/reset` (ADMIN + typed `CONFIRM`); Overview UI gate; best-effort auto-backup before wipe.
@@ -5692,6 +5713,20 @@ QA follow-up: `test(ops): isolate smoke and document QA verification`
 - **D-V3:** Eligible names scanned via `DailyMarketScanner` + DecisionEngine; decisions/traces persisted; MI “Qualified Today” = WATCH/TRADE for cycle day (same rows as Decisions tab).
 
 Files created: `ops/owner_candidates.py`, `ops/owner_validation.py`, `api/v1/{dtos/market,routers/market,services/candidates_service}.py`, candidate/validation tests. Files modified: schema/repository, CLI + HostDueRunner, sqlite pipeline provider, dashboard static assets, dependencies/router, this log + milestones. No ADR; no order placement; journal/runs untouched by portfolio reset.
+
+**Docs-accuracy re-verification (2026-08-01):** re-checked against the
+current codebase, not just this write-up. `POST /api/v1/portfolio/positions/reset`
+(D-P1) and the full `owner_candidates` CRUD (`GET`/`PUT`/`POST`/`DELETE
+/candidates`, `POST /validate`) (D-V1) are wired in
+`api/v1/routers/{portfolio,market}.py`; `ops/owner_validation.py`'s
+`OwnerValidationPipeline` (D-V2/D-V3) is unchanged. Ran `python3 -m pytest -q
+tests/api/v1/test_owner_portfolio.py tests/api/v1/test_owner_candidates.py
+tests/ops/test_owner_validation.py tests/ops/test_candidate_seed.py` — 42
+passed. Git: `b779232 feat(portfolio): reset fills and owner validation
+qualify path` (2026-07-24, covers D-P1/D-V1/D-V2/D-V3), `4e4354b` (D-U1–U3,
+above), plus `fa32c6d fix(ops): isolate file-backed smoke from Nifty seed`.
+**Owner approved all five milestones (D-P1, D-V1, D-V2, D-V3, D-U1–U3) on
+2026-08-01** on the strength of this evidence.
 
 ---
 

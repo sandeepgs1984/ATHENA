@@ -151,11 +151,18 @@ SOP: [`docs/ops/FILE_BACKED_DAILY_OPS.md`](ops/FILE_BACKED_DAILY_OPS.md) · Smok
 
 | Milestone | Scope | Status |
 |---|---|---|
-| **D-P1** Portfolio reset | Reset open \| all owner fills with ADMIN + CONFIRM | 🔄 Ready for review |
-| **D-V1** Owner candidate list | SQLite `owner_candidates` + MI CRUD, shared with CLI | 🔄 Ready for review |
-| **D-V2** Eligibility in cycle | UniverseEngine on candidates → real Eligible/Excluded | 🔄 Ready for review |
-| **D-V3** Qualify WATCH/TRADE | Scan eligible → persist decisions; MI qualified-today | 🔄 Ready for review |
-| **D-U1–U3** Nifty 500 seed | Daily merge-unique Nifty 500 → `owner_candidates` | 🔄 Ready for review |
+| **D-P1** Portfolio reset | Reset open \| all owner fills with ADMIN + CONFIRM | ✅ Approved |
+| **D-V1** Owner candidate list | SQLite `owner_candidates` + MI CRUD, shared with CLI | ✅ Approved |
+| **D-V2** Eligibility in cycle | UniverseEngine on candidates → real Eligible/Excluded | ✅ Approved |
+| **D-V3** Qualify WATCH/TRADE | Scan eligible → persist decisions; MI qualified-today | ✅ Approved |
+| **D-U1–U3** Nifty 500 seed | Daily merge-unique Nifty 500 → `owner_candidates` | ✅ Approved |
+
+**Dashboard ops extensions track closed (2026-08-01):** owner approved all
+five milestones on the strength of a 2026-08-01 re-verification against the
+current codebase (42 tests passed across `test_owner_portfolio.py`,
+`test_owner_candidates.py`, `test_owner_validation.py`,
+`test_candidate_seed.py`; see IMPLEMENTATION_SUMMARY.md's "Nifty 500 daily
+candidate seed" and "Portfolio reset + owner validation list" entries).
 
 ### Professional live-entry track (post Phase 9/10)
 
@@ -204,10 +211,19 @@ overlay as data.
 | **CH-3** Timeframe, range, and session controls | Configured 5m/15m timeframe controls in embedded/modal charts, local chart preference, session separators, requested-vs-returned bar counts, timeframe-specific no-data wording, visible last-candle timestamp | None | ✅ Approved (2026-07-29) |
 | **CH-4** Interactive inspection | Crosshair OHLCV legend, rendered indicator readouts, plan-level readouts, reset affordance, keyboard focus/accessibility pass, enlarged dedicated chart modal | None | ✅ Approved (2026-07-29) |
 | **CH-5** Decision & event markers | Persisted decision/journal/outcome markers on the chart; revalidation markers deferred until a persisted timestamp is exposed | Additive read-only endpoint only if existing payloads are insufficient; ADR required for frozen contract/domain expansion | ✅ Approved (2026-07-29) |
-| **CH-6** Resilience, visual QA, and release gate | Release-gate regression tests for nonblank rendering, no-data/fallback states, interaction wiring, modal no-scroll layout, persisted-only markers, and max-limit budget contracts | Owner review after QA evidence | 🔄 Ready for review |
+| **CH-6** Resilience, visual QA, and release gate | Release-gate regression tests for nonblank rendering, no-data/fallback states, interaction wiring, modal no-scroll layout, persisted-only markers, and max-limit budget contracts | Owner review after QA evidence | ✅ Approved |
 
 **Implementation rule:** CH-0 must be owner-approved before CH-1 starts; after
 that, exactly one chart milestone is implemented and reviewed at a time.
+
+**Symbol Chart Excellence track closed (2026-08-01):** owner approved CH-6,
+the last of the 7 milestones (CH-0 through CH-6), on the strength of a
+2026-08-01 re-verification against the current codebase (release-gate test
+suite re-run, 5 passed; see IMPLEMENTATION_SUMMARY.md's CH-6 entry). The
+symbol chart is a hardened, resilience-tested trading decision surface —
+nonblank rendering, no-data/fallback states, stable interaction wiring,
+no-scroll modal layout, persisted-only markers, and rendering-budget limits
+are all regression-locked.
 
 ---
 
@@ -332,16 +348,16 @@ Governing plan: `docs/design/ATHENA-INTRADAY-ADVISOR-UX-ROADMAP.md`.
 
 | Milestone | Scope | Gate | Status |
 |---|---|---|---|
-| **TP-1** Trade Playbook foundation | Move symbol revalidation into Advisor Status; add selected-symbol Trading Steps with entry/stop/target/no-fill/expiry/close/revalidation rules | Owner review after UX/test evidence | 🔄 Ready for review |
-| **TP-2** Current Board controls | Add Re-validate Visible for current-board symbols with progress/result summary | Owner review; must not validate hidden historical rows | 🔄 Ready for review |
-| **TP-3** Top Current Setups | Add top 10 current valid/aging setups sorted by existing score/confidence/risk/return data | Owner review; no expired/stale/no-plan rows | 🔄 Ready for review |
+| **TP-1** Trade Playbook foundation | Move symbol revalidation into Advisor Status; add selected-symbol Trading Steps with entry/stop/target/no-fill/expiry/close/revalidation rules | Owner review after UX/test evidence | ✅ Approved |
+| **TP-2** Current Board controls | Add Re-validate Visible for current-board symbols with progress/result summary | Owner review; must not validate hidden historical rows | ✅ Approved |
+| **TP-3** Top Current Setups | Add top 10 current valid/aging setups sorted by existing score/confidence/risk/return data | Owner review; no expired/stale/no-plan rows | ✅ Approved |
 | **TP-4** Intraday SOP surface | Add persistent intraday SOP/help surface for day workflow and manual execution boundaries | Owner review | ✅ Approved |
 
 **Implementation rule:** one TP milestone at a time. TP must never create order
 placement, broker write actions, new signals, or changes to ATHENA's analytical
 engines.
 
-#### TP-1 — trade playbook foundation (ready for review, 2026-07-30)
+#### TP-1 — trade playbook foundation (approved 2026-08-01, built 2026-07-30)
 
 Scope completed: symbol-specific `Re-validate` moved from the generic
 Decision Brief header into Advisor Status, where the stale/expired/review-mode
@@ -384,7 +400,18 @@ symbol-selection load, and refuses to silently fall back to another symbol.
 Validation reports disable Open decision when the latest validation outcome has
 no current decision row to open, including Excluded outcomes.
 
-#### TP-2 — current board controls (ready for review, 2026-07-30)
+**Docs-accuracy re-verification (2026-08-01):** re-checked against the current
+codebase rather than trusting this write-up's age. `renderTradePlaybook()`/
+`refreshTradePlaybook()` (`js/13-decision-brief-core.js`) and the "Trading
+steps" section/CSS are all present and unchanged; the symbol re-validate
+control lives in the Advisor Status banner (`index.html`), matching the scope
+above. `tests/api/platform/test_dashboard_hosting.py` — 4 passed. Git:
+`b025b8b feat(decision): enhance intraday advisor playbook and Trade Plan
+cockpit` (2026-07-30), with five follow-on commits building further on top
+without reverting it. No order-placement/broker-write code found in any
+touched file. **Owner approved 2026-08-01** on the strength of this evidence.
+
+#### TP-2 — current board controls (approved 2026-08-01, built 2026-07-30)
 
 Scope completed: the Decisions left rail now includes a `Re-validate visible`
 control for the on-screen current-board rows in the left list viewport. It
@@ -422,7 +449,14 @@ board and are therefore not included in the visible-symbol batch.
 Validation note: focused dashboard hosting checks pass. The full suite remains
 deferred locally until the live DB/storage pressure is cleaned up.
 
-#### TP-3 — top current setups (ready for review, 2026-07-30)
+**Docs-accuracy re-verification (2026-08-01):** `#decisions-revalidate-visible-btn`
+and `revalidateVisibleDecisionBoard()` (`js/12-decisions-list.js`) are present
+and unchanged. `tests/api/platform/test_dashboard_hosting.py` — 4 passed.
+Git: `0d2d72f feat(dashboard): add visible-board revalidation control`
+(2026-07-30) touches exactly the files this scope claims. **Owner approved
+2026-08-01** on the strength of this evidence.
+
+#### TP-3 — top current setups (approved 2026-08-01, built 2026-07-30)
 
 Scope completed: the Decisions left rail now starts with a `Top Current Setups`
 review queue when current qualifying rows exist. The queue is capped at 10 and
@@ -445,6 +479,13 @@ logic. It is a frontend review queue over the existing current board.
 
 Validation note: focused dashboard hosting checks pass. The full suite remains
 deferred locally until the live DB/storage pressure is cleaned up.
+
+**Docs-accuracy re-verification (2026-08-01):** `topCurrentSetups()`
+(`js/12-decisions-list.js`) and the `.top-current-setups-section` CSS
+(`css/12-decision-cards-dag.css`) are present and unchanged.
+`tests/api/platform/test_dashboard_hosting.py` — 4 passed. Git: `a81be8e
+feat(dashboard): add top current setup queue` (2026-07-30) matches this
+scope exactly. **Owner approved 2026-08-01** on the strength of this evidence.
 
 #### TP-4 — intraday SOP surface (approved, 2026-07-30)
 
@@ -473,6 +514,14 @@ final approved TP milestone. The Decisions & Trace advisor workflow now has
 selected-symbol trading steps, current-board refresh controls, a top current
 setup review queue, and a persistent intraday operating guide. Any additional
 TP work requires a new owner-approved milestone entry before implementation.
+
+**Correction (2026-08-01):** this note was written on 2026-07-30, but TP-1,
+TP-2, and TP-3 above were still `🔄 Ready for review` at the time — the
+status table is always the source of truth per `ATHENA_BRIEFING.md` §5, not
+this prose note, so the "track closed" framing was premature by four days.
+All three were re-verified against the current codebase and approved on
+2026-08-01 (see each milestone's own re-verification note above); this
+closing statement is accurate now.
 
 ---
 
@@ -613,6 +662,18 @@ TradePlan value change, no backend endpoint, and no new validation logic.
 Validation note: focused dashboard hosting checks pass. The full suite remains
 deferred locally until the live DB/storage pressure is cleaned up.
 
+**Status correction (2026-08-01):** the "ready for review" claim above was
+premature. Live owner screenshots after this write-up found the Results tab
+showing zero rows despite real eligible/trade data, its Filters & Sort
+popover rendering cut off outside the modal, and the search box freezing the
+UI while typing — none caught by this milestone's own verification. All were
+root-caused and fixed across three rounds; see "Fix pass: 6 owner-reported
+dashboard UX issues" and its "Third round" subsection later in this file, and
+the corresponding entries in `IMPLEMENTATION_SUMMARY.md`. AW-3 stays
+`🔄 Ready for review` — not `✅ Approved` — until the owner confirms the
+third-round fixes on the live authenticated dashboard (this session could not
+log in to verify directly).
+
 #### AW-4 — advisor workbench visual QA (in progress, 2026-07-30)
 
 Owner screenshot fix: `Watch` and `No trade` decisions with no current
@@ -673,6 +734,14 @@ only appended as connectivity context.
 Validation note: focused dashboard hosting checks pass. Browser shell-load QA
 confirmed the dashboard assets serve, but unlocked in-dashboard visual QA
 remains pending owner-session access.
+
+**2026-08-01 update:** the owner's own live screenshot review of the
+Validation Pipeline Workbench (AW-3) — exactly the kind of QA this milestone
+describes — surfaced three real defects across three review rounds (search
+"Fix pass: 6 owner-reported dashboard UX issues" later in this file). This is
+AW-4's visual QA process working as intended, not a separate track; status
+stays `🔄 In progress` until a full pass across the remaining Decisions +
+Market Intelligence workbench paths turns up nothing further.
 
 ---
 
