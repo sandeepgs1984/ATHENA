@@ -2,13 +2,17 @@
 
 **Snapshot date:** 2026-08-01  
 **Branch observed:** `feature/live-dashboard`  
-**Latest committed IX milestone:** IX-4c (`f69e4b8`)  
-**Current working milestone:** IX-5 (ready for review) — owner approved IX-4c
-(completing the IX-4 track) and authorized IX-5 on 2026-08-01. IX-5 is
-implemented, tested (1,152 full suite), verified directly against real
-production data (`db/athena.db`/`config/`), and live-verified via the
-DOM-bypass technique; awaiting owner review/approval.  
-**Next milestone:** IX-6, only after IX-5 is reviewed and approved
+**Latest committed IX milestone:** IX-5 (`55cfa03`)  
+**Current working milestone:** None — IX-5 was approved on 2026-08-01,
+completing everything currently reviewable in the IX track.  
+**Next milestone:** IX-6 was asked for on 2026-08-01, but a feasibility check
+found `db/athena.db` has only one trading day of decisions and zero recorded
+trade outcomes — not enough data for a statistically meaningful replay study.
+The owner chose to wait; IX-6 remains not started (see docs/MILESTONES.md's
+"IX-6 — feasibility check" note for the exact re-check procedure). Do not
+begin IX-6 merely because IX-5 is approved; wait for the owner to confirm
+enough real decision/outcome history has accumulated, or for a separate
+explicit resume instruction.
 
 This document is a continuity aid for the IX track. It is not the authority for
 milestone status. Before acting, read `ATHENA_BRIEFING.md`, then verify
@@ -36,8 +40,8 @@ ADR, and owner approval. SD-2 is not silently resolved by this track.
 | IX-4a | Approved | Index members endpoint + Universe filter |
 | IX-4b | Approved | Validation Workbench Results index filter |
 | IX-4c | Approved | Decisions index filter + selected-index view (completes the IX-4 track) |
-| IX-5 | Ready for review | Informational index backdrop in the selected-symbol brief — implemented, tested, awaiting owner review |
-| IX-6 | Planned and ADR-gated | Replay study and decision on analytical influence |
+| IX-5 | Approved | Informational index backdrop in the selected-symbol brief |
+| IX-6 | Planned and ADR-gated; feasibility check found insufficient data (2026-08-01) | Replay study and decision on analytical influence — owner chose to wait for more decision/outcome history |
 
 The owner resumed the IX track and authorized IX-4 on 2026-08-01, judged too
 large for one review sitting and split into IX-4a/IX-4b/IX-4c (each separately

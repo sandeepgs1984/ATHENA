@@ -699,7 +699,7 @@ ADR authorize analytical use. It does not silently resolve SD-2, activate
 | **IX-4a** Index members endpoint + Universe filter | New read-only per-symbol index membership endpoint (reusing IX-3's exact resolution); Universe tab index filter | Owner review; no inferred mapping, no scoring/domain change | ✅ Approved |
 | **IX-4b** Validation Workbench Results index filter | Index filter on the Workbench Results list, same membership data as IX-4a | Owner review; presentation-only | ✅ Approved |
 | **IX-4c** Decisions index filter + selected-index view | Decisions index filter, selected-index Trade/Watch/No-trade view, ranking reuse, strict symbol handoff | Owner review; current-plan safety rules | ✅ Approved |
-| **IX-5** Symbol Index Backdrop | Plain-language index alignment/divergence context in Decision Brief | Owner review; informational only | 🔄 Ready for review |
+| **IX-5** Symbol Index Backdrop | Plain-language index alignment/divergence context in Decision Brief | Owner review; informational only | ✅ Approved |
 | **IX-6** Evidence Review and Scoring Decision | Replay impact study and ADR proposal for any analytical influence | ADR + owner approval before code | ⏳ Planned |
 
 **Implementation rule:** one IX milestone at a time. A market leader is not
@@ -1035,7 +1035,7 @@ every prior IX milestone in this environment.
 Owner approval: IX-4c was approved on 2026-08-01, committed as `f69e4b8`.
 The IX-4 track (IX-4a/b/c) is complete.
 
-#### IX-5 — symbol index backdrop (ready for review, 2026-08-01)
+#### IX-5 — symbol index backdrop (approved, 2026-08-01)
 
 Owner authorization: the owner approved IX-4c and authorized starting IX-5
 on 2026-08-01.
@@ -1107,6 +1107,36 @@ without auth in this environment, and the module-scoped render/load
 functions are not reachable from a separate browser-console execution
 context to synthesize a decision — the dashboard-hosting regression tests
 and the direct production-data check above are the substitute evidence.
+
+Owner approval: IX-5 was approved on 2026-08-01, committed as `55cfa03`.
+
+#### IX-6 — feasibility check (2026-08-01): not started, owner deferred
+
+Owner asked to start IX-6. Before writing any ADR or replay code, checked
+`db/athena.db` directly for whether a statistically meaningful replay study
+is currently possible, since IX-6 requires measuring stability, coverage,
+false-positive reduction, and regime dependence:
+
+- `decisions`: 4,413 rows, but all from a single trading day (2026-07-31
+  09:26–15:30 IST) — one session, not a multi-week/month history.
+- `market_snapshots`: 328 rows spanning 2026-07-24→07-31, but IX-1 (which
+  added the 8 sector indices) only shipped 2026-07-31 — sector-index history
+  barely predates the tracking itself. Only NIFTY 50/BANK NIFTY/VIX have any
+  real pre-existing history.
+- `trade_outcomes`: **zero rows.** No realized P&L/outcome data exists
+  anywhere in the system yet.
+
+A "false-positive reduction" or "before/after decision-band movement"
+measurement is not statistically meaningful against one day of decisions and
+zero recorded outcomes. Presented this finding to the owner with three
+options (write a defer-ADR now documenting the gap; wait for more data; or
+run a thin/dry-run study labeled inconclusive). **Owner chose to wait** —
+IX-6 remains not started. No ADR was written, no replay code was added, no
+scoring/analytical-influence work occurred. Re-check `db/athena.db`'s
+`decisions`/`trade_outcomes` row counts and date range before resuming IX-6
+in a future session; this finding does not need to be manually re-verified
+if those counts have clearly grown to cover a real multi-week trading history
+with recorded outcomes.
 
 ---
 

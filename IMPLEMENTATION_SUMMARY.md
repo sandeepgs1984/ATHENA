@@ -6,7 +6,7 @@ status updated on approval.
 
 ---
 
-## IX-5 — Symbol Index Backdrop (ready for review)
+## IX-5 — Symbol Index Backdrop (approved)
 
 | | |
 |---|---|
@@ -24,7 +24,7 @@ status updated on approval.
 | Technical debt introduced | None |
 | Suggested improvements | IX-6's replay study can reuse this exact backdrop data as its index-context input |
 | Remaining work | IX-6 (Evidence Review and Scoring Decision) remains ADR-gated and requires a replay study before any code; MyPy should be re-run once available in this environment. The populated section could not be visually inspected live because Decisions could not load without owner credentials in this environment — direct verification against real production `db/athena.db`/`config/` data (INFY/TCS/RELIANCE/SBIN all resolving to their correct real NSE indices) was used as substitute evidence |
-| Status | 🔄 Ready for owner review |
+| Status | ✅ Approved by owner on 2026-08-01, committed as `55cfa03` |
 | Branch | feature/live-dashboard |
 
 ---
