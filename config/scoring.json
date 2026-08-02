@@ -39,5 +39,10 @@
     "macd_pos_bonus": 10,
     "vwap_deviation_cap_pct": 1.5,
     "vwap_max_bonus": 10
+  },
+  "confluence": {
+    "five_min_sma_period": 9,
+    "fifteen_min_sma_period": 5,
+    "max_bonus": 10
   }
 }

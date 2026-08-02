@@ -24,6 +24,7 @@ from athena.scoring.models import (
     ComponentScore,
     CompositeBreakdownItem,
     CompositeScore,
+    ConfluenceInputs,
     Contribution,
     ScoreStatus,
     ScoringResult,
@@ -90,6 +91,7 @@ class ScoringEngine:
         market_health_score: MarketHealthScore | None = None,
         sector_health: SectorHealthResult | None = None,
         vwap: IndicatorResult | None = None,
+        confluence: ConfluenceInputs | None = None,
     ) -> ScoringResult:
         # M-X6: vwap is intentionally its own parameter, never folded into
         # `indicators` — ConfidenceEngine._indicator_availability/_unknown_ratio
@@ -100,9 +102,12 @@ class ScoringEngine:
         # exact risk SD-2/SD-3 treat explicitly for sector_quality). Passed
         # straight through to _technical_structure instead, exactly like
         # market_health_score/sector_health above.
+        # M-X7: confluence is its own parameter for the same reason — it is
+        # derived from same-session-sparse 5m/15m series, not a member of
+        # `indicators`, so it cannot move indicator_availability/unknown_ratio.
         indicators = dict(indicators or {})
         components = {
-            "trend": self._trend(regime, indicators),
+            "trend": self._trend(regime, indicators, confluence),
             "momentum": self._momentum(indicators),
             "market_quality": self._market_quality(market_health, market_health_score),
             "sector_quality": self._sector_quality(sector_health),
@@ -129,7 +134,7 @@ class ScoringEngine:
 
     # ------------------------------------------------------------- components
 
-    def _trend(self, regime, indicators) -> ComponentScore:
+    def _trend(self, regime, indicators, confluence: ConfluenceInputs | None = None) -> ComponentScore:
         if regime is None:
             return _unknown("trend", "no regime assessment available")
         trend_label = next(
@@ -159,8 +164,26 @@ class ScoringEngine:
                     f"(ramp {cfg.weak}→{cfg.strong})",
                     bonus,
                 ))
+        # M-X7: multi-timeframe confluence bonus — proportional to how many
+        # of the checkable intraday timeframes (5m, 15m) agree with the
+        # daily direction. Timeframes with insufficient history are simply
+        # excluded from the ratio (never treated as disagreement), so a
+        # thin/missing 15m series degrades gracefully to a 5m-only read
+        # instead of dragging the bonus toward zero.
+        if confluence is not None and confluence.checked > 0:
+            cfg = self._config.confluence
+            ratio = Decimal(confluence.agreeing) / Decimal(confluence.checked)
+            bonus = ratio * Decimal(cfg.max_bonus)
+            if bonus > _ZERO:
+                value += bonus
+                contribs.append(Contribution(
+                    "confluence:intraday", "Confluence",
+                    f"{confluence.agreeing}/{confluence.checked} intraday timeframe(s) "
+                    f"agree with daily direction → +{_fmt2(bonus)} pts",
+                    bonus,
+                ))
         return _ok("trend", value, contribs,
-                   f"trend score {_clamp(value)} from regime trend + ADX strength")
+                   f"trend score {_clamp(value)} from regime trend + ADX strength + confluence")
 
     def _momentum(self, indicators) -> ComponentScore:
         rsi = self._known_indicator(indicators, IndicatorName.RSI)

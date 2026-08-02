@@ -836,6 +836,19 @@ class TechnicalScoringCfg(_Strict):
     vwap_max_bonus: int = Field(ge=0, le=100)
 
 
+class ConfluenceScoringCfg(_Strict):
+    """Multi-timeframe trend-direction confluence bonus (M-X7). Points scale
+    linearly with the proportion of checkable intraday timeframes (5m, 15m)
+    that agree with the daily direction — 0 at no agreement, ``max_bonus``
+    at full agreement. A timeframe with insufficient history for its own
+    short SMA (real 15m history runs as thin as 9 bars/session) is excluded
+    from the ratio entirely, never counted as disagreement."""
+
+    five_min_sma_period: int = Field(gt=0)
+    fifteen_min_sma_period: int = Field(gt=0)
+    max_bonus: int = Field(ge=0, le=100)
+
+
 class ScoringConfig(_Strict):
     """Scoring Engine configuration (M3.3). All contributions are config-driven."""
 
@@ -845,6 +858,7 @@ class ScoringConfig(_Strict):
     adx: AdxScoringCfg
     liquidity: LiquidityScoringCfg
     technical: TechnicalScoringCfg
+    confluence: ConfluenceScoringCfg
 
     @field_validator("label_points")
     @classmethod

@@ -761,13 +761,14 @@ class OwnerValidationPipeline:
         )
         from athena.decision import DecisionEngine
         from athena.evidence import EvidenceAggregationEngine, EvidenceSource
-        from athena.indicators import IndicatorEngine, IndicatorName
+        from athena.indicators import IndicatorEngine, IndicatorName, IndicatorStatus
+        from athena.indicators import calculations as calc
         from athena.market_health import MarketHealthEngine
         from athena.regime import RegimeEngine
         from athena.risk import RiskEngine
         from athena.runtime import WorkflowEngine, WorkflowStage, build_definition
         from athena.scanner import DailyMarketScanner, InstrumentPlan, ScanCapture
-        from athena.scoring import ScoringEngine
+        from athena.scoring import ConfluenceInputs, ScoringEngine
 
         scoring_cfg = load_scoring_config(self._config_dir)
         decision_cfg = load_decision_config(self._config_dir)
@@ -799,6 +800,18 @@ class OwnerValidationPipeline:
             if self._symbols_filter is not None
             else universe_result
         )
+
+        def _intraday_direction(candles: list[Candle], period: int) -> bool | None:
+            """Bool = last close at/above its trailing SMA(period); None when
+            the series has fewer than `period` bars (M-X7 UNKNOWN-tolerance —
+            see ind_stage's confluence note)."""
+            if not candles:
+                return None
+            closes = [c.close for c in candles]
+            sma_val = calc.sma(closes, period)
+            if sma_val is None:
+                return None
+            return closes[-1] >= sma_val
 
         def builder(instrument_id: str) -> InstrumentPlan:
             cs = list(candles_by_id.get(instrument_id, ()))
@@ -836,7 +849,37 @@ class OwnerValidationPipeline:
                     indicator_engine.compute(IndicatorName.VWAP, intraday_cs, as_of=ctx.as_of)
                     if intraday_cs else None
                 )
-                return {"indicators": indicators, "vwap": vwap_result}
+                # M-X7: multi-timeframe confluence — daily direction reuses
+                # the SMA(20) already computed above; 5m reuses `intraday_cs`
+                # (the same series VWAP uses); 15m needs its own fetch. Each
+                # intraday direction is a plain rolling-SMA read via
+                # calc.sma() with a short, timeframe-specific period, not
+                # routed through IndicatorEngine — IndicatorsConfig fixes one
+                # period per indicator name, and there's no way to ask it for
+                # a differently-tuned SMA for 15m's much thinner real history
+                # (median 14 bars/session) than the daily series' period=20.
+                confluence_inputs = None
+                daily_sma = indicators.get(IndicatorName.SMA)
+                if daily_sma is not None and daily_sma.status is IndicatorStatus.OK:
+                    daily_last_close = daily_sma.evidence.inputs.get("last_close")
+                    if daily_last_close is not None:
+                        confluence_cfg = scoring_cfg.confluence
+                        daily_bullish = Decimal(daily_last_close) >= daily_sma.values["value"]
+                        fifteen_min_cs = self._repo.list_candles_recent(
+                            instrument_id, Timeframe.M15, limit=100
+                        )
+                        confluence_inputs = ConfluenceInputs(
+                            daily_bullish=daily_bullish,
+                            five_min_bullish=_intraday_direction(
+                                intraday_cs, confluence_cfg.five_min_sma_period),
+                            fifteen_min_bullish=_intraday_direction(
+                                fifteen_min_cs, confluence_cfg.fifteen_min_sma_period),
+                        )
+                return {
+                    "indicators": indicators,
+                    "vwap": vwap_result,
+                    "confluence": confluence_inputs,
+                }
 
             def reg_stage(ctx):
                 series = index_candles if index_candles else cs
@@ -872,6 +915,7 @@ class OwnerValidationPipeline:
                         market_health=ctx.get("market_health"),
                         market_health_score=shared_score["value"],
                         vwap=ctx.get("vwap"),
+                        confluence=ctx.get("confluence"),
                     )
                 }
 
@@ -936,7 +980,10 @@ class OwnerValidationPipeline:
             defn = build_definition(
                 f"owner-val-{instrument_id}",
                 [
-                    WorkflowStage("indicators", ind_stage, produces=("indicators", "vwap")),
+                    WorkflowStage(
+                        "indicators", ind_stage,
+                        produces=("indicators", "vwap", "confluence"),
+                    ),
                     WorkflowStage(
                         "regime",
                         reg_stage,

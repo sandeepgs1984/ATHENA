@@ -37,6 +37,33 @@ class Contribution:
 
 
 @dataclass(frozen=True, slots=True)
+class ConfluenceInputs:
+    """Per-instrument multi-timeframe trend-direction agreement (M-X7).
+
+    ``daily_bullish`` is the anchor (daily last-close-vs-SMA read, the same
+    basis technical_structure already uses). The 5m/15m fields are ``None``
+    when that timeframe lacks enough history for its own short SMA — real
+    production 15m history runs as thin as 9 bars/session, so this
+    UNKNOWN-tolerance is load-bearing, not defensive boilerplate.
+    """
+
+    daily_bullish: bool
+    five_min_bullish: bool | None
+    fifteen_min_bullish: bool | None
+
+    @property
+    def checked(self) -> int:
+        return sum(1 for v in (self.five_min_bullish, self.fifteen_min_bullish) if v is not None)
+
+    @property
+    def agreeing(self) -> int:
+        return sum(
+            1 for v in (self.five_min_bullish, self.fifteen_min_bullish)
+            if v is not None and v == self.daily_bullish
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class ComponentScore:
     """One independent scoring dimension, 0..100, or UNKNOWN. Fully explained."""
 

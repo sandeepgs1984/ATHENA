@@ -24,7 +24,7 @@ from athena.indicators import IndicatorEngine, IndicatorName
 from athena.indicators.models import IndicatorEvidence, IndicatorResult, IndicatorStatus
 from athena.market_health import MarketHealthEngine
 from athena.regime import RegimeEngine
-from athena.scoring import ScoreStatus, ScoringEngine
+from athena.scoring import ConfluenceInputs, ScoreStatus, ScoringEngine
 from athena.sector_health import SectorHealthEngine
 
 IST = ZoneInfo("Asia/Kolkata")
@@ -198,6 +198,85 @@ class TestComponents:
         assert len(indicators) == original_count
         assert IndicatorName.VWAP not in indicators
 
+    def test_trend_confluence_full_agreement_bonus(self, scoring, config_dir):
+        candles = _candles(range(100, 160))  # rising -> BULL_TREND
+        regime = _regime(config_dir, candles)
+        base = scoring.score("X", as_of=AS_OF, regime=regime).components["trend"].value
+        cfg = scoring._config.confluence
+        confluence = ConfluenceInputs(
+            daily_bullish=True, five_min_bullish=True, fifteen_min_bullish=True)
+        result = scoring.score("X", as_of=AS_OF, regime=regime, confluence=confluence)
+        trend = result.components["trend"]
+        assert trend.value == base + Decimal(cfg.max_bonus)
+        assert any(c.source == "confluence:intraday" and "2/2" in c.description
+                  for c in trend.contributions)
+
+    def test_trend_confluence_partial_agreement_half_bonus(self, scoring, config_dir):
+        candles = _candles(range(100, 160))
+        regime = _regime(config_dir, candles)
+        base = scoring.score("X", as_of=AS_OF, regime=regime).components["trend"].value
+        cfg = scoring._config.confluence
+        confluence = ConfluenceInputs(
+            daily_bullish=True, five_min_bullish=True, fifteen_min_bullish=False)
+        result = scoring.score("X", as_of=AS_OF, regime=regime, confluence=confluence)
+        trend = result.components["trend"]
+        assert trend.value == base + Decimal(cfg.max_bonus) / 2
+        assert any("1/2" in c.description for c in trend.contributions
+                  if c.source == "confluence:intraday")
+
+    def test_trend_confluence_disagreement_no_bonus(self, scoring, config_dir):
+        candles = _candles(range(100, 160))
+        regime = _regime(config_dir, candles)
+        base = scoring.score("X", as_of=AS_OF, regime=regime).components["trend"].value
+        confluence = ConfluenceInputs(
+            daily_bullish=True, five_min_bullish=False, fifteen_min_bullish=False)
+        result = scoring.score("X", as_of=AS_OF, regime=regime, confluence=confluence)
+        trend = result.components["trend"]
+        assert trend.value == base
+        assert not any(c.source == "confluence:intraday" for c in trend.contributions)
+
+    def test_trend_confluence_no_checkable_timeframes_no_bonus(self, scoring, config_dir):
+        """M-X7: thin/missing 5m and 15m history (real 15m runs as few as 9
+        bars/session) must degrade to no bonus, not UNKNOWN or an error."""
+        candles = _candles(range(100, 160))
+        regime = _regime(config_dir, candles)
+        base = scoring.score("X", as_of=AS_OF, regime=regime).components["trend"].value
+        confluence = ConfluenceInputs(
+            daily_bullish=True, five_min_bullish=None, fifteen_min_bullish=None)
+        result = scoring.score("X", as_of=AS_OF, regime=regime, confluence=confluence)
+        trend = result.components["trend"]
+        assert trend.value == base
+        assert not any(c.source == "confluence:intraday" for c in trend.contributions)
+
+    def test_trend_confluence_never_provided_is_backward_compatible(self, scoring, config_dir):
+        candles = _candles(range(100, 160))
+        regime = _regime(config_dir, candles)
+        result = scoring.score("X", as_of=AS_OF, regime=regime)
+        assert result.components["trend"].status is ScoreStatus.OK
+
+
+class TestConfluenceInputs:
+    def test_checked_and_agreeing_counts(self):
+        both_agree = ConfluenceInputs(
+            daily_bullish=True, five_min_bullish=True, fifteen_min_bullish=True)
+        assert both_agree.checked == 2
+        assert both_agree.agreeing == 2
+
+        one_missing_one_agrees = ConfluenceInputs(
+            daily_bullish=True, five_min_bullish=True, fifteen_min_bullish=None)
+        assert one_missing_one_agrees.checked == 1
+        assert one_missing_one_agrees.agreeing == 1
+
+        both_disagree = ConfluenceInputs(
+            daily_bullish=True, five_min_bullish=False, fifteen_min_bullish=False)
+        assert both_disagree.checked == 2
+        assert both_disagree.agreeing == 0
+
+        neither_checkable = ConfluenceInputs(
+            daily_bullish=False, five_min_bullish=None, fifteen_min_bullish=None)
+        assert neither_checkable.checked == 0
+        assert neither_checkable.agreeing == 0
+
 
 class TestContinuousScoringAnchors:
     """SD-4: ramps must reproduce the pre-ramp anchors exactly."""
@@ -311,6 +390,27 @@ class TestContinuousScoringAnchors:
             assert actual == base + expected_bonus, (
                 f"deviation {deviation_pct}% → {actual}, expected {base + expected_bonus}")
 
+    def test_confluence_bonus_proportional_to_agreement_ratio(self, scoring, config_dir):
+        """M-X7: bonus is agreeing/checked * max_bonus — proportional to the
+        agreement ratio among only the CHECKABLE timeframes, so 0, 1, or 2
+        agreeing (out of 2 checkable) reproduce 0, half, and full max_bonus
+        exactly (SD-4 anchor-preserving style, same as ADX/RSI/VWAP above)."""
+        candles = _candles(range(100, 160))
+        regime = _regime(config_dir, candles)
+        base = scoring.score("X", as_of=AS_OF, regime=regime).components["trend"].value
+        cfg = scoring._config.confluence
+        for agreeing, expected_bonus in ((0, Decimal("0")), (1, Decimal(cfg.max_bonus) / 2),
+                                         (2, Decimal(cfg.max_bonus))):
+            confluence = ConfluenceInputs(
+                daily_bullish=True,
+                five_min_bullish=(agreeing >= 1),
+                fifteen_min_bullish=(agreeing >= 2),
+            )
+            result = scoring.score("X", as_of=AS_OF, regime=regime, confluence=confluence)
+            actual = result.components["trend"].value
+            assert actual == base + expected_bonus, (
+                f"{agreeing}/2 agreeing → {actual}, expected {base + expected_bonus}")
+
 
 class TestComposite:
     def test_composite_full_inputs(self, scoring, config_dir, indicator_engine):
@@ -382,6 +482,10 @@ class TestConfig:
         # dimensions summing to 100.
         assert cfg.technical.vwap_deviation_cap_pct > 0
         assert cfg.technical.vwap_max_bonus >= 0
+        # M-X7: same additive shape — new confluence block, weights untouched.
+        assert cfg.confluence.five_min_sma_period > 0
+        assert cfg.confluence.fifteen_min_sma_period > 0
+        assert cfg.confluence.max_bonus >= 0
 
     def test_missing_config_fails(self, tmp_path):
         with pytest.raises(ConfigError, match=r"Missing configuration file.*scoring.json"):

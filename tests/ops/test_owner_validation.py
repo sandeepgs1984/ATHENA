@@ -62,6 +62,26 @@ def _intraday_candles(instrument_id: str, day, n: int = 6, seed: int = 100) -> l
     return out
 
 
+def _timeframe_candles(
+    instrument_id: str, day, timeframe: Timeframe, step_minutes: int,
+    n: int, seed: int = 100, rising: bool = True,
+) -> list[Candle]:
+    """Same-day bars at an arbitrary timeframe/step for confluence (M-X7)."""
+    out: list[Candle] = []
+    for i in range(n):
+        ts = datetime.combine(day, datetime.min.time(), tzinfo=IST).replace(hour=9, minute=15)
+        ts += timedelta(minutes=step_minutes * i)
+        px = Decimal(str(seed + i)) if rising else Decimal(str(seed - i))
+        out.append(
+            Candle(
+                instrument_id=instrument_id, timeframe=timeframe, ts_open=ts,
+                open=px, high=px + Decimal("1"), low=px - Decimal("1"), close=px,
+                volume=10_000, source="test",
+            )
+        )
+    return out
+
+
 def _persist_run(repo: SqliteRepository, run_id: str, as_of: datetime, detail: dict) -> None:
     """Mimics DryRunOrchestrator's own repo.save_run() call (scheduling/
     dry_run.py) — OwnerValidationPipeline.run() itself never persists to the
@@ -245,6 +265,91 @@ class TestOwnerValidationPipeline:
             avail = dims["indicator_availability"]
             # Exactly 6/6 regardless of AAA vs BBB — never 6/7 or 7/7.
             assert "6/6" in avail["explanation"], avail["explanation"]
+
+    def test_confluence_flows_into_score_without_affecting_confidence(
+        self, repo: SqliteRepository, config_dir: Path
+    ) -> None:
+        """M-X7: multi-timeframe confluence is computed from same-session 5m
+        + 15m candles and reaches ScoringEngine's trend component — but must
+        never touch ConfidenceEngine's indicator_availability ratio (still
+        6/6, never 6/7), same isolation guarantee as VWAP's own
+        test_vwap_flows_into_score_without_affecting_confidence above."""
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        store.upsert_candidate(symbol="BBB")
+        for sym, seed in (("AAA", 100), ("BBB", 200)):
+            iid = f"NSE:{sym}"
+            repo.upsert_instrument(
+                Instrument(instrument_id=iid, symbol=sym, exchange="NSE", series="EQ", status="ACTIVE")
+            )
+            repo.add_candles(_candles(iid, seed=seed))  # rising daily series -> daily_bullish
+        # Only AAA gets same-day 5m + 15m candles, both rising (agreeing with
+        # its own rising daily series) — BBB has neither, confirming the
+        # confidence isolation holds in both the confluence-available and
+        # confluence-unavailable cases within one run.
+        repo.add_candles(
+            _timeframe_candles("NSE:AAA", AS_OF.date(), Timeframe.M5, 5, n=15, seed=100))
+        repo.add_candles(
+            _timeframe_candles("NSE:AAA", AS_OF.date(), Timeframe.M15, 15, n=8, seed=100))
+
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        ingestion = IngestionResult(
+            as_of=AS_OF, instruments_upserted=2, candles_fetched=183, candles_written=183,
+            quotes_fetched=0, quotes_written=0, datasets_validated=2, datasets_skipped_empty=0,
+        )
+        detail = pipe.run(
+            RunTrigger.PREMARKET, as_of=AS_OF, ingestion=ingestion, run_id="run-test-confluence"
+        )
+        reports = detail["decision_reports"]
+        assert reports
+        for report in reports.values():
+            dims = {d["name"]: d for d in report["confidence"]["dimensions"]}
+            avail = dims["indicator_availability"]
+            assert "6/6" in avail["explanation"], avail["explanation"]
+        by_instrument = {r["decision"]["instrument_id"]: r for r in reports.values()}
+        trend_aaa = next(
+            c for c in by_instrument["NSE:AAA"]["score"]["components"] if c["dimension"] == "trend")
+        confluence_contribs = [c for c in trend_aaa["contributions"] if c["source"] == "confluence:intraday"]
+        assert confluence_contribs, trend_aaa["contributions"]
+        assert "2/2" in confluence_contribs[0]["description"]
+        trend_bbb = next(
+            c for c in by_instrument["NSE:BBB"]["score"]["components"] if c["dimension"] == "trend")
+        assert not any(c["source"] == "confluence:intraday" for c in trend_bbb["contributions"])
+
+    def test_confluence_tolerates_thin_15m_data(
+        self, repo: SqliteRepository, config_dir: Path
+    ) -> None:
+        """M-X7: real production 15m history runs as thin as 9 bars/session
+        (well under a naive N-bar confluence window) — a symbol with enough
+        5m bars but too few 15m bars for its own short SMA must still score
+        a confluence bonus from 5m alone, not go UNKNOWN or error out."""
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        iid = "NSE:AAA"
+        repo.upsert_instrument(
+            Instrument(instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE")
+        )
+        repo.add_candles(_candles(iid, seed=100))
+        repo.add_candles(_timeframe_candles(iid, AS_OF.date(), Timeframe.M5, 5, n=15, seed=100))
+        # Only 3 bars at 15m — fewer than confluence.fifteen_min_sma_period
+        # (5 in production config), so the 15m direction must resolve to
+        # None (excluded), not raise or silently disagree.
+        repo.add_candles(_timeframe_candles(iid, AS_OF.date(), Timeframe.M15, 15, n=3, seed=100))
+
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        ingestion = IngestionResult(
+            as_of=AS_OF, instruments_upserted=1, candles_fetched=98, candles_written=98,
+            quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+        )
+        detail = pipe.run(
+            RunTrigger.PREMARKET, as_of=AS_OF, ingestion=ingestion, run_id="run-test-confluence-thin"
+        )
+        report = next(
+            r for r in detail["decision_reports"].values() if r["decision"]["instrument_id"] == iid)
+        trend = next(c for c in report["score"]["components"] if c["dimension"] == "trend")
+        confluence_contribs = [c for c in trend["contributions"] if c["source"] == "confluence:intraday"]
+        assert confluence_contribs, trend["contributions"]
+        assert "1/1" in confluence_contribs[0]["description"]
 
     def test_sector_health_computed_when_mapped_index_has_candles(
         self, repo: SqliteRepository, config_dir: Path

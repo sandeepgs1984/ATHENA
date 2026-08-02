@@ -1504,7 +1504,7 @@ implemented silently past those gates.
 | **M-X4** Circuit-limit / price-band risk signal | New Risk Engine dimension from Kite's already-fetched, currently-discarded circuit-limit fields | **ADR-006 (Proposed)** — extends frozen `Quote` domain object | ⏸ Blocked on ADR approval |
 | **M-X5** Opening Range Breakout playbook | First-15/30-min range break/hold as a deterministic strategy-framework pattern | None | ⏳ Planned |
 | **M-X6** VWAP deviation scoring dimension | Intraday VWAP reclaim/deviation as a new scoring input | None | ✅ Approved (2026-08-02) |
-| **M-X7** Multi-timeframe confluence | 1m/5m/15m agreement as a scoring/confidence dimension | None | ⏳ Planned |
+| **M-X7** Multi-timeframe confluence | Daily/5m/15m trend-direction agreement as a scoring input (see design note: 1m and "confidence dimension" both reconsidered) | None | ✅ Approved (2026-08-02) |
 | **M-X8** Synthetic canary decision | Fixed synthetic instrument through the full pipeline each cycle to catch silent engine regressions | None | ⏳ Planned |
 | **M-X9** Config-change impact preview | Deterministic replay-based diff of a scoring-weight change against recent decisions, before it goes live | None | ⏳ Planned |
 | **M-X10** Outcome-tagged setups + signal drift monitor | Extends M10.4 AI Playbook Diagnostics with per-pattern hit-rate tagging and weight-drift alerts | None | ⏳ Planned |
@@ -1582,6 +1582,100 @@ above.
 | Delivery % (NSE daily delivery data) | New NSE data source | Needs a new DD |
 | Bulk/block deal feed | New NSE data source | Needs a new DD |
 | Options data + F&O ban-list feed | **DD-4** already exists in ATHENA-002 §15, deferred to "Phase 7" — Phase 7 is now approved, so DD-4 is revisit-eligible | Owner decision: open DD-4 now or keep deferred |
+
+#### M-X7 — Multi-timeframe confluence (approved, 2026-08-02)
+
+**Design confirmed before any code — the backlog's own wording didn't
+survive contact with the real data or the frozen contracts:**
+
+1. **"1m/5m/15m" scoped down to daily/5m/15m.** `IngestionConfig` and the
+   domain/provider layers already support 1m structurally (no schema/ADR
+   needed), but the live database has **zero 1m candle rows** — enabling it
+   would take weeks to accumulate anything usable. Implementing against
+   data that doesn't exist would be exactly the kind of fabricated-value
+   risk ADR-005 forbids, so 1m is out of scope here, not deferred silently:
+   it's named explicitly so a future milestone doesn't assume it was
+   already handled.
+2. **"scoring/confidence dimension" resolved to scoring only.** A new
+   `ConfidenceEngine` dimension would mean editing the frozen, sum-to-100
+   `ConfidenceWeightsCfg` + its validator + re-dividing every existing
+   weight — the same class of ADR-adjacent change M-X6 avoided for
+   `ScoringWeightsCfg`, and not actually "Gate: None" as the backlog
+   claims. Implemented instead as an additional named `Contribution` inside
+   the existing `trend` scoring dimension, mirroring the ADX-bonus pattern
+   already there (and the VWAP-in-`technical_structure` pattern M-X6 just
+   established) — no frozen contract touched, confirmed `ScoringWeightsCfg`'s
+   6 dimensions and `ConfidenceWeightsCfg`'s 6 dimensions are both
+   byte-for-byte unchanged.
+
+**A real, separate data risk found during design and designed around from
+the start:** real 15m history runs as thin as **9 bars/session**
+(production DB check: 513 instruments, 15m min/avg/max = 9/14/73
+bars/session) — too thin for a fixed n-of-3 agreement check. Confluence is
+built UNKNOWN-tolerant by construction: bonus = (timeframes agreeing with
+the daily direction) / (timeframes with enough history to even check) ×
+`max_bonus`. A timeframe below its own short SMA's minimum history is
+excluded from the ratio entirely, never counted as disagreement — a
+thin/missing 15m series degrades gracefully to a 5m-only read instead of
+dragging the bonus toward zero or going UNKNOWN.
+
+Scope: `ConfluenceInputs` (`src/athena/scoring/models.py`) — a small,
+purpose-built frozen dataclass (`daily_bullish`, `five_min_bullish`,
+`fifteen_min_bullish`, with `checked`/`agreeing` properties), not a new
+engine — the underlying computation (last close vs. a short trailing SMA)
+doesn't warrant one. `ConfluenceScoringCfg` (`src/athena/config/models.py`)
+adds `five_min_sma_period`/`fifteen_min_sma_period`/`max_bonus`, config-driven
+like every other scoring threshold. `ScoringEngine._trend` gets the bonus as
+a proportional `agreeing/checked × max_bonus` contribution (same SD-4
+anchor-preserving shape as ADX/RSI/VWAP, reproducing 0/half/full bonus at
+0/1/2 agreeing exactly). `OwnerValidationPipeline.ind_stage` reuses the same
+5m series already fetched for VWAP (M-X6) and adds one new 15m fetch;
+directions are computed with `calc.sma()` directly (not routed through
+`IndicatorEngine`, since `IndicatorsConfig` fixes one period per indicator
+name and 15m's real thinness needs a shorter period than the daily
+series' SMA(20)). `confluence` is its own `score()` parameter, never merged
+into `indicators` — identical isolation reasoning to VWAP's, since it's
+also derived from same-session-sparse series.
+
+**The exact silent-failure bug M-X6 hit was not repeated:** `ind_stage` now
+returns a `"confluence"` key alongside `indicators`/`vwap`, and
+`WorkflowStage(..., produces=(...))` was updated to
+`("indicators", "vwap", "confluence")` in the same change — the workflow
+engine validates a stage's declared `produces` against what it actually
+returns and raises `WorkflowError` on any mismatch.
+
+Validation note: full suite 1,186 passed (9 new: `ConfluenceInputs`
+checked/agreeing unit tests, 5 `ScoringEngine._trend` confluence-bonus
+tests including the SD-4 proportional-ramp anchor test and the
+never-provided backward-compatibility test, 2 end-to-end
+`OwnerValidationPipeline` tests against the real production config — one
+proving `indicator_availability` stays "6/6 OK" regardless of confluence
+availability, one proving a 15m series thinner than its own SMA period
+still resolves ("1/1" from 5m alone) instead of erroring). Ruff clean.
+Also verified with two real, full end-to-end `OwnerValidationPipeline` runs
+against a working copy of the production database (real 2026-07-31 candle
+history; the copy was used specifically so the runs would never write a
+decision into the live decisions table) — owner-requested, beyond the
+suite above:
+
+- **`NSE:RRKABEL`**: real run produced an actual `TRADE` decision; trend
+  contributions showed no `confluence:intraday` entry. To rule out
+  confluence silently not running (a zero bonus and "never computed" are
+  indistinguishable from the contribution list alone), the actual
+  `ConfluenceInputs` constructed inside that live call was captured via
+  instrumentation — confirmed `checked=2, agreeing=0` (daily bullish, both
+  5m and 15m bearish): confluence *did* run, and correctly contributed
+  nothing for a genuine short-term pullback rather than fabricating a
+  tie-break.
+- **`NSE:360ONE`**: scanned real candidates for one with genuine 2/2
+  agreement at the same as-of, then ran it through the same real pipeline —
+  produced `confluence:intraday: "2/2 intraday timeframe(s) agree with
+  daily direction → +10.00 pts"`, trend 90. Confirms the bonus path renders
+  correctly end-to-end on real data, not only in synthetic tests.
+
+Architectural note: presentation/scoring-input only, additive to the
+already-approved M3.3 engine contract. No provider, broker, order, domain,
+or frozen-contract change. No ADR required per the design analysis above.
 
 ---
 
