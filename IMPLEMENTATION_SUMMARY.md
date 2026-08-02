@@ -6,6 +6,29 @@ status updated on approval.
 
 ---
 
+## M-X8 — Synthetic canary decision (approved)
+
+| | |
+|---|---|
+| Completed | 2026-08-02 |
+| Objective | Owner approved M-X7 and asked to start the next Intraday Edge Program milestone: a fixed synthetic instrument through the full pipeline each cycle, to catch silent engine regressions |
+| Scope | Design-checked first: the real risk was that `Decision` has no source/kind field and nothing filters persisted decisions by one, so any persisted decision appears unconditionally in the real dashboard/Decision Brief/Journal — a naive "flag it synthetic" implementation would need a new frozen-domain field (ADR-gated), the same class of near-miss M-X6/M-X7 each hit. Avoided structurally: the canary (`src/athena/ops/canary.py`) runs the real, unmodified `OwnerValidationPipeline` against a fresh, throwaway **in-memory** `SqliteRepository` created and discarded within one call — never the real repository, never `save_decision` against it, never a real owner candidate. Synthetic input is a fixed, deterministic, steadily-rising 80-bar daily-only instrument (`NSE:ATHENACANARY`). Owner chose embedding it directly in the live scheduler (`HostDueRunner.run()`) over a standalone CLI command, so it runs automatically after every real due cycle. "Regression" is checked loosely (pipeline completes without raising, score/confidence/risk all status OK, decision_type recognized and not `INSUFFICIENT_DATA`) rather than an exact expected decision, since single-instrument concentration risk is a legitimate `RiskEngine` outcome, not a bug — pinning to an exact `TRADE` would be brittle. Alerts through the existing DD-9 `FailureAlertDispatcher` (`source="canary"`), zero new alerting mechanism. Any exception anywhere in the canary path is caught and never propagates — a diagnostic breaking must never take down the real cycle it runs alongside |
+| Files created | `src/athena/ops/canary.py`, `tests/ops/test_canary.py` |
+| Files modified | `src/athena/ops/scheduled_run.py`, `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md`, `tests/ops/test_host_ops.py` |
+| Public APIs added | None external — `HostDueRunResult.canary: CanaryResult | None = None` is a new, additive, defaulted field on an ops-layer dataclass (not the frozen domain model), backward compatible with every existing construction site |
+| Tests | Full suite — 1,198 passed (12 new: 5 `run_canary()` tests against the real production config, including a determinism-repeat check and a broken-config-dir case proving a `load_config` failure is reported as a regression rather than crashing the caller, plus 2 `CanaryResult` construction tests; 5 `HostDueRunner` integration tests — canary runs when wired against real config, is cleanly skipped when not, never propagates its own exception into a real cycle, alerts with `source="canary"` on a detected regression, stays silent on a pass). Ruff clean |
+| Coverage | Verified against the real production `config/` directory throughout (not a copy) — `run_canary()` itself, and `HostDueRunner` wired with the real config_dir, both exercised directly rather than only against mocks |
+| Architecture compliance | Ops/diagnostics-only, additive. `Decision`/`RunTrigger`/`DecisionType` and every other frozen domain object are untouched. No provider, broker, order, or frozen-contract change |
+| ADR compliance | None required — confirmed by design analysis before implementing, not assumed. The in-memory-repo isolation is precisely what keeps this from needing the frozen-domain-field change a naive implementation would have required |
+| Risks discovered | **The exact "would need an ADR" near-miss M-X6/M-X7 each hit, this time on the domain model itself rather than a config schema:** persisting even one canary decision through the normal path would have made it appear in the owner's real dashboard/Journal indistinguishably from a real decision, with no existing field to filter it out. Solved structurally (never persisted, never touches the real repo) rather than by convention or a follow-up filter |
+| Technical debt introduced | None. Coverage is intentionally daily-only (no synthetic intraday VWAP/confluence input) — documented as a scope decision, not a corner cut silently |
+| Suggested improvements | Could extend the synthetic instrument with same-session 5m/15m candles to also exercise the VWAP (M-X6) and confluence (M-X7) paths specifically — deferred since the core regime→scoring→confidence→risk→decision path is the highest-value regression surface and this keeps the milestone reviewable in one sitting |
+| Remaining work | None — approved 2026-08-02 |
+| Status | ✅ Approved by owner on 2026-08-02 |
+| Branch | feature/live-dashboard |
+
+---
+
 ## M-X7 — Multi-timeframe confluence (approved)
 
 | | |

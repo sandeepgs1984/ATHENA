@@ -5,6 +5,7 @@ Invoked by external launchd/cron via ``athena run-due``. No embedded scheduler.
 
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -18,6 +19,7 @@ from athena.domain.enums import RunTrigger, SessionType
 from athena.errors import AthenaError
 from athena.notifications import BriefingDispatcher
 from athena.notifications.decision_source import SqliteDecisionSummarySource
+from athena.ops.canary import CanaryResult, run_canary
 from athena.ops.failure_alerts import FailureAlertDispatcher
 from athena.scheduling import DryRunCycleOrchestrator, due_triggers
 from athena.scheduling.dry_run import DryRunCycleResult, DryRunPipeline
@@ -36,6 +38,10 @@ class HostDueRunResult:
     briefing_id: str | None
     idle: bool
     alerted: bool
+    # M-X8: additive, defaults to None for every existing caller/construction
+    # site. None means "not run this tick" (idle tick, or no config_dir
+    # wired) — not "ran and passed"; only a CanaryResult with ok=True means that.
+    canary: CanaryResult | None = None
 
 
 class HostDueRunner:
@@ -150,6 +156,8 @@ class HostDueRunner:
                 result = orchestrator.run_cycle(trigger, as_of=as_of)
                 cycles.append(result)
 
+            canary = self._run_canary(as_of)
+
             briefing_id = None
             if do_brief:
                 briefing_id = self._dispatch_brief(as_of)
@@ -161,6 +169,7 @@ class HostDueRunner:
                 briefing_id=briefing_id,
                 idle=False,
                 alerted=False,
+                canary=canary,
             )
         except AthenaError as exc:
             if (
@@ -175,6 +184,40 @@ class HostDueRunner:
                     as_of=as_of,
                 )
             raise
+    def _run_canary(self, as_of: datetime) -> CanaryResult | None:
+        """M-X8: fixed synthetic instrument through the real pipeline, to
+        catch silent engine regressions. Best-effort and isolated by
+        design — a canary failure (or the canary code itself raising) must
+        never block or fail a real scheduled cycle, so every exception here
+        is caught, never re-raised. Runs once per host tick (alongside
+        whichever real triggers were due this tick), not once per trigger —
+        this is a per-tick sanity check, not a per-cycle-type one. Skipped
+        (returns None) when no config_dir is wired, matching
+        `_is_trading_day`'s own backward-compatible fallback for callers
+        that haven't threaded it through yet.
+        """
+        if self._config_dir is None:
+            return None
+        try:
+            result = run_canary(
+                self._config_dir, as_of=as_of, run_id=f"canary-{as_of.isoformat()}"
+            )
+        except Exception as exc:  # the canary must never break a real cycle
+            result = CanaryResult(
+                ok=False, reasons=(f"canary itself raised: {exc!r}",),
+                decision_type=None, composite_value=None,
+            )
+        if result.ok or not self._host_ops.failure_alerts.enabled:
+            return result
+        with contextlib.suppress(Exception):  # alert delivery failing must not break the cycle
+            self._alerts.dispatch(
+                title="ATHENA canary regression detected",
+                detail="; ".join(result.reasons) or "unknown canary failure",
+                source="canary",
+                as_of=as_of,
+            )
+        return result
+
     def _dispatch_brief(self, as_of: datetime) -> str:
         dispatcher = BriefingDispatcher(
             self._repo,

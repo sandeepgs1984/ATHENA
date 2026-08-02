@@ -1505,7 +1505,7 @@ implemented silently past those gates.
 | **M-X5** Opening Range Breakout playbook | First-15/30-min range break/hold as a deterministic strategy-framework pattern | None | ⏳ Planned |
 | **M-X6** VWAP deviation scoring dimension | Intraday VWAP reclaim/deviation as a new scoring input | None | ✅ Approved (2026-08-02) |
 | **M-X7** Multi-timeframe confluence | Daily/5m/15m trend-direction agreement as a scoring input (see design note: 1m and "confidence dimension" both reconsidered) | None | ✅ Approved (2026-08-02) |
-| **M-X8** Synthetic canary decision | Fixed synthetic instrument through the full pipeline each cycle to catch silent engine regressions | None | ⏳ Planned |
+| **M-X8** Synthetic canary decision | Fixed synthetic instrument through the full pipeline each cycle to catch silent engine regressions | None | ✅ Approved (2026-08-02) |
 | **M-X9** Config-change impact preview | Deterministic replay-based diff of a scoring-weight change against recent decisions, before it goes live | None | ⏳ Planned |
 | **M-X10** Outcome-tagged setups + signal drift monitor | Extends M10.4 AI Playbook Diagnostics with per-pattern hit-rate tagging and weight-drift alerts | None | ⏳ Planned |
 
@@ -1676,6 +1676,84 @@ suite above:
 Architectural note: presentation/scoring-input only, additive to the
 already-approved M3.3 engine contract. No provider, broker, order, domain,
 or frozen-contract change. No ADR required per the design analysis above.
+
+#### M-X8 — Synthetic canary decision (approved, 2026-08-02)
+
+**Design confirmed before any code — the backlog's own "Gate: None" claim
+was checked, not assumed, exactly as for M-X6/M-X7:** the real risk found
+was that `Decision` (`src/athena/domain/decision.py`) has no
+source/kind/synthetic field, and nothing in `save_decision`/`list_decisions`/
+the API router filters by one — **any persisted decision shows up
+unconditionally in the real dashboard, Decision Brief, and Journal.** A
+naive "flag it as synthetic" implementation would mean adding a field to
+the frozen domain model (ADR-gated per ATHENA-002 §4/§19), the same class
+of near-miss M-X6 hit with `ScoringWeightsCfg` and M-X7 hit with
+`ConfidenceWeightsCfg`. Avoided structurally instead: the canary never
+calls `save_decision` at all, and never touches the real repository —
+it runs the real, unmodified `OwnerValidationPipeline` against a fresh,
+throwaway **in-memory** `SqliteRepository` created for that one call and
+discarded immediately after. Confirmed no existing "canary"/"synthetic
+regression" concept existed anywhere in the repo before this (the closest
+precedent is T-3's dormant golden-dataset regression test skeleton,
+`tests/golden/README.md`, never populated — a design-time, not live,
+mechanism).
+
+**Owner decision on placement:** embedded directly in the live scheduler
+(`HostDueRunner.run()`, `src/athena/ops/scheduled_run.py`) rather than a
+standalone CLI command, so it runs automatically after every real
+PREMARKET/REFRESH/CLOSING cycle the host cron fires — the fullest "catch
+regressions automatically, unattended" reading of "each cycle." Runs once
+per host tick (alongside whichever real triggers fired that tick), not once
+per trigger.
+
+Scope: `src/athena/ops/canary.py` — a fixed, deterministic, steadily-rising
+80-bar daily-only synthetic instrument (`NSE:ATHENACANARY`, never a real
+listed symbol), reusing the same shape as `tests/decision/test_scoring.py`'s
+own `_candles()` fixture pattern but as a production diagnostic input, never
+shown to the owner as real market data. `run_canary()` seeds a brand-new
+in-memory repo with exactly this one synthetic candidate/instrument/candle
+set and runs the real `OwnerValidationPipeline.run()` against it unmodified
+— reusing the exact code path real trading decisions go through (including
+M-X6's VWAP and M-X7's confluence wiring) rather than a parallel,
+simplified re-implementation that could itself silently drift out of sync
+with the real pipeline. "Regression" is deliberately loose, not an exact
+expected decision: concentration risk on a single-instrument universe is a
+real, legitimate `RiskEngine` outcome, not a bug, so an exact `TRADE`
+expectation would be brittle. Instead it checks the pipeline completes
+without raising and returns a fully-explained (status OK) score/confidence/
+risk for an input that always has complete daily history by construction,
+plus a recognized `decision_type` (flagging `INSUFFICIENT_DATA` specifically,
+since that's impossible for this always-complete synthetic input if the
+pipeline is working correctly).
+
+Wired into `HostDueRunner._run_canary()`: runs after the real due-trigger
+cycles complete, wrapped so **any** exception — from the canary's own code,
+not just a detected regression — is caught and never propagates, since a
+diagnostic breaking must never take down the real scheduled cycle it's
+checking alongside. On a detected regression (or the canary itself
+erroring), alerts through the existing DD-9 `FailureAlertDispatcher` path
+with `source="canary"` — the same file/webhook channels `run-due` hard
+failures already use, zero new alerting mechanism. Added an additive
+`canary: CanaryResult | None = None` field to `HostDueRunResult` (an ops
+dataclass, not part of the frozen domain model — no gate) so the outcome is
+directly testable/observable, not just a side-effect. `None` means "didn't
+run this tick" (no `config_dir` wired — matches `_is_trading_day`'s own
+backward-compatible fallback for pre-existing callers); only
+`CanaryResult(ok=True, ...)` means it ran and passed.
+
+Validation note: full suite 1,198 passed (12 new: 5 `run_canary()` tests
+against the real production config — including a determinism-repeat check
+and a broken-config-dir case proving a `load_config` failure is reported as
+a regression, not left to crash the caller — plus 2 `CanaryResult`
+construction tests; 5 `HostDueRunner` integration tests proving the canary
+actually runs when `config_dir` is wired (against real production config,
+not a mock), is skipped (not a new failure mode) when it isn't, never
+propagates its own exception into a real cycle, alerts with `source="canary"`
+on a detected regression, and stays silent on a pass). Ruff clean.
+
+Architectural note: ops/diagnostics-only, additive. No provider, broker,
+order, domain, or frozen-contract change — confirmed by design analysis
+above, not assumed. No ADR required.
 
 ---
 

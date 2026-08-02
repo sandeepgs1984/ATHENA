@@ -14,11 +14,13 @@ from athena.config.models import FailureAlertsConfig, HostOpsConfig
 from athena.domain.enums import RunStatus, RunTrigger, SessionType
 from athena.domain.run import RunRecord
 from athena.errors import AthenaError
+from athena.ops.canary import CanaryResult
 from athena.ops.failure_alerts import FailureAlertDispatcher, resolve_alert_webhook_url
 from athena.ops.scheduled_run import HostDueRunner
 from athena.scheduling.dry_run import DryRunCycleResult
 
 IST = ZoneInfo("Asia/Kolkata")
+REPO_CONFIG = Path(__file__).resolve().parents[2] / "config"
 
 
 def test_resolve_alert_webhook_prefers_dedicated(monkeypatch: pytest.MonkeyPatch):
@@ -312,3 +314,114 @@ def test_host_due_runner_success_runs_brief():
     assert result.idle is False
     assert result.briefing_id == "brief-1"
     assert len(result.cycles) == 1
+
+
+# M-X8: fixed synthetic instrument through the real pipeline each due tick,
+# to catch silent engine regressions — see src/athena/ops/canary.py.
+def _runner_for_canary(**overrides) -> HostDueRunner:
+    repo = MagicMock()
+    repo.latest_run.return_value = None
+    cycle = DryRunCycleResult(
+        run=_run_record(), ingestion=None,
+        pipeline_detail={"mode": "ingest_only"}, duration_seconds=0.1,
+    )
+    orchestrator = MagicMock()
+    orchestrator.run_cycle.return_value = cycle
+    kwargs = dict(
+        cfg=MagicMock(),
+        sched=MagicMock(),
+        host_ops=HostOpsConfig(brief_after_cycles=False),
+        notify_cfg=MagicMock(),
+        repo=repo,
+        ingest_engine=MagicMock(),
+        repo_root=Path("/tmp"),
+        tzinfo=IST,
+        strategy_profile="p",
+        alert_dispatcher=MagicMock(),
+    )
+    kwargs.update(overrides)
+    return HostDueRunner(**kwargs), orchestrator
+
+
+def test_host_due_runner_runs_canary_when_config_dir_wired():
+    """Real production config_dir wired in — the canary must actually run
+    (not just be silently skipped) and pass against real production
+    config, exactly like OwnerValidationPipeline's own real-config tests."""
+    runner, orchestrator = _runner_for_canary(config_dir=REPO_CONFIG)
+    as_of = datetime(2026, 7, 23, 10, 0, tzinfo=IST)
+    with (
+        patch("athena.ops.scheduled_run.due_triggers", return_value=(RunTrigger.REFRESH,)),
+        patch("athena.ops.scheduled_run.DryRunCycleOrchestrator", return_value=orchestrator),
+    ):
+        result = runner.run(as_of=as_of, send_brief=False, alert=True)
+    assert result.canary is not None
+    assert result.canary.ok, result.canary.reasons
+
+
+def test_host_due_runner_skips_canary_without_config_dir():
+    """No config_dir wired — matches _is_trading_day's own backward-
+    compatible fallback: skipped (None), never attempted, never a new
+    failure mode for callers who haven't threaded config_dir through."""
+    runner, orchestrator = _runner_for_canary()
+    as_of = datetime(2026, 7, 23, 10, 0, tzinfo=IST)
+    with (
+        patch("athena.ops.scheduled_run.due_triggers", return_value=(RunTrigger.REFRESH,)),
+        patch("athena.ops.scheduled_run.DryRunCycleOrchestrator", return_value=orchestrator),
+    ):
+        result = runner.run(as_of=as_of, send_brief=False, alert=True)
+    assert result.canary is None
+
+
+def test_host_due_runner_canary_failure_never_breaks_a_real_cycle():
+    """The canary code itself raising must not propagate — a diagnostic
+    breaking must never take down the real scheduled cycle it's checking
+    alongside."""
+    runner, orchestrator = _runner_for_canary(config_dir=REPO_CONFIG)
+    as_of = datetime(2026, 7, 23, 10, 0, tzinfo=IST)
+    with (
+        patch("athena.ops.scheduled_run.due_triggers", return_value=(RunTrigger.REFRESH,)),
+        patch("athena.ops.scheduled_run.DryRunCycleOrchestrator", return_value=orchestrator),
+        patch("athena.ops.scheduled_run.run_canary", side_effect=RuntimeError("boom")),
+    ):
+        result = runner.run(as_of=as_of, send_brief=False, alert=True)
+    assert result.idle is False
+    assert result.canary is not None
+    assert result.canary.ok is False
+    assert "canary itself raised" in result.canary.reasons[0]
+
+
+def test_host_due_runner_alerts_on_canary_regression():
+    alerts = MagicMock()
+    runner, orchestrator = _runner_for_canary(
+        config_dir=REPO_CONFIG,
+        host_ops=HostOpsConfig(brief_after_cycles=False, failure_alerts=FailureAlertsConfig(enabled=True)),
+        alert_dispatcher=alerts,
+    )
+    as_of = datetime(2026, 7, 23, 10, 0, tzinfo=IST)
+    regression = CanaryResult(
+        ok=False, reasons=("score status UNKNOWN (expected OK)",),
+        decision_type=None, composite_value=None,
+    )
+    with (
+        patch("athena.ops.scheduled_run.due_triggers", return_value=(RunTrigger.REFRESH,)),
+        patch("athena.ops.scheduled_run.DryRunCycleOrchestrator", return_value=orchestrator),
+        patch("athena.ops.scheduled_run.run_canary", return_value=regression),
+    ):
+        result = runner.run(as_of=as_of, send_brief=False, alert=True)
+    assert result.canary is regression
+    alerts.dispatch.assert_called_once()
+    kwargs = alerts.dispatch.call_args.kwargs
+    assert kwargs["source"] == "canary"
+    assert "UNKNOWN" in kwargs["detail"]
+
+
+def test_host_due_runner_does_not_alert_on_canary_pass():
+    alerts = MagicMock()
+    runner, orchestrator = _runner_for_canary(config_dir=REPO_CONFIG, alert_dispatcher=alerts)
+    as_of = datetime(2026, 7, 23, 10, 0, tzinfo=IST)
+    with (
+        patch("athena.ops.scheduled_run.due_triggers", return_value=(RunTrigger.REFRESH,)),
+        patch("athena.ops.scheduled_run.DryRunCycleOrchestrator", return_value=orchestrator),
+    ):
+        runner.run(as_of=as_of, send_brief=False, alert=True)
+    alerts.dispatch.assert_not_called()
