@@ -1506,7 +1506,7 @@ implemented silently past those gates.
 | **M-X6** VWAP deviation scoring dimension | Intraday VWAP reclaim/deviation as a new scoring input | None | ✅ Approved (2026-08-02) |
 | **M-X7** Multi-timeframe confluence | Daily/5m/15m trend-direction agreement as a scoring input (see design note: 1m and "confidence dimension" both reconsidered) | None | ✅ Approved (2026-08-02) |
 | **M-X8** Synthetic canary decision | Fixed synthetic instrument through the full pipeline each cycle to catch silent engine regressions | None | ✅ Approved (2026-08-02) |
-| **M-X9** Config-change impact preview | Deterministic replay-based diff of a scoring-weight change against recent decisions, before it goes live | None | ⏳ Planned |
+| **M-X9** Config-change impact preview | Deterministic replay-based diff of a scoring-weight change against recent decisions, before it goes live | None | ✅ Approved (2026-08-02) |
 | **M-X10** Outcome-tagged setups + signal drift monitor | Extends M10.4 AI Playbook Diagnostics with per-pattern hit-rate tagging and weight-drift alerts | None | ⏳ Planned |
 
 #### M-X6 — VWAP deviation scoring dimension (approved, 2026-08-02)
@@ -1754,6 +1754,80 @@ on a detected regression, and stays silent on a pass). Ruff clean.
 Architectural note: ops/diagnostics-only, additive. No provider, broker,
 order, domain, or frozen-contract change — confirmed by design analysis
 above, not assumed. No ADR required.
+
+#### M-X9 — Config-change impact preview (approved, 2026-08-02)
+
+**Design confirmed before any code, including tracing a suspicious
+precedent rather than trusting it:** SD-2's own entry references "the
+existing D-3 impact table" and a "60.1%" figure as if a replay tool already
+existed. Traced it: D-3 (`docs/MILESTONES.md`) is a root-cause table, not a
+mechanism, and the 60.1% figure came from a one-off, uncommitted, prose-only
+calculation — `grep`ing the repo for any script reproducing it returns
+nothing, and `IMPLEMENTATION_SUMMARY.md`'s own SD-1 entry notes an earlier
+version of that same manual "simulator" was "discarded as unsound." M-X9
+had no working precedent to build on; it had to be built from scratch.
+
+**The research's own first recommendation (reconstruct typed engine inputs
+from the persisted `decision_reports` JSON) was checked against the actual
+serializer and found non-viable, not just complex:** `DecisionReportingEngine._indicators()`
+(`src/athena/reporting/engine.py`) only persists `name`/`status`/`values` —
+it discards `IndicatorResult.evidence` entirely, and `ScoringEngine._technical_structure`
+needs `evidence.inputs["last_close"]` to determine price-vs-SMA. Replaying
+from the persisted JSON would silently degrade `technical_structure` to
+UNKNOWN for every replayed decision — a worse, less-faithful preview than
+the real thing, not a shortcut.
+
+**Design used instead — mirrors M-X8's canary pattern exactly:** for each
+of the `limit` most recent real decisions (`repo.list_decisions`), fetch
+that instrument's real daily candles bounded strictly at-or-before the
+decision's own `ts` (`repo.get_candles(..., end=decision.ts)` — no
+look-ahead) and the real historical market snapshot in effect at that time
+(`repo.get_latest_snapshot_before(decision.ts)`), seed a fresh throwaway
+in-memory repo with exactly those, and run the real, unmodified
+`OwnerValidationPipeline` against it — once under the current config, once
+under the candidate config. Fully faithful (real historical data, not a
+reconstruction), zero new deserialization code, zero new persisted schema.
+`repo` (the real one) is only ever read (`list_decisions`/`get_instrument`/
+`get_candles`/`get_latest_snapshot_before`) — never written.
+
+**A real, separate methodology risk found via real-data validation, not
+assumed correct on paper:** running this against the live production
+database (read-only — the module never writes, confirmed safe to test
+directly) revealed that `original_decision_type` (the real, full-universe
+decision) frequently differs from `current`'s replayed type even under the
+*identical* config. Root cause: each replay is scoped to one instrument
+(`symbols_filter`), so `RiskEngine`'s concentration read sees a
+single-instrument universe with no prior-run history — a materially
+different context than the original multi-instrument scan. This is a
+replay-methodology artifact, not a bug, and not what this tool compares:
+`current` vs `candidate` are both computed under the identical
+single-instrument context, so the concentration effect is held constant on
+both sides and only the config difference can move the result. Documented
+explicitly in the module docstring and printed as a footnote in the CLI
+output, rather than left for the owner to notice and worry about.
+
+Scope: `src/athena/ops/config_preview.py` (`replay_decision_under_config`,
+`preview_config_change`, `ConfigPreviewReport`) — none of it persisted, all
+transient/computed-on-demand. New CLI command `athena config-preview
+<candidate_config_dir> [--limit N]` (`src/athena/cli.py`), matching the
+CLI-only-first-cut precedent DD-12's `athena backfill-sector-indices`
+already established, per ADR-004 (no dashboard surface needed for v1).
+
+Validation note: full suite 1,209 passed (11 new: 7 `replay_decision_under_config`/
+`preview_config_change` tests including a determinism check, a real
+candidate-weight-edit test proving the mechanism detects an actual change,
+and two never-writes-to-the-real-repo regression tests; 2 skip/empty-report
+edge cases; 2 CLI-level tests). Ruff clean. Also verified directly against
+the real production `config/`/`db/athena.db` (read-only — the module has
+no write path to the real repo, confirmed safe): replaying the 15 most
+recent real decisions under an unchanged candidate config reproduced 0
+changes (confirming determinism); replaying under a genuinely different
+candidate (all scoring weight onto `liquidity`) correctly flagged 2/15 as
+changed (`TDPOWERSYS`/`RELIANCE`: `WATCH → NO_TRADE`).
+
+Architectural note: ops/diagnostics-only, additive. No provider, broker,
+order, domain, or frozen-contract change. No new persisted schema — the
+report is transient. No ADR required per the design analysis above.
 
 ---
 

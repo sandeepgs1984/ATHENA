@@ -6,6 +6,29 @@ status updated on approval.
 
 ---
 
+## M-X9 — Config-change impact preview (approved)
+
+| | |
+|---|---|
+| Completed | 2026-08-02 |
+| Objective | Owner approved M-X8 and asked to start the next Intraday Edge Program milestone: a deterministic replay-based diff of a scoring-weight change against recent decisions, before it goes live |
+| Scope | Design-checked first, including tracing a suspicious existing precedent rather than trusting it: SD-2's own entry cites "the existing D-3 impact table" and a "60.1%" figure as if a replay tool already existed — traced it to a one-off, uncommitted, prose-only manual calculation with no reproducing script anywhere in the repo (and SD-1's entry notes an earlier version of that same manual "simulator" was "discarded as unsound"). No working precedent existed; this was built from scratch. The obvious-looking design (reconstruct typed engine inputs from the persisted `decision_reports` JSON) was checked against the actual serializer and found non-viable: `DecisionReportingEngine._indicators()` discards `IndicatorResult.evidence` entirely, and `ScoringEngine._technical_structure` needs `evidence.inputs["last_close"]` — replaying from that JSON would silently degrade every replayed decision's technical_structure to UNKNOWN. Built instead by mirroring M-X8's canary pattern exactly: for each of N recent real decisions, fetch that instrument's real candles bounded strictly at-or-before the decision's own timestamp (no look-ahead) plus the real historical market snapshot in effect then, seed a fresh throwaway in-memory repo with exactly those, and run the real, unmodified `OwnerValidationPipeline` against it once under the current config and once under the candidate config — fully faithful, zero new deserialization code, zero new persisted schema. The real repository is only ever read, never written. Surfaced via a new CLI command (`athena config-preview <candidate_config_dir>`), matching DD-12's CLI-only-first-cut precedent |
+| Files created | `src/athena/ops/config_preview.py`, `tests/ops/test_config_preview.py` |
+| Files modified | `src/athena/cli.py`, `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md`, `tests/unit/test_cli.py` |
+| Public APIs added | None external — `athena config-preview` is a new local CLI subcommand (manual/ops use, matching `athena backfill-sector-indices`'s own precedent) |
+| Tests | Full suite — 1,209 passed (11 new: 7 `replay_decision_under_config`/`preview_config_change` tests including a determinism check, a real candidate-weight-edit test proving the mechanism detects an actual change, and never-writes-to-the-real-repo regression tests; 2 skip/empty-report edge cases; 2 CLI-level tests). Ruff clean |
+| Coverage | Verified at three levels: unit/integration tests against a controlled synthetic repo; and, separately, directly against the real production `config/`/`db/athena.db` (read-only — the module has no write path to the real repo, confirmed safe to run directly) — replaying the 15 most recent real decisions under an unchanged candidate config reproduced 0 changes (confirming determinism), and under a genuinely different candidate (all scoring weight onto `liquidity`) correctly flagged 2/15 as changed (`TDPOWERSYS`/`RELIANCE`: `WATCH → NO_TRADE`) |
+| Architecture compliance | Ops/diagnostics-only, additive. No provider, broker, order, or frozen-contract change. No new persisted schema — the report is transient, computed on demand |
+| ADR compliance | None required — confirmed by design analysis before implementing. The throwaway-in-memory-repo isolation (same as M-X8) is what avoids needing any new deserialization or persistence machinery |
+| Risks discovered | **A real, separate methodology risk found via real-data validation, not assumed correct on paper:** running against the live database revealed `original_decision_type` (the real, full-universe decision) frequently differs from the replay's `current` type even under the identical config, because each replay is scoped to one instrument, giving `RiskEngine`'s concentration read a materially different (single-instrument, no prior-run history) context than the original multi-instrument scan. This is a replay-methodology artifact, not a bug — `current` vs `candidate` are both computed under the identical single-instrument context, so the concentration effect is held constant on both sides and only the config difference can move the result. Documented explicitly in the module docstring and printed as a CLI footnote rather than left for the owner to notice and worry about |
+| Technical debt introduced | None. CLI-only v1 scope (no dashboard surface) is a documented scope decision per ADR-004, not a corner cut |
+| Suggested improvements | A future milestone could surface this in the dashboard rather than CLI-only, if the owner finds themself running it often. The single-instrument replay's concentration-context divergence from the original run (see Risks) could be narrowed by replaying a small basket of recent instruments together rather than one at a time, if the divergence proves large enough in practice to matter |
+| Remaining work | None — approved 2026-08-02 |
+| Status | ✅ Approved by owner on 2026-08-02 |
+| Branch | feature/live-dashboard |
+
+---
+
 ## M-X8 — Synthetic canary decision (approved)
 
 | | |

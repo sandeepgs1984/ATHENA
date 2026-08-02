@@ -318,6 +318,53 @@ def _cmd_backfill_sector_indices(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_config_preview(args: argparse.Namespace) -> int:
+    """M-X9: deterministic replay-based diff of a candidate config change
+    (e.g. an edited scoring.json) against recent real decisions, before it
+    goes live. Read-only against the real db — replays through the real
+    pipeline against a throwaway in-memory store per decision (see
+    athena.ops.config_preview), never writes anything.
+    """
+    from athena.ops.config_preview import preview_config_change
+
+    cfg = load_config(_config_dir())
+    candidate_dir = Path(args.candidate_config_dir)
+    if not candidate_dir.is_dir():
+        print(f"candidate config dir not found: {candidate_dir}")
+        return 1
+
+    with _open_repo(cfg) as repo:
+        report = preview_config_change(
+            repo,
+            current_config_dir=_config_dir(),
+            candidate_config_dir=candidate_dir,
+            limit=args.limit,
+        )
+
+    print(f"config preview: current={_config_dir()} candidate={candidate_dir}")
+    print(f"replayed {report.total} decision(s), skipped {len(report.skipped)}")
+    print(f"changed under candidate config: {report.changed_count}/{report.total} "
+          f"({report.changed_pct:.1f}%)")
+    print()
+    print(f"{'instrument':<20}{'original':<14}{'current':<14}{'candidate':<14}")
+    for row in report.rows:
+        marker = " *" if row.changed else ""
+        print(
+            f"{row.instrument_id:<20}{row.original_decision_type:<14}"
+            f"{row.current.decision_type or 'n/a':<14}"
+            f"{(row.candidate.decision_type or 'n/a') + marker:<14}"
+        )
+    print()
+    print(
+        "note: 'original' is the real decision from the full multi-instrument "
+        "scan; 'current'/'candidate' are both replayed against a single-"
+        "instrument context, so 'original' can legitimately differ from "
+        "'current' (concentration-risk context, not a bug) — only "
+        "'current' vs 'candidate' is the valid config-change signal."
+    )
+    return 0
+
+
 def _cmd_due(args: argparse.Namespace) -> int:
     """Show which dry-run triggers are due at as_of (M10.2 cadence)."""
     config_dir = _config_dir()
@@ -898,6 +945,23 @@ def main(argv: list[str] | None = None) -> int:
         help="Calendar days of daily-candle history to backfill (default 90, matches ingestion.json)",
     )
     p_backfill_sectors.set_defaults(func=_cmd_backfill_sector_indices)
+
+    p_config_preview = sub.add_parser(
+        "config-preview",
+        help=(
+            "M-X9: replay recent real decisions under a candidate config dir "
+            "(e.g. an edited scoring.json) and diff against the current config"
+        ),
+    )
+    p_config_preview.add_argument(
+        "candidate_config_dir",
+        help="Path to a candidate config directory (e.g. a copy of config/ with scoring.json edited)",
+    )
+    p_config_preview.add_argument(
+        "--limit", type=int, default=20,
+        help="Number of most-recent real decisions to replay (default 20)",
+    )
+    p_config_preview.set_defaults(func=_cmd_config_preview)
 
     p_due = sub.add_parser(
         "due",
