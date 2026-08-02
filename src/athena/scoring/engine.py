@@ -89,7 +89,17 @@ class ScoringEngine:
         market_health: MarketHealthResult | None = None,
         market_health_score: MarketHealthScore | None = None,
         sector_health: SectorHealthResult | None = None,
+        vwap: IndicatorResult | None = None,
     ) -> ScoringResult:
+        # M-X6: vwap is intentionally its own parameter, never folded into
+        # `indicators` — ConfidenceEngine._indicator_availability/_unknown_ratio
+        # measure completeness as known/len(indicators), so merging a 7th,
+        # data-sparse (same-session-only) indicator into that dict would
+        # silently move every symbol's confidence whenever intraday history
+        # happens to be thin, with no owner-reviewed impact assessment (the
+        # exact risk SD-2/SD-3 treat explicitly for sector_quality). Passed
+        # straight through to _technical_structure instead, exactly like
+        # market_health_score/sector_health above.
         indicators = dict(indicators or {})
         components = {
             "trend": self._trend(regime, indicators),
@@ -97,7 +107,7 @@ class ScoringEngine:
             "market_quality": self._market_quality(market_health, market_health_score),
             "sector_quality": self._sector_quality(sector_health),
             "liquidity": self._liquidity(indicators),
-            "technical_structure": self._technical_structure(indicators),
+            "technical_structure": self._technical_structure(indicators, vwap),
         }
         composite = self._composite(components)
         return ScoringResult(instrument_id=instrument_id, ts=as_of,
@@ -256,7 +266,7 @@ class ScoringEngine:
         return _ok("liquidity", pts, contribs,
                    f"liquidity score {_fmt2(pts)} from Volume MA")
 
-    def _technical_structure(self, indicators) -> ComponentScore:
+    def _technical_structure(self, indicators, vwap: IndicatorResult | None = None) -> ComponentScore:
         sma = self._known_indicator(indicators, IndicatorName.SMA)
         if sma is None:
             return _unknown("technical_structure", "SMA indicator unavailable")
@@ -279,8 +289,24 @@ class ScoringEngine:
             contribs.append(Contribution("indicator:MACD", "MACD",
                                          f"MACD histogram {macd.values['histogram']} > 0 "
                                          f"→ +{bonus} pts", bonus))
+        # M-X6: VWAP reclaim — continuous ramp (SD-4 style), 0 at/below VWAP,
+        # up to vwap_max_bonus at vwap_deviation_cap_pct and beyond. Passed
+        # as its own parameter (see score()'s docstring note above), not
+        # read via _known_indicator/`indicators`.
+        if vwap is not None and vwap.status is IndicatorStatus.OK:
+            deviation_pct = vwap.values["deviation_pct"]
+            vwap_bonus = _linear_ramp(
+                deviation_pct,
+                x_lo=_ZERO, x_hi=Decimal(str(cfg.vwap_deviation_cap_pct)),
+                y_lo=_ZERO, y_hi=Decimal(cfg.vwap_max_bonus),
+            )
+            if vwap_bonus > _ZERO:
+                value += vwap_bonus
+                contribs.append(Contribution("indicator:VWAP", "VWAP",
+                                             f"price {deviation_pct:.2f}% above session VWAP "
+                                             f"→ +{_fmt2(vwap_bonus)} pts", vwap_bonus))
         return _ok("technical_structure", value, contribs,
-                   f"technical structure {_clamp(value)} from price-vs-SMA + MACD")
+                   f"technical structure {_clamp(value)} from price-vs-SMA + MACD + VWAP")
 
     # ------------------------------------------------------------- composite
 

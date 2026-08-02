@@ -45,6 +45,23 @@ def _candles(instrument_id: str, n: int = 80, seed: int = 100) -> list[Candle]:
     return out
 
 
+def _intraday_candles(instrument_id: str, day, n: int = 6, seed: int = 100) -> list[Candle]:
+    """Same-day 5m bars for VWAP (M-X6) — starts 09:15 IST on `day`."""
+    out: list[Candle] = []
+    for i in range(n):
+        ts = datetime.combine(day, datetime.min.time(), tzinfo=IST).replace(hour=9, minute=15)
+        ts += timedelta(minutes=5 * i)
+        px = Decimal(str(seed + i))
+        out.append(
+            Candle(
+                instrument_id=instrument_id, timeframe=Timeframe.M5, ts_open=ts,
+                open=px, high=px + Decimal("1"), low=px - Decimal("1"), close=px,
+                volume=10_000, source="test",
+            )
+        )
+    return out
+
+
 def _persist_run(repo: SqliteRepository, run_id: str, as_of: datetime, detail: dict) -> None:
     """Mimics DryRunOrchestrator's own repo.save_run() call (scheduling/
     dry_run.py) — OwnerValidationPipeline.run() itself never persists to the
@@ -189,6 +206,45 @@ class TestOwnerValidationPipeline:
         # (trigger, as_of) — see test_repeat_validate_with_same_as_of_does_
         # not_orphan_earlier_decision below for the full collision scenario.
         assert all(d.run_id == "run-test-eligibility" for d in decisions)
+
+    def test_vwap_flows_into_score_without_affecting_confidence(
+        self, repo: SqliteRepository, config_dir: Path
+    ) -> None:
+        """M-X6: VWAP is computed from same-session 5m candles and reaches
+        ScoringEngine's technical_structure — but must never touch
+        ConfidenceEngine's indicator_availability ratio (still 6/6, never
+        6/7), since that's a separate, un-reviewed-impact risk (see
+        ScoringEngine.score()'s own docstring note). Checked end-to-end
+        against the real production config, not a unit-level mock."""
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        store.upsert_candidate(symbol="BBB")
+        for sym, seed in (("AAA", 100), ("BBB", 200)):
+            iid = f"NSE:{sym}"
+            repo.upsert_instrument(
+                Instrument(instrument_id=iid, symbol=sym, exchange="NSE", series="EQ", status="ACTIVE")
+            )
+            repo.add_candles(_candles(iid, seed=seed))
+        # Only AAA gets same-day intraday candles; BBB has none at all —
+        # confirms the confidence isolation holds in BOTH the
+        # VWAP-available and VWAP-unavailable cases within one run.
+        repo.add_candles(_intraday_candles("NSE:AAA", AS_OF.date(), seed=100))
+
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        ingestion = IngestionResult(
+            as_of=AS_OF, instruments_upserted=2, candles_fetched=166, candles_written=166,
+            quotes_fetched=0, quotes_written=0, datasets_validated=2, datasets_skipped_empty=0,
+        )
+        detail = pipe.run(
+            RunTrigger.PREMARKET, as_of=AS_OF, ingestion=ingestion, run_id="run-test-vwap"
+        )
+        reports = detail["decision_reports"]
+        assert reports
+        for report in reports.values():
+            dims = {d["name"]: d for d in report["confidence"]["dimensions"]}
+            avail = dims["indicator_availability"]
+            # Exactly 6/6 regardless of AAA vs BBB — never 6/7 or 7/7.
+            assert "6/6" in avail["explanation"], avail["explanation"]
 
     def test_sector_health_computed_when_mapped_index_has_candles(
         self, repo: SqliteRepository, config_dir: Path

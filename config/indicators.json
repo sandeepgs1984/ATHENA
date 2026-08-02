@@ -20,6 +20,7 @@
     "atr": { "period": 14 },
     "macd": { "fast": 12, "slow": 26, "signal": 9 },
     "adx": { "period": 14 },
-    "volume_ma": { "period": 20 }
+    "volume_ma": { "period": 20 },
+    "vwap": {}
   }
 }

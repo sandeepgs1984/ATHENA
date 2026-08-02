@@ -6,6 +6,29 @@ status updated on approval.
 
 ---
 
+## M-X6 — VWAP deviation scoring dimension (approved)
+
+| | |
+|---|---|
+| Completed | 2026-08-02 |
+| Objective | Owner asked to start M-X6 from the Intraday Edge Program backlog: intraday VWAP reclaim/deviation as a new scoring input, to move ATHENA toward a "world-class intraday advisor" |
+| Scope | Design-checked first: confirmed VWAP fits inside the existing `technical_structure` scoring dimension as an additional `Contribution` (matching MACD's own precedent — never separately gated), not a new 7th weight slot, so `ScoringWeightsCfg` (frozen 6 dimensions) stays untouched and no ADR is needed. Added `calc.vwap()` (session-cumulative typical-price/volume, resets daily), `IndicatorEngine._vwap`/`IndicatorName.VWAP` (the enum value, `config/indicators.json`'s `vwap` params entry, and `EvidenceCategory.VWAP` were all already pre-provisioned in the codebase awaiting this). Added an SD-4-style anchor-preserving `_linear_ramp` bonus in `TechnicalScoringCfg`/`_technical_structure` (0 at/below VWAP, ramping to a max at a configured deviation cap — "reclaim" is this ramp turning positive, decided at the scoring layer only, mirroring how MACD's histogram sign is already interpreted there). Wired `OwnerValidationPipeline` to fetch same-day 5m candles per included instrument and compute VWAP **as its own `ScoringEngine.score()` parameter**, deliberately never merged into the `indicators` dict `ConfidenceEngine` measures completeness over |
+| Files created | None |
+| Files modified | `src/athena/indicators/models.py`, `src/athena/indicators/calculations.py`, `src/athena/indicators/engine.py`, `src/athena/scoring/engine.py`, `src/athena/config/models.py`, `src/athena/ops/owner_validation.py`, `config/indicators.json`, `config/scoring.json`, `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md`, `tests/decision/test_indicators.py`, `tests/decision/test_scoring.py`, `tests/ops/test_owner_validation.py` |
+| Public APIs added | None — `IndicatorName.VWAP` is an internal enum member; `ScoringEngine.score()`'s new `vwap` parameter defaults to `None`, fully backward compatible with every existing caller |
+| Tests | Full suite — 1,177 passed (11 new: 5 indicator-level including a mixed-prior-day session-filtering case and a determinism check; 5 scoring-level including the SD-4 ramp-anchor test and an explicit test proving the caller's `indicators` dict is never mutated by passing `vwap`; 1 end-to-end `OwnerValidationPipeline` test proving `indicator_availability` stays at exactly "6/6 OK" whether or not a symbol has intraday data). Ruff clean |
+| Coverage | Verified at three levels: unit tests (synthetic candles, exact arithmetic); an end-to-end pipeline test against the real production config; and separately, computed VWAP directly against real historical 5m candles for a real equity (`NSE:RRKABEL`) already sitting in the production database — result fell squarely inside that day's actual price range and close to its average close, not just internally self-consistent |
+| Architecture compliance | Additive to already-approved M3.2 (Indicator Engine)/M3.3 (Scoring Engine) contracts. `ScoringWeightsCfg`'s 6 dimensions and weights are byte-for-byte unchanged. No provider, broker, order, or frozen domain contract change |
+| ADR compliance | None required — confirmed by design analysis before implementing, not assumed. VWAP enriches an existing, already-approved scoring dimension the same way MACD already does, rather than adding a new weighted dimension |
+| Risks discovered | **Confidence-regression risk, designed around from the start, not discovered after the fact:** VWAP is same-session-only data, far sparser than the daily series every other indicator uses; merging it into the shared `indicators` dict would have silently moved every symbol's `indicator_availability` confidence dimension whenever intraday history is thin, with no owner-reviewed impact assessment — exactly the risk SD-2/SD-3 treat explicitly for `sector_quality`. Solved structurally (separate parameter), not by convention, and verified end-to-end. **Separately, a real bug caught by the full test suite during self-validation:** the workflow engine validates each stage's declared `produces` keys against its actual return value; adding `vwap` to `ind_stage`'s output without updating its `produces` declaration caused every scan to fail as a silent `WorkflowError` — caught by 6 existing tests failing, root-caused, and fixed (one-line declaration update) before this was ever presented as done |
+| Technical debt introduced | None |
+| Suggested improvements | `M-X7` (multi-timeframe confluence) needs the same intraday-candle-fetch plumbing this milestone just built — worth reusing rather than rebuilding. The VWAP reclaim/deviation thresholds (`vwap_deviation_cap_pct: 1.5`, `vwap_max_bonus: 10`) are initial, reasonable defaults, not calibrated against a replay of the live book the way SD-1's `max_risk_for_trade` was — worth a calibration pass once real intraday data accumulates across more trading days |
+| Remaining work | None — approved 2026-08-02 |
+| Status | ✅ Approved by owner on 2026-08-02 |
+| Branch | feature/live-dashboard |
+
+---
+
 ## SD-2 — Sector Health data source, Option A (approved)
 
 | | |

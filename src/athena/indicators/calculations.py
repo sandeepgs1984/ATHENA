@@ -13,11 +13,14 @@ Formulas follow the standard/Wilder definitions:
 - MACD: EMA(fast) - EMA(slow); signal = EMA(signal) of the MACD line.
 - ADX: Wilder's directional movement system over ``period``.
 - Volume MA: arithmetic mean of the last ``period`` volumes.
+- VWAP: session-cumulative sum(typical_price * volume) / cumulative volume,
+  reset each calendar day (M-X6).
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import datetime
 from decimal import Decimal
 
 from athena.domain.market import Candle
@@ -188,3 +191,35 @@ def volume_ma(volumes: Sequence[int], period: int) -> Decimal | None:
         return None
     window = volumes[-period:]
     return Decimal(sum(window)) / Decimal(period)
+
+
+def vwap(
+    candles: Sequence[Candle], as_of: datetime
+) -> tuple[Decimal, Decimal] | None:
+    """Session VWAP (M-X6): cumulative sum(typical_price * volume) / cumulative
+    volume, using only candles from ``as_of``'s own calendar date — VWAP
+    resets each session, so mixing bars from other days would average
+    together unrelated sessions rather than measure "today". ``candles`` is
+    expected pre-sorted ascending by ``ts_open`` (``IndicatorEngine.compute``
+    already sorts before dispatch).
+
+    Returns ``(vwap, deviation_pct)`` where ``deviation_pct`` is the latest
+    session bar's close relative to vwap (positive = trading above VWAP),
+    or ``None`` if no candles fall on ``as_of``'s date or session volume is
+    zero.
+    """
+    session_bars = [c for c in candles if c.ts_open.date() == as_of.date()]
+    if not session_bars:
+        return None
+    cum_pv = Decimal(0)
+    cum_vol = Decimal(0)
+    for c in session_bars:
+        typical_price = (c.high + c.low + c.close) / Decimal(3)
+        cum_pv += typical_price * Decimal(c.volume)
+        cum_vol += Decimal(c.volume)
+    if cum_vol == 0:
+        return None
+    vwap_value = cum_pv / cum_vol
+    last_close = session_bars[-1].close
+    deviation_pct = (last_close - vwap_value) / vwap_value * Decimal(100)
+    return vwap_value, deviation_pct

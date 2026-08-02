@@ -24,6 +24,7 @@ class IndicatorName(str, Enum):
     MACD = "MACD"
     ADX = "ADX"
     VOLUME_MA = "VOLUME_MA"
+    VWAP = "VWAP"
 
 
 @unique

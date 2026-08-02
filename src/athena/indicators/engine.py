@@ -34,6 +34,7 @@ _CONFIG_KEY = {
     IndicatorName.MACD: "macd",
     IndicatorName.ADX: "adx",
     IndicatorName.VOLUME_MA: "volume_ma",
+    IndicatorName.VWAP: "vwap",
 }
 
 
@@ -176,3 +177,19 @@ class IndicatorEngine:
         return self._result(IndicatorName.VOLUME_MA, params, period, {"value": value},
                             "mean(last N volumes)", {"period": str(period)},
                             f"Volume MA({period}) = {value}", as_of)
+
+    def _vwap(self, ordered, closes, params, as_of):
+        result = calc.vwap(ordered, as_of)
+        if result is None:
+            session_bars = sum(1 for c in ordered if c.ts_open.date() == as_of.date())
+            return self._result(IndicatorName.VWAP, params, len(ordered), {},
+                                "session-cumulative sum(typical_price * volume) / cumulative volume",
+                                {"candles_fetched": str(len(ordered)), "session_bars": str(session_bars)},
+                                f"no candles from {as_of.date()}'s session ({session_bars} of "
+                                f"{len(ordered)} fetched candles match today)", as_of)
+        vwap_value, deviation_pct = result
+        return self._result(IndicatorName.VWAP, params, len(ordered),
+                            {"vwap": vwap_value, "deviation_pct": deviation_pct},
+                            "session-cumulative sum(typical_price * volume) / cumulative volume",
+                            {"last_close": str(ordered[-1].close), "session_bars": str(len(ordered))},
+                            f"VWAP = {vwap_value}, last close deviates {deviation_pct:.2f}%", as_of)

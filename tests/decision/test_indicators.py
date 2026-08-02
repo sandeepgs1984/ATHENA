@@ -144,6 +144,67 @@ class TestVolumeMA:
         assert r.status is IndicatorStatus.UNKNOWN
 
 
+def _session_candles(day: date, bars: list[tuple[str, str, str, str, int]]) -> list[Candle]:
+    """Same-day intraday bars for VWAP (M-X6): (open, high, low, close, volume)
+    tuples, one per 5-minute bar starting 09:15 IST."""
+    out = []
+    for i, (o, h, low, c, vol) in enumerate(bars):
+        ts = datetime.combine(day, datetime.min.time(), tzinfo=IST).replace(hour=9, minute=15)
+        ts = ts + timedelta(minutes=5 * i)
+        out.append(Candle(instrument_id="X", timeframe=Timeframe.M5, ts_open=ts,
+                          open=Decimal(o), high=Decimal(h), low=Decimal(low),
+                          close=Decimal(c), volume=vol, source="test"))
+    return out
+
+
+class TestVWAP:
+    def test_exact_value_two_bars(self, engine):
+        # Bar 1: typical=(101+99+100)/3=100, vol=1000 -> pv=100,000
+        # Bar 2: typical=(103+101+102)/3=102, vol=2000 -> pv=204,000
+        # VWAP = 304,000 / 3000 = 101.333...
+        day = date(2026, 3, 2)
+        bars = [("100", "101", "99", "100", 1000), ("101", "103", "101", "102", 2000)]
+        as_of = datetime.combine(day, datetime.min.time(), tzinfo=IST).replace(hour=9, minute=25)
+        r = engine.compute(IndicatorName.VWAP, _session_candles(day, bars), as_of=as_of)
+        assert r.status is IndicatorStatus.OK
+        assert r.values["vwap"] == (Decimal("304000") / Decimal("3000"))
+        # last close 102 vs vwap ~101.33 -> positive deviation
+        assert r.values["deviation_pct"] > 0
+
+    def test_unknown_no_bars_today(self, engine):
+        # All bars from a PRIOR day relative to as_of -> no session bars.
+        day = date(2026, 3, 2)
+        bars = [("100", "101", "99", "100", 1000)]
+        as_of = datetime.combine(date(2026, 3, 3), datetime.min.time(), tzinfo=IST).replace(hour=9, minute=30)
+        r = engine.compute(IndicatorName.VWAP, _session_candles(day, bars), as_of=as_of)
+        assert r.status is IndicatorStatus.UNKNOWN
+        assert r.values == {}
+
+    def test_unknown_empty_candles(self, engine):
+        r = engine.compute(IndicatorName.VWAP, [], as_of=AS_OF)
+        assert r.status is IndicatorStatus.UNKNOWN
+
+    def test_ignores_prior_day_bars_mixed_in(self, engine):
+        # A prior-day bar with a wildly different price must not pollute
+        # today's VWAP — session filtering must actually exclude it.
+        today = date(2026, 3, 2)
+        prior_bars = _session_candles(date(2026, 3, 1), [("9999", "9999", "9999", "9999", 5000)])
+        today_bars = _session_candles(today, [("100", "101", "99", "100", 1000)])
+        as_of = datetime.combine(today, datetime.min.time(), tzinfo=IST).replace(hour=9, minute=20)
+        r = engine.compute(IndicatorName.VWAP, prior_bars + today_bars, as_of=as_of)
+        assert r.status is IndicatorStatus.OK
+        assert r.values["vwap"] == Decimal("100")
+
+    def test_deterministic_repeat(self, engine):
+        day = date(2026, 3, 2)
+        bars = [("100", "101", "99", "100", 1000), ("101", "103", "101", "102", 2000)]
+        as_of = datetime.combine(day, datetime.min.time(), tzinfo=IST).replace(hour=9, minute=25)
+        candles = _session_candles(day, bars)
+        a = engine.compute(IndicatorName.VWAP, candles, as_of=as_of)
+        b = engine.compute(IndicatorName.VWAP, candles, as_of=as_of)
+        assert a == b
+
+
 class TestEngineContract:
     def test_compute_all(self, engine):
         candles = _candles(range(1, 80))
@@ -181,3 +242,8 @@ class TestConfig:
     def test_production_config_loads(self):
         cfg = load_config(REPO / "config").indicators
         assert "sma" in cfg.params and "macd" in cfg.params
+        # M-X6: vwap has no rolling-window period (session-cumulative,
+        # not N-bar), so an empty params dict is the correct, valid shape —
+        # just needs to be present so _params() doesn't raise ConfigError.
+        assert "vwap" in cfg.params
+        assert cfg.versions.get("vwap") == "1.0.0"

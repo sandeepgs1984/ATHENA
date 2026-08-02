@@ -136,6 +136,68 @@ class TestComponents:
         assert ts.status is ScoreStatus.OK
         assert ts.value >= Decimal("70")
 
+    def test_technical_structure_vwap_bonus_above_cap(self, scoring, indicator_engine):
+        # M-X6: vwap is its OWN score() parameter, not part of `indicators` —
+        # confirms it still reaches _technical_structure correctly from there.
+        candles = _candles(range(1, 60))
+        indicators = _indicators(indicator_engine, candles)
+        cfg = scoring._config.technical
+        vwap_ind = _ind(IndicatorName.VWAP, {
+            "vwap": Decimal("100"),
+            "deviation_pct": Decimal(str(cfg.vwap_deviation_cap_pct)) + Decimal("1"),
+        })
+        without = scoring.score("X", as_of=AS_OF, indicators=indicators)
+        with_vwap = scoring.score("X", as_of=AS_OF, indicators=indicators, vwap=vwap_ind)
+        ts_without = without.components["technical_structure"]
+        ts_with = with_vwap.components["technical_structure"]
+        # At/beyond the cap the ramp clamps to vwap_max_bonus exactly (SD-4
+        # anchor-preserving), never more.
+        assert ts_with.value == ts_without.value + Decimal(cfg.vwap_max_bonus)
+        assert any(c.source == "indicator:VWAP" for c in ts_with.contributions)
+
+    def test_technical_structure_vwap_no_bonus_at_or_below_vwap(self, scoring, indicator_engine):
+        candles = _candles(range(1, 60))
+        indicators = _indicators(indicator_engine, candles)
+        for deviation in ("0", "-0.5", "-5"):
+            vwap_ind = _ind(IndicatorName.VWAP, {
+                "vwap": Decimal("100"), "deviation_pct": Decimal(deviation),
+            })
+            result = scoring.score("X", as_of=AS_OF, indicators=indicators, vwap=vwap_ind)
+            ts = result.components["technical_structure"]
+            assert not any(c.source == "indicator:VWAP" for c in ts.contributions), (
+                f"deviation {deviation} must not contribute a bonus")
+
+    def test_technical_structure_ignores_unknown_vwap(self, scoring, indicator_engine):
+        candles = _candles(range(1, 60))
+        indicators = _indicators(indicator_engine, candles)
+        unknown_vwap = IndicatorResult(
+            name=IndicatorName.VWAP, status=IndicatorStatus.UNKNOWN, parameters={},
+            window_used=0, values={},
+            evidence=IndicatorEvidence(formula="test", inputs={}, explanation="no session data"),
+            ts=AS_OF,
+        )
+        without = scoring.score("X", as_of=AS_OF, indicators=indicators)
+        with_unknown = scoring.score("X", as_of=AS_OF, indicators=indicators, vwap=unknown_vwap)
+        assert with_unknown.components["technical_structure"].value == (
+            without.components["technical_structure"].value)
+
+    def test_vwap_never_merged_into_indicators_dict(self, scoring, indicator_engine):
+        """M-X6: vwap must stay a separate score() parameter, never folded
+        into `indicators` — ConfidenceEngine measures completeness as
+        known/len(indicators) over that exact dict, so merging vwap in would
+        silently move every symbol's confidence whenever intraday history is
+        thin, with no owner-reviewed impact assessment (SD-2/SD-3's own
+        concern for sector_quality, applied here)."""
+        candles = _candles(range(1, 60))
+        indicators = _indicators(indicator_engine, candles)
+        original_count = len(indicators)
+        vwap_ind = _ind(IndicatorName.VWAP, {"vwap": Decimal("100"), "deviation_pct": Decimal("2")})
+        scoring.score("X", as_of=AS_OF, indicators=indicators, vwap=vwap_ind)
+        # The caller's own `indicators` dict (what ConfidenceEngine is given
+        # downstream) must be untouched by the score() call.
+        assert len(indicators) == original_count
+        assert IndicatorName.VWAP not in indicators
+
 
 class TestContinuousScoringAnchors:
     """SD-4: ramps must reproduce the pre-ramp anchors exactly."""
@@ -225,6 +287,30 @@ class TestContinuousScoringAnchors:
         )
         assert result.components["trend"].value == Decimal("85")
 
+    def test_vwap_bonus_anchors_at_zero_mid_cap(self, scoring, indicator_engine):
+        """M-X6: VWAP reclaim bonus is a plain _linear_ramp from the start —
+        same anchor-preserving shape SD-4 established for the rest of this
+        engine, not a fixed step like macd_pos_bonus."""
+        candles = _candles(range(1, 60))
+        indicators = _indicators(indicator_engine, candles)
+        base = scoring.score("X", as_of=AS_OF, indicators=indicators).components[
+            "technical_structure"].value
+        cfg = scoring._config.technical
+        cap = Decimal(str(cfg.vwap_deviation_cap_pct))
+        for deviation_pct, expected_bonus in (
+            (Decimal("0"), Decimal("0")),
+            (cap / 2, Decimal(cfg.vwap_max_bonus) / 2),
+            (cap, Decimal(cfg.vwap_max_bonus)),
+            (cap * 2, Decimal(cfg.vwap_max_bonus)),  # clamps beyond the cap
+        ):
+            vwap_ind = _ind(IndicatorName.VWAP, {
+                "vwap": Decimal("100"), "deviation_pct": deviation_pct,
+            })
+            result = scoring.score("X", as_of=AS_OF, indicators=indicators, vwap=vwap_ind)
+            actual = result.components["technical_structure"].value
+            assert actual == base + expected_bonus, (
+                f"deviation {deviation_pct}% → {actual}, expected {base + expected_bonus}")
+
 
 class TestComposite:
     def test_composite_full_inputs(self, scoring, config_dir, indicator_engine):
@@ -291,6 +377,11 @@ class TestConfig:
         cfg = load_scoring_config(REPO / "config")
         total = sum(cfg.weights.model_dump().values())
         assert total == 100
+        # M-X6: additive to the existing `technical` block — weights above
+        # are untouched; ScoringWeightsCfg still has exactly the same 6
+        # dimensions summing to 100.
+        assert cfg.technical.vwap_deviation_cap_pct > 0
+        assert cfg.technical.vwap_max_bonus >= 0
 
     def test_missing_config_fails(self, tmp_path):
         with pytest.raises(ConfigError, match=r"Missing configuration file.*scoring.json"):

@@ -828,6 +828,12 @@ class TechnicalScoringCfg(_Strict):
     above_ma_points: int = Field(ge=0, le=100)
     below_ma_points: int = Field(ge=0, le=100)
     macd_pos_bonus: int = Field(ge=0, le=100)
+    # M-X6: VWAP reclaim bonus — anchor-preserving continuous ramp (SD-4
+    # style, not a fixed step like macd_pos_bonus above). At/below VWAP
+    # (deviation_pct <= 0) contributes 0; ramps linearly up to
+    # vwap_max_bonus at vwap_deviation_cap_pct and beyond.
+    vwap_deviation_cap_pct: float = Field(gt=0)
+    vwap_max_bonus: int = Field(ge=0, le=100)
 
 
 class ScoringConfig(_Strict):

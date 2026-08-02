@@ -805,20 +805,38 @@ class OwnerValidationPipeline:
             box: dict[str, Any] = {}
 
             def ind_stage(ctx):
-                return {
-                    "indicators": indicator_engine.compute_all(
-                        [
-                            IndicatorName.SMA,
-                            IndicatorName.RSI,
-                            IndicatorName.ADX,
-                            IndicatorName.MACD,
-                            IndicatorName.ATR,
-                            IndicatorName.VOLUME_MA,
-                        ],
-                        cs,
-                        as_of=ctx.as_of,
-                    )
-                }
+                indicators = indicator_engine.compute_all(
+                    [
+                        IndicatorName.SMA,
+                        IndicatorName.RSI,
+                        IndicatorName.ADX,
+                        IndicatorName.MACD,
+                        IndicatorName.ATR,
+                        IndicatorName.VOLUME_MA,
+                    ],
+                    cs,
+                    as_of=ctx.as_of,
+                )
+                # M-X6: VWAP needs same-session intraday (5m) candles — a
+                # fundamentally different series than the daily `cs` above,
+                # since VWAP is cumulative from session open, not a rolling
+                # window. Computed and returned separately, never merged
+                # into `indicators`: ConfidenceEngine._indicator_availability/
+                # _unknown_ratio measure completeness as known/len(indicators),
+                # and same-session-only data is far sparser than the daily
+                # series, so folding it in would silently move every symbol's
+                # confidence whenever intraday history happens to be thin —
+                # exactly the un-reviewed-impact risk SD-2/SD-3 treat
+                # explicitly for sector_quality. `scoring_engine.score()`
+                # takes `vwap` as its own parameter for the same reason.
+                intraday_cs = self._repo.list_candles_recent(
+                    instrument_id, Timeframe.M5, limit=100
+                )
+                vwap_result = (
+                    indicator_engine.compute(IndicatorName.VWAP, intraday_cs, as_of=ctx.as_of)
+                    if intraday_cs else None
+                )
+                return {"indicators": indicators, "vwap": vwap_result}
 
             def reg_stage(ctx):
                 series = index_candles if index_candles else cs
@@ -853,6 +871,7 @@ class OwnerValidationPipeline:
                         regime=ctx.get("regime"),
                         market_health=ctx.get("market_health"),
                         market_health_score=shared_score["value"],
+                        vwap=ctx.get("vwap"),
                     )
                 }
 
@@ -917,7 +936,7 @@ class OwnerValidationPipeline:
             defn = build_definition(
                 f"owner-val-{instrument_id}",
                 [
-                    WorkflowStage("indicators", ind_stage, produces=("indicators",)),
+                    WorkflowStage("indicators", ind_stage, produces=("indicators", "vwap")),
                     WorkflowStage(
                         "regime",
                         reg_stage,

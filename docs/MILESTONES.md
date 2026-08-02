@@ -1503,11 +1503,76 @@ implemented silently past those gates.
 | **M-X3** Confidence-decay clock | Persisted, deterministic decay indicator for TradePlan staleness through the session | None | ✅ Approved |
 | **M-X4** Circuit-limit / price-band risk signal | New Risk Engine dimension from Kite's already-fetched, currently-discarded circuit-limit fields | **ADR-006 (Proposed)** — extends frozen `Quote` domain object | ⏸ Blocked on ADR approval |
 | **M-X5** Opening Range Breakout playbook | First-15/30-min range break/hold as a deterministic strategy-framework pattern | None | ⏳ Planned |
-| **M-X6** VWAP deviation scoring dimension | Intraday VWAP reclaim/deviation as a new scoring input | None | ⏳ Planned |
+| **M-X6** VWAP deviation scoring dimension | Intraday VWAP reclaim/deviation as a new scoring input | None | ✅ Approved (2026-08-02) |
 | **M-X7** Multi-timeframe confluence | 1m/5m/15m agreement as a scoring/confidence dimension | None | ⏳ Planned |
 | **M-X8** Synthetic canary decision | Fixed synthetic instrument through the full pipeline each cycle to catch silent engine regressions | None | ⏳ Planned |
 | **M-X9** Config-change impact preview | Deterministic replay-based diff of a scoring-weight change against recent decisions, before it goes live | None | ⏳ Planned |
 | **M-X10** Outcome-tagged setups + signal drift monitor | Extends M10.4 AI Playbook Diagnostics with per-pattern hit-rate tagging and weight-drift alerts | None | ⏳ Planned |
+
+#### M-X6 — VWAP deviation scoring dimension (approved, 2026-08-02)
+
+**Design confirmed before any code:** re-checked against ATHENA-002 before
+implementing, since adding "a new scoring input" could easily have meant a
+7th weight slot in the frozen 6-dimension `ScoringWeightsCfg` (an ADR-gated
+change). It doesn't — `IndicatorName.VWAP`/`config/indicators.json`'s
+`vwap` version entry/`EvidenceCategory.VWAP` were all already
+pre-provisioned in the codebase awaiting exactly this milestone, and VWAP is
+wired as an additional named `Contribution` inside the existing
+`technical_structure` dimension, the same pattern already used for MACD's
+bonus (which itself shipped inside M3.2 with no separate gate). No frozen
+contract changed; confirmed `ScoringWeightsCfg`'s 6 dimensions and their
+weights are byte-for-byte unchanged.
+
+**A real, separate risk found during design and designed around from the
+start:** VWAP is fundamentally a same-session (intraday) calculation, unlike
+every other indicator here which reads the daily series. If VWAP had been
+merged into the same `indicators` dict `ConfidenceEngine._indicator_availability`/
+`_unknown_ratio` measure completeness over (`known/len(indicators)`), it
+would silently move every symbol's confidence score whenever intraday
+history happens to be thin (5m data is far sparser than daily) — the exact
+un-reviewed-impact risk SD-2/SD-3 treat explicitly for `sector_quality`.
+Fixed structurally, not by convention: `vwap` is its own parameter on
+`ScoringEngine.score()`, exactly like `market_health_score`/`sector_health`
+already are, never merged into `indicators`. Verified end-to-end against the
+real production config (not a mock) that `indicator_availability` stays
+locked at "6/6 OK" whether or not VWAP is available for a symbol.
+
+Scope: `calc.vwap()` (`src/athena/indicators/calculations.py`) — session-
+cumulative typical-price/volume, resets each calendar day; `IndicatorEngine._vwap`
++ `IndicatorName.VWAP` wiring (no exhaustive match statements existed to
+update — dispatch is reflective via `getattr`); `TechnicalScoringCfg` gets
+two additive fields (`vwap_deviation_cap_pct`, `vwap_max_bonus`) for an
+SD-4-style anchor-preserving `_linear_ramp` bonus (0 at/below VWAP, up to
+the max at the deviation cap — "VWAP reclaim" is this ramp becoming
+positive, decided at the scoring layer, never inside the indicator itself,
+matching how MACD's `histogram > 0` bonus decision already works);
+`OwnerValidationPipeline` fetches same-day 5m candles per included
+instrument and computes VWAP as a value separate from the daily `indicators`
+dict, threaded through to `_technical_structure` alone.
+
+**A real bug found and fixed during self-validation, not left for the
+owner to discover:** the workflow engine validates each stage's declared
+`produces` output keys against what it actually returns
+(`src/athena/runtime/workflow.py`); adding the `"vwap"` key to `ind_stage`'s
+return value without updating its `WorkflowStage(..., produces=("indicators",))`
+declaration caused every single scan to fail silently as `WorkflowError`
+(discovered via the full suite — 6 pre-existing owner_validation tests
+failed). Fixed by updating the declaration to `("indicators", "vwap")`.
+
+Validation note: full suite 1,177 passed (11 new: 5 indicator-level tests
+including a mixed-day session-filtering case, 5 scoring-level tests
+including the SD-4 anchor test and the explicit
+indicators-dict-untouched regression test, 1 end-to-end pipeline test
+proving the confidence isolation holds against the real config). Ruff
+clean. Also verified against real historical data: computed VWAP for a real
+equity (`NSE:RRKABEL`) from a real trading day's actual 5m candles in the
+production database — result (₹2621.60) fell squarely inside that day's
+real price range (₹2593–₹2660.6) and close to its average close (₹2623.28).
+
+Architectural note: presentation/scoring-input only, additive to the
+already-approved M3.2/M3.3 engine contracts. No provider, broker, order,
+domain, or frozen-contract change. No ADR required per the design analysis
+above.
 
 **Explicitly not started — owner decision required, not an AI call:**
 
