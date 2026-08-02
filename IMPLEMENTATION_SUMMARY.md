@@ -6,7 +6,7 @@ status updated on approval.
 
 ---
 
-## SD-2 — Sector Health data source, Option A (ready for review)
+## SD-2 — Sector Health data source, Option A (approved)
 
 | | |
 |---|---|
@@ -23,8 +23,8 @@ status updated on approval.
 | Risks discovered | An earlier read of this session's own design work claimed a "925-day benchmark history" existed to reuse for backfill — that number was a same-session misreading (summed candle rows across all three timeframes: 1d+5m+15m, not daily bars). Corrected in `DD-12` §7 and the roadmap doc; the real benchmark daily history was 67 bars and no backfill mechanism existed before this milestone — `athena backfill-sector-indices` is genuinely new code |
 | Technical debt introduced | None. Coverage is intentionally partial (8 of 20 sectors) and documented as such, not a corner cut silently |
 | Suggested improvements | `SD-3` (wire `sector_quality` into scoring) remains the natural next step, but is its own separate owner decision with a mandatory before/after replay diff per the existing D-3 impact table (up to 60.1% of the book's TRADE/WATCH/NO_TRADE band could shift). Full 20-sector coverage (DD-12's Option C, hybrid) is a candidate for a future DD if partial coverage proves insufficient in practice |
-| Remaining work | Owner review of this implementation on the live workstation (the DD-12 *decision* to proceed with Option A was already approved — this is review of the resulting code) |
-| Status | 🔄 Ready for owner review |
+| Remaining work | None — approved 2026-08-01 |
+| Status | ✅ Approved by owner on 2026-08-01 |
 | Branch | feature/live-dashboard |
 
 ---
