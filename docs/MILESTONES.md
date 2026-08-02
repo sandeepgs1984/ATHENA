@@ -2062,9 +2062,51 @@ and must not ship without owner sign-off on the recalibration.
 | Milestone | Scope | Gate | Status |
 |---|---|---|---|
 | **SD-1** Wire calendar + universe into Risk | Thread the existing `CalendarContext` and `UniverseResult` from `run()` into `_scan_eligible()` → `RiskEngine.assess()`. Activates `event_risk` and `concentration_indicator`. Includes the approved follow-up fix for scoped re-validations: use last full-cycle breadth for concentration and real configured index candles for regime/gap context. Note: `concentration_indicator` is universe-breadth-derived and therefore shared across symbols — it raises risk *completeness* and honesty, it does **not** add per-symbol differentiation. Only `event_risk` can vary per symbol, and only on instruments with calendar events | None — existing objects, existing parameters, no contract/schema change | ✅ Completed / approved (2026-07-29) |
-| **SD-2** Sector health data decision | Owner decision, not an AI call: either (a) ingest real NSE sector indices via Kite (new data source → **DD-gated**), or (b) derive sector aggregates from the constituent candles already held, using `instruments.sector` (new method → needs a design decision / ADR since M2.3's engine contract assumes an index series) | **DD or ADR** depending on option chosen | ⏳ Proposed — blocked on owner direction |
-| **SD-3** Wire sector_quality + recalibrate thresholds | Only after SD-2 lands. Pass `sector_health` into `ScoringEngine.score()`, then re-tune `config/decision.json` watch/trade thresholds against the impact table above so the change doesn't silently reclassify 20–39% of the book. Ships with a before/after replay diff | Config change to decision thresholds — **owner approval required** | ⏳ Proposed — blocked on SD-2 |
+| **SD-2** Sector health data decision | Owner decision, not an AI call: either (a) ingest real NSE sector indices via Kite (new data source → **DD-gated**), or (b) derive sector aggregates from the constituent candles already held, using `instruments.sector` (new method → needs a design decision / ADR since M2.3's engine contract assumes an index series) | **DD or ADR** depending on option chosen | 🔄 Ready for review — Option A decision approved ([`DD-12`](decisions/DD-12-sector-health-data-source.md)), implementation awaiting review (2026-08-01) |
+| **SD-3** Wire sector_quality + recalibrate thresholds | Only after SD-2 lands. Pass `sector_health` into `ScoringEngine.score()`, then re-tune `config/decision.json` watch/trade thresholds against the impact table above so the change doesn't silently reclassify 20–39% of the book. Ships with a before/after replay diff | Config change to decision thresholds — **owner approval required** | ⏳ Proposed — SD-2 now resolved (2026-08-01); still requires its own separate owner approval and replay diff before this starts |
 | **SD-4** Scoring granularity (continuous ramps) | Replace RSI/liquidity/ADX step functions with anchor-preserving linear ramps. Distinct composite scores rise from 21 → 248 across the live book. `technical_structure` deferred (needs a normalizing band with no existing anchor). | Config: `adx.weak`, `liquidity.low_volume_floor_ratio` | ✅ Completed / approved (2026-07-29) |
+
+#### SD-2 — Option A implemented, ready for review (decision approved 2026-08-01)
+
+Scope completed, per [`DD-12`](decisions/DD-12-sector-health-data-source.md)
+§7: `config/providers/kite.json`'s `index_instruments` extended to the 8
+NIFTY sectoral indices IX-1 already tracks; a new, additive
+`config/sector_index_mapping.json` + `SectorIndexMappingConfig`
+(`src/athena/config/models.py`) explicitly maps 8 of ATHENA's 20
+`instruments.sector` values to those indices — deliberately not exhaustive,
+never guessed by string similarity; `SectorHealthEngine` (M2.3, approved,
+previously never instantiated outside its own tests) now runs every cycle
+in `OwnerValidationPipeline` for whichever sectors have a mapped index with
+real candle data, persisting real per-sector assessments into
+`detail["sector_health"]`; a new `athena backfill-sector-indices` CLI
+command (reusing the existing `LiveIngestionEngine`/validator/quarantine
+path, not new candle-fetching logic) one-time-backfills history for the 8
+indices.
+
+**Scoring/decision are provably untouched.** `ScoringEngine.score()`'s only
+call site (`owner_validation.py`'s `sco_stage`) does not pass
+`sector_health` — confirmed by direct code reading, not inference —
+so `sector_quality` remains exactly `UNKNOWN` for every symbol, unchanged.
+`SD-3` (wiring it into scoring) remains a fully separate, still-unstarted,
+owner-gated decision.
+
+Validation note: full suite 1,166 passed (7 new tests covering the new
+config models and an end-to-end `OwnerValidationPipeline.run()` check
+against the real production `config/` directory, not a copy). Also
+live-verified against the real environment: ran the new backfill CLI for
+real against Kite — fetched and wrote 504 real daily candles across all 8
+sector indices (63 bars each, 2026-05-04 to 2026-07-31), confirmed directly
+against the database afterward. Ruff clean (one pre-existing, unrelated
+`SizingConfig` redefinition finding, predates this session).
+
+**Correction:** this milestone's own earlier design work (and DD-12's first
+draft) claimed the 3 benchmark indices had "925 daily bars" of history to
+reuse a backfill mechanism from — that number was a same-session misreading
+(summed candle rows across all three timeframes: 1d+5m+15m). The real
+benchmark daily history was 67 bars, and no backfill mechanism existed
+before this milestone; `athena backfill-sector-indices` is genuinely new
+code. See `docs/design/ATHENA-INDEX-SECTOR-INTELLIGENCE-ROADMAP.md`'s own
+correction note and DD-12 §7 for the full detail.
 
 #### SD-1 consequence found during implementation: `max_risk_for_trade` was tuned against an incomplete denominator
 

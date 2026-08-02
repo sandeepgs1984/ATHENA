@@ -258,6 +258,66 @@ def _cmd_ingest(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_backfill_sector_indices(args: argparse.Namespace) -> int:
+    """One-time historical backfill for the SD-2/DD-12 sector indices.
+
+    Not part of the daily cycle — the ordinary `ingest`/`run-due` path
+    already picks these up going forward, once listed in providers/kite.json's
+    index_instruments (see `_build_ingest_engine`'s "Always include
+    configured index / VIX instruments" block). This exists only because
+    that ongoing path starts from empty: without a one-time backfill,
+    SectorHealthEngine would have to wait for `lookback_days` worth of daily
+    cycles to accumulate before it had any usable history. Reuses the same
+    LiveIngestionEngine/validator/quarantine path as `ingest` — a scoped,
+    larger-lookback invocation of already-tested ingestion code, not new
+    candle-fetching logic. Safe to re-run: IngestionConfig.skip_existing
+    means already-backfilled days are not re-fetched or duplicated.
+    """
+    from athena.config.loader import load_kite_provider_config
+    from athena.config.models import IngestionConfig
+
+    config_dir = _config_dir()
+    cfg = load_config(config_dir)
+    tz = ZoneInfo(cfg.market.timezone)
+    as_of = _parse_as_of(args.as_of, tz)
+
+    kite_cfg = load_kite_provider_config(config_dir)
+    benchmark_ids = {"NSE:NIFTY 50", "NSE:NIFTY BANK", kite_cfg.india_vix_instrument}
+    sector_ids = [iid for iid in kite_cfg.index_instruments if iid not in benchmark_ids]
+    if not sector_ids:
+        print("no sector indices configured in providers/kite.json index_instruments")
+        return 0
+
+    validation = load_validation_config(config_dir)
+    ingest_cfg = IngestionConfig(
+        provider="kite",
+        instrument_ids=sector_ids,
+        lookback_days=args.lookback_days,
+        include_daily=True,
+        include_quotes=False,
+        validate_gaps=False,
+        skip_existing=True,
+        quarantine_on_failure=True,
+    )
+    provider = build_market_data_provider(
+        config_dir, base_dir=_repo_root(), provider_name="kite"
+    )
+    calendar = CalendarEngine.from_config_dir(config_dir, cfg.market)
+    validator = build_ingest_validator(calendar, validation, ingest_cfg, tz)
+    with _open_repo(cfg) as repo:
+        engine = LiveIngestionEngine(
+            provider, repo, validator, QuarantineRegistry(), ingest_cfg, validation, tzinfo=tz,
+        )
+        result = engine.run_cycle(as_of=as_of)
+
+    print(f"sector-index backfill @ {result.as_of.isoformat()}")
+    print(f"instruments     : {', '.join(sector_ids)}")
+    print(f"lookback_days   : {args.lookback_days}")
+    print(f"candles fetched : {result.candles_fetched}  written: {result.candles_written}")
+    print(f"datasets ok     : {result.datasets_validated}  empty skipped: {result.datasets_skipped_empty}")
+    return 0
+
+
 def _cmd_due(args: argparse.Namespace) -> int:
     """Show which dry-run triggers are due at as_of (M10.2 cadence)."""
     config_dir = _config_dir()
@@ -819,6 +879,25 @@ def main(argv: list[str] | None = None) -> int:
         help="ISO timestamp for freshness (injected; defaults to now in market timezone)",
     )
     p_ingest.set_defaults(func=_cmd_ingest)
+
+    p_backfill_sectors = sub.add_parser(
+        "backfill-sector-indices",
+        help=(
+            "One-time historical backfill for the SD-2/DD-12 sector indices "
+            "(config/providers/kite.json index_instruments) via Kite"
+        ),
+    )
+    p_backfill_sectors.add_argument(
+        "--as-of",
+        help="ISO timestamp for freshness (injected; defaults to now in market timezone)",
+    )
+    p_backfill_sectors.add_argument(
+        "--lookback-days",
+        type=int,
+        default=90,
+        help="Calendar days of daily-candle history to backfill (default 90, matches ingestion.json)",
+    )
+    p_backfill_sectors.set_defaults(func=_cmd_backfill_sector_indices)
 
     p_due = sub.add_parser(
         "due",

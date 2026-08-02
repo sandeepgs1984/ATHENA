@@ -190,6 +190,89 @@ class TestOwnerValidationPipeline:
         # not_orphan_earlier_decision below for the full collision scenario.
         assert all(d.run_id == "run-test-eligibility" for d in decisions)
 
+    def test_sector_health_computed_when_mapped_index_has_candles(
+        self, repo: SqliteRepository, config_dir: Path
+    ) -> None:
+        """SD-2 / DD-12: SectorHealthEngine (M2.3, approved) was built and
+        tested but never instantiated in the live pipeline — the config
+        against the real config/sector_index_mapping.json + config/providers/
+        kite.json in this repo (config_dir points at production config, not a
+        copy) exercises the actual wiring end-to-end. Only the sector-index
+        candle series matters here; no equity candidate/instrument needs a
+        sector label — the mapping is keyed by sector name -> index key
+        directly, independent of any single stock. Still needs at least one
+        real owner candidate, or run() takes its own "no candidates" early
+        return before ever reaching the sector-health computation."""
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        repo.upsert_instrument(
+            Instrument(
+                instrument_id="NSE:AAA", symbol="AAA", exchange="NSE",
+                series="EQ", status="ACTIVE",
+            )
+        )
+        repo.add_candles(_candles("NSE:AAA", seed=100))
+        repo.upsert_instrument(
+            Instrument(
+                instrument_id="NSE:NIFTY IT",
+                symbol="NIFTY IT",
+                exchange="NSE",
+                series="INDICES",
+                status="ACTIVE",
+            )
+        )
+        repo.add_candles(_candles("NSE:NIFTY IT", n=80, seed=30000))
+
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        ingestion = IngestionResult(
+            as_of=AS_OF, instruments_upserted=2, candles_fetched=160, candles_written=160,
+            quotes_fetched=0, quotes_written=0, datasets_validated=2, datasets_skipped_empty=0,
+        )
+        detail = pipe.run(
+            RunTrigger.PREMARKET, as_of=AS_OF, ingestion=ingestion, run_id="run-test-sector-health"
+        )
+        sector_health = detail["sector_health"]
+        assert "Information Technology" in sector_health
+        it_result = sector_health["Information Technology"]
+        assert set(it_result["dimensions"]) == {"trend", "breadth", "momentum", "volatility"}
+        # Real computed labels, not fabricated placeholders — breadth is
+        # UNKNOWN because this test supplies no constituent_breadth (M2.4),
+        # exactly like MarketHealthEngine's own honest-unavailable pattern.
+        assert it_result["dimensions"]["breadth"] == "SECTOR_BREADTH_UNKNOWN"
+        assert it_result["dimensions"]["trend"] != ""
+        assert it_result["explanation"]
+        assert it_result["evidence"]
+        assert all(e["explanation"] for e in it_result["evidence"])
+        # No candles for any other mapped sector's index in this test — must
+        # not appear.
+        assert "Automobile and Auto Components" not in sector_health
+
+    def test_sector_health_empty_without_mapped_index_candles(
+        self, repo: SqliteRepository, config_dir: Path
+    ) -> None:
+        """No sector-index candles ingested this run (the common case until
+        DD-12's backfill runs) -> sector_health is an empty dict, never a
+        fabricated per-sector result."""
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        repo.upsert_instrument(
+            Instrument(
+                instrument_id="NSE:AAA", symbol="AAA", exchange="NSE",
+                series="EQ", status="ACTIVE",
+            )
+        )
+        repo.add_candles(_candles("NSE:AAA", seed=100))
+
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        ingestion = IngestionResult(
+            as_of=AS_OF, instruments_upserted=1, candles_fetched=80, candles_written=80,
+            quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+        )
+        detail = pipe.run(
+            RunTrigger.PREMARKET, as_of=AS_OF, ingestion=ingestion, run_id="run-test-no-sector-health"
+        )
+        assert detail["sector_health"] == {}
+
     def test_repeat_validate_with_same_as_of_does_not_orphan_earlier_decision(
         self, repo: SqliteRepository, config_dir: Path
     ) -> None:

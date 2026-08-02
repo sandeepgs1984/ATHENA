@@ -291,7 +291,12 @@ assumed from earlier design docs.
 **Why Sector Health is inert, confirmed at the database level:** it needs a
 sector index candle *series* to compute trend/momentum. Querying
 `candles` directly shows only three instruments have any historical rows —
-`NSE:NIFTY 50`, `NSE:NIFTY BANK`, `NSE:INDIA VIX` (925 daily bars each,
+`NSE:NIFTY 50`, `NSE:NIFTY BANK`, `NSE:INDIA VIX` (67 daily bars each,
+2026-04-27 to 2026-07-31 — **correction, 2026-08-01: an earlier read of this
+session summed candle rows across all three timeframes (1d+5m+15m=925) and
+misreported it as "925 daily bars"; the real daily count is 67, matching
+`ingestion.lookback_days: 90`, accumulated by ordinary day-by-day ingestion,
+not a dedicated backfill**,
 matching regime's benchmark set). None of the 8 sectoral indices, nor NIFTY
 NEXT 50 / NIFTY MIDCAP 100, have a single historical candle — IX-1 only ever
 ingests their live snapshot level for display (§3's "snapshot display set"),

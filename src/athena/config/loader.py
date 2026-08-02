@@ -51,6 +51,7 @@ from athena.config.models import (
     SchedulingConfig,
     ScoringConfig,
     SectorHealthConfig,
+    SectorIndexMappingConfig,
     SizingConfig,
     StrategyConfig,
     TimelineConfig,
@@ -186,6 +187,16 @@ def load_index_intelligence_config(config_dir: Path) -> IndexIntelligenceConfig:
     path = Path(config_dir) / "index_intelligence.json"
     try:
         return IndexIntelligenceConfig.model_validate(_read_json(path))
+    except ValidationError as exc:
+        raise ConfigError(_validation_message(str(path), exc)) from exc
+
+
+def load_sector_index_mapping_config(config_dir: Path) -> SectorIndexMappingConfig:
+    """Load + validate the sector → tracked-index-key mapping (DD-12)."""
+
+    path = Path(config_dir) / "sector_index_mapping.json"
+    try:
+        return SectorIndexMappingConfig.model_validate(_read_json(path))
     except ValidationError as exc:
         raise ConfigError(_validation_message(str(path), exc)) from exc
 

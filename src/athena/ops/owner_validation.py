@@ -18,7 +18,13 @@ from pathlib import Path
 from typing import Any
 
 from athena.calendar.engine import CalendarEngine
-from athena.config.loader import load_config, load_market_health_config
+from athena.config.loader import (
+    load_config,
+    load_index_intelligence_config,
+    load_market_health_config,
+    load_sector_health_config,
+    load_sector_index_mapping_config,
+)
 from athena.data.ingestion.models import IngestionResult
 from athena.data.store.repository import SqliteRepository
 from athena.domain.enums import DecisionType, RunStatus, RunTrigger, Timeframe
@@ -37,6 +43,7 @@ from athena.ops.owner_candidates import (
     normalize_candidate_symbol,
     to_instrument_id,
 )
+from athena.sector_health.engine import SectorHealthEngine
 from athena.universe.engine import UniverseEngine
 
 
@@ -256,6 +263,23 @@ class OwnerValidationPipeline:
             health_result=health_result,
         )
 
+        # SD-2/DD-12: SectorHealthEngine (M2.3, approved) was built and tested
+        # but never instantiated anywhere in the live pipeline — the sector
+        # index candle history it needs didn't exist until DD-12's Kite
+        # ingestion change. This computes and persists real per-sector
+        # assessments for whichever sectors config/sector_index_mapping.json
+        # explicitly maps; it does NOT touch ScoringEngine/sector_quality —
+        # that remains SD-3, a separate owner-gated decision with its own
+        # before/after replay-diff requirement.
+        sector_health_payload: dict[str, object] = {}
+        sector_candles = self._sector_candles_for_health(candles_by_id)
+        if sector_candles:
+            sector_cfg = load_sector_health_config(self._config_dir)
+            sector_results = SectorHealthEngine(sector_cfg).assess_many(
+                sector_candles, as_of=as_of, market_health=health_result,
+            )
+            sector_health_payload = self._sector_health_payload(sector_results)
+
         qualified: list[dict[str, object]] = []
         scan_stats: dict[str, object] = {
             "total": 0,
@@ -352,6 +376,7 @@ class OwnerValidationPipeline:
             },
             "market_metric_inputs": metric_inputs,
             "market_health_score": score_build.to_payload(),
+            "sector_health": sector_health_payload,
         }
         if regime_payload is not None:
             detail["regime_assessment"] = regime_payload
@@ -418,6 +443,63 @@ class OwnerValidationPipeline:
             if series:
                 return series
         return []
+
+    def _sector_candles_for_health(
+        self, candles_by_id: Mapping[str, Sequence[Candle]]
+    ) -> dict[str, list[Candle]]:
+        """Sector name -> its mapped tracked index's candle series (SD-2/DD-12).
+
+        Only sectors with an explicit ``config/sector_index_mapping.json``
+        entry are included here — an unmapped sector simply has no series,
+        so ``SectorHealthEngine`` never computes (and never fabricates) a
+        result for it. Mirrors ``_index_candles_for_metrics``'s
+        this-cycle-then-persisted-fallback lookup.
+        """
+        try:
+            mapping_cfg = load_sector_index_mapping_config(self._config_dir)
+            index_cfg = load_index_intelligence_config(self._config_dir)
+        except Exception:
+            return {}
+        instrument_by_key = {
+            item.key: item.instrument_id for item in index_cfg.tracked_indices
+        }
+        result: dict[str, list[Candle]] = {}
+        for entry in mapping_cfg.mappings:
+            instrument_id = instrument_by_key.get(entry.index_key)
+            if not instrument_id:
+                continue
+            series = list(candles_by_id.get(instrument_id, ()))
+            if not series:
+                series = self._repo.list_candles_recent(instrument_id, Timeframe.D1, limit=60)
+            if series:
+                result[entry.sector] = series
+        return result
+
+    @staticmethod
+    def _sector_health_payload(results: Mapping[str, Any]) -> dict[str, object]:
+        """Serialize ``SectorHealthResult`` objects into run-detail JSON.
+
+        No frozen dataclass here has a built-in serializer (unlike
+        ``MarketHealthScore.to_payload()``), so this mirrors the manual
+        evidence-flattening already used elsewhere in this module (e.g. the
+        universe-member evidence trace above).
+        """
+        return {
+            sector: {
+                "dimensions": dict(result.assessment.dimensions),
+                "explanation": result.assessment.explanation,
+                "evidence": [
+                    {
+                        "dimension": e.dimension,
+                        "outcome": e.outcome.value,
+                        "explanation": e.explanation,
+                        "inputs": dict(e.inputs),
+                    }
+                    for e in result.evidence
+                ],
+            }
+            for sector, result in results.items()
+        }
 
     def _resolve_instrument(self, symbol: str) -> Instrument:
         iid = to_instrument_id(symbol, exchange=self._exchange)

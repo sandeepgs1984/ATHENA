@@ -1,0 +1,16 @@
+{
+  "_meta": {
+    "layer": 3,
+    "description": "Explicit instruments.sector -> IX-1 tracked-index-key mapping for SectorHealthEngine (SD-2 / DD-12). Deliberately not exhaustive: only sectors with a genuinely close NSE sectoral-index match are mapped. Unmapped sectors (Financial Services, Capital Goods, Chemicals, Power/telecom/etc. not listed below) report SectorHealth unavailable -- never guessed by string similarity. 'Healthcare' -> nifty_pharma and 'Oil Gas & Consumable Fuels'/'Power' -> nifty_energy are documented approximations (pharma is the dominant NSE-listed healthcare segment; NIFTY ENERGY spans the broader oil/gas/power complex), not exact matches."
+  },
+  "mappings": [
+    { "sector": "Information Technology", "index_key": "nifty_it" },
+    { "sector": "Automobile and Auto Components", "index_key": "nifty_auto" },
+    { "sector": "Healthcare", "index_key": "nifty_pharma" },
+    { "sector": "Fast Moving Consumer Goods", "index_key": "nifty_fmcg" },
+    { "sector": "Metals & Mining", "index_key": "nifty_metal" },
+    { "sector": "Realty", "index_key": "nifty_realty" },
+    { "sector": "Oil Gas & Consumable Fuels", "index_key": "nifty_energy" },
+    { "sector": "Power", "index_key": "nifty_energy" }
+  ]
+}

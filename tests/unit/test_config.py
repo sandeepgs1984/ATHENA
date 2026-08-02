@@ -6,7 +6,13 @@ from __future__ import annotations
 import pytest
 from tests.conftest import rewrite_json
 
-from athena.config.loader import load_config, load_external_links_file, snapshot_config
+from athena.config.loader import (
+    load_config,
+    load_external_links_file,
+    load_kite_provider_config,
+    load_sector_index_mapping_config,
+    snapshot_config,
+)
 from athena.errors import ConfigError
 
 
@@ -117,3 +123,52 @@ def test_external_links_rejects_unknown_field(config_dir):
     }))
     with pytest.raises(ConfigError, match=r"unexpected_field"):
         load_external_links_file(config_dir)
+
+
+# SD-2 / DD-12: sector index history ingestion + explicit sector->index mapping.
+
+def test_kite_index_instruments_includes_sectoral_indices(config_dir):
+    kite = load_kite_provider_config(config_dir)
+    assert "NSE:NIFTY 50" in kite.index_instruments
+    assert "NSE:NIFTY BANK" in kite.index_instruments
+    for sectoral in (
+        "NSE:NIFTY IT", "NSE:NIFTY AUTO", "NSE:NIFTY PHARMA", "NSE:NIFTY FMCG",
+        "NSE:NIFTY METAL", "NSE:NIFTY REALTY", "NSE:NIFTY ENERGY", "NSE:NIFTY PSU BANK",
+    ):
+        assert sectoral in kite.index_instruments
+    assert len(kite.index_instruments) == len(set(kite.index_instruments))
+
+
+def test_sector_index_mapping_loads_real_config(config_dir):
+    mapping = load_sector_index_mapping_config(config_dir)
+    assert mapping.index_key_for_sector("Information Technology") == "nifty_it"
+    assert mapping.index_key_for_sector("Automobile and Auto Components") == "nifty_auto"
+    assert mapping.index_key_for_sector("Realty") == "nifty_realty"
+    # Two sectors sharing one proxy index is intentional (documented approximation).
+    assert mapping.index_key_for_sector("Oil Gas & Consumable Fuels") == "nifty_energy"
+    assert mapping.index_key_for_sector("Power") == "nifty_energy"
+    # Deliberately unmapped — never guessed.
+    assert mapping.index_key_for_sector("Financial Services") is None
+    assert mapping.index_key_for_sector(None) is None
+    assert mapping.index_key_for_sector("") is None
+
+
+def test_sector_index_mapping_rejects_duplicate_sector(config_dir):
+    rewrite_json(config_dir / "sector_index_mapping.json", lambda d: d["mappings"].append({
+        "sector": "Information Technology",
+        "index_key": "nifty_it",
+    }))
+    with pytest.raises(ConfigError, match=r"duplicate sector mapping"):
+        load_sector_index_mapping_config(config_dir)
+
+
+def test_sector_index_mapping_allows_shared_index_key(config_dir):
+    # Two different sectors pointing at the same index_key must NOT be
+    # rejected as a "duplicate" — only duplicate *sectors* are invalid.
+    rewrite_json(config_dir / "sector_index_mapping.json", lambda d: d.update(mappings=[
+        {"sector": "Sector A", "index_key": "nifty_energy"},
+        {"sector": "Sector B", "index_key": "nifty_energy"},
+    ]))
+    mapping = load_sector_index_mapping_config(config_dir)
+    assert mapping.index_key_for_sector("Sector A") == "nifty_energy"
+    assert mapping.index_key_for_sector("Sector B") == "nifty_energy"

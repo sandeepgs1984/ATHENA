@@ -6,6 +6,29 @@ status updated on approval.
 
 ---
 
+## SD-2 — Sector Health data source, Option A (ready for review)
+
+| | |
+|---|---|
+| Completed | 2026-08-01 |
+| Objective | `SectorHealthEngine` (M2.3, approved) was built and tested but never instantiated in the live pipeline, because the sector index candle history it needs didn't exist. Owner approved `DD-12` Option A (ingest real NIFTY sectoral index history via Kite) and asked to proceed |
+| Scope | Extended `config/providers/kite.json`'s `index_instruments` from 2 to 10 (added the 8 NIFTY sectoral indices IX-1 already tracks for live quotes). Added a new, additive `config/sector_index_mapping.json` + `SectorIndexMappingEntry`/`SectorIndexMappingConfig` (`src/athena/config/models.py`, `src/athena/config/loader.py`) — an explicit `instruments.sector` → tracked-index-key mapping covering 8 of ATHENA's 20 sector values (Financial Services and 11 others deliberately left unmapped rather than guessed). Wired `SectorHealthEngine` into `OwnerValidationPipeline.run()` (`src/athena/ops/owner_validation.py`) via two new helpers — `_sector_candles_for_health()` (mirrors the existing `_index_candles_for_metrics()` this-cycle-then-persisted-fallback lookup pattern) and `_sector_health_payload()` (manual evidence-flattening serializer, matching the pattern already used elsewhere in this module since no frozen dataclass here has a built-in one) — persisting real per-sector assessments into `detail["sector_health"]`. Added a new `athena backfill-sector-indices` CLI command (`src/athena/cli.py`) for the one-time historical backfill, reusing the existing `LiveIngestionEngine`/validator/quarantine path rather than new candle-fetching logic |
+| Files created | `config/sector_index_mapping.json`, `docs/decisions/DD-12-sector-health-data-source.md` |
+| Files modified | `config/providers/kite.json`, `src/athena/config/models.py`, `src/athena/config/loader.py`, `src/athena/ops/owner_validation.py`, `src/athena/cli.py`, `docs/MILESTONES.md`, `docs/design/ATHENA-INDEX-SECTOR-INTELLIGENCE-ROADMAP.md`, `IMPLEMENTATION_SUMMARY.md`, `tests/unit/test_config.py`, `tests/ops/test_owner_validation.py` |
+| Public APIs added | None external — `athena backfill-sector-indices` is a new local CLI subcommand (manual/ops use, not part of the daily cycle or any HTTP surface) |
+| Tests | Full suite — 1,166 passed (7 new: 5 in `tests/unit/test_config.py` for `SectorIndexMappingConfig` load/validation/uniqueness/shared-index-key cases; 2 in `tests/ops/test_owner_validation.py` — end-to-end `OwnerValidationPipeline.run()` against the real production `config/` directory, not a copy, covering both the populated-sector-health and no-mapped-candles-yet cases). Ruff clean (one pre-existing, unrelated `SizingConfig` redefinition finding predating this session) |
+| Coverage | Verified at two levels: isolated pytest tests (synthetic instrument + candles) prove the code path is correct; separately, ran `athena backfill-sector-indices` for real against live Kite and confirmed directly against the database — 504 real daily candles written across all 8 sector indices (63 bars each, 2026-05-04 to 2026-07-31) |
+| Architecture compliance | No frozen contract changed. `SectorHealthConfig` (M2.3) and `IndexIntelligenceConfig` (IX-1) are both untouched — the new mapping is a separate, additive config. `ScoringEngine.score()`'s only call site does not pass `sector_health` (confirmed by direct code reading) — `sector_quality` remains `UNKNOWN` for every symbol, exactly as before this change. `SD-3` (wiring into scoring) is untouched and remains separately owner-gated |
+| ADR compliance | None required, per `DD-12`'s own analysis — this uses the existing `MarketDataProvider.daily_candles()` Protocol (ADR-002) and supplies exactly the index-series input `SectorHealthEngine`'s already-approved M2.3 contract expects |
+| Risks discovered | An earlier read of this session's own design work claimed a "925-day benchmark history" existed to reuse for backfill — that number was a same-session misreading (summed candle rows across all three timeframes: 1d+5m+15m, not daily bars). Corrected in `DD-12` §7 and the roadmap doc; the real benchmark daily history was 67 bars and no backfill mechanism existed before this milestone — `athena backfill-sector-indices` is genuinely new code |
+| Technical debt introduced | None. Coverage is intentionally partial (8 of 20 sectors) and documented as such, not a corner cut silently |
+| Suggested improvements | `SD-3` (wire `sector_quality` into scoring) remains the natural next step, but is its own separate owner decision with a mandatory before/after replay diff per the existing D-3 impact table (up to 60.1% of the book's TRADE/WATCH/NO_TRADE band could shift). Full 20-sector coverage (DD-12's Option C, hybrid) is a candidate for a future DD if partial coverage proves insufficient in practice |
+| Remaining work | Owner review of this implementation on the live workstation (the DD-12 *decision* to proceed with Option A was already approved — this is review of the resulting code) |
+| Status | 🔄 Ready for owner review |
+| Branch | feature/live-dashboard |
+
+---
+
 ## Fix pass: host scheduler ran REFRESH/CLOSING on weekends/holidays (ready for review)
 
 | | |

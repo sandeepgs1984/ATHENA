@@ -200,7 +200,14 @@ class TradingWindow(_Strict):
         return self
 
 
-class SizingConfig(_Strict):
+class ProfileSizingConfig(_Strict):
+    """A strategy profile's declared sizing method/risk-per-trade choice
+    (e.g. profiles/*.json's ``sizing`` block) — distinct from
+    ``SizingConfig`` below, the Position Sizing Engine's own config (P5.3).
+    Previously both were named ``SizingConfig``; same module, same name,
+    two unrelated shapes — Python's later class statement silently won,
+    Ruff's F811 caught the shadowing."""
+
     method: str
     risk_per_trade_pct: float = Field(gt=0, le=100)
 
@@ -212,7 +219,7 @@ class ProfileConfig(_Strict):
     weights: dict[str, int]
     risk_overrides: dict[str, float]
     trading_windows: list[TradingWindow]
-    sizing: SizingConfig
+    sizing: ProfileSizingConfig
 
     @field_validator("weights")
     @classmethod
@@ -401,6 +408,55 @@ class IndexIntelligenceConfig(_Strict):
         if len(instrument_ids) != len(set(instrument_ids)):
             raise ValueError(f"duplicate tracked index instrument ids: {instrument_ids}")
         return self
+
+
+class SectorIndexMappingEntry(_Strict):
+    """One ``instruments.sector`` value mapped to a tracked index key (DD-12).
+
+    Explicit and owner-authored — never inferred by string similarity, so an
+    unmapped sector reports SectorHealth unavailable rather than silently
+    borrowing another sector's index.
+    """
+
+    sector: str = Field(min_length=1)
+    index_key: str = Field(min_length=1, pattern=r"^[a-z0-9_]+$")
+
+    @field_validator("sector")
+    @classmethod
+    def _trim_sector(cls, v: str) -> str:
+        cleaned = v.strip()
+        if not cleaned:
+            raise ValueError("sector must be non-empty")
+        return cleaned
+
+
+class SectorIndexMappingConfig(_Strict):
+    """Explicit ``instruments.sector`` → IX-1 tracked-index-key mapping (DD-12).
+
+    A separate, additive config — not a change to ``SectorHealthConfig``
+    (frozen M2.3 contract) or ``IndexIntelligenceConfig`` (frozen IX-1
+    contract). Multiple sectors may share one index_key (e.g. a broader
+    energy-complex index standing in for two related NSE sector labels);
+    sectors must be unique.
+    """
+
+    mappings: tuple[SectorIndexMappingEntry, ...] = Field(default_factory=tuple)
+
+    @model_validator(mode="after")
+    def _unique_sectors(self) -> SectorIndexMappingConfig:
+        sectors = [m.sector for m in self.mappings]
+        if len(sectors) != len(set(sectors)):
+            raise ValueError(f"duplicate sector mapping entries: {sectors}")
+        return self
+
+    def index_key_for_sector(self, sector: str | None) -> str | None:
+        """The mapped tracked-index key for ``sector``, or None if unmapped."""
+        if not sector:
+            return None
+        for entry in self.mappings:
+            if entry.sector == sector:
+                return entry.index_key
+        return None
 
 
 class FreshnessConfig(_Strict):
