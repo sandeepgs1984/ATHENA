@@ -46,13 +46,14 @@ from athena.api.v1.dtos import (
 from athena.api.v1.services.ops_service import default_backup_dir, default_db_path
 from athena.calendar.engine import CalendarEngine
 from athena.config.loader import load_config, load_decision_config, load_external_links_file
-from athena.data.store.backup import create_backup
+from athena.data.store.backup import create_backup, prune_backups
 from athena.data.store.repository import SqliteRepository
 from athena.data.store.serialization import trade_outcome_id
 from athena.domain.decision import DecisionJournalEntry, TradeOutcome
 from athena.domain.enums import Direction, QualityGate, UserAction
 
 _RESET_CONFIRM_TOKEN = "CONFIRM"
+_BACKUP_PREFIX = "athena-pre-decisions-reset-"
 
 if TYPE_CHECKING:
     from athena.api.v1.dtos import (
@@ -435,10 +436,15 @@ class DecisionsService:
             try:
                 self._backup_dir.mkdir(parents=True, exist_ok=True)
                 stamp = datetime.now(tz=timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-                dest = self._backup_dir / f"athena-pre-decisions-reset-{stamp}.db"
+                dest = self._backup_dir / f"{_BACKUP_PREFIX}{stamp}.db"
                 with SqliteRepository(self._db_path) as repo:
                     result = create_backup(repo, dest, as_of=datetime.now(tz=timezone.utc))
                 backup_path = result.destination
+                # Owner direction (2026-08-03): these auto-backups exist only
+                # as an undo window for this one reset action, not a history
+                # — keep just the one just created, drop older ones with the
+                # same prefix so this can never accumulate unbounded disk use.
+                prune_backups(self._backup_dir, prefix=_BACKUP_PREFIX, keep_newest=1)
             except Exception:
                 # Reset must still proceed; backup failure is non-fatal but loud via None path
                 backup_path = None

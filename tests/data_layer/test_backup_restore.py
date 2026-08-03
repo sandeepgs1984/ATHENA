@@ -10,7 +10,9 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from athena.data.store import SqliteRepository, create_backup, restore_backup
+import os
+
+from athena.data.store import SqliteRepository, create_backup, prune_backups, restore_backup
 from athena.data.store.backup import _META_SUFFIX
 from athena.data.validation.quarantine import QuarantineRecord
 from athena.data.validation.reports import (
@@ -190,3 +192,63 @@ class TestFailureModes:
         with pytest.raises(RepositoryError):
             repo = SqliteRepository(corrupt)
             create_backup(repo, tmp_path / "out.bak", as_of=AS_OF)
+
+
+class TestPruneBackups:
+    """Owner direction (2026-08-03): auto-backups before a reset are an undo
+    window for that one action, not a history — keep only the newest N."""
+
+    @staticmethod
+    def _make_backup(dir_: Path, name: str, *, age_seconds: float) -> Path:
+        db = dir_ / name
+        db.write_bytes(b"stub")
+        meta = db.with_name(db.name + _META_SUFFIX)
+        meta.write_text("{}", encoding="utf-8")
+        stamp = AS_OF.timestamp() - age_seconds
+        os.utime(db, (stamp, stamp))
+        os.utime(meta, (stamp, stamp))
+        return db
+
+    def test_keeps_only_newest_matching_prefix(self, tmp_path):
+        oldest = self._make_backup(tmp_path, "athena-pre-portfolio-reset-1.db", age_seconds=30)
+        middle = self._make_backup(tmp_path, "athena-pre-portfolio-reset-2.db", age_seconds=20)
+        newest = self._make_backup(tmp_path, "athena-pre-portfolio-reset-3.db", age_seconds=10)
+
+        removed = prune_backups(tmp_path, prefix="athena-pre-portfolio-reset-", keep_newest=1)
+
+        assert set(removed) == {str(oldest), str(middle)}
+        assert not oldest.exists()
+        assert not oldest.with_name(oldest.name + _META_SUFFIX).exists()
+        assert not middle.exists()
+        assert newest.exists()
+        assert newest.with_name(newest.name + _META_SUFFIX).exists()
+
+    def test_never_touches_a_different_prefix(self, tmp_path):
+        portfolio = self._make_backup(
+            tmp_path, "athena-pre-portfolio-reset-1.db", age_seconds=30)
+        decisions = self._make_backup(
+            tmp_path, "athena-pre-decisions-reset-1.db", age_seconds=30)
+
+        prune_backups(tmp_path, prefix="athena-pre-portfolio-reset-", keep_newest=0)
+
+        assert not portfolio.exists()
+        assert decisions.exists()  # unrelated prefix, never pruned
+
+    def test_keep_newest_zero_removes_all_matching(self, tmp_path):
+        only = self._make_backup(tmp_path, "athena-pre-decisions-reset-1.db", age_seconds=5)
+
+        removed = prune_backups(tmp_path, prefix="athena-pre-decisions-reset-", keep_newest=0)
+
+        assert removed == (str(only),)
+        assert not only.exists()
+
+    def test_missing_backup_dir_is_a_noop(self, tmp_path):
+        assert prune_backups(tmp_path / "nope", prefix="athena-", keep_newest=0) == ()
+
+    def test_nothing_to_prune_when_under_the_keep_count(self, tmp_path):
+        kept = self._make_backup(tmp_path, "athena-pre-portfolio-reset-1.db", age_seconds=5)
+
+        removed = prune_backups(tmp_path, prefix="athena-pre-portfolio-reset-", keep_newest=3)
+
+        assert removed == ()
+        assert kept.exists()

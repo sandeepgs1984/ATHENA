@@ -8,6 +8,7 @@ from athena.data.store.backup import (
     BackupResult,
     RestoreResult,
     create_backup,
+    prune_backups,
     restore_backup,
 )
 from athena.data.store.repository import IntegrityReport, SqliteRepository
@@ -20,5 +21,6 @@ __all__ = [
     "RestoreResult",
     "SqliteRepository",
     "create_backup",
+    "prune_backups",
     "restore_backup",
 ]

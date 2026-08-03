@@ -2705,7 +2705,7 @@ does not invent new metrics or policy. Governing plan:
 | Milestone | Scope | Gate | Status |
 |---|---|---|---|
 | **MI-UX-0** Design & audit gate | 11 findings across 3 severities from a live screenshot audit; owner sign-off to start with P0 | Owner approval | ✅ Approved (2026-08-03) |
-| **MI-UX-1** P0 correctness fixes | Fix Top Opportunities mid-card clipping, Breadth 0%/WEAK vs. ADV/DEC contradiction, Market Health unavailable-tile prominence | Owner review; no fabricated data | 🔄 Ready for review |
+| **MI-UX-1** P0 correctness fixes | Fix Top Opportunities mid-card clipping, Breadth 0%/WEAK vs. ADV/DEC contradiction, Market Health unavailable-tile prominence | Owner review; no fabricated data | ✅ Approved (2026-08-03) |
 | **MI-UX-2** Freshness & alert unification | One shared freshness phrasing; real alert treatment for failed runs/blockers | Owner review | ⏳ Planned |
 | **MI-UX-3** Visual consistency & IA | One metric-tile idiom; actionable-first Universe default view; grouped header | Owner review | ⏳ Planned |
 | **MI-UX-4** Polish & release gate | RS label clarity, Quick Actions dedup, Evidence Attribution prominence, full screenshot/regression QA | Owner review after QA evidence | ⏳ Planned |
@@ -2788,6 +2788,61 @@ user-requested "show everything" state — the same sanctioned fallback the
 original MARKET_MAIN_MIN_HEIGHT fix already relied on. Also re-verified the
 3-column (no cap needed) and 2-column (mid-size cap) cases still behave
 correctly after the rewrite. Full suite re-run: **1252 passed**.
+
+---
+
+### Fix pass: unbounded backup accumulation ate 28 GiB (owner-reported, 2026-08-03)
+
+Owner: "my harddisk space is eaten by db/backups... i dont want any backup
+more [than] 2 days," then, after seeing what's actually inside the database,
+reframed to the real question — decisions/traces/journal/portfolio state
+aren't re-fetchable market data, so is any backup worth keeping at all.
+
+**Root cause:** `PortfolioService.reset_positions()` and
+`DecisionsService.reset_decisions()` each write a best-effort auto-backup
+before their CONFIRM-gated destructive action, but `create_backup()`
+(`data/store/backup.py`, M1.6) never pruned anything — every reset, forever,
+added a new ~304 MB full snapshot with zero cleanup. 137
+`athena-pre-portfolio-reset-*.db` + 53 `athena-pre-decisions-reset-*.db`
+files had accumulated (28 GiB total, `db/backups/`), plus 610 orphan
+`.meta.json` sidecars with no matching `.db`. This — not this session's own
+scratch files — was the real cause of the "no space left on device" failures
+earlier in this session.
+
+**Owner decision (asked explicitly, since it's a real product tradeoff, not
+a pure engineering call):** given these auto-backups exist only as an undo
+window for one specific reset action, not a retained history, the owner
+chose to keep only the single most recent backup per reset type — not a
+2-day window, not zero backups (zero would make CONFIRM on either reset a
+true point of no return with no recovery path).
+
+**Fix:** new `prune_backups(backup_dir, *, prefix, keep_newest)`
+(`data/store/backup.py`) — deletes `{prefix}*.db` backups beyond the
+`keep_newest` most recent (by mtime), each with its `.meta.json` sidecar;
+scoped by `prefix` so pruning one reset type's backups never touches the
+other's. Called from both `reset_positions()` and `reset_decisions()`
+immediately after their own backup succeeds, with `keep_newest=1` — pruning
+only after a successful new backup means a failed backup attempt never
+leaves zero valid backups. Best-effort (a file that fails to delete is
+skipped, not raised), matching the existing best-effort backup call it sits
+next to. The owner-triggered manual "create backup" button (Live Operations
+console, unrelated to either reset flow) was deliberately left untouched —
+out of scope of what was asked.
+
+Immediate cleanup: ran the same tested `prune_backups()` function directly
+against the real `db/backups/` (not a separate ad-hoc script, so cleanup and
+the new policy are guaranteed consistent) — removed all but the newest of
+each reset type, plus stray `.tmp-journal` artifacts and the 610 orphan
+`.meta.json` files. `db/backups/` went from 28 GiB to ~609 MiB; real disk
+free space went from ~6.4 GiB to 33 GiB.
+
+Architectural note: ops/data-lifecycle fix, not a domain or analytical
+change. No score, decision, or TradePlan logic touched.
+
+Tests: 5 new tests in `tests/data_layer/test_backup_restore.py`
+(`TestPruneBackups` — keeps only newest N, never touches a different prefix,
+`keep_newest=0` removes all matching, missing directory is a no-op, nothing
+pruned when already under the keep count). Full suite: **1257 passed**.
 
 ---
 

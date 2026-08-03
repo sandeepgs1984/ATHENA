@@ -145,6 +145,38 @@ def create_backup(
     )
 
 
+def prune_backups(
+    backup_dir: str | Path, *, prefix: str, keep_newest: int = 1,
+) -> tuple[str, ...]:
+    """Delete ``{prefix}*.db`` backups under ``backup_dir`` beyond the
+    ``keep_newest`` most recent (by mtime), each with its ``.meta.json``
+    sidecar. Scoped by ``prefix`` so pruning one backup purpose (e.g.
+    pre-portfolio-reset) never removes an unrelated one (e.g.
+    pre-decisions-reset) sharing the same directory. Best-effort: a file
+    that fails to delete is skipped, never raised — this runs after the
+    reset/backup it protects has already succeeded. Returns the
+    destinations actually removed."""
+    directory = Path(backup_dir)
+    if not directory.is_dir():
+        return ()
+    matches = sorted(
+        directory.glob(f"{prefix}*.db"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    removed: list[str] = []
+    for db_path in matches[max(keep_newest, 0):]:
+        try:
+            db_path.unlink()
+        except OSError:
+            continue
+        meta_path = db_path.with_name(db_path.name + _META_SUFFIX)
+        if meta_path.exists():
+            meta_path.unlink(missing_ok=True)
+        removed.append(str(db_path))
+    return tuple(removed)
+
+
 def restore_backup(
     backup_path: str | Path, target_path: str | Path, *, as_of: datetime,
 ) -> RestoreResult:

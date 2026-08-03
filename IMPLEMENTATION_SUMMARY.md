@@ -6,7 +6,30 @@ status updated on approval.
 
 ---
 
-## MI-UX-1: Market Intelligence P0 correctness fixes (ready for review)
+## Fix pass: unbounded backup accumulation ate 28 GiB (owner-reported)
+
+| | |
+|---|---|
+| Completed | 2026-08-03 |
+| Objective | Owner reported `db/backups/` eating disk space and wanted a retention policy; on learning what's actually inside the database (decisions/traces/journal/portfolio state are ATHENA's own computed history, not re-fetchable market data), the owner explicitly chose "keep only the single latest backup" per reset type over a time-based window or no backups at all |
+| Scope | `create_backup()` (M1.6) had no pruning at all — every Portfolio reset / Decisions reset auto-backup accumulated forever. New `prune_backups(backup_dir, *, prefix, keep_newest)` in `data/store/backup.py` deletes `{prefix}*.db` backups beyond `keep_newest` (by mtime) plus their `.meta.json` sidecars, scoped by prefix so one reset type's pruning never touches the other's. Wired into `PortfolioService.reset_positions()` and `DecisionsService.reset_decisions()` right after their own backup succeeds, `keep_newest=1` — pruning only after success means a failed backup attempt never leaves zero valid backups. The unrelated owner-triggered manual "create backup" button (Live Operations console) was left untouched, out of scope of what was asked |
+| Files created | None |
+| Files modified | `src/athena/data/store/backup.py`, `src/athena/data/store/__init__.py`, `src/athena/api/v1/services/portfolio_service.py`, `src/athena/api/v1/services/decisions_service.py`, `tests/data_layer/test_backup_restore.py`, `docs/MILESTONES.md` |
+| Public APIs added | `prune_backups()`, exported from `athena.data.store`. No HTTP/DTO surface change |
+| Tests | 5 new (`TestPruneBackups`): keeps only newest N, never touches a different prefix, `keep_newest=0` removes all matching, missing directory is a no-op, nothing pruned when already under the keep count. Full suite — **1,257 passed** |
+| Coverage | Ran the same tested `prune_backups()` directly against the real `db/backups/` for the immediate cleanup (not a separate ad-hoc script) — 137 `pre-portfolio-reset` + 53 `pre-decisions-reset` backups down to 1 each, plus removed stray `.tmp-journal` artifacts and 610 orphan `.meta.json` sidecars with no matching `.db`. `db/backups/` went from 28 GiB to ~609 MiB; real disk free space went from ~6.4 GiB to 33 GiB |
+| Architecture compliance | Ops/data-lifecycle fix only; no score, decision, TradePlan, or provider logic touched |
+| ADR compliance | None required |
+| Risks discovered | This — not this session's own scratch files — was the actual root cause of the "no space left on device" failures earlier in this session. Manual-backup accumulation (Live Operations console button) is untouched and could still grow unbounded if used repeatedly; not in scope of what was asked, flagged for awareness |
+| Technical debt introduced | None |
+| Suggested improvements | If manual backups ever become a space concern, the same `prune_backups()` helper is ready to wire into `OpsService.create_backup_now()` |
+| Remaining work | None — owner's exact requested policy is implemented and verified |
+| Status | ✅ Approved (owner-directed) |
+| Branch | feature/live-dashboard |
+
+---
+
+## MI-UX-1: Market Intelligence P0 correctness fixes (approved)
 
 | | |
 |---|---|
@@ -23,8 +46,8 @@ status updated on approval.
 | Risks discovered | None new. Reconfirms the disk-space risk flagged in the previous entry is now resolved (6+ GiB free after removing the leftover backup file; still trending downward on this machine independent of this session — worth the owner's separate attention) |
 | Technical debt introduced | None |
 | Suggested improvements | MI-UX-2 (freshness/alert unification) and MI-UX-3 (visual consistency/IA) remain planned per the roadmap doc |
-| Remaining work | Owner review of MI-UX-1; MI-UX-2 through MI-UX-4 not started (milestone-at-a-time discipline) |
-| Status | 🔄 Ready for owner review |
+| Remaining work | MI-UX-2 through MI-UX-4 not started (milestone-at-a-time discipline) |
+| Status | ✅ Approved (2026-08-03) |
 | Branch | feature/live-dashboard |
 
 ---
