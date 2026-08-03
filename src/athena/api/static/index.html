@@ -146,49 +146,58 @@
                         </div>
                     </div>
 
+                    <!-- MI-UX-3: status you check (is something connected/healthy) and
+                         actions you do (refresh, restart, open a guide) used to sit in
+                         one undifferentiated row. Grouped by category, same elements/
+                         ids/behavior — a divider is the only new thing. -->
                     <div class="header-actions">
-                        <button id="kite-status-btn" class="btn btn-kite unknown" type="button" title="Kite market-data session" hidden>
-                            <i class="fa-solid fa-link"></i>
-                            <span id="kite-status-label">KITE</span>
-                        </button>
-                        <div class="diagnostics-menu">
-                            <button id="header-diagnostics-toggle" class="btn btn-icon" type="button" title="Diagnostics" aria-label="Diagnostics" aria-haspopup="true" aria-expanded="false">
-                                <i class="fa-solid fa-wave-square" aria-hidden="true"></i>
+                        <div class="header-status-group">
+                            <button id="kite-status-btn" class="btn btn-kite unknown" type="button" title="Kite market-data session" hidden>
+                                <i class="fa-solid fa-link"></i>
+                                <span id="kite-status-label">KITE</span>
                             </button>
-                            <div id="header-diagnostics-popover" class="diagnostics-popover" hidden>
-                                <div class="telemetry-item">
-                                    <span class="telemetry-label">REQ-ID</span>
-                                    <span id="header-req-id" class="telemetry-value font-mono">unknown</span>
-                                </div>
-                                <div class="telemetry-item">
-                                    <span class="telemetry-label">CORR-ID</span>
-                                    <span id="header-corr-id" class="telemetry-value font-mono">unknown</span>
-                                </div>
-                                <div class="telemetry-item">
-                                    <span class="telemetry-label">LATENCY</span>
-                                    <span id="header-latency" class="telemetry-value font-mono">-- ms</span>
+                            <button id="system-health-indicator" class="btn btn-health healthy" title="System Health">
+                                <i class="fa-solid fa-heartbeat"></i>
+                                <span>HEALTHY</span>
+                            </button>
+                        </div>
+                        <span class="header-actions-divider" aria-hidden="true"></span>
+                        <div class="header-action-group">
+                            <div class="diagnostics-menu">
+                                <button id="header-diagnostics-toggle" class="btn btn-icon" type="button" title="Diagnostics" aria-label="Diagnostics" aria-haspopup="true" aria-expanded="false">
+                                    <i class="fa-solid fa-wave-square" aria-hidden="true"></i>
+                                </button>
+                                <div id="header-diagnostics-popover" class="diagnostics-popover" hidden>
+                                    <div class="telemetry-item">
+                                        <span class="telemetry-label">REQ-ID</span>
+                                        <span id="header-req-id" class="telemetry-value font-mono">unknown</span>
+                                    </div>
+                                    <div class="telemetry-item">
+                                        <span class="telemetry-label">CORR-ID</span>
+                                        <span id="header-corr-id" class="telemetry-value font-mono">unknown</span>
+                                    </div>
+                                    <div class="telemetry-item">
+                                        <span class="telemetry-label">LATENCY</span>
+                                        <span id="header-latency" class="telemetry-value font-mono">-- ms</span>
+                                    </div>
                                 </div>
                             </div>
+                            <button id="refresh-trigger" class="btn btn-icon" title="Force Refresh" aria-label="Force refresh">
+                                <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i>
+                            </button>
+                            <button id="intraday-sop-trigger" class="btn btn-icon" title="Intraday operating guide" aria-label="Open intraday operating guide">
+                                <i class="fa-solid fa-book-open" aria-hidden="true"></i>
+                            </button>
+                            <!-- Owner-requested (2026-07-29): a stuck background job
+                                 (Run Full Validation, or the cycle worker) can only be
+                                 reliably killed by ending the whole process — a single
+                                 Python thread blocked in a slow call can't be force-
+                                 killed in isolation. This restarts athena-serve itself
+                                 with the exact flags it was already running with. -->
+                            <button id="restart-server-trigger" class="btn btn-icon" title="Restart ATHENA (kills any stuck job, restarts fresh)" aria-label="Restart ATHENA server">
+                                <i class="fa-solid fa-power-off" aria-hidden="true"></i>
+                            </button>
                         </div>
-                        <button id="refresh-trigger" class="btn btn-icon" title="Force Refresh" aria-label="Force refresh">
-                            <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i>
-                        </button>
-                        <button id="intraday-sop-trigger" class="btn btn-icon" title="Intraday operating guide" aria-label="Open intraday operating guide">
-                            <i class="fa-solid fa-book-open" aria-hidden="true"></i>
-                        </button>
-                        <!-- Owner-requested (2026-07-29): a stuck background job
-                             (Run Full Validation, or the cycle worker) can only be
-                             reliably killed by ending the whole process — a single
-                             Python thread blocked in a slow call can't be force-
-                             killed in isolation. This restarts athena-serve itself
-                             with the exact flags it was already running with. -->
-                        <button id="restart-server-trigger" class="btn btn-icon" title="Restart ATHENA (kills any stuck job, restarts fresh)" aria-label="Restart ATHENA server">
-                            <i class="fa-solid fa-power-off" aria-hidden="true"></i>
-                        </button>
-                        <button id="system-health-indicator" class="btn btn-health healthy" title="System Health">
-                            <i class="fa-solid fa-heartbeat"></i>
-                            <span>HEALTHY</span>
-                        </button>
                     </div>
                 </div>
             </header>
@@ -385,7 +394,7 @@
                                     <div class="market-hero-metric">
                                         <span class="market-hero-label">Momentum</span>
                                         <strong id="market-momentum-value" class="market-hero-value">Loading...</strong>
-                                        <div id="market-momentum-indicator" class="market-bar-indicator" aria-hidden="true">
+                                        <div id="market-momentum-indicator" class="market-dot-indicator" aria-hidden="true">
                                             <span></span><span></span><span></span><span></span>
                                         </div>
                                     </div>
@@ -525,9 +534,12 @@
                                                 </button>
                                             </div>
                                             <label class="decisions-filter-label">Status
+                                                <!-- MI-UX-3: default to Eligible so the actionable rows lead,
+                                                     not the Excluded majority; "All statuses"/"Excluded" stay
+                                                     one explicit click away via this same control. -->
                                                 <select id="universe-status-filter" class="universe-filter-select" aria-label="Filter by status">
                                                     <option value="all">All statuses</option>
-                                                    <option value="ELIGIBLE">Eligible</option>
+                                                    <option value="ELIGIBLE" selected>Eligible</option>
                                                     <option value="EXCLUDED">Excluded</option>
                                                     <option value="PENDING">Pending</option>
                                                     <option value="UNRESOLVED">Unresolved</option>

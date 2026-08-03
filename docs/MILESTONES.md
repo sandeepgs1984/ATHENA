@@ -2706,8 +2706,8 @@ does not invent new metrics or policy. Governing plan:
 |---|---|---|---|
 | **MI-UX-0** Design & audit gate | 11 findings across 3 severities from a live screenshot audit; owner sign-off to start with P0 | Owner approval | ✅ Approved (2026-08-03) |
 | **MI-UX-1** P0 correctness fixes | Fix Top Opportunities mid-card clipping, Breadth 0%/WEAK vs. ADV/DEC contradiction, Market Health unavailable-tile prominence | Owner review; no fabricated data | ✅ Approved (2026-08-03) |
-| **MI-UX-2** Freshness & alert unification | One shared freshness phrasing; real alert treatment for failed runs/blockers | Owner review | 🔄 Ready for review |
-| **MI-UX-3** Visual consistency & IA | One metric-tile idiom; actionable-first Universe default view; grouped header | Owner review | ⏳ Planned |
+| **MI-UX-2** Freshness & alert unification | One shared freshness phrasing; real alert treatment for failed runs/blockers | Owner review | ✅ Approved (2026-08-03) |
+| **MI-UX-3** Visual consistency & IA | One metric-tile idiom; actionable-first Universe default view; grouped header | Owner review | 🔄 Ready for review |
 | **MI-UX-4** Polish & release gate | RS label clarity, Quick Actions dedup, Evidence Attribution prominence, full screenshot/regression QA | Owner review after QA evidence | ⏳ Planned |
 
 **Implementation rule:** one MI-UX milestone at a time. MI-UX must never
@@ -2791,7 +2791,7 @@ correctly after the rewrite. Full suite re-run: **1252 passed**.
 
 ---
 
-#### MI-UX-2 — freshness & alert unification (ready for review, 2026-08-03)
+#### MI-UX-2 — freshness & alert unification (approved, 2026-08-03)
 
 Scope completed:
 
@@ -2827,6 +2827,69 @@ an isolated local instance: confirmed all four sections now read "As of" in
 the same screenshot; confirmed the alert banner (red border, tinted
 background, triangle icon) renders correctly for a FAILED latest run and
 stays absent for a completed one.
+
+---
+
+#### MI-UX-3 — visual consistency & information architecture (ready for review, 2026-08-03)
+
+Scope completed:
+
+1. **One metric-tile idiom.** Momentum was the one "bar" shape among three
+   Market Summary tiles that all visualize the exact same 0-4 categorical
+   level via the shared `renderCategoricalIndicator()` — Trend Quality and
+   Volatility Quality were already dots; the split was pure historical
+   inconsistency, not a semantic difference. Momentum now renders as a dot
+   indicator too. Deliberately left untouched: Regime/Volatility's
+   sparklines (they show a real recent trend a static indicator can't) and
+   Breadth/Market Health's rings (they're genuine 0-100 percentages) — both
+   pairs were already internally consistent with each other and forcing
+   them into a third shape would have discarded real information, not
+   fixed an inconsistency.
+2. **Actionable-first Universe default.** The status filter
+   (`#universe-status-filter`, already existed) defaulted to "All
+   statuses," so the mostly-Excluded majority dominated the visible list
+   ahead of Eligible rows. Now defaults to "Eligible" — "All statuses" and
+   "Excluded" remain one click away via the exact same control. No new UI;
+   reuses the existing filter/count-chip machinery (`applyUniverseFilters()`
+   already runs on load and already shows "N of 511" whenever a filter
+   narrows the view).
+3. **Grouped header.** Kite/System-Health status pills and the
+   diagnostics/refresh/guide/restart action icons sat in one
+   undifferentiated `.header-actions` row. Now wrapped into
+   `.header-status-group` / `.header-action-group` with a thin divider
+   between them — same elements, same ids, same behavior, purely a DOM/CSS
+   grouping change.
+
+Architectural note: presentation-only. No score, decision, regime, or
+TradePlan value changed; no backend endpoint added or changed. The header
+change touches shared markup used by every tab (not just Market
+Intelligence), since the header itself is a shared component — grouping it
+by status-vs-action is a general improvement, not something that could be
+scoped to one tab alone.
+
+Validation note: full suite **1257 passed** (one pre-existing test asserted
+the literal string `".market-bar-indicator"` was present in the CSS bundle;
+updated to assert it's absent instead, locking in the removal). Live-verified
+against a read-only backup of the real database through an isolated local
+instance: confirmed Momentum renders dots identical to the other two tiles;
+confirmed Universe opens showing "363 of 511," every visible row Eligible,
+with the filter-toggle's active-filter indicator correctly lit; confirmed
+the header shows Kite + Healthy grouped together, a visible divider, then
+the four action icons.
+
+Testing note (verification-environment artifact, not a product bug): this
+port had been reused for isolated verification many times earlier in this
+session, and the browser had independently cached `dashboard.css`'s
+sub-imports (`css/03-shell.css` etc.) from those earlier loads — those
+inner `@import` URLs carry no cache-busting query string the way the outer
+`dashboard.css?v=9.140.0` does, so a normal reload kept serving stale CSS
+even after the HTML itself was freshly fetched. Confirmed via direct `curl`
+that the server always had the fresh CSS, and via a manual `fetch()` with
+`cache: 'no-store'` that the fresh CSS renders correctly. Suggested
+improvement for a future milestone: the `@import`ed `css/*.css` (and
+`js/*.js`) sub-resource URLs referenced from `dashboard.css`/`dashboard.js`
+carry no cache-buster of their own, unlike the outer files — real users may
+need a hard refresh to see a deploy take effect immediately.
 
 ---
 

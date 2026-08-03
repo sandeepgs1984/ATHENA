@@ -1444,8 +1444,10 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "function renderMarketSummaryHero" in js
     assert ".market-ring" in css
     assert ".market-mini-sparkline" in css
+    # MI-UX-3: Momentum's bar shape was unified into the shared dot pattern
+    # already used by Trend Quality/Volatility Quality — one idiom, not two.
     assert ".market-dot-indicator" in css
-    assert ".market-bar-indicator" in css
+    assert ".market-bar-indicator" not in css
     assert ".market-health-score-value" in css
     assert "Universe breadth" in js
     # Never invent a display number client-side.

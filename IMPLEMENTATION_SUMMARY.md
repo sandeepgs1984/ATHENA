@@ -6,7 +6,30 @@ status updated on approval.
 
 ---
 
-## MI-UX-2: Market Intelligence freshness & alert unification (ready for review)
+## MI-UX-3: Market Intelligence visual consistency & information architecture (ready for review)
+
+| | |
+|---|---|
+| Completed | 2026-08-03 |
+| Objective | Third milestone of the Market Intelligence UX track: consolidate Market Summary's mixed visual idioms into one, make the Universe table's default view lead with actionable (Eligible) symbols instead of the mostly-Excluded majority, and group the shared header's status pills separately from its action icons |
+| Scope | (1) Momentum's `.market-bar-indicator` shape unified into the shared `.market-dot-indicator` already used by Trend Quality/Volatility Quality — all three visualize the same 0-4 categorical level via one already-shared function, so this was removing a historical inconsistency, not a redesign. Regime/Volatility's sparklines and Breadth/Market Health's rings were deliberately left alone — each pair already matched itself and shows information (a trend line, a percentage) the other idiom can't. (2) `#universe-status-filter` now defaults to "Eligible" instead of "All statuses" — reuses the filter/count-chip machinery that already existed (`applyUniverseFilters()`), no new UI; "All statuses"/"Excluded" stay one click away in the same control. (3) Header's Kite/System-Health status pills and diagnostics/refresh/guide/restart action icons wrapped into `.header-status-group`/`.header-action-group` with a divider between them — same elements/ids/behavior, pure grouping |
+| Files created | None |
+| Files modified | `src/athena/api/static/index.html`, `src/athena/api/static/js/09-market-intelligence.js`, `src/athena/api/static/css/06-market-intelligence.css`, `src/athena/api/static/css/03-shell.css`, `tests/api/platform/test_dashboard_hosting.py`, `docs/MILESTONES.md` |
+| Public APIs added | None — presentation/IA only |
+| Tests | Full suite — **1,257 passed**. One pre-existing test asserted `.market-bar-indicator` was present in the CSS bundle; updated to assert it's absent, locking in the removal |
+| Coverage | Live-verified against a read-only backup of the real database through an isolated local instance. Confirmed Momentum renders identical dots to the other two tiles; confirmed Universe opens to "363 of 511" with every visible row Eligible and the filter-toggle's active indicator lit; confirmed the header shows Kite+Healthy grouped, a divider, then the four action icons. Also traced and confirmed a stale-CSS render during testing was a browser-cache artifact from reusing the same verification port many times this session (the `@import`ed `css/*.css` files carry no cache-buster, unlike the outer `dashboard.css?v=...`) — not a real bug; confirmed via direct `curl` the server always had the fresh CSS |
+| Architecture compliance | Presentation/IA only; no score, decision, regime, or TradePlan value changed; no backend endpoint added or changed |
+| ADR compliance | None required |
+| Risks discovered | The `@import`ed `css/*.css`/`js/*.js` sub-resource URLs referenced from `dashboard.css`/`dashboard.js` carry no cache-buster of their own — real users may need a hard refresh to see a deploy take effect immediately. Not fixed here (out of MI-UX-3's design scope), flagged as a suggested improvement |
+| Technical debt introduced | None |
+| Suggested improvements | Consider a cache-busting scheme for the `@import`/relative sub-resource URLs, not just the outer `dashboard.css`/`dashboard.js`. MI-UX-4 (polish/release gate) remains planned per the roadmap doc |
+| Remaining work | Owner review of MI-UX-3; MI-UX-4 not started (milestone-at-a-time discipline) |
+| Status | 🔄 Ready for owner review |
+| Branch | feature/live-dashboard |
+
+---
+
+## MI-UX-2: Market Intelligence freshness & alert unification (approved)
 
 | | |
 |---|---|
@@ -23,8 +46,8 @@ status updated on approval.
 | Risks discovered | None new |
 | Technical debt introduced | None |
 | Suggested improvements | MI-UX-3 (visual consistency/IA) and MI-UX-4 (polish/release gate) remain planned per the roadmap doc |
-| Remaining work | Owner review of MI-UX-2; MI-UX-3/MI-UX-4 not started (milestone-at-a-time discipline) |
-| Status | 🔄 Ready for owner review |
+| Remaining work | MI-UX-4 not started (milestone-at-a-time discipline) |
+| Status | ✅ Approved (2026-08-03) |
 | Branch | feature/live-dashboard |
 
 ---

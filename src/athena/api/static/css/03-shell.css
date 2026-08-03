@@ -468,7 +468,24 @@
 
 .header-actions {
     display: flex;
+    align-items: center;
     gap: var(--space-8);
+    flex-shrink: 0;
+}
+
+/* MI-UX-3: status you check (Kite/Health) vs. actions you do (diagnostics,
+   refresh, guide, restart) — previously one undifferentiated row. */
+.header-status-group,
+.header-action-group {
+    display: flex;
+    align-items: center;
+    gap: var(--space-8);
+}
+
+.header-actions-divider {
+    width: 1px;
+    height: 22px;
+    background: rgba(148, 163, 184, 0.2);
     flex-shrink: 0;
 }
 

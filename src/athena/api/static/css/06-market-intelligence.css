@@ -627,28 +627,15 @@
     font-weight: 600;
 }
 
-.market-bar-indicator,
+/* MI-UX-3: Momentum, Trend Quality, and Volatility Quality all visualize
+   the same 0-4 categorical level (see renderCategoricalIndicator) — one
+   shared dot pattern, not the bar/dot split this used to be. */
 .market-dot-indicator {
     display: flex;
-    align-items: flex-end;
+    align-items: center;
     gap: 4px;
     min-height: 18px;
     align-self: end;
-}
-
-.market-bar-indicator span {
-    width: 5px;
-    height: 5px;
-    border-radius: 2px 2px 0 0;
-    background: rgba(148, 163, 184, 0.2);
-}
-
-.market-bar-indicator span:nth-child(2) { height: 8px; }
-.market-bar-indicator span:nth-child(3) { height: 12px; }
-.market-bar-indicator span:nth-child(4) { height: 17px; }
-
-.market-dot-indicator {
-    align-items: center;
 }
 
 .market-dot-indicator span {
@@ -658,7 +645,6 @@
     background: rgba(148, 163, 184, 0.22);
 }
 
-.market-bar-indicator span.is-active,
 .market-dot-indicator span.is-active {
     background: currentColor;
     box-shadow: 0 0 6px currentColor;

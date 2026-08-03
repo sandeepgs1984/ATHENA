@@ -585,13 +585,15 @@
         return 0;
     }
 
+    // MI-UX-3: Momentum used to be the one "bar" shape among three tiles
+    // that all visualize the exact same 0-4 categorical level (Trend
+    // Quality and Volatility Quality were already dots) — no semantic
+    // reason for the split, just historical inconsistency. All three now
+    // share the one dot pattern.
     function renderCategoricalIndicator(elementId, rawLabel) {
         const host = document.getElementById(elementId);
         if (!host) return;
-        const baseClass = host.classList.contains("market-bar-indicator")
-            ? "market-bar-indicator"
-            : "market-dot-indicator";
-        host.className = `${baseClass} tone-${contextChipTone(rawLabel)}-text`;
+        host.className = `market-dot-indicator tone-${contextChipTone(rawLabel)}-text`;
         const level = categoricalIndicatorLevel(rawLabel);
         [...host.children].forEach((node, index) => {
             node.classList.toggle("is-active", index < level);
