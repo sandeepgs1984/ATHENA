@@ -10,5 +10,7 @@
   "lookback_runs": 200,
   "failed_run_rate_watch": 0.2,
   "rejection_rate_actionable": 0.4,
-  "insufficient_data_share_watch": 0.3
+  "insufficient_data_share_watch": 0.3,
+  "lookback_decisions": 500,
+  "weight_drift_baseline_file": "weight_baseline.json"
 }

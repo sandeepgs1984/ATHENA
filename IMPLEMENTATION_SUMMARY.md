@@ -6,6 +6,29 @@ status updated on approval.
 
 ---
 
+## M-X10 — Outcome-tagged setups + signal drift monitor (ready for review)
+
+| | |
+|---|---|
+| Completed | 2026-08-02 |
+| Objective | Owner approved M-X9 and asked to start the final Intraday Edge Program milestone: extend M10.4 AI Playbook Diagnostics with per-pattern hit-rate tagging and weight-drift alerts |
+| Scope | Design-checked twice, since the backlog's premise turned out incomplete rather than just under-specified. First check: the live database has zero rows in `decision_journal`/`trade_outcomes` — M-X0's outcome-logging UI shipped but hasn't been used since. Confirmed with the owner: build the plumbing now, data-gated, rather than defer or ship un-gated. Second check: "per-pattern" tagging can't reuse `StrategyMatch` as assumed — `StrategyFramework`/`ScheduleEngine` are fully built but never instantiated anywhere in the real live pipeline (a dormant subsystem, not "just persist what's already computed"). Confirmed with the owner again: scope "pattern" to the regime trend label (BULL_TREND/SIDEWAYS/BEAR_TREND) instead, already computed and persisted for every real decision, zero new subsystem wiring. Shipped in three additive pieces: (1) `RepositoryOutcomeSource` finally wires a real `outcome_source` into `_cmd_diagnose` — `athena diagnose` had never actually seen a real decision or journal entry in production despite M10.4 supporting both since it shipped; (2) `PlaybookDiagnosticsAnalyzer.analyze()` gains two new optional, backward-compatible parameters (`trade_outcomes`, `pattern_labels`) computing hit-rate per regime-trend-label bucket, each independently gated by `min_sample_size`; (3) a new file-based (no DB schema) `weight_drift.py` module captures a scoring/decision baseline and flags divergence as both a report finding and a DD-9 `FailureAlertDispatcher` alert (`source="weight-drift"`), reusing the exact same alerting mechanism as M-X8's canary |
+| Files created | `src/athena/diagnostics/weight_drift.py`, `tests/runtime/test_weight_drift.py` |
+| Files modified | `src/athena/diagnostics/analyzer.py`, `src/athena/diagnostics/service.py`, `src/athena/diagnostics/__init__.py`, `src/athena/cli.py`, `src/athena/config/models.py`, `config/diagnostics.json`, `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md`, `tests/runtime/test_diagnostics.py`, `tests/unit/test_cli.py` |
+| Public APIs added | None external — `analyze()`'s new parameters default to empty/`()`, fully backward compatible; `athena weight-drift-baseline` is a new local CLI subcommand |
+| Tests | Full suite — 1,232 passed (23 new: 8 `weight_drift.py` round-trip/drift-detection tests; 13 analyzer/service tests covering pattern-bucket gating and independence, `RepositoryOutcomeSource`'s as-of bound, `_resolve_pattern_labels`' real-run-detail resolution, and the weight-drift alert-dispatch/no-alert-without-baseline paths; 2 CLI tests). Ruff clean |
+| Coverage | Verified against the real production `config/`/`db/athena.db` directly: `athena diagnose` now reports on the real ~4,400 decisions already in production (previously always `no_decision_inputs`, since `outcome_source` had never been wired); a real captured-then-compared baseline correctly showed no drift when unchanged and correctly listed both changed values when replayed against a genuinely modified (scratch, since-deleted) candidate config. All verification artifacts (the real baseline file and diagnostic reports this testing produced) were deleted afterward, so the owner's live system is left exactly as it was |
+| Architecture compliance | Diagnostics-only, additive. No provider, broker, order, or frozen-contract change. No new persisted schema — the weight-drift baseline is a plain JSON file, not a database table |
+| ADR compliance | None required — confirmed by design analysis, twice, before implementing. The regime-trend-label scoping for "pattern" and the never-persisted, in-memory replay precedent M-X8 established are both what keep this "Gate: None" honest |
+| Risks discovered | **Two real, separate findings, both surfaced by checking the backlog's premise against actual system state rather than trusting it:** (1) zero real outcome data exists yet, so hit-rate output will show nothing until the owner starts using Accept/Reject/Ignore + outcome logging — by design, not a bug; (2) `StrategyFramework`/`ScheduleEngine` is a fully-built, fully-tested, but completely orphaned subsystem — never wired into live production at all. Neither was assumed from the backlog's wording; both were found by reading the actual wiring |
+| Technical debt introduced | None. Per-strategy (vs. regime-trend-label) pattern granularity is a documented scope reduction, not a corner cut — revisit if/when `StrategyFramework` is ever wired into live production as its own milestone |
+| Suggested improvements | Once real outcome volume accumulates, review whether regime-trend-label buckets are granular enough or whether wiring `StrategyFramework` into live production (a separate, larger milestone) would meaningfully improve pattern specificity. The weight-drift baseline is deliberately not auto-captured by this milestone — the owner should run `athena weight-drift-baseline` explicitly once, when ready, rather than have one silently appear |
+| Remaining work | Owner review of this implementation |
+| Status | 🔄 Ready for owner review |
+| Branch | feature/live-dashboard |
+
+---
+
 ## M-X9 — Config-change impact preview (approved)
 
 | | |

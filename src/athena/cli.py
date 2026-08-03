@@ -18,11 +18,13 @@ from athena.calendar.engine import CalendarEngine
 from athena.config.env import load_dotenv
 from athena.config.loader import (
     load_config,
+    load_decision_config,
     load_diagnostics_config,
     load_host_ops_config,
     load_ingestion_config,
     load_notifications_config,
     load_scheduling_config,
+    load_scoring_config,
     load_validation_config,
 )
 from athena.data.ingestion import LiveIngestionEngine, build_ingest_validator
@@ -35,6 +37,7 @@ from athena.errors import AthenaError
 from athena.notifications import BriefingDispatcher
 from athena.notifications.decision_source import SqliteDecisionSummarySource
 from athena.observability.health import run_system_checks
+from athena.ops.failure_alerts import FailureAlertDispatcher
 from athena.ops.kite_auth import run_interactive_kite_auth
 from athena.ops.scheduled_run import HostDueRunner
 from athena.scheduling import DryRunCycleOrchestrator, due_triggers
@@ -488,10 +491,19 @@ def _cmd_brief(args: argparse.Namespace) -> int:
 
 
 def _cmd_diagnose(args: argparse.Namespace) -> int:
-    """Playbook diagnostics — propose-only config tuning suggestions (M10.4)."""
+    """Playbook diagnostics — propose-only config tuning suggestions (M10.4).
+
+    M-X10: now wires a real `outcome_source` (previously always `None`, so
+    `athena diagnose` only ever saw ops/run data) and an `alert_dispatcher`
+    for weight-drift alerts, matching the DD-9 channel `run-due`/the M-X8
+    canary already use.
+    """
+    from athena.diagnostics.service import RepositoryOutcomeSource
+
     config_dir = _config_dir()
     cfg = load_config(config_dir)
     diag_cfg = load_diagnostics_config(config_dir)
+    host_ops = load_host_ops_config(config_dir)
     tz = ZoneInfo(cfg.market.timezone)
     as_of = _parse_as_of(args.as_of, tz)
 
@@ -505,6 +517,10 @@ def _cmd_diagnose(args: argparse.Namespace) -> int:
             tzinfo=tz,
             config_dir=config_dir,
             repo_root=_repo_root(),
+            outcome_source=RepositoryOutcomeSource(repo, limit=diag_cfg.lookback_decisions),
+            alert_dispatcher=FailureAlertDispatcher(
+                host_ops.failure_alerts, repo_root=_repo_root(), tzinfo=tz,
+            ),
         )
         report, json_path, text_path = service.run(as_of=as_of)
 
@@ -520,6 +536,34 @@ def _cmd_diagnose(args: argparse.Namespace) -> int:
     print(f"wrote           : {json_path}")
     print(f"                : {text_path}")
     print("note            : proposals are NEVER auto-applied — human review required")
+    return 0
+
+
+def _cmd_weight_drift_baseline(args: argparse.Namespace) -> int:
+    """M-X10: capture the current scoring/decision weights as the signal-
+    drift baseline `athena diagnose` compares against going forward."""
+    from athena.diagnostics.weight_drift import capture_baseline, write_baseline
+
+    config_dir = _config_dir()
+    cfg = load_config(config_dir)
+    diag_cfg = load_diagnostics_config(config_dir)
+    scoring = load_scoring_config(config_dir)
+    decision_cfg = load_decision_config(config_dir)
+    tz = ZoneInfo(cfg.market.timezone)
+    as_of = _parse_as_of(args.as_of, tz)
+
+    out = Path(diag_cfg.output_dir)
+    if not out.is_absolute():
+        out = _repo_root() / out
+    baseline_path = out / diag_cfg.weight_drift_baseline_file
+
+    snapshot = capture_baseline(scoring, decision_cfg, as_of=as_of)
+    write_baseline(baseline_path, snapshot)
+
+    print(f"weight-drift baseline captured @ {snapshot.captured_at}")
+    print(f"scoring weights : {snapshot.scoring_weights}")
+    print(f"min_composite_for_trade : {snapshot.decision_min_composite_for_trade}")
+    print(f"wrote           : {baseline_path}")
     return 0
 
 
@@ -1086,6 +1130,16 @@ def main(argv: list[str] | None = None) -> int:
         help="Accepted for symmetry; diagnostics never mutate config",
     )
     p_diagnose.set_defaults(func=_cmd_diagnose)
+
+    p_weight_baseline = sub.add_parser(
+        "weight-drift-baseline",
+        help=(
+            "M-X10: capture current scoring/decision weights as the signal-drift "
+            "baseline `athena diagnose` compares against going forward"
+        ),
+    )
+    p_weight_baseline.add_argument("--as-of", help="ISO timestamp (defaults to now)")
+    p_weight_baseline.set_defaults(func=_cmd_weight_drift_baseline)
 
     p_owner = sub.add_parser(
         "set-owner-password",

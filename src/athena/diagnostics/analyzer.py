@@ -7,21 +7,23 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections import Counter
-from collections.abc import Sequence
+from collections import Counter, defaultdict
+from collections.abc import Mapping, Sequence
 from datetime import datetime
+from decimal import Decimal
+from types import MappingProxyType
 from zoneinfo import ZoneInfo
 
 from athena.config.models import DecisionConfig, DiagnosticsConfig, ScoringConfig
-from athena.domain.decision import Decision, DecisionJournalEntry
-from athena.domain.enums import DecisionType, QualityGate, RunStatus, UserAction
-from athena.domain.run import RunRecord
 from athena.diagnostics.models import (
     DiagnosticFinding,
     DiagnosticReport,
     DiagnosticStatus,
     TuningProposal,
 )
+from athena.domain.decision import Decision, DecisionJournalEntry, TradeOutcome
+from athena.domain.enums import DecisionType, QualityGate, RunStatus, UserAction
+from athena.domain.run import RunRecord
 
 
 class PlaybookDiagnosticsAnalyzer:
@@ -47,6 +49,9 @@ class PlaybookDiagnosticsAnalyzer:
         runs: Sequence[RunRecord],
         decisions: Sequence[Decision] = (),
         journal: Sequence[DecisionJournalEntry] = (),
+        trade_outcomes: Sequence[TradeOutcome] = (),
+        pattern_labels: Mapping[str, str] = MappingProxyType({}),
+        weight_drifts: Sequence[str] = (),
     ) -> DiagnosticReport:
         if as_of.tzinfo is None:
             raise ValueError("as_of must be timezone-aware")
@@ -73,16 +78,19 @@ class PlaybookDiagnosticsAnalyzer:
             reasons.append("no_decision_inputs")
         if not journal:
             reasons.append("no_journal_inputs")
+        if not trade_outcomes:
+            reasons.append("no_trade_outcome_inputs")
 
         findings.extend(self._ops_findings(runs))
         findings.extend(self._decision_mix_findings(decisions))
         findings.extend(self._gate_findings(decisions))
+        findings.extend(self._pattern_hit_rate_findings(trade_outcomes, pattern_labels))
+        findings.extend(self._weight_drift_findings(weight_drifts))
         proposals.extend(self._adherence_proposals(journal, decisions))
         proposals.extend(self._gate_weight_proposals(decisions))
+        input_digest = _digest(runs, decisions, journal, trade_outcomes)
 
-        if not findings and not proposals and reasons:
-            status = DiagnosticStatus.DEGRADED
-        elif reasons:
+        if (not findings and not proposals and reasons) or reasons:
             status = DiagnosticStatus.DEGRADED
         else:
             status = DiagnosticStatus.OK
@@ -100,7 +108,7 @@ class PlaybookDiagnosticsAnalyzer:
             status=status,
             findings=findings_t,
             proposals=proposals_t,
-            input_digest=_digest(runs, decisions, journal),
+            input_digest=input_digest,
             degradation_reasons=tuple(reasons),
         )
 
@@ -159,6 +167,63 @@ class PlaybookDiagnosticsAnalyzer:
             severity="watch",
             summary=f"most frequent failed gate is {top_gate} ({top_n} failures)",
             evidence={"gate_counts": dict(sorted(failed_gates.items())), "top": top_gate},
+        )]
+
+    def _pattern_hit_rate_findings(
+        self,
+        trade_outcomes: Sequence[TradeOutcome],
+        pattern_labels: Mapping[str, str],
+    ) -> list[DiagnosticFinding]:
+        """M-X10: hit-rate (share of positive-PnL outcomes) per regime
+        trend label at decision time — "pattern" here is the regime trend
+        label (BULL_TREND/SIDEWAYS/BEAR_TREND), not a named strategy;
+        `StrategyFramework`/`ScheduleEngine` are fully built but never
+        wired into the live pipeline, so no per-strategy tag exists to
+        read back for a real historical decision. Each bucket is reported
+        only once it has `min_sample_size` outcomes of its own — an
+        under-sampled bucket is silently omitted (not a misleadingly
+        precise statistic), exactly like `_adherence_proposals`'
+        `blocked` gating.
+        """
+        if not trade_outcomes:
+            return []
+        by_label: dict[str, list[TradeOutcome]] = defaultdict(list)
+        for outcome in trade_outcomes:
+            label = pattern_labels.get(outcome.decision_ref)
+            if label:
+                by_label[label].append(outcome)
+
+        findings: list[DiagnosticFinding] = []
+        for label, outcomes in sorted(by_label.items()):
+            n = len(outcomes)
+            if n < self._config.min_sample_size:
+                continue
+            wins = sum(1 for o in outcomes if o.pnl > Decimal("0"))
+            rate = wins / n
+            findings.append(DiagnosticFinding(
+                finding_id=f"pattern-hit-rate-{label}",
+                category="pattern_hit_rate",
+                severity="info",
+                summary=f"{label}: {wins}/{n} ({rate:.0%}) outcomes were profitable",
+                evidence={"pattern": label, "wins": wins, "total": n, "hit_rate": round(rate, 4)},
+            ))
+        return findings
+
+    def _weight_drift_findings(self, weight_drifts: Sequence[str]) -> list[DiagnosticFinding]:
+        """M-X10: scoring/decision config values that have diverged from
+        the captured baseline (see athena.diagnostics.weight_drift).
+        Empty `weight_drifts` means either no baseline is captured yet, or
+        nothing has drifted — both render as no finding, matching the rest
+        of this analyzer's "silence when there's nothing to report" style.
+        """
+        if not weight_drifts:
+            return []
+        return [DiagnosticFinding(
+            finding_id="signal-weight-drift",
+            category="weight_drift",
+            severity="watch",
+            summary=f"{len(weight_drifts)} config value(s) drifted from the captured baseline",
+            evidence={"drifts": list(weight_drifts)},
         )]
 
     def _adherence_proposals(
@@ -266,11 +331,13 @@ def _digest(
     runs: Sequence[RunRecord],
     decisions: Sequence[Decision],
     journal: Sequence[DecisionJournalEntry],
+    trade_outcomes: Sequence[TradeOutcome] = (),
 ) -> str:
     payload = {
         "runs": sorted(r.run_id for r in runs),
         "decisions": sorted(d.decision_id for d in decisions),
         "journal": sorted(f"{j.decision_ref}:{j.user_action.value}" for j in journal),
+        "trade_outcomes": sorted(o.outcome_id for o in trade_outcomes),
     }
     raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(raw).hexdigest()[:16]

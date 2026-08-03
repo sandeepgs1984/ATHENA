@@ -1260,6 +1260,13 @@ class DiagnosticsConfig(_Strict):
     failed_run_rate_watch: float = Field(default=0.2, ge=0, le=1)
     rejection_rate_actionable: float = Field(default=0.4, ge=0, le=1)
     insufficient_data_share_watch: float = Field(default=0.3, ge=0, le=1)
+    # M-X10: lookback for real decisions/journal/trade-outcome history (a
+    # separate knob from lookback_runs — decisions accumulate far faster
+    # than run records, one run can cover many instruments).
+    lookback_decisions: int = Field(default=500, ge=1, le=20000)
+    # M-X10: filename (relative to output_dir) for the captured scoring/
+    # decision weight baseline the signal-drift monitor compares against.
+    weight_drift_baseline_file: str = "weight_baseline.json"
 
 
 class PortfolioConfig(_Strict):

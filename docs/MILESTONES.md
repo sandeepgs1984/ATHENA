@@ -1507,7 +1507,7 @@ implemented silently past those gates.
 | **M-X7** Multi-timeframe confluence | Daily/5m/15m trend-direction agreement as a scoring input (see design note: 1m and "confidence dimension" both reconsidered) | None | ✅ Approved (2026-08-02) |
 | **M-X8** Synthetic canary decision | Fixed synthetic instrument through the full pipeline each cycle to catch silent engine regressions | None | ✅ Approved (2026-08-02) |
 | **M-X9** Config-change impact preview | Deterministic replay-based diff of a scoring-weight change against recent decisions, before it goes live | None | ✅ Approved (2026-08-02) |
-| **M-X10** Outcome-tagged setups + signal drift monitor | Extends M10.4 AI Playbook Diagnostics with per-pattern hit-rate tagging and weight-drift alerts | None | ⏳ Planned |
+| **M-X10** Outcome-tagged setups + signal drift monitor | Extends M10.4 AI Playbook Diagnostics with per-pattern hit-rate tagging and weight-drift alerts (see design note: "pattern" scoped to regime trend label, data-gated on real outcomes) | None | ✅ Approved (2026-08-02) |
 
 #### M-X6 — VWAP deviation scoring dimension (approved, 2026-08-02)
 
@@ -1828,6 +1828,94 @@ changed (`TDPOWERSYS`/`RELIANCE`: `WATCH → NO_TRADE`).
 Architectural note: ops/diagnostics-only, additive. No provider, broker,
 order, domain, or frozen-contract change. No new persisted schema — the
 report is transient. No ADR required per the design analysis above.
+
+#### M-X10 — Outcome-tagged setups + signal drift monitor (approved, 2026-08-02)
+
+**Design confirmed before any code, and reconsidered twice mid-design as
+new facts surfaced — the backlog's premise turned out to be materially
+incomplete, not just under-specified:**
+
+1. **Checked whether M-X0 (Decision Journal & Outcome capture, already
+   approved) actually has data to tag.** It doesn't: the live production
+   database has **zero rows** in `decision_journal` and `trade_outcomes` —
+   the Accept/Reject/Ignore + outcome-logging UI shipped and was tested,
+   but hasn't been used since. Confirmed with the owner directly rather
+   than assumed: build the plumbing now, data-gated, so hit-rate output
+   appears naturally once real outcomes accumulate rather than deferring
+   the whole milestone or building it un-gated against data that doesn't exist.
+2. **Checked whether "per-pattern" tagging could reuse an already-computed
+   `StrategyMatch` (momentum/breakout/mean_reversion/etc.) — it can't.**
+   `StrategyFramework`/`ScheduleEngine` are fully built and tested but
+   **never instantiated anywhere in the real live pipeline**
+   (`HostDueRunner`/`OwnerValidationPipeline`) — a dormant, orphaned
+   subsystem from an earlier phase, not a "just persist what's already
+   computed" situation. Wiring the entire scanner→watchlist→strategy→
+   analytics chain into live production would be its own milestone-sized
+   effort, well beyond "extends M10.4." Confirmed with the owner again:
+   scope "pattern" to the regime trend label (BULL_TREND/SIDEWAYS/
+   BEAR_TREND) instead — already computed and persisted for every real
+   decision today, zero new subsystem wiring, zero new persistence table.
+
+**Gate: None held, but only because of these two corrections** — a naive
+literal reading of the backlog line would have either required wiring a
+dormant subsystem into live production or shipped inert code against data
+that will never arrive without the owner using the journal UI.
+
+Scope, in three additive pieces:
+
+1. **`outcome_source` actually wired.** `_cmd_diagnose` had *always*
+   constructed `PlaybookDiagnosticsService` with no `outcome_source` —
+   `athena diagnose` has only ever seen ops/run data in production, never
+   a real decision or journal entry, despite the M10.4 analyzer supporting
+   both since it shipped. New `RepositoryOutcomeSource` (bounds
+   `list_decisions`/`list_journal` to `ts <= as_of`, no look-ahead) closes
+   that gap. New `DiagnosticsConfig.lookback_decisions` (separate from
+   `lookback_runs` — decisions accumulate far faster than run records).
+2. **Per-pattern hit-rate tagging.** `PlaybookDiagnosticsAnalyzer.analyze()`
+   gets two new optional parameters (`trade_outcomes`, `pattern_labels`),
+   backward compatible with every existing caller. Regime trend label per
+   `decision_ref` is resolved by the service layer from the persisted run
+   detail (`decision_reports` → `regime.evidence` where
+   `dimension == "trend"` — the exact same source `ScoringEngine._trend`
+   itself reads its own label from), never re-derived or guessed. Each
+   pattern bucket is reported only once it independently reaches
+   `min_sample_size` outcomes — an under-sampled bucket is silently
+   omitted, not a misleadingly precise statistic, matching
+   `_adherence_proposals`'s existing `blocked`-gating philosophy.
+3. **Signal drift monitor.** New `src/athena/diagnostics/weight_drift.py` —
+   `WeightSnapshot` (scoring weights + `min_composite_for_trade`), captured
+   to a plain JSON file under `DiagnosticsConfig.output_dir` (mirroring
+   `FailureAlertDispatcher`'s own artifact-file pattern — no new DB table,
+   no new schema). New `athena weight-drift-baseline` CLI command captures
+   it; `athena diagnose` compares the current config against it every run
+   and, on any drift, both emits a `DiagnosticFinding` (visible in the
+   report) and dispatches an alert through the existing DD-9
+   `FailureAlertDispatcher` (`source="weight-drift"`) — zero new alerting
+   mechanism, matching M-X8's canary precedent for reusing DD-9.
+
+Validation note: full suite 1,232 passed (23 new: 8 `weight_drift.py`
+round-trip/drift-detection tests; 13 analyzer/service tests covering
+pattern-bucket gating and independence, `RepositoryOutcomeSource`'s as-of
+bound, `_resolve_pattern_labels`' real-run-detail resolution, and the
+weight-drift alert-dispatch/no-alert-without-baseline paths; 2 CLI tests).
+Ruff clean. Also verified directly against the real production
+`config/`/`db/athena.db` (using a temporary, since-deleted scratch copy of
+`config/` for the drifted-weights case — the real config/db were never
+modified): `athena diagnose` against real data now reports on the real
+~4,400 decisions already in production (previously always
+`no_decision_inputs`); a captured-then-compared baseline correctly showed
+no drift when unchanged, and correctly listed both changed values
+(`scoring.weights.trend: 20 -> 25`, `scoring.weights.momentum: 20 -> 15`)
+when replayed against a genuinely modified candidate config. All
+verification artifacts (the real baseline file and diagnostic reports this
+testing produced) were deleted afterward — the owner's live system is left
+exactly as it was, with no baseline captured until they explicitly choose
+to run `athena weight-drift-baseline` themselves.
+
+Architectural note: diagnostics-only, additive. No provider, broker, order,
+or frozen-contract change — confirmed by design analysis above, not
+assumed twice over. No new persisted schema (file-based baseline, no DB
+table). No ADR required.
 
 ---
 

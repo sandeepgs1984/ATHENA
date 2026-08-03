@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -21,14 +22,28 @@ from athena.diagnostics import (
     DiagnosticStatus,
     PlaybookDiagnosticsAnalyzer,
     PlaybookDiagnosticsService,
+    RepositoryOutcomeSource,
+    capture_baseline,
+    write_baseline,
 )
-from athena.domain.decision import Decision, DecisionJournalEntry, GateResult
+from athena.domain.decision import Decision, DecisionJournalEntry, GateResult, TradeOutcome
 from athena.domain.enums import DecisionType, Direction, QualityGate, RunStatus, RunTrigger, UserAction
 from athena.domain.run import RunRecord
 from athena.errors import ConfigError, DiagnosticsError
 
 IST = ZoneInfo("Asia/Kolkata")
 AS_OF = datetime(2026, 2, 13, 16, 0, tzinfo=IST)
+
+
+def _outcome(
+    outcome_id: str, decision_ref: str, *, pnl: str, closed_ts: datetime = AS_OF
+) -> TradeOutcome:
+    return TradeOutcome(
+        outcome_id=outcome_id, decision_ref=decision_ref,
+        entry_price=Decimal("100"), exit_price=Decimal("100") + Decimal(pnl),
+        quantity=1, pnl=Decimal(pnl), holding_seconds=3600,
+        adherence={"entry": True}, closed_ts=closed_ts,
+    )
 
 
 def _run(run_id: str, *, status: RunStatus = RunStatus.COMPLETED) -> RunRecord:
@@ -170,6 +185,248 @@ class TestAnalyzer:
         assert mq.proposed_value + mom.proposed_value == (
             scoring.weights.market_quality + scoring.weights.momentum
         )
+
+
+class TestPatternHitRateFindings:
+    def test_no_finding_below_min_sample_size(self, config_dir):
+        analyzer = PlaybookDiagnosticsAnalyzer(
+            DiagnosticsConfig(min_sample_size=5),
+            scoring=load_scoring_config(config_dir),
+            decision=load_decision_config(config_dir),
+            tzinfo=IST,
+        )
+        outcomes = [_outcome("o1", "d1", pnl="10"), _outcome("o2", "d2", pnl="-5")]
+        labels = {"d1": "BULL_TREND", "d2": "BULL_TREND"}
+        report = analyzer.analyze(
+            as_of=AS_OF, runs=[_run("r1")], trade_outcomes=outcomes, pattern_labels=labels,
+        )
+        assert not any(f.category == "pattern_hit_rate" for f in report.findings)
+
+    def test_finding_appears_once_sample_met(self, config_dir):
+        analyzer = PlaybookDiagnosticsAnalyzer(
+            DiagnosticsConfig(min_sample_size=2),
+            scoring=load_scoring_config(config_dir),
+            decision=load_decision_config(config_dir),
+            tzinfo=IST,
+        )
+        outcomes = [
+            _outcome("o1", "d1", pnl="10"),
+            _outcome("o2", "d2", pnl="-5"),
+            _outcome("o3", "d3", pnl="20"),
+        ]
+        labels = {"d1": "BULL_TREND", "d2": "BULL_TREND", "d3": "BULL_TREND"}
+        report = analyzer.analyze(
+            as_of=AS_OF, runs=[_run("r1")], trade_outcomes=outcomes, pattern_labels=labels,
+        )
+        finding = next(f for f in report.findings if f.finding_id == "pattern-hit-rate-BULL_TREND")
+        assert finding.evidence["wins"] == 2
+        assert finding.evidence["total"] == 3
+        assert finding.evidence["hit_rate"] == round(2 / 3, 4)
+
+    def test_buckets_are_independent(self, config_dir):
+        analyzer = PlaybookDiagnosticsAnalyzer(
+            DiagnosticsConfig(min_sample_size=2),
+            scoring=load_scoring_config(config_dir),
+            decision=load_decision_config(config_dir),
+            tzinfo=IST,
+        )
+        outcomes = [
+            _outcome("o1", "d1", pnl="10"), _outcome("o2", "d2", pnl="10"),  # BULL: 2 (met)
+            _outcome("o3", "d3", pnl="-5"),  # BEAR: 1 (not met)
+        ]
+        labels = {"d1": "BULL_TREND", "d2": "BULL_TREND", "d3": "BEAR_TREND"}
+        report = analyzer.analyze(
+            as_of=AS_OF, runs=[_run("r1")], trade_outcomes=outcomes, pattern_labels=labels,
+        )
+        assert any(f.finding_id == "pattern-hit-rate-BULL_TREND" for f in report.findings)
+        assert not any(f.finding_id == "pattern-hit-rate-BEAR_TREND" for f in report.findings)
+
+    def test_outcome_with_unresolved_label_is_ignored(self, config_dir):
+        analyzer = PlaybookDiagnosticsAnalyzer(
+            DiagnosticsConfig(min_sample_size=1),
+            scoring=load_scoring_config(config_dir),
+            decision=load_decision_config(config_dir),
+            tzinfo=IST,
+        )
+        outcomes = [_outcome("o1", "d1", pnl="10")]
+        report = analyzer.analyze(
+            as_of=AS_OF, runs=[_run("r1")], trade_outcomes=outcomes, pattern_labels={},
+        )
+        assert not any(f.category == "pattern_hit_rate" for f in report.findings)
+
+    def test_no_trade_outcomes_is_a_degradation_reason(self, config_dir):
+        analyzer = PlaybookDiagnosticsAnalyzer(
+            DiagnosticsConfig(), tzinfo=IST,
+            scoring=load_scoring_config(config_dir), decision=load_decision_config(config_dir),
+        )
+        report = analyzer.analyze(as_of=AS_OF, runs=[_run("r1")])
+        assert "no_trade_outcome_inputs" in report.degradation_reasons
+
+
+class TestWeightDriftFindings:
+    def test_no_finding_when_no_drifts(self, config_dir):
+        analyzer = PlaybookDiagnosticsAnalyzer(
+            DiagnosticsConfig(), tzinfo=IST,
+            scoring=load_scoring_config(config_dir), decision=load_decision_config(config_dir),
+        )
+        report = analyzer.analyze(as_of=AS_OF, runs=[_run("r1")], weight_drifts=())
+        assert not any(f.category == "weight_drift" for f in report.findings)
+
+    def test_finding_lists_every_drift(self, config_dir):
+        analyzer = PlaybookDiagnosticsAnalyzer(
+            DiagnosticsConfig(), tzinfo=IST,
+            scoring=load_scoring_config(config_dir), decision=load_decision_config(config_dir),
+        )
+        drifts = ["scoring.weights.trend: 20 -> 30", "scoring.weights.momentum: 20 -> 10"]
+        report = analyzer.analyze(as_of=AS_OF, runs=[_run("r1")], weight_drifts=drifts)
+        finding = next(f for f in report.findings if f.finding_id == "signal-weight-drift")
+        assert finding.evidence["drifts"] == drifts
+        assert finding.severity == "watch"
+
+
+class TestRepositoryOutcomeSource:
+    def test_bounds_decisions_and_journal_to_as_of(self, tmp_path: Path):
+        repo = SqliteRepository(tmp_path / "src.db")
+        repo.initialize()
+        early = _decision("d-early")
+        late_ts = AS_OF + timedelta(days=1)
+        late = Decision(
+            decision_id="d-late", ts=late_ts, run_id="r1", cycle_id="c1",
+            decision_type=DecisionType.WATCH, explanation="late",
+            instrument_id="SYN-AAA", direction=Direction.NONE,
+        )
+        repo.save_decision(early)
+        repo.save_decision(late)
+        repo.save_journal_entry(DecisionJournalEntry("d-early", UserAction.ACCEPTED, AS_OF))
+        repo.save_journal_entry(
+            DecisionJournalEntry("d-late", UserAction.ACCEPTED, late_ts)
+        )
+
+        source = RepositoryOutcomeSource(repo, limit=100)
+        decisions = source.list_decisions(AS_OF)
+        journal = source.list_journal(AS_OF)
+        repo.close()
+
+        assert {d.decision_id for d in decisions} == {"d-early"}
+        assert {j.decision_ref for j in journal} == {"d-early"}
+
+
+class TestServiceWeightDriftAlert:
+    def test_dispatches_alert_when_baseline_drifted(self, tmp_path: Path, config_dir):
+        import json
+
+        from athena.config.models import FailureAlertsConfig
+        from athena.ops.failure_alerts import FailureAlertDispatcher
+
+        repo = SqliteRepository(tmp_path / "a.db")
+        repo.initialize()
+        repo.save_run(_run("r1"), detail={"phase": "finished"})
+
+        # Capture a baseline, then mutate the config on disk so the NEXT
+        # service.run() sees a real drift relative to that captured file.
+        scoring = load_scoring_config(config_dir)
+        decision = load_decision_config(config_dir)
+        cfg = DiagnosticsConfig(output_dir=str(tmp_path / "diag"))
+        baseline = capture_baseline(scoring, decision, as_of=AS_OF)
+        write_baseline(tmp_path / "diag" / cfg.weight_drift_baseline_file, baseline)
+
+        scoring_path = config_dir / "scoring.json"
+        data = json.loads(scoring_path.read_text())
+        data["weights"]["trend"] += 5
+        data["weights"]["momentum"] -= 5
+        scoring_path.write_text(json.dumps(data))
+
+        alerts = FailureAlertDispatcher(
+            FailureAlertsConfig(enabled=True, output_dir=str(tmp_path / "alerts")),
+            repo_root=tmp_path, tzinfo=IST,
+        )
+        service = PlaybookDiagnosticsService(
+            repo, cfg, tzinfo=IST, config_dir=config_dir, repo_root=tmp_path,
+            alert_dispatcher=alerts,
+        )
+        report, _, _ = service.run(as_of=AS_OF)
+        repo.close()
+
+        assert any(f.category == "weight_drift" for f in report.findings)
+        alert_files = list((tmp_path / "alerts").glob("alert-*.json"))
+        assert alert_files
+        payload = json.loads(alert_files[0].read_text())
+        assert payload["source"] == "weight-drift"
+
+    def test_no_alert_when_no_baseline_captured_yet(self, tmp_path: Path, config_dir):
+        from unittest.mock import MagicMock
+
+        repo = SqliteRepository(tmp_path / "b.db")
+        repo.initialize()
+        repo.save_run(_run("r1"), detail={"phase": "finished"})
+        alerts = MagicMock()
+        cfg = DiagnosticsConfig(output_dir=str(tmp_path / "diag"))
+        service = PlaybookDiagnosticsService(
+            repo, cfg, tzinfo=IST, config_dir=config_dir, repo_root=tmp_path,
+            alert_dispatcher=alerts,
+        )
+        report, _, _ = service.run(as_of=AS_OF)
+        repo.close()
+        assert not any(f.category == "weight_drift" for f in report.findings)
+        alerts.dispatch.assert_not_called()
+
+
+class TestResolvePatternLabels:
+    def test_resolves_trend_label_from_persisted_run_detail(self, tmp_path: Path, config_dir):
+        repo = SqliteRepository(tmp_path / "c.db")
+        repo.initialize()
+        decision = _decision("d1")
+        repo.save_decision(decision)
+        run_detail = {
+            "decision_reports": {
+                "decision-SYN-AAA-2026-02-13": {
+                    "decision": {"id": "d1", "instrument_id": "SYN-AAA"},
+                    "regime": {
+                        "evidence": [
+                            {"dimension": "trend", "outcome": "BULL_TREND"},
+                            {"dimension": "breadth", "outcome": "STRONG_BREADTH"},
+                        ]
+                    },
+                }
+            }
+        }
+        repo.save_run(_run("r1"), detail=run_detail)
+        outcomes = [_outcome("o1", "d1", pnl="10")]
+
+        cfg = DiagnosticsConfig(output_dir=str(tmp_path / "diag"))
+        service = PlaybookDiagnosticsService(
+            repo, cfg, tzinfo=IST, config_dir=config_dir, repo_root=tmp_path,
+        )
+        labels = service._resolve_pattern_labels([decision], outcomes)
+        repo.close()
+
+        assert labels == {"d1": "BULL_TREND"}
+
+    def test_no_outcomes_resolves_nothing(self, tmp_path: Path, config_dir):
+        repo = SqliteRepository(tmp_path / "d.db")
+        repo.initialize()
+        cfg = DiagnosticsConfig(output_dir=str(tmp_path / "diag"))
+        service = PlaybookDiagnosticsService(
+            repo, cfg, tzinfo=IST, config_dir=config_dir, repo_root=tmp_path,
+        )
+        labels = service._resolve_pattern_labels([], [])
+        repo.close()
+        assert labels == {}
+
+    def test_missing_report_for_ref_is_skipped(self, tmp_path: Path, config_dir):
+        repo = SqliteRepository(tmp_path / "e.db")
+        repo.initialize()
+        decision = _decision("d-missing")
+        repo.save_decision(decision)
+        repo.save_run(_run("r1"), detail={"decision_reports": {}})
+        outcomes = [_outcome("o1", "d-missing", pnl="10")]
+        cfg = DiagnosticsConfig(output_dir=str(tmp_path / "diag"))
+        service = PlaybookDiagnosticsService(
+            repo, cfg, tzinfo=IST, config_dir=config_dir, repo_root=tmp_path,
+        )
+        labels = service._resolve_pattern_labels([decision], outcomes)
+        repo.close()
+        assert labels == {}
 
 
 class TestWriterAndService:

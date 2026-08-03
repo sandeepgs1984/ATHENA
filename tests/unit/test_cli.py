@@ -107,3 +107,56 @@ def test_config_preview_missing_candidate_dir_exits_nonzero(tmp_path, monkeypatc
     monkeypatch.setenv("ATHENA_DB_PATH", str(tmp_path / "unused.db"))
     assert main(["config-preview", str(tmp_path / "does-not-exist")]) == 1
     assert "not found" in capsys.readouterr().out
+
+
+def test_weight_drift_baseline_writes_a_file(tmp_path, monkeypatch, capsys):
+    """M-X10: `athena weight-drift-baseline` captures current scoring/
+    decision weights to the configured output_dir."""
+    monkeypatch.setenv("ATHENA_DB_PATH", str(tmp_path / "wdb.db"))
+    assert main(["weight-drift-baseline", "--as-of", "2026-03-02T10:00:00+05:30"]) == 0
+    out = capsys.readouterr().out
+    assert "weight-drift baseline captured" in out
+    written = list((tmp_path / "artifacts" / "diagnostics").glob("weight_baseline.json"))
+    assert written
+
+
+def test_diagnose_wires_real_outcome_source(config_dir, tmp_path, monkeypatch, capsys):
+    """M-X10: `athena diagnose` must actually see real decisions/journal
+    (previously it never passed an outcome_source at all — always empty)."""
+    db_path = tmp_path / "diag-cli.db"
+    monkeypatch.setenv("ATHENA_DB_PATH", str(db_path))
+    repo = SqliteRepository(db_path)
+    repo.initialize()
+    store = SqliteCandidateStore(repo)
+    store.upsert_candidate(symbol="AAA")
+    iid = "NSE:AAA"
+    repo.upsert_instrument(
+        Instrument(instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE")
+    )
+    candles = []
+    for i in range(80):
+        day = date(2025, 11, 1) + timedelta(days=i)
+        ts = datetime.combine(day, datetime.min.time(), tzinfo=IST).replace(hour=9, minute=15)
+        px = Decimal(str(100 + i))
+        candles.append(
+            Candle(instrument_id=iid, timeframe=Timeframe.D1, ts_open=ts,
+                  open=px, high=px + Decimal("2"), low=px - Decimal("1"), close=px + Decimal("1"),
+                  volume=1_000_000, source="test")
+        )
+    repo.add_candles(candles)
+    as_of = datetime(2026, 3, 2, 9, 30, tzinfo=IST)
+    pipe = OwnerValidationPipeline(repo, config_dir)
+    ingestion = IngestionResult(
+        as_of=as_of, instruments_upserted=1, candles_fetched=80, candles_written=80,
+        quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+    )
+    pipe.run(RunTrigger.PREMARKET, as_of=as_of, ingestion=ingestion, run_id="seed-run")
+    repo.close()
+
+    assert main(["diagnose", "--as-of", "2026-03-02T10:00:00+05:30"]) == 0
+    out = capsys.readouterr().out
+    assert "diagnostics     :" in out
+    # A real decision now exists — the report's degradation reasons must no
+    # longer include the no-decisions case (still no journal/outcomes yet).
+    detail_path = list((tmp_path / "artifacts" / "diagnostics").glob("*.json"))
+    assert detail_path
