@@ -2692,4 +2692,103 @@ Fix: new `_resolve_index_candles()` — always tries the configured index instru
 
 ---
 
+---
+
+### Market Intelligence UX track (owner direction, 2026-08-03)
+
+Screenshot-driven audit and correctness/IA pass over the Market Intelligence
+dashboard screen. Presentation and information-architecture only; any fix
+touching a backend calculation corrects it to be internally consistent, it
+does not invent new metrics or policy. Governing plan:
+`docs/design/ATHENA-MARKET-INTELLIGENCE-UX-ROADMAP.md`.
+
+| Milestone | Scope | Gate | Status |
+|---|---|---|---|
+| **MI-UX-0** Design & audit gate | 11 findings across 3 severities from a live screenshot audit; owner sign-off to start with P0 | Owner approval | ✅ Approved (2026-08-03) |
+| **MI-UX-1** P0 correctness fixes | Fix Top Opportunities mid-card clipping, Breadth 0%/WEAK vs. ADV/DEC contradiction, Market Health unavailable-tile prominence | Owner review; no fabricated data | 🔄 Ready for review |
+| **MI-UX-2** Freshness & alert unification | One shared freshness phrasing; real alert treatment for failed runs/blockers | Owner review | ⏳ Planned |
+| **MI-UX-3** Visual consistency & IA | One metric-tile idiom; actionable-first Universe default view; grouped header | Owner review | ⏳ Planned |
+| **MI-UX-4** Polish & release gate | RS label clarity, Quick Actions dedup, Evidence Attribution prominence, full screenshot/regression QA | Owner review after QA evidence | ⏳ Planned |
+
+**Implementation rule:** one MI-UX milestone at a time. MI-UX must never
+create order placement, broker write actions, new signals, or changes to
+ATHENA's analytical engines.
+
+#### MI-UX-1 — P0 correctness fixes (ready for review, 2026-08-03)
+
+Scope completed, with one finding corrected and one re-scoped after live
+verification against the real database rather than trusting the screenshot
+read at face value:
+
+1. **Top Opportunities Today mid-card clipping — confirmed and fixed.** The
+   shared, height-constrained summary band could land its clip boundary
+   mid-row, rendering later sector cards with a visible header and no visible
+   symbol content. `constrainTopOpportunitiesCards()`
+   (`js/09-market-intelligence.js`) now measures the grid's own resolved
+   column count and each card's real rendered height at render time, caps the
+   grid to whole rows only (2 by default), and adds an explicit
+   `+N more opportunities — show all` control for the rest — a card now
+   either renders completely or not at all, never partially. Verified live
+   across three viewport widths (3-column/no cap needed, 2-column/capped with
+   correct hidden count, and post-expand/uncapped), including confirming the
+   expand control correctly reveals the remainder.
+2. **Breadth `0%`/`WEAK` vs. `ADV 384 · DEC 124` — not a real bug, audit
+   finding retracted.** Traced `advance_pct`'s construction
+   (`market_summary_service.py`) and the real persisted run detail directly:
+   `advance_ratio` was `0.7559` (→ "strong", 80 pts), matching the ADV/DEC
+   counts exactly. The screenshot read during the audit was mistaken; no code
+   changed for this finding.
+3. **Market Health "Unavailable" — real root cause found, message enriched.**
+   The persisted run detail showed `institutional_strength` component
+   `points: null` with its own explanation already computed:
+   `"institutional flow session_date 2026-07-22 is stale (age_days=12 >
+   max_age_sessions=3)"` — a stale input file, not a structurally missing
+   feature. `construct_market_health_score()` (`market_health/score.py`) was
+   discarding that specific explanation and returning only "missing required
+   component(s): institutional_strength." It now includes each missing
+   component's own explanation in `unavailable_reason`, so the tooltip and
+   Evidence Attribution line tell the owner *why* and give them something
+   actionable (refresh the institutional flow file) instead of an
+   unexplained permanent-looking gap. This does not change any score,
+   threshold, or classification — only the diagnostic message text, built
+   from data the engine already computes.
+
+Architectural note: presentation and message-text only. No score, threshold,
+regime, decision, or TradePlan value changed; no broker write action added.
+
+Validation note: full suite **1252 passed**. Live-verified against a
+read-only backup of the real database through an isolated local instance
+(separate `db/`, separate port, `ATHENA_SINGLE_USER` bypass for this instance
+only — the real `.env`/session/port were never touched) rather than against
+synthetic data, so the fix is confirmed against genuine persisted run
+detail and genuine grid layout behavior.
+
+**Follow-up — the fix above never actually engaged on the owner's real
+monitor (owner-reported, 2026-08-03, same day).** The first
+`constrainTopOpportunitiesCards()` capped to a flat 2 rows regardless of the
+grid's real column count. On the owner's wide monitor all 5 sector cards
+resolve to a single grid row (`colCount=5`), so `rowsTotal(1) <= maxRows(2)`
+was always true and the function returned immediately without capping
+anything — the *outer* `.market-summary-band` boundary (untouched by that
+early return) kept cutting straight through that one tall row exactly as
+before the fix, reproducing the original bug. Root cause: capping by a
+guessed row count instead of the real remaining space in whichever ancestor
+actually clips. Fixed by measuring `available` directly from
+`cardsEl.closest(".market-summary-band")`'s real remaining boundary and
+walking actual per-row card bottoms (no fixed row-height assumption, since a
+1-symbol vs. 2-symbol sector card differs in height) to find how many whole
+rows genuinely fit — 0 rows is now an honest, valid outcome (clean "+N more"
+button, no heading-only guess) rather than forcing a fixed minimum.
+Re-verified live at the owner's exact reported layout (5-column single row,
+1970×870/1050 viewports): correctly caps to 0 visible rows with an honest
+`+5 more opportunities — show all` control; expanding reveals all 5 cards,
+each showing genuine symbol content (never a bare header), falling back to
+`.market-summary-band`'s own pre-existing scrollbar for the deliberately
+user-requested "show everything" state — the same sanctioned fallback the
+original MARKET_MAIN_MIN_HEIGHT fix already relied on. Also re-verified the
+3-column (no cap needed) and 2-column (mid-size cap) cases still behave
+correctly after the rewrite. Full suite re-run: **1252 passed**.
+
+---
+
 *Status legend: a milestone is "In Progress" (🔄) when actively being designed or built, "Approved" (✅) only when the owner signs off. Never two milestones in flight.*

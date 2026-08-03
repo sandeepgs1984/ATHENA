@@ -1162,6 +1162,73 @@
         `;
     }
 
+    // MI-UX-1 (owner-reported, 2026-08-03): on a shared, height-constrained
+    // summary band, an uncapped card grid let the outer scroll boundary land
+    // mid-row — later cards rendered with a visible header but no visible
+    // symbol content, reading as broken rather than as "scroll for more."
+    // First fix attempt capped to a flat 2 rows regardless of real layout —
+    // wrong on a wide monitor where all 5 cards resolve to a single row: 1
+    // row is not "more than 2," so the cap never engaged, and the *outer*
+    // .market-summary-band boundary (untouched by that cap) kept cutting
+    // straight through that one tall row. The actual guarantee has to be
+    // measured against the real remaining space in whichever ancestor
+    // actually scrolls/clips — never a guessed row count — so it holds
+    // regardless of column count or viewport size.
+    function constrainTopOpportunitiesCards(cardsEl) {
+        const priorExpand = cardsEl.parentElement
+            && cardsEl.parentElement.querySelector(".top-opportunities-expand-btn");
+        if (priorExpand) priorExpand.remove();
+        cardsEl.style.maxHeight = "";
+        cardsEl.style.overflow = "";
+
+        const cards = Array.from(cardsEl.querySelectorAll(".top-opportunities-card"));
+        if (!cards.length) return;
+
+        const clipAncestor = cardsEl.closest(".market-summary-band");
+        if (!clipAncestor) return;
+        const available = clipAncestor.getBoundingClientRect().bottom
+            - cardsEl.getBoundingClientRect().top;
+
+        const colCount = getComputedStyle(cardsEl).gridTemplateColumns
+            .split(" ").filter(Boolean).length || 1;
+        const rowsTotal = Math.ceil(cards.length / colCount);
+        // Row height varies by content (1 vs. 2 symbols per sector), so walk
+        // actual card bottoms rather than assuming a uniform row height.
+        let rowsFit = 0;
+        for (let row = 0; row < rowsTotal; row++) {
+            const rowLastCard = cards[Math.min((row + 1) * colCount, cards.length) - 1];
+            const rowBottom = rowLastCard.getBoundingClientRect().bottom
+                - cardsEl.getBoundingClientRect().top;
+            if (rowBottom > available) break;
+            rowsFit = row + 1;
+        }
+        if (rowsFit >= rowsTotal) return;
+
+        const visibleCount = Math.min(rowsFit * colCount, cards.length);
+        if (visibleCount <= 0) {
+            cardsEl.style.maxHeight = "0px";
+            cardsEl.style.overflow = "hidden";
+        } else {
+            const lastVisibleCard = cards[visibleCount - 1];
+            const capHeight = lastVisibleCard.getBoundingClientRect().bottom
+                - cardsEl.getBoundingClientRect().top;
+            cardsEl.style.maxHeight = `${Math.ceil(capHeight)}px`;
+            cardsEl.style.overflow = "hidden";
+        }
+
+        const hiddenCount = cards.length - visibleCount;
+        const expandBtn = document.createElement("button");
+        expandBtn.type = "button";
+        expandBtn.className = "inspect-btn top-opportunities-expand-btn";
+        expandBtn.textContent = `+${hiddenCount} more opportunit${hiddenCount === 1 ? "y" : "ies"} — show all`;
+        expandBtn.addEventListener("click", () => {
+            cardsEl.style.maxHeight = "";
+            cardsEl.style.overflow = "";
+            expandBtn.remove();
+        });
+        cardsEl.insertAdjacentElement("afterend", expandBtn);
+    }
+
     function renderTopOpportunities(payload) {
         const titleEl = document.getElementById("top-opportunities-title");
         const summaryEl = document.getElementById("top-opportunities-summary");
@@ -1181,6 +1248,11 @@
             titleEl.textContent = "No qualified opportunities today";
             summaryEl.innerHTML = "";
             cardsEl.innerHTML = '<span class="top-opportunities-empty">No WATCH/TRADE symbols qualify in today’s leading sectors yet.</span>';
+            cardsEl.style.maxHeight = "";
+            cardsEl.style.overflow = "";
+            const priorExpand = cardsEl.parentElement
+                && cardsEl.parentElement.querySelector(".top-opportunities-expand-btn");
+            if (priorExpand) priorExpand.remove();
             removedEl.innerHTML = "";
             return;
         }
@@ -1206,6 +1278,7 @@
                 await openDecisionForSymbol(sym);
             });
         });
+        constrainTopOpportunitiesCards(cardsEl);
 
         const removed = (payload && Array.isArray(payload.removed)) ? payload.removed : [];
         removedEl.innerHTML = removed.length

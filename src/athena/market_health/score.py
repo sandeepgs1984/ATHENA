@@ -111,15 +111,19 @@ def construct_market_health_score(
         _score_institutional(config, institutional_flow, as_of=as_of),
         _score_gap_stability(config, gap_stability),
     )
-    missing = [d.name for d in details if d.points is None]
-    if missing:
+    missing_details = [d for d in details if d.points is None]
+    if missing_details:
+        # MI-UX-1 (owner-reported, 2026-08-03): the prior message only named
+        # the missing component ("missing required component(s):
+        # institutional_strength"), forcing the owner to go digging for why.
+        # Each component's own explanation is already computed (e.g. "stale
+        # (age_days=12 > max_age_sessions=3)") — surface it instead of
+        # discarding it, so the reason is actionable at a glance.
+        reasons = "; ".join(f"{d.name}: {d.explanation}" for d in missing_details)
         return MarketHealthScoreBuild(
             score=None,
             components=details,
-            unavailable_reason=(
-                "MarketHealthScore unavailable — missing required component(s): "
-                + ", ".join(missing)
-            ),
+            unavailable_reason=f"MarketHealthScore unavailable — {reasons}",
         )
 
     weights = {

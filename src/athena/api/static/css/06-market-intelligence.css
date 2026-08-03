@@ -2632,6 +2632,14 @@
     gap: var(--space-10);
 }
 
+/* MI-UX-1: shown only when constrainTopOpportunitiesCards() (js/09) caps the
+   grid to whole rows — reveals the remaining rows on demand instead of an
+   ambiguous internal scroll that could land mid-card. */
+.top-opportunities-expand-btn {
+    margin-top: var(--space-10);
+    align-self: flex-start;
+}
+
 .top-opportunities-empty {
     color: var(--text-muted);
     font-size: var(--text-0-7);

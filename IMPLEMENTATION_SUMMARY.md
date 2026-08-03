@@ -6,6 +6,29 @@ status updated on approval.
 
 ---
 
+## MI-UX-1: Market Intelligence P0 correctness fixes (ready for review)
+
+| | |
+|---|---|
+| Completed | 2026-08-03 |
+| Objective | Owner-requested screenshot audit of the Market Intelligence screen surfaced 11 UX findings across 3 severities (see `docs/design/ATHENA-MARKET-INTELLIGENCE-UX-ROADMAP.md`); this milestone fixes the 3 P0 (broken/misleading) findings before any broader redesign |
+| Scope | (1) Top Opportunities Today mid-card clipping — fixed, then corrected same-day after an owner screenshot showed it still happening: `constrainTopOpportunitiesCards()` now measures the real remaining space against `cardsEl.closest(".market-summary-band")` and walks actual per-row card bottoms to find how many whole rows genuinely fit, capping to that (0 is a valid, honest outcome) with an explicit "+N more — show all" control — a card now either renders fully or not at all, on any column count. The first attempt capped to a flat 2 rows, which never engaged on a wide monitor where all 5 cards resolve to a single row (`rowsTotal(1) <= maxRows(2)`), so the outer boundary kept cutting through it exactly as before. (2) Breadth `0%`/`WEAK` contradiction — **retracted**: traced against the real persisted run detail, `advance_pct` correctly derives from the same advances/declines shown (75.6% → "strong"); the original audit misread the screenshot, no code changed. (3) Market Health "Unavailable" — root cause found and message enriched: `institutional_strength` was stale (12 days old vs. a 3-session threshold) in the real data, not structurally missing; `construct_market_health_score()` now includes each missing component's own already-computed explanation in `unavailable_reason` instead of discarding it |
+| Files created | `docs/design/ATHENA-MARKET-INTELLIGENCE-UX-ROADMAP.md` |
+| Files modified | `src/athena/api/static/js/09-market-intelligence.js`, `src/athena/api/static/css/06-market-intelligence.css`, `src/athena/market_health/score.py`, `docs/MILESTONES.md` |
+| Public APIs added | None — `unavailable_reason`'s string content changed; no field/shape change |
+| Tests | Full suite — 1,252 passed both before and after the follow-up correction (no test changes needed; existing `test_market_health_score.py` assertions were substring checks, e.g. `"institutional_strength" in unavailable_reason`, which the enriched message still satisfies) |
+| Coverage | Live-verified against a read-only backup of the real database (`sqlite3 .backup`, never the live file) through an isolated local instance — separate `db/`, separate port 8010, `ATHENA_SINGLE_USER` bypass scoped to that one subprocess's environment only, real `.env`/session/port untouched throughout. After the follow-up correction, specifically re-verified at the owner's exact reported layout (5-column single row, 1970×870/1050) plus re-checked the 3-column and 2-column cases still behave correctly; confirmed expanding reveals all cards with real symbol content, never a bare header. Owner then confirmed the corrected behavior live on the real app (port 8000, real screenshot). Also confirmed the breadth retraction and Market Health root cause directly against the persisted `runs.detail_json` |
+| Architecture compliance | Presentation and diagnostic-message-text only; no score, threshold, regime, decision, or TradePlan value changed; no broker write action added |
+| ADR compliance | None required |
+| Risks discovered | None new. Reconfirms the disk-space risk flagged in the previous entry is now resolved (6+ GiB free after removing the leftover backup file; still trending downward on this machine independent of this session — worth the owner's separate attention) |
+| Technical debt introduced | None |
+| Suggested improvements | MI-UX-2 (freshness/alert unification) and MI-UX-3 (visual consistency/IA) remain planned per the roadmap doc |
+| Remaining work | Owner review of MI-UX-1; MI-UX-2 through MI-UX-4 not started (milestone-at-a-time discipline) |
+| Status | 🔄 Ready for owner review |
+| Branch | feature/live-dashboard |
+
+---
+
 ## Feature: "Updated" timestamp on Top Opportunities Today (ready for review)
 
 | | |
