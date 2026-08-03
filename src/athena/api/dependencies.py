@@ -67,6 +67,7 @@ from athena.api.v1.services.health_service import HealthService
 from athena.api.v1.services.market_history_service import MarketHistoryService
 from athena.api.v1.services.market_summary_service import MarketSummaryService
 from athena.api.v1.services.metrics_service import MetricsService
+from athena.api.v1.services.opportunities_service import OpportunitiesService
 from athena.api.v1.services.ops_service import OpsService
 from athena.api.v1.services.pipelines_service import PipelinesService
 from athena.api.v1.services.portfolio_service import PortfolioService
@@ -241,6 +242,22 @@ def get_market_history_service(request: Request) -> MarketHistoryService:
         freshness_threshold_minutes=freshness_minutes,
         config_dir=_find_repo_root() / "config",
         repo=repo,
+    )
+
+
+def get_opportunities_service(request: Request) -> OpportunitiesService:
+    """Dependency provider for Top Opportunities Today.
+
+    Composes the SAME `MarketHistoryService` construction
+    `get_market_history_service` already builds, rather than a second,
+    divergent one — read-only, no new provider or persistence.
+    """
+    repo = getattr(request.app.state, "sqlite_repo", None)
+    if repo is None:
+        raise RuntimeError("sqlite_repo is required for top opportunities")
+    market_history = get_market_history_service(request)
+    return OpportunitiesService(
+        repo, market_history=market_history, config_dir=_find_repo_root() / "config",
     )
 
 

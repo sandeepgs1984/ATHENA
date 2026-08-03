@@ -345,3 +345,78 @@ class MarketSummaryDTO(BaseModel):
     gap_detail: MarketGapDetailDTO | None = None
     vix: MarketVixSummaryDTO | None = None
     sparklines: MarketSparklinesDTO = Field(default_factory=MarketSparklinesDTO)
+
+
+class OpportunitySymbolDTO(BaseModel):
+    """One qualified symbol surfaced under a leading sector ("Top
+    Opportunities Today"). Every field is read directly from an already-
+    persisted Decision/ScoringResult/ConfidenceAssessment — presentation
+    aggregation only, never a new score or recommendation."""
+
+    model_config = ConfigDict(frozen=True)
+
+    symbol: str
+    instrument_id: str
+    decision_id: str
+    decision_type: Literal["TRADE", "WATCH"]
+    athena_score: Decimal | None = None
+    relative_strength_pct: Decimal | None = None
+    confidence_level: Literal["HIGH", "MEDIUM", "LOW"] | None = None
+    confidence_stars: int | None = None
+    plan_freshness_status: str | None = None
+    plan_freshness_summary: str | None = None
+    change_badge: Literal["NEW", "IMPROVED", "DROPPED"] | None = None
+
+
+class OpportunitySectorDTO(BaseModel):
+    """One leading sector's rank/performance plus its top qualified symbols."""
+
+    model_config = ConfigDict(frozen=True)
+
+    sector: str
+    sector_rank: int
+    sector_change_pct: Decimal | None = None
+    symbols: tuple[OpportunitySymbolDTO, ...] = ()
+
+
+class OpportunityRemovedDTO(BaseModel):
+    """A symbol surfaced yesterday but no longer surfaced today — sector
+    dropped out of the leaders, decision changed, or edged out by a
+    stronger symbol in the same sector. Shown separately since it has no
+    "today row" of its own to attach a badge to."""
+
+    model_config = ConfigDict(frozen=True)
+
+    symbol: str
+    instrument_id: str
+    sector: str
+    last_seen_score: Decimal | None = None
+
+
+class OpportunitiesSummaryDTO(BaseModel):
+    """Market-snapshot header shown above the sector cards."""
+
+    model_config = ConfigDict(frozen=True)
+
+    strongest_sector: str | None = None
+    strongest_sector_change_pct: Decimal | None = None
+    strongest_symbol: str | None = None
+    highest_athena_score: Decimal | None = None
+    average_athena_score: Decimal | None = None
+    qualified_sector_count: int = 0
+    qualified_symbol_count: int = 0
+
+
+class TopOpportunitiesDTO(BaseModel):
+    """Top Opportunities Today (sector-first): the day's best-performing
+    sectors, each contributing its highest-conviction qualified symbols.
+    Presentation-only — computed from already-persisted decisions/scores/
+    confidence/sector-index data; never influences scoring or decisions."""
+
+    model_config = ConfigDict(frozen=True)
+
+    as_of: datetime
+    compared_as_of: datetime | None = None
+    summary: OpportunitiesSummaryDTO
+    sectors: tuple[OpportunitySectorDTO, ...] = ()
+    removed: tuple[OpportunityRemovedDTO, ...] = ()

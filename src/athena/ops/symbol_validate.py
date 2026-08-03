@@ -19,7 +19,7 @@ from athena.data.ingestion import LiveIngestionEngine, build_ingest_validator
 from athena.data.providers import build_market_data_provider
 from athena.data.store.repository import SqliteRepository
 from athena.data.validation import QuarantineRegistry
-from athena.domain.enums import RunTrigger
+from athena.domain.enums import RunTrigger, Timeframe
 from athena.domain.interfaces import MarketDataProvider
 from athena.errors import AthenaError, ConfigError, DataValidationError
 from athena.ops.owner_candidates import (
@@ -93,6 +93,38 @@ def resolve_against_catalog(
     return provider, resolved, unresolved
 
 
+def _index_instrument_needs_refresh(
+    repo: SqliteRepository, instrument_id: str, as_of: datetime, tz: ZoneInfo
+) -> bool:
+    """True if this instrument has no persisted daily candle for `as_of`'s
+    own trading day yet.
+
+    Perf fix (2026-08-03): a single-symbol validate previously always
+    re-ingested every configured index/VIX instrument (10 sector/broad-
+    market indices + VIX, added across config/providers/kite.json's
+    index_instruments by SD-2) across all 3 configured timeframes (daily,
+    5m, 15m) on EVERY call — 36 sequential live historical API calls for
+    what the owner experiences as "validate one symbol." Each historical
+    call is rate-limited to a minimum 0.334s gap
+    (config/providers/kite.json's rate_limit.historical_min_interval_seconds),
+    so this alone cost >12s of pure enforced wait time, before actual
+    network latency — confirmed as the dominant cause of a reported
+    <10s -> 50s+ regression. Regime/market-health/sector-health engines
+    already tolerate one-cycle-stale index data gracefully (UNKNOWN or a
+    same-instrument candle fallback — see OwnerValidationPipeline's own
+    `series = index_candles if index_candles else cs`), and REFRESH cycles
+    keep these indices fresh on their own independent cadence, so skipping
+    a re-fetch when today's daily bar is already present is a safe,
+    conservative trade of at-most-one-cycle staleness for a large latency
+    win — not a correctness change to any engine.
+    """
+    candles = repo.list_candles_recent(instrument_id, Timeframe.D1, limit=1)
+    if not candles:
+        return True
+    latest_date = candles[0].ts_open.astimezone(tz).date()
+    return latest_date < as_of.astimezone(tz).date()
+
+
 def validate_symbols(
     repo: SqliteRepository,
     config_dir: Path,
@@ -138,8 +170,16 @@ def validate_symbols(
     try:
         kite_cfg = load_kite_provider_config(config_dir)
         catalog_ids = {i.instrument_id for i in catalog}
-        for extra in list(kite_cfg.index_instruments) + [kite_cfg.india_vix_instrument]:
-            if extra and extra in catalog_ids and extra not in resolved:
+        for extra in [*kite_cfg.index_instruments, kite_cfg.india_vix_instrument]:
+            if not extra or extra not in catalog_ids or extra in resolved:
+                continue
+            # Perf fix (2026-08-03): only re-ingest an index/VIX instrument
+            # when it's actually stale (no daily candle yet for today) —
+            # see _index_instrument_needs_refresh's own docstring for why
+            # unconditionally re-fetching all of these on every
+            # single-symbol validate was the dominant cause of a reported
+            # <10s -> 50s+ regression.
+            if _index_instrument_needs_refresh(repo, extra, as_of, tz):
                 resolved.append(extra)
     except Exception:
         pass

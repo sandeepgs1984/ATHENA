@@ -6,7 +6,214 @@ status updated on approval.
 
 ---
 
-## M-X10 — Outcome-tagged setups + signal drift monitor (ready for review)
+## Feature: "Updated" timestamp on Top Opportunities Today (ready for review)
+
+| | |
+|---|---|
+| Completed | 2026-08-03 |
+| Objective | Owner request: show the refreshed/updated date-time in the Top Opportunities Today section, so it's visible how current the surfaced data is |
+| Scope | Added a small `Updated <time>` label in the section heading (`#top-opportunities-updated`), populated from the API response's own `as_of` field via `formatDecisionTime()` — the exact same formatter already used for every other "Last Updated"/"Observed" label in this file (Validation Pipeline's funnel, Index Leadership's session line, run history, etc.), so the display format is consistent with the rest of the app. Updates automatically on every load of this section: initial page load, the 60s background auto-refresh, and the manual refresh button — all three already call `renderTopOpportunities()`, so no new call site was needed, only reading one more field off the payload already being rendered |
+| Files created | None |
+| Files modified | `src/athena/api/static/index.html`, `src/athena/api/static/js/09-market-intelligence.js`, `src/athena/api/static/css/06-market-intelligence.css`, `IMPLEMENTATION_SUMMARY.md` |
+| Public APIs added | None — `TopOpportunitiesDTO.as_of` already existed and was already being sent, just not displayed until now |
+| Tests | Full suite — 1,252 passed (no Python changed) |
+| Coverage | Code-reviewed against the ~10 other identical `formatDecisionTime(x.as_of)` call sites already proven working in this same file; live browser verification was skipped for this specific change — see Risks below |
+| Architecture compliance | Pure presentation addition, reads an already-sent field, no scoring/decision/contract change |
+| ADR compliance | None required |
+| Risks discovered | **Unrelated to this change, found while verifying it**: the owner's Mac was at 98% disk capacity (9.7 GiB free of 460 GiB) during this session, which caused every shell command to fail with `ENOSPC` mid-verification. Traced to a single leftover ~304 MB database backup this AI had created earlier in the session (`athena_pre_index_fix_backup.db`, kept intentionally as a rollback point after an earlier schema-index change) — deleted once found. That one file was not nearly enough to explain the near-full disk on its own; the owner should check for other large/stale files independent of this session. Because disk space was this tight, live browser verification of this specific change (which would have required another ~304 MB throwaway database copy) was skipped in favor of a code review against already-proven identical patterns, to avoid risking another `ENOSPC` — flagging this explicitly since it's a deviation from this session's usual practice of live-verifying every dashboard change |
+| Technical debt introduced | None |
+| Suggested improvements | Owner should investigate the near-full disk independent of this session — 9.7 GiB free on a 460 GiB drive is a real operational risk (app crashes, failed writes) beyond anything this repo controls |
+| Remaining work | Owner review; owner should also free up disk space |
+| Status | 🔄 Ready for owner review |
+| Branch | feature/live-dashboard |
+
+---
+
+## Fix pass: Validation Pipeline / Universe squeeze, take 2 — firm floor instead of a vh guess (ready for review)
+
+| | |
+|---|---|
+| Completed | 2026-08-03 |
+| Objective | Owner shared a live screenshot showing Validation Pipeline truncated (its "Last Updated"/"View Details" row cut off entirely) and Universe showing only 2 symbol rows — the prior fix pass's 58vh cap on the summary band wasn't enough once the just-added per-symbol Validate/Go-to-Decision action row made every Top Opportunities card taller again |
+| Scope | Root cause: the prior fix capped `.market-summary-band` at a flat `max-height: 58vh` and let main (Validation Pipeline + Universe) take whatever remained — workable at the time, but with no floor, main's share keeps shrinking every time the summary band's content grows again (Index Leadership → Top Opportunities Today → its action-button row), and a flat vh percentage has no way to guarantee a usable minimum. Replaced the guess with a firm guarantee: `.market-workstation`'s "main" grid row is now `minmax(480px, 1fr)` (was `minmax(0, 1fr)`) — main can never shrink below 480px, full stop. `.market-summary-band`'s `max-height` is now derived from that same number via `calc(100vh - 120px - 480px - var(--space-12))` instead of a flat vh guess, so it always gets exactly whatever's left above main's guaranteed floor, and scrolls internally for the rest — this makes the split self-adjusting: on a tall screen the calc'd max-height comfortably exceeds the summary band's actual content height (no scrollbar appears at all), and on a short screen main still gets its full 480px while summary scrolls. Future growth in Index Leadership/Top Opportunities no longer needs another manual re-tune of this split |
+| Files created | None |
+| Files modified | `src/athena/api/static/css/06-market-intelligence.css`, `IMPLEMENTATION_SUMMARY.md` |
+| Public APIs added | None — pure CSS layout fix |
+| Tests | Full suite — 1,252 passed (no Python changed). No CSS/JS automated test exists in this repo; verified visually in an isolated preview instead |
+| Coverage | Verified against a read-only copy of the real production database/config in an isolated preview server (never the owner's live server) at both 1800x900 and 1366x900 (the latter closely matching the owner's reported window size): confirmed Validation Pipeline now renders its complete funnel + latest/blocker + message + "Last Updated"/"View Details" row (previously cut off), and Universe shows 6-7 full symbol rows with search and Validate All fully visible (previously only 2 rows). Confirmed via `getComputedStyle`/`scrollHeight` that the summary band's calc'd max-height (288px at 900px viewport height) is exactly `100vh - 120px - 480px - gap`, and that it correctly becomes scrollable to reach the rest of its content rather than squeezing main further |
+| Architecture compliance | Pure CSS layout fix, no markup change, no scoring/decision/contract change |
+| ADR compliance | None required |
+| Risks discovered | This is the second squeeze regression from the same root cause (an unbounded-growth summary band sharing a fixed-height viewport with main) in as many fix passes — the calc()-derived floor should be durable against further growth of Index Leadership/Top Opportunities, but if a future feature adds substantial height to the RIGHT rail (`.market-side-rail`) or the main column itself needs more real estate, revisit the 480px constant rather than re-introducing a flat vh split |
+| Technical debt introduced | None |
+| Suggested improvements | If 480px ever proves too tight for a future Validation Pipeline/Universe addition, raise the one constant (appears twice — grid-template-rows and the calc()) rather than reintroducing a separate vh-based guess |
+| Remaining work | Owner review |
+| Status | 🔄 Ready for owner review |
+| Branch | feature/live-dashboard |
+
+---
+
+## Feature: Validate + Go-to-Decision actions on Top Opportunities Today symbol cards (ready for review)
+
+| | |
+|---|---|
+| Completed | 2026-08-03 |
+| Objective | Owner request: add a validate button or go-to-decision action for the symbols shown in Top Opportunities Today, so a symbol surfaced there can be acted on directly instead of requiring a manual lookup elsewhere on the page |
+| Scope | Added both actions per symbol row, reusing the app's existing, already-proven functions rather than any new data path: a bolt-icon "Validate" button calls the same `validateSymbolsNow([symbol], { refreshDecisions: true, showReport: true })` used by the Universe table's own validate action (real ingest + rescore against the live provider, followed by the same Validation Report modal with its Open decision/Inspect trace/Save/Re-validate actions); a brain-icon "Go to Decision" button calls the same `openDecisionForSymbol(symbol)` used by the Decisions board's own "open decision" action (switches to Decisions & Trace, selects that instrument, shows a toast if it's not on the current board). Confirmed via `OpportunitySymbolDTO` that Top Opportunities already carries `instrument_id`/`decision_id`, but both reused functions key off the plain symbol string like their existing call sites, so no DTO change was needed. Styled as a compact two-icon row (`.top-opportunities-symbol-actions`, 26px `.inspect-btn`s) below the confidence stars, matching the card's already-established density |
+| Files created | None |
+| Files modified | `src/athena/api/static/js/09-market-intelligence.js`, `src/athena/api/static/css/06-market-intelligence.css`, `IMPLEMENTATION_SUMMARY.md` |
+| Public APIs added | None — reuses `POST /market/candidates`, `POST /market/validate`, and the existing Decisions & Trace workspace load, all already exposed and used elsewhere |
+| Tests | Full suite — 1,252 passed (no Python changed). No CSS/JS automated test exists in this repo; verified live in an isolated preview instead |
+| Coverage | Verified against a read-only-sourced copy of the real production database/config in an isolated preview server (never the owner's live server): clicked "Go to Decision" for SONATSOFTW — landed on its full Decision Brief (Score 80.6, Confidence 91.7%, matching plan) in Decisions & Trace; clicked "Validate" for TCS — button entered the spinner state, a real ingest+rescore ran against the (throwaway-copy) database, and the standard Validation Report modal opened showing a live BUY verdict (Score 79.2, Plan FRESH · expires in 5h 59m) |
+| Architecture compliance | Pure frontend wiring onto two existing, unmodified backend actions — no new endpoint, no scoring/decision change |
+| ADR compliance | None required |
+| Risks discovered | None |
+| Technical debt introduced | None |
+| Suggested improvements | None |
+| Remaining work | Owner review |
+| Status | 🔄 Ready for owner review |
+| Branch | feature/live-dashboard |
+
+---
+
+## Feature: manual + 60s background auto-refresh for Index Leadership / Top Opportunities Today (ready for review)
+
+| | |
+|---|---|
+| Completed | 2026-08-03 |
+| Objective | Owner request: add a manual refresh option to both Index Leadership and Top Opportunities Today, plus a 60-second background auto-refresh for both |
+| Scope | Auto-refresh for Index Leadership already existed but was undocumented as a general pattern: `startTickerRefresh()` (`03-app-shell.js`) already polls `loadMarketTicker()` + `loadIndexLeadership()` every 60s while Market Intelligence (or Decisions & Trace, which shares the header ticker) is the active tab — started on tab-switch, stopped on tab-leave, via the existing `TICKER_REFRESH_INTERVAL_MS = 60000` constant. Top Opportunities Today had no such polling. Extended the same interval callback to also call `loadTopOpportunities()` under the identical `state.activeTab === "market"` gate — one shared 60s tick now refreshes the ticker, Index Leadership, and Top Opportunities together, no second timer. Added a manual refresh affordance to both sections: a small icon-only button (`.mi-refresh-btn`, reusing existing design tokens/`.symbols-icon-btn` visual language at a more compact 24px to fit these dense header rows) next to "View all indices" in the Index Leadership ribbon, and one next to the "Top Opportunities Today" heading (pushed flush right via `margin-left: auto`). Both call the exact same `loadIndexLeadership()`/`loadTopOpportunities()` functions the background tick and initial page load already use — no new data path. Clicking spins the icon (`fa-spin`) and disables the button for the duration of the request, then restores both — mirrors the pattern already used for spinner buttons elsewhere in this file, but using the real, CSS-backed `fa-spin` class rather than the pre-existing `index-leadership-retry` button's `is-loading` class, which was found to have no matching CSS rule anywhere in the codebase (a dormant, no-op class from an earlier milestone — left as-is since fixing that dormant modal-retry button wasn't in scope, but not copied into this new code) |
+| Files created | None |
+| Files modified | `src/athena/api/static/index.html`, `src/athena/api/static/css/06-market-intelligence.css`, `src/athena/api/static/js/03-app-shell.js`, `src/athena/api/static/js/09-market-intelligence.js`, `IMPLEMENTATION_SUMMARY.md` |
+| Public APIs added | None — reuses the existing `GET /market/index-intelligence` and `GET /market/opportunities` endpoints; presentation/timing only |
+| Tests | Full suite — 1,252 passed (no Python changed). No CSS/JS automated test exists in this repo; verified in an isolated preview instead |
+| Coverage | Verified against a read-only copy of the real production database/config in an isolated preview server (never the owner's live server): confirmed both buttons exist, disable and spin their icon immediately on click and clear both states once the request resolves; confirmed via network-request counts before/after a real ~65-second wall-clock wait (no manual interaction) that both `GET /market/opportunities` and `GET /market/index-intelligence` fire new automatic requests together on the background tick, exactly as coded |
+| Architecture compliance | Pure frontend polling/UI addition — no new data path, no scoring/decision/contract change. Read-only market observations only, matching the existing ticker auto-refresh's own documented scope (deliberately excludes the decisions list/briefing, whose refresh would reset scroll position/selection) |
+| ADR compliance | None required |
+| Risks discovered | None new. Noted in passing: the pre-existing `index-leadership-retry` modal button's `is-loading` class has no CSS backing it (dormant/no-op) — out of scope to fix here, flagged for a future pass if that modal's retry-state visibility is ever reported as an issue |
+| Technical debt introduced | None |
+| Suggested improvements | If a future section is added to this same auto-refresh tick, prefer extending this one shared interval over adding a second timer, to keep background polling on one clock |
+| Remaining work | Owner review |
+| Status | 🔄 Ready for owner review |
+| Branch | feature/live-dashboard |
+
+---
+
+## Fix pass: Market Intelligence page polish — colors, sector-extreme alignment, layout squeeze (ready for review)
+
+| | |
+|---|---|
+| Completed | 2026-08-03 |
+| Objective | Owner confirmed the EXPIRED fix works after restarting the live server, then flagged a follow-on set of issues from the same live page: leading/lagging sector percentage values still not aligned properly, a request to color-code important values across the ribbon and Top Opportunities cards for readability, and a request to fix Validation Pipeline/Universe getting squeezed for space now that Index Leadership + Top Opportunities Today sit above them — asked for all of it "prod-ready" |
+| Scope | **Alignment**: the prior fix pass only addressed the four broad-index labels; `.index-sector-extreme` (Leading/Lagging sector) sizes its name/percentage split independently per box (`grid-template-columns: minmax(0, 1fr) auto`), so a short name ("NIFTY IT") and a long one ("NIFTY ENERGY") pushed their percentage values to different, uneven x-positions — confirmed via exact bounding-box measurement in an isolated preview. Fixed by giving the percentage a shared minimum-width column (`minmax(58px, auto)`) and right-aligning it (`text-align: right`), so both values now sit flush against their own column's right edge regardless of name length (verified: both `gapFromRightEdge` = 0). **Colors**: found the real root cause of "the ribbon looks flat, nothing is colored" while investigating — `.index-observation.positive/.negative`, `.index-sector-extreme em.positive/.negative`, and `.index-membership.is-incomplete` all referenced undefined CSS custom properties (`--success-color`, `--danger-color`, `--warning-color` — the actual tokens in `00-tokens.css` are `--success`/`--danger`/`--warning`, no `-color` suffix), so every intended green/red/amber in the Index Leadership ribbon had been silently rendering as plain text color since whichever milestone first wrote it. Fixed all 5 references to the correct token names — confirmed both ribbon values and the Leading/Lagging percentages now render the intended colors. Separately added real color-coding to Top Opportunities cards that had none: relative strength (RS) now colors green/red by sign (reusing the `--success`/`--danger` pattern already used for sector-change), and the plan-freshness value now reuses the app's own existing `.plan-freshness-badge.tone-{fresh,aging,stale,expired}` pill component (already used on the Decision Brief page) instead of plain uppercase text — same visual language across the app, zero new color rules needed for freshness. **Layout squeeze**: `.market-workstation`'s grid is a fixed `height: calc(100vh - 120px)` with the summary band sized `auto` and the main row (Validation Pipeline + Universe) taking whatever's left (`minmax(0, 1fr)`) — as the summary band grew (Index Leadership, then Top Opportunities Today), main's share kept shrinking with no floor, visibly cramping both panels. Fixed by capping `.market-summary-band` at `max-height: 58vh` with its own `overflow-y: auto` — the same internal-scroll pattern `.market-universe-scroll` already uses — so main now keeps a protected ~42vh regardless of how many sectors/opportunities render above it; added a matching override inside the existing `max-width: 1100px` mobile breakpoint (which already drops the whole page to natural scroll) so the internal scrollbox doesn't create a confusing nested scrollbar there |
+| Files created | None |
+| Files modified | `src/athena/api/static/css/06-market-intelligence.css`, `src/athena/api/static/js/09-market-intelligence.js`, `IMPLEMENTATION_SUMMARY.md` |
+| Public APIs added | None — pure CSS/markup-class polish, no backend or DTO change |
+| Tests | Full suite — 1,252 passed (no Python changed). Ruff clean (no Python touched by this pass). No CSS/JS automated test exists in this repo; verified visually and via DOM/`getComputedStyle` measurement in an isolated preview instead |
+| Coverage | Verified against a read-only copy of the real production database/config in an isolated preview server (non-default port, throwaway test credential, never the owner's live server): confirmed both sector-extreme percentages now sit flush against their own column's right edge (0px gap) at a wide 1800px viewport; confirmed the 5 corrected color tokens render actual green/amber/red (`getComputedStyle` returned `rgb(0, 230, 118)` for both Leading and Lagging, previously unstyled); confirmed RS values color green/red by sign and freshness renders as a colored pill across multiple real Top Opportunities cards; confirmed Validation Pipeline (full funnel + latest/blocker/message/last-updated) and Universe (8 table rows, search, Validate All) both render complete and uncramped at 1366px after the scroll-boundary fix, versus visibly squeezed before it |
+| Architecture compliance | Pure CSS/class-name polish and one internal-scroll boundary, no markup restructuring, no scoring/decision/contract change |
+| ADR compliance | None required |
+| Risks discovered | The 5 broken color-token references had shipped silently in an earlier (pre-this-session) Index Leadership milestone and gone unnoticed because muted/uncolored text still reads fine at a glance — a lesson that color-dependent UI deserves at least a manual visual check against the design tokens file, since a typo'd CSS variable produces no error, no warning, just quietly-wrong-looking output |
+| Technical debt introduced | None |
+| Suggested improvements | If Top Opportunities Today or Index Leadership keep growing, consider whether 58vh is still the right cap — revisit if a future owner report says the summary band itself now feels too cramped to be worth scrolling within |
+| Remaining work | Owner review of this polish pass |
+| Status | 🔄 Ready for owner review |
+| Branch | feature/live-dashboard |
+
+---
+
+## Fix pass: Index Leadership ribbon value misalignment (ready for review)
+
+| | |
+|---|---|
+| Completed | 2026-08-03 |
+| Objective | Owner shared a live production screenshot showing plan freshness still reading EXPIRED after the prior fix pass, plus a new complaint: "index leadership strip values are not aligned properly" — asked for both to be checked and fixed prod-ready |
+| Scope | The EXPIRED complaint traced to the owner's live `athena serve` process not having picked up the already-fixed source (Python does not hot-reload on edit) — re-verified the fix itself is correct by running an isolated preview server against a throwaway copy of the real production database/config (never the owner's live port-8000 process) and confirming every TRADE card now reads FRESH; no further code fix needed there, just a process restart to pick up the already-committed-in-working-tree fix. The alignment complaint was real and pre-existing (confirmed via `git diff --stat` that none of this session's earlier changes touched `.index-leadership-*` markup or CSS): `.index-observation-label` (`06-market-intelligence.css`) allowed text to wrap (`overflow-wrap: anywhere`, no `white-space: nowrap`) inside a `minmax(76px, 1fr)` grid column (`.index-leadership-broad`). At realistic laptop widths (reproduced at 1366px, one of the most common screen widths), "NIFTY MIDCAP 100" — the longest of the four broad-index labels — wrapped onto two lines while its three siblings ("NIFTY 50", "NIFTY BANK", "NIFTY NEXT 50") stayed on one, pushing that one column's value 6px lower than the other three and breaking the row's baseline alignment. Confirmed via exact `getBoundingClientRect()` measurements before (value tops: 325/325/325/331) and after (331/331/331/331) the fix. Fixed by making the label `white-space: nowrap` with `overflow: hidden; text-overflow: ellipsis` — labels now truncate gracefully instead of wrapping, so all four columns stay single-line and baseline-aligned at any width; confirmed no regression at a wide 1800px viewport (no label truncates when there's room) |
+| Files created | None |
+| Files modified | `src/athena/api/static/css/06-market-intelligence.css`, `IMPLEMENTATION_SUMMARY.md` |
+| Public APIs added | None — pure CSS fix, no markup/DOM structure or backend change |
+| Tests | Full suite — 1,252 passed (no Python changed by this fix). Ruff clean. No CSS-level automated test exists in this repo; verified visually and via DOM measurement in an isolated browser session instead |
+| Coverage | Verified against real production data (a read-only copy of the real `db/athena.db`) in an isolated preview server (non-default port, throwaway test credential, never the owner's live server): reproduced the wrap/misalignment at 1366px before the fix, confirmed pixel-exact alignment after, and confirmed no truncation regression at 1800px. Also re-confirmed the EXPIRED fix from the prior pass is correct in isolation — all TRADE cards read FRESH |
+| Architecture compliance | Pure CSS fix, no markup, scoring, decision, or contract change |
+| ADR compliance | None required |
+| Risks discovered | The owner's live server was still running the pre-fix EXPIRED code because a long-running Python process doesn't reload edited source — needs an explicit restart to pick up any of this session's fixes. Separately, `dashboard.css`'s child `@import`ed stylesheets (e.g. this file) carry no cache-busting query string of their own (only the top-level `dashboard.css?v=...` does), so a browser that already cached an old copy of a child CSS file may not fetch the new one until a hard refresh or its heuristic cache lifetime expires — noticed only because it affected this session's own verification browser, not reported by the owner; worth a future cache-busting pass on the `@import` list if stale-CSS-after-deploy becomes a recurring real complaint |
+| Technical debt introduced | None |
+| Suggested improvements | Consider adding a version query string to each `@import url(...)` in `dashboard.css` (or a build-time cache-buster) so child CSS edits take effect on next load without requiring a hard refresh |
+| Remaining work | Owner needs to restart the live `athena serve` process to pick up this fix and the prior EXPIRED fix; owner review of both fixes |
+| Status | 🔄 Ready for owner review |
+| Branch | feature/live-dashboard |
+
+---
+
+## Fix pass: Top Opportunities Today plan freshness always showed EXPIRED (ready for review)
+
+| | |
+|---|---|
+| Completed | 2026-08-03 |
+| Objective | Owner shared a live production screenshot of the (already-approved) Top Opportunities Today section: every single TRADE symbol's plan-freshness badge read EXPIRED, and asked whether all values on the symbol card are accurate |
+| Scope | Confirmed it was a real bug, not stale data: `OpportunitiesService._build_today_groups()` computed plan freshness against `datetime.combine(today, time(15, 30), tzinfo=timezone.utc)` — a hardcoded stand-in, not the real `as_of` the method actually received. 15:30 UTC is 21:00 IST, well past any TradePlan's `valid_until` (always within the trading session), so every TRADE decision's plan looked expired regardless of how fresh it actually was — confirmed by reproducing it directly against the real production database (freshness always EXPIRED) before touching anything, then re-confirming FRESH after the fix. Root cause was two related mistakes: (1) `_build_today_groups` never received the real `as_of` at all, only a bare `date`; (2) "today" itself was taken from a raw UTC `.date()` rather than the market-timezone (IST) calendar date, a latent second bug that could misclassify decisions near the UTC/IST midnight boundary even after fixing (1). Fixed both: `get_top_opportunities()` now resolves the market timezone via `load_config(...).market.timezone`, uses it for both the `as_of` default and the "today" calendar date, and threads the real `as_of` datetime through to `_build_today_groups` for the actual freshness computation. While verifying, also checked the card's other fields (confidence stars, relative strength, sector ranking) against real production data — all computing correctly and varying with real underlying values, not similarly stuck |
+| Files created | None |
+| Files modified | `src/athena/api/v1/services/opportunities_service.py`, `tests/api/v1/test_opportunities_service.py`, `IMPLEMENTATION_SUMMARY.md` |
+| Public APIs added | None — bug fix only, `GET /market/opportunities`'s response shape is unchanged |
+| Tests | Full suite — 1,252 passed (1 new: a regression test seeding a real TRADE decision and asserting its plan freshness reads FRESH when queried at the exact moment of creation — this test fails against the pre-fix code, reproducing the reported bug) |
+| Coverage | Reproduced directly against the real production database before fixing (freshness always EXPIRED regardless of how recently a decision was validated), then re-verified FRESH after the fix with the same real data. Separately spot-checked confidence stars against real, varying `confidence.overall` values (81-95 range) to confirm the "all 5 stars" pattern visible in the screenshot was a genuine coincidence of the specific top-2-per-sector picks that day, not a second rounding bug |
+| Architecture compliance | Bug fix only, no new behavior beyond correcting the freshness calculation to use real time. No provider, broker, order, scoring, decision, or frozen-contract change |
+| ADR compliance | None required |
+| Risks discovered | This bug shipped with the original Top Opportunities Today milestone and was only caught via real owner usage after approval — none of that milestone's own tests asserted a specific `plan_freshness_status` value, only that the field was populated. The new regression test closes that gap |
+| Technical debt introduced | None |
+| Suggested improvements | None beyond the regression test already added |
+| Remaining work | Owner review of this fix |
+| Status | 🔄 Ready for owner review |
+| Branch | feature/live-dashboard |
+
+---
+
+## Fix pass: symbol validation and other API latency regression (ready for review)
+
+| | |
+|---|---|
+| Completed | 2026-08-03 |
+| Objective | Owner reported symbol validation had regressed from finishing under 10 seconds to over 50 seconds, "and other APIs as well" — asked for a full audit of ATHENA's loading times and a fix |
+| Scope | Profiled directly against the real production `db/athena.db` (read-only first) rather than guessing — then confirmed the owner-supplied screenshot of a real, live "Validating RKFORGE… 50s elapsed… Ingesting quotes and recomputing the decision" was a DIFFERENT bottleneck (live Kite ingestion) than the first three root causes found (database query performance), and traced that too. **Root cause #1**, confirmed via `EXPLAIN QUERY PLAN`: `SqliteRepository.list_runs(limit=N)` called with no `trigger` filter — used by `OwnerValidationPipeline._last_full_universe_summary()` (every single-symbol validate), `CandidatesService._universe_verdicts()`/candidates listing, the dashboard's pipeline-runs list, `MarketSummaryService`, `PlaybookDiagnosticsService`, and `BriefingDispatcher` — had no index usable for its `ORDER BY started_ts DESC, run_id DESC`, forcing a full "SCAN runs" that materializes every row's `detail_json` (some blobs now run 5-6 MB, as the universe size and per-instrument report richness — VWAP/confluence/etc. — has grown) just to sort and take the top N. Measured ~650-870ms for `limit=50` before a fix, ~7-9ms after adding `idx_runs_started_ts ON runs(started_ts DESC, run_id DESC)` (`src/athena/data/store/schema.py`) — an ~80x speedup, applied to the real database via the same idempotent `repo.initialize()` every normal app startup already runs (a full backup was taken first as a precaution). **Root cause #2**, found re-profiling the recently-added Top Opportunities Today endpoint (now on the Market Intelligence page's hot load path): `OpportunitiesService._qualified_rows_in_sector()` (now `_qualified_decisions_by_sector()`) re-scanned `list_decisions(limit=2000)` and called `get_instrument()` per decision from scratch for every candidate sector (up to ~19 real sector labels, x2 for the day-over-day diff) — an O(sectors x decisions) redundant rescan — refactored to one O(decisions) pass building an instrument-to-sector map via one `list_instruments()` call. **Root cause #3**: `_fetch_report()` re-parsed the same multi-MB `runs.detail_json` blob once per qualifying decision rather than once per unique `run_id` — added a per-request cache keyed by `run_id`. Combined, `OpportunitiesService.get_top_opportunities()` dropped from ~4.3-4.7s to ~0.26s (~17x). **Root cause #4 — the dominant one for the owner's specific "symbol validation" complaint, found only after the owner shared a live screenshot showing the delay was actually in "Ingesting quotes," not in scoring**: `ops/symbol_validate.py`'s single-symbol validate path unconditionally appends every configured index/VIX instrument (`config/providers/kite.json`'s `index_instruments` — 10 sector/broad-market indices, expanded from 2 by SD-2 earlier this session, + `INDIA VIX`) to the ingest list on **every** call, regardless of whether their data is already fresh. With 3 configured timeframes (daily, 5m, 15m) per instrument, that's 12 instruments x 3 = 36 sequential live historical Kite API calls per single-symbol validate, each gated by `rate_limit.historical_min_interval_seconds` (0.334s) — confirmed via `time.sleep`-based enforcement in `kite_transport.py` — for >12 seconds of pure enforced wait time alone, before real network latency, closely matching the reported <10s → 50s+ regression. Added `_index_instrument_needs_refresh()` (`src/athena/ops/symbol_validate.py`): skip re-ingesting an index/VIX instrument when it already has a daily candle for `as_of`'s own trading day — regime/market-health/sector-health engines already tolerate one-cycle-stale index data gracefully, and REFRESH cycles keep these fresh on their own independent cadence anyway. Verified against the real production database: right now, all 11 configured index/VIX instruments already have today's daily candle (a REFRESH cycle ran earlier), so this drops a single-symbol validate's historical API call count from 36 to 3 (12x fewer) |
+| Files created | `tests/ops/test_symbol_validate.py` |
+| Files modified | `src/athena/data/store/schema.py`, `src/athena/api/v1/services/opportunities_service.py`, `src/athena/ops/symbol_validate.py`, `tests/data_layer/test_repository.py`, `IMPLEMENTATION_SUMMARY.md` |
+| Public APIs added | None — pure performance fix, no behavior change to any request/response contract |
+| Tests | Full suite — 1,251 passed (6 new: 2 index-exists/query-plan-avoids-full-scan regression tests in `tests/data_layer/test_repository.py`; 4 `_index_instrument_needs_refresh` tests in `tests/ops/test_symbol_validate.py` covering no-data/fresh/stale/most-recent-candle-wins cases). Ruff clean |
+| Coverage | Verified end-to-end against the real production database at every step (read-only profiling first, confirmed hypotheses via `EXPLAIN QUERY PLAN` and direct timing before touching anything): `list_runs(limit=50)` 650-870ms → 7-9ms; `OwnerValidationPipeline._last_full_universe_summary()` confirmed at ~36ms after the fix; `OpportunitiesService.get_top_opportunities()` 4.3-4.7s → ~0.26s; the index/VIX staleness check run against the real database directly, confirming it would reduce a validate's historical API calls from 36 to 3 right now. A full database backup was taken before applying the index to the real db |
+| Architecture compliance | Pure infrastructure/performance fix. No provider, broker, order, scoring, decision, or frozen-contract change. The new index is additive (`CREATE INDEX IF NOT EXISTS`) — no data migration, no schema-version bump needed. The ingestion-scope fix is conservative (skips re-fetch only when a genuine freshness signal — today's own daily candle — already exists) and doesn't change what data any engine consumes when it actually runs, only when a already-fresh index is redundantly re-fetched |
+| ADR compliance | None required — an index addition and two algorithmic/scope fixes to already-approved (this session's own) code, not a contract or architecture change |
+| Risks discovered | The real, underlying growth driver behind root causes #1-3 — `runs.detail_json` blobs reaching 5-6 MB for full-universe REFRESH cycles — isn't itself fixed by this pass (still large, just no longer re-parsed redundantly or scanned without an index). Root cause #4's staleness check is deliberately coarse (whole-day granularity, daily-candle-only signal) — a validate right after midnight before the first REFRESH cycle of the day would still trigger a full 36-call re-ingestion once, which is correct/expected, not a bug |
+| Technical debt introduced | None |
+| Suggested improvements | Consider, as a separate future pass: (1) whether `runs.detail_json`'s full-universe payload could be slimmed or split per-instrument to cap blob growth at the source; (2) applying the same run-detail-cache-per-request pattern to any other service found doing per-decision `get_run_detail()` calls in a loop; (3) whether the same staleness-gating principle should extend to intraday (5m/15m) index refresh specifically, rather than only the coarser daily-candle signal used here, if index intraday data is found to matter for a same-day validate's scoring in practice |
+| Remaining work | Owner review of this implementation |
+| Status | 🔄 Ready for owner review |
+| Branch | feature/live-dashboard |
+
+---
+
+## Top Opportunities Today (approved)
+
+| | |
+|---|---|
+| Completed | 2026-08-03 |
+| Objective | Owner request (not on the pre-vetted Intraday Edge Program backlog): a dedicated "Top Opportunities Today" dashboard section that automatically surfaces the highest-conviction ATHENA-qualified symbol(s) from each of the day's best-performing sectors, refined during design review into a fuller "trader's cockpit" (revised within-sector ranking, a confidence indicator, a market-summary header, and a day-over-day What's New diff), all still presentation-only |
+| Scope | Design-checked first via research into what already existed: sector performance wasn't ranked anywhere (`SectorHealthEngine` is deliberately descriptive-only), but the real numeric change_pct per sector index already exists in `MarketHistoryService.index_intelligence()`, joinable via SD-2's `sector_index_mapping.json` — no new computation needed. Built `OpportunitiesService` (`src/athena/api/v1/services/opportunities_service.py`): ranks sectors by real `change_pct`, mirrors `OwnerValidationPipeline._qualified_from_repo`'s own dedupe-to-newest-same-day-decision logic scoped per sector, and — per design-review refinement — ranks symbols within a sector by composite score → relative strength vs. sector → plan freshness → decision type (not decision-type-first), taking the top 2 per sector across the top 5 sectors, skipping any sector with zero qualified symbols and filling from the next-ranked one. Confidence (stars + label) reuses `ConfidenceEngine`'s already-computed `confidence.level`/`overall` from the persisted `decision_reports` — zero new scoring. Relative strength reuses `instrument_quote()` minus the sector's `change_pct` (the same subtraction IX-7 already does against the whole-market index). Plan freshness replicates M-X3's exact arithmetic (`DecisionsService.get_trade_plan_freshness`) directly against the `Decision` object already in hand, avoiding a redundant provider lookup. The day-over-day "What's New" diff (NEW/IMPROVED/DROPPED/removed) required no new persistence: it reruns the identical selection logic with `as_of` pinned to the most recent PRIOR day that has real decisions (found by querying, not assumed via calendar), using the same real historical candles/decisions already in the database — the same "replay against real history" principle M-X9 established. New read-only `GET /market/opportunities` endpoint (`src/athena/api/v1/routers/market.py`), matching the DI/response-envelope pattern of the existing `index-intelligence`/`candidates` endpoints. New dashboard section (`index.html`, `js/09-market-intelligence.js`, `css/06-market-intelligence.css`) placed beside the existing Index Leadership ribbon |
+| Files created | `src/athena/api/v1/services/opportunities_service.py`, `tests/api/v1/test_opportunities_service.py`, `tests/api/v1/test_opportunities_router.py` |
+| Files modified | `src/athena/api/v1/dtos/market.py`, `src/athena/api/v1/routers/market.py`, `src/athena/api/dependencies.py`, `src/athena/api/static/index.html`, `src/athena/api/static/js/09-market-intelligence.js`, `src/athena/api/static/css/06-market-intelligence.css`, `IMPLEMENTATION_SUMMARY.md` |
+| Public APIs added | `GET /api/v1/market/opportunities` (query params `sector_count` default 5, `symbols_per_sector` default 2) — read-only, no side effects |
+| Tests | Full suite — 1,245 passed (13 new: 11 `OpportunitiesService` tests covering sector ranking order, empty-sector-skip-and-fill-from-next, the 5-sector/2-symbol cap, no-duplicate-sector/symbol, market-summary aggregation, the day-over-day NEW/IMPROVED/DROPPED/removed diff including the "no prior day exists yet" case, confidence-star derivation bounds, and input validation; 2 router-level tests for the endpoint's auth gate and response shape). Ruff clean |
+| Coverage | Verified at three levels: unit/integration tests against a controlled synthetic repo (including seeding real decisions the normal way via `OwnerValidationPipeline`, matching this session's established test style); and, separately, a full real-browser verification — an isolated preview server pointed at a throwaway seeded database and config (never the owner's real `.env`/db/config), logged in with a locally-generated throwaway test credential, confirming the section renders correctly end-to-end: sectors ranked by real performance, a zero-qualified-symbol sector correctly skipped (falling through to the next-ranked one), decision badges, ATHENA scores, confidence stars, and plan-freshness all displaying as designed. All verification artifacts (scratch db/config, throwaway launch.json) were deleted afterward |
+| Architecture compliance | Presentation-only aggregation. No provider, broker, order, or frozen-contract change. `ScoringEngine`/`DecisionEngine`/domain objects untouched — confirmed by design analysis, not assumed. No new persisted schema — the day-over-day diff is a second live computation, not a stored snapshot |
+| ADR compliance | None required — confirmed by design analysis before implementing. The two techniques that keep this "Gate: None" (composing already-computed `MarketHistoryService`/decision-report data, and replaying the same selection logic at a historical date instead of storing a snapshot) both mirror precedents already established this session (M-X8's canary isolation, M-X9's replay-based diff) |
+| Risks discovered | The historical-date sector-ranking reconstruction (used only for the day-over-day diff, never rendered as its own section) is a best-effort approximation from persisted daily candles, not a byte-for-byte replay of what `index_intelligence()` would have shown live that day — documented explicitly in the module's own docstring rather than left implicit. Relative strength depends on `instrument_quote()`'s live-Kite-with-persisted-fallback behavior; without a live Kite session (or a persisted quote's `change_pct`, which today's persisted-quote path doesn't populate), it degrades to null gracefully, matching existing dashboard behavior elsewhere rather than introducing a new failure mode |
+| Technical debt introduced | None. The regime/gap/market-health "Market Summary" hero panel is unrelated pre-existing UI, not touched by this change |
+| Suggested improvements | If relative strength shows null often in practice (no live Kite session during owner review hours), consider whether `instrument_quote()`'s persisted-quote fallback should be extended to compute `change_pct` from the last two persisted daily candles, as a separate, owner-approved follow-up (out of scope here — this milestone only reuses that method as-is) |
+| Remaining work | None — approved 2026-08-03 |
+| Status | ✅ Approved by owner on 2026-08-03 |
+| Branch | feature/live-dashboard |
+
+---
+
+## M-X10 — Outcome-tagged setups + signal drift monitor (approved)
 
 | | |
 |---|---|
@@ -23,8 +230,8 @@ status updated on approval.
 | Risks discovered | **Two real, separate findings, both surfaced by checking the backlog's premise against actual system state rather than trusting it:** (1) zero real outcome data exists yet, so hit-rate output will show nothing until the owner starts using Accept/Reject/Ignore + outcome logging — by design, not a bug; (2) `StrategyFramework`/`ScheduleEngine` is a fully-built, fully-tested, but completely orphaned subsystem — never wired into live production at all. Neither was assumed from the backlog's wording; both were found by reading the actual wiring |
 | Technical debt introduced | None. Per-strategy (vs. regime-trend-label) pattern granularity is a documented scope reduction, not a corner cut — revisit if/when `StrategyFramework` is ever wired into live production as its own milestone |
 | Suggested improvements | Once real outcome volume accumulates, review whether regime-trend-label buckets are granular enough or whether wiring `StrategyFramework` into live production (a separate, larger milestone) would meaningfully improve pattern specificity. The weight-drift baseline is deliberately not auto-captured by this milestone — the owner should run `athena weight-drift-baseline` explicitly once, when ready, rather than have one silently appear |
-| Remaining work | Owner review of this implementation |
-| Status | 🔄 Ready for owner review |
+| Remaining work | None — approved 2026-08-02 |
+| Status | ✅ Approved by owner on 2026-08-02 |
 | Branch | feature/live-dashboard |
 
 ---

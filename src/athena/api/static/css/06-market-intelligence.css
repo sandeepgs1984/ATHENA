@@ -8,7 +8,17 @@
 .market-workstation-mi5 {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 280px;
-    grid-template-rows: auto minmax(0, 1fr);
+    /* Owner-reported (2026-08-03): a flat "summary: auto" / "main: 58vh cap"
+       split still let Validation Pipeline/Universe get squeezed down to an
+       unusable, truncated height as Index Leadership + Top Opportunities
+       Today (plus its per-symbol action row) kept growing taller — a fixed
+       vh split can't adapt to that growth. Flipped the guarantee: main now
+       has a firm floor (480px, MARKET_MAIN_MIN_HEIGHT below) it can never
+       shrink past, and .market-summary-band's max-height is derived from
+       that same floor via calc() so it always gets exactly what's left,
+       never eating into main's guaranteed space — future growth in the
+       summary band scrolls internally instead of squeezing main further. */
+    grid-template-rows: auto minmax(480px, 1fr);
     grid-template-areas:
         "summary rail"
         "main rail";
@@ -21,6 +31,11 @@
 .market-summary-band {
     grid-area: summary;
     min-height: 0;
+    /* Derived from .market-workstation's fixed height minus main's 480px
+       floor and the row gap between them — see MARKET_MAIN_MIN_HEIGHT note
+       above. Keep the 480px literal in sync with grid-template-rows above. */
+    max-height: calc(100vh - 120px - 480px - var(--space-12));
+    overflow-y: auto;
 }
 
 .market-main-column {
@@ -105,8 +120,8 @@
     gap: 1px;
 }
 
-.index-observation.positive { border-left-color: var(--success-color); }
-.index-observation.negative { border-left-color: var(--danger-color); }
+.index-observation.positive { border-left-color: var(--success); }
+.index-observation.negative { border-left-color: var(--danger); }
 .index-observation.is-unavailable { opacity: 0.62; }
 
 .index-observation-label {
@@ -115,7 +130,9 @@
     font-size: var(--text-0-64);
     font-weight: 650;
     line-height: 1.2;
-    overflow-wrap: anywhere;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .index-observation strong {
@@ -131,9 +148,9 @@
 }
 
 .index-observation.positive strong,
-.index-sector-extreme em.positive { color: var(--success-color); }
+.index-sector-extreme em.positive { color: var(--success); }
 .index-observation.negative strong,
-.index-sector-extreme em.negative { color: var(--danger-color); }
+.index-sector-extreme em.negative { color: var(--danger); }
 
 .index-leadership-sector {
     min-width: 0;
@@ -145,7 +162,7 @@
 .index-sector-extreme {
     min-width: 0;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) minmax(58px, auto);
     gap: 1px var(--space-5);
     align-items: baseline;
 }
@@ -165,6 +182,7 @@
     font-size: var(--text-0-68);
     font-style: normal;
     font-weight: 700;
+    text-align: right;
 }
 
 /* IX-8: ATHENA's own decision breadth for the leading/lagging sector,
@@ -176,6 +194,12 @@
     font-size: var(--text-0-68);
 }
 
+.index-leadership-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-6);
+}
+
 .index-leadership-open {
     white-space: nowrap;
 }
@@ -183,6 +207,41 @@
 .index-leadership-empty {
     color: var(--text-muted);
     font-size: var(--text-0-72);
+}
+
+/* Manual refresh trigger for Index Leadership / Top Opportunities Today —
+   both also auto-refresh every 60s in the background (see
+   startTickerRefresh in 03-app-shell.js) while Market Intelligence is the
+   active tab; this button is for an on-demand refresh in between ticks. */
+.mi-refresh-btn {
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    background: rgba(255, 255, 255, 0.02);
+    color: var(--text-secondary);
+    font-size: var(--text-0-64);
+    cursor: pointer;
+    transition: all var(--transition-speed) ease;
+}
+
+.mi-refresh-btn:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-glow);
+}
+
+.mi-refresh-btn:disabled {
+    opacity: 0.58;
+    cursor: not-allowed;
+}
+
+.top-opportunities-heading .mi-refresh-btn {
+    margin-left: auto;
 }
 
 /* Owner-reported (2026-08-01): the width override below was silently
@@ -313,7 +372,7 @@
 }
 
 .index-membership.is-incomplete > strong {
-    color: var(--warning-color);
+    color: var(--warning);
     font-family: var(--font-sans);
     font-size: var(--text-0-72);
 }
@@ -717,6 +776,11 @@
         grid-template-rows: auto auto auto;
         height: auto;
         overflow: visible;
+    }
+
+    .market-summary-band {
+        max-height: none;
+        overflow-y: visible;
     }
 
     .market-main-column {
@@ -2512,4 +2576,198 @@
 
 .market-main-split .market-universe-table td {
     padding: var(--space-8) var(--space-9);
+}
+
+/* Top Opportunities Today — presentation-only sector-ranked opportunity
+   cards (GET /api/v1/market/opportunities). Reuses the same design tokens
+   and card language as the rest of Market Intelligence. */
+.top-opportunities-panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-10);
+    padding: var(--space-7) var(--space-12);
+    border-top: 1px solid var(--border-color);
+}
+
+.top-opportunities-heading {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-8);
+}
+
+.top-opportunities-kicker {
+    color: var(--text-muted);
+    font-size: var(--text-0-64);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.top-opportunities-heading strong {
+    font-size: var(--text-0-78);
+    color: var(--text-primary);
+}
+
+.top-opportunities-updated {
+    color: var(--text-muted);
+    font-size: var(--text-0-64);
+    white-space: nowrap;
+}
+
+.top-opportunities-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-16);
+    color: var(--text-secondary);
+    font-size: var(--text-0-68);
+}
+
+.top-opportunities-summary strong {
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+}
+
+.top-opportunities-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: var(--space-10);
+}
+
+.top-opportunities-empty {
+    color: var(--text-muted);
+    font-size: var(--text-0-7);
+}
+
+.top-opportunities-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-8);
+    padding: var(--space-10);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md, 8px);
+    background: var(--bg-card);
+}
+
+.top-opportunities-card-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-7);
+}
+
+.top-opportunities-rank {
+    font-family: var(--font-mono);
+    font-size: var(--text-0-64);
+    color: var(--text-muted);
+}
+
+.top-opportunities-sector-name {
+    flex: 1;
+    font-size: var(--text-0-74);
+    color: var(--text-primary);
+}
+
+.top-opportunities-sector-change {
+    font-family: var(--font-mono);
+    font-size: var(--text-0-72);
+}
+
+.top-opportunities-sector-change.positive { color: var(--success); }
+.top-opportunities-sector-change.negative { color: var(--danger); }
+
+.top-opportunities-symbol {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    padding-top: var(--space-7);
+    border-top: 1px solid var(--border-color);
+}
+
+.top-opportunities-symbol-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-6);
+}
+
+.top-opportunities-symbol-head strong {
+    font-size: var(--text-0-76);
+    color: var(--text-primary);
+}
+
+.top-opportunities-decision {
+    font-size: var(--text-0-6);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 1px var(--space-6);
+    border-radius: var(--radius-md, 8px);
+}
+
+.top-opportunities-decision.is-trade {
+    color: var(--success);
+    background: var(--success-glow);
+}
+
+.top-opportunities-decision.is-watch {
+    color: var(--warning);
+    background: var(--warning-glow);
+}
+
+.top-opportunities-change {
+    font-size: var(--text-0-6);
+    margin-left: auto;
+}
+
+.top-opportunities-change.is-new { color: var(--accent); }
+.top-opportunities-change.is-improved { color: var(--success); }
+.top-opportunities-change.is-dropped { color: var(--danger); }
+
+.top-opportunities-symbol-metrics {
+    display: flex;
+    gap: var(--space-10);
+    font-family: var(--font-mono);
+    font-size: var(--text-0-68);
+    color: var(--text-secondary);
+}
+
+.top-opportunities-rs.positive { color: var(--success); }
+.top-opportunities-rs.negative { color: var(--danger); }
+
+.top-opportunities-symbol-metrics .plan-freshness-badge {
+    margin-left: auto;
+}
+
+.top-opportunities-confidence {
+    display: flex;
+    align-items: center;
+    gap: var(--space-6);
+    font-size: var(--text-0-64);
+    color: var(--text-muted);
+}
+
+.top-opportunities-stars {
+    color: var(--warning);
+    letter-spacing: 1px;
+}
+
+.top-opportunities-symbol-actions {
+    display: flex;
+    gap: var(--space-6);
+    margin-top: 2px;
+}
+
+.top-opportunities-symbol-actions .inspect-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 26px;
+    min-height: 26px;
+    padding: var(--space-4) var(--space-6);
+    font-size: var(--text-0-68);
+}
+
+.top-opportunities-removed {
+    color: var(--text-muted);
+    font-size: var(--text-0-64);
+}
+
+.top-opportunities-removed-label {
+    color: var(--text-secondary);
 }

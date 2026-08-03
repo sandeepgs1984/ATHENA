@@ -11,6 +11,7 @@ from athena.api.dependencies import (
     get_candidates_service,
     get_market_history_service,
     get_market_summary_service,
+    get_opportunities_service,
 )
 from athena.api.exceptions import IndexNotFoundError
 from athena.api.security import Permission, RequirePermission
@@ -28,6 +29,7 @@ from athena.api.v1.dtos.market import (
     OwnerCandidateDTO,
     OwnerCandidateListDTO,
     SymbolIndexBackdropDTO,
+    TopOpportunitiesDTO,
     UpsertCandidateRequest,
     ValidateSymbolsRequest,
     ValidateSymbolsResultDTO,
@@ -35,6 +37,7 @@ from athena.api.v1.dtos.market import (
 from athena.api.v1.services.candidates_service import CandidatesService
 from athena.api.v1.services.market_history_service import MarketHistoryService
 from athena.api.v1.services.market_summary_service import MarketSummaryService
+from athena.api.v1.services.opportunities_service import OpportunitiesService
 from athena.domain.enums import Timeframe
 
 router = APIRouter(prefix="/market", tags=["Market"])
@@ -199,6 +202,34 @@ def get_index_members(
     data = service.index_members(index_key)
     if data is None:
         raise IndexNotFoundError(f"Index '{index_key}' not found or not enabled")
+    return AthenaResponse(status="success", data=data, meta=_meta(request))
+
+
+@router.get(
+    "/opportunities",
+    response_model=AthenaResponse[TopOpportunitiesDTO],
+    summary="Top Opportunities Today — sector-ranked, highest-conviction qualified symbols",
+    status_code=status.HTTP_200_OK,
+    operation_id="getTopOpportunities",
+)
+def get_top_opportunities(
+    request: Request,
+    sector_count: int = Query(default=5, ge=1, le=20),
+    symbols_per_sector: int = Query(default=2, ge=1, le=10),
+    service: OpportunitiesService = Depends(get_opportunities_service),  # noqa: B008
+    principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.READ)),  # noqa: B008
+) -> AthenaResponse[TopOpportunitiesDTO]:
+    """Ranks today's sectors by real performance and surfaces each leading
+    sector's highest-conviction ATHENA-qualified (WATCH/TRADE) symbols.
+
+    Presentation-only aggregation over already-persisted decisions,
+    scores, confidence, and sector-index data — computes no score,
+    confidence, risk, or decision of its own, and never influences
+    ScoringEngine/DecisionEngine.
+    """
+    data = service.get_top_opportunities(
+        sector_count=sector_count, symbols_per_sector=symbols_per_sector,
+    )
     return AthenaResponse(status="success", data=data, meta=_meta(request))
 
 

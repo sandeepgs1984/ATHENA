@@ -425,9 +425,27 @@
                                     </div>
                                     <div id="index-leadership-broad" class="index-leadership-broad" aria-label="Broad-market indices"></div>
                                     <div id="index-leadership-sector" class="index-leadership-sector" aria-label="Sector leaders and laggards"></div>
-                                    <button type="button" id="index-leadership-open" class="inspect-btn index-leadership-open" aria-haspopup="dialog" aria-controls="index-leadership-modal">
-                                        View all indices
-                                    </button>
+                                    <div class="index-leadership-actions">
+                                        <button type="button" id="index-leadership-refresh" class="mi-refresh-btn" title="Refresh index leadership now" aria-label="Refresh index leadership now">
+                                            <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i>
+                                        </button>
+                                        <button type="button" id="index-leadership-open" class="inspect-btn index-leadership-open" aria-haspopup="dialog" aria-controls="index-leadership-modal">
+                                            View all indices
+                                        </button>
+                                    </div>
+                                </section>
+                                <section class="top-opportunities-panel" aria-labelledby="top-opportunities-title">
+                                    <div class="top-opportunities-heading">
+                                        <span class="top-opportunities-kicker">Top Opportunities Today</span>
+                                        <strong id="top-opportunities-title">Loading…</strong>
+                                        <small id="top-opportunities-updated" class="top-opportunities-updated"></small>
+                                        <button type="button" id="top-opportunities-refresh" class="mi-refresh-btn" title="Refresh top opportunities now" aria-label="Refresh top opportunities now">
+                                            <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i>
+                                        </button>
+                                    </div>
+                                    <div id="top-opportunities-summary" class="top-opportunities-summary"></div>
+                                    <div id="top-opportunities-cards" class="top-opportunities-cards"></div>
+                                    <div id="top-opportunities-removed" class="top-opportunities-removed"></div>
                                 </section>
                             </div>
                         </div>

@@ -282,6 +282,9 @@
     // Scoped to read-only market observations (not the decisions
     // list/briefing, whose refresh would reset scroll position/selection).
     // Index context refreshes only while Market Intelligence is active.
+    // Extended (owner-requested, 2026-08-03) to also refresh Top
+    // Opportunities Today on the same 60s tick — same read-only-market-
+    // observation scope, same active-tab gating.
     const TICKER_REFRESH_INTERVAL_MS = 60000;
     let tickerRefreshIntervalId = null;
 
@@ -289,8 +292,9 @@
         stopTickerRefresh();
         tickerRefreshIntervalId = setInterval(() => {
             loadMarketTicker();
-            if (state.activeTab === "market" && typeof loadIndexLeadership === "function") {
-                loadIndexLeadership();
+            if (state.activeTab === "market") {
+                if (typeof loadIndexLeadership === "function") loadIndexLeadership();
+                if (typeof loadTopOpportunities === "function") loadTopOpportunities();
             }
         }, TICKER_REFRESH_INTERVAL_MS);
     }

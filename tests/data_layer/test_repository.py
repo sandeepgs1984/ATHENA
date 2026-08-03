@@ -64,6 +64,35 @@ class TestSchemaAndConfig:
         repo.initialize()  # second call must not error or duplicate schema_version
         assert repo.verify_integrity().schema_version_ok
 
+    def test_runs_started_ts_index_exists(self, repo):
+        """Perf fix (2026-08-03): list_runs(limit=N) with no trigger filter
+        — used by the dashboard's pipeline-runs list, candidates/validate
+        verdict lookups, market summary, diagnostics, notifications, and
+        OwnerValidationPipeline._last_full_universe_summary() — had no
+        usable index for its `ORDER BY started_ts DESC, run_id DESC`,
+        forcing a full table scan that materialized every row's
+        (multi-MB, in production) detail_json just to sort and take the
+        top N. Confirmed ~80x faster against the real production database
+        once this index exists; this locks in that the index is actually
+        created, not just present in the source."""
+        names = {
+            row[0] for row in
+            repo._conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='runs'"
+            )
+        }
+        assert "idx_runs_started_ts" in names
+
+    def test_list_runs_without_trigger_filter_avoids_full_table_scan(self, repo):
+        plan = [
+            row[3] for row in repo._conn.execute(
+                "EXPLAIN QUERY PLAN SELECT run_id FROM runs "
+                "ORDER BY started_ts DESC, run_id DESC LIMIT 50"
+            )
+        ]
+        assert any("idx_runs_started_ts" in step for step in plan), plan
+        assert not any(step == "SCAN runs" for step in plan), plan
+
 
 class TestInstruments:
     def test_store_and_retrieve(self, repo):

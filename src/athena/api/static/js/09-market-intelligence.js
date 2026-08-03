@@ -54,6 +54,30 @@
         if (event.target === indexLeadershipModal) closeModal(indexLeadershipModal);
     });
 
+    // Manual on-demand refresh for Index Leadership / Top Opportunities
+    // Today, in addition to the 60s background auto-refresh (see
+    // startTickerRefresh in 03-app-shell.js, which now also calls
+    // loadTopOpportunities while Market Intelligence is the active tab).
+    async function runMiRefresh(button, loaderFn) {
+        if (!button) { await loaderFn(); return; }
+        const icon = button.querySelector("i");
+        button.disabled = true;
+        icon?.classList.add("fa-spin");
+        try {
+            await loaderFn();
+        } finally {
+            button.disabled = false;
+            icon?.classList.remove("fa-spin");
+        }
+    }
+
+    document.getElementById("index-leadership-refresh")?.addEventListener("click", () => {
+        runMiRefresh(document.getElementById("index-leadership-refresh"), loadIndexLeadership);
+    });
+    document.getElementById("top-opportunities-refresh")?.addEventListener("click", () => {
+        runMiRefresh(document.getElementById("top-opportunities-refresh"), loadTopOpportunities);
+    });
+
     const validationReportModal = document.getElementById("validation-report-modal");
     const validationReportTitle = document.getElementById("validation-report-title");
     const validationReportBody = document.getElementById("validation-report-body");
@@ -1057,6 +1081,149 @@
         }
     }
 
+    // Top Opportunities Today: sector-ranked, highest-conviction ATHENA-
+    // qualified symbols. Presentation-only — every field below is read
+    // directly from GET /api/v1/market/opportunities' already-computed
+    // response; this file never scores, ranks, or decides anything itself.
+    function topOpportunitiesConfidenceStars(count) {
+        const n = Math.max(0, Math.min(5, Number(count) || 0));
+        return "★".repeat(n) + "☆".repeat(5 - n);
+    }
+
+    function topOpportunitiesConfidenceLabel(level) {
+        const label = String(level || "").toUpperCase();
+        if (label === "HIGH") return "High Conviction";
+        if (label === "MEDIUM") return "Medium Conviction";
+        if (label === "LOW") return "Low Conviction";
+        return "Conviction unavailable";
+    }
+
+    function topOpportunitiesChangeBadge(badge) {
+        if (badge === "NEW") return '<span class="top-opportunities-change is-new">NEW</span>';
+        if (badge === "IMPROVED") return '<span class="top-opportunities-change is-improved">▲ Improved</span>';
+        if (badge === "DROPPED") return '<span class="top-opportunities-change is-dropped">▼ Dropped</span>';
+        return "";
+    }
+
+    function topOpportunitiesSymbolRow(sym) {
+        const decisionClass = sym.decision_type === "TRADE" ? "is-trade" : "is-watch";
+        const score = sym.athena_score !== null && sym.athena_score !== undefined
+            ? Number(sym.athena_score).toFixed(1)
+            : "—";
+        const rsValue = sym.relative_strength_pct !== null && sym.relative_strength_pct !== undefined
+            ? Number(sym.relative_strength_pct)
+            : null;
+        const relative = rsValue !== null ? `${rsValue >= 0 ? "+" : ""}${rsValue.toFixed(2)}%` : "—";
+        const rsClass = rsValue === null ? "" : (rsValue >= 0 ? "positive" : "negative");
+        const freshness = sym.plan_freshness_status || "NO_PLAN";
+        const symbolAttr = escapeDecisionHtml(sym.symbol);
+        return `
+            <div class="top-opportunities-symbol">
+                <div class="top-opportunities-symbol-head">
+                    <strong>${sym.symbol}</strong>
+                    <span class="top-opportunities-decision ${decisionClass}">${sym.decision_type}</span>
+                    ${topOpportunitiesChangeBadge(sym.change_badge)}
+                </div>
+                <div class="top-opportunities-symbol-metrics">
+                    <span title="ATHENA composite score">Score ${score}</span>
+                    <span class="top-opportunities-rs ${rsClass}" title="Relative strength vs. sector">RS ${relative}</span>
+                    <span class="plan-freshness-badge tone-${freshness.toLowerCase()}" title="${sym.plan_freshness_summary || ""}">${freshness}</span>
+                </div>
+                <div class="top-opportunities-confidence" title="${topOpportunitiesConfidenceLabel(sym.confidence_level)}">
+                    <span class="top-opportunities-stars">${topOpportunitiesConfidenceStars(sym.confidence_stars)}</span>
+                    <span class="top-opportunities-confidence-label">${topOpportunitiesConfidenceLabel(sym.confidence_level)}</span>
+                </div>
+                <div class="top-opportunities-symbol-actions">
+                    <button type="button" class="inspect-btn top-opportunities-validate-btn" data-symbol="${symbolAttr}" title="Re-run ingest + score for ${symbolAttr}" aria-label="Re-validate ${symbolAttr}">
+                        <i class="fas fa-bolt" aria-hidden="true"></i>
+                    </button>
+                    <button type="button" class="inspect-btn top-opportunities-open-decision-btn" data-symbol="${symbolAttr}" title="Open ${symbolAttr} in Decisions &amp; Trace" aria-label="Open ${symbolAttr} decision">
+                        <i class="fa-solid fa-brain" aria-hidden="true"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+
+    function topOpportunitiesSectorCard(group) {
+        const changePct = group.sector_change_pct !== null && group.sector_change_pct !== undefined
+            ? `${Number(group.sector_change_pct) >= 0 ? "+" : ""}${Number(group.sector_change_pct).toFixed(2)}%`
+            : "—";
+        const changeClass = Number(group.sector_change_pct) >= 0 ? "positive" : "negative";
+        return `
+            <div class="top-opportunities-card">
+                <div class="top-opportunities-card-head">
+                    <span class="top-opportunities-rank">#${group.sector_rank}</span>
+                    <strong class="top-opportunities-sector-name">${group.sector}</strong>
+                    <span class="top-opportunities-sector-change ${changeClass}">${changePct}</span>
+                </div>
+                ${group.symbols.map(topOpportunitiesSymbolRow).join("")}
+            </div>
+        `;
+    }
+
+    function renderTopOpportunities(payload) {
+        const titleEl = document.getElementById("top-opportunities-title");
+        const summaryEl = document.getElementById("top-opportunities-summary");
+        const cardsEl = document.getElementById("top-opportunities-cards");
+        const removedEl = document.getElementById("top-opportunities-removed");
+        const updatedEl = document.getElementById("top-opportunities-updated");
+        if (!titleEl || !summaryEl || !cardsEl || !removedEl) return;
+
+        if (updatedEl) {
+            updatedEl.textContent = (payload && payload.as_of)
+                ? `Updated ${formatDecisionTime(payload.as_of)}`
+                : "";
+        }
+
+        const sectors = (payload && Array.isArray(payload.sectors)) ? payload.sectors : [];
+        if (!sectors.length) {
+            titleEl.textContent = "No qualified opportunities today";
+            summaryEl.innerHTML = "";
+            cardsEl.innerHTML = '<span class="top-opportunities-empty">No WATCH/TRADE symbols qualify in today’s leading sectors yet.</span>';
+            removedEl.innerHTML = "";
+            return;
+        }
+
+        const summary = payload.summary || {};
+        titleEl.textContent = `${summary.qualified_sector_count || sectors.length} leading sector(s), ${summary.qualified_symbol_count || 0} opportunity(ies)`;
+        summaryEl.innerHTML = `
+            <span><strong>${summary.strongest_sector || "—"}</strong> strongest sector</span>
+            <span><strong>${summary.strongest_symbol || "—"}</strong> strongest symbol</span>
+            <span><strong>${summary.highest_athena_score !== null && summary.highest_athena_score !== undefined ? Number(summary.highest_athena_score).toFixed(1) : "—"}</strong> highest score</span>
+            <span><strong>${summary.average_athena_score !== null && summary.average_athena_score !== undefined ? Number(summary.average_athena_score).toFixed(1) : "—"}</strong> average score</span>
+        `;
+        cardsEl.innerHTML = sectors.map(topOpportunitiesSectorCard).join("");
+        cardsEl.querySelectorAll(".top-opportunities-validate-btn").forEach(btn => {
+            btn.addEventListener("click", async () => {
+                const sym = btn.getAttribute("data-symbol");
+                await validateSymbolsNow([sym], { button: btn, refreshDecisions: true, showReport: true });
+            });
+        });
+        cardsEl.querySelectorAll(".top-opportunities-open-decision-btn").forEach(btn => {
+            btn.addEventListener("click", async () => {
+                const sym = btn.getAttribute("data-symbol");
+                await openDecisionForSymbol(sym);
+            });
+        });
+
+        const removed = (payload && Array.isArray(payload.removed)) ? payload.removed : [];
+        removedEl.innerHTML = removed.length
+            ? `<span class="top-opportunities-removed-label">No longer surfaced today:</span> ${removed.map(r => `<span class="top-opportunities-removed-item">${r.symbol} (${r.sector})</span>`).join(", ")}`
+            : "";
+    }
+
+    async function loadTopOpportunities() {
+        try {
+            const response = await apiRequest("/api/v1/market/opportunities", { skipToast: true });
+            renderTopOpportunities(response && response.data ? response.data : null);
+        } catch (err) {
+            console.error("Failed to load top opportunities", err);
+            const titleEl = document.getElementById("top-opportunities-title");
+            if (titleEl) titleEl.textContent = "Top Opportunities unavailable";
+        }
+    }
+
     // MI-3: Validation Pipeline funnel — typed stages from
     // GET /api/v1/pipelines/validation-funnel (Universe→Eligible→Filtered→
     // Watch→Trade). Filtered is server-side arithmetic; UI never recomputes.
@@ -1304,6 +1471,7 @@
             await loadCandidateList();
             await loadSavedSymbols();
             const indexLeadershipPromise = loadIndexLeadership();
+            const topOpportunitiesPromise = loadTopOpportunities();
 
             // 1. Fetch Market Summary (MH-3), Validation Pipeline funnel, and
             //    pipeline runs (Universe / Recent Activity) in parallel.
@@ -1315,6 +1483,7 @@
             renderValidationFunnel(funnelRes && funnelRes.data ? funnelRes.data : null);
             renderMarketSummaryHero(summaryRes && summaryRes.data ? summaryRes.data : null);
             await indexLeadershipPromise;
+            await topOpportunitiesPromise;
 
             let universe = {};
             let qualified = [];

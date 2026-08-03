@@ -125,6 +125,19 @@ _DDL = (
     )
     """,
     "CREATE INDEX IF NOT EXISTS idx_runs_trigger_started ON runs(trigger, started_ts)",
+    # Perf fix (2026-08-03): list_runs(limit=N) with NO trigger filter — the
+    # dashboard's pipeline-runs list, candidates/validate verdict lookups,
+    # market summary, diagnostics, notifications, and
+    # OwnerValidationPipeline._last_full_universe_summary() all call it this
+    # way — had no usable index for `ORDER BY started_ts DESC, run_id DESC`,
+    # forcing a full "SCAN runs" that materializes every row's `detail_json`
+    # (individual blobs run into single-digit MB as the universe/report size
+    # has grown) just to sort and take the top N. Confirmed via EXPLAIN QUERY
+    # PLAN + direct timing against the real production database: ~650ms for
+    # limit=50 before this index, ~8ms after (~80x) — the dominant cause of
+    # the reported "symbol validation went from <10s to 50s+" regression,
+    # since every one of those call sites pays this cost.
+    "CREATE INDEX IF NOT EXISTS idx_runs_started_ts ON runs(started_ts DESC, run_id DESC)",
 
     """
     CREATE TABLE IF NOT EXISTS decisions (
