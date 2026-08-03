@@ -1499,7 +1499,9 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "/api/v1/pipelines/validation-funnel" in js
     assert "validation-funnel-stage" in js
     assert "validation-funnel-stage-icon" in js
-    assert "Last Updated:" in js
+    # MI-UX-2: unified to the screen's one shared freshness phrase ("As of"),
+    # replacing this section's own "Last Updated:" wording.
+    assert "As of ${formatDecisionTime(funnel.as_of)}" in js
     assert ".validation-funnel" in css
     assert ".validation-funnel-stage.is-trade" in css
     assert ".validation-workbench-summary" in css

@@ -833,8 +833,12 @@
         return number > 0 ? "positive" : "negative";
     }
 
+    // MI-UX-2: "As of" is this screen's one shared freshness phrase — Market
+    // Summary already used it; Index Leadership/Top Opportunities/Validation
+    // Pipeline each had their own wording ("Observed"/"Updated"/"Last
+    // Updated:") for the identical "snapshot taken at this time" concept.
     function indexSessionLabel(session, asOf) {
-        const observed = asOf ? `Observed ${formatDecisionTime(asOf)}` : "Observation unavailable";
+        const observed = asOf ? `As of ${formatDecisionTime(asOf)}` : "Observation unavailable";
         if (session && session.is_market_open === true) {
             return `Market live · ${observed}`;
         }
@@ -1239,7 +1243,7 @@
 
         if (updatedEl) {
             updatedEl.textContent = (payload && payload.as_of)
-                ? `Updated ${formatDecisionTime(payload.as_of)}`
+                ? `As of ${formatDecisionTime(payload.as_of)}`
                 : "";
         }
 
@@ -1311,7 +1315,7 @@
 
         if (asOfEl) {
             asOfEl.textContent = available && funnel.as_of
-                ? `Last Updated: ${formatDecisionTime(funnel.as_of)}`
+                ? `As of ${formatDecisionTime(funnel.as_of)}`
                 : "";
         }
         if (emptyEl) {
@@ -1453,9 +1457,16 @@
             ? `${Number(stages.trade.pct_of_universe).toFixed(1)}% trade`
             : "Trade rate pending";
         const nextAction = validationNextAction(funnel, validationWorkbenchState.runs, blockers);
+        // MI-UX-2: a failed run is the single most actionable thing on this
+        // card, but previously rendered in the same muted register as
+        // routine metadata — give it real alert treatment (left-border
+        // accent, tinted background, icon), matching the existing
+        // .decision-actionability-banner.tone-danger convention elsewhere.
+        const isFailedRun = String(latest && latest.overall_status || "").toUpperCase() === "FAILED";
 
         const summary = document.getElementById("validation-workbench-summary");
         if (summary) {
+            summary.classList.toggle("is-failed-run", isFailedRun);
             summary.innerHTML = `
                 <div class="validation-workbench-summary-item">
                     <span>Latest</span>
@@ -1466,6 +1477,7 @@
                     <strong>${escapeDecisionHtml(validationShortBlockerLabel(topBlocker))}</strong>
                 </div>
                 <div class="validation-workbench-summary-action">
+                    ${isFailedRun ? '<i class="fa-solid fa-triangle-exclamation validation-workbench-alert-icon" aria-hidden="true"></i>' : ""}
                     ${escapeDecisionHtml(nextAction)}
                 </div>
             `;

@@ -6,6 +6,29 @@ status updated on approval.
 
 ---
 
+## MI-UX-2: Market Intelligence freshness & alert unification (ready for review)
+
+| | |
+|---|---|
+| Completed | 2026-08-03 |
+| Objective | Second milestone of the Market Intelligence UX track (`docs/design/ATHENA-MARKET-INTELLIGENCE-UX-ROADMAP.md`): unify the screen's 4 different freshness-wording variants into one shared phrase, and give a failed validation run real visual alert treatment instead of blending into routine metadata |
+| Scope | (1) Replaced Index Leadership's "Observed", Top Opportunities' "Updated", and Validation Pipeline's "Last Updated:" with the same "As of" phrase Market Summary already used — all four now share one wording, all four already rendered through the same `formatDecisionTime()` so only the verb varied, not the underlying time format. Left "Market closed · next live..." untouched — a different, forward-looking concept, not part of the inconsistency. (2) `renderValidationWorkbench()` now detects a FAILED latest run and toggles an `is-failed-run` class, giving the next-action line a red-bordered, triangle-icon banner (mirroring the existing `.decision-actionability-banner.tone-danger` convention already used elsewhere) instead of the same muted text as everything else on the card |
+| Files created | None |
+| Files modified | `src/athena/api/static/js/09-market-intelligence.js`, `src/athena/api/static/css/06-market-intelligence.css`, `tests/api/platform/test_dashboard_hosting.py`, `docs/MILESTONES.md` |
+| Public APIs added | None — presentation only, reuses existing `as_of`/`overall_status` fields already in the loaded payloads |
+| Tests | Full suite — **1,257 passed**. One pre-existing test asserted the literal string `"Last Updated:"`; updated to assert the new shared `"As of ${formatDecisionTime(funnel.as_of)}"` phrase instead — a deliberate wording change, not a broken lock |
+| Coverage | Live-verified against a read-only backup of the real database through an isolated local instance (separate `db/`, separate port, `ATHENA_SINGLE_USER` bypass scoped to that subprocess only). Confirmed all four sections read "As of ..." in one screenshot. Confirmed the alert banner (red border, tinted background, warning icon) renders for a FAILED latest run and stays absent for a completed one |
+| Architecture compliance | Presentation only; no score, decision, regime, or TradePlan value changed; no broker write action added |
+| ADR compliance | None required |
+| Risks discovered | None new |
+| Technical debt introduced | None |
+| Suggested improvements | MI-UX-3 (visual consistency/IA) and MI-UX-4 (polish/release gate) remain planned per the roadmap doc |
+| Remaining work | Owner review of MI-UX-2; MI-UX-3/MI-UX-4 not started (milestone-at-a-time discipline) |
+| Status | 🔄 Ready for owner review |
+| Branch | feature/live-dashboard |
+
+---
+
 ## Fix pass: unbounded backup accumulation ate 28 GiB (owner-reported)
 
 | | |

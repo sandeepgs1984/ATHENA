@@ -2706,7 +2706,7 @@ does not invent new metrics or policy. Governing plan:
 |---|---|---|---|
 | **MI-UX-0** Design & audit gate | 11 findings across 3 severities from a live screenshot audit; owner sign-off to start with P0 | Owner approval | ✅ Approved (2026-08-03) |
 | **MI-UX-1** P0 correctness fixes | Fix Top Opportunities mid-card clipping, Breadth 0%/WEAK vs. ADV/DEC contradiction, Market Health unavailable-tile prominence | Owner review; no fabricated data | ✅ Approved (2026-08-03) |
-| **MI-UX-2** Freshness & alert unification | One shared freshness phrasing; real alert treatment for failed runs/blockers | Owner review | ⏳ Planned |
+| **MI-UX-2** Freshness & alert unification | One shared freshness phrasing; real alert treatment for failed runs/blockers | Owner review | 🔄 Ready for review |
 | **MI-UX-3** Visual consistency & IA | One metric-tile idiom; actionable-first Universe default view; grouped header | Owner review | ⏳ Planned |
 | **MI-UX-4** Polish & release gate | RS label clarity, Quick Actions dedup, Evidence Attribution prominence, full screenshot/regression QA | Owner review after QA evidence | ⏳ Planned |
 
@@ -2788,6 +2788,45 @@ user-requested "show everything" state — the same sanctioned fallback the
 original MARKET_MAIN_MIN_HEIGHT fix already relied on. Also re-verified the
 3-column (no cap needed) and 2-column (mid-size cap) cases still behave
 correctly after the rewrite. Full suite re-run: **1252 passed**.
+
+---
+
+#### MI-UX-2 — freshness & alert unification (ready for review, 2026-08-03)
+
+Scope completed:
+
+1. **One shared freshness phrase.** Market Summary already used "As of";
+   Index Leadership ("Observed"), Top Opportunities ("Updated"), and
+   Validation Pipeline's funnel footer ("Last Updated:") each had their own
+   wording for the identical "this reflects a snapshot taken at this time"
+   concept — and, per the original audit, didn't even agree with each other
+   in one screenshot. All four now render `As of ${formatDecisionTime(...)}`
+   via the same shared `formatDecisionTime()` — the underlying time format
+   was already consistent app-wide; only the verb varied. Forward-looking
+   text ("Market closed · next live...") was deliberately left as its own
+   distinct phrasing — it's a different concept (upcoming schedule, not a
+   snapshot), not part of what made the wording inconsistent.
+2. **Failed-run alert treatment.** The Validation Pipeline's "Latest ·
+   Blocker · next action" strip rendered a FAILED run in the same muted
+   register as routine metadata — the single most actionable state on the
+   card had no visual priority. Now mirrors the existing
+   `.decision-actionability-banner.tone-danger` convention already used
+   elsewhere in the app (left-border accent, tinted background, warning
+   icon): a failed run turns "Latest" red and gives the next-action line a
+   red-bordered, icon-tagged banner instead of plain text.
+
+Architectural note: presentation-only — reuses existing `as_of` fields and
+the existing `overall_status` already carried by the loaded run; no new
+endpoint, no scoring/decision change.
+
+Validation note: full suite **1257 passed** (one pre-existing regression
+test asserted the literal string `"Last Updated:"` and was updated to assert
+the new shared phrase instead — a deliberate wording change, not a broken
+lock). Live-verified against a read-only backup of the real database through
+an isolated local instance: confirmed all four sections now read "As of" in
+the same screenshot; confirmed the alert banner (red border, tinted
+background, triangle icon) renders correctly for a FAILED latest run and
+stays absent for a completed one.
 
 ---
 

@@ -1088,6 +1088,33 @@
     text-overflow: clip;
 }
 
+/* MI-UX-2: a failed run needs to visually interrupt, not blend into the
+   same muted register as routine metadata — mirrors the existing
+   .decision-actionability-banner.tone-danger alert convention. */
+.validation-workbench-summary.is-failed-run .validation-workbench-summary-item:first-child {
+    border-color: rgba(239, 68, 68, 0.32);
+}
+
+.validation-workbench-summary.is-failed-run .validation-workbench-summary-item:first-child strong {
+    color: var(--tone-bad-solid);
+}
+
+.validation-workbench-summary.is-failed-run .validation-workbench-summary-action {
+    display: flex;
+    align-items: center;
+    gap: var(--space-6);
+    border: 1px solid rgba(239, 68, 68, 0.32);
+    border-left: 3px solid var(--tone-bad-solid);
+    background: rgba(239, 68, 68, 0.12);
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.validation-workbench-alert-icon {
+    color: var(--tone-bad-solid);
+    flex-shrink: 0;
+}
+
 .validation-funnel-modal-container {
     width: min(1120px, 94vw);
     max-width: min(1120px, 94vw);
