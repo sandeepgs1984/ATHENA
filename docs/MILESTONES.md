@@ -2708,7 +2708,11 @@ does not invent new metrics or policy. Governing plan:
 | **MI-UX-1** P0 correctness fixes | Fix Top Opportunities mid-card clipping, Breadth 0%/WEAK vs. ADV/DEC contradiction, Market Health unavailable-tile prominence | Owner review; no fabricated data | ✅ Approved (2026-08-03) |
 | **MI-UX-2** Freshness & alert unification | One shared freshness phrasing; real alert treatment for failed runs/blockers | Owner review | ✅ Approved (2026-08-03) |
 | **MI-UX-3** Visual consistency & IA | One metric-tile idiom; actionable-first Universe default view; grouped header | Owner review | ✅ Approved (2026-08-03) |
-| **MI-UX-4** Polish & release gate | RS label clarity, Quick Actions dedup, Evidence Attribution prominence, full screenshot/regression QA | Owner review after QA evidence | 🔄 Ready for review |
+| **MI-UX-4** Polish & release gate | RS label clarity, Quick Actions dedup, Evidence Attribution prominence, full screenshot/regression QA | Owner review after QA evidence | ✅ Approved (2026-08-03) |
+
+**Market Intelligence UX track closed (2026-08-03):** owner approved all four
+MI-UX milestones. No known finding from the original 11-item audit remains
+open.
 
 **Implementation rule:** one MI-UX milestone at a time. MI-UX must never
 create order placement, broker write actions, new signals, or changes to
