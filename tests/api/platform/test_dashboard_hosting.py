@@ -242,8 +242,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.142.0" in html
-    assert "dashboard.js?v=9.142.0" in html
+    assert "dashboard.css?v=9.144.0" in html
+    assert "dashboard.js?v=9.144.0" in html
     assert 'id="advisor-pulse"' in html
     assert 'id="header-diagnostics-popover"' in html
     assert 'id="decision-actionability-banner"' in html
@@ -1891,7 +1891,7 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "function showDecisionOpenOverlay" in js
     assert "function hideDecisionOpenOverlay" in js
     open_decision_fn_start = js.find("async function openDecisionForSymbol")
-    open_decision_fn_body = js[open_decision_fn_start:open_decision_fn_start + 1800]
+    open_decision_fn_body = js[open_decision_fn_start:open_decision_fn_start + 2600]
     assert "showDecisionOpenOverlay(bare);" in open_decision_fn_body
     assert "try {" in open_decision_fn_body
     assert "} finally {" in open_decision_fn_body

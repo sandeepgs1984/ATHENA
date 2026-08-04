@@ -374,10 +374,21 @@
             const searchEl = document.getElementById("briefing-search");
             const stanceEl = document.getElementById("decisions-filter-stance");
             const typeEl = document.getElementById("decisions-filter-type");
+            const indexEl = document.getElementById("decisions-filter-index");
             const sortEl = document.getElementById("decisions-sort");
             if (searchEl) searchEl.value = "";
             if (stanceEl) stanceEl.value = "all";
             if (typeEl) typeEl.value = "all";
+            // Owner-reported (2026-08-04): opening a Top Opportunities symbol
+            // reset stance/type/sort but not a lingering index filter from an
+            // earlier Decisions & Trade visit — a symbol outside that index
+            // was filtered out of `rows` before its lookup even ran, showing
+            // "not in the current Decisions list" for a symbol that was
+            // actually there. Mirrors symbolsFilterReset's full reset.
+            if (indexEl) indexEl.value = "all";
+            decisionsIndexFilterKey = "all";
+            decisionsIndexMemberSymbols = null;
+            if (typeof renderDecisionsIndexFilterNote === "function") renderDecisionsIndexFilterNote(null);
             if (sortEl) sortEl.value = "newest";
             if (typeof switchTab === "function") {
                 window.history.pushState({ tabId: "decisions" }, "", "/dashboard/decisions");
@@ -1235,6 +1246,20 @@
         const rsClass = rsValue === null ? "" : (rsValue >= 0 ? "positive" : "negative");
         const freshness = sym.plan_freshness_status || "NO_PLAN";
         const symbolAttr = escapeDecisionHtml(sym.symbol);
+        // Owner-reported (2026-08-04): "Open decision" always fails with
+        // "not available in the current Decisions list" for a TRADE symbol
+        // whose plan has expired/gone stale — the Decisions & Trace board
+        // deliberately excludes non-current TradePlans (it's an action
+        // board, not an audit log; see isCurrentDecisionListRow), so this
+        // was never something the button could actually do. Disable it
+        // instead of leaving a guaranteed-to-fail action clickable, mirroring
+        // the same "disable, don't let it fail" rule already applied to the
+        // decision brief's own header actions.
+        const opensToNothing = sym.decision_type === "TRADE"
+            && !["FRESH", "AGING"].includes(String(freshness).toUpperCase());
+        const openDecisionTitle = opensToNothing
+            ? `${symbolAttr}'s TradePlan is no longer current, so it isn't on the Decisions & Trace board — re-validate to get a fresh plan first`
+            : `Open ${symbolAttr} in Decisions &amp; Trace`;
         return `
             <div class="top-opportunities-symbol">
                 <div class="top-opportunities-symbol-head">
@@ -1262,7 +1287,7 @@
                     <button type="button" class="inspect-btn top-opportunities-validate-btn" data-symbol="${symbolAttr}" title="Re-run ingest + score for ${symbolAttr}" aria-label="Re-validate ${symbolAttr}">
                         <i class="fas fa-bolt" aria-hidden="true"></i>
                     </button>
-                    <button type="button" class="inspect-btn top-opportunities-open-decision-btn" data-symbol="${symbolAttr}" title="Open ${symbolAttr} in Decisions &amp; Trace" aria-label="Open ${symbolAttr} decision">
+                    <button type="button" class="inspect-btn top-opportunities-open-decision-btn" data-symbol="${symbolAttr}" ${opensToNothing ? "disabled" : ""} title="${openDecisionTitle}" aria-label="${opensToNothing ? `${symbolAttr} decision unavailable — plan expired` : `Open ${symbolAttr} decision`}">
                         <i class="fa-solid fa-brain" aria-hidden="true"></i>
                     </button>
                 </div>
