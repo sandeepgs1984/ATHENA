@@ -40,6 +40,11 @@
         } else {
             stopTickerRefresh();
         }
+        if (state.activeTab === "decisions") {
+            startDecisionsAutoRefresh();
+        } else {
+            stopDecisionsAutoRefresh();
+        }
         if (tabId !== "decisions") {
             stopBriefPriceRefresh();
             if (typeof clearAdvisorPulsePriority === "function") {
@@ -303,6 +308,43 @@
         if (tickerRefreshIntervalId != null) {
             clearInterval(tickerRefreshIntervalId);
             tickerRefreshIntervalId = null;
+        }
+    }
+
+    // Decisions & Trace auto-refresh (owner-requested, 2026-08-04): the board
+    // otherwise only updated on tab-switch, a filter/search/sort change, or a
+    // manual click — the same manual-refresh-only gap the ticker refresh
+    // above already closed for market data. Same pattern: poll while the tab
+    // is active, pause while the document is hidden, silent on failure (last-
+    // good view stays up, next tick retries). Safe against disrupting an open
+    // decision brief: applyDecisionsView (12-decisions-list.js) only re-runs
+    // selectBriefing — the full detail/trace refetch + scroll reset — when
+    // the decision that would be shown has actually changed, so a tick that
+    // finds nothing new leaves the open brief (scroll position, open tab,
+    // in-progress journal draft) completely untouched.
+    const DECISIONS_REFRESH_INTERVAL_MS = 60000;
+    let decisionsRefreshIntervalId = null;
+    let decisionsAutoRefreshInFlight = false;
+
+    async function autoRefreshDecisionsWorkspace() {
+        if (document.hidden || state.activeTab !== "decisions" || decisionsAutoRefreshInFlight) return;
+        decisionsAutoRefreshInFlight = true;
+        try {
+            await loadDecisionsWorkspace({ silent: true });
+        } finally {
+            decisionsAutoRefreshInFlight = false;
+        }
+    }
+
+    function startDecisionsAutoRefresh() {
+        stopDecisionsAutoRefresh();
+        decisionsRefreshIntervalId = setInterval(autoRefreshDecisionsWorkspace, DECISIONS_REFRESH_INTERVAL_MS);
+    }
+
+    function stopDecisionsAutoRefresh() {
+        if (decisionsRefreshIntervalId != null) {
+            clearInterval(decisionsRefreshIntervalId);
+            decisionsRefreshIntervalId = null;
         }
     }
 

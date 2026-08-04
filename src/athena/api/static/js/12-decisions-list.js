@@ -170,11 +170,15 @@
     // stop serializing: fetch page 1 to learn the real page count, then fire
     // every remaining page concurrently and let the browser's own connection
     // pool pipeline them, instead of this code doing it one at a time.
-    async function fetchAllDecisionPages() {
+    async function fetchAllDecisionPages(options = {}) {
         const pageSize = 100;
         const maxPages = 50;
+        // Background auto-refresh (2026-08-04) passes silent so a failed
+        // poll doesn't surface a toast per request — loadDecisionsWorkspace's
+        // own catch already skips the destructive UI reset for this case.
+        const requestOpts = options.silent ? { skipToast: true } : undefined;
 
-        const firstRes = await apiRequest(decisionsPageUrl(1, pageSize));
+        const firstRes = await apiRequest(decisionsPageUrl(1, pageSize), requestOpts);
         if (!firstRes || firstRes.status !== "success") {
             throw new Error("decisions list returned a non-success envelope");
         }
@@ -189,7 +193,7 @@
             const remainingPages = [];
             for (let page = 2; page <= totalPages; page += 1) remainingPages.push(page);
             const results = await Promise.all(
-                remainingPages.map(page => apiRequest(decisionsPageUrl(page, pageSize)))
+                remainingPages.map(page => apiRequest(decisionsPageUrl(page, pageSize), requestOpts))
             );
             for (const res of results) {
                 if (!res || res.status !== "success") {
@@ -203,7 +207,7 @@
 
     async function loadDecisionsWorkspace(options = {}) {
         try {
-            const raw = await fetchAllDecisionPages();
+            const raw = await fetchAllDecisionPages(options);
             allTraceDecisionsList = raw;
             // Latest decision per instrument for "Today's Decisions" (avoid duplicate cards)
             traceDecisionsList = latestDecisionPerInstrument(raw);
@@ -211,6 +215,12 @@
             return applyDecisionsView(options);
         } catch (err) {
             console.error("Failed to load decisions", err);
+            // Background auto-refresh (2026-08-04): a transient failure on a
+            // silent poll must not blank an already-rendered board or toast
+            // on every failed tick — leave the last-good view up and let the
+            // next tick retry. Only a real (manual/tab-load) request shows
+            // the failure state below.
+            if (options.silent) return null;
             if (decisionsCarouselContainer) {
                 decisionsCarouselContainer.innerHTML = '<div class="text-muted text-center" style="padding: 24px;">Failed to load decisions. Use refresh to retry.</div>';
             }
@@ -447,7 +457,17 @@
                 (best, d) => (decisionListPriority(d) < decisionListPriority(best) ? d : best),
                 rows[0]
             );
-            selectBriefing(fallback.metadata.decision_id);
+            // Only re-run selectBriefing (full detail/trace refetch + resets
+            // the reasoning-trace scroll to top) when the decision actually
+            // shown has genuinely changed. Without this, every view-only
+            // change (search keystroke, filter, sort, and now background
+            // auto-refresh — 2026-08-04) reset an already-open decision's
+            // scroll position and re-fetched its detail/trace for no reason.
+            // Revalidation always yields a new decision_id (decisions are
+            // immutable/append-only), so a genuine update is never missed.
+            if (fallback.metadata.decision_id !== activeDecisionId) {
+                selectBriefing(fallback.metadata.decision_id);
+            }
             return fallback;
         } else if (dagNodesContainer) {
             dagNodesContainer.innerHTML = '<div class="text-muted text-center" style="padding: 48px;">No decisions match the current filters.</div>';
@@ -683,6 +703,12 @@
 
         const row = document.createElement("div");
         row.className = "symbol-row";
+        // Rebuilds happen on every filter/search/sort change and (2026-08-04)
+        // background auto-refresh — stamp the highlight here so the open
+        // decision stays visibly selected even on ticks where applyDecisionsView
+        // skips re-running selectBriefing (see its own comment) because the
+        // same decision is still the one on screen.
+        if (d.metadata.decision_id === activeDecisionId) row.classList.add("active");
         row.setAttribute("data-id", d.metadata.decision_id);
         row.setAttribute("data-symbol", symbol);
         // Keyboard-operable (UX-7 accessibility) — this was a plain click-only
