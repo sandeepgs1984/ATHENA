@@ -1551,6 +1551,23 @@
         }
     }
 
+    // Owner-reported (2026-08-04): Market Summary (the F-5 health/regime
+    // card) only ever updated on a tab switch or a manual validate — unlike
+    // Index Leadership/Top Opportunities Today, it wasn't on the 60s ticker-
+    // tab timer at all, so it could sit stale indefinitely while the owner
+    // stayed on the Market tab. This is the same GET /api/v1/market/summary
+    // call loadMarketIntelligence() already makes, pulled out standalone so
+    // the timer can refresh just this card without re-running everything
+    // else loadMarketIntelligence() does (candidates, universe, calendar...).
+    async function refreshMarketSummary() {
+        try {
+            const summaryRes = await apiRequest("/api/v1/market/summary", { skipToast: true });
+            renderMarketSummaryHero(summaryRes && summaryRes.data ? summaryRes.data : null);
+        } catch (err) {
+            console.error("Failed to refresh market summary", err);
+        }
+    }
+
     async function loadMarketIntelligence() {
         try {
             await loadCandidateList();

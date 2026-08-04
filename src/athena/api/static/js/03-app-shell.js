@@ -300,6 +300,7 @@
             if (state.activeTab === "market") {
                 if (typeof loadIndexLeadership === "function") loadIndexLeadership();
                 if (typeof loadTopOpportunities === "function") loadTopOpportunities();
+                if (typeof refreshMarketSummary === "function") refreshMarketSummary();
             }
         }, TICKER_REFRESH_INTERVAL_MS);
     }
