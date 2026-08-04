@@ -28,17 +28,30 @@ def _full_css(client: TestClient) -> str:
 
 
 def test_top_opportunities_never_renders_a_partial_card(client: TestClient) -> None:
-    """MI-UX-1, corrected same-day: the first fix capped to a flat row count,
-    which never engaged on a wide monitor where all cards resolve to one
-    row. The real contract is measuring genuine remaining space against the
-    actual clipping ancestor, not guessing a row count."""
+    """MI-UX (owner-reported, 2026-08-04): three attempts at capping the
+    inline card grid to the height-constrained summary band (mid-card
+    clipping, then a flat row count, then measuring real remaining space)
+    all still "felt like clipping" — capping a variable-height grid to a
+    variable leftover space is inherently fragile. The structural fix:
+    the full card grid lives in its own modal with real, unconstrained
+    space (same pattern Index Leadership already uses), so the inline
+    view can never clip a card — there's no card grid inline to clip."""
+    html = client.get("/dashboard/").text
     js = client.get("/dashboard/dashboard.js").text
+    css = _full_css(client)
 
-    assert "function constrainTopOpportunitiesCards(cardsEl)" in js
-    assert 'cardsEl.closest(".market-summary-band")' in js
-    # The flawed first attempt's signature/approach must not come back.
-    assert "function constrainTopOpportunitiesCards(cardsEl, maxRows)" not in js
-    assert "top-opportunities-expand-btn" in js
+    # The old capping/expand-button machinery must not come back.
+    assert "constrainTopOpportunitiesCards" not in js
+    assert "top-opportunities-expand-btn" not in js
+    assert 'id="top-opportunities-cards"' not in html  # no cards grid inline
+
+    # The modal structure that replaced it.
+    assert 'id="top-opportunities-modal"' in html
+    assert 'id="top-opportunities-modal-cards"' in html
+    assert 'id="top-opportunities-open"' in html
+    assert 'function renderTopOpportunities(payload)' in js
+    assert 'getElementById("top-opportunities-modal-cards")' in js
+    assert ".top-opportunities-modal-container" in css
 
 
 def test_shared_freshness_phrase_used_everywhere(client: TestClient) -> None:

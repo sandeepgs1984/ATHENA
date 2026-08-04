@@ -526,6 +526,19 @@
     .index-leadership-modal-container { width: min(920px, calc(100vw - 32px)); }
 }
 
+/* MI-UX (owner-reported, 2026-08-04): same reasoning as
+   .index-leadership-modal-container above — must live here, after the base
+   .modal-container rule, to actually win the cascade. */
+.top-opportunities-modal-container {
+    width: min(1320px, calc(100vw - 32px));
+    max-width: 1320px;
+    max-height: min(78vh, 760px);
+}
+
+@media (max-width: 1100px) {
+    .top-opportunities-modal-container { width: min(920px, calc(100vw - 32px)); }
+}
+
 .modal-header {
     align-items: center;
     border-bottom: 1px solid var(--border-color);

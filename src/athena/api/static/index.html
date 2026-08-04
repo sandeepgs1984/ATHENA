@@ -443,17 +443,29 @@
                                         </button>
                                     </div>
                                 </section>
+                                <!-- MI-UX (owner-reported, 2026-08-04): the card grid used to
+                                     render inline here, sharing the same height-constrained
+                                     summary band as Market Summary/Index Leadership above it —
+                                     no capping scheme kept it from feeling clipped as the
+                                     band's leftover space varied. Same fix as Index
+                                     Leadership: inline stays a small, fixed-height summary;
+                                     the full card grid lives in its own modal with real,
+                                     unconstrained space. -->
                                 <section class="top-opportunities-panel" aria-labelledby="top-opportunities-title">
                                     <div class="top-opportunities-heading">
                                         <span class="top-opportunities-kicker">Top Opportunities Today</span>
                                         <strong id="top-opportunities-title">Loading…</strong>
                                         <small id="top-opportunities-updated" class="top-opportunities-updated"></small>
-                                        <button type="button" id="top-opportunities-refresh" class="mi-refresh-btn" title="Refresh top opportunities now" aria-label="Refresh top opportunities now">
-                                            <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i>
-                                        </button>
+                                        <div class="top-opportunities-actions">
+                                            <button type="button" id="top-opportunities-refresh" class="mi-refresh-btn" title="Refresh top opportunities now" aria-label="Refresh top opportunities now">
+                                                <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i>
+                                            </button>
+                                            <button type="button" id="top-opportunities-open" class="inspect-btn top-opportunities-open" aria-haspopup="dialog" aria-controls="top-opportunities-modal">
+                                                View all opportunities
+                                            </button>
+                                        </div>
                                     </div>
                                     <div id="top-opportunities-summary" class="top-opportunities-summary"></div>
-                                    <div id="top-opportunities-cards" class="top-opportunities-cards"></div>
                                     <div id="top-opportunities-removed" class="top-opportunities-removed"></div>
                                 </section>
                             </div>
@@ -623,20 +635,12 @@
                                     <h3>Quick Actions</h3>
                                 </div>
                                 <div class="card-body market-quick-actions-body">
-                                    <button type="button" id="mi-focus-add-symbol-btn" class="mi-action-row">
-                                        <span class="mi-action-icon mi-action-icon-add" aria-hidden="true"><i class="fas fa-plus"></i></span>
-                                        <span class="mi-action-copy">
-                                            <strong>Add Symbol to Universe</strong>
-                                            <span>Type a trading symbol and validate</span>
-                                        </span>
-                                    </button>
-                                    <button type="button" id="mi-run-full-validation-btn" class="mi-action-row">
-                                        <span class="mi-action-icon mi-action-icon-play" aria-hidden="true"><i class="fas fa-play"></i></span>
-                                        <span class="mi-action-copy">
-                                            <strong>Run Full Validation</strong>
-                                            <span>All active candidates, one background run</span>
-                                        </span>
-                                    </button>
+                                    <!-- MI-UX (owner-reported, 2026-08-04): "Add Symbol to
+                                         Universe" duplicated the Universe table's own "+ Add &
+                                         validate" input, and "Run Full Validation" duplicated
+                                         its "Validate All" button — removed here, not there,
+                                         since Universe's own controls are the primary,
+                                         already-visible entry point for both actions. -->
                                     <button type="button" id="mi-refresh-market-btn" class="mi-action-row">
                                         <span class="mi-action-icon mi-action-icon-refresh" aria-hidden="true"><i class="fas fa-rotate"></i></span>
                                         <span class="mi-action-copy">
@@ -1277,6 +1281,21 @@
                     </div>
                     <div id="index-sector-grid" class="index-leadership-grid"></div>
                 </section>
+            </div>
+        </div>
+    </div>
+
+    <div id="top-opportunities-modal" class="modal-overlay" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="top-opportunities-modal-title">
+        <div class="modal-container top-opportunities-modal-container">
+            <div class="modal-header">
+                <div>
+                    <h3 id="top-opportunities-modal-title">Top Opportunities Today</h3>
+                    <p id="top-opportunities-modal-updated" class="top-opportunities-modal-updated"></p>
+                </div>
+                <button id="top-opportunities-modal-close" class="modal-close-btn" type="button" aria-label="Close top opportunities">&times;</button>
+            </div>
+            <div class="modal-body top-opportunities-modal-body">
+                <div id="top-opportunities-modal-cards" class="top-opportunities-cards"></div>
             </div>
         </div>
     </div>

@@ -54,6 +54,15 @@
         if (event.target === indexLeadershipModal) closeModal(indexLeadershipModal);
     });
 
+    const topOpportunitiesModal = document.getElementById("top-opportunities-modal");
+    const topOpportunitiesOpen = document.getElementById("top-opportunities-open");
+    const topOpportunitiesClose = document.getElementById("top-opportunities-modal-close");
+    topOpportunitiesOpen?.addEventListener("click", () => openModal(topOpportunitiesModal));
+    topOpportunitiesClose?.addEventListener("click", () => closeModal(topOpportunitiesModal));
+    window.addEventListener("click", event => {
+        if (event.target === topOpportunitiesModal) closeModal(topOpportunitiesModal);
+    });
+
     // Manual on-demand refresh for Index Leadership / Top Opportunities
     // Today, in addition to the 60s background auto-refresh (see
     // startTickerRefresh in 03-app-shell.js, which now also calls
@@ -1173,7 +1182,12 @@
                     <span title="ATHENA composite score">Score ${score}</span>
                     <!-- MI-UX-4: "RS" alone reads ambiguously as Rupees at a
                          glance (owner-reported); spelled out, it can't. -->
-                    <span class="top-opportunities-rs ${rsClass}" title="Relative strength vs. sector">Rel Str ${relative}</span>
+                    <!-- Owner direction (2026-08-04): kept "Rel Str" over "RSI" —
+                         RSI is a specific, differently-computed 0-100 momentum
+                         oscillator; this is a signed % delta vs. the sector, a
+                         different metric entirely. Tooltip spells out the exact
+                         arithmetic so it can't be mistaken for RSI at a glance. -->
+                    <span class="top-opportunities-rs ${rsClass}" title="Relative strength vs. sector: this symbol's % change today minus its sector's % change today. Positive means it's outperforming its sector; not the RSI technical indicator.">Rel Str ${relative}</span>
                     <span class="plan-freshness-badge tone-${freshness.toLowerCase()}" title="${sym.plan_freshness_summary || ""}">${freshness}</span>
                 </div>
                 <div class="top-opportunities-confidence" title="${topOpportunitiesConfidenceLabel(sym.confidence_level)}">
@@ -1209,97 +1223,39 @@
         `;
     }
 
-    // MI-UX-1 (owner-reported, 2026-08-03): on a shared, height-constrained
-    // summary band, an uncapped card grid let the outer scroll boundary land
-    // mid-row — later cards rendered with a visible header but no visible
-    // symbol content, reading as broken rather than as "scroll for more."
-    // First fix attempt capped to a flat 2 rows regardless of real layout —
-    // wrong on a wide monitor where all 5 cards resolve to a single row: 1
-    // row is not "more than 2," so the cap never engaged, and the *outer*
-    // .market-summary-band boundary (untouched by that cap) kept cutting
-    // straight through that one tall row. The actual guarantee has to be
-    // measured against the real remaining space in whichever ancestor
-    // actually scrolls/clips — never a guessed row count — so it holds
-    // regardless of column count or viewport size.
-    function constrainTopOpportunitiesCards(cardsEl) {
-        const priorExpand = cardsEl.parentElement
-            && cardsEl.parentElement.querySelector(".top-opportunities-expand-btn");
-        if (priorExpand) priorExpand.remove();
-        cardsEl.style.maxHeight = "";
-        cardsEl.style.overflow = "";
-
-        const cards = Array.from(cardsEl.querySelectorAll(".top-opportunities-card"));
-        if (!cards.length) return;
-
-        const clipAncestor = cardsEl.closest(".market-summary-band");
-        if (!clipAncestor) return;
-        const available = clipAncestor.getBoundingClientRect().bottom
-            - cardsEl.getBoundingClientRect().top;
-
-        const colCount = getComputedStyle(cardsEl).gridTemplateColumns
-            .split(" ").filter(Boolean).length || 1;
-        const rowsTotal = Math.ceil(cards.length / colCount);
-        // Row height varies by content (1 vs. 2 symbols per sector), so walk
-        // actual card bottoms rather than assuming a uniform row height.
-        let rowsFit = 0;
-        for (let row = 0; row < rowsTotal; row++) {
-            const rowLastCard = cards[Math.min((row + 1) * colCount, cards.length) - 1];
-            const rowBottom = rowLastCard.getBoundingClientRect().bottom
-                - cardsEl.getBoundingClientRect().top;
-            if (rowBottom > available) break;
-            rowsFit = row + 1;
-        }
-        if (rowsFit >= rowsTotal) return;
-
-        const visibleCount = Math.min(rowsFit * colCount, cards.length);
-        if (visibleCount <= 0) {
-            cardsEl.style.maxHeight = "0px";
-            cardsEl.style.overflow = "hidden";
-        } else {
-            const lastVisibleCard = cards[visibleCount - 1];
-            const capHeight = lastVisibleCard.getBoundingClientRect().bottom
-                - cardsEl.getBoundingClientRect().top;
-            cardsEl.style.maxHeight = `${Math.ceil(capHeight)}px`;
-            cardsEl.style.overflow = "hidden";
-        }
-
-        const hiddenCount = cards.length - visibleCount;
-        const expandBtn = document.createElement("button");
-        expandBtn.type = "button";
-        expandBtn.className = "inspect-btn top-opportunities-expand-btn";
-        expandBtn.textContent = `+${hiddenCount} more opportunit${hiddenCount === 1 ? "y" : "ies"} — show all`;
-        expandBtn.addEventListener("click", () => {
-            cardsEl.style.maxHeight = "";
-            cardsEl.style.overflow = "";
-            expandBtn.remove();
-        });
-        cardsEl.insertAdjacentElement("afterend", expandBtn);
-    }
-
+    // MI-UX (owner-reported, 2026-08-04): three separate attempts to cap the
+    // inline card grid (mid-card clipping, then flat row counts, then
+    // measuring real remaining space) all still "felt like clipping" —
+    // capping a variable-height grid to fit a variable-leftover space is
+    // inherently fragile. Same structural fix Index Leadership already
+    // uses: inline stays a small, fixed-height summary; the full grid
+    // renders into its own modal (#top-opportunities-modal-cards) with
+    // real, unconstrained space. No capping/expand-button logic needed —
+    // the modal's .modal-body already scrolls properly, same as every
+    // other modal on this page.
     function renderTopOpportunities(payload) {
         const titleEl = document.getElementById("top-opportunities-title");
         const summaryEl = document.getElementById("top-opportunities-summary");
-        const cardsEl = document.getElementById("top-opportunities-cards");
         const removedEl = document.getElementById("top-opportunities-removed");
         const updatedEl = document.getElementById("top-opportunities-updated");
-        if (!titleEl || !summaryEl || !cardsEl || !removedEl) return;
+        const modalCardsEl = document.getElementById("top-opportunities-modal-cards");
+        const modalUpdatedEl = document.getElementById("top-opportunities-modal-updated");
+        if (!titleEl || !summaryEl || !removedEl) return;
 
         if (updatedEl) {
             updatedEl.textContent = (payload && payload.as_of)
                 ? `As of ${formatDecisionTime(payload.as_of)}`
                 : "";
         }
+        if (modalUpdatedEl) modalUpdatedEl.textContent = updatedEl ? updatedEl.textContent : "";
 
         const sectors = (payload && Array.isArray(payload.sectors)) ? payload.sectors : [];
         if (!sectors.length) {
             titleEl.textContent = "No qualified opportunities today";
             summaryEl.innerHTML = "";
-            cardsEl.innerHTML = '<span class="top-opportunities-empty">No WATCH/TRADE symbols qualify in today’s leading sectors yet.</span>';
-            cardsEl.style.maxHeight = "";
-            cardsEl.style.overflow = "";
-            const priorExpand = cardsEl.parentElement
-                && cardsEl.parentElement.querySelector(".top-opportunities-expand-btn");
-            if (priorExpand) priorExpand.remove();
+            if (modalCardsEl) {
+                modalCardsEl.innerHTML = '<span class="top-opportunities-empty">No WATCH/TRADE symbols qualify in today’s leading sectors yet.</span>';
+            }
             removedEl.innerHTML = "";
             return;
         }
@@ -1312,20 +1268,21 @@
             <span><strong>${summary.highest_athena_score !== null && summary.highest_athena_score !== undefined ? Number(summary.highest_athena_score).toFixed(1) : "—"}</strong> highest score</span>
             <span><strong>${summary.average_athena_score !== null && summary.average_athena_score !== undefined ? Number(summary.average_athena_score).toFixed(1) : "—"}</strong> average score</span>
         `;
-        cardsEl.innerHTML = sectors.map(topOpportunitiesSectorCard).join("");
-        cardsEl.querySelectorAll(".top-opportunities-validate-btn").forEach(btn => {
-            btn.addEventListener("click", async () => {
-                const sym = btn.getAttribute("data-symbol");
-                await validateSymbolsNow([sym], { button: btn, refreshDecisions: true, showReport: true });
+        if (modalCardsEl) {
+            modalCardsEl.innerHTML = sectors.map(topOpportunitiesSectorCard).join("");
+            modalCardsEl.querySelectorAll(".top-opportunities-validate-btn").forEach(btn => {
+                btn.addEventListener("click", async () => {
+                    const sym = btn.getAttribute("data-symbol");
+                    await validateSymbolsNow([sym], { button: btn, refreshDecisions: true, showReport: true });
+                });
             });
-        });
-        cardsEl.querySelectorAll(".top-opportunities-open-decision-btn").forEach(btn => {
-            btn.addEventListener("click", async () => {
-                const sym = btn.getAttribute("data-symbol");
-                await openDecisionForSymbol(sym);
+            modalCardsEl.querySelectorAll(".top-opportunities-open-decision-btn").forEach(btn => {
+                btn.addEventListener("click", async () => {
+                    const sym = btn.getAttribute("data-symbol");
+                    await openDecisionForSymbol(sym);
+                });
             });
-        });
-        constrainTopOpportunitiesCards(cardsEl);
+        }
 
         const removed = (payload && Array.isArray(payload.removed)) ? payload.removed : [];
         removedEl.innerHTML = removed.length
@@ -1767,14 +1724,12 @@
 
     function renderFullValidationProgress(progress) {
         const el = document.getElementById("full-validation-progress");
-        const runBtn = document.getElementById("mi-run-full-validation-btn");
         const allBtn = document.getElementById("universe-validate-all-btn");
         if (!el) return;
         if (!progress) {
             el.hidden = true;
             el.textContent = "";
             el.className = "full-validation-progress text-muted";
-            if (runBtn) runBtn.disabled = false;
             if (allBtn) allBtn.disabled = false;
             return;
         }
@@ -1789,7 +1744,6 @@
                 `Running full validation… ${stage}` +
                 (total ? ` · ${done}/${total} symbols` : "") +
                 " (this can take several minutes)";
-            if (runBtn) runBtn.disabled = true;
             if (allBtn) allBtn.disabled = true;
         } else if (state === "completed") {
             // MI-UX-4: this persistent line duplicated both the "Full
@@ -1801,17 +1755,14 @@
             // its own third copy.
             el.hidden = true;
             el.textContent = "";
-            if (runBtn) runBtn.disabled = false;
             if (allBtn) allBtn.disabled = false;
         } else if (state === "failed") {
             el.textContent =
                 `Full validation failed` +
                 (progress.detail ? `: ${progress.detail}` : "");
-            if (runBtn) runBtn.disabled = false;
             if (allBtn) allBtn.disabled = false;
         } else {
             el.hidden = true;
-            if (runBtn) runBtn.disabled = false;
             if (allBtn) allBtn.disabled = false;
         }
     }
@@ -3344,24 +3295,14 @@
     const funnelDetailsModal = document.getElementById("validation-funnel-modal");
     const funnelDetailsClose = document.getElementById("validation-funnel-modal-close");
 
-    const runFullValidationBtn = document.getElementById("mi-run-full-validation-btn");
+    // MI-UX (owner-reported, 2026-08-04): "Add Symbol to Universe" and "Run
+    // Full Validation" quick-action buttons were removed as duplicates of
+    // Universe's own "+ Add & validate" input and "Validate All" button —
+    // only the latter two remain wired here.
     const universeValidateAllBtn = document.getElementById("universe-validate-all-btn");
-    const focusAddSymbolBtn = document.getElementById("mi-focus-add-symbol-btn");
     const refreshMarketBtn = document.getElementById("mi-refresh-market-btn");
-    if (runFullValidationBtn) {
-        runFullValidationBtn.addEventListener("click", () => startFullUniverseValidation());
-    }
     if (universeValidateAllBtn) {
         universeValidateAllBtn.addEventListener("click", () => startFullUniverseValidation());
-    }
-    if (focusAddSymbolBtn) {
-        focusAddSymbolBtn.addEventListener("click", () => {
-            const input = document.getElementById("candidate-search-input");
-            if (input) {
-                input.focus();
-                input.scrollIntoView({ behavior: "smooth", block: "center" });
-            }
-        });
     }
     if (refreshMarketBtn) {
         refreshMarketBtn.addEventListener("click", async () => {

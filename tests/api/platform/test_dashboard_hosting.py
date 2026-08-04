@@ -1945,8 +1945,11 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
 
     # MI-5: Quick Actions + Recent Activity + Validate All + Saved Symbols
     # relocated out of the primary workstation column.
-    assert 'id="mi-run-full-validation-btn"' in html
-    assert "Run Full Validation" in html
+    # MI-UX (owner-reported, 2026-08-04): "Add Symbol to Universe" and "Run
+    # Full Validation" quick-action buttons removed as duplicates of
+    # Universe's own "+ Add & validate" input and "Validate All" button.
+    assert 'id="mi-run-full-validation-btn"' not in html
+    assert 'id="mi-focus-add-symbol-btn"' not in html
     assert 'id="universe-validate-all-btn"' in html
     assert "Validate All" in html
     assert 'id="mi-refresh-market-btn"' in html
@@ -1956,7 +1959,6 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "function renderRecentActivity" in js
     assert "/api/v1/market/validate-all" in js
     assert ".mi-action-row" in css
-    assert ".mi-action-icon-play" in css
     assert ".mi-primary-btn" in css
     assert ".market-recent-activity-list" in css
     assert "market-side-rail" in html

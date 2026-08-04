@@ -240,8 +240,26 @@
     cursor: not-allowed;
 }
 
-.top-opportunities-heading .mi-refresh-btn {
+.top-opportunities-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-6);
     margin-left: auto;
+}
+
+.top-opportunities-open {
+    white-space: nowrap;
+}
+
+.top-opportunities-modal-updated {
+    margin: 3px 0 0;
+    color: var(--text-muted);
+    font-size: var(--text-0-72);
+    white-space: normal;
+}
+
+.top-opportunities-modal-body {
+    overflow-y: auto;
 }
 
 /* Owner-reported (2026-08-01): the width override below was silently
@@ -2335,16 +2353,6 @@
     font-size: var(--text-0-85);
 }
 
-.mi-action-icon-add {
-    background: rgba(0, 242, 254, 0.12);
-    color: var(--accent);
-}
-
-.mi-action-icon-play {
-    background: rgba(0, 230, 118, 0.16);
-    color: var(--success);
-}
-
 .mi-action-icon-refresh {
     background: rgba(148, 163, 184, 0.14);
     color: var(--text-muted);
@@ -2491,7 +2499,9 @@
 }
 
 .market-saved-symbols-card .candidate-list {
-    max-height: 160px;
+    /* Owner-reported (2026-08-04): expanded now that Quick Actions dropped
+       its two duplicate buttons and needs less of the side rail's height. */
+    max-height: 320px;
     overflow-y: auto;
     overflow-x: hidden;
 }

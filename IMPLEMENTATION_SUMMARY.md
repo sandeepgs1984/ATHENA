@@ -6,6 +6,29 @@ status updated on approval.
 
 ---
 
+## Fix pass: Market Intelligence quick-action polish + Top Opportunities modal (owner-reported)
+
+| | |
+|---|---|
+| Completed | 2026-08-04 |
+| Objective | Four owner-reported items on the Market Intelligence screen: (1) whether "Rel Str" should become "RSI"; (2) Quick Actions had two buttons duplicating controls that already exist on Universe; (3) Saved Symbols' visible list was too short; (4) Top Opportunities Today still "feels like clipping" despite three prior capping attempts (MI-UX-1 through MI-UX-3) |
+| Scope | (1) Flagged rather than implemented literally: RSI is a specific, differently-computed 0-100 momentum oscillator — relabeling this signed %-vs-sector-delta field "RSI" would have made it look like that indicator while showing a different kind of number, a correctness problem, not just a naming one. Owner direction: keep "Rel Str", improve the tooltip instead — it now spells out the exact arithmetic (this symbol's % change today minus its sector's % change today) and explicitly notes it is not the RSI indicator. (2)/(3) Removed "Add Symbol to Universe" and "Run Full Validation" quick-action buttons — they duplicated Universe's own "+ Add & validate" input and "Validate All" button; removed their now-dead JS wiring and CSS. Expanded Saved Symbols' list `max-height` from 160px to 320px, freed up naturally by Quick Actions now needing less of the side rail's height. (4) Structural fix instead of a fourth capping attempt: moved the full opportunity-card grid out of the height-constrained summary band entirely, into its own modal (`#top-opportunities-modal`) — same proven pattern Index Leadership already uses (`#index-leadership-modal`, `View all indices`). The inline view now shows only the small, fixed-height heading + summary stats (never a card grid), with a `View all opportunities` button opening the modal for the full, properly-scrolled list. This makes mid-card clipping structurally impossible — there's no variable-height card content left in the constrained inline area to clip |
+| Files created | None |
+| Files modified | `src/athena/api/static/index.html`, `src/athena/api/static/js/09-market-intelligence.js`, `src/athena/api/static/css/06-market-intelligence.css`, `src/athena/api/static/css/07-universe-modals.css`, `tests/api/platform/test_dashboard_hosting.py`, `tests/api/platform/test_market_intelligence_ux_release_gate.py` |
+| Public APIs added | None — presentation only |
+| Tests | Updated the release-gate test that had locked in the old capping/expand-button behavior to instead assert the modal structure and the old machinery's absence; updated `test_dashboard_hosting.py`'s Quick Actions assertions for the two removed buttons. Full suite — **1,270 passed** |
+| Coverage | Live-verified via an isolated instance against a real database backup: confirmed Universe's own Eligible-default rows unaffected, Saved Symbols list visibly taller, and the Top Opportunities modal opens with the full card grid properly scrolled, no clipping |
+| Architecture compliance | Presentation only; no score, decision, regime, or TradePlan value changed; no backend endpoint added or changed |
+| ADR compliance | None required |
+| Risks discovered | None new |
+| Technical debt introduced | None — removed dead CSS/JS for the two deleted buttons rather than leaving it behind |
+| Suggested improvements | None |
+| Remaining work | None |
+| Status | 🔄 Ready for owner review |
+| Branch | feature/live-dashboard |
+
+---
+
 ## Fix pass: Top Opportunities Today made every validate/refresh 40-60s+ (owner-reported, highest priority)
 
 | | |
