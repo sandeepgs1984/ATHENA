@@ -123,32 +123,29 @@ class SqliteDecisionProvider:
     def get_decisions(
         self, spec: QuerySpecification[DecisionFilterParams]
     ) -> CollectionResult[Decision]:
-        # Pull a generous window then apply API filters/sort/page in-memory.
-        # Dashboard walks pages (page_size<=100) and dedupes latest-per-instrument;
-        # keep this window large enough for Nifty-scale validate runs.
-        decisions = self._repo.list_decisions(limit=5000)
-
-        def filter_func(d: Decision) -> bool:
-            f = spec.filters
-            if f.instrument_id and d.instrument_id != f.instrument_id:
-                return False
-            if f.decision_type and d.decision_type != f.decision_type:
-                return False
-            if f.direction and d.direction != f.direction:
-                return False
-            if f.from_date and d.ts < f.from_date:
-                return False
-            return not (f.to_date and d.ts > f.to_date)
-
-        def sort_func(d: Decision) -> Any:
-            sort_by = spec.sort.sort_by
-            if sort_by == "ts":
-                return d.ts
-            if sort_by == "instrument_id":
-                return d.instrument_id or ""
-            return d.decision_id
-
-        return apply_query_spec(list(decisions), spec, filter_func, sort_func)
+        # Filter/sort/paginate in SQL (query_decisions) rather than pulling a
+        # fixed window and re-doing the work in Python on every page request —
+        # see query_decisions docstring for why (owner-reported, 2026-08-04).
+        f = spec.filters
+        page_size = spec.pagination.page_size
+        offset = (spec.pagination.page - 1) * page_size
+        decisions, total_count = self._repo.query_decisions(
+            instrument_id=f.instrument_id,
+            decision_type=f.decision_type,
+            direction=f.direction,
+            from_date=f.from_date,
+            to_date=f.to_date,
+            sort_by=spec.sort.sort_by or "ts",
+            sort_dir=spec.sort.sort_dir,
+            offset=offset,
+            limit=page_size,
+        )
+        return CollectionResult(
+            items=tuple(decisions),
+            total_count=total_count,
+            page=spec.pagination.page,
+            page_size=page_size,
+        )
 
     def get_decision(self, decision_id: str) -> Decision | None:
         return self._repo.get_decision(decision_id)

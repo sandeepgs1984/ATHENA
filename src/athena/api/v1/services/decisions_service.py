@@ -88,6 +88,11 @@ class DecisionsService:
         # by MarketHistoryService, avoiding a fresh sqlite connection per
         # decision the way reset_decisions' one-off backup step does.
         self._repo = repo
+        # Populated per list_decisions() call so _lookup_instrument_name can
+        # do one batched lookup instead of one repo query per decision row
+        # (owner-reported, 2026-08-04: up to page_size extra serialized
+        # round-trips per page was part of the Decisions & Trace slowness).
+        self._instrument_name_cache: dict[str, str] | None = None
 
     def list_decisions(
         self,
@@ -99,13 +104,29 @@ class DecisionsService:
         spec = QuerySpecification(filters=filters, sort=sort, pagination=pagination)
         result = self._provider.get_decisions(spec)
 
-        dto_items = tuple(self._map_to_dto(d) for d in result.items)
+        self._instrument_name_cache = self._load_instrument_names(result.items)
+        try:
+            dto_items = tuple(self._map_to_dto(d) for d in result.items)
+        finally:
+            self._instrument_name_cache = None
         return CollectionResult(
             items=dto_items,
             total_count=result.total_count,
             page=result.page,
             page_size=result.page_size,
         )
+
+    def _load_instrument_names(self, decisions: tuple[Decision, ...]) -> dict[str, str]:
+        if self._repo is None:
+            return {}
+        wanted = {d.instrument_id for d in decisions if d.instrument_id}
+        if not wanted:
+            return {}
+        return {
+            instrument.instrument_id: instrument.name
+            for instrument in self._repo.list_instruments()
+            if instrument.instrument_id in wanted and instrument.name
+        }
 
     def get_decision(self, decision_id: str) -> DecisionDTO:
         """Retrieves a single decision or raises DecisionNotFoundError."""
@@ -119,7 +140,11 @@ class DecisionsService:
         fabricated value) if no repo is wired, the instrument isn't found,
         or the catalog hasn't been re-synced since the name column was
         added."""
-        if not instrument_id or self._repo is None:
+        if not instrument_id:
+            return None
+        if self._instrument_name_cache is not None:
+            return self._instrument_name_cache.get(instrument_id)
+        if self._repo is None:
             return None
         instrument = self._repo.get_instrument(instrument_id)
         return instrument.name if instrument else None

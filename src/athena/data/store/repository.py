@@ -14,6 +14,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import ClassVar
 
 from athena.data.store import serialization as ser
 from athena.data.store.schema import SCHEMA_VERSION, ddl_statements
@@ -530,6 +531,70 @@ class SqliteRepository:
             (limit,),
         )
         return [ser.row_to_decision(r) for r in rows]
+
+    _DECISION_SORT_COLUMNS: ClassVar[dict[str, str]] = {
+        "ts": "ts",
+        "instrument_id": "instrument_id",
+        "decision_id": "decision_id",
+    }
+
+    def query_decisions(
+        self,
+        *,
+        instrument_id: str | None = None,
+        decision_type: str | None = None,
+        direction: str | None = None,
+        from_date: datetime | None = None,
+        to_date: datetime | None = None,
+        sort_by: str = "ts",
+        sort_dir: str = "desc",
+        offset: int = 0,
+        limit: int = 100,
+    ) -> tuple[list[Decision], int]:
+        """Filter/sort/paginate decisions entirely in SQL.
+
+        Replaces the API-layer pattern of pulling a fixed 5000-row window and
+        re-filtering/sorting/slicing it in Python on every page request: that
+        redid the same full-window fetch+parse per page and silently dropped
+        decisions once history passed the window (owner-reported, 2026-08-04:
+        Decisions & Trace slow to load with 13,900+ persisted decisions).
+        """
+        where: list[str] = []
+        params: list[object] = []
+        if instrument_id:
+            where.append("instrument_id = ?")
+            params.append(instrument_id)
+        if decision_type:
+            where.append("decision_type = ?")
+            params.append(decision_type)
+        if direction:
+            where.append("direction = ?")
+            params.append(direction)
+        if from_date:
+            where.append("ts >= ?")
+            params.append(from_date.isoformat())
+        if to_date:
+            where.append("ts <= ?")
+            params.append(to_date.isoformat())
+        clause = f"WHERE {' AND '.join(where)}" if where else ""
+
+        column = self._DECISION_SORT_COLUMNS.get(sort_by, "ts")
+        order_dir = "ASC" if sort_dir == "asc" else "DESC"
+        order = f"ORDER BY {column} {order_dir}"
+        if column != "decision_id":
+            order += f", decision_id {order_dir}"
+
+        count_row = self._query_one(f"SELECT COUNT(*) FROM decisions {clause}", tuple(params))
+        total_count = int(count_row[0]) if count_row else 0
+
+        rows = self._query_all(
+            "SELECT decision_id, ts, run_id, cycle_id, decision_type, explanation, "
+            "instrument_id, direction, score_ref, confidence_ref, risk_ref, "
+            f"gate_results_json, trade_plan_json FROM decisions {clause} {order} "
+            "LIMIT ? OFFSET ?",
+            (*params, limit, offset),
+        )
+        return [ser.row_to_decision(r) for r in rows], total_count
 
     def list_latest_decisions_by_instrument(self) -> list[Decision]:
         """Return exactly one newest persisted decision per instrument.
