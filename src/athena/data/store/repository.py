@@ -242,11 +242,24 @@ class SqliteRepository:
     # ------------------------------------------------------------- candles (append-only)
 
     def add_candles(self, candles: Sequence[Candle]) -> int:
+        # Upsert, not plain insert (owner-reported, 2026-08-04): the still-
+        # forming daily candle for the current trading day is re-fetched on
+        # every ingestion cycle by design (see LiveIngestionEngine.run_cycle)
+        # because its OHLC keeps changing until the session closes. A plain
+        # INSERT would raise on the second write of the same day; overwriting
+        # via ON CONFLICT lets that re-fetch actually land the corrected
+        # values instead of failing (or, with skip_existing filtering the
+        # write out beforehand, never being attempted at all — the two
+        # changes work together). A no-op for genuinely unchanged historical
+        # rows, since the values written back are identical.
         rows = [ser.candle_to_row(c) for c in candles]
         self._write_many(
             "INSERT INTO candles "
             "(instrument_id, timeframe, ts_open, open, high, low, close, volume, source, adjusted) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?)",
+            "VALUES (?,?,?,?,?,?,?,?,?,?) "
+            "ON CONFLICT(instrument_id, timeframe, ts_open) DO UPDATE SET "
+            "open=excluded.open, high=excluded.high, low=excluded.low, close=excluded.close, "
+            "volume=excluded.volume, source=excluded.source, adjusted=excluded.adjusted",
             rows,
         )
         return len(rows)

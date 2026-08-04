@@ -126,29 +126,71 @@ class TestHappyPath:
         first = engine.run_cycle(as_of=AS_OF)
         second = engine.run_cycle(as_of=AS_OF)
         assert first.candles_written > 0
-        assert second.candles_written == 0
+        # Closed prior days (2026-02-11, -12) are still skip-if-present, but
+        # AS_OF's own date (2026-02-13) is the still-forming trading day —
+        # its daily candle is always re-written (owner-reported, 2026-08-04:
+        # skipping it froze that day's candle at whatever partial value the
+        # first ingest of the day captured, never correcting to the real
+        # close) — so exactly the one "today" daily candle is rewritten here.
+        assert second.candles_written == 1
         assert second.quotes_written == 0
         assert len(repo.get_quotes("SYN-AAA")) == 1
 
 
 class TestFailures:
-    def test_stale_quotes_quarantine_and_raise(self, tmp_path, config_dir):
+    def test_stale_quotes_quarantined_not_raised(self, tmp_path, config_dir):
+        # Owner-reported (2026-08-04): one stale/invalid dataset used to
+        # abort the whole cycle, discarding every other instrument's already-
+        # fetched, already-valid data too. Under the default
+        # quarantine_on_failure=True, the cycle now succeeds — the offending
+        # dataset is quarantined and skipped, visibly, rather than raised.
         provider = _write_provider_tree(
             tmp_path / "data", quote_ts="2026-02-13T14:00:00+05:30",
         )
         engine, repo = _engine(tmp_path, config_dir, provider)
-        with pytest.raises(DataStaleError, match=r"quotes"):
-            engine.run_cycle(as_of=AS_OF)
+        result = engine.run_cycle(as_of=AS_OF)
         assert repo.get_quarantine("quotes") is not None
         assert repo.get_quotes("SYN-AAA") == []
+        assert result.datasets_quarantined == 1
+        assert result.quarantined_dataset_ids == ("quotes",)
+        # The rest of the cycle was not discarded because of the bad quotes.
+        assert result.candles_written > 0
 
-    def test_stale_intraday_raises(self, tmp_path, config_dir):
+    def test_stale_quotes_raises_in_strict_mode(self, tmp_path, config_dir):
+        provider = _write_provider_tree(
+            tmp_path / "data", quote_ts="2026-02-13T14:00:00+05:30",
+        )
+        ingest = IngestionConfig(
+            provider="file", timeframes=["5m"], lookback_minutes=30, lookback_days=5,
+            include_daily=True, include_quotes=True, validate_gaps=False,
+            skip_existing=True, quarantine_on_failure=False, instrument_ids=["SYN-AAA"],
+        )
+        engine, repo = _engine(tmp_path, config_dir, provider, ingest=ingest)
+        with pytest.raises(DataStaleError, match=r"quotes"):
+            engine.run_cycle(as_of=AS_OF)
+        assert repo.get_quotes("SYN-AAA") == []
+
+    def test_stale_intraday_quarantined_not_raised(self, tmp_path, config_dir):
         provider = _write_provider_tree(tmp_path / "data")
         # Move as_of far past last bar; disable quotes so candle freshness is the fail path.
         ingest = IngestionConfig(
             provider="file", timeframes=["5m"], lookback_minutes=120, lookback_days=5,
             include_daily=False, include_quotes=False, validate_gaps=False,
             skip_existing=True, quarantine_on_failure=True, instrument_ids=["SYN-AAA"],
+        )
+        engine, repo = _engine(tmp_path, config_dir, provider, ingest=ingest)
+        stale_as_of = datetime(2026, 2, 13, 16, 30, tzinfo=IST)
+        result = engine.run_cycle(as_of=stale_as_of)
+        assert repo.record_counts()["candles"] == 0
+        assert result.datasets_quarantined == 1
+        assert result.quarantined_dataset_ids == ("SYN-AAA:5m",)
+
+    def test_stale_intraday_raises_in_strict_mode(self, tmp_path, config_dir):
+        provider = _write_provider_tree(tmp_path / "data")
+        ingest = IngestionConfig(
+            provider="file", timeframes=["5m"], lookback_minutes=120, lookback_days=5,
+            include_daily=False, include_quotes=False, validate_gaps=False,
+            skip_existing=True, quarantine_on_failure=False, instrument_ids=["SYN-AAA"],
         )
         engine, repo = _engine(tmp_path, config_dir, provider, ingest=ingest)
         stale_as_of = datetime(2026, 2, 13, 16, 30, tzinfo=IST)

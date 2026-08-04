@@ -242,8 +242,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.140.0" in html
-    assert "dashboard.js?v=9.140.0" in html
+    assert "dashboard.css?v=9.142.0" in html
+    assert "dashboard.js?v=9.142.0" in html
     assert 'id="advisor-pulse"' in html
     assert 'id="header-diagnostics-popover"' in html
     assert 'id="decision-actionability-banner"' in html

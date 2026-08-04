@@ -373,6 +373,8 @@ class OwnerValidationPipeline:
                 "quotes_written": ingestion.quotes_written,
                 "institutional_written": ingestion.institutional_written,
                 "institutional_error": ingestion.institutional_error,
+                "datasets_quarantined": ingestion.datasets_quarantined,
+                "quarantined_dataset_ids": list(ingestion.quarantined_dataset_ids),
             },
             "market_metric_inputs": metric_inputs,
             "market_health_score": score_build.to_payload(),

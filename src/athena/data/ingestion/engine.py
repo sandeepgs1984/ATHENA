@@ -89,6 +89,21 @@ class LiveIngestionEngine:
         candle_batches: list[tuple[str, Timeframe, list[Candle], datetime, datetime]] = []
         skipped_empty = 0
         candles_fetched = 0
+        quarantined_ids: list[str] = []
+
+        def _handle_failure(summary: ValidationSummary) -> bool:
+            """Quarantine+skip (return True) under the default config, or
+            re-raise and abort the whole cycle in strict mode
+            (quarantine_on_failure=False). See IngestionResult.datasets_
+            quarantined for why the default no longer aborts everything."""
+            record = self._quarantine.review(summary)
+            if record is None:
+                return False
+            if not self._config.quarantine_on_failure:
+                _raise_for_summary(summary)
+            self._repo.save_quarantine(record)
+            quarantined_ids.append(summary.dataset_id)
+            return True
 
         if self._config.include_daily:
             end_day = as_of.astimezone(self._tzinfo).date()
@@ -103,11 +118,8 @@ class LiveIngestionEngine:
                 summary = self._validator.validate_daily(
                     dataset_id, candles, start=start_day, end=end_day, as_of=as_of,
                 )
-                record = self._quarantine.review(summary)
-                if record is not None:
-                    if self._config.quarantine_on_failure:
-                        self._repo.save_quarantine(record)
-                    _raise_for_summary(summary)
+                if _handle_failure(summary):
+                    continue
                 start_ts = datetime.combine(start_day, datetime.min.time(), tzinfo=self._tzinfo)
                 end_ts = datetime.combine(end_day, datetime.max.time(), tzinfo=self._tzinfo)
                 candle_batches.append((dataset_id, Timeframe.D1, list(candles), start_ts, end_ts))
@@ -129,11 +141,8 @@ class LiveIngestionEngine:
                     end=end_ts.astimezone(self._tzinfo).date(),
                     as_of=as_of,
                 )
-                record = self._quarantine.review(summary)
-                if record is not None:
-                    if self._config.quarantine_on_failure:
-                        self._repo.save_quarantine(record)
-                    _raise_for_summary(summary)
+                if _handle_failure(summary):
+                    continue
                 candle_batches.append((dataset_id, timeframe, list(candles), start_ts, end_ts))
 
         quotes: list[Quote] = []
@@ -150,12 +159,15 @@ class LiveIngestionEngine:
                     self._validation_config.freshness.intraday_max_minutes_behind
                 ),
             )
-            record = self._quarantine.review(q_summary)
-            if record is not None:
-                if self._config.quarantine_on_failure:
-                    self._repo.save_quarantine(record)
-                _raise_for_summary(q_summary)
+            if _handle_failure(q_summary):
+                # Quotes are validated as one batch, not per-instrument, so
+                # unlike candles there's no way to isolate just the offending
+                # quote(s) here — the safe skip is writing none this cycle
+                # (old quotes remain; the next cycle retries) rather than
+                # guessing which of the batch are safe to keep.
+                quotes = []
 
+        today = as_of.astimezone(self._tzinfo).date()
         candles_written = 0
         for _dataset_id, timeframe, candles, start_ts, end_ts in candle_batches:
             to_write = candles
@@ -165,9 +177,19 @@ class LiveIngestionEngine:
                     (c.instrument_id, c.timeframe.value, c.ts_open.isoformat())
                     for c in self._repo.get_candles(iid, timeframe, start_ts, end_ts)
                 }
+                # The daily candle for the still-forming trading day (today)
+                # is not final — Kite returns its OHLC-so-far, which changes
+                # until the session closes. skip_existing must not treat "a
+                # row already exists" as "already correct" for that one date,
+                # or today's candle freezes at whatever partial value the
+                # first ingest cycle of the day captured and never gets
+                # corrected to the real close (owner-reported, 2026-08-04).
+                # Every fully closed prior day is still skip-if-present, and
+                # intraday timeframes are unaffected — out of scope here.
                 to_write = [
                     c for c in candles
                     if (c.instrument_id, c.timeframe.value, c.ts_open.isoformat()) not in existing
+                    or (timeframe is Timeframe.D1 and c.ts_open.astimezone(self._tzinfo).date() == today)
                 ]
             if to_write:
                 candles_written += self._repo.add_candles(to_write)
@@ -222,6 +244,8 @@ class LiveIngestionEngine:
             snapshots_written=snapshots_written,
             institutional_written=institutional_written,
             institutional_error=institutional_error,
+            datasets_quarantined=len(quarantined_ids),
+            quarantined_dataset_ids=tuple(quarantined_ids),
         )
 
 

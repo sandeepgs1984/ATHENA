@@ -55,5 +55,6 @@
         closeModal(document.getElementById("index-leadership-modal"));
         closeModal(document.getElementById("validation-funnel-modal"));
         closeModal(document.getElementById("validation-report-modal"));
+        closeModal(document.getElementById("top-opportunities-modal"));
         if (!state.kiteBlocking) hideKiteGate();
     }

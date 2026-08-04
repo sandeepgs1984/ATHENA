@@ -216,11 +216,18 @@ class TestCandles:
                                     datetime(2026, 2, 28, tzinfo=IST))
         assert len(daily) == 1 and len(intraday) == 1
 
-    def test_duplicate_candle_rejected(self, repo):
+    def test_duplicate_candle_upserts(self, repo):
+        # add_candles is an upsert (owner-reported, 2026-08-04): the still-
+        # forming daily candle for the current trading day is re-fetched on
+        # every ingestion cycle and must land its corrected OHLC, not be
+        # rejected as a duplicate of its own earlier, partial version.
         repo.upsert_instrument(_instrument())
-        repo.add_candles([_candle(date(2026, 2, 2))])
-        with pytest.raises(RepositoryError, match=r"integrity violation"):
-            repo.add_candles([_candle(date(2026, 2, 2))])
+        repo.add_candles([_candle(date(2026, 2, 2), close="100")])
+        repo.add_candles([_candle(date(2026, 2, 2), close="105")])
+        got = repo.get_candles(INST, Timeframe.D1,
+                               datetime(2026, 2, 2, tzinfo=IST), datetime(2026, 2, 2, 23, tzinfo=IST))
+        assert len(got) == 1
+        assert got[0].close == Decimal("105")
 
     def test_foreign_key_enforced(self, repo):
         with pytest.raises(RepositoryError, match=r"integrity violation"):

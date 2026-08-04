@@ -769,6 +769,63 @@
         vixEl.textContent = `VIX ${level.toFixed(2)}${changeLabel}`;
     }
 
+    // Owner-reported (2026-08-04): the F-5 Health score's "unavailable"
+    // reason is computed and persisted by the scoring engine itself (ADR-005
+    // — explanations are data, never recomputed by the dashboard) using
+    // internal field names (liquidity, institutional_strength, age_days,
+    // max_age_sessions...) meant for an engineer auditing the score, not a
+    // trader reading the screen. This translates the exact same persisted
+    // reason into plain language for display — it never changes what the
+    // engine decided, only how the sentence reads.
+    const HEALTH_COMPONENT_LABELS = {
+        trend_quality: "Trend quality",
+        breadth: "Market breadth",
+        liquidity: "Liquidity",
+        volatility: "Volatility",
+        institutional_strength: "Institutional flow (FII/DII)",
+        gap_stability: "Gap stability",
+    };
+
+    function friendlyHealthComponentReason(name, reason) {
+        const label = HEALTH_COMPONENT_LABELS[name] || friendlyLabel(name);
+        let text = reason;
+        let m;
+        if ((m = reason.match(/^insufficient liquidity members \((\d+) < (\d+)\) or missing median$/))) {
+            text = `only ${m[1]} of the required ${m[2]}+ actively-tracked symbols have liquidity data`;
+        } else if ((m = reason.match(/^institutional flow session_date (\S+) is stale \(age_days=(-?\d+) > max_age_sessions=(\d+)\)$/))) {
+            text = `the latest FII/DII data available is from ${m[1]} — ${m[2]} day${m[2] === "1" ? "" : "s"} old ` +
+                `(must be within ${m[3]} trading session${m[3] === "1" ? "" : "s"})`;
+        } else if (reason === "no institutional flow session available") {
+            text = "no FII/DII data has been recorded yet";
+        } else if ((m = reason.match(/^breadth coverage (\S+) below min_coverage (\S+)$/))) {
+            text = `only ${m[1]} of the tracked universe has data (needs at least ${m[2]})`;
+        } else if (reason === "breadth undeterminable — advances+declines is zero") {
+            text = "no symbols are currently marked as advancing or declining";
+        } else if (/^no market health assessment for \w+$/.test(reason)) {
+            text = "no market health assessment is available yet";
+        } else if ((m = reason.match(/^\w+ label '(.*)' is not scoreable$/))) {
+            text = `the recorded value ("${m[1]}") isn't one this score knows how to grade`;
+        } else if (/^gap stability insufficient\b/.test(reason)) {
+            text = "not enough trading days recorded yet to judge gap stability";
+        }
+        return `${label} — ${text}`;
+    }
+
+    function friendlyHealthUnavailableReason(raw) {
+        if (!raw) return "";
+        if (raw === "MarketHealthScore unavailable — weights sum to 0") {
+            return "Health score is turned off (component weights are set to 0 in config).";
+        }
+        const prefix = "MarketHealthScore unavailable — ";
+        const body = raw.startsWith(prefix) ? raw.slice(prefix.length) : raw;
+        const parts = body.split("; ").map(part => {
+            const idx = part.indexOf(": ");
+            if (idx === -1) return part;
+            return friendlyHealthComponentReason(part.slice(0, idx), part.slice(idx + 2));
+        });
+        return `Health score isn't available yet — ${parts.join("; ")}.`;
+    }
+
     function renderMarketSummaryHero(summary) {
         const trendBadge = document.getElementById("regime-trend-badge");
         const volBadge = document.getElementById("regime-vol-badge");
@@ -821,7 +878,7 @@
                 .replace(/NO_GAP/g, "No gap")
                 .replace(/SIDEWAYS/g, "Sideways");
             if (health.unavailable_reason && health.score == null) {
-                evidence = `${evidence} Health score: ${health.unavailable_reason}`;
+                evidence = `${evidence} ${friendlyHealthUnavailableReason(health.unavailable_reason)}`;
             }
             evidenceText.textContent = evidence;
         } else {
@@ -914,13 +971,20 @@
             ? `<a href="${escapeDecisionHtml(source)}" target="_blank" rel="noopener noreferrer">Official membership</a>`
             : "Official membership source unavailable";
         const snapshotLabel = age === 0 ? "updated today" : `${age}d old`;
+        // Owner-reported (2026-08-04): shown right next to the index's live
+        // price/% change, "2026-07-31 · 4d old" read as if the PRICE were 4
+        // days stale. This age is only the constituent list (which stocks
+        // count as members) — index level/change above is always live —
+        // so the label must say what it's the age of.
+        const membershipAgeTitle = "This is the age of the list of stocks in this index, " +
+            "not the price/percentage above — those are always live.";
 
         if (context.breadth_status === "AVAILABLE") {
             return `
                 <div class="index-membership">
                     <div class="index-membership-meta">
                         <span>${total} members · ${resolved} resolved</span>
-                        <span>${effective} · ${snapshotLabel}</span>
+                        <span title="${membershipAgeTitle}">Membership list ${effective} · ${snapshotLabel}</span>
                     </div>
                     <div class="index-board-breadth" aria-label="Current ATHENA board composition">
                         <strong>${escapeDecisionHtml(context.trade_breadth_pct)}% Trade breadth</strong>
@@ -941,7 +1005,7 @@
             <div class="index-membership is-incomplete">
                 <div class="index-membership-meta">
                     <span>${total} members · ${resolved} resolved · ${covered} covered</span>
-                    <span>${effective} · ${snapshotLabel}</span>
+                    <span title="${membershipAgeTitle}">Membership list ${effective} · ${snapshotLabel}</span>
                 </div>
                 <strong>Breadth unavailable · ${escapeDecisionHtml(issueLabel)}</strong>
                 ${issueSymbols.length ? `
@@ -1279,6 +1343,11 @@
             modalCardsEl.querySelectorAll(".top-opportunities-open-decision-btn").forEach(btn => {
                 btn.addEventListener("click", async () => {
                     const sym = btn.getAttribute("data-symbol");
+                    // Owner-reported (2026-08-04): navigating to Decisions & Trace left
+                    // this modal open, stacked over the newly-switched tab — the other
+                    // two "open decision" entry points (validation report, validation
+                    // funnel) already close their own modal first; this one didn't.
+                    closeModal(topOpportunitiesModal);
                     await openDecisionForSymbol(sym);
                 });
             });

@@ -21,6 +21,15 @@ class IngestionResult:
     snapshots_written: int = 0
     institutional_written: int = 0
     institutional_error: str | None = None
+    # Owner-reported (2026-08-04): a single instrument's stale/invalid dataset
+    # used to abort run_cycle entirely, discarding every other instrument's
+    # already-fetched, already-valid data for that cycle too. quarantine_on_
+    # failure=True (the default) now isolates and skips just the offending
+    # dataset instead — this makes that visible rather than hidden, per
+    # "every failure fails loudly": a cycle can report success while still
+    # surfacing exactly what it had to skip and why.
+    datasets_quarantined: int = 0
+    quarantined_dataset_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.as_of.tzinfo is None:
