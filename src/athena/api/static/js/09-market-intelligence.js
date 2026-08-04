@@ -1132,7 +1132,9 @@
                 </div>
                 <div class="top-opportunities-symbol-metrics">
                     <span title="ATHENA composite score">Score ${score}</span>
-                    <span class="top-opportunities-rs ${rsClass}" title="Relative strength vs. sector">RS ${relative}</span>
+                    <!-- MI-UX-4: "RS" alone reads ambiguously as Rupees at a
+                         glance (owner-reported); spelled out, it can't. -->
+                    <span class="top-opportunities-rs ${rsClass}" title="Relative strength vs. sector">Rel Str ${relative}</span>
                     <span class="plan-freshness-badge tone-${freshness.toLowerCase()}" title="${sym.plan_freshness_summary || ""}">${freshness}</span>
                 </div>
                 <div class="top-opportunities-confidence" title="${topOpportunitiesConfidenceLabel(sym.confidence_level)}">
@@ -1744,10 +1746,15 @@
             if (runBtn) runBtn.disabled = true;
             if (allBtn) allBtn.disabled = true;
         } else if (state === "completed") {
-            el.textContent =
-                `Full validation completed` +
-                (progress.run_id ? ` · ${progress.run_id}` : "") +
-                (total ? ` · ${total} symbols` : "");
+            // MI-UX-4: this persistent line duplicated both the "Full
+            // validation completed" toast (fired on the same event, just
+            // above) and Recent Activity's own completion entry in this
+            // same right rail — three announcements of the same thing.
+            // The toast is the ephemeral confirmation; Recent Activity is
+            // the persisted record; this quick-actions card doesn't need
+            // its own third copy.
+            el.hidden = true;
+            el.textContent = "";
             if (runBtn) runBtn.disabled = false;
             if (allBtn) allBtn.disabled = false;
         } else if (state === "failed") {

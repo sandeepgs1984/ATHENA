@@ -6,7 +6,30 @@ status updated on approval.
 
 ---
 
-## MI-UX-3: Market Intelligence visual consistency & information architecture (ready for review)
+## MI-UX-4: Market Intelligence polish & release gate (ready for review)
+
+| | |
+|---|---|
+| Completed | 2026-08-03 |
+| Objective | Fourth and final milestone of the Market Intelligence UX track: close out the remaining 3 polish findings from the original audit and add regression coverage locking in the whole track |
+| Scope | (1) Top Opportunities' relative-strength chip changed from "RS" to "Rel Str" (owner-reported: "RS" alone reads ambiguously as Rupees); `flex-wrap` added to the metrics row as an overflow safety net. (2) `renderFullValidationProgress()`'s `completed` state no longer sets a persistent status line — it duplicated a toast and a Recent Activity entry that already announce the same event; the `running`/`failed` states are untouched since they carry information neither of those other channels shows. (3) `.regime-explanation` (Evidence Attribution) given an accent left-border and accent-colored label, and its text now wraps instead of silently truncating via the previous `text-overflow: ellipsis`. (4) New `tests/api/platform/test_market_intelligence_ux_release_gate.py` — 9 tests locking in every fix across MI-UX-1 through MI-UX-4 by inspecting the assembled static assets, matching the existing `test_decision_chart_release_gate.py` convention |
+| Files created | `tests/api/platform/test_market_intelligence_ux_release_gate.py` |
+| Files modified | `src/athena/api/static/js/09-market-intelligence.js`, `src/athena/api/static/css/06-market-intelligence.css`, `docs/MILESTONES.md` |
+| Public APIs added | None — presentation only |
+| Tests | Full suite — **1,266 passed** (1,257 + 9 new release-gate tests) |
+| Coverage | Live-verified against a read-only backup of the real database through an isolated local instance on a never-reused port (avoiding the sub-resource caching artifact noted in MI-UX-3). Confirmed "Rel Str —" renders cleanly with no overflow after expanding a capped Top Opportunities card; confirmed no stray text remains under Quick Actions after a completed validation; confirmed Evidence Attribution renders with the accent border and highlighted label |
+| Architecture compliance | Presentation only; no score, decision, regime, or TradePlan value changed; no backend endpoint added or changed |
+| ADR compliance | None required |
+| Risks discovered | None new |
+| Technical debt introduced | None |
+| Suggested improvements | The `@import`ed sub-resource cache-busting gap noted in MI-UX-3 remains open, tracked there, not part of this milestone's scope |
+| Remaining work | Owner review of MI-UX-4 — closes the Market Intelligence UX track on approval |
+| Status | 🔄 Ready for owner review |
+| Branch | feature/live-dashboard |
+
+---
+
+## MI-UX-3: Market Intelligence visual consistency & information architecture (approved)
 
 | | |
 |---|---|
@@ -23,8 +46,8 @@ status updated on approval.
 | Risks discovered | The `@import`ed `css/*.css`/`js/*.js` sub-resource URLs referenced from `dashboard.css`/`dashboard.js` carry no cache-buster of their own — real users may need a hard refresh to see a deploy take effect immediately. Not fixed here (out of MI-UX-3's design scope), flagged as a suggested improvement |
 | Technical debt introduced | None |
 | Suggested improvements | Consider a cache-busting scheme for the `@import`/relative sub-resource URLs, not just the outer `dashboard.css`/`dashboard.js`. MI-UX-4 (polish/release gate) remains planned per the roadmap doc |
-| Remaining work | Owner review of MI-UX-3; MI-UX-4 not started (milestone-at-a-time discipline) |
-| Status | 🔄 Ready for owner review |
+| Remaining work | None — MI-UX-4 is complete (see entry above) |
+| Status | ✅ Approved (2026-08-03) |
 | Branch | feature/live-dashboard |
 
 ---

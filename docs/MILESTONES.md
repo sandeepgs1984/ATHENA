@@ -2707,8 +2707,8 @@ does not invent new metrics or policy. Governing plan:
 | **MI-UX-0** Design & audit gate | 11 findings across 3 severities from a live screenshot audit; owner sign-off to start with P0 | Owner approval | ✅ Approved (2026-08-03) |
 | **MI-UX-1** P0 correctness fixes | Fix Top Opportunities mid-card clipping, Breadth 0%/WEAK vs. ADV/DEC contradiction, Market Health unavailable-tile prominence | Owner review; no fabricated data | ✅ Approved (2026-08-03) |
 | **MI-UX-2** Freshness & alert unification | One shared freshness phrasing; real alert treatment for failed runs/blockers | Owner review | ✅ Approved (2026-08-03) |
-| **MI-UX-3** Visual consistency & IA | One metric-tile idiom; actionable-first Universe default view; grouped header | Owner review | 🔄 Ready for review |
-| **MI-UX-4** Polish & release gate | RS label clarity, Quick Actions dedup, Evidence Attribution prominence, full screenshot/regression QA | Owner review after QA evidence | ⏳ Planned |
+| **MI-UX-3** Visual consistency & IA | One metric-tile idiom; actionable-first Universe default view; grouped header | Owner review | ✅ Approved (2026-08-03) |
+| **MI-UX-4** Polish & release gate | RS label clarity, Quick Actions dedup, Evidence Attribution prominence, full screenshot/regression QA | Owner review after QA evidence | 🔄 Ready for review |
 
 **Implementation rule:** one MI-UX milestone at a time. MI-UX must never
 create order placement, broker write actions, new signals, or changes to
@@ -2830,7 +2830,7 @@ stays absent for a completed one.
 
 ---
 
-#### MI-UX-3 — visual consistency & information architecture (ready for review, 2026-08-03)
+#### MI-UX-3 — visual consistency & information architecture (approved, 2026-08-03)
 
 Scope completed:
 
@@ -2890,6 +2890,58 @@ improvement for a future milestone: the `@import`ed `css/*.css` (and
 `js/*.js`) sub-resource URLs referenced from `dashboard.css`/`dashboard.js`
 carry no cache-buster of their own, unlike the outer files — real users may
 need a hard refresh to see a deploy take effect immediately.
+
+---
+
+#### MI-UX-4 — polish & release gate (ready for review, 2026-08-03)
+
+Scope completed — the last 3 findings from the original audit (§2 of the
+roadmap doc), plus the track's regression gate:
+
+1. **"RS" spelled out.** Owner-reported: "RS" alone reads ambiguously as
+   Rupees at a glance. Top Opportunities' relative-strength chip now reads
+   "Rel Str" instead of "RS" — unambiguous, and `flex-wrap` was added to
+   the symbol-metrics row as a safety net so the longer label can never
+   overflow a narrow card.
+2. **Quick Actions no longer triples the same announcement.** A completed
+   full validation was announced three times: a toast, Recent Activity, and
+   a persistent line under the Quick Actions buttons. The persistent line
+   was the redundant one — removed for the `completed` state only; the
+   `running` (live progress) and `failed` (error detail) states carry real
+   information neither the toast nor Recent Activity shows, and are
+   untouched.
+3. **Evidence Attribution given real visual weight.** The single most
+   decision-relevant sentence on the screen (why the regime/score is what
+   it is, per ADR-005) read as a dense footer with less visual priority
+   than the decorative summary tiles above it, and could silently truncate
+   via `text-overflow: ellipsis`. Now has an accent left-border and
+   accent-colored label (matching the app's existing icon/branding accent),
+   and the text wraps instead of ever cutting off.
+4. **Release gate.** New
+   `tests/api/platform/test_market_intelligence_ux_release_gate.py` — 9
+   tests locking in every MI-UX-1 through MI-UX-4 fix by inspecting the
+   assembled static assets (same convention as
+   `test_decision_chart_release_gate.py`): the corrected (not the flawed
+   first-attempt) Top Opportunities capping approach, the shared "As of"
+   phrase across all 4 sections, the failed-run alert treatment, the one
+   metric-tile idiom, the Universe Eligible default, the grouped header,
+   the spelled-out RS label, and the Quick Actions dedup.
+
+Architectural note: presentation-only. No score, decision, regime, or
+TradePlan value changed; no backend endpoint added or changed.
+
+Validation note: full suite **1266 passed** (1257 + 9 new release-gate
+tests). Live-verified against a read-only backup of the real database
+through an isolated local instance on a never-before-used port (avoiding
+the sub-resource caching artifact noted in MI-UX-3): confirmed "Rel Str —"
+renders cleanly on-card with no overflow after expanding a capped card;
+confirmed Quick Actions shows no stray text after a completed validation;
+confirmed Evidence Attribution renders with the accent left-border and
+highlighted label.
+
+**No known P0–P2 finding from the original audit (§2 of the roadmap doc)
+remains open.** This closes the Market Intelligence UX track pending owner
+review of this final milestone.
 
 ---
 
