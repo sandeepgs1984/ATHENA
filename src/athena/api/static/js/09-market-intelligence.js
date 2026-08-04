@@ -175,17 +175,54 @@
         return d;
     }
 
-    async function refreshDecisionCacheForValidationResults() {
-        if (typeof fetchAllDecisionPages !== "function" || typeof latestDecisionPerInstrument !== "function") {
+    // Owner-reported (2026-08-04): a single-symbol validate that itself
+    // completes in ~3s took 60s+ end to end. Root cause: this used to be
+    // refreshDecisionCacheForValidationResults(), which called
+    // fetchAllDecisionPages() unconditionally — re-fetching the entire
+    // decisions history (10,000+ rows, 50 pages, up to 49 concurrent
+    // requests via Promise.all) after every single validate, saturating
+    // the shared SQLite connection/threadpool and starving the validate
+    // request itself. Nothing about validating one symbol requires the
+    // other 9,999 decisions — fetch and merge only the symbols that
+    // actually changed, using the existing instrument_id filter
+    // (DecisionFilterParams), instead of the whole table.
+    async function refreshDecisionCacheForSymbols(symbols) {
+        const bare = [...new Set(
+            (symbols || [])
+                .map(s => String(s || "").trim().toUpperCase().replace(/^NSE:|^BSE:/, ""))
+                .filter(Boolean)
+        )];
+        if (!bare.length || typeof decisionInstrumentKey !== "function"
+            || typeof latestDecisionPerInstrument !== "function") {
             return;
         }
         try {
-            const raw = await fetchAllDecisionPages();
-            allTraceDecisionsList = raw;
-            traceDecisionsList = latestDecisionPerInstrument(raw);
+            const results = await Promise.all(bare.map(sym => {
+                const qs = new URLSearchParams({
+                    instrument_id: `NSE:${sym}`,
+                    page_size: "50",
+                    sort_by: "ts",
+                    sort_dir: "desc",
+                });
+                return apiRequest(`/api/v1/decisions?${qs.toString()}`, { skipToast: true })
+                    .catch(() => null);
+            }));
+            const fresh = [];
+            for (const res of results) {
+                if (res && res.status === "success" && Array.isArray(res.data)) {
+                    fresh.push(...res.data);
+                }
+            }
+            if (!fresh.length) return;
+            const freshKeys = new Set(fresh.map(decisionInstrumentKey));
+            allTraceDecisionsList = allTraceDecisionsList.filter(
+                d => !freshKeys.has(decisionInstrumentKey(d))
+            );
+            allTraceDecisionsList.push(...fresh);
+            traceDecisionsList = latestDecisionPerInstrument(allTraceDecisionsList);
             rebuildTraceDecisionsBySymbolIndex();
         } catch (err) {
-            console.warn("Validation workbench could not refresh Decisions cache", err);
+            console.warn("Could not refresh Decisions cache for validated symbols", err);
         }
     }
 
@@ -457,12 +494,14 @@
             if (typeof loadMarketIntelligence === "function") {
                 await loadMarketIntelligence();
             }
-            // Owner-reported (2026-08-01): this used to also call
-            // loadDecisionsWorkspace(), which re-fetches every decision page
-            // a second time — loadMarketIntelligence() above already
-            // refreshed the exact same shared cache via
-            // refreshDecisionCacheForValidationResults(). Re-apply the view
-            // over that already-fresh cache instead of fetching it twice.
+            // Owner-reported (2026-08-04): loadMarketIntelligence() no longer
+            // refreshes the decisions cache at all (see its own comment) — do
+            // the targeted, symbol-scoped refresh here instead, where the
+            // exact symbol(s) that just changed are actually known, rather
+            // than re-fetching the full decisions history.
+            if (typeof refreshDecisionCacheForSymbols === "function") {
+                await refreshDecisionCacheForSymbols(list);
+            }
             if (refreshDecisions && typeof applyDecisionsView === "function") {
                 applyDecisionsView({
                     preferInstrumentId: list.length === 1 ? list[0] : null,
@@ -1641,8 +1680,15 @@
                 universeCache = universe;
             }
 
-            // 2. Refresh read-only Decisions cache for result-row actions.
-            await refreshDecisionCacheForValidationResults();
+            // 2. Owner-reported (2026-08-04): this used to unconditionally
+            // refresh the ENTIRE decisions cache here (fetchAllDecisionPages,
+            // up to 49 concurrent requests) on every Market Intelligence
+            // load/refresh — not just after a validate. loadMarketIntelligence()
+            // itself has no reason to know the full decisions history; its
+            // only use of that cache (latestDecisionForSymbol, a sort-priority
+            // fallback) already degrades gracefully when the cache hasn't been
+            // populated yet. The targeted, per-symbol refresh now happens only
+            // from validateSymbolsNow(), for only the symbol(s) that changed.
 
             // 3. Fetch and Render Calendar Grid & Events
             const calRes = await apiRequest("/api/v1/dashboard/calendar").catch(() => null);

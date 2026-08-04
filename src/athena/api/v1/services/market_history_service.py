@@ -32,7 +32,7 @@ from athena.data.index_constituents import (
     IndexConstituentSnapshot,
     load_index_constituent_snapshot,
 )
-from athena.data.providers.kite_ltp import fetch_live_quote
+from athena.data.providers.kite_ltp import fetch_live_quote, fetch_live_quotes
 from athena.data.store.repository import SqliteRepository
 from athena.domain.decision import Decision
 from athena.domain.enums import DecisionType, Timeframe
@@ -487,6 +487,73 @@ class MarketHistoryService:
         if persisted is not None:
             return persisted
         return empty
+
+    def instrument_quotes(self, instrument_ids: list[str]) -> dict[str, InstrumentQuoteDTO]:
+        """Batched sibling of ``instrument_quote`` — one live Kite round trip
+        for every id not already cache-fresh, instead of one per id.
+
+        Perf fix (owner-reported, 2026-08-04): Top Opportunities Today used
+        to call ``instrument_quote`` once per qualifying symbol in a loop —
+        each cache miss opened its own connection and made its own live
+        round trip, measured at 7-13s end to end in production for ~10-20
+        symbols. Same per-instrument cache and persisted fallback as
+        ``instrument_quote``; only the live fetch itself is batched.
+        """
+        normalized_by_id: dict[str, str] = {}
+        for raw in instrument_ids:
+            normalized = raw.strip().upper()
+            if not normalized:
+                continue
+            if ":" not in normalized:
+                normalized = f"NSE:{normalized}"
+            normalized_by_id[normalized] = normalized
+        unique_ids = list(normalized_by_id)
+        if not unique_ids:
+            return {}
+
+        results: dict[str, InstrumentQuoteDTO] = {}
+        to_fetch: list[str] = []
+        now = time.monotonic()
+        with _live_quote_lock:
+            for iid in unique_ids:
+                cached = _live_quote_cache.get(iid)
+                if cached is not None and now < cached[0]:
+                    results[iid] = cached[1]
+                else:
+                    to_fetch.append(iid)
+
+        if to_fetch:
+            live_by_id = self._try_live_quotes(to_fetch)
+            if live_by_id:
+                with _live_quote_lock:
+                    for iid, dto in live_by_id.items():
+                        _live_quote_cache[iid] = (
+                            time.monotonic() + _LIVE_QUOTE_CACHE_TTL_SECONDS,
+                            dto,
+                        )
+                results.update(live_by_id)
+            for iid in to_fetch:
+                if iid in results:
+                    continue
+                persisted = self._persisted_quote(iid)
+                results[iid] = persisted if persisted is not None else InstrumentQuoteDTO(instrument_id=iid)
+        return results
+
+    def _try_live_quotes(self, instrument_ids: list[str]) -> dict[str, InstrumentQuoteDTO]:
+        try:
+            fetched = fetch_live_quotes(instrument_ids, config_dir=self._config_dir)
+        except (ProviderError, ConfigError, OSError, ValueError):
+            return {}
+        return {
+            iid: InstrumentQuoteDTO(
+                instrument_id=quote.instrument_id,
+                last_price=quote.last_price,
+                change_pct=change_pct,
+                as_of=quote.ts,
+                source="kite_live",
+            )
+            for iid, (quote, change_pct) in fetched.items()
+        }
 
     def _try_live_quote(self, instrument_id: str) -> InstrumentQuoteDTO | None:
         try:

@@ -292,7 +292,13 @@ class OpportunitiesService:
         stars = int((overall / Decimal(100) * Decimal(5)).to_integral_value(rounding=ROUND_HALF_UP))
         return max(1, min(5, stars))
 
-    def _enrich(self, decision: Decision, sector_change_pct: Decimal | None, as_of: datetime) -> _QualifiedRow:
+    def _enrich(
+        self,
+        decision: Decision,
+        sector_change_pct: Decimal | None,
+        as_of: datetime,
+        quotes_by_id: Mapping[str, object],
+    ) -> _QualifiedRow:
         report = self._fetch_report(decision)
         score_block = report.get("score") if isinstance(report, Mapping) else None
         confidence_block = report.get("confidence") if isinstance(report, Mapping) else None
@@ -309,8 +315,8 @@ class OpportunitiesService:
 
         relative_strength = None
         if decision.instrument_id is not None and sector_change_pct is not None:
-            quote = self._market_history.instrument_quote(decision.instrument_id)
-            if quote.change_pct is not None:
+            quote = quotes_by_id.get(decision.instrument_id.upper())
+            if quote is not None and quote.change_pct is not None:
                 relative_strength = quote.change_pct - sector_change_pct
 
         freshness_status, freshness_summary = self._plan_freshness(decision, as_of)
@@ -333,6 +339,20 @@ class OpportunitiesService:
         today = as_of_dt.date()
         ranked = self._rank_sectors_today()
         by_sector = self._qualified_decisions_by_sector(today)
+        # Perf fix (owner-reported, 2026-08-04): _enrich() previously called
+        # MarketHistoryService.instrument_quote() once per qualifying
+        # decision — each a separate live Kite round trip, measured at
+        # 7-13s end to end for ~10-20 symbols. Collect every candidate's
+        # instrument_id across all sectors (before the sector_count/
+        # symbols_per_sector trim, since relative_strength_pct feeds the
+        # sort that decides the trim) and fetch them in one batched call.
+        candidate_ids = [
+            d.instrument_id
+            for sector_decisions in by_sector.values()
+            for d in sector_decisions
+            if d.instrument_id is not None
+        ]
+        quotes_by_id = self._market_history.instrument_quotes(candidate_ids)
         groups: list[OpportunitySectorDTO] = []
         for ranked_sector in ranked:
             if len(groups) >= sector_count:
@@ -341,7 +361,8 @@ class OpportunitiesService:
             if not decisions:
                 continue
             rows = [
-                self._enrich(d, ranked_sector.change_pct, as_of_dt) for d in decisions
+                self._enrich(d, ranked_sector.change_pct, as_of_dt, quotes_by_id)
+                for d in decisions
             ]
             rows.sort(key=lambda r: r.sort_key, reverse=True)
             top_rows = rows[:symbols_per_sector]

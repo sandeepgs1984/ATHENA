@@ -1057,6 +1057,129 @@ class TestInstrumentQuote:
         assert quote.as_of == live_ts
         repo.close()
 
+class TestInstrumentQuotesBatch:
+    """Perf fix (owner-reported, 2026-08-04): Top Opportunities Today used
+    to call instrument_quote() once per qualifying symbol — each a
+    separate live Kite round trip, measured at 7-13s end to end for
+    ~10-20 symbols in production. instrument_quotes() must make exactly
+    one batched live call for any number of symbols, same cache/persisted-
+    fallback behavior as the single-symbol method."""
+
+    def test_one_batched_call_for_multiple_symbols(self, monkeypatch) -> None:
+        from athena.domain.market import Quote
+        from athena.api.v1.services import market_history_service as mhs
+
+        with mhs._live_quote_lock:
+            mhs._live_quote_cache.clear()
+
+        calls: list[list[str]] = []
+
+        def _batch(instrument_ids, *, config_dir):
+            calls.append(list(instrument_ids))
+            ts = datetime(2026, 7, 29, 3, 50, tzinfo=timezone.utc)
+            return {
+                iid: (
+                    Quote(instrument_id=iid, ts=ts, last_price=Decimal("100.00"), volume=1, source="kite"),
+                    Decimal("2.5"),
+                )
+                for iid in instrument_ids
+            }
+
+        monkeypatch.setattr(
+            "athena.api.v1.services.market_history_service.fetch_live_quotes",
+            _batch,
+        )
+        service = MarketHistoryService(
+            InMemoryCandleHistoryProvider(),
+            freshness_threshold_minutes=20,
+            config_dir=Path("config"),
+        )
+        result = service.instrument_quotes(["NSE:AAA", "NSE:BBB", "NSE:CCC"])
+
+        assert len(calls) == 1  # one round trip, not one per symbol
+        assert set(calls[0]) == {"NSE:AAA", "NSE:BBB", "NSE:CCC"}
+        assert set(result) == {"NSE:AAA", "NSE:BBB", "NSE:CCC"}
+        assert all(dto.source == "kite_live" for dto in result.values())
+        assert all(dto.change_pct == Decimal("2.5") for dto in result.values())
+
+    def test_cache_fresh_symbol_is_not_refetched(self, monkeypatch) -> None:
+        from athena.domain.market import Quote
+        from athena.api.v1.services import market_history_service as mhs
+
+        with mhs._live_quote_lock:
+            mhs._live_quote_cache.clear()
+
+        calls: list[list[str]] = []
+
+        def _batch(instrument_ids, *, config_dir):
+            calls.append(list(instrument_ids))
+            ts = datetime(2026, 7, 29, 3, 50, tzinfo=timezone.utc)
+            return {
+                iid: (Quote(instrument_id=iid, ts=ts, last_price=Decimal("1"), volume=1, source="kite"), None)
+                for iid in instrument_ids
+            }
+
+        monkeypatch.setattr(
+            "athena.api.v1.services.market_history_service.fetch_live_quotes",
+            _batch,
+        )
+        service = MarketHistoryService(
+            InMemoryCandleHistoryProvider(),
+            freshness_threshold_minutes=20,
+            config_dir=Path("config"),
+        )
+        service.instrument_quotes(["NSE:AAA"])
+        service.instrument_quotes(["NSE:AAA", "NSE:BBB"])
+
+        assert len(calls) == 2
+        assert calls[0] == ["NSE:AAA"]
+        assert calls[1] == ["NSE:BBB"]  # AAA still cache-fresh, not re-fetched
+
+    def test_falls_back_to_persisted_when_batch_fails(self, tmp_path: Path, monkeypatch) -> None:
+        from athena.domain.market import Quote
+        from athena.errors import ProviderError
+        from athena.api.v1.services import market_history_service as mhs
+
+        with mhs._live_quote_lock:
+            mhs._live_quote_cache.clear()
+
+        repo = SqliteRepository(tmp_path / "q.db")
+        repo.initialize()
+        ts = datetime(2026, 7, 29, 3, 50, tzinfo=timezone.utc)
+        _register_index_instrument(repo, "NSE:TEJASNET")
+        repo.add_quotes(
+            [Quote(instrument_id="NSE:TEJASNET", ts=ts, last_price=Decimal("512.35"), volume=1, source="kite")]
+        )
+
+        def _boom(*_a, **_k):
+            raise ProviderError("no kite")
+
+        monkeypatch.setattr(
+            "athena.api.v1.services.market_history_service.fetch_live_quotes",
+            _boom,
+        )
+        service = MarketHistoryService(
+            InMemoryCandleHistoryProvider(),
+            freshness_threshold_minutes=20,
+            repo=repo,
+        )
+        result = service.instrument_quotes(["NSE:TEJASNET", "NSE:MISSING"])
+
+        assert result["NSE:TEJASNET"].last_price == Decimal("512.35")
+        assert result["NSE:TEJASNET"].source == "persisted"
+        assert result["NSE:MISSING"].last_price is None
+        repo.close()
+
+    def test_empty_input_returns_empty_without_calling_kite(self, monkeypatch) -> None:
+        calls = []
+        monkeypatch.setattr(
+            "athena.api.v1.services.market_history_service.fetch_live_quotes",
+            lambda *a, **k: calls.append(1),
+        )
+        service = MarketHistoryService(InMemoryCandleHistoryProvider(), freshness_threshold_minutes=20)
+        assert service.instrument_quotes([]) == {}
+        assert not calls
+
     def test_quote_endpoint_requires_auth(self, client: TestClient) -> None:
         unauthenticated = client.get("/api/v1/market/instruments/NSE:INFY/quote")
         assert unauthenticated.status_code == 401

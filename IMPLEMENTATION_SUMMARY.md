@@ -6,6 +6,29 @@ status updated on approval.
 
 ---
 
+## Fix pass: Top Opportunities Today made every validate/refresh 40-60s+ (owner-reported, highest priority)
+
+| | |
+|---|---|
+| Completed | 2026-08-04 |
+| Objective | Owner reported symbol validation regressed from <10s to 40-60s+ (sometimes never completing, forcing a session re-login) despite an earlier same-session perf fix. Required root-causing with hard evidence, not assumptions, after an initial fix attempt (removing a 49-request decisions-cache storm) measurably helped but didn't fully resolve it |
+| Scope | Investigation went through several ruled-out hypotheses before the real cause, each checked with direct evidence: (1) Kite auth/network timeouts — ruled out, a direct `validate_symbols()` trace against a real DB copy completed in 3.16s. (2) Browser tab backgrounding — ruled out, the same ~20-26s gap reproduced identically even with the tab kept in focus. (3) Server-side lock contention / background cycle overlap — ruled out via runs-table correlation and the fine-grained per-call locking in `SqliteRepository`. Root cause, confirmed via temporary timing instrumentation added directly to the live process (`print()` around the handler, required a real restart to load — an earlier "restart" attempt turned out not to have actually restarted the process, confirmed by an absence of new "Started server process" log lines): `OpportunitiesService._enrich()` called `MarketHistoryService.instrument_quote()` once per qualifying decision (~10-20 symbols) inside a loop — each call opened its own connection and made its own live Kite `/quote` round trip, measured at 7-13s end to end in the real running process (vs. 0.46s for the same business logic in isolation, since isolated testing never involved the real per-request network cost). Fixed by adding a genuinely batched sibling at every layer: `fetch_live_quotes()` (`kite_ltp.py`) makes one Kite `/quote` call for any number of instrument ids (Kite's endpoint already accepts multiple `i=` params — the same pattern `KiteProvider.quotes()` already uses); `MarketHistoryService.instrument_quotes()` applies the same per-instrument cache/persisted-fallback as the existing single-symbol method, batched; `OpportunitiesService._build_today_groups()` now collects every candidate's instrument_id across all sectors upfront and fetches them in one call before enriching, instead of one live round trip per decision |
+| Files created | None |
+| Files modified | `src/athena/data/providers/kite_ltp.py`, `src/athena/api/v1/services/market_history_service.py`, `src/athena/api/v1/services/opportunities_service.py`, `src/athena/api/static/js/09-market-intelligence.js` (from the earlier decisions-cache fix within this same investigation), `tests/api/v1/test_market_history.py` |
+| Public APIs added | `fetch_live_quotes()`, `MarketHistoryService.instrument_quotes()` — both batched siblings of existing single-symbol functions, same contracts, no fabricated data (a symbol Kite doesn't return is simply absent, never defaulted) |
+| Tests | 4 new (`TestInstrumentQuotesBatch`): one batched call regardless of symbol count, cache-fresh symbols aren't re-fetched, falls back to persisted-quote per-symbol when the batch call fails, empty input never calls Kite. Full suite — **1,270 passed** |
+| Coverage | Root-caused via temporary timing instrumentation added directly to the live running process (removed after diagnosis) rather than assumptions — `get_top_opportunities` handler measured at 7-13s per call in production before the fix. The earlier, same-investigation decisions-cache fix (49 concurrent requests → 1 targeted request) was independently confirmed via live server log tracing with real timestamps before this second, deeper root cause was found |
+| Architecture compliance | Presentation/read-path fix only; no score, decision, regime, or TradePlan value changed; no new provider or persistence; reuses the existing per-instrument live-quote cache and persisted fallback exactly, just batched |
+| ADR compliance | None required |
+| Risks discovered | Separately noticed while instrumenting: the background `--with-cycles` worker's ticks appeared to fire much more often than the configured 60s interval during this investigation. Each individual tick was fast (0.4-0.75s) and didn't correlate with the opportunities slowness, so it wasn't pursued further here — flagged as worth a separate look |
+| Technical debt introduced | None — all temporary diagnostic `print()` instrumentation was removed after the root cause was confirmed |
+| Suggested improvements | Investigate the cycle-worker tick-frequency observation above as its own item |
+| Remaining work | Owner to confirm the fix live (one more validate, after restarting to load these changes) |
+| Status | 🔄 Ready for owner review |
+| Branch | feature/live-dashboard |
+
+---
+
 ## MI-UX-4: Market Intelligence polish & release gate (ready for review)
 
 | | |

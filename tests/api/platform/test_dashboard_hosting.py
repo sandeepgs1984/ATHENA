@@ -119,7 +119,17 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "traceDecisionsBySymbol = new Map()" in rebuild_fn_body
     # Both call sites that reassign traceDecisionsList must rebuild the index
     # immediately after, or lookups would silently read stale data.
-    assert js.count("traceDecisionsList = latestDecisionPerInstrument(raw);\n            rebuildTraceDecisionsBySymbolIndex();") == 2
+    assert js.count(
+        "traceDecisionsList = latestDecisionPerInstrument(raw);\n"
+        "            rebuildTraceDecisionsBySymbolIndex();"
+    ) == 1  # loadDecisionsWorkspace()
+    refresh_syms_start = js.find("async function refreshDecisionCacheForSymbols")
+    refresh_syms_body = js[refresh_syms_start:refresh_syms_start + 1800]
+    assert (
+        "traceDecisionsList = latestDecisionPerInstrument(allTraceDecisionsList);"
+        in refresh_syms_body
+    )
+    assert "rebuildTraceDecisionsBySymbolIndex();" in refresh_syms_body
     latest_lookup_start = js.find("function latestDecisionForSymbol")
     latest_lookup_body = js[latest_lookup_start:latest_lookup_start + 300]
     assert "traceDecisionsBySymbol.get(bare)" in latest_lookup_body
@@ -1548,10 +1558,13 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "validationResultsPlanFilter" in js
     assert "validationResultsSort" in js
     assert "validationResultsReset" in js
-    assert "function refreshDecisionCacheForValidationResults" in js
-    assert "await refreshDecisionCacheForValidationResults();" in js
-    assert "allTraceDecisionsList = raw;" in js
-    assert "traceDecisionsList = latestDecisionPerInstrument(raw);" in js
+    # MI perf fix (owner-reported, 2026-08-04): the decisions cache refresh
+    # after a validate is now scoped to the symbol(s) that actually changed
+    # (instrument_id-filtered), not a full fetchAllDecisionPages() re-fetch
+    # of the entire decisions history on every validate/refresh.
+    assert "function refreshDecisionCacheForSymbols(symbols)" in js
+    assert "function refreshDecisionCacheForValidationResults" not in js
+    assert "traceDecisionsList = latestDecisionPerInstrument(allTraceDecisionsList);" in js
     assert "validation-results-head" not in html
     assert "validation-results-list" in html
     assert "data-validation-result-symbol" in js
