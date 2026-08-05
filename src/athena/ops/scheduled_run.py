@@ -21,6 +21,7 @@ from athena.notifications import BriefingDispatcher
 from athena.notifications.decision_source import SqliteDecisionSummarySource
 from athena.ops.canary import CanaryResult, run_canary
 from athena.ops.failure_alerts import FailureAlertDispatcher
+from athena.ops.fast_revalidation import run_fast_revalidation_cycle
 from athena.scheduling import DryRunCycleOrchestrator, due_triggers
 from athena.scheduling.dry_run import DryRunCycleResult, DryRunPipeline
 
@@ -109,6 +110,7 @@ class HostDueRunner:
         last_premarket_date = None
         last_refresh_ts = None
         last_closing_date = None
+        last_fast_ts = None
         pre = self._repo.latest_run(RunTrigger.PREMARKET.value)
         if pre is not None:
             last_premarket_date = pre.started_ts.astimezone(self._tzinfo).date()
@@ -118,6 +120,9 @@ class HostDueRunner:
         closing = self._repo.latest_run(RunTrigger.CLOSING.value)
         if closing is not None:
             last_closing_date = closing.started_ts.astimezone(self._tzinfo).date()
+        fast = self._repo.latest_run(RunTrigger.FAST.value)
+        if fast is not None:
+            last_fast_ts = fast.started_ts
 
         due = due_triggers(
             as_of,
@@ -127,6 +132,7 @@ class HostDueRunner:
             last_premarket_date=last_premarket_date,
             last_refresh_ts=last_refresh_ts,
             last_closing_date=last_closing_date,
+            last_fast_ts=last_fast_ts,
             is_trading_day=self._is_trading_day(as_of),
         )
 
@@ -153,6 +159,27 @@ class HostDueRunner:
 
         try:
             for trigger in due:
+                if trigger is RunTrigger.FAST:
+                    # Scoped to the current decision list, not the shared
+                    # full-universe self._ingest/self._pipeline used by every
+                    # other trigger — see fast_revalidation's own docstring.
+                    # No-ops (no config_dir wired, or no decisions to keep
+                    # fresh yet) rather than raising, matching _run_canary's
+                    # own best-effort fallback for callers that haven't
+                    # threaded config_dir through.
+                    if self._config_dir is None:
+                        continue
+                    fast_result = run_fast_revalidation_cycle(
+                        self._repo,
+                        self._config_dir,
+                        as_of=as_of,
+                        max_symbols=self._sched.fast.max_symbols,
+                        timeframes=self._sched.fast.timeframes,
+                        repo_root=self._repo_root,
+                    )
+                    if fast_result is not None:
+                        cycles.append(fast_result)
+                    continue
                 result = orchestrator.run_cycle(trigger, as_of=as_of)
                 cycles.append(result)
 

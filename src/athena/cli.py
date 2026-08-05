@@ -379,6 +379,7 @@ def _cmd_due(args: argparse.Namespace) -> int:
     last_premarket_date = None
     last_refresh_ts = None
     last_closing_date = None
+    last_fast_ts = None
     with _open_repo(cfg) as repo:
         pre = repo.latest_run(RunTrigger.PREMARKET.value)
         if pre is not None:
@@ -389,6 +390,9 @@ def _cmd_due(args: argparse.Namespace) -> int:
         closing = repo.latest_run(RunTrigger.CLOSING.value)
         if closing is not None:
             last_closing_date = closing.started_ts.astimezone(tz).date()
+        fast = repo.latest_run(RunTrigger.FAST.value)
+        if fast is not None:
+            last_fast_ts = fast.started_ts
 
     calendar = CalendarEngine.from_config_dir(config_dir, cfg.market)
     session_type = calendar.context_for(as_of.date()).session_type
@@ -398,6 +402,7 @@ def _cmd_due(args: argparse.Namespace) -> int:
         sessions=cfg.market.sessions,
         config=sched,
         base_interval_minutes=cfg.base.refresh_interval_minutes,
+        last_fast_ts=last_fast_ts,
         last_premarket_date=last_premarket_date,
         last_refresh_ts=last_refresh_ts,
         last_closing_date=last_closing_date,

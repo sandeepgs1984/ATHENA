@@ -79,6 +79,10 @@ class RunTrigger(str, Enum):
     CLOSE = "CLOSE"
     REPLAY = "REPLAY"
     SIMULATE = "SIMULATE"
+    # Fast decision-list-only revalidation cadence (Milestone B, 2026-08-04) —
+    # distinct from REFRESH so its runs are never confused with a full-
+    # universe cycle in the run history.
+    FAST = "FAST"
 
 
 @unique

@@ -425,3 +425,59 @@ def test_host_due_runner_does_not_alert_on_canary_pass():
     ):
         runner.run(as_of=as_of, send_brief=False, alert=True)
     alerts.dispatch.assert_not_called()
+
+
+# Milestone B (2026-08-04): fast decision-list-only revalidation tier —
+# HostDueRunner must route RunTrigger.FAST through run_fast_revalidation_cycle
+# (a separately-scoped ingest/pipeline pair), never through the shared
+# full-universe orchestrator every other trigger uses.
+def test_host_due_runner_runs_fast_tier_via_scoped_cycle():
+    runner, orchestrator = _runner_for_canary(config_dir=REPO_CONFIG)
+    as_of = datetime(2026, 7, 23, 10, 0, tzinfo=IST)
+    fast_result = DryRunCycleResult(
+        run=_run_record(), ingestion=None,
+        pipeline_detail={"mode": "ingest_only"}, duration_seconds=0.1,
+    )
+    with (
+        patch("athena.ops.scheduled_run.due_triggers", return_value=(RunTrigger.FAST,)),
+        patch("athena.ops.scheduled_run.DryRunCycleOrchestrator", return_value=orchestrator),
+        patch(
+            "athena.ops.scheduled_run.run_fast_revalidation_cycle", return_value=fast_result,
+        ) as mock_fast,
+    ):
+        result = runner.run(as_of=as_of, send_brief=False, alert=True)
+    mock_fast.assert_called_once()
+    assert mock_fast.call_args.kwargs["as_of"] == as_of
+    orchestrator.run_cycle.assert_not_called()
+    assert result.cycles == (fast_result,)
+
+
+def test_host_due_runner_fast_tier_noop_when_no_decisions_yet():
+    """run_fast_revalidation_cycle returns None (no decisions to keep
+    fresh) — must not fabricate a cycle result."""
+    runner, orchestrator = _runner_for_canary(config_dir=REPO_CONFIG)
+    as_of = datetime(2026, 7, 23, 10, 0, tzinfo=IST)
+    with (
+        patch("athena.ops.scheduled_run.due_triggers", return_value=(RunTrigger.FAST,)),
+        patch("athena.ops.scheduled_run.DryRunCycleOrchestrator", return_value=orchestrator),
+        patch("athena.ops.scheduled_run.run_fast_revalidation_cycle", return_value=None) as mock_fast,
+    ):
+        result = runner.run(as_of=as_of, send_brief=False, alert=True)
+    mock_fast.assert_called_once()
+    assert result.cycles == ()
+
+
+def test_host_due_runner_skips_fast_tier_without_config_dir():
+    """Matches _is_trading_day/_run_canary's own fallback: no config_dir
+    wired means the fast tier can't build a scoped provider at all, so it's
+    skipped rather than raising."""
+    runner, orchestrator = _runner_for_canary()  # config_dir defaults to None
+    as_of = datetime(2026, 7, 23, 10, 0, tzinfo=IST)
+    with (
+        patch("athena.ops.scheduled_run.due_triggers", return_value=(RunTrigger.FAST,)),
+        patch("athena.ops.scheduled_run.DryRunCycleOrchestrator", return_value=orchestrator),
+        patch("athena.ops.scheduled_run.run_fast_revalidation_cycle") as mock_fast,
+    ):
+        result = runner.run(as_of=as_of, send_brief=False, alert=True)
+    mock_fast.assert_not_called()
+    assert result.cycles == ()

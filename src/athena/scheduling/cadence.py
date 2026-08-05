@@ -72,6 +72,34 @@ def is_refresh_due(
     return as_of - last_refresh_ts >= timedelta(minutes=interval)
 
 
+def is_fast_due(
+    as_of: datetime,
+    *,
+    sessions: SessionsConfig,
+    config: SchedulingConfig,
+    last_fast_ts: datetime | None,
+    is_trading_day: bool = True,
+) -> bool:
+    """True every ``fast.interval_minutes`` while the regular session is open
+    (same session-hours gating as REFRESH). Milestone B (2026-08-04): keeps
+    decision-list symbols' quotes/intraday candles/decisions fresher than
+    the full-universe cadence, between full REFRESH cycles."""
+    if as_of.tzinfo is None:
+        raise ValueError("as_of must be timezone-aware")
+    if not is_trading_day:
+        return False
+    if not config.fast.enabled:
+        return False
+    clock = as_of.time()
+    if clock < sessions.open or clock >= sessions.close:
+        return False
+    if last_fast_ts is None:
+        return True
+    if last_fast_ts.tzinfo is None:
+        raise ValueError("last_fast_ts must be timezone-aware")
+    return as_of - last_fast_ts >= timedelta(minutes=config.fast.interval_minutes)
+
+
 def is_closing_due(
     as_of: datetime,
     *,
@@ -108,9 +136,10 @@ def due_triggers(
     last_premarket_date: date | None = None,
     last_refresh_ts: datetime | None = None,
     last_closing_date: date | None = None,
+    last_fast_ts: datetime | None = None,
     is_trading_day: bool = True,
 ) -> tuple[RunTrigger, ...]:
-    """Ordered triggers due at ``as_of`` (premarket → refresh → closing).
+    """Ordered triggers due at ``as_of`` (premarket → refresh → closing → fast).
 
     Owner-reported (2026-08-01): on a weekend/holiday, Kite's quotes are
     legitimately frozen at the last real session's close — every REFRESH/
@@ -145,4 +174,13 @@ def due_triggers(
         is_trading_day=is_trading_day,
     ):
         due.append(RunTrigger.CLOSING)
+    # Checked last: if a full REFRESH is also due this same tick, it already
+    # covers every decision-list symbol more comprehensively — FAST still
+    # runs (simplest, and harmless — just a redundant top-up that tick), but
+    # ordering it last means the comprehensive cycle's data lands first.
+    if is_fast_due(
+        as_of, sessions=sessions, config=config, last_fast_ts=last_fast_ts,
+        is_trading_day=is_trading_day,
+    ):
+        due.append(RunTrigger.FAST)
     return tuple(due)

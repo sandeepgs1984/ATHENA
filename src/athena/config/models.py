@@ -1179,6 +1179,27 @@ class ClosingScheduleConfig(_Strict):
     run_at: time = time(15, 45)
 
 
+class FastScheduleConfig(_Strict):
+    """Fast decision-list-only revalidation cadence (owner-requested, 2026-08-04).
+
+    Distinct from ``refresh`` (full universe, every base.refresh_interval_minutes,
+    includes daily candles): this tier is scoped to only the symbols that
+    currently have a persisted decision, and never fetches daily candles —
+    the regular refresh cadence already keeps those correct (see
+    LiveIngestionEngine's today-exemption from skip_existing). The point is
+    to keep the Decisions & Trace board's own symbols feeling live between
+    full-universe cycles, without adding full-universe load on a tighter
+    cadence. ``enabled`` defaults False (ADR-007: no new autonomous behavior
+    without explicit owner opt-in) — the owner's own config/scheduling.json
+    turns it on.
+    """
+
+    enabled: bool = False
+    interval_minutes: int = Field(default=5, ge=1, le=60)
+    timeframes: list[str] = Field(default_factory=lambda: ["5m"])
+    max_symbols: int = Field(default=400, ge=1, le=2000)
+
+
 class SchedulingConfig(_Strict):
     """Scheduling Framework configuration (M4.7 + M10.2 cadence + R6 closing).
 
@@ -1191,6 +1212,7 @@ class SchedulingConfig(_Strict):
     premarket: PremarketScheduleConfig = Field(default_factory=PremarketScheduleConfig)
     refresh: RefreshScheduleConfig = Field(default_factory=RefreshScheduleConfig)
     closing: ClosingScheduleConfig = Field(default_factory=ClosingScheduleConfig)
+    fast: FastScheduleConfig = Field(default_factory=FastScheduleConfig)
 
 
 class FileNotifierConfig(_Strict):

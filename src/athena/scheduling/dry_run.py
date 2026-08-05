@@ -97,9 +97,11 @@ class DryRunCycleOrchestrator:
     def run_cycle(self, trigger: RunTrigger, *, as_of: datetime) -> DryRunCycleResult:
         if as_of.tzinfo is None:
             raise ValueError("as_of must be timezone-aware")
-        if trigger not in (RunTrigger.PREMARKET, RunTrigger.REFRESH, RunTrigger.CLOSING):
+        if trigger not in (
+            RunTrigger.PREMARKET, RunTrigger.REFRESH, RunTrigger.CLOSING, RunTrigger.FAST,
+        ):
             raise ValueError(
-                f"dry-run cycle supports PREMARKET/REFRESH/CLOSING only, got {trigger.value}"
+                f"dry-run cycle supports PREMARKET/REFRESH/CLOSING/FAST only, got {trigger.value}"
             )
 
         self._cycle_counter += 1

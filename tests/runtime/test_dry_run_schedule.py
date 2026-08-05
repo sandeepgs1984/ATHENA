@@ -11,6 +11,7 @@ import pytest
 from athena.calendar.engine import CalendarEngine
 from athena.config.loader import load_config, load_scheduling_config, load_validation_config
 from athena.config.models import (
+    FastScheduleConfig,
     FileProviderConfig,
     IngestionConfig,
     PremarketScheduleConfig,
@@ -30,6 +31,7 @@ from athena.scheduling import (
     DryRunCycleOrchestrator,
     due_triggers,
     is_closing_due,
+    is_fast_due,
     is_premarket_due,
     is_refresh_due,
 )
@@ -104,6 +106,68 @@ class TestCadence:
             as_of, sessions=SESSIONS, config=_sched(),
             base_interval_minutes=15, last_refresh_ts=None,
         )
+
+    # Milestone B (2026-08-04): fast decision-list-only revalidation tier.
+    def test_fast_disabled_by_default(self):
+        as_of = datetime(2026, 2, 13, 10, 0, tzinfo=IST)
+        assert not is_fast_due(
+            as_of, sessions=SESSIONS, config=_sched(), last_fast_ts=None,
+        )
+
+    def test_fast_due_in_session_when_enabled(self):
+        as_of = datetime(2026, 2, 13, 10, 0, tzinfo=IST)
+        assert is_fast_due(
+            as_of, sessions=SESSIONS,
+            config=_sched(fast=FastScheduleConfig(enabled=True, interval_minutes=5)),
+            last_fast_ts=None,
+        )
+
+    def test_fast_respects_interval(self):
+        cfg = _sched(fast=FastScheduleConfig(enabled=True, interval_minutes=5))
+        as_of = datetime(2026, 2, 13, 10, 3, tzinfo=IST)
+        last = datetime(2026, 2, 13, 10, 0, tzinfo=IST)
+        assert not is_fast_due(
+            as_of, sessions=SESSIONS, config=cfg, last_fast_ts=last,
+        )
+        assert is_fast_due(
+            as_of + timedelta(minutes=2), sessions=SESSIONS, config=cfg, last_fast_ts=last,
+        )
+
+    def test_fast_not_outside_session(self):
+        as_of = datetime(2026, 2, 13, 16, 0, tzinfo=IST)
+        assert not is_fast_due(
+            as_of, sessions=SESSIONS,
+            config=_sched(fast=FastScheduleConfig(enabled=True, interval_minutes=5)),
+            last_fast_ts=None,
+        )
+
+    def test_fast_not_due_when_not_trading_day(self):
+        as_of = datetime(2026, 2, 13, 10, 0, tzinfo=IST)
+        assert not is_fast_due(
+            as_of, sessions=SESSIONS,
+            config=_sched(fast=FastScheduleConfig(enabled=True, interval_minutes=5)),
+            last_fast_ts=None, is_trading_day=False,
+        )
+
+    def test_due_triggers_includes_fast(self):
+        # REFRESH is also due at this as_of (no last_refresh_ts) — fast is
+        # checked last, after every other trigger, so it lands at the end.
+        as_of = datetime(2026, 2, 13, 10, 0, tzinfo=IST)
+        due = due_triggers(
+            as_of, sessions=SESSIONS,
+            config=_sched(fast=FastScheduleConfig(enabled=True, interval_minutes=5)),
+            base_interval_minutes=15,
+        )
+        assert due == (RunTrigger.REFRESH, RunTrigger.FAST)
+
+    def test_due_triggers_omits_fast_by_default(self):
+        # Milestone A's cadences must keep their exact prior behavior for
+        # every installation that hasn't opted into the fast tier.
+        as_of = datetime(2026, 2, 13, 10, 0, tzinfo=IST)
+        due = due_triggers(
+            as_of, sessions=SESSIONS, config=_sched(), base_interval_minutes=15,
+        )
+        assert RunTrigger.FAST not in due
 
     def test_due_triggers_order(self):
         # Artificial sessions: open late so premarket + refresh can't both fire;
@@ -240,6 +304,28 @@ def _ingestion(as_of: datetime) -> IngestionResult:
 
 
 class TestDryRunCycle:
+    def test_accepts_fast_trigger(self, tmp_path):
+        # Milestone B: FAST must be accepted alongside PREMARKET/REFRESH/
+        # CLOSING — it's the only trigger scoped_revalidation.py runs
+        # through this same orchestrator with a scoped ingest/pipeline pair.
+        as_of = datetime(2026, 2, 13, 10, 0, tzinfo=IST)
+        repo = SqliteRepository(tmp_path / "athena.db")
+        repo.initialize()
+        pipe = RecordingPipeline()
+        orch = DryRunCycleOrchestrator(
+            FakeIngest(_ingestion(as_of)),  # type: ignore[arg-type]
+            repo,
+            pipeline=pipe,
+            run_id_factory=lambda t, a: "run-fast-1",
+        )
+        result = orch.run_cycle(RunTrigger.FAST, as_of=as_of)
+        assert result.run.status is RunStatus.COMPLETED
+        assert result.run.trigger is RunTrigger.FAST
+        stored = repo.get_run("run-fast-1")
+        assert stored is not None
+        assert stored.trigger is RunTrigger.FAST
+        repo.close()
+
     def test_persists_completed_run(self, tmp_path):
         as_of = datetime(2026, 2, 13, 8, 20, tzinfo=IST)
         repo = SqliteRepository(tmp_path / "athena.db")

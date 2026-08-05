@@ -5,6 +5,7 @@ never changes what ATHENA analyzes. M10.2 adds cadence + dry-run cycles."""
 from athena.scheduling.cadence import (
     due_triggers,
     is_closing_due,
+    is_fast_due,
     is_premarket_due,
     is_refresh_due,
     refresh_interval_minutes,
@@ -35,6 +36,7 @@ __all__ = [
     "SchedulingFramework",
     "due_triggers",
     "is_closing_due",
+    "is_fast_due",
     "is_premarket_due",
     "is_refresh_due",
     "refresh_interval_minutes",
