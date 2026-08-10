@@ -397,7 +397,36 @@
                     await tabLoad;
                 }
             }
-            if (typeof loadDecisionsWorkspace === "function") {
+            // Owner-reported (2026-08-10): opening a decision took 30s+ even
+            // though the validate that preceded it completed in ~2s. Root
+            // cause: this unconditionally called loadDecisionsWorkspace() ->
+            // fetchAllDecisionPages() — the exact same 50-page,
+            // up-to-49-concurrent-request fan-out already fixed for
+            // validateSymbolsNow() on 2026-08-04 (see
+            // refreshDecisionCacheForSymbols above) — and with decisions now
+            // past 90,000 rows that fan-out alone dominates the delay. The
+            // symbol is almost always already in the in-memory cache (just
+            // validated, or visible via Top Opportunities/Market Summary, or
+            // kept current by the periodic background refresh): render it
+            // immediately with no network round trip. Only fetch when it
+            // truly isn't there yet, and even then prefer the same cheap,
+            // instrument_id-scoped call over a full-table reload — reserving
+            // the expensive full fetch for the one genuinely cold case,
+            // a symbol opened before the Decisions cache has loaded at all.
+            const cached = typeof currentOpenableDecisionForSymbol === "function"
+                ? currentOpenableDecisionForSymbol(bare)
+                : null;
+            if (cached && typeof applyDecisionsView === "function") {
+                applyDecisionsView({ preferInstrumentId: bare, strictPreferInstrumentId: true });
+            } else if (allTraceDecisionsList.length && typeof refreshDecisionCacheForSymbols === "function") {
+                await refreshDecisionCacheForSymbols([bare]);
+                const selected = typeof applyDecisionsView === "function"
+                    ? applyDecisionsView({ preferInstrumentId: bare, strictPreferInstrumentId: true })
+                    : null;
+                if (!selected) {
+                    showToast(`${bare} is not in the current Decisions list`, "warning");
+                }
+            } else if (typeof loadDecisionsWorkspace === "function") {
                 const selected = await loadDecisionsWorkspace({
                     preferInstrumentId: bare,
                     strictPreferInstrumentId: true,

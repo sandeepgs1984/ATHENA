@@ -205,12 +205,45 @@
         return collected;
     }
 
+    // Owner-reported (2026-08-10): the 60s background poll (below) called
+    // this with {silent: true} and it unconditionally ran the full
+    // fetchAllDecisionPages() walk every tick — with decisions now past
+    // 90,000 rows that alone took 25-30s+ EVERY MINUTE the tab stayed open,
+    // saturating the shared SQLite connection regardless of anything the
+    // owner clicked (a validate or "Re-check at open" landing mid-tick paid
+    // this cost even though its own work was fast). A poll only needs to
+    // learn about decisions created since the last successful load — new
+    // rows always sort to the top (ts desc, decisions are immutable/
+    // append-only) — so once the workspace has already loaded once, fetch
+    // just the newest page and merge it into the existing list instead of
+    // re-walking the entire table. A burst larger than one page (e.g. a
+    // REFRESH cycle finishing mid-tick) is picked up within a tick or two,
+    // not lost — an acceptable trade for not hammering the DB every minute.
     async function loadDecisionsWorkspace(options = {}) {
         try {
-            const raw = await fetchAllDecisionPages(options);
-            allTraceDecisionsList = raw;
+            if (options.silent && allTraceDecisionsList.length) {
+                const res = await apiRequest(decisionsPageUrl(1, 100), { skipToast: true });
+                if (!res || res.status !== "success") {
+                    throw new Error("decisions list returned a non-success envelope");
+                }
+                const fresh = Array.isArray(res.data) ? res.data : [];
+                const freshIds = new Set(
+                    fresh.map(d => d.metadata && d.metadata.decision_id).filter(Boolean)
+                );
+                // Cap at the same 5000-row ceiling fetchAllDecisionPages()
+                // itself uses (maxPages * pageSize), so a tab left open for
+                // hours doesn't grow this list without bound.
+                allTraceDecisionsList = [
+                    ...fresh,
+                    ...allTraceDecisionsList.filter(
+                        d => !freshIds.has(d.metadata && d.metadata.decision_id)
+                    ),
+                ].slice(0, 5000);
+            } else {
+                allTraceDecisionsList = await fetchAllDecisionPages(options);
+            }
             // Latest decision per instrument for "Today's Decisions" (avoid duplicate cards)
-            traceDecisionsList = latestDecisionPerInstrument(raw);
+            traceDecisionsList = latestDecisionPerInstrument(allTraceDecisionsList);
             rebuildTraceDecisionsBySymbolIndex();
             return applyDecisionsView(options);
         } catch (err) {
