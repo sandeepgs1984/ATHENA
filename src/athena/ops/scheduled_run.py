@@ -6,6 +6,7 @@ Invoked by external launchd/cron via ``athena run-due``. No embedded scheduler.
 from __future__ import annotations
 
 import contextlib
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -56,7 +57,7 @@ class HostDueRunner:
         host_ops: HostOpsConfig,
         notify_cfg: NotificationsConfig,
         repo: SqliteRepository,
-        ingest_engine: LiveIngestionEngine,
+        ingest_engine: LiveIngestionEngine | Callable[[], LiveIngestionEngine],
         repo_root: Path,
         tzinfo: ZoneInfo,
         strategy_profile: str,
@@ -70,6 +71,13 @@ class HostDueRunner:
         self._host_ops = host_ops
         self._notify_cfg = notify_cfg
         self._repo = repo
+        # Owner-reported (2026-08-10): building this eagerly meant every
+        # 60s cycle-worker tick paid for a live Kite catalog fetch (~1s+)
+        # to construct the engine, even on the common idle tick where
+        # due_triggers() below finds nothing to do and self._ingest is
+        # never touched. Accepting a zero-arg factory alongside a plain
+        # instance (existing callers are unaffected) lets the caller defer
+        # that cost to only the ticks where a cycle actually runs.
         self._ingest = ingest_engine
         self._repo_root = Path(repo_root)
         self._tzinfo = tzinfo
@@ -149,8 +157,9 @@ class HostDueRunner:
                 as_of=as_of, due=(), cycles=(), briefing_id=None, idle=True, alerted=False,
             )
 
+        ingest = self._ingest() if callable(self._ingest) else self._ingest
         orchestrator = DryRunCycleOrchestrator(
-            self._ingest,
+            ingest,
             self._repo,
             pipeline=self._pipeline,
             strategy_profile=self._strategy_profile,

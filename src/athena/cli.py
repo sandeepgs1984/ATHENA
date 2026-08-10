@@ -602,16 +602,25 @@ def _execute_run_due(
         except ConstituentFetchError as exc:
             print(f"WARNING: candidate seed failed (continuing with existing list): {exc}")
 
-        ingest_engine, _ = _build_ingest_engine(
-            config_dir, cfg, repo, tz, scope_to_candidates=True
-        )
+        # Owner-reported (2026-08-10): building this eagerly meant every
+        # 60s cycle-worker tick paid for a live Kite catalog fetch (~1s+)
+        # just to construct the engine, even on the common idle tick where
+        # nothing turns out to be due and it's never used. A zero-arg
+        # factory lets HostDueRunner defer that cost until it knows a
+        # cycle is actually going to run.
+        def _lazy_ingest_engine() -> LiveIngestionEngine:
+            engine, _ = _build_ingest_engine(
+                config_dir, cfg, repo, tz, scope_to_candidates=True
+            )
+            return engine
+
         runner = HostDueRunner(
             cfg=cfg,
             sched=sched,
             host_ops=host_ops,
             notify_cfg=notify_cfg,
             repo=repo,
-            ingest_engine=ingest_engine,
+            ingest_engine=_lazy_ingest_engine,
             repo_root=_repo_root(),
             tzinfo=tz,
             strategy_profile=cfg.base.active_profile,

@@ -137,6 +137,72 @@ def test_host_due_runner_idle_no_alert():
     assert result.cycles == ()
 
 
+# Owner-reported (2026-08-10): ingest_engine used to be built eagerly by
+# every caller before HostDueRunner even ran, so every 60s cycle-worker
+# tick paid for a live Kite catalog fetch even on the common idle tick.
+# HostDueRunner now also accepts a zero-arg factory and must only call it
+# once it actually knows a cycle is due.
+def test_host_due_runner_idle_tick_never_builds_ingest_engine():
+    repo = MagicMock()
+    repo.latest_run.return_value = None
+    factory = MagicMock(side_effect=AssertionError("ingest_engine factory must not be called"))
+
+    runner = HostDueRunner(
+        cfg=MagicMock(),
+        sched=MagicMock(),
+        host_ops=HostOpsConfig(brief_when_idle=False),
+        notify_cfg=MagicMock(),
+        repo=repo,
+        ingest_engine=factory,
+        repo_root=Path("/tmp"),
+        tzinfo=IST,
+        strategy_profile="p",
+        alert_dispatcher=MagicMock(),
+    )
+    as_of = datetime(2026, 7, 23, 22, 0, tzinfo=IST)
+    with patch("athena.ops.scheduled_run.due_triggers", return_value=()):
+        result = runner.run(as_of=as_of, alert=True)
+    assert result.idle is True
+    factory.assert_not_called()
+
+
+def test_host_due_runner_due_tick_builds_ingest_engine_exactly_once():
+    repo = MagicMock()
+    repo.latest_run.return_value = None
+    cycle = DryRunCycleResult(
+        run=_run_record(), ingestion=None,
+        pipeline_detail={"mode": "ingest_only"}, duration_seconds=0.1,
+    )
+    orchestrator = MagicMock()
+    orchestrator.run_cycle.return_value = cycle
+    built_engine = MagicMock()
+    factory = MagicMock(return_value=built_engine)
+
+    runner = HostDueRunner(
+        cfg=MagicMock(),
+        sched=MagicMock(),
+        host_ops=HostOpsConfig(brief_after_cycles=False),
+        notify_cfg=MagicMock(),
+        repo=repo,
+        ingest_engine=factory,
+        repo_root=Path("/tmp"),
+        tzinfo=IST,
+        strategy_profile="p",
+        alert_dispatcher=MagicMock(),
+    )
+    as_of = datetime(2026, 7, 23, 10, 0, tzinfo=IST)
+    with (
+        patch("athena.ops.scheduled_run.due_triggers", return_value=(RunTrigger.REFRESH,)),
+        patch("athena.ops.scheduled_run.DryRunCycleOrchestrator", return_value=orchestrator) as orch_cls,
+    ):
+        result = runner.run(as_of=as_of, alert=True)
+    assert result.idle is False
+    factory.assert_called_once()
+    orch_cls.assert_called_once_with(
+        built_engine, repo, pipeline=None, strategy_profile="p", config_snapshot_id="cfg-host-ops",
+    )
+
+
 # Owner-reported (2026-08-01): on a weekend/holiday, Kite's quotes are
 # legitimately frozen at the last real session's close, so the host's
 # ~15-minute cron kept firing REFRESH/CLOSING cycles all day — every one
