@@ -296,8 +296,20 @@ class SqliteRepository:
     # ------------------------------------------------------------- market snapshots
 
     def add_snapshot(self, snapshot: MarketSnapshot) -> None:
+        """Idempotent on ts (owner-reported, 2026-08-10): the caller used to
+        guard this by comparing against only the single most-recent snapshot
+        (get_latest_snapshot()), which misses any earlier row at the same ts
+        once a later snapshot exists — exactly what happens on a second
+        after-hours validate, since every after-hours as_of resolves to the
+        same frozen session-close instant (resolve_validate_as_of). Once any
+        live-mode snapshot from earlier in the day is the current "latest",
+        that guard no longer catches the collision and the plain INSERT
+        raised UNIQUE constraint failed: market_snapshots.ts. Making the
+        write itself idempotent removes the whole class of bug regardless of
+        caller logic."""
         self._write(
-            "INSERT INTO market_snapshots (ts, payload_json) VALUES (?,?)",
+            "INSERT INTO market_snapshots (ts, payload_json) VALUES (?,?) "
+            "ON CONFLICT(ts) DO NOTHING",
             (snapshot.ts.isoformat(), ser.snapshot_to_payload(snapshot)),
         )
 
@@ -615,15 +627,22 @@ class SqliteRepository:
         Timestamp ties use decision_id descending, matching ``list_decisions``.
         The query is intentionally unbounded so index coverage cannot silently
         become incomplete as decision history grows.
+
+        Owner-reported (2026-08-10): the original NOT EXISTS correlated
+        subquery re-evaluates "is there a newer row for this instrument" once
+        per decision row — 1.7s at 91,241 rows even with
+        idx_decisions_instrument_ts. A single ROW_NUMBER() pass over the same
+        index is ~30x faster (57ms at the same scale) for an identical result
+        set (verified via EXCEPT against the old query — zero row diff).
         """
         rows = self._query_all(
-            "SELECT d.decision_id, d.ts, d.run_id, d.cycle_id, d.decision_type, "
-            "d.explanation, d.instrument_id, d.direction, d.score_ref, "
-            "d.confidence_ref, d.risk_ref, d.gate_results_json, d.trade_plan_json "
-            "FROM decisions d WHERE d.instrument_id IS NOT NULL AND NOT EXISTS ("
-            "SELECT 1 FROM decisions newer WHERE newer.instrument_id=d.instrument_id "
-            "AND (newer.ts>d.ts OR (newer.ts=d.ts AND newer.decision_id>d.decision_id))"
-            ") ORDER BY d.instrument_id"
+            "SELECT decision_id, ts, run_id, cycle_id, decision_type, "
+            "explanation, instrument_id, direction, score_ref, "
+            "confidence_ref, risk_ref, gate_results_json, trade_plan_json "
+            "FROM (SELECT *, ROW_NUMBER() OVER ("
+            "PARTITION BY instrument_id ORDER BY ts DESC, decision_id DESC"
+            ") AS rn FROM decisions WHERE instrument_id IS NOT NULL) "
+            "WHERE rn = 1 ORDER BY instrument_id"
         )
         return [ser.row_to_decision(r) for r in rows]
 

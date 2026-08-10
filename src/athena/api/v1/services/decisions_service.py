@@ -116,6 +116,27 @@ class DecisionsService:
             page_size=result.page_size,
         )
 
+    def list_latest_decisions(self) -> tuple[DecisionDTO, ...]:
+        """One current decision per instrument — what the Decisions & Trace
+        dashboard actually displays after its own latest-per-instrument
+        dedupe, so it can ask for exactly that instead of paginating through
+        the full historical event log to reconstruct it client-side.
+
+        Reads self._repo directly rather than through DecisionProvider, the
+        same precedent already used by MarketHistoryService for this exact
+        repository method — it's a live-repository convenience query, not
+        part of the deterministic decision pipeline that needs to be
+        replayable against an in-memory provider.
+        """
+        if self._repo is None:
+            return ()
+        decisions = tuple(self._repo.list_latest_decisions_by_instrument())
+        self._instrument_name_cache = self._load_instrument_names(decisions)
+        try:
+            return tuple(self._map_to_dto(d) for d in decisions)
+        finally:
+            self._instrument_name_cache = None
+
     def _load_instrument_names(self, decisions: tuple[Decision, ...]) -> dict[str, str]:
         if self._repo is None:
             return {}

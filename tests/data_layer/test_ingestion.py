@@ -23,7 +23,7 @@ from athena.data.providers.file_provider import FileProvider
 from athena.data.store import SqliteRepository
 from athena.data.validation import QuarantineRegistry, validate_quotes
 from athena.domain.enums import Timeframe
-from athena.domain.market import Quote
+from athena.domain.market import MarketSnapshot, Quote
 from athena.errors import ConfigError, DataStaleError
 
 IST = ZoneInfo("Asia/Kolkata")
@@ -135,6 +135,28 @@ class TestHappyPath:
         assert second.candles_written == 1
         assert second.quotes_written == 0
         assert len(repo.get_quotes("SYN-AAA")) == 1
+
+    def test_reingest_after_later_snapshot_does_not_raise(self, tmp_path, config_dir):
+        """Owner-reported (2026-08-10): the old guard skipped re-ingesting a
+        snapshot only when it exactly matched the single most-recent one —
+        so once ANY later snapshot existed (always true on a second
+        after-hours validate, since every after-hours as_of is the same
+        frozen session close — see resolve_validate_as_of), re-ingesting the
+        original as_of's snapshot raised UNIQUE constraint failed on
+        market_snapshots.ts instead of being silently skipped."""
+        provider = _write_provider_tree(tmp_path / "data")
+        engine, repo = _engine(tmp_path, config_dir, provider)
+        engine.run_cycle(as_of=AS_OF)
+
+        repo.add_snapshot(
+            MarketSnapshot(ts=AS_OF + timedelta(hours=1), indices={"NIFTY50": Decimal("25010")})
+        )
+
+        second = engine.run_cycle(as_of=AS_OF)  # must not raise
+        assert second.snapshots_written == 1
+        snap = repo.get_latest_snapshot()
+        assert snap is not None
+        assert snap.ts == AS_OF + timedelta(hours=1)
 
 
 class TestFailures:

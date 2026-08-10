@@ -10,7 +10,7 @@ append-only by discipline (inserts only; duplicates rejected by primary key).
 from __future__ import annotations
 
 #: Bump when the schema changes; enables future explicit migrations.
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 
 _DDL = (
     "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)",
@@ -158,6 +158,14 @@ _DDL = (
     """,
     "CREATE INDEX IF NOT EXISTS idx_decisions_ts ON decisions(ts)",
     "CREATE INDEX IF NOT EXISTS idx_decisions_run ON decisions(run_id)",
+    # SCHEMA_VERSION 12: list_latest_decisions_by_instrument()'s correlated
+    # NOT EXISTS subquery (one "is there a newer row for this instrument"
+    # check per row) had no supporting index — owner-reported (2026-08-10),
+    # timed at 1.7s against 91,241 decisions. Covers both sides of that
+    # correlation (the outer instrument_id/ts/decision_id and the inner
+    # newer.instrument_id/ts/decision_id) in one index.
+    "CREATE INDEX IF NOT EXISTS idx_decisions_instrument_ts "
+    "ON decisions(instrument_id, ts, decision_id)",
 
     """
     CREATE TABLE IF NOT EXISTS decision_traces (

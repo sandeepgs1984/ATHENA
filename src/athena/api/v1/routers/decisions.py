@@ -78,6 +78,35 @@ def list_decisions(
 
 
 @router.get(
+    "/latest",
+    response_model=AthenaResponse[list[DecisionDTO]],
+    summary="Get the current decision for every tracked instrument",
+    status_code=status.HTTP_200_OK,
+    operation_id="listLatestDecisions",
+)
+def list_latest_decisions(
+    request: Request,
+    service: DecisionsService = Depends(get_decisions_service),  # noqa: B008
+    principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.READ)),  # noqa: B008
+) -> AthenaResponse[list[DecisionDTO]]:
+    """One current decision per instrument (owner-reported, 2026-08-10):
+    the dashboard's Decisions & Trace board only ever displays the latest
+    decision per instrument, so it can ask for exactly that directly
+    instead of paginating through the full historical event log — which,
+    with decisions immutable/append-only and re-evaluated every cycle,
+    grows far larger than the number of tracked instruments."""
+    items = service.list_latest_decisions()
+    request_id = getattr(request.state, "request_id", "unknown")
+    return AthenaResponse(
+        status="success",
+        data=list(items),
+        meta=ResponseMeta(
+            request_id=request_id, api_version="v1", as_of=datetime.now(tz=timezone.utc)
+        ),
+    )
+
+
+@router.get(
     "/{decision_id}",
     response_model=AthenaResponse[DecisionDTO],
     summary="Get decision details",

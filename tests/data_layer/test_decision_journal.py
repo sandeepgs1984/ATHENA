@@ -68,7 +68,7 @@ class TestDecisionPersistence:
     def test_schema_version_is_current(self, tmp_path):
         repo = SqliteRepository(tmp_path / "a.db")
         repo.initialize()
-        assert SCHEMA_VERSION == 11
+        assert SCHEMA_VERSION == 12
         assert repo.verify_integrity().schema_version_ok
         assert "decisions" in repo.record_counts()
         assert "owner_positions" in repo.record_counts()

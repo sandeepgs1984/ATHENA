@@ -90,19 +90,17 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "function closeModal" in js
     assert "Failed to load strategy profiles" in js
     assert "Failed to load decisions" in js
-    # Decisions workspace must walk every page before latest-per-instrument dedupe.
-    # Owner-reported (2026-08-01): the original has_next-driven sequential loop
-    # took 15-20s against a large decisions table (one round-trip per page, in
-    # series). Now fetches page 1 to learn total_pages, then fires every
-    # remaining page concurrently instead of one at a time.
-    assert "function fetchAllDecisionPages" in js
+    # Owner-reported (2026-08-10): the workspace's cold/full load used to walk
+    # up to 50 pages of /api/v1/decisions (a 50-request fan-out over the
+    # entire historical event log) purely to reconstruct "one decision per
+    # instrument" client-side — the only thing this view ever displays. It
+    # now asks GET /decisions/latest for exactly that directly.
     assert "function latestDecisionPerInstrument" in js
-    assert "page_size" in js
-    assert "total_pages" in js
+    assert "function decisionsPageUrl" in js
     assert 'sort_by: "ts"' in js
-    fetch_all_pages_start = js.find("async function fetchAllDecisionPages")
-    fetch_all_pages_body = js[fetch_all_pages_start:fetch_all_pages_start + 1500]
-    assert "Promise.all" in fetch_all_pages_body
+    workspace_start = js.find("async function loadDecisionsWorkspace")
+    workspace_body = js[workspace_start:workspace_start + 2500]
+    assert '"/api/v1/decisions/latest"' in workspace_body
 
     # Owner-reported (2026-08-01): typing in the Validation Workbench search
     # box froze the UI. Root cause — latestDecisionForSymbol/
@@ -242,8 +240,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.146.0" in html
-    assert "dashboard.js?v=9.146.0" in html
+    assert "dashboard.css?v=9.147.0" in html
+    assert "dashboard.js?v=9.147.0" in html
     assert 'id="advisor-pulse"' in html
     assert 'id="header-diagnostics-popover"' in html
     assert 'id="decision-actionability-banner"' in html

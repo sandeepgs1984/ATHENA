@@ -217,11 +217,15 @@ class LiveIngestionEngine:
             except Exception:
                 snapshot = None
             if snapshot is not None:
-                latest = self._repo.get_latest_snapshot()
-                # market_snapshots.ts is UNIQUE — skip identical-timestamp re-ingest
-                if latest is None or latest.ts != snapshot.ts:
-                    self._repo.add_snapshot(snapshot)
-                    snapshots_written = 1
+                # add_snapshot is idempotent on ts (ON CONFLICT DO NOTHING) —
+                # owner-reported (2026-08-10): the old guard here only
+                # compared against the single most-recent snapshot, which
+                # missed an identical-ts collision once a later snapshot
+                # existed (always true on a second after-hours validate,
+                # since every after-hours as_of is the same frozen session
+                # close) and crashed with a UNIQUE constraint violation.
+                self._repo.add_snapshot(snapshot)
+                snapshots_written = 1
 
         institutional_written = 0
         institutional_error: str | None = None
