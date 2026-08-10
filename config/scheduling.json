@@ -1,7 +1,7 @@
 {
   "_meta": {
     "layer": 4,
-    "description": "Scheduling Framework + M10.2 cadence (premarket/refresh) + R6 closing + Milestone B fast tier. No embedded cron — CLI/external launcher invokes cycles."
+    "description": "Scheduling Framework + M10.2 cadence (premarket/refresh) + R6 closing + Milestone B fast tier. No embedded cron — CLI/external launcher invokes cycles. Fast tier scaled back 2026-08-10: 5min/400 symbols left the shared Kite historical endpoint at ~42% duty cycle, compounding REFRESH's own ~96% duty cycle and starving ad-hoc single-symbol validates of API slots for 20-30s+."
   },
   "record_history": true,
   "premarket": {
@@ -18,8 +18,8 @@
   },
   "fast": {
     "enabled": true,
-    "interval_minutes": 5,
+    "interval_minutes": 10,
     "timeframes": ["5m"],
-    "max_symbols": 400
+    "max_symbols": 150
   }
 }
