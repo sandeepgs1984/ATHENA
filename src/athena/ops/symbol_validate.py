@@ -30,6 +30,11 @@ from athena.ops.owner_candidates import (
 from athena.ops.owner_validation import OwnerValidationPipeline
 from athena.scheduling import DryRunCycleOrchestrator
 
+# Perf fix (2026-08-10): see the comment at its call site in validate_symbols
+# — beyond this many simultaneously-stale tracked indices/VIX, a single-
+# symbol validate stops trying to catch them all up itself.
+_MAX_STALE_INDICES_TO_CATCH_UP = 2
+
 
 @dataclass(frozen=True, slots=True)
 class SymbolValidateResult:
@@ -125,6 +130,26 @@ def _index_instrument_needs_refresh(
     return latest_date < as_of.astimezone(tz).date()
 
 
+def _indices_to_catch_up(stale: list[str], *, max_to_catch_up: int) -> list[str]:
+    """Which stale indices/VIX a single-symbol validate should synchronously
+    re-ingest alongside the requested symbol.
+
+    Perf fix (2026-08-10): _index_instrument_needs_refresh's own 2026-08-03
+    fix only helps the routine case of one or two indices individually
+    falling behind — it does nothing for the window right after market open,
+    before the day's first REFRESH cycle has caught every tracked index up,
+    when ALL of them can be stale simultaneously. Catching all of them up
+    synchronously here turned a single-symbol "Revalidate" into a 30s+ wait
+    re-ingesting 10+ indices (owner-reported: 2-8s normally, 17-19s+ in that
+    window). More than max_to_catch_up stale at once is a signal the regular
+    cadence hasn't caught up yet, not a routine single-index gap — in that
+    case, catch none of them up here and let REFRESH/FAST do it on their own
+    cadence, the same one-cycle-staleness tradeoff already accepted for the
+    "already has today's candle" case.
+    """
+    return stale if len(stale) <= max_to_catch_up else []
+
+
 def validate_symbols(
     repo: SqliteRepository,
     config_dir: Path,
@@ -170,17 +195,17 @@ def validate_symbols(
     try:
         kite_cfg = load_kite_provider_config(config_dir)
         catalog_ids = {i.instrument_id for i in catalog}
-        for extra in [*kite_cfg.index_instruments, kite_cfg.india_vix_instrument]:
-            if not extra or extra not in catalog_ids or extra in resolved:
-                continue
-            # Perf fix (2026-08-03): only re-ingest an index/VIX instrument
-            # when it's actually stale (no daily candle yet for today) —
-            # see _index_instrument_needs_refresh's own docstring for why
-            # unconditionally re-fetching all of these on every
-            # single-symbol validate was the dominant cause of a reported
-            # <10s -> 50s+ regression.
-            if _index_instrument_needs_refresh(repo, extra, as_of, tz):
-                resolved.append(extra)
+        candidates = [
+            extra
+            for extra in [*kite_cfg.index_instruments, kite_cfg.india_vix_instrument]
+            if extra and extra in catalog_ids and extra not in resolved
+        ]
+        # Perf fix (2026-08-03): only re-ingest an index/VIX instrument when
+        # it's actually stale (no daily candle yet for today). Perf fix
+        # (2026-08-10): and only catch up a handful at once — see
+        # _indices_to_catch_up's own docstring for why.
+        stale = [extra for extra in candidates if _index_instrument_needs_refresh(repo, extra, as_of, tz)]
+        resolved.extend(_indices_to_catch_up(stale, max_to_catch_up=_MAX_STALE_INDICES_TO_CATCH_UP))
     except Exception:
         pass
 

@@ -1,7 +1,10 @@
-"""Symbol validate perf fix tests (2026-08-03): index/VIX re-ingestion is
+"""Symbol validate perf fix tests. 2026-08-03: index/VIX re-ingestion is
 skipped once a genuine today's-daily-candle freshness signal exists,
 instead of unconditionally re-fetching every configured index on every
-single-symbol validate."""
+single-symbol validate. 2026-08-10: that fix alone still re-ingests every
+stale index synchronously when many/all of them are stale at once (e.g.
+right after market open, before REFRESH has caught them all up) — capped
+via _indices_to_catch_up."""
 
 from __future__ import annotations
 
@@ -13,7 +16,7 @@ from zoneinfo import ZoneInfo
 from athena.data.store.repository import SqliteRepository
 from athena.domain.enums import Timeframe
 from athena.domain.market import Candle, Instrument
-from athena.ops.symbol_validate import _index_instrument_needs_refresh
+from athena.ops.symbol_validate import _index_instrument_needs_refresh, _indices_to_catch_up
 
 IST = ZoneInfo("Asia/Kolkata")
 
@@ -75,3 +78,24 @@ class TestIndexInstrumentNeedsRefresh:
             _candle(iid, as_of.date() - timedelta(days=1)),
         ])
         assert _index_instrument_needs_refresh(repo, iid, as_of, IST) is True
+
+
+class TestIndicesToCatchUp:
+    def test_below_cap_all_caught_up(self):
+        assert _indices_to_catch_up(["NSE:NIFTY IT", "NSE:INDIA VIX"], max_to_catch_up=2) == [
+            "NSE:NIFTY IT", "NSE:INDIA VIX",
+        ]
+
+    def test_at_cap_all_caught_up(self):
+        stale = ["NSE:NIFTY IT", "NSE:NIFTY AUTO"]
+        assert _indices_to_catch_up(stale, max_to_catch_up=2) == stale
+
+    def test_above_cap_none_caught_up(self):
+        # Owner-reported (2026-08-10): 11 tracked indices/VIX all stale at
+        # once (right after market open) must not all be re-ingested
+        # synchronously during a single-symbol validate.
+        stale = [f"NSE:IDX{i}" for i in range(11)]
+        assert _indices_to_catch_up(stale, max_to_catch_up=2) == []
+
+    def test_empty_stale_list(self):
+        assert _indices_to_catch_up([], max_to_catch_up=2) == []
