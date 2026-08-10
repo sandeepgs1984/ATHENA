@@ -1,0 +1,2845 @@
+{
+  "info": {
+    "name": "ATHENA Platform API",
+    "description": "Production REST API for the ATHENA Decision Intelligence Platform \u2014 a single-user, advisory-only NSE/BSE swing-trading system. ATHENA never places or executes trades; this API is read/inspect/annotate only (journal entries and manually-logged fills are the sole write paths that touch the owner's own record-keeping, never a broker order).\n\nEvery endpoint requires authentication (Bearer access token from /api/v1/auth/login) except /api/v1/auth/login itself, /api/v1/auth/status, and the platform health/discovery endpoints. Errors follow RFC 7807 Problem Details. Collection endpoints share one envelope: {status, data, meta, pagination}.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://127.0.0.1:8000",
+      "type": "string"
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "type": "string",
+      "description": "Set after POST Auth > Unlock with owner credentials"
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Public auth mode for unlock gate",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/status",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "status"
+              ]
+            },
+            "description": "Return whether the workstation requires unlock before API use.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Unlock with owner credentials",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Authenticate owner and issue access + refresh JWTs.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"owner\",\n  \"password\": \"your-password\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Rotate refresh token and issue new access token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/refresh",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "refresh"
+              ]
+            },
+            "description": "Rotate refresh token; revoke the previous session.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh_token\": \"string\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Revoke current session",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/logout",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "logout"
+              ]
+            },
+            "description": "Revoke the session bound to the current access token."
+          },
+          "response": []
+        },
+        {
+          "name": "Current authenticated principal",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/me",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "me"
+              ]
+            },
+            "description": "Return the unlocked owner/operator identity."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Platform Health",
+      "item": [
+        {
+          "name": "Get aggregated platform health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "description": "Retrieve detailed platform operational and database connectivity metrics.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Liveness check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health/live",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "health",
+                "live"
+              ]
+            },
+            "description": "Standard k8s/runtime process liveness ping.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Readiness check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health/ready",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "health",
+                "ready"
+              ]
+            },
+            "description": "Evaluate database connectivity, workspace access, and platform readiness.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get platform health status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/health",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "health"
+              ]
+            },
+            "description": "Retrieve current system and orchestration status check.\n\nReturns the system-health report, categorized by components."
+          },
+          "response": []
+        },
+        {
+          "name": "Get platform telemetry and metrics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/metrics",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "metrics"
+              ]
+            },
+            "description": "Retrieve operational metrics including run status and platform counters."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Platform Discovery",
+      "item": [
+        {
+          "name": "Get application version information",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/version",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "version"
+              ]
+            },
+            "description": "Retrieve application identity, build numbers, compile timestamps, and python runtime environments.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get platform metadata",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/meta",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "meta"
+              ]
+            },
+            "description": "Retrieve platform modules compatibility mapping and future AI block placeholders.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get feature flags",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/features",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "features"
+              ]
+            },
+            "description": "Retrieve active feature flags toggle map.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get capability registry",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/capabilities",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "capabilities"
+              ]
+            },
+            "description": "Retrieve structured capabilities matrix listing versions, categor\u00edas, and description contexts.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get consolidated platform information",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/info",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "info"
+              ]
+            },
+            "description": "Retrieve combined report of versioning, modules, feature configurations, and capabilities.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Dashboard",
+      "item": [
+        {
+          "name": "Get aggregated dashboard summary",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/dashboard/summary",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "dashboard",
+                "summary"
+              ]
+            },
+            "description": "Retrieve portfolio valuation, regime trend classification, scan dates, and system health summaries."
+          },
+          "response": []
+        },
+        {
+          "name": "Get trading calendar configuration details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/dashboard/calendar",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "dashboard",
+                "calendar"
+              ]
+            },
+            "description": "Retrieve holidays, weekly/monthly expiries, special trading sessions, and scheduled macroeconomic events."
+          },
+          "response": []
+        },
+        {
+          "name": "Get current exchange session status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/dashboard/session-status",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "dashboard",
+                "session-status"
+              ],
+              "query": [
+                {
+                  "key": "as_of",
+                  "value": "2026-08-04T10:15:00+05:30",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Retrieve market-live/review-mode status from ATHENA's Calendar Engine."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Market",
+      "item": [
+        {
+          "name": "Recent persisted candles for an instrument",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/market/instruments/:instrument_id/candles",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "market",
+                "instruments",
+                ":instrument_id",
+                "candles"
+              ],
+              "query": [
+                {
+                  "key": "timeframe",
+                  "value": "5m",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "120",
+                  "description": "",
+                  "disabled": true
+                }
+              ],
+              "variable": [
+                {
+                  "key": "instrument_id",
+                  "value": "NSE:RELIANCE",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Return chronological OHLCV from the validated SQLite ledger only."
+          },
+          "response": []
+        },
+        {
+          "name": "Current last price for one instrument (live Kite or persisted)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/market/instruments/:instrument_id/quote",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "market",
+                "instruments",
+                ":instrument_id",
+                "quote"
+              ],
+              "variable": [
+                {
+                  "key": "instrument_id",
+                  "value": "NSE:RELIANCE",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Single-symbol LTP for the Decisions & Trace header poll.\n\nPrefers a live Kite ``/quote`` for this one id (no catalog download). Falls\nback to the newest persisted SQLite quote. Fields are null when neither is\navailable \u2014 never a fabricated 0 (ADR-005)."
+          },
+          "response": []
+        },
+        {
+          "name": "Official index memberships for one symbol (informational only)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/market/instruments/:instrument_id/index-backdrop",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "market",
+                "instruments",
+                ":instrument_id",
+                "index-backdrop"
+              ],
+              "variable": [
+                {
+                  "key": "instrument_id",
+                  "value": "NSE:RELIANCE",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Read-only official index memberships for one symbol (IX-5).\n\nReuses ``index_intelligence()``'s already-computed items verbatim \u2014 an\nempty ``memberships`` tuple honestly means no official membership found,\nnever a fabricated value. Presentation context only; never influences\nscoring, confidence, risk, or decision policy."
+          },
+          "response": []
+        },
+        {
+          "name": "Market Summary hero \u2014 regime, F-5 score, universe breadth, sparklines",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/market/summary",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "market",
+                "summary"
+              ]
+            },
+            "description": "Persisted validation-run artifacts only \u2014 score/breadth null when absent."
+          },
+          "response": []
+        },
+        {
+          "name": "Header market ticker \u2014 NIFTY 50 / BANK NIFTY / INDIA VIX",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/market/ticker",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "market",
+                "ticker"
+              ]
+            },
+            "description": "Level + day-change % for each index, from the latest persisted Kite\nsnapshot and daily candles only \u2014 no new provider, no new calculations\nbeyond simple arithmetic over already-persisted values."
+          },
+          "response": []
+        },
+        {
+          "name": "Configured broad-market and sector-index observations",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/market/index-intelligence",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "market",
+                "index-intelligence"
+              ]
+            },
+            "description": "Read persisted index levels and trustworthy prior-session changes.\n\nMissing quotes or baselines remain explicit nulls. This endpoint is\npresentation context only and does not influence ATHENA decisions."
+          },
+          "response": []
+        },
+        {
+          "name": "Per-symbol membership and current-board bucket for one index",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/market/index-intelligence/:index_key/members",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "market",
+                "index-intelligence",
+                ":index_key",
+                "members"
+              ],
+              "variable": [
+                {
+                  "key": "index_key",
+                  "value": "string",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Read-only per-symbol membership for one official index (IX-4a).\n\nReuses IX-3's exact resolution \u2014 never a second, inferred mapping. An\nunresolved constituent is still returned with ``resolved=False``; it is\nnever silently dropped from the list."
+          },
+          "response": []
+        },
+        {
+          "name": "Top Opportunities Today \u2014 sector-ranked, highest-conviction qualified symbols",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/market/opportunities",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "market",
+                "opportunities"
+              ],
+              "query": [
+                {
+                  "key": "sector_count",
+                  "value": "5",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "symbols_per_sector",
+                  "value": "2",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Ranks today's sectors by real performance and surfaces each leading\nsector's highest-conviction ATHENA-qualified (WATCH/TRADE) symbols.\n\nPresentation-only aggregation over already-persisted decisions,\nscores, confidence, and sector-index data \u2014 computes no score,\nconfidence, risk, or decision of its own, and never influences\nScoringEngine/DecisionEngine."
+          },
+          "response": []
+        },
+        {
+          "name": "List owner validation candidates",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/market/candidates",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "market",
+                "candidates"
+              ],
+              "query": [
+                {
+                  "key": "active_only",
+                  "value": "True",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "List owner validation candidates"
+          },
+          "response": []
+        },
+        {
+          "name": "Add or update an owner validation candidate",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/market/candidates",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "market",
+                "candidates"
+              ]
+            },
+            "description": "Add or update an owner validation candidate",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"symbol\": \"RELIANCE\",\n  \"notes\": \"string\",\n  \"active\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Add or update an owner validation candidate",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/market/candidates",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "market",
+                "candidates"
+              ]
+            },
+            "description": "Add or update an owner validation candidate",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"symbol\": \"RELIANCE\",\n  \"notes\": \"string\",\n  \"active\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Validate one or more owner candidates now (ingest + score)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/market/validate",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "market",
+                "validate"
+              ]
+            },
+            "description": "Run a scoped kite ingest + eligibility + decision cycle for the given symbols.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"symbols\": [\n    \"RELIANCE\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Poll full-universe validation progress",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/market/validate-all",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "market",
+                "validate-all"
+              ]
+            },
+            "description": "Poll full-universe validation progress"
+          },
+          "response": []
+        },
+        {
+          "name": "Start owner-triggered full-universe validation (background)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/market/validate-all",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "market",
+                "validate-all"
+              ]
+            },
+            "description": "ADR-007 / MI-5: one run over all active candidates; poll GET /validate-all."
+          },
+          "response": []
+        },
+        {
+          "name": "Remove an owner validation candidate",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/market/candidates/:symbol",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "market",
+                "candidates",
+                ":symbol"
+              ],
+              "variable": [
+                {
+                  "key": "symbol",
+                  "value": "RELIANCE",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Remove an owner validation candidate"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Decisions",
+      "item": [
+        {
+          "name": "List trading decisions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/decisions",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "decisions"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "string",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "string",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "from_date",
+                  "value": "2026-08-04T10:15:00+05:30",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "to_date",
+                  "value": "2026-08-04T10:15:00+05:30",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "instrument_id",
+                  "value": "NSE:RELIANCE",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "decision_type",
+                  "value": "string",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "direction",
+                  "value": "string",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "sort_by",
+                  "value": "string",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "sort_dir",
+                  "value": "desc",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "page_size",
+                  "value": "20",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "next_cursor",
+                  "value": "string",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Retrieve a paginated collection of trading decisions, supporting sorting and filtering."
+          },
+          "response": []
+        },
+        {
+          "name": "Get decision details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/decisions/:decision_id",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "decisions",
+                ":decision_id"
+              ],
+              "variable": [
+                {
+                  "key": "decision_id",
+                  "value": "string",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Retrieve detailed analysis, quality gates, and trade plans for a specific decision."
+          },
+          "response": []
+        },
+        {
+          "name": "Get persisted decision analytical depth",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/decisions/:decision_id/depth",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "decisions",
+                ":decision_id",
+                "depth"
+              ],
+              "variable": [
+                {
+                  "key": "decision_id",
+                  "value": "string",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Render eligibility, score, confidence, and risk artifacts without recomputation."
+          },
+          "response": []
+        },
+        {
+          "name": "Get the exact quantified distance from this decision to the TRADE gate",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/decisions/:decision_id/counterfactual",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "decisions",
+                ":decision_id",
+                "counterfactual"
+              ],
+              "variable": [
+                {
+                  "key": "decision_id",
+                  "value": "string",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Arithmetic over already-persisted score/confidence/risk values and\ncurrent config thresholds \u2014 never a recomputed decision (M-X2)."
+          },
+          "response": []
+        },
+        {
+          "name": "Get the deterministic decay clock for this decision's TradePlan validity window",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/decisions/:decision_id/plan-freshness",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "decisions",
+                ":decision_id",
+                "plan-freshness"
+              ],
+              "query": [
+                {
+                  "key": "as_of",
+                  "value": "2026-08-04T10:15:00+05:30",
+                  "description": "",
+                  "disabled": true
+                }
+              ],
+              "variable": [
+                {
+                  "key": "decision_id",
+                  "value": "string",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Pure arithmetic over the plan's already-persisted valid_from/valid_until\nand an as_of instant \u2014 never a recomputed plan (M-X3)."
+          },
+          "response": []
+        },
+        {
+          "name": "Get session/calendar, regime/market-health, and curated links for a decision",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/decisions/:decision_id/context",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "decisions",
+                ":decision_id",
+                "context"
+              ],
+              "variable": [
+                {
+                  "key": "decision_id",
+                  "value": "string",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Render session/calendar context, persisted regime/market-health, and\nowner-curated external links. No news ingestion, no generated rationale."
+          },
+          "response": []
+        },
+        {
+          "name": "Get historical decisions with a similar score/confidence/risk fingerprint",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/decisions/:decision_id/analogs",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "decisions",
+                ":decision_id",
+                "analogs"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "5",
+                  "description": "",
+                  "disabled": true
+                }
+              ],
+              "variable": [
+                {
+                  "key": "decision_id",
+                  "value": "string",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Deterministic nearest-neighbor retrieval over persisted decision\nhistory, with each match's logged human response and realized outcome\nif any. No generated text, no recomputation of any comparison (M-X1)."
+          },
+          "response": []
+        },
+        {
+          "name": "Record the owner's response to a decision (accept/reject/ignore)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/decisions/:decision_id/journal",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "decisions",
+                ":decision_id",
+                "journal"
+              ],
+              "variable": [
+                {
+                  "key": "decision_id",
+                  "value": "string",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Persist the owner's response (M-X0, R-9) \u2014 nothing is unrecorded.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_action\": \"ACCEPTED\",\n  \"notes\": \"string\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get the owner's most recent response to a decision",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/decisions/:decision_id/journal",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "decisions",
+                ":decision_id",
+                "journal"
+              ],
+              "variable": [
+                {
+                  "key": "decision_id",
+                  "value": "string",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "None if the owner has never recorded a response for this decision."
+          },
+          "response": []
+        },
+        {
+          "name": "Record the realized outcome for an accepted decision",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/decisions/:decision_id/outcome",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "decisions",
+                ":decision_id",
+                "outcome"
+              ],
+              "variable": [
+                {
+                  "key": "decision_id",
+                  "value": "string",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "PnL, holding time, and TradePlan adherence are computed server-side \u2014\ndeterministic and explainable, never client-supplied (M-X0, ADR-005).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"entry_price\": 150.25,\n  \"exit_price\": 150.25,\n  \"quantity\": 100,\n  \"closed_ts\": \"2026-08-04T10:15:00+05:30\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get the realized outcome for a decision",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/decisions/:decision_id/outcome",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "decisions",
+                ":decision_id",
+                "outcome"
+              ],
+              "variable": [
+                {
+                  "key": "decision_id",
+                  "value": "string",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "None if no outcome has been logged for this decision."
+          },
+          "response": []
+        },
+        {
+          "name": "Get decision execution trace DAG flow",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/decisions/:decision_id/trace",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "decisions",
+                ":decision_id",
+                "trace"
+              ],
+              "variable": [
+                {
+                  "key": "decision_id",
+                  "value": "string",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Retrieve the reasoning DAG trace showing pipeline stages from ingest to safety checks."
+          },
+          "response": []
+        },
+        {
+          "name": "Reset the Decisions & Trace domain (CONFIRM-gated)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/decisions/reset",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "decisions",
+                "reset"
+              ]
+            },
+            "description": "Delete all decisions, traces, journal entries, and realized outcomes\nafter a typed CONFIRM, with a best-effort automatic backup first. Does\nnot touch runs, portfolio positions, or owner candidates.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"confirmation\": \"string\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Pipelines",
+      "item": [
+        {
+          "name": "Validation Pipeline funnel (Universe\u2192Eligible\u2192Filtered\u2192Watch\u2192Trade)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/pipelines/validation-funnel",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "pipelines",
+                "validation-funnel"
+              ]
+            },
+            "description": "MI-3: typed 5-stage funnel over the latest owner_validation run's\nalready-persisted validation_summary. Filtered is arithmetic\n(Eligible \u2212 Watch \u2212 Trade). READ only \u2014 no new scan."
+          },
+          "response": []
+        },
+        {
+          "name": "List pipeline execution runs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/pipelines/runs",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "pipelines",
+                "runs"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "string",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "string",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "from_date",
+                  "value": "2026-08-04T10:15:00+05:30",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "to_date",
+                  "value": "2026-08-04T10:15:00+05:30",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "overall_status",
+                  "value": "string",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "sort_by",
+                  "value": "string",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "sort_dir",
+                  "value": "desc",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "page_size",
+                  "value": "20",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "next_cursor",
+                  "value": "string",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Retrieve system pipeline chains runs history logs."
+          },
+          "response": []
+        },
+        {
+          "name": "Get pipeline execution run details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/pipelines/runs/:run_id",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "pipelines",
+                "runs",
+                ":run_id"
+              ],
+              "variable": [
+                {
+                  "key": "run_id",
+                  "value": "string",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Retrieve fine-grained stage context and outputs mapping for a specific run."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Portfolio",
+      "item": [
+        {
+          "name": "Get portfolio status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/portfolio",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "portfolio"
+              ]
+            },
+            "description": "Retrieve cash balances, open positions, and sector exposure weights for the portfolio."
+          },
+          "response": []
+        },
+        {
+          "name": "Log an owner-entered open fill",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/portfolio/positions",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "portfolio",
+                "positions"
+              ]
+            },
+            "description": "Record a fill the owner placed on Kite/Groww after an ATHENA suggestion.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"instrument_id\": \"NSE:RELIANCE\",\n  \"quantity\": 100,\n  \"avg_price\": 150.25,\n  \"opened_ts\": \"2026-08-04T10:15:00+05:30\",\n  \"decision_ref\": \"string\",\n  \"broker\": \"string\",\n  \"notes\": \"string\",\n  \"sector\": \"string\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Reset owner fill ledger (CONFIRM-gated)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/portfolio/positions/reset",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "portfolio",
+                "positions",
+                "reset"
+              ]
+            },
+            "description": "Delete open or all owner-entered fills after typed CONFIRM. Does not touch decisions/journal.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"confirmation\": \"string\",\n  \"scope\": \"string\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Log an owner-entered exit fill",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/portfolio/positions/:position_id/close",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "portfolio",
+                "positions",
+                ":position_id",
+                "close"
+              ],
+              "variable": [
+                {
+                  "key": "position_id",
+                  "value": "string",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Close a previously logged open position with the owner exit price.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"exit_price\": 150.25,\n  \"closed_ts\": \"2026-08-04T10:15:00+05:30\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Saved Symbols",
+      "item": [
+        {
+          "name": "List the owner's saved symbols (personal watch list)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/saved-symbols",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "saved-symbols"
+              ]
+            },
+            "description": "List the owner's saved symbols (personal watch list)"
+          },
+          "response": []
+        },
+        {
+          "name": "Save a symbol to the owner's personal watch list",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/saved-symbols",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "saved-symbols"
+              ]
+            },
+            "description": "Save a symbol to the owner's personal watch list",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"symbol\": \"RELIANCE\",\n  \"notes\": \"string\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Remove a symbol from the owner's personal watch list",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/saved-symbols/:symbol",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "saved-symbols",
+                ":symbol"
+              ],
+              "variable": [
+                {
+                  "key": "symbol",
+                  "value": "RELIANCE",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Remove a symbol from the owner's personal watch list"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Strategies",
+      "item": [
+        {
+          "name": "List strategy profiles and selection rules",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/strategies/profiles",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "strategies",
+                "profiles"
+              ]
+            },
+            "description": "Retrieve all registered strategy profiles and their selection rule thresholds."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Backtests",
+      "item": [
+        {
+          "name": "List backtest runs history",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/backtests/runs",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backtests",
+                "runs"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "string",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "string",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "from_date",
+                  "value": "2026-08-04T10:15:00+05:30",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "to_date",
+                  "value": "2026-08-04T10:15:00+05:30",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "sort_by",
+                  "value": "string",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "sort_dir",
+                  "value": "desc",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "page_size",
+                  "value": "20",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "next_cursor",
+                  "value": "string",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Retrieve history of completed historical backtest runs."
+          },
+          "response": []
+        },
+        {
+          "name": "Get backtest run details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/backtests/runs/:run_id",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backtests",
+                "runs",
+                ":run_id"
+              ],
+              "variable": [
+                {
+                  "key": "run_id",
+                  "value": "string",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Retrieve detailed step chronology and strategy performance logs for a specific backtest run."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Analytics",
+      "item": [
+        {
+          "name": "List performance snapshots",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/analytics/performance/snapshots",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "analytics",
+                "performance",
+                "snapshots"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "string",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "string",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "from_date",
+                  "value": "2026-08-04T10:15:00+05:30",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "to_date",
+                  "value": "2026-08-04T10:15:00+05:30",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "sort_by",
+                  "value": "string",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "sort_dir",
+                  "value": "desc",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "page_size",
+                  "value": "20",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "next_cursor",
+                  "value": "string",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Retrieve history of portfolio performance metrics snapshot summaries."
+          },
+          "response": []
+        },
+        {
+          "name": "Get performance snapshot details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/analytics/performance/snapshots/:snapshot_id",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "analytics",
+                "performance",
+                "snapshots",
+                ":snapshot_id"
+              ],
+              "variable": [
+                {
+                  "key": "snapshot_id",
+                  "value": "string",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Retrieve detailed valuation, metrics, and trades list for a performance snapshot."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Reports",
+      "item": [
+        {
+          "name": "List generic reports",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/reports",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "reports"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "string",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "string",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "from_date",
+                  "value": "2026-08-04T10:15:00+05:30",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "to_date",
+                  "value": "2026-08-04T10:15:00+05:30",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "report_type",
+                  "value": "PORTFOLIO",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "sort_by",
+                  "value": "string",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "sort_dir",
+                  "value": "desc",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "page_size",
+                  "value": "20",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "next_cursor",
+                  "value": "string",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Retrieve history of generic reports summaries."
+          },
+          "response": []
+        },
+        {
+          "name": "Get generic report details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/reports/:report_id",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "reports",
+                ":report_id"
+              ],
+              "variable": [
+                {
+                  "key": "report_id",
+                  "value": "string",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Retrieve detailed data payload for a specific report."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Workspace",
+      "item": [
+        {
+          "name": "List workspace snapshot summaries",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/workspace/snapshots",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspace",
+                "snapshots"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "string",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "string",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "from_date",
+                  "value": "2026-08-04T10:15:00+05:30",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "to_date",
+                  "value": "2026-08-04T10:15:00+05:30",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "overall_health",
+                  "value": "string",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "sort_by",
+                  "value": "string",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "sort_dir",
+                  "value": "desc",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "page_size",
+                  "value": "20",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "next_cursor",
+                  "value": "string",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Retrieve history of workspace snapshot metadata summaries."
+          },
+          "response": []
+        },
+        {
+          "name": "Get workspace snapshot details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/workspace/snapshots/:snapshot_id",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspace",
+                "snapshots",
+                ":snapshot_id"
+              ],
+              "variable": [
+                {
+                  "key": "snapshot_id",
+                  "value": "string",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Retrieve detailed catalog entries for a specific workspace snapshot."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Exports",
+      "item": [
+        {
+          "name": "List export snapshots",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/exports/snapshots",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "exports",
+                "snapshots"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "string",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "string",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "from_date",
+                  "value": "2026-08-04T10:15:00+05:30",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "to_date",
+                  "value": "2026-08-04T10:15:00+05:30",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "sort_by",
+                  "value": "string",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "sort_dir",
+                  "value": "desc",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "page_size",
+                  "value": "20",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "next_cursor",
+                  "value": "string",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Retrieve history of batch export snapshots metadata summaries."
+          },
+          "response": []
+        },
+        {
+          "name": "Get export snapshot details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/exports/snapshots/:snapshot_id",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "exports",
+                "snapshots",
+                ":snapshot_id"
+              ],
+              "variable": [
+                {
+                  "key": "snapshot_id",
+                  "value": "string",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Retrieve detailed data listings and nested items for a batch export snapshot."
+          },
+          "response": []
+        },
+        {
+          "name": "Get export artifact details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/exports/artifacts/:export_id",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "exports",
+                "artifacts",
+                ":export_id"
+              ],
+              "variable": [
+                {
+                  "key": "export_id",
+                  "value": "string",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Retrieve payload contents and metadata for a specific exported document."
+          },
+          "response": []
+        },
+        {
+          "name": "Create export artifact",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/exports",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "exports"
+              ]
+            },
+            "description": "Trigger formatting and payload transformation job for a target artifact.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"source\": {\n    \"artifact_id\": \"string\",\n    \"artifact_type\": \"REPORT\"\n  },\n  \"format\": \"JSON\",\n  \"options\": {\n    \"options\": {}\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Scheduler",
+      "item": [
+        {
+          "name": "List scheduled pipeline runs history",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/scheduler/history",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "scheduler",
+                "history"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "string",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "string",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "from_date",
+                  "value": "2026-08-04T10:15:00+05:30",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "to_date",
+                  "value": "2026-08-04T10:15:00+05:30",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "job_id",
+                  "value": "string",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "overall_status",
+                  "value": "string",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "sort_by",
+                  "value": "string",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "sort_dir",
+                  "value": "desc",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "page_size",
+                  "value": "20",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "next_cursor",
+                  "value": "string",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Retrieve history of scheduler cycle executions and durations."
+          },
+          "response": []
+        },
+        {
+          "name": "Get scheduled pipeline run details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/scheduler/history/:schedule_run_id",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "scheduler",
+                "history",
+                ":schedule_run_id"
+              ],
+              "variable": [
+                {
+                  "key": "schedule_run_id",
+                  "value": "string",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Retrieve detailed scheduled cycle envelope execution details."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Operations",
+      "item": [
+        {
+          "name": "Verify the read-only Kite market-data session",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ops/kite/status",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "ops",
+                "kite",
+                "status"
+              ]
+            },
+            "description": "Return provider-aware, secret-free Kite session status."
+          },
+          "response": []
+        },
+        {
+          "name": "Start the interactive Kite login flow",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ops/kite/start-auth",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "ops",
+                "kite",
+                "start-auth"
+              ]
+            },
+            "description": "Return a Kite login URL; the browser opens it explicitly."
+          },
+          "response": []
+        },
+        {
+          "name": "Exchange Kite request token and verify session",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ops/kite/complete-auth",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "ops",
+                "kite",
+                "complete-auth"
+              ]
+            },
+            "description": "Persist and verify the daily market-data token; never places orders.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"redirect_or_token\": \"string\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Clear the daily Kite access token and require reconnect",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ops/kite/disconnect",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "ops",
+                "kite",
+                "disconnect"
+              ]
+            },
+            "description": "Drop the stored access token so the dashboard gate requires a fresh login."
+          },
+          "response": []
+        },
+        {
+          "name": "SSE live operations warning stream",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ops/stream",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "ops",
+                "stream"
+              ]
+            },
+            "description": "Server-Sent Events stream of heartbeats and derived operational warnings."
+          },
+          "response": []
+        },
+        {
+          "name": "Get stage telemetry for latest pipeline run",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ops/telemetry",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "ops",
+                "telemetry"
+              ]
+            },
+            "description": "Return stage statuses for Chart.js Operations telemetry."
+          },
+          "response": []
+        },
+        {
+          "name": "List database backups",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ops/backups",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "ops",
+                "backups"
+              ]
+            },
+            "description": "List backup artifacts under the configured backups directory."
+          },
+          "response": []
+        },
+        {
+          "name": "Create a database backup",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ops/backups",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "ops",
+                "backups"
+              ]
+            },
+            "description": "Create an integrity-verified SQLite backup of the live database."
+          },
+          "response": []
+        },
+        {
+          "name": "Restore database from backup",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ops/backups/:backup_id/restore",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "ops",
+                "backups",
+                ":backup_id",
+                "restore"
+              ],
+              "variable": [
+                {
+                  "key": "backup_id",
+                  "value": "string",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Restore live DB from backup. Requires confirmation token CONFIRM.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"confirmation\": \"string\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Restart the ATHENA server process",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ops/restart",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "ops",
+                "restart"
+              ]
+            },
+            "description": "Owner-requested (2026-07-29): \"kill everything and restart fresh\" \u2014\nthe only reliable way to end a genuinely stuck background job (a\nPython thread cannot be force-killed in isolation) is to end the whole\nprocess. Relaunches with the exact flags this process itself was\nstarted with (RestartUnavailableError/501 if that isn't known, e.g.\na ServeRuntime not started via the CLI). The process exits shortly\nafter this response is sent \u2014 expect the connection to drop."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

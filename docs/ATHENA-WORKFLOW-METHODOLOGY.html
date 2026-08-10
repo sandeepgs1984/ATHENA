@@ -1,0 +1,855 @@
+<title>ATHENA — Workflow &amp; Methodology</title>
+<style>
+  :root {
+    --bg: #f3f5f7;
+    --surface: #ffffff;
+    --surface-2: #eef1f4;
+    --border: #dbe0e6;
+    --text: #1a222c;
+    --text-muted: #5b6673;
+    --accent: #9c7a2e;
+    --accent-soft: rgba(156, 122, 46, 0.10);
+    --good: #2f8f5f;
+    --warn: #a8701f;
+    --bad: #b23b3b;
+    --code-bg: #eef1f4;
+    --shadow: 0 1px 2px rgba(20, 26, 33, 0.06), 0 8px 24px rgba(20, 26, 33, 0.05);
+    --mono: ui-monospace, "SF Mono", "Berkeley Mono", "IBM Plex Mono", Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0a0e13;
+      --surface: #11161d;
+      --surface-2: #171d26;
+      --border: #232b36;
+      --text: #e7e9ec;
+      --text-muted: #8d97a3;
+      --accent: #c9a15a;
+      --accent-soft: rgba(201, 161, 90, 0.12);
+      --good: #5fb88a;
+      --warn: #d99a4e;
+      --bad: #d97070;
+      --code-bg: #171d26;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 32px rgba(0, 0, 0, 0.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0a0e13; --surface: #11161d; --surface-2: #171d26; --border: #232b36;
+    --text: #e7e9ec; --text-muted: #8d97a3; --accent: #c9a15a; --accent-soft: rgba(201, 161, 90, 0.12);
+    --good: #5fb88a; --warn: #d99a4e; --bad: #d97070; --code-bg: #171d26;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 32px rgba(0, 0, 0, 0.35);
+  }
+  :root[data-theme="light"] {
+    --bg: #f3f5f7; --surface: #ffffff; --surface-2: #eef1f4; --border: #dbe0e6;
+    --text: #1a222c; --text-muted: #5b6673; --accent: #9c7a2e; --accent-soft: rgba(156, 122, 46, 0.10);
+    --good: #2f8f5f; --warn: #a8701f; --bad: #b23b3b; --code-bg: #eef1f4;
+    --shadow: 0 1px 2px rgba(20, 26, 33, 0.06), 0 8px 24px rgba(20, 26, 33, 0.05);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--serif);
+    font-size: 17px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: var(--accent-soft); }
+
+  a { color: var(--accent); text-decoration: none; border-bottom: 1px solid transparent; }
+  a:hover { border-bottom-color: currentColor; }
+  a:focus-visible, button:focus-visible, .toc-link:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+
+  .shell {
+    display: grid;
+    grid-template-columns: 272px minmax(0, 1fr);
+    max-width: 1280px;
+    margin: 0 auto;
+  }
+
+  /* ---------- Sidebar ---------- */
+  .sidebar {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    padding: 2rem 1.25rem 2rem 1.5rem;
+    border-right: 1px solid var(--border);
+  }
+  .brand {
+    font-family: var(--mono);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    font-size: 0.95rem;
+    color: var(--text);
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    margin-bottom: 0.15rem;
+  }
+  .brand .mark { color: var(--accent); }
+  .tagline {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    letter-spacing: 0.02em;
+    margin-bottom: 1.75rem;
+  }
+  .toc-label {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin: 0 0 0.6rem 0;
+  }
+  nav.toc { display: flex; flex-direction: column; gap: 0.05rem; }
+  .toc-link {
+    font-family: var(--mono);
+    font-size: 0.79rem;
+    color: var(--text-muted);
+    padding: 0.32rem 0.5rem;
+    border-radius: 4px;
+    border-bottom: none;
+    line-height: 1.4;
+    transition: background 0.12s ease, color 0.12s ease;
+  }
+  .toc-link:hover { background: var(--surface-2); color: var(--text); }
+  .toc-link.active { background: var(--accent-soft); color: var(--accent); }
+
+  /* ---------- Main content ---------- */
+  main { min-width: 0; padding: 3rem 3.5rem 6rem; }
+  .hero-title {
+    font-family: var(--mono);
+    font-weight: 700;
+    font-size: clamp(1.6rem, 2.6vw, 2.15rem);
+    letter-spacing: -0.01em;
+    line-height: 1.15;
+    text-wrap: balance;
+    margin: 0 0 1.1rem 0;
+    color: var(--text);
+  }
+  .hero-title .mark { color: var(--accent); }
+  .content { max-width: 74ch; }
+  .content > p:first-child strong { color: var(--text-muted); font-style: italic; font-weight: 500; font-family: var(--serif); }
+
+  h2, h3, h4 {
+    font-family: var(--mono);
+    color: var(--text);
+    text-wrap: balance;
+    font-weight: 600;
+  }
+  h2 {
+    font-size: 1.32rem;
+    margin: 3.2rem 0 1.1rem;
+    padding-top: 1.4rem;
+    border-top: 1px solid var(--border);
+    letter-spacing: -0.005em;
+  }
+  .content > h2:first-of-type { border-top: none; padding-top: 0; margin-top: 1.5rem; }
+  h3 { font-size: 1.08rem; margin: 2.2rem 0 0.9rem; color: var(--accent); }
+  h4 { font-size: 0.95rem; margin: 1.6rem 0 0.7rem; }
+
+  p { margin: 0 0 1.05rem; color: var(--text); }
+  strong { color: var(--text); font-weight: 700; }
+  code {
+    font-family: var(--mono);
+    font-size: 0.86em;
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    padding: 0.08em 0.38em;
+    border-radius: 4px;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
+  .doc-ref {
+    font-family: var(--mono);
+    font-size: 0.86em;
+    color: var(--text-muted);
+    border-bottom: 1px dashed var(--border);
+    cursor: help;
+  }
+
+  ul, ol { padding-left: 1.4rem; margin: 0 0 1.1rem; }
+  li { margin-bottom: 0.42rem; }
+  li::marker { color: var(--text-muted); font-family: var(--mono); font-size: 0.85em; }
+
+  hr { border: none; border-top: 1px solid var(--border); margin: 2.6rem 0; }
+
+  blockquote {
+    margin: 1.5rem 0;
+    padding: 0.9rem 1.3rem;
+    background: var(--accent-soft);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 6px 6px 0;
+  }
+  blockquote p { margin: 0 0 0.5rem; font-size: 0.95rem; }
+  blockquote p:last-child { margin-bottom: 0; }
+  blockquote strong { color: var(--accent); }
+
+  /* Wide content breaks out of the reading column, never the page body */
+  .table-wrap {
+    max-width: none;
+    width: 100%;
+    overflow-x: auto;
+    margin: 1.4rem 0 1.8rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+  }
+  table { border-collapse: collapse; width: 100%; font-size: 0.86rem; }
+  thead th {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    text-align: left;
+    padding: 0.7rem 0.9rem;
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  tbody td {
+    padding: 0.62rem 0.9rem;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+    font-family: var(--serif);
+  }
+  tbody td code { white-space: nowrap; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover td { background: var(--surface-2); }
+  /* Numeric-looking cells line up */
+  td, th { font-variant-numeric: tabular-nums; }
+
+  .codeblock {
+    margin: 0; padding: 1rem 1.2rem;
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    line-height: 1.55;
+    color: var(--text);
+    background: var(--code-bg);
+    white-space: pre;
+  }
+
+  .diagram-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.4rem;
+    margin: 1.6rem 0 2rem;
+    box-shadow: var(--shadow);
+    overflow-x: auto;
+  }
+  .diagram-card pre.mermaid { margin: 0; display: flex; justify-content: center; }
+
+  .footer-note {
+    margin-top: 4rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border);
+    font-family: var(--mono);
+    font-size: 0.76rem;
+    color: var(--text-muted);
+  }
+
+  .mobile-toc-toggle { display: none; }
+
+  @media (max-width: 900px) {
+    .shell { grid-template-columns: 1fr; }
+    .sidebar {
+      position: static;
+      height: auto;
+      border-right: none;
+      border-bottom: 1px solid var(--border);
+      padding: 1.25rem 1.25rem 0.5rem;
+    }
+    nav.toc {
+      display: none;
+      max-height: 60vh;
+      overflow-y: auto;
+      margin-top: 0.75rem;
+      padding-bottom: 1rem;
+    }
+    nav.toc.open { display: flex; }
+    .mobile-toc-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      color: var(--accent);
+      background: var(--accent-soft);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.4rem 0.7rem;
+      cursor: pointer;
+      margin-bottom: 0.5rem;
+    }
+    main { padding: 2rem 1.25rem 4rem; }
+    .content { max-width: none; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+  }
+</style>
+
+<div class="shell">
+  <aside class="sidebar">
+    <div class="brand"><span class="mark">◆</span> ATHENA</div>
+    <div class="tagline">Workflow &amp; Methodology Reference</div>
+    <button class="mobile-toc-toggle" id="tocToggle" type="button">☰ Contents</button>
+    <p class="toc-label">Contents</p>
+    <nav class="toc" id="tocNav">
+<a href="#1-what-athena-is" class="toc-link">1. What ATHENA Is</a>
+<a href="#2-system-architecture-overview" class="toc-link">2. System Architecture Overview</a>
+<a href="#3-the-complete-decision-pipeline" class="toc-link">3. The Complete Decision Pipeline</a>
+<a href="#4-stage-1-universe-eligibility" class="toc-link">4. Stage 1 — Universe Eligibility</a>
+<a href="#5-stage-2-indicators" class="toc-link">5. Stage 2 — Indicators</a>
+<a href="#6-stage-3-regime-assessment" class="toc-link">6. Stage 3 — Regime Assessment</a>
+<a href="#7-stage-4-market-health-score-f-5" class="toc-link">7. Stage 4 — Market Health Score (F-5)</a>
+<a href="#8-stage-5-sector-health" class="toc-link">8. Stage 5 — Sector Health</a>
+<a href="#9-stage-6-evidence-aggregation" class="toc-link">9. Stage 6 — Evidence Aggregation</a>
+<a href="#10-stage-7-scoring" class="toc-link">10. Stage 7 — Scoring</a>
+<a href="#11-stage-8-confidence" class="toc-link">11. Stage 8 — Confidence</a>
+<a href="#12-stage-9-risk" class="toc-link">12. Stage 9 — Risk</a>
+<a href="#13-stage-10-decision-engine-quality-gates" class="toc-link">13. Stage 10 — Decision Engine &amp; Quality Gates</a>
+<a href="#14-stage-11-tradeplan-lifecycle" class="toc-link">14. Stage 11 — TradePlan Lifecycle</a>
+<a href="#15-position-sizing-capital-policy" class="toc-link">15. Position Sizing &amp; Capital Policy</a>
+<a href="#16-scheduling-background-validation" class="toc-link">16. Scheduling &amp; Background Validation</a>
+<a href="#17-the-dashboard-day-to-day-workflow" class="toc-link">17. The Dashboard — Day-to-Day Workflow</a>
+<a href="#18-data-layer-kite-integration" class="toc-link">18. Data Layer &amp; Kite Integration</a>
+<a href="#19-governance-non-negotiables" class="toc-link">19. Governance &amp; Non-Negotiables</a>
+<a href="#20-known-gaps-not-yet-implemented-behavior" class="toc-link">20. Known Gaps &amp; Not-Yet-Implemented Behavior</a>
+<a href="#21-glossary" class="toc-link">21. Glossary</a>
+<a href="#22-complete-configuration-reference" class="toc-link">22. Complete Configuration Reference</a>
+    </nav>
+  </aside>
+  <main>
+    <h1 class="hero-title">ATHENA — <span class="mark">End-to-End Workflow</span> &amp; Methodology</h1>
+    <div class="content">
+<p><strong>A complete technical reference to what ATHENA is, how it thinks, and how to use it.</strong></p>
+<p>This document explains ATHENA from first principles through to exact formulas: the philosophy, the full decision pipeline stage by stage with every threshold and weight currently in force, the scheduling model that keeps it fresh, the day-to-day dashboard workflow, and — because a "no gaps" document must be honest about gaps — an explicit accounting of what's fully implemented today versus what's declared in the architecture but not yet live.</p>
+<p>Every number in this document is read from the actual, currently-loaded configuration files and code, not from design intent. Where a formula, threshold, or feature is <strong>proposed but not implemented</strong>, or <strong>defined but dormant</strong>, this document says so explicitly rather than describing aspirational behavior as fact.</p>
+<hr/>
+<h2 id="1-what-athena-is">1. What ATHENA Is</h2>
+<p>ATHENA is a <strong>single-user, advisory-only decision-intelligence platform</strong> for one trader's NSE/BSE swing and intraday equity trading.</p>
+<p>It is <strong>not</strong>:</p>
+<ul>
+<li>A screener (it doesn't just filter a list — it produces a full explained decision per symbol)</li>
+<li>A bot (it never acts on its own)</li>
+<li>An order-execution system (there is no order-placement code anywhere in the codebase, under any milestone, ever — a non-negotiable, enforced invariant)</li>
+</ul>
+<p>It <strong>is</strong>:</p>
+<ul>
+<li>An ingestion + analytical pipeline that runs on a schedule (or on demand), pulling real market data, running it through a deterministic multi-stage decision pipeline, and persisting fully-explained <code>Decision</code> objects (TRADE / WATCH / NO_TRADE / etc.)</li>
+<li>A dashboard where the owner reviews those decisions, their full reasoning trace, and the market context behind them</li>
+<li>A record-keeper for what the owner actually did — journal entries (accept/reject/ignore) and manually-logged fills, so outcomes can be measured against what the system recommended</li>
+</ul>
+<p><strong>The core philosophy:</strong> the learning engine proposes, the trader approves. ATHENA computes and explains; the owner reads the brief, decides, and executes manually through their own broker.</p>
+<hr/>
+<h2 id="2-system-architecture-overview">2. System Architecture Overview</h2>
+<div class="diagram-card"><pre class="mermaid">flowchart TB
+    subgraph External[&quot;External Data&quot;]
+        KITE[&quot;Zerodha Kite Connect&lt;br/&gt;(read-only market data)&quot;]
+        NSE[&quot;NSE/File-based&lt;br/&gt;institutional flow (FII/DII)&quot;]
+        CAL[&quot;Trading Calendar&lt;br/&gt;(holidays, expiries, sessions)&quot;]
+    end
+
+    subgraph Ingestion[&quot;Data Layer&quot;]
+        ENGINE[&quot;LiveIngestionEngine&lt;br/&gt;poll → validate → persist&quot;]
+        VALID[&quot;DatasetValidator&lt;br/&gt;OHLC / duplicates / freshness / gaps&quot;]
+        QUAR[&quot;Quarantine Registry&lt;br/&gt;isolates bad datasets, never aborts the whole cycle&quot;]
+        DB[(&quot;SQLite (WAL)&lt;br/&gt;candles · quotes · snapshots ·&lt;br/&gt;decisions · runs · journal&quot;)]
+    end
+
+    subgraph Pipeline[&quot;Decision Pipeline (per cycle)&quot;]
+        UNI[&quot;Universe Eligibility&quot;]
+        IND[&quot;Indicators&quot;]
+        REG[&quot;Regime Assessment&quot;]
+        MH[&quot;Market Health (F-5)&quot;]
+        SH[&quot;Sector Health&quot;]
+        EV[&quot;Evidence Aggregation&quot;]
+        SC[&quot;Scoring&quot;]
+        CO[&quot;Confidence&quot;]
+        RI[&quot;Risk&quot;]
+        DE[&quot;Decision Engine + Quality Gates&quot;]
+        TP[&quot;TradePlan&quot;]
+    end
+
+    subgraph Scheduling[&quot;Scheduling&quot;]
+        SCHED[&quot;Cadence Engine&lt;br/&gt;premarket / refresh / closing / fast&quot;]
+        LOCK[&quot;CycleRunnerLock&lt;br/&gt;single-flight across serve &amp;amp; run-due&quot;]
+    end
+
+    subgraph Presentation[&quot;Presentation&quot;]
+        API[&quot;FastAPI REST API&lt;br/&gt;(localhost-only)&quot;]
+        DASH[&quot;Dashboard SPA&lt;br/&gt;(vanilla JS, no framework)&quot;]
+    end
+
+    KITE --&gt; ENGINE
+    NSE --&gt; ENGINE
+    CAL --&gt; SCHED
+    ENGINE --&gt; VALID --&gt; QUAR --&gt; DB
+    SCHED --&gt; LOCK --&gt; ENGINE
+    DB --&gt; UNI --&gt; IND --&gt; REG --&gt; MH --&gt; SH --&gt; EV --&gt; SC --&gt; CO --&gt; RI --&gt; DE --&gt; TP
+    TP --&gt; DB
+    DE --&gt; DB
+    DB --&gt; API --&gt; DASH</pre></div>
+<p><strong>Stack:</strong> Python (Pydantic config, <code>Decimal</code> money, timezone-aware <code>datetime</code>), SQLite in WAL mode, FastAPI (bound to localhost only — ATHENA is never deployed remotely), a hand-rolled static-HTML + vanilla-JS dashboard (no frontend framework, no build step — <span class="doc-ref" title="Repo doc: adr/ADR-004-static-html-first.md">ADR-004</span>), in-house technical indicators (no external TA-lib). Broker integration is Zerodha Kite Connect, read-only market data only — no order API is ever called.</p>
+<hr/>
+<h2 id="3-the-complete-decision-pipeline">3. The Complete Decision Pipeline</h2>
+<p>Every symbol that survives Universe Eligibility flows through exactly the same eleven-stage pipeline, once per validation cycle. Every stage is a <strong>pure function of already-computed inputs plus an injected clock</strong> — no stage reads the wall clock or makes an uncontrolled network call mid-computation, which is what makes a run fully replayable.</p>
+<div class="diagram-card"><pre class="mermaid">flowchart LR
+    A[&quot;1 · Universe&lt;br/&gt;Eligibility&quot;] --&gt; B[&quot;2 · Indicators&quot;]
+    B --&gt; C[&quot;3 · Regime&quot;]
+    C --&gt; D[&quot;4 · Market&lt;br/&gt;Health (F-5)&quot;]
+    D --&gt; E[&quot;5 · Sector&lt;br/&gt;Health&quot;]
+    E --&gt; F[&quot;6 · Evidence&lt;br/&gt;Aggregation&quot;]
+    F --&gt; G[&quot;7 · Scoring&quot;]
+    G --&gt; H[&quot;8 · Confidence&quot;]
+    H --&gt; I[&quot;9 · Risk&quot;]
+    I --&gt; J[&quot;10 · Decision&lt;br/&gt;+ Quality Gates&quot;]
+    J --&gt; K[&quot;11 · TradePlan&quot;]
+
+    style A fill:#1e3a5f,color:#fff
+    style J fill:#5f1e1e,color:#fff
+    style K fill:#1e5f2e,color:#fff</pre></div>
+<p><strong>The one rule that governs every stage:</strong> if an input is missing or insufficient, the stage returns an <strong>explicit unknown/absent state with a human-readable reason</strong> — never a fabricated default, a silent zero, or an interpolated guess. This is <span class="doc-ref" title="Repo doc: adr/ADR-005-explainability-as-data.md">ADR-005 — Explainability as Data</span>: every artifact at every stage carries a mandatory, non-empty <code>explanation</code> field, enforced by the object's own constructor (<code>__post_init__</code> raises if it's missing) — not bolted on afterward by the API or dashboard. The presentation layer only ever *renders* an explanation that some engine already computed and persisted; it never reconstructs one.</p>
+<p>The sections below document each stage's purpose, inputs, exact formula, outputs, and unknown-data handling, in pipeline order.</p>
+<hr/>
+<h2 id="4-stage-1-universe-eligibility">4. Stage 1 — Universe Eligibility</h2>
+<p><strong>Module:</strong> <code>src/athena/universe/</code> · <strong>Config:</strong> <code>config/universe.json</code></p>
+<p><strong>Purpose.</strong> Answers "which instruments are eligible for further analysis?" through independent, deterministic rules. It never ranks or selects what to trade — only excludes what genuinely can't be evaluated yet.</p>
+<p><strong>Inputs:</strong> every tracked <code>Instrument</code> (status/series/exchange), its persisted daily candles, the injected <code>as_of</code> clock, and optionally the trading calendar (for the completeness rule).</p>
+<p><strong>The rules, evaluated per instrument, in order:</strong></p>
+<div class="table-wrap"><table>
+<thead><tr><th>#</th><th>Rule</th><th>Condition</th><th>Current threshold</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>active_status</code></td><td><code>instrument.status == "ACTIVE"</code></td><td>—</td></tr>
+<tr><td>2</td><td><code>supported_series</code></td><td>series in the allowed list</td><td><code>["EQ", "BE"]</code></td></tr>
+<tr><td>3</td><td><code>eligible_exchange</code></td><td>exchange in the allowed list</td><td><code>["NSE"]</code></td></tr>
+<tr><td>4</td><td><code>data_present</code></td><td>at least one candle exists</td><td>—</td></tr>
+<tr><td>5</td><td><code>min_history</code></td><td>enough trading days of candles</td><td><strong>30 days</strong></td></tr>
+<tr><td>6</td><td><code>min_liquidity</code></td><td>mean daily volume over the supplied window</td><td><strong>500,000 shares/day</strong></td></tr>
+<tr><td>7</td><td><code>data_completeness</code> *(optional — only runs if a calendar is supplied)*</td><td>fraction of expected trading sessions actually present</td><td><strong>≥ 90%</strong></td></tr>
+</tbody></table></div>
+<p>An instrument is <code>included</code> only if <strong>every</strong> evaluated rule passes. If rule 4 (<code>data_present</code>) fails, rules 5 and 6 are marked failed too, with the explicit reason <code>"not evaluable: no candle data"</code> — they are never silently skipped or defaulted to pass.</p>
+<p><strong>Output:</strong> a <code>Universe</code> (the included set, each member carrying a mandatory, non-empty <code>inclusion_trace</code> naming every rule it passed — "no unexplained inclusions") plus an <code>UniverseAssessment</code> for <strong>every</strong> evaluated instrument, included or not, with full per-rule evidence and an <code>eligibility_summary</code> string. A per-sector <code>(advances, declines)</code> breadth tally is also computed over included instruments only, from two-candle close comparisons.</p>
+<p><strong>Feeds into:</strong> every included instrument's <code>UniverseAssessment</code> becomes an <code>EvidenceItem</code> in the Evidence Aggregation stage; only instruments in the included set proceed to Indicators and beyond.</p>
+<hr/>
+<h2 id="5-stage-2-indicators">5. Stage 2 — Indicators</h2>
+<p><strong>Module:</strong> <code>src/athena/indicators/</code> · <strong>Config:</strong> <code>config/indicators.json</code></p>
+<p><strong>Purpose.</strong> "What does the data measure?" — deterministic technical indicators computed in-house (no external TA-lib) from candle data, with an explicit <code>UNKNOWN</code> status whenever history is insufficient. Measurement only — no interpretation, no signals.</p>
+<p>Eight indicators are implemented, each with its exact formula and current config period:</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Indicator</th><th>Formula</th><th>Period(s)</th><th>Min. history needed</th></tr></thead>
+<tbody>
+<tr><td><strong>SMA</strong></td><td>mean of trailing closes</td><td>20</td><td>20 closes</td></tr>
+<tr><td><strong>EMA</strong></td><td>seeded with SMA, then <code>EMA_t = (v_t − EMA_{t-1})·k + EMA_{t-1}</code>, <code>k = 2/(n+1)</code></td><td>21</td><td>21 closes</td></tr>
+<tr><td><strong>RSI</strong></td><td>Wilder-smoothed avg gain/loss; <code>RSI = 100 − 100/(1+RS)</code>, <code>RS = avg_gain/avg_loss</code></td><td>14</td><td>15 closes</td></tr>
+<tr><td><strong>ATR</strong></td><td>Wilder-smoothed True Range: `max(H−L, \</td><td>H−C_prev\</td><td>, \</td><td>L−C_prev\</td><td>)`</td><td>14</td><td>15 candles</td></tr>
+<tr><td><strong>MACD</strong></td><td><code>EMA_fast(12) − EMA_slow(26)</code>; signal = <code>EMA_9</code> of that line; histogram = line − signal</td><td>12/26/9</td><td>35 closes</td></tr>
+<tr><td><strong>ADX</strong></td><td>Wilder directional-movement system → <code>+DI</code>, <code>−DI</code>, <code>ADX</code></td><td>14</td><td>29 candles</td></tr>
+<tr><td><strong>Volume MA</strong></td><td>mean of trailing volumes</td><td>20</td><td>20 bars</td></tr>
+<tr><td><strong>VWAP</strong></td><td>session-reset: <code>Σ(typical_price·volume)/Σvolume</code>, <code>typical_price=(H+L+C)/3</code>; also reports <code>deviation_pct</code> from last close</td><td>— (today's session only)</td><td>any bars today</td></tr>
+</tbody></table></div>
+<p>Each result is wrapped as an <code>IndicatorResult{name, status: OK|UNKNOWN, values, evidence:{formula, inputs, explanation}}</code>. A structural invariant enforces that an <code>OK</code> result carries at least one value and an <code>UNKNOWN</code> result carries exactly zero — there is no code path that fabricates a value under an <code>UNKNOWN</code> label.</p>
+<p><strong>Feeds into:</strong> Scoring (momentum←RSI, liquidity←Volume MA, technical_structure←SMA/MACD/VWAP, trend←ADX) and the Decision Engine's <code>TradePlan</code> builder (ATR for stop/target distance, SMA for entry price).</p>
+<hr/>
+<h2 id="6-stage-3-regime-assessment">6. Stage 3 — Regime Assessment</h2>
+<p><strong>Module:</strong> <code>src/athena/regime/</code> · <strong>Config:</strong> <code>config/regime.json</code></p>
+<p><strong>Purpose.</strong> Classifies the current market regime along three independent, always-labelled dimensions — descriptive only, never prescriptive.</p>
+<div class="diagram-card"><pre class="mermaid">flowchart TD
+    subgraph Trend[&quot;Trend (needs ≥50 candles)&quot;]
+        T1{&quot;fast SMA(20) vs&lt;br/&gt;slow SMA(50)&quot;}
+        T1 --&gt;|&quot;fast &gt; slow AND&lt;br/&gt;close ≥ slow&quot;| BULL[&quot;BULL_TREND&quot;]
+        T1 --&gt;|&quot;fast &lt; slow AND&lt;br/&gt;close ≤ slow&quot;| BEAR[&quot;BEAR_TREND&quot;]
+        T1 --&gt;|otherwise| SIDE[&quot;SIDEWAYS&quot;]
+    end
+    subgraph Vol[&quot;Volatility (needs India VIX)&quot;]
+        V1{&quot;VIX level&quot;}
+        V1 --&gt;|&quot;≥ 20.0&quot;| HIGH[&quot;HIGH_VOLATILITY&quot;]
+        V1 --&gt;|&quot;≤ 12.0&quot;| LOW[&quot;LOW_VOLATILITY&quot;]
+        V1 --&gt;|otherwise| NORM[&quot;NORMAL_VOLATILITY&quot;]
+    end
+    subgraph Gap[&quot;Gap (needs ≥2 candles)&quot;]
+        G1{&quot;gap% = (open−prev close)/prev close&quot;}
+        G1 --&gt;|&quot;≥ +0.5%&quot;| GUP[&quot;GAP_UP&quot;]
+        G1 --&gt;|&quot;≤ −0.5%&quot;| GDN[&quot;GAP_DOWN&quot;]
+        G1 --&gt;|otherwise| NOGAP[&quot;NO_GAP&quot;]
+    end</pre></div>
+<p>Each dimension degrades to its own explicit <code>*_UNKNOWN</code> label (<code>TREND_UNKNOWN</code>, <code>VOLATILITY_UNKNOWN</code>, <code>GAP_UNKNOWN</code>) with an exact-count explanation when data is insufficient — 12 possible labels in total (4 per dimension).</p>
+<p><strong>Output:</strong> <code>RegimeResult</code> — 3 labels plus per-dimension evidence, each with a mandatory explanation and the raw inputs used.</p>
+<p><strong>Feeds into:</strong> Scoring's <code>trend</code> component (<code>BULL_TREND=80, SIDEWAYS=50, BEAR_TREND=20</code> points), Risk's volatility/gap dimensions, and — critically — the <strong>Decision Engine's trade direction</strong>: <code>BULL_TREND → LONG</code>, <code>BEAR_TREND → SHORT</code>, anything else → <code>NONE</code> (which alone blocks a <code>TRADE</code> decision regardless of how high the score is).</p>
+<blockquote><p><strong>Dormant config note:</strong> <code>regime.json</code> also defines <code>market_health_floor</code> and <code>sector_health_floor</code> (both = 40). Neither is read anywhere in the code today — the live market-quality gate actually uses a separate value, <code>decision.json</code>'s <code>market_floor</code> (also 40, by coincidence of current tuning, not by reference). These two fields are validated on load but currently inert.</p></blockquote>
+<hr/>
+<h2 id="7-stage-4-market-health-score-f-5">7. Stage 4 — Market Health Score (F-5)</h2>
+<p><strong>Module:</strong> <code>src/athena/market_health/</code> · <strong>Config:</strong> <code>config/market_health.json</code> · <strong>Contract:</strong> <span class="doc-ref" title="Repo doc: design/F5-MARKET-HEALTH-SCORE.md"><code>docs/design/F5-MARKET-HEALTH-SCORE.md</code></span></p>
+<p>This is the single number behind the dashboard's health ring — and the stage with the most important nuance in the whole pipeline: <strong>two related but different engines share this package.</strong></p>
+<ol>
+<li>A <strong>categorical engine</strong> (4 dimensions: breadth, trend_quality, momentum, volatility) — descriptive labels only, no numeric total.</li>
+<li>The <strong>F-5 numeric score</strong> — 6 *different* components (trend_quality, breadth, liquidity, volatility, institutional_strength, gap_stability) combined into one weighted 0–100 total. Only three dimension names overlap between the two engines (trend_quality, breadth, volatility); F-5's <code>liquidity</code>, <code>institutional_strength</code>, and <code>gap_stability</code> don't exist in the categorical engine, and the categorical engine's <code>momentum</code> doesn't feed F-5 at all.</li>
+</ol>
+<p><strong>The six F-5 components — bands, points, and weights (all from <code>config/market_health.json</code>):</strong></p>
+<div class="table-wrap"><table>
+<thead><tr><th>Component</th><th>Weight</th><th>Bands → points</th><th>Absent (unavailable) when</th></tr></thead>
+<tbody>
+<tr><td><strong>trend_quality</strong></td><td>20</td><td>consistency ≥0.65 STRONG(80) · ≤0.45 WEAK(20) · else MIXED(50)</td><td>fewer than 21 candles</td></tr>
+<tr><td><strong>breadth</strong></td><td>20</td><td>advance ratio ≥0.60 strong(80) · ≤0.40 weak(20) · else mid(50)</td><td>universe coverage &lt; 70%, or zero advances+declines</td></tr>
+<tr><td><strong>liquidity</strong></td><td>15</td><td>median turnover ≥₹5cr healthy(80) · ≤₹1cr weak(20) · else mid(50)</td><td>fewer than <strong>50</strong> universe members have a computable turnover</td></tr>
+<tr><td><strong>volatility</strong></td><td>15</td><td>VIX ≤12 calm(70) · ≥20 elevated(30) · else normal(55)</td><td>India VIX unavailable</td></tr>
+<tr><td><strong>institutional_strength</strong></td><td>15</td><td>combined FII+DII (₹Cr): ≥2000 strong_buy(90) · 500–2000 mild_buy(70) · ≤−2000 strong_sell(10) · −2000..−500 mild_sell(30) · else balanced(50)</td><td>no session, or the session is more than <strong>3 days old</strong> (or future-dated)</td></tr>
+<tr><td><strong>gap_stability</strong></td><td>15</td><td>stability ratio ≥0.80 strong(80) · ≤0.50 weak(20) · else mid(50)</td><td>fewer than 20 scored gap-days</td></tr>
+</tbody></table></div>
+<p><strong>The combining rule is strict:</strong> if <strong>any single</strong> component is absent, the whole score is withheld — <code>total=None</code>, with a joined <code>unavailable_reason</code> string naming every absent component's own explanation. There is no partial score. When all six are present:</p>
+<div class="table-wrap"><pre class="codeblock"><code>total = round( Σ(points[c] × weight[c]) / 100 )     — weighted mean, clamped to [0,100]</code></pre></div>
+<p><strong>Feeds into:</strong> persisted as <code>detail["market_health_score"]</code> on the run; <code>ScoringEngine</code>'s <code>market_quality</code> component uses the F-5 <code>total</code> directly as its authoritative value; the Decision Engine's <code>MARKET</code> quality gate requires <code>market_quality ≥ 40</code> to allow a <code>TRADE</code>.</p>
+<hr/>
+<h2 id="8-stage-5-sector-health">8. Stage 5 — Sector Health</h2>
+<p><strong>Module:</strong> <code>src/athena/sector_health/</code> · <strong>Config:</strong> <code>config/sector_health.json</code>, <code>config/sector_index_mapping.json</code></p>
+<p><strong>Purpose.</strong> "What is the condition of this sector?" — descriptive only, never ranks or selects. Computed from the sector's <strong>proxy tracked index</strong> (e.g. NIFTY IT), not from constituent stocks directly.</p>
+<p>Only 8 sectors currently have an index mapping (others get no result at all — never guessed by name similarity):</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Sector</th><th>Proxy index</th></tr></thead>
+<tbody>
+<tr><td>Information Technology</td><td>NIFTY IT</td></tr>
+<tr><td>Automobile and Auto Components</td><td>NIFTY AUTO</td></tr>
+<tr><td>Healthcare *(approximation)*</td><td>NIFTY PHARMA</td></tr>
+<tr><td>Fast Moving Consumer Goods</td><td>NIFTY FMCG</td></tr>
+<tr><td>Metals &amp; Mining</td><td>NIFTY METAL</td></tr>
+<tr><td>Realty</td><td>NIFTY REALTY</td></tr>
+<tr><td>Oil Gas &amp; Consumable Fuels *(approximation)*</td><td>NIFTY ENERGY</td></tr>
+<tr><td>Power *(approximation)*</td><td>NIFTY ENERGY</td></tr>
+</tbody></table></div>
+<p><strong>Four dimensions</strong>, same discipline of explicit <code>*_UNKNOWN</code> on insufficient history: trend (10/30-day SMA cross, needs 30 candles), breadth (advance ratio — see note below), momentum (10-day rate of change vs a <strong>3.0%</strong> bar, needs 11 candles), volatility (20-day realized standard deviation of returns vs 1.0%/2.5% bands, needs 21 candles).</p>
+<blockquote><p><strong>Important, verified findings — read before assuming this feeds scoring:</strong></p><p>- <strong>Sector breadth is always <code>SECTOR_BREADTH_UNKNOWN</code> in production.</strong> It requires a <code>constituent_breadth</code> input that the live pipeline never actually supplies (deferred to a future Universe Engine milestone).</p><p>- <strong>Sector Health does not currently feed Scoring or Decisions.</strong> <code>ScoringEngine._sector_quality()</code> can accept it, but the live per-symbol scan never passes <code>sector_health</code> into either the scoring or decision call — so <code>sector_quality</code> is <code>UNKNOWN</code> in every live run today. Sector Health is computed and persisted purely for display.</p><p>- <strong>Sector Health does not feed "Index Leadership"</strong> on the dashboard. That's a separate, computationally unrelated feature built on raw index price-change arithmetic (see §17) — the two happen to share the same sector→index config file, nothing more.</p><p>- No numeric 0–100 sector score exists. A <code>SectorHealthScore</code> domain type mirroring the blueprint's momentum/leadership/relative-strength/participation/rotation composite is defined but never constructed anywhere.</p></blockquote>
+<hr/>
+<h2 id="9-stage-6-evidence-aggregation">9. Stage 6 — Evidence Aggregation</h2>
+<p><strong>Module:</strong> <code>src/athena/evidence/</code></p>
+<p><strong>Purpose.</strong> Gathers everything the prior stages produced into a single immutable, provenance-preserving <code>EvidenceBundle</code> — aggregation only, no scoring, no transformation, no interpretation.</p>
+<p>Six evidence sources, each optional: <code>REGIME</code>, <code>MARKET_HEALTH</code>, <code>SECTOR_HEALTH</code>, <code>UNIVERSE</code>, <code>CORPORATE_ACTION</code>, <code>VALIDATION</code>. Whatever is supplied gets wrapped 1:1 into <code>EvidenceItem</code>s with the original object preserved verbatim as <code>payload</code> — nothing is lost or restated. A source that's simply <code>None</code> contributes zero items; it never gets fabricated.</p>
+<p><strong>Output:</strong> <code>EvidenceBundle{items, missing_sources, provenance, is_complete}</code> — <code>is_complete</code> is <code>True</code> only when every source the caller *required* is actually present.</p>
+<p><strong>Feeds into:</strong> the Decision Engine's <code>DATA</code> quality gate reads <code>bundle.is_complete</code> directly. Indicators and Scoring do <strong>not</strong> read the bundle — they consume the upstream objects (regime, market health, etc.) directly; the bundle's job is completeness bookkeeping and explainability, not a computational input.</p>
+<blockquote><p><strong>Note on the frozen domain contract:</strong> ATHENA's architecture defines a separate, more granular <code>Evidence</code>/<code>EvidenceCategory</code> schema (11 categories: TECHNICAL, PRICE_ACTION, VOLUME, VWAP, PATTERN, SECTOR, BREADTH, NEWS, RISK, PORTFOLIO, AI) as the eventual input to a fully evidence-driven Decision Engine. <strong>No engine currently instantiates this object</strong> — it is the frozen target contract, not yet wired into the live pipeline. Don't confuse it with the <code>EvidenceSource</code>/<code>EvidenceBundle</code> mechanism above, which *is* live.</p></blockquote>
+<hr/>
+<h2 id="10-stage-7-scoring">10. Stage 7 — Scoring</h2>
+<p><strong>Module:</strong> <code>src/athena/scoring/</code> · <strong>Config:</strong> <code>config/scoring.json</code></p>
+<p><strong>Purpose.</strong> Transforms evidence and measurements into transparent component scores and a single composite — intermediate artifacts only, never a recommendation.</p>
+<p><strong>Six components, weighted to sum to 100:</strong></p>
+<div class="diagram-card"><pre class="mermaid">pie showData
+    title Scoring component weights (sum = 100)
+    &quot;Trend (20)&quot; : 20
+    &quot;Momentum (20)&quot; : 20
+    &quot;Market Quality (20)&quot; : 20
+    &quot;Sector Quality (15)&quot; : 15
+    &quot;Technical Structure (15)&quot; : 15
+    &quot;Liquidity (10)&quot; : 10</pre></div>
+<div class="table-wrap"><table>
+<thead><tr><th>Component</th><th>Weight</th><th>Computation</th></tr></thead>
+<tbody>
+<tr><td><strong>trend</strong></td><td>20</td><td>regime trend label → points (80/50/20) <strong>+</strong> ADX bonus (ramps 0→+10 pts as ADX goes 15→25) <strong>+</strong> multi-timeframe confluence bonus (up to +10 pts, proportional to agreement ratio)</td></tr>
+<tr><td><strong>momentum</strong></td><td>20</td><td>RSI ramped linearly: 40→20 pts, 50→50 pts, 60→80 pts</td></tr>
+<tr><td><strong>market_quality</strong></td><td>20</td><td>the F-5 total directly, when available (fallback: average of categorical market-health labels)</td></tr>
+<tr><td><strong>sector_quality</strong></td><td>15</td><td>average of sector-health dimension labels (<code>UNKNOWN</code> in production today — see §8)</td></tr>
+<tr><td><strong>liquidity</strong></td><td>10</td><td>Volume MA ramped 30→70 pts between 250,000 and 500,000 shares/day</td></tr>
+<tr><td><strong>technical_structure</strong></td><td>15</td><td>70 pts if above SMA else 30 · <strong>+10 pts flat</strong> if MACD histogram is positive · + VWAP-reclaim bonus (ramps 0→+10 pts as deviation above VWAP goes 0%→1.5%)</td></tr>
+</tbody></table></div>
+<p>**The composite is a weighted mean over only the *known* components**, not a division by a fixed 100:</p>
+<div class="table-wrap"><pre class="codeblock"><code>composite   = Σ(component.value × weight)  over components with status OK
+            ÷ Σ(weight)                    over the SAME OK components
+completeness = (Σ weight of OK components) / 100
+composite → UNKNOWN only if ALL SIX components are UNKNOWN</code></pre></div>
+<p>This re-normalization means a partially-unknown instrument's composite stays comparable on the same 0–100 scale as a fully-known one; <code>completeness</code> separately tracks how much of the weight was actually known — and that completeness number is exactly what the Decision Engine's <code>EVIDENCE</code> gate checks.</p>
+<p>Every <code>OK</code> component is structurally required to carry at least one traceable <code>Contribution</code> (source, reference, points) — a scored value can never appear without a citation.</p>
+<hr/>
+<h2 id="11-stage-8-confidence">11. Stage 8 — Confidence</h2>
+<p><strong>Module:</strong> <code>src/athena/confidence/</code> · <strong>Config:</strong> <code>config/confidence.json</code></p>
+<p><strong>Purpose.</strong> Answers a completely different question from Scoring: <strong>"how trustworthy is this evaluation?"</strong> — never market direction, attractiveness, or risk.</p>
+<p><strong>Six dimensions, weighted to sum to 100:</strong></p>
+<div class="table-wrap"><table>
+<thead><tr><th>Dimension</th><th>Weight</th><th>Measures</th></tr></thead>
+<tbody>
+<tr><td>Evidence Completeness</td><td>20</td><td>fraction of evidence sources present vs required</td></tr>
+<tr><td>Indicator Availability</td><td>20</td><td>fraction of indicators that resolved (not <code>UNKNOWN</code>)</td></tr>
+<tr><td>Data Freshness</td><td>15</td><td>pass rate of validation-type evidence</td></tr>
+<tr><td>Cross-Engine Agreement</td><td>15</td><td><code>100 − spread</code> across known scoring components (needs ≥2 known)</td></tr>
+<tr><td>Unknown Ratio</td><td>15</td><td><code>100 × (1 − unknown/total)</code> across scoring + indicators + evidence, combined</td></tr>
+<tr><td>Consistency</td><td>15</td><td>penalizes divergence ≥40 pts between (trend, momentum) or (market_quality, sector_quality): −25 pts per contradicting pair</td></tr>
+</tbody></table></div>
+<p>Overall value = weighted mean over known dimensions (same re-normalization pattern as Scoring). <strong>Level bands</strong> — used identically for Confidence and Risk: <code>&lt; 40</code> LOW, <code>40–69</code> MEDIUM, <code>≥ 70</code> HIGH.</p>
+<p><strong>"High Conviction" — two unrelated meanings, don't conflate them:</strong></p>
+<ol>
+<li>The dashboard's star rating on Top Opportunities cards is a <strong>pure presentation rescale</strong> of this engine's own <code>overall_value</code>: <code>stars = clamp(round(overall_value / 100 × 5), 1, 5)</code>. "High Conviction" there literally means <code>overall_level == HIGH</code> (≥ 70).</li>
+<li>A <strong>watchlist name</strong>, <code>config/watchlist.json</code>'s <code>"High Conviction"</code> bucket, is a completely unrelated post-hoc classification of *decision outcomes* (<code>decision_type in [TRADE, INCREASE_POSITION]</code>) — nothing to do with the Confidence engine.</li>
+</ol>
+<p><strong>Feeds into:</strong> the Decision Engine's <code>CONFIDENCE</code> gate (<code>overall_value ≥ 50</code>).</p>
+<hr/>
+<h2 id="12-stage-9-risk">12. Stage 9 — Risk</h2>
+<p><strong>Module:</strong> <code>src/athena/risk/</code> · <strong>Config:</strong> <code>config/risk_assessment.json</code></p>
+<p><strong>Purpose.</strong> Measures exposure/uncertainty, independent of opportunity. <strong>Higher value means more risk</strong> — the opposite direction from Score/Confidence, which is worth calling out since all three appear side by side on the dashboard.</p>
+<p><strong>Six dimensions, weighted to sum to 100:</strong></p>
+<div class="table-wrap"><table>
+<thead><tr><th>Dimension</th><th>Weight</th><th>Computation</th></tr></thead>
+<tbody>
+<tr><td>Volatility Risk</td><td>20</td><td>regime volatility label → HIGH=80 / NORMAL=50 / LOW=20</td></tr>
+<tr><td>Liquidity Risk</td><td>20</td><td>Volume MA &lt; 500,000 → 80, else 20</td></tr>
+<tr><td>Market Environment Risk</td><td>20</td><td>average of categorical market-health label points</td></tr>
+<tr><td>Gap Risk</td><td>15</td><td>GAP_UP or GAP_DOWN → 70, NO_GAP → 20</td></tr>
+<tr><td>Event Risk</td><td>15</td><td>a calendar event → 80; weekly/monthly expiry → 70; else 20</td></tr>
+<tr><td>Concentration Indicator</td><td>10</td><td>fewer than 20 eligible universe symbols → 70 (concentrated), else 30 (diversified)</td></tr>
+</tbody></table></div>
+<p>Overall value = weighted mean over known dimensions; same LOW/MEDIUM/HIGH bands as Confidence. <strong>Feeds into:</strong> the Decision Engine's <code>RISK</code> gate (<code>overall_value ≤ 50</code>).</p>
+<p><strong>Position sizing is a genuinely separate concern</strong> (<code>src/athena/sizing/</code>) — pure quantity arithmetic over an *already-approved* capital allocation, with no market analysis of its own: <code>quantity = floor(allocated_amount / price)</code>, rounded down to whole shares. Capital policy (<code>config/capital.json</code>): total capital ₹10,00,000, 20% reserved, max 10% per position, max 30% per sector.</p>
+<blockquote><p><strong>Not yet implemented:</strong> <span class="doc-ref" title="Repo doc: adr/ADR-006-circuit-limit-risk-signal.md">ADR-006</span> proposes a seventh risk dimension, <code>circuit_proximity_risk</code>, using Kite's daily circuit-limit fields. Status is <strong>Proposed</strong>, and verified not present in the running code — <code>Quote</code> carries no circuit-limit fields yet. <code>config/risk.json</code>'s daily-loss/consecutive-loss/no-trade circuit-breaker policy is schema-validated but no confirmed runtime enforcement point was found in this pass — treat as configured-but-unverified, not confirmed-live, until independently checked.</p></blockquote>
+<hr/>
+<h2 id="13-stage-10-decision-engine-quality-gates">13. Stage 10 — Decision Engine &amp; Quality Gates</h2>
+<p><strong>Module:</strong> <code>src/athena/decision/</code> · <strong>Config:</strong> <code>config/decision.json</code></p>
+<p>This is where every prior stage converges into one deterministic decision.</p>
+<h3 id="the-canonical-vocabulary-and-whats-actually-live">The canonical vocabulary — and what's actually live</h3>
+<p>Twelve decision types are declared as the canonical vocabulary ("R-6: exactly these twelve"):</p>
+<div class="table-wrap"><pre class="codeblock"><code>TRADE · WATCH · WAIT · NO_TRADE · REDUCE_POSITION · INCREASE_POSITION ·
+PARTIAL_EXIT · FULL_EXIT · AVOID_SECTOR · MARKET_CLOSED ·
+INSUFFICIENT_DATA · DATA_VALIDATION_FAILED</code></pre></div>
+<p><strong>Only four of these twelve are producible by any engine in the codebase today: <code>TRADE</code>, <code>WATCH</code>, <code>NO_TRADE</code>, <code>INSUFFICIENT_DATA</code>.</strong> The other eight are consumed downstream (Portfolio, Orders, and Allocation engines all branch on them; watchlist/strategy config classifies by them) but no engine constructs a <code>Decision</code> with any of them — they appear to be reserved vocabulary for a future position-aware decision layer, a sector-level pre-screen, and a session/data-validation pre-gate. This document treats them as declared-but-dormant rather than describing invented logic for how they might be chosen.</p>
+<h3 id="the-six-quality-gates">The six quality gates</h3>
+<p>Every decision computes all six gates, always — regardless of the eventual outcome:</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Gate</th><th>Passes when</th><th>Threshold</th></tr></thead>
+<tbody>
+<tr><td><code>DATA</code></td><td>the evidence bundle is complete</td><td>—</td></tr>
+<tr><td><code>EVIDENCE</code></td><td>the composite score is known and its completeness ≥ 0.5</td><td>50%</td></tr>
+<tr><td><code>RISK</code></td><td>overall risk ≤ 50</td><td>50</td></tr>
+<tr><td><code>EXPLAINABILITY</code></td><td>the composite score is known (then structurally always true)</td><td>—</td></tr>
+<tr><td><code>CONFIDENCE</code></td><td>overall confidence ≥ 50</td><td>50</td></tr>
+<tr><td><code>MARKET</code></td><td>the market_quality score component ≥ 40</td><td>40</td></tr>
+</tbody></table></div>
+<p>A missing upstream input makes its gate <strong>fail explicitly</strong> — never pass by default.</p>
+<h3 id="the-decision-logic">The decision logic</h3>
+<div class="diagram-card"><pre class="mermaid">flowchart TD
+    START{&quot;scoring &amp;amp; composite&lt;br/&gt;score available?&quot;}
+    START --&gt;|no| INSUF[&quot;INSUFFICIENT_DATA&lt;br/&gt;(gates still computed for audit)&quot;]
+    START --&gt;|yes| GATES{&quot;all 6 gates pass?&lt;br/&gt;composite ≥ 60?&lt;br/&gt;direction ≠ NONE?&lt;br/&gt;TradePlan buildable?&quot;}
+    GATES --&gt;|&quot;all yes&quot;| TRADE[&quot;TRADE&lt;br/&gt;(direction + TradePlan attached)&quot;]
+    GATES --&gt;|no| WATCHCHECK{&quot;composite ≥ 50?&quot;}
+    WATCHCHECK --&gt;|yes| WATCH[&quot;WATCH&lt;br/&gt;(explanation names the blocking gate)&quot;]
+    WATCHCHECK --&gt;|no| NOTRADE[&quot;NO_TRADE&quot;]
+
+    style TRADE fill:#1e5f2e,color:#fff
+    style WATCH fill:#5f5a1e,color:#fff
+    style NOTRADE fill:#5f1e1e,color:#fff
+    style INSUF fill:#333,color:#fff</pre></div>
+<p>Direction is derived purely from the regime's trend label: <code>BULL_TREND → LONG</code>, <code>BEAR_TREND → SHORT</code>, anything else → <code>NONE</code>. A <code>NONE</code> direction alone blocks <code>TRADE</code> no matter how high the score is.</p>
+<p><strong>A hard domain invariant</strong> (not just an engine-level check) forbids a <code>TRADE</code> decision from ever being constructed with a failed gate, a missing <code>TradePlan</code>, or a <code>NONE</code> direction — the <code>Decision</code> object's own constructor raises if this is violated, so this can't be bypassed by any calling code.</p>
+<hr/>
+<h2 id="14-stage-11-tradeplan-lifecycle">14. Stage 11 — TradePlan Lifecycle</h2>
+<p>Only <code>TRADE</code> decisions carry a <code>TradePlan</code>. Construction requires a known <code>ATR</code> and <code>SMA</code>, plus a non-<code>NONE</code> direction — if any of those is missing, no plan is built (and the decision degrades to <code>WATCH</code>/<code>NO_TRADE</code> based on the score alone).</p>
+<p><strong>Exact construction</strong> (<code>config/decision.json</code>):</p>
+<div class="table-wrap"><pre class="codeblock"><code>stop_distance   = ATR × 1.5   (atr_stop_multiple)
+target_distance = ATR × 3.0   (atr_target_multiple)
+
+LONG:  stop = last_close − stop_distance,   target = last_close + target_distance
+SHORT: stop = last_close + stop_distance,   target = last_close − target_distance
+
+risk_reward = target_distance / stop_distance = 3.0 / 1.5 = 2.0   (always — a config-derived constant)
+position_size = 1 unit   (provisional — NOT yet wired to the capital-based sizing engine)
+valid_from = as_of,  valid_until = as_of + 6 hours   (validity_hours)</code></pre></div>
+<blockquote><p><strong>Precision notes:</strong> <code>entry_low</code> and <code>entry_high</code> are both set to <code>last_close</code> — there's no entry-range logic despite the field names. <code>targets</code> holds exactly one price — no multi-target/scale-out ladder is implemented. <code>risk_reward</code> is a fixed 2.0 under current config, not a variable per-instrument ratio, since both distances scale off the same ATR value.</p></blockquote>
+<h3 id="the-freshness-state-machine">The freshness state machine</h3>
+<div class="diagram-card"><pre class="mermaid">stateDiagram-v2
+    [*] --&gt; FRESH: TradePlan created (valid_from)
+    FRESH --&gt; AGING: decay ≥ 50% of validity window
+    AGING --&gt; STALE: decay ≥ 80% of validity window
+    STALE --&gt; EXPIRED: as_of ≥ valid_until (6h after creation)
+    EXPIRED --&gt; [*]
+
+    note right of FRESH
+        decay_fraction = elapsed / total_validity_seconds
+        Computed on demand, every request —
+        never stored as a column.
+    end note</pre></div>
+<p>This is computed <strong>server-side</strong>, authoritatively, on every request (<code>GET /decisions/{id}/plan-freshness</code>) — not just in the frontend. The dashboard's own JavaScript duplicates the same 0.5/0.8 thresholds as a display-only mirror; if the backend config ever changes, the frontend constant needs a matching manual update (there's no dynamic fetch of these thresholds today).</p>
+<p><strong>There is no server-side "current vs. historical" stored field or query filter</strong> — every decision's freshness is a derived value computed at request time against the caller's clock, never persisted as a column. The dashboard's board view computes this per-row to decide whether an expired-plan <code>TRADE</code> decision should still be shown as actionable (it isn't — expired-plan trades move to the audit/history view, keeping the live board an action list, not a log).</p>
+<hr/>
+<h2 id="15-position-sizing-capital-policy">15. Position Sizing &amp; Capital Policy</h2>
+<p>Deliberately downstream and decoupled from the analytical pipeline — sizing never influences scoring, confidence, risk, or the decision itself.</p>
+<ul>
+<li><code>config/sizing.json</code>: whole-share lots only, rounded down (<code>WHOLE_SHARE</code> / <code>ROUND_DOWN</code>), 4-decimal internal precision.</li>
+<li><code>config/capital.json</code>: total capital ₹10,00,000; 20% held in reserve; a single position may use at most 10% of capital; a single sector at most 30%.</li>
+<li>Explicit rejection outcomes exist for degenerate inputs — <code>REJECTED_ZERO_PRICE</code>, <code>ZERO_ALLOCATION</code> — never a silently-dropped order.</li>
+</ul>
+<hr/>
+<h2 id="16-scheduling-background-validation">16. Scheduling &amp; Background Validation</h2>
+<p>ATHENA runs its pipeline on a config-driven cadence, not a general-purpose job queue (<span class="doc-ref" title="Repo doc: adr/ADR-007-owner-triggered-background-validation.md">ADR-007</span> explicitly rejected one) — reusing the same <code>CycleWorker</code>/<code>CycleRunnerLock</code> machinery everywhere, with a single-flight advisory lock ensuring <code>athena serve --with-cycles</code> and <code>athena run-due</code> (launchd/cron) can never run two cycles at once.</p>
+<div class="diagram-card"><pre class="mermaid">gantt
+    dateFormat HH:mm
+    axisFormat %H:%M
+    title A trading day&#x27;s cadence (illustrative)
+    section Once per day
+    PREMARKET before open   :milestone, m1, 08:15, 0m
+    CLOSING after close     :milestone, m2, 15:45, 0m
+    section Every session
+    REFRESH full universe every 15 min :active, refresh, 09:15, 375m
+    section Owner opt in
+    FAST decision list only every 5 min :fastrun, 09:15, 375m</pre></div>
+<div class="table-wrap"><table>
+<thead><tr><th>Trigger</th><th>Cadence</th><th>Scope</th><th>Fetches daily candles?</th></tr></thead>
+<tbody>
+<tr><td><strong>PREMARKET</strong></td><td>once/day, 08:15, before market open</td><td>full owner candidate universe</td><td>yes</td></tr>
+<tr><td><strong>REFRESH</strong></td><td>every 15 min while the session is open (09:15–15:30)</td><td>full universe</td><td>yes</td></tr>
+<tr><td><strong>CLOSING</strong></td><td>once/day, at/after 15:45 and session close</td><td>full universe</td><td>yes</td></tr>
+<tr><td><strong>FAST</strong> *(opt-in)*</td><td>every 5 min while the session is open</td><td>only symbols with a current decision, capped at 400, single 5-minute timeframe</td><td><strong>no</strong> — REFRESH already keeps daily candles correct; FAST exists purely to keep intraday/decision freshness tighter between full cycles without competing for the same rate-limited Kite historical endpoint</td></tr>
+</tbody></table></div>
+<p>Every trigger is suppressed entirely on a non-trading day (weekend/holiday), determined via the trading calendar — not just wall-clock time-of-day, since Kite's own quotes are legitimately frozen at the last real close on a closed day.</p>
+<p><strong>Reliability model:</strong> a single symbol with a stale or invalid dataset is quarantined and skipped individually — it no longer aborts the entire cycle and discards every other symbol's already-fetched, already-valid data. This is visible, not hidden: the persisted run record carries a <code>datasets_quarantined</code> count and the exact dataset IDs skipped.</p>
+<p><strong>On-demand validation</strong>, distinct from the scheduled cadences above, is available two ways: the dashboard's "Revalidate" action (up to 20 symbols, synchronous), and an owner-triggered full-universe background validation job (single-flight, progress-polled) — both reuse the exact same scoped-ingest-then-score mechanics as the scheduled cycles.</p>
+<hr/>
+<h2 id="17-the-dashboard-day-to-day-workflow">17. The Dashboard — Day-to-Day Workflow</h2>
+<p>Five tabs, each backing a distinct part of the trader's actual workflow:</p>
+<div class="diagram-card"><pre class="mermaid">flowchart LR
+    OV[&quot;Overview&lt;br/&gt;portfolio status,&lt;br/&gt;NAV/day-change&quot;]
+    MI[&quot;Market Intelligence&lt;br/&gt;regime · F-5 health ring ·&lt;br/&gt;Index Leadership ·&lt;br/&gt;Top Opportunities Today ·&lt;br/&gt;Validation Pipeline funnel ·&lt;br/&gt;Universe table&quot;]
+    ST[&quot;Strategies&lt;br/&gt;strategy profiles &amp;amp;&lt;br/&gt;selection rules&quot;]
+    DT[&quot;Decisions &amp;amp; Trace&lt;br/&gt;the action board:&lt;br/&gt;Trade / Watch / No-trade,&lt;br/&gt;full reasoning trace per symbol&quot;]
+    OP[&quot;Operations&lt;br/&gt;Kite auth, backups,&lt;br/&gt;diagnostics, restart&quot;]
+
+    OV -.-&gt; MI -.-&gt; DT
+    MI -.-&gt; ST
+    DT -.-&gt; OP</pre></div>
+<ul>
+<li><strong>Overview</strong> — portfolio status: cash, positions, NAV trend, day change.</li>
+<li><strong>Market Intelligence</strong> — the market-wide picture: the regime/F-5 health ring (§7), Index Leadership (real index price-change ranking — computationally independent of Sector Health, see the note in §8), Top Opportunities Today (sector-ranked, highest-conviction qualified symbols, each with a "Revalidate" and "Open decision" action), the Validation Pipeline funnel (Universe → Eligible → Filtered → Watch → Trade counts for the day), and the Universe table (every tracked instrument's eligibility state).</li>
+<li><strong>Strategies</strong> — which strategy profile is active and its selection rules.</li>
+<li><strong>Decisions &amp; Trace</strong> — the actual working surface: a left-hand action board grouped by decision type (expired-plan <code>TRADE</code>s are excluded from the live board — they move to history, keeping this a current action list, not an audit log), a center detail panel with five tabs (<strong>Trade Plan</strong>, <strong>Analysis</strong>, <strong>Market Context</strong>, <strong>Response</strong>, <strong>History</strong>), and a right-hand Reasoning Trace panel that lets the owner click any pipeline stage to jump straight to where that value lives in the brief. The board and the header ticker auto-refresh every 60 seconds while the tab is open — no manual refresh needed to see newly-persisted decisions.</li>
+<li><strong>Operations</strong> — Kite session status and re-auth flow, database backups/restore, diagnostics, and a server restart control.</li>
+</ul>
+<p><strong>The owner's actual response to a decision is recorded, not inferred</strong>: the "Response" tab lets the owner mark a decision <code>ACCEPTED</code> / <code>REJECTED</code> / <code>IGNORED</code> with notes, and — for accepted decisions the owner actually took — log the realized entry/exit fill. PnL and plan adherence are computed server-side from the persisted <code>TradePlan</code>, never client-supplied, so every recorded outcome is deterministic and independently reconstructible.</p>
+<hr/>
+<h2 id="18-data-layer-kite-integration">18. Data Layer &amp; Kite Integration</h2>
+<p><strong>Ingestion</strong> (<code>LiveIngestionEngine</code>) runs one cycle at a time: fetch daily candles (if scoped), fetch intraday candles for each configured timeframe, fetch quotes (batched — up to 500 instruments per single Kite call), fetch a market snapshot (index levels, VIX, breadth), and optionally institutional flow (FII/DII, once per session). Every fetched dataset is validated (OHLC sanity, duplicate detection, freshness vs. the trading calendar, gap detection) before being written; a failing dataset is quarantined and skipped, not silently accepted or allowed to abort the whole cycle.</p>
+<p><strong>Persistence</strong> is a single SQLite file in WAL mode. Daily candles for the still-forming trading day are deliberately re-fetched and overwritten on every cycle until the session closes (an intraday quote of "today's candle" is not final until the close print settles) — closed prior days are never re-touched, since their close is immutable.</p>
+<p><strong>Kite rate limits</strong> (from <code>config/providers/kite.json</code>, respected by the transport layer automatically): historical candle calls ≈ 3/second (0.334s minimum interval, applied per symbol), quote calls batch up to 500 symbols per request at 1/second, everything else at 10/second. This is why the FAST cadence (§16) deliberately excludes daily candles and caps its symbol count — a full-universe historical re-fetch every few minutes would both exceed what's useful and compete with the regular cadence for the same rate-limited endpoint.</p>
+<p><strong>Provider independence</strong> (<span class="doc-ref" title="Repo doc: adr/ADR-002-broker-abstraction.md">ADR-002</span>, <span class="doc-ref" title="Repo doc: adr/ADR-008-institutional-flow-provider.md">ADR-008</span>): business logic never imports a concrete broker or data-vendor class directly — everything goes through a <code>MarketDataProvider</code>/<code>InstitutionalFlowProvider</code> Protocol, so a file-based fixture provider and the live Kite provider are interchangeable in every engine and every test.</p>
+<hr/>
+<h2 id="19-governance-non-negotiables">19. Governance &amp; Non-Negotiables</h2>
+<p>These are frozen, non-negotiable invariants — not conventions that can be relaxed for convenience:</p>
+<ul>
+<li><strong>No order-placement code exists anywhere in this repository</strong>, under any milestone, ever — not a flag, not a future stub, not behind a feature toggle.</li>
+<li><strong>Every number ATHENA shows is explainable</strong>, and that explanation is computed and *persisted as data* by the engine that produced the value (<span class="doc-ref" title="Repo doc: adr/ADR-005-explainability-as-data.md">ADR-005</span>) — the API and dashboard render only; they never reconstruct or recompute a rationale after the fact.</li>
+<li><strong>Deterministic and replayable.</strong> Injected clocks (no <code>datetime.now()</code> inside analytical engines), <code>Decimal</code> money, timezone-aware timestamps throughout, no hidden state, no unseeded randomness.</li>
+<li><strong>Provider independence.</strong> Broker and market-data concerns sit behind Protocol abstractions; institutional cash-flow is its own separate Protocol.</li>
+<li><strong>Architecture is frozen.</strong> The system blueprint is the single source of truth for module boundaries; a genuine architectural limitation is resolved by writing an ADR and waiting for explicit approval — never by silently working around it.</li>
+<li><strong>Secrets live only in <code>.env</code></strong> (gitignored) — never in a committed config file.</li>
+</ul>
+<hr/>
+<h2 id="20-known-gaps-not-yet-implemented-behavior">20. Known Gaps &amp; Not-Yet-Implemented Behavior</h2>
+<p>A "no gaps" document has to be honest about *actual* gaps between the declared architecture and the live code, verified by direct inspection rather than assumed from documentation intent:</p>
+<ol>
+<li><strong>8 of the 12 canonical <code>DecisionType</code> values are never produced by any engine today</strong> — only <code>TRADE</code>, <code>WATCH</code>, <code>NO_TRADE</code>, <code>INSUFFICIENT_DATA</code> are live (§13). <code>WAIT</code>, <code>REDUCE_POSITION</code>, <code>INCREASE_POSITION</code>, <code>PARTIAL_EXIT</code>, <code>FULL_EXIT</code>, <code>AVOID_SECTOR</code>, <code>MARKET_CLOSED</code>, and <code>DATA_VALIDATION_FAILED</code> are consumed downstream but never constructed.</li>
+<li><strong>Circuit-limit risk (ADR-006) is proposed, not implemented.</strong> No <code>circuit_proximity_risk</code> risk dimension and no circuit-limit fields on <code>Quote</code> exist in the running code yet.</li>
+<li><strong>Sector Health does not feed Scoring or Decisions in production</strong>, despite the scoring engine being able to accept it — the live scan path never supplies it, so <code>sector_quality</code> is <code>UNKNOWN</code> in every real run today (§8, §10). It's computed purely for dashboard display.</li>
+<li><strong>Sector breadth is always <code>SECTOR_BREADTH_UNKNOWN</code></strong> in production — the constituent-level breadth input it needs is deferred to a future Universe Engine milestone.</li>
+<li><strong><code>config/risk.json</code>'s daily-loss / consecutive-loss / no-trade circuit-breaker policy</strong> is schema-validated on load, but no confirmed runtime enforcement point was found during this pass — treat as configured, not confirmed-enforced, pending a direct verification.</li>
+<li><strong>The frozen <code>Evidence</code>/<code>EvidenceCategory</code> domain contract</strong> (11 categories, the eventual input to a fully evidence-driven Decision Engine) is defined but never instantiated by any live engine — the actual live evidence mechanism is the coarser <code>EvidenceSource</code>/<code>EvidenceBundle</code> pipeline described in §9.</li>
+<li><strong><code>TradePlan.risk_reward</code> is a fixed constant (2.0)</strong> under current config — both the stop and target distances scale off the same ATR value, so it is not a variable, instrument-specific ratio despite superficially resembling one.</li>
+<li><strong><code>config/universe.json</code>'s <code>include_index_constituents</code> and <code>custom_symbols</code> fields are validated but never read</strong> by the Universe engine — currently inert, likely reserved for a future universe-seeding capability distinct from candidate seeding.</li>
+</ol>
+<p>None of these are correctness bugs — they are architecture that has been deliberately staged milestone by milestone, per this project's own phase discipline. They're listed here so this document never implies more is live than actually is.</p>
+<hr/>
+<h2 id="21-glossary">21. Glossary</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Term</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td><strong>Composite score</strong></td><td>Scoring engine's single 0–100 weighted-mean output across its six components</td></tr>
+<tr><td><strong>Confidence</strong></td><td>How trustworthy the current evaluation is (data completeness/agreement) — *not* a prediction of outcome</td></tr>
+<tr><td><strong>Decision</strong></td><td>The terminal, persisted artifact of one pipeline run for one instrument: a type, a direction, gate results, and (if <code>TRADE</code>) a <code>TradePlan</code></td></tr>
+<tr><td><strong>Evidence Bundle</strong></td><td>The provenance-preserving aggregate of every upstream artifact for one cycle</td></tr>
+<tr><td><strong>F-5</strong></td><td>The Market Health Score's six-component numeric contract</td></tr>
+<tr><td><strong>Quality Gate</strong></td><td>One of six pass/fail checks (<code>DATA</code>, <code>EVIDENCE</code>, <code>RISK</code>, <code>EXPLAINABILITY</code>, <code>CONFIDENCE</code>, <code>MARKET</code>) that a <code>TRADE</code> decision must clear every one of</td></tr>
+<tr><td><strong>Regime</strong></td><td>The market's current trend/volatility/gap classification</td></tr>
+<tr><td><strong>Risk</strong></td><td>Exposure/uncertainty score — higher is riskier, independent of opportunity</td></tr>
+<tr><td><strong>TradePlan</strong></td><td>Entry/stop/target/validity window attached only to <code>TRADE</code> decisions</td></tr>
+<tr><td><strong>Universe</strong></td><td>The set of instruments that currently pass all eligibility rules</td></tr>
+</tbody></table></div>
+<hr/>
+<h2 id="22-complete-configuration-reference">22. Complete Configuration Reference</h2>
+<p>Every numeric threshold cited in this document, by file, for quick lookup:</p>
+<div class="table-wrap"><table>
+<thead><tr><th>File</th><th>Key</th><th>Value</th></tr></thead>
+<tbody>
+<tr><td><code>universe.json</code></td><td>min_avg_daily_volume</td><td>500,000</td></tr>
+<tr><td><code>universe.json</code></td><td>min_trading_history_days</td><td>30</td></tr>
+<tr><td><code>universe.json</code></td><td>min_history_completeness</td><td>0.9</td></tr>
+<tr><td><code>indicators.json</code></td><td>sma / ema / rsi / atr / volume_ma periods</td><td>20 / 21 / 14 / 14 / 20</td></tr>
+<tr><td><code>indicators.json</code></td><td>macd fast/slow/signal</td><td>12 / 26 / 9</td></tr>
+<tr><td><code>indicators.json</code></td><td>adx period</td><td>14</td></tr>
+<tr><td><code>regime.json</code></td><td>trend_ma_fast / trend_ma_slow</td><td>20 / 50</td></tr>
+<tr><td><code>regime.json</code></td><td>high_volatility_vix / low_volatility_vix</td><td>20.0 / 12.0</td></tr>
+<tr><td><code>regime.json</code></td><td>gap_pct_threshold</td><td>0.5%</td></tr>
+<tr><td><code>market_health.json</code></td><td>breadth strong/weak/min_coverage</td><td>0.60 / 0.40 / 0.70</td></tr>
+<tr><td><code>market_health.json</code></td><td>liquidity min_members / healthy / weak turnover</td><td>50 / ₹5cr / ₹1cr</td></tr>
+<tr><td><code>market_health.json</code></td><td>institutional max_age_sessions</td><td>3 sessions</td></tr>
+<tr><td><code>market_health.json</code></td><td>weights (sum 100)</td><td>trend_quality 20, breadth 20, liquidity 15, volatility 15, institutional 15, gap 15</td></tr>
+<tr><td><code>sector_health.json</code></td><td>trend / momentum / volatility windows</td><td>30 / 11 / 21 candles</td></tr>
+<tr><td><code>scoring.json</code></td><td>weights (sum 100)</td><td>trend 20, momentum 20, market_quality 20, sector_quality 15, technical_structure 15, liquidity 10</td></tr>
+<tr><td><code>confidence.json</code></td><td>weights (sum 100)</td><td>20/20/15/15/15/15</td></tr>
+<tr><td><code>confidence.json</code></td><td>level bands</td><td>&lt;40 LOW, 40–69 MEDIUM, ≥70 HIGH</td></tr>
+<tr><td><code>risk_assessment.json</code></td><td>weights (sum 100)</td><td>20/20/20/15/15/10</td></tr>
+<tr><td><code>decision.json</code></td><td>min_composite_for_trade / watch_composite</td><td>60 / 50</td></tr>
+<tr><td><code>decision.json</code></td><td>min_confidence_for_trade / max_risk_for_trade</td><td>50 / 50</td></tr>
+<tr><td><code>decision.json</code></td><td>min_evidence_completeness / market_floor</td><td>0.5 / 40</td></tr>
+<tr><td><code>decision.json</code></td><td>atr_stop_multiple / atr_target_multiple</td><td>1.5 / 3.0</td></tr>
+<tr><td><code>decision.json</code></td><td>validity_hours</td><td>6</td></tr>
+<tr><td><code>decision.json</code></td><td>freshness_warn / stale fraction</td><td>0.5 / 0.8</td></tr>
+<tr><td><code>sizing.json</code></td><td>model / rounding</td><td>WHOLE_SHARE / ROUND_DOWN</td></tr>
+<tr><td><code>capital.json</code></td><td>total_capital / reserved / max per-position / max per-sector</td><td>₹10,00,000 / 20% / 10% / 30%</td></tr>
+<tr><td><code>scheduling.json</code></td><td>refresh interval</td><td>15 min</td></tr>
+<tr><td><code>scheduling.json</code></td><td>fast interval / max_symbols</td><td>5 min / 400</td></tr>
+<tr><td><code>providers/kite.json</code></td><td>historical / quote batch / other rate limits</td><td>3/s · 500/batch @ 1/s · 10/s</td></tr>
+</tbody></table></div>
+<hr/>
+<p>*This document reflects the codebase as of 2026-08-07. Every threshold above is read from the actual configuration files, not from design intent — if a value in production config changes, this table should be regenerated alongside it.*</p>
+<p>&lt;/content&gt;</p>
+      <div class="footer-note">Generated from the live codebase, 2026-08-07 — every threshold cited is read from the actual configuration files, not design intent.</div>
+    </div>
+  </main>
+</div>
+
+<script>
+  var toggle = document.getElementById('tocToggle');
+  var nav = document.getElementById('tocNav');
+  if (toggle) {
+    toggle.addEventListener('click', function () { nav.classList.toggle('open'); });
+  }
+  var links = Array.prototype.slice.call(document.querySelectorAll('.toc-link'));
+  var headings = links.map(function (l) {
+    return document.getElementById(l.getAttribute('href').slice(1));
+  });
+  function onScroll() {
+    var pos = window.scrollY + 120;
+    var activeIdx = 0;
+    for (var i = 0; i < headings.length; i++) {
+      if (headings[i] && headings[i].offsetTop <= pos) activeIdx = i;
+    }
+    links.forEach(function (l, i) { l.classList.toggle('active', i === activeIdx); });
+  }
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+</script>
+
+<!--
+  This file is a standalone, self-contained copy of the same document
+  published as a Claude Artifact (which renders Mermaid natively, no script
+  needed there). Opened directly -- as a plain file, via GitHub Pages, etc.
+  -- there is no such runtime, so this copy loads Mermaid itself.
+-->
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>
+  var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  mermaid.initialize({ startOnLoad: true, theme: prefersDark ? 'dark' : 'default', securityLevel: 'loose' });
+</script>
