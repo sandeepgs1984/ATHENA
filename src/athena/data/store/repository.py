@@ -53,18 +53,33 @@ class IntegrityReport:
 class SqliteRepository:
     """A trusted local ledger over a single SQLite file.
 
-    The connection is created with ``check_same_thread=False`` so FastAPI (and
-    other multi-threaded callers) may share one repository instance. All access
-    is serialized through an ``RLock`` because a sqlite3 connection is not
-    otherwise thread-safe.
+    The write connection is created with ``check_same_thread=False`` so
+    FastAPI (and other multi-threaded callers) may share one repository
+    instance; all writes are serialized through an ``RLock`` because a
+    sqlite3 connection is not otherwise thread-safe. This class's own
+    persisted schema uses ``journal_mode=WAL`` (ADR-009), which normally
+    allows readers and writers to proceed concurrently and allows multiple
+    readers to proceed concurrently with each other. Reads (``_query_one``/
+    ``_query_all``) do not share the write connection/lock: each thread that
+    performs a read lazily opens and reuses its own dedicated read-only
+    connection (``mode=ro``, via ``threading.local()``), so concurrent reads
+    are not serialized against each other or against an in-flight write.
+    See ADR-009 (``docs/adr/ADR-009-repository-read-concurrency.md``) for the
+    full rationale, the read-connection lifecycle, and its stated limits.
     """
 
     def __init__(self, db_path: str | Path) -> None:
         self._path = str(db_path)
         self._lock = threading.RLock()
+        # ADR-009: each thread's own lazily-created, read-only connection.
+        # threading.local() already guarantees one thread never sees another
+        # thread's `.conn` — see close_read_connection() for the cleanup
+        # this pairs with.
+        self._read_local = threading.local()
         try:
             # check_same_thread=False: API process opens repo at startup, then
-            # request threads reuse it. Access is still serialized via _lock.
+            # request threads reuse it. Write access is still serialized via
+            # _lock; reads use their own per-thread connection (ADR-009).
             self._conn = sqlite3.connect(
                 self._path,
                 isolation_level="DEFERRED",
@@ -123,7 +138,24 @@ class SqliteRepository:
         if "sector" not in cols:
             self._conn.execute("ALTER TABLE instruments ADD COLUMN sector TEXT")
 
+    def close_read_connection(self) -> None:
+        """Close *this calling thread's own* read-only connection, if it has
+        one — never another thread's (ADR-009). This is the per-thread
+        cleanup hook: call it from a thread that is done issuing reads
+        through this repository (e.g. a short-lived worker/task, or the
+        thread that is also calling ``close()``) before that thread exits.
+        A thread that never calls this and terminates without one is
+        reclaimed by normal Python/OS teardown, not by this method — see
+        ADR-009's stated limitation; there is no central registry that
+        could close it on the thread's behalf.
+        """
+        conn = getattr(self._read_local, "conn", None)
+        if conn is not None:
+            conn.close()
+            self._read_local.conn = None
+
     def close(self) -> None:
+        self.close_read_connection()
         with self._lock:
             self._conn.close()
 
@@ -971,16 +1003,54 @@ class SqliteRepository:
         except sqlite3.Error as exc:
             raise RepositoryError(f"write failed: {exc}") from exc
 
+    def _read_connection(self) -> sqlite3.Connection:
+        """ADR-009: the calling thread's own lazily-created, read-only
+        connection (``mode=ro`` — physically incapable of writing, not just
+        by convention). Created on first use per thread and reused for the
+        thread's lifetime; never shared across threads (``threading.local``
+        guarantees this). Opening it here, on first actual read rather than
+        at repository construction, means it only ever opens after
+        ``initialize()`` has already run schema setup on the write
+        connection.
+
+        Not used for an in-memory (``:memory:``) database: a second
+        connection to ``:memory:`` is a distinct, empty database, not
+        another handle onto the same one — there is no file to attach a
+        read-only connection to. ``_query_one``/``_query_all`` detect this
+        and fall back to the shared write connection/lock instead, exactly
+        as before ADR-009. This only affects the small number of
+        deliberately throwaway, single-use, in-process shadow repos this
+        codebase creates (e.g. config-preview and canary replay) — the
+        concurrency benefit this ADR targets is for the real, file-backed
+        database FastAPI and the scheduler share.
+        """
+        conn = getattr(self._read_local, "conn", None)
+        if conn is None:
+            try:
+                conn = sqlite3.connect(
+                    f"file:{self._path}?mode=ro", uri=True, check_same_thread=True
+                )
+            except sqlite3.Error as exc:
+                raise RepositoryError(
+                    f"cannot open read connection at {self._path}: {exc}"
+                ) from exc
+            self._read_local.conn = conn
+        return conn
+
     def _query_one(self, sql: str, params: tuple) -> tuple | None:
         try:
-            with self._lock:
-                return self._conn.execute(sql, params).fetchone()
+            if self._path == ":memory:":
+                with self._lock:
+                    return self._conn.execute(sql, params).fetchone()
+            return self._read_connection().execute(sql, params).fetchone()
         except sqlite3.Error as exc:
             raise RepositoryError(f"query failed: {exc}") from exc
 
     def _query_all(self, sql: str, params: tuple = ()) -> list[tuple]:
         try:
-            with self._lock:
-                return self._conn.execute(sql, params).fetchall()
+            if self._path == ":memory:":
+                with self._lock:
+                    return self._conn.execute(sql, params).fetchall()
+            return self._read_connection().execute(sql, params).fetchall()
         except sqlite3.Error as exc:
             raise RepositoryError(f"query failed: {exc}") from exc

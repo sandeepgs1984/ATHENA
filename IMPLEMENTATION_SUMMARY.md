@@ -6,6 +6,52 @@ status updated on approval.
 
 ---
 
+## Fix pass: pipelines/runs N+1 detail-fetch made every validate 20-30s+ (owner-reported, found post-ADR-009)
+
+| | |
+|---|---|
+| Completed | 2026-08-10 |
+| Objective | After M-PERF-1 (ADR-009) shipped and measurably removed SQLite read-lock contention, a single-symbol ABLBL validate still took ~29-30s. Required root-causing with hard evidence rather than assuming ADR-009 hadn't worked |
+| Scope | Traced precisely from the live server log: `POST /candidates` → `POST /validate` completed in 6s (fine); the remaining ~24s was `GET /api/v1/pipelines/runs` sitting unanswered. Direct timing against the real `db/athena.db` confirmed the cause has nothing to do with locking: `SqlitePipelineRunProvider.get_runs()` fetched `list_runs(limit=500)` then called `get_run_detail(run_id)` — fetching and JSON-parsing each run's `detail_json` — once per row, before filtering/sorting/paging down to the 100 actually requested. This table's `detail_json` blobs run up to ~6MB each (1.6GB total across all runs) — measured at 8.795s for the full call, confirming ADR-009 had successfully removed contention but exposed this second, independent bug underneath it. First fix attempt (a single query fetching all 500 rows' `detail_json` at once) made it *worse* (19s) — fetching that much data as one buffered result set costs more than N small round-trips; reverted rather than shipped. Correct fix: `overall_status`/`as_of`/`run_id` (everything `filter_func`/`sort_func` need) are already on the cheap `RunRecord` `list_runs()` returns — filter, sort, and paginate on that first, and only fetch/parse `detail_json` for the run_ids that survive onto the actual page. Result: 8.795s → ~2.0-2.2s (~4.3x), stable across repeated runs |
+| Files created | `tests/api/v1/test_pipeline_runs_provider.py` |
+| Files modified | `src/athena/api/v1/providers/sqlite_providers.py` |
+| Public APIs added | None — `get_runs()`'s contract, inputs, and outputs are unchanged; only when `detail_json` gets fetched changed |
+| Tests | 4 new: sort order (newest first by default), filter by `overall_status`, pagination correctness across 3 pages, detail data still correctly populated on returned items (proving the restructuring didn't silently drop data for rows that DO make the page). Full suite: **1314 passed** (1310 + 4 new). Ruff clean |
+| Coverage | Verified output-equivalence directly: same filter/sort/pagination results as the original N+1 implementation, confirmed via the new correctness tests rather than assumed from the performance win alone |
+| Architecture compliance | Presentation/read-path fix only; no domain, score, decision, or TradePlan logic touched; no schema change; no public API change |
+| ADR compliance | None required — ordinary bug fix, not an architecture change |
+| Risks discovered | The same `list_runs(...)` → per-row `get_run_detail(...)` pattern exists in several other places (`diagnostics/service.py`, `market_summary_service.py`, `candidates_service.py`, `opportunities_service.py`, `owner_validation.py`, `notifications/builder.py`) — not touched here, deliberately scoped to only the endpoint actually measured and reported. Flagged for a separate look, not fixed speculatively |
+| Technical debt introduced | None |
+| Suggested improvements | Audit the other N+1 call sites listed above if `runs.detail_json` continues to grow: this table's blob size (up to 6MB/row) is itself worth a separate look at *why* — likely full universe-member snapshots being persisted per cycle — but that's a data-shape question, not something addressed in this fix |
+| Remaining work | None — owner live-tested multiple symbols post-restart, confirmed under 10s |
+| Status | ✅ Approved |
+| Branch | feature/live-dashboard |
+
+---
+
+## M-PERF-1: SQLite read-concurrency split (ADR-009)
+
+| | |
+|---|---|
+| Completed | 2026-08-10 |
+| Objective | Remove unnecessary SQLite read serialization while preserving ATHENA's proven write correctness and the existing `SqliteRepository` API contract — nothing more. `SqliteRepository` serialized every read and write through one shared connection + `RLock`, discarding the concurrency `journal_mode=WAL` normally provides. Traced across a live debugging session to five distinct, individually-real bugs (FAST-tier cadence, a decisions-board 50-page cold-load walk, a `market_snapshots.ts` uniqueness bug, an unconditional per-tick Kite catalog fetch, and the decisions-cache cold-load path) plus this one structural pattern common to all of them, documented and approved as ADR-009 |
+| Scope | Exactly `_query_one`/`_query_all` now route through the calling thread's lazily-created, read-only (`mode=ro` URI) connection via `threading.local()`, reused for the thread's lifetime, never shared across threads. `_write`/`_write_many`, the shared write connection, the write `RLock`, transaction semantics, schema init/migration, backup, and integrity-check behavior are all completely unchanged. New `close_read_connection()` public method — the per-thread cleanup hook the owner's ADR review required; `close()` now also calls it for the calling thread. `journal_mode=WAL` is a database-file property, not per-connection, so new read connections pick up WAL semantics automatically. `:memory:` databases (config-preview's and canary's throwaway shadow repos) explicitly fall back to the shared connection/lock — a second connection to `:memory:` is a distinct, empty database, not another handle on the same one; this was discovered mid-implementation when it broke 7 existing tests, root-caused precisely, and fixed rather than worked around |
+| Files created | `docs/adr/ADR-009-repository-read-concurrency.md`, `tests/data_layer/test_repository_concurrency.py` |
+| Files modified | `src/athena/data/store/repository.py`, `ATHENA_BRIEFING.md`, `docs/MILESTONES.md` |
+| Public APIs added | `SqliteRepository.close_read_connection()` — additive; every existing public method keeps its exact signature and behavior |
+| Tests | 12 new (`test_repository_concurrency.py`): reads don't wait on a slow write transaction; concurrent reads don't serialize behind each other; concurrent writes still serialize correctly with no lost updates (existing model, not new retry/backoff); committed writes visible without reconnect/checkpoint (same-thread and cross-thread); read connections physically reject writes at the SQLite level; per-thread lifecycle (create/reuse/cleanup/isolation/lazy recreation after cleanup); cleanup is a no-op when nothing was ever opened; `close()` closes both the calling thread's read connection and the write connection; the `:memory:` fallback; before/after timing reproductions of the ABLBL-validate-vs-`loadMarketIntelligence()` scenario and the Portfolio Overview cold-load scenario. Full suite: **1310 passed** (1298 + 12 new) |
+| Coverage | Every ADR-009 acceptance-test item implemented and passing; before/after evidence captured directly (see Performance below) rather than asserted qualitatively |
+| Architecture compliance | Matches ADR-009 exactly — verified via `git diff` review of `repository.py` before finalizing: only `_query_one`/`_query_all` behavior changed, `_write`/`_write_many` have zero diff, no public signature changed except the additive `close_read_connection()` |
+| ADR compliance | ADR-009 (Accepted 2026-08-10) — ADR is not just referenced but the source of the implementation's exact shape (owner refined it through three review rounds before approval) |
+| Risks discovered | The `:memory:` connection-sharing gap above — real, would have silently broken config-preview and canary replay in production had it shipped unnoticed; caught by the full suite, not by the ADR's own test plan (which didn't anticipate in-memory databases), noted here so the ADR's own blind spot is on record |
+| Technical debt introduced | None. Documented, accepted limitation (per ADR-009, explicitly approved): a thread that terminates without calling `close_read_connection()` has its read connection reclaimed by normal Python/OS teardown, not an explicit close — by design, not deferred work, since the alternative (a global connection registry) was explicitly rejected in the ADR to keep Option C small |
+| Suggested improvements | ADR-009 Option A (full connection-per-thread pool, remove the write lock) is explicitly out of scope and only worth revisiting if write-vs-write contention is ever independently measured as a real bottleneck — nothing in this investigation showed that. The `loadMarketIntelligence()`/Operations-tab request-volume pattern observed during the ABLBL trace is a separate, frontend-side concern noted in the ADR as future work, not addressed here |
+| Remaining work | None — Design → Implement → Test → Self-Validate → Milestone Review Summary → Owner/Chief Architect approval all complete; owner live-tested and confirmed |
+| Status | ✅ Approved |
+| Branch | feature/live-dashboard |
+
+---
+
 ## Fix pass: Market Intelligence quick-action polish + Top Opportunities modal (owner-reported)
 
 | | |

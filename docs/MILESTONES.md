@@ -3004,4 +3004,52 @@ pruned when already under the keep count). Full suite: **1257 passed**.
 
 ---
 
+---
+
+### M-PERF-1: SQLite read-concurrency split (ADR-009) — approved
+
+**Objective:** remove unnecessary SQLite read serialization while preserving
+ATHENA's proven write correctness and the existing `SqliteRepository` API
+contract — nothing more. Follows [ADR-009](adr/ADR-009-repository-read-concurrency.md)
+(Accepted), itself written from evidence gathered across a live debugging
+session that traced five distinct, individually-real bugs plus one
+structural pattern: `SqliteRepository` serialized every read and write
+through one shared connection + `RLock`, discarding the concurrency its own
+`journal_mode=WAL` normally provides.
+
+**Scope, exactly as ADR-009 specifies:** `_write`/`_write_many` unchanged;
+`_query_one`/`_query_all` now route through the calling thread's
+lazily-created, read-only (`mode=ro`) connection via `threading.local()`.
+No public method signature changed. `:memory:` databases (config-preview and
+canary's throwaway shadow repos) fall back to the shared connection/lock
+unchanged — a second connection to `:memory:` would be a distinct, empty
+database, discovered and fixed during implementation when it broke 7
+existing tests.
+
+**Tests:** `tests/data_layer/test_repository_concurrency.py` (12 new) covers
+every ADR-009 acceptance item — reads don't wait on a slow write, concurrent
+reads don't serialize, existing write serialization is unchanged, read-after-
+write visibility (same-thread and cross-thread), read connections are
+physically read-only, per-thread lifecycle/cleanup/isolation/recreation, the
+`:memory:` fallback, and before/after timing reproductions of both the
+ABLBL-validate-vs-`loadMarketIntelligence()` scenario and the Portfolio
+Overview cold-load scenario traced live. Full suite: **1310 passed**, Ruff
+clean (zero new violations beyond the 5 pre-existing, unrelated warnings
+already in `repository.py` at HEAD).
+
+See the Milestone Review Summary (delivered to the owner in-session) for
+full before/after measurements, scope-compliance diff review, and write-path
+regression verification.
+
+A second, independent bottleneck (`SqlitePipelineRunProvider.get_runs()`'s
+N+1 detail-fetch, ~8.8s standalone, unrelated to locking) was found
+underneath this fix once it removed the contention masking it, and fixed
+separately — see `IMPLEMENTATION_SUMMARY.md`'s "pipelines/runs N+1
+detail-fetch" entry, not part of ADR-009's own scope.
+
+Status: ✅ Approved — owner live-tested multiple symbols post-restart,
+confirmed under 10s end to end.
+
+---
+
 *Status legend: a milestone is "In Progress" (🔄) when actively being designed or built, "Approved" (✅) only when the owner signs off. Never two milestones in flight.*

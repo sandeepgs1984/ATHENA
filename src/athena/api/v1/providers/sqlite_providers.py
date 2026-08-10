@@ -382,25 +382,45 @@ class SqlitePipelineRunProvider:
     def get_runs(
         self, spec: QuerySpecification[PipelineRunFilterParams]
     ) -> CollectionResult[SystemPipelineResult]:
-        runs = [
-            self._to_system_result(r)
-            for r in self._repo.list_runs(limit=500)
-        ]
+        # Owner-reported (2026-08-10): this used to build a full
+        # SystemPipelineResult — which requires fetching + JSON-parsing each
+        # run's detail_json — for all 500 runs before filtering/sorting/
+        # paging down to a fraction of that. This table's detail_json blobs
+        # run up to several MB each (1.6GB total measured across all runs),
+        # so touching all 500 costs 7-19s regardless of whether it's one
+        # query or many — the cost is the data volume, not the round trips.
+        # overall_status/as_of/run_id (everything filter_func/sort_func
+        # need) are already on the cheap RunRecord returned by list_runs(),
+        # so filter+sort+paginate on that first, and only fetch/parse
+        # detail_json for the run_ids that actually survive onto the page.
+        records = self._repo.list_runs(limit=500)
 
-        def filter_func(item: SystemPipelineResult) -> bool:
-            f = spec.filters
-            return not (
-                f.overall_status
-                and item.overall_status.value != f.overall_status
+        def record_overall_status(record) -> str:
+            status = (
+                PipelineStatus.SUCCESS
+                if record.status == RunStatus.COMPLETED
+                else PipelineStatus.FAILED
             )
+            return status.value
 
-        def sort_func(item: SystemPipelineResult) -> Any:
+        def filter_func(record) -> bool:
+            f = spec.filters
+            return not (f.overall_status and record_overall_status(record) != f.overall_status)
+
+        def sort_func(record) -> Any:
             sort_by = spec.sort.sort_by
             if sort_by in ("as_of", "started_ts", None, ""):
-                return item.as_of
-            return item.run_id
+                return record.started_ts
+            return record.run_id
 
-        return apply_query_spec(runs, spec, filter_func, sort_func)
+        paged = apply_query_spec(records, spec, filter_func, sort_func)
+        items = tuple(self._to_system_result(r) for r in paged.items)
+        return CollectionResult(
+            items=items,
+            total_count=paged.total_count,
+            page=paged.page,
+            page_size=paged.page_size,
+        )
 
     def get_run(self, run_id: str) -> SystemPipelineResult | None:
         record = self._repo.get_run(run_id)
