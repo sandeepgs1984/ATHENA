@@ -21,7 +21,9 @@ milestones that will actually consume them.
 
 from __future__ import annotations
 
+import hashlib
 import json
+from decimal import Decimal
 from pathlib import Path
 from typing import Literal
 
@@ -66,26 +68,79 @@ class DarvaxDatabaseConfig(_Strict):
     )
 
 
+class DarvaxBoxConfig(_Strict):
+    """Darvas box construction settings (DX-2 primitive, wired here in DX-3)."""
+
+    confirmation_bars: int = Field(
+        default=3, ge=1, le=50,
+        description=(
+            "Bars a ceiling/floor must survive unbeaten to be confirmed. The "
+            "deck states no number; 3 is the value used by the classical Darvas "
+            "implementations it links to."
+        ),
+    )
+
+
+class DarvaxSwingConfig(_Strict):
+    """ZigZag swing settings (deck p.32)."""
+
+    threshold_pct: Decimal = Field(
+        default=Decimal("5"), gt=Decimal(0), le=Decimal(100),
+        description="Reversal percentage that confirms a ZigZag pivot.",
+    )
+
+
+class DarvaxBreakoutConfig(_Strict):
+    """Box breakout / retest recognition (deck p.28 'Breakout-Retest', p.44)."""
+
+    retest_tolerance_pct: Decimal = Field(
+        default=Decimal("2"), gt=Decimal(0), le=Decimal(25),
+        description=(
+            "How close price must come back to the box ceiling to count as a "
+            "retest, as a percentage of the ceiling. The deck shows retests "
+            "qualitatively (the #TRENT example) without naming a tolerance."
+        ),
+    )
+    stop_horizon: Literal[
+        "very_short_term", "swing", "positional", "investor"
+    ] = Field(
+        default="swing",
+        description=(
+            "Which rung of the EMA stop ladder applies (deck p.9). 'swing' is "
+            "the 10 EMA rung, matching ATHENA's own swing-trading focus."
+        ),
+    )
+
+
 class DarvaxMethodologyConfig(_Strict):
-    """Methodology parameters — schema and validation only in DX-1.
+    """Methodology parameters, owned entirely by DarvaX.
 
     ADR-010 §8 records that the source deck contradicts itself on stop sizing:
     Nicolas Darvas' canonical rule is a 10% stop on first breakout (deck p.67),
     while DarvaX's own "How to Play" says 1% (deck p.44). That contradiction is
     deliberately *not* settled in code — both are selectable, defaulting to the
     canonical attributable rule, and DX-5's evidence decides which is used.
+
+    Every numeric here is either quoted from the deck or, where the deck is
+    silent, carries a documented rationale — never an invented value presented
+    as the author's.
     """
 
-    stop_policy: Literal["canonical_darvas", "darvax_tight"] = Field(
+    stop_policy: Literal["canonical_darvas", "darvax_tight", "ema_ladder"] = Field(
         default="canonical_darvas",
-        description="Which documented stop rule to apply once DX-3 consumes it.",
+        description=(
+            "Which documented stop rule to apply. 'canonical_darvas' = 10% on "
+            "first breakout (deck p.67); 'darvax_tight' = 1% below entry (deck "
+            "p.44); 'ema_ladder' = close-below-EMA for the configured horizon "
+            "(deck p.9)."
+        ),
     )
-    canonical_stop_pct: float = Field(
-        default=10.0, gt=0.0, le=50.0,
+    canonical_stop_pct: Decimal = Field(
+        default=Decimal("10"), gt=Decimal(0), le=Decimal(50),
         description="Darvas' canonical first-breakout stop, deck p.67.",
     )
-    tight_stop_pct: float = Field(
-        default=1.0, gt=0.0, le=50.0,
+    tight_stop_pct: Decimal = Field(
+        default=Decimal("1"), gt=Decimal(0), le=Decimal(50),
         description="DarvaX's own tighter variant, deck p.44.",
     )
     ema_stop_ladder: dict[str, int] = Field(
@@ -97,6 +152,24 @@ class DarvaxMethodologyConfig(_Strict):
         },
         description="Close-below EMA exit ladder by horizon, deck p.9.",
     )
+    box: DarvaxBoxConfig = Field(default_factory=DarvaxBoxConfig)
+    swing: DarvaxSwingConfig = Field(default_factory=DarvaxSwingConfig)
+    breakout: DarvaxBreakoutConfig = Field(default_factory=DarvaxBreakoutConfig)
+
+    @model_validator(mode="after")
+    def _ladder_must_cover_the_selected_horizon(self) -> DarvaxMethodologyConfig:
+        horizon = self.breakout.stop_horizon
+        if horizon not in self.ema_stop_ladder:
+            raise ValueError(
+                f"ema_stop_ladder has no rung for breakout.stop_horizon "
+                f"{horizon!r}; available rungs: {sorted(self.ema_stop_ladder)}"
+            )
+        for name, period in self.ema_stop_ladder.items():
+            if period < 1:
+                raise ValueError(
+                    f"ema_stop_ladder[{name!r}] must be >= 1, got {period}"
+                )
+        return self
 
 
 class DarvaxConfig(_Strict):
@@ -110,6 +183,20 @@ class DarvaxConfig(_Strict):
     methodology: DarvaxMethodologyConfig = Field(
         default_factory=DarvaxMethodologyConfig
     )
+
+
+def methodology_digest(methodology: DarvaxMethodologyConfig) -> str:
+    """Stable short hash of the methodology settings.
+
+    Persisted alongside every DarvaX signal so a signal can always be traced
+    back to the exact parameters that produced it — the replayability
+    requirement in ADR-010 §10. Deterministic: same settings always yield the
+    same digest, and any change to any value changes it.
+    """
+    canonical = json.dumps(
+        methodology.model_dump(mode="json"), sort_keys=True, separators=(",", ":")
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
 
 
 def darvax_config_path(config_dir: Path | str) -> Path:

@@ -445,8 +445,10 @@ def test_inside_bar_first_bar_has_no_predecessor():
 
 
 def test_newest_first_input_is_rejected_with_an_actionable_message():
-    """The single most likely caller mistake: list_candles_recent() returns
-    newest-first, which would invert every measurement here."""
+    """A reversed series would invert every measurement here, so it must be
+    rejected rather than silently measured. The error also has to steer the
+    caller correctly: ATHENA's read methods already return oldest-first, so the
+    fix is to stop reversing, not to reverse."""
     chronological = _candles([10, 11, 12], [9, 10, 11])
     reversed_series = list(reversed(chronological))
     with pytest.raises(DarvaxPrimitiveError, match="list_candles_recent"):

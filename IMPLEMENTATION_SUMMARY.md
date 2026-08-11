@@ -6,6 +6,29 @@ status updated on approval.
 
 ---
 
+## DX-3: DarvaX signal engine, stop policies, persisted explanations (ADR-010)
+
+| | |
+|---|---|
+| Completed | 2026-08-11 |
+| Objective | Compose DX-2's measurements into a box breakout/retest state machine, attach the documented stop policies, and emit `DarvaxSignal` records carrying their own computed, persisted explanation — without DarvaX ever becoming readable by ATHENA's pipeline |
+| Scope | Six-state machine (`NO_BOX`, `BREAKOUT`, `BREAKOUT_RETEST`, `INSIDE_TOPMOST_BOX`, `BELOW_BOX_BOTTOM`, `NOT_IN_TOPMOST_BOX`), each citing its DAR-CARD rule with Darvas' verbatim wording (deck p.67). Three stop policies: canonical 10% (p.67), tight 1% (p.44, carrying ADR-010's recorded caution that it is implausibly tight), and the 5/10/20/200 EMA ladder (p.9), computed from DarvaX's **own** EMA — the duplication ADR-010 §Consequences pre-authorised rather than coupling to `athena.indicators`. Entry reference is the deck's own "above the Previous Day High" trigger (p.44). DX-2's constants wired into DarvaX-owned config (`box`, `swing`, `breakout` blocks). `darvax.db` schema bumped 1→2 with a `darvax_signals` table storing explanation + evidence + methodology digest |
+| Files created | `src/athena/darvax/signals/{__init__,models,ema,stops,engine}.py`, `tests/darvax/test_dx3_signals.py` |
+| Files modified | `src/athena/darvax/config.py` (methodology blocks + `methodology_digest`), `src/athena/darvax/store/{schema,repository}.py`, `src/athena/darvax/ports.py` and `primitives/_guards.py` (docstring/error-message correctness fix, below), `tests/darvax/test_dx2_primitives.py` (docstring), `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md` |
+| Public/Core ATHENA changes | **None.** Zero files under `src/athena/api/`, `config/`, `data/`, or `domain/` touched. ATHENA `SCHEMA_VERSION` still 12; DX-1's six-line seam unchanged |
+| Tests | 35 new (103 DarvaX total; full suite **1417 passed**). One test per state with the box geometry traced in comments; all three stop policies asserted to exact paise; EMA hand-worked one step past its seed (period 3 over [1,2,3,10] → seed 2, k 0.5, next 6); lossless persistence round-trip incl. the all-nulls `NO_BOX` case; idempotent re-save; determinism and stable `signal_id`; config digest changes when settings change; and two architectural guards — that `DarvaxSignal` is structurally not an ATHENA `Decision` and exposes no conversion bridge, and that `darvax.signals` imports nothing outside `athena.{darvax,domain,errors}` |
+| Coverage | Verified end-to-end against the **real** `db/athena.db` through the DX-1 read-only port across six instruments, exercising DX-1 + DX-2 + DX-3 together: states resolved coherently (TVSMOTOR/PAYTM breakout-retest above every ceiling, HINDALCO/TRENT inside their topmost box, ABLBL/SYNGENE below it), stops computed, explanations persisted and read back unchanged |
+| Architecture compliance | Deterministic (no clock — `as_of` is the final bar's own timestamp; `signal_id` derived from instrument + `as_of`, so replay is idempotent), `Decimal` throughout, explanations computed and persisted as data per ADR-005's principle, DarvaX writes only to `darvax.db` |
+| ADR compliance | ADR-010 DX-3 exactly. `DarvaxSignal` is never an ATHENA `Decision` (asserted, not just asserted in prose). No UI (DX-4), no backtesting (DX-5), no ATHENA-core modification |
+| Risks discovered | **Two real defects, both caught by running against live data rather than fixtures.** (1) A semantic inversion: rules A/B/D are phrased against the *topmost* box, but the engine initially referenced the most recently completed one — so NSE:TVSMOTOR, closing 4398 above every ceiling it ever formed (max 3807.90), reported rule D "no reason to HOLD or BUY", exactly backwards. Fixed to reference the topmost box, with the divergent latest box still surfaced in the evidence, plus a named regression test. (2) A documentation defect I introduced in DX-1: `list_candles_recent()` selects `DESC LIMIT N` then **reverses**, so it returns oldest-first — but my port docstring claimed newest-first and, worse, the guard's error message told callers to reverse it, which would have broken correct code. All three corrected |
+| Technical debt introduced | None |
+| Suggested improvements | The retest tolerance (2%) is the one parameter with no deck anchor at all — the deck shows retests only qualitatively via the #TRENT example. Worth revisiting once DX-5 can measure which value actually discriminates |
+| Remaining work | Owner/Chief Architect review of DX-3. DX-4 begins only on explicit approval |
+| Status | 🔄 Ready for owner review |
+| Branch | feature/live-dashboard |
+
+---
+
 ## DX-2: DarvaX deterministic methodology primitives (ADR-010)
 
 | | |
@@ -23,8 +46,8 @@ status updated on approval.
 | Risks discovered | One test expectation of mine was wrong and the code was right: I initially asserted a monotonic climb yields no ZigZag pivot, but a +40% rise legitimately *confirms* the opening low as a swing LOW (only the swing HIGH is absent, since price never reversed). Verified against the implementation before correcting the test, and split it into two tests that pin both halves of the semantics |
 | Technical debt introduced | None. Defaults (`confirmation_bars=3`, swing threshold 5%, contraction/volume windows and ratios) are named module constants with the deck page or convention cited, because the deck states no numbers for them. DX-3 will wire these to DarvaX config; they are deliberately *not* config fields yet, to avoid shipping config nothing reads |
 | Suggested improvements | The Darvas literature contains several box variants; the one implemented is documented step-by-step in `boxes.py` and matches the classical sources the deck links to. If the owner prefers a different variant, it is a parameter/algorithm swap in one module with no ripple |
-| Remaining work | Owner/Chief Architect review of DX-2. DX-3 begins only on explicit approval |
-| Status | 🔄 Ready for owner review |
+| Remaining work | None — DX-2 approved by owner 2026-08-11; DX-3 proceeded on that approval |
+| Status | ✅ Approved |
 | Branch | feature/live-dashboard |
 
 ---

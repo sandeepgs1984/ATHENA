@@ -37,7 +37,13 @@ class DarvaxMarketDataPort(Protocol):
     def recent_candles(
         self, instrument_id: str, timeframe: Timeframe, *, limit: int = 500
     ) -> Sequence[Candle]:
-        """Most recent candles for one instrument, newest-first bounded by limit."""
+        """The most recent ``limit`` candles for one instrument, **oldest-first**.
+
+        Order matters: DarvaX's primitives require chronological input and
+        validate it. The underlying repository selects the newest N descending
+        and then reverses them, so what arrives here is already chronological and
+        must not be reversed again.
+        """
         ...
 
     def candles_between(
@@ -47,5 +53,5 @@ class DarvaxMarketDataPort(Protocol):
         start: datetime,
         end: datetime,
     ) -> Sequence[Candle]:
-        """Candles for one instrument within an inclusive datetime range."""
+        """Candles for one instrument in an inclusive range, **oldest-first**."""
         ...

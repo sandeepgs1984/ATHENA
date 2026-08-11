@@ -3,10 +3,12 @@
 Every primitive validates its input the same way and fails loudly rather than
 returning a quietly-wrong answer. Two rules matter most:
 
-* **Chronological order is required and checked.** ATHENA's repository can hand
-  back candles either oldest-first (``get_candles``) or newest-first
-  (``list_candles_recent``), and silently accepting the wrong order would
-  invert every measurement here. Callers must pass oldest-first.
+* **Chronological order is required and checked.** Silently accepting a reversed
+  series would invert every measurement here, so order is validated rather than
+  trusted. Both of ATHENA's read methods already return oldest-first —
+  ``get_candles`` orders ascending, and ``list_candles_recent`` selects the most
+  recent N descending and then reverses them — so a caller passing either
+  straight through is correct and must **not** reverse.
 * **Single instrument, single timeframe.** Mixing instruments or timeframes into
   one series would produce a meaningless box or swing.
 """
@@ -52,7 +54,8 @@ def require_chronological_candles(
                 f"{what} requires candles oldest-first with strictly increasing "
                 f"timestamps; index {i} ({current.ts_open.isoformat()}) is not "
                 f"after index {i - 1} ({previous.ts_open.isoformat()}). "
-                "Note list_candles_recent() returns newest-first — reverse it."
+                "ATHENA's get_candles() and list_candles_recent() both already "
+                "return oldest-first — pass them through without reversing."
             )
 
 
