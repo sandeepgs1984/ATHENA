@@ -12,11 +12,15 @@ No DarvaX methodology field may ever appear in an ``athena.config`` model. The
 fact that both files live under ``config/`` is a filesystem convention, not a
 shared-ownership claim.
 
-DX-1 note: the methodology block below is **schema only**. Nothing in DX-1
-reads these values to compute anything — no stop is calculated, no EMA is
-evaluated. They exist here so that configuration *ownership and validation*
-can be proven now (ADR-010 DX-1 acceptance test 12), ahead of the DX-2/DX-3
-milestones that will actually consume them.
+The methodology block started life in DX-1 as schema only, to prove
+configuration *ownership and validation* ahead of any trading logic (ADR-010
+DX-1 acceptance test 12). As of DX-3 it is **live**: the signal engine reads
+these values to build boxes, size stops, and evaluate the EMA ladder, and
+``methodology_digest`` is persisted with every signal so a stored signal can
+always be traced back to the parameters that produced it.
+
+Owner-facing reference for every key, its default, and its provenance:
+``docs/design/DARVAX-CONFIGURATION.md``.
 """
 
 from __future__ import annotations

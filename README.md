@@ -23,6 +23,7 @@ ATHENA is not a screener, not a bot, and never executes trades. It exists to imp
 | [QA verification](docs/ops/QA_VERIFICATION.md) | Regression, targeted suites, acceptance evidence, and failure triage | Active |
 | [DD-9 alerting](docs/decisions/DD-9-alerting-channel.md) | R5 webhook+file alert choice | Accepted (email deferred) |
 | [DD-1 live vendor](docs/decisions/DD-1-broker-live-data-vendor.md) | R3 broker/data vendor decision | **Accepted** — Zerodha Kite Connect |
+| [DarvaX configuration](docs/design/DARVAX-CONFIGURATION.md) | `config/darvax.json` reference — enable/disable the DarvaX satellite, every key, defaults, failure modes | Active |
 | [ADRs](docs/adr/) | Architecture Decision Records (ADR-001…005 seeded) | Active |
 
 ## Workstation entry

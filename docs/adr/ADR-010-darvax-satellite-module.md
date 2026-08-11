@@ -83,6 +83,13 @@ fiat — see Decision.
 
 ## Decision
 
+> **Owner-facing configuration reference:**
+> [`docs/design/DARVAX-CONFIGURATION.md`](../design/DARVAX-CONFIGURATION.md) —
+> how to enable/disable the satellite, every `config/darvax.json` key with its
+> default, range and deck provenance, and every failure mode. This ADR records
+> *why* the ownership boundary is drawn where it is; that document records *what
+> the settings are*.
+
 Build DarvaX as a **satellite module**: a self-contained package that *reads*
 ATHENA's market data through a narrow read-only port, keeps **its own database
 file**, exposes **its own mounted sub-application**, and produces **its own

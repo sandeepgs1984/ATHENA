@@ -41,6 +41,11 @@ BASE_TS = datetime(2026, 3, 2, 9, 15, tzinfo=IST)
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DARVAX_STATIC = REPO_ROOT / "src" / "athena" / "darvax" / "api" / "static"
 
+#: Every test here builds an ATHENA app, so pin a config directory where
+#: DarvaX is disabled rather than inheriting the working copy's real flag.
+#: Tests that want DarvaX enabled mount their own instance explicitly.
+pytestmark = pytest.mark.usefixtures("athena_config_darvax_disabled")
+
 # The DX-2/DX-3 fixture: a topmost box of [8, 12].
 _H = [10, 11, 12, 11, 11, 11, 10, 9, 9, 9, 9]
 _L = [9, 10, 11, 10, 10, 10, 9, 8, 8, 8, 8]

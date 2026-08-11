@@ -35,6 +35,11 @@ from athena.errors import ConfigError
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SRC_ROOT = REPO_ROOT / "src" / "athena"
 
+#: Every test here builds an ATHENA app, so pin a config directory where
+#: DarvaX is disabled rather than inheriting the working copy's real flag.
+#: Tests that want DarvaX enabled mount their own instance explicitly.
+pytestmark = pytest.mark.usefixtures("athena_config_darvax_disabled")
+
 #: The one file in ATHENA core allowed to reference athena.darvax (ADR-010 §4).
 APPROVED_SEAM = SRC_ROOT / "api" / "darvax_mount.py"
 
@@ -76,10 +81,13 @@ def test_01_disabled_never_imports_darvax_module():
     deliberately runs isolated — and pins its own disabled config so the result
     does not depend on the working copy's real one."""
     code = (
-        "import sys, json, pathlib, tempfile;"
+        "import sys, os, json, pathlib, tempfile, shutil;"
         "d = pathlib.Path(tempfile.mkdtemp());"
-        "(d / 'config').mkdir();"
+        f"shutil.copytree(pathlib.Path({str(REPO_ROOT)!r}) / 'config', d / 'config');"
         "(d / 'config' / 'darvax.json').write_text(json.dumps({'enabled': False}));"
+        # create_app resolves its config dir from this variable and hands it to
+        # the seam, so pinning it is what actually pins the flag.
+        "os.environ['ATHENA_CONFIG_DIR'] = str(d / 'config');"
         "import athena.api.darvax_mount as dm;"
         "dm._default_repo_root = (lambda: d);"
         "from athena.api.app import create_app;"
@@ -446,6 +454,23 @@ def test_12b_disabled_darvax_never_parses_methodology_config(tmp_path: Path):
 # --------------------------------------------------------------------------- #
 
 
-def test_shipped_config_defaults_to_disabled():
-    raw = json.loads((REPO_ROOT / "config" / "darvax.json").read_text(encoding="utf-8"))
-    assert raw["enabled"] is False, "DarvaX must ship disabled (ADR-010 §7)"
+def test_darvax_is_opt_in_by_default():
+    """DarvaX must be off unless something explicitly asks for it (ADR-010 §7).
+
+    Deliberately asserted against the *contract* rather than the working copy's
+    ``config/darvax.json``: that file is the owner's live switch, and a test that
+    demands it stay ``false`` would fail the moment DarvaX is legitimately turned
+    on — punishing the owner for using the feature instead of testing anything.
+    The three guarantees below are what "opt-in" actually means, and none of them
+    depends on ambient state.
+    """
+    from athena.darvax.config import DarvaxConfig
+
+    # 1. The schema default is off.
+    assert DarvaxConfig().enabled is False
+
+    # 2. A config file that omits the flag is off, not on.
+    assert DarvaxConfig.model_validate({}).enabled is False
+
+    # 3. An absent config file means "not requested" — a normal supported state.
+    assert darvax_activation_requested(REPO_ROOT / "does-not-exist") is False

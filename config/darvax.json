@@ -11,7 +11,7 @@
     "path": "db/darvax.db"
   },
   "methodology": {
-    "_note": "DX-1 ships schema + validation ONLY. Nothing reads these values to compute anything yet; DX-2/DX-3 will. Source deck contradicts itself on stop sizing (canonical Darvas 10% on p.67 vs DarvaX 1% on p.44) — both are selectable, defaulting to the canonical attributable rule, and DX-5 evidence decides.",
+    "_note": "LIVE as of DX-3: the signal engine reads these values, and methodology_digest is persisted with every signal so a stored signal traces back to the exact parameters that produced it. Changing any value here changes the digest; earlier signals keep their old one and are NOT recomputed. Source deck contradicts itself on stop sizing (canonical Darvas 10% on p.67 vs DarvaX 1% on p.44) — both are selectable, defaulting to the canonical attributable rule, and DX-5 evidence decides. The box/swing/breakout/scan blocks are omitted here and take the defaults documented in docs/design/DARVAX-CONFIGURATION.md — they are live, not inert.",
     "stop_policy": "canonical_darvas",
     "canonical_stop_pct": 10.0,
     "tight_stop_pct": 1.0,

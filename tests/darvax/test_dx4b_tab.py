@@ -28,8 +28,14 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 ATHENA_STATIC = REPO_ROOT / "src" / "athena" / "api" / "static"
 ATHENA_INDEX = ATHENA_STATIC / "index.html"
 DARVAX_STATIC = REPO_ROOT / "src" / "athena" / "darvax" / "api" / "static"
+
 TAB_JS = DARVAX_STATIC / "tab.js"
 HARNESS = Path(__file__).parent / "_tab_harness.js"
+
+#: Every test here builds an ATHENA app, so pin a config directory where
+#: DarvaX is disabled rather than inheriting the working copy's real flag.
+#: Tests that want DarvaX enabled mount their own instance explicitly.
+pytestmark = pytest.mark.usefixtures("athena_config_darvax_disabled")
 
 NODE = shutil.which("node")
 needs_node = pytest.mark.skipif(
