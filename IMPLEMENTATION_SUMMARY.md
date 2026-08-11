@@ -6,6 +6,29 @@ status updated on approval.
 
 ---
 
+## DX-2: DarvaX deterministic methodology primitives (ADR-010)
+
+| | |
+|---|---|
+| Completed | 2026-08-11 |
+| Objective | Implement exactly the seven deterministic primitives ADR-010's DX-2 names, as pure functions unit-tested against hand-worked fixtures. Measurements only — no signals, no decisions |
+| Scope | `darvas_boxes` / `current_box` (Darvas DAR-CARD geometry, deck p.67, incl. `is_topmost` and the breakout-invalidation rule); `zigzag_swings` / `last_completed_swing_leg` (deck p.32, confirmed pivots only); `distance_to_ath` (deck pp.4/51); `range_contraction` (the "baby candles" base, deck p.41); `volume_expansion` (deck pp.51-52); `inside_bar` (deck pp.24/49); `fibonacci_levels` / `classify_retracement` (deck p.30, incl. the two bands the deck names). Shared input guards reject newest-first, mixed-instrument, mixed-timeframe, and duplicate-timestamp series |
+| Files created | `src/athena/darvax/primitives/{__init__,models,_guards,boxes,swings,levels,measures}.py`, `tests/darvax/test_dx2_primitives.py` |
+| Files modified | `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md` (docs only) |
+| Public/Core ATHENA changes | **None.** Zero files under `src/athena/api/`, `config/`, `data/`, or `domain/` touched — verified via `git status`. The DX-1 six-line seam is unchanged |
+| Tests | 52 new (68 DarvaX total). Hand-worked fixtures with the trace written into the test so a reviewer can check the arithmetic without re-deriving it: a 16-bar series producing two boxes ([8,12] topmost, then [8,10] not topmost) with every index asserted; a breakout-before-floor series producing zero boxes; a 6-bar ZigZag producing exactly two confirmed pivots with the third deliberately absent; all nine Fibonacci zone boundaries parametrized. Plus cross-cutting guarantees: determinism across repeated calls, no input mutation, every numeric result `Decimal` not float, results frozen, and a guard asserting the exported surface contains no signal/decision-shaped name. Full suite: **1382 passed** |
+| Coverage | Purity verified structurally, not just claimed: the primitives package imports only `athena.domain.market` and `athena.errors`; grep confirms no `datetime.now`, `random`, `open(`, `sqlite3`, config loading, or `float(` anywhere in it |
+| Architecture compliance | Pure functions, no hidden state, no injected-clock need (nothing time-dependent), `Decimal` money discipline, explicit failure on caller error, honest empty/None on insufficient history. DX-1's isolation contract re-verified intact (16/16) |
+| ADR compliance | ADR-010 DX-2 exactly — the seven named primitives and nothing else. No signal generation, stop policies, breakout state machine, backtesting, UI, or config consumption (all later milestones) |
+| Risks discovered | One test expectation of mine was wrong and the code was right: I initially asserted a monotonic climb yields no ZigZag pivot, but a +40% rise legitimately *confirms* the opening low as a swing LOW (only the swing HIGH is absent, since price never reversed). Verified against the implementation before correcting the test, and split it into two tests that pin both halves of the semantics |
+| Technical debt introduced | None. Defaults (`confirmation_bars=3`, swing threshold 5%, contraction/volume windows and ratios) are named module constants with the deck page or convention cited, because the deck states no numbers for them. DX-3 will wire these to DarvaX config; they are deliberately *not* config fields yet, to avoid shipping config nothing reads |
+| Suggested improvements | The Darvas literature contains several box variants; the one implemented is documented step-by-step in `boxes.py` and matches the classical sources the deck links to. If the owner prefers a different variant, it is a parameter/algorithm swap in one module with no ripple |
+| Remaining work | Owner/Chief Architect review of DX-2. DX-3 begins only on explicit approval |
+| Status | 🔄 Ready for owner review |
+| Branch | feature/live-dashboard |
+
+---
+
 ## DX-1: DarvaX satellite isolation foundation (ADR-010)
 
 | | |
@@ -23,8 +46,8 @@ status updated on approval.
 | Risks discovered | Two real defects found and fixed during self-validation, both surfaced only by running the suite with DarvaX **enabled**: (1) five isolation tests initially inherited the working copy's ambient `config/darvax.json`, so they would have gone red the moment the owner legitimately enabled DarvaX — fixed by making them hermetic via a `darvax_disabled_env` fixture that pins the seam's repo-root resolution; (2) `test_06`'s baseline was captured from an ambient-config app, masking the route diff — fixed to capture the baseline through the same fixture. Neither would have been caught by testing the disabled path alone |
 | Technical debt introduced | None. One deliberate, documented DX-1 decision: `config/darvax.json` carries a `methodology` block (stop policy, EMA ladder) that is **schema and validation only** — no code reads these values to compute anything. It exists so configuration *ownership* can be proven now (acceptance test 12 requires exactly this); DX-2/DX-3 will consume it |
 | Suggested improvements | `/darvax/status` is currently unauthenticated on the localhost-only server. Acceptable for a DX-1 status probe exposing only module/schema version, but DX-4 must apply an auth posture before any real endpoint ships |
-| Remaining work | Owner/Chief Architect review of DX-1. DX-2 begins only on explicit approval |
-| Status | 🔄 Ready for owner review |
+| Remaining work | None — DX-1 approved by owner 2026-08-11; DX-2 proceeded on that approval |
+| Status | ✅ Approved |
 | Branch | feature/live-dashboard |
 
 ---

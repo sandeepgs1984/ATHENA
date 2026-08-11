@@ -3064,8 +3064,8 @@ Phase 9+ milestones or bundled into the same change set.**
 
 | Milestone | Scope | Status |
 |---|---|---|
-| **DX-1** Isolation foundation | Module skeleton, DarvaX-owned config (ships `enabled: false`), own `db/darvax.db` + independent schema versioning, `DarvaxMarketDataPort`, guarded mount seam with explicit enabled-but-absent failure, full 12-point isolation suite. **Zero trading logic.** | 🔄 Ready for review |
-| **DX-2** Methodology primitives | Darvas box, swing points, distance-to-ATH, range contraction, volume expansion, inside bar, Fibonacci — pure functions | ⏳ Blocked on DX-1 approval |
+| **DX-1** Isolation foundation | Module skeleton, DarvaX-owned config (ships `enabled: false`), own `db/darvax.db` + independent schema versioning, `DarvaxMarketDataPort`, guarded mount seam with explicit enabled-but-absent failure, full 12-point isolation suite. **Zero trading logic.** | ✅ Approved (2026-08-11) |
+| **DX-2** Methodology primitives | Exactly seven pure functions — Darvas box, ZigZag swings, distance-to-ATH, range contraction, volume expansion, inside bar, Fibonacci levels + zone. Decimal throughout, no clock/config/IO, hand-worked fixtures. **Measurements only, zero signals.** | 🔄 Ready for review |
 | **DX-3** Signal engine | Box breakout/retest state machine, stop policies, persisted explanations | ⏳ Planned |
 | **DX-4** `/darvax/` surface | DarvaX's own API/UI, labelled Experimental / Unvalidated | ⏳ Planned |
 | **DX-4a** Performance evidence | Measure ATHENA responsiveness with DarvaX disabled vs enabled; quantify host-level contention | ⏳ Planned |
