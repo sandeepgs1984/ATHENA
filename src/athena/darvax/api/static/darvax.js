@@ -234,6 +234,16 @@
       });
   }
 
+  // When embedded in ATHENA's DarvaX tab (ADR-010 Amendment 1), the "← ATHENA"
+  // link is redundant chrome — you are already in ATHENA. The experimental
+  // banner is deliberately NOT hidden here or anywhere else: it is a
+  // correctness requirement, not decoration.
+  if (window.location.search.indexOf("embedded=1") !== -1) {
+    document.body.classList.add("embedded");
+    var back = document.querySelector("a.link[href='/dashboard/']");
+    if (back) back.remove();
+  }
+
   els.scan.addEventListener("click", scan);
   els.refresh.addEventListener("click", load);
   els.symbols.addEventListener("keydown", function (event) {

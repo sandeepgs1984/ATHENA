@@ -332,7 +332,15 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     # DarvaX satellite (ADR-010) — the single approved ATHENA→DarvaX seam.
     # Opt-in and off by default; when disabled nothing is imported and no route
     # exists. DarvaX never contributes to ATHENA's scoring/decision pipeline.
-    mount_darvax_if_enabled(app, repo=getattr(app.state, "sqlite_repo", None))
+    # config_dir/repo_root are passed explicitly so DarvaX's flag is read from the
+    # same directory ATHENA_CONFIG_DIR selects, exactly like every other config
+    # consumer above. Without them the seam silently read the repo-root config.
+    mount_darvax_if_enabled(
+        app,
+        repo=getattr(app.state, "sqlite_repo", None),
+        config_dir=config_dir,
+        repo_root=config_dir.parent,
+    )
 
     # Mount StaticFiles for Dashboard UI (P9.1)
     static_dir = os.path.join(os.path.dirname(__file__), "static")

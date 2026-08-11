@@ -290,15 +290,18 @@ def test_page_states_the_unvalidated_status_prominently():
 
 
 def test_darvax_ui_does_not_touch_athena_dashboard_assets():
-    """The isolation ADR-010 §4 requires: DarvaX's UI is its own surface, so
-    ATHENA's asset-versioning discipline is unaffected by it."""
+    """DarvaX's UI is its own surface, so ATHENA's asset-versioning discipline is
+    unaffected by it.
+
+    Scope note: ADR-010 Amendment 1 permits **one** DarvaX reference in
+    ``index.html`` — the ``tab.js`` script tag that injects the dashboard tab, and
+    which is itself the flag guard. That single exception is asserted in detail by
+    ``test_dx4b_tab.py::test_01_index_html_contains_only_the_script_tag_reference``;
+    this test covers everything that must still be completely DarvaX-free.
+    """
     assert not any("darvax" in part.lower() for part in DASHBOARD_JS_PARTS)
 
     athena_static = REPO_ROOT / "src" / "athena" / "api" / "static"
-    index_html = (athena_static / "index.html").read_text(encoding="utf-8")
-    assert "darvax" not in index_html.lower(), (
-        "ATHENA's index.html must not reference DarvaX"
-    )
     for name in ("js", "css"):
         for asset in (athena_static / name).rglob("*"):
             if asset.is_file():

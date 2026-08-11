@@ -140,6 +140,10 @@ starting. This preserves "delete DarvaX freely" — deletion is a complete
 operation only when paired with `enabled: false`, and the system says so out
 loud rather than guessing.
 
+> **Revised by Amendment 1** (see the end of this document): the permitted
+> cosmetic touch to `index.html` widens from one anchor to one script tag, so
+> DarvaX can inject its own dashboard tab at runtime. Everything else below stands.
+
 DarvaX serves its **own** UI under `/darvax/` — its own HTML and its own JS. It
 does **not** enter `DASHBOARD_JS_PARTS`, does not modify `index.html`'s tab
 structure, and does not touch `dashboard.js`/`dashboard.css`. ATHENA's dashboard
@@ -230,6 +234,9 @@ is not.
   coupling DarvaX to ATHENA's asset-versioning discipline and making "disable"
   a partial rather than total operation. Rejected for Phase 1; may be revisited
   as a deliberate, separately-approved trade of isolation for convenience.
+  **Revisited by Amendment 1**, which delivers the tab by runtime injection from
+  DarvaX's own asset instead of by embedding DarvaX in ATHENA's assets — keeping
+  the isolation this alternative would have cost.
 
 ## Consequences
 
@@ -351,3 +358,128 @@ ATHENA milestone are never in flight in the same change set.
 scoring weights, confidence, risk, decision engine, TradePlan, universe,
 scheduling, dashboard assets, or schema; any order-placement capability; any
 options/F&O logic; any fabricated stand-in for float or fundamentals data.
+
+---
+
+## Amendment 1 — DarvaX as a runtime-injected dashboard tab
+
+| | |
+|---|---|
+| Status | **Accepted** (2026-08-11) — amends the Decision §4 and the "Embedding DarvaX as a tab" alternative |
+| Date | 2026-08-11 |
+| Deciders | sandeep (owner) |
+
+### Context
+
+The Decision above places DarvaX's UI on its own surface at `/darvax/` and lists
+"embedding DarvaX as a tab inside ATHENA's dashboard" among the *rejected*
+alternatives, permitting only "one optional single anchor" in ATHENA's nav as a
+cosmetic touch.
+
+After DX-4 shipped, the owner clarified that their working expectation had been a
+**DarvaX tab alongside Portfolio Overview / Market Intelligence / Strategies &
+Scans / Decisions & Trace / Live Operations**. That expectation is reasonable and
+is better daily UX than a separate page. The original rejection was not wrong —
+it was protecting the owner's own hard requirement ("should not affect athena in
+any form", "disable whenever I want") — but the ADR recorded the trade-off in a
+list rather than making the daily-workflow consequence vivid, so it was approved
+without its UX cost being fully felt.
+
+Two facts constrain how a tab can be delivered:
+
+* `src/athena/api/static/index.html` is served as a **static file** (`StaticFiles`
+  mount, no server-side templating), so a tab cannot be conditionally rendered
+  server-side. This also means the original wording "one optional single anchor …
+  is itself flag-guarded" was **not implementable as written**: a static HTML file
+  cannot consult a config flag.
+* `assemble_dashboard_js()` **raises** when any entry in `DASHBOARD_JS_PARTS` is
+  missing. Putting DarvaX's script in that tuple would mean deleting DarvaX
+  breaks ATHENA's entire dashboard with a 500 — precisely the outcome this ADR
+  exists to prevent.
+
+The owner selected the runtime-injection option (option C of four presented) with
+its fragility caveat stated up front.
+
+### Decision
+
+Deliver the DarvaX tab by **runtime injection from DarvaX's own asset**, not by
+embedding DarvaX markup in ATHENA's dashboard.
+
+`index.html` gains exactly **one** line — a deferred script tag pointing at an
+asset that only DarvaX serves:
+
+```html
+<script src="/darvax/static/tab.js" defer></script>
+```
+
+`tab.js` is served by the DarvaX sub-application and, when it loads, injects its
+own nav item, its own tab panel, and its own styles into the running dashboard.
+
+**This is the flag guard.** The tag is inert unless DarvaX actually serves the
+asset: with `enabled: false` no sub-app is mounted, with the module deleted there
+is nothing to mount, and in both cases the request 404s and the browser moves on.
+No DarvaX markup, styling, or logic exists in any ATHENA asset, so there is
+nothing to leave behind. This achieves what the original "flag-guarded anchor"
+intended and could not actually do.
+
+**What this amendment changes:** the permitted cosmetic touch to `index.html`
+widens from *one anchor* to *one script tag*, and DarvaX may inject UI into the
+dashboard at runtime.
+
+**What it explicitly does not change:**
+
+- `DASHBOARD_JS_PARTS` gains no entry — so a missing DarvaX cannot break
+  `assemble_dashboard_js()`.
+- `dashboard.js` and `dashboard.css` are not edited; DarvaX ships its own styles.
+- No DarvaX markup is added to `index.html`.
+- DarvaX still never contributes to ATHENA's scoring, confidence, risk, Decision,
+  TradePlan, universe, scheduler, or persistence.
+- `/darvax/` remains a working standalone surface; the tab is an additional entry
+  point, not a replacement, so the satellite is still usable if injection fails.
+- Every existing DX-1 isolation guarantee and acceptance test stands unchanged.
+
+### Risks accepted
+
+**Runtime coupling to ATHENA's dashboard internals.** `tab.js` must find and use
+ATHENA's nav container, tab-switching behaviour, and CSS conventions at runtime.
+Unlike DarvaX's Python boundary — which is pinned by an import-graph test — this
+coupling is invisible to static analysis, so a future dashboard refactor could
+break the DarvaX tab **silently**. Three mitigations, none of which eliminates the
+risk:
+
+1. `tab.js` must degrade gracefully: if the elements it expects are absent it logs
+   once and does nothing, rather than throwing into ATHENA's page.
+2. A release-gate test (the convention `test_dashboard_hosting.py` already uses)
+   asserts the DOM hooks `tab.js` depends on still exist in ATHENA's assets, so a
+   refactor that removes them fails the suite instead of silently degrading.
+3. `/darvax/` stays independently reachable, so a broken tab never means
+   inaccessible DarvaX.
+
+This is a deliberate trade of a small, monitored fragility for materially better
+daily UX, made with the owner's explicit consent.
+
+### Implementation gate
+
+No implementation until this amendment is approved. Delivered as **DX-4b**,
+sequenced after DX-4's own approval; ordering relative to DX-4a is the owner's
+call. Normal process applies (Design → Implement → Test → Self-Validate →
+Milestone Review Summary → approval), and DX-4b stops for review like every other
+DX milestone.
+
+Required DX-4b acceptance tests, in addition to every DX-1 test continuing to pass:
+
+1. `index.html` contains exactly one DarvaX reference, and it is the script tag —
+   no DarvaX markup, class, or style.
+2. `DASHBOARD_JS_PARTS` contains no DarvaX entry, and `assemble_dashboard_js()`
+   succeeds with the DarvaX module absent.
+3. With `enabled: false`, `/darvax/static/tab.js` 404s and the dashboard renders
+   with its original tab set.
+4. With DarvaX deleted from disk, the dashboard still loads and the full ATHENA
+   suite passes.
+5. With DarvaX enabled, `tab.js` is served and injects exactly one nav item and
+   one panel — asserted on the served asset, not on a mock.
+6. `tab.js` degrades silently when its expected DOM hooks are missing (simulated),
+   raising nothing into ATHENA's page.
+7. A release-gate assertion that the DOM hooks `tab.js` relies on still exist in
+   ATHENA's assets, so a dashboard refactor breaks the build rather than the tab.
+8. ATHENA's `dashboard.js`/`dashboard.css` remain free of any DarvaX reference.

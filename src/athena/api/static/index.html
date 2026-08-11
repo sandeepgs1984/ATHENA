@@ -1640,5 +1640,15 @@
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="/dashboard/dashboard.js?v=9.147.0"></script>
+
+    <!-- DarvaX satellite tab (ADR-010 Amendment 1) — the ONLY DarvaX reference
+         in this file, and the flag guard itself. This asset is served solely by
+         the DarvaX sub-application, so when DarvaX is disabled or deleted the
+         request 404s, nothing runs, and this dashboard renders exactly as it
+         does without DarvaX. No DarvaX markup, styling or logic lives in any
+         ATHENA asset, and this script is deliberately NOT part of
+         DASHBOARD_JS_PARTS — a missing DarvaX must never break dashboard.js
+         assembly. Loaded last so ATHENA's own dashboard is fully wired first. -->
+    <script src="/darvax/static/tab.js" defer></script>
 </body>
 </html>
