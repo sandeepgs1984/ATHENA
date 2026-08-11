@@ -19,6 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from athena.api.config import APISettings, api_settings_from_env
+from athena.api.darvax_mount import mount_darvax_if_enabled
 from athena.api.errors import exception_mapper
 from athena.api.platform.health import router as platform_health_router
 from athena.api.platform.info import router as platform_info_router
@@ -327,6 +328,11 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
 
     # Include Versioned Routers
     app.include_router(v1_router, prefix=settings.app.api_prefix + "/v1")
+
+    # DarvaX satellite (ADR-010) — the single approved ATHENA→DarvaX seam.
+    # Opt-in and off by default; when disabled nothing is imported and no route
+    # exists. DarvaX never contributes to ATHENA's scoring/decision pipeline.
+    mount_darvax_if_enabled(app, repo=getattr(app.state, "sqlite_repo", None))
 
     # Mount StaticFiles for Dashboard UI (P9.1)
     static_dir = os.path.join(os.path.dirname(__file__), "static")

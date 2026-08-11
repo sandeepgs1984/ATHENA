@@ -1,0 +1,25 @@
+{
+  "_meta": {
+    "layer": "satellite",
+    "owner": "darvax",
+    "adr": "ADR-010",
+    "description": "DarvaX satellite module configuration. OWNED BY DARVAX. ATHENA core reads ONLY the top-level 'enabled' flag, at the mount seam in athena/api/darvax_mount.py, and parses nothing else in this file. Every other key here is loaded and validated by DarvaX itself (athena/darvax/config.py). Do NOT add DarvaX fields to any athena.config model. DarvaX is a parallel advisory lane and never contributes to ATHENA scoring, confidence, risk, Decision, TradePlan, or universe.",
+    "status": "EXPERIMENTAL / UNVALIDATED — the source methodology ships no backtest evidence; see ADR-010 DX-5."
+  },
+  "enabled": false,
+  "database": {
+    "path": "db/darvax.db"
+  },
+  "methodology": {
+    "_note": "DX-1 ships schema + validation ONLY. Nothing reads these values to compute anything yet; DX-2/DX-3 will. Source deck contradicts itself on stop sizing (canonical Darvas 10% on p.67 vs DarvaX 1% on p.44) — both are selectable, defaulting to the canonical attributable rule, and DX-5 evidence decides.",
+    "stop_policy": "canonical_darvas",
+    "canonical_stop_pct": 10.0,
+    "tight_stop_pct": 1.0,
+    "ema_stop_ladder": {
+      "very_short_term": 5,
+      "swing": 10,
+      "positional": 20,
+      "investor": 200
+    }
+  }
+}

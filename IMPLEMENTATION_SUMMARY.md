@@ -6,6 +6,29 @@ status updated on approval.
 
 ---
 
+## DX-1: DarvaX satellite isolation foundation (ADR-010)
+
+| | |
+|---|---|
+| Completed | 2026-08-10 |
+| Objective | Prove DarvaX can exist inside the ATHENA repository and be enabled, disabled, or removed cleanly without contaminating ATHENA's architecture or behaviour. Nothing more — DX-1 carries zero trading logic |
+| Scope | `athena.darvax` package skeleton; DarvaX-owned `config/darvax.json` shipping `enabled: false`; methodology-blind ATHENA-side activation check reading only the `enabled` flag; guarded `/darvax` mount seam with explicit `ConfigError` on enabled-but-module-absent; no import whatsoever when disabled (lazy, function-local import); DarvaX-owned `db/darvax.db` with its own `darvax_schema_version` and DDL, created lazily and only when enabled; read-only `DarvaxMarketDataPort` (3 methods, no write surface) plus its DarvaX-owned SQLite adapter; DarvaX-owned config loading/validation; complete 12-point isolation suite (16 tests) |
+| Files created | `src/athena/darvax/{__init__,config,ports,adapters}.py`, `src/athena/darvax/store/{__init__,schema,repository}.py`, `src/athena/darvax/api/{__init__,app}.py`, `src/athena/api/darvax_mount.py`, `config/darvax.json`, `tests/darvax/test_dx1_isolation.py`, `docs/adr/ADR-010-darvax-satellite-module.md` |
+| Files modified | `src/athena/api/app.py` (**+6 lines total**: one import + the guarded seam call), `ATHENA_BRIEFING.md`, `docs/MILESTONES.md` |
+| Public/Core ATHENA changes | **None.** No ATHENA public API, schema, config model, scoring, confidence, risk, Decision, TradePlan, universe, scheduler, dashboard asset, or existing contract changed. `SCHEMA_VERSION` remains 12 |
+| Tests | 16 new isolation tests, all 12 ADR-010 acceptance criteria covered (some split into a/b pairs). Full suite: **1330 passed** disabled; **1329 passed / 1 failed** enabled — the single failure being `test_shipped_config_defaults_to_disabled`, which exists precisely to guard the shipped default and *must* fail when the flag is flipped. All 1314 pre-existing ATHENA tests pass in both states |
+| Coverage | Isolation verified empirically, not just asserted: DarvaX package + config + tests were **physically moved off disk** and the full ATHENA suite re-run — **1314 passed**, `create_app()` built cleanly with zero `/darvax` routes. The enabled path was smoke-tested end to end (mount + `GET /darvax/status` → 200, `darvax.db` created under the temp root only when enabled) |
+| Architecture compliance | Matches ADR-010 exactly. Dependency direction one-way (static import-graph scan over all of `src/athena/` finds zero `athena.darvax` imports outside the single approved seam); seam import is function-local so disabled truly means never imported; port exposes no write method; DarvaX writes only to its own database file |
+| ADR compliance | ADR-010 (Accepted 2026-08-10). No plugin framework, capability registry, worker process, queue, resource scheduler, generic extension infrastructure, or shared persistence introduced — all explicitly forbidden and all absent |
+| Risks discovered | Two real defects found and fixed during self-validation, both surfaced only by running the suite with DarvaX **enabled**: (1) five isolation tests initially inherited the working copy's ambient `config/darvax.json`, so they would have gone red the moment the owner legitimately enabled DarvaX — fixed by making them hermetic via a `darvax_disabled_env` fixture that pins the seam's repo-root resolution; (2) `test_06`'s baseline was captured from an ambient-config app, masking the route diff — fixed to capture the baseline through the same fixture. Neither would have been caught by testing the disabled path alone |
+| Technical debt introduced | None. One deliberate, documented DX-1 decision: `config/darvax.json` carries a `methodology` block (stop policy, EMA ladder) that is **schema and validation only** — no code reads these values to compute anything. It exists so configuration *ownership* can be proven now (acceptance test 12 requires exactly this); DX-2/DX-3 will consume it |
+| Suggested improvements | `/darvax/status` is currently unauthenticated on the localhost-only server. Acceptable for a DX-1 status probe exposing only module/schema version, but DX-4 must apply an auth posture before any real endpoint ships |
+| Remaining work | Owner/Chief Architect review of DX-1. DX-2 begins only on explicit approval |
+| Status | 🔄 Ready for owner review |
+| Branch | feature/live-dashboard |
+
+---
+
 ## Fix pass: pipelines/runs N+1 detail-fetch made every validate 20-30s+ (owner-reported, found post-ADR-009)
 
 | | |

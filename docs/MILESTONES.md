@@ -3052,4 +3052,30 @@ confirmed under 10s end to end.
 
 ---
 
+---
+
+## DarvaX satellite track (parallel workstream — ADR-010)
+
+DarvaX is an **isolated, opt-in satellite module**, not part of ATHENA's core
+roadmap. Per ADR-010 (Accepted 2026-08-10) it is a *parallel advisory lane* and
+never contributes to ATHENA's scoring, confidence, risk, Decision, TradePlan,
+universe, or decision pipeline. **DX milestones are never mixed with ATHENA
+Phase 9+ milestones or bundled into the same change set.**
+
+| Milestone | Scope | Status |
+|---|---|---|
+| **DX-1** Isolation foundation | Module skeleton, DarvaX-owned config (ships `enabled: false`), own `db/darvax.db` + independent schema versioning, `DarvaxMarketDataPort`, guarded mount seam with explicit enabled-but-absent failure, full 12-point isolation suite. **Zero trading logic.** | 🔄 Ready for review |
+| **DX-2** Methodology primitives | Darvas box, swing points, distance-to-ATH, range contraction, volume expansion, inside bar, Fibonacci — pure functions | ⏳ Blocked on DX-1 approval |
+| **DX-3** Signal engine | Box breakout/retest state machine, stop policies, persisted explanations | ⏳ Planned |
+| **DX-4** `/darvax/` surface | DarvaX's own API/UI, labelled Experimental / Unvalidated | ⏳ Planned |
+| **DX-4a** Performance evidence | Measure ATHENA responsiveness with DarvaX disabled vs enabled; quantify host-level contention | ⏳ Planned |
+| **DX-5** Validation evidence | Expectancy, win/loss rate, drawdown, sample size — via stable generic contract or DarvaX-owned harness | ⏳ Planned |
+
+**Source-quality caveat on record:** the DarvaX deck ships no backtest evidence
+of any kind — only cherry-picked winners and testimonial screenshots — and its
+author disclaims it in the deck itself. DarvaX output stays labelled
+Experimental / Unvalidated until DX-5 produces evidence here.
+
+---
+
 *Status legend: a milestone is "In Progress" (🔄) when actively being designed or built, "Approved" (✅) only when the owner signs off. Never two milestones in flight.*
