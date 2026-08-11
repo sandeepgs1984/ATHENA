@@ -38,6 +38,13 @@ _ACTIVATION_KEY = "enabled"
 #: Where the satellite mounts. Kept here so the seam is fully self-contained.
 DARVAX_MOUNT_PATH = "/darvax"
 
+#: The only ATHENA app-state objects shared with the DarvaX sub-application, and
+#: solely so DarvaX can *delegate* authentication to ATHENA rather than
+#: implementing its own (DX-4). ATHENA's auth guard reads these from
+#: ``request.app.state``, which for a mounted sub-app is the sub-app's own state.
+#: Nothing else is shared: DarvaX gets no providers, no repositories, no config.
+_SHARED_AUTH_STATE: tuple[str, ...] = ("token_signer", "claims_factory")
+
 
 def darvax_activation_requested(config_dir: Path | str) -> bool:
     """Whether ``config/darvax.json`` asks for the satellite to be active.
@@ -104,13 +111,21 @@ def mount_darvax_if_enabled(
             f"wired, or set {_ACTIVATION_KEY}=false in config/darvax.json."
         )
 
-    app.mount(
-        DARVAX_MOUNT_PATH,
-        create_darvax_app(
-            config_dir=resolved_config_dir,
-            market_data=SqliteMarketDataAdapter(repo),  # type: ignore[arg-type]
-            repo_root=resolved_root,
-        ),
+    darvax_app = create_darvax_app(
+        config_dir=resolved_config_dir,
+        market_data=SqliteMarketDataAdapter(repo),  # type: ignore[arg-type]
+        repo_root=resolved_root,
     )
+
+    # DarvaX delegates authentication to ATHENA instead of standing up a second
+    # login: one credential, one place where auth correctness lives. ATHENA's
+    # guard resolves these two objects from ``request.app.state``, and a mounted
+    # sub-application has its own ``state``, so they are shared explicitly here.
+    # Only these two are copied — DarvaX gets no other ATHENA app state.
+    for attribute in _SHARED_AUTH_STATE:
+        if hasattr(app.state, attribute):
+            setattr(darvax_app.state, attribute, getattr(app.state, attribute))
+
+    app.mount(DARVAX_MOUNT_PATH, darvax_app)
     logger.info("DarvaX satellite mounted at %s (experimental)", DARVAX_MOUNT_PATH)
     return True

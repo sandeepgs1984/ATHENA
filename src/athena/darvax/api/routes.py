@@ -1,0 +1,192 @@
+"""DarvaX's own data API (DX-4), served under ``/darvax``.
+
+**Authentication is delegated to ATHENA, not reimplemented.** DarvaX reuses
+ATHENA's existing ``RequirePermission`` guard so the owner's single dashboard
+session covers both lanes: one login, one credential store, one place where auth
+correctness lives. Standing up a second authentication system inside the
+satellite would be worse engineering and materially worse security than reusing
+the audited one. This is a deliberate, narrow widening of the DarvaX → ATHENA
+import surface beyond ``domain``/``errors``, and it is recorded as such in the
+DX-4 review summary.
+
+ATHENA's auth dependency resolves ``request.app.state.token_signer`` — and a
+mounted sub-application has its own ``state`` — so the mount seam copies exactly
+those two attributes across. See ``athena.api.darvax_mount``.
+
+Every response carries the experimental label. Nothing here is validated: the
+source deck ships no backtest evidence, and DX-5 is what changes that.
+"""
+
+from __future__ import annotations
+
+from typing import Annotated, Any
+
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
+
+from athena.api.security import Permission, RequirePermission
+from athena.darvax import __version__ as darvax_version
+from athena.darvax.scan import scan_instruments
+from athena.darvax.signals import DarvaxSignal
+from athena.domain.enums import Timeframe
+from athena.errors import AthenaError
+
+router = APIRouter(prefix="/api", tags=["DarvaX (experimental)"])
+
+#: Stamped on every payload so a response can never be mistaken for validated
+#: ATHENA output, whatever context it is read in.
+EXPERIMENTAL_STATUS = "EXPERIMENTAL_UNVALIDATED"
+
+_DISCLAIMER = (
+    "DarvaX is an experimental, unvalidated satellite lane. It never contributes "
+    "to ATHENA's scoring, confidence, risk, Decision, or TradePlan. The source "
+    "methodology ships no backtest evidence; validation is ADR-010 DX-5."
+)
+
+
+def _signal_payload(signal: DarvaxSignal) -> dict[str, Any]:
+    """Serialise a signal, including its persisted explanation and evidence.
+
+    The explanation and evidence are read out as stored — this endpoint never
+    recomputes or re-words them, per ADR-005's explainability-as-data principle.
+    """
+    return {
+        "signal_id": signal.signal_id,
+        "instrument_id": signal.instrument_id,
+        "symbol": signal.instrument_id.split(":")[-1],
+        "as_of": signal.as_of.isoformat(),
+        "signal_type": signal.signal_type.value,
+        "darvas_rule": signal.darvas_rule.value if signal.darvas_rule else None,
+        "close": str(signal.close),
+        "box_top": str(signal.box_top) if signal.box_top is not None else None,
+        "box_bottom": str(signal.box_bottom) if signal.box_bottom is not None else None,
+        "box_is_topmost": signal.box_is_topmost,
+        "trigger_price": (
+            str(signal.trigger_price) if signal.trigger_price is not None else None
+        ),
+        "stop": (
+            {
+                "basis": signal.stop.basis.value,
+                "price": str(signal.stop.price),
+                "reference_price": str(signal.stop.reference_price),
+                "detail": signal.stop.detail,
+                "ema_period": signal.stop.ema_period,
+                "pct": str(signal.stop.pct) if signal.stop.pct is not None else None,
+            }
+            if signal.stop is not None
+            else None
+        ),
+        "explanation": signal.explanation,
+        "evidence": [
+            {"name": e.name, "value": e.value, "detail": e.detail}
+            for e in signal.evidence
+        ],
+        "methodology_digest": signal.methodology_digest,
+        "darvax_version": signal.darvax_version,
+        "status": signal.status,
+    }
+
+
+def _envelope(data: Any, **extra: Any) -> dict[str, Any]:
+    return {
+        "status": "success",
+        "darvax_status": EXPERIMENTAL_STATUS,
+        "disclaimer": _DISCLAIMER,
+        "darvax_version": darvax_version,
+        "data": data,
+        **extra,
+    }
+
+
+@router.get("/signals", summary="List persisted DarvaX signals (experimental)")
+def list_signals(
+    request: Request,
+    limit: int = 200,
+    _principal: Annotated[
+        object, Depends(RequirePermission(Permission.READ))
+    ] = None,
+) -> dict[str, Any]:
+    """Newest-first signals across all instruments DarvaX has evaluated."""
+    if not 1 <= limit <= 1000:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="limit must be between 1 and 1000",
+        )
+    store = request.app.state.darvax_store
+    signals = store.list_signals(limit=limit)
+    return _envelope([_signal_payload(s) for s in signals], count=len(signals))
+
+
+@router.get(
+    "/signals/{instrument_id:path}",
+    summary="Latest persisted DarvaX signal for one instrument (experimental)",
+)
+def latest_signal(
+    request: Request,
+    instrument_id: str,
+    _principal: Annotated[
+        object, Depends(RequirePermission(Permission.READ))
+    ] = None,
+) -> dict[str, Any]:
+    store = request.app.state.darvax_store
+    signal = store.latest_signal(instrument_id)
+    if signal is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"DarvaX has no signal for {instrument_id}",
+        )
+    return _envelope(_signal_payload(signal))
+
+
+@router.post("/scan", summary="Evaluate DarvaX signals for instruments (experimental)")
+def scan(
+    request: Request,
+    payload: Annotated[dict[str, Any], Body(...)],
+    _principal: Annotated[
+        object, Depends(RequirePermission(Permission.EXECUTE))
+    ] = None,
+) -> dict[str, Any]:
+    """Run a bounded scan and persist one signal per instrument.
+
+    Advisory only: this computes and stores observations. Nothing here places an
+    order, and nothing here writes to ATHENA.
+    """
+    raw = payload.get("instrument_ids")
+    if not isinstance(raw, list) or not raw:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="instrument_ids must be a non-empty list of instrument ids",
+        )
+    instrument_ids = [str(item) for item in raw]
+
+    timeframe_raw = str(payload.get("timeframe") or Timeframe.D1.value)
+    try:
+        timeframe = Timeframe(timeframe_raw)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"unknown timeframe {timeframe_raw!r}",
+        ) from None
+
+    try:
+        result = scan_instruments(
+            market_data=request.app.state.darvax_market_data,
+            store=request.app.state.darvax_store,
+            config=request.app.state.darvax_config,
+            instrument_ids=instrument_ids,
+            timeframe=timeframe,
+        )
+    except AthenaError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+        ) from exc
+
+    return _envelope(
+        [_signal_payload(s) for s in result.signals],
+        requested=result.requested,
+        evaluated=result.evaluated,
+        timeframe=result.timeframe.value,
+        skipped=[
+            {"instrument_id": s.instrument_id, "reason": s.reason}
+            for s in result.skipped
+        ],
+    )

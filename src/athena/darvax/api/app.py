@@ -16,13 +16,18 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
+from athena.api.errors import exception_mapper
 from athena.darvax import __version__ as darvax_version
 from athena.darvax.adapters import SqliteMarketDataAdapter
+from athena.darvax.api.routes import router as routes_router
 from athena.darvax.config import load_darvax_config
 from athena.darvax.ports import DarvaxMarketDataPort
 from athena.darvax.store import DARVAX_SCHEMA_VERSION, DarvaxRepository
+from athena.errors import AthenaError
 
 
 def create_darvax_app(
@@ -71,6 +76,42 @@ def create_darvax_app(
     app.state.darvax_config = config
     app.state.darvax_store = store
     app.state.darvax_market_data = market_data
+
+    # A mounted sub-application does not inherit the parent's exception
+    # handlers, so DarvaX registers its own. Without this an authentication
+    # rejection — an AthenaError raised by the guard DarvaX delegates to —
+    # escapes as a crash instead of a clean 401/403. The status mapping is
+    # ATHENA's own `exception_mapper`, reused rather than reinvented so the two
+    # lanes cannot drift apart on what a given failure means.
+    @app.exception_handler(AthenaError)
+    async def _athena_error(request: Request, exc: AthenaError) -> JSONResponse:
+        request_id = getattr(request.state, "request_id", "darvax")
+        problem = exception_mapper.classify(
+            exc,
+            instance=str(request.url.path),
+            request_id=request_id,
+            correlation_id=request_id,
+        )
+        return JSONResponse(
+            status_code=problem.status,
+            content=problem.model_dump(mode="json", exclude_none=True),
+            media_type="application/problem+json",
+        )
+
+    app.include_router(routes_router)
+
+    # DarvaX's own static assets, served from its own directory. These never
+    # enter ATHENA's DASHBOARD_JS_PARTS and never touch dashboard.js/css, so
+    # ATHENA's asset-versioning discipline is unaffected (ADR-010 §4).
+    static_dir = Path(__file__).resolve().parent / "static"
+    app.mount(
+        "/static", StaticFiles(directory=str(static_dir)), name="darvax-static"
+    )
+
+    @app.get("/", include_in_schema=False)
+    def darvax_index() -> FileResponse:
+        """DarvaX's own page — a separate surface, not an ATHENA dashboard tab."""
+        return FileResponse(static_dir / "index.html")
 
     @app.get("/status")
     def darvax_status() -> dict[str, object]:

@@ -1,0 +1,209 @@
+/*
+  DarvaX's own stylesheet (ADR-010 DX-4).
+
+  Deliberately NOT ATHENA's dashboard.css and deliberately not visually
+  identical to it: DarvaX output is experimental and unvalidated, and it must be
+  impossible to mistake this page for ATHENA's own validated advisory surface.
+  Hence the amber experimental chrome rather than ATHENA's palette.
+*/
+
+:root {
+  --bg: #0f1216;
+  --panel: #161b22;
+  --line: #262d36;
+  --text: #e6e9ee;
+  --dim: #8b95a3;
+  --warn: #d99a2b;
+  --warn-soft: rgba(217, 154, 43, 0.12);
+  --good: #4fa87a;
+  --bad: #c0655f;
+  --neutral: #6b7684;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.wrap { max-width: 1180px; margin: 0 auto; padding: 20px 18px 48px; }
+
+/* --- Experimental banner: must stay loud ------------------------------- */
+.banner {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  background: var(--warn-soft);
+  border: 1px solid var(--warn);
+  border-radius: 8px;
+  padding: 11px 14px;
+  margin-bottom: 20px;
+}
+.banner strong {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.09em;
+  color: var(--warn);
+  white-space: nowrap;
+}
+.banner span { color: var(--dim); font-size: 13px; }
+.banner em { color: var(--text); font-style: normal; font-weight: 600; }
+
+/* --- Header ------------------------------------------------------------ */
+.head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 17px;
+  letter-spacing: 0.04em;
+}
+.brand .mark { color: var(--warn); }
+.brand .ver { font-size: 11px; color: var(--dim); }
+
+.actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+input[type="text"] {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 7px 10px;
+  min-width: 330px;
+  font: inherit;
+}
+input[type="text"]:focus-visible,
+button:focus-visible,
+a:focus-visible { outline: 2px solid var(--warn); outline-offset: 2px; }
+
+button, .link {
+  background: var(--warn);
+  color: #14181d;
+  border: 1px solid var(--warn);
+  border-radius: 6px;
+  padding: 7px 13px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+}
+button.ghost, .link.ghost {
+  background: transparent;
+  color: var(--dim);
+  border-color: var(--line);
+  font-weight: 500;
+}
+button.ghost:hover, .link.ghost:hover { color: var(--text); }
+button[disabled] { opacity: 0.55; cursor: default; }
+
+.note { min-height: 20px; margin: 0 0 14px; font-size: 13px; color: var(--dim); }
+.note.err { color: var(--bad); }
+
+.empty {
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  padding: 28px;
+  text-align: center;
+}
+.empty p { margin: 0 0 6px; }
+.dim { color: var(--dim); font-size: 13px; }
+
+/* --- Signals table ----------------------------------------------------- */
+.signals { width: 100%; border-collapse: collapse; }
+.signals th {
+  text-align: left;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--dim);
+  border-bottom: 1px solid var(--line);
+  padding: 8px 10px;
+  white-space: nowrap;
+}
+.signals td {
+  border-bottom: 1px solid var(--line);
+  padding: 9px 10px;
+  vertical-align: top;
+}
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+.signals tbody tr.head-row { cursor: pointer; }
+.signals tbody tr.head-row:hover td { background: var(--panel); }
+.sym { font-family: var(--mono); font-weight: 600; }
+.mono { font-family: var(--mono); font-size: 12px; }
+
+.state {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  border-radius: 4px;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+.state.up { color: var(--good); }
+.state.down { color: var(--bad); }
+.state.flat { color: var(--neutral); }
+
+/* --- Expandable explanation ------------------------------------------- */
+.detail td { background: #12161b; }
+.detail .why {
+  margin: 0 0 10px;
+  color: var(--text);
+  max-width: 90ch;
+}
+.detail .label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin: 0 0 5px;
+}
+.evidence { margin: 0; padding: 0; list-style: none; }
+.evidence li {
+  display: grid;
+  grid-template-columns: 190px 110px 1fr;
+  gap: 10px;
+  padding: 4px 0;
+  border-top: 1px dashed var(--line);
+  font-size: 13px;
+}
+.evidence li:first-child { border-top: none; }
+.evidence .k { font-family: var(--mono); font-size: 12px; color: var(--dim); }
+.evidence .v { font-family: var(--mono); font-size: 12px; }
+.evidence .d { color: var(--dim); }
+.trace {
+  margin-top: 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--dim);
+}
+
+.foot {
+  margin-top: 26px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  color: var(--dim);
+  font-size: 12px;
+  max-width: 92ch;
+}
+
+@media (max-width: 760px) {
+  input[type="text"] { min-width: 0; flex: 1 1 100%; }
+  .evidence li { grid-template-columns: 1fr; gap: 2px; }
+}

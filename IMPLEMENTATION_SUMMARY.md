@@ -6,6 +6,31 @@ status updated on approval.
 
 ---
 
+## DX-4: DarvaX `/darvax/` API and UI surface (ADR-010)
+
+| | |
+|---|---|
+| Completed | 2026-08-11 |
+| Objective | Give DarvaX its own authenticated API and its own page, labelled Experimental / Unvalidated, without touching a single ATHENA dashboard asset — and honour the auth commitment recorded as a DX-1 limitation |
+| Scope | Three authenticated endpoints (`GET /api/signals`, `GET /api/signals/{instrument_id}`, `POST /api/scan`) plus the pre-existing open `/status` probe; a bounded `scan_instruments` service composing DX-1's port + DX-3's engine with per-instrument failure isolation and an explicit instrument cap; DarvaX's own `index.html` / `darvax.css` / `darvax.js` served from its own static directory; `DarvaxScanConfig` (`max_instruments`, `lookback_bars`) added to DarvaX-owned config |
+| Architecture implemented | **Auth is delegated to ATHENA, not reimplemented.** DarvaX reuses ATHENA's `RequirePermission` guard, so the owner's single dashboard session covers both lanes — one credential, one place where auth correctness lives. A mounted sub-app has its own `state` and inherits no exception handlers, so the seam shares exactly two objects (`token_signer`, `claims_factory`) and DarvaX registers its own `AthenaError` handler reusing ATHENA's `exception_mapper` |
+| Files created | `src/athena/darvax/api/routes.py`, `src/athena/darvax/scan.py`, `src/athena/darvax/api/static/{index.html,darvax.css,darvax.js}`, `tests/darvax/test_dx4_surface.py` |
+| Files modified | `src/athena/darvax/api/app.py`, `src/athena/darvax/config.py`, `src/athena/api/darvax_mount.py` (auth-state sharing), `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md` |
+| Public/Core ATHENA changes | **None.** Zero files under `src/athena/api/static/`, `config/`, `data/`, or `domain/` touched. `DASHBOARD_JS_PARTS` unchanged; `index.html`, `dashboard.js`, `dashboard.css` untouched, so ATHENA's asset-version discipline is unaffected. The only ATHENA-core edit is inside the already-approved seam file |
+| Tests | 19 new (122 DarvaX total; full suite **1436 passed**). Auth enforced on all three data endpoints (parametrized); `/status` asserted to stay open *and* to leak no market data or signal; the seam asserted to share only the two auth objects and no ATHENA providers; scan→list→detail round trip; skips surfaced not swallowed; over-cap requests refused rather than truncated; payload validation; experimental label on every payload and in the page; DarvaX assets asserted absent from every ATHENA asset; DarvaX JS asserted to reuse ATHENA's session key and to contain no password/login/setItem of its own; disabled DarvaX serves no page or asset. Plus two new coupling guards — the DarvaX→ATHENA import surface is **pinned** to six modules, and DarvaX is asserted never to import any ATHENA analytical engine |
+| Coverage | Verified live against the real `db/athena.db`: `/darvax/api/signals` returns **401 unauthenticated**, the page and both assets serve 200, and `/status` stays open. The authenticated scan path is covered by the suite's auth fixture — I did not attempt to obtain or use the owner's real password to complete it by hand |
+| Architecture compliance | ADR-010 §4 satisfied: DarvaX's UI is its own surface at `/darvax/`, not an ATHENA tab; no ATHENA dashboard asset changed. Advisory-only preserved — the scan endpoint computes and stores observations and places no orders |
+| ADR compliance | DX-4 as specified. No backtesting (DX-5), no perf work (DX-4a), no ATHENA-core modification beyond the approved seam |
+| Risks discovered | A real defect caught by the auth tests: a mounted sub-application **inherits none of the parent's exception handlers**, so the auth rejection DarvaX delegates to escaped as `RuntimeError: Caught handled exception, but response already started` instead of a clean 401. Fixed by registering DarvaX's own `AthenaError` handler that reuses ATHENA's `exception_mapper`, so the two lanes cannot drift on what a failure means. Had DX-4 shipped without auth tests, the endpoints would have 500-crashed on every unauthenticated request |
+| Technical debt introduced | None, but see the decision below for the owner to accept or reject |
+| Decision requiring owner ratification | **The DarvaX→ATHENA import surface widened.** ADR-010 allowed "frozen domain objects and read-only contracts"; DX-4 adds `athena.api.security` (auth delegation) and `athena.api.errors` (status mapping). The alternative — a second authentication system inside the satellite — would be worse engineering and materially worse security. The surface is now pinned by test so it cannot grow further unnoticed, and DarvaX still imports **no** ATHENA analytical engine. If the owner prefers strict `domain`/`errors` only, the fallback is an unauthenticated `/darvax/` on the localhost-only server, which I do not recommend |
+| Suggested improvements | ADR-010 permits one optional flag-guarded anchor in ATHENA's nav linking to `/darvax/`. Deliberately **not** added, to keep ATHENA's `index.html` untouched; the DarvaX page links back to ATHENA instead. Worth adding only if the owner wants the discoverability and accepts the one-line cosmetic touch |
+| Remaining work | Owner/Chief Architect review of DX-4. DX-4a (performance evidence) begins only on explicit approval |
+| Status | 🔄 Ready for owner review |
+| Branch | feature/live-dashboard |
+
+---
+
 ## DX-3: DarvaX signal engine, stop policies, persisted explanations (ADR-010)
 
 | | |
@@ -23,8 +48,8 @@ status updated on approval.
 | Risks discovered | **Two real defects, both caught by running against live data rather than fixtures.** (1) A semantic inversion: rules A/B/D are phrased against the *topmost* box, but the engine initially referenced the most recently completed one — so NSE:TVSMOTOR, closing 4398 above every ceiling it ever formed (max 3807.90), reported rule D "no reason to HOLD or BUY", exactly backwards. Fixed to reference the topmost box, with the divergent latest box still surfaced in the evidence, plus a named regression test. (2) A documentation defect I introduced in DX-1: `list_candles_recent()` selects `DESC LIMIT N` then **reverses**, so it returns oldest-first — but my port docstring claimed newest-first and, worse, the guard's error message told callers to reverse it, which would have broken correct code. All three corrected |
 | Technical debt introduced | None |
 | Suggested improvements | The retest tolerance (2%) is the one parameter with no deck anchor at all — the deck shows retests only qualitatively via the #TRENT example. Worth revisiting once DX-5 can measure which value actually discriminates |
-| Remaining work | Owner/Chief Architect review of DX-3. DX-4 begins only on explicit approval |
-| Status | 🔄 Ready for owner review |
+| Remaining work | None — DX-3 approved by owner 2026-08-11; DX-4 proceeded on that approval |
+| Status | ✅ Approved |
 | Branch | feature/live-dashboard |
 
 ---

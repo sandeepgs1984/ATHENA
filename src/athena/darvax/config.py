@@ -112,6 +112,26 @@ class DarvaxBreakoutConfig(_Strict):
     )
 
 
+class DarvaxScanConfig(_Strict):
+    """Bounds on a DarvaX scan (DX-4).
+
+    Both bounds exist to keep the satellite's read load explicitly capped rather
+    than open-ended: DarvaX shares a workstation with ATHENA, and ADR-010's
+    performance guarantee is architectural (no synchronous dependency), not a
+    promise of zero host-level contention. DX-4a measures that contention; these
+    caps keep it bounded in the meantime.
+    """
+
+    max_instruments: int = Field(
+        default=50, ge=1, le=1000,
+        description="Most instruments one scan request may evaluate.",
+    )
+    lookback_bars: int = Field(
+        default=400, ge=10, le=5000,
+        description="Candles per instrument fed to the signal engine.",
+    )
+
+
 class DarvaxMethodologyConfig(_Strict):
     """Methodology parameters, owned entirely by DarvaX.
 
@@ -183,6 +203,7 @@ class DarvaxConfig(_Strict):
     methodology: DarvaxMethodologyConfig = Field(
         default_factory=DarvaxMethodologyConfig
     )
+    scan: DarvaxScanConfig = Field(default_factory=DarvaxScanConfig)
 
 
 def methodology_digest(methodology: DarvaxMethodologyConfig) -> str:

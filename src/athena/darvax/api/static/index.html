@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DarvaX — Experimental Satellite</title>
+  <!--
+    DarvaX's OWN page (ADR-010 DX-4). This file is served by the DarvaX
+    sub-application and is deliberately separate from ATHENA's dashboard: it is
+    not part of DASHBOARD_JS_PARTS, does not modify index.html's tabs, and does
+    not touch dashboard.js/dashboard.css. ATHENA's asset-versioning discipline is
+    therefore unaffected by anything here.
+  -->
+  <link rel="stylesheet" href="/darvax/static/darvax.css?v=0.1.0">
+</head>
+<body>
+  <div class="wrap">
+    <!--
+      The banner is not decoration. The source methodology ships zero backtest
+      evidence and its own author disclaims it, so every view of this data must
+      say so plainly. Do not soften or hide this.
+    -->
+    <div class="banner" role="alert">
+      <strong>EXPERIMENTAL &middot; UNVALIDATED</strong>
+      <span>
+        DarvaX is a parallel advisory lane. It <em>never</em> contributes to
+        ATHENA's scoring, confidence, risk, Decision or TradePlan. The source
+        methodology ships no backtest evidence &mdash; validation is ADR-010 DX-5.
+        Advisory only; ATHENA never places orders.
+      </span>
+    </div>
+
+    <header class="head">
+      <div class="brand">
+        <span class="mark">&#9633;</span>
+        <span>DarvaX</span>
+        <span class="ver" id="version">&mdash;</span>
+      </div>
+      <div class="actions">
+        <input
+          id="symbols"
+          type="text"
+          placeholder="Symbols to scan, e.g. PAYTM, TRENT, TVSMOTOR"
+          autocomplete="off"
+          spellcheck="false">
+        <button id="scan" type="button">Scan</button>
+        <button id="refresh" type="button" class="ghost">Refresh</button>
+        <a class="ghost link" href="/dashboard/">&larr; ATHENA</a>
+      </div>
+    </header>
+
+    <p class="note" id="note"></p>
+
+    <div id="empty" class="empty" hidden>
+      <p>No DarvaX signals stored yet.</p>
+      <p class="dim">
+        Enter one or more symbols above and press Scan. DarvaX reads ATHENA's
+        candle history read-only and writes only to its own database.
+      </p>
+    </div>
+
+    <table id="table" class="signals" hidden>
+      <thead>
+        <tr>
+          <th>Symbol</th>
+          <th>State</th>
+          <th>Rule</th>
+          <th class="num">Close</th>
+          <th>Topmost box</th>
+          <th class="num">Stop</th>
+          <th>As of</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+
+    <footer class="foot">
+      DarvaX signals are stored in their own database, separate from ATHENA's.
+      Every explanation shown here was computed by the DarvaX engine and
+      persisted with the signal &mdash; this page renders it, and never
+      recomputes or rewords it.
+    </footer>
+  </div>
+
+  <script src="/darvax/static/darvax.js?v=0.1.0"></script>
+</body>
+</html>
