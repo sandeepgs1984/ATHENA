@@ -6,7 +6,7 @@
     "description": "DarvaX satellite module configuration. OWNED BY DARVAX. ATHENA core reads ONLY the top-level 'enabled' flag, at the mount seam in athena/api/darvax_mount.py, and parses nothing else in this file. Every other key here is loaded and validated by DarvaX itself (athena/darvax/config.py). Do NOT add DarvaX fields to any athena.config model. DarvaX is a parallel advisory lane and never contributes to ATHENA scoring, confidence, risk, Decision, TradePlan, or universe.",
     "status": "EXPERIMENTAL / UNVALIDATED — the source methodology ships no backtest evidence; see ADR-010 DX-5."
   },
-  "enabled": false,
+  "enabled": true,
   "database": {
     "path": "db/darvax.db"
   },
