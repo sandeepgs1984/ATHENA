@@ -490,3 +490,98 @@ Required DX-4b acceptance tests, in addition to every DX-1 test continuing to pa
 7. A release-gate assertion that the DOM hooks `tab.js` relies on still exist in
    ATHENA's assets, so a dashboard refactor breaks the build rather than the tab.
 8. ATHENA's `dashboard.js`/`dashboard.css` remain free of any DarvaX reference.
+
+---
+
+## Amendment 2 — Universe screening inside DarvaX
+
+| | |
+|---|---|
+| Status | **Proposed** (2026-08-14) — extends the Decision §§2, 5 and the scope guard |
+| Date | 2026-08-14 |
+| Deciders | sandeep (owner) |
+| Design | [`docs/design/DARVAX-SCREENER-DESIGN.md`](../design/DARVAX-SCREENER-DESIGN.md) |
+
+### Context
+
+DarvaX as built is *push*: `POST /api/scan` requires an explicit
+`instrument_ids` list, and `GET /api/signals` filters on nothing. The owner must
+already know which symbols to ask about, which is the hardest part of using the
+methodology. The ledger holds 528 instruments; DarvaX has evaluated 3.
+
+The capability is nearly present. `list_instruments()` is declared on
+`DarvaxMarketDataPort` and implemented in the adapter but called by nothing, and
+the DX-3 engine already classifies every instrument into six states plus DAR-CARD
+rules A/B/C/D. What is missing is enumeration, persistence of a *screen*, and
+presentation — not methodology.
+
+Three parts of delivering that exceed what the Decision above authorises, so they
+are put to the owner rather than assumed.
+
+### Decision
+
+**1. DarvaX may run one owner-triggered background sweep at a time.**
+A 528-instrument sweep cannot be a synchronous request. DarvaX gets its **own**
+single-flight daemon-thread job with a transient progress object and a 409 on
+concurrent starts, mirroring the shape of ATHENA's ADR-007 owner-triggered
+full-universe validation. DarvaX **must not import** ATHENA's ops machinery: the
+Decision permits importing frozen domain objects and read-only contracts only,
+and reusing `athena.ops.full_validation` would couple the satellite's lifecycle
+to ATHENA's cycle lock.
+
+This narrows, and does not repeal, the original scope guard against speculative
+concurrency infrastructure. Still forbidden: queues, schedulers, worker
+processes, connection pools, async SQLite, cross-thread connection management.
+One thread, owner-started, cancellable.
+
+**2. DarvaX may enumerate the instrument universe** via the already-declared
+`list_instruments()` port method, batching work into chunks of
+`scan.max_instruments`. The per-request cap keeps its **refuse-not-truncate**
+semantics unchanged and is *not* raised — the sweep batches beneath it, so no
+single request ever silently misrepresents its coverage.
+
+**3. DarvaX schema goes v2 → v3**, adding `darvax_sweeps` and
+`darvax_screen_results`. Versioned independently of ATHENA's schema, as before.
+`DarvaxSignal` persistence is unchanged.
+
+**Eligibility is a classification, never a score.** Tiers are pure functions of
+`signal_type` mapped to the DAR-CARD rules. No composite conviction index may be
+introduced: the methodology ships no backtest evidence, and a blended 0–100
+number would manufacture precision it cannot support. Ranking quantities are
+individually named, measured, persisted, and displayed separately.
+
+**Sweeps stay owner-triggered.** No scheduler, no cron, no auto-refresh — this
+is what preserves the DX-4a finding that a realistically-used DarvaX imposes no
+measurable contention on ATHENA. A background schedule would invalidate that
+evidence immediately.
+
+### What does not change
+
+- Screen output never reaches ATHENA's scoring, confidence, risk, `Decision`,
+  `TradePlan`, universe, or decision pipeline.
+- No order-placement affordances of any kind; states stay descriptive
+  (`BREAKOUT`, never `BUY`).
+- Every payload and view keeps `EXPERIMENTAL_UNVALIDATED`.
+- DarvaX remains disable-able and deletable with ATHENA unaffected.
+- No changes to the DX-2 primitives or the DX-3 state machine.
+
+### Risks accepted
+
+1. **A background thread is new surface area for the satellite.** Mitigated by
+   single-flight enforcement, per-instrument failure isolation, cancellation with
+   partial results preserved, and ADR-009's per-thread read connections making
+   concurrent SQLite reads safe.
+2. **Universe-wide reads are a different load profile** from anything measured.
+   DX-4a explicitly names this as a re-measure trigger, so **DX-6d re-runs the
+   performance harness at universe scale and is not optional.** Carrying the
+   25-instrument result across would be exactly the assumption ADR-010 forbids.
+3. **Unbounded sweep history** would repeat ATHENA's decisions-table growth
+   problem. A retention policy is an open question in the design, to be settled
+   before DX-6b rather than after.
+
+### Implementation gate
+
+Split into four independently reviewable milestones — DX-6a engine, DX-6b sweep
+and API, DX-6c UX, DX-6d performance re-measure — each stopping for owner
+approval before the next begins. No implementation until this amendment is
+Accepted.
