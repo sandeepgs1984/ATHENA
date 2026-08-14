@@ -145,6 +145,62 @@ def test_measurements_are_none_when_their_inputs_are_absent():
     assert result.box_height_pct is None
 
 
+def test_watch_signals_rank_on_the_box_ceiling_when_they_have_no_trigger():
+    """The defect a live 528-instrument sweep exposed.
+
+    DX-3 sets ``trigger_price`` only alongside a stop, so no INSIDE_TOPMOST_BOX
+    signal has one — and ranking on the trigger alone left the entire WATCH
+    tier, the breakout candidates, ordered alphabetically. Distance-to-breakout
+    falls back to the box ceiling, which is also the more faithful reference:
+    rule B is literally "a move above the topmost box top is a BUY".
+    """
+    inside = make_signal(
+        "BSE", DarvaxSignalType.INSIDE_TOPMOST_BOX,
+        close="100", box_top="110", box_bottom="90",
+    )
+    assert distance_to_trigger_pct(inside) is None, "precondition: no trigger"
+
+    result = screen_signal(inside, sweep_id="swp-1")
+    assert result.distance_to_breakout_pct == Decimal("10.0000")
+    assert result.breakout_reference == "box_top"
+
+
+def test_distance_to_breakout_prefers_the_trigger_when_one_exists():
+    signal = make_signal(
+        "TVS", DarvaxSignalType.BREAKOUT,
+        close="100", box_top="98", box_bottom="90", trigger="102",
+    )
+    result = screen_signal(signal, sweep_id="swp-1")
+    assert result.distance_to_breakout_pct == Decimal("2.0000")
+    assert result.breakout_reference == "trigger_price"
+
+
+def test_watch_tier_is_not_ordered_alphabetically():
+    """Direct regression guard on the live defect: a screen ordered by symbol
+    is no ranking at all."""
+    signals = [
+        make_signal("AAA", DarvaxSignalType.INSIDE_TOPMOST_BOX,
+                    close="100", box_top="150", box_bottom="90"),   # 50% away
+        make_signal("ZZZ", DarvaxSignalType.INSIDE_TOPMOST_BOX,
+                    close="100", box_top="101", box_bottom="90"),   # 1% away
+    ]
+    ranked = rank_tier(screen_signal(s, sweep_id="s") for s in signals)
+    assert [r.instrument_id for r in ranked] == ["NSE:ZZZ", "NSE:AAA"]
+
+
+def test_percentages_are_quantised_to_four_places():
+    """A live screen emitted ``10.44041450777202072538860104`` for a box height
+    — 28 significant digits of precision the measurement does not have."""
+    signal = make_signal(
+        "X", DarvaxSignalType.INSIDE_TOPMOST_BOX,
+        close="193", box_top="213", box_bottom="193",
+    )
+    height = box_height_pct(signal)
+    assert height is not None
+    assert height.as_tuple().exponent == -4, f"unquantised: {height}"
+    assert len(str(height)) <= 12
+
+
 def test_measurements_stay_decimal_never_float():
     """Percentages feed a persisted, replayable screen; binary floats would make
     a round trip lossy."""
@@ -300,9 +356,55 @@ def store(tmp_path: Path) -> DarvaxRepository:
     repo.close()
 
 
-def test_schema_is_at_version_three(store: DarvaxRepository):
-    assert DARVAX_SCHEMA_VERSION == 3
-    assert store.schema_version() == 3
+def test_schema_version_is_recorded_and_covers_the_screener_tables(
+    store: DarvaxRepository,
+):
+    """Asserted as an invariant, not against a literal — pinning the number is
+    what made the DX-3 equivalent break on this milestone's own schema bump."""
+    assert store.schema_version() == DARVAX_SCHEMA_VERSION
+    assert DARVAX_SCHEMA_VERSION >= 3, "DX-6a introduced the screener tables at v3"
+    store.save_sweep(_sweep())
+    assert store.get_sweep("swp-1") is not None
+
+
+def test_added_columns_are_applied_to_an_already_created_database(tmp_path: Path):
+    """`CREATE TABLE IF NOT EXISTS` is a no-op on an existing table, so a v3
+    database would silently lack the v4 columns without an ALTER step.
+
+    Simulates the owner's real situation: a database created before DX-6b.
+    """
+    import sqlite3
+
+    db = tmp_path / "legacy.db"
+    conn = sqlite3.connect(db)
+    conn.execute("CREATE TABLE darvax_schema_version (version INTEGER NOT NULL)")
+    conn.execute("INSERT INTO darvax_schema_version(version) VALUES (3)")
+    # The v3 shape: no distance_to_breakout_pct, no breakout_reference.
+    conn.execute(
+        "CREATE TABLE darvax_screen_results ("
+        "sweep_id TEXT NOT NULL, instrument_id TEXT NOT NULL, signal_id TEXT NOT NULL,"
+        "tier TEXT NOT NULL, signal_type TEXT NOT NULL, darvas_rule TEXT,"
+        "rank INTEGER NOT NULL, close TEXT NOT NULL, box_top TEXT, box_bottom TEXT,"
+        "trigger_price TEXT, distance_to_trigger_pct TEXT, box_height_pct TEXT,"
+        "explanation TEXT NOT NULL, PRIMARY KEY (sweep_id, instrument_id))"
+    )
+    conn.commit()
+    conn.close()
+
+    repo = DarvaxRepository(db)
+    repo.initialize()
+    try:
+        assert repo.schema_version() == DARVAX_SCHEMA_VERSION
+        # A round trip proves the columns are really usable, not just present.
+        repo.save_sweep(_sweep())
+        repo.save_screen_results(
+            screen_signals([_watch("BSE", "100", "104")], sweep_id="swp-1")
+        )
+        stored = repo.list_screen_results("swp-1")
+        assert stored[0].distance_to_breakout_pct is not None
+        assert stored[0].breakout_reference == "trigger_price"
+    finally:
+        repo.close()
 
 
 def _sweep(sweep_id: str = "swp-1", **over) -> SweepRecord:

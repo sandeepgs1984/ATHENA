@@ -72,7 +72,23 @@ class ScreenResult:
     trigger_price: Decimal | None = None
     distance_to_trigger_pct: Decimal | None = None
     """``(trigger - close) / close * 100``. Negative means price is already
-    through the trigger. ``None`` when the signal carries no trigger."""
+    through the trigger. ``None`` when the signal carries no trigger — which is
+    most of the WATCH tier, since DX-3 only sets ``trigger_price`` alongside a
+    stop. See ``distance_to_breakout_pct``."""
+    distance_to_breakout_pct: Decimal | None = None
+    """How far price is from the level that would satisfy Darvas rule B, as a
+    percentage of close. **This is the ranking key.**
+
+    Falls back from ``trigger_price`` to ``box_top`` because DX-3 leaves the
+    trigger unset for inside-the-box signals: ranking on the trigger alone left
+    the entire WATCH tier — the breakout candidates, the most useful tier —
+    ordered alphabetically. The box ceiling is also the more faithful reference,
+    since rule B is literally "a move above the topmost box top is a BUY"; the
+    prior-day-high trigger is DarvaX's own entry refinement (deck p.44)."""
+    breakout_reference: str | None = None
+    """Which level ``distance_to_breakout_pct`` was measured to — ``trigger_price``
+    or ``box_top``. Persisted so the UI can show what drove the order rather
+    than leaving the reader to guess (ADR-005)."""
     box_height_pct: Decimal | None = None
     """``(top - bottom) / bottom * 100``. Darvas favoured tight boxes."""
 

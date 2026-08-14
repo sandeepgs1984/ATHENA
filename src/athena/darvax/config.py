@@ -136,6 +136,30 @@ class DarvaxScanConfig(_Strict):
     )
 
 
+class DarvaxScreenerConfig(_Strict):
+    """Universe sweep bounds and retention (DX-6b, ADR-010 Amendment 2)."""
+
+    retain_sweeps: int = Field(
+        default=30, ge=1, le=1000,
+        description=(
+            "How many past sweeps to keep. Older sweeps and their results are "
+            "pruned when a sweep completes. A bound exists from the start "
+            "deliberately: each sweep writes roughly one row per instrument, so "
+            "unbounded history would repeat ATHENA's decisions-table growth "
+            "problem, which is far cheaper to prevent than to unwind."
+        ),
+    )
+    batch_size: int | None = Field(
+        default=None, ge=1, le=1000,
+        description=(
+            "Instruments per batch within a sweep. None means use "
+            "scan.max_instruments, which is the intended default — the sweep "
+            "batches *beneath* the per-request cap rather than raising it, so "
+            "the cap keeps its refuse-not-truncate meaning."
+        ),
+    )
+
+
 class DarvaxMethodologyConfig(_Strict):
     """Methodology parameters, owned entirely by DarvaX.
 
@@ -208,6 +232,7 @@ class DarvaxConfig(_Strict):
         default_factory=DarvaxMethodologyConfig
     )
     scan: DarvaxScanConfig = Field(default_factory=DarvaxScanConfig)
+    screener: DarvaxScreenerConfig = Field(default_factory=DarvaxScreenerConfig)
 
 
 def methodology_digest(methodology: DarvaxMethodologyConfig) -> str:

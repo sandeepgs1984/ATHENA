@@ -26,7 +26,10 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
 from athena.api.security import Permission, RequirePermission
 from athena.darvax import __version__ as darvax_version
 from athena.darvax.scan import scan_instruments
+from athena.darvax.screening.models import DarvaxTier, ScreenResult, SweepRecord
+from athena.darvax.screening.sweep import SweepBusyError
 from athena.darvax.signals import DarvaxSignal
+from athena.darvax.signals.models import DarvaxSignalType
 from athena.domain.enums import Timeframe
 from athena.errors import AthenaError
 
@@ -97,23 +100,226 @@ def _envelope(data: Any, **extra: Any) -> dict[str, Any]:
     }
 
 
+def _screen_payload(result: ScreenResult) -> dict[str, Any]:
+    """Serialise a screen result.
+
+    Tier, rank and both measurements are read out exactly as the screening
+    engine persisted them — nothing here classifies or re-measures anything
+    (ADR-005). Decimals are serialised as strings so a percentage survives the
+    round trip that a JSON float would quietly corrupt.
+    """
+    return {
+        "instrument_id": result.instrument_id,
+        "symbol": result.instrument_id.split(":")[-1],
+        "signal_id": result.signal_id,
+        "tier": result.tier.value,
+        "signal_type": result.signal_type.value,
+        "darvas_rule": result.darvas_rule.value if result.darvas_rule else None,
+        "rank": result.rank,
+        "close": str(result.close),
+        "box_top": str(result.box_top) if result.box_top is not None else None,
+        "box_bottom": (
+            str(result.box_bottom) if result.box_bottom is not None else None
+        ),
+        "trigger_price": (
+            str(result.trigger_price) if result.trigger_price is not None else None
+        ),
+        "distance_to_trigger_pct": (
+            str(result.distance_to_trigger_pct)
+            if result.distance_to_trigger_pct is not None
+            else None
+        ),
+        # The ranking key, plus the level it was measured to, so the UI can show
+        # what drove the order instead of leaving the reader to infer it.
+        "distance_to_breakout_pct": (
+            str(result.distance_to_breakout_pct)
+            if result.distance_to_breakout_pct is not None
+            else None
+        ),
+        "breakout_reference": result.breakout_reference,
+        "box_height_pct": (
+            str(result.box_height_pct) if result.box_height_pct is not None else None
+        ),
+        "explanation": result.explanation,
+        "status": EXPERIMENTAL_STATUS,
+    }
+
+
+def _sweep_payload(sweep: SweepRecord) -> dict[str, Any]:
+    return {
+        "sweep_id": sweep.sweep_id,
+        "started_at": sweep.started_at.isoformat(),
+        "finished_at": sweep.finished_at.isoformat() if sweep.finished_at else None,
+        "state": sweep.state,
+        "as_of": sweep.as_of.isoformat() if sweep.as_of else None,
+        "methodology_digest": sweep.methodology_digest,
+        "darvax_version": sweep.darvax_version,
+        "requested": sweep.requested,
+        "evaluated": sweep.evaluated,
+        "partial": sweep.partial,
+        "tier_counts": {t.value: c for t, c in sweep.tier_counts.items()},
+        "skipped": [
+            {"instrument_id": i, "reason": r} for i, r in sweep.skipped
+        ],
+    }
+
+
 @router.get("/signals", summary="List persisted DarvaX signals (experimental)")
 def list_signals(
     request: Request,
     limit: int = 200,
+    signal_type: str | None = None,
     _principal: Annotated[
         object, Depends(RequirePermission(Permission.READ))
     ] = None,
 ) -> dict[str, Any]:
-    """Newest-first signals across all instruments DarvaX has evaluated."""
+    """Newest-first signals, optionally filtered to one structural state."""
     if not 1 <= limit <= 1000:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="limit must be between 1 and 1000",
         )
     store = request.app.state.darvax_store
-    signals = store.list_signals(limit=limit)
+    if signal_type is None:
+        signals = store.list_signals(limit=limit)
+    else:
+        try:
+            parsed = DarvaxSignalType(signal_type)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=(
+                    f"unknown signal_type {signal_type!r}; valid values: "
+                    + ", ".join(s.value for s in DarvaxSignalType)
+                ),
+            ) from None
+        signals = store.list_signals_by_type(parsed, limit=limit)
     return _envelope([_signal_payload(s) for s in signals], count=len(signals))
+
+
+# --------------------------------------------------------------------------- #
+# Universe screening (DX-6b, ADR-010 Amendment 2)
+# --------------------------------------------------------------------------- #
+
+
+@router.post("/screen", summary="Start a universe sweep (experimental)")
+def start_screen(
+    request: Request,
+    _principal: Annotated[
+        object, Depends(RequirePermission(Permission.EXECUTE))
+    ] = None,
+) -> dict[str, Any]:
+    """Begin an owner-triggered sweep of the whole ledger.
+
+    Single-flight: a second request while one runs is **refused with 409**,
+    never queued (ADR-010 Amendment 2). Sweeps are never scheduled — that is
+    what keeps the DX-4a no-contention finding true.
+    """
+    runner = request.app.state.darvax_sweep_runner
+    try:
+        sweep_id = runner.start()
+    except SweepBusyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        ) from exc
+    return _envelope({"sweep_id": sweep_id}, state="running")
+
+
+@router.get("/screen/progress", summary="Sweep progress (experimental)")
+def screen_progress(
+    request: Request,
+    _principal: Annotated[
+        object, Depends(RequirePermission(Permission.READ))
+    ] = None,
+) -> dict[str, Any]:
+    """Transient progress for the running (or last) sweep."""
+    progress = request.app.state.darvax_sweep_runner.progress()
+    return _envelope(
+        {
+            "state": progress.state,
+            "stage": progress.stage,
+            "sweep_id": progress.sweep_id,
+            "total": progress.total,
+            "evaluated": progress.evaluated,
+            "skipped": progress.skipped,
+            "elapsed_seconds": round(progress.elapsed_seconds, 2),
+            "error": progress.error,
+        }
+    )
+
+
+@router.delete("/screen", summary="Cancel the running sweep (experimental)")
+def cancel_screen(
+    request: Request,
+    _principal: Annotated[
+        object, Depends(RequirePermission(Permission.EXECUTE))
+    ] = None,
+) -> dict[str, Any]:
+    """Stop the running sweep. Work already done is kept and marked partial."""
+    cancelled = request.app.state.darvax_sweep_runner.cancel()
+    return _envelope({"cancelled": cancelled})
+
+
+@router.get("/screen/latest", summary="Latest screen results (experimental)")
+def latest_screen(
+    request: Request,
+    tier: str | None = None,
+    limit: int = 1000,
+    _principal: Annotated[
+        object, Depends(RequirePermission(Permission.READ))
+    ] = None,
+) -> dict[str, Any]:
+    """The most recent sweep's results, in rank order, optionally one tier."""
+    if not 1 <= limit <= 5000:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="limit must be between 1 and 5000",
+        )
+    parsed_tier: DarvaxTier | None = None
+    if tier is not None:
+        try:
+            parsed_tier = DarvaxTier(tier)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=(
+                    f"unknown tier {tier!r}; valid values: "
+                    + ", ".join(t.value for t in DarvaxTier)
+                ),
+            ) from None
+
+    store = request.app.state.darvax_store
+    sweep = store.latest_sweep()
+    if sweep is None:
+        # An honest empty state, not an error: no sweep has ever run.
+        return _envelope([], sweep=None, count=0)
+
+    results = store.list_screen_results(
+        sweep.sweep_id, tier=parsed_tier, limit=limit
+    )
+    return _envelope(
+        [_screen_payload(r) for r in results],
+        sweep=_sweep_payload(sweep),
+        count=len(results),
+    )
+
+
+@router.get("/screen/sweeps", summary="Sweep history (experimental)")
+def list_sweeps(
+    request: Request,
+    limit: int = 50,
+    _principal: Annotated[
+        object, Depends(RequirePermission(Permission.READ))
+    ] = None,
+) -> dict[str, Any]:
+    """Past sweeps, newest first, for replay and comparison."""
+    if not 1 <= limit <= 500:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="limit must be between 1 and 500",
+        )
+    sweeps = request.app.state.darvax_store.list_sweeps(limit=limit)
+    return _envelope([_sweep_payload(s) for s in sweeps], count=len(sweeps))
 
 
 @router.get(

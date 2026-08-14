@@ -6,6 +6,33 @@ status updated on approval.
 
 ---
 
+## DX-6b: DarvaX universe sweep and screen API (ADR-010 Amendment 2)
+
+| | |
+|---|---|
+| Completed | 2026-08-14 |
+| Objective | Give DarvaX the ability to answer "which symbols are worth looking at" across the whole ledger, rather than only reporting on symbols the owner already names |
+| Owner decisions implemented | **Universe:** all 528 ledger instruments via `list_instruments()` — exactly what Amendment 2 authorised, and the option that avoids reading an ATHENA analytical concept and widening a pinned import surface. **Timeframe:** daily only. **Retention:** keep the 30 most recent sweeps, pruned on completion |
+| Scope | `SweepRunner` — single-flight owner-triggered daemon thread with transient progress, cancellation, per-instrument failure isolation, and batching beneath `scan.max_instruments`; `DarvaxScreenerConfig` (`retain_sweeps`, `batch_size`); retention pruning; five `/screen` endpoints; a `signal_type` filter closing a gap found in design; DarvaX schema v3→v4 |
+| Architecture implemented | Mirrors the *shape* of ATHENA's ADR-007 full-universe job without importing any of it — reusing `athena.ops.full_validation` would couple the satellite's lifecycle to ATHENA's cycle lock, the exact dependency the satellite exists to avoid. The runner is an **instance on the sub-app's state, not module globals**, so two apps cannot contend over one another's sweeps and there is no hidden process-wide state. The clock is injected. A second start is **refused with 409, never queued**. Sweeps are **never scheduled**, which is what keeps the DX-4a no-contention finding true. The sweep batches *beneath* `max_instruments` rather than raising it, so the per-request cap keeps its refuse-not-truncate meaning |
+| Files created | `src/athena/darvax/screening/sweep.py`, `tests/darvax/test_dx6b_sweep.py` |
+| Files modified | `src/athena/darvax/{config,api/app,api/routes}.py`, `src/athena/darvax/screening/{models,engine,__init__}.py`, `src/athena/darvax/store/{schema,repository}.py`, `tests/darvax/test_dx6a_screening.py`, `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md` |
+| Public/Core ATHENA changes | **None** |
+| Tests | 30 new (203 DarvaX total; full suite **1517 passed**). Threading made deterministic by driving the runner and joining, never by sleeping. Covers: universe enumerated once; batching under a cap of 5 across 20 instruments; single-flight refusal and 409; cancellation keeping partial results with `evaluated < requested` asserted; unreadable instruments skipped **with reasons**; outright failure recorded rather than vanishing; retention pruning removing sweeps *and* their results; determinism across two sweeps; every endpoint auth-gated; honest empty state before any sweep; unknown tier/type rejected 422 |
+| Live verification | Ran a real 528-instrument sweep against a copy of the owner's ledger: **528/528 evaluated, 0 skipped, 0.5s**, tiers 73 ACTIONABLE / 226 WATCH / 19 EXIT_RELEVANT / 210 NOT_ELIGIBLE |
+| Defect found and fixed (1) | **The WATCH tier — the breakout candidates, the most useful tier — was ordered alphabetically.** The live sweep showed every WATCH row with `distance_to_trigger = None` and the list running 3MINDIA, AAVAS, ABB, ABCAPITAL… Root cause: DX-3 sets `trigger_price` only alongside a stop, so no `INSIDE_TOPMOST_BOX` signal has one, and the ranking key was therefore null for the entire tier. Fixed by adding `distance_to_breakout_pct`, which falls back from the trigger to the **box ceiling** — also the more faithful reference, since rule B is literally "a move above the topmost box top is a BUY" while the prior-day-high trigger is DarvaX's own p.44 refinement. `breakout_reference` is persisted alongside so the UI shows which level drove the order. Post-fix, WATCH surfaces SIEMENS at 0.03% from its ceiling and GLAXO at 0.11%. **No fixture caught this; only live data did** |
+| Defect found and fixed (2) | **28-digit percentages.** Decimal division emitted `10.44041450777202072538860104` for a box height — precision the measurement does not have, headed straight for the UI. All percentages now quantise to 4dp |
+| Schema | v3→v4 for the two new columns. `CREATE TABLE IF NOT EXISTS` is a no-op on an existing table, so an ALTER-based migration was added and tested against a synthesised v3 database — the owner's real one already had v3 tables. Additive only; no migration drops or rewrites a column |
+| Architecture compliance | Amendment 2 as specified. No queues, schedulers, worker processes, connection pools, async SQLite, or retry/backoff. Eligibility remains a classification, never a score. `EXPERIMENTAL_UNVALIDATED` on every payload. Live `db/darvax.db` verified untouched across a full suite run; DarvaX still deletable at **1314 passed**, restored byte-identical |
+| Process note | My own DX-6a test pinned the schema version as a literal and broke on this milestone's bump — the exact mistake I had criticised in the DX-3 test one milestone earlier. Rewritten as an invariant |
+| Risks discovered | The `trigger_price` gap is worth revisiting: DX-3 could populate it for inside-the-box signals, which would make the deck's p.44 entry rule available across the WATCH tier. That is a DX-3 engine change needing its own approval, and is not proposed here |
+| Technical debt introduced | None |
+| Remaining work | DX-6c (screener UX) and DX-6d (universe-scale performance re-measure) |
+| Status | 🔄 Ready for review |
+| Branch | feature/live-dashboard |
+
+---
+
 ## DX-6a: DarvaX screening engine (ADR-010 Amendment 2)
 
 | | |
@@ -26,7 +53,7 @@ status updated on approval.
 | Risks discovered | None beyond the two defects above, both fixed |
 | Technical debt introduced | None. Sweep retention remains an open design question (§10 Q3) and must be settled before DX-6b, not after |
 | Remaining work | DX-6b (sweep + API) is blocked on the owner's three open questions: universe definition, timeframe, and sweep retention |
-| Status | 🔄 Ready for review |
+| Status | ✅ Approved (2026-08-14) |
 | Branch | feature/live-dashboard |
 
 ---

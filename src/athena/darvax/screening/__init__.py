@@ -7,6 +7,7 @@ classification taken from Darvas' DAR-CARD rules — never a conviction score.
 from athena.darvax.screening.engine import (
     TIER_ORDER,
     box_height_pct,
+    distance_to_breakout,
     distance_to_trigger_pct,
     rank_tier,
     screen_signal,
@@ -22,6 +23,7 @@ __all__ = [
     "ScreenResult",
     "SweepRecord",
     "box_height_pct",
+    "distance_to_breakout",
     "distance_to_trigger_pct",
     "rank_tier",
     "screen_signal",

@@ -11,6 +11,10 @@ Version history:
 * **2** (DX-3) — ``darvax_signals``, the first DarvaX artifact table.
 * **3** (DX-6a) — ``darvax_sweeps`` and ``darvax_screen_results``, the screener's
   own artifacts (ADR-010 Amendment 2).
+* **4** (DX-6b) — ``distance_to_breakout_pct`` and ``breakout_reference`` on
+  ``darvax_screen_results``. Added after a live 528-instrument sweep showed the
+  WATCH tier ordered alphabetically: DX-3 sets ``trigger_price`` only alongside
+  a stop, so no inside-the-box signal had one to rank on.
 
 ``darvax_signals`` stores each signal's **computed explanation and evidence as
 data** (ADR-005's principle applied inside the satellite), so the DX-4 surface
@@ -29,7 +33,7 @@ never appear to have been produced by current settings.
 from __future__ import annotations
 
 #: Bumped independently of ATHENA's SCHEMA_VERSION. They never interact.
-DARVAX_SCHEMA_VERSION = 3
+DARVAX_SCHEMA_VERSION = 4
 
 _DDL: tuple[str, ...] = (
     "CREATE TABLE IF NOT EXISTS darvax_schema_version (version INTEGER NOT NULL)",
@@ -92,6 +96,8 @@ _DDL: tuple[str, ...] = (
         box_bottom              TEXT,
         trigger_price           TEXT,
         distance_to_trigger_pct TEXT,
+        distance_to_breakout_pct TEXT,
+        breakout_reference      TEXT,
         box_height_pct          TEXT,
         explanation             TEXT NOT NULL,
         PRIMARY KEY (sweep_id, instrument_id)
@@ -103,5 +109,21 @@ _DDL: tuple[str, ...] = (
 )
 
 
+#: Columns added to an existing table after its CREATE shipped. ``CREATE TABLE
+#: IF NOT EXISTS`` cannot add a column to a table that already exists, so these
+#: are applied with ALTER, guarded by a "does it already have it" check.
+#: Additive only — no migration here drops or rewrites a column, so a downgrade
+#: leaves data readable rather than destroyed.
+_ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
+    ("darvax_screen_results", "distance_to_breakout_pct", "TEXT"),
+    ("darvax_screen_results", "breakout_reference", "TEXT"),
+)
+
+
 def darvax_ddl_statements() -> tuple[str, ...]:
     return _DDL
+
+
+def darvax_added_columns() -> tuple[tuple[str, str, str], ...]:
+    """``(table, column, type)`` triples to ALTER in when upgrading in place."""
+    return _ADDED_COLUMNS

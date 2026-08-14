@@ -30,7 +30,11 @@ from athena.darvax.signals.models import (
     SignalEvidence,
     StopBasis,
 )
-from athena.darvax.store.schema import DARVAX_SCHEMA_VERSION, darvax_ddl_statements
+from athena.darvax.store.schema import (
+    DARVAX_SCHEMA_VERSION,
+    darvax_added_columns,
+    darvax_ddl_statements,
+)
 from athena.errors import RepositoryError
 
 
@@ -81,8 +85,10 @@ def _row_to_screen_result(row: tuple) -> ScreenResult:
         box_bottom=_optional_decimal(row[9]),
         trigger_price=_optional_decimal(row[10]),
         distance_to_trigger_pct=_optional_decimal(row[11]),
-        box_height_pct=_optional_decimal(row[12]),
-        explanation=row[13],
+        distance_to_breakout_pct=_optional_decimal(row[12]),
+        breakout_reference=row[13],
+        box_height_pct=_optional_decimal(row[14]),
+        explanation=row[15],
     )
 
 
@@ -160,6 +166,18 @@ class DarvaxRepository:
                 with conn:
                     for statement in darvax_ddl_statements():
                         conn.execute(statement)
+                    # Columns added after a table's CREATE shipped: CREATE TABLE
+                    # IF NOT EXISTS is a no-op on an existing table, so an
+                    # already-created table would silently miss them.
+                    for table, column, column_type in darvax_added_columns():
+                        existing = {
+                            r[1]
+                            for r in conn.execute(f"PRAGMA table_info({table})")
+                        }
+                        if column not in existing:
+                            conn.execute(
+                                f"ALTER TABLE {table} ADD COLUMN {column} {column_type}"
+                            )
                     row = conn.execute(
                         "SELECT version FROM darvax_schema_version"
                     ).fetchone()
@@ -353,9 +371,9 @@ class DarvaxRepository:
                         "INSERT INTO darvax_screen_results ("
                         "sweep_id, instrument_id, signal_id, tier, signal_type, "
                         "darvas_rule, rank, close, box_top, box_bottom, "
-                        "trigger_price, distance_to_trigger_pct, box_height_pct, "
-                        "explanation"
-                        ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+                        "trigger_price, distance_to_trigger_pct, distance_to_breakout_pct, "
+                        "breakout_reference, box_height_pct, explanation"
+                        ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
                         "ON CONFLICT(sweep_id, instrument_id) DO UPDATE SET "
                         "signal_id=excluded.signal_id, tier=excluded.tier, "
                         "signal_type=excluded.signal_type, "
@@ -364,6 +382,8 @@ class DarvaxRepository:
                         "box_bottom=excluded.box_bottom, "
                         "trigger_price=excluded.trigger_price, "
                         "distance_to_trigger_pct=excluded.distance_to_trigger_pct, "
+                        "distance_to_breakout_pct=excluded.distance_to_breakout_pct, "
+                        "breakout_reference=excluded.breakout_reference, "
                         "box_height_pct=excluded.box_height_pct, "
                         "explanation=excluded.explanation",
                         [
@@ -380,6 +400,8 @@ class DarvaxRepository:
                                 _optional_str(r.box_bottom),
                                 _optional_str(r.trigger_price),
                                 _optional_str(r.distance_to_trigger_pct),
+                                _optional_str(r.distance_to_breakout_pct),
+                                r.breakout_reference,
                                 _optional_str(r.box_height_pct),
                                 r.explanation,
                             )
@@ -418,6 +440,60 @@ class DarvaxRepository:
         clause += " ORDER BY tier, rank LIMIT ?"
         return self._screen_rows(clause, (*params, limit))
 
+    def prune_sweeps(self, keep: int) -> int:
+        """Delete all but the ``keep`` most recent sweeps, and their results.
+
+        Bounded history from the start, per the owner's DX-6b decision: each
+        sweep writes roughly one result row per instrument, so unbounded growth
+        would repeat ATHENA's decisions-table problem — far cheaper to prevent
+        than to unwind. Returns the number of sweeps removed.
+        """
+        if keep < 1:
+            raise ValueError(f"keep must be >= 1, got {keep}")
+        try:
+            with self._lock:
+                conn = self._connect()
+                with conn:
+                    doomed = [
+                        row[0]
+                        for row in conn.execute(
+                            "SELECT sweep_id FROM darvax_sweeps "
+                            "ORDER BY started_at DESC LIMIT -1 OFFSET ?",
+                            (keep,),
+                        ).fetchall()
+                    ]
+                    if not doomed:
+                        return 0
+                    marks = ",".join("?" * len(doomed))
+                    # Results first: a crash between the two statements must not
+                    # leave orphaned results pointing at a deleted sweep.
+                    conn.execute(
+                        f"DELETE FROM darvax_screen_results WHERE sweep_id IN ({marks})",
+                        doomed,
+                    )
+                    conn.execute(
+                        f"DELETE FROM darvax_sweeps WHERE sweep_id IN ({marks})", doomed
+                    )
+        except sqlite3.Error as exc:
+            raise RepositoryError(f"DarvaX sweep prune failed: {exc}") from exc
+        return len(doomed)
+
+    def list_signals_by_type(
+        self, signal_type: DarvaxSignalType, *, limit: int = 200
+    ) -> list[DarvaxSignal]:
+        """Newest-first signals of one structural state.
+
+        Closes a real gap found during DX-6 design: ``GET /api/signals`` filtered
+        on nothing, so "show me only the breakouts" could not be answered from
+        the API at all — only by eyeballing an unfiltered list.
+        """
+        if limit < 1:
+            raise ValueError(f"limit must be >= 1, got {limit}")
+        return self._signal_rows(
+            "WHERE signal_type=? ORDER BY as_of DESC LIMIT ?",
+            (signal_type.value, limit),
+        )
+
     def _sweep_rows(self, clause: str, params: tuple) -> list[SweepRecord]:
         try:
             with self._lock:
@@ -437,7 +513,8 @@ class DarvaxRepository:
                 rows = self._connect().execute(
                     "SELECT sweep_id, instrument_id, signal_id, tier, signal_type, "
                     "darvas_rule, rank, close, box_top, box_bottom, trigger_price, "
-                    "distance_to_trigger_pct, box_height_pct, explanation "
+                    "distance_to_trigger_pct, distance_to_breakout_pct, "
+                    "breakout_reference, box_height_pct, explanation "
                     f"FROM darvax_screen_results {clause}",
                     params,
                 ).fetchall()

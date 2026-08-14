@@ -26,6 +26,7 @@ from athena.darvax.adapters import SqliteMarketDataAdapter
 from athena.darvax.api.routes import router as routes_router
 from athena.darvax.config import load_darvax_config
 from athena.darvax.ports import DarvaxMarketDataPort
+from athena.darvax.screening.sweep import SweepRunner
 from athena.darvax.store import DARVAX_SCHEMA_VERSION, DarvaxRepository
 from athena.errors import AthenaError
 
@@ -76,6 +77,15 @@ def create_darvax_app(
     app.state.darvax_config = config
     app.state.darvax_store = store
     app.state.darvax_market_data = market_data
+    # One sweep coordinator per mounted app, not a module global: the runner's
+    # lifetime is this sub-application's, so two apps cannot contend over one
+    # another's sweeps and there is no hidden process-wide state (DX-6b).
+    app.state.darvax_sweep_runner = SweepRunner(
+        market_data=market_data,
+        store=store,
+        config=config,
+        darvax_version=darvax_version,
+    )
 
     # A mounted sub-application does not inherit the parent's exception
     # handlers, so DarvaX registers its own. Without this an authentication

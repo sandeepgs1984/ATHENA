@@ -51,6 +51,19 @@ TIER_ORDER: tuple[DarvaxTier, ...] = (
 
 _HUNDRED = Decimal(100)
 
+#: Percentages are quantised before they are persisted or shown. Decimal
+#: division yields 28 significant digits — a real screen was emitting
+#: ``10.44041450777202072538860104`` for a box height, which reads as precision
+#: the measurement does not have. Four places is well past anything actionable
+#: on a percentage while staying exact enough to sort on.
+_PCT = Decimal("0.0001")
+
+
+def _pct(numerator: Decimal, denominator: Decimal) -> Decimal | None:
+    if denominator <= 0:
+        return None
+    return (numerator / denominator * _HUNDRED).quantize(_PCT)
+
 
 def tier_for(signal_type: DarvaxSignalType) -> DarvaxTier:
     """Map a structural state onto its eligibility tier.
@@ -75,22 +88,40 @@ def distance_to_trigger_pct(signal: DarvaxSignal) -> Decimal | None:
     Day High Price"), already persisted on the signal. A negative result means
     price is *through* the trigger, which is information, not an error.
     """
-    if signal.trigger_price is None or signal.close <= 0:
+    if signal.trigger_price is None:
         return None
-    return (signal.trigger_price - signal.close) / signal.close * _HUNDRED
+    return _pct(signal.trigger_price - signal.close, signal.close)
+
+
+def distance_to_breakout(signal: DarvaxSignal) -> tuple[Decimal | None, str | None]:
+    """Distance to the level that would satisfy Darvas rule B, and which level.
+
+    Prefers the deck's p.44 entry trigger when DX-3 recorded one, and otherwise
+    falls back to the box ceiling. That fallback is the point: DX-3 only sets
+    ``trigger_price`` alongside a stop, so every ``INSIDE_TOPMOST_BOX`` signal
+    has none — and ranking the WATCH tier on the trigger alone left the entire
+    breakout-candidate list sorted alphabetically, which is no ranking at all.
+
+    Returns ``(percentage, reference)`` so the reference can be persisted and
+    shown rather than inferred.
+    """
+    if signal.trigger_price is not None:
+        return _pct(signal.trigger_price - signal.close, signal.close), "trigger_price"
+    if signal.box_top is not None:
+        return _pct(signal.box_top - signal.close, signal.close), "box_top"
+    return None, None
 
 
 def box_height_pct(signal: DarvaxSignal) -> Decimal | None:
     """Box height as a percentage of its floor — Darvas favoured tight boxes."""
     if signal.box_top is None or signal.box_bottom is None:
         return None
-    if signal.box_bottom <= 0:
-        return None
-    return (signal.box_top - signal.box_bottom) / signal.box_bottom * _HUNDRED
+    return _pct(signal.box_top - signal.box_bottom, signal.box_bottom)
 
 
 def screen_signal(signal: DarvaxSignal, *, sweep_id: str, rank: int = 0) -> ScreenResult:
     """Classify and measure one signal. ``rank`` is assigned by :func:`rank_tier`."""
+    breakout_pct, breakout_ref = distance_to_breakout(signal)
     return ScreenResult(
         sweep_id=sweep_id,
         instrument_id=signal.instrument_id,
@@ -105,6 +136,8 @@ def screen_signal(signal: DarvaxSignal, *, sweep_id: str, rank: int = 0) -> Scre
         box_bottom=signal.box_bottom,
         trigger_price=signal.trigger_price,
         distance_to_trigger_pct=distance_to_trigger_pct(signal),
+        distance_to_breakout_pct=breakout_pct,
+        breakout_reference=breakout_ref,
         box_height_pct=box_height_pct(signal),
     )
 
@@ -112,15 +145,19 @@ def screen_signal(signal: DarvaxSignal, *, sweep_id: str, rank: int = 0) -> Scre
 def _default_key(result: ScreenResult) -> tuple[int, Decimal, str]:
     """Default ordering key within a tier.
 
-    Ascending ``distance_to_trigger_pct`` — closest to breaking out, first —
-    because that answers the question the tier poses. Results with no trigger
-    sort last rather than being treated as distance zero, which would put them
-    at the top of the screen for a value they do not have. ``instrument_id``
-    breaks ties so the order is total and therefore deterministic.
+    Ascending ``distance_to_breakout_pct`` — closest to clearing the rule-B
+    level, first — because that answers the question each tier poses. Uses
+    distance-to-breakout rather than distance-to-trigger because DX-3 leaves the
+    trigger unset for inside-the-box signals, which left the whole WATCH tier
+    ordered alphabetically.
+
+    Results with no measurable distance sort last rather than being treated as
+    zero, which would put them at the top of the screen for a value they do not
+    have. ``instrument_id`` breaks ties so the order is total and deterministic.
     """
-    if result.distance_to_trigger_pct is None:
+    if result.distance_to_breakout_pct is None:
         return (1, Decimal(0), result.instrument_id)
-    return (0, result.distance_to_trigger_pct, result.instrument_id)
+    return (0, result.distance_to_breakout_pct, result.instrument_id)
 
 
 def rank_tier(results: Iterable[ScreenResult]) -> tuple[ScreenResult, ...]:
@@ -141,6 +178,8 @@ def rank_tier(results: Iterable[ScreenResult]) -> tuple[ScreenResult, ...]:
             box_bottom=r.box_bottom,
             trigger_price=r.trigger_price,
             distance_to_trigger_pct=r.distance_to_trigger_pct,
+            distance_to_breakout_pct=r.distance_to_breakout_pct,
+            breakout_reference=r.breakout_reference,
             box_height_pct=r.box_height_pct,
         )
         for position, r in enumerate(ordered, start=1)
