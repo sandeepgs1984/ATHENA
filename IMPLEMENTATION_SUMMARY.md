@@ -6,6 +6,31 @@ status updated on approval.
 
 ---
 
+## DX-6a: DarvaX screening engine (ADR-010 Amendment 2)
+
+| | |
+|---|---|
+| Completed | 2026-08-14 |
+| Objective | Turn already-computed signals into a tiered, ordered, persisted screen — the classification and measurement layer beneath the universe sweep (DX-6b) and the screener UI (DX-6c) |
+| Scope | `DarvaxTier` taxonomy mapping every DX-3 state onto its DAR-CARD rule; two measured ranking quantities; `ScreenResult` and `SweepRecord`; DarvaX schema v2→v3 adding `darvax_sweeps` and `darvax_screen_results`; repository persistence and queries. **No sweep job, no API, no UI, and no change to the DX-2 primitives or DX-3 state machine** |
+| Architecture implemented | The engine is **pure** — no clock, no config, no IO, no market-data access — so the same signals always yield the same screen. Tier and both measurements are computed once and **persisted**, so the API serialises and the UI renders; neither ever re-derives an eligibility (ADR-005). `tier_for` **raises** on an unknown state rather than defaulting to NOT_ELIGIBLE, so a future signal type must be classified deliberately instead of silently vanishing from the screen. Ordering is total (distance, then instrument id) so two runs over the same signals produce byte-identical screens |
+| Files created | `src/athena/darvax/screening/{__init__,models,engine}.py`, `tests/darvax/test_dx6a_screening.py`, `tests/conftest.py` fixture (see the defect below) |
+| Files modified | `src/athena/darvax/store/{schema,repository}.py`, `tests/darvax/conftest.py`, `tests/darvax/test_dx3_signals.py` (schema-version assertion), `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md` |
+| Public/Core ATHENA changes | **None.** No file under `src/athena/` outside `darvax/` touched |
+| Scope reduced, deliberately | The approved design named **four** ranking quantities; only **two** are derivable from a stored signal. `DarvaxSignal` carries `close`, `trigger_price`, `box_top` and `box_bottom` as structured fields, but records neither bars-in-box nor volume expansion (its evidence holds `bars_examined` — the lookback window size, not time inside the box). Delivering the other two requires extending the DX-3 engine to measure and persist them: a change to an approved milestone, needing its own approval, and unable to backfill existing signals. They are therefore **deferred rather than faked** — parsing them out of evidence prose, or recomputing them from candles this module deliberately cannot see, would both be worse than shipping two that are exact |
+| Tests | 32 new (200 DarvaX total; full suite **1482 passed**). Taxonomy totality (every enum member maps to a tier, so a new state fails loudly); exact hand-worked measurements to 4dp; negative distance preserved when price is through the trigger; `None` rather than `0.0` when inputs are absent, because 0.0 reads as "right at the trigger" — the most misleading possible value; zero/negative denominators return `None` instead of raising and failing an entire sweep over one bad row; deterministic tie-breaking; per-tier ranks; empty tiers present in counts; v3 round trips with Decimals intact; sweep upsert idempotency across the running→completed write pair; cancelled-partial recording; sweep isolation. Plus a guard asserting **no score-like field or function exists anywhere** in the screener — the commitment Amendment 2 was accepted on |
+| Defect found and fixed | **The test suite was writing to the owner's live DarvaX database.** `create_app()` reads the real `config/darvax.json`; once DarvaX was enabled, every test building an app mounted the real satellite, which resolved its relative `db/darvax.db` against the real repo root and ran `initialize()` on production data. Caught because the v2→v3 bump finally made the write observable — the live DB's WAL mtime moved during a test run while the running server still reported v2. Fixed with an autouse fixture in `tests/conftest.py` neutralising the seam inside `create_app` suite-wide, overridden under `tests/darvax/` where the seam is the thing under test. Verified by asserting `db/darvax.db` mtimes are unchanged across a full run |
+| Live data impact | The owner's `db/darvax.db` was migrated v2→v3 by that defect before it was found. Additive DDL only; all three stored signals intact and verified. Left migrated rather than reverted — v3 is what the current code expects, and a rollback would simply be re-applied on the next start |
+| Process note | While fixing the above I overwrote the existing `tests/conftest.py` instead of appending to it, destroying its `config_dir` fixture and `rewrite_json` helper and breaking collection in two files. Restored from `HEAD` and re-applied as an edit. The file was tracked, so nothing was lost — but the correct move was to read before writing |
+| Architecture compliance | ADR-010 Amendment 2 as specified. Eligibility is a classification, never a score. No sweep job, no scheduler, no queue, no API, no UI. `EXPERIMENTAL_UNVALIDATED` untouched. DarvaX still deletable — verified at **1314 passed** with the module and its tests removed and the flag disabled, restored byte-identical |
+| Risks discovered | None beyond the two defects above, both fixed |
+| Technical debt introduced | None. Sweep retention remains an open design question (§10 Q3) and must be settled before DX-6b, not after |
+| Remaining work | DX-6b (sweep + API) is blocked on the owner's three open questions: universe definition, timeframe, and sweep retention |
+| Status | 🔄 Ready for review |
+| Branch | feature/live-dashboard |
+
+---
+
 ## DX-4a: DarvaX performance evidence (ADR-010)
 
 | | |

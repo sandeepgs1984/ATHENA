@@ -25,6 +25,19 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
+@pytest.fixture(autouse=True)
+def darvax_never_activates_in_tests() -> None:
+    """Opt back in to the real mount seam for the DarvaX suite.
+
+    Overrides the suite-wide guard in ``tests/conftest.py``, which neutralises
+    `create_app`'s DarvaX seam so unrelated tests cannot touch the owner's live
+    `db/darvax.db`. These tests are *about* that seam, so they need it intact —
+    and they stay off the production database by pinning their own config
+    directory (below) and their own temporary database instead.
+    """
+    return None
+
+
 def athena_config_copy(dest: Path, *, darvax_enabled: bool) -> Path:
     """Copy ATHENA's real config directory to ``dest``, overriding only DarvaX.
 

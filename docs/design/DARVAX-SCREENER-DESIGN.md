@@ -67,8 +67,19 @@ exactly what drove the order. No hidden weighting, no blended index.
 |---|---|---|
 | `distance_to_trigger_pct` | `(trigger_price − close) / close × 100` | `trigger_price` already exists on `DarvaxSignal` — the prior bar's high, deck p.44 "Enter above the Previous Day High Price" |
 | `box_height_pct` | `(box_top − box_bottom) / box_bottom × 100` | Darvas favoured tight boxes; both bounds already persisted |
-| `bars_in_box` | Bars since the topmost box confirmed | Derived from the DX-2 box primitive |
-| `volume_expansion` | Latest-bar volume vs its trailing mean | Existing DX-2 primitive, currently unused by the engine |
+| ~~`bars_in_box`~~ | Bars since the topmost box confirmed | **Deferred at DX-6a** — not on `DarvaxSignal` |
+| ~~`volume_expansion`~~ | Latest-bar volume vs its trailing mean | **Deferred at DX-6a** — not on `DarvaxSignal` |
+
+> **DX-6a correction.** Only the first two shipped. `DarvaxSignal` carries
+> `close`, `trigger_price`, `box_top` and `box_bottom` as structured fields but
+> records neither bars-in-box nor volume expansion — its evidence holds
+> `bars_examined`, which is the lookback window size, not time spent inside the
+> box. Delivering the other two means extending the DX-3 engine to measure and
+> persist them: a change to an approved milestone, needing its own approval, and
+> unable to backfill signals stored before it. They are deferred rather than
+> faked — parsing them out of evidence prose, or recomputing them from candles
+> the screener deliberately cannot see, would both be worse than shipping two
+> that are exact.
 
 **Default order:** ACTIONABLE first, then WATCH ascending by
 `distance_to_trigger_pct` — closest to breaking out, first. That is a defensible

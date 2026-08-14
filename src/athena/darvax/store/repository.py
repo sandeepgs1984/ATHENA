@@ -16,10 +16,12 @@ from __future__ import annotations
 import json as _json
 import sqlite3
 import threading
+from collections.abc import Sequence
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 
+from athena.darvax.screening.models import DarvaxTier, ScreenResult, SweepRecord
 from athena.darvax.signals.models import (
     DarvasRule,
     DarvaxSignal,
@@ -34,6 +36,54 @@ from athena.errors import RepositoryError
 
 def _optional_decimal(raw: str | None) -> Decimal | None:
     return Decimal(raw) if raw is not None else None
+
+
+def _optional_str(value: Decimal | None) -> str | None:
+    """Decimals are stored as text, never as REAL — binary floats would make
+    persisted money and percentages non-reproducible across a round trip."""
+    return str(value) if value is not None else None
+
+
+def _row_to_sweep(row: tuple) -> SweepRecord:
+    raw_counts = _json.loads(row[10])
+    return SweepRecord(
+        sweep_id=row[0],
+        started_at=datetime.fromisoformat(row[1]),
+        finished_at=datetime.fromisoformat(row[2]) if row[2] else None,
+        state=row[3],
+        as_of=datetime.fromisoformat(row[4]) if row[4] else None,
+        methodology_digest=row[5],
+        darvax_version=row[6],
+        requested=int(row[7]),
+        evaluated=int(row[8]),
+        skipped=tuple(
+            (entry["instrument_id"], entry["reason"]) for entry in _json.loads(row[9])
+        ),
+        tier_counts={DarvaxTier(k): int(v) for k, v in raw_counts.items()},
+        partial=bool(row[11]),
+    )
+
+
+def _row_to_screen_result(row: tuple) -> ScreenResult:
+    """Rehydrate a screen result. The tier and both measurements are read back
+    as stored — never recomputed here, which is what keeps a screen replayable
+    rather than merely re-runnable (ADR-005)."""
+    return ScreenResult(
+        sweep_id=row[0],
+        instrument_id=row[1],
+        signal_id=row[2],
+        tier=DarvaxTier(row[3]),
+        signal_type=DarvaxSignalType(row[4]),
+        darvas_rule=DarvasRule(row[5]) if row[5] else None,
+        rank=int(row[6]),
+        close=Decimal(row[7]),
+        box_top=_optional_decimal(row[8]),
+        box_bottom=_optional_decimal(row[9]),
+        trigger_price=_optional_decimal(row[10]),
+        distance_to_trigger_pct=_optional_decimal(row[11]),
+        box_height_pct=_optional_decimal(row[12]),
+        explanation=row[13],
+    )
 
 
 def _row_to_signal(row: tuple) -> DarvaxSignal:
@@ -235,6 +285,165 @@ class DarvaxRepository:
         except sqlite3.Error as exc:
             raise RepositoryError(f"DarvaX signal query failed: {exc}") from exc
         return [_row_to_signal(row) for row in rows]
+
+    # -------------------------------------------------------- screening (DX-6a)
+
+    def save_sweep(self, sweep: SweepRecord) -> None:
+        """Upsert one sweep record. Idempotent by ``sweep_id``.
+
+        Upsert rather than insert because a sweep is written at least twice —
+        once when it starts (``running``) and again when it finishes or is
+        cancelled — and a crash between the two must leave a readable row
+        rather than a missing one.
+        """
+        try:
+            with self._lock:
+                conn = self._connect()
+                with conn:
+                    conn.execute(
+                        "INSERT INTO darvax_sweeps ("
+                        "sweep_id, started_at, finished_at, state, as_of, "
+                        "methodology_digest, darvax_version, requested, evaluated, "
+                        "skipped_json, tier_counts_json, partial"
+                        ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?) "
+                        "ON CONFLICT(sweep_id) DO UPDATE SET "
+                        "finished_at=excluded.finished_at, state=excluded.state, "
+                        "as_of=excluded.as_of, requested=excluded.requested, "
+                        "evaluated=excluded.evaluated, skipped_json=excluded.skipped_json, "
+                        "tier_counts_json=excluded.tier_counts_json, "
+                        "partial=excluded.partial",
+                        (
+                            sweep.sweep_id,
+                            sweep.started_at.isoformat(),
+                            sweep.finished_at.isoformat() if sweep.finished_at else None,
+                            sweep.state,
+                            sweep.as_of.isoformat() if sweep.as_of else None,
+                            sweep.methodology_digest,
+                            sweep.darvax_version,
+                            int(sweep.requested),
+                            int(sweep.evaluated),
+                            _json.dumps(
+                                [
+                                    {"instrument_id": i, "reason": r}
+                                    for i, r in sweep.skipped
+                                ]
+                            ),
+                            _json.dumps(
+                                {t.value: c for t, c in sweep.tier_counts.items()}
+                            ),
+                            1 if sweep.partial else 0,
+                        ),
+                    )
+        except sqlite3.Error as exc:
+            raise RepositoryError(f"DarvaX sweep save failed: {exc}") from exc
+
+    def save_screen_results(self, results: Sequence[ScreenResult]) -> int:
+        """Upsert screen results. Idempotent by ``(sweep_id, instrument_id)``.
+
+        Written in one transaction so a screen is never half-visible: a reader
+        sees either the previous sweep's results or this one's, never a mix.
+        """
+        if not results:
+            return 0
+        try:
+            with self._lock:
+                conn = self._connect()
+                with conn:
+                    conn.executemany(
+                        "INSERT INTO darvax_screen_results ("
+                        "sweep_id, instrument_id, signal_id, tier, signal_type, "
+                        "darvas_rule, rank, close, box_top, box_bottom, "
+                        "trigger_price, distance_to_trigger_pct, box_height_pct, "
+                        "explanation"
+                        ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+                        "ON CONFLICT(sweep_id, instrument_id) DO UPDATE SET "
+                        "signal_id=excluded.signal_id, tier=excluded.tier, "
+                        "signal_type=excluded.signal_type, "
+                        "darvas_rule=excluded.darvas_rule, rank=excluded.rank, "
+                        "close=excluded.close, box_top=excluded.box_top, "
+                        "box_bottom=excluded.box_bottom, "
+                        "trigger_price=excluded.trigger_price, "
+                        "distance_to_trigger_pct=excluded.distance_to_trigger_pct, "
+                        "box_height_pct=excluded.box_height_pct, "
+                        "explanation=excluded.explanation",
+                        [
+                            (
+                                r.sweep_id,
+                                r.instrument_id,
+                                r.signal_id,
+                                r.tier.value,
+                                r.signal_type.value,
+                                r.darvas_rule.value if r.darvas_rule else None,
+                                int(r.rank),
+                                str(r.close),
+                                _optional_str(r.box_top),
+                                _optional_str(r.box_bottom),
+                                _optional_str(r.trigger_price),
+                                _optional_str(r.distance_to_trigger_pct),
+                                _optional_str(r.box_height_pct),
+                                r.explanation,
+                            )
+                            for r in results
+                        ],
+                    )
+        except sqlite3.Error as exc:
+            raise RepositoryError(f"DarvaX screen results save failed: {exc}") from exc
+        return len(results)
+
+    def latest_sweep(self) -> SweepRecord | None:
+        """Most recently started sweep, whatever its state."""
+        rows = self._sweep_rows("ORDER BY started_at DESC LIMIT 1", ())
+        return rows[0] if rows else None
+
+    def get_sweep(self, sweep_id: str) -> SweepRecord | None:
+        rows = self._sweep_rows("WHERE sweep_id=?", (sweep_id,))
+        return rows[0] if rows else None
+
+    def list_sweeps(self, *, limit: int = 50) -> list[SweepRecord]:
+        if limit < 1:
+            raise ValueError(f"limit must be >= 1, got {limit}")
+        return self._sweep_rows("ORDER BY started_at DESC LIMIT ?", (limit,))
+
+    def list_screen_results(
+        self, sweep_id: str, *, tier: DarvaxTier | None = None, limit: int = 1000
+    ) -> list[ScreenResult]:
+        """One sweep's results in rank order, optionally one tier only."""
+        if limit < 1:
+            raise ValueError(f"limit must be >= 1, got {limit}")
+        clause = "WHERE sweep_id=?"
+        params: tuple = (sweep_id,)
+        if tier is not None:
+            clause += " AND tier=?"
+            params = (sweep_id, tier.value)
+        clause += " ORDER BY tier, rank LIMIT ?"
+        return self._screen_rows(clause, (*params, limit))
+
+    def _sweep_rows(self, clause: str, params: tuple) -> list[SweepRecord]:
+        try:
+            with self._lock:
+                rows = self._connect().execute(
+                    "SELECT sweep_id, started_at, finished_at, state, as_of, "
+                    "methodology_digest, darvax_version, requested, evaluated, "
+                    f"skipped_json, tier_counts_json, partial FROM darvax_sweeps {clause}",
+                    params,
+                ).fetchall()
+        except sqlite3.Error as exc:
+            raise RepositoryError(f"DarvaX sweep query failed: {exc}") from exc
+        return [_row_to_sweep(row) for row in rows]
+
+    def _screen_rows(self, clause: str, params: tuple) -> list[ScreenResult]:
+        try:
+            with self._lock:
+                rows = self._connect().execute(
+                    "SELECT sweep_id, instrument_id, signal_id, tier, signal_type, "
+                    "darvas_rule, rank, close, box_top, box_bottom, trigger_price, "
+                    "distance_to_trigger_pct, box_height_pct, explanation "
+                    f"FROM darvax_screen_results {clause}",
+                    params,
+                ).fetchall()
+        except sqlite3.Error as exc:
+            raise RepositoryError(f"DarvaX screen query failed: {exc}") from exc
+        return [_row_to_screen_result(row) for row in rows]
 
     def schema_version(self) -> int | None:
         with self._lock:

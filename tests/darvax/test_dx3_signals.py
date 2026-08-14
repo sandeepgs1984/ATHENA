@@ -413,9 +413,24 @@ def store(tmp_path: Path) -> DarvaxRepository:
     repo.close()
 
 
-def test_darvax_schema_is_at_version_two(store: DarvaxRepository):
-    assert DARVAX_SCHEMA_VERSION == 2
-    assert store.schema_version() == 2
+def test_darvax_schema_version_is_recorded_and_independent(store: DarvaxRepository):
+    """The database records exactly the version the code declares.
+
+    Asserted as an invariant rather than against a hardcoded number: pinning the
+    literal made every legitimate schema addition fail this test (it broke on
+    the DX-6a v2→v3 bump), which trains people to edit the assertion instead of
+    reading it. What actually matters is that the recorded version tracks the
+    constant, and that DarvaX numbers its schema on its own small scale rather
+    than tracking ATHENA's, which is already in double digits.
+    """
+    from athena.data.store.schema import SCHEMA_VERSION as ATHENA_SCHEMA_VERSION
+
+    assert store.schema_version() == DARVAX_SCHEMA_VERSION
+    assert DARVAX_SCHEMA_VERSION >= 2, "DX-3 introduced darvax_signals at v2"
+    assert DARVAX_SCHEMA_VERSION < ATHENA_SCHEMA_VERSION, (
+        "DarvaX versions its schema independently; if it ever caught up with "
+        "ATHENA's, check that the two have not been wired together"
+    )
 
 
 def test_signal_round_trips_with_explanation_and_evidence_intact(

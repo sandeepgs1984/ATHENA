@@ -37,3 +37,32 @@ def rewrite_json(path: Path, mutate) -> None:
     data = json.loads(path.read_text(encoding="utf-8"))
     mutate(data)
     path.write_text(json.dumps(data), encoding="utf-8")
+
+
+@pytest.fixture(autouse=True)
+def darvax_never_activates_in_tests(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The suite must never touch the owner's live DarvaX database.
+
+    ``create_app()`` reads the working copy's real ``config/darvax.json``. Once
+    the owner legitimately sets ``enabled: true``, every test that builds an app
+    — and most API tests do — mounts the real satellite, which resolves its
+    relative ``db/darvax.db`` against the real repo root and calls
+    ``initialize()`` on the owner's production ledger.
+
+    That is not hypothetical: enabling DarvaX made ~1300 unrelated tests open
+    and migrate ``db/darvax.db``. It stayed invisible because schema
+    initialisation is idempotent, and only surfaced when a schema version
+    changed. The next step down that path is a test that triggers a scan and
+    writes real signals into the owner's data.
+
+    Patches the name as imported into ``athena.api.app``, not the seam module,
+    so a direct ``mount_darvax_if_enabled(...)`` call — how the DarvaX tests
+    mount their own instance — keeps working normally. Tests under
+    ``tests/darvax/`` override this fixture to restore the real seam, and stay
+    off production by pinning their own config directory and database.
+    """
+    monkeypatch.setattr(
+        "athena.api.app.mount_darvax_if_enabled",
+        lambda app, **kwargs: False,
+        raising=True,
+    )
