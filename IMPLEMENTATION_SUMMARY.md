@@ -6,6 +6,32 @@ status updated on approval.
 
 ---
 
+## DX-4a: DarvaX performance evidence (ADR-010)
+
+| | |
+|---|---|
+| Completed | 2026-08-14 |
+| Objective | Discharge ADR-010's standing obligation that host-level contention be "measured, not assumed away" — establish empirically what an enabled DarvaX costs ATHENA, and decide on that evidence whether any mitigation is warranted |
+| Scope | A benchmark harness measuring ATHENA read-path latency across three states over one identical seeded ledger — **A** DarvaX disabled, **B** enabled-idle, **C** enabled-and-scanning-concurrently — plus a `--live` mode that probes the real running workstation; two load profiles (realistic 0.2 scans/sec and worst-case 14.2 scans/sec); a published evidence document with a mitigation recommendation. **Measurement only — no product code changed** |
+| Architecture implemented | None — this milestone adds **zero** production code. The harness lives under `tests/darvax/bench/` so deleting DarvaX still deletes all of it, preserving ADR-010's enabled/disabled/deleted property. Deliberately **not** a pytest test: wall-clock latency is nondeterministic, so threshold assertions would produce a flaky suite that gets muted — the opposite of evidence. State C drives DarvaX's scan service directly rather than through its HTTP route, so the load is DarvaX doing real ledger reads rather than FastAPI overhead measuring itself. Authenticated routes use the suite's existing in-process token helper; **no owner credential is used anywhere** |
+| Files created | `tests/darvax/bench/darvax_perf_bench.py`, `docs/design/DARVAX-PERFORMANCE-EVIDENCE.md` |
+| Files modified | `docs/design/DARVAX-CONFIGURATION.md` (deletion-order warning), `README.md` + `ATHENA_BRIEFING.md` (doc index), `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md` |
+| Public/Core ATHENA changes | **None.** No file under `src/` touched at all |
+| Results | **Mounting DarvaX costs nothing measurable** — every `B − A` delta within noise, several negative. **At realistic cadence there is no measurable contention** — every route ≤ 1.01×. **Worst case (hot loop, no think time)** — 2.5–5.3× on cheap routes, but ≤ 14 ms absolute on every route except `dashboard/summary` (+202 ms). Multipliers reproducible across two independent runs and both state orderings |
+| Method rigour | A reproducible anomaly was investigated rather than averaged away: `decisions_list` appeared **1.8 ms faster** with DarvaX enabled, consistently, across two runs. Cause was first-state SQLite page-cache warming — reversing to `--order C,B,A` dropped the state-A baseline 4.44 → 2.70 ms and the anomaly vanished (+0.05 ms). An `--order` flag now exists precisely so a claimed finding can be falsified by re-running reversed. Consequence recorded: A-first ordering **understates** contention, and reversing actually revealed a *larger* true effect on `decisions_list` (1.55× → 2.55×) |
+| Deliberate exclusion | `POST /api/v1/market/validate` — the latency the owner cares about most — is **not** benchmarked. It writes `Decision` rows, and polluting an immutable append-only decision history for a timing number is not a trade worth making. The mechanism by which DarvaX could slow a validate is shared-SQLite contention, which state C measures directly on read paths. Recorded in the harness docstring and the evidence doc rather than left as a silent gap |
+| Finding unrelated to DarvaX | `GET /api/v1/dashboard/summary` costs **~455 ms p50** — 200–400× every other endpoint — identically in all three DarvaX states and cross-validated on the live workstation (454.91 ms). DarvaX neither causes nor affects it. Recorded, explicitly out of DX-4a scope, and spun off as a separate task rather than fixed here |
+| Architecture compliance | ADR-010 satisfied and its precision vindicated: the architectural guarantee (no synchronous dependency) holds, and the ADR's refusal to claim zero *physical* effect was correct. No worker processes, resource schedulers, or queues introduced — ADR-010 explicitly withholds licence for those on measurement alone |
+| Recommendation | **No mitigation warranted.** Realistic-cadence contention is unmeasurable; worst-case is bounded and already capped by DarvaX's own `scan.max_instruments` (50) and `lookback_bars` (400). Re-measure if DarvaX gains a scheduled scan, `max_instruments` rises substantially, or DarvaX ever writes to ATHENA's ledger |
+| Tests | No new tests (a benchmark is not a test, by design). Verified the harness is **not** collected by pytest (0 matches), full suite unaffected at **1450 passed**, and lint clean. Physical-removal property re-verified: with DarvaX deleted **and** disabled, **1314 passed**; restored byte-identical |
+| Risks discovered | Deleting `src/athena/darvax/` while `enabled: true` correctly triggers the designed loud `ConfigError` (2 failures + 173 errors) rather than degrading silently. My first removal check ignored this and looked like an isolation regression; it was the guard working. `DARVAX-CONFIGURATION.md` now documents the deletion order explicitly |
+| Technical debt introduced | None |
+| Remaining work | Owner may complete the on-workstation before/after by running `--live` once with DarvaX disabled and restarting (the flag is read at startup); the enabled half is already recorded |
+| Status | 🔄 Ready for review |
+| Branch | feature/live-dashboard |
+
+---
+
 ## DX-4b: DarvaX as a dashboard tab (ADR-010 Amendment 1)
 
 | | |
@@ -23,7 +49,9 @@ status updated on approval.
 | Defect found and fixed (2) | **Enabling DarvaX turned 11 tests red.** Once the owner set `enabled: true`, tests that build an app via a bare `create_app()` inherited the real flag: those asserting the disabled contract failed outright, and those mounting their own temp DarvaX ended up with **two** apps at `/darvax` — the real one winning the route match and serving the real `darvax.db`. Fixed with a shared `tests/darvax/conftest.py` fixture pinning a throwaway config directory (real config copied, DarvaX flag forced off) applied module-wide to the three app-building files, plus `ATHENA_CONFIG_DIR` threaded into the subprocess isolation test. Verified hermetic **both** ways: 136 pass with the flag on and with it off. Also rewrote `test_shipped_config_defaults_to_disabled` → `test_darvax_is_opt_in_by_default`, which asserted the working copy's file stays `false` and so would have failed simply because the owner used the feature; it now asserts the three guarantees that actually constitute "opt-in" (schema default, omitted-flag default, absent-file behaviour) |
 | Defect found and fixed (1) | **The seam ignored `ATHENA_CONFIG_DIR`.** `create_app` resolves `config_dir` from that variable and every other consumer honours it (`load_validation_config`, `KiteSessionService`), but the DarvaX seam call passed neither `config_dir` nor `repo_root`, so `mount_darvax_if_enabled` fell back to its repo-root default and read `<repo>/config/darvax.json` regardless. Found while trying to demonstrate the enabled path against a copied config: DarvaX refused to mount and every route 404'd. Every existing DarvaX test calls the seam **directly** with an explicit `config_dir`, which is precisely why none of them caught it; `test_04b` now goes through `create_app` |
 | Risks / technical debt | (1) The runtime coupling to ATHENA's DOM class names is real and accepted by Amendment 1; the release-gate test is the mitigation. (2) While DarvaX is disabled, every dashboard load logs one 404 for `tab.js` — cosmetic console noise that is the direct cost of using the 404 as the flag guard; removing the script tag removes it. (3) The tab is invisible to ATHENA's `switchTab`, so any future ATHENA change from static NodeLists to live queries should be checked against `tab.js`'s stand-down logic. (4) Lesson from the defect above: testing a seam by calling it directly can pass while the production wiring into it is wrong — at least one test per seam should go through `create_app` |
-| Outcome | Ready for owner review. DarvaX remains independently reachable at `/darvax/` regardless of the tab |
+| Status | ✅ Approved (2026-08-14) — owner verified the tab on the live dashboard after enabling `config/darvax.json` |
+| Outcome | DarvaX remains independently reachable at `/darvax/` regardless of the tab |
+| Branch | feature/live-dashboard |
 
 ---
 

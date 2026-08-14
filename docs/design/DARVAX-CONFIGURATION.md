@@ -62,6 +62,14 @@ true rather than aspirational. ATHENA is byte-for-byte unaffected.
 touching it is never required to disable the module; delete it only if you want
 to discard stored signals.
 
+### Deleting the module — order matters
+
+To remove DarvaX from disk entirely, **set `enabled: false` first** (or delete
+`config/darvax.json` along with the module). Deleting `src/athena/darvax/` while
+the flag still says `true` is the enabled-but-absent case in §6: ATHENA refuses
+to start, loudly and deliberately. That is the designed behaviour, not a bug —
+but it will stop your workstation, so disable before deleting.
+
 ### How the dashboard tab is gated
 
 There is exactly **one** DarvaX reference in ATHENA's `index.html` — a deferred

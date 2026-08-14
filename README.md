@@ -24,6 +24,7 @@ ATHENA is not a screener, not a bot, and never executes trades. It exists to imp
 | [DD-9 alerting](docs/decisions/DD-9-alerting-channel.md) | R5 webhook+file alert choice | Accepted (email deferred) |
 | [DD-1 live vendor](docs/decisions/DD-1-broker-live-data-vendor.md) | R3 broker/data vendor decision | **Accepted** — Zerodha Kite Connect |
 | [DarvaX configuration](docs/design/DARVAX-CONFIGURATION.md) | `config/darvax.json` reference — enable/disable the DarvaX satellite, every key, defaults, failure modes | Active |
+| [DarvaX performance evidence](docs/design/DARVAX-PERFORMANCE-EVIDENCE.md) | DX-4a measured cost of an enabled DarvaX on ATHENA latency | 🔄 Ready for review |
 | [ADRs](docs/adr/) | Architecture Decision Records (ADR-001…005 seeded) | Active |
 
 ## Workstation entry
