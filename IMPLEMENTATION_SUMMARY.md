@@ -27,7 +27,7 @@ status updated on approval.
 | Risks discovered | Deleting `src/athena/darvax/` while `enabled: true` correctly triggers the designed loud `ConfigError` (2 failures + 173 errors) rather than degrading silently. My first removal check ignored this and looked like an isolation regression; it was the guard working. `DARVAX-CONFIGURATION.md` now documents the deletion order explicitly |
 | Technical debt introduced | None |
 | Remaining work | Owner may complete the on-workstation before/after by running `--live` once with DarvaX disabled and restarting (the flag is read at startup); the enabled half is already recorded |
-| Status | 🔄 Ready for review |
+| Status | ✅ Approved (2026-08-14) |
 | Branch | feature/live-dashboard |
 
 ---
