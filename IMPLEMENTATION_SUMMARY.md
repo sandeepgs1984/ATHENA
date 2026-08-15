@@ -6,6 +6,31 @@ status updated on approval.
 
 ---
 
+## DX-6d: Universe-scale performance re-measure (ADR-010 Amendment 2)
+
+| | |
+|---|---|
+| Completed | 2026-08-15 |
+| Objective | Discharge the re-measure trigger DX-4a wrote into itself. §7 concluded "no mitigation warranted" from a **25-instrument** scan; DX-6b made DarvaX sweep the whole **528-instrument** ledger in one operation, and carrying the old conclusion across without re-measuring would have been exactly the assumption ADR-010 forbids |
+| Scope | `--load sweep` added to the DX-4a harness, driving the real `SweepRunner` — same batching, same retention pruning, same persistence — rather than a hand-rolled imitation, so the measurement is of the code that actually runs. Two load profiles measured, plus sweep duration and storage growth. **Measurement only; no product code changed** |
+| Files modified | `tests/darvax/bench/darvax_perf_bench.py` (`_SweepLoad`, `--load`), `docs/design/DARVAX-PERFORMANCE-EVIDENCE.md` (§7a), `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md` |
+| Public/Core ATHENA changes | **None.** No file under `src/` touched at all |
+| Headline result | **Universe scale did not make contention worse.** Continuous sweeping gives 2.30×–5.08× on cheap routes and +216 ms on `dashboard/summary` — statistically the same as DX-4a's 25-instrument hot loop (3.23×–5.27×, +202 ms). The ceiling is **thread-bound, not instrument-bound**: both profiles saturate one thread doing SQLite reads, so covering 528 instruments instead of 25 changes how much useful work a unit of load performs, not how much contention it creates |
+| Realistic cadence | A sweep every 30 s — already far heavier than a person pressing *Screen universe* — shows **every ratio ≤ 1.01×**, i.e. no measurable contention at all |
+| Sweep duration | **0.23 s** per 528-instrument sweep against a copy of the real ledger, warm and unloaded (35 consecutive sweeps in 8.0 s); ~1.4–1.5 s under the benchmark's concurrent request load |
+| Storage | Measured rather than extrapolated: 35 sweeps at the default `retain_sweeps: 30` settle at 30 sweeps / **15,840** result rows / **12.6 MB** including WAL. `darvax_signals` stays flat at 528 rows because a signal is idempotent by `(instrument, as_of)` — only screen results scale with retention. Bounded by construction, which is why retention was settled before DX-6b rather than after |
+| Recommendation | **No mitigation warranted, and none proposed.** ADR-010 withholds licence for worker processes, schedulers, or queues on measurement alone, and the measurement does not support them. DX-4a's re-measure triggers carry forward with one addition: re-measure if a sweep ever becomes **scheduled** rather than owner-triggered, since that converts the realistic profile into the continuous one |
+| Practical note carried forward | At 0.23 s warm, the DX-6c progress bar and cancel button are almost impossible to hit. Both stay — correct, tested, and useful on slower hosts or larger universes — but they are near-invisible on this machine, which is worth knowing before anyone "fixes" them |
+| Tests | None added, by design — a benchmark is not a test, and asserting wall-clock thresholds would produce a flaky suite that gets muted. Verified instead: the harness is still **not collected** by pytest (0 matches), full suite unaffected at **1540 passed**, lint clean, and the live `db/darvax.db` untouched across a full run |
+| Architecture compliance | Measurement-only. No queues, schedulers, worker processes, or pools introduced. The 2.3 GB ledger copies used for measurement were deleted; the owner's `db/athena.db`, `db/darvax.db` and running workstation were never written to |
+| Risks discovered | None |
+| Technical debt introduced | None |
+| Remaining work | None — DX-6d closes the DarvaX screener track. DX-5 (validation evidence) remains the open DarvaX milestone |
+| Status | 🔄 Ready for review |
+| Branch | feature/live-dashboard |
+
+---
+
 ## DX-6c: DarvaX screener UI (ADR-010 Amendment 2)
 
 | | |
@@ -26,7 +51,7 @@ status updated on approval.
 | Risks discovered | None |
 | Technical debt introduced | None |
 | Remaining work | DX-6d — the universe-scale performance re-measure, which DX-4a names as a mandatory trigger |
-| Status | 🔄 Ready for review |
+| Status | ✅ Approved (2026-08-15) |
 | Branch | feature/live-dashboard |
 
 ---

@@ -227,6 +227,109 @@ DarvaX starts writing to ATHENA's ledger (which ADR-010 forbids today).
 
 ---
 
+## 7a. DX-6d — re-measured at universe scale
+
+**Measured:** 2026-08-15 · **Milestone:** DX-6d · **Status:** 🔄 Ready for review
+
+§7 concluded "no mitigation warranted" from a **25-instrument** scan repeated in
+a loop, and listed universe-scale scanning as an explicit re-measure trigger.
+DX-6b then made DarvaX able to sweep the **whole 528-instrument ledger** in one
+operation. Carrying the old conclusion across without re-measuring would have
+been exactly the assumption ADR-010 forbids, so this section re-runs it.
+
+The harness gained `--load sweep`, which drives the real `SweepRunner` — same
+batching, same retention pruning, same persistence — rather than a hand-rolled
+imitation, so what is measured is the code that actually runs.
+
+### Continuous sweeping — the worst case
+
+0.68 sweeps/sec sustained (59 back-to-back sweeps, mean **1.48 s** each over 528
+instruments), `--order C,B,A`:
+
+| Route | A p50 | C p50 | C − A | C/A |
+|---|---|---|---|---|
+| `/health` | 0.66 | 1.52 | +0.86 | **2.30×** |
+| `/dashboard/` | 1.09 | 3.37 | +2.28 | **3.09×** |
+| `/dashboard/dashboard.js` | 1.46 | 5.90 | +4.44 | **4.04×** |
+| `/api/v1/dashboard/summary` | 437.05 | 653.51 | **+216.46** | 1.50× |
+| `/api/v1/decisions` | 3.97 | 11.54 | +7.57 | **2.91×** |
+| `/api/v1/decisions/latest` | 1.19 | 3.57 | +2.38 | **3.00×** |
+| `/api/v1/portfolio` | 2.48 | 12.60 | +10.12 | **5.08×** |
+| `/api/v1/market/summary` | 1.13 | 3.14 | +2.01 | **2.78×** |
+
+Mounting still costs nothing: every `B − A` is within ±0.10 ms.
+
+**The headline result is that these numbers are the same as §4b's.** A
+continuously-sweeping DarvaX (2.30×–5.08×, +216 ms on `dashboard/summary`) costs
+almost exactly what a continuously-scanning DarvaX cost (3.23×–5.27×, +202 ms).
+That makes sense: both saturate one thread doing SQLite reads, and the ceiling
+is set by that, not by how many instruments each unit of work covers.
+
+**Universe scale did not make contention worse.** It changed how much useful
+work one unit of load performs, not how much contention that load creates.
+
+### Realistic cadence — a sweep every 30 seconds
+
+| Route | A p50 | C p50 | C − A | C/A |
+|---|---|---|---|---|
+| `/health` | 0.66 | 0.66 | 0.00 | 1.00× |
+| `/dashboard/` | 1.08 | 1.06 | −0.02 | 0.98× |
+| `/dashboard/dashboard.js` | 1.48 | 1.43 | −0.05 | 0.97× |
+| `/api/v1/dashboard/summary` | 436.29 | 436.55 | +0.26 | 1.00× |
+| `/api/v1/decisions` | 3.90 | 3.83 | −0.07 | 0.98× |
+| `/api/v1/decisions/latest` | 1.16 | 1.17 | +0.01 | 1.01× |
+| `/api/v1/portfolio` | 2.41 | 2.38 | −0.03 | 0.99× |
+| `/api/v1/market/summary` | 1.11 | 1.10 | −0.01 | 0.99× |
+
+Every ratio ≤ 1.01×. And a sweep every 30 seconds is already far heavier than
+real use, which is a person pressing **Screen universe** occasionally.
+
+### How long a sweep actually takes
+
+Against a copy of the owner's real ledger, warm cache and no competing load:
+**0.23 s** per 528-instrument sweep (35 consecutive sweeps in 8.0 s). Under the
+benchmark's concurrent request load it rises to ~1.4–1.5 s.
+
+Practical consequence worth stating: **the progress bar and cancel button added
+in DX-6c are almost impossible to hit.** They remain correct and tested, and are
+worth keeping for slower hosts and larger universes, but on this machine a sweep
+is effectively instantaneous.
+
+### Storage at the chosen retention
+
+Measured, not extrapolated — 35 consecutive sweeps at the default
+`retain_sweeps: 30`:
+
+| | |
+|---|---|
+| Sweeps retained | 30 (pruning verified: 35 run, 30 kept) |
+| Screen result rows | 15,840 (30 × 528) |
+| `darvax.db` incl. WAL | **12.6 MB** |
+
+`darvax_signals` stays flat at 528 rows across repeated sweeps, because a signal
+is idempotent by `(instrument, as_of)` — re-sweeping the same trading day updates
+in place rather than accumulating. Only the screen results scale with retention.
+
+That is a bounded, trivial footprint, and it is bounded *by construction* rather
+than by luck — which is the whole reason retention was settled before DX-6b
+rather than after.
+
+### Conclusion — the §7 recommendation stands
+
+1. Universe scale did **not** worsen contention; the worst case is unchanged
+   from DX-4a because it is thread-bound, not instrument-bound.
+2. At any realistic cadence there is **no measurable contention at all**.
+3. A sweep is short enough (0.23 s warm) that even its worst case is a
+   sub-second window.
+4. Storage is bounded at ~12.6 MB by the retention policy.
+
+**No mitigation is warranted, and none is proposed.** The re-measure triggers
+from §7 carry forward unchanged, with one addition: re-measure if a sweep ever
+becomes **scheduled** rather than owner-triggered, since that would convert the
+realistic profile into the continuous one measured above.
+
+---
+
 ## 8. Reproducing this
 
 ```bash
@@ -239,6 +342,20 @@ python3 tests/darvax/bench/darvax_perf_bench.py \
 python3 tests/darvax/bench/darvax_perf_bench.py \
     --reps 30 --rounds 4 --instruments 25 --candles 400 \
     --scan-interval 5 --order C,B,A
+```
+
+Universe-scale sweeps (§7a) — `--load sweep` drives the real `SweepRunner`:
+
+```bash
+# Continuous sweeping, the worst case
+python3 tests/darvax/bench/darvax_perf_bench.py --load sweep \
+    --reps 30 --rounds 4 --instruments 528 --candles 400 \
+    --scan-interval 0 --order C,B,A
+
+# Realistic cadence — one sweep every 30s
+python3 tests/darvax/bench/darvax_perf_bench.py --load sweep \
+    --reps 30 --rounds 4 --instruments 528 --candles 400 \
+    --scan-interval 30 --order C,B,A
 ```
 
 The harness is not a pytest test on purpose: wall-clock latency is

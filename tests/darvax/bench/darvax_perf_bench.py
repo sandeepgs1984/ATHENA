@@ -349,6 +349,62 @@ class _ScanLoad:
             self.errors.append(f"{type(exc).__name__}: {exc}")
 
 
+class _SweepLoad(_ScanLoad):
+    """DX-6d load: full **universe sweeps** rather than fixed-size scans.
+
+    DX-4a measured a 25-instrument scan repeated in a loop. DX-6b made DarvaX
+    able to sweep the entire ledger in one go, and DX-4a named exactly that as a
+    re-measure trigger — a 528-instrument sweep is a different load profile, and
+    carrying the old conclusion across would be the assumption ADR-010 forbids.
+
+    Drives the real ``SweepRunner``, not a hand-rolled imitation, so what is
+    measured is the code the owner actually runs: same batching, same retention
+    pruning, same persistence.
+    """
+
+    def __init__(self, repo: Any, config_dir: Path, *, interval: float = 0.0) -> None:
+        super().__init__(repo, config_dir, [], interval=interval)
+        self.durations: list[float] = []
+        self.instruments_per_sweep = 0
+
+    @property
+    def mean_sweep_seconds(self) -> float:
+        return sum(self.durations) / len(self.durations) if self.durations else 0.0
+
+    def _run(self) -> None:
+        from athena.darvax.api import SqliteMarketDataAdapter
+        from athena.darvax.config import load_darvax_config
+        from athena.darvax.screening.sweep import SweepRunner
+        from athena.darvax.store.repository import DarvaxRepository
+
+        try:
+            config = load_darvax_config(self._config_dir)
+            store = DarvaxRepository(self._config_dir.parent / "darvax-bench.db")
+            store.initialize()
+            runner = SweepRunner(
+                market_data=SqliteMarketDataAdapter(self._repo),
+                store=store,
+                config=config,
+                darvax_version="bench",
+            )
+            while not self._stop.is_set():
+                started = time.perf_counter()
+                runner.start()
+                runner.join(timeout=600)
+                self.durations.append(time.perf_counter() - started)
+                self.scans += 1
+
+                progress = runner.progress()
+                self.instruments_per_sweep = progress.total
+                if progress.state == "failed":
+                    self.errors.append(f"sweep failed: {progress.error}")
+                    break
+                if self._interval and not self._stop.is_set():
+                    self._stop.wait(self._interval)
+        except Exception as exc:  # reported below, never silently swallowed
+            self.errors.append(f"{type(exc).__name__}: {exc}")
+
+
 def run_in_process(args: argparse.Namespace) -> dict[str, Any]:
     import shutil
     import tempfile
@@ -378,8 +434,12 @@ def run_in_process(args: argparse.Namespace) -> dict[str, Any]:
 
             load: _ScanLoad | None = None
             if under_load:
-                load = _ScanLoad(
-                    repo, config_dir, instrument_ids, interval=args.scan_interval
+                load = (
+                    _SweepLoad(repo, config_dir, interval=args.scan_interval)
+                    if args.load == "sweep"
+                    else _ScanLoad(
+                        repo, config_dir, instrument_ids, interval=args.scan_interval
+                    )
                 )
                 load.__enter__()
             try:
@@ -396,7 +456,11 @@ def run_in_process(args: argparse.Namespace) -> dict[str, Any]:
                     results["scan_rounds"] = load.scans
                     results["scan_rate_per_sec"] = load.rate_per_sec
                     results["scan_interval"] = args.scan_interval
+                    results["load_kind"] = args.load
                     results["scan_errors"].extend(load.errors)
+                    if isinstance(load, _SweepLoad):
+                        results["mean_sweep_seconds"] = round(load.mean_sweep_seconds, 3)
+                        results["instruments_per_sweep"] = load.instruments_per_sweep
 
         results["states"][name] = {
             label: sample.summary() for label, sample in samples.items()
@@ -522,10 +586,17 @@ def print_in_process_report(results: dict[str, Any]) -> None:
         )
     print("-" * width)
     rate = results.get("scan_rate_per_sec")
+    kind = results.get("load_kind", "scan")
+    label = "sweeps" if kind == "sweep" else "scans"
     print(
-        f"DarvaX scans during state C: {results['scan_rounds']}"
-        + (f"  (~{rate:.1f}/sec, interval={results['scan_interval']}s)" if rate else "")
+        f"DarvaX {label} during state C: {results['scan_rounds']}"
+        + (f"  (~{rate:.2f}/sec, interval={results['scan_interval']}s)" if rate else "")
     )
+    if results.get("mean_sweep_seconds"):
+        print(
+            f"Mean sweep: {results['mean_sweep_seconds']}s over "
+            f"{results.get('instruments_per_sweep', 0)} instruments"
+        )
     if results["scan_errors"]:
         print("Scan errors (state C measured NO real load — treat C as invalid):")
         for error in results["scan_errors"]:
@@ -587,6 +658,15 @@ def main(argv: Iterable[str] | None = None) -> int:
             "state order, e.g. 'C,B,A'. Whichever state runs first absorbs "
             "SQLite page-cache warming, so reversing the order is how you check "
             "whether a delta is real or an ordering artifact"
+        ),
+    )
+    parser.add_argument(
+        "--load",
+        choices=("scan", "sweep"),
+        default="scan",
+        help=(
+            "what state C runs: 'scan' repeats a fixed-size scan (DX-4a), "
+            "'sweep' repeats a full universe sweep through SweepRunner (DX-6d)"
         ),
     )
     parser.add_argument("--instruments", type=int, default=25)
