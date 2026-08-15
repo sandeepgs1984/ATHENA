@@ -11,7 +11,7 @@
     not touch dashboard.js/dashboard.css. ATHENA's asset-versioning discipline is
     therefore unaffected by anything here.
   -->
-  <link rel="stylesheet" href="/darvax/static/darvax.css?v=0.1.0">
+  <link rel="stylesheet" href="/darvax/static/darvax.css?v=0.1.0-dx6c">
 </head>
 <body>
   <div class="wrap">
@@ -37,6 +37,65 @@
         <span class="ver" id="version">&mdash;</span>
       </div>
       <div class="actions">
+        <div class="viewswitch" role="tablist" aria-label="DarvaX views">
+          <button id="view-screener" type="button" role="tab" aria-selected="true">Screener</button>
+          <button id="view-signals" type="button" role="tab" aria-selected="false">Scan symbols</button>
+        </div>
+        <a class="ghost link" href="/dashboard/">&larr; ATHENA</a>
+      </div>
+    </header>
+
+    <!-- ===================== Screener (DX-6c) ===================== -->
+    <section id="screener">
+      <div class="bar">
+        <input
+          id="filter"
+          type="search"
+          placeholder="Filter symbol&hellip;"
+          aria-label="Filter by symbol"
+          autocomplete="off"
+          spellcheck="false">
+        <button id="toggle-other" type="button" class="ghost" aria-pressed="false">
+          Show not eligible
+        </button>
+        <span class="spacer"></span>
+        <button id="cancel-sweep" type="button" class="ghost danger" hidden>Cancel sweep</button>
+        <button id="sweep" type="button" class="primary">Screen universe</button>
+      </div>
+
+      <div class="meta" id="sweep-meta" hidden></div>
+
+      <div class="progress" id="progress" hidden>
+        <div class="prow">
+          <span id="p-stage">Starting&hellip;</span>
+          <span><span id="p-done">0</span> / <span id="p-total">0</span>
+            &middot; <span id="p-elapsed">0.0s</span></span>
+        </div>
+        <div class="track"><i id="p-bar"></i></div>
+      </div>
+
+      <p class="note" id="screen-note"></p>
+
+      <div id="screen-empty" class="empty" hidden>
+        <p>No sweep yet.</p>
+        <p class="dim">
+          A sweep reads every instrument in the ledger, builds its Darvas boxes,
+          and groups the results by the DAR-CARD rule each one falls under.
+          Press <strong>Screen universe</strong> to run one.
+        </p>
+      </div>
+
+      <div id="tiers"></div>
+
+      <details id="skipped" class="skipped" hidden>
+        <summary id="skipped-summary"></summary>
+        <ul id="skipped-list"></ul>
+      </details>
+    </section>
+
+    <!-- ===================== Ad-hoc scan (DX-4) ===================== -->
+    <section id="signals-view" hidden>
+      <div class="bar">
         <input
           id="symbols"
           type="text"
@@ -45,11 +104,9 @@
           spellcheck="false">
         <button id="scan" type="button">Scan</button>
         <button id="refresh" type="button" class="ghost">Refresh</button>
-        <a class="ghost link" href="/dashboard/">&larr; ATHENA</a>
       </div>
-    </header>
 
-    <p class="note" id="note"></p>
+      <p class="note" id="note"></p>
 
     <div id="empty" class="empty" hidden>
       <p>No DarvaX signals stored yet.</p>
@@ -73,15 +130,18 @@
       </thead>
       <tbody id="rows"></tbody>
     </table>
+    </section>
 
     <footer class="foot">
       DarvaX signals are stored in their own database, separate from ATHENA's.
       Every explanation shown here was computed by the DarvaX engine and
       persisted with the signal &mdash; this page renders it, and never
-      recomputes or rewords it.
+      recomputes or rewords it. Eligibility is a classification taken from the
+      DAR-CARD rules, not a score: DarvaX publishes no conviction index because
+      the source methodology provides no evidence to support one.
     </footer>
   </div>
 
-  <script src="/darvax/static/darvax.js?v=0.1.0"></script>
+  <script src="/darvax/static/darvax.js?v=0.1.0-dx6c"></script>
 </body>
 </html>

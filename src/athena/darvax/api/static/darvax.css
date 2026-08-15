@@ -207,3 +207,148 @@ button[disabled] { opacity: 0.55; cursor: default; }
   input[type="text"] { min-width: 0; flex: 1 1 100%; }
   .evidence li { grid-template-columns: 1fr; gap: 2px; }
 }
+
+/* =========================================================================
+   Screener (DX-6c, ADR-010 Amendment 2)
+
+   Darvas is a visual method — a box, a ceiling, a break. A numbers-only table
+   hides the whole idea, so each row carries a box-range bar showing where price
+   sits between floor and ceiling. Pure CSS: ADR-004 keeps this dashboard
+   framework-free and build-step-free, and that holds here.
+   ========================================================================= */
+
+.viewswitch { display: flex; gap: 0; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.viewswitch button {
+  border: 0; border-radius: 0; background: transparent; color: var(--dim);
+  padding: 6px 12px; font-size: 12.5px; cursor: pointer;
+}
+.viewswitch button[aria-selected="true"] { background: var(--panel); color: var(--text); }
+.viewswitch button:focus-visible { outline: 2px solid var(--warn); outline-offset: -2px; }
+
+.bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.bar .spacer { flex: 1; }
+button.primary { background: var(--warn); border-color: var(--warn); color: #1a1205; font-weight: 600; }
+button.primary:hover { filter: brightness(1.08); }
+button.danger { color: var(--bad); }
+
+/* --- sweep metadata strip ------------------------------------------------ */
+.meta {
+  display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center;
+  font-family: var(--mono); font-size: 11.5px; color: var(--dim);
+  padding: 0 0 12px;
+}
+.meta .k { opacity: .7; }
+.meta .v { color: var(--text); }
+.flag {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 1px solid currentColor; border-radius: 3px; padding: 1px 6px;
+  font-size: 10.5px; letter-spacing: .04em;
+}
+.flag.warn { color: var(--warn); }
+.flag.bad { color: var(--bad); }
+
+/* --- progress ------------------------------------------------------------ */
+.progress { padding: 0 0 14px; }
+.progress .prow {
+  display: flex; justify-content: space-between; gap: 14px;
+  font-family: var(--mono); font-size: 11.5px; color: var(--dim); margin-bottom: 7px;
+}
+.track { height: 5px; background: var(--panel); border-radius: 3px; overflow: hidden; }
+.track > i { display: block; height: 100%; width: 0; background: var(--warn); border-radius: 3px; }
+
+/* --- tier groups --------------------------------------------------------- */
+.tier { border: 1px solid var(--line); border-radius: 6px; margin-bottom: 12px; overflow: hidden; }
+.tier > header {
+  display: flex; align-items: center; gap: 10px; padding: 10px 13px;
+  background: var(--panel); cursor: pointer; border-left: 3px solid var(--rail);
+}
+.tier > header:focus-visible { outline: 2px solid var(--warn); outline-offset: -2px; }
+.tier h3 {
+  margin: 0; font-family: var(--mono); font-size: 12px; font-weight: 600;
+  letter-spacing: .07em; text-transform: uppercase; color: var(--rail);
+}
+.tier .count {
+  font-family: var(--mono); font-size: 11px; color: var(--dim);
+  border: 1px solid var(--line); border-radius: 20px; padding: 1px 8px;
+}
+.tier .ruletext { font-family: var(--mono); font-size: 10.5px; color: var(--dim); opacity: .8; }
+.tier .chev { margin-left: auto; color: var(--dim); font-size: 11px; }
+.tier[data-open="false"] .tierbody { display: none; }
+.tier.t-actionable { --rail: var(--good); }
+.tier.t-watch { --rail: var(--warn); }
+.tier.t-exit { --rail: var(--bad); }
+.tier.t-other { --rail: var(--dim); }
+
+.scroll { overflow-x: auto; }
+
+.screen { width: 100%; border-collapse: collapse; }
+.screen th {
+  text-align: left; font-family: var(--mono); font-weight: 500; font-size: 10px;
+  letter-spacing: .06em; text-transform: uppercase; color: var(--dim);
+  padding: 8px 11px; white-space: nowrap; border-bottom: 1px solid var(--line);
+  cursor: pointer; user-select: none;
+}
+.screen th:hover { color: var(--text); }
+.screen th[aria-sort] { color: var(--text); }
+.screen td { padding: 8px 11px; border-bottom: 1px solid var(--panel); vertical-align: middle; }
+.screen tbody tr.srow { cursor: pointer; }
+.screen tbody tr.srow:hover td { background: var(--panel); }
+
+.rulechip {
+  font-family: var(--mono); font-size: 10.5px; color: var(--dim);
+  border: 1px solid var(--line); border-radius: 3px; padding: 1px 5px; cursor: help;
+}
+
+/* --- the box-range visualisation ----------------------------------------- */
+.viz { position: relative; width: 168px; height: 24px; }
+.viz .axis { position: absolute; left: 0; right: 0; top: 11px; height: 1px; background: var(--line); }
+.viz .range {
+  position: absolute; top: 5px; height: 13px; border-radius: 2px;
+  border: 1px solid var(--vz); background: var(--vz-soft);
+}
+.viz .trig { position: absolute; top: 2px; width: 1px; height: 20px; background: var(--dim); }
+.viz .now {
+  position: absolute; top: 3px; width: 3px; height: 18px;
+  background: var(--vz); border-radius: 1px; box-shadow: 0 0 0 2px var(--bg);
+}
+.vz-up { --vz: var(--good); --vz-soft: rgba(79,168,122,.14); }
+.vz-flat { --vz: var(--warn); --vz-soft: rgba(217,154,43,.12); }
+.vz-down { --vz: var(--bad); --vz-soft: rgba(192,101,95,.14); }
+
+.dist { display: flex; align-items: center; justify-content: flex-end; gap: 7px; }
+.dist .mb { width: 40px; height: 4px; background: var(--panel); border-radius: 2px; overflow: hidden; }
+.dist .mb > i { display: block; height: 100%; background: var(--dim); }
+.dist .val { min-width: 58px; font-variant-numeric: tabular-nums; }
+.dist .val.through { color: var(--good); }
+
+/* --- expanded detail ------------------------------------------------------ */
+tr.sdetail > td { background: var(--panel); padding: 0 11px 14px; }
+.sdetail-grid { display: grid; gap: 12px; padding-top: 11px; }
+.lbl {
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: .09em;
+  text-transform: uppercase; color: var(--dim); margin: 0 0 4px;
+}
+.why { margin: 0; font-size: 12.5px; color: var(--text); max-width: 70ch; }
+ul.ev { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+ul.ev li {
+  display: grid; grid-template-columns: 170px 110px 1fr; gap: 10px;
+  font-family: var(--mono); font-size: 11px; padding: 3px 0;
+  border-bottom: 1px solid var(--line);
+}
+ul.ev .k { color: var(--dim); }
+ul.ev .v { color: var(--text); text-align: right; }
+ul.ev .d { color: var(--dim); opacity: .8; }
+.trace { font-family: var(--mono); font-size: 10px; color: var(--dim); margin: 0; word-break: break-word; }
+
+/* --- skipped panel -------------------------------------------------------- */
+.skipped { border: 1px solid var(--line); border-radius: 6px; background: var(--panel); margin-top: 12px; }
+.skipped summary { padding: 9px 13px; cursor: pointer; font-family: var(--mono); font-size: 11.5px; color: var(--dim); }
+.skipped summary:focus-visible { outline: 2px solid var(--warn); outline-offset: -2px; }
+.skipped ul { margin: 0; padding: 0 13px 11px 28px; }
+.skipped li { font-family: var(--mono); font-size: 11px; color: var(--dim); padding: 2px 0; }
+
+@media (max-width: 720px) {
+  .viz { width: 108px; }
+  ul.ev li { grid-template-columns: 1fr auto; }
+  ul.ev .d { grid-column: 1 / -1; }
+}

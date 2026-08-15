@@ -6,6 +6,31 @@ status updated on approval.
 
 ---
 
+## DX-6c: DarvaX screener UI (ADR-010 Amendment 2)
+
+| | |
+|---|---|
+| Completed | 2026-08-15 |
+| Objective | Make the screen readable — turn 528 rows of persisted screen results into something that answers "is there anything to act on?" before any scrolling |
+| Scope | Tier groups with counts and collapse; the box-range visualisation; per-column client-side sort and a symbol filter; row expansion fetching persisted evidence on demand; every honest state (no-sweep, running with progress, cancel, skipped-with-reasons, stale as-of, methodology-digest mismatch); a view switch keeping the DX-4 ad-hoc scan alongside the screener; `current_methodology_digest` added to `/screen/latest` |
+| Architecture implemented | **The page renders; it never derives.** No tier is classified, no distance re-measured, no explanation reworded client-side — all of it is read from what the engine persisted (ADR-005). Plain CSS and vanilla JS, no framework and no build step (ADR-004). Evidence and stop derivation are fetched **per row on expand** rather than bundled into the screen payload, so a 528-row screen stays small and only the row actually being read costs a request. Tiers are the organising principle rather than a flat sortable table, because the first question is always "is there anything actionable?" and a table answers that only after sorting |
+| Files created | `tests/darvax/test_dx6c_screener_ui.py` |
+| Files modified | `src/athena/darvax/api/static/{index.html,darvax.css,darvax.js}`, `src/athena/darvax/api/routes.py` (`current_methodology_digest`), `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md` |
+| Public/Core ATHENA changes | **None** |
+| Tests | 23 new (226 DarvaX total; full suite **1540 passed**). Structural by design — they pin the API↔page contract and the things that must never change: the banner is unconditional, no conviction score exists in the UI either, every required state container is present, freshness uses the local date, skips render with reasons, no framework or CDN is introduced, the box viz is plain CSS, asset versions were bumped, and every field the page reads is still in the screen payload |
+| Live verification | Drove the real page in a browser against a sandbox server on a **copy** of the owner's ledger (owner's `db/athena.db` and running workstation untouched; sandbox and its 2.3 GB copy deleted afterwards). A full sweep through the UI: **528 instruments in 2.45 s**, three tiers rendered (73 / 226 / 19), **318 box visualisations** drawn. Verified: row expansion fetches and shows 6 persisted evidence rows plus the verbatim stored explanation; sort by box height ascending (1.65 → 2.73%); symbol filter; show/hide not-eligible (3 → 4 tiers, 210 rows); tier collapse; embedded mode still drops the back-link and still shows the banner. The **stale** and **digest-mismatch** flags were both provoked and confirmed, the latter by changing `canonical_stop_pct` and watching the digest move `5c52f32f…` → `42a31957…` |
+| Defect found and fixed | **Freshness compared against UTC.** The stale-screen check used `toISOString()`, whose date is a day behind IST for the first 5h30m of every Indian day — so a stale screen would have looked current every single morning, exactly when the owner reads it. Found because the live check ran at 00:15 IST, when IST was 2026-08-15 and UTC still 2026-08-14. Now compares against the local date, with a regression test banning `toISOString` from the file |
+| Known limitation | A 528-instrument sweep completes in ~2.4 s, so the progress bar and cancel button are almost impossible to hit in practice. Both are correct and tested (DX-6b proves cancellation with a blocking fixture) and are worth keeping for slower hosts and larger universes — but on this machine a sweep is effectively instantaneous, and the cancel path could not be exercised end-to-end through the UI for that reason |
+| Architecture compliance | ADR-004 (no framework, no build step), ADR-005 (renders persisted explanations), ADR-010 Amendment 2 (classification not score). `EXPERIMENTAL_UNVALIDATED` unconditional in every view. Live `db/darvax.db` untouched across a full suite run; DarvaX still deletable at **1314 passed**, restored byte-identical |
+| Process note | Two of my own assertions failed on **prose rather than code** — the footer's "no conviction index" disclaimer and a comment explaining why `toISOString` is avoided. Same false-positive class as DX-4b. Fixed by reusing the DX-4b comment-stripper rather than writing a second copy |
+| Risks discovered | None |
+| Technical debt introduced | None |
+| Remaining work | DX-6d — the universe-scale performance re-measure, which DX-4a names as a mandatory trigger |
+| Status | 🔄 Ready for review |
+| Branch | feature/live-dashboard |
+
+---
+
 ## DX-6b: DarvaX universe sweep and screen API (ADR-010 Amendment 2)
 
 | | |
@@ -28,7 +53,7 @@ status updated on approval.
 | Risks discovered | The `trigger_price` gap is worth revisiting: DX-3 could populate it for inside-the-box signals, which would make the deck's p.44 entry rule available across the WATCH tier. That is a DX-3 engine change needing its own approval, and is not proposed here |
 | Technical debt introduced | None |
 | Remaining work | DX-6c (screener UX) and DX-6d (universe-scale performance re-measure) |
-| Status | 🔄 Ready for review |
+| Status | ✅ Approved (2026-08-15) |
 | Branch | feature/live-dashboard |
 
 ---

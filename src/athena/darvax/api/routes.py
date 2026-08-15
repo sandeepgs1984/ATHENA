@@ -25,6 +25,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
 
 from athena.api.security import Permission, RequirePermission
 from athena.darvax import __version__ as darvax_version
+from athena.darvax.config import methodology_digest
 from athena.darvax.scan import scan_instruments
 from athena.darvax.screening.models import DarvaxTier, ScreenResult, SweepRecord
 from athena.darvax.screening.sweep import SweepBusyError
@@ -289,10 +290,19 @@ def latest_screen(
             ) from None
 
     store = request.app.state.darvax_store
+    # The digest DarvaX is configured with *now*. Served alongside the sweep's
+    # own digest so the reader can be told when a screen was produced under
+    # different methodology settings than are currently in force — a 10% stop
+    # screen read as though it were a 1% stop screen is misleading, and the
+    # mismatch is invisible without both values.
+    current_digest = methodology_digest(request.app.state.darvax_config.methodology)
+
     sweep = store.latest_sweep()
     if sweep is None:
         # An honest empty state, not an error: no sweep has ever run.
-        return _envelope([], sweep=None, count=0)
+        return _envelope(
+            [], sweep=None, count=0, current_methodology_digest=current_digest
+        )
 
     results = store.list_screen_results(
         sweep.sweep_id, tier=parsed_tier, limit=limit
@@ -301,6 +311,7 @@ def latest_screen(
         [_screen_payload(r) for r in results],
         sweep=_sweep_payload(sweep),
         count=len(results),
+        current_methodology_digest=current_digest,
     )
 
 
