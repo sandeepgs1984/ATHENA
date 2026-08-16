@@ -1,0 +1,53 @@
+{
+  "_meta": {
+    "layer": 3,
+    "adr": "ADR-011",
+    "description": "Named scanner universes (SU-3). A universe is a union of symbol groups plus a named eligibility profile. Scanners reference a NAME; no scanner hardcodes a group or a filter, so adding a scanner is a config change. Group membership itself lives in the symbol_group table (SU-2), not here.",
+    "eligibility_note": "Only 'none' is implemented today. Resolving a universe that names any other profile RAISES rather than returning unfiltered symbols — returning an unfiltered set under the name of a filtered universe is the silent-wrongness this track exists to remove. Profiles arrive in SU-4.",
+    "data_note": "Universes marked unavailable below reference groups that have no source snapshot yet. Only NIFTY_50, NIFTY_NEXT_50, NIFTY_MIDCAP_100 and 9 sector indices exist in data/index_constituents/. NIFTY_100/200/500, MIDCAP_150, SMALLCAP_250, MICROCAP_250, TOTAL_MARKET and FNO must be obtained before the universes referencing them resolve to anything."
+  },
+
+  "universes": {
+    "athena_core": {
+      "_note": "TODAY'S REAL ATHENA UNIVERSE. Not an index: ATHENA runs on the owner's curated candidate list, and defining this as NIFTY_500 would silently change every engine's universe (ADR-011 section 3.1). Eligibility is 'none' because the resolver applies no group-level filter — ATHENA's own UniverseEngine still runs downstream, unchanged.",
+      "groups": ["OWNER_CANDIDATES"],
+      "eligibility": "none",
+      "description": "The owner's curated candidate list — what ATHENA ingests and scores today."
+    },
+
+    "darvax_discovery": {
+      "_note": "UNAVAILABLE until SU-4. NSE_ALL_ELIGIBLE_EQUITY is rule-defined (ADR-011 section 2.3) and deliberately not materialised, so this resolves only once the darvax_discovery eligibility profile exists.",
+      "groups": ["NSE_ALL_ELIGIBLE_EQUITY"],
+      "eligibility": "darvax_discovery",
+      "description": "Broad NSE equity discovery universe for the DarvaX screener."
+    },
+
+    "mainboard_equity": {
+      "_note": "Resolvable today: NSE_MAINBOARD is derived from the symbol master's board classification (SU-2). Applies no eligibility filter, so it includes everything classified as main board regardless of liquidity or history.",
+      "groups": ["NSE_MAINBOARD"],
+      "eligibility": "none",
+      "description": "Every symbol classified as NSE main board, unfiltered."
+    },
+
+    "largecap_scanner": {
+      "_note": "Resolvable today — NIFTY_50 has a dated snapshot.",
+      "groups": ["NIFTY_50"],
+      "eligibility": "none",
+      "description": "NIFTY 50 constituents."
+    },
+
+    "midcap_scanner": {
+      "_note": "Resolvable today — NIFTY_MIDCAP_100 has a dated snapshot. ADR-011 named NIFTY_MIDCAP_150, which has no snapshot; this uses the index we actually hold rather than fabricating membership.",
+      "groups": ["NIFTY_MIDCAP_100"],
+      "eligibility": "none",
+      "description": "NIFTY Midcap 100 constituents."
+    },
+
+    "broad_scanner": {
+      "_note": "Resolvable today. NIFTY_TOTAL_MARKET has no snapshot, so this unions the three broad indices actually held. It is NOT a substitute for NIFTY 500 and must not be described as one.",
+      "groups": ["NIFTY_50", "NIFTY_NEXT_50", "NIFTY_MIDCAP_100"],
+      "eligibility": "none",
+      "description": "Union of NIFTY 50, Next 50 and Midcap 100 — the broadest index coverage currently held."
+    }
+  }
+}

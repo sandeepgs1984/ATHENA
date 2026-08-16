@@ -6,6 +6,32 @@ status updated on approval.
 
 ---
 
+## SU-3: Universe resolver (ADR-011)
+
+| | |
+|---|---|
+| Completed | 2026-08-15 |
+| Objective | Turn a **universe name** into a set of symbols, so scanners reference a name and adding one is a configuration change rather than code |
+| Scope | `config/universes.json` + `athena/symbols/universes.py` — strict config models, `resolve_universe()`, and helpers listing what is resolvable today. **Additive:** no existing engine consumes it yet (SU-6 wires consumers) |
+| The acceptance criterion | ADR-011 §3.1: **`athena_core` → `OWNER_CANDIDATES`, eligibility `none`, asserted set-identical to the live `owner_candidates` table** — compared as sets, not counts, not a fixture. An earlier ADR draft defined it as `NIFTY_500`, which would have silently changed every engine's universe at the moment the migration was meant to preserve behaviour. Verified live: **518 symbols, exactly the active candidate list** |
+| Architecture implemented | Named `symbols.universes`, **not** `universe` — ATHENA already has an `athena.universe` package (the `UniverseEngine` applying series/liquidity/history/size), which is unchanged and still runs. This adds the step *before* it: deciding which symbols are candidates at all. Groups are unioned then sorted, so resolution is deterministic regardless of group or storage order. `as_of` resolves historical membership, which is what SU-2's dated design was for |
+| Fails loudly rather than silently | A universe naming an **unimplemented eligibility profile raises**, quoting the profile and pointing at SU-4, instead of returning the unfiltered group union. Returning unfiltered symbols under the name of a filtered universe is the exact silent-wrongness this track exists to remove — a caller would believe filtering had happened. `darvax_discovery` is declared to record intent and correctly refuses today |
+| Files created | `config/universes.json`, `src/athena/symbols/universes.py`, `tests/symbols/test_su3_universe_resolver.py` |
+| Files modified | `src/athena/symbols/__init__.py`, `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md` |
+| Tests | 34 new (68 in `tests/symbols`, full suite **1631 passed**). Beyond the acceptance criterion: union/dedup/sort determinism, `as_of` history, empty groups reported separately from a genuinely empty universe, unknown universe listing what exists, strict config rejecting typos and duplicate groups, and two guards on the shipped config — every group it references is one SU-2 can actually build, and no universe marked resolvable points at an index with no snapshot |
+| Owner requirement implemented | **One bad symbol must never stop the batch.** Added `TestPartialFailureNeverStopsTheBatch`: 50 good symbols with a bad one interleaved all survive; several bad index constituents are skipped and reported; a universe whose second group has no data still resolves the first; and the end-to-end build→persist→resolve path completes with an unresolvable symbol present. This was already the behaviour — the tests make it a guarantee rather than an accident |
+| Live verification | Real catalogue, real dated snapshot, real candidate list: `athena_core` **518**, `mainboard_equity` **3,390**, `broad_scanner` **200**, `midcap_scanner` **100**, `largecap_scanner` **50**; `darvax_discovery` refused with the SU-4 message. Owner candidates resolved 518/520 with 2 skipped and named |
+| Honesty in the shipped config | ADR-011 names `NIFTY_100/200/500`, `MIDCAP_150`, `SMALLCAP_250`, `MICROCAP_250`, `TOTAL_MARKET` and `FNO`, **none of which have a snapshot**. They were not fabricated — including the tempting `NIFTY_100 = NIFTY_50 ∪ NIFTY_NEXT_50`, which is NSE's own definition but still a claim this milestone would be inventing. `broad_scanner` unions the three broad indices actually held and its description says explicitly that it is **not** a NIFTY 500 substitute |
+| Finding: why E2E went unnoticed | Tracing the resilience requirement showed `full_validation.py:278` filters unresolved candidates with a bare comprehension — the batch correctly continues, but the skip is **silent**. `cli.py` does the same job while collecting and reporting a `missing` list. That asymmetry is why a symbol could stop receiving data for four sessions unnoticed. Out of SU-3's scope; the natural place to fix it is SU-5's coverage planner |
+| Architecture compliance | Additive; nothing reads the resolver yet. No collision with `athena.universe`. Config is strict (`extra="forbid"`), so a mistyped universe fails loudly |
+| Risks discovered | None new |
+| Technical debt introduced | None |
+| Remaining work | SU-4 eligibility profiles — which will also need reconciling with the existing `UniverseEngine`'s filters, since both express eligibility |
+| Status | 🔄 Ready for review |
+| Branch | feature/live-dashboard |
+
+---
+
 ## SU-2: Symbol group membership (ADR-011)
 
 | | |
@@ -26,7 +52,7 @@ status updated on approval.
 | Risks discovered | The E2E case shows ingestion fails silently on a series change — a candidate that stops resolving simply stops receiving data, with no staleness signal to any consumer. That is broader than SU-2 and worth its own fix |
 | Technical debt introduced | None |
 | Remaining work | SU-3 universe resolver |
-| Status | 🔄 Ready for review |
+| Status | ✅ Approved (2026-08-15) |
 | Branch | feature/live-dashboard |
 
 ---
