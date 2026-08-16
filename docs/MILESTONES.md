@@ -3087,6 +3087,27 @@ are negative. The blocker is `ingestion.lookback_days: 90` — a configuration
 limit, not a Kite limit — so a deeper backfill is the one change that would let
 DX-5 produce real evidence. See `docs/design/DARVAX-VALIDATION-EVIDENCE.md`.
 
+### DarvaX advisor track (DX-7, design: `docs/design/DARVAX-ADVISOR-UX-DESIGN.md`)
+
+Owner decisions recorded in the design §4: **1a** DarvaX keeps its own position
+list (not the recommendation — accepted with the drift risk stated), **2a** the
+shortlist ranks by nearest-to-trigger rather than a "best" score DarvaX cannot
+support, **3b** the unvalidated warning rides on each risk-bearing action chip.
+
+| Milestone | Scope | Status |
+|---|---|---|
+| **DX-7a** Actions as data | `DarvaxAction` + `action_reason` computed by the engine and persisted (schema v4→v5); `RISK_BEARING_ACTIONS` and a `risk_bearing` API flag so the badge set cannot drift in JS. Fixed `rank_tier`'s field-by-field rebuild, which had been silently dropping newly added fields. 30 tests | 🔄 Ready for review |
+| **DX-7b** Positions | `darvax_positions` (schema v5→v6) with a partial unique index for one open position per instrument; `HOLD` and position-confirmed `EXIT` derived from the DAR-CARD applied literally; stop frozen at entry with its basis. Positions are passed *into* the screening engine, which still performs no lookups. Also fixed a test-isolation defect that let DarvaX API tests write real sweeps into the owner's `db/darvax.db`. 39 tests | 🔄 Ready for review |
+| **DX-7c** Advisor dashboard | Three zones: positions with per-holding advice, a 10-card shortlist in the engine's own rank order, and the DX-6c tier table kept as zone 3. Unvalidated badge on every entry chip, carrying the DX-5 attribution finding. 33 tests | 🔄 Ready for review |
+
+**Verified in a real browser** against the live 2,191-instrument universe, which
+caught three things the tests did not: `.posform { display:flex }` defeating the
+`hidden` attribute so the entry form rendered permanently open; a `limit=2000`
+row cap silently truncating a 2,191-row sweep; and the meta line reporting the
+truncated count as the number screened. All three are fixed and covered.
+
+---
+
 **DX-5 re-run (2026-08-16) — supersedes the reading above.** After SU-1→SU-6,
 the `le=365` bound was measured rather than assumed (Kite returns a full span up
 to **3,650 days in one request**), raised to `le=3650`, and a one-off backfill

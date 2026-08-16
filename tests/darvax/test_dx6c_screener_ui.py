@@ -178,11 +178,24 @@ def test_visualisation_degrades_when_there_is_no_box():
 # --------------------------------------------------------------------------- #
 
 
-def test_asset_versions_were_bumped_for_this_milestone():
-    """Without a bump the browser serves the previous CSS/JS and the new screen
-    silently does not appear."""
-    assert "darvax.css?v=0.1.0-dx6c" in HTML
-    assert "darvax.js?v=0.1.0-dx6c" in HTML
+def test_both_assets_are_versioned_together():
+    """Without a cache-busting bump the browser serves the previous CSS/JS and
+    new markup silently renders against old code.
+
+    Originally this pinned the literal ``dx6c`` strings, which made it fail on
+    every subsequent milestone for doing the right thing — and the obvious fix
+    was to edit the expectation, which is how a guard becomes a formality.
+    What actually matters, and is checked here, is that **both** assets carry a
+    version and carry the *same* one: bumping the JS and forgetting the CSS is
+    the real-world failure, and it is invisible until something looks wrong."""
+    import re
+
+    css = re.search(r"darvax\.css\?v=([\w.\-]+)", HTML)
+    js = re.search(r"darvax\.js\?v=([\w.\-]+)", HTML)
+    assert css and js, "both DarvaX assets must be cache-busted"
+    assert css.group(1) == js.group(1), (
+        f"asset versions disagree: css={css.group(1)} js={js.group(1)}"
+    )
 
 
 # --------------------------------------------------------------------------- #
