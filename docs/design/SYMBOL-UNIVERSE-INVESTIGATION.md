@@ -7,7 +7,9 @@ universes.
 **Status:** ✅ Investigation complete; §6's proposal became **ADR-011 (Accepted
 2026-08-15)** and shipped as SU-1→SU-6. Materialised against production
 2026-08-16 — §11 for what it produced, §12 for the classification defect found
-and fixed, §13 for two further defects found and deliberately **not** fixed.
+and fixed, §13 for two further defects found and deliberately **not** fixed,
+§14 for why filling a universe's candles needs the ledger widened first, and
+**§15 for the outcome: all three owner-supplied symbols now screen ACTIONABLE.**
 **Investigated:** 2026-08-15 · **Trigger:** three owner-supplied DarvaX
 candidates, two of which the screener structurally could not see.
 
@@ -614,3 +616,92 @@ classification, and the obvious marker choices differ in risk. A suffix match on
 as `AXISAMC-NIFTYAXIS` and `ZERODHAAMC - NIFTYCINAV`, where a marker on `AMC`
 could plausibly catch a real company. That trade-off is an owner decision, and
 it changes universe composition again.
+
+---
+
+## 14. Backfilling a universe requires registering it first (2026-08-16)
+
+The first attempt to fill `darvax_discovery`'s coverage gaps failed on **2,087
+of 2,119 symbols**, every one with:
+
+> `RepositoryError: integrity violation: FOREIGN KEY constraint failed`
+
+`candles` carries a foreign key to `instruments`. A symbol in the coverage gap
+is by definition one that **has never been ingested**, so it has no `instruments`
+row and its candles cannot be written. The three-way distinction ADR-011 insists
+on — *symbol existence ≠ scanner-universe membership ≠ scanner qualification* —
+has a fourth member hiding behind it: **presence in the candle ledger**, which is
+what a foreign key enforces whether or not anyone modelled it.
+
+A backfill must therefore register the instrument before writing its candles.
+Registration uses the provider's own `Instrument`, exactly as the normal ingest
+path does, so the rows are indistinguishable from ordinary ingestion.
+
+`execute_backfill` behaved exactly as designed here: it isolated all 2,087
+failures, logged each with its reason, and completed the run rather than
+aborting. The failure was in the caller.
+
+### Checked before widening the shared ledger
+
+Adding ~2,100 rows to `instruments` touches a table several services read, and
+ADR-011's brief was explicit that ATHENA must not be widened blindly. Every
+non-DarvaX consumer of `list_instruments()` was checked first:
+
+| Consumer | Effect |
+|---|---|
+| `decisions_service` | filtered to ids that already have decisions — no new ones |
+| `opportunities_service` | groups *decisions*; new instruments have none |
+| `candidates_service` | skips instruments with no sector; new rows have none |
+| `market_history_service` | symbol→id lookup map grows; resolution unchanged |
+| `owner_validation` | fallback symbol lookup succeeds more often |
+
+**ATHENA's decision pipeline takes its universe from `owner_candidates`, not
+from `instruments`,** so `athena_core` stays at 518 and no engine gains a symbol.
+The measurable cost is that `list_instruments()` scans grow roughly fivefold on
+several API paths — which is precisely what DX-6d re-measures.
+
+---
+
+## 15. Outcome — the original question, answered end to end
+
+This document opened because two owner-supplied DarvaX candidates were
+structurally invisible to the screener. After ADR-011, SU-1→SU-6, the
+classification fix (§12) and the backfill (§14), a real sweep over the
+materialised `darvax_discovery` universe reports:
+
+| Symbol | Tier | Signal |
+|---|---|---|
+| `RATNAVEER` | **ACTIONABLE** | `BREAKOUT`, Darvas rule B |
+| `PNGSREVA` | **ACTIONABLE** | `BREAKOUT`, Darvas rule B |
+| `JGCHEM` | **ACTIONABLE** | `BREAKOUT`, Darvas rule B |
+| `BAJAJ-AUTO` | WATCH | `INSIDE_TOPMOST_BOX`, rule A |
+| `NAM-INDIA` | WATCH | `INSIDE_TOPMOST_BOX`, rule A |
+
+`RATNAVEER` and `PNGSREVA` were the two the screener could not see. The last two
+are the equities §12 recovered from misclassification — visible only because of
+that fix.
+
+### What the wider universe surfaces
+
+One sweep, 2,191 instruments, **2,191 evaluated, 0 skipped, not partial**:
+
+| Tier | Count |
+|---|---|
+| `NOT_ELIGIBLE` | 1,563 |
+| `WATCH` | 476 |
+| **`ACTIONABLE`** | **117** |
+| `EXIT_RELEVANT` | 35 |
+
+117 actionable candidates against ~34 from the old 530-instrument ledger — a
+**3.4× increase from a 4.1× larger universe**, i.e. a slightly *lower* hit rate,
+which is what widening into smaller and less liquid names should produce. The
+screener stayed selective rather than becoming permissive: 5.3% actionable, and
+71% of the universe explicitly `NOT_ELIGIBLE`.
+
+**A caveat that belongs with these numbers.** The universe is wider than it is
+clean. §13's 270 iNAV rows are still resolved into it; they contribute nothing
+to the counts above only because Kite returns no candles for them, so they were
+never ingested and cannot be screened. That is luck reinforcing a heuristic, not
+the heuristic working — `not_a_fund` still does not recognise them, and a
+future data source that *did* supply iNAV history would put them straight into
+the screener.

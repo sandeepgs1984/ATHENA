@@ -7,6 +7,8 @@
     "status": "EXPERIMENTAL / UNVALIDATED — the source methodology ships no backtest evidence; see ADR-010 DX-5."
   },
   "enabled": true,
+  "_universe_note": "SU-6 (ADR-011). DarvaX discovers over this ATHENA universe instead of every ingested instrument. Read as DATA through DarvaX's existing read-only port — DarvaX imports no ATHENA resolver, so ADR-010's pinned import surface is unchanged. Opted in 2026-08-16, once the universe had candles behind it: 2,604 resolved symbols, 2,191 with daily history and 1,843 meeting the 400-bar coverage requirement. Set to null to return to scanning every ingested instrument.",
+  "universe": "darvax_discovery",
   "database": {
     "path": "db/darvax.db"
   },

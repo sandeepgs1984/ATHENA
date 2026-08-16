@@ -330,6 +330,100 @@ realistic profile into the continuous one measured above.
 
 ---
 
+## 7b. Re-measured after the DarvaX opt-in — 2,191 instruments
+
+**Measured:** 2026-08-16 · **Trigger:** SU-6 opt-in to `darvax_discovery`
+(530 → 2,191 instruments, **4.1×**) plus the DX-5 backfill (82 → 744 trading
+days). Both landed together, which matters for reading the sweep duration below.
+
+### Contention is unchanged — the §7a conclusion holds at 4× the universe
+
+Continuous sweeping, the worst case, `--order C,B,A`:
+
+| Route | 528 C/A (§7a) | **2,191 C/A** | 2,191 C − A |
+|---|---|---|---|
+| `/health` | 2.30× | **2.09×** | +0.73 ms |
+| `/dashboard/` | 3.09× | **3.28×** | +2.46 ms |
+| `/dashboard/dashboard.js` | 4.04× | **4.01×** | +4.43 ms |
+| `/api/v1/dashboard/summary` | 1.50× | **1.48×** | **+211.08 ms** |
+| `/api/v1/decisions` | 2.91× | **2.99×** | +16.88 ms |
+| `/api/v1/decisions/latest` | 3.00× | **2.92×** | +2.34 ms |
+| `/api/v1/portfolio` | 5.08× | **5.00×** | +9.83 ms |
+| `/api/v1/market/summary` | 2.78× | **2.96×** | +2.22 ms |
+
+Every ratio is within run-to-run spread of the 528-instrument figures, and
+`dashboard/summary` moved from +216 ms to +211 ms. **Quadrupling the universe
+changed contention not at all**, which is the second independent confirmation
+that the ceiling is thread-bound rather than instrument-bound. Mounting remains
+free: every `B − A` is within ±0.03 ms except one 1.68 ms reading on the 438 ms
+route.
+
+### Realistic cadence — a sweep every 30 seconds
+
+| Route | 528 C/A (§7a) | **2,191 C/A** |
+|---|---|---|
+| `/health` | 1.00× | 1.08× |
+| `/dashboard/` | 0.98× | 1.07× |
+| `/dashboard/dashboard.js` | 0.97× | 1.06× |
+| `/api/v1/dashboard/summary` | 1.00× | 0.99× |
+| `/api/v1/decisions` | 0.98× | 1.04× |
+| `/api/v1/decisions/latest` | 1.01× | 1.06× |
+| `/api/v1/portfolio` | 0.99× | 1.05× |
+| `/api/v1/market/summary` | 0.99× | 1.04× |
+
+Ratios rose from "≤1.01×" to "≤1.08×" — **a real change, and still negligible**:
+the absolute deltas are 0.04–0.35 ms on sub-10 ms routes. The cause is simply
+duty cycle. A 5.9 s sweep occupies ~20% of each 30 s interval where a 1.5 s
+sweep occupied ~5%, so a larger share of the sampling window overlaps an active
+sweep. Reported rather than rounded away, because "≤1.01×" would no longer be
+true and the reason it changed is worth knowing.
+
+### Sweep duration — and why 15× is not 4×
+
+Against the owner's real ledger, warm, no competing load: **3.51 s** per sweep
+(8 consecutive sweeps, min 3.48 / max 3.53), 2,191 evaluated, **0 skipped**.
+Under the benchmark's concurrent request load, 5.9–6.5 s.
+
+0.23 s → 3.51 s is **15.3×** for a universe that grew only 4.1×. The universe is
+not the whole story, and reading it as such would mis-attribute the cost:
+
+| | 528 | 2,191 |
+|---|---|---|
+| Mean bars read per instrument | 82 — *all the ledger held* | **360** (400-bar cap; 1,844 instruments at it) |
+| **Bars read per sweep** | ~43k | **~793k — 18.3×** |
+| Sweep duration | 0.23 s | **3.51 s — 15.3×** |
+
+**Sweep cost tracks bars read, near-linearly and slightly sublinear.** Two
+changes compounded: 4.1× more instruments *and* 4.4× more history for each. The
+DX-5 backfill is as responsible for the slowdown as the opt-in is, and a future
+universe change should be costed in bars, not symbols.
+
+### This reverses §7a's note on the progress bar
+
+§7a observed that DX-6c's progress bar and cancel button were "almost impossible
+to hit" at 0.23 s, and kept them only for slower hosts and larger universes.
+**That larger universe now exists.** At 3.5 s warm and ~6 s under load, both
+controls are comfortably usable and are doing the job they were built for. The
+prediction was right and the feature no longer needs defending as speculative.
+
+### Storage
+
+Measured after 8 sweeps at 2,191 instruments: 17,528 result rows, **12.6 MB**
+including WAL — the same footprint 35 sweeps of 528 instruments produced. At the
+default `retain_sweeps: 30` the steady state is ~65,700 rows, extrapolating to
+roughly 45–50 MB. Still bounded by construction, still trivial, but ~4× §7a's
+figure and no longer measured at the retention limit — worth re-measuring if
+`retain_sweeps` is ever raised.
+
+### Conclusion
+
+The §7 recommendation stands unchanged: **no mitigation is warranted.** One
+re-measure trigger is added to those in §7a: **re-measure when ledger depth
+changes materially**, not only when the universe widens — this section is the
+evidence that depth, not symbol count, is what the sweep actually pays for.
+
+---
+
 ## 8. Reproducing this
 
 ```bash
@@ -357,6 +451,21 @@ python3 tests/darvax/bench/darvax_perf_bench.py --load sweep \
     --reps 30 --rounds 4 --instruments 528 --candles 400 \
     --scan-interval 30 --order C,B,A
 ```
+
+For §7b substitute `--instruments 2191`.
+
+> **`--instruments` defaults to 25.** The in-process harness seeds a *synthetic*
+> ledger at that size and the results table looks entirely normal at any scale —
+> only the `Seeding temp ledger: N instruments` line and the `Mean sweep: …s over
+> N instruments` footer reveal which one was measured. A §7a/§7b run that omits
+> the flag silently measures 25 instruments. Check the footer before believing a
+> universe-scale number; the first attempt at §7b did not, and had to be redone.
+
+Sweep duration and tier counts against the **real** ledger (§7b) are not from
+the harness — it seeds synthetic data. Drive `SweepRunner` directly over
+`SqliteMarketDataAdapter(SqliteRepository("db/athena.db")).with_universe(...)`,
+timing `start()` until `progress()` leaves the running state, and point
+`DarvaxRepository` at a scratch path so `db/darvax.db` is untouched.
 
 The harness is not a pytest test on purpose: wall-clock latency is
 nondeterministic, so threshold assertions would produce a flaky suite that gets

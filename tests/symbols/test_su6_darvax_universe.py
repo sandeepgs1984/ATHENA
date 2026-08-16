@@ -165,12 +165,27 @@ def test_darvax_scopes_its_adapter_from_its_own_config():
     assert "with_universe" in app_source
 
 
-def test_the_shipped_darvax_config_does_not_opt_in_yet():
-    """SU-6 is plumbing. Enabling it is the owner's decision, and today the
-    wider universe has almost no candles to screen."""
+def test_the_shipped_darvax_universe_is_one_that_actually_resolves():
+    """Superseded `test_the_shipped_darvax_config_does_not_opt_in_yet` when the
+    owner opted in on 2026-08-16.
+
+    That test guarded a specific hazard — shipping an opt-in while the wider
+    universe had no candles, which SU-6 turns into an *empty* screen rather than
+    a full one. The backfill removed the hazard, so the guard is replaced rather
+    than deleted: opting in is now allowed, but only to a universe `config`
+    actually declares. A typo here would silently produce zero results, which is
+    the same failure the original test existed to prevent."""
     import json
 
+    from athena.symbols.universes import load_universes_config
+
     raw = json.loads((REPO_ROOT / "config" / "darvax.json").read_text(encoding="utf-8"))
-    assert raw.get("universe") in (None, ""), (
-        "shipping an opted-in universe would silently change what DarvaX scans"
+    universe = raw.get("universe")
+    if universe in (None, ""):
+        return  # opting out is always valid
+
+    declared = load_universes_config(REPO_ROOT / "config").universes
+    assert universe in declared, (
+        f"darvax.json points at universe '{universe}', which config/universes.json "
+        f"does not declare; DarvaX would scan nothing. Declared: {sorted(declared)}"
     )
