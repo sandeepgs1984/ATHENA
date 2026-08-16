@@ -62,6 +62,14 @@ class DarvaxAction(str, Enum):
     rather than renaming it, so sweeps stored by DX-7a stay readable."""
     NO_ENTRY = "NO_ENTRY"
     """Rule D, or no box at all. No Darvas reason to act."""
+    HOLD = "HOLD"
+    """Held, and rule A applies — *"As long as it remains [in its topmost box]
+    its price fluctuations should be ignored and the stock is a HOLD."* (DX-7b)"""
+    EXIT = "EXIT"
+    """Held, and the methodology says get out: the stop was breached, rule C
+    fired, or rule D applies — *"There is no reason to HOLD or BUY a stock that
+    is not in its topmost box."* Distinct from ``EXIT_IF_HELD``, which is what
+    DarvaX says when it has no position on record. (DX-7b)"""
 
 
 #: Action per signal state. Kept beside the tier map, and total for the same

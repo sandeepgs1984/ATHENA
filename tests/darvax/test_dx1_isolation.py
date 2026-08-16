@@ -478,3 +478,34 @@ def test_darvax_is_opt_in_by_default():
 
     # 3. An absent config file means "not requested" — a normal supported state.
     assert darvax_activation_requested(REPO_ROOT / "does-not-exist") is False
+
+
+def test_no_test_can_reach_the_owners_production_darvax_database(tmp_path):
+    """Regression for 2026-08-16: DarvaX API tests wrote real sweeps into the
+    owner's `db/darvax.db`.
+
+    The mechanism was that `create_app()` reads `ATHENA_CONFIG_DIR` (defaulting
+    to the working copy's real `config/`), so once the owner enabled DarvaX it
+    mounted a *production* DarvaX alongside each test's own — and the real one
+    won the route match. It stayed invisible while DarvaX was disabled and
+    became destructive the day it was enabled.
+
+    Asserted here rather than trusted to fixture discipline: the guard is now
+    autouse in `tests/darvax/conftest.py`, and this fails if it is ever removed.
+    """
+    from athena.api.app import create_app
+    from athena.api.config import APISettings
+    from athena.api.darvax_mount import DARVAX_MOUNT_PATH
+
+    app = create_app(APISettings())
+    mounted = [
+        r for r in app.routes if getattr(r, "path", "") == DARVAX_MOUNT_PATH
+    ]
+    for route in mounted:
+        store = getattr(route.app.state, "darvax_store", None)
+        if store is None:
+            continue
+        resolved = Path(store.path).resolve()
+        assert REPO_ROOT / "db" / "darvax.db" != resolved, (
+            f"a test mounted DarvaX against the production database at {resolved}"
+        )

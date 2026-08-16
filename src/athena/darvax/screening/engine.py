@@ -28,10 +28,11 @@ both be worse than shipping the two that are exact.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import replace
 from decimal import Decimal
 
+from athena.darvax.positions.models import DarvaxPosition
 from athena.darvax.screening.models import (
     _ACTION_BY_STATE,
     _TIER_BY_STATE,
@@ -138,6 +139,66 @@ def action_for(signal_type: DarvaxSignalType) -> DarvaxAction:
         ) from exc
 
 
+def action_for_held(
+    signal: DarvaxSignal, *, stop_price: Decimal | None
+) -> tuple[DarvaxAction, str]:
+    """Action and reason for an instrument the owner **holds** (DX-7b).
+
+    Every branch is the DAR-CARD text applied literally, in the order the rules
+    take precedence. Nothing here is invented:
+
+    * **stop breached** — rule B mandates the stop (*"A 10 percent stop-loss
+      should be set on the first breakout"*), so a close at or under it is an
+      exit regardless of what the box is doing.
+    * **rule C** — *"if the price falls below the bottom … the stock is a SELL."*
+    * **rule D** — *"There is no reason to HOLD or BUY a stock that is not in
+      its topmost box."* A held instrument that has fallen out of its topmost
+      box is therefore an exit, not a wait.
+    * **rule A** — *"…its price fluctuations should be ignored and the stock is
+      a HOLD."*
+
+    A breakout on an instrument already held stays ``HOLD``. Darvas did pyramid
+    into new boxes, but the DAR-CARD does not say so and DarvaX must not invent
+    add-to-position advice the deck never states (ADR-010).
+    """
+    if stop_price is not None and signal.close <= stop_price:
+        return (
+            DarvaxAction.EXIT,
+            f"Closed at {_money(signal.close)}, at or below the stop "
+            f"{_money(stop_price)} — rule B's mandated stop-loss.",
+        )
+
+    state = signal.signal_type
+    if state is DarvaxSignalType.BELOW_BOX_BOTTOM:
+        return (
+            DarvaxAction.EXIT,
+            f"Fell below the box floor at {_money(signal.box_bottom)} — rule C: "
+            f'"if the price falls below the bottom … the stock is a SELL."',
+        )
+    if state in (DarvaxSignalType.NOT_IN_TOPMOST_BOX, DarvaxSignalType.NO_BOX):
+        return (
+            DarvaxAction.EXIT,
+            'No longer in its topmost box — rule D: "There is no reason to HOLD '
+            'or BUY a stock that is not in its topmost box."',
+        )
+    if state is DarvaxSignalType.INSIDE_TOPMOST_BOX:
+        stop = (
+            f" Stop stands at {_money(stop_price)}." if stop_price is not None else ""
+        )
+        return (
+            DarvaxAction.HOLD,
+            f"Still inside its topmost box — rule A: price fluctuations should "
+            f"be ignored while it remains there.{stop}",
+        )
+    # BREAKOUT / BREAKOUT_RETEST while already held.
+    return (
+        DarvaxAction.HOLD,
+        f"Cleared {_money(signal.box_top)} into a new box — a rule B buy signal, "
+        f"but this is already held, so rule A applies: hold while it remains in "
+        f"its topmost box.",
+    )
+
+
 def _money(value: Decimal | None) -> str:
     return f"₹{value:,}" if value is not None else "an unrecorded level"
 
@@ -211,15 +272,32 @@ def action_reason(
     )
 
 
-def screen_signal(signal: DarvaxSignal, *, sweep_id: str, rank: int = 0) -> ScreenResult:
-    """Classify and measure one signal. ``rank`` is assigned by :func:`rank_tier`."""
+def screen_signal(
+    signal: DarvaxSignal,
+    *,
+    sweep_id: str,
+    rank: int = 0,
+    position: DarvaxPosition | None = None,
+) -> ScreenResult:
+    """Classify and measure one signal. ``rank`` is assigned by :func:`rank_tier`.
+
+    ``position`` is **passed in, never looked up**. This module has no store and
+    no IO by design — a screen is a deterministic reading of signals — so the
+    caller resolves holdings once and hands them down. Reading the position
+    store from here would make the screen depend on hidden state and stop it
+    being replayable from its inputs.
+    """
     breakout_pct, breakout_ref = distance_to_breakout(signal)
-    action = action_for(signal.signal_type)
+    if position is not None and position.is_open:
+        action, reason = action_for_held(signal, stop_price=position.stop_price)
+    else:
+        action = action_for(signal.signal_type)
+        reason = action_reason(
+            signal, action, breakout_pct=breakout_pct, breakout_ref=breakout_ref
+        )
     return ScreenResult(
         action=action,
-        action_reason=action_reason(
-            signal, action, breakout_pct=breakout_pct, breakout_ref=breakout_ref
-        ),
+        action_reason=reason,
         sweep_id=sweep_id,
         instrument_id=signal.instrument_id,
         signal_id=signal.signal_id,
@@ -272,14 +350,25 @@ def rank_tier(results: Iterable[ScreenResult]) -> tuple[ScreenResult, ...]:
 
 
 def screen_signals(
-    signals: Sequence[DarvaxSignal], *, sweep_id: str
+    signals: Sequence[DarvaxSignal],
+    *,
+    sweep_id: str,
+    positions: Mapping[str, DarvaxPosition] | None = None,
 ) -> tuple[ScreenResult, ...]:
     """Screen a batch of signals: classify, measure, then rank within each tier.
 
     Returned in tier precedence order, ranked within each tier. Ranks are
     per-tier, so the first ACTIONABLE and the first WATCH are both rank 1.
+
+    ``positions`` maps ``instrument_id`` to an open holding. Defaulting to
+    ``None`` keeps every existing caller — and every sweep run before DX-7b —
+    behaving exactly as it did.
     """
-    screened = [screen_signal(s, sweep_id=sweep_id) for s in signals]
+    held = positions or {}
+    screened = [
+        screen_signal(s, sweep_id=sweep_id, position=held.get(s.instrument_id))
+        for s in signals
+    ]
     output: list[ScreenResult] = []
     for tier in TIER_ORDER:
         output.extend(rank_tier(r for r in screened if r.tier is tier))

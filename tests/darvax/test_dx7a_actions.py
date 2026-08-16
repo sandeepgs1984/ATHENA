@@ -108,13 +108,18 @@ def test_an_unmapped_state_raises_rather_than_defaulting():
         action_for(Bogus())  # type: ignore[arg-type]
 
 
-def test_the_exit_action_stays_conditional_until_positions_exist():
-    """DarvaX cannot see holdings until DX-7b. `EXIT_IF_HELD` says exactly that;
-    a bare `EXIT` would be advice about a position that may not exist."""
+def test_the_exit_action_stays_conditional_when_nothing_is_held():
+    """DX-7b added `HOLD` and a position-confirmed `EXIT`, which retired this
+    test's original assertion that `HOLD` must not exist. The durable property
+    is the one kept here: with **no position on record**, rule C still yields
+    the conditional `EXIT_IF_HELD`. A bare `EXIT` would be advice about a
+    position that may not exist, and `EXIT_IF_HELD` was named so DX-7b could
+    add beside it rather than rename a persisted value."""
     assert action_for(DarvaxSignalType.BELOW_BOX_BOTTOM) is DarvaxAction.EXIT_IF_HELD
-    assert not hasattr(DarvaxAction, "HOLD"), (
-        "HOLD is DX-7b — it is meaningless while DarvaX cannot see positions"
+    result = screen_signal(
+        signal(DarvaxSignalType.BELOW_BOX_BOTTOM), sweep_id="swp-1", position=None
     )
+    assert result.action is DarvaxAction.EXIT_IF_HELD
 
 
 def test_only_entry_actions_are_marked_risk_bearing():

@@ -33,7 +33,7 @@ never appear to have been produced by current settings.
 from __future__ import annotations
 
 #: Bumped independently of ATHENA's SCHEMA_VERSION. They never interact.
-DARVAX_SCHEMA_VERSION = 5
+DARVAX_SCHEMA_VERSION = 6
 
 _DDL: tuple[str, ...] = (
     "CREATE TABLE IF NOT EXISTS darvax_schema_version (version INTEGER NOT NULL)",
@@ -108,6 +108,27 @@ _DDL: tuple[str, ...] = (
     # The screener's only read pattern: one sweep, one tier, in rank order.
     "CREATE INDEX IF NOT EXISTS idx_darvax_screen_sweep_tier_rank "
     "ON darvax_screen_results(sweep_id, tier, rank)",
+    """
+    CREATE TABLE IF NOT EXISTS darvax_positions (
+        position_id         TEXT PRIMARY KEY,
+        instrument_id       TEXT NOT NULL,
+        quantity            INTEGER NOT NULL,
+        entry_price         TEXT NOT NULL,
+        entry_date          TEXT NOT NULL,
+        opened_at           TEXT NOT NULL,
+        stop_price          TEXT,
+        stop_basis          TEXT,
+        methodology_digest  TEXT NOT NULL DEFAULT '',
+        closed_at           TEXT,
+        note                TEXT NOT NULL DEFAULT ''
+    )
+    """,
+    # At most one OPEN position per instrument. A partial unique index rather
+    # than an application check: two open rows for one symbol would make "am I
+    # holding this?" ambiguous, and the advisor answers that question on every
+    # sweep. Closed rows are unconstrained so re-entering a name keeps history.
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_darvax_positions_one_open "
+    "ON darvax_positions(instrument_id) WHERE closed_at IS NULL",
 )
 
 

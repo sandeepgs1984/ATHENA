@@ -208,7 +208,13 @@ class SweepRunner:
                 )
 
             self._set(stage="screening")
-            results = screen_signals(signals, sweep_id=sweep_id)
+            # Holdings are resolved once per sweep, not per instrument, and
+            # handed to the engine — which stays pure and does no lookups
+            # (DX-7b). A sweep that read the position store per signal would
+            # also let holdings change mid-sweep, so one screen could disagree
+            # with itself about what is held.
+            held = self.store.open_positions_by_instrument()
+            results = screen_signals(signals, sweep_id=sweep_id, positions=held)
             self.store.save_screen_results(results)
 
             state = "cancelled" if cancelled else "completed"
@@ -260,7 +266,15 @@ class SweepRunner:
         finished: bool = False,
         partial: bool = False,
     ) -> SweepRecord:
-        screened = screen_signals(signals, sweep_id=sweep_id) if signals else ()
+        screened = (
+            screen_signals(
+                signals,
+                sweep_id=sweep_id,
+                positions=self.store.open_positions_by_instrument(),
+            )
+            if signals
+            else ()
+        )
         return SweepRecord(
             sweep_id=sweep_id,
             started_at=started,

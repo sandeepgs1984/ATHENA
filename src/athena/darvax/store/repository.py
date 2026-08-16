@@ -17,10 +17,11 @@ import json as _json
 import sqlite3
 import threading
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 
+from athena.darvax.positions.models import DarvaxPosition
 from athena.darvax.screening.models import (
     DarvaxAction,
     DarvaxTier,
@@ -99,6 +100,25 @@ def _row_to_screen_result(row: tuple) -> ScreenResult:
         # reason is what tells a reader the action was never recorded.
         action=DarvaxAction(row[16]) if row[16] else DarvaxAction.NO_ENTRY,
         action_reason=row[17] or "",
+    )
+
+
+def _row_to_position(row: tuple) -> DarvaxPosition:
+    """Rehydrate a position. The stop and its basis are read as stored, never
+    recomputed from the current config — a position keeps the stop it was
+    actually protected by (ADR-005)."""
+    return DarvaxPosition(
+        position_id=row[0],
+        instrument_id=row[1],
+        quantity=int(row[2]),
+        entry_price=Decimal(row[3]),
+        entry_date=date.fromisoformat(row[4]),
+        opened_at=datetime.fromisoformat(row[5]),
+        stop_price=_optional_decimal(row[6]),
+        stop_basis=StopBasis(row[7]) if row[7] else None,
+        methodology_digest=row[8] or "",
+        closed_at=datetime.fromisoformat(row[9]) if row[9] else None,
+        note=row[10] or "",
     )
 
 
@@ -452,6 +472,111 @@ class DarvaxRepository:
             params = (sweep_id, tier.value)
         clause += " ORDER BY tier, rank LIMIT ?"
         return self._screen_rows(clause, (*params, limit))
+
+    # --------------------------------------------------------- positions (DX-7b)
+
+    def upsert_position(self, position: DarvaxPosition) -> None:
+        """Insert or replace one position by its id.
+
+        A ``UNIQUE`` violation surfaces as a ``RepositoryError`` naming the
+        instrument: it means an open position already exists for that symbol,
+        which is a real conflict the caller must resolve, not a storage detail
+        to swallow.
+        """
+        try:
+            with self._lock:
+                conn = self._connect()
+                with conn:
+                    conn.execute(
+                        "INSERT INTO darvax_positions ("
+                        "position_id, instrument_id, quantity, entry_price, "
+                        "entry_date, opened_at, stop_price, stop_basis, "
+                        "methodology_digest, closed_at, note"
+                        ") VALUES (?,?,?,?,?,?,?,?,?,?,?) "
+                        "ON CONFLICT(position_id) DO UPDATE SET "
+                        "quantity=excluded.quantity, "
+                        "entry_price=excluded.entry_price, "
+                        "entry_date=excluded.entry_date, "
+                        "stop_price=excluded.stop_price, "
+                        "stop_basis=excluded.stop_basis, "
+                        "closed_at=excluded.closed_at, note=excluded.note",
+                        (
+                            position.position_id,
+                            position.instrument_id,
+                            int(position.quantity),
+                            str(position.entry_price),
+                            position.entry_date.isoformat(),
+                            position.opened_at.isoformat(),
+                            _optional_str(position.stop_price),
+                            position.stop_basis.value if position.stop_basis else None,
+                            position.methodology_digest,
+                            position.closed_at.isoformat() if position.closed_at else None,
+                            position.note,
+                        ),
+                    )
+        except sqlite3.IntegrityError as exc:
+            raise RepositoryError(
+                f"an open DarvaX position already exists for "
+                f"{position.instrument_id}: {exc}"
+            ) from exc
+        except sqlite3.Error as exc:
+            raise RepositoryError(f"DarvaX position save failed: {exc}") from exc
+
+    def list_positions(self, *, open_only: bool = True) -> list[DarvaxPosition]:
+        """Positions, newest first. Closed ones are kept and returned on request
+        rather than deleted — a closed position is the record of a round trip."""
+        clause = "WHERE closed_at IS NULL " if open_only else ""
+        try:
+            with self._lock:
+                rows = self._connect().execute(
+                    "SELECT position_id, instrument_id, quantity, entry_price, "
+                    "entry_date, opened_at, stop_price, stop_basis, "
+                    "methodology_digest, closed_at, note "
+                    f"FROM darvax_positions {clause}ORDER BY opened_at DESC"
+                ).fetchall()
+        except sqlite3.Error as exc:
+            raise RepositoryError(f"DarvaX position query failed: {exc}") from exc
+        return [_row_to_position(row) for row in rows]
+
+    def open_positions_by_instrument(self) -> dict[str, DarvaxPosition]:
+        """Open positions keyed by instrument — the shape a sweep needs.
+
+        Resolved once per sweep and handed to the screening engine, which stays
+        pure and does no lookups of its own.
+        """
+        return {p.instrument_id: p for p in self.list_positions(open_only=True)}
+
+    def close_position(self, position_id: str, *, closed_at: datetime) -> bool:
+        """Mark a position closed. Returns False if it was already closed or
+        absent, so a caller can tell "nothing to do" from "done"."""
+        try:
+            with self._lock:
+                conn = self._connect()
+                with conn:
+                    cur = conn.execute(
+                        "UPDATE darvax_positions SET closed_at=? "
+                        "WHERE position_id=? AND closed_at IS NULL",
+                        (closed_at.isoformat(), position_id),
+                    )
+                    return cur.rowcount > 0
+        except sqlite3.Error as exc:
+            raise RepositoryError(f"DarvaX position close failed: {exc}") from exc
+
+    def delete_position(self, position_id: str) -> bool:
+        """Remove a position outright — for correcting a mis-typed entry, not
+        for closing a trade. Closing is :meth:`close_position`, which preserves
+        the record; this destroys it."""
+        try:
+            with self._lock:
+                conn = self._connect()
+                with conn:
+                    cur = conn.execute(
+                        "DELETE FROM darvax_positions WHERE position_id=?",
+                        (position_id,),
+                    )
+                    return cur.rowcount > 0
+        except sqlite3.Error as exc:
+            raise RepositoryError(f"DarvaX position delete failed: {exc}") from exc
 
     def prune_sweeps(self, keep: int) -> int:
         """Delete all but the ``keep`` most recent sweeps, and their results.

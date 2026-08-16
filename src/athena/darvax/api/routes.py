@@ -19,13 +19,17 @@ source deck ships no backtest evidence, and DX-5 is what changes that.
 
 from __future__ import annotations
 
+from datetime import date, datetime, timezone
+from decimal import Decimal, InvalidOperation
 from typing import Annotated, Any
+from uuid import uuid4
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
 
 from athena.api.security import Permission, RequirePermission
 from athena.darvax import __version__ as darvax_version
 from athena.darvax.config import methodology_digest
+from athena.darvax.positions.models import DarvaxPosition
 from athena.darvax.scan import scan_instruments
 from athena.darvax.screening.models import (
     RISK_BEARING_ACTIONS,
@@ -36,8 +40,9 @@ from athena.darvax.screening.models import (
 from athena.darvax.screening.sweep import SweepBusyError
 from athena.darvax.signals import DarvaxSignal
 from athena.darvax.signals.models import DarvaxSignalType
+from athena.darvax.signals.stops import compute_stop
 from athena.domain.enums import Timeframe
-from athena.errors import AthenaError
+from athena.errors import AthenaError, RepositoryError
 
 router = APIRouter(prefix="/api", tags=["DarvaX (experimental)"])
 
@@ -93,6 +98,12 @@ def _signal_payload(signal: DarvaxSignal) -> dict[str, Any]:
         "darvax_version": signal.darvax_version,
         "status": signal.status,
     }
+
+
+def _optional(value: Decimal | None) -> str | None:
+    """Decimals cross the wire as strings — a JSON float would quietly corrupt a
+    price the rest of the system keeps exact."""
+    return str(value) if value is not None else None
 
 
 def _envelope(data: Any, **extra: Any) -> dict[str, Any]:
@@ -421,3 +432,189 @@ def scan(
             for s in result.skipped
         ],
     )
+
+
+# --------------------------------------------------------------------------- #
+# Positions (DX-7b) — DarvaX's own record of what is held.
+#
+# Advisory only, and emphatically not a broker: recording a position here tells
+# DarvaX what the owner already bought elsewhere. Nothing in this module places,
+# routes, or simulates an order, and no order API exists in this repository.
+# --------------------------------------------------------------------------- #
+
+
+def _position_payload(position: DarvaxPosition) -> dict[str, Any]:
+    return {
+        "position_id": position.position_id,
+        "instrument_id": position.instrument_id,
+        "quantity": position.quantity,
+        "entry_price": str(position.entry_price),
+        "entry_date": position.entry_date.isoformat(),
+        "opened_at": position.opened_at.isoformat(),
+        "stop_price": _optional(position.stop_price),
+        "stop_basis": position.stop_basis.value if position.stop_basis else None,
+        "methodology_digest": position.methodology_digest,
+        "closed_at": position.closed_at.isoformat() if position.closed_at else None,
+        "note": position.note,
+        "is_open": position.is_open,
+        "status": EXPERIMENTAL_STATUS,
+    }
+
+
+@router.get("/positions", summary="DarvaX-lane positions (experimental)")
+def list_positions(
+    request: Request,
+    open_only: bool = True,
+    _principal: Annotated[
+        object, Depends(RequirePermission(Permission.READ))
+    ] = None,
+) -> dict[str, Any]:
+    """What DarvaX believes is held.
+
+    **Not reconciled with ATHENA's `owner_positions`** — the owner chose
+    separate lists (advisor design decision 1a), so a position closed in ATHENA
+    stays open here until closed here too.
+    """
+    store = request.app.state.darvax_store
+    positions = store.list_positions(open_only=open_only)
+    return _envelope(
+        [_position_payload(p) for p in positions],
+        open_only=open_only,
+        count=len(positions),
+    )
+
+
+@router.post("/positions", summary="Record a held position (experimental)")
+def open_position(
+    request: Request,
+    payload: Annotated[dict[str, Any], Body()],
+    _principal: Annotated[
+        object, Depends(RequirePermission(Permission.EXECUTE))
+    ] = None,
+) -> dict[str, Any]:
+    """Record that the owner holds an instrument, so DarvaX can say HOLD/EXIT.
+
+    The stop is **derived here and frozen** from the stop policy in force now
+    (deck p.67's 10% on first breakout, unless configured otherwise), rather
+    than recomputed on every read: changing the policy later must not silently
+    move the level an open position was actually protected by.
+    """
+    config = request.app.state.darvax_config
+    store = request.app.state.darvax_store
+
+    try:
+        instrument_id = str(payload["instrument_id"]).strip()
+        quantity = int(payload["quantity"])
+        entry_price = Decimal(str(payload["entry_price"]))
+        entry_date = date.fromisoformat(str(payload["entry_date"]))
+    except (KeyError, TypeError, ValueError, InvalidOperation) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=(
+                "instrument_id, quantity, entry_price and entry_date (ISO) are "
+                f"required and must be well-formed: {exc}"
+            ),
+        ) from exc
+
+    if not instrument_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="instrument_id must not be empty",
+        )
+    if quantity < 1:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"quantity must be at least 1, got {quantity}",
+        )
+    if entry_price <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"entry_price must be positive, got {entry_price}",
+        )
+
+    now = datetime.now(tz=timezone.utc)
+    stop_price: Decimal | None = None
+    stop_basis = None
+    raw_stop = payload.get("stop_price")
+    if raw_stop not in (None, ""):
+        # An owner-supplied stop wins over the derived one, but its basis is
+        # recorded as such so a reader is never told Darvas chose a level the
+        # owner did.
+        try:
+            stop_price = Decimal(str(raw_stop))
+        except InvalidOperation as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=f"stop_price is not a number: {raw_stop!r}",
+            ) from exc
+    else:
+        derived = compute_stop(
+            [], config.methodology, reference_price=entry_price
+        )
+        if derived is not None:
+            stop_price, stop_basis = derived.price, derived.basis
+
+    position = DarvaxPosition(
+        position_id=f"pos-{uuid4().hex[:12]}",
+        instrument_id=instrument_id,
+        quantity=quantity,
+        entry_price=entry_price,
+        entry_date=entry_date,
+        opened_at=now,
+        stop_price=stop_price,
+        stop_basis=stop_basis,
+        methodology_digest=methodology_digest(config.methodology),
+        note=str(payload.get("note") or ""),
+    )
+    try:
+        store.upsert_position(position)
+    except RepositoryError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        ) from exc
+    return _envelope(_position_payload(position))
+
+
+@router.post(
+    "/positions/{position_id}/close", summary="Close a position (experimental)"
+)
+def close_position(
+    request: Request,
+    position_id: str,
+    _principal: Annotated[
+        object, Depends(RequirePermission(Permission.EXECUTE))
+    ] = None,
+) -> dict[str, Any]:
+    """Mark a position closed. The row is kept, not deleted — a closed position
+    is the record of a completed round trip."""
+    store = request.app.state.darvax_store
+    closed = store.close_position(position_id, closed_at=datetime.now(tz=timezone.utc))
+    if not closed:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"no open DarvaX position {position_id!r}",
+        )
+    return _envelope({"position_id": position_id, "closed": True})
+
+
+@router.delete("/positions/{position_id}", summary="Delete a position (experimental)")
+def delete_position(
+    request: Request,
+    position_id: str,
+    _principal: Annotated[
+        object, Depends(RequirePermission(Permission.EXECUTE))
+    ] = None,
+) -> dict[str, Any]:
+    """Remove a mis-recorded position outright.
+
+    Distinct from closing on purpose: **close** preserves a real trade's
+    history, **delete** erases a typo. Conflating them would quietly destroy
+    round trips.
+    """
+    store = request.app.state.darvax_store
+    if not store.delete_position(position_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"no DarvaX position {position_id!r}",
+        )
+    return _envelope({"position_id": position_id, "deleted": True})

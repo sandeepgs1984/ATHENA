@@ -32,10 +32,38 @@ def darvax_never_activates_in_tests() -> None:
     Overrides the suite-wide guard in ``tests/conftest.py``, which neutralises
     `create_app`'s DarvaX seam so unrelated tests cannot touch the owner's live
     `db/darvax.db`. These tests are *about* that seam, so they need it intact —
-    and they stay off the production database by pinning their own config
-    directory (below) and their own temporary database instead.
+    and they stay off the production database via ``darvax_config_is_hermetic``
+    below, which is autouse for exactly that reason.
     """
     return None
+
+
+@pytest.fixture(autouse=True)
+def darvax_config_is_hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    """Point `create_app` at a throwaway config with DarvaX **disabled**.
+
+    This module's docstring described the hazard from the start: a test that
+    calls ``create_app()`` and then mounts its own DarvaX gets *two* apps at
+    ``/darvax``, and the real one wins the route match — so requests land on the
+    owner's live ``db/darvax.db``. Every fixture was expected to remember the
+    guard individually.
+
+    On 2026-08-16 that expectation failed and the hazard became real: the owner
+    enabled DarvaX and opted it into a 2,191-instrument universe, and API tests
+    that POST ``/screen`` ran **full sweeps against the production database**,
+    writing sweeps, screen results and thousands of signals into it.
+
+    It is autouse now because "remember to pin the config" is not a safeguard —
+    it is a convention, and this is what conventions cost. A test that genuinely
+    wants DarvaX still mounts its own instance explicitly, which is unaffected;
+    what changes is that forgetting no longer reaches production.
+    """
+    root = tmp_path / "_autohermetic"
+    root.mkdir(parents=True, exist_ok=True)
+    config_dir = athena_config_copy(root / "config", darvax_enabled=False)
+    monkeypatch.setenv("ATHENA_CONFIG_DIR", str(config_dir))
+    monkeypatch.setattr("athena.api.darvax_mount._default_repo_root", lambda: root)
+    return config_dir
 
 
 def athena_config_copy(dest: Path, *, darvax_enabled: bool) -> Path:
