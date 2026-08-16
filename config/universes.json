@@ -5,7 +5,8 @@
     "description": "Named scanner universes (SU-3). A universe is a union of symbol groups plus a named eligibility profile. Scanners reference a NAME; no scanner hardcodes a group or a filter, so adding a scanner is a config change. Group membership itself lives in the symbol_group table (SU-2), not here.",
     "eligibility_note": "Profiles live in athena/symbols/eligibility.py as named, ordered rule sets; each exclusion is attributable to one rule with a reason. Rules are code because they are logic with no numbers to tune. Threshold rules (liquidity, minimum history) are NOT implemented: the instrument dump reports last_price as 0 for every row, so liquidity is only measurable from candles, which exist only for symbols already ingested \u2014 circular for a discovery universe. When thresholds arrive they belong here.",
     "data_note": "Universes marked unavailable below reference groups that have no source snapshot yet. Only NIFTY_50, NIFTY_NEXT_50, NIFTY_MIDCAP_100 and 9 sector indices exist in data/index_constituents/. NIFTY_100/200/500, MIDCAP_150, SMALLCAP_250, MICROCAP_250, TOTAL_MARKET and FNO must be obtained before the universes referencing them resolve to anything.",
-    "sme_note": "SME is a listing board, modelled as the NSE_SME group (SU-2), so including it is a universe composition choice visible in this file rather than a threshold buried in a filter. darvax_discovery uses NSE_MAINBOARD only \u2014 to include SME scrips, add NSE_SME to its groups."
+    "sme_note": "SME is a listing board, modelled as the NSE_SME group (SU-2), so including it is a universe composition choice visible in this file rather than a threshold buried in a filter. darvax_discovery uses NSE_MAINBOARD only \u2014 to include SME scrips, add NSE_SME to its groups.",
+    "coverage_note": "A coverage block states what a scanner needs; it fetches nothing. The planner (SU-5) reports which symbols fall short and estimates the cost; execution is a separate, explicitly bounded step. athena_core declares no coverage because its symbols are already ingested by the existing cycle."
   },
   "universes": {
     "athena_core": {
@@ -22,7 +23,12 @@
         "NSE_MAINBOARD"
       ],
       "eligibility": "darvax_discovery",
-      "description": "Broad NSE main-board equity discovery universe for the DarvaX screener."
+      "description": "Broad NSE main-board equity discovery universe for the DarvaX screener.",
+      "coverage": {
+        "timeframe": "1d",
+        "minimum_bars": 400,
+        "reason": "DarvaX's own scan.lookback_bars default (config/darvax.json) \u2014 the number of candles its signal engine is fed per instrument. Sourced from the methodology's stated need, not chosen here."
+      }
     },
     "mainboard_equity": {
       "_note": "Resolvable today: NSE_MAINBOARD is derived from the symbol master's board classification (SU-2). Applies no eligibility filter, so it includes everything classified as main board regardless of liquidity or history.",

@@ -61,12 +61,29 @@ class _Strict(BaseModel):
         return values
 
 
+class CoverageSpec(_Strict):
+    """Candle coverage a universe's scanner needs before it can run (SU-5).
+
+    Optional: a universe with no spec makes no data demand, which is the honest
+    default. Declaring one does **not** fetch anything — it states a requirement
+    the planner reports against.
+    """
+
+    timeframe: str = "1d"
+    minimum_bars: int = Field(ge=1)
+    reason: str = ""
+    """Where the number comes from. Required in spirit if not by the schema: a
+    bar count with no stated origin is indistinguishable from a guess."""
+
+
 class UniverseDefinition(_Strict):
-    """One named universe: which groups, and which eligibility profile."""
+    """One named universe: which groups, which eligibility profile, and what
+    candle coverage its scanner needs."""
 
     groups: list[str] = Field(min_length=1)
     eligibility: str = ELIGIBILITY_NONE
     description: str = ""
+    coverage: CoverageSpec | None = None
 
     @model_validator(mode="after")
     def _groups_are_unique(self) -> UniverseDefinition:

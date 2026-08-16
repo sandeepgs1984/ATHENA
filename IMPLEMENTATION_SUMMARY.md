@@ -6,6 +6,30 @@ status updated on approval.
 
 ---
 
+## SU-5: Coverage planner (ADR-011)
+
+| | |
+|---|---|
+| Completed | 2026-08-15 |
+| Objective | Separate **required coverage** from **ingested universe** — the change that makes scanner-specific universes affordable, since membership of a discovery universe stops implying permanent ingestion for every subsystem |
+| Scope | `athena/symbols/coverage.py` (requirement, plan, bounded backfill), `SqliteRepository.candle_coverage()`, and an optional `coverage` block per universe in config. **Additive:** nothing ingests as a result |
+| Architecture implemented | **Planning and execution are separate on purpose.** `plan_coverage` reads and reports; it fetches nothing. `execute_backfill` is the only function that talks to a provider, and its `limit` is **required with no default** — a backfill that silently means "everything" is how a fifteen-minute network operation starts by accident. `fetch` is injected as a callable, so the planner has no provider or repository dependency of its own and stays testable without a network (ADR-002) |
+| Performance | `candle_coverage()` is one grouped query, chunked at 500 to stay under SQLite's host-parameter cap. Planning **2,728 symbols took 0.04s** — asking what is missing must never itself be the slow step |
+| One failing symbol never stops the batch | The owner's standing requirement, now asserted at this layer too: a fetch that raises costs exactly one symbol, is logged, and is returned in `failed`. A provider that returns **no candles** is also recorded rather than counted as success — a symbol that resolves but has no history is a real situation, and calling it filled would leave a permanent silent gap |
+| Coverage has provenance, not invented numbers | A `CoverageSpec` states what a scanner needs. `darvax_discovery` declares **400 daily bars**, which is DarvaX's own `scan.lookback_bars` — a test asserts the config tracks that value rather than drifting from it. `athena_core` declares **no** coverage, because its symbols are already ingested by the existing cycle and a requirement there would imply a backfill ATHENA does not need |
+| Files created | `src/athena/symbols/coverage.py`, `tests/symbols/test_su5_coverage.py` |
+| Files modified | `src/athena/data/store/repository.py` (`candle_coverage`), `src/athena/symbols/universes.py` (`CoverageSpec`), `config/universes.json`, `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md` |
+| Tests | 18 new (full suite **1672 passed**). Planning reads once for 500 symbols; a symbol with no candles is a gap rather than an omission; the limit is required and validated; a raising fetch and an empty fetch are both recorded while the rest of the batch completes; the query chunks past 1,500 symbols; and the shipped config's 400 tracks DarvaX's own setting |
+| **Live finding: nothing currently meets the requirement** | Against a copy of the real ledger: **0 of 2,728** discovery symbols and **0 of 518 `athena_core`** symbols hold 400 daily bars — because the ledger holds roughly **82**. A full discovery backfill is ~2,728 requests, ~15.2 minutes at Kite's ~3/s. More importantly, **400 bars is unreachable in a single pass**: `IngestionConfig.lookback_days` caps at 365 calendar days ≈ 248 trading bars. This is the same wall DX-5 hit from the other side, now quantified per symbol rather than in aggregate |
+| Architecture compliance | Additive; no engine consumes the planner. Provider access stays behind an injected callable. Numbers live in config with stated origin, per configuration-over-hardcoding |
+| Risks discovered | The 400-bar requirement cannot be satisfied by any single backfill under the current `lookback_days` bound. Resolving it means either accumulating across runs (`skip_existing` already makes history accrete), or windowed daily requests, or raising the bound — a decision that needs the Kite span question answered first, exactly as the investigation recorded |
+| Technical debt introduced | None |
+| Remaining work | SU-6: DarvaX opt-in to `darvax_discovery`, plus the DX-4a/DX-6d re-measure at universe scale |
+| Status | 🔄 Ready for review |
+| Branch | feature/live-dashboard |
+
+---
+
 ## SU-4: Eligibility profiles + unresolved-candidate reporting (ADR-011)
 
 | | |
@@ -28,7 +52,7 @@ status updated on approval.
 | Risks discovered | The fund rule is a **name heuristic** (`ETF`, `BEES`, `FUND`), because the dump has no instrument-kind column. It will miss oddly-named funds and could in principle catch a company with `FUND` in its name. Stated in the module rather than hidden |
 | Technical debt introduced | None |
 | Remaining work | SU-5 coverage planner; SU-6 DarvaX opt-in and the DX-4a/DX-6d re-measure at 2,728 symbols |
-| Status | 🔄 Ready for review |
+| Status | ✅ Approved (2026-08-15) |
 | Branch | feature/live-dashboard |
 
 ---

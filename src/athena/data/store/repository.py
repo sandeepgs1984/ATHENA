@@ -963,6 +963,39 @@ class SqliteRepository:
         )
         return datetime.fromisoformat(row[0]) if row else None
 
+    # ------------------------------------------------------- candle coverage (SU-5)
+
+    def candle_coverage(
+        self, timeframe: Timeframe, instrument_ids: Sequence[str]
+    ) -> dict[str, int]:
+        """Bar counts per instrument for one timeframe.
+
+        One grouped query rather than a count per symbol: a discovery universe
+        is thousands of instruments, and asking individually would turn planning
+        into the slow step it exists to avoid. Instruments with no candles are
+        returned as ``0`` rather than omitted, so a caller cannot mistake
+        "absent from the result" for "not requested".
+        """
+        if not instrument_ids:
+            return {}
+        counts = dict.fromkeys(instrument_ids, 0)
+        # SQLite caps host parameters (999 on older builds), so chunk rather
+        # than assume the universe fits in one statement.
+        chunk_size = 500
+        ids = list(instrument_ids)
+        for start in range(0, len(ids), chunk_size):
+            chunk = ids[start : start + chunk_size]
+            marks = ",".join("?" * len(chunk))
+            rows = self._query_all(
+                f"SELECT instrument_id, COUNT(*) FROM candles "
+                f"WHERE timeframe=? AND instrument_id IN ({marks}) "
+                f"GROUP BY instrument_id",
+                (timeframe.value, *chunk),
+            )
+            for instrument_id, count in rows:
+                counts[instrument_id] = int(count)
+        return counts
+
     # ------------------------------------------------------ group membership (SU-2)
 
     def upsert_group_memberships(self, memberships: Sequence[GroupMembership]) -> int:
