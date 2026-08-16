@@ -4,8 +4,9 @@ Why `RATNAVEER` and `PNGSREVA` are missing, what the current pipeline actually
 does, and the smallest clean change that would support scanner-specific
 universes.
 
-**Status:** 🔄 Investigation complete — **no implementation.** Proposal in §6
-needs an ADR and owner approval before any code.
+**Status:** ✅ Investigation complete; §6's proposal became **ADR-011 (Accepted
+2026-08-15)** and shipped as SU-1→SU-6. Materialised against production
+2026-08-16 — see §11 for what it actually produced, including one defect found.
 **Investigated:** 2026-08-15 · **Trigger:** three owner-supplied DarvaX
 candidates, two of which the screener structurally could not see.
 
@@ -424,3 +425,91 @@ quietly dropped non-matching symbols would have hidden it indefinitely.
 **Not fixed here.** Repairing it means deciding whether a series change should
 re-map a candidate automatically (and whether `E2E-BE` is even wanted, given
 what BE implies), which is an owner decision and outside SU-2's scope.
+
+---
+
+## 11. Materialisation against production (2026-08-16)
+
+SU-1→SU-6 were approved and fully tested, but had **never been run against
+`db/athena.db`** — `symbol_master`, `symbol_group` and `resolved_universe` were
+all empty. Since SU-6 correctly treats an unresolved universe as *zero* symbols
+rather than "no filter", pointing DarvaX at `darvax_discovery` before this would
+have silently given it an empty screen.
+
+### What was written
+
+| | |
+|---|---|
+| `symbol_master` | **10,197** rows (whole NSE catalogue, all `inferred_suffix`) |
+| Board split | 3,390 MAINBOARD · 439 SME · **6,368 UNKNOWN** (in neither group, by design) |
+| `symbol_group` | **4,698** rows — 3,829 board + 518 owner-candidate + 351 index |
+| Index snapshot | `2026-07-31`, 12 groups, **0 unresolved** |
+| Owner candidates | 520 listed → **518 resolved**, 2 unresolved (`E2E`, `INFSDFSD` — the same two that failed the backfill) |
+
+### Universe resolution
+
+| Universe | Symbols | Notes |
+|---|---|---|
+| `athena_core` | **518** | **all 518 have candles** — ADR-011's requirement that the migration preserve today's owner universe is genuinely met, not just declared |
+| `darvax_discovery` | **2,728** | 3,390 mainboard − 289 restricted series − 373 funds |
+| `mainboard_equity` | 3,390 | unfiltered |
+| `broad_scanner` | 200 | NIFTY 50 + Next 50 + Midcap 100 |
+| `midcap_scanner` | 100 | |
+| `largecap_scanner` | 50 | |
+
+2,728 lands near ADR-011's "~2,550" figure, which supports the ADR's insistence
+that the number be treated as an **estimate rather than the contractual
+definition** of the universe.
+
+### Coverage: the universe exists, the data does not
+
+`plan_coverage` against `darvax_discovery`'s declared 400-bar requirement:
+
+> `darvax_discovery: 483 covered, 2245 short of 400 1d bars (~2245 requests, ~12.5 min)`
+
+Of the 2,245 gaps, **2,202 have no candles at all** and 43 are partially covered.
+
+**Consequence: opting DarvaX in *today* would shrink it, not widen it.** SU-6's
+adapter intersects the universe with ingested instruments, so DarvaX would move
+from the 530 it currently sees to **526** — because the wider universe has no
+data behind it yet. The backfill must come first.
+
+### Defect found: hyphenated company names read as series suffixes
+
+`classify_symbol` treats everything after the final `-` as a series code. For
+genuine NSE suffixes (`-SG`, `-SM`, `-BE`) that is right. For a company whose
+*name* contains a hyphen it is not:
+
+| Symbol | Inferred "series" | Reality |
+|---|---|---|
+| `BAJAJ-AUTO` | `AUTO` | **NIFTY 50 and NIFTY AUTO constituent** |
+| `NAM-INDIA` | `INDIA` | Nippon Life India AMC |
+| `HCL-INSYS` | `INSYS` | HCL Infosystems |
+| `BOSCH-HCIL` | `HCIL` | Bosch Home Comfort |
+| `UMIYA-MRO` | `MRO` | Umiya Buildcon |
+| `KLBRENG-B` | `B` | Kilburn Engineering |
+| `MCCHRLS-B` | `B` | Mac Charles (India) |
+
+All seven are real equities classified `board=UNKNOWN`, so they join neither
+board group and are absent from every board-derived universe — including
+`darvax_discovery`. `BAJAJ-AUTO` is the clearest proof, since it simultaneously
+*does* resolve into `NIFTY_50` and `NIFTY_AUTO` by index membership.
+
+**The obvious fix is wrong.** Real NSE series codes are all two characters
+(10,185 of 10,197 rows), so "suffix length ≠ 2 ⇒ equity" looks correct — but it
+would wrongly promote five genuine non-equities that the current conservative
+default catches:
+
+`BHARATBOND-APR30` / `-APR31` / `-APR32` / `-APR33` (debt index rows, named
+"NSE INDEX …") and `HANGSENG BEES-NAV` (an ETF NAV row).
+
+So the conservative "unrecognised suffix ⇒ UNKNOWN" default is doing real work
+and must not simply be inverted. A correct fix has to distinguish the seven from
+the five on something better than suffix shape — the row's own provider metadata
+rather than a string heuristic. **Not fixed here:** it changes what every
+board-derived universe contains, which ADR-011 exists to make a deliberate
+decision rather than a side effect.
+
+Scope is small and bounded: 12 of 10,197 rows have a non-two-character suffix,
+and only 2 of the 7 affected equities (`BAJAJ-AUTO`, `NAM-INDIA`) are currently
+ingested.
