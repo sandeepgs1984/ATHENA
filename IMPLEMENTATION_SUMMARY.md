@@ -6,6 +6,33 @@ status updated on approval.
 
 ---
 
+## DX-5: DarvaX validation evidence (ADR-010)
+
+| | |
+|---|---|
+| Completed | 2026-08-15 |
+| Objective | Answer the question the whole satellite has been carrying: does the DarvaX methodology earn removal of its `EXPERIMENTAL_UNVALIDATED` label? |
+| Outcome | **No. The label stays.** The ledger holds 82 trading days against a 500-day floor, and on the sample that does exist both documented stop policies are negative |
+| Approach decision | **DarvaX-owned harness, not a generic contract** — decided on the frozen invariant rather than preference. ADR-010 §1 pins the DarvaX→ATHENA import surface and a DX-4 test asserts DarvaX never imports an ATHENA analytical engine, which `athena.backtest` is. Routing validation through it would have widened that surface and coupled the satellite's validation to ATHENA's engine |
+| Scope | `darvax/validation/`: a bar-by-bar replay of the **DX-3 engine** producing round trips, outcome statistics, and a **sufficiency gate**. No new methodology — entries and exits come from `evaluate_signal` itself, so what is validated is exactly what the screener shows |
+| Architecture implemented | **No lookahead, structurally.** The engine only ever receives `candles[: t + 1]`, so a signal at bar *t* cannot consult *t+1*; entry is then the open of *t+1*, the first tradable price. This is not a convention to remember — there is no code path that hands the engine a future bar, and a test instruments the engine to assert the largest bar it ever saw. **The gate is in code, not prose:** `summarise()` returns `VALIDATED` only when ≥200 closed trades *and* ≥500 trading days clear, and no configuration overrides it |
+| Files created | `src/athena/darvax/validation/{__init__,models,simulator,summary}.py`, `tests/darvax/test_dx5_validation.py`, `docs/design/DARVAX-VALIDATION-EVIDENCE.md` |
+| Files modified | `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md` |
+| Public/Core ATHENA changes | **None** |
+| Blocker found | **The ledger holds 82 trading days** (2026-04-20 → 2026-08-14) against a 500-day floor. Root cause is `config/ingestion.json`'s `lookback_days: 90` — a **configuration limit, not a Kite limit**. Raising it and re-ingesting is the single change that would let DX-5 produce real evidence, and it is an owner data-ops decision with real ingestion cost, so it is proposed rather than performed |
+| Measured result (528 instruments, 82 days) | **canonical_darvas (10%)**: 301 closed / 159 open, win rate 21.3%, expectancy −3.62%, PF 0.35, avg win +9.29% vs avg loss −7.10%, 17.1 bars held. **darvax_tight (1%)**: 677 closed / 59 open, win rate **4.3%**, expectancy −0.48%, PF 0.49, 3.3 bars held, **96% of exits are stops** |
+| Finding: the deck's contradiction is now measured | ADR-010 recorded the deck contradicting itself on stop sizing (10% p.67 vs 1% p.44) and deliberately left it for evidence. The evidence supports the ADR's stated concern that *"a 1% stop on a breakout entry is removed by ordinary noise"*: under the tight policy 96% of exits are stops, the average trade lasts 3.3 bars, and the win rate is 4.3% — positions are closed by ordinary fluctuation before the thesis can resolve. This is also the **more trustworthy** of the two readings, because the tight policy leaves only 8% of trades open. It vindicates the existing `canonical_darvas` default, which had been chosen on attribution grounds alone |
+| Honest handling of two misleading numbers | (1) The canonical result has **35% of entries still open**; losers stop out quickly while winners ride, so the excluded trades are disproportionately good and the figures are **likely pessimistic** — the harness now reports that *direction*, not just the exclusion. (2) The −100% drawdown is arithmetically correct for full-account sequential compounding and misleading as an account outcome, since the deck's own rule is to divide capital into ten parts; it is reported with that assumption attached rather than suppressed |
+| Tests | 19 new (245 DarvaX total; full suite **1559 passed**). The load-bearing one instruments the engine and asserts it was never shown a bar beyond the decision bar — every statistic is worthless if lookahead exists. Also: entry at next open not signal close; stops filled at the stop, not the close; open trades never counted as wins; determinism; compounded rather than summed drawdown; profit factor `None` rather than infinite when there are no losses; empty input yielding `None` rather than zeros; and four gate tests proving the label cannot come off on a thin sample, a short period, or by any other route |
+| Architecture compliance | ADR-010 isolation preserved: no ATHENA analytical engine imported, no core file touched. Live `db/darvax.db` untouched across a full run; DarvaX still deletable at **1314 passed**, restored byte-identical. Ledger copies used for measurement deleted |
+| Risks discovered | None in the code. The substantive risk is interpretive and is why the gate exists: a tidy expectancy from 82 days would repeat the deck's own error with better typography |
+| Technical debt introduced | None |
+| Remaining work | Owner decision on raising `ingestion.lookback_days` and re-ingesting daily history, after which the evidence run is a single command |
+| Status | ✅ Approved (2026-08-16) |
+| Branch | feature/live-dashboard |
+
+---
+
 ## DX-6d: Universe-scale performance re-measure (ADR-010 Amendment 2)
 
 | | |
@@ -26,7 +53,7 @@ status updated on approval.
 | Risks discovered | None |
 | Technical debt introduced | None |
 | Remaining work | None — DX-6d closes the DarvaX screener track. DX-5 (validation evidence) remains the open DarvaX milestone |
-| Status | 🔄 Ready for review |
+| Status | ✅ Approved (2026-08-15) |
 | Branch | feature/live-dashboard |
 
 ---

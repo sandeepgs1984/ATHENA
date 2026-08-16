@@ -72,6 +72,15 @@ to Play" says 1% (p.44). These are not variants of one system; a 1% stop on a
 breakout entry is removed by ordinary noise. This ADR does not resolve that by
 fiat — see Decision.
 
+> **DX-5 update (2026-08-15):** this is no longer only a prediction. Simulated
+> across all 528 instruments, the 1% policy stops out of **96%** of its trades
+> with a **4.3%** win rate and an average hold of 3.3 bars — positions closed by
+> ordinary fluctuation before the thesis can resolve, exactly as anticipated
+> above. The 10% canonical policy has the better per-trade economics but is also
+> negative on the available sample. Both remain `EXPERIMENTAL_UNVALIDATED`,
+> because 82 trading days cannot validate anything. See
+> [`docs/design/DARVAX-VALIDATION-EVIDENCE.md`](../design/DARVAX-VALIDATION-EVIDENCE.md).
+
 ### Constraints from ATHENA's own rules
 
 - Architecture is frozen; a new analytical surface needs an ADR (this one).
@@ -497,7 +506,7 @@ Required DX-4b acceptance tests, in addition to every DX-1 test continuing to pa
 
 | | |
 |---|---|
-| Status | **Proposed** (2026-08-14) — extends the Decision §§2, 5 and the scope guard |
+| Status | **Accepted** (2026-08-14) — extends the Decision §§2, 5 and the scope guard |
 | Date | 2026-08-14 |
 | Deciders | sandeep (owner) |
 | Design | [`docs/design/DARVAX-SCREENER-DESIGN.md`](../design/DARVAX-SCREENER-DESIGN.md) |
