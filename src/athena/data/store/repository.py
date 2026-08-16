@@ -963,6 +963,43 @@ class SqliteRepository:
         )
         return datetime.fromisoformat(row[0]) if row else None
 
+    # ----------------------------------------------------- resolved universe (SU-6)
+
+    def save_resolved_universe(
+        self, universe: str, instrument_ids: Sequence[str], *, resolved_at: datetime
+    ) -> int:
+        """Materialise a resolved universe so a scanner can read it as data.
+
+        Replaces the previous membership for that universe in one transaction:
+        a resolution is a complete statement of what the universe *is*, so
+        leaving stale rows behind would let a scanner see symbols the current
+        rules exclude.
+        """
+        stamp = resolved_at.isoformat()
+        try:
+            with self._lock:
+                with self._conn:
+                    self._conn.execute(
+                        "DELETE FROM resolved_universe WHERE universe=?", (universe,)
+                    )
+                    self._conn.executemany(
+                        "INSERT INTO resolved_universe (universe, instrument_id, "
+                        "resolved_at) VALUES (?,?,?)",
+                        [(universe, i, stamp) for i in instrument_ids],
+                    )
+        except sqlite3.Error as exc:
+            raise RepositoryError(f"resolved universe save failed: {exc}") from exc
+        return len(instrument_ids)
+
+    def list_resolved_universe(self, universe: str) -> list[str]:
+        """Instrument ids in a materialised universe. Empty when never resolved."""
+        rows = self._query_all(
+            "SELECT instrument_id FROM resolved_universe WHERE universe=? "
+            "ORDER BY instrument_id",
+            (universe,),
+        )
+        return [r[0] for r in rows]
+
     # ------------------------------------------------------- candle coverage (SU-5)
 
     def candle_coverage(

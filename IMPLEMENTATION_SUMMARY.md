@@ -6,6 +6,30 @@ status updated on approval.
 
 ---
 
+## SU-6: DarvaX universe opt-in (ADR-011)
+
+| | |
+|---|---|
+| Completed | 2026-08-15 |
+| Objective | Let DarvaX discover over a resolved universe — **without** widening ADR-010's pinned import surface. Closes the ADR-011 track |
+| Scope | `resolved_universe` table at schema **v15**, `save_resolved_universe`/`list_resolved_universe`, `SqliteMarketDataAdapter.with_universe()`, and an opt-in `universe` key in DarvaX's own config. **Default `None` = today's behaviour** |
+| The architectural point | **A universe reaches DarvaX as data, not as a service call.** ADR-011 chose materialising the resolution over "DarvaX calls a resolver" precisely so the satellite imports nothing new: the wider universe arrives through the same read-only port that already carries candles. Two tests enforce it — DarvaX imports no `athena.symbols.*` or `athena.universe` module, and `darvax_mount.py` never mentions a universe at all. ATHENA still reads exactly one key from `darvax.json` |
+| Where the scoping happens | Inside **DarvaX's own app**, from **DarvaX's own config**. The seam passes an unscoped adapter and stays methodology-blind; `create_darvax_app` applies `with_universe()` after loading its config. Putting it in the seam would have made ATHENA read a second DarvaX key for no gain |
+| Two deliberate refusals | A universe member with **no candles is excluded** — it cannot be screened, and it is a coverage gap for SU-5's planner to report rather than something to hand the engine and let fail per symbol. An **unresolved** universe yields **nothing**, not everything: "nobody has resolved this yet" must not silently become "no scope", which would ignore the configured universe entirely |
+| Files created | `tests/symbols/test_su6_darvax_universe.py` |
+| Files modified | `src/athena/data/store/{schema,repository}.py`, `src/athena/darvax/{config,adapters}.py`, `src/athena/darvax/api/app.py`, `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md` |
+| Tests | 12 new (full suite **1684 passed**). Opt-in default, scoping, intersection with ingested instruments, unresolved-universe behaviour, non-mutation, replace-not-accumulate semantics, universe isolation, the two boundary guards, and a guard that the shipped config has **not** opted in |
+| Re-measure | DX-6d re-run at 528 instruments: **2.25×–3.97×** under continuous sweeping, consistent with the earlier runs. **The 2,728-symbol re-measure is not yet meaningful**: ~2,200 of those symbols have no candles, so a sweep skips them almost instantly and would measure less load, not more. The honest position is that 528-with-candles remains the valid worst case until a backfill lands — recorded rather than presented as a completed re-measure |
+| Not opted in | `config/darvax.json` still has no `universe`, asserted by test. Enabling it today would give DarvaX a 2,728-symbol universe in which roughly 518 have any data — it would wire correctly and screen a fifth of it. That is the owner's decision and it belongs after the backfill |
+| Architecture compliance | ADR-010's import surface unchanged and asserted. ADR-011 fully implemented across SU-1…SU-6. Additive: with no `universe` configured, DarvaX behaves exactly as before |
+| Risks discovered | None new. The standing blocker is data depth, not architecture |
+| Technical debt introduced | None |
+| Remaining work | None in this track. The open question is operational: backfilling history, which is also DX-5's blocker |
+| Status | 🔄 Ready for review |
+| Branch | feature/live-dashboard |
+
+---
+
 ## SU-5: Coverage planner (ADR-011)
 
 | | |
@@ -25,7 +49,7 @@ status updated on approval.
 | Risks discovered | The 400-bar requirement cannot be satisfied by any single backfill under the current `lookback_days` bound. Resolving it means either accumulating across runs (`skip_existing` already makes history accrete), or windowed daily requests, or raising the bound — a decision that needs the Kite span question answered first, exactly as the investigation recorded |
 | Technical debt introduced | None |
 | Remaining work | SU-6: DarvaX opt-in to `darvax_discovery`, plus the DX-4a/DX-6d re-measure at universe scale |
-| Status | 🔄 Ready for review |
+| Status | ✅ Approved (2026-08-15) |
 | Branch | feature/live-dashboard |
 
 ---

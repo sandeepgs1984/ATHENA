@@ -227,6 +227,16 @@ class DarvaxConfig(_Strict):
         default=False,
         description="Shipped default is False — DarvaX is opt-in (ADR-010 §7).",
     )
+    universe: str | None = Field(
+        default=None,
+        description=(
+            "Optional ATHENA universe name to discover over (SU-6). None keeps "
+            "today's behaviour: DarvaX sees every ingested instrument. Setting a "
+            "name makes DarvaX read that universe's materialised membership as "
+            "DATA through its existing port — it imports no ATHENA resolver, so "
+            "ADR-010's pinned import surface is unchanged."
+        ),
+    )
     database: DarvaxDatabaseConfig = Field(default_factory=DarvaxDatabaseConfig)
     methodology: DarvaxMethodologyConfig = Field(
         default_factory=DarvaxMethodologyConfig

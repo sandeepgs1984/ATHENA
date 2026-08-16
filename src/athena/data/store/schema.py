@@ -10,7 +10,7 @@ append-only by discipline (inserts only; duplicates rejected by primary key).
 from __future__ import annotations
 
 #: Bump when the schema changes; enables future explicit migrations.
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 15
 
 _DDL = (
     "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)",
@@ -66,6 +66,25 @@ _DDL = (
     """,
     "CREATE INDEX IF NOT EXISTS idx_symbol_group_lookup "
     "ON symbol_group(group_name, effective_date DESC)",
+
+    # ---------------------------------------------------------------- SU-6
+    # A resolved universe, materialised so a *scanner* can read it as plain
+    # data. This is what lets DarvaX consume a universe without importing an
+    # ATHENA resolver: ADR-011 keeps the dependency direction by making a
+    # universe data rather than a service call, exactly as ADR-010 §3 already
+    # does for candles.
+    #
+    # Deliberately a snapshot, not a view: a scan must be reproducible against
+    # the universe it actually ran on, even after a rebalance or a rule change.
+    """
+    CREATE TABLE IF NOT EXISTS resolved_universe (
+        universe      TEXT NOT NULL,
+        instrument_id TEXT NOT NULL,
+        resolved_at   TEXT NOT NULL,
+        PRIMARY KEY (universe, instrument_id)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_resolved_universe ON resolved_universe(universe)",
 
     """
     CREATE TABLE IF NOT EXISTS instruments (

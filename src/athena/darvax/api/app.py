@@ -49,6 +49,13 @@ def create_darvax_app(
     """
     config = load_darvax_config(config_dir)
 
+    # SU-6 (ADR-011): DarvaX applies its own universe from its own config. The
+    # seam stays methodology-blind — it passes an unscoped adapter and knows
+    # nothing about universes. Duck-typed so a test double without the method
+    # keeps working.
+    if config.universe is not None and hasattr(market_data, "with_universe"):
+        market_data = market_data.with_universe(config.universe)
+
     db_path = Path(config.database.path)
     if not db_path.is_absolute():
         base = Path(repo_root) if repo_root is not None else Path.cwd()
