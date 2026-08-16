@@ -394,3 +394,53 @@ class TestKiteProviderUnit:
     def test_factory_rejects_unknown(self, tmp_path: Path):
         with pytest.raises(ConfigError, match=r"not supported"):
             build_market_data_provider(tmp_path, provider_name="upstox")
+
+
+class TestUnscopedCatalogIsRefused:
+    """An ingest with no symbol scope must fail loudly, not guess a universe.
+
+    Both silent outcomes are wrong and this guard exists because one of them was
+    live: `kite.json` shipped `symbols: ["INFY"]`, so an unscoped run would have
+    collapsed the whole universe to one stock. Emptying that list swaps the
+    failure for the opposite one — on NSE every row is typed `EQ`, so an
+    unfiltered catalog is ~10,000 instruments including government debt,
+    treasury bills, SME scrips and ETFs.
+    """
+
+    def test_empty_symbol_scope_raises_instead_of_returning_everything(self):
+        provider = KiteProvider(_config(symbols=[]), FakeKiteTransport())
+        with pytest.raises(ProviderError) as excinfo:
+            provider.instruments()
+        message = str(excinfo.value)
+        assert "no symbol scope" in message
+        assert "allow_full_catalog" in message, "the error must name the way out"
+
+    def test_the_whole_catalog_is_available_when_asked_for_explicitly(self):
+        """A symbol-master build genuinely wants every row (ADR-011 SU-1), so
+        the guard is an explicitness requirement, not a prohibition."""
+        provider = KiteProvider(
+            _config(symbols=[]), FakeKiteTransport(), allow_full_catalog=True
+        )
+        ids = {i.instrument_id for i in provider.instruments()}
+        assert {"NSE:INFY", "NSE:RELIANCE"} <= ids
+
+    def test_a_scoped_request_is_unaffected(self):
+        """Every real ingest path passes a scope; none of them changes."""
+        provider = KiteProvider(_config(symbols=["INFY"]), FakeKiteTransport())
+        ids = {i.instrument_id for i in provider.instruments()}
+        assert "NSE:INFY" in ids
+        assert "NSE:RELIANCE" not in ids
+
+    def test_shipped_config_carries_no_symbol_scope(self):
+        """`kite.json` must not narrow an unscoped run. It is emptied rather than
+        populated, because the guard above — not a placeholder symbol — is what
+        makes a missing scope safe."""
+        import json
+
+        raw = json.loads(
+            (Path(__file__).resolve().parents[2] / "config" / "providers" / "kite.json")
+            .read_text(encoding="utf-8")
+        )
+        assert raw["symbols"] == [], (
+            "a non-empty kite.json symbol list silently narrows any unscoped run"
+        )

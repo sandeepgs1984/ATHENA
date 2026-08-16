@@ -1,11 +1,14 @@
 {
   "_meta": {
     "description": "Zerodha Kite Connect read-only MarketDataProvider (R4 / DD-1). Secrets stay in .env (KITE_API_KEY, KITE_ACCESS_TOKEN). Default ingestion.provider remains 'file' until you flip config.",
-    "layer": "provider"
+    "layer": "provider",
+    "symbols_note": "Intentionally empty. Every real ingest path passes an explicit symbol scope (owner candidates), which replaces this list. A non-empty value here would silently narrow an unscoped run \u2014 it previously held ['INFY'], which would have collapsed the universe to one stock. An unscoped run now raises in KiteProvider rather than guessing a universe; callers that genuinely want the whole catalogue pass allow_full_catalog=True."
   },
   "exchange": "NSE",
-  "instrument_types": ["EQ"],
-  "symbols": ["INFY"],
+  "instrument_types": [
+    "EQ"
+  ],
+  "symbols": [],
   "index_instruments": [
     "NSE:NIFTY 50",
     "NSE:NIFTY BANK",
@@ -29,7 +32,11 @@
     "retry_backoff_base_seconds": 1.0
   },
   "capabilities": {
-    "timeframes": ["1d", "5m", "15m"],
+    "timeframes": [
+      "1d",
+      "5m",
+      "15m"
+    ],
     "max_history_days": 2000,
     "supports_quotes": true,
     "supports_market_snapshot": true

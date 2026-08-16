@@ -75,11 +75,16 @@ class KiteProvider:
         *,
         snapshot_index_instruments: list[str] | None = None,
         strict_symbol_filter: bool = True,
+        allow_full_catalog: bool = False,
     ) -> None:
         self.name = "kite"
         self._config = config
         self._transport = transport
         self._strict_symbol_filter = strict_symbol_filter
+        #: Opt-in for an unscoped catalog. Off by default so a missing scope fails
+        #: loudly instead of silently choosing a wrong universe in either
+        #: direction (one symbol, or all ~10,000).
+        self._allow_full_catalog = allow_full_catalog
         self._snapshot_index_instruments = tuple(
             snapshot_index_instruments or config.index_instruments
         )
@@ -101,6 +106,7 @@ class KiteProvider:
         transport: KiteTransport | None = None,
         symbols: list[str] | None = None,
         strict_symbol_filter: bool = True,
+        allow_full_catalog: bool = False,
     ) -> KiteProvider:
         from athena.config.loader import (
             load_index_intelligence_config,
@@ -131,6 +137,7 @@ class KiteProvider:
             transport,
             snapshot_index_instruments=snapshot_indices,
             strict_symbol_filter=strict_symbol_filter,
+            allow_full_catalog=allow_full_catalog,
         )
 
     # ---------------------------------------------------------------- contract
@@ -351,6 +358,26 @@ class KiteProvider:
                 f"kite instrument catalog empty after filters "
                 f"(exchange={exchange}, types={sorted(wanted_types)}, "
                 f"symbols={list(symbol_filter) or 'ALL'})"
+            )
+
+        if not symbol_filter and not self._allow_full_catalog:
+            # An unscoped catalog is never what an ingest wants: on NSE it is
+            # every one of ~10,000 rows, and `instrument_type` is "EQ" for all
+            # of them, so government debt, treasury bills, SME scrips and ETFs
+            # all pass. Silently ingesting that would hammer the API and fill
+            # the ledger with instruments no engine should see.
+            #
+            # The previous guard against this was `symbols: ["INFY"]` in
+            # kite.json, which failed the other way: an unscoped run silently
+            # collapsed the universe to one stock. Both failures are silent, so
+            # the scope is now required to be explicit — callers that genuinely
+            # want the whole catalog (a symbol-master build) opt in by name.
+            raise ProviderError(
+                f"kite catalog requested with no symbol scope: this would return "
+                f"every instrument on {exchange} ({len(instruments)} rows). Pass "
+                f"kite_symbols=[...] for an ingest, or construct the provider "
+                f"with allow_full_catalog=True if the whole catalog is genuinely "
+                f"wanted."
             )
 
         self._instruments = instruments
