@@ -27,7 +27,12 @@ from athena.api.security import Permission, RequirePermission
 from athena.darvax import __version__ as darvax_version
 from athena.darvax.config import methodology_digest
 from athena.darvax.scan import scan_instruments
-from athena.darvax.screening.models import DarvaxTier, ScreenResult, SweepRecord
+from athena.darvax.screening.models import (
+    RISK_BEARING_ACTIONS,
+    DarvaxTier,
+    ScreenResult,
+    SweepRecord,
+)
 from athena.darvax.screening.sweep import SweepBusyError
 from athena.darvax.signals import DarvaxSignal
 from athena.darvax.signals.models import DarvaxSignalType
@@ -142,6 +147,15 @@ def _screen_payload(result: ScreenResult) -> dict[str, Any]:
             str(result.box_height_pct) if result.box_height_pct is not None else None
         ),
         "explanation": result.explanation,
+        # DX-7a. The action and its justification are read from the record, not
+        # derived from `tier` or `signal_type` here — an API that recomputed them
+        # could disagree with what the sweep actually persisted (ADR-005).
+        "action": result.action.value,
+        "action_reason": result.action_reason,
+        # Which chips must carry the unvalidated badge is a domain fact, not a
+        # styling choice, so the client is told rather than left to hardcode a
+        # list that would drift when an action is added (design §4, decision 3b).
+        "risk_bearing": result.action in RISK_BEARING_ACTIONS,
         "status": EXPERIMENTAL_STATUS,
     }
 

@@ -21,7 +21,12 @@ from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 
-from athena.darvax.screening.models import DarvaxTier, ScreenResult, SweepRecord
+from athena.darvax.screening.models import (
+    DarvaxAction,
+    DarvaxTier,
+    ScreenResult,
+    SweepRecord,
+)
 from athena.darvax.signals.models import (
     DarvasRule,
     DarvaxSignal,
@@ -89,6 +94,11 @@ def _row_to_screen_result(row: tuple) -> ScreenResult:
         breakout_reference=row[13],
         box_height_pct=_optional_decimal(row[14]),
         explanation=row[15],
+        # Pre-DX-7a rows carry NULL here. Falling back to the enum default would
+        # present NO_ENTRY as though the engine had concluded it; the empty
+        # reason is what tells a reader the action was never recorded.
+        action=DarvaxAction(row[16]) if row[16] else DarvaxAction.NO_ENTRY,
+        action_reason=row[17] or "",
     )
 
 
@@ -372,8 +382,8 @@ class DarvaxRepository:
                         "sweep_id, instrument_id, signal_id, tier, signal_type, "
                         "darvas_rule, rank, close, box_top, box_bottom, "
                         "trigger_price, distance_to_trigger_pct, distance_to_breakout_pct, "
-                        "breakout_reference, box_height_pct, explanation"
-                        ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+                        "breakout_reference, box_height_pct, explanation, action, action_reason"
+                        ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
                         "ON CONFLICT(sweep_id, instrument_id) DO UPDATE SET "
                         "signal_id=excluded.signal_id, tier=excluded.tier, "
                         "signal_type=excluded.signal_type, "
@@ -385,7 +395,8 @@ class DarvaxRepository:
                         "distance_to_breakout_pct=excluded.distance_to_breakout_pct, "
                         "breakout_reference=excluded.breakout_reference, "
                         "box_height_pct=excluded.box_height_pct, "
-                        "explanation=excluded.explanation",
+                        "explanation=excluded.explanation, action=excluded.action, "
+                        "action_reason=excluded.action_reason",
                         [
                             (
                                 r.sweep_id,
@@ -404,6 +415,8 @@ class DarvaxRepository:
                                 r.breakout_reference,
                                 _optional_str(r.box_height_pct),
                                 r.explanation,
+                                r.action.value,
+                                r.action_reason,
                             )
                             for r in results
                         ],
@@ -514,7 +527,8 @@ class DarvaxRepository:
                     "SELECT sweep_id, instrument_id, signal_id, tier, signal_type, "
                     "darvas_rule, rank, close, box_top, box_bottom, trigger_price, "
                     "distance_to_trigger_pct, distance_to_breakout_pct, "
-                    "breakout_reference, box_height_pct, explanation "
+                    "breakout_reference, box_height_pct, explanation, "
+                    "action, action_reason "
                     f"FROM darvax_screen_results {clause}",
                     params,
                 ).fetchall()

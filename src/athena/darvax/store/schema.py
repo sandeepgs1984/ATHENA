@@ -33,7 +33,7 @@ never appear to have been produced by current settings.
 from __future__ import annotations
 
 #: Bumped independently of ATHENA's SCHEMA_VERSION. They never interact.
-DARVAX_SCHEMA_VERSION = 4
+DARVAX_SCHEMA_VERSION = 5
 
 _DDL: tuple[str, ...] = (
     "CREATE TABLE IF NOT EXISTS darvax_schema_version (version INTEGER NOT NULL)",
@@ -100,6 +100,8 @@ _DDL: tuple[str, ...] = (
         breakout_reference      TEXT,
         box_height_pct          TEXT,
         explanation             TEXT NOT NULL,
+        action                  TEXT,
+        action_reason           TEXT,
         PRIMARY KEY (sweep_id, instrument_id)
     )
     """,
@@ -117,6 +119,11 @@ _DDL: tuple[str, ...] = (
 _ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("darvax_screen_results", "distance_to_breakout_pct", "TEXT"),
     ("darvax_screen_results", "breakout_reference", "TEXT"),
+    # DX-7a. Nullable on purpose: sweeps stored before DX-7a have no action, and
+    # backfilling one would invent advice for a screen nobody ran under these
+    # rules. A reader must see "not recorded", not a plausible guess.
+    ("darvax_screen_results", "action", "TEXT"),
+    ("darvax_screen_results", "action_reason", "TEXT"),
 )
 
 

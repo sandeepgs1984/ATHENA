@@ -34,6 +34,57 @@ class DarvaxTier(str, Enum):
     """No Darvas reason to act — rule D, or no box formed at all."""
 
 
+class DarvaxAction(str, Enum):
+    """What the owner would do about this instrument, in trading words (DX-7a).
+
+    A tier says *what the price is doing*; an action says *what that implies*.
+    They are separate because the mapping is not always one-to-one — the same
+    ``EXIT_RELEVANT`` tier means "get out" if the instrument is held and nothing
+    at all if it is not.
+
+    **Still not a score.** Each action is a pure function of the signal state
+    (plus, from DX-7b, whether a position is recorded), so it carries exactly
+    the judgement the DAR-CARD rules carry and no more.
+    """
+
+    ENTER = "ENTER"
+    """Rule B satisfied — price cleared the topmost box ceiling."""
+    ENTER_ON_RETEST = "ENTER_ON_RETEST"
+    """Broke out and has returned to test the ceiling as support."""
+    WAIT = "WAIT"
+    """Rule A — coiled inside the topmost box. Nothing to do until it clears."""
+    EXIT_IF_HELD = "EXIT_IF_HELD"
+    """Rule C fired. Deliberately conditional: DarvaX does not know what is
+    held until DX-7b, and an unconditional "EXIT" for an instrument the owner
+    never bought would be advice about a position that does not exist.
+
+    DX-7b **adds** ``HOLD`` and a position-confirmed ``EXIT`` beside this value
+    rather than renaming it, so sweeps stored by DX-7a stay readable."""
+    NO_ENTRY = "NO_ENTRY"
+    """Rule D, or no box at all. No Darvas reason to act."""
+
+
+#: Action per signal state. Kept beside the tier map, and total for the same
+#: reason: an unmapped state must raise rather than default to something
+#: actionable.
+_ACTION_BY_STATE: dict[DarvaxSignalType, DarvaxAction] = {
+    DarvaxSignalType.BREAKOUT: DarvaxAction.ENTER,
+    DarvaxSignalType.BREAKOUT_RETEST: DarvaxAction.ENTER_ON_RETEST,
+    DarvaxSignalType.INSIDE_TOPMOST_BOX: DarvaxAction.WAIT,
+    DarvaxSignalType.BELOW_BOX_BOTTOM: DarvaxAction.EXIT_IF_HELD,
+    DarvaxSignalType.NOT_IN_TOPMOST_BOX: DarvaxAction.NO_ENTRY,
+    DarvaxSignalType.NO_BOX: DarvaxAction.NO_ENTRY,
+}
+
+#: Actions that propose putting money at risk. The UI must carry the
+#: `EXPERIMENTAL_UNVALIDATED` badge on these specifically (design §4, decision
+#: 3b) — named here so "which chips need the warning" is answered by the domain
+#: rather than re-decided in JavaScript.
+RISK_BEARING_ACTIONS: frozenset[DarvaxAction] = frozenset(
+    {DarvaxAction.ENTER, DarvaxAction.ENTER_ON_RETEST}
+)
+
+
 #: The whole taxonomy, in one place. Every state the DX-3 engine can emit maps
 #: to exactly one tier, so a new state cannot be silently unclassified — the
 #: lookup in ``tier_for`` raises rather than defaulting.
@@ -67,6 +118,16 @@ class ScreenResult:
     """Position within the tier under the default ordering. 1-based."""
     close: Decimal
     explanation: str
+    action: DarvaxAction = DarvaxAction.NO_ENTRY
+    """What to do about this instrument. Defaulted so the field can be added
+    without rewriting every construction site, but always set by
+    ``screen_signal``."""
+    action_reason: str = ""
+    """Why that action, in the owner's language, with the numbers that drove it.
+
+    Persisted rather than assembled in the browser: ADR-005 puts the explanation
+    with the engine that produced the value. A UI that built this string would
+    be free to drift from the rule the action actually came from."""
     box_top: Decimal | None = None
     box_bottom: Decimal | None = None
     trigger_price: Decimal | None = None

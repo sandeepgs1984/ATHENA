@@ -29,10 +29,13 @@ both be worse than shipping the two that are exact.
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
+from dataclasses import replace
 from decimal import Decimal
 
 from athena.darvax.screening.models import (
+    _ACTION_BY_STATE,
     _TIER_BY_STATE,
+    DarvaxAction,
     DarvaxTier,
     ScreenResult,
 )
@@ -119,10 +122,104 @@ def box_height_pct(signal: DarvaxSignal) -> Decimal | None:
     return _pct(signal.box_top - signal.box_bottom, signal.box_bottom)
 
 
+def action_for(signal_type: DarvaxSignalType) -> DarvaxAction:
+    """Map a structural state onto the action it implies (DX-7a).
+
+    Raises on an unknown state for the same reason :func:`tier_for` does, but
+    the stakes are higher: an unmapped state defaulting to ``ENTER`` would
+    propose risking money on a state nobody classified.
+    """
+    try:
+        return _ACTION_BY_STATE[signal_type]
+    except KeyError as exc:  # pragma: no cover - guards a future enum addition
+        raise AthenaError(
+            f"no action defined for signal type {signal_type!r}; add it to "
+            "_ACTION_BY_STATE rather than letting it default"
+        ) from exc
+
+
+def _money(value: Decimal | None) -> str:
+    return f"₹{value:,}" if value is not None else "an unrecorded level"
+
+
+#: Prose rounding for percentages. The stored field keeps `_PCT`'s four places
+#: because ranking sorts on it; a sentence does not. A real screen produced
+#: "1.3333% below the box ceiling", which reads as measured precision that a
+#: distance-to-a-price simply does not have.
+_PROSE_PCT = Decimal("0.01")
+
+
+def _percent(value: Decimal) -> str:
+    return f"{abs(value).quantize(_PROSE_PCT)}%"
+
+
+def action_reason(
+    signal: DarvaxSignal,
+    action: DarvaxAction,
+    *,
+    breakout_pct: Decimal | None,
+    breakout_ref: str | None,
+) -> str:
+    """Plain-language justification for ``action``, with the numbers behind it.
+
+    Built here, beside the rule that chose the action, and persisted with it —
+    ADR-005. The alternative, assembling this sentence in the browser, lets the
+    words drift from the rule while still looking authoritative.
+
+    Every branch names the DAR-CARD rule, so a reader can always trace advice
+    back to the methodology rather than to DarvaX's phrasing.
+    """
+    if action is DarvaxAction.ENTER:
+        trigger = (
+            f" Entry trigger is {_money(signal.trigger_price)}, the prior day's high."
+            if signal.trigger_price is not None
+            else ""
+        )
+        return (
+            f"Cleared the topmost box ceiling at {_money(signal.box_top)} — "
+            f"Darvas rule B, a buy signal.{trigger}"
+        )
+    if action is DarvaxAction.ENTER_ON_RETEST:
+        return (
+            f"Broke out above {_money(signal.box_top)} and has come back to test "
+            f"that ceiling as support — rule B, on the retest."
+        )
+    if action is DarvaxAction.WAIT:
+        if breakout_pct is not None:
+            where = (
+                "already through"
+                if breakout_pct < 0
+                else f"{_percent(breakout_pct)} below"
+            )
+            level = "the entry trigger" if breakout_ref == "trigger_price" else "the box ceiling"
+            return (
+                f"Consolidating inside the topmost box — rule A. Price is {where} "
+                f"{level} at {_money(signal.box_top)}; nothing to do until it clears."
+            )
+        return (
+            "Consolidating inside the topmost box — rule A. Nothing to do until "
+            "price clears the ceiling."
+        )
+    if action is DarvaxAction.EXIT_IF_HELD:
+        return (
+            f"Closed beneath the box floor at {_money(signal.box_bottom)} — "
+            f"rule C, the methodology's own exit. Relevant only if this is held."
+        )
+    return (
+        "No topmost box to trade — rule D. Neither an entry nor an exit follows "
+        "from the current structure."
+    )
+
+
 def screen_signal(signal: DarvaxSignal, *, sweep_id: str, rank: int = 0) -> ScreenResult:
     """Classify and measure one signal. ``rank`` is assigned by :func:`rank_tier`."""
     breakout_pct, breakout_ref = distance_to_breakout(signal)
+    action = action_for(signal.signal_type)
     return ScreenResult(
+        action=action,
+        action_reason=action_reason(
+            signal, action, breakout_pct=breakout_pct, breakout_ref=breakout_ref
+        ),
         sweep_id=sweep_id,
         instrument_id=signal.instrument_id,
         signal_id=signal.signal_id,
@@ -161,28 +258,16 @@ def _default_key(result: ScreenResult) -> tuple[int, Decimal, str]:
 
 
 def rank_tier(results: Iterable[ScreenResult]) -> tuple[ScreenResult, ...]:
-    """Order one tier's results and assign 1-based ranks."""
+    """Order one tier's results and assign 1-based ranks.
+
+    Uses ``replace`` rather than re-listing every field: the previous
+    field-by-field rebuild meant any field added to ``ScreenResult`` was
+    silently dropped during ranking unless someone remembered to add it here.
+    ``action`` and ``action_reason`` would have been the first casualties.
+    """
     ordered = sorted(results, key=_default_key)
     return tuple(
-        ScreenResult(
-            sweep_id=r.sweep_id,
-            instrument_id=r.instrument_id,
-            signal_id=r.signal_id,
-            tier=r.tier,
-            signal_type=r.signal_type,
-            darvas_rule=r.darvas_rule,
-            rank=position,
-            close=r.close,
-            explanation=r.explanation,
-            box_top=r.box_top,
-            box_bottom=r.box_bottom,
-            trigger_price=r.trigger_price,
-            distance_to_trigger_pct=r.distance_to_trigger_pct,
-            distance_to_breakout_pct=r.distance_to_breakout_pct,
-            breakout_reference=r.breakout_reference,
-            box_height_pct=r.box_height_pct,
-        )
-        for position, r in enumerate(ordered, start=1)
+        replace(r, rank=position) for position, r in enumerate(ordered, start=1)
     )
 
 
