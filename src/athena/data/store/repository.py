@@ -12,7 +12,7 @@ import threading
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import ClassVar
@@ -38,6 +38,7 @@ from athena.domain.market import (
 )
 from athena.domain.run import RunRecord
 from athena.errors import RepositoryError
+from athena.symbols.groups import GroupMembership
 from athena.symbols.models import Board, SeriesSource, SymbolRecord
 
 
@@ -961,6 +962,86 @@ class SqliteRepository:
             (instrument_id,),
         )
         return datetime.fromisoformat(row[0]) if row else None
+
+    # ------------------------------------------------------ group membership (SU-2)
+
+    def upsert_group_memberships(self, memberships: Sequence[GroupMembership]) -> int:
+        """Upsert dated group memberships. Idempotent per (symbol, group, date).
+
+        Re-running a snapshot load rewrites that date's rows in place rather than
+        accumulating duplicates, while a *new* effective date adds rows beside
+        the old ones — which is what keeps a pre-rebalance screen reproducible.
+        """
+        if not memberships:
+            return 0
+        self._write_many(
+            "INSERT INTO symbol_group (instrument_id, group_name, kind, "
+            "effective_date, source) VALUES (?,?,?,?,?) "
+            "ON CONFLICT(instrument_id, group_name, effective_date) DO UPDATE SET "
+            "kind=excluded.kind, source=excluded.source",
+            [
+                (
+                    m.instrument_id, m.group_name, m.kind.value,
+                    m.effective_date.isoformat(), m.source,
+                )
+                for m in memberships
+            ],
+        )
+        return len(memberships)
+
+    def latest_group_effective_date(self, group_name: str) -> date | None:
+        """Most recent effective date recorded for a group, if any."""
+        row = self._query_one(
+            "SELECT MAX(effective_date) FROM symbol_group WHERE group_name=?",
+            (group_name,),
+        )
+        return date.fromisoformat(row[0]) if row and row[0] else None
+
+    def list_group_members(
+        self, group_name: str, *, as_of: date | None = None
+    ) -> list[str]:
+        """Instrument ids in a group, at its latest effective date by default.
+
+        Passing ``as_of`` returns membership as it stood then — the whole reason
+        membership is dated. Returns ``[]`` for an unknown group rather than
+        raising: "this group has no members" is a legitimate answer, and a
+        resolver asking about a group nobody has loaded yet should get an empty
+        universe, not an exception.
+        """
+        if as_of is None:
+            effective = self.latest_group_effective_date(group_name)
+            if effective is None:
+                return []
+        else:
+            row = self._query_one(
+                "SELECT MAX(effective_date) FROM symbol_group "
+                "WHERE group_name=? AND effective_date<=?",
+                (group_name, as_of.isoformat()),
+            )
+            if not row or not row[0]:
+                return []
+            effective = date.fromisoformat(row[0])
+        rows = self._query_all(
+            "SELECT instrument_id FROM symbol_group "
+            "WHERE group_name=? AND effective_date=? ORDER BY instrument_id",
+            (group_name, effective.isoformat()),
+        )
+        return [r[0] for r in rows]
+
+    def list_groups_for_symbol(self, instrument_id: str) -> list[tuple[str, date]]:
+        """Every ``(group, effective_date)`` a symbol currently belongs to."""
+        rows = self._query_all(
+            "SELECT group_name, MAX(effective_date) FROM symbol_group "
+            "WHERE instrument_id=? GROUP BY group_name ORDER BY group_name",
+            (instrument_id,),
+        )
+        return [(r[0], date.fromisoformat(r[1])) for r in rows]
+
+    def list_known_groups(self) -> list[str]:
+        rows = self._query_all(
+            "SELECT DISTINCT group_name FROM symbol_group ORDER BY group_name", ()
+        )
+        return [r[0] for r in rows]
 
     def upsert_owner_candidate(
         self,

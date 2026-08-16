@@ -10,7 +10,7 @@ append-only by discipline (inserts only; duplicates rejected by primary key).
 from __future__ import annotations
 
 #: Bump when the schema changes; enables future explicit migrations.
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 
 _DDL = (
     "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)",
@@ -45,6 +45,27 @@ _DDL = (
     """,
     "CREATE INDEX IF NOT EXISTS idx_symbol_master_series ON symbol_master(series)",
     "CREATE INDEX IF NOT EXISTS idx_symbol_master_board ON symbol_master(board)",
+
+    # ---------------------------------------------------------------- SU-2
+    # Group membership as metadata on the canonical symbol — many-to-many, and
+    # deliberately NOT a duplicated symbol row per group (ADR-011 §2).
+    #
+    # Membership is dated because index constituents change: a screen run before
+    # a rebalance must stay reproducible afterwards, which an undated membership
+    # would silently break. The primary key therefore includes effective_date,
+    # so a new snapshot adds rows rather than overwriting history.
+    """
+    CREATE TABLE IF NOT EXISTS symbol_group (
+        instrument_id  TEXT NOT NULL,
+        group_name     TEXT NOT NULL,
+        kind           TEXT NOT NULL,
+        effective_date TEXT NOT NULL,
+        source         TEXT NOT NULL,
+        PRIMARY KEY (instrument_id, group_name, effective_date)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_symbol_group_lookup "
+    "ON symbol_group(group_name, effective_date DESC)",
 
     """
     CREATE TABLE IF NOT EXISTS instruments (

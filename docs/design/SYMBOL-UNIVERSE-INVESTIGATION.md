@@ -354,3 +354,49 @@ much history happened to be ingested.
   windowing was needed. This directly informs §5: the daily path handles a
   365-day span in one call, so the `le=365` bound is the only remaining barrier
   and the windowing question applies only beyond it.
+
+
+---
+
+## 10. Live defect found by SU-2 (2026-08-15)
+
+SU-2's first run against real data surfaced a **silent, live data-loss defect**
+— which is the whole reason unresolved symbols are reported rather than dropped.
+
+Two of the 520 active `owner_candidates` resolve to nothing in the current NSE
+catalogue:
+
+| Symbol | Catalogue | Ledger | Verdict |
+|---|---|---|---|
+| `INFSDFSD` | absent | 0 instruments, 0 candles | Junk entry, never resolved |
+| **`E2E`** | **now listed as `E2E-BE`** | `NSE:E2E`, 78 daily bars | **Series change, silently broke ingestion** |
+
+### What happened to E2E
+
+`E2E NETWORKS` moved from the `EQ` series to the **`BE` series** (trade-for-trade,
+typically a surveillance measure). NSE's trading symbol changed accordingly to
+`E2E-BE`, so the candidate `E2E` stopped matching the catalogue.
+
+**Its last daily bar is 2026-08-10.** The ledger's latest is 2026-08-14, and
+**529 of 530 instruments have a bar that day — E2E is the only one missing.** It
+has been silently stale for four sessions, with nothing reported.
+
+Two distinct problems, both worth acting on:
+
+1. **Ingestion fails silently on a series change.** A candidate that stops
+   resolving produces no warning; it simply stops receiving data. Any engine
+   reading `NSE:E2E` gets stale prices with no staleness signal.
+2. **The series move is itself information.** A shift to trade-for-trade is
+   material to a trader and ATHENA had no way to surface it, because until SU-1
+   it did not model series at all.
+
+### Why this validates the design
+
+Nothing in ATHENA detected this. SU-2 found it on its first run purely because
+`MembershipBuild` returns unresolved symbols instead of discarding them — the
+same "surface, never swallow" discipline used for scan skips. A resolver that
+quietly dropped non-matching symbols would have hidden it indefinitely.
+
+**Not fixed here.** Repairing it means deciding whether a series change should
+re-map a candidate automatically (and whether `E2E-BE` is even wanted, given
+what BE implies), which is an owner decision and outside SU-2's scope.

@@ -6,6 +6,31 @@ status updated on approval.
 
 ---
 
+## SU-2: Symbol group membership (ADR-011)
+
+| | |
+|---|---|
+| Completed | 2026-08-15 |
+| Objective | Make group membership metadata on the canonical symbol — many-to-many, dated, and never a duplicated symbol record — so SU-3 can resolve a universe by name |
+| Scope | `athena/symbols/groups.py` (group kinds, membership builders for index / board / curated sources) + `symbol_group` at schema **v14** and repository queries. **Additive:** nothing reads `symbol_group` yet |
+| Architecture implemented | **Membership is dated**, with `effective_date` in the primary key, so a new snapshot adds rows beside the old ones rather than overwriting them — a screen run before an index rebalance stays reproducible afterwards, which undated membership would silently break. Index loading **reuses the existing checksum-verified `load_index_constituent_snapshot`** rather than adding a second parser. Group names are a pure uppercase renaming of the snapshot key, deliberately not a lookup table, since an invented mapping is a place for a group to be misattributed to the wrong index |
+| Files created | `src/athena/symbols/groups.py`, `tests/symbols/test_su2_symbol_groups.py` |
+| Files modified | `src/athena/data/store/{schema,repository}.py`, `docs/design/SYMBOL-UNIVERSE-INVESTIGATION.md` (§10), `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md` |
+| Deliberate non-scope | `NSE_ALL_ELIGIBLE_EQUITY` is **not** built here. ADR-011 §2.3 defines it as whatever its eligibility rules resolve to, and those rules are SU-4's; materialising a list now would turn a rule-defined group into the frozen one §2.3 forbids. A test asserts no builder or constant for it exists |
+| Unresolved symbols surfaced, never dropped | `MembershipBuild` returns `(group, symbol)` pairs it could not resolve. A constituent missing from the symbol master is a real signal — a stale snapshot, a renamed ticker, a catalogue gap — and discarding it would hide exactly the coverage hole ADR-011 exists to expose. This decision paid for itself immediately (below) |
+| Tests | 21 new (47 in `tests/symbols`, full suite **1610 passed**). Covers dated rebalance semantics (latest by default, `as_of` for history), idempotent reload, one symbol in many groups with a single master row, `UNKNOWN` boards joining neither board group, case-insensitive and qualified/bare symbol resolution, unknown group returning empty rather than raising, and the scope guard above |
+| Live verification | Against the real catalogue and the real dated snapshot: **10,197 symbols, 15 groups, 351 index memberships across 12 indices, 0 unresolved constituents**. `NSE_MAINBOARD` 3,390 · `NSE_SME` 439 · `OWNER_CANDIDATES` 518. `NSE:INFY` resolves to four groups from one symbol row, demonstrating the no-duplication requirement |
+| **Live defect found** | Two of 520 active `owner_candidates` resolve to nothing. `INFSDFSD` is junk (0 instruments, 0 candles). **`E2E` is serious**: NSE moved E2E NETWORKS to the `BE` series, so the catalogue now lists `E2E-BE` and the candidate `E2E` no longer matches. Its last daily bar is **2026-08-10** while the ledger's latest is 2026-08-14 — **529 of 530 instruments have a bar that day; E2E is the only one missing.** It has been silently stale for four sessions with no warning. Nothing in ATHENA detected this; SU-2 found it on its first run purely because unresolved symbols are reported. Recorded in `SYMBOL-UNIVERSE-INVESTIGATION.md` §10 and **not fixed here** — whether a series change should re-map a candidate, and whether a BE-series instrument is even wanted, are owner decisions |
+| Data gap recorded | Of the group names ADR-011 lists, only `NIFTY_50` has a snapshot. `NIFTY_100/200/500`, `NIFTY_MIDCAP_150`, `NIFTY_SMALLCAP_250`, `NIFTY_MICROCAP_250`, `NIFTY_TOTAL_MARKET` and `FNO` have **no source data** and were **not fabricated**. The repo holds 12 dated indices — NIFTY_50, NIFTY_NEXT_50, NIFTY_MIDCAP_100 and 9 sector indices. Obtaining the missing snapshots is a prerequisite for the universes that reference them |
+| Architecture compliance | Additive; no engine reads `symbol_group`. Reuses the existing immutable dated-snapshot convention rather than inventing a second one. ADR-011 §2 satisfied: membership is metadata, not duplicated records |
+| Risks discovered | The E2E case shows ingestion fails silently on a series change — a candidate that stops resolving simply stops receiving data, with no staleness signal to any consumer. That is broader than SU-2 and worth its own fix |
+| Technical debt introduced | None |
+| Remaining work | SU-3 universe resolver |
+| Status | 🔄 Ready for review |
+| Branch | feature/live-dashboard |
+
+---
+
 ## SU-1: Canonical symbol master (ADR-011)
 
 | | |
@@ -27,7 +52,7 @@ status updated on approval.
 | Risks discovered | Suffix inference remains a convention, not a contract — `-N0`/`-N1` are proof that the map is incomplete. Mitigated by `UNKNOWN` being honest rather than permissive, and resolved properly only by an authoritative NSE series list (an open SU-4 question) |
 | Technical debt introduced | None |
 | Remaining work | SU-2 group membership |
-| Status | 🔄 Ready for review |
+| Status | ✅ Approved (2026-08-15) |
 | Branch | feature/live-dashboard |
 
 ---
