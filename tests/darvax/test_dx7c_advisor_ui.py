@@ -334,3 +334,68 @@ def test_the_page_document_is_revalidated_on_every_load(tmp_path):
     assert "no-cache" in response.headers.get("cache-control", "").lower(), (
         "a cached document pins the browser to the previous JS bundle"
     )
+
+
+TAB_JS = (STATIC / "tab.js").read_text(encoding="utf-8")
+
+
+def test_the_embedded_iframe_url_is_versioned():
+    """The dashboard tab kept showing the DX-6c UI while `/darvax/` in its own
+    tab showed DX-7c — same server, same minute.
+
+    `/darvax/` and `/darvax/?embedded=1` are separate cache keys, and `tab.js`
+    sets the iframe `src` *dynamically*, which does not inherit the parent's
+    reload cache-bypass. So a hard reload fixed the standalone page and left the
+    frame untouched. Versioning the frame URL means a UI bump produces a URL the
+    browser has never seen, which it cannot serve from cache."""
+    assert "UI_VERSION" in TAB_JS
+    assert "embedded=1&v=" in TAB_JS
+
+
+def test_the_iframe_version_matches_the_asset_version():
+    """Two independent version strings that must agree; if they drift, the
+    frame is busted on a schedule unrelated to the assets it loads."""
+    import re
+
+    ui = re.search(r'UI_VERSION\s*=\s*"([^"]+)"', TAB_JS)
+    asset = re.search(r"darvax\.js\?v=([\w.\-]+)", HTML)
+    assert ui and asset
+    assert ui.group(1) == asset.group(1), (
+        f"tab.js UI_VERSION={ui.group(1)} but assets are {asset.group(1)}"
+    )
+
+
+def test_darvax_static_assets_are_revalidated(tmp_path):
+    """`tab.js` is referenced from ATHENA's index.html with **no** version
+    query, so it is cacheable forever by default — a stale `tab.js` keeps
+    building the old iframe no matter what the assets it points at say."""
+    import json
+
+    from fastapi.testclient import TestClient
+
+    from athena.api.app import create_app
+    from athena.api.config import APISettings
+    from athena.api.darvax_mount import DARVAX_MOUNT_PATH, mount_darvax_if_enabled
+    from athena.data.store.repository import SqliteRepository
+
+    config_dir = tmp_path / "cfg"
+    config_dir.mkdir(parents=True)
+    (config_dir / "darvax.json").write_text(
+        json.dumps({"enabled": True, "database": {"path": "db/darvax.db"}}),
+        encoding="utf-8",
+    )
+    repo = SqliteRepository(tmp_path / "athena.db")
+    repo.initialize()
+    app = create_app(APISettings())
+    app.state.sqlite_repo = repo
+    assert mount_darvax_if_enabled(
+        app, repo=repo, config_dir=config_dir, repo_root=tmp_path
+    )
+    with TestClient(app) as client:
+        for asset in ("tab.js", "darvax.js", "darvax.css"):
+            response = client.get(f"{DARVAX_MOUNT_PATH}/static/{asset}")
+            assert response.status_code == 200, asset
+            assert "no-cache" in response.headers.get("cache-control", "").lower(), (
+                f"{asset} may be cached indefinitely"
+            )
+    repo.close()

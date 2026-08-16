@@ -33,6 +33,13 @@
   var PANEL_ID = "tab-darvax";
   var ROUTE = "/dashboard/darvax";
 
+  // Bumped with the DarvaX UI assets. The iframe src is a cache key of its own,
+  // and it is set dynamically on tab activation — which does NOT inherit the
+  // parent page's reload cache-bypass, so a hard reload of the dashboard leaves
+  // a stale frame document in place. Changing this string changes the URL, and
+  // a URL the browser has never seen cannot be served from cache.
+  var UI_VERSION = "0.1.0-dx7c";
+
   function warn(reason) {
     // One line, once. DarvaX must not spam or destabilise ATHENA's console.
     if (window.console && console.warn) {
@@ -93,7 +100,7 @@
     frame.title = "DarvaX (experimental)";
     // embedded=1 lets the page drop its redundant back-link inside the tab.
     // It never hides the experimental banner.
-    frame.setAttribute("data-src", "/darvax/?embedded=1");
+    frame.setAttribute("data-src", "/darvax/?embedded=1&v=" + UI_VERSION);
     frame.setAttribute("loading", "lazy");
     panel.appendChild(frame);
     paneHost.appendChild(panel);

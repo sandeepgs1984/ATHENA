@@ -253,13 +253,17 @@ def test_05c_embedded_frame_is_lazy_and_points_at_the_darvax_page():
     page-load cost, and read no ATHENA data, for someone who never opens it."""
     idle = _run_tab_js("full")
     assert idle["frameTag"] == "IFRAME"
-    assert idle["frameDataSrc"] == "/darvax/?embedded=1"
+    # `startswith`, not equality: DX-7c appended a `&v=` cache-busting version
+    # to the frame URL because a dynamically-set iframe src does not inherit the
+    # parent's reload cache-bypass, which left the tab showing the previous UI
+    # after a restart. Pinning the exact string made this test fail for the fix.
+    assert idle["frameDataSrc"].startswith("/darvax/?embedded=1")
     assert idle["frameSrc"] is None, "frame must stay unloaded until activated"
     assert idle["panelActive"] is False
 
     opened = _run_tab_js("deeplink")
     assert opened["panelActive"] is True
-    assert opened["frameSrc"] == "/darvax/?embedded=1"
+    assert opened["frameSrc"].startswith("/darvax/?embedded=1")
     assert opened["pageTitle"] == "DarvaX"
 
 

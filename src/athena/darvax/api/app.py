@@ -31,6 +31,29 @@ from athena.darvax.store import DARVAX_SCHEMA_VERSION, DarvaxRepository
 from athena.errors import AthenaError
 
 
+class RevalidatedStatic(StaticFiles):
+    """DarvaX's static files, always revalidated.
+
+    ``?v=`` on an asset URL only busts caches for assets the *page* references,
+    and one DarvaX asset is referenced without any version at all:
+    ``tab.js``, from ATHENA's ``index.html``. A cached ``tab.js`` keeps building
+    the old iframe, and a cached iframe document keeps requesting the old
+    bundle — so a milestone can ship, the server can restart, and the owner can
+    still be looking at the previous UI with nothing obviously wrong.
+
+    That is exactly what happened after DX-7c. Revalidation makes the whole
+    class of problem go away: ``no-cache`` still allows storage, so an unchanged
+    file answers **304** on its ETag. For a localhost single-user app the cost
+    is a conditional request; the cost of the alternative is debugging a stale
+    interface.
+    """
+
+    def file_response(self, *args: object, **kwargs: object):  # type: ignore[override]
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache, must-revalidate"
+        return response
+
+
 def create_darvax_app(
     *,
     config_dir: Path | str,
@@ -122,7 +145,7 @@ def create_darvax_app(
     # ATHENA's asset-versioning discipline is unaffected (ADR-010 §4).
     static_dir = Path(__file__).resolve().parent / "static"
     app.mount(
-        "/static", StaticFiles(directory=str(static_dir)), name="darvax-static"
+        "/static", RevalidatedStatic(directory=str(static_dir)), name="darvax-static"
     )
 
     @app.get("/", include_in_schema=False)
