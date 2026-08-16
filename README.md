@@ -26,6 +26,7 @@ ATHENA is not a screener, not a bot, and never executes trades. It exists to imp
 | [DarvaX configuration](docs/design/DARVAX-CONFIGURATION.md) | `config/darvax.json` reference — enable/disable the DarvaX satellite, every key, defaults, failure modes | Active |
 | [DarvaX performance evidence](docs/design/DARVAX-PERFORMANCE-EVIDENCE.md) | DX-4a measured cost of an enabled DarvaX on ATHENA latency | 🔄 Ready for review |
 | [DarvaX validation evidence](docs/design/DARVAX-VALIDATION-EVIDENCE.md) | DX-5 — does the methodology earn its label? (No: 82 trading days vs a 500-day floor) | 🔄 Ready for review |
+| [Symbol universe investigation](docs/design/SYMBOL-UNIVERSE-INVESTIGATION.md) | Why the scanner universe is 528 symbols, and the proposal for scanner-specific universes | 🔄 Proposed (ADR-011) |
 | [ADRs](docs/adr/) | Architecture Decision Records (ADR-001…005 seeded) | Active |
 
 ## Workstation entry

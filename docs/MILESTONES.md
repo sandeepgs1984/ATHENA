@@ -3089,4 +3089,32 @@ DX-5 produce real evidence. See `docs/design/DARVAX-VALIDATION-EVIDENCE.md`.
 
 ---
 
+## Symbol master & scanner universes track (ADR-011 — **Proposed**)
+
+Blocked: **no implementation until ADR-011 is Accepted.** Investigation and
+impact analysis are complete — `docs/design/SYMBOL-UNIVERSE-INVESTIGATION.md`.
+
+Root cause on record: the scanner universe *is* the ingested candle universe,
+and ingestion is scoped by the owner-curated `owner_candidates` table (518 rows
+at the time of investigation). `RATNAVEER` and `PNGSREVA` were absent from that
+list — not excluded by any index, series or SME rule. A prior hypothesis that
+the universe was Nifty-500-shaped was **disproven**: `JGCHEM` is in no index
+file and was ingested normally.
+
+| Milestone | Scope | Status |
+|---|---|---|
+| **SU-1** Symbol master | `symbol_master` table populated from the broker dump, with `series_source` provenance — the ledger currently *fabricates* `series="EQ"` for every instrument. No consumer changes | ⏳ Blocked on ADR-011 |
+| **SU-2** Group membership | `symbol_group` many-to-many (NIFTY_50 … NSE_ALL_ELIGIBLE_EQUITY, FNO), no duplicated symbol records, reusing the dated index-snapshot convention | ⏳ Blocked on SU-1 |
+| **SU-3** Universe resolver | `config/universes.json` + `resolve_universe()`; `athena_core` proven byte-identical to today's behaviour | ⏳ Blocked on SU-2 |
+| **SU-4** Eligibility profiles | Named per-scanner filters, each exclusion individually explainable. Thresholds decided from data, not invented. Open owner decisions: SME in/out, authoritative NSE series source, liquidity/history minimums | ⏳ Blocked on SU-3 |
+| **SU-5** Coverage planner | Separate *required coverage* from *ingested universe*; bounded backfill respecting Kite's ~3 req/s | ⏳ Blocked on SU-3 |
+| **SU-6** DarvaX opt-in + re-measure | DarvaX consumes `darvax_discovery` as **data through its existing port** (no ADR-010 import-surface change); re-run DX-4a/DX-6d, which are invalidated at ~2,550 symbols | ⏳ Blocked on SU-4/SU-5 |
+
+**Latent defect to fix regardless of the ADR:** `config/providers/kite.json` sets
+`symbols: ["INFY"]`, inert only because every real ingest path overrides it. An
+ingest without a candidate scope would silently collapse the universe to INFY
+plus index instruments.
+
+---
+
 *Status legend: a milestone is "In Progress" (🔄) when actively being designed or built, "Approved" (✅) only when the owner signs off. Never two milestones in flight.*
