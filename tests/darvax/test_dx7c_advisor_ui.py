@@ -293,3 +293,44 @@ def test_hidden_is_forced_off_regardless_of_display_rules():
     declared once globally rather than remembered per component."""
     flat = " ".join(CSS.split())
     assert "[hidden] { display: none !important; }" in flat
+
+
+def test_the_page_document_is_revalidated_on_every_load(tmp_path):
+    """After DX-7c the owner restarted onto new code and still saw the old
+    bundle: the dashboard tab embeds this page in a lazy iframe, the browser
+    had the *document* cached, and a cached document requests the old
+    `darvax.js?v=…` — so the version bump could never be observed.
+
+    Cache-busting sub-resources only works if the HTML that references them is
+    fetched. `no-cache` means revalidate, so an unchanged file still answers
+    304."""
+    import json
+
+    from fastapi.testclient import TestClient
+
+    from athena.api.app import create_app
+    from athena.api.config import APISettings
+    from athena.api.darvax_mount import DARVAX_MOUNT_PATH, mount_darvax_if_enabled
+    from athena.data.store.repository import SqliteRepository
+
+    config_dir = tmp_path / "cfg"
+    config_dir.mkdir(parents=True)
+    (config_dir / "darvax.json").write_text(
+        json.dumps({"enabled": True, "database": {"path": "db/darvax.db"}}),
+        encoding="utf-8",
+    )
+    repo = SqliteRepository(tmp_path / "athena.db")
+    repo.initialize()
+    app = create_app(APISettings())
+    app.state.sqlite_repo = repo
+    assert mount_darvax_if_enabled(
+        app, repo=repo, config_dir=config_dir, repo_root=tmp_path
+    )
+    with TestClient(app) as client:
+        response = client.get(f"{DARVAX_MOUNT_PATH}/")
+    repo.close()
+
+    assert response.status_code == 200
+    assert "no-cache" in response.headers.get("cache-control", "").lower(), (
+        "a cached document pins the browser to the previous JS bundle"
+    )

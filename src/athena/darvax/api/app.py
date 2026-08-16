@@ -127,8 +127,23 @@ def create_darvax_app(
 
     @app.get("/", include_in_schema=False)
     def darvax_index() -> FileResponse:
-        """DarvaX's own page — a separate surface, not an ATHENA dashboard tab."""
-        return FileResponse(static_dir / "index.html")
+        """DarvaX's own page — a separate surface, not an ATHENA dashboard tab.
+
+        Served ``no-cache`` so the browser revalidates the document on every
+        load. The ``?v=`` query on the CSS and JS only busts those files *once
+        the new HTML has been fetched* — cache the document and the version
+        bump can never be seen, which is precisely what happened after DX-7c:
+        the dashboard tab embeds this page in a lazy iframe, so the owner
+        restarted onto new code and still saw the previous bundle.
+
+        ``no-cache`` means "revalidate", not "do not store": the response is a
+        304 whenever the file is unchanged, so this costs a conditional request
+        rather than a re-download.
+        """
+        return FileResponse(
+            static_dir / "index.html",
+            headers={"Cache-Control": "no-cache, must-revalidate"},
+        )
 
     @app.get("/status")
     def darvax_status() -> dict[str, object]:
