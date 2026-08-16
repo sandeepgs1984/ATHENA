@@ -13,6 +13,7 @@ from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import ClassVar
 
@@ -37,6 +38,7 @@ from athena.domain.market import (
 )
 from athena.domain.run import RunRecord
 from athena.errors import RepositoryError
+from athena.symbols.models import Board, SeriesSource, SymbolRecord
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +50,29 @@ class IntegrityReport:
     foreign_key_violations: int
     schema_version_ok: bool
     issues: tuple[str, ...] = ()
+
+
+
+def _row_to_symbol_record(row: tuple) -> SymbolRecord:
+    """Rehydrate a canonical symbol. The classification and its provenance are
+    read back as stored — never re-inferred here, so a record always reports the
+    reasoning that actually produced it (ADR-005's principle)."""
+    return SymbolRecord(
+        instrument_id=row[0],
+        symbol=row[1],
+        exchange=row[2],
+        name=row[3],
+        series=row[4],
+        series_source=SeriesSource(row[5]),
+        board=Board(row[6]),
+        lot_size=int(row[7]),
+        tick_size=Decimal(row[8]),
+        status=row[9],
+        first_seen=datetime.fromisoformat(row[10]),
+        last_seen=datetime.fromisoformat(row[11]),
+        source=row[12],
+        classification_reason=row[13],
+    )
 
 
 class SqliteRepository:
@@ -850,6 +875,92 @@ class SqliteRepository:
             raise RepositoryError(f"delete decisions data failed: {exc}") from exc
 
     # ------------------------------------------------------------- owner candidates (validation list)
+
+    # ------------------------------------------------------- symbol master (SU-1)
+
+    def upsert_symbol_records(self, records: Sequence[SymbolRecord]) -> int:
+        """Upsert canonical symbol records. Idempotent by ``instrument_id``.
+
+        ``first_seen`` is deliberately **not** overwritten on conflict: it
+        records when a symbol was first catalogued, and resetting it on every
+        refresh would erase the listing history the column exists to hold.
+        ``last_seen`` is updated, which is what makes a disappeared symbol
+        detectable later without deleting the row.
+        """
+        if not records:
+            return 0
+        self._write_many(
+            "INSERT INTO symbol_master ("
+            "instrument_id, symbol, exchange, name, series, series_source, board, "
+            "lot_size, tick_size, status, first_seen, last_seen, source, "
+            "classification_reason"
+            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+            "ON CONFLICT(instrument_id) DO UPDATE SET "
+            "symbol=excluded.symbol, exchange=excluded.exchange, name=excluded.name, "
+            "series=excluded.series, series_source=excluded.series_source, "
+            "board=excluded.board, lot_size=excluded.lot_size, "
+            "tick_size=excluded.tick_size, status=excluded.status, "
+            "last_seen=excluded.last_seen, source=excluded.source, "
+            "classification_reason=excluded.classification_reason",
+            [
+                (
+                    r.instrument_id, r.symbol, r.exchange, r.name, r.series,
+                    r.series_source.value, r.board.value, int(r.lot_size),
+                    str(r.tick_size), r.status, r.first_seen.isoformat(),
+                    r.last_seen.isoformat(), r.source, r.classification_reason,
+                )
+                for r in records
+            ],
+        )
+        return len(records)
+
+    def list_symbol_records(
+        self,
+        *,
+        series: str | None = None,
+        board: str | None = None,
+        limit: int | None = None,
+    ) -> list[SymbolRecord]:
+        clause, params = "", []
+        conditions = []
+        if series is not None:
+            conditions.append("series=?")
+            params.append(series)
+        if board is not None:
+            conditions.append("board=?")
+            params.append(board)
+        if conditions:
+            clause = " WHERE " + " AND ".join(conditions)
+        clause += " ORDER BY instrument_id"
+        if limit is not None:
+            if limit < 1:
+                raise ValueError(f"limit must be >= 1, got {limit}")
+            clause += " LIMIT ?"
+            params.append(limit)
+        rows = self._query_all(
+            "SELECT instrument_id, symbol, exchange, name, series, series_source, "
+            "board, lot_size, tick_size, status, first_seen, last_seen, source, "
+            f"classification_reason FROM symbol_master{clause}",
+            tuple(params),
+        )
+        return [_row_to_symbol_record(row) for row in rows]
+
+    def get_symbol_record(self, instrument_id: str) -> SymbolRecord | None:
+        row = self._query_one(
+            "SELECT instrument_id, symbol, exchange, name, series, series_source, "
+            "board, lot_size, tick_size, status, first_seen, last_seen, source, "
+            "classification_reason FROM symbol_master WHERE instrument_id=?",
+            (instrument_id,),
+        )
+        return _row_to_symbol_record(row) if row else None
+
+    def symbol_master_first_seen(self, instrument_id: str) -> datetime | None:
+        """Existing ``first_seen`` for a symbol, so a rebuild can preserve it."""
+        row = self._query_one(
+            "SELECT first_seen FROM symbol_master WHERE instrument_id=?",
+            (instrument_id,),
+        )
+        return datetime.fromisoformat(row[0]) if row else None
 
     def upsert_owner_candidate(
         self,

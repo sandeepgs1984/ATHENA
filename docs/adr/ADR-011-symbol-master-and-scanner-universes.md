@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | **Proposed** |
+| Status | **Accepted** (2026-08-15) |
 | Date | 2026-08-15 |
 | Deciders | sandeep (owner) |
 | Investigation | [`docs/design/SYMBOL-UNIVERSE-INVESTIGATION.md`](../design/SYMBOL-UNIVERSE-INVESTIGATION.md) |
@@ -90,8 +90,16 @@ behaviour until a scanner opts in by name.
 
 ### 1. Canonical symbol master — one row per symbol
 
-`symbol_master(symbol, exchange, instrument_token, name, series, series_source,
-board, lot_size, tick_size, status, first_seen, last_seen, source)`
+`symbol_master(symbol, exchange, instrument_id, name, series, series_source,
+board, lot_size, tick_size, status, first_seen, last_seen, source,
+classification_reason)`
+
+> **SU-1 deviation, recorded:** this sketch originally listed `instrument_token`.
+> It was **dropped during implementation**. A token is one vendor's identifier,
+> and embedding it in the canonical model would bind the symbol master to Kite —
+> exactly the coupling ADR-002 keeps behind the provider Protocol. Token lookup
+> stays a provider concern. `classification_reason` was added in its place so an
+> exclusion is traceable to a stated reason rather than an opaque rule.
 
 Populated from the broker dump and, when obtained, an authoritative NSE series
 list. `series` becomes a **real column with recorded provenance**

@@ -10,10 +10,41 @@ append-only by discipline (inserts only; duplicates rejected by primary key).
 from __future__ import annotations
 
 #: Bump when the schema changes; enables future explicit migrations.
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 
 _DDL = (
     "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)",
+
+    # ---------------------------------------------------------------- SU-1
+    # The catalogue of what EXISTS on an exchange, kept deliberately separate
+    # from `instruments`, which records what has been INGESTED. Conflating the
+    # two is the defect ADR-011 exists to fix: today a symbol only "exists" to
+    # ATHENA once somebody curates it into a candidate list.
+    #
+    # `series_source` and `classification_reason` are not decoration. The broker
+    # dump types every NSE row "EQ" and ships no series column, so every series
+    # here is inferred until an authoritative NSE list is obtained — and an
+    # inference recorded without its provenance reads as a fact.
+    """
+    CREATE TABLE IF NOT EXISTS symbol_master (
+        instrument_id         TEXT PRIMARY KEY,
+        symbol                TEXT NOT NULL,
+        exchange              TEXT NOT NULL,
+        name                  TEXT,
+        series                TEXT NOT NULL,
+        series_source         TEXT NOT NULL,
+        board                 TEXT NOT NULL,
+        lot_size              INTEGER NOT NULL,
+        tick_size             TEXT NOT NULL,
+        status                TEXT NOT NULL,
+        first_seen            TEXT NOT NULL,
+        last_seen             TEXT NOT NULL,
+        source                TEXT NOT NULL,
+        classification_reason TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_symbol_master_series ON symbol_master(series)",
+    "CREATE INDEX IF NOT EXISTS idx_symbol_master_board ON symbol_master(board)",
 
     """
     CREATE TABLE IF NOT EXISTS instruments (

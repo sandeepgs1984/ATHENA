@@ -6,6 +6,32 @@ status updated on approval.
 
 ---
 
+## SU-1: Canonical symbol master (ADR-011)
+
+| | |
+|---|---|
+| Completed | 2026-08-15 |
+| Objective | Establish the catalogue of what **exists** on an exchange, separate from the record of what has been **ingested** — the conflation that made `RATNAVEER` and `PNGSREVA` invisible to every scanner despite being listed on NSE |
+| Scope | `athena/symbols/` — `SymbolRecord`/`Board`/`SeriesSource` models, pure suffix classification, and a provider-independent catalogue builder — plus `symbol_master` at ATHENA schema **v13** and repository read/write. **No consumer changes:** nothing reads the table yet |
+| Architecture implemented | Classification is **pure** (no clock, config or IO), so a catalogue rebuild is reproducible. The builder consumes `Instrument` objects — the frozen type every `MarketDataProvider` returns — rather than a broker's CSV rows, keeping the master provider-independent (ADR-002). The provider's `series` is **deliberately ignored**: `KiteProvider` fabricates `"EQ"` for every NSE row because the dump has no series column, so trusting it would mark treasury bills as equity. `first_seen` is never overwritten on refresh, while `last_seen` is — which is what makes a delisting detectable later without deleting history |
+| Files created | `src/athena/symbols/{__init__,models,classify,catalog}.py`, `tests/symbols/test_su1_symbol_master.py` |
+| Files modified | `src/athena/data/store/{schema,repository}.py`, `docs/adr/ADR-011-*.md` (deviation note), `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md`, plus three tests that pinned a schema-version literal |
+| Deviation from the ADR, recorded | The ADR's column sketch listed `instrument_token`; it was **dropped**. A token is one vendor's identifier, and embedding it in the canonical model would bind the symbol master to Kite — the coupling ADR-002 keeps behind the provider Protocol. `classification_reason` was added in its place, so an exclusion is traceable to a stated reason rather than an opaque rule. Recorded in ADR-011 §1 |
+| Provenance, not assertion | Every record carries `series_source` and a reason in words. `NSE_OFFICIAL` is reserved for a source that does not yet exist, so today everything is `inferred_suffix` — an inference recorded without its provenance reads as a fact, which is the failure mode the whole ADR exists to prevent |
+| Tests | 26 new (full suite **1589 passed**). Beyond round trips: an inference is never reported as authoritative; an **unrecognised suffix is never promoted to equity**; SME is expressible as a board rather than a threshold; the provider's fabricated `"EQ"` never wins; no broker token leaks into the canonical model; `first_seen` survives a refresh; and two tests asserting the separation SU-1 exists to create — a symbol can be *known to exist* while `instruments` stays empty, and populating the master changes nothing any engine sees |
+| Live verification | Ran against the real NSE catalogue via the new `allow_full_catalog` path: **10,197 instruments classified and persisted in 0.1s**. Board split MAINBOARD 3,390 / UNKNOWN 6,368 / SME 439; top series SG 4,298 · EQ 3,101 · N0 977 · SM 439 · BE 230. All three owner symbols classified `EQ`/`MAINBOARD`. The `instruments` table stayed at 0 rows, proving SU-1 is additive |
+| The guard earned its place | The live run surfaced `-N0` (977) and `-N1` (107) — suffixes absent from the classification map. They were correctly held at `UNKNOWN` with an "unrecognised suffix" reason rather than defaulted into equity. They are **left unclassified rather than guessed**: they are almost certainly debt series, but "almost certainly" is not provenance |
+| On the ~2,550 estimate | `EQ` on `MAINBOARD` resolves to **3,101**, not 2,550, because SU-1 applies no ETF or liquidity filters — those are SU-4 eligibility, correctly. This is the ADR §2.3 point demonstrated in practice: the number moves with the rules, and is never the definition |
+| Architecture compliance | Additive only; no engine reads `symbol_master`. ADR-002 provider independence preserved. ADR-005 applied to the catalogue: the stored classification and its reason are read back as stored, never re-inferred |
+| Process note | Three existing tests pinned `SCHEMA_VERSION == 12` — the third occurrence of this anti-pattern in the project. Each was rewritten to the invariant it actually meant (DarvaX left no trace in ATHENA's DDL; the database matches the code) rather than bumped to 13, so the next legitimate schema addition does not break them again |
+| Risks discovered | Suffix inference remains a convention, not a contract — `-N0`/`-N1` are proof that the map is incomplete. Mitigated by `UNKNOWN` being honest rather than permissive, and resolved properly only by an authoritative NSE series list (an open SU-4 question) |
+| Technical debt introduced | None |
+| Remaining work | SU-2 group membership |
+| Status | 🔄 Ready for review |
+| Branch | feature/live-dashboard |
+
+---
+
 ## DX-5: DarvaX validation evidence (ADR-010)
 
 | | |

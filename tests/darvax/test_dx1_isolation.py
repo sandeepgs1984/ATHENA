@@ -191,9 +191,13 @@ def test_05_athena_schema_surface_is_unchanged_by_darvax(tmp_path: Path):
     from athena.data.store.repository import SqliteRepository
     from athena.data.store.schema import SCHEMA_VERSION, ddl_statements
 
-    assert SCHEMA_VERSION == 12, "DarvaX must not change ATHENA's schema version"
+    # Asserted as "DarvaX left no trace", not as a version literal: ATHENA
+    # legitimately bumps its own schema for its own reasons (SU-1 added
+    # symbol_master at v13), and pinning the number made this test fail for
+    # changes that have nothing to do with DarvaX.
     ddl = " ".join(ddl_statements()).lower()
     assert "darvax" not in ddl, "ATHENA DDL must not mention DarvaX"
+    assert SCHEMA_VERSION >= 12, "ATHENA schema version must never go backwards"
 
     repo = SqliteRepository(tmp_path / "athena.db")
     repo.initialize()

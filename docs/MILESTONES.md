@@ -3089,10 +3089,10 @@ DX-5 produce real evidence. See `docs/design/DARVAX-VALIDATION-EVIDENCE.md`.
 
 ---
 
-## Symbol master & scanner universes track (ADR-011 — **Proposed**)
+## Symbol master & scanner universes track (ADR-011 — **Accepted** 2026-08-15)
 
-Blocked: **no implementation until ADR-011 is Accepted.** Investigation and
-impact analysis are complete — `docs/design/SYMBOL-UNIVERSE-INVESTIGATION.md`.
+ADR-011 Accepted 2026-08-15. Investigation and impact analysis:
+`docs/design/SYMBOL-UNIVERSE-INVESTIGATION.md`.
 
 Root cause on record: the scanner universe *is* the ingested candle universe,
 and ingestion is scoped by the owner-curated `owner_candidates` table (518 rows
@@ -3103,9 +3103,9 @@ file and was ingested normally.
 
 | Milestone | Scope | Status |
 |---|---|---|
-| **SU-1** Symbol master | `symbol_master` table populated from the broker dump, with `series_source` provenance — the ledger currently *fabricates* `series="EQ"` for every instrument. No consumer changes | ⏳ Blocked on ADR-011 |
-| **SU-2** Group membership | `symbol_group` many-to-many (NIFTY_50 … NSE_ALL_ELIGIBLE_EQUITY, FNO), no duplicated symbol records, reusing the dated index-snapshot convention | ⏳ Blocked on SU-1 |
-| **SU-3** Universe resolver | `config/universes.json` + `resolve_universe()`; `athena_core` proven byte-identical to today's behaviour | ⏳ Blocked on SU-2 |
+| **SU-1** Symbol master | `athena/symbols/` (models, pure suffix classification, catalogue builder) + `symbol_master` table at schema v13, with `series_source` and `classification_reason` provenance. Re-derives series rather than trusting the provider's fabricated `"EQ"`. Verified on the live catalogue: **10,197 records in 0.1s**, board split MAINBOARD 3,390 / UNKNOWN 6,368 / SME 439. **No consumer changes** — `instruments` untouched. `instrument_token` deliberately dropped (ADR-002). 26 tests | 🔄 Ready for review |
+| **SU-2** Group membership | `symbol_group` many-to-many, no duplicated symbol records, reusing the dated index-snapshot convention. Groups typed Index / Segment / Board (`NSE_MAINBOARD`, `NSE_SME`) / Curated (`OWNER_CANDIDATES`) / Derived (`NSE_ALL_ELIGIBLE_EQUITY`, rule-defined) | ⏳ Planned — SU-1 in review |
+| **SU-3** Universe resolver | `config/universes.json` + `resolve_universe()`. **`athena_core` → `OWNER_CANDIDATES` with no eligibility filter**, asserted *set-identical* to the live table — ATHENA does not run on an index today, and defining it as one would silently change every engine's universe (ADR-011 §3.1) | ⏳ Blocked on SU-2 |
 | **SU-4** Eligibility profiles | Named per-scanner filters, each exclusion individually explainable. Thresholds decided from data, not invented. Open owner decisions: SME in/out, authoritative NSE series source, liquidity/history minimums | ⏳ Blocked on SU-3 |
 | **SU-5** Coverage planner | Separate *required coverage* from *ingested universe*; bounded backfill respecting Kite's ~3 req/s | ⏳ Blocked on SU-3 |
 | **SU-6** DarvaX opt-in + re-measure | DarvaX consumes `darvax_discovery` as **data through its existing port** (no ADR-010 import-surface change); re-run DX-4a/DX-6d, which are invalidated at ~2,550 symbols | ⏳ Blocked on SU-4/SU-5 |
