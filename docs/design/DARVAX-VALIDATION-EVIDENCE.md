@@ -3,13 +3,24 @@
 Does the DarvaX methodology earn the removal of its `EXPERIMENTAL_UNVALIDATED`
 label?
 
-**Answer: no.** The ledger cannot currently support validation, and what
-evidence it does support is unfavourable.
+**Answer: not yet — but the reason has changed, and so has the evidence.**
+
+The original blocker (82 trading days) is gone: the ledger now holds **744
+trading days** and the mechanical sufficiency gate returns `VALIDATED` for both
+stop policies. The measured expectancy also **reversed sign** — from −3.62% to
+**+4.09%** per trade under the canonical 10% stop.
+
+That is a real and important result, and it is still not sufficient to drop the
+label. The gate tests *sample size and period only*. It does not test the three
+limitations in §5, and those limitations are exactly what a positive result
+needs to survive. §4 tests them directly: **the canonical policy survives; the
+tight policy does not**, despite the gate labelling them identically.
 
 **Milestone:** DX-5 · **Governing decision:**
 [ADR-010](../adr/ADR-010-darvax-satellite-module.md) ·
 **Harness:** [`src/athena/darvax/validation/`](../../src/athena/darvax/validation/) ·
-**Measured:** 2026-08-15 · **Verdict:** `EXPERIMENTAL_UNVALIDATED`
+**First measured:** 2026-08-15 (82 days) · **Re-measured:** 2026-08-16 (744 days) ·
+**Verdict:** `EXPERIMENTAL_UNVALIDATED` (label removal is an owner decision — §6)
 
 ---
 
@@ -56,130 +67,212 @@ to produce a backtest that looks excellent and is a lie.
 
 ---
 
-## 3. The blocker: the ledger holds 82 trading days
+## 3. The original blocker, and how it was removed
 
-| | |
-|---|---|
-| Daily candles | 43,223 |
-| Instruments | 528 |
-| Date range | 2026-04-20 → 2026-08-14 |
-| **Trading days** | **82** |
-| Bars per instrument | min 65, median 82 |
+The first run of DX-5 could not validate anything, for one reason:
+
+| | At first measurement (2026-08-15) | After backfill (2026-08-16) |
+|---|---|---|
+| Daily candles | 43,223 | **362,949** |
+| Instruments | 528 | 530 |
+| Date range | 2026-04-20 → 2026-08-14 | **2023-08-16 → 2026-08-14** |
+| **Trading days** | **82** ❌ | **744** ✅ |
+| Instruments with ≥500 bars | 0 | 471 |
 
 Against a **500 trading day** floor (roughly two years). A breakout methodology
 measured across 82 days of a single market regime tells you about that regime,
 not about the methodology.
 
-**This is a configuration limit, not a vendor one.** `config/ingestion.json`
-sets `lookback_days: 90`, which is why the ledger starts in April. Kite Connect
-serves far more daily history than that.
+### The two-stage plan was wrong, and measurement is why
 
-**Correction (2026-08-15):** raising `lookback_days` alone does not reach the
-floor. `IngestionConfig` bounds it at **365** (`ge=1, le=365`), and 365 calendar
-days is roughly 248 trading days — still short of 500. The realistic path is
-therefore two-stage, because `skip_existing: true` means each ingest *keeps*
-prior candles and history accretes across runs:
+The 2026-08-15 revision of this document proposed reaching the floor in two
+stages — ingest 365 days now, then *wait about a year* for the rest to accrete.
+It also declined to raise the `le=365` bound in `IngestionConfig`, on the
+reasoning that the bound "presumably reflects a vendor or rate-limit
+consideration".
 
-1. Set `lookback_days: 365` and re-ingest once, taking the ledger from 82 to
-   roughly 248 trading days — enough to make the numbers meaningfully better
-   than they are now, though still under the floor.
-2. Let it accumulate. At ~250 sessions a year the 500-day floor is reached about
-   a year later, without any further change.
+**That assumption was never checked, and it was false.** Probing Kite directly
+at 365 / 730 / 1095 / 1825 / 2000 / 2500 / 3650 days showed the vendor returns
+the **entire requested span in a single daily request** — 2,474 bars in 1.1
+seconds at 3,650 days, with no windowing, no pagination and no extra rate-limit
+cost. The bound was a config-model limit with nothing behind it. It was raised
+to `le=3650` with the measurement recorded inline at
+[`config/models.py`](../../src/athena/config/models.py).
 
-Raising the `le=365` bound to reach 500 in one step is a config-model change and
-is **not** proposed here: the bound presumably reflects a vendor or rate-limit
-consideration that should be checked before it is widened.
+The whole backfill then took **3.5 minutes** for 513 symbols — not a year.
+
+Two further corrections came out of the same exercise, both worth keeping:
+
+- `skip_existing: true` skips *writes*, not *fetches*. It does not make a deeper
+  re-ingest cheap, and history does not accrete for free.
+- `config/ingestion.json` was deliberately left shallow. The backfill was run as
+  a **one-off** through SU-5's `execute_backfill` rather than by deepening the
+  daily cycle, so routine ingestion still fetches only what it needs.
+
+2 of 515 symbols failed (`E2E`, `INFSDFSD`) and were logged and skipped without
+stopping the batch.
 
 ---
 
-## 4. What the available data does show
+## 4. What three years of data show
 
-Full universe, 528 instruments, 82 trading days. Both documented stop policies
-were run, because ADR-010 records the deck's contradiction between them and
-deliberately left it for evidence to settle.
+Full universe, 530 instruments, 744 trading days (2023-08-16 → 2026-08-14). Both
+documented stop policies were run, because ADR-010 records the deck's
+contradiction between them and deliberately left it for evidence to settle.
 
 | | **canonical_darvas** (10%, deck p.67) | **darvax_tight** (1%, deck p.44) |
 |---|---|---|
-| Closed trades | 301 | 677 |
-| Still open | 159 (35%) | 59 (8%) |
-| **Win rate** | **21.3%** | **4.3%** |
-| **Expectancy / trade** | **−3.62%** | **−0.48%** |
-| Average win | +9.29% | +11.01% |
-| Average loss | −7.10% | −1.00% |
-| Profit factor | 0.35 | 0.49 |
-| Average bars held | 17.1 | 3.3 |
-| Exits by stop | 103 (34%) | **647 (96%)** |
-| Exits by rule C | 198 | 30 |
-| **Verdict** | `EXPERIMENTAL_UNVALIDATED` | `EXPERIMENTAL_UNVALIDATED` |
+| Closed trades | 1,975 *(was 301)* | 3,808 *(was 677)* |
+| Still open | 72 (3.5%) *(was 35%)* | 26 (0.7%) |
+| **Win rate** | **37.9%** *(was 21.3%)* | **8.8%** *(was 4.3%)* |
+| **Expectancy / trade** | **+4.09%** *(was −3.62%)* | **+1.27%** *(was −0.48%)* |
+| Average win | +22.97% | +24.91% |
+| Average loss | −7.45% | −1.00% |
+| Profit factor | 1.88 *(was 0.35)* | 2.40 *(was 0.49)* |
+| Average bars held | 36.5 | 7.9 |
+| Exits by stop | 689 (35%) | **3,472 (91%)** |
+| Exits by rule C | 1,286 | 336 |
+| Sufficiency gate | **SUFFICIENT** ✅ | **SUFFICIENT** ✅ |
 
-### The 1% stop is measurably noise-level
+**Both signs reversed.** The 82-day sample was measuring one adverse regime, and
+this document said so at the time — *"these figures are likely pessimistic"*,
+with the reason given (winners were still open, losers had already stopped out).
+The open-trade share falling from 35% to 3.5% is that bias being removed, and it
+moved the result in the predicted direction. The earlier negative reading should
+be treated as retracted, not as a second data point.
 
-ADR-010's Context predicted this in words: *"a 1% stop on a breakout entry is
-removed by ordinary noise."* It is now measured. Under the tight policy **96% of
-all exits are stops**, the average trade lasts **3.3 bars**, and the win rate is
-**4.3%** — the position is being closed by ordinary daily fluctuation before the
-thesis has any opportunity to resolve.
+That is where the mechanical verdict stops being useful, and the two policies
+have to be separated.
 
-This conclusion is also the more trustworthy of the two, because the tight
-policy leaves only 8% of trades open — so it is barely affected by the exclusion
-bias described below.
+### The canonical 10% stop survives adversarial testing
 
-### The 10% result is genuinely uncertain
+The gate says `SUFFICIENT`; these two tests ask whether the edge is *real*:
 
-Canonical Darvas has the better per-trade economics (+9.29% average win against
-−7.10% average loss), but a negative expectancy on this sample. That figure is
-**not reliable**, and the direction of its unreliability is knowable: 35% of
-entries were still open when the data ended, losers exit quickly on the stop
-while winners ride, so the excluded trades are disproportionately the good ones.
-**These figures are likely pessimistic.** How pessimistic cannot be established
-from 82 days.
+| Stress applied | Expectancy / trade |
+|---|---|
+| Raw | +4.09% |
+| Less 0.2% round-trip cost | +3.89% |
+| Less 0.6% round-trip cost | +3.49% |
+| Less 1.0% round-trip cost | +3.09% |
+| **Discarding the best 1% of trades entirely** | **+2.40%** |
 
-### On the drawdown figure
+It remains solidly positive under a 1% round-trip cost assumption — generous for
+Indian equities including STT and slippage — and, more importantly, it survives
+deleting its 19 best trades. The edge is distributed across the sample rather
+than carried by a handful of outliers. A 37.9% win rate against a 3.1:1
+win/loss ratio is a coherent, ordinary trend-following profile.
 
-The harness reports −100% peak-to-trough for the canonical policy. That is
-arithmetically correct for its model — one position at a time, compounding the
-full account — and **misleading as an account outcome**, because the deck's own
-rule is to divide capital into ten parts. With a negative expectancy, full
-compounding drives any curve towards −100%. Read it as a property of the
-assumption, not a prediction. It is reported with that caveat attached rather
-than suppressed.
+### The tight 1% stop does not, and the gate cannot see it
+
+The tight policy's gate result is identical, and its profit factor is *higher*
+(2.40 vs 1.88). Both are misleading:
+
+| Stress applied | Expectancy / trade |
+|---|---|
+| Raw | +1.27% |
+| Less 0.6% round-trip cost | +0.67% |
+| **Discarding the best 1% of trades entirely** | **+0.38%** |
+
+**The top 1% of trades — 38 of 3,808 — account for 70.8% of all P&L.** Remove
+them and almost the entire result disappears; add realistic costs to *that* and
+it is indistinguishable from zero. Meanwhile 91% of exits are still stops and
+the average trade lasts 7.9 bars.
+
+So ADR-010's original prediction — *"a 1% stop on a breakout entry is removed by
+ordinary noise"* — is **confirmed, not overturned**, by a result that
+superficially looks positive. The 1% stop is a lottery-ticket distribution: it
+loses 91% of the time and depends on a few extreme winners to pay for it. The
+canonical 10% stop is the policy the evidence supports.
+
+**This is the single most important finding of the re-run**, and the gate is
+blind to it: `summarise()` returns the same `VALIDATED` for both.
+
+### On the drawdown figure — now confirmed to be an artifact
+
+The harness reports −100.00% peak-to-trough for the canonical policy and −99.22%
+for the tight one, *alongside a positive expectancy*. That contradiction was
+investigated rather than reported, and it is a defect in the metric:
+
+- The worst individual trades are exactly **−10.00%** — the stop working
+  correctly. There is no bad data and no runaway trade.
+- The equity model compounds **100% of capital into one trade at a time, in exit
+  order**, across 530 instruments whose trades in reality overlap heavily. An
+  early losing run drove the notional curve to 0.000006 at trade #298
+  (2023-12-21), after which the same multiplicative model "recovers" it to
+  4.2 × 10¹⁷.
+
+Both ends of that curve are fiction, and the deck's own rule is to divide
+capital into ten parts. **The drawdown and any equity-curve return from this
+harness should not be quoted at all** — only per-trade expectancy is meaningful
+under this model. Suppressing or fixing the figure is a code change and is
+proposed in §6, not made here.
 
 ---
 
 ## 5. Limitations that no amount of data removes
 
-Reported alongside every summary, by construction:
+Reported alongside every summary, by construction — and now more consequential,
+because a *positive* result is the one these biases would produce spuriously:
 
-- **Survivorship bias.** The universe is the instruments in the ledger *today*,
-  so names delisted during the period are absent — and their outcomes are
-  disproportionately bad.
-- **Costs excluded.** No brokerage, STT, slippage or impact. A breakout system
-  trades often, so real returns are materially lower than shown.
+- **Survivorship bias — materially worse than before.** The universe is the
+  instruments in the ledger *today*, so every name delisted between 2023 and
+  2026 is absent, along with its outcome. Over four months this was a minor
+  effect; over three years it is not. It biases results **upward**, which is the
+  direction the result just moved. This cannot be quantified from the current
+  data: the Kite dump is a point-in-time snapshot of live instruments with no
+  historical membership, so measuring it requires a delisting history the
+  project does not hold.
+- **Costs excluded.** The harness models none. §4 applies them externally as a
+  sensitivity; they are not in the reported expectancy.
 - **Idealised fills.** Entries at the next bar's open, stops filled exactly at
-  the stop, with no gap-through modelling.
+  the stop, with no gap-through modelling. A 10% stop gapped through on bad news
+  fills below the stop, so the −7.45% average loss is optimistic.
+- **One market.** 2023-08 → 2026-08 was, on balance, a rising Indian market.
+  Three years is above the gate's floor; it is not a full cycle.
 
 ---
 
-## 6. Verdict and what would change it
+## 6. Verdict, and what the evidence does and does not support
 
-**`EXPERIMENTAL_UNVALIDATED` stands.** Every DarvaX payload and view keeps the
-label. The gate is enforced in code, not left to the reader: `summarise()`
-returns `VALIDATED` only when both thresholds clear, and no configuration
-setting overrides it.
+**`EXPERIMENTAL_UNVALIDATED` stands**, and every DarvaX payload and view keeps
+the label. Removing it is an owner decision, not an automatic consequence of a
+gate flipping — the label is hard-coded across the DarvaX surface and was not
+touched.
 
-| Threshold | Required | Actual |
+| Threshold | Required | First run | Re-run |
+|---|---|---|---|
+| Closed trades | ≥ 200 | 301 ✅ | 1,975 ✅ |
+| Trading days | ≥ 500 | 82 ❌ | **744 ✅** |
+
+What the re-run genuinely establishes:
+
+1. The methodology's canonical form has a **positive, cost-robust,
+   non-outlier-dependent per-trade expectancy** on three years of NSE data. That
+   is far more than the source deck ever supplied.
+2. The **10%/1% contradiction in the deck is settled on evidence**: canonical.
+3. The earlier negative result was a small-sample artifact, as predicted.
+
+What it does not establish, and why the label should stay:
+
+1. **Survivorship bias is unquantified and points the wrong way.** A positive
+   result from a survivor-only universe is the textbook false positive.
+2. **The sufficiency gate is now the weak link.** It certifies sample size and
+   period, and it passed a policy that §4 shows to be outlier-dependent noise.
+   A gate that cannot distinguish the two should not be the thing that removes a
+   warning label.
+3. **One market regime**, and no walk-forward or out-of-sample split.
+
+### Proposed follow-ups (not implemented — each needs approval)
+
+| | Change | Why |
 |---|---|---|
-| Closed trades | ≥ 200 | 301 ✅ |
-| Trading days | ≥ 500 | **82 ❌** |
+| a | Suppress or redesign `max_drawdown` and any equity-curve figure in `summarise()` | §4 — it is currently a fiction that could be quoted in good faith |
+| b | Add outlier-dependence (P&L share of top 1%) and a cost sensitivity to the summary | §4 computed these externally; they changed the conclusion, so they belong in the harness |
+| c | Split the gate's `verdict` from its `sufficient` flag | They mean different things and are currently conflated |
+| d | Walk-forward / out-of-sample split | Not attempted at all |
 
-The sample size already clears. **The period is the sole blocker**, and it has
-one fix: raise `lookback_days` in `config/ingestion.json`, re-ingest daily
-history, and re-run. That is an owner decision with real ingestion cost, so it
-is proposed here rather than performed.
-
-Re-running after a deeper backfill is a single command (§7). If the numbers
-still look like §4 with two years of data behind them, that is a real answer
-too — and a more valuable one than the label.
+Items (a)–(c) would each have changed how this document reads, which is the
+argument for them being in the harness rather than in a document.
 
 ---
 
@@ -201,10 +294,17 @@ for inst in market.list_instruments():
     if candles:
         n += 1
         trades.extend(simulate_instrument(candles))
-print(summarise(trades, instruments=n, trading_days=82))
+print(summarise(trades, instruments=n, trading_days=744))
 EOF
 ```
 
-The full 528-instrument simulation takes about **2 seconds**. Pass a
-`DarvaxMethodologyConfig(stop_policy=...)` as the second argument to
-`simulate_instrument` to compare policies.
+Pass a `DarvaxMethodologyConfig(stop_policy=...)` as the second argument to
+`simulate_instrument` to compare policies. Derive `trading_days` from the ledger
+rather than hardcoding it — the figure above is correct as of 2026-08-14 and
+grows with every daily cycle.
+
+The cost and outlier-dependence figures in §4 are **not** produced by
+`summarise()` (that is proposed follow-up (b)). They are computed from the
+closed-trade `return_pct` values: sort descending, then compare the mean of all
+trades against the mean excluding the top 1%, and subtract a flat round-trip
+cost from the per-trade expectancy.

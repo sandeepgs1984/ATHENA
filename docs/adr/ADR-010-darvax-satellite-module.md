@@ -72,13 +72,28 @@ to Play" says 1% (p.44). These are not variants of one system; a 1% stop on a
 breakout entry is removed by ordinary noise. This ADR does not resolve that by
 fiat — see Decision.
 
-> **DX-5 update (2026-08-15):** this is no longer only a prediction. Simulated
-> across all 528 instruments, the 1% policy stops out of **96%** of its trades
-> with a **4.3%** win rate and an average hold of 3.3 bars — positions closed by
-> ordinary fluctuation before the thesis can resolve, exactly as anticipated
-> above. The 10% canonical policy has the better per-trade economics but is also
-> negative on the available sample. Both remain `EXPERIMENTAL_UNVALIDATED`,
-> because 82 trading days cannot validate anything. See
+> **DX-5 update (2026-08-16, supersedes the 2026-08-15 reading):** measured over
+> **744 trading days** (2023-08 → 2026-08, 530 instruments) rather than the 82
+> available initially. The earlier negative expectancy for *both* policies was a
+> small-sample artifact and is retracted.
+>
+> The prediction above still holds, and for a subtler reason than first
+> reported. The 1% policy now shows a *positive* raw expectancy (+1.27%), but
+> **70.8% of its P&L comes from the top 1% of trades**; discard those and it
+> falls to +0.38%, which realistic costs erase. It still stops out of **91%** of
+> trades with an **8.8%** win rate. It is a lottery-ticket distribution, not an
+> edge — so "removed by ordinary noise" is *confirmed*, by a result that
+> superficially looks positive.
+>
+> The **10% canonical policy is the one the evidence supports**: +4.09%
+> expectancy, 37.9% win rate, robust to a 1% round-trip cost (+3.09%) and to
+> deleting its best 1% of trades (+2.40%). **This settles the deck's 10%/1%
+> contradiction in favour of canonical.**
+>
+> Both nonetheless remain `EXPERIMENTAL_UNVALIDATED`: the sufficiency gate now
+> passes on sample size and period, but it cannot see outlier-dependence (it
+> passed the 1% policy), survivorship bias over three years is unquantified and
+> biases *upward*, and there is no out-of-sample split. See
 > [`docs/design/DARVAX-VALIDATION-EVIDENCE.md`](../design/DARVAX-VALIDATION-EVIDENCE.md).
 
 ### Constraints from ATHENA's own rules

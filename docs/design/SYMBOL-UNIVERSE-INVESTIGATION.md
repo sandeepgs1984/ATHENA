@@ -171,7 +171,7 @@ So the provider is declared capable of ~2000 days of history, the daily path
 applies no span check, and the only thing stopping a deeper daily backfill is a
 `le=365` validator in ATHENA's own config model.
 
-Two caveats before changing it:
+Two caveats were raised before changing it:
 
 - Kite's *own* historical API applies per-request span limits by interval (day
   candles allow long ranges; minute candles do not). A deep daily backfill may
@@ -181,10 +181,33 @@ Two caveats before changing it:
   2,550-symbol × multi-window backfill is on the order of tens of minutes and
   should be planned, not fired off inside a cycle.
 
-**Recommendation: do not change `le=365` yet.** First establish empirically what
-span a single Kite daily request will actually return, then decide between
-raising the bound and adding windowed backfill. That is a measurement, not a
-guess — and it directly unblocks DX-5, which needs ~500 trading days.
+The recommendation at the time was **"do not change `le=365` yet — measure
+first."**
+
+### Resolved (2026-08-16): measured, and the bound was raised
+
+The measurement was taken. Probing Kite at 365 / 730 / 1095 / 1825 / 2000 /
+2500 / **3650** days returned **the full requested span in a single daily
+request** every time — 2,474 bars in 1.1 s at 3,650 days.
+
+- **No windowing is needed.** The first caveat does not apply to daily candles;
+  `daily_candles` issuing one call for the whole range is correct.
+- **The rate-limit concern was overestimated for this shape of job**, because it
+  is one request per symbol rather than per symbol × window. The full backfill
+  of 513 symbols took **3.5 minutes**.
+
+`IngestionConfig.lookback_days` was therefore raised to `le=3650`, with the
+measurement recorded inline at the field. `config/ingestion.json` itself was
+deliberately left shallow — the backfill was run as a one-off through SU-5's
+`execute_backfill`, so the routine daily cycle still fetches only what it needs.
+
+Result: the ledger went from 82 to **744 trading days** (43,223 → 362,949 daily
+candles), which unblocked DX-5. See
+[DARVAX-VALIDATION-EVIDENCE.md](DARVAX-VALIDATION-EVIDENCE.md) §3.
+
+One correction that came out of the same exercise: **`skip_existing: true` skips
+*writes*, not *fetches*.** It does not make a deeper re-ingest cheap, and
+history does not accrete for free across runs.
 
 ---
 
@@ -347,13 +370,14 @@ much history happened to be ingested.
   (JGCHEM), 2025-09-24 (RATNAVEER), 2026-05-06 (PNGSREVA). DarvaX flags every
   rule-B breakout, so matching a date confirms detection — it does not mean the
   engine uniquely selected that date.
-- **Universe depth is now inconsistent**: these three have 246/246/111 bars while
-  the other 517 still have ~82. Comparisons across the universe are not
-  like-for-like until a uniform backfill is run.
+- **Universe depth was inconsistent** when this was written: these three had
+  246/246/111 bars while the other 517 still had ~82, so comparisons across the
+  universe were not like-for-like. *Resolved 2026-08-16 by the uniform backfill
+  described in §5 — the ledger now holds 744 trading days.*
 - **`lookback_days: 365` returned a full year in a single Kite request** — no
-  windowing was needed. This directly informs §5: the daily path handles a
-  365-day span in one call, so the `le=365` bound is the only remaining barrier
-  and the windowing question applies only beyond it.
+  windowing was needed. This informed §5, where the question was then settled in
+  full: a single daily request returns spans up to **3,650 days**, so windowing
+  is not required at any depth ATHENA needs and the `le` bound was raised.
 
 
 ---

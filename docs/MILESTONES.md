@@ -3087,6 +3087,29 @@ are negative. The blocker is `ingestion.lookback_days: 90` — a configuration
 limit, not a Kite limit — so a deeper backfill is the one change that would let
 DX-5 produce real evidence. See `docs/design/DARVAX-VALIDATION-EVIDENCE.md`.
 
+**DX-5 re-run (2026-08-16) — supersedes the reading above.** After SU-1→SU-6,
+the `le=365` bound was measured rather than assumed (Kite returns a full span up
+to **3,650 days in one request**), raised to `le=3650`, and a one-off backfill
+took the ledger from 82 to **744 trading days** in 3.5 minutes. Re-run results:
+
+- **Both policies reversed sign.** Canonical 10%: expectancy **+4.09%** (was
+  −3.62%), 37.9% win rate, 1,975 closed trades. The earlier negative reading was
+  a small-sample artifact — as this document's own caveat predicted — and is
+  retracted.
+- **The gate now passes on sufficiency, and that is not enough.** Stress-testing
+  outside the harness separates the two policies the gate labels identically:
+  canonical survives a 1% round-trip cost (+3.09%) *and* deleting its best 1% of
+  trades (+2.40%); the tight 1% policy draws **70.8% of its P&L from its top 1%
+  of trades** and collapses to +0.38% without them. **ADR-010's "1% is removed by
+  ordinary noise" is confirmed, by a result that superficially looks positive.**
+  The deck's 10%-vs-1% contradiction is settled in favour of canonical.
+- **The label still stands.** Survivorship bias over three years is unquantified
+  and biases upward; the reported `max_drawdown` was traced to a
+  full-capital-compounding artifact and should not be quoted; there is no
+  out-of-sample split. Removing `EXPERIMENTAL_UNVALIDATED` is an owner decision
+  and was not taken. Four follow-ups are proposed in
+  `docs/design/DARVAX-VALIDATION-EVIDENCE.md` §6, none implemented.
+
 ---
 
 ## Symbol master & scanner universes track (ADR-011 — **Accepted** 2026-08-15)

@@ -483,7 +483,17 @@ class IngestionConfig(_Strict):
     institutional_flow_provider: Literal["file", "nse"] = "file"
     timeframes: list[str] = Field(default_factory=lambda: ["5m"])
     lookback_minutes: int = Field(default=30, ge=1, le=1440)
-    lookback_days: int = Field(default=5, ge=1, le=365)
+    #: Upper bound raised from 365 to 3650 on measured evidence (2026-08-15):
+    #: a single Kite daily request returns the full span with no windowing —
+    #: probed at 365/730/1095/1825/2000/2500/3650 days, the last returning 2,474
+    #: bars in 1.1s. The old bound was ATHENA's own, not the vendor's, and it
+    #: was the reason DX-5 could not reach its 500-trading-day floor.
+    #:
+    #: Note this bounds what is *fetched*, not what is written: `skip_existing`
+    #: skips redundant writes but the request still covers the whole span, so a
+    #: deep value here makes every routine cycle expensive. Keep the routine
+    #: config shallow and use a one-off backfill for depth.
+    lookback_days: int = Field(default=5, ge=1, le=3650)
     include_daily: bool = True
     include_quotes: bool = True
     validate_gaps: bool = False
