@@ -46,7 +46,18 @@ def build_symbol_records(
 
     records: list[SymbolRecord] = []
     for instrument in instruments:
-        series, series_source, board, reason = classify_symbol(instrument.symbol)
+        # An instrument with no tick size has no price increment, so it is not a
+        # tradable listing and cannot be equity on any board — that is what keeps
+        # index rows such as NIFTY 50 out of the board groups the discovery
+        # universes are built from. Nothing new is fetched; the provider already
+        # carries this.
+        #
+        # Deliberately *not* `lot_size`: the dump reports 0 for both on index
+        # rows, but `Instrument` requires `lot_size >= 1`, so the provider clamps
+        # it and that signal never arrives here.
+        series, series_source, board, reason = classify_symbol(
+            instrument.symbol, tradable=instrument.tick_size > 0
+        )
         previous = known_first_seen(instrument.instrument_id) if known_first_seen else None
         records.append(
             SymbolRecord(

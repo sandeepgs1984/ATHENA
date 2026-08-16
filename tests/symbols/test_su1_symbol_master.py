@@ -88,6 +88,67 @@ def test_an_unrecognised_suffix_is_not_promoted_to_equity():
     assert source is SeriesSource.INFERRED_SUFFIX
 
 
+@pytest.mark.parametrize(
+    "symbol",
+    [
+        "BAJAJ-AUTO",   # NIFTY 50 and NIFTY AUTO constituent
+        "NAM-INDIA",    # Nippon Life India AMC
+        "HCL-INSYS",    # HCL Infosystems
+        "BOSCH-HCIL",   # Bosch Home Comfort
+        "UMIYA-MRO",    # Umiya Buildcon
+        "KLBRENG-B",    # Kilburn Engineering
+        "MCCHRLS-B",    # Mac Charles (India)
+    ],
+)
+def test_a_hyphen_in_a_company_name_is_not_a_series(symbol):
+    """Found in production 2026-08-16: these seven real equities were classified
+    `board=UNKNOWN` because the text after the final hyphen was read as a series
+    code, so they appeared in no board-derived universe at all. BAJAJ-AUTO is
+    the proof — it resolved into NIFTY_50 by index membership while being
+    invisible to `darvax_discovery`."""
+    series, _, board, reason = classify_symbol(symbol, tradable=True)
+    assert board is Board.MAINBOARD, f"{symbol} is ordinary equity"
+    assert series == "EQ"
+    assert "company name" in reason
+
+
+def test_the_two_character_boundary_is_what_separates_the_two_cases():
+    """A suffix the right *shape* for a series stays conservative even though it
+    is unknown; one the wrong shape is read as a name. Asserted together because
+    the fix is only correct if both halves hold — widening the name rule to all
+    unrecognised suffixes would promote debt and index rows into equity."""
+    _, _, unknown_code_board, _ = classify_symbol("MYSTERY-ZZ", tradable=True)
+    _, _, name_board, _ = classify_symbol("MYSTERY-ZZZ", tradable=True)
+    assert unknown_code_board is Board.UNKNOWN
+    assert name_board is Board.MAINBOARD
+
+
+@pytest.mark.parametrize(
+    "symbol",
+    [
+        "NIFTY 50",           # no suffix at all — took the plain-EQ default
+        "NIFTY BANK",
+        "BHARATBOND-APR30",   # name-shaped suffix, but genuinely a debt index
+        "HANGSENG BEES-NAV",
+        "RELIANCE",           # even an unmistakably equity-shaped symbol
+    ],
+)
+def test_an_untradable_instrument_is_never_placed_on_a_board(symbol):
+    """Tradability is a precondition for being on a board. Without this, symbol
+    shape alone put NIFTY 50 and 131 other index rows inside `darvax_discovery`,
+    because an index carries no series suffix to give it away."""
+    _, _, board, reason = classify_symbol(symbol, tradable=False)
+    assert board is Board.UNKNOWN
+    assert "tick size" in reason
+
+
+def test_unknown_tradability_falls_back_to_symbol_shape():
+    """`None` means nobody established it — which must not be read as `False`,
+    or every caller that omits the argument would classify everything UNKNOWN."""
+    _, _, board, _ = classify_symbol("RATNAVEER", tradable=None)
+    assert board is Board.MAINBOARD
+
+
 def test_sme_is_a_board_not_a_threshold():
     """ADR-011 §2.2 — SME must be expressible as membership, so including or
     excluding it is a visible decision rather than a filter side effect."""
@@ -114,6 +175,34 @@ def test_the_providers_fabricated_series_is_ignored():
     )
     assert records[0].series == "SG", "provider's fabricated EQ must not win"
     assert records[0].board is Board.UNKNOWN
+
+
+def test_tradability_is_derived_from_the_tick_size_the_provider_already_gives():
+    """The catalogue needs no new field and no new fetch: an index row arrives
+    with `tick_size=0`, which is exactly the signal that it is not a listing.
+    Asserting it here rather than only on `classify_symbol` is the point — the
+    defect was that nobody *passed* the signal, not that the rule was missing."""
+    index_row = instrument("NIFTY 50", tick_size=Decimal("0"))
+    equity_row = instrument("BAJAJ-AUTO")
+
+    by_id = {
+        r.instrument_id: r
+        for r in build_symbol_records(
+            [index_row, equity_row], observed_at=OBSERVED, source="kite"
+        )
+    }
+    assert by_id["NSE:NIFTY 50"].board is Board.UNKNOWN
+    assert by_id["NSE:BAJAJ-AUTO"].board is Board.MAINBOARD
+
+
+def test_lot_size_cannot_carry_the_tradability_signal():
+    """Guards the trap that broke the first attempt at this fix. The NSE dump
+    reports lot_size 0 for index rows, but `Instrument` requires `>= 1` and
+    `KiteProvider` clamps with `max(lot, 1)` — so a rule keyed on lot size would
+    compile, pass a hand-built unit test, and silently never fire in production.
+    If this invariant is ever relaxed, revisit `catalog.build_symbol_records`."""
+    with pytest.raises(ValueError, match="lot_size"):
+        instrument("NIFTY 50", lot_size=0)
 
 
 def test_records_carry_identity_and_provenance():

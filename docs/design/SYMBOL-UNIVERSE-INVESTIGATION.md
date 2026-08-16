@@ -6,7 +6,8 @@ universes.
 
 **Status:** ✅ Investigation complete; §6's proposal became **ADR-011 (Accepted
 2026-08-15)** and shipped as SU-1→SU-6. Materialised against production
-2026-08-16 — see §11 for what it actually produced, including one defect found.
+2026-08-16 — §11 for what it produced, §12 for the classification defect found
+and fixed, §13 for two further defects found and deliberately **not** fixed.
 **Investigated:** 2026-08-15 · **Trigger:** three owner-supplied DarvaX
 candidates, two of which the screener structurally could not see.
 
@@ -513,3 +514,103 @@ decision rather than a side effect.
 Scope is small and bounded: 12 of 10,197 rows have a non-two-character suffix,
 and only 2 of the 7 affected equities (`BAJAJ-AUTO`, `NAM-INDIA`) are currently
 ingested.
+
+---
+
+## 12. Classification fixed (2026-08-16)
+
+The §11 defect turned out to be **two** defects, and the second was much larger.
+
+### What was wrong
+
+| | Symptom | Scale |
+|---|---|---|
+| **A. Hyphen read as a series** | `BAJAJ-AUTO` → series `AUTO`, `board=UNKNOWN`; real equities absent from every board-derived universe | 7 symbols |
+| **B. Index rows defaulted to equity** | `NIFTY 50` has no suffix, so it took the plain-`EQ` main-board default | **131 symbols, 132 of them inside `darvax_discovery`** |
+
+B was found only by investigating A: fixing A alone would have left NIFTY 50,
+NIFTY 500 and INDIA VIX being screened as breakout candidates.
+
+### The rules, and why neither works alone
+
+1. **A suffix that is not two characters is part of the company name.** Every
+   real NSE series code is two characters (10,185 of 10,197 rows).
+2. **Tradability is a precondition for being on a board.** An instrument with no
+   tick size has no price increment and is not a listing.
+
+Rule 1 alone would have promoted `BHARATBOND-APR30`, `-APR31`, `-APR32`,
+`-APR33` and `HANGSENG BEES-NAV` into the equity universe — the exact accident
+the conservative "unrecognised suffix ⇒ UNKNOWN" default was written to prevent.
+Rule 2 alone would have left the seven real equities excluded. **The fix is only
+correct as both rules together**, which is asserted directly in
+`test_the_two_character_boundary_is_what_separates_the_two_cases`.
+
+### The trap: the obvious signal does not survive
+
+The NSE dump reports `lot_size` **and** `tick_size` as `0` for all 136 index
+rows and for neither of anything else, so either separates them perfectly. Only
+`tick_size` works:
+
+> `Instrument.__post_init__` requires `lot_size >= 1`, so `KiteProvider` writes
+> `lot_size=max(lot, 1)`. **The lot-size signal is destroyed at the provider
+> boundary.**
+
+A rule keyed on lot size would compile, read correctly, and silently never fire
+in production. This is pinned by `test_lot_size_cannot_carry_the_tradability_signal`
+so the trap cannot be walked into again.
+
+### Measured effect
+
+| | Before | After |
+|---|---|---|
+| `symbol_master` MAINBOARD | 3,390 | **3,266** (−131 index, +7 equity) |
+| `symbol_master` UNKNOWN | 6,368 | 6,492 |
+| `mainboard_equity` | 3,390 | **3,266** |
+| `darvax_discovery` | 2,728 | **2,604** |
+| `athena_core` | 518 | **518** (unchanged — as required) |
+
+`athena_core` is unchanged, which is the point: ADR-011's guarantee that the
+owner's universe is preserved holds through a classification change.
+
+---
+
+## 13. Two further defects found, neither fixed
+
+### Group membership is never retracted
+
+Re-running the board build after the fix left `mainboard_equity` reporting
+**3,397** against a master saying 3,266 — 131 stale rows. `upsert_group_memberships`
+rewrites rows for symbols *present* in a re-run but does not remove a symbol
+that has **left** the group at the same effective date.
+
+For a dated index snapshot, additive-per-date is deliberate and correct: a new
+effective date must sit beside the old one so a pre-rebalance screen stays
+reproducible. For a **derived** group recomputed from the master at the same
+date, it means the group can only ever grow.
+
+The practical consequence is not limited to this fix: if NIFTY 50 rebalances and
+a symbol leaves, re-loading that snapshot leaves the departed member in the
+group.
+
+The production data was corrected by deleting `kind='BOARD'` rows at the
+effective date and re-inserting, which is the replace semantic a derived group
+needs. **The repository method itself is unchanged** — giving it
+replace-by-`(group, effective_date)` semantics is a real design decision about
+dated membership and is not made here.
+
+### 270 iNAV rows are inside `darvax_discovery`
+
+`not_a_fund` matches the substrings `("ETF", "BEES", " FUND", "GOLDBEES",
+"LIQUIDBEES")`. NSE publishes an *indicative NAV* row per ETF — `AB10BKINAV`,
+`ALPHAINAV`, `AONE50INAV` — which match none of them, carry a normal tick size
+so the tradability rule correctly passes them, and are not companies.
+
+**270 of the 2,604 symbols in `darvax_discovery` (10.4%) are iNAV rows.** They
+would be screened for Darvas breakouts and backfilled with candles.
+
+Not fixed here: it is a change to SU-4's eligibility rules rather than SU-1's
+classification, and the obvious marker choices differ in risk. A suffix match on
+`INAV` is unambiguous and covers most of them; the remainder are AMC rows such
+as `AXISAMC-NIFTYAXIS` and `ZERODHAAMC - NIFTYCINAV`, where a marker on `AMC`
+could plausibly catch a real company. That trade-off is an owner decision, and
+it changes universe composition again.
