@@ -189,9 +189,11 @@ def _run_job(
             logger.warning("candidate seed failed during full validation: %s", exc)
 
         _set_progress(runtime, stage="ingesting")
-        ingest_engine = _build_scoped_ingest_engine(
+        ingest_engine, unresolved_detail = _build_scoped_ingest_engine(
             config_dir, cfg, repo, tz, repo_root=repo_root
         )
+        if unresolved_detail:
+            _set_progress(runtime, detail=unresolved_detail)
         pipeline = OwnerValidationPipeline(repo, config_dir)
         orchestrator = DryRunCycleOrchestrator(
             ingest_engine,
@@ -216,7 +218,19 @@ def _run_job(
             symbols_completed=symbols_total if ok else 0,
             finished_at=_now(),
             run_id=result.run.run_id,
-            detail=None if ok else f"run finished with status {status}",
+            # A successful run must still report what it skipped. Clearing the
+            # detail on success would hide the very thing this reporting was
+            # added for: a cycle that "succeeded" while silently dropping a
+            # candidate that stopped resolving.
+            detail=(
+                unresolved_detail
+                if ok
+                else "; ".join(
+                    part
+                    for part in (f"run finished with status {status}", unresolved_detail)
+                    if part
+                )
+            ),
         )
         runtime.record_cycle(
             LastCycleSnapshot(
@@ -253,8 +267,14 @@ def _build_scoped_ingest_engine(
     *,
     repo_root: Path,
 ):
-    """Mirror CLI candidate-scoped ingest (resolve catalog, skip unknowns)."""
+    """Mirror CLI candidate-scoped ingest (resolve catalog, skip unknowns).
+
+    Returns ``(engine, unresolved_detail)``. The detail is surfaced on the job's
+    progress so a skipped candidate is visible to the owner rather than buried
+    in a log line nobody reads.
+    """
     ingest_cfg = load_ingestion_config(config_dir)
+    unresolved_detail: str | None = None
     store = SqliteCandidateStore(repo)
     trading_symbols = [
         normalize_candidate_symbol(c.symbol)
@@ -275,7 +295,39 @@ def _build_scoped_ingest_engine(
         for inst in catalog:
             by_symbol[inst.symbol.upper()] = inst.instrument_id
             by_symbol[display_symbol(inst.instrument_id)] = inst.instrument_id
-        resolved = [by_symbol[s] for s in trading_symbols if s in by_symbol]
+        resolved: list[str] = []
+        unresolved: list[str] = []
+        for symbol in trading_symbols:
+            instrument_id = by_symbol.get(symbol)
+            if instrument_id is None:
+                unresolved.append(symbol)
+            else:
+                resolved.append(instrument_id)
+
+        if unresolved:
+            # Skipping is correct — one delisted or renamed ticker must never
+            # stop the whole cycle. Skipping *silently* is not: a candidate that
+            # stops resolving simply stops receiving data, with no signal to any
+            # consumer. E2E NETWORKS moved to the BE series (becoming `E2E-BE`)
+            # and went stale for four sessions before anyone noticed, purely
+            # because this path dropped it without a word. The CLI already
+            # reported its misses; this job did not.
+            logger.warning(
+                "full validation: %d owner candidate(s) did not resolve against "
+                "the provider catalog and were skipped: %s. A symbol that stops "
+                "resolving stops receiving data — check for a series change "
+                "(e.g. EQ to BE, which renames the trading symbol), a rename, "
+                "or a delisting.",
+                len(unresolved),
+                ", ".join(sorted(unresolved)),
+            )
+            unresolved_detail = (
+                f"{len(unresolved)} candidate(s) skipped (unresolved): "
+                f"{', '.join(sorted(unresolved))}"
+            )
+        else:
+            unresolved_detail = None
+
         if not resolved:
             from athena.errors import DataValidationError
 
@@ -296,13 +348,16 @@ def _build_scoped_ingest_engine(
         )
     except Exception:
         institutional = None
-    return LiveIngestionEngine(
-        provider,
-        repo,
-        validator,
-        QuarantineRegistry(),
-        ingest_cfg,
-        validation,
-        tzinfo=tz,
-        institutional_provider=institutional,
+    return (
+        LiveIngestionEngine(
+            provider,
+            repo,
+            validator,
+            QuarantineRegistry(),
+            ingest_cfg,
+            validation,
+            tzinfo=tz,
+            institutional_provider=institutional,
+        ),
+        unresolved_detail,
     )

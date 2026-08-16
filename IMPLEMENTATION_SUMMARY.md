@@ -6,6 +6,33 @@ status updated on approval.
 
 ---
 
+## SU-4: Eligibility profiles + unresolved-candidate reporting (ADR-011)
+
+| | |
+|---|---|
+| Completed | 2026-08-15 |
+| Objective | Make `NSE_ALL_ELIGIBLE_EQUITY` real — a discovery universe defined by explainable rules — and stop the owner-triggered cycle from dropping unresolvable candidates in silence |
+| Scope | `athena/symbols/eligibility.py` (named, ordered rule sets), wiring into `resolve_universe`, and a separate targeted fix to `ops/full_validation.py` |
+| Architecture implemented | A profile is an **ordered rule set**; a symbol stops at the **first** rule that excludes it, so each exclusion has exactly one attributable cause rather than a list a reader must weigh. `UniverseResolution` now carries every `Exclusion` with its rule and reason, so "why isn't X in my scan?" always has an answer. `IMPLEMENTED_ELIGIBILITY` is derived from the profile registry itself, so the resolver and the profiles cannot disagree |
+| `darvax_discovery` rules | `known_board` (SU-1 refused to guess a board; SU-4 refuses to include what it could not establish) → `unrestricted_equity_series` (EQ only; **BE/BZ are trade-for-trade, usually a surveillance measure**, and a breakout scanner should not be handed instruments the exchange has already flagged) → `not_a_fund` |
+| **No thresholds invented** | ADR-011 §4 fixes that eligibility is explicit and explainable; it fixes no numbers, and neither does this. Liquidity and minimum-history rules are **not implemented** for a structural reason: the instrument dump reports `last_price` as `0` for **every** row, so liquidity is measurable only from candles — which exist only for already-ingested symbols, which is circular for a universe whose job is deciding what to ingest. A guessed floor would exclude on data the filter does not have. A test asserts no threshold constant exists |
+| SME, as designed | Not an eligibility rule. It is a **board**, modelled as a group in SU-2, so including it is a universe composition choice visible in `config/universes.json` and reviewable in a diff. `darvax_discovery` uses `NSE_MAINBOARD` alone; adding `NSE_SME` to its groups is the whole change |
+| Deviation from the ADR, recorded | ADR-011 sketched `darvax_discovery` as `groups: ["NSE_ALL_ELIGIBLE_EQUITY"]`. That group is exactly "main board minus the eligibility exclusions", so it is expressed as **group + profile** rather than materialised — which is what keeps it rule-defined per §2.3 instead of becoming the frozen list §2.3 forbids. Recorded in the config's own note |
+| Files created | `src/athena/symbols/eligibility.py`, `tests/symbols/test_su4_eligibility.py` |
+| Files modified | `src/athena/symbols/universes.py`, `config/universes.json`, `src/athena/ops/full_validation.py`, `tests/symbols/test_su3_universe_resolver.py`, `tests/ops/test_full_validation.py`, `docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md` |
+| Tests | 20 new for eligibility + 3 for the reporting fix (full suite **1654 passed**). Two SU-3 tests were updated rather than deleted: one asserted `darvax_discovery` was unresolvable, which SU-4 changed, so it now asserts the profile *actually filters*; the other now uses a genuinely unimplemented profile name to keep testing the refusal behaviour |
+| Live verification | Real catalogue and snapshots: `darvax_discovery` resolves **2,728** symbols from 3,390 main-board, excluding **289** restricted-series and **373** funds, each with a named reason. `athena_core` unchanged at **518**. All three owner reference symbols (`RATNAVEER`, `JGCHEM`, `PNGSREVA`) are present |
+| On the ~2,550 estimate, again | The discovery universe resolves to **2,728**, not 2,550 — a different rule set gives a different number, exactly as ADR-011 §2.3 requires. The count follows the rules; it is never the definition |
+| Owner-requested fix: E2E | `full_validation.py` filtered unresolved candidates with a bare comprehension: the batch correctly continued, but **the skip was silent**, which is why `E2E` stopped receiving data for four sessions unnoticed while `cli.py` reported its own misses. Now collects them, logs a warning naming each and pointing at the likely cause (a series change renames the trading symbol), and surfaces a detail on the job's progress. **Caught a flaw in my own fix during review:** the completion handler set `detail=None` on success, which would have wiped the report on exactly the runs that looked fine — the detail is now preserved on success and merged with a failure message otherwise |
+| Architecture compliance | Additive; no engine consumes the resolver yet. Rules are code because they are logic with no numbers to tune — when thresholds arrive they belong in config, per ATHENA's configuration-over-hardcoding rule, and the config note says so |
+| Risks discovered | The fund rule is a **name heuristic** (`ETF`, `BEES`, `FUND`), because the dump has no instrument-kind column. It will miss oddly-named funds and could in principle catch a company with `FUND` in its name. Stated in the module rather than hidden |
+| Technical debt introduced | None |
+| Remaining work | SU-5 coverage planner; SU-6 DarvaX opt-in and the DX-4a/DX-6d re-measure at 2,728 symbols |
+| Status | 🔄 Ready for review |
+| Branch | feature/live-dashboard |
+
+---
+
 ## SU-3: Universe resolver (ADR-011)
 
 | | |
@@ -27,7 +54,7 @@ status updated on approval.
 | Risks discovered | None new |
 | Technical debt introduced | None |
 | Remaining work | SU-4 eligibility profiles — which will also need reconciling with the existing `UniverseEngine`'s filters, since both express eligibility |
-| Status | 🔄 Ready for review |
+| Status | ✅ Approved (2026-08-15) |
 | Branch | feature/live-dashboard |
 
 ---

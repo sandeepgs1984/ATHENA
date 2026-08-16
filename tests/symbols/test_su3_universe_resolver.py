@@ -26,6 +26,7 @@ from athena.errors import ConfigError
 from athena.symbols import build_symbol_records
 from athena.symbols.groups import (
     GROUP_OWNER_CANDIDATES,
+    board_memberships,
     index_memberships,
     owner_candidate_memberships,
 )
@@ -223,20 +224,31 @@ def test_an_unknown_universe_raises_and_lists_what_exists(repo: SqliteRepository
 def test_an_unimplemented_eligibility_profile_raises(repo: SqliteRepository):
     """Returning the unfiltered union under the name of a filtered universe is
     the silent-wrongness this whole track exists to remove."""
-    cfg = config_with(dx={"groups": ["NSE_MAINBOARD"], "eligibility": "darvax_discovery"})
+    cfg = config_with(dx={"groups": ["NSE_MAINBOARD"], "eligibility": "no_such_profile"})
     with pytest.raises(ConfigError) as excinfo:
         resolve_universe("dx", config=cfg, reader=repo)
     message = str(excinfo.value)
     assert "not implemented" in message
-    assert "SU-4" in message, "the error must say where the profile is coming from"
+    assert "unfiltered symbols" in message, (
+        "the error must say why refusing beats returning an unfiltered set"
+    )
 
 
-def test_the_shipped_darvax_universe_is_not_yet_resolvable(repo: SqliteRepository):
-    """It is declared to record intent, and refuses to resolve until SU-4."""
+def test_the_shipped_darvax_universe_resolves_and_filters(repo: SqliteRepository):
+    """SU-4 made it resolvable; it must actually apply its profile rather than
+    returning the raw group."""
     config = load_universes_config(CONFIG_DIR)
-    assert "darvax_discovery" not in resolvable_universes(config)
-    with pytest.raises(ConfigError):
-        resolve_universe("darvax_discovery", config=config, reader=repo)
+    assert "darvax_discovery" in resolvable_universes(config)
+
+    master = records("GOODCO", "SOMEETF")
+    repo.upsert_symbol_records(master)
+    repo.upsert_group_memberships(
+        board_memberships(master, effective_date=EFFECTIVE).memberships
+    )
+    resolved = resolve_universe("darvax_discovery", config=config, reader=repo)
+    assert "NSE:GOODCO" in resolved.symbols
+    assert "NSE:SOMEETF" not in resolved.symbols, "the fund rule must have applied"
+    assert resolved.exclusion_counts().get("not_a_fund") == 1
 
 
 def test_unknown_config_keys_and_duplicate_groups_are_rejected():

@@ -32,15 +32,16 @@ from typing import Protocol
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from athena.errors import ConfigError
+from athena.symbols.eligibility import PROFILES, Exclusion, apply_profile
 
 #: The only eligibility profile SU-3 can honour: apply nothing. `athena_core`
 #: uses it because ATHENA applies no group-level filter today — its own
 #: `UniverseEngine` still runs downstream, unchanged.
 ELIGIBILITY_NONE = "none"
 
-#: Profiles implemented so far. SU-4 extends this; until then, naming anything
-#: else is a loud failure rather than a silently unfiltered result.
-IMPLEMENTED_ELIGIBILITY: frozenset[str] = frozenset({ELIGIBILITY_NONE})
+#: Implemented profiles, taken from the eligibility module itself so the two
+#: can never disagree — a profile that exists there is resolvable here.
+IMPLEMENTED_ELIGIBILITY: frozenset[str] = frozenset(PROFILES)
 
 
 class _Strict(BaseModel):
@@ -98,6 +99,8 @@ class GroupReader(Protocol):
 
     def latest_group_effective_date(self, group_name: str) -> date | None: ...
 
+    def get_symbol_record(self, instrument_id: str): ...
+
 
 @dataclass(frozen=True, slots=True)
 class UniverseResolution:
@@ -115,6 +118,15 @@ class UniverseResolution:
     eligibility: str
     empty_groups: tuple[str, ...] = ()
     effective_dates: tuple[tuple[str, date], ...] = ()
+    excluded: tuple[Exclusion, ...] = ()
+    """Symbols removed by the eligibility profile, each with its rule and
+    reason — so "why isn't X in my scan?" always has an answer."""
+
+    def exclusion_counts(self) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for item in self.excluded:
+            counts[item.rule] = counts.get(item.rule, 0) + 1
+        return counts
 
     @property
     def is_empty(self) -> bool:
@@ -163,10 +175,10 @@ def resolve_universe(
     if definition.eligibility not in IMPLEMENTED_ELIGIBILITY:
         raise ConfigError(
             f"universe '{name}' requires eligibility profile "
-            f"'{definition.eligibility}', which is not implemented yet "
-            f"(implemented: {sorted(IMPLEMENTED_ELIGIBILITY)}). Resolving it now "
+            f"'{definition.eligibility}', which is not implemented "
+            f"(implemented: {sorted(IMPLEMENTED_ELIGIBILITY)}). Resolving it "
             f"would return unfiltered symbols under the name of a filtered "
-            f"universe. Eligibility profiles arrive in SU-4."
+            f"universe."
         )
 
     collected: set[str] = set()
@@ -182,6 +194,19 @@ def resolve_universe(
         if effective is not None:
             dates.append((group, effective))
 
+    excluded: tuple[Exclusion, ...] = ()
+    if definition.eligibility != ELIGIBILITY_NONE and collected:
+        # Eligibility needs the canonical record, not just the id — the board,
+        # series and classification reason all live on the symbol master.
+        records = [
+            record
+            for record in (reader.get_symbol_record(i) for i in sorted(collected))
+            if record is not None
+        ]
+        outcome = apply_profile(definition.eligibility, records)
+        collected = set(outcome.eligible)
+        excluded = outcome.excluded
+
     return UniverseResolution(
         name=name,
         symbols=tuple(sorted(collected)),
@@ -189,6 +214,7 @@ def resolve_universe(
         eligibility=definition.eligibility,
         empty_groups=tuple(empty),
         effective_dates=tuple(dates),
+        excluded=excluded,
     )
 
 
