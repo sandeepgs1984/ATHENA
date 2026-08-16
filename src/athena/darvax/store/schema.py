@@ -33,7 +33,7 @@ never appear to have been produced by current settings.
 from __future__ import annotations
 
 #: Bumped independently of ATHENA's SCHEMA_VERSION. They never interact.
-DARVAX_SCHEMA_VERSION = 6
+DARVAX_SCHEMA_VERSION = 7
 
 _DDL: tuple[str, ...] = (
     "CREATE TABLE IF NOT EXISTS darvax_schema_version (version INTEGER NOT NULL)",
@@ -102,6 +102,9 @@ _DDL: tuple[str, ...] = (
         explanation             TEXT NOT NULL,
         action                  TEXT,
         action_reason           TEXT,
+        action_reason_plain     TEXT,
+        stop_price              TEXT,
+        stop_basis              TEXT,
         PRIMARY KEY (sweep_id, instrument_id)
     )
     """,
@@ -145,6 +148,11 @@ _ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # rules. A reader must see "not recorded", not a plausible guess.
     ("darvax_screen_results", "action", "TEXT"),
     ("darvax_screen_results", "action_reason", "TEXT"),
+    # DX-8a. The stop is what makes an entry survivable and the screener could
+    # not show one; the plain reason is what makes the advice readable.
+    ("darvax_screen_results", "action_reason_plain", "TEXT"),
+    ("darvax_screen_results", "stop_price", "TEXT"),
+    ("darvax_screen_results", "stop_basis", "TEXT"),
 )
 
 

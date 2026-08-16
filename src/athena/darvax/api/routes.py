@@ -163,6 +163,13 @@ def _screen_payload(result: ScreenResult) -> dict[str, Any]:
         # could disagree with what the sweep actually persisted (ADR-005).
         "action": result.action.value,
         "action_reason": result.action_reason,
+        # DX-8a: the plain sentence leads in the UI, the technical one sits
+        # behind a disclosure. Both persisted by the engine (ADR-005).
+        "action_reason_plain": result.action_reason_plain,
+        # Rule B mandates a stop; a screen that recommends an entry without one
+        # is recommending half a trade.
+        "stop_price": _optional(result.stop_price),
+        "stop_basis": result.stop_basis,
         # Which chips must carry the unvalidated badge is a domain fact, not a
         # styling choice, so the client is told rather than left to hardcode a
         # list that would drift when an action is added (design §4, decision 3b).

@@ -86,7 +86,7 @@ def store(tmp_path: Path) -> DarvaxRepository:
 def test_inside_the_topmost_box_is_a_hold():
     """Rule A verbatim: "…its price fluctuations should be ignored and the stock
     is a HOLD.\"""" ""
-    action, reason = action_for_held(
+    action, reason, _plain = action_for_held(
         signal(DarvaxSignalType.INSIDE_TOPMOST_BOX), stop_price=Decimal("90")
     )
     assert action is DarvaxAction.HOLD
@@ -94,7 +94,7 @@ def test_inside_the_topmost_box_is_a_hold():
 
 
 def test_below_the_box_floor_is_an_exit_when_held():
-    action, reason = action_for_held(
+    action, reason, _plain = action_for_held(
         signal(DarvaxSignalType.BELOW_BOX_BOTTOM), stop_price=Decimal("90")
     )
     assert action is DarvaxAction.EXIT
@@ -108,7 +108,7 @@ def test_falling_out_of_the_topmost_box_is_an_exit_not_a_wait(state):
     """Rule D says "There is no reason to HOLD or BUY a stock that is not in its
     topmost box" — so for a *held* instrument that is an exit. Reading it as
     "wait" would keep the owner in a position the methodology has abandoned."""
-    action, reason = action_for_held(signal(state), stop_price=None)
+    action, reason, _plain = action_for_held(signal(state), stop_price=None)
     assert action is DarvaxAction.EXIT
     assert "rule D" in reason
 
@@ -116,7 +116,7 @@ def test_falling_out_of_the_topmost_box_is_an_exit_not_a_wait(state):
 def test_a_breached_stop_wins_over_every_box_state():
     """Rule B mandates the stop, so it outranks the box: an instrument still
     sitting inside its topmost box but under its stop is an exit."""
-    action, reason = action_for_held(
+    action, reason, _plain = action_for_held(
         signal(DarvaxSignalType.INSIDE_TOPMOST_BOX, close="89"),
         stop_price=Decimal("90"),
     )
@@ -127,7 +127,7 @@ def test_a_breached_stop_wins_over_every_box_state():
 def test_the_stop_is_breached_at_the_stop_not_only_below_it():
     """A close exactly at the stop is a breach — a stop order at that level
     would have filled."""
-    action, _ = action_for_held(
+    action, _reason, _plain = action_for_held(
         signal(DarvaxSignalType.INSIDE_TOPMOST_BOX, close="90"),
         stop_price=Decimal("90"),
     )
@@ -138,7 +138,7 @@ def test_a_breakout_on_something_already_held_stays_a_hold():
     """Darvas pyramided into new boxes, but the DAR-CARD does not say so.
     Emitting ENTER here would advise adding to a position on DarvaX's own
     initiative — methodology the deck never states (ADR-010)."""
-    action, reason = action_for_held(
+    action, reason, _plain = action_for_held(
         signal(DarvaxSignalType.BREAKOUT, close="110"), stop_price=Decimal("90")
     )
     assert action is DarvaxAction.HOLD
@@ -148,7 +148,7 @@ def test_a_breakout_on_something_already_held_stays_a_hold():
 def test_every_held_branch_names_a_rule_and_leaks_no_none():
     for state in DarvaxSignalType:
         for stop in (None, Decimal("90")):
-            _, reason = action_for_held(signal(state), stop_price=stop)
+            _, reason, _plain = action_for_held(signal(state), stop_price=stop)
             assert reason.strip() and "None" not in reason, (state, stop, reason)
 
 

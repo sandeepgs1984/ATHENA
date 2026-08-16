@@ -131,11 +131,35 @@ class ScreenResult:
     without rewriting every construction site, but always set by
     ``screen_signal``."""
     action_reason: str = ""
-    """Why that action, in the owner's language, with the numbers that drove it.
+    """Why that action, citing the DAR-CARD rule and the numbers that drove it.
 
     Persisted rather than assembled in the browser: ADR-005 puts the explanation
     with the engine that produced the value. A UI that built this string would
     be free to drift from the rule the action actually came from."""
+    action_reason_plain: str = ""
+    """The same conclusion in plain English, naming no rule and no jargon.
+
+    A second field rather than a rewrite (advisor UI design decision 1b): the
+    technical sentence stays available for the reader who wants the methodology,
+    and this one leads.
+
+    **These two must not drift.** Both are produced at a single call site, and
+    the invariant that keeps them honest is asserted in tests: the plain one
+    contains no rule citation, the technical one does. Without that, they decay
+    either into copies of each other or into two different claims about the same
+    trade."""
+    stop_price: Decimal | None = None
+    """The level the methodology says to exit at, copied from the signal.
+
+    Rule B **mandates** this — *"A 10 percent stop-loss should be set on the
+    first breakout"* — and the screener could not show it: ``DarvaxSignal``
+    carried a fully derived stop and ``ScreenResult`` never copied it, so a
+    screen recommended entries without the exit that makes them survivable.
+    Copied, never recomputed, so a stored screen keeps the level it was
+    actually computed with (ADR-005)."""
+    stop_basis: str | None = None
+    """Which documented rule produced ``stop_price`` — so a stop is never a bare
+    number whose origin nobody can state."""
     box_top: Decimal | None = None
     box_bottom: Decimal | None = None
     trigger_price: Decimal | None = None

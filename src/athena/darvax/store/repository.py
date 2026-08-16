@@ -100,6 +100,9 @@ def _row_to_screen_result(row: tuple) -> ScreenResult:
         # reason is what tells a reader the action was never recorded.
         action=DarvaxAction(row[16]) if row[16] else DarvaxAction.NO_ENTRY,
         action_reason=row[17] or "",
+        action_reason_plain=row[18] or "",
+        stop_price=_optional_decimal(row[19]),
+        stop_basis=row[20],
     )
 
 
@@ -402,8 +405,9 @@ class DarvaxRepository:
                         "sweep_id, instrument_id, signal_id, tier, signal_type, "
                         "darvas_rule, rank, close, box_top, box_bottom, "
                         "trigger_price, distance_to_trigger_pct, distance_to_breakout_pct, "
-                        "breakout_reference, box_height_pct, explanation, action, action_reason"
-                        ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+                        "breakout_reference, box_height_pct, explanation, action, action_reason, "
+                        "action_reason_plain, stop_price, stop_basis"
+                        ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
                         "ON CONFLICT(sweep_id, instrument_id) DO UPDATE SET "
                         "signal_id=excluded.signal_id, tier=excluded.tier, "
                         "signal_type=excluded.signal_type, "
@@ -416,7 +420,10 @@ class DarvaxRepository:
                         "breakout_reference=excluded.breakout_reference, "
                         "box_height_pct=excluded.box_height_pct, "
                         "explanation=excluded.explanation, action=excluded.action, "
-                        "action_reason=excluded.action_reason",
+                        "action_reason=excluded.action_reason, "
+                        "action_reason_plain=excluded.action_reason_plain, "
+                        "stop_price=excluded.stop_price, "
+                        "stop_basis=excluded.stop_basis",
                         [
                             (
                                 r.sweep_id,
@@ -437,6 +444,9 @@ class DarvaxRepository:
                                 r.explanation,
                                 r.action.value,
                                 r.action_reason,
+                                r.action_reason_plain,
+                                _optional_str(r.stop_price),
+                                r.stop_basis,
                             )
                             for r in results
                         ],
@@ -653,7 +663,8 @@ class DarvaxRepository:
                     "darvas_rule, rank, close, box_top, box_bottom, trigger_price, "
                     "distance_to_trigger_pct, distance_to_breakout_pct, "
                     "breakout_reference, box_height_pct, explanation, "
-                    "action, action_reason "
+                    "action, action_reason, action_reason_plain, "
+                    "stop_price, stop_basis "
                     f"FROM darvax_screen_results {clause}",
                     params,
                 ).fetchall()

@@ -141,7 +141,7 @@ def action_for(signal_type: DarvaxSignalType) -> DarvaxAction:
 
 def action_for_held(
     signal: DarvaxSignal, *, stop_price: Decimal | None
-) -> tuple[DarvaxAction, str]:
+) -> tuple[DarvaxAction, str, str]:
     """Action and reason for an instrument the owner **holds** (DX-7b).
 
     Every branch is the DAR-CARD text applied literally, in the order the rules
@@ -160,12 +160,19 @@ def action_for_held(
     A breakout on an instrument already held stays ``HOLD``. Darvas did pyramid
     into new boxes, but the DAR-CARD does not say so and DarvaX must not invent
     add-to-position advice the deck never states (ADR-010).
+
+    Returns ``(action, technical_reason, plain_reason)``. The plain sentence is
+    produced here rather than delegated because these branches are specific —
+    "your stop was hit" and "it left its range" are different news to a holder,
+    and a generic sentence would flatten them (DX-8a).
     """
     if stop_price is not None and signal.close <= stop_price:
         return (
             DarvaxAction.EXIT,
             f"Closed at {_money(signal.close)}, at or below the stop "
             f"{_money(stop_price)} — rule B's mandated stop-loss.",
+            f"Price fell to {_money(signal.close)}, through your stop at "
+            f"{_money(stop_price)}. Time to close it.",
         )
 
     state = signal.signal_type
@@ -174,21 +181,29 @@ def action_for_held(
             DarvaxAction.EXIT,
             f"Fell below the box floor at {_money(signal.box_bottom)} — rule C: "
             f'"if the price falls below the bottom … the stock is a SELL."',
+            f"Price dropped below {_money(signal.box_bottom)}, the floor of its "
+            f"range. Time to close it.",
         )
     if state in (DarvaxSignalType.NOT_IN_TOPMOST_BOX, DarvaxSignalType.NO_BOX):
         return (
             DarvaxAction.EXIT,
             'No longer in its topmost box — rule D: "There is no reason to HOLD '
             'or BUY a stock that is not in its topmost box."',
+            "It has fallen out of the range it was climbing. The method says "
+            "close it.",
         )
     if state is DarvaxSignalType.INSIDE_TOPMOST_BOX:
         stop = (
             f" Stop stands at {_money(stop_price)}." if stop_price is not None else ""
         )
+        plain_stop = (
+            f" Your stop is {_money(stop_price)}." if stop_price is not None else ""
+        )
         return (
             DarvaxAction.HOLD,
             f"Still inside its topmost box — rule A: price fluctuations should "
             f"be ignored while it remains there.{stop}",
+            f"Holding up well inside its range. Nothing to do.{plain_stop}",
         )
     # BREAKOUT / BREAKOUT_RETEST while already held.
     return (
@@ -196,6 +211,8 @@ def action_for_held(
         f"Cleared {_money(signal.box_top)} into a new box — a rule B buy signal, "
         f"but this is already held, so rule A applies: hold while it remains in "
         f"its topmost box.",
+        f"Pushed above {_money(signal.box_top)} into new highs. You already own "
+        f"it — keep holding.",
     )
 
 
@@ -272,6 +289,53 @@ def action_reason(
     )
 
 
+def plain_reason(
+    signal: DarvaxSignal,
+    action: DarvaxAction,
+    *,
+    breakout_pct: Decimal | None,
+) -> str:
+    """The same conclusion as :func:`action_reason`, in plain English (DX-8a).
+
+    **Names no rule and no Darvas vocabulary.** "Topmost box", "rule B" and
+    "DAR-CARD" are precise and are not English; the reader who wants them has
+    ``action_reason`` and ``explanation`` one disclosure away.
+
+    Kept beside the technical version, and called from the same place, because
+    two sentences about one trade are only safe while nothing can produce one
+    without the other.
+    """
+    if action is DarvaxAction.ENTER:
+        where = (
+            f" Buy above {_money(signal.trigger_price)}."
+            if signal.trigger_price is not None
+            else ""
+        )
+        return f"Price broke above its recent high range.{where}"
+    if action is DarvaxAction.ENTER_ON_RETEST:
+        return (
+            f"Price broke out and has dipped back to test "
+            f"{_money(signal.box_top)}, the level it cleared."
+        )
+    if action is DarvaxAction.WAIT:
+        if breakout_pct is not None and breakout_pct > 0:
+            return (
+                f"Still inside its recent range, {_percent(breakout_pct)} below "
+                f"the {_money(signal.box_top)} level it needs to clear."
+            )
+        return "Still inside its recent trading range — nothing to act on yet."
+    if action is DarvaxAction.HOLD:
+        return "Holding up inside its range. Nothing to do."
+    if action is DarvaxAction.EXIT:
+        return "Time to close this one."
+    if action is DarvaxAction.EXIT_IF_HELD:
+        return (
+            f"Price dropped below {_money(signal.box_bottom)}, the floor of its "
+            f"range. If you own this, the method says sell."
+        )
+    return "No clear pattern to trade right now."
+
+
 def screen_signal(
     signal: DarvaxSignal,
     *,
@@ -289,15 +353,25 @@ def screen_signal(
     """
     breakout_pct, breakout_ref = distance_to_breakout(signal)
     if position is not None and position.is_open:
-        action, reason = action_for_held(signal, stop_price=position.stop_price)
+        action, reason, plain = action_for_held(
+            signal, stop_price=position.stop_price
+        )
     else:
         action = action_for(signal.signal_type)
+        # Both sentences from one call site: nothing can produce a technical
+        # reason without its plain counterpart (design decision 1b).
         reason = action_reason(
             signal, action, breakout_pct=breakout_pct, breakout_ref=breakout_ref
         )
+        plain = plain_reason(signal, action, breakout_pct=breakout_pct)
     return ScreenResult(
         action=action,
         action_reason=reason,
+        action_reason_plain=plain,
+        # Copied from the signal, never recomputed — rule B mandates a stop and
+        # the screener previously could not show one at all.
+        stop_price=signal.stop.price if signal.stop else None,
+        stop_basis=signal.stop.basis.value if signal.stop else None,
         sweep_id=sweep_id,
         instrument_id=signal.instrument_id,
         signal_id=signal.signal_id,
