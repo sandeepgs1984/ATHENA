@@ -90,10 +90,22 @@ fiat — see Decision.
 > deleting its best 1% of trades (+2.40%). **This settles the deck's 10%/1%
 > contradiction in favour of canonical.**
 >
+> **Negative controls change how the +4.09% should be read.** Random entries
+> into the same names over the same period, with the *same* stop and rule-C
+> exits, return **+2.80%**; return-shuffled series (structure destroyed,
+> distribution preserved) still return **+2.41%**. So roughly two-thirds of the
+> headline is the **exit policy in a rising market**, not box detection. The
+> detection increment is **+1.23pp**, consistent across win rate, profit factor
+> and the ex-outlier figure — but only marginally significant (t = 2.03; 0 of 12
+> random seeds beat it, an empirical p ≈ 0.08). Treat it as suggestive, not
+> established. The screener itself is sound and selective: 1.7% actionable across
+> 530 instruments, and zero breakouts on synthetic series that cannot contain one.
+>
 > Both nonetheless remain `EXPERIMENTAL_UNVALIDATED`: the sufficiency gate now
 > passes on sample size and period, but it cannot see outlier-dependence (it
-> passed the 1% policy), survivorship bias over three years is unquantified and
-> biases *upward*, and there is no out-of-sample split. See
+> passed the 1% policy), it cannot see the attribution problem above,
+> survivorship bias over three years is unquantified and biases *upward*, and
+> there is no out-of-sample split. See
 > [`docs/design/DARVAX-VALIDATION-EVIDENCE.md`](../design/DARVAX-VALIDATION-EVIDENCE.md).
 
 ### Constraints from ATHENA's own rules

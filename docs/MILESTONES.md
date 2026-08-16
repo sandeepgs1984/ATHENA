@@ -3103,12 +3103,21 @@ took the ledger from 82 to **744 trading days** in 3.5 minutes. Re-run results:
   of trades** and collapses to +0.38% without them. **ADR-010's "1% is removed by
   ordinary noise" is confirmed, by a result that superficially looks positive.**
   The deck's 10%-vs-1% contradiction is settled in favour of canonical.
+- **Negative controls attribute most of the headline elsewhere.** Random entries
+  with *identical* exits return **+2.80%**; return-shuffled series return
+  **+2.41%**. Roughly two-thirds of the +4.09% is the exit rule operating in a
+  rising market, not Darvas box detection. The detection increment is **+1.23pp**
+  and only marginally significant (t = 2.03; 0/12 random seeds beat it, p ≈ 0.08)
+  — suggestive, not established. **"DarvaX has a +4.09% expectancy" is a
+  misleading summary.** The screener itself is selective and structurally sound:
+  1.7% actionable across 530 instruments, zero breakouts on synthetic
+  monotonic/flat series.
 - **The label still stands.** Survivorship bias over three years is unquantified
   and biases upward; the reported `max_drawdown` was traced to a
   full-capital-compounding artifact and should not be quoted; there is no
   out-of-sample split. Removing `EXPERIMENTAL_UNVALIDATED` is an owner decision
-  and was not taken. Four follow-ups are proposed in
-  `docs/design/DARVAX-VALIDATION-EVIDENCE.md` §6, none implemented.
+  and was not taken. Five follow-ups are proposed in
+  `docs/design/DARVAX-VALIDATION-EVIDENCE.md` §7, none implemented.
 
 ---
 

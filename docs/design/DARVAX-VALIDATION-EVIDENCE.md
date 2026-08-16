@@ -11,16 +11,25 @@ stop policies. The measured expectancy also **reversed sign** — from −3.62% 
 **+4.09%** per trade under the canonical 10% stop.
 
 That is a real and important result, and it is still not sufficient to drop the
-label. The gate tests *sample size and period only*. It does not test the three
-limitations in §5, and those limitations are exactly what a positive result
-needs to survive. §4 tests them directly: **the canonical policy survives; the
-tight policy does not**, despite the gate labelling them identically.
+label, for two separate reasons:
+
+- **The gate tests sample size and period only.** §4 stress-tests the two stop
+  policies it labels identically and finds **the canonical policy survives while
+  the tight policy does not**.
+- **Most of the +4.09% is not the methodology.** §5's negative controls attribute
+  roughly two-thirds of it to the exit rule operating in a rising market: random
+  entries with identical exits return **+2.80%**, and return-shuffled series
+  still return **+2.41%**. Darvas box detection adds **+1.23pp** over random
+  entry — real, consistent across every ratio, but only marginally significant.
+
+**"DarvaX has a +4.09% expectancy" is therefore a misleading summary of this
+document.** See §7 for the defensible one.
 
 **Milestone:** DX-5 · **Governing decision:**
 [ADR-010](../adr/ADR-010-darvax-satellite-module.md) ·
 **Harness:** [`src/athena/darvax/validation/`](../../src/athena/darvax/validation/) ·
 **First measured:** 2026-08-15 (82 days) · **Re-measured:** 2026-08-16 (744 days) ·
-**Verdict:** `EXPERIMENTAL_UNVALIDATED` (label removal is an owner decision — §6)
+**Verdict:** `EXPERIMENTAL_UNVALIDATED` (label removal is an owner decision — §7)
 
 ---
 
@@ -205,11 +214,112 @@ Both ends of that curve are fiction, and the deck's own rule is to divide
 capital into ten parts. **The drawdown and any equity-curve return from this
 harness should not be quoted at all** — only per-trade expectancy is meaningful
 under this model. Suppressing or fixing the figure is a code change and is
-proposed in §6, not made here.
+proposed in §7, not made here.
 
 ---
 
-## 5. Limitations that no amount of data removes
+## 5. Negative controls — is the edge in the box detection?
+
+§4 establishes that the canonical policy is positive and cost-robust. It does
+**not** establish *what produced* that. A breakout methodology that cuts losers
+at −10% and rides winners until rule C, run inside a rising 2023–2026 market,
+could produce a positive expectancy from the **exit policy and market drift
+alone** — with the box detection contributing nothing.
+
+The positive test (RATNAVEER, JGCHEM, PNGSREVA — see
+[SYMBOL-UNIVERSE-INVESTIGATION.md](SYMBOL-UNIVERSE-INVESTIGATION.md)) cannot
+answer this either: it shows the screener *fires* on known-good setups, but a
+screener that fired on everything would also have passed it.
+
+Four controls, in increasing order of how much they can hurt the result.
+
+### C. Structural — series that must never produce a breakout
+
+| Synthetic series | Breakouts | Engine says |
+|---|---|---|
+| Monotonic decline (−1%/bar) | **0** | `NO_BOX` |
+| Flat line | **0** | `INSIDE_TOPMOST_BOX` |
+| Monotonic rise (+1%/bar) | **0** | `NO_BOX` |
+
+The third is correct Darvas behaviour rather than a miss: a box requires a
+consolidation, so a series that only ever rises legitimately never forms one.
+
+### D. Selectivity — the engine is not flagging everything
+
+Across all 530 instruments on the latest bar:
+
+| Signal | Count | Share |
+|---|---|---|
+| `NOT_IN_TOPMOST_BOX` | 372 | 70.2% |
+| `INSIDE_TOPMOST_BOX` | 119 | 22.5% |
+| `BREAKOUT_RETEST` | 25 | 4.7% |
+| **`BREAKOUT`** | **9** | **1.7%** |
+| `BELOW_BOX_BOTTOM` | 5 | 0.9% |
+
+A 1.7% actionable rate is genuine selectivity, and it is what makes the
+three-symbol positive test meaningful rather than vacuous.
+
+### A. Random entries, identical exits — the decisive control
+
+Same instruments, same period, the **same number of trades per instrument**, the
+same −10% stop and the same rule-C exit. Only the *entry signal* differs.
+
+| | Expectancy | Win rate | Avg win | Avg loss | PF | Ex-top-1% |
+|---|---|---|---|---|---|---|
+| **DarvaX breakout entries** | **+4.09%** | 37.9% | +22.97% | −7.45% | 1.88 | +2.40% |
+| **Random entries** | **+2.80%** | 35.1% | +23.33% | −8.32% | 1.52 | +1.70% |
+
+### B. Real engine on return-shuffled series
+
+Each instrument's daily returns are shuffled and the price series rebuilt: the
+return distribution is preserved *exactly*, while boxes, trends and momentum are
+destroyed. The real engine then runs on the result.
+
+| | Expectancy | Win rate | PF | Top 1% share of P&L |
+|---|---|---|---|---|
+| **Shuffled** | **+2.41%** | 35.7% | 1.50 | 51.7% |
+
+### What the controls establish
+
+**Roughly two-thirds of the headline +4.09% is not attributable to Darvas box
+detection.** Random entry into the same names over the same period, with the
+same exits, captures +2.80% of it; destroying the price structure entirely still
+leaves +2.41%. That residual is the **exit policy operating in a rising market**,
+not the methodology.
+
+The box detection does add a real increment — **+1.23 to +1.29pp over random
+entry** — and it improves every ratio simultaneously (win rate, profit factor,
+and the ex-outlier figure), which is what a genuine signal looks like rather
+than a lucky draw.
+
+**How firm is that increment?** Control A was repeated across 12 seeds so the
+comparison is against a distribution rather than one draw:
+
+| | |
+|---|---|
+| Random expectancy across 12 seeds | mean **+2.86%**, sd 0.48, range +2.03 → +3.70 |
+| Random runs matching or beating +4.09% | **0 of 12** |
+| Real, relative to the random distribution | **2.58 sd** above the mean |
+| Trade-level Welch *t* (real vs 21,598 pooled random trades) | difference **+1.23pp**, SE 0.61, **t = 2.03** |
+
+These two readings do not agree on strength, and the weaker one should govern:
+
+- The Welch *t* of 2.03 clears p<0.05 only barely, and it is **optimistic**: it
+  treats 1,975 trades as independent when they overlap in time and share a
+  common market factor. A cluster-robust standard error would be wider and would
+  push it back under the threshold.
+- The seed-level permutation gives 0/12, i.e. an empirical **p ≤ 1/13 ≈ 0.077** —
+  *not* significant at 5%.
+
+**Conclusion: the box-detection increment is suggestive but not established.** It
+sits right at the boundary of significance under an optimistic test and outside
+it under a conservative one. What *is* firmly established is the negative half —
+that the majority of the headline figure comes from the exit rule and the market,
+which is the claim most likely to be over-read from §4 alone.
+
+---
+
+## 6. Limitations that no amount of data removes
 
 Reported alongside every summary, by construction — and now more consequential,
 because a *positive* result is the one these biases would produce spuriously:
@@ -232,7 +342,7 @@ because a *positive* result is the one these biases would produce spuriously:
 
 ---
 
-## 6. Verdict, and what the evidence does and does not support
+## 7. Verdict, and what the evidence does and does not support
 
 **`EXPERIMENTAL_UNVALIDATED` stands**, and every DarvaX payload and view keeps
 the label. Removing it is an owner decision, not an automatic consequence of a
@@ -251,16 +361,30 @@ What the re-run genuinely establishes:
    is far more than the source deck ever supplied.
 2. The **10%/1% contradiction in the deck is settled on evidence**: canonical.
 3. The earlier negative result was a small-sample artifact, as predicted.
+4. The screener is **selective and structurally sound** — a 1.7% actionable rate,
+   and zero false breakouts on synthetic series that cannot contain one (§5 C/D).
 
 What it does not establish, and why the label should stay:
 
-1. **Survivorship bias is unquantified and points the wrong way.** A positive
+1. **Most of the headline is not the methodology.** §5 attributes roughly
+   two-thirds of the +4.09% to the exit policy in a rising market: random entries
+   with identical exits return +2.80%, and return-shuffled series still return
+   +2.41%. The box-detection increment is +1.23pp and is **suggestive rather than
+   established** — marginal under an optimistic test (t = 2.03) and outside
+   significance under a conservative one (0/12 seeds, p ≈ 0.08).
+2. **Survivorship bias is unquantified and points the wrong way.** A positive
    result from a survivor-only universe is the textbook false positive.
-2. **The sufficiency gate is now the weak link.** It certifies sample size and
+3. **The sufficiency gate is now the weak link.** It certifies sample size and
    period, and it passed a policy that §4 shows to be outlier-dependent noise.
    A gate that cannot distinguish the two should not be the thing that removes a
    warning label.
-3. **One market regime**, and no walk-forward or out-of-sample split.
+4. **One market regime**, and no walk-forward or out-of-sample split.
+
+Point 1 is the one most likely to be lost in summary. **"DarvaX has a +4.09%
+expectancy" is a misleading sentence**, and this document should not be cited in
+a way that produces it. The defensible sentence is: *the canonical 10% exit rule
+is sound, the screener is selective, and Darvas box detection adds a modest
+increment over random entry that the current sample cannot firmly confirm.*
 
 ### Proposed follow-ups (not implemented — each needs approval)
 
@@ -270,13 +394,14 @@ What it does not establish, and why the label should stay:
 | b | Add outlier-dependence (P&L share of top 1%) and a cost sensitivity to the summary | §4 computed these externally; they changed the conclusion, so they belong in the harness |
 | c | Split the gate's `verdict` from its `sufficient` flag | They mean different things and are currently conflated |
 | d | Walk-forward / out-of-sample split | Not attempted at all |
+| e | Bring the §5 negative controls into the harness (random-entry benchmark + seed distribution) | They changed the interpretation of the headline number more than any other measurement here, and they currently live only in a scratch script |
 
-Items (a)–(c) would each have changed how this document reads, which is the
-argument for them being in the harness rather than in a document.
+Items (a)–(c) and (e) would each have changed how this document reads, which is
+the argument for them being in the harness rather than in a document.
 
 ---
 
-## 7. Reproducing this
+## 8. Reproducing this
 
 ```bash
 python3 - <<'EOF'
@@ -308,3 +433,21 @@ The cost and outlier-dependence figures in §4 are **not** produced by
 closed-trade `return_pct` values: sort descending, then compare the mean of all
 trades against the mean excluding the top 1%, and subtract a flat round-trip
 cost from the per-trade expectancy.
+
+The §5 negative controls are likewise not in the harness (follow-up (e)). To
+reproduce them:
+
+- **A (random entry):** for each instrument, count the entries
+  `simulate_instrument` makes, then place that many entries at uniformly random
+  eligible bars and apply the **same** exit logic — stop first, else rule C from
+  `evaluate_signal`, else discard as still-open. Matching the count per
+  instrument is what controls for instrument selection and activity level.
+- **B (shuffled):** shuffle each instrument's bar-to-bar close ratios, rebuild
+  the series from the first close, and run `simulate_instrument` on the result.
+- **C (structural):** synthesise monotonic-decline / flat / monotonic-rise
+  series and assert `BREAKOUT` never appears.
+- **D (selectivity):** tally `evaluate_signal(...).signal_type` over the full
+  universe on the latest bar.
+
+Control A must be repeated across seeds — a single draw is not a benchmark, and
+the seed spread (±0.48) is the same order as the effect being measured.
