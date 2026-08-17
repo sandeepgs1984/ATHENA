@@ -481,3 +481,84 @@ ul.ev .d { color: var(--dim); opacity: .8; }
 .postable td.rowact { white-space: nowrap; text-align: right; }
 .postable .xs { padding: 3px 8px; font-size: 11px; }
 .postable .xs + .xs { margin-left: 5px; }
+
+/* ======================================================================
+   Plain advisor layout (DX-8b)
+
+   The screen answers one question in urgency order — sell, hold, buy — and
+   every candidate reads as a trade ticket rather than a table row. The
+   methodology is not deleted; it sits inside a <details> on each ticket.
+   ====================================================================== */
+
+.group { margin: 14px 0 0; }
+.group h3 {
+  display: flex; align-items: center; gap: 8px;
+  margin: 0 0 9px; font-size: 12px; font-weight: 650;
+  text-transform: uppercase; letter-spacing: 0.06em; color: var(--dim);
+}
+.group h3 .dot {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--neutral);
+}
+.group.sell h3 { color: #e6b0ab; }
+.group.sell h3 .dot { background: var(--bad); }
+.group.hold h3 .dot { background: var(--good); }
+.group h3 .n {
+  font-size: 11px; color: var(--dim); background: rgba(139,149,163,.12);
+  padding: 1px 7px; border-radius: 999px;
+}
+
+.tickets { display: grid; gap: 10px; }
+.tickets.buy { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+
+.ticket {
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 8px; padding: 12px 13px;
+}
+.ticket header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.ticket header .spacer { flex: 1; }
+.ticket .pos {
+  font: 600 11px/1 var(--mono); color: var(--dim); min-width: 16px; text-align: right;
+}
+.ticket .sym { font-weight: 650; font-size: 15px; }
+.ticket .ret { font: 600 13px/1 var(--mono); }
+.ticket .ret.up { color: var(--good); }
+.ticket .ret.down { color: var(--bad); }
+
+/* The four lines a trade needs, as a definition list so the labels and the
+   numbers stay associated for a screen reader too. */
+.ticket .lines {
+  display: grid; grid-template-columns: auto 1fr; gap: 4px 14px;
+  margin: 0 0 10px;
+}
+.ticket .lines dt {
+  font-size: 11px; color: var(--dim); text-transform: uppercase;
+  letter-spacing: 0.05em; align-self: center;
+}
+.ticket .lines dd {
+  margin: 0; font: 13px/1.4 var(--mono); display: flex; gap: 8px;
+  align-items: baseline; flex-wrap: wrap;
+}
+.ticket .lines dd.key { font-weight: 650; font-size: 15px; }
+.ticket .risk { font-size: 11px; color: var(--dim); font-family: inherit; }
+.ticket .dist { font-size: 11px; color: var(--dim); font-family: inherit; }
+
+.ticket .viz { margin: 0 0 10px; }
+.ticket .why { margin: 0; font-size: 13px; line-height: 1.5; }
+
+.ticket .method { margin: 9px 0 0; }
+.ticket .method summary {
+  cursor: pointer; font-size: 11px; color: var(--dim);
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.ticket .method p {
+  margin: 7px 0 0; font-size: 12px; line-height: 1.5; color: var(--dim);
+}
+.ticket .method .trace { font-family: var(--mono); font-size: 11px; }
+
+.ticket .rowact { margin-top: 10px; display: flex; gap: 6px; }
+.ticket .xs { padding: 3px 9px; font-size: 11px; }
+
+.restline {
+  margin: 16px 0 0; padding: 11px 13px; font-size: 13px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+}

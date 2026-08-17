@@ -54,7 +54,7 @@ def test_the_shortlist_is_not_called_best():
     deferred the quantities needed to build one, so the panel is titled by what
     it actually measures. Calling it "best" would be the false precision DX-5
     warns about."""
-    assert "Nearest to trigger" in HTML
+    assert "Buy candidates" in HTML
     lowered = HTML.lower()
     for claim in ("top 10 best", "best trades", "best picks", "highest conviction"):
         assert claim not in lowered, f"page claims {claim!r}, which DarvaX cannot support"
@@ -62,15 +62,15 @@ def test_the_shortlist_is_not_called_best():
 
 def test_the_shortlist_states_that_it_is_not_a_ranking_of_quality():
     assert "not a ranking of quality" in FLAT_HTML
-    assert "no conviction score" in FLAT_HTML
+    assert "no score, no target" in FLAT_HTML
 
 
 def test_the_shortlist_uses_the_engines_rank_not_a_client_side_reranking():
     """The engine already orders ACTIONABLE by distance-to-breakout and assigns
     `rank`. Re-sorting on a raw measurement here would be a second ranking,
     free to disagree with the screen below it (ADR-005)."""
-    assert "renderTop10" in CODE
-    top10 = body("renderTop10")
+    assert "renderBuy" in CODE
+    top10 = body("renderBuy")
     assert "a.rank" in top10 and "b.rank" in top10, (
         "the shortlist must order by the engine's persisted rank"
     )
@@ -81,13 +81,13 @@ def test_the_shortlist_uses_the_engines_rank_not_a_client_side_reranking():
 
 
 def test_the_shortlist_is_capped_at_ten():
-    assert ".slice(0, 10)" in body("renderTop10")
+    assert ".slice(0, 10)" in body("renderBuy")
 
 
 def test_the_shortlist_only_contains_entry_candidates():
     """A held instrument reads HOLD, and a shortlist of things to enter must not
     include something already owned."""
-    assert "risk_bearing" in body("renderTop10")
+    assert "risk_bearing" in body("renderBuy")
 
 
 # --------------------------------------------------------------------------- #
@@ -174,8 +174,10 @@ def test_the_page_computes_no_percentage_the_engine_could_have_persisted():
 @pytest.mark.parametrize(
     "element_id",
     [
-        "positions-zone", "pos-rows", "pos-empty", "pos-form", "pos-note",
-        "top10-zone", "top10-cards", "top10-sub",
+        "positions-zone", "pos-empty", "pos-form", "pos-note",
+        "sell-group", "sell-tickets", "hold-group", "hold-tickets",
+        "buy-zone", "buy-tickets", "buy-sub",
+        "advisor-view", "detailed-view",
     ],
 )
 def test_required_containers_exist(element_id: str):
@@ -190,7 +192,7 @@ def test_the_positions_zone_explains_why_it_exists_when_empty():
 
 
 def test_the_form_says_the_stop_is_derived_and_frozen():
-    assert "frozen at entry" in HTML
+    assert "fixed at the time you add it" in FLAT_HTML
 
 
 def test_delete_is_confirmed_and_close_is_not():
@@ -265,7 +267,7 @@ def test_the_advisor_zones_render_from_the_same_rows_as_the_table():
     """Otherwise the shortlist could show a different sweep than the screen
     beneath it."""
     render = body("renderScreen")
-    assert "renderTop10" in render and "renderPositions" in render
+    assert "renderBuy" in render and "renderPositions" in render
 
 
 def test_the_screen_request_does_not_silently_truncate_the_universe():

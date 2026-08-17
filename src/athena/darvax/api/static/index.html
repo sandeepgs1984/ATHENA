@@ -11,7 +11,7 @@
     not touch dashboard.js/dashboard.css. ATHENA's asset-versioning discipline is
     therefore unaffected by anything here.
   -->
-  <link rel="stylesheet" href="/darvax/static/darvax.css?v=0.1.0-dx7c">
+  <link rel="stylesheet" href="/darvax/static/darvax.css?v=0.1.0-dx8b">
 </head>
 <body>
   <div class="wrap">
@@ -58,6 +58,9 @@
         <button id="toggle-other" type="button" class="ghost" aria-pressed="false">
           Show not eligible
         </button>
+        <button id="toggle-detail" type="button" class="ghost" aria-pressed="false">
+          Detailed view
+        </button>
         <span class="spacer"></span>
         <button id="cancel-sweep" type="button" class="ghost danger" hidden>Cancel sweep</button>
         <button id="sweep" type="button" class="primary">Screen universe</button>
@@ -76,89 +79,81 @@
 
       <p class="note" id="screen-note"></p>
 
-      <!-- ============ Zone 1: what you hold (DX-7c) ============
-        HOLD and EXIT are claims about a position, so this zone is what makes
-        them meaningful. DarvaX keeps its own list (advisor design decision 1a)
-        and does NOT reconcile with ATHENA's owner_positions.
+      <!-- ================= Advisor view (DX-8b) =================
+        One question — "what do I do today?" — answered in urgency order:
+        what to sell, what is fine, what to buy. Everything with nothing to
+        say collapses to a single line. The DX-6c table is not deleted; it
+        moves behind "Detailed view".
       -->
-      <section class="zone positions" id="positions-zone">
-        <header class="zonehead">
-          <h2>Your positions</h2>
-          <span class="chips" id="pos-chips"></span>
-          <span class="spacer"></span>
-          <button id="pos-add-toggle" type="button" class="ghost" aria-expanded="false">
-            Record a holding
-          </button>
-        </header>
+      <div id="advisor-view">
 
-        <form id="pos-form" class="posform" hidden autocomplete="off">
-          <input id="pf-symbol" type="text" placeholder="Symbol, e.g. RATNAVEER"
-                 aria-label="Symbol" spellcheck="false" required>
-          <input id="pf-qty" type="number" min="1" step="1" placeholder="Qty"
-                 aria-label="Quantity" required>
-          <input id="pf-price" type="text" inputmode="decimal" placeholder="Entry price"
-                 aria-label="Entry price" required>
-          <input id="pf-date" type="date" aria-label="Entry date" required>
-          <input id="pf-stop" type="text" inputmode="decimal"
-                 placeholder="Stop (optional)" aria-label="Stop price">
-          <button type="submit" class="primary">Add</button>
-          <button type="button" id="pf-cancel" class="ghost">Cancel</button>
-          <p class="dim formnote">
-            Leave the stop blank and DarvaX sets it from the configured policy
-            &mdash; Darvas' 10% on first breakout. It is frozen at entry, so
-            changing the policy later will not move it.
+        <section class="zone" id="positions-zone">
+          <header class="zonehead">
+            <h2>Your positions</h2>
+            <span class="chips" id="pos-chips"></span>
+            <span class="spacer"></span>
+            <button id="pos-add-toggle" type="button" class="ghost" aria-expanded="false">
+              Record a holding
+            </button>
+          </header>
+
+          <form id="pos-form" class="posform" hidden autocomplete="off">
+            <input id="pf-symbol" type="text" placeholder="Symbol, e.g. RATNAVEER"
+                   aria-label="Symbol" spellcheck="false" required>
+            <input id="pf-qty" type="number" min="1" step="1" placeholder="Qty"
+                   aria-label="Quantity" required>
+            <input id="pf-price" type="text" inputmode="decimal" placeholder="Price you paid"
+                   aria-label="Entry price" required>
+            <input id="pf-date" type="date" aria-label="Entry date" required>
+            <input id="pf-stop" type="text" inputmode="decimal"
+                   placeholder="Stop (optional)" aria-label="Stop price">
+            <button type="submit" class="primary">Add</button>
+            <button type="button" id="pf-cancel" class="ghost">Cancel</button>
+            <p class="dim formnote">
+              Leave the stop blank and DarvaX sets it 10% below your price, which
+              is what the method asks for. It is fixed at the time you add it.
+            </p>
+          </form>
+
+          <p class="note" id="pos-note"></p>
+
+          <div id="pos-empty" class="empty" hidden>
+            <p>No positions recorded.</p>
+            <p class="dim">
+              DarvaX cannot see what you own. Add a holding and it will tell you
+              plainly whether to <strong>hold</strong> or <strong>sell</strong>.
+              Adding a holding never places an order.
+            </p>
+          </div>
+
+          <!-- Sell first: it is the only time-critical thing on the page. -->
+          <div class="group sell" id="sell-group" hidden>
+            <h3><span class="dot"></span> Sell now <span class="n" id="sell-n"></span></h3>
+            <div class="tickets" id="sell-tickets"></div>
+          </div>
+
+          <div class="group hold" id="hold-group" hidden>
+            <h3><span class="dot"></span> Holding — nothing to do <span class="n" id="hold-n"></span></h3>
+            <div class="tickets" id="hold-tickets"></div>
+          </div>
+        </section>
+
+        <section class="zone" id="buy-zone" hidden>
+          <header class="zonehead">
+            <h2>Buy candidates</h2>
+            <span class="dim" id="buy-sub"></span>
+          </header>
+          <div class="tickets buy" id="buy-tickets"></div>
+          <p class="dim cardnote">
+            Ordered by how close price is to the level the method wants you to
+            buy above &mdash; a measurement, not a ranking of quality. DarvaX
+            gives no score, no target and no "strong buy": the method has a
+            buy rule and a stop, and nothing else.
           </p>
-        </form>
+        </section>
 
-        <p class="note" id="pos-note"></p>
-
-        <div id="pos-empty" class="empty" hidden>
-          <p>No positions recorded.</p>
-          <p class="dim">
-            DarvaX cannot see what you own. Record a holding and it will tell you
-            whether the methodology says <strong>hold</strong> or
-            <strong>exit</strong>, instead of the conditional &ldquo;exit if
-            held&rdquo;. Recording a holding never places an order.
-          </p>
-        </div>
-
-        <div class="scroll" id="pos-wrap" hidden>
-          <table class="postable">
-            <thead>
-              <tr>
-                <th>Symbol</th>
-                <th>Advice</th>
-                <th class="num">Qty</th>
-                <th class="num">Entry</th>
-                <th class="num">Now</th>
-                <th class="num">Return</th>
-                <th class="num">Stop</th>
-                <th>Why</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody id="pos-rows"></tbody>
-          </table>
-        </div>
-      </section>
-
-      <!-- ============ Zone 2: the shortlist (DX-7c) ============
-        Titled "nearest to trigger", NOT "best". DarvaX has no quality score and
-        DX-6a deliberately deferred the quantities one would need. These are the
-        engine's own persisted ranks, not a client-side re-sort.
-      -->
-      <section class="zone top10" id="top10-zone" hidden>
-        <header class="zonehead">
-          <h2>Nearest to trigger</h2>
-          <span class="dim" id="top10-sub"></span>
-        </header>
-        <div class="cards" id="top10-cards"></div>
-        <p class="dim cardnote">
-          Ordered by how close price is to the level that satisfies Darvas rule B
-          &mdash; a measurement, not a ranking of quality. DarvaX publishes no
-          conviction score because the methodology provides no evidence for one.
-        </p>
-      </section>
+        <p class="dim restline" id="rest-line" hidden></p>
+      </div>
 
       <div id="screen-empty" class="empty" hidden>
         <p>No sweep yet.</p>
@@ -169,12 +164,14 @@
         </p>
       </div>
 
-      <div id="tiers"></div>
+      <div id="detailed-view" hidden>
+        <div id="tiers"></div>
 
-      <details id="skipped" class="skipped" hidden>
-        <summary id="skipped-summary"></summary>
-        <ul id="skipped-list"></ul>
-      </details>
+        <details id="skipped" class="skipped" hidden>
+          <summary id="skipped-summary"></summary>
+          <ul id="skipped-list"></ul>
+        </details>
+      </div>
     </section>
 
     <!-- ===================== Ad-hoc scan (DX-4) ===================== -->
@@ -226,6 +223,6 @@
     </footer>
   </div>
 
-  <script src="/darvax/static/darvax.js?v=0.1.0-dx7c"></script>
+  <script src="/darvax/static/darvax.js?v=0.1.0-dx8b"></script>
 </body>
 </html>

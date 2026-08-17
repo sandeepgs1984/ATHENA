@@ -292,17 +292,26 @@
     posForm: document.getElementById("pos-form"),
     posNote: document.getElementById("pos-note"),
     posEmpty: document.getElementById("pos-empty"),
-    posWrap: document.getElementById("pos-wrap"),
-    posRows: document.getElementById("pos-rows"),
     pfSymbol: document.getElementById("pf-symbol"),
     pfQty: document.getElementById("pf-qty"),
     pfPrice: document.getElementById("pf-price"),
     pfDate: document.getElementById("pf-date"),
     pfStop: document.getElementById("pf-stop"),
     pfCancel: document.getElementById("pf-cancel"),
-    top10Zone: document.getElementById("top10-zone"),
-    top10Sub: document.getElementById("top10-sub"),
-    top10Cards: document.getElementById("top10-cards")
+    // DX-8b advisor layout
+    advisorView: document.getElementById("advisor-view"),
+    detailedView: document.getElementById("detailed-view"),
+    toggleDetail: document.getElementById("toggle-detail"),
+    sellGroup: document.getElementById("sell-group"),
+    sellTickets: document.getElementById("sell-tickets"),
+    sellN: document.getElementById("sell-n"),
+    holdGroup: document.getElementById("hold-group"),
+    holdTickets: document.getElementById("hold-tickets"),
+    holdN: document.getElementById("hold-n"),
+    buyZone: document.getElementById("buy-zone"),
+    buySub: document.getElementById("buy-sub"),
+    buyTickets: document.getElementById("buy-tickets"),
+    restLine: document.getElementById("rest-line")
   };
 
   var TIERS = [
@@ -585,8 +594,9 @@
     if (hasSweep) renderTiers(); else S.tiers.innerHTML = "";
     // The advisor zones read the same rows the table does, so they can never
     // show a different sweep than the screen beneath them (DX-7c).
-    renderTop10();
+    renderBuy();
     renderPositions();
+    renderRest();
   }
 
   function screenSay(message, isError) {
@@ -774,13 +784,13 @@
   // Labels only. Deliberately NOT a state->action map: the action arrives from
   // the server, and this turns it into words a human reads.
   var ACTION_LABEL = {
-    ENTER: "Enter",
-    ENTER_ON_RETEST: "Enter on retest",
+    ENTER: "Buy",
+    ENTER_ON_RETEST: "Buy on dip",
     WAIT: "Wait",
     HOLD: "Hold",
-    EXIT: "Exit",
-    EXIT_IF_HELD: "Exit if held",
-    NO_ENTRY: "No entry"
+    EXIT: "Sell",
+    EXIT_IF_HELD: "Sell if held",
+    NO_ENTRY: "Skip"
   };
 
   function actionChip(row) {
@@ -802,53 +812,122 @@
     return v === null ? "—" : "₹" + v.toLocaleString("en-IN");
   }
 
-  // ---------------------------------------------------------------- top 10
+  // ------------------------------------------------------------ trade tickets
 
-  function renderTop10() {
-    if (!screen.rows.length) { S.top10Zone.hidden = true; return; }
-    // The engine already ordered ACTIONABLE by distance-to-breakout ascending
-    // and assigned rank. Taking that order rather than re-sorting here is the
-    // point: the shortlist is the screen's own ranking, not a second opinion.
-    var shortlist = screen.rows
-      .filter(function (r) { return r.risk_bearing; })
-      .sort(function (a, b) { return (a.rank || 0) - (b.rank || 0); })
-      .slice(0, 10);
+  // Distance in words. "through" was on the shipped screen and reads like an
+  // error; it actually means the good news that price is already past the level.
+  function distanceWords(row) {
+    var pct = num(row.distance_to_breakout_pct);
+    if (pct === null) return "";
+    if (pct <= 0) return "already above the buy level";
+    return pct.toFixed(2) + "% below the buy level";
+  }
 
+  function riskLine(row) {
+    var buy = num(row.trigger_price), stop = num(row.stop_price);
+    if (buy === null || stop === null || buy <= 0) return "";
+    var risk = buy - stop;
+    // Formatted directly rather than through money(): that helper re-parses to
+    // a Number and toLocaleString drops the trailing zero, so a deliberate
+    // two-decimal rupee value came out as "₹6.7".
+    return '<span class="risk">risk ₹' +
+      risk.toLocaleString("en-IN", {
+        minimumFractionDigits: 2, maximumFractionDigits: 2
+      }) +
+      "/share (" + ((risk / buy) * 100).toFixed(1) + "%)</span>";
+  }
+
+  // The methodology, one disclosure away rather than in the reader's face.
+  // Renders the two strings the engine persisted; composes neither.
+  function methodologyDetails(row) {
+    var bits = "";
+    if (row.action_reason) bits += "<p>" + esc(row.action_reason) + "</p>";
+    if (row.explanation) bits += "<p>" + esc(row.explanation) + "</p>";
+    if (row.stop_basis) {
+      bits += '<p class="trace">stop basis ' + esc(row.stop_basis) +
+        " · rule " + esc(row.darvas_rule || "—") +
+        " · state " + esc(row.signal_type) + "</p>";
+    }
+    if (!bits) return "";
+    return '<details class="method"><summary>Why, in method terms</summary>' +
+      bits + "</details>";
+  }
+
+  function buyTicket(row, index) {
+    var buy = num(row.trigger_price);
+    return '' +
+      '<article class="ticket buy">' +
+        '<header><span class="pos">' + (index + 1) + "</span>" +
+          '<span class="sym">' + esc(row.symbol) + "</span>" +
+          actionChip(row) + "</header>" +
+        '<dl class="lines">' +
+          "<dt>Buy above</dt><dd class=\"key\">" +
+            (buy === null ? "—" : money(row.trigger_price)) + "</dd>" +
+          "<dt>Stop loss</dt><dd>" + money(row.stop_price) + " " +
+            riskLine(row) + "</dd>" +
+          "<dt>Now</dt><dd>" + money(row.close) +
+            '<span class="dist"> ' + esc(distanceWords(row)) + "</span></dd>" +
+        "</dl>" +
+        vizFor(row) +
+        '<p class="why">' + esc(row.action_reason_plain || row.action_reason) + "</p>" +
+        methodologyDetails(row) +
+      "</article>";
+  }
+
+  function holdingTicket(p, row) {
+    var close = row ? num(row.close) : null;
+    var entry = num(p.entry_price);
+    var ret = (close !== null && entry) ? ((close - entry) / entry) * 100 : null;
+    var why = row
+      ? esc(row.action_reason_plain || row.action_reason)
+      : "Run a screen to get advice for this holding.";
+    return '' +
+      '<article class="ticket">' +
+        '<header><span class="sym">' + esc(p.instrument_id.split(":").pop()) +
+          "</span>" +
+          (row ? actionChip(row) : '<span class="act a-none">no reading</span>') +
+          '<span class="spacer"></span>' +
+          (ret === null ? "" : '<span class="ret ' + (ret >= 0 ? "up" : "down") +
+            '">' + (ret >= 0 ? "+" : "") + ret.toFixed(2) + "%</span>") +
+        "</header>" +
+        '<dl class="lines">' +
+          "<dt>You hold</dt><dd>" + esc(p.quantity) + " at " +
+            money(p.entry_price) + "</dd>" +
+          "<dt>Now</dt><dd>" + (close === null ? "—" : money(row.close)) + "</dd>" +
+          "<dt>Your stop</dt><dd>" + money(p.stop_price) + "</dd>" +
+        "</dl>" +
+        '<p class="why">' + why + "</p>" +
+        (row ? methodologyDetails(row) : "") +
+        '<div class="rowact">' +
+          '<button type="button" class="ghost xs" data-close="' +
+            esc(p.position_id) + '">Mark closed</button>' +
+          '<button type="button" class="ghost xs danger" data-del="' +
+            esc(p.position_id) + '">Delete</button>' +
+        "</div>" +
+      "</article>";
+  }
+
+  // ---------------------------------------------------------------- buy list
+
+  function renderBuy() {
+    if (!screen.rows.length) { S.buyZone.hidden = true; return; }
+    // The engine already ordered these by distance to the buy level and
+    // assigned rank; taking that order rather than re-sorting keeps the
+    // shortlist and the detailed table telling the same story.
+    var all = screen.rows.filter(function (r) { return r.risk_bearing; });
+    var shortlist = all.slice().sort(function (a, b) {
+      return (a.rank || 0) - (b.rank || 0);
+    }).slice(0, 10);
+
+    S.buyZone.hidden = false;
     if (!shortlist.length) {
-      S.top10Zone.hidden = false;
-      S.top10Sub.textContent = "nothing is near a rule-B trigger right now";
-      S.top10Cards.innerHTML = '<p class="dim">No entry candidates in this sweep.</p>';
+      S.buySub.textContent = "nothing is near a buy level right now";
+      S.buyTickets.innerHTML = '<p class="dim">No buy candidates in this screen.</p>';
       return;
     }
-
-    S.top10Zone.hidden = false;
-    S.top10Sub.textContent =
-      shortlist.length + " of " + screen.rows.filter(function (r) {
-        return r.risk_bearing;
-      }).length + " entry candidates";
-
-    S.top10Cards.innerHTML = shortlist.map(function (row, i) {
-      var dist = num(row.distance_to_breakout_pct);
-      var distLabel = dist === null
-        ? "—"
-        : (dist <= 0 ? "through" : "+" + dist.toFixed(2) + "%");
-      return '' +
-        '<article class="card" data-id="' + esc(row.instrument_id) + '">' +
-          '<header>' +
-            '<span class="pos">' + (i + 1) + "</span>" +
-            '<span class="sym">' + esc(row.symbol) + "</span>" +
-            actionChip(row) +
-          "</header>" +
-          '<div class="figs">' +
-            "<span><b>" + money(row.close) + "</b><i>close</i></span>" +
-            "<span><b>" + distLabel + "</b><i>to trigger</i></span>" +
-            "<span><b>" + (num(row.box_height_pct) === null
-              ? "—" : num(row.box_height_pct).toFixed(2) + "%") + "</b><i>box height</i></span>" +
-          "</div>" +
-          vizFor(row) +
-          '<p class="why">' + esc(row.action_reason) + "</p>" +
-        "</article>";
-    }).join("");
+    S.buySub.textContent = "showing " + shortlist.length + " of " + all.length +
+      " · closest to their buy level first";
+    S.buyTickets.innerHTML = shortlist.map(buyTicket).join("");
   }
 
   // ------------------------------------------------------------- positions
@@ -868,11 +947,31 @@
   function renderPositions() {
     var open = positions.list;
     S.posEmpty.hidden = open.length > 0;
-    S.posWrap.hidden = open.length === 0;
 
-    // Chips summarise what the latest sweep says about what is held. They are
-    // counted from the sweep's own actions, so an empty sweep shows nothing
-    // rather than a reassuring zero.
+    var sell = [], hold = [];
+    open.forEach(function (p) {
+      var row = screenRowFor(p.instrument_id);
+      // Grouped by the action the engine assigned, never by re-reading the
+      // signal state here (ADR-005).
+      if (row && (row.action === "EXIT" || row.action === "EXIT_IF_HELD")) {
+        sell.push([p, row]);
+      } else {
+        hold.push([p, row]);
+      }
+    });
+
+    S.sellGroup.hidden = sell.length === 0;
+    S.sellN.textContent = sell.length ? sell.length : "";
+    S.sellTickets.innerHTML = sell.map(function (pair) {
+      return holdingTicket(pair[0], pair[1]);
+    }).join("");
+
+    S.holdGroup.hidden = hold.length === 0;
+    S.holdN.textContent = hold.length ? hold.length : "";
+    S.holdTickets.innerHTML = hold.map(function (pair) {
+      return holdingTicket(pair[0], pair[1]);
+    }).join("");
+
     var counts = {};
     open.forEach(function (p) {
       var row = screenRowFor(p.instrument_id);
@@ -882,37 +981,18 @@
       return '<span class="act a-' + esc(a) + '">' + esc(ACTION_LABEL[a] || a) +
         " " + counts[a] + "</span>";
     }).join("");
+  }
 
-    S.posRows.innerHTML = open.map(function (p) {
-      var row = screenRowFor(p.instrument_id);
-      var close = row ? num(row.close) : null;
-      var entry = num(p.entry_price);
-      var ret = (close !== null && entry) ? ((close - entry) / entry) * 100 : null;
-      var advice = row
-        ? actionChip(row)
-        : '<span class="act a-none" title="This instrument was not in the last ' +
-          'sweep, so DarvaX has no current reading for it.">no reading</span>';
-      var why = row ? esc(row.action_reason) : "Run a sweep to get advice for this holding.";
-      return '' +
-        "<tr>" +
-          "<td><b>" + esc(p.instrument_id.split(":").pop()) + "</b></td>" +
-          "<td>" + advice + "</td>" +
-          '<td class="num">' + esc(p.quantity) + "</td>" +
-          '<td class="num">' + money(p.entry_price) + "</td>" +
-          '<td class="num">' + (close === null ? "—" : money(row.close)) + "</td>" +
-          '<td class="num ' + (ret === null ? "" : (ret >= 0 ? "up" : "down")) + '">' +
-            (ret === null ? "—" : (ret >= 0 ? "+" : "") + ret.toFixed(2) + "%") + "</td>" +
-          '<td class="num" title="' + esc(p.stop_basis || "set by you") + '">' +
-            money(p.stop_price) + "</td>" +
-          '<td class="why">' + why + "</td>" +
-          '<td class="rowact">' +
-            '<button type="button" class="ghost xs" data-close="' + esc(p.position_id) +
-              '" title="Mark this trade closed. The record is kept.">Close</button>' +
-            '<button type="button" class="ghost xs danger" data-del="' + esc(p.position_id) +
-              '" title="Delete a mis-typed entry. This erases the record.">Delete</button>' +
-          "</td>" +
-        "</tr>";
-    }).join("");
+  // The long tail, as one line rather than 2,000 rows.
+  function renderRest() {
+    if (!screen.rows.length) { S.restLine.hidden = true; return; }
+    var quiet = screen.rows.filter(function (r) {
+      return r.action === "NO_ENTRY" || r.action === "WAIT";
+    }).length;
+    S.restLine.hidden = quiet === 0;
+    S.restLine.textContent = quiet.toLocaleString("en-IN") +
+      " more instruments with nothing to act on today. " +
+      "Open Detailed view to browse them.";
   }
 
   function loadPositions() {
@@ -923,6 +1003,21 @@
       posSay(err.message || String(err), true);
     });
   }
+
+  S.toggleDetail.addEventListener("click", function () {
+    var showDetail = S.detailedView.hidden;
+    S.detailedView.hidden = !showDetail;
+    S.advisorView.hidden = showDetail;
+    this.setAttribute("aria-pressed", String(showDetail));
+    this.textContent = showDetail ? "Simple view" : "Detailed view";
+  });
+
+  // ------------------------------------------------- position interactions
+  //
+  // Restored deliberately after the DX-8b restructure removed them along with
+  // the markup they were bound to: the form and both row buttons rendered
+  // perfectly and did nothing. Delegated from the two ticket lists rather than
+  // bound per button, since tickets are re-rendered on every screen load.
 
   S.posAddToggle.addEventListener("click", function () {
     var show = S.posForm.hidden;
@@ -959,7 +1054,7 @@
     };
     if (S.pfStop.value.trim()) body.stop_price = S.pfStop.value.trim();
 
-    posSay("Recording…");
+    posSay("Saving…");
     request("/darvax/api/positions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -975,7 +1070,7 @@
     });
   });
 
-  S.posRows.addEventListener("click", function (event) {
+  function onTicketClick(event) {
     var closeBtn = event.target.closest("button[data-close]");
     var delBtn = event.target.closest("button[data-del]");
     if (closeBtn) {
@@ -988,11 +1083,11 @@
       return;
     }
     if (delBtn) {
-      // Delete erases a record rather than closing a trade, so it asks. Close
-      // does not: it is the normal, reversible-by-re-entry path.
+      // Delete erases a record; close keeps the completed trade. Only the
+      // destructive one interrupts.
       if (!window.confirm(
-        "Delete this position record? Use Close instead if the trade really " +
-        "happened — Close keeps the history.")) return;
+        "Delete this position record? Use \"Mark closed\" instead if the trade " +
+        "really happened — that keeps the history.")) return;
       posSay("Deleting…");
       request("/darvax/api/positions/" + encodeURIComponent(
         delBtn.getAttribute("data-del")), { method: "DELETE" })
@@ -1000,7 +1095,10 @@
         .then(function () { posSay(""); })
         .catch(function (err) { posSay(err.message || String(err), true); });
     }
-  });
+  }
+
+  S.sellTickets.addEventListener("click", onTicketClick);
+  S.holdTickets.addEventListener("click", onTicketClick);
 
   loadPositions();
 
