@@ -3100,6 +3100,36 @@ support, **3b** the unvalidated warning rides on each risk-bearing action chip.
 | **DX-7b** Positions | `darvax_positions` (schema v5→v6) with a partial unique index for one open position per instrument; `HOLD` and position-confirmed `EXIT` derived from the DAR-CARD applied literally; stop frozen at entry with its basis. Positions are passed *into* the screening engine, which still performs no lookups. Also fixed a test-isolation defect that let DarvaX API tests write real sweeps into the owner's `db/darvax.db`. 39 tests | 🔄 Ready for review |
 | **DX-7c** Advisor dashboard | Three zones: positions with per-holding advice, a 10-card shortlist in the engine's own rank order, and the DX-6c tier table kept as zone 3. Unvalidated badge on every entry chip, carrying the DX-5 attribution finding. 33 tests | 🔄 Ready for review |
 
+### DarvaX plain-UI track (DX-8, design: `docs/design/DARVAX-PLAIN-UI-DESIGN.md`)
+
+Owner's verdict on DX-7c: *not user friendly, very complicated, not able to
+understand for a normal user.* Decisions in the design §5: **1b** a second
+plain-language field beside the technical one, **2a** simple by default with the
+table one click away, **3a** risk per share only (no position sizing — that is
+ATHENA's `sizing/` and ADR-010 keeps DarvaX out of it).
+
+| Milestone | Scope | Status |
+|---|---|---|
+| **DX-8a** | `stop_price`/`stop_basis` copied onto `ScreenResult` and `action_reason_plain` persisted beside the technical reason (schema v6→v7). **The stop was a correctness gap, not presentation**: rule B mandates it, `DarvaxSignal` always carried it, and the screener could not show it — so a screen recommended entries without the exit that makes them survivable. Guarded against the two registers drifting: the plain one may cite no rule, the technical one must, and they must differ. 15 tests | 🔄 Ready for review |
+| **DX-8b** | The plain screen: sell → hold → buy in urgency order, trade tickets carrying buy-above / stop / risk-per-share / now, plain vocabulary (`ACTIONABLE`→Buy, `BREAKOUT_RETEST`→Buy on dip, and *"through"*→*"already above the buy level"*, which meant good news and read like an error), long tail collapsed to one line, DX-6c table behind a toggle. 19 tests | 🔄 Ready for review |
+| **DX-8c** | Every honest state re-verified at the new layout, live. **Two were hidden by the restructure**: the skip report ended up inside "Detailed view" and the no-sweep message inside the advisor view — each rendering perfectly in one mode and invisible in the other. Both moved out; ancestry now asserted with a real HTML parser after a regex version reported success while being wrong. 16 tests | 🔄 Ready for review |
+
+**States verified in the browser**, not by fixture: no sweep (both views) · sweep
+running, sampled mid-flight through `enumerating → Evaluating universe`, 0 → 950
+→ 1550 → 2150, bar 0 → 98.1% · cancelled at 1,450 of 2,191 with results kept and
+flagged `partial` · methodology-digest mismatch, flagged alongside `partial` and
+present in both views · staleness, which correctly *disappeared* once the daily
+cycle advanced the ledger to 2026-08-17.
+
+Two defects found only by looking: DX-8b's restructure deleted the position
+form and row handlers along with the markup they were bound to — everything
+rendered and nothing worked — and risk per share printed `₹6.7` because a
+two-decimal value was passed through a helper that re-parses to a Number. Both
+are covered now, including a test that fails if any `getElementById` points at
+markup the page no longer defines.
+
+---
+
 **Verified in a real browser** against the live 2,191-instrument universe, which
 caught three things the tests did not: `.posform { display:flex }` defeating the
 `hidden` attribute so the entry form rendered permanently open; a `limit=2000`

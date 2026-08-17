@@ -11,7 +11,7 @@
     not touch dashboard.js/dashboard.css. ATHENA's asset-versioning discipline is
     therefore unaffected by anything here.
   -->
-  <link rel="stylesheet" href="/darvax/static/darvax.css?v=0.1.0-dx8b">
+  <link rel="stylesheet" href="/darvax/static/darvax.css?v=0.1.0-dx8c">
 </head>
 <body>
   <div class="wrap">
@@ -155,6 +155,14 @@
         <p class="dim restline" id="rest-line" hidden></p>
       </div>
 
+
+
+      <!--
+        Skips and the no-sweep state sit OUTSIDE both views on purpose. Putting
+        the skip report inside "Detailed view" at DX-8b meant a sweep that could
+        not read an instrument said so only to someone who had opted into the
+        table — which is the opposite of surfacing it.
+      -->
       <div id="screen-empty" class="empty" hidden>
         <p>No sweep yet.</p>
         <p class="dim">
@@ -164,13 +172,13 @@
         </p>
       </div>
 
+      <details id="skipped" class="skipped" hidden>
+        <summary id="skipped-summary"></summary>
+        <ul id="skipped-list"></ul>
+      </details>
+
       <div id="detailed-view" hidden>
         <div id="tiers"></div>
-
-        <details id="skipped" class="skipped" hidden>
-          <summary id="skipped-summary"></summary>
-          <ul id="skipped-list"></ul>
-        </details>
       </div>
     </section>
 
@@ -223,6 +231,6 @@
     </footer>
   </div>
 
-  <script src="/darvax/static/darvax.js?v=0.1.0-dx8b"></script>
+  <script src="/darvax/static/darvax.js?v=0.1.0-dx8c"></script>
 </body>
 </html>
