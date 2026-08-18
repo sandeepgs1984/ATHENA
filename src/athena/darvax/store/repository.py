@@ -103,6 +103,8 @@ def _row_to_screen_result(row: tuple) -> ScreenResult:
         action_reason_plain=row[18] or "",
         stop_price=_optional_decimal(row[19]),
         stop_basis=row[20],
+        stop_vs_ceiling=_optional_decimal(row[21]),
+        stop_vs_ceiling_note=row[22] or "",
     )
 
 
@@ -406,8 +408,9 @@ class DarvaxRepository:
                         "darvas_rule, rank, close, box_top, box_bottom, "
                         "trigger_price, distance_to_trigger_pct, distance_to_breakout_pct, "
                         "breakout_reference, box_height_pct, explanation, action, action_reason, "
-                        "action_reason_plain, stop_price, stop_basis"
-                        ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+                        "action_reason_plain, stop_price, stop_basis, "
+                        "stop_vs_ceiling, stop_vs_ceiling_note"
+                        ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
                         "ON CONFLICT(sweep_id, instrument_id) DO UPDATE SET "
                         "signal_id=excluded.signal_id, tier=excluded.tier, "
                         "signal_type=excluded.signal_type, "
@@ -423,7 +426,9 @@ class DarvaxRepository:
                         "action_reason=excluded.action_reason, "
                         "action_reason_plain=excluded.action_reason_plain, "
                         "stop_price=excluded.stop_price, "
-                        "stop_basis=excluded.stop_basis",
+                        "stop_basis=excluded.stop_basis, "
+                        "stop_vs_ceiling=excluded.stop_vs_ceiling, "
+                        "stop_vs_ceiling_note=excluded.stop_vs_ceiling_note",
                         [
                             (
                                 r.sweep_id,
@@ -447,6 +452,8 @@ class DarvaxRepository:
                                 r.action_reason_plain,
                                 _optional_str(r.stop_price),
                                 r.stop_basis,
+                                _optional_str(r.stop_vs_ceiling),
+                                r.stop_vs_ceiling_note,
                             )
                             for r in results
                         ],
@@ -664,7 +671,8 @@ class DarvaxRepository:
                     "distance_to_trigger_pct, distance_to_breakout_pct, "
                     "breakout_reference, box_height_pct, explanation, "
                     "action, action_reason, action_reason_plain, "
-                    "stop_price, stop_basis "
+                    "stop_price, stop_basis, stop_vs_ceiling, "
+                    "stop_vs_ceiling_note "
                     f"FROM darvax_screen_results {clause}",
                     params,
                 ).fetchall()

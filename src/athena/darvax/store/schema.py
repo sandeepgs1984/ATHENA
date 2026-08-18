@@ -33,7 +33,7 @@ never appear to have been produced by current settings.
 from __future__ import annotations
 
 #: Bumped independently of ATHENA's SCHEMA_VERSION. They never interact.
-DARVAX_SCHEMA_VERSION = 7
+DARVAX_SCHEMA_VERSION = 8
 
 _DDL: tuple[str, ...] = (
     "CREATE TABLE IF NOT EXISTS darvax_schema_version (version INTEGER NOT NULL)",
@@ -105,6 +105,8 @@ _DDL: tuple[str, ...] = (
         action_reason_plain     TEXT,
         stop_price              TEXT,
         stop_basis              TEXT,
+        stop_vs_ceiling         TEXT,
+        stop_vs_ceiling_note    TEXT,
         PRIMARY KEY (sweep_id, instrument_id)
     )
     """,
@@ -153,6 +155,10 @@ _ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("darvax_screen_results", "action_reason_plain", "TEXT"),
     ("darvax_screen_results", "stop_price", "TEXT"),
     ("darvax_screen_results", "stop_basis", "TEXT"),
+    # DX-9c. Where the stop lands relative to the breakout level — the same 10%
+    # rule falls on either side of it, which is a materially different trade.
+    ("darvax_screen_results", "stop_vs_ceiling", "TEXT"),
+    ("darvax_screen_results", "stop_vs_ceiling_note", "TEXT"),
 )
 
 

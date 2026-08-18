@@ -11,7 +11,7 @@
     not touch dashboard.js/dashboard.css. ATHENA's asset-versioning discipline is
     therefore unaffected by anything here.
   -->
-  <link rel="stylesheet" href="/darvax/static/darvax.css?v=0.1.0-dx8c">
+  <link rel="stylesheet" href="/darvax/static/darvax.css?v=0.1.0-dx9d">
 </head>
 <body>
   <div class="wrap">
@@ -58,9 +58,14 @@
         <button id="toggle-other" type="button" class="ghost" aria-pressed="false">
           Show not eligible
         </button>
-        <button id="toggle-detail" type="button" class="ghost" aria-pressed="false">
-          Detailed view
-        </button>
+        <div class="modeswitch" role="tablist" aria-label="Screen views">
+          <button id="mode-advisor" type="button" role="tab" aria-selected="true"
+                  title="What do I do today?">Advisor</button>
+          <button id="mode-levels" type="button" role="tab" aria-selected="false"
+                  title="Where are the prices?">Levels</button>
+          <button id="mode-table" type="button" role="tab" aria-selected="false"
+                  title="Show me everything">Table</button>
+        </div>
         <span class="spacer"></span>
         <button id="cancel-sweep" type="button" class="ghost danger" hidden>Cancel sweep</button>
         <button id="sweep" type="button" class="primary">Screen universe</button>
@@ -157,6 +162,35 @@
 
 
 
+      <!-- ================= Levels view (DX-9d) =================
+        Darvas is a visual method — a box, a ceiling, a break above it — and
+        neither other view draws it. Each card is a to-scale price ladder.
+
+        Restricted to rows that actually have levels: 1,557 NO_ENTRY
+        instruments have no box to draw, and the Table view is where they live.
+      -->
+      <div id="levels-view" hidden>
+        <section class="zone" id="lv-positions" hidden>
+          <header class="zonehead"><h2>Your positions</h2>
+            <span class="dim" id="lv-pos-sub"></span></header>
+          <div class="ladders" id="lv-pos-ladders"></div>
+        </section>
+
+        <section class="zone" id="lv-buy" hidden>
+          <header class="zonehead"><h2>Buy candidates</h2>
+            <span class="dim" id="lv-buy-sub"></span></header>
+          <div class="ladders" id="lv-buy-ladders"></div>
+        </section>
+
+        <section class="zone" id="lv-approaching" hidden>
+          <header class="zonehead"><h2>Approaching their level</h2>
+            <span class="dim" id="lv-appr-sub"></span></header>
+          <div class="ladders" id="lv-appr-ladders"></div>
+        </section>
+
+        <p class="dim cardnote" id="lv-note"></p>
+      </div>
+
       <!--
         Skips and the no-sweep state sit OUTSIDE both views on purpose. Putting
         the skip report inside "Detailed view" at DX-8b meant a sweep that could
@@ -231,6 +265,6 @@
     </footer>
   </div>
 
-  <script src="/darvax/static/darvax.js?v=0.1.0-dx8c"></script>
+  <script src="/darvax/static/darvax.js?v=0.1.0-dx9d"></script>
 </body>
 </html>

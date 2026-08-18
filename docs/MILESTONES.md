@@ -3100,6 +3100,58 @@ support, **3b** the unvalidated warning rides on each risk-bearing action chip.
 | **DX-7b** Positions | `darvax_positions` (schema v5→v6) with a partial unique index for one open position per instrument; `HOLD` and position-confirmed `EXIT` derived from the DAR-CARD applied literally; stop frozen at entry with its basis. Positions are passed *into* the screening engine, which still performs no lookups. Also fixed a test-isolation defect that let DarvaX API tests write real sweeps into the owner's `db/darvax.db`. 39 tests | 🔄 Ready for review |
 | **DX-7c** Advisor dashboard | Three zones: positions with per-holding advice, a 10-card shortlist in the engine's own rank order, and the DX-6c tier table kept as zone 3. Unvalidated badge on every entry chip, carrying the DX-5 attribution finding. 33 tests | 🔄 Ready for review |
 
+### DarvaX levels track (DX-9, design: `docs/design/DARVAX-DETAIL-TABLE-DESIGN.md`)
+
+Owner asked for the simple view's trade values in the detailed view too, and for
+a new view type carrying proper trading levels. He delegated the four open design
+decisions; answers are recorded in the design §5.
+
+**The finding that shaped it:** a trigger and stop exist for only **117 of 2,191
+rows (5%)** — DX-3 records them only where a breakout produced an entry. Literal
+parity would give three columns that are 95% empty, so "Buy above" instead shows
+the level the engine already ranks against (`trigger_price`, else `box_top`,
+marked), and a blank stop is treated as information: *not a trade yet*.
+
+**Second finding:** the level *ordering* varies, and the variation is a real
+trading fact the UI has never shown. XTRANET's stop (₹141.30) sits **above** its
+breakout ceiling (₹136.90); BI's stop (₹60.29) sits **below** its ceiling (₹75).
+Same 10% rule, materially different trades — one exits above the breakout, the
+other gives the whole breakout back.
+
+| Milestone | Scope | Status |
+|---|---|---|
+| **DX-9a** | Detailed table: nine columns in four labelled groups (ADVICE / THE TRADE / PRICE / STRUCTURE), replacing `State` and `Rule` rather than appending to them; sticky header (`NOT_ELIGIBLE` alone is 1,562 rows); action chip; plain distance wording; expansion reordered to lead with plain English. Grouped by **action**, matching the simple view | ⏳ Planned |
+| **DX-9b** | Honest states re-verified at the new table, live; render timing measured before any paging is added | ⏳ Planned |
+| **DX-9c** | Persist the stop-versus-ceiling comparison engine-side, schema v7→v8 (ADR-005). Measured on a live sweep: **50 stops above the breakout level, 65 below** — the majority of entries would give the whole breakout back if stopped. Every one of the 115 entries carries the comparison; no non-entry does. 31 tests (with DX-9d) | 🔄 Ready for review |
+| **DX-9d** | New **Levels** view: three-way mode switch, a to-scale price ladder per instrument in plain CSS — box as a filled band, breakout zone hatched, entry/stop/now marked, plus **your own entry and stop** styled apart from the method's. Restricted to rows with levels (1,557 `NO_ENTRY` excluded) | 🔄 Ready for review |
+
+Three views, three questions, no redundancy: **Advisor** — what do I do today?
+**Levels** — where are the prices? **Table** — show me everything.
+
+**Verified by measuring 128 rendered ladders**, not by eye. Three defects the
+browser found and no fixture would have:
+
+1. **A held position's own stop was not on its ladder** — it appeared as a line
+   of text under the chart, which is backwards for the one card where the level
+   protecting money matters most. Now drawn, and styled apart from the method's
+   stop: yours was frozen when the position was recorded, the method's is
+   recomputed every screen, and blurring them would let a prospective level read
+   as a live one.
+2. **Labels collided** where two levels sit close together — `Now ₹11,650` and
+   `Floor ₹11,607` are 0.4% apart, about 2% of the ladder. The label is nudged
+   and **the line is not**: moving the line would make the chart lie.
+3. **A first fix left 16 of 488 label pairs still overlapping**, because the
+   minimum gap (14px) was under the measured label height (14.7–15.5px); and a
+   purely forward pass then pushed 5 labels out of the card entirely. Fixed with
+   a backward clamp. Final: **0 overlaps, 0 escapes, worst gap +2.5px.**
+
+Explicitly excluded, and recorded so it is not revisited by accident: no
+candlestick chart (price history is not what the method reads, and ADR-004 rules
+out a charting library), no target line (the method has none), and no colour that
+implies quality — colour marks the *kind* of level, never how good a candidate is.
+
+---
+
 ### DarvaX plain-UI track (DX-8, design: `docs/design/DARVAX-PLAIN-UI-DESIGN.md`)
 
 Owner's verdict on DX-7c: *not user friendly, very complicated, not able to

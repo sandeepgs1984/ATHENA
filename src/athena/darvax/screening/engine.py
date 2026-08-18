@@ -336,6 +336,45 @@ def plain_reason(
     return "No clear pattern to trade right now."
 
 
+def stop_vs_ceiling(
+    signal: DarvaxSignal,
+) -> tuple[Decimal | None, str]:
+    """Where the stop lands relative to the level price broke out from (DX-9c).
+
+    Returns ``(signed_delta, sentence)`` — positive when the stop is above the
+    ceiling. ``(None, "")`` whenever either level is absent, which is every row
+    that is not an entry: there is no stop for a trade nobody is in.
+
+    **States a fact and attaches no advice.** The methodology says 10% below
+    entry; this reports where that lands against a level the engine already
+    recorded, because the same rule produces materially different trades:
+
+    * stop **above** the ceiling — a stop-out still exits above the breakout;
+    * stop **below** it — a stop-out gives the whole breakout back.
+
+    Whether either is acceptable is the owner's judgement, not DarvaX's, so no
+    branch here says "good" or "risky".
+    """
+    if signal.stop is None or signal.box_top is None:
+        return None, ""
+    delta = (signal.stop.price - signal.box_top).quantize(Decimal("0.01"))
+    if delta == 0:
+        return delta, (
+            f"The stop sits exactly at the breakout level of "
+            f"{_money(signal.box_top)}."
+        )
+    side = "above" if delta > 0 else "below"
+    tail = (
+        ""
+        if delta > 0
+        else " — a stop-out would give back the whole breakout"
+    )
+    return delta, (
+        f"The stop sits {_money(abs(delta))} {side} the breakout level of "
+        f"{_money(signal.box_top)}{tail}."
+    )
+
+
 def screen_signal(
     signal: DarvaxSignal,
     *,
@@ -352,6 +391,7 @@ def screen_signal(
     being replayable from its inputs.
     """
     breakout_pct, breakout_ref = distance_to_breakout(signal)
+    vs_ceiling, vs_ceiling_note = stop_vs_ceiling(signal)
     if position is not None and position.is_open:
         action, reason, plain = action_for_held(
             signal, stop_price=position.stop_price
@@ -372,6 +412,8 @@ def screen_signal(
         # the screener previously could not show one at all.
         stop_price=signal.stop.price if signal.stop else None,
         stop_basis=signal.stop.basis.value if signal.stop else None,
+        stop_vs_ceiling=vs_ceiling,
+        stop_vs_ceiling_note=vs_ceiling_note,
         sweep_id=sweep_id,
         instrument_id=signal.instrument_id,
         signal_id=signal.signal_id,

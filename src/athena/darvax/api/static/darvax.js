@@ -300,8 +300,21 @@
     pfCancel: document.getElementById("pf-cancel"),
     // DX-8b advisor layout
     advisorView: document.getElementById("advisor-view"),
+    levelsView: document.getElementById("levels-view"),
     detailedView: document.getElementById("detailed-view"),
-    toggleDetail: document.getElementById("toggle-detail"),
+    modeAdvisor: document.getElementById("mode-advisor"),
+    modeLevels: document.getElementById("mode-levels"),
+    modeTable: document.getElementById("mode-table"),
+    lvPositions: document.getElementById("lv-positions"),
+    lvPosSub: document.getElementById("lv-pos-sub"),
+    lvPosLadders: document.getElementById("lv-pos-ladders"),
+    lvBuy: document.getElementById("lv-buy"),
+    lvBuySub: document.getElementById("lv-buy-sub"),
+    lvBuyLadders: document.getElementById("lv-buy-ladders"),
+    lvApproaching: document.getElementById("lv-approaching"),
+    lvApprSub: document.getElementById("lv-appr-sub"),
+    lvApprLadders: document.getElementById("lv-appr-ladders"),
+    lvNote: document.getElementById("lv-note"),
     sellGroup: document.getElementById("sell-group"),
     sellTickets: document.getElementById("sell-tickets"),
     sellN: document.getElementById("sell-n"),
@@ -342,7 +355,8 @@
     sort: {},
     open: {},
     detail: {},
-    polling: null
+    polling: null,
+    mode: "advisor"
   };
 
   function num(raw, dp) {
@@ -597,6 +611,7 @@
     renderBuy();
     renderPositions();
     renderRest();
+    if (screen.mode === "levels") renderLevels();
   }
 
   function screenSay(message, isError) {
@@ -1004,13 +1019,232 @@
     });
   }
 
-  S.toggleDetail.addEventListener("click", function () {
-    var showDetail = S.detailedView.hidden;
-    S.detailedView.hidden = !showDetail;
-    S.advisorView.hidden = showDetail;
-    this.setAttribute("aria-pressed", String(showDetail));
-    this.textContent = showDetail ? "Simple view" : "Detailed view";
-  });
+
+  // ====================================================================
+  // Levels view (DX-9d) — the price ladder
+  //
+  // Darvas is a visual method: a box, a ceiling, a break above it. Rendered in
+  // plain CSS on a per-card relative scale, because prices on one sweep span
+  // ₹74 to ₹23,500 and a shared axis would flatten almost every ladder.
+  //
+  // Every level is a persisted field. The one sentence that carries insight —
+  // where the stop lands relative to the breakout level — was compared and
+  // worded by the engine (DX-9c), not assembled here.
+  // ====================================================================
+
+  //: Levels in descending display order, with how each is drawn. Data, so the
+  //: legend and the ladder cannot disagree about what a line means.
+  var LADDER_LEVELS = [
+    { key: "trigger_price", cls: "lv-entry",   label: "Entry",   hint: "prior day's high" },
+    { key: "stop_price",    cls: "lv-stop",    label: "Stop",    hint: "the method's exit" },
+    { key: "box_top",       cls: "lv-ceiling", label: "Ceiling", hint: "top of the box" },
+    { key: "box_bottom",    cls: "lv-floor",   label: "Floor",   hint: "bottom of the box" }
+  ];
+
+  function ladder(row, position) {
+    var present = [];
+    LADDER_LEVELS.forEach(function (lv) {
+      var v = num(row[lv.key]);
+      if (v !== null) present.push({ v: v, cls: lv.cls, label: lv.label, hint: lv.hint });
+    });
+    var now = num(row.close);
+    if (now !== null) present.push({ v: now, cls: "lv-now", label: "Now", hint: "" });
+
+    // A holding's own entry and stop, when there is one. Labelled "Your …" and
+    // styled apart because the provenance differs and must not be blurred: the
+    // method's stop is prospective and moves with each screen, whereas yours was
+    // frozen when you recorded the position. A held card without them was the
+    // first thing wrong with this view — the level that actually protects the
+    // position appeared only as a line of text under the chart.
+    if (position) {
+      var pe = num(position.entry_price), ps = num(position.stop_price);
+      if (pe !== null) {
+        present.push({ v: pe, cls: "lv-yourentry", label: "Your entry", hint: "" });
+      }
+      if (ps !== null) {
+        present.push({ v: ps, cls: "lv-yourstop", label: "Your stop", hint: "" });
+      }
+    }
+    if (present.length < 2) {
+      return '<p class="dim">No levels recorded for this instrument.</p>';
+    }
+
+    var vals = present.map(function (p) { return p.v; });
+    var min = Math.min.apply(null, vals), max = Math.max.apply(null, vals);
+    var pad = (max - min) * 0.12 || 1;
+    var lo = min - pad, hi = max + pad;
+    function y(v) { return (1 - (v - lo) / (hi - lo)) * 100; }
+
+    var top = num(row.box_top), bottom = num(row.box_bottom);
+    var html = '<div class="ladder">';
+
+    // The box itself, and the breakout zone above its ceiling.
+    if (top !== null && bottom !== null) {
+      html += '<div class="lv-box" style="top:' + y(top).toFixed(2) +
+        "%;height:" + (y(bottom) - y(top)).toFixed(2) + '%"></div>';
+      html += '<div class="lv-zone" style="top:0;height:' + y(top).toFixed(2) +
+        '%"><span>breakout zone</span></div>';
+    }
+
+    // Descending so the labels read like a price ladder.
+    //
+    // The LINE sits at its true position and only the LABEL is nudged when two
+    // levels are too close to read — on a real holding, Now ₹11,650 and Floor
+    // ₹11,607 are 0.4% apart, which is ~2% of the ladder and two labels on top
+    // of each other. Moving the line instead would make the chart lie.
+    var ordered = present.sort(function (a, b) { return b.v - a.v; });
+
+    // Two passes. Forward opens a minimum gap between labels; a purely forward
+    // pass then pushes the lowest ones out of the card when several levels
+    // cluster near the floor (5 escaped on a real sweep), so a backward pass
+    // clamps them inside and lets earlier labels ride up to make room.
+    var truePxs = ordered.map(function (p) { return (y(p.v) / 100) * LADDER_HEIGHT_PX; });
+    var labelPxs = [];
+    truePxs.forEach(function (tp, i) {
+      labelPxs[i] = i === 0 ? tp : Math.max(tp, labelPxs[i - 1] + LABEL_MIN_GAP_PX);
+    });
+    var floorPx = LADDER_HEIGHT_PX - LABEL_HEIGHT_PX;
+    for (var i = labelPxs.length - 1; i >= 0; i--) {
+      var ceilingForThis = i === labelPxs.length - 1
+        ? floorPx
+        : labelPxs[i + 1] - LABEL_MIN_GAP_PX;
+      labelPxs[i] = Math.min(labelPxs[i], ceilingForThis);
+      if (labelPxs[i] < 0) labelPxs[i] = 0;
+    }
+
+    ordered.forEach(function (p, idx) {
+      var truePct = y(p.v);
+      var truePx = truePxs[idx];
+      var labelPx = labelPxs[idx];
+      var shift = labelPx - truePx;
+      html += '<div class="lv-line ' + p.cls + '" style="top:' + truePct.toFixed(2) + '%">' +
+        '<span class="lv-tag"' +
+        (Math.abs(shift) > 0.5
+          ? ' style="transform:translateY(' + shift.toFixed(1) + 'px)"'
+          : "") +
+        '><span class="lv-price">' + money(String(p.v)) + "</span>" +
+        '<span class="lv-name">' + esc(p.label) + "</span>" +
+        (p.hint ? '<span class="lv-hint">' + esc(p.hint) + "</span>" : "") +
+        "</span></div>";
+    });
+    return html + "</div>";
+  }
+
+  function riskRow(row) {
+    var buy = num(row.trigger_price), stop = num(row.stop_price);
+    if (buy === null || stop === null || buy <= 0) return "";
+    var risk = buy - stop;
+    return '<div class="lv-figs">' +
+      "<span><b>" + money(row.trigger_price) + "</b><i>buy above</i></span>" +
+      "<span><b>" + money(row.stop_price) + "</b><i>stop</i></span>" +
+      "<span><b>₹" + risk.toLocaleString("en-IN", {
+        minimumFractionDigits: 2, maximumFractionDigits: 2
+      }) + "</b><i>risk/share</i></span>" +
+      "</div>";
+  }
+
+  function ladderCard(row, position) {
+    // The stop-versus-ceiling sentence is read from the payload, never derived:
+    // it is the one line on this card that says something non-obvious, and
+    // ADR-005 keeps it with the engine that measured it.
+    var vs = row.stop_vs_ceiling_note
+      ? '<p class="lv-vs ' + (num(row.stop_vs_ceiling) >= 0 ? "ok" : "warn") + '">' +
+        esc(row.stop_vs_ceiling_note) + "</p>"
+      : "";
+    var held = position
+      ? '<div class="lv-held">You hold ' + esc(position.quantity) + " at " +
+        money(position.entry_price) + " · your stop " + money(position.stop_price) +
+        "</div>"
+      : "";
+    return '' +
+      '<article class="lcard">' +
+        '<header><span class="sym">' + esc(row.symbol) + "</span>" +
+          actionChip(row) + "</header>" +
+        ladder(row, position) +
+        riskRow(row) +
+        held +
+        '<p class="why">' + esc(row.action_reason_plain || row.action_reason) + "</p>" +
+        vs +
+        methodologyDetails(row) +
+      "</article>";
+  }
+
+  //: Watch candidates shown in the Levels view. A ladder per instrument is a
+  //: lot of pixels, and 483 of them would bury the entries; these are the ones
+  //: nearest their level, which is the same order the engine ranks by.
+  var LEVELS_APPROACHING = 12;
+
+  //: Ladder geometry. Height must match the CSS, because label de-collision is
+  //: computed in pixels against it.
+  var LADDER_HEIGHT_PX = 176;
+
+  //: Minimum distance between label *tops*, so it must exceed the label height
+  //: or the boxes still overlap. Measured in the browser at 14.7–15.5px, so 14
+  //: left 16 of 488 label pairs overlapping by ~2.7px — visibly wrong and
+  //: exactly the kind of thing that looks fine in a mock and not in use.
+  var LABEL_MIN_GAP_PX = 19;
+
+  //: Measured label height (14.7–15.5px). Used to keep the lowest label inside
+  //: the ladder rather than hanging below the card.
+  var LABEL_HEIGHT_PX = 16;
+
+  function renderLevels() {
+    if (!screen.rows.length) {
+      S.lvPositions.hidden = S.lvBuy.hidden = S.lvApproaching.hidden = true;
+      S.lvNote.textContent = "Run a screen to see levels.";
+      return;
+    }
+    var byId = {};
+    screen.rows.forEach(function (r) { byId[r.instrument_id] = r; });
+
+    var held = positions.list.filter(function (p) { return byId[p.instrument_id]; });
+    S.lvPositions.hidden = held.length === 0;
+    S.lvPosSub.textContent = held.length ? held.length + " with levels" : "";
+    S.lvPosLadders.innerHTML = held.map(function (p) {
+      return ladderCard(byId[p.instrument_id], p);
+    }).join("");
+
+    var buys = screen.rows.filter(function (r) { return r.risk_bearing; })
+      .sort(function (a, b) { return (a.rank || 0) - (b.rank || 0); });
+    S.lvBuy.hidden = buys.length === 0;
+    S.lvBuySub.textContent = buys.length + " with a full set of levels";
+    S.lvBuyLadders.innerHTML = buys.map(function (r) {
+      return ladderCard(r, null);
+    }).join("");
+
+    var waiting = screen.rows.filter(function (r) { return r.action === "WAIT"; })
+      .sort(function (a, b) { return (a.rank || 0) - (b.rank || 0); })
+      .slice(0, LEVELS_APPROACHING);
+    S.lvApproaching.hidden = waiting.length === 0;
+    S.lvApprSub.textContent = "nearest " + waiting.length +
+      " of " + screen.rows.filter(function (r) { return r.action === "WAIT"; }).length +
+      " · no entry or stop yet, so only the box is drawn";
+    S.lvApprLadders.innerHTML = waiting.map(function (r) {
+      return ladderCard(r, null);
+    }).join("");
+
+    var quiet = screen.rows.filter(function (r) { return r.action === "NO_ENTRY"; }).length;
+    S.lvNote.textContent = quiet.toLocaleString("en-IN") +
+      " instruments have no box to draw and are not shown here. " +
+      "The Table view lists every row.";
+  }
+
+  // Three views, three questions: what do I do / where are the prices / show
+  // me everything. Exactly one is visible, so they cannot render at once.
+  function setMode(mode) {
+    screen.mode = mode;
+    S.advisorView.hidden = mode !== "advisor";
+    S.levelsView.hidden = mode !== "levels";
+    S.detailedView.hidden = mode !== "table";
+    S.modeAdvisor.setAttribute("aria-selected", String(mode === "advisor"));
+    S.modeLevels.setAttribute("aria-selected", String(mode === "levels"));
+    S.modeTable.setAttribute("aria-selected", String(mode === "table"));
+    if (mode === "levels") renderLevels();
+  }
+
+  S.modeAdvisor.addEventListener("click", function () { setMode("advisor"); });
+  S.modeLevels.addEventListener("click", function () { setMode("levels"); });
+  S.modeTable.addEventListener("click", function () { setMode("table"); });
 
   // ------------------------------------------------- position interactions
   //

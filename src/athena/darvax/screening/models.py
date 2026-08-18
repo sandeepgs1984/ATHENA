@@ -160,6 +160,22 @@ class ScreenResult:
     stop_basis: str | None = None
     """Which documented rule produced ``stop_price`` — so a stop is never a bare
     number whose origin nobody can state."""
+    stop_vs_ceiling: Decimal | None = None
+    """``stop_price - box_top``. Positive means the stop sits **above** the level
+    price broke out from; negative means a stop-out gives the breakout back.
+
+    Measured on a real sweep, the same 10% rule lands on both sides: XTRANET's
+    stop was ₹4.40 above its ceiling, BI's ₹14.71 below. Materially different
+    trades that DarvaX had no way to tell apart, because nothing compared the
+    two levels it already held.
+
+    Arithmetic on two persisted numbers, not a new rule — and persisted rather
+    than derived in the browser because ADR-005 puts a computed value with the
+    engine that computed it. ``None`` whenever either level is absent, which is
+    every row that is not an entry."""
+    stop_vs_ceiling_note: str = ""
+    """The comparison in plain English, with no recommendation attached. It
+    states where the stop lands; it does not say whether that is good."""
     box_top: Decimal | None = None
     box_bottom: Decimal | None = None
     trigger_price: Decimal | None = None

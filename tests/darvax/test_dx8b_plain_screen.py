@@ -36,7 +36,9 @@ FLAT_HTML = " ".join(HTML.split())
         ("pfCancel", "addEventListener"),
         ("sellTickets", "addEventListener"),
         ("holdTickets", "addEventListener"),
-        ("toggleDetail", "addEventListener"),
+        ("modeAdvisor", "addEventListener"),
+        ("modeLevels", "addEventListener"),
+        ("modeTable", "addEventListener"),
     ],
 )
 def test_every_interactive_element_has_a_listener(element: str, handler: str):
@@ -146,8 +148,12 @@ def test_the_detailed_table_is_reachable_not_deleted():
     assert 'id="detailed-view"' in HTML
     assert 'id="tiers"' in HTML
     assert "renderTiers" in CODE
-    toggle = CODE.split("S.toggleDetail.addEventListener")[1].split("});")[0]
-    assert "detailedView.hidden" in toggle and "advisorView.hidden" in toggle
+    # DX-9d replaced the two-state toggle with a three-way mode switch, so the
+    # assertion moved from "the toggle flips two things" to "exactly one view is
+    # visible per mode" — which is the property that actually matters.
+    mode = CODE.split("function setMode")[1].split("\n  S.modeAdvisor")[0]
+    for view in ("advisorView", "levelsView", "detailedView"):
+        assert f"S.{view}.hidden = mode !==" in mode, view
 
 
 def test_the_long_tail_collapses_to_one_line():
