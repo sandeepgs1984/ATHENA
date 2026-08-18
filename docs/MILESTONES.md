@@ -3162,7 +3162,8 @@ conviction and profitable."* What was buildable honestly, and what was not:
 |---|---|---|
 | **DX-10a** | **Liquidity, not market cap.** ATHENA holds no capitalisation data anywhere, and inventing a proxy would be inventing a fundamental. Median traded value over 20 sessions, persisted engine-side (schema v8→v9); **median not mean, so a single 500× volume spike moves it not at all** (verified). Measured at sweep time — the screening engine has no market-data access by design, so the sweep computes it and hands it down | 🔄 Ready for review |
 | **DX-10b** | Three conviction filters: where the stop sits relative to the breakout, liquidity threshold, box tightness. Measured funnel on a real sweep: 117 → **50** (stop above breakout) → **23** (≥₹25 cr/day) → **10** (box ≤10%) | 🔄 Ready for review |
-| **DX-10c** | **R-multiples instead of a target.** The method has no profit target — Darvas trailed the stop, and the DAR-CARD's only exits are the 10% stop (B) and the box floor (C), which *is* the trail. So the card shows `R = buy level − stop` with 1R/2R/3R and an `already +N.R` marker, labelled as a scale and not a forecast. Plus: the liquidity filter now **disables itself with a stated reason** on a sweep that recorded none, and the page no longer quotes a sweep-record count smaller than the rows it is displaying. 8 tests | 🔄 Ready for review |
+| **DX-10c** | **R-multiples instead of a target.** The method has no profit target — Darvas trailed the stop-loss, and the DAR-CARD's only exits are the 10% stop-loss (B) and the box floor (C), which *is* the trail. So the card shows `R = buy level − stop-loss` with 1R/2R/3R and an `already +N.R` marker, labelled as a scale and not a forecast. Plus: the liquidity filter **disables itself with a stated reason** on a sweep that recorded none, and the page no longer quotes a sweep-record count smaller than the rows it is displaying | 🔄 Ready for review |
+| **DX-10cʹ** | **Plain language pass**, after the owner reported the DX-10b filter names as *"more confusing and not at all user friendly"* and asked *"stop means stop loss?"*. Every label DarvaX writes now says **stop-loss** in full (filter, table column, ladder row, `Your stop-loss`, entry field); engine-persisted prose keeps its own wording per ADR-005. Filter options carry the **fact**, the note below carries the **meaning** — an option is a label, and the intermediate attempt that made it a sentence read worse than the jargon it replaced. Box height states explicitly that it is *not* measured from the buy level, because on a real sweep the buy level sits above the ceiling on 107 of 117 rows but **inside the box on 10**. 18 tests | 🔄 Ready for review |
 | **DX-10d** | Volume-expansion filter (breakout volume vs its own median). Requires extending the **DX-3 signal engine** to measure and persist it, and **cannot be backfilled** onto existing signals. Not started — needs owner approval as its own milestone | ⏳ Planned |
 | **DX-10e** | Acquire and version a market-cap source, if wanted. No provider currently supplies it | ⏸ Deferred |
 
@@ -3202,6 +3203,15 @@ before the results would claim coverage that a crash then invalidates, which is
 worse. Options are one transaction spanning both writes, or deriving display
 state from the presence of results. Either touches `screening/sweep.py`
 persistence ordering and belongs in its own milestone.
+
+**Closed without needing the owner — the repeated stop-loss warning.** Asked
+twice during DX-9/DX-10: 65 of 115 entries carry the stop-loss-below-breakout
+sentence, so should it be summarised once at the top instead of appearing on
+every card? **No.** The sentence is not boilerplate — it is engine-computed
+per-card data carrying that instrument's own figures (*"₹58.28 below the
+breakout level of ₹698"* against *"₹22.01 below … ₹174.97"*). Hoisting it into
+one summary line would replace 65 specific measurements with a count, which is
+a loss of information dressed as a reduction in clutter. It stays per card.
 
 **Also unfixed, recorded so it is not lost** (`SYMBOL-UNIVERSE-INVESTIGATION.md`
 §13): group membership is never retracted on re-run, and 270 iNAV rows resolve

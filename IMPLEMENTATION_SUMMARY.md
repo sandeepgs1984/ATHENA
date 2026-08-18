@@ -28,16 +28,16 @@ no build step. ADR-010's import surface is untouched.
 sticky symbol column, R row, disabled-filter styling, explicit two-row bar),
 `index.html` (bar split into two rows), `tab.js` (asset version).
 
-**Tests added.** 17 — `test_dx9a_table_values.py` (11 new), plus 3 in
-`test_dx10_filters.py`, 1 in `test_dx8b_plain_screen.py`, 2 in
-`test_dx8c_honest_states.py`.
+**Tests added.** 38 across the change set — `test_dx9a_table_values.py` (13),
+`test_dx10_filters.py` (additions through three label revisions),
+`test_dx8b_plain_screen.py`, `test_dx8c_honest_states.py`.
 Two existing tests were **re-anchored, not relaxed**: one pinned the literal
 `"risk from here ₹"` including a symbol that moved into a formatter, and one
 banned the substring `"profit target"` and so fired on the label whose purpose is
 to deny there is one — replaced with a check for a stored field plus a
 negation requirement, which is strictly stronger.
 
-**Test results.** 1,927 → **1,944 passing**, full suite, no skips introduced.
+**Test results.** 1,927 → **1,950 passing**, full suite, no skips introduced.
 
 **Risks discovered.**
 
@@ -80,8 +80,44 @@ suite and visible in the browser within a minute:
   resolve. That gap let a dead script pass 1,924 tests one milestone earlier, and
   it let an unstyled chip pass this one.
 
-**Implementation metrics.** ~640 lines JS/CSS/HTML, 17 tests, 3 design-doc
-sections, 1 new MILESTONES section (DX-10, five milestones).
+**Implementation metrics.** ~2,000 insertions across 22 files, 38 tests,
+4 design-doc sections, 1 new MILESTONES section (DX-10, six milestones).
+
+**Plain-language pass (DX-10cʹ), added after owner review of the filters.** The
+owner reported the DX-10b filter names as *"more confusing and not at all user
+friendly"* and asked *"stop means stop loss?"*. Both were fair, and the second is
+conclusive: having to ask proves the abbreviation was not carrying its meaning,
+and DarvaX had used the short form in **every** place it names that price.
+
+- Every label now says **stop-loss** in full: filter options, the table column,
+  the ladder row, `Your stop-loss` on a holding, the entry field. Engine-persisted
+  prose is deliberately untouched — ADR-005 puts that wording with the engine that
+  computed it, and rewording it in the UI would also need a re-sweep to reach the
+  2,191 existing rows.
+- **The intermediate attempt was worse than what it replaced**, and the reason
+  generalises: I moved the consequence into the dropdown option text ("Stop keeps
+  part of the breakout"). An option is a label; a label that has become a sentence
+  gives neither the precision of the short form nor the clarity of the long one.
+  The fix is a split — fact in the option, meaning in the note below the bar,
+  where a sentence fits and is read once rather than on every glance.
+- Box height now states what it is **not**: measured over 117 rows carrying both
+  a box and a buy level, the buy level sits above the ceiling on 107 (91%) but
+  **inside the box on 10 (9%)**, so there is no rule for a reader to infer and the
+  negative has to be said outright.
+- `Box ht` spelled out; hover explanations added to `Risk now`, `To buy level`
+  and `Box height`.
+
+**Owner questions closed in this change set.** The repeated
+stop-loss-below-breakout sentence (65 of 115 entries) stays **per card**: it is
+engine-computed per-card data carrying each instrument's own figures, so hoisting
+it into one summary line would trade 65 measurements for a count — information
+loss presented as decluttering. Asked twice; resolved here rather than a third
+time.
+
+**`ATHENA_BRIEFING.md` §6 corrected in this change set**, as CLAUDE.md requires
+when the module map drifts: `darvax/positions/` existed but was unlisted, and
+`screening` was described as tiers-and-sweep only when it now also owns action
+classification and liquidity.
 
 **Phase outcome.** DX-9a, DX-9b, DX-10c ready for review. DX-10d (volume
 expansion) requires a DX-3 signal-engine change and cannot be backfilled;
