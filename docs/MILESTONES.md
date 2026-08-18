@@ -3120,8 +3120,8 @@ other gives the whole breakout back.
 
 | Milestone | Scope | Status |
 |---|---|---|
-| **DX-9a** | Detailed table: nine columns in four labelled groups (ADVICE / THE TRADE / PRICE / STRUCTURE), replacing `State` and `Rule` rather than appending to them; sticky header (`NOT_ELIGIBLE` alone is 1,562 rows); action chip; plain distance wording; expansion reordered to lead with plain English. Grouped by **action**, matching the simple view | ⏳ Planned |
-| **DX-9b** | Honest states re-verified at the new table, live; render timing measured before any paging is added | ⏳ Planned |
+| **DX-9a** | Detailed table carries the trade values at last: **twelve columns under a banded three-group super-header** (identity / THE TRADE / context) — action chip, `Now`, `Buy above`, `Stop`, `Risk now`, `To buy level`, plus liquidity in the context block. `State` folded under the symbol rather than dropped (the persisted explanation is phrased in its terms); sticky symbol column. Risk and liquidity arithmetic **shared with the Levels card** so the two views cannot disagree. 11 tests | 🔄 Ready for review |
+| **DX-9b** | Verified live against a 2,191-row sweep generated with current code: 12 headers, super-header spans summing to exactly 12, 627 rows all with matching cell counts, sticky symbol column, absent levels rendering `—` rather than `₹0`, and action chips confirmed **actually styled** via computed colour rather than by their class name | 🔄 Ready for review |
 | **DX-9c** | Persist the stop-versus-ceiling comparison engine-side, schema v7→v8 (ADR-005). Measured on a live sweep: **50 stops above the breakout level, 65 below** — the majority of entries would give the whole breakout back if stopped. Every one of the 115 entries carries the comparison; no non-entry does. 31 tests (with DX-9d) | 🔄 Ready for review |
 | **DX-9d** | New **Levels** view: three-way mode switch, a to-scale price ladder per instrument in plain CSS — box as a filled band, breakout zone hatched, entry/stop/now marked, plus **your own entry and stop** styled apart from the method's. Restricted to rows with levels (1,557 `NO_ENTRY` excluded) | 🔄 Ready for review |
 
@@ -3149,6 +3149,63 @@ Explicitly excluded, and recorded so it is not revisited by accident: no
 candlestick chart (price history is not what the method reads, and ADR-004 rules
 out a charting library), no target line (the method has none), and no colour that
 implies quality — colour marks the *kind* of level, never how good a candidate is.
+
+---
+
+### DarvaX filters & targets track (DX-10, design: `docs/design/DARVAX-FILTERS-AND-TARGETS-DESIGN.md`)
+
+Owner asked for market-cap and volume filters and for a target price, then
+delegated the choices: *"you can decide whichever is best for trading and more
+conviction and profitable."* What was buildable honestly, and what was not:
+
+| Milestone | Scope | Status |
+|---|---|---|
+| **DX-10a** | **Liquidity, not market cap.** ATHENA holds no capitalisation data anywhere, and inventing a proxy would be inventing a fundamental. Median traded value over 20 sessions, persisted engine-side (schema v8→v9); **median not mean, so a single 500× volume spike moves it not at all** (verified). Measured at sweep time — the screening engine has no market-data access by design, so the sweep computes it and hands it down | 🔄 Ready for review |
+| **DX-10b** | Three conviction filters: where the stop sits relative to the breakout, liquidity threshold, box tightness. Measured funnel on a real sweep: 117 → **50** (stop above breakout) → **23** (≥₹25 cr/day) → **10** (box ≤10%) | 🔄 Ready for review |
+| **DX-10c** | **R-multiples instead of a target.** The method has no profit target — Darvas trailed the stop, and the DAR-CARD's only exits are the 10% stop (B) and the box floor (C), which *is* the trail. So the card shows `R = buy level − stop` with 1R/2R/3R and an `already +N.R` marker, labelled as a scale and not a forecast. Plus: the liquidity filter now **disables itself with a stated reason** on a sweep that recorded none, and the page no longer quotes a sweep-record count smaller than the rows it is displaying. 8 tests | 🔄 Ready for review |
+| **DX-10d** | Volume-expansion filter (breakout volume vs its own median). Requires extending the **DX-3 signal engine** to measure and persist it, and **cannot be backfilled** onto existing signals. Not started — needs owner approval as its own milestone | ⏳ Planned |
+| **DX-10e** | Acquire and version a market-cap source, if wanted. No provider currently supplies it | ⏸ Deferred |
+
+**Three defects found only by running it**, each invisible to the whole suite:
+
+1. **The page did not boot at all.** DX-10b's filter selectors were never added
+   to the element map — the patch anchored on a line with a trailing comma that
+   the last entry in an object literal does not have — so `S.fStop.addEventListener`
+   threw at initialisation and aborted the script. Static HTML rendered, nothing
+   else did. 1,924 tests passed because they asserted that strings appeared in
+   the source, not that references resolved.
+2. **Every price on the Levels card read `₹₹6.7`.** A second `function money()`
+   was declared while one already existed further down the file; the later
+   declaration wins, so callers of the new signature silently got the old helper
+   — which adds the symbol itself, and drops a trailing zero. Now one
+   `rupees()`, and a test that fails on **any** duplicated function name.
+3. **A sweep read as unstarted while displaying 2,191 rows.** Observed directly
+   on a copy of the owner's live database at ~18:55 IST: sweep
+   `swp-20260818-110247` had all 2,191 result rows persisted while its record
+   still said `state="running", evaluated=0`. A fresh process reading that record
+   printed *"0 instrument(s) screened"* above a table of 2,191 rows, while the
+   process that had run the sweep held the real figure in memory and showed
+   2,191.
+
+   **Scope corrected on re-measurement.** By 19:17 IST that same record read
+   `completed, evaluated=2191`, so the contradiction was a **transient window**,
+   not permanent loss — the runner saves results before the completion record,
+   and a reader landing between the two writes sees the inconsistent state.
+   Whether the record is ever permanently lost (a process killed in that window)
+   was **not determined** and is not claimed. The UI fix stands either way,
+   because the window is real and a fresh process can land in it.
+
+**Open, needs owner decision — sweep write atomicity.** Lower severity than
+first written (the observed case self-corrected), but the two-write window is
+real. The fix is not obvious enough to make unilaterally: saving the record
+before the results would claim coverage that a crash then invalidates, which is
+worse. Options are one transaction spanning both writes, or deriving display
+state from the presence of results. Either touches `screening/sweep.py`
+persistence ordering and belongs in its own milestone.
+
+**Also unfixed, recorded so it is not lost** (`SYMBOL-UNIVERSE-INVESTIGATION.md`
+§13): group membership is never retracted on re-run, and 270 iNAV rows resolve
+into `darvax_discovery`.
 
 ---
 

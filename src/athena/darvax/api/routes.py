@@ -175,6 +175,9 @@ def _screen_payload(result: ScreenResult) -> dict[str, Any]:
         # engine, so the browser renders a fact rather than deriving one.
         "stop_vs_ceiling": _optional(result.stop_vs_ceiling),
         "stop_vs_ceiling_note": result.stop_vs_ceiling_note,
+        # DX-10a. Rupees; the UI converts to crore. Null means unmeasured, which
+        # a filter must not treat as illiquid.
+        "liquidity_value": _optional(result.liquidity_value),
         # Which chips must carry the unvalidated badge is a domain fact, not a
         # styling choice, so the client is told rather than left to hardcode a
         # list that would drift when an action is added (design §4, decision 3b).

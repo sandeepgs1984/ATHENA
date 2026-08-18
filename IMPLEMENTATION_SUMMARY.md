@@ -6,6 +6,94 @@ status updated on approval.
 
 ---
 
+## DX-9a/9b + DX-10c: the Table carries the trade, and R replaces the target
+
+**Summary.** Three things closed here. The **Table view** finally carries the
+values a trader acts on — it was the only one of the three views without them, so
+"what would I pay, and what would I lose" meant leaving it. **R-multiples**
+answer the owner's target request without inventing a target. And two **honest
+states** were added after the owner's real database produced output that
+contradicted itself.
+
+**Architecture compliance.** No engine change, no schema change, no new
+dependency. Risk and liquidity are presentation arithmetic over values the engine
+already persisted (`stop_price`, `close`, `liquidity_value`) — not rationale, so
+not something ADR-005 reserves to the engine; the one non-obvious sentence on the
+Levels card is still read from the payload verbatim. ADR-004 holds: no framework,
+no build step. ADR-010's import surface is untouched.
+
+**Files modified.** `darvax/api/static/darvax.js` (12-column table, `rupees()`,
+`riskFromHere()`/`liqCrore()` shared with the Levels card, `rMultiples()`/`rLine()`,
+`syncLiquidityControl()`, sweep-count honesty), `darvax.css` (banded super-header,
+sticky symbol column, R row, disabled-filter styling, explicit two-row bar),
+`index.html` (bar split into two rows), `tab.js` (asset version).
+
+**Tests added.** 17 — `test_dx9a_table_values.py` (11 new), plus 3 in
+`test_dx10_filters.py`, 1 in `test_dx8b_plain_screen.py`, 2 in
+`test_dx8c_honest_states.py`.
+Two existing tests were **re-anchored, not relaxed**: one pinned the literal
+`"risk from here ₹"` including a symbol that moved into a formatter, and one
+banned the substring `"profit target"` and so fired on the label whose purpose is
+to deny there is one — replaced with a check for a stored field plus a
+negation requirement, which is strictly stronger.
+
+**Test results.** 1,927 → **1,944 passing**, full suite, no skips introduced.
+
+**Risks discovered.**
+
+1. **A two-write window in sweep persistence.** Results are saved before the
+   completion record, so a reader landing between the two sees a finished sweep
+   as `state="running", evaluated=0`. Observed on a copy of the owner's live
+   database, then found self-corrected 20 minutes later — so this is a transient
+   inconsistency window, **not** demonstrated data loss, and the stronger claim
+   first written here has been withdrawn. The UI fix stands because the window is
+   real. Atomicity needs an owner decision: the obvious inversion (record first)
+   would claim coverage a later crash invalidates.
+2. **Liquidity was absent from the 17 sweeps existing at the start of this
+   milestone**, all of which predate DX-10a — it is computed at sweep time. The
+   owner's server has since produced a sweep with liquidity on 2,179 of 2,191
+   rows, confirming the wiring works end to end on their machine. The filter now
+   disables itself with a stated reason on any older sweep rather than returning
+   an empty list.
+3. **A prior claim of mine was wrong and is corrected here**: the DX-10b filter
+   funnel (117 → 50 → 23 → 10) was measured on a sweep **I** generated, not on
+   the owner's data — on the sweep they held at the time, the liquidity step
+   matched nothing. It now would.
+4. **Test isolation re-verified, not assumed.** Because a full 2,191-instrument
+   sweep completes in ~6 seconds, a suite run could plausibly have written one
+   into the owner's database. Checked by diffing sweep IDs across a full
+   `tests/darvax` run: **none added.** The autouse hermetic guard holds.
+
+**Technical debt introduced.** None. Two guards were strengthened as a
+by-product.
+
+**Lessons learned.** Every defect in this milestone was invisible to the test
+suite and visible in the browser within a minute:
+
+- A second `function money()` shadowed an existing one by declaration order, so
+  every price on the Levels card rendered `₹₹6.7`. Now guarded by a test that
+  fails on **any** duplicated function name in the file.
+- The action chip emitted a class with no CSS rule — correctly labelled, no
+  colour. The guard written for it was **vacuous on first attempt** and only
+  became real after reintroducing the bug to watch it fail.
+- Tests that assert strings appear in the source do not assert that references
+  resolve. That gap let a dead script pass 1,924 tests one milestone earlier, and
+  it let an unstyled chip pass this one.
+
+**Implementation metrics.** ~640 lines JS/CSS/HTML, 17 tests, 3 design-doc
+sections, 1 new MILESTONES section (DX-10, five milestones).
+
+**Phase outcome.** DX-9a, DX-9b, DX-10c ready for review. DX-10d (volume
+expansion) requires a DX-3 signal-engine change and cannot be backfilled;
+DX-10e (market cap) has no data source. Sweep-completion durability is the one
+open decision.
+
+**Commit hash.** _pending — owner commits._
+**Branch.** `feature/live-dashboard`
+**Review status.** 🔄 Ready for review
+
+---
+
 ## SU-6: DarvaX universe opt-in (ADR-011)
 
 | | |

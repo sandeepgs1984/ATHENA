@@ -157,9 +157,15 @@ def test_risk_is_measured_from_the_current_price_not_the_trigger():
     candidate, so it understated real exposure: BI showed 10% where buying that
     day risked 21.5%."""
     fn = CODE.split("function levelChart")[1].split("\n  function ")[0]
-    assert "risk / now" in fn, "risk must be a fraction of the current price"
     assert "of entry" not in fn, "the constant 10% figure must be gone"
     assert "risk from here" in fn, "the note must say the risk is from today's price"
+    # DX-9a moved the arithmetic into a helper shared with the Table so the two
+    # views cannot disagree. The invariant is unchanged — the Levels card must
+    # still measure from the current price — so it is asserted where it now lives.
+    assert "riskFromHere(" in fn, "the card no longer uses the shared helper"
+    helper = CODE.split("function riskFromHere")[1].split("\n  function ")[0]
+    assert "now - stop) / now" in helper, "risk must be a fraction of the current price"
+    assert "trigger" not in helper, "risk is measured from the trigger again"
 
 
 def test_the_zone_is_drawn_only_while_price_is_still_below_the_ceiling():
@@ -187,7 +193,11 @@ def test_the_figures_row_does_not_repeat_the_ladder():
     competing with its own duplicates."""
     assert "riskRow" not in CODE, "the duplicate figures row is gone entirely"
     fn = CODE.split("function levelChart")[1].split("\n  function ")[0]
-    assert "risk from here ₹" in fn
+    # Anchored on the caption and on the fact that a rupee value follows it,
+    # not on the literal "₹" adjacency: DX-10c moved the symbol into rupees(),
+    # which broke this assertion without changing anything it was protecting.
+    assert "risk from here" in fn
+    assert "rupees(" in fn, "the risk figure is not formatted as rupees"
 
 
 def test_level_hints_do_not_restate_the_level_name():

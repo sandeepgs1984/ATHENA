@@ -151,3 +151,34 @@ def test_the_progress_bar_and_cancel_are_not_advisor_only():
     for el in ("progress", "cancel-sweep"):
         assert "advisor-view" not in ANCESTORS[el]
         assert "detailed-view" not in ANCESTORS[el]
+
+
+# --------------------------------------------------------------------------- #
+# DX-10c: the sweep record and the rows can disagree in BOTH directions
+# --------------------------------------------------------------------------- #
+
+
+def test_a_count_smaller_than_the_rows_in_hand_is_never_quoted_as_the_count():
+    """Measured on the owner's live database.
+
+    Their most recent sweep has all 2,191 result rows persisted, but its sweep
+    record still reads state="running", evaluated=0: the runner saves results
+    first and the completion record second, so an auto-reload between those two
+    writes leaves a finished sweep looking unstarted. The process that ran it
+    still held the live figure in memory and showed 2,191; a fresh process reads
+    the record and said "0 instrument(s) screened" above a table of 2,191 rows.
+    """
+    fn = CODE.split("function loadScreen")[1].split("\n  function ")[0]
+    assert "evaluated < screen.rows.length" in fn, (
+        "only the truncation direction is handled; the record can also "
+        "under-report what was persisted"
+    )
+    assert "did not finish" in fn, "the page does not say the record is incomplete"
+    # Both directions must mark the note as an error state, not a normal one.
+    assert "truncated || incomplete" in fn
+
+
+def test_the_page_never_states_a_count_it_cannot_support():
+    """Whichever of the two figures is smaller, it must not be claimed as fact."""
+    fn = CODE.split("function loadScreen")[1].split("\n  function ")[0]
+    assert "incomplete ? screen.rows.length : evaluated" in fn

@@ -80,8 +80,14 @@ def test_the_shortlist_uses_the_engines_rank_not_a_client_side_reranking():
     )
 
 
-def test_the_shortlist_is_capped_at_ten():
-    assert ".slice(0, 10)" in body("renderBuy")
+def test_the_shortlist_is_capped():
+    """Was pinned to `.slice(0, 10)`. DX-10b made the cap depend on whether a
+    filter is active — an unfiltered screen must not open with 117 cards, but a
+    filtered list is narrowed by intent and earns a larger one. The durable
+    property is that a cap exists and is applied, not its literal value."""
+    fn = body("renderBuy")
+    assert ".slice(0, limit)" in fn
+    assert "BUY_SHORTLIST" in fn
 
 
 def test_the_shortlist_only_contains_entry_candidates():

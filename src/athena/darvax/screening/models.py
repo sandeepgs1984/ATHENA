@@ -176,6 +176,17 @@ class ScreenResult:
     stop_vs_ceiling_note: str = ""
     """The comparison in plain English, with no recommendation attached. It
     states where the stop lands; it does not say whether that is good."""
+    liquidity_value: Decimal | None = None
+    """Median daily traded value in rupees over the last 20 sessions (DX-10a).
+
+    DarvaX's answer to "how big is this", because ATHENA holds no market-cap
+    data at all — no capitalisation column, no share count, and a broker dump
+    reporting ``last_price = 0`` for every row. Traded value is also the more
+    useful question for a trader: capitalisation says how large the company is,
+    this says whether the position can be exited.
+
+    ``None`` means too little history to measure, which is distinct from
+    illiquid and must not be filtered as though it were zero."""
     box_top: Decimal | None = None
     box_bottom: Decimal | None = None
     trigger_price: Decimal | None = None

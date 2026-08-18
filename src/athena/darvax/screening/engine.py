@@ -381,6 +381,7 @@ def screen_signal(
     sweep_id: str,
     rank: int = 0,
     position: DarvaxPosition | None = None,
+    liquidity: Decimal | None = None,
 ) -> ScreenResult:
     """Classify and measure one signal. ``rank`` is assigned by :func:`rank_tier`.
 
@@ -414,6 +415,9 @@ def screen_signal(
         stop_basis=signal.stop.basis.value if signal.stop else None,
         stop_vs_ceiling=vs_ceiling,
         stop_vs_ceiling_note=vs_ceiling_note,
+        # Passed in, never measured here: liquidity needs candles and this module
+        # has no market-data access by design (the purity property DX-7b tests).
+        liquidity_value=liquidity,
         sweep_id=sweep_id,
         instrument_id=signal.instrument_id,
         signal_id=signal.signal_id,
@@ -470,6 +474,7 @@ def screen_signals(
     *,
     sweep_id: str,
     positions: Mapping[str, DarvaxPosition] | None = None,
+    liquidity: Mapping[str, Decimal] | None = None,
 ) -> tuple[ScreenResult, ...]:
     """Screen a batch of signals: classify, measure, then rank within each tier.
 
@@ -481,8 +486,14 @@ def screen_signals(
     behaving exactly as it did.
     """
     held = positions or {}
+    liq = liquidity or {}
     screened = [
-        screen_signal(s, sweep_id=sweep_id, position=held.get(s.instrument_id))
+        screen_signal(
+            s,
+            sweep_id=sweep_id,
+            position=held.get(s.instrument_id),
+            liquidity=liq.get(s.instrument_id),
+        )
         for s in signals
     ]
     output: list[ScreenResult] = []

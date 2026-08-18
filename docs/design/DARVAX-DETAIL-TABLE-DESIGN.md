@@ -286,3 +286,40 @@ ladders as a flat line.
 DX-9c is separate and first for the same reason DX-8a was: it is a data question,
 and shipping the ladder without it would mean the browser deriving the one
 sentence on the card that carries real insight.
+
+---
+
+## As built (DX-9a/DX-9b)
+
+Twelve columns, not the nine originally designed, and grouped three ways rather
+than four. What changed from the design, and why:
+
+| Design | Built | Reason |
+|---|---|---|
+| Drop `State` and `Rule` | `Rule` kept in the context group; `State` folded under the symbol as a sub-label | The persisted explanation is phrased in terms of the signal state, so removing it entirely would leave the expanded text referring to something the row no longer shows |
+| Four groups (ADVICE / THE TRADE / PRICE / STRUCTURE) | Three (identity / **the trade** / context) | Four labels over twelve columns produced more grouping furniture than grouping. Only one group needs to stand out — the money you would act on — and it is the one that carries the banded background |
+| Sticky header | Sticky **symbol column** | The header was already the smaller problem; twelve columns overflow horizontally, and scrolling right lost the symbol, which made every other cell unattributable |
+
+**Risk is measured from the current price, never from the buy level.** The stop
+is defined 10% below the trigger, so risk-to-trigger is 10% on every row by
+construction — the tautology the owner caught on the Levels card. Measured on the
+live sweep: BI's real risk from ₹76.81 down to ₹60.29 is **21.5%**, not 10%.
+
+The arithmetic lives in `riskFromHere()`/`liqCrore()`, **shared with the Levels
+card**, because two copies would eventually disagree and the owner would have no
+way to tell which view was lying. Pinned by
+`test_risk_arithmetic_is_defined_exactly_once`.
+
+### What the browser caught that the tests did not
+
+- **The action chip rendered unstyled.** The new cell emitted `act-enter`
+  (lowercase, `act-` prefix) while every rule in `darvax.css` is `.act.a-ENTER`.
+  Correctly labelled, no colour, nothing failed. The guard written for it was
+  itself **vacuous on first attempt** — it collected class prefixes into a set,
+  so the Advisor view's correct chip satisfied it while the broken one sat beside
+  it. Verified by reintroducing the bug: fails, then passes on restore.
+- **`Now` printed the raw decimal** — `1635.1` one column away from `₹66.99`.
+  Same kind of number, two notations, adjacent.
+- **A hardcoded `colspan="8"`** in the empty-tier and detail rows, which the
+  twelfth column would have silently under-spanned. Both now track
+  `COLUMNS.length`.

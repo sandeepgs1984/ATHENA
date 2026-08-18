@@ -11,7 +11,7 @@
     not touch dashboard.js/dashboard.css. ATHENA's asset-versioning discipline is
     therefore unaffected by anything here.
   -->
-  <link rel="stylesheet" href="/darvax/static/darvax.css?v=0.1.0-dx9d5">
+  <link rel="stylesheet" href="/darvax/static/darvax.css?v=0.1.0-dx10d1">
 </head>
 <body>
   <div class="wrap">
@@ -48,27 +48,74 @@
     <!-- ===================== Screener (DX-6c) ===================== -->
     <section id="screener">
       <div class="bar">
-        <input
-          id="filter"
-          type="search"
-          placeholder="Filter symbol&hellip;"
-          aria-label="Filter by symbol"
-          autocomplete="off"
-          spellcheck="false">
-        <button id="toggle-other" type="button" class="ghost" aria-pressed="false">
-          Show not eligible
-        </button>
-        <div class="modeswitch" role="tablist" aria-label="Screen views">
-          <button id="mode-advisor" type="button" role="tab" aria-selected="true"
-                  title="What do I do today?">Advisor</button>
-          <button id="mode-levels" type="button" role="tab" aria-selected="false"
-                  title="Where are the prices?">Levels</button>
-          <button id="mode-table" type="button" role="tab" aria-selected="false"
-                  title="Show me everything">Table</button>
+        <!-- Row 1: narrow the list. Row 2: choose a view and act. Splitting them
+             explicitly stops the primary action being stranded by wrapping. -->
+        <div class="barrow">
+          <input
+            id="filter"
+            type="search"
+            placeholder="Filter symbol&hellip;"
+            aria-label="Filter by symbol"
+            autocomplete="off"
+            spellcheck="false">
+          <!--
+            Two rules learned the hard way here.
+
+            1. Say "stop-loss", not "stop". The owner had to ASK whether they
+               meant the same thing, which is the clearest possible signal that
+               the short form was not carrying its meaning.
+            2. A dropdown option is a label, not a sentence. An earlier attempt
+               put the consequence in the option text ("Stop keeps part of the
+               breakout") and it read worse than the jargon it replaced. The
+               option now states the fact precisely and briefly; the plain
+               explanation goes in the filter note below the bar, where there is
+               room for a full sentence.
+          -->
+          <select id="f-stop"
+                  aria-label="Filter by where the stop-loss sits"
+                  title="Whether the stop-loss lands above or below the price level that price broke out from.">
+            <option value="">Stop-loss: any</option>
+            <option value="above">Stop-loss above the breakout level</option>
+            <option value="below">Stop-loss below the breakout level</option>
+          </select>
+          <select id="f-liq" aria-label="Filter by liquidity">
+            <option value="">Liquidity: any</option>
+            <option value="1">&ge; &#8377;1 cr/day</option>
+            <option value="5">&ge; &#8377;5 cr/day</option>
+            <option value="25">&ge; &#8377;25 cr/day</option>
+            <option value="100">&ge; &#8377;100 cr/day</option>
+          </select>
+          <!-- "Box: any" never said what the percentages measure. They are
+               box HEIGHT — floor to ceiling as a share of price. And "≤10%"
+               reads as maths; "10% or less" is the same bound in words. -->
+          <select id="f-box"
+                  aria-label="Filter by box height"
+                  title="How tall the Darvas box is, floor to ceiling, as a percentage of price. A tight box means the stop sits closer to the buy level.">
+            <option value="">Box height: any</option>
+            <option value="10">Tight box &mdash; 10% or less</option>
+            <option value="20">20% or less</option>
+            <option value="-30">Wide box &mdash; over 30%</option>
+          </select>
+          <button id="f-clear" type="button" class="ghost" hidden>Clear filters</button>
+          <span class="spacer"></span>
+          <button id="toggle-other" type="button" class="ghost" aria-pressed="false">
+            Show not eligible
+          </button>
         </div>
-        <span class="spacer"></span>
-        <button id="cancel-sweep" type="button" class="ghost danger" hidden>Cancel sweep</button>
-        <button id="sweep" type="button" class="primary">Screen universe</button>
+
+        <div class="barrow">
+          <div class="modeswitch" role="tablist" aria-label="Screen views">
+            <button id="mode-advisor" type="button" role="tab" aria-selected="true"
+                    title="What do I do today?">Advisor</button>
+            <button id="mode-levels" type="button" role="tab" aria-selected="false"
+                    title="Where are the prices?">Levels</button>
+            <button id="mode-table" type="button" role="tab" aria-selected="false"
+                    title="Show me everything">Table</button>
+          </div>
+          <span class="spacer"></span>
+          <button id="cancel-sweep" type="button" class="ghost danger" hidden>Cancel sweep</button>
+          <button id="sweep" type="button" class="primary">Screen universe</button>
+        </div>
       </div>
 
       <div class="meta" id="sweep-meta" hidden></div>
@@ -83,6 +130,7 @@
       </div>
 
       <p class="note" id="screen-note"></p>
+      <p class="note filternote" id="filter-note" hidden></p>
 
       <!-- ================= Advisor view (DX-8b) =================
         One question — "what do I do today?" — answered in urgency order:
@@ -111,12 +159,12 @@
                    aria-label="Entry price" required>
             <input id="pf-date" type="date" aria-label="Entry date" required>
             <input id="pf-stop" type="text" inputmode="decimal"
-                   placeholder="Stop (optional)" aria-label="Stop price">
+                   placeholder="Stop-loss (optional)" aria-label="Stop-loss price">
             <button type="submit" class="primary">Add</button>
             <button type="button" id="pf-cancel" class="ghost">Cancel</button>
             <p class="dim formnote">
-              Leave the stop blank and DarvaX sets it 10% below your price, which
-              is what the method asks for. It is fixed at the time you add it.
+              Leave the stop-loss blank and DarvaX sets it 10% below your price,
+              which is what the method asks for. It is fixed at the time you add it.
             </p>
           </form>
 
@@ -247,7 +295,7 @@
           <th>Rule</th>
           <th class="num">Close</th>
           <th>Topmost box</th>
-          <th class="num">Stop</th>
+          <th class="num">Stop-loss</th>
           <th>As of</th>
         </tr>
       </thead>
@@ -265,6 +313,6 @@
     </footer>
   </div>
 
-  <script src="/darvax/static/darvax.js?v=0.1.0-dx9d5"></script>
+  <script src="/darvax/static/darvax.js?v=0.1.0-dx10d1"></script>
 </body>
 </html>

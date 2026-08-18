@@ -8,6 +8,8 @@ something.
 
 from __future__ import annotations
 
+import re
+
 from pathlib import Path
 
 import pytest
@@ -121,9 +123,42 @@ def test_no_position_sizing_leaks_in():
 
 
 def test_no_profit_target_is_invented():
-    """Darvas had none — he rode trends on a trailing stop."""
-    for word in ("target_price", "take_profit", "profit target"):
-        assert word not in CODE.lower(), f"invented {word!r}"
+    """Darvas had none — he rode trends on a trailing stop.
+
+    Tightened at DX-10c. The original version banned the *substring* "profit
+    target", which fired on the R-multiple label whose whole job is to say the
+    method has no profit target. A keyword ban cannot tell an invention from a
+    denial of one, so this now checks the two things that actually constitute
+    inventing a target: a field that stores one, and prose that offers one.
+    """
+    # 1. No field, property or payload key holding a target price.
+    for token in ("target_price", "take_profit", "targetPrice", "profit_target"):
+        assert token not in CODE, f"invented a {token!r} field"
+
+    # 2. Where the phrase appears at all, it must be negated. A future
+    #    "Profit target: ₹X" would have no negator in front of it.
+    for match in re.finditer(r"profit target", CODE, re.IGNORECASE):
+        window = CODE[max(0, match.start() - 60) : match.start()].lower()
+        assert any(neg in window for neg in ("no ", "not ", "never", "without")), (
+            f"'profit target' used without negation near: "
+            f"{CODE[match.start() - 40 : match.end() + 20]!r}"
+        )
+
+
+def test_the_r_multiple_scale_denies_being_a_target():
+    """DX-10c's answer to the owner's target request.
+
+    R-multiples are only defensible while they are explicitly labelled as a
+    measurement of the risk the method defines rather than a forecast. Strip
+    that label and they become the invented target this suite exists to stop.
+    """
+    if "function rLine" not in CODE:
+        pytest.skip("R-multiple line not present")
+    fn = CODE.split("function rLine")[1].split("\n  function ")[0]
+    assert "not targets" in fn.lower(), "the R scale does not deny being a target"
+    # R must be the method's own quantity: buy level minus stop.
+    helper = CODE.split("function rMultiples")[1].split("\n  function ")[0]
+    assert "trigger - stop" in helper, "R is not the method's buy-level-minus-stop"
 
 
 # --------------------------------------------------------------------------- #
@@ -170,3 +205,29 @@ def test_risk_is_formatted_as_money_with_two_decimals():
     risk = CODE.split("function riskLine")[1].split("\n  function ")[0]
     assert "minimumFractionDigits: 2" in risk
     assert "money(String(risk" not in risk
+
+
+def test_every_element_the_script_uses_is_actually_looked_up():
+    """The bug this exists for: DX-10b added filter controls and event listeners
+    but the selectors never reached the `S` object, because a string replacement
+    silently missed an anchor that had no trailing comma. `S.fStop` was therefore
+    `undefined`, `S.fStop.addEventListener` threw at init, and the whole IIFE
+    aborted — so the page rendered its static HTML and nothing else. No sweep
+    line, no empty state, no positions: a blank screen with working dropdowns.
+
+    Every prior test passed, because they asserted that strings appeared in the
+    source rather than that the references resolved. This is the direction that
+    was missing: `S.<name>` used somewhere but never assigned.
+
+    The companion test `test_no_selector_points_at_markup_that_no_longer_exists`
+    covers the opposite direction — a selector for markup that has gone."""
+    import re
+
+    block = JS.split("var S = {", 1)[1].split("\n  };", 1)[0]
+    defined = set(re.findall(r"(\w+):\s*document\.getElementById", block))
+    used = set(re.findall(r"\bS\.(\w+)\b", CODE))
+    missing = sorted(used - defined)
+    assert missing == [], (
+        f"script uses S.{{{', '.join(missing)}}} but never looks them up — "
+        "a TypeError at init aborts the entire script"
+    )

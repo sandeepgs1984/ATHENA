@@ -324,7 +324,13 @@
     buyZone: document.getElementById("buy-zone"),
     buySub: document.getElementById("buy-sub"),
     buyTickets: document.getElementById("buy-tickets"),
-    restLine: document.getElementById("rest-line")
+    restLine: document.getElementById("rest-line"),
+    // Conviction filters (DX-10b)
+    fStop: document.getElementById("f-stop"),
+    fLiq: document.getElementById("f-liq"),
+    fBox: document.getElementById("f-box"),
+    fClear: document.getElementById("f-clear"),
+    filterNote: document.getElementById("filter-note")
   };
 
   var TIERS = [
@@ -356,7 +362,8 @@
     open: {},
     detail: {},
     polling: null,
-    mode: "advisor"
+    mode: "advisor",
+    visible: []
   };
 
   function num(raw, dp) {
@@ -415,26 +422,148 @@
       label + "</span></div></td>";
   }
 
+  /*
+    Risk and liquidity are presentation arithmetic over persisted values
+    (stop_price, close, liquidity_value) — not re-derived rationale, which
+    ADR-005 reserves to the engine. They live here, once, because DX-9a puts
+    the same two figures in the Table that DX-9d already put on the Levels
+    card: two copies of this arithmetic would eventually disagree, and the
+    owner would have no way to tell which view was lying.
+  */
+  function riskFromHere(row) {
+    var stop = num(row.stop_price), now = num(row.close);
+    if (stop === null || now === null || now <= stop) return null;
+    return { abs: now - stop, pct: ((now - stop) / now) * 100 };
+  }
+
+  function liqCrore(row) {
+    var v = num(row.liquidity_value);
+    return v === null ? null : v / CRORE;
+  }
+
+  /*
+    Rupees at a fixed two decimals.
+
+    Deliberately NOT the existing money(): that helper omits fraction-digit
+    options, so toLocaleString drops a trailing zero and a price becomes "₹6.7"
+    — which riskLine already documents having been bitten by. It is also NOT a
+    second function named money(): declaring one shadowed the existing helper's
+    callers by declaration order, and every price on the Levels card rendered
+    with a doubled "₹₹" because both the caller and the winning helper added
+    the symbol. Distinct name, single responsibility.
+  */
+  function rupees(v) {
+    var n = num(v);
+    return n === null ? "—" : "\u20b9" + n.toLocaleString("en-IN", {
+      minimumFractionDigits: 2, maximumFractionDigits: 2
+    });
+  }
+
+  /* --- DX-9a cells --------------------------------------------------------
+     The Table used to be the only view WITHOUT the trade values: it showed
+     state, rule and box geometry, so answering "what would I actually pay,
+     and what would I lose" meant leaving it for the Advisor or Levels view.
+     These four columns close that, and are grouped under one header so the
+     tradeable figures read as a block rather than as more geometry. */
+
+  function actionCell(row) {
+    if (!row.action) {
+      return '<td><span class="act a-none" ' +
+        'title="No action recorded — this row predates DX-7a">—</span></td>';
+    }
+    // `a-<ACTION>` uppercase, matching the chip classes the Advisor view
+    // already emits and darvax.css already styles. Inventing an `act-<lower>`
+    // variant here rendered a correctly-labelled but completely unstyled chip.
+    return '<td><span class="act a-' + esc(row.action) + '" title="' +
+      esc(row.action_reason_plain || row.action_reason || "") + '">' +
+      esc(ACTION_LABEL[row.action] || row.action) + "</span></td>";
+  }
+
+  function levelCell(value, extraClass, titleText) {
+    var v = num(value);
+    if (v === null) {
+      // Absent, not zero. DX-3 persists a trigger only alongside a stop, so
+      // most rows genuinely have neither and must not read as ₹0.
+      return '<td class="num mono trade' + (extraClass ? " " + extraClass : "") +
+        '"><span class="dim">—</span></td>';
+    }
+    return '<td class="num mono trade' + (extraClass ? " " + extraClass : "") + '"' +
+      (titleText ? ' title="' + esc(titleText) + '"' : "") + ">" + esc(rupees(v)) + "</td>";
+  }
+
+  function riskCell(row) {
+    var r = riskFromHere(row);
+    if (r === null) {
+      return '<td class="num mono trade"><span class="dim">—</span></td>';
+    }
+    // Risk from the CURRENT price, never from the trigger: risk-to-trigger is
+    // 10% on every row by construction (the stop is defined 10% below it), so
+    // it printed an identical, falsely reassuring figure everywhere.
+    var hot = r.pct >= 15;
+    return '<td class="num mono trade" title="From today\u2019s close of ' +
+      esc(rupees(row.close)) + ' down to the stop at ' +
+      esc(rupees(row.stop_price)) + ' \u2014 ' + esc(rupees(r.abs)) +
+      ' per share">' + '<span class="risk' + (hot ? " hot" : "") + '">' +
+      r.pct.toFixed(1) + "%</span></td>";
+  }
+
+  function liqCell(row) {
+    var cr = liqCrore(row);
+    if (cr === null) {
+      return '<td class="num mono"><span class="dim" ' +
+        'title="Not enough history to measure — not a claim of illiquidity">—</span></td>';
+    }
+    var thin = cr < 1;
+    return '<td class="num mono" title="Median traded value over the last 20 ' +
+      'sessions. Median, not average, so a single spike does not flatter it."><span' +
+      (thin ? ' class="risk hot"' : "") + ">" +
+      (cr >= 100 ? Math.round(cr).toLocaleString("en-IN") : cr.toFixed(cr < 10 ? 2 : 1)) +
+      "</span></td>";
+  }
+
+  /*
+    `group` drives the banded super-header. Columns carrying money you would
+    act on sit in "the trade"; everything else is identity or context.
+  */
   var COLUMNS = [
-    { key: "symbol", label: "Symbol" },
-    { key: "signal_type", label: "State" },
-    { key: "darvas_rule", label: "Rule" },
-    { key: null, label: "Box range" },
-    { key: "close", label: "Close", num: true },
-    { key: "distance_to_breakout_pct", label: "To breakout", num: true },
-    { key: "box_height_pct", label: "Box ht", num: true },
-    { key: "rank", label: "#", num: true }
+    { key: "symbol", label: "Symbol", group: "" },
+    { key: "action", label: "Action", group: "" },
+    { key: "close", label: "Now", num: true, group: "" },
+    { key: "trigger_price", label: "Buy above", num: true, group: "the trade" },
+    { key: "stop_price", label: "Stop-loss", num: true, group: "the trade" },
+    { key: null, label: "Risk now", num: true, group: "the trade",
+      sortKey: "risk_pct", hint: "% you lose from today\u2019s price if the stop hits" },
+    { key: "distance_to_breakout_pct", label: "To buy level", num: true,
+      group: "the trade",
+      hint: "How far today\u2019s price is from the level you may buy above. "
+          + "\u201cthrough\u201d means price is already past it" },
+    { key: null, label: "Box range", group: "context" },
+    { key: "box_height_pct", label: "Box height", num: true, group: "context",
+      hint: "How tall the range is, floor to ceiling, as a % of the floor \u2014 "
+          + "not a distance from your buy level" },
+    { key: null, label: "\u20b9cr/day", num: true, group: "context",
+      sortKey: "liquidity_value", hint: "Median traded value, last 20 sessions" },
+    { key: "darvas_rule", label: "Rule", group: "context" },
+    { key: "rank", label: "#", num: true, group: "context" }
   ];
+
+  /* Sorting on a derived column needs the derived number, not a stored field. */
+  var DERIVED_SORT = {
+    risk_pct: function (r) { var v = riskFromHere(r); return v === null ? null : v.pct; },
+    liquidity_value: function (r) { return num(r.liquidity_value); }
+  };
 
   function sortedRows(tierKey) {
     var needle = screen.filter.trim().toUpperCase();
-    var list = screen.rows.filter(function (r) {
+    var list = screen.visible.filter(function (r) {
       return r.tier === tierKey && (!needle || r.symbol.indexOf(needle) !== -1);
     });
     var sort = screen.sort[tierKey];
     if (!sort) return list;                       // persisted rank order
+    var derive = DERIVED_SORT[sort.key];
     return list.slice().sort(function (x, y) {
-      var a = x[sort.key], b = y[sort.key];
+      var a = derive ? derive(x) : x[sort.key];
+      var b = derive ? derive(y) : y[sort.key];
       var na = num(a), nb = num(b);
       if (na !== null && nb !== null) return sort.dir * (na - nb);
       // Missing values sort last regardless of direction: they are absent, not
@@ -461,18 +590,47 @@
       html += '<span class="count">' + (list.length === total ? total : list.length + " / " + total) + "</span>";
       html += '<span class="ruletext">' + tier.rule + "</span>";
       html += '<span class="chev">' + (isOpen ? "▾" : "▸") + "</span></header>";
-      html += '<div class="tierbody"><div class="scroll"><table class="screen"><thead><tr>';
+      html += '<div class="tierbody"><div class="scroll"><table class="screen">';
+
+      // A super-header, so twelve columns read as three ideas rather than as
+      // one undifferentiated wall. Marked presentation-only for assistive
+      // technology: the sortable row below is the real header.
+      html += '<colgroup>';
       COLUMNS.forEach(function (col) {
-        var active = sort && col.key && sort.key === col.key;
+        html += '<col' + (col.group === "the trade" ? ' class="cg-trade"' : "") + ">";
+      });
+      html += "</colgroup><thead><tr class=\"grouprow\" aria-hidden=\"true\">";
+      var g = null, span = 0;
+      COLUMNS.forEach(function (col, i) {
+        if (col.group !== g) {
+          if (g !== null) {
+            html += '<th colspan="' + span + '" class="gh' +
+              (g === "the trade" ? " gh-trade" : "") + '">' + esc(g) + "</th>";
+          }
+          g = col.group; span = 0;
+        }
+        span += 1;
+        if (i === COLUMNS.length - 1) {
+          html += '<th colspan="' + span + '" class="gh' +
+            (g === "the trade" ? " gh-trade" : "") + '">' + esc(g) + "</th>";
+        }
+      });
+      html += '</tr><tr>';
+      COLUMNS.forEach(function (col) {
+        // A derived column sorts on its computed value via sortKey; only
+        // decorative columns (the box viz) have neither and stay unsortable.
+        var key = col.key || col.sortKey || null;
+        var active = sort && key && sort.key === key;
         html += "<th" + (col.num ? ' class="num"' : "") +
-          (col.key ? ' data-sort="' + col.key + '" data-tier="' + tier.key + '"' : "") +
+          (key ? ' data-sort="' + key + '" data-tier="' + tier.key + '"' : "") +
+          (col.hint ? ' title="' + esc(col.hint) + '"' : "") +
           (active ? ' aria-sort="' + (sort.dir === 1 ? "ascending" : "descending") + '"' : "") +
           ">" + col.label + (active ? (sort.dir === 1 ? " ↑" : " ↓") : "") + "</th>";
       });
       html += "</tr></thead><tbody>";
 
       if (!list.length) {
-        html += '<tr><td colspan="8" class="dim" style="padding:14px 11px">' +
+        html += '<tr><td colspan="' + COLUMNS.length + '" class="dim" style="padding:14px 11px">' +
           (screen.filter
             ? "No symbol matches “" + esc(screen.filter) + "” in this tier."
             : "Nothing in this tier.") + "</td></tr>";
@@ -481,22 +639,36 @@
       list.forEach(function (row) {
         var id = row.instrument_id;
         html += '<tr class="srow" data-id="' + esc(id) + '">';
-        html += '<td class="sym">' + esc(row.symbol) + "</td>";
-        html += '<td><span class="state ' + tone(row.signal_type) + '">' +
+        // The raw signal state moves under the symbol rather than taking a
+        // column of its own: Action supersedes it for deciding anything, but
+        // it is what the persisted explanation is phrased in terms of, so it
+        // must stay visible somewhere.
+        html += '<td class="sym">' + esc(row.symbol) +
+          '<span class="substate ' + tone(row.signal_type) + '">' +
           esc(row.signal_type) + "</span></td>";
+        html += actionCell(row);
+        // Formatted like the price columns beside it. Rendering the raw decimal
+        // put "1635.1" next to "₹66.99" — same kind of number, two notations,
+        // one column apart, which makes the block harder to scan than it needs
+        // to be. levelCell handles the ₹ and the two-decimal alignment.
+        html += levelCell(row.close, "");
+        html += levelCell(row.trigger_price, "", "Buy only above this price");
+        html += levelCell(row.stop_price, "",
+          row.stop_basis ? "Stop basis: " + row.stop_basis : "");
+        html += riskCell(row);
+        html += distanceCell(row);
+        html += "<td>" + vizFor(row) + "</td>";
+        var height = num(row.box_height_pct);
+        html += '<td class="num mono">' + (height === null ? "—" : height.toFixed(2) + "%") + "</td>";
+        html += liqCell(row);
         html += "<td>" + (row.darvas_rule
           ? '<span class="rulechip" title="' + esc(RULE_TEXT[row.darvas_rule] || "") + '">' +
             esc(row.darvas_rule) + "</span>"
           : '<span class="rulechip">—</span>') + "</td>";
-        html += "<td>" + vizFor(row) + "</td>";
-        html += '<td class="num mono">' + esc(row.close) + "</td>";
-        html += distanceCell(row);
-        var height = num(row.box_height_pct);
-        html += '<td class="num mono">' + (height === null ? "—" : height.toFixed(2) + "%") + "</td>";
         html += '<td class="num mono">' + esc(row.rank) + "</td>";
         html += "</tr>";
         html += '<tr class="sdetail" data-detail="' + esc(id) + '"' +
-          (screen.open[id] ? "" : " hidden") + '><td colspan="8">' +
+          (screen.open[id] ? "" : " hidden") + '><td colspan="' + COLUMNS.length + '">' +
           detailHtml(row) + "</td></tr>";
       });
 
@@ -601,6 +773,13 @@
 
   function renderScreen() {
     var hasSweep = !!screen.sweep;
+    // Computed once and shared, so the three views can never disagree about
+    // what is in scope. Positions are deliberately NOT filtered: what you hold
+    // is not a discovery question, and hiding a holding because it failed a
+    // liquidity threshold would hide advice you need.
+    var outcome = applyFilters(screen.rows);
+    screen.visible = outcome.kept;
+    renderFilterNote(screen.rows.length, outcome.kept.length, outcome.unmeasured);
     S.empty.hidden = hasSweep;
     S.tiers.hidden = !hasSweep;
     renderMeta();
@@ -636,14 +815,36 @@
           // number states a falsehood about coverage.
           var evaluated = screen.sweep.evaluated;
           var truncated = evaluated > screen.rows.length;
+          // The mismatch can run the other way too, and the page used to state
+          // the impossible when it did.
+          //
+          // Measured on the owner's live database: their most recent sweep has
+          // all 2,191 result rows persisted, but its sweep record still reads
+          // state="running", evaluated=0 — the runner saves results first and
+          // the completion record second, so anything that stops the process
+          // between those two writes (an auto-reload, a restart) leaves a
+          // finished sweep looking unstarted. The process that ran it still had
+          // the live figure in memory and displayed 2,191; only a fresh process
+          // reads the record and reported "0 instrument(s) screened" above a
+          // table of 2,191 rows.
+          //
+          // Whichever number is smaller, the page must not claim it as the
+          // count and must say which of the two it cannot vouch for.
+          var incomplete = evaluated < screen.rows.length;
+          var count = incomplete ? screen.rows.length : evaluated;
           screenSay(
-            evaluated + " instrument(s) screened. Click a row for the " +
+            count + " instrument(s) screened. Click a row for the " +
             "persisted explanation and evidence." +
             (truncated
               ? " Showing the first " + screen.rows.length + " — this view is " +
                 "truncated, so the tiers and shortlist below are incomplete."
+              : "") +
+            (incomplete
+              ? " The sweep record says it did not finish (" + evaluated +
+                " recorded as evaluated), so treat this as a possibly partial " +
+                "sweep and re-run it to be sure."
               : ""),
-            truncated
+            truncated || incomplete
           );
         } else {
           screenSay("");
@@ -909,7 +1110,7 @@
           "<dt>You hold</dt><dd>" + esc(p.quantity) + " at " +
             money(p.entry_price) + "</dd>" +
           "<dt>Now</dt><dd>" + (close === null ? "—" : money(row.close)) + "</dd>" +
-          "<dt>Your stop</dt><dd>" + money(p.stop_price) + "</dd>" +
+          "<dt>Your stop-loss</dt><dd>" + money(p.stop_price) + "</dd>" +
         "</dl>" +
         '<p class="why">' + why + "</p>" +
         (row ? methodologyDetails(row) : "") +
@@ -929,10 +1130,15 @@
     // The engine already ordered these by distance to the buy level and
     // assigned rank; taking that order rather than re-sorting keeps the
     // shortlist and the detailed table telling the same story.
-    var all = screen.rows.filter(function (r) { return r.risk_bearing; });
+    var all = screen.visible.filter(function (r) { return r.risk_bearing; });
+    // The cap exists so an unfiltered screen does not open with 117 cards. A
+    // filtered list is already narrowed by intent, so it earns a bigger one —
+    // and without this, filtering 117 down to 14 still showed exactly 10 cards,
+    // which read as "the filter did nothing".
+    var limit = anyFilterActive() ? BUY_SHORTLIST_FILTERED : BUY_SHORTLIST;
     var shortlist = all.slice().sort(function (a, b) {
       return (a.rank || 0) - (b.rank || 0);
-    }).slice(0, 10);
+    }).slice(0, limit);
 
     S.buyZone.hidden = false;
     if (!shortlist.length) {
@@ -1001,7 +1207,7 @@
   // The long tail, as one line rather than 2,000 rows.
   function renderRest() {
     if (!screen.rows.length) { S.restLine.hidden = true; return; }
-    var quiet = screen.rows.filter(function (r) {
+    var quiet = screen.visible.filter(function (r) {
       return r.action === "NO_ENTRY" || r.action === "WAIT";
     }).length;
     S.restLine.hidden = quiet === 0;
@@ -1039,7 +1245,7 @@
     // box" and "FLOOR bottom of the box" were pure restatement and pushed the
     // useful labels around; "Entry" genuinely needs to say *which* level it is.
     { key: "trigger_price", cls: "lv-entry",   label: "Entry",   hint: "prior day's high" },
-    { key: "stop_price",    cls: "lv-stop",    label: "Stop",    hint: "" },
+    { key: "stop_price",    cls: "lv-stop",    label: "Stop-loss", hint: "" },
     { key: "box_top",       cls: "lv-ceiling", label: "Ceiling", hint: "" },
     { key: "box_bottom",    cls: "lv-floor",   label: "Floor",   hint: "" }
   ];
@@ -1063,7 +1269,7 @@
     if (position) {
       var pe = num(position.entry_price), ps = num(position.stop_price);
       if (pe !== null) items.push({ v: pe, cls: "lv-yourentry", label: "Your entry", note: "" });
-      if (ps !== null) items.push({ v: ps, cls: "lv-yourstop", label: "Your stop", note: "" });
+      if (ps !== null) items.push({ v: ps, cls: "lv-yourstop", label: "Your stop-loss", note: "" });
     }
     if (items.length < 2) {
       return '<p class="dim">No levels recorded for this instrument.</p>';
@@ -1077,13 +1283,14 @@
     var stop = num(row.stop_price);
     var trigger = num(row.trigger_price);
     items.forEach(function (it) {
-      if (it.cls === "lv-stop" && stop !== null && now !== null && now > stop) {
-        var risk = now - stop;
-        // Shorter than "if you buy now": that wrapped to a second line and made
-        // this row taller than its neighbours, which broke the column scan.
-        it.note = "risk from here ₹" + risk.toLocaleString("en-IN", {
-          minimumFractionDigits: 2, maximumFractionDigits: 2
-        }) + " (" + ((risk / now) * 100).toFixed(1) + "%)";
+      if (it.cls === "lv-stop") {
+        // Shared with the Table (DX-9a) so the two views cannot disagree about
+        // what a buyer today risks.
+        var risk = riskFromHere(row);
+        if (risk !== null) {
+          it.note = "risk from here " + rupees(risk.abs) +
+            " (" + risk.pct.toFixed(1) + "%)";
+        }
       }
       if (it.cls === "lv-entry" && trigger !== null && now !== null) {
         // Short: a longer caption wrapped and pushed the card from 328px to
@@ -1147,6 +1354,57 @@
       '<table class="ltable"><tbody>' + rows + "</tbody></table></div>";
   }
 
+  /*
+    DX-10c — R-multiples, and why there is no target price.
+
+    The owner asked for a target. The methodology has none: Darvas never took
+    profit at a level, he trailed the stop until it was hit, and the DAR-CARD's
+    only exit rules are the 10% stop (B) and the box floor (C). Inventing a
+    target would be inventing methodology, which ADR-010 forbids — so DarvaX
+    shows the one upside scale that is a fact rather than a forecast.
+
+    R is the per-share risk the method itself defines: buy level minus stop.
+    1R/2R/3R are simply that distance measured upwards. They predict nothing;
+    they say "a move worth as much as you are risking would land here", which
+    is what makes a trade's shape judgeable before entering it.
+
+    Arithmetic over persisted values, like riskFromHere — not a rationale, so
+    not something ADR-005 reserves to the engine.
+  */
+  function rMultiples(row) {
+    var trigger = num(row.trigger_price), stop = num(row.stop_price);
+    if (trigger === null || stop === null) return null;
+    var r = trigger - stop;
+    if (r <= 0) return null;              // stop at or above the buy level
+    var now = num(row.close);
+    return {
+      r: r,
+      levels: [1, 2, 3].map(function (k) { return { k: k, price: trigger + r * k }; }),
+      // How far price has ALREADY travelled, in the same unit. This is the
+      // number that says "you are late" — a candidate sitting at +1.8R has
+      // spent most of a 2R move before you have paid anything for it.
+      now: now === null ? null : (now - trigger) / r
+    };
+  }
+
+  function rLine(row) {
+    var m = rMultiples(row);
+    if (m === null) return "";
+    var parts = m.levels.map(function (l) {
+      return '<span class="rk">' + l.k + "R</span> " + rupees(l.price);
+    }).join('<span class="rsep">\u00b7</span>');
+    var late = m.now !== null && m.now >= 1
+      ? '<span class="rlate" title="Price has already covered this much of a ' +
+        'move, before you have paid anything for it">already +' +
+        m.now.toFixed(1) + "R</span>"
+      : "";
+    return '<div class="rrow">' +
+      '<span class="rlbl" title="R is the risk the method defines: buy level ' +
+      'minus stop. These are not targets — the method has no profit target, ' +
+      'and rule C exits you when price falls below the box floor.">' +
+      "R = " + rupees(m.r) + "</span>" + parts + late + "</div>";
+  }
+
   function ladderCard(row, position) {
     // The stop-versus-ceiling sentence is read from the payload, never derived:
     // it is the one line on this card that says something non-obvious, and
@@ -1165,6 +1423,7 @@
         '<header><span class="sym">' + esc(row.symbol) + "</span>" +
           actionChip(row) + "</header>" +
         levelChart(row, position) +
+        rLine(row) +
         held +
         '<p class="why">' + esc(row.action_reason_plain || row.action_reason) + "</p>" +
         vs +
@@ -1193,6 +1452,8 @@
       S.lvNote.textContent = "Run a screen to see levels.";
       return;
     }
+    // Positions look up against ALL rows, not the filtered set: a holding must
+    // still show its advice even when a filter excludes it from discovery.
     var byId = {};
     screen.rows.forEach(function (r) { byId[r.instrument_id] = r; });
 
@@ -1203,7 +1464,7 @@
       return ladderCard(byId[p.instrument_id], p);
     }).join("");
 
-    var buys = screen.rows.filter(function (r) { return r.risk_bearing; })
+    var buys = screen.visible.filter(function (r) { return r.risk_bearing; })
       .sort(function (a, b) { return (a.rank || 0) - (b.rank || 0); });
     var shown = buys.slice(0, LEVELS_BUY_MAX);
     S.lvBuy.hidden = buys.length === 0;
@@ -1215,7 +1476,7 @@
       return ladderCard(r, null);
     }).join("");
 
-    var waiting = screen.rows.filter(function (r) { return r.action === "WAIT"; })
+    var waiting = screen.visible.filter(function (r) { return r.action === "WAIT"; })
       .sort(function (a, b) { return (a.rank || 0) - (b.rank || 0); })
       .slice(0, LEVELS_APPROACHING);
     S.lvApproaching.hidden = waiting.length === 0;
@@ -1226,11 +1487,214 @@
       return ladderCard(r, null);
     }).join("");
 
-    var quiet = screen.rows.filter(function (r) { return r.action === "NO_ENTRY"; }).length;
+    var quiet = screen.visible.filter(function (r) { return r.action === "NO_ENTRY"; }).length;
     S.lvNote.textContent = quiet.toLocaleString("en-IN") +
       " instruments have no box to draw and are not shown here. " +
       "The Table view lists every row.";
   }
+
+
+  // ====================================================================
+  // Conviction filters (DX-10b)
+  //
+  // Every filter reads a persisted field. None invents a quality score, and
+  // there is deliberately no market-cap filter: ATHENA holds no capitalisation
+  // data, and a fabricated proxy labelled "market cap" would be worse than its
+  // absence.
+  //
+  // A filter also reports what it could NOT evaluate. Silently dropping symbols
+  // whose liquidity is unmeasured would make a new listing indistinguishable
+  // from an illiquid one, which is the same "surface, never swallow" discipline
+  // the sweep applies to skips.
+  // ====================================================================
+
+  var CRORE = 10000000;
+
+  //: Cards in the Advisor shortlist. Larger once a filter is active, because the
+  //: reader has already said what they want to see.
+  var BUY_SHORTLIST = 10;
+  var BUY_SHORTLIST_FILTERED = 24;
+
+  function activeFilters() {
+    return {
+      stop: S.fStop.value,
+      liq: S.fLiq.value ? Number(S.fLiq.value) : null,
+      box: S.fBox.value ? Number(S.fBox.value) : null
+    };
+  }
+
+  function anyFilterActive() {
+    var f = activeFilters();
+    return Boolean(f.stop || f.liq !== null || f.box !== null);
+  }
+
+  // Returns { kept, unmeasured } so the caller can say what it could not judge.
+  function applyFilters(rows) {
+    var f = activeFilters();
+    var unmeasured = 0;
+    var kept = rows.filter(function (r) {
+      if (f.stop) {
+        var d = num(r.stop_vs_ceiling);
+        // A row with no stop has no answer to this question — it is not a
+        // failure of the test, so it is excluded from the result without being
+        // counted as unmeasured noise.
+        if (d === null) return false;
+        if (f.stop === "above" && d < 0) return false;
+        if (f.stop === "below" && d >= 0) return false;
+      }
+      if (f.liq !== null) {
+        var v = num(r.liquidity_value);
+        if (v === null) { unmeasured++; return false; }
+        if (v / CRORE < f.liq) return false;
+      }
+      if (f.box !== null) {
+        var h = num(r.box_height_pct);
+        if (h === null) return false;
+        // A negative threshold reads as "wider than", so one control can express
+        // both ends without a second widget.
+        if (f.box > 0 ? h > f.box : h <= Math.abs(f.box)) return false;
+      }
+      return true;
+    });
+    return { kept: kept, unmeasured: unmeasured };
+  }
+
+  /*
+    A filter that can only ever return nothing must say so instead of
+    returning nothing.
+
+    Measured on the owner's live database: all 17 sweeps recorded before
+    DX-10a shipped carry no liquidity at all, because liquidity is computed at
+    sweep time and their server had not restarted. Left alone, choosing any
+    liquidity threshold on such a sweep empties the list and reports "0 of 2191
+    match · 2191 excluded because their liquidity could not be measured" — which
+    is true, unhelpful, and reads as a market with nothing in it.
+  */
+  function liquidityIsAbsentFromThisSweep() {
+    return screen.rows.length > 0 && !screen.rows.some(function (r) {
+      return num(r.liquidity_value) !== null;
+    });
+  }
+
+  function syncLiquidityControl() {
+    var absent = liquidityIsAbsentFromThisSweep();
+    S.fLiq.disabled = absent;
+    if (absent) {
+      // Clear it too: a disabled control still submits its value, so a
+      // threshold chosen on an earlier sweep would keep filtering invisibly.
+      S.fLiq.value = "";
+      S.fLiq.options[0].textContent = "Liquidity: not in this sweep";
+      S.fLiq.title =
+        "This sweep was run before DarvaX measured liquidity. Re-run " +
+        "\u201cScreen universe\u201d to record it.";
+    } else {
+      S.fLiq.options[0].textContent = "Liquidity: any";
+      S.fLiq.title = "";
+    }
+    return absent;
+  }
+
+  /*
+    The stop filter's plain meaning, stated where there is room for it.
+
+    An earlier version of this filter carried the explanation in the dropdown
+    option itself ("Stop keeps part of the breakout"), which was less
+    understandable than the geometry it replaced — an option is a label, and a
+    label that has become a sentence is doing the wrong job. The option now
+    states the fact; this states what it means for the trade.
+  */
+  var STOP_FILTER_PLAIN = {
+    above:
+      "Showing only entries whose stop-loss sits above the level price broke " +
+      "out from \u2014 if the stop-loss is hit, price is still above its old " +
+      "range, so part of the breakout is kept.",
+    below:
+      "Showing only entries whose stop-loss sits below the level price broke " +
+      "out from \u2014 if the stop-loss is hit, price has fallen all the way " +
+      "back into its old range and the whole breakout is given up."
+  };
+
+  /*
+    Box height needed the same treatment, and for a sharper reason: the owner
+    asked whether it was measured "above the buy level". It is not, and there is
+    no fixed relationship to lean on — measured on a real sweep of 117 rows with
+    both a box and a buy level, the buy level sits above the ceiling on 107
+    (91%) but INSIDE the box on 10 (9%). So the explanation states what the
+    number is and, explicitly, what it is not.
+  */
+  var BOX_FILTER_PLAIN =
+    "Box height is how tall the price range itself is \u2014 from its floor up " +
+    "to the ceiling that price broke out of, as a percentage of the floor. It " +
+    "is not measured from your buy level. A tighter range keeps the floor, " +
+    "which is the method's other exit, closer to the buy level.";
+
+  function renderFilterNote(total, kept, unmeasured) {
+    // Mark each control so an active filter is visible at a glance. A narrowed
+    // list that looks unnarrowed reads as "nothing to trade today".
+    [S.fStop, S.fLiq, S.fBox].forEach(function (el) {
+      el.setAttribute("data-empty", String(el.value === ""));
+    });
+    S.fClear.hidden = !anyFilterActive();
+    var liqAbsent = syncLiquidityControl();
+    if (!anyFilterActive()) {
+      if (liqAbsent) {
+        S.filterNote.hidden = false;
+        S.filterNote.textContent = "";
+        var why = document.createElement("span");
+        why.className = "fnwhat";
+        why.textContent =
+          "This sweep recorded no liquidity, so the liquidity filter is off. " +
+          "Re-run “Screen universe” to measure it.";
+        S.filterNote.appendChild(why);
+        return;
+      }
+      S.filterNote.hidden = true;
+      return;
+    }
+    // Meaning first, arithmetic second: a count is only useful once the reader
+    // knows what was counted. Rendered as separate lines rather than joined
+    // with "·" — two explanatory sentences and a count on one line is the wall
+    // of text this whole rewording exists to avoid.
+    var plain = [];
+    if (STOP_FILTER_PLAIN[S.fStop.value]) plain.push(STOP_FILTER_PLAIN[S.fStop.value]);
+    if (S.fBox.value) plain.push(BOX_FILTER_PLAIN);
+
+    var counts = [kept + " of " + total + " match"];
+    if (unmeasured) {
+      counts.push(
+        unmeasured + " excluded because their liquidity could not be measured " +
+        "(too little history) — not because they are illiquid"
+      );
+    }
+
+    // Built as elements with textContent rather than innerHTML: these strings
+    // are constants today, and keeping the note free of markup assembly means a
+    // future one carrying a symbol or a reason cannot become an injection.
+    S.filterNote.textContent = "";
+    plain.forEach(function (text) {
+      var line = document.createElement("span");
+      line.className = "fnwhat";
+      line.textContent = text;
+      S.filterNote.appendChild(line);
+    });
+    var tally = document.createElement("span");
+    tally.className = "fncount";
+    tally.textContent = counts.join(" · ");
+    S.filterNote.appendChild(tally);
+    S.filterNote.hidden = false;
+  }
+
+  function onFilterChange() {
+    renderScreen();
+  }
+
+  S.fStop.addEventListener("change", onFilterChange);
+  S.fLiq.addEventListener("change", onFilterChange);
+  S.fBox.addEventListener("change", onFilterChange);
+  S.fClear.addEventListener("click", function () {
+    S.fStop.value = ""; S.fLiq.value = ""; S.fBox.value = "";
+    onFilterChange();
+  });
 
   // Three views, three questions: what do I do / where are the prices / show
   // me everything. Exactly one is visible, so they cannot render at once.

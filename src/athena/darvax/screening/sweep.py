@@ -32,6 +32,7 @@ import logging
 import threading
 import uuid
 from collections.abc import Callable, Sequence
+from decimal import Decimal
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 
@@ -39,6 +40,10 @@ from athena.darvax.config import DarvaxConfig, methodology_digest
 from athena.darvax.ports import DarvaxMarketDataPort
 from athena.darvax.scan import scan_instruments
 from athena.darvax.screening.engine import screen_signals, tier_counts
+from athena.darvax.screening.liquidity import (
+    LIQUIDITY_WINDOW_BARS,
+    traded_value,
+)
 from athena.darvax.screening.models import SweepRecord
 from athena.darvax.signals.models import DarvaxSignal
 from athena.darvax.store.repository import DarvaxRepository
@@ -214,7 +219,14 @@ class SweepRunner:
             # also let holdings change mid-sweep, so one screen could disagree
             # with itself about what is held.
             held = self.store.open_positions_by_instrument()
-            results = screen_signals(signals, sweep_id=sweep_id, positions=held)
+            # Liquidity is measured here rather than in the engine: it needs
+            # candles, and the screening layer deliberately has no market-data
+            # access. One short read per instrument on top of the lookback the
+            # sweep already performs.
+            liquidity = self._liquidity_for(signals)
+            results = screen_signals(
+                signals, sweep_id=sweep_id, positions=held, liquidity=liquidity
+            )
             self.store.save_screen_results(results)
 
             state = "cancelled" if cancelled else "completed"
@@ -253,6 +265,31 @@ class SweepRunner:
                 )
             except Exception:  # pragma: no cover - persistence already broken
                 logger.exception("DarvaX sweep %s could not record its failure", sweep_id)
+
+    def _liquidity_for(
+        self, signals: Sequence[DarvaxSignal]
+    ) -> dict[str, Decimal]:
+        """Median traded value per instrument, skipping what cannot be measured.
+
+        A read failure on one instrument must not cost the sweep — the same
+        per-instrument isolation the scan already applies — so a symbol whose
+        candles cannot be read is simply absent from the map and reports as
+        unmeasured rather than as illiquid.
+        """
+        out: dict[str, Decimal] = {}
+        for signal in signals:
+            try:
+                candles = self.market_data.recent_candles(
+                    signal.instrument_id,
+                    SWEEP_TIMEFRAME,
+                    limit=LIQUIDITY_WINDOW_BARS,
+                )
+            except Exception:  # one instrument must never cost the run
+                continue
+            value = traded_value(candles)
+            if value is not None:
+                out[signal.instrument_id] = value
+        return out
 
     def _record(
         self,
