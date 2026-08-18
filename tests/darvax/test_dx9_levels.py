@@ -146,15 +146,54 @@ def test_every_ladder_level_is_a_persisted_field():
 def test_the_ladder_scale_is_per_card():
     """Prices on one sweep span ₹74 to ₹23,500; a shared axis would render most
     ladders as a flat line."""
-    fn = CODE.split("function ladder(")[1].split("\n  function ")[0]
+    fn = CODE.split("function levelChart")[1].split("\n  function ")[0]
     assert "Math.min.apply" in fn and "Math.max.apply" in fn
 
 
-def test_the_breakout_zone_is_drawn():
-    fn = CODE.split("function ladder(")[1].split("\n  function ")[0]
+def test_risk_is_measured_from_the_current_price_not_the_trigger():
+    """The stop is defined as 10% below the trigger, so risk measured to the
+    trigger is the constant 10% — it printed identically on every card and told
+    the reader nothing. Worse, price had already run past the trigger on every
+    candidate, so it understated real exposure: BI showed 10% where buying that
+    day risked 21.5%."""
+    fn = CODE.split("function levelChart")[1].split("\n  function ")[0]
+    assert "if you buy now" in fn
+    assert "risk / now" in fn, "risk must be a fraction of the current price"
+    assert "of entry" not in fn, "the constant 10% figure must be gone"
+
+
+def test_the_zone_is_drawn_only_while_price_is_still_below_the_ceiling():
+    """The zone is ground price has yet to take. Shading it for an instrument
+    that already broke out covered up to 67% of the card (measured on XTRANET)
+    with hatching that was largest exactly when it meant least."""
+    fn = CODE.split("function levelChart")[1].split("\n  function ")[0]
     assert "lv-zone" in fn
-    assert "breakout zone" in fn
+    assert "now < top" in fn, "the zone must be conditional on price being under it"
     assert ".lv-zone" in CSS
+
+
+def test_the_zone_caption_is_anchored_to_the_ceiling_that_defines_it():
+    """At the bottom of the zone it landed on whichever level sat nearest the
+    ceiling and read as that level's caption — on a real card it appeared to
+    label the stop."""
+    # Revision 2 drops the in-strip caption entirely — the strip is 34px wide
+    # and a word does not fit — so the zone is explained by the rows beside it.
+    assert ".lv-zone" in CSS
+
+
+def test_the_figures_row_does_not_repeat_the_ladder():
+    """Buy-above and stop are labelled lines a few pixels above, so printing
+    them again put the same two numbers on one card twice and left risk/share
+    competing with its own duplicates."""
+    assert "riskRow" not in CODE, "the duplicate figures row is gone entirely"
+    fn = CODE.split("function levelChart")[1].split("\n  function ")[0]
+    assert "risk ₹" in fn
+
+
+def test_level_hints_do_not_restate_the_level_name():
+    levels = CODE.split("var LADDER_LEVELS")[1].split("];")[0]
+    assert "top of the box" not in levels
+    assert "bottom of the box" not in levels
 
 
 def test_rows_without_levels_are_excluded_not_faked():
@@ -173,8 +212,8 @@ def test_watch_rows_are_capped_and_the_cap_is_stated():
 
 
 def test_a_ladder_degrades_when_there_are_too_few_levels():
-    fn = CODE.split("function ladder(")[1].split("\n  function ")[0]
-    assert "present.length < 2" in fn
+    fn = CODE.split("function levelChart")[1].split("\n  function ")[0]
+    assert "items.length < 2" in fn
 
 
 def test_no_charting_library_is_introduced():
@@ -201,7 +240,7 @@ def test_a_holdings_own_entry_and_stop_are_drawn_on_its_ladder():
     level actually protecting the position — the stop recorded with it — appeared
     as a line of text under the chart and not on it, which is precisely backwards
     for the one card where it matters most."""
-    fn = CODE.split("function ladder(")[1].split("\n  function ")[0]
+    fn = CODE.split("function levelChart")[1].split("\n  function ")[0]
     assert "position.entry_price" in fn
     assert "position.stop_price" in fn
     assert "Your stop" in fn and "Your entry" in fn
@@ -215,20 +254,23 @@ def test_a_holdings_levels_are_styled_apart_from_the_methods():
     assert ".lv-yourentry" in CSS
 
 
-def test_label_de_collision_keeps_the_line_at_its_true_price():
-    """Two levels 0.4% apart put their labels on top of each other. The label is
-    nudged and the line is not — moving the line would make the chart lie."""
-    fn = CODE.split("function ladder(")[1].split("\n  function ")[0]
-    assert "lv-tag" in fn, "the label must be a separate element from the line"
-    assert "translateY" in fn
-    assert 'style="top:\' + truePct' in fn, "the line stays at the true position"
+def test_prices_live_in_table_rows_so_they_cannot_collide():
+    """Revision 1 drew price labels on the lines and nudged them apart when
+    levels sat close. That detached each label from the line it named: with five
+    levels inside a few percent (BI: now ₹76.81 against a ceiling of ₹75) you
+    could not tell which label went with which line.
+
+    Table rows are in normal flow, so collision is designed out rather than
+    managed — and the nudging machinery is gone rather than left dormant."""
+    assert "ltable" in CODE and "lt-price" in CODE
+    assert "LABEL_MIN_GAP_PX" not in CODE, "the nudging mechanism must not linger"
+    assert "translateY" not in CODE
 
 
-def test_the_minimum_label_gap_exceeds_the_label_height():
-    """The gap is between label *tops*, so a value below the label height still
-    overlaps. Measured at 14.7–15.5px in the browser; 14 left 16 of 488 pairs
-    overlapping, which is why this is asserted rather than eyeballed."""
-    import re
-
-    gap = int(re.search(r"LABEL_MIN_GAP_PX = (\d+)", CODE).group(1))
-    assert gap >= 17, f"min label gap {gap}px is under the measured label height"
+def test_a_tick_ties_each_row_to_its_position_in_the_strip():
+    """The table cannot show geometry and the strip cannot show numbers, so a
+    colour-matched tick is what joins them."""
+    fn = CODE.split("function levelChart")[1].split("\n  function ")[0]
+    assert "ltick" in fn
+    assert "lt-tick" in fn
+    assert ".lstrip .ltick" in CSS

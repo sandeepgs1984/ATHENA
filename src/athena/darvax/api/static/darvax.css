@@ -614,7 +614,7 @@ ul.ev .d { color: var(--dim); opacity: .8; }
     -45deg, rgba(217,154,43,.07) 0 5px, transparent 5px 10px);
 }
 .lv-zone span {
-  position: absolute; right: 4px; bottom: 2px;
+  position: absolute; right: 4px; top: 2px;
   font-size: 9.5px; letter-spacing: 0.06em; text-transform: uppercase;
   color: rgba(217,154,43,.75);
 }
@@ -683,3 +683,81 @@ ul.ev .d { color: var(--dim); opacity: .8; }
 .lv-line.lv-yourstop  .lv-price, .lv-line.lv-yourstop .lv-name { color: var(--bad); }
 .lv-line.lv-yourentry { border-top: 1px dashed var(--good); }
 .lv-line.lv-yourentry .lv-price, .lv-line.lv-yourentry .lv-name { color: var(--good); }
+
+/* ======================================================================
+   Levels card, redesigned (DX-9d, revision 2)
+
+   Geometry on the left, numbers on the right.
+
+   Revision 1 put price labels on the lines and nudged them apart when levels
+   sat close together — which detached each label from the line it named. With
+   five levels inside a few percent (BI: now ₹76.81 against a ceiling of ₹75)
+   you could not tell which label belonged to which line. Table rows are in
+   normal flow and cannot collide, so the problem is designed out rather than
+   managed; the strip keeps the shape, and a colour-matched tick ties each row
+   to its position.
+   ====================================================================== */
+
+.lgrid {
+  display: grid; grid-template-columns: 34px 1fr; gap: 12px;
+  margin: 0 0 11px;
+}
+
+.lstrip {
+  position: relative; border-radius: 4px;
+  background: var(--bg); border: 1px solid var(--line);
+}
+.lstrip .lv-box {
+  position: absolute; left: 0; right: 0;
+  background: rgba(139, 149, 163, 0.18);
+  border-top: 1px solid rgba(139, 149, 163, 0.45);
+  border-bottom: 1px solid rgba(139, 149, 163, 0.45);
+}
+.lstrip .lv-zone {
+  position: absolute; left: 0; right: 0;
+  background: repeating-linear-gradient(
+    -45deg, rgba(217,154,43,.16) 0 4px, transparent 4px 8px);
+}
+.lstrip .ltick {
+  position: absolute; left: -1px; right: -1px; height: 0;
+  border-top: 2px solid currentColor;
+}
+
+/* --- the numbers -------------------------------------------------------- */
+.ltable { width: 100%; border-collapse: collapse; }
+.ltable td {
+  padding: 3px 0; font-size: 12px; vertical-align: baseline;
+  border: 0; white-space: nowrap;
+}
+.ltable .lt-tick { width: 14px; }
+.ltable .lt-tick .ltick {
+  display: inline-block; width: 10px; height: 0;
+  border-top: 2px solid currentColor; vertical-align: middle;
+}
+.ltable .lt-name {
+  width: 74px; font-size: 9.5px; letter-spacing: 0.07em;
+  text-transform: uppercase; color: var(--dim);
+}
+.ltable .lt-price {
+  width: 84px; text-align: right; padding-right: 10px;
+  font: 600 12.5px/1.4 var(--mono);
+}
+.ltable .lt-note {
+  font-size: 11px; color: var(--dim); white-space: normal; line-height: 1.35;
+}
+
+/* Colour carries the KIND of level, never its quality. */
+.ltable tr .ltick, .lstrip .ltick { color: var(--neutral); }
+.lt-name { color: var(--dim); }
+tr .lv-now,      .lstrip .lv-now      { color: var(--text); }
+tr .lv-entry,    .lstrip .lv-entry    { color: var(--warn); }
+tr .lv-stop,     .lstrip .lv-stop     { color: var(--bad); }
+tr .lv-ceiling,  .lstrip .lv-ceiling  { color: rgba(139,149,163,.9); }
+tr .lv-floor,    .lstrip .lv-floor    { color: rgba(139,149,163,.9); }
+tr .lv-yourentry,.lstrip .lv-yourentry{ color: var(--good); }
+tr .lv-yourstop, .lstrip .lv-yourstop { color: var(--bad); }
+.ltable tr.lv-now .lt-price { color: var(--text); }
+
+/* The row's price inherits its level colour so the tick, the name and the
+   number all read as one thing. */
+.ltable td.lt-price { color: inherit; }

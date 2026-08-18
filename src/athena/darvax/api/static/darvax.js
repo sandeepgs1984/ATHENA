@@ -1035,112 +1035,99 @@
   //: Levels in descending display order, with how each is drawn. Data, so the
   //: legend and the ladder cannot disagree about what a line means.
   var LADDER_LEVELS = [
+    // Hints only where the name does not already say it. "CEILING top of the
+    // box" and "FLOOR bottom of the box" were pure restatement and pushed the
+    // useful labels around; "Entry" genuinely needs to say *which* level it is.
     { key: "trigger_price", cls: "lv-entry",   label: "Entry",   hint: "prior day's high" },
-    { key: "stop_price",    cls: "lv-stop",    label: "Stop",    hint: "the method's exit" },
-    { key: "box_top",       cls: "lv-ceiling", label: "Ceiling", hint: "top of the box" },
-    { key: "box_bottom",    cls: "lv-floor",   label: "Floor",   hint: "bottom of the box" }
+    { key: "stop_price",    cls: "lv-stop",    label: "Stop",    hint: "" },
+    { key: "box_top",       cls: "lv-ceiling", label: "Ceiling", hint: "" },
+    { key: "box_bottom",    cls: "lv-floor",   label: "Floor",   hint: "" }
   ];
 
-  function ladder(row, position) {
-    var present = [];
+  // A narrow chart carrying the geometry, and a table carrying the numbers.
+  //
+  // The previous ladder put price labels ON the lines and nudged them apart when
+  // levels sat close together — which detached a label from the line it named.
+  // With five levels inside a few percent (BI: now ₹76.81, ceiling ₹75) it
+  // became impossible to tell which label belonged to which line, which is
+  // exactly what the owner reported. Table rows are in normal flow, so they
+  // cannot collide, and each row's tick is colour-matched into the strip.
+  function levelChart(row, position) {
+    var items = [];
     LADDER_LEVELS.forEach(function (lv) {
       var v = num(row[lv.key]);
-      if (v !== null) present.push({ v: v, cls: lv.cls, label: lv.label, hint: lv.hint });
+      if (v !== null) items.push({ v: v, cls: lv.cls, label: lv.label, note: lv.hint });
     });
     var now = num(row.close);
-    if (now !== null) present.push({ v: now, cls: "lv-now", label: "Now", hint: "" });
-
-    // A holding's own entry and stop, when there is one. Labelled "Your …" and
-    // styled apart because the provenance differs and must not be blurred: the
-    // method's stop is prospective and moves with each screen, whereas yours was
-    // frozen when you recorded the position. A held card without them was the
-    // first thing wrong with this view — the level that actually protects the
-    // position appeared only as a line of text under the chart.
+    if (now !== null) items.push({ v: now, cls: "lv-now", label: "Now", note: "" });
     if (position) {
       var pe = num(position.entry_price), ps = num(position.stop_price);
-      if (pe !== null) {
-        present.push({ v: pe, cls: "lv-yourentry", label: "Your entry", hint: "" });
-      }
-      if (ps !== null) {
-        present.push({ v: ps, cls: "lv-yourstop", label: "Your stop", hint: "" });
-      }
+      if (pe !== null) items.push({ v: pe, cls: "lv-yourentry", label: "Your entry", note: "" });
+      if (ps !== null) items.push({ v: ps, cls: "lv-yourstop", label: "Your stop", note: "" });
     }
-    if (present.length < 2) {
+    if (items.length < 2) {
       return '<p class="dim">No levels recorded for this instrument.</p>';
     }
 
-    var vals = present.map(function (p) { return p.v; });
+    // What a buyer today actually risks, which is the number that varies and
+    // the number that applies. Risk measured to the trigger is a constant 10%
+    // by construction — the stop is defined as 10% below it — so quoting that
+    // as "of entry" printed the same figure on every card and understated the
+    // real exposure whenever price had already run past the trigger.
+    var stop = num(row.stop_price);
+    var trigger = num(row.trigger_price);
+    items.forEach(function (it) {
+      if (it.cls === "lv-stop" && stop !== null && now !== null && now > stop) {
+        var risk = now - stop;
+        it.note = "risk ₹" + risk.toLocaleString("en-IN", {
+          minimumFractionDigits: 2, maximumFractionDigits: 2
+        }) + " (" + ((risk / now) * 100).toFixed(1) + "%) if you buy now";
+      }
+      if (it.cls === "lv-entry" && trigger !== null && now !== null) {
+        it.note = now > trigger ? "already past it" : "buy above this";
+      }
+      if (it.cls === "lv-now") {
+        var d = num(row.distance_to_breakout_pct);
+        if (d !== null) it.note = d <= 0 ? "above the buy level" : d.toFixed(2) + "% below it";
+      }
+    });
+
+    items.sort(function (a, b) { return b.v - a.v; });
+    var vals = items.map(function (i) { return i.v; });
     var min = Math.min.apply(null, vals), max = Math.max.apply(null, vals);
-    var pad = (max - min) * 0.12 || 1;
+    var pad = (max - min) * 0.08 || 1;
     var lo = min - pad, hi = max + pad;
     function y(v) { return (1 - (v - lo) / (hi - lo)) * 100; }
 
     var top = num(row.box_top), bottom = num(row.box_bottom);
-    var html = '<div class="ladder">';
-
-    // The box itself, and the breakout zone above its ceiling.
+    var strip = '<div class="lstrip">';
     if (top !== null && bottom !== null) {
-      html += '<div class="lv-box" style="top:' + y(top).toFixed(2) +
+      strip += '<div class="lv-box" style="top:' + y(top).toFixed(2) +
         "%;height:" + (y(bottom) - y(top)).toFixed(2) + '%"></div>';
-      html += '<div class="lv-zone" style="top:0;height:' + y(top).toFixed(2) +
-        '%"><span>breakout zone</span></div>';
+      // Only while the ceiling is still ahead of price: it is ground yet to be
+      // taken, and shading it after a breakout filled the card with hatching
+      // about a move that had already happened.
+      if (now !== null && now < top) {
+        strip += '<div class="lv-zone" style="top:' + y(top).toFixed(2) +
+          "%;height:" + (y(now) - y(top)).toFixed(2) + '%"></div>';
+      }
     }
-
-    // Descending so the labels read like a price ladder.
-    //
-    // The LINE sits at its true position and only the LABEL is nudged when two
-    // levels are too close to read — on a real holding, Now ₹11,650 and Floor
-    // ₹11,607 are 0.4% apart, which is ~2% of the ladder and two labels on top
-    // of each other. Moving the line instead would make the chart lie.
-    var ordered = present.sort(function (a, b) { return b.v - a.v; });
-
-    // Two passes. Forward opens a minimum gap between labels; a purely forward
-    // pass then pushes the lowest ones out of the card when several levels
-    // cluster near the floor (5 escaped on a real sweep), so a backward pass
-    // clamps them inside and lets earlier labels ride up to make room.
-    var truePxs = ordered.map(function (p) { return (y(p.v) / 100) * LADDER_HEIGHT_PX; });
-    var labelPxs = [];
-    truePxs.forEach(function (tp, i) {
-      labelPxs[i] = i === 0 ? tp : Math.max(tp, labelPxs[i - 1] + LABEL_MIN_GAP_PX);
+    items.forEach(function (it) {
+      strip += '<i class="ltick ' + it.cls + '" style="top:' + y(it.v).toFixed(2) + '%"></i>';
     });
-    var floorPx = LADDER_HEIGHT_PX - LABEL_HEIGHT_PX;
-    for (var i = labelPxs.length - 1; i >= 0; i--) {
-      var ceilingForThis = i === labelPxs.length - 1
-        ? floorPx
-        : labelPxs[i + 1] - LABEL_MIN_GAP_PX;
-      labelPxs[i] = Math.min(labelPxs[i], ceilingForThis);
-      if (labelPxs[i] < 0) labelPxs[i] = 0;
-    }
+    strip += "</div>";
 
-    ordered.forEach(function (p, idx) {
-      var truePct = y(p.v);
-      var truePx = truePxs[idx];
-      var labelPx = labelPxs[idx];
-      var shift = labelPx - truePx;
-      html += '<div class="lv-line ' + p.cls + '" style="top:' + truePct.toFixed(2) + '%">' +
-        '<span class="lv-tag"' +
-        (Math.abs(shift) > 0.5
-          ? ' style="transform:translateY(' + shift.toFixed(1) + 'px)"'
-          : "") +
-        '><span class="lv-price">' + money(String(p.v)) + "</span>" +
-        '<span class="lv-name">' + esc(p.label) + "</span>" +
-        (p.hint ? '<span class="lv-hint">' + esc(p.hint) + "</span>" : "") +
-        "</span></div>";
-    });
-    return html + "</div>";
-  }
+    var rows = items.map(function (it) {
+      return '<tr class="' + it.cls + '">' +
+        '<td class="lt-tick"><i class="ltick ' + it.cls + '"></i></td>' +
+        '<td class="lt-name">' + esc(it.label) + "</td>" +
+        '<td class="lt-price">' + money(String(it.v)) + "</td>" +
+        '<td class="lt-note">' + esc(it.note || "") + "</td>" +
+      "</tr>";
+    }).join("");
 
-  function riskRow(row) {
-    var buy = num(row.trigger_price), stop = num(row.stop_price);
-    if (buy === null || stop === null || buy <= 0) return "";
-    var risk = buy - stop;
-    return '<div class="lv-figs">' +
-      "<span><b>" + money(row.trigger_price) + "</b><i>buy above</i></span>" +
-      "<span><b>" + money(row.stop_price) + "</b><i>stop</i></span>" +
-      "<span><b>₹" + risk.toLocaleString("en-IN", {
-        minimumFractionDigits: 2, maximumFractionDigits: 2
-      }) + "</b><i>risk/share</i></span>" +
-      "</div>";
+    return '<div class="lgrid">' + strip +
+      '<table class="ltable"><tbody>' + rows + "</tbody></table></div>";
   }
 
   function ladderCard(row, position) {
@@ -1160,8 +1147,7 @@
       '<article class="lcard">' +
         '<header><span class="sym">' + esc(row.symbol) + "</span>" +
           actionChip(row) + "</header>" +
-        ladder(row, position) +
-        riskRow(row) +
+        levelChart(row, position) +
         held +
         '<p class="why">' + esc(row.action_reason_plain || row.action_reason) + "</p>" +
         vs +
@@ -1174,19 +1160,8 @@
   //: nearest their level, which is the same order the engine ranks by.
   var LEVELS_APPROACHING = 12;
 
-  //: Ladder geometry. Height must match the CSS, because label de-collision is
-  //: computed in pixels against it.
-  var LADDER_HEIGHT_PX = 176;
 
-  //: Minimum distance between label *tops*, so it must exceed the label height
-  //: or the boxes still overlap. Measured in the browser at 14.7–15.5px, so 14
-  //: left 16 of 488 label pairs overlapping by ~2.7px — visibly wrong and
-  //: exactly the kind of thing that looks fine in a mock and not in use.
-  var LABEL_MIN_GAP_PX = 19;
 
-  //: Measured label height (14.7–15.5px). Used to keep the lowest label inside
-  //: the ladder rather than hanging below the card.
-  var LABEL_HEIGHT_PX = 16;
 
   function renderLevels() {
     if (!screen.rows.length) {
