@@ -1079,16 +1079,33 @@
     items.forEach(function (it) {
       if (it.cls === "lv-stop" && stop !== null && now !== null && now > stop) {
         var risk = now - stop;
-        it.note = "risk ₹" + risk.toLocaleString("en-IN", {
+        // Shorter than "if you buy now": that wrapped to a second line and made
+        // this row taller than its neighbours, which broke the column scan.
+        it.note = "risk from here ₹" + risk.toLocaleString("en-IN", {
           minimumFractionDigits: 2, maximumFractionDigits: 2
-        }) + " (" + ((risk / now) * 100).toFixed(1) + "%) if you buy now";
+        }) + " (" + ((risk / now) * 100).toFixed(1) + "%)";
       }
       if (it.cls === "lv-entry" && trigger !== null && now !== null) {
-        it.note = now > trigger ? "already past it" : "buy above this";
+        // Short: a longer caption wrapped and pushed the card from 328px to
+        // 387px, which is the density problem this redesign was fixing.
+        it.note = now > trigger ? "already passed" : "buy above this";
       }
       if (it.cls === "lv-now") {
-        var d = num(row.distance_to_breakout_pct);
-        if (d !== null) it.note = d <= 0 ? "above the buy level" : d.toFixed(2) + "% below it";
+        // Measured against the level itself, not against the current price.
+        //
+        // `distance_to_breakout_pct` is a percentage of *close* — it answers
+        // "how far below price is the level", which rendered as "12.8% above
+        // the buy level" for BI when price was really 14.7% above ₹66.99. "X%
+        // above Y" has to mean (price − Y) / Y or the reader cannot check it,
+        // and 14.7% is also the figure that explains the risk: a 10% stop taken
+        // from an entry price already run past by 14.7% leaves 21.5% at risk.
+        var ref = trigger !== null ? trigger : num(row.box_top);
+        if (ref !== null && ref > 0 && now !== null) {
+          var gap = ((now - ref) / ref) * 100;
+          it.note = gap >= 0
+            ? gap.toFixed(1) + "% above the buy level"
+            : Math.abs(gap).toFixed(1) + "% below it";
+        }
       }
     });
 
@@ -1160,6 +1177,13 @@
   //: nearest their level, which is the same order the engine ranks by.
   var LEVELS_APPROACHING = 12;
 
+  //: Buy ladders shown at once. A ladder is ~360px tall, so rendering all 116
+  //: candidates was roughly 21,000px of scroll — the Advisor view already caps
+  //: its shortlist at 10 for the same reason, and an uncapped list here made the
+  //: view unusable for the studying it exists to support. The count says how
+  //: many were held back.
+  var LEVELS_BUY_MAX = 24;
+
 
 
 
@@ -1181,9 +1205,13 @@
 
     var buys = screen.rows.filter(function (r) { return r.risk_bearing; })
       .sort(function (a, b) { return (a.rank || 0) - (b.rank || 0); });
+    var shown = buys.slice(0, LEVELS_BUY_MAX);
     S.lvBuy.hidden = buys.length === 0;
-    S.lvBuySub.textContent = buys.length + " with a full set of levels";
-    S.lvBuyLadders.innerHTML = buys.map(function (r) {
+    S.lvBuySub.textContent = shown.length === buys.length
+      ? buys.length + " with a full set of levels"
+      : "nearest " + shown.length + " of " + buys.length +
+        " · closest to their buy level first";
+    S.lvBuyLadders.innerHTML = shown.map(function (r) {
       return ladderCard(r, null);
     }).join("");
 

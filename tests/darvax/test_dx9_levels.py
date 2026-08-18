@@ -157,9 +157,9 @@ def test_risk_is_measured_from_the_current_price_not_the_trigger():
     candidate, so it understated real exposure: BI showed 10% where buying that
     day risked 21.5%."""
     fn = CODE.split("function levelChart")[1].split("\n  function ")[0]
-    assert "if you buy now" in fn
     assert "risk / now" in fn, "risk must be a fraction of the current price"
     assert "of entry" not in fn, "the constant 10% figure must be gone"
+    assert "risk from here" in fn, "the note must say the risk is from today's price"
 
 
 def test_the_zone_is_drawn_only_while_price_is_still_below_the_ceiling():
@@ -187,7 +187,7 @@ def test_the_figures_row_does_not_repeat_the_ladder():
     competing with its own duplicates."""
     assert "riskRow" not in CODE, "the duplicate figures row is gone entirely"
     fn = CODE.split("function levelChart")[1].split("\n  function ")[0]
-    assert "risk ₹" in fn
+    assert "risk from here ₹" in fn
 
 
 def test_level_hints_do_not_restate_the_level_name():
@@ -274,3 +274,45 @@ def test_a_tick_ties_each_row_to_its_position_in_the_strip():
     assert "ltick" in fn
     assert "lt-tick" in fn
     assert ".lstrip .ltick" in CSS
+
+
+def test_the_distance_past_the_buy_level_shows_its_magnitude():
+    """"above the buy level" without a number dropped the fact that explains the
+    risk figure. BI sat 14.7% past its entry, which is precisely what turns the
+    method's 10% stop into 21.5% of exposure for a buyer today — quoting the risk
+    while hiding its cause leaves the reader unable to check it."""
+    fn = CODE.split("function levelChart")[1].split("\n  function ")[0]
+    assert "% above the buy level" in fn
+    # Against the level, not against the current price. `distance_to_breakout_pct`
+    # is a fraction of close, so rendering it as "X% above the buy level" gave
+    # BI 12.8% where price was really 14.7% above ₹66.99 — a figure the reader
+    # cannot reproduce from the two numbers on the card.
+    assert "(now - ref) / ref" in fn, "the level must be the denominator"
+    assert "distance_to_breakout_pct" not in fn.split("lv-now")[1][:400]
+
+
+def test_the_risk_note_stays_on_one_line():
+    """It wrapped, which made the stop row taller than its neighbours and broke
+    the column scan the table design exists to provide."""
+    fn = CODE.split("function levelChart")[1].split("\n  function ")[0]
+    assert "if you buy now" not in fn
+    assert "risk from here" in fn
+
+
+def test_the_buy_ladder_list_is_capped_and_says_so():
+    """A ladder is ~360px, so 116 of them was ~21,000px of scroll. The Advisor
+    view caps its shortlist for the same reason; a silent cap would read as
+    "these are all of them"."""
+    assert "LEVELS_BUY_MAX" in CODE
+    fn = CODE.split("function renderLevels")[1].split("\n  //")[0]
+    assert "nearest " in fn and " of " in fn
+
+
+def test_ladder_cards_are_wide_enough_for_their_notes():
+    """Measured: at 330px the note column got 84px where the longest note needed
+    170, so 153 rows wrapped and the column scan broke."""
+    import re
+
+    grid = CSS.split(".ladders {")[1].split("}")[0]
+    width = int(re.search(r"minmax\((\d+)px", grid).group(1))
+    assert width >= 400, f"{width}px leaves the note column too narrow"
