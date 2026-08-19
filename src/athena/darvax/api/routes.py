@@ -178,6 +178,10 @@ def _screen_payload(result: ScreenResult) -> dict[str, Any]:
         # DX-10a. Rupees; the UI converts to crore. Null means unmeasured, which
         # a filter must not treat as illiquid.
         "liquidity_value": _optional(result.liquidity_value),
+        # DX-12a. Trend context, not a DAR-CARD rule. Independently nullable —
+        # a symbol may have enough history for one EMA period and not the other.
+        "ema_50": _optional(result.ema_50),
+        "ema_100": _optional(result.ema_100),
         # Which chips must carry the unvalidated badge is a domain fact, not a
         # styling choice, so the client is told rather than left to hardcode a
         # list that would drift when an action is added (design §4, decision 3b).

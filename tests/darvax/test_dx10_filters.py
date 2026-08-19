@@ -107,10 +107,13 @@ def test_liquidity_is_passed_into_the_engine_not_fetched_by_it():
 
 
 def test_a_read_failure_on_one_symbol_does_not_cost_the_sweep():
+    """DX-12a renamed this to ``_context_for`` when liquidity and the 50/100
+    EMA trend were combined into one per-instrument candle read; the
+    isolation property it existed to guard is unchanged."""
     source = (
         REPO_ROOT / "src/athena/darvax/screening/sweep.py"
     ).read_text(encoding="utf-8")
-    fn = source.split("def _liquidity_for")[1].split("\n    def ")[0]
+    fn = source.split("def _context_for")[1].split("\n    def ")[0]
     assert "except Exception" in fn
     assert "continue" in fn
 
@@ -149,9 +152,15 @@ def test_there_is_no_market_cap_filter():
 
 def test_unmeasured_liquidity_is_reported_not_silently_dropped():
     """Excluding a symbol because its liquidity is unknown is defensible;
-    excluding it *silently* makes a new listing look illiquid."""
+    excluding it *silently* makes a new listing look illiquid.
+
+    DX-12a split the single ``unmeasured`` counter into
+    ``unmeasuredLiquidity``/``unmeasuredTrend`` when a second candle-derived
+    measurement joined liquidity; the property this test guards — an
+    unmeasured symbol is counted and explained, not just dropped — is
+    unchanged."""
     fn = CODE.split("function applyFilters")[1].split("\n  function ")[0]
-    assert "unmeasured++" in fn
+    assert "unmeasuredLiquidity++" in fn
     note = CODE.split("function renderFilterNote")[1].split("\n  function ")[0]
     assert "could not be measured" in note
     assert "not because they are illiquid" in note

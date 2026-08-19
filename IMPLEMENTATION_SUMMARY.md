@@ -83,6 +83,57 @@ suite and visible in the browser within a minute:
 **Implementation metrics.** ~2,000 insertions across 22 files, 38 tests,
 4 design-doc sections, 1 new MILESTONES section (DX-10, six milestones).
 
+**DX-12a — 50/100-session EMA trend context, requested directly by the
+owner.** *"now, next is integrating 50 ema and 100 ema to darvax screener/
+advisor... check this on how we can include this."* Delivered as a Design
+step first (existing infrastructure survey, an accuracy caveat flagged before
+deciding, two clarifying questions) before any code, per the mandatory
+Design→Implement→Test workflow.
+
+- **Not a DAR-CARD rule.** Darvas' method is pure price action; the deck's
+  only EMA usage is the 5/10/20/200 stop ladder (`signals/stops.py`), an
+  *exit* rule, not a trend filter. New module `screening/trend.py` reuses the
+  existing `signals/ema.py` primitive rather than a second implementation,
+  and states its own accuracy caveat: a cold-started EMA under-converges
+  relative to one built on years of history — the same tradeoff the
+  existing EMA(200) stop rung already carries, not a new one.
+- **Computed in `sweep.py`, threaded like liquidity.** The screening engine
+  has no market-data access by design, so `_liquidity_for` became
+  `_context_for`: one combined per-instrument candle read (widened to
+  `max(20, 100)` bars) now derives both liquidity and the 50/100 EMA, instead
+  of two separate reads. `screen_signal`/`screen_signals` gained an optional
+  `trend` parameter, defaulting to `None` so every pre-DX-12a caller is
+  unaffected — pinned by a test that two signals identical except for
+  trend classify to the same tier and action.
+- **Schema v9→v10.** Two new nullable columns, `ema_50`/`ema_100`,
+  independently nullable (a newly listed instrument may have history for one
+  period and not the other) — additive migration, same pattern as every
+  prior field.
+- **Table view**: two new columns under the existing "context" band, using
+  the same `levelCell()`/rupee formatter as Buy-above/Stop-loss (no third
+  money-formatting path — the exact bug class that caused the doubled-₹
+  regression earlier this track). Absent values render `—`, never `₹0`.
+- **A 4th filter**, "Trend: any / above / below both EMAs", following the
+  fact-in-the-option-meaning-in-the-note split the stop-loss and box-height
+  filters established, and the same disable-with-stated-reason behaviour as
+  liquidity when a sweep predates the field.
+- **Guide updated** (§5 "Reading a card", §7 "The filters") with the new
+  field and filter, each disclosing plainly that it is not one of Darvas'
+  rules — cross-checked in tests against `trend.py`'s own period constants
+  so the guide cannot silently drift from what the engine actually computes.
+- **Two clarifying questions asked and answered before implementing**:
+  informational-plus-filter (not gating), and all three surfaces (Table,
+  Advisor badge, Levels) eventually wanted.
+- **Scoped down to one milestone deliberately.** Three UI surfaces plus a
+  schema change was too large for one sitting per the project's own
+  "split it before implementing" rule. This milestone (DX-12a) covers the
+  backend, Table, and filter; **DX-12b** (Advisor badge + Levels view) is
+  proposed as the next milestone, pending review of this one.
+- 29 new tests (14 backend + 15 frontend), full suite 1,970→1,999 passing.
+  Two guards proven non-vacuous by reintroducing the exact bug they guard
+  (missing non-Darvas disclosure; a hardcoded colspan) and confirming the
+  test fails, then restoring and confirming it passes.
+
 **DX-11 — in-app methodology guide, requested directly by the owner.**
 *"add world class ux reading guide about darvax... complete information about
 darvax (what it is, how it works, each and every minute detail)."* A dialog

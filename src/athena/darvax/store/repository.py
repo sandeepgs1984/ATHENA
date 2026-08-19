@@ -106,6 +106,8 @@ def _row_to_screen_result(row: tuple) -> ScreenResult:
         stop_vs_ceiling=_optional_decimal(row[21]),
         stop_vs_ceiling_note=row[22] or "",
         liquidity_value=_optional_decimal(row[23]),
+        ema_50=_optional_decimal(row[24]),
+        ema_100=_optional_decimal(row[25]),
     )
 
 
@@ -410,8 +412,9 @@ class DarvaxRepository:
                         "trigger_price, distance_to_trigger_pct, distance_to_breakout_pct, "
                         "breakout_reference, box_height_pct, explanation, action, action_reason, "
                         "action_reason_plain, stop_price, stop_basis, "
-                        "stop_vs_ceiling, stop_vs_ceiling_note, liquidity_value"
-                        ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+                        "stop_vs_ceiling, stop_vs_ceiling_note, liquidity_value, "
+                        "ema_50, ema_100"
+                        ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
                         "ON CONFLICT(sweep_id, instrument_id) DO UPDATE SET "
                         "signal_id=excluded.signal_id, tier=excluded.tier, "
                         "signal_type=excluded.signal_type, "
@@ -430,7 +433,8 @@ class DarvaxRepository:
                         "stop_basis=excluded.stop_basis, "
                         "stop_vs_ceiling=excluded.stop_vs_ceiling, "
                         "stop_vs_ceiling_note=excluded.stop_vs_ceiling_note, "
-                        "liquidity_value=excluded.liquidity_value",
+                        "liquidity_value=excluded.liquidity_value, "
+                        "ema_50=excluded.ema_50, ema_100=excluded.ema_100",
                         [
                             (
                                 r.sweep_id,
@@ -457,6 +461,8 @@ class DarvaxRepository:
                                 _optional_str(r.stop_vs_ceiling),
                                 r.stop_vs_ceiling_note,
                                 _optional_str(r.liquidity_value),
+                                _optional_str(r.ema_50),
+                                _optional_str(r.ema_100),
                             )
                             for r in results
                         ],
@@ -675,7 +681,7 @@ class DarvaxRepository:
                     "breakout_reference, box_height_pct, explanation, "
                     "action, action_reason, action_reason_plain, "
                     "stop_price, stop_basis, stop_vs_ceiling, "
-                    "stop_vs_ceiling_note, liquidity_value "
+                    "stop_vs_ceiling_note, liquidity_value, ema_50, ema_100 "
                     f"FROM darvax_screen_results {clause}",
                     params,
                 ).fetchall()

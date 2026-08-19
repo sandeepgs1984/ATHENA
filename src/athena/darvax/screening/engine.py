@@ -40,6 +40,7 @@ from athena.darvax.screening.models import (
     DarvaxTier,
     ScreenResult,
 )
+from athena.darvax.screening.trend import TrendReading
 from athena.darvax.signals.models import DarvaxSignal, DarvaxSignalType
 from athena.errors import AthenaError
 
@@ -382,6 +383,7 @@ def screen_signal(
     rank: int = 0,
     position: DarvaxPosition | None = None,
     liquidity: Decimal | None = None,
+    trend: TrendReading | None = None,
 ) -> ScreenResult:
     """Classify and measure one signal. ``rank`` is assigned by :func:`rank_tier`.
 
@@ -418,6 +420,11 @@ def screen_signal(
         # Passed in, never measured here: liquidity needs candles and this module
         # has no market-data access by design (the purity property DX-7b tests).
         liquidity_value=liquidity,
+        # Same reasoning as liquidity: trend needs candles, computed upstream in
+        # sweep.py and handed down (DX-12a). Not a DAR-CARD rule — a context
+        # dimension layered on top of the classification, never folded into it.
+        ema_50=trend.ema_50 if trend is not None else None,
+        ema_100=trend.ema_100 if trend is not None else None,
         sweep_id=sweep_id,
         instrument_id=signal.instrument_id,
         signal_id=signal.signal_id,
@@ -475,6 +482,7 @@ def screen_signals(
     sweep_id: str,
     positions: Mapping[str, DarvaxPosition] | None = None,
     liquidity: Mapping[str, Decimal] | None = None,
+    trend: Mapping[str, TrendReading] | None = None,
 ) -> tuple[ScreenResult, ...]:
     """Screen a batch of signals: classify, measure, then rank within each tier.
 
@@ -483,16 +491,20 @@ def screen_signals(
 
     ``positions`` maps ``instrument_id`` to an open holding. Defaulting to
     ``None`` keeps every existing caller — and every sweep run before DX-7b —
-    behaving exactly as it did.
+    behaving exactly as it did. ``trend`` (DX-12a) follows the same shape as
+    ``liquidity`` for the same reason: computed upstream from candles this
+    module cannot read itself.
     """
     held = positions or {}
     liq = liquidity or {}
+    trd = trend or {}
     screened = [
         screen_signal(
             s,
             sweep_id=sweep_id,
             position=held.get(s.instrument_id),
             liquidity=liq.get(s.instrument_id),
+            trend=trd.get(s.instrument_id),
         )
         for s in signals
     ]

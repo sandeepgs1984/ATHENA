@@ -211,6 +211,15 @@ class ScreenResult:
     than leaving the reader to guess (ADR-005)."""
     box_height_pct: Decimal | None = None
     """``(top - bottom) / bottom * 100``. Darvas favoured tight boxes."""
+    ema_50: Decimal | None = None
+    """50-session EMA of the close (DX-12a). **Not a DAR-CARD rule** — a trend
+    context the owner asked to add, layered on top of the classification the
+    same way liquidity and box height are. ``None`` when fewer than 50 closes
+    are available, never guessed."""
+    ema_100: Decimal | None = None
+    """100-session EMA of the close (DX-12a). Same independence from ``ema_50``
+    as from every other field here: a newly listed instrument may have enough
+    history for one and not the other, and each is reported on its own terms."""
 
 
 @dataclass(frozen=True, slots=True)

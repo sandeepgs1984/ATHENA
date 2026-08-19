@@ -11,7 +11,7 @@
     not touch dashboard.js/dashboard.css. ATHENA's asset-versioning discipline is
     therefore unaffected by anything here.
   -->
-  <link rel="stylesheet" href="/darvax/static/darvax.css?v=0.1.0-dx11a">
+  <link rel="stylesheet" href="/darvax/static/darvax.css?v=0.1.0-dx12a">
 </head>
 <body>
   <div class="wrap">
@@ -257,6 +257,13 @@
                 marker means price has covered that many multiples of the risk
                 before you would have paid anything for it.</dd>
               <dt>&#8377;cr/day</dt><dd>See <a href="#gd-liquidity" class="inline">section&nbsp;9</a>.</dd>
+              <dt>50 EMA / 100 EMA</dt><dd>The 50 and 100-session exponential
+                moving average of the close. <strong>Not a DAR-CARD rule</strong>
+                &mdash; the deck's only EMA usage is a stop-ladder <em>exit</em>
+                rule (5/10/20/200), not a trend filter. This is a trend-context
+                overlay added on top of the classification, the same footing as
+                liquidity and box height: informational, filterable, and never
+                part of the tier or action itself.</dd>
             </dl>
           </section>
 
@@ -290,6 +297,12 @@
                 C's exit &mdash; closer to the buy level. Not a claim that
                 tight is safer; DarvaX makes no safety claim about a method
                 labelled experimental and unvalidated.</dd>
+              <dt>Trend</dt><dd>Whether today's price sits above or below both
+                the 50 and 100-session EMA. <strong>Not one of Darvas' own
+                rules</strong> &mdash; a trend-context overlay the owner asked
+                to add. A row where the two EMAs disagree, or where either is
+                unmeasured, matches neither option rather than being guessed
+                into one.</dd>
             </dl>
           </section>
 
@@ -430,6 +443,20 @@
             <option value="10">Tight box &mdash; 10% or less</option>
             <option value="20">20% or less</option>
             <option value="-30">Wide box &mdash; over 30%</option>
+          </select>
+          <!--
+            DX-12a. A trend-context overlay, not a Darvas rule — the DAR-CARD
+            is pure price action; the deck's only EMA usage is a stop-ladder
+            EXIT rule, not this. The option states the fact ("above/below both
+            EMAs"); the note below the bar states the meaning, per the same
+            split the stop-loss and box-height filters already use.
+          -->
+          <select id="f-trend"
+                  aria-label="Filter by trend"
+                  title="Where today's price sits relative to the 50 and 100-session EMAs. Not part of Darvas' method &mdash; a trend-context overlay.">
+            <option value="">Trend: any</option>
+            <option value="above">Above both EMAs</option>
+            <option value="below">Below both EMAs</option>
           </select>
           <button id="f-clear" type="button" class="ghost" hidden>Clear filters</button>
           <span class="spacer"></span>
@@ -648,6 +675,6 @@
     </footer>
   </div>
 
-  <script src="/darvax/static/darvax.js?v=0.1.0-dx11a"></script>
+  <script src="/darvax/static/darvax.js?v=0.1.0-dx12a"></script>
 </body>
 </html>

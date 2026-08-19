@@ -33,7 +33,7 @@ never appear to have been produced by current settings.
 from __future__ import annotations
 
 #: Bumped independently of ATHENA's SCHEMA_VERSION. They never interact.
-DARVAX_SCHEMA_VERSION = 9
+DARVAX_SCHEMA_VERSION = 10
 
 _DDL: tuple[str, ...] = (
     "CREATE TABLE IF NOT EXISTS darvax_schema_version (version INTEGER NOT NULL)",
@@ -108,6 +108,8 @@ _DDL: tuple[str, ...] = (
         stop_vs_ceiling         TEXT,
         stop_vs_ceiling_note    TEXT,
         liquidity_value         TEXT,
+        ema_50                  TEXT,
+        ema_100                 TEXT,
         PRIMARY KEY (sweep_id, instrument_id)
     )
     """,
@@ -162,6 +164,11 @@ _ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("darvax_screen_results", "stop_vs_ceiling_note", "TEXT"),
     # DX-10a. Liquidity stands in for market cap, which ATHENA has no data for.
     ("darvax_screen_results", "liquidity_value", "TEXT"),
+    # DX-12a. Trend context — not a DAR-CARD rule, the owner asked for it
+    # directly. Independent columns: a symbol may have enough history for one
+    # EMA period and not the other.
+    ("darvax_screen_results", "ema_50", "TEXT"),
+    ("darvax_screen_results", "ema_100", "TEXT"),
 )
 
 

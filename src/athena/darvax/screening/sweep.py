@@ -45,6 +45,7 @@ from athena.darvax.screening.liquidity import (
     traded_value,
 )
 from athena.darvax.screening.models import SweepRecord
+from athena.darvax.screening.trend import TREND_LOOKBACK_BARS, TrendReading, trend_reading
 from athena.darvax.signals.models import DarvaxSignal
 from athena.darvax.store.repository import DarvaxRepository
 from athena.domain.enums import Timeframe
@@ -219,13 +220,17 @@ class SweepRunner:
             # also let holdings change mid-sweep, so one screen could disagree
             # with itself about what is held.
             held = self.store.open_positions_by_instrument()
-            # Liquidity is measured here rather than in the engine: it needs
-            # candles, and the screening layer deliberately has no market-data
-            # access. One short read per instrument on top of the lookback the
-            # sweep already performs.
-            liquidity = self._liquidity_for(signals)
+            # Liquidity and trend are measured here rather than in the engine:
+            # both need candles, and the screening layer deliberately has no
+            # market-data access. One read per instrument, on top of the
+            # lookback the scan already performs, serves both (DX-12a).
+            liquidity, trend = self._context_for(signals)
             results = screen_signals(
-                signals, sweep_id=sweep_id, positions=held, liquidity=liquidity
+                signals,
+                sweep_id=sweep_id,
+                positions=held,
+                liquidity=liquidity,
+                trend=trend,
             )
             self.store.save_screen_results(results)
 
@@ -266,30 +271,40 @@ class SweepRunner:
             except Exception:  # pragma: no cover - persistence already broken
                 logger.exception("DarvaX sweep %s could not record its failure", sweep_id)
 
-    def _liquidity_for(
+    def _context_for(
         self, signals: Sequence[DarvaxSignal]
-    ) -> dict[str, Decimal]:
-        """Median traded value per instrument, skipping what cannot be measured.
+    ) -> tuple[dict[str, Decimal], dict[str, TrendReading]]:
+        """Liquidity and 50/100-EMA trend per instrument, from one candle read.
+
+        Both need candles the screening engine cannot fetch itself (it has no
+        market-data access by design), so both are measured here — sharing a
+        single per-instrument read rather than two, now that DX-12a adds a
+        second candle-derived measurement alongside DX-10a's liquidity. The
+        window is sized to the longer requirement (100-session EMA); liquidity
+        reads only the trailing slice of it it actually needs.
 
         A read failure on one instrument must not cost the sweep — the same
         per-instrument isolation the scan already applies — so a symbol whose
-        candles cannot be read is simply absent from the map and reports as
-        unmeasured rather than as illiquid.
+        candles cannot be read is simply absent from both maps and reports as
+        unmeasured rather than as illiquid or trendless.
         """
-        out: dict[str, Decimal] = {}
+        liquidity: dict[str, Decimal] = {}
+        trend: dict[str, TrendReading] = {}
+        window = max(LIQUIDITY_WINDOW_BARS, TREND_LOOKBACK_BARS)
         for signal in signals:
             try:
                 candles = self.market_data.recent_candles(
                     signal.instrument_id,
                     SWEEP_TIMEFRAME,
-                    limit=LIQUIDITY_WINDOW_BARS,
+                    limit=window,
                 )
             except Exception:  # one instrument must never cost the run
                 continue
             value = traded_value(candles)
             if value is not None:
-                out[signal.instrument_id] = value
-        return out
+                liquidity[signal.instrument_id] = value
+            trend[signal.instrument_id] = trend_reading(candles)
+        return liquidity, trend
 
     def _record(
         self,

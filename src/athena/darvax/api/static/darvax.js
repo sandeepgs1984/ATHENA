@@ -333,6 +333,7 @@
     fStop: document.getElementById("f-stop"),
     fLiq: document.getElementById("f-liq"),
     fBox: document.getElementById("f-box"),
+    fTrend: document.getElementById("f-trend"),
     fClear: document.getElementById("f-clear"),
     filterNote: document.getElementById("filter-note")
   };
@@ -590,6 +591,17 @@
     { key: "box_height_pct", label: "Box height", num: true, group: "context",
       hint: "How tall the range is, floor to ceiling, as a % of the floor \u2014 "
           + "not a distance from your buy level" },
+    // DX-12a. Trend context, not a DAR-CARD rule \u2014 Darvas' method is pure
+    // price action; the deck's only EMA usage is a stop-ladder EXIT rule, not
+    // this. A conviction overlay the owner asked for, same footing as
+    // liquidity and box height: informational, filterable, never gating tier
+    // or action.
+    { key: "ema_50", label: "50 EMA", num: true, group: "context",
+      hint: "50-session exponential moving average of the close. Not part of "
+          + "Darvas' method \u2014 a trend-context overlay." },
+    { key: "ema_100", label: "100 EMA", num: true, group: "context",
+      hint: "100-session exponential moving average of the close. Not part of "
+          + "Darvas' method \u2014 a trend-context overlay." },
     { key: null, label: "\u20b9cr/day", num: true, group: "context",
       sortKey: "liquidity_value", hint: "Median traded value, last 20 sessions" },
     { key: "darvas_rule", label: "Rule", group: "context" },
@@ -709,6 +721,8 @@
         html += "<td>" + vizFor(row) + "</td>";
         var height = num(row.box_height_pct);
         html += '<td class="num mono">' + (height === null ? "—" : height.toFixed(2) + "%") + "</td>";
+        html += levelCell(row.ema_50, "", "50-session EMA of the close");
+        html += levelCell(row.ema_100, "", "100-session EMA of the close");
         html += liqCell(row);
         html += "<td>" + (row.darvas_rule
           ? '<span class="rulechip" title="' + esc(RULE_TEXT[row.darvas_rule] || "") + '">' +
@@ -828,7 +842,10 @@
     // liquidity threshold would hide advice you need.
     var outcome = applyFilters(screen.rows);
     screen.visible = outcome.kept;
-    renderFilterNote(screen.rows.length, outcome.kept.length, outcome.unmeasured);
+    renderFilterNote(
+      screen.rows.length, outcome.kept.length,
+      outcome.unmeasuredLiquidity, outcome.unmeasuredTrend
+    );
     S.empty.hidden = hasSweep;
     S.tiers.hidden = !hasSweep;
     renderMeta();
@@ -1568,19 +1585,38 @@
     return {
       stop: S.fStop.value,
       liq: S.fLiq.value ? Number(S.fLiq.value) : null,
-      box: S.fBox.value ? Number(S.fBox.value) : null
+      box: S.fBox.value ? Number(S.fBox.value) : null,
+      trend: S.fTrend.value
     };
   }
 
   function anyFilterActive() {
     var f = activeFilters();
-    return Boolean(f.stop || f.liq !== null || f.box !== null);
+    return Boolean(f.stop || f.liq !== null || f.box !== null || f.trend);
   }
 
-  // Returns { kept, unmeasured } so the caller can say what it could not judge.
+  /*
+    Where price sits relative to both EMAs, computed from three already-
+    persisted numbers (close, ema_50, ema_100) — the same kind of client-side
+    read the stop-vs-ceiling and box-height filters already do (a sign or
+    threshold check on a stored value, never a re-derived rationale). Returns
+    null on a partial reading: a row with one EMA known and the other absent
+    cannot honestly be called "above both" or "below both" (DX-12a).
+  */
+  function trendStateFor(row) {
+    var close = num(row.close), e50 = num(row.ema_50), e100 = num(row.ema_100);
+    if (close === null || e50 === null || e100 === null) return null;
+    if (close > e50 && close > e100) return "above";
+    if (close < e50 && close < e100) return "below";
+    return "mixed";
+  }
+
+  // Returns { kept, unmeasuredLiquidity, unmeasuredTrend } so the caller can
+  // say what it could not judge, and why, separately per dimension.
   function applyFilters(rows) {
     var f = activeFilters();
-    var unmeasured = 0;
+    var unmeasuredLiquidity = 0;
+    var unmeasuredTrend = 0;
     var kept = rows.filter(function (r) {
       if (f.stop) {
         var d = num(r.stop_vs_ceiling);
@@ -1593,7 +1629,7 @@
       }
       if (f.liq !== null) {
         var v = num(r.liquidity_value);
-        if (v === null) { unmeasured++; return false; }
+        if (v === null) { unmeasuredLiquidity++; return false; }
         if (v / CRORE < f.liq) return false;
       }
       if (f.box !== null) {
@@ -1603,9 +1639,19 @@
         // both ends without a second widget.
         if (f.box > 0 ? h > f.box : h <= Math.abs(f.box)) return false;
       }
+      if (f.trend) {
+        var state = trendStateFor(r);
+        if (state === null) { unmeasuredTrend++; return false; }
+        if (f.trend === "above" && state !== "above") return false;
+        if (f.trend === "below" && state !== "below") return false;
+      }
       return true;
     });
-    return { kept: kept, unmeasured: unmeasured };
+    return {
+      kept: kept,
+      unmeasuredLiquidity: unmeasuredLiquidity,
+      unmeasuredTrend: unmeasuredTrend
+    };
   }
 
   /*
@@ -1639,6 +1685,31 @@
     } else {
       S.fLiq.options[0].textContent = "Liquidity: any";
       S.fLiq.title = "";
+    }
+    return absent;
+  }
+
+  // Same reasoning as liquidityIsAbsentFromThisSweep (DX-10c): a sweep run
+  // before DX-12a shipped carries neither EMA, and a trend threshold chosen on
+  // it would silently empty the list.
+  function trendIsAbsentFromThisSweep() {
+    return screen.rows.length > 0 && !screen.rows.some(function (r) {
+      return num(r.ema_50) !== null || num(r.ema_100) !== null;
+    });
+  }
+
+  function syncTrendControl() {
+    var absent = trendIsAbsentFromThisSweep();
+    S.fTrend.disabled = absent;
+    if (absent) {
+      S.fTrend.value = "";
+      S.fTrend.options[0].textContent = "Trend: not in this sweep";
+      S.fTrend.title =
+        "This sweep was run before DarvaX measured the 50/100 EMA trend. " +
+        "Re-run \u201cScreen universe\u201d to record it.";
+    } else {
+      S.fTrend.options[0].textContent = "Trend: any";
+      S.fTrend.title = "";
     }
     return absent;
   }
@@ -1677,23 +1748,44 @@
     "is not measured from your buy level. A tighter range keeps the floor, " +
     "which is the method's other exit, closer to the buy level.";
 
-  function renderFilterNote(total, kept, unmeasured) {
+  /*
+    DX-12a's trend filter, same split as the two above: the option states the
+    fact, this states the meaning. Also states plainly what this is NOT — a
+    DAR-CARD rule — since every other filter on this bar traces to the deck and
+    this one deliberately doesn't.
+  */
+  var TREND_FILTER_PLAIN = {
+    above:
+      "Showing only entries trading above both their 50 and 100-session EMA " +
+      "\u2014 a sustained uptrend by that reading. This is a trend-context " +
+      "overlay, not one of Darvas' own rules.",
+    below:
+      "Showing only entries trading below both their 50 and 100-session EMA " +
+      "\u2014 a sustained downtrend by that reading. Not one of Darvas' own " +
+      "rules; shown for context only."
+  };
+
+  function renderFilterNote(total, kept, unmeasuredLiquidity, unmeasuredTrend) {
     // Mark each control so an active filter is visible at a glance. A narrowed
     // list that looks unnarrowed reads as "nothing to trade today".
-    [S.fStop, S.fLiq, S.fBox].forEach(function (el) {
+    [S.fStop, S.fLiq, S.fBox, S.fTrend].forEach(function (el) {
       el.setAttribute("data-empty", String(el.value === ""));
     });
     S.fClear.hidden = !anyFilterActive();
     var liqAbsent = syncLiquidityControl();
+    var trendAbsent = syncTrendControl();
     if (!anyFilterActive()) {
-      if (liqAbsent) {
+      if (liqAbsent || trendAbsent) {
         S.filterNote.hidden = false;
         S.filterNote.textContent = "";
+        var missing = [];
+        if (liqAbsent) missing.push("liquidity");
+        if (trendAbsent) missing.push("the 50/100 EMA trend");
         var why = document.createElement("span");
         why.className = "fnwhat";
         why.textContent =
-          "This sweep recorded no liquidity, so the liquidity filter is off. " +
-          "Re-run “Screen universe” to measure it.";
+          "This sweep recorded no " + missing.join(" or ") +
+          ", so that filter is off. Re-run \u201cScreen universe\u201d to measure it.";
         S.filterNote.appendChild(why);
         return;
       }
@@ -1707,12 +1799,19 @@
     var plain = [];
     if (STOP_FILTER_PLAIN[S.fStop.value]) plain.push(STOP_FILTER_PLAIN[S.fStop.value]);
     if (S.fBox.value) plain.push(BOX_FILTER_PLAIN);
+    if (TREND_FILTER_PLAIN[S.fTrend.value]) plain.push(TREND_FILTER_PLAIN[S.fTrend.value]);
 
     var counts = [kept + " of " + total + " match"];
-    if (unmeasured) {
+    if (unmeasuredLiquidity) {
       counts.push(
-        unmeasured + " excluded because their liquidity could not be measured " +
+        unmeasuredLiquidity + " excluded because their liquidity could not be measured " +
         "(too little history) — not because they are illiquid"
+      );
+    }
+    if (unmeasuredTrend) {
+      counts.push(
+        unmeasuredTrend + " excluded because their 50/100 EMA trend could not be measured " +
+        "(too little history) — not because of the trend itself"
       );
     }
 
@@ -1740,8 +1839,9 @@
   S.fStop.addEventListener("change", onFilterChange);
   S.fLiq.addEventListener("change", onFilterChange);
   S.fBox.addEventListener("change", onFilterChange);
+  S.fTrend.addEventListener("change", onFilterChange);
   S.fClear.addEventListener("click", function () {
-    S.fStop.value = ""; S.fLiq.value = ""; S.fBox.value = "";
+    S.fStop.value = ""; S.fLiq.value = ""; S.fBox.value = ""; S.fTrend.value = "";
     onFilterChange();
   });
 
