@@ -57,6 +57,7 @@ from athena.api.v1.providers.sqlite_providers import (
     default_db_path,
     load_starting_cash,
 )
+from athena.api.v1.services.advisory_freshness_service import AdvisoryFreshnessService
 from athena.api.v1.services.analytics_service import AnalyticsService
 from athena.api.v1.services.backtests_service import BacktestsService
 from athena.api.v1.services.candidates_service import CandidatesService
@@ -387,6 +388,16 @@ def get_dashboard_service(request: Request) -> DashboardService:
         request.app.state, "analytics_provider", _analytics_provider
     )
     return DashboardService(port_prov, pipe_prov, health_prov, analytics_prov)
+
+
+def get_advisory_freshness_service(request: Request) -> AdvisoryFreshnessService:
+    """Read-only dashboard market-observation freshness service."""
+    repo = getattr(request.app.state, "sqlite_repo", None)
+    return AdvisoryFreshnessService(
+        repo,
+        get_dashboard_service(request),
+        config_dir=_find_repo_root() / "config",
+    )
 
 
 def get_backtest_run_provider() -> BacktestRunProvider:

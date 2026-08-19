@@ -3,12 +3,28 @@
 **Snapshot date:** 2026-08-19  
 **Branch observed:** `feature/live-dashboard`  
 **Latest commit:** `a5f1de5` — `docs(design): add ATHENA & DarvaX UX roadmap as a durable reference`  
-**Test suite at handoff:** 1,999 tests collected, full suite green.  
-**Current working milestone:** **AUX-1a — ATHENA persistent data freshness, in
-design and awaiting owner design review.** On 2026-08-19 the owner delegated
-prioritisation and approved a six-item delivery sequence. The selected sequence
-is tracked in `docs/design/ATHENA-DARVAX-UX-ROADMAP.md` and
-`docs/MILESTONES.md`; the other roadmap ideas remain unscheduled.
+**Test suite at handoff:** AUX-1a focused gates pass; full-suite result is
+recorded in the newest `IMPLEMENTATION_SUMMARY.md` entry.
+**Current working milestone:** **AUX-1a - ATHENA persistent data freshness,
+implemented with an owner-reported presentation fix and awaiting re-review.**
+The first review found a translucent oversized failure popover and misleading
+“last successful” copy when no reading had loaded. The fix makes the surface
+compact and opaque, adds close/retry controls, and separates initial-load
+failure from retained-last-good failure. A second review confirmed the service
+data after restart but found the panel detached from its control; it is now
+anchored directly below the freshness button with a mobile viewport fallback.
+The latest owner screenshot then exposed a frontend vocabulary mismatch: the
+server returned `CURRENT` for a fully covered closed-session review while the
+compact control displayed `Data unavailable`. The control now maps `CURRENT`
+to `Data current` during live markets and `Closed review` outside them; no
+browser-side freshness thresholds were added.
+The retry control is explicitly hidden after a successful reading and appears
+only for initial-load or retained-last-good refresh failures.
+On 2026-08-19 the owner delegated
+prioritisation, approved a six-item delivery sequence, and then approved AUX-1a
+for implementation. The selected sequence is tracked in
+`docs/design/ATHENA-DARVAX-UX-ROADMAP.md` and `docs/MILESTONES.md`; the other
+roadmap ideas remain unscheduled.
 
 This document is a continuity aid, not the authority on project status. Before
 touching anything, read `ATHENA_BRIEFING.md` in full, then verify
@@ -39,10 +55,10 @@ reproposing what already exists, followed by 29 concrete, scoped ideas.
    server-side JS assembly, security, testing). Read the relevant sections
    before touching a module you haven't worked in.
 
-**Do not skip the active design gate.** Read
-`docs/design/ATHENA-ADVISORY-FRESHNESS-DESIGN.md` and resume AUX-1a only after
-the owner approves that design. Do not start AUX-1b or a later selected item
-until AUX-1a completes its full review and approval cycle.
+**Do not skip the active review gate.** Read
+`docs/design/ATHENA-ADVISORY-FRESHNESS-DESIGN.md`, inspect the implemented
+AUX-1a evidence, and wait for owner approval. Do not start AUX-1b or a later
+selected item until AUX-1a completes its full review and approval cycle.
 
 ---
 

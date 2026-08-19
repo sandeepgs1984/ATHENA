@@ -6,6 +6,99 @@ status updated on approval.
 
 ---
 
+## AUX-1a: persistent ATHENA advisory data freshness
+
+**Summary.** Added one persistent, server-authoritative freshness answer to the
+Decisions and Market Intelligence headers. The indicator reports `CURRENT`,
+`AGING`, `STALE`, or `UNAVAILABLE`, names the persisted observation time and
+source, and explains closed-session review state and the next live session.
+It deliberately remains separate from TradePlan validity, chart freshness,
+Kite connectivity, health, and pipeline-cycle status.
+
+**Objective.** Let the owner determine whether the data behind the active
+advisory workspace is current before relying on it, including during live
+markets, after close, weekends, holidays, and missing-data conditions.
+
+**Scope completed.** Added a pure calendar-aware freshness service, immutable
+presentation DTO, dependency provider, read-only API route, configured warning
+threshold, persistent header control and details popover, last-good
+refresh-failure handling, keyboard behavior, and responsive layout. Owner
+review corrections made the panel opaque and compact, distinguished an empty
+first load from retained last-good data, and anchored the desktop panel
+directly below its freshness control with a viewport-safe mobile fallback.
+The final owner-review correction aligned the compact header label with the
+server's `CURRENT` status vocabulary: it now reads `Data current` during a live
+session and `Closed review` when the latest completed session is covered.
+The successful state also explicitly hides the retry action; retry is reserved
+for initial-load or retained-last-good refresh failures.
+
+**Files created.** `src/athena/api/v1/services/advisory_freshness_service.py`;
+`tests/api/v1/test_advisory_freshness.py`.
+
+**Files modified.** `config/validation.json`, `src/athena/config/models.py`,
+dashboard DTO/dependency/router modules, dashboard HTML/JS/CSS assets,
+validation and dashboard regression tests, AUX roadmap/design/handoff docs,
+`docs/MILESTONES.md`, and this implementation log.
+
+**Public APIs added.** `GET /api/v1/dashboard/advisory-freshness`; optional
+timezone-aware `as_of` supports deterministic replay and inspection without
+changing persisted state.
+
+**Tests added.** Deterministic open-session current/aging/stale/unavailable,
+post-close, weekend, holiday, and stale-closed service cases; endpoint DTO and
+timezone coverage; server-authority, static UI, cache-buster, and responsive
+contract regressions. Focused AUX/release gates: **40 passing**.
+
+**Test results.** Full-suite result: **2,005 passing**. Ruff passes for all
+changed implementation and focused test files. `mypy` is not installed in the
+workspace; the project type-check configuration does not currently cover the
+API/dashboard layer.
+
+**Coverage summary.** Every server classification branch and session type is
+covered, along with endpoint serialization, absence handling, static frontend
+authority, refresh-failure semantics, and the relevant release gates. Browser
+verification covered Decisions/Market visibility, Overview absence, popover
+content and dismissal, focus return, 1440x900 and 1280x800 layouts, and zero
+horizontal document overflow.
+
+**Architecture compliance.** Calendar Engine is the sole session authority;
+thresholds live in config; the clock is injected; JavaScript renders returned
+classification and contains no duplicate freshness thresholds. Frozen domain
+contracts, provider independence, deterministic behavior, replayability,
+ADR-004, and ADR-005 remain intact. No order-placement surface was introduced.
+
+**ADR compliance.** No ADR required. The route and DTO are additive,
+read-only presentation contracts and introduce no shared mutable state or new
+module boundary.
+
+**Risks discovered.** The header was already dense at narrow desktop widths.
+Responsive compaction now gives the freshness control a stable width and makes
+the existing health control icon-only at 1320px and below while preserving its
+accessible name; no action disappears. Owner review also exposed an undefined
+popover background token and ambiguous first-load failure copy. The correction
+uses an opaque, compact right-edge surface with close/retry controls, a short
+non-truncating header label, and distinct wording for “no reading loaded” versus
+“last successful reading retained.” The running ATHENA process must be restarted
+after this backend route is introduced; a browser asset refresh alone cannot
+load the new endpoint.
+
+**Technical debt introduced.** None. DarvaX daily-sweep freshness remains
+intentionally unimplemented because it requires separate session-date and
+sweep-completion semantics.
+
+**Suggested improvements.** Begin AUX-1b only after owner approval and reuse
+the four-state wording contract without coupling DarvaX to ATHENA dashboard
+state.
+
+**Remaining work.** Owner review/approval of AUX-1a. AUX-1b and all later
+selected advisory UX milestones remain blocked by that gate.
+
+**Commit message.** `feat(dashboard): add authoritative advisory freshness status`
+
+**Ready for review.** Yes.
+
+---
+
 ## DX-9a/9b + DX-10c: the Table carries the trade, and R replaces the target
 
 **Summary.** Three things closed here. The **Table view** finally carries the

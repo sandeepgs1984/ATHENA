@@ -7,7 +7,7 @@
 @import url("css/00-tokens.css");
 @import url("css/01-base.css");
 @import url("css/02-auth.css");
-@import url("css/03-shell.css");
+@import url("css/03-shell.css?v=9.148.7");
 @import url("css/04-shared-components.css");
 @import url("css/05-portfolio.css");
 @import url("css/06-market-intelligence.css");

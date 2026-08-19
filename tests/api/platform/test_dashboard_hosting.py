@@ -59,6 +59,44 @@ def test_dashboard_static_hosting_and_fallback(client: TestClient) -> None:
     assert "<aside" in resp_fallback.text
 
 
+def test_advisory_freshness_header_uses_server_authority(client: TestClient) -> None:
+    """AUX-1a keeps freshness classification out of browser-side heuristics."""
+    html = client.get("/dashboard/").text
+    css = _fetch_full_css(client)
+    js = client.get("/dashboard/dashboard.js").text
+
+    assert 'id="advisory-freshness-menu"' in html
+    assert 'id="advisory-freshness-toggle"' in html
+    assert 'aria-controls="advisory-freshness-popover"' in html
+    assert 'id="advisory-freshness-popover"' in html
+    assert 'id="advisory-freshness-refresh-note"' in html
+    assert 'id="advisory-freshness-close"' in html
+    assert 'id="advisory-freshness-retry"' in html
+    assert "/api/v1/dashboard/advisory-freshness" in js
+    assert "data.tone" in js
+    assert "lastAdvisoryFreshness" in js
+    assert "Showing the last successful reading" in js
+    assert "No freshness reading was loaded" in js
+    assert 'status === "CURRENT"' in js
+    assert 'if (status === "FRESH") return "Data fresh";' not in js
+    assert "Closed review" in js
+    assert "Data current" in js
+    assert "Data unavailable" in js
+    assert 'event.key === "Escape"' in js
+    assert 'advisoryFreshnessToggle.focus()' in js
+    assert "intraday_warning_minutes_behind" not in js
+    assert "intraday_max_minutes_behind" not in js
+    assert ".freshness-toggle" in css
+    assert ".freshness-popover[hidden]" in css
+    assert ".freshness-retry[hidden]" in css
+    assert "position: absolute" in css
+    assert "top: calc(100% + var(--space-8))" in css
+    assert ".freshness-popover::before" in css
+    assert "position: fixed" in css[css.find("@media (max-width: 720px)") :]
+    assert "background: rgba(15, 23, 42, 0.99)" in css
+    assert "overflow-wrap: anywhere" in css
+
+
 def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None:
     """Inactive modals must not participate in tab document flow (P9 console hotfix)."""
     html = client.get("/dashboard/").text
@@ -240,8 +278,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.147.0" in html
-    assert "dashboard.js?v=9.147.0" in html
+    assert "dashboard.css?v=9.148.7" in html
+    assert "dashboard.js?v=9.148.7" in html
     assert 'id="advisor-pulse"' in html
     assert 'id="header-diagnostics-popover"' in html
     assert 'id="decision-actionability-banner"' in html
@@ -670,10 +708,20 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".trade-plan-validity-window" in css
     assert ".trade-plan-level-delta.stop" in css
     assert ".decision-brief-scroll-region" in css
-    assert "order: 1" in css[css.find(".decision-brief-tabstrip {"):css.find("\n}", css.find(".decision-brief-tabstrip {"))]
-    assert "order: 2" in css[css.find(".decision-actionability-banner {"):css.find("\n}", css.find(".decision-actionability-banner {"))]
-    assert "order: 3" in css[css.find(".decision-brief-body {"):css.find("\n}", css.find(".decision-brief-body {"))]
-    assert "order: 5" in css[css.find(".decision-brief-gauges {"):css.find("\n}", css.find(".decision-brief-gauges {"))]
+    assert "order: 1" in css[
+        css.find(".decision-brief-tabstrip {") : css.find("\n}", css.find(".decision-brief-tabstrip {"))
+    ]
+    assert "order: 2" in css[
+        css.find(".decision-actionability-banner {") : css.find(
+            "\n}", css.find(".decision-actionability-banner {")
+        )
+    ]
+    assert "order: 3" in css[
+        css.find(".decision-brief-body {") : css.find("\n}", css.find(".decision-brief-body {"))
+    ]
+    assert "order: 5" in css[
+        css.find(".decision-brief-gauges {") : css.find("\n}", css.find(".decision-brief-gauges {"))
+    ]
     tabstrip_start = css.find(".decision-brief-tabstrip {")
     tabstrip_end = css.find("\n}", tabstrip_start)
     tabstrip_css = css[tabstrip_start:tabstrip_end]
@@ -1444,7 +1492,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert 'id="market-trend-quality-indicator"' in html
     assert 'id="market-volatility-quality-indicator"' in html
     assert '<div class="regime-explanation">' in html
-    assert "fa-chevron-down" not in html[html.find('<div class="regime-explanation">'):html.find('<div class="regime-explanation">') + 300]
+    regime_explanation_start = html.find('<div class="regime-explanation">')
+    assert "fa-chevron-down" not in html[regime_explanation_start : regime_explanation_start + 300]
     assert "countsEl.hidden = true" in js
     assert "function renderMarketHealthScore" in js
     assert "function renderUniverseBreadth" in js
@@ -1464,9 +1513,9 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert 'regime.volatility || "VOLATILITY_UNKNOWN"' in js
     assert 'regime.gap || "GAP_UNKNOWN"' in js
     # MI-3 (Market Intelligence redesign): Today's Validation text strip
-    # replaced with a typed Validation Pipeline funnel (Universe→Eligible→
-    # Filtered→Watch→Trade) backed by GET /api/v1/pipelines/validation-funnel.
-    # Filtered is server-side Eligible−Watch−Trade arithmetic; AW-3 turns View
+    # replaced with a typed Validation Pipeline funnel (Universe -> Eligible ->
+    # Filtered -> Watch -> Trade) backed by GET /api/v1/pipelines/validation-funnel.
+    # Filtered is server-side Eligible - Watch - Trade arithmetic; AW-3 turns View
     # Details into a daily-use workbench over the same existing data.
     assert "Validation Pipeline <span" in html
     assert "(Today)</span>" in html
@@ -1574,7 +1623,10 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "canOpen: Boolean(decision)" in js
     assert "Not on the current Decisions board" in js
     assert "openDecisionForSymbol(symbol)" in js
-    assert "renderValidationResults(validationWorkbenchState.universe, validationWorkbenchState.qualified, validationWorkbenchState.universeNote)" in js
+    assert (
+        "renderValidationResults(validationWorkbenchState.universe, "
+        "validationWorkbenchState.qualified, validationWorkbenchState.universeNote)" in js
+    )
     assert ".validation-result-row" in css
     assert ".validation-result-main" in css
     assert ".validation-result-summary" in css
@@ -1737,7 +1789,11 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert 'if (target !== "symbols") closeValidationResultsFilterPopover();' in js
     assert "closeValidationResultsFilterPopover();\n            closeModal(funnelDetailsModal);" in js
     assert "closeValidationResultsFilterPopover();\n                closeModal(funnelDetailsModal);" in js
-    assert 'closeValidationResultsFilterPopover();\n                closeModal(document.getElementById("validation-funnel-modal"));' in js
+    assert (
+        "closeValidationResultsFilterPopover();\n                "
+        'closeModal(document.getElementById("validation-funnel-modal"));'
+        in js
+    )
 
     # Owner-reported (2026-08-01, third round): even fixed to the true
     # viewport, the popover could still render past the dialog card's own
@@ -1752,7 +1808,9 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     # Owner-reported (2026-08-01, third round): picking a value left the
     # popover open — each select/reset now dismisses it after applying,
     # since a completed choice is not a mid-adjustment needing the panel.
-    outcome_change_start = js.find('validationResultsOutcomeFilter, validationResultsPlanFilter, validationResultsSort].forEach')
+    outcome_change_start = js.find(
+        "validationResultsOutcomeFilter, validationResultsPlanFilter, validationResultsSort].forEach"
+    )
     outcome_change_body = js[outcome_change_start:outcome_change_start + 300]
     assert "closeValidationResultsFilterPopover();" in outcome_change_body
     index_change_start = js.find("validationResultsIndexFilter.addEventListener(\"change\"")
@@ -2281,7 +2339,12 @@ def test_advisor_status_release_gate(client: TestClient) -> None:
         css.find(".advisor-pulse-message"),
     )
     assert reduced_motion_start != -1
-    reduced_motion_css = css[reduced_motion_start: css.find("}", css.find(".advisor-pulse-message", reduced_motion_start)) + 1]
+    reduced_motion_css = css[
+        reduced_motion_start : css.find(
+            "}", css.find(".advisor-pulse-message", reduced_motion_start)
+        )
+        + 1
+    ]
     assert ".advisor-pulse-message" in reduced_motion_css
     assert "animation: none" in reduced_motion_css
     assert "text-overflow: ellipsis" in reduced_motion_css

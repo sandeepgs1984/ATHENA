@@ -7,6 +7,8 @@
     // MI-1: shared ticker strip lives on both Decisions & Trace and Market
     // Intelligence — one component/endpoint, not two.
     const TICKER_TABS = new Set(["decisions", "market"]);
+    let lastAdvisoryFreshness = null;
+    let advisoryFreshnessLoading = false;
 
     function switchTab(tabId, options = {}) {
         state.activeTab = tabId;
@@ -35,9 +37,11 @@
         // redesign) to also cover Market Intelligence — both tabs share the
         // exact same component/endpoint, no duplication.
         if (headerMarketTicker) headerMarketTicker.hidden = !TICKER_TABS.has(tabId);
+        if (advisoryFreshnessMenu) advisoryFreshnessMenu.hidden = !TICKER_TABS.has(tabId);
         if (TICKER_TABS.has(tabId)) {
             startTickerRefresh();
         } else {
+            closeAdvisoryFreshnessPopover();
             stopTickerRefresh();
         }
         if (state.activeTab === "decisions") {
@@ -263,11 +267,129 @@
         }
     }
 
+    function formatFreshnessDate(value) {
+        if (!value) return "Unavailable";
+        const parsed = new Date(value);
+        if (Number.isNaN(parsed.getTime())) return "Unavailable";
+        return parsed.toLocaleString("en-IN", {
+            timeZone: "Asia/Kolkata",
+            day: "2-digit",
+            month: "short",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true
+        }) + " IST";
+    }
+
+    function advisoryFreshnessToggleLabel(data) {
+        const status = String(data?.status || "UNAVAILABLE").toUpperCase();
+        const session = String(data?.market_session || "").toUpperCase();
+        if (status === "CURRENT") {
+            return session === "CLOSED" || session === "NO_SESSION"
+                ? "Closed review"
+                : "Data current";
+        }
+        if (status === "AGING") return "Data aging";
+        if (status === "STALE") return "Data stale";
+        return "Data unavailable";
+    }
+
+    function renderAdvisoryFreshness(data, failureMode = "") {
+        if (!advisoryFreshnessToggle || !data) return;
+        const tone = String(data.tone || "NEUTRAL").toLowerCase();
+        advisoryFreshnessToggle.className = `btn freshness-toggle tone-${tone}`;
+        advisoryFreshnessToggle.classList.toggle("refresh-failed", Boolean(failureMode));
+        advisoryFreshnessLabel.textContent = advisoryFreshnessToggleLabel(data);
+        advisoryFreshnessHeadline.textContent = data.headline || "Freshness unavailable";
+        advisoryFreshnessExplanation.textContent = data.explanation || "No freshness explanation is available.";
+        advisoryFreshnessObserved.textContent = formatFreshnessDate(data.observed_at);
+        advisoryFreshnessSource.textContent = data.source || "Unavailable";
+        advisoryFreshnessSession.textContent = data.market_session || "Unavailable";
+        advisoryFreshnessNextLive.textContent = formatFreshnessDate(data.next_live_at);
+        advisoryFreshnessRefreshNote.hidden = !failureMode;
+        advisoryFreshnessRefreshNote.textContent = failureMode === "retained"
+            ? "Refresh failed. Showing the last successful reading."
+            : failureMode === "unavailable"
+                ? "No freshness reading was loaded. Retry after ATHENA finishes restarting."
+                : "";
+        advisoryFreshnessRetry.hidden = !failureMode;
+    }
+
+    async function loadAdvisoryFreshness() {
+        if (advisoryFreshnessLoading) return;
+        advisoryFreshnessLoading = true;
+        if (advisoryFreshnessRetry) {
+            advisoryFreshnessRetry.disabled = true;
+            advisoryFreshnessRetry.querySelector("span").textContent = "Checking";
+        }
+        try {
+            const res = await apiRequest("/api/v1/dashboard/advisory-freshness", { skipToast: true });
+            lastAdvisoryFreshness = res && res.data ? res.data : null;
+            renderAdvisoryFreshness(lastAdvisoryFreshness);
+        } catch (err) {
+            console.error("Failed to load advisory freshness", err);
+            if (lastAdvisoryFreshness) {
+                renderAdvisoryFreshness(lastAdvisoryFreshness, "retained");
+            } else {
+                renderAdvisoryFreshness({
+                    status: "UNAVAILABLE",
+                    tone: "NEUTRAL",
+                    headline: "Freshness unavailable",
+                    explanation: "ATHENA could not reach the freshness service.",
+                    source: "Unavailable",
+                    market_session: "Unavailable"
+                }, "unavailable");
+            }
+        } finally {
+            advisoryFreshnessLoading = false;
+            if (advisoryFreshnessRetry) {
+                advisoryFreshnessRetry.disabled = false;
+                advisoryFreshnessRetry.querySelector("span").textContent = "Retry";
+            }
+        }
+    }
+
+    function closeAdvisoryFreshnessPopover() {
+        if (!advisoryFreshnessPopover || !advisoryFreshnessToggle) return;
+        advisoryFreshnessPopover.hidden = true;
+        advisoryFreshnessToggle.setAttribute("aria-expanded", "false");
+    }
+
+    if (advisoryFreshnessToggle && advisoryFreshnessPopover) {
+        advisoryFreshnessToggle.addEventListener("click", () => {
+            const willOpen = advisoryFreshnessPopover.hidden;
+            advisoryFreshnessPopover.hidden = !willOpen;
+            advisoryFreshnessToggle.setAttribute("aria-expanded", String(willOpen));
+        });
+        advisoryFreshnessClose?.addEventListener("click", () => {
+            closeAdvisoryFreshnessPopover();
+            advisoryFreshnessToggle.focus();
+        });
+        advisoryFreshnessRetry?.addEventListener("click", event => {
+            event.stopPropagation();
+            loadAdvisoryFreshness();
+        });
+        document.addEventListener("click", (event) => {
+            if (advisoryFreshnessMenu && !advisoryFreshnessMenu.contains(event.target)) {
+                closeAdvisoryFreshnessPopover();
+            }
+        });
+        document.addEventListener("keydown", (event) => {
+            if (event.key === "Escape" && !advisoryFreshnessPopover.hidden) {
+                closeAdvisoryFreshnessPopover();
+                advisoryFreshnessToggle.focus();
+            }
+        });
+    }
+
     async function loadMarketTicker() {
         if (!headerMarketTicker) return;
         try {
             await loadMarketSessionStatus();
-            const res = await apiRequest("/api/v1/market/ticker", { skipToast: true });
+            const [res] = await Promise.all([
+                apiRequest("/api/v1/market/ticker", { skipToast: true }),
+                loadAdvisoryFreshness()
+            ]);
             const data = (res && res.data) ? res.data : {};
             renderTickerIndex("nifty", data.nifty || {});
             renderTickerIndex("banknifty", data.bank_nifty || {});

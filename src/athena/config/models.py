@@ -461,7 +461,17 @@ class SectorIndexMappingConfig(_Strict):
 
 class FreshnessConfig(_Strict):
     max_trading_days_behind: int = Field(ge=0)
+    intraday_warning_minutes_behind: int = Field(default=15, gt=0)
     intraday_max_minutes_behind: int = Field(gt=0)
+
+    @model_validator(mode="after")
+    def warning_precedes_stale_limit(self) -> FreshnessConfig:
+        if self.intraday_warning_minutes_behind >= self.intraday_max_minutes_behind:
+            raise ValueError(
+                "intraday_warning_minutes_behind must be less than "
+                "intraday_max_minutes_behind"
+            )
+        return self
 
 
 class GapConfig(_Strict):

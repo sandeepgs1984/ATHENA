@@ -245,14 +245,16 @@ class TestConfig:
 
     def test_negative_freshness_threshold_rejected(self, config_dir):
         (config_dir / "validation.json").write_text(
-            '{"freshness":{"max_trading_days_behind":-1,"intraday_max_minutes_behind":20},'
+            '{"freshness":{"max_trading_days_behind":-1,'
+            '"intraday_warning_minutes_behind":15,"intraday_max_minutes_behind":20},'
             '"gaps":{"daily_enabled":true,"intraday_enabled":true}}', encoding="utf-8")
         with pytest.raises(ConfigError):
             load_validation_config(config_dir)
 
     def test_gaps_can_be_disabled(self, calendar, config_dir):
         (config_dir / "validation.json").write_text(
-            '{"freshness":{"max_trading_days_behind":1,"intraday_max_minutes_behind":20},'
+            '{"freshness":{"max_trading_days_behind":1,'
+            '"intraday_warning_minutes_behind":15,"intraday_max_minutes_behind":20},'
             '"gaps":{"daily_enabled":false,"intraday_enabled":false}}', encoding="utf-8")
         cfg = load_validation_config(config_dir)
         validator = DatasetValidator(calendar, cfg, IST)

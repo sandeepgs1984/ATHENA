@@ -1,6 +1,6 @@
 # AUX-1 — Persistent Advisory Data Freshness
 
-**Status:** Design review pending  
+**Status:** Implementation complete - owner review pending
 **Active milestone:** AUX-1a — ATHENA freshness contract and persistent header indicator  
 **Follow-on milestone:** AUX-1b — DarvaX daily-sweep freshness indicator  
 **Selected:** 2026-08-19, priority 1 in the owner-approved advisory UX sequence
@@ -178,6 +178,39 @@ write to ATHENA's database.
 
 ## Design gate
 
-Implementation begins only after owner approval of AUX-1a's authority,
-placement, wording model, and explicit separation from AUX-2. AUX-1b remains
-planned until AUX-1a is reviewed and approved.
+The owner approved AUX-1a for implementation on 2026-08-19. The implementation
+preserves the approved authority, placement, wording model, and explicit
+separation from AUX-2. AUX-1b remains planned and must not begin until the
+owner reviews and approves AUX-1a.
+
+## AUX-1a milestone review summary
+
+- **Name:** AUX-1a - ATHENA persistent advisory data freshness.
+- **Objective:** Provide one server-authoritative answer to how current the
+  persisted dashboard observation is, without conflating data freshness with
+  TradePlan validity, chart freshness, connectivity, health, or cycle status.
+- **Scope completed:** Calendar-aware classification service and DTO; read-only
+  dashboard endpoint; Decisions/Market header indicator; accessible details;
+  last-good refresh-failure behavior; responsive desktop treatment.
+- **Public API added:** `GET /api/v1/dashboard/advisory-freshness`, with an
+  optional injected `as_of` reference for deterministic inspection and tests.
+- **Tests added:** Open-session current/aging/stale/unavailable, post-close,
+  weekend, holiday, stale-closed, DTO/timezone, static UI, and asset release
+  regressions.
+- **Browser evidence:** Decisions and Market show the indicator; Overview does
+  not. Click, outside click, Escape dismissal, focus restoration, wrapping,
+  and complete header controls were verified at 1440x900 and 1280x800 without
+  horizontal overflow.
+- **Architecture:** Additive read-only presentation API; Calendar Engine remains
+  the session authority; thresholds are configured; the service clock is
+  injectable; JavaScript renders but does not classify; no ADR is required.
+- **Contracts and replayability:** Frozen domain contracts are unchanged and
+  deterministic behavior is preserved.
+- **Risks discovered:** Header density required responsive compaction. At narrow
+  desktop widths, the existing health action becomes icon-only while retaining
+  its accessible label and all header actions remain available.
+- **Technical debt:** None introduced. AUX-1b intentionally remains separate
+  because daily-sweep freshness has different authority and timing semantics.
+- **Remaining work:** Owner review and approval of AUX-1a, followed by a new
+  approval gate before AUX-1b.
+- **Ready for review:** Yes.

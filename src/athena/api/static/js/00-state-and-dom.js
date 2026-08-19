@@ -66,6 +66,19 @@
     const advisorPulseMessage = document.getElementById("advisor-pulse-message");
     const diagnosticsToggle = document.getElementById("header-diagnostics-toggle");
     const diagnosticsPopover = document.getElementById("header-diagnostics-popover");
+    const advisoryFreshnessMenu = document.getElementById("advisory-freshness-menu");
+    const advisoryFreshnessToggle = document.getElementById("advisory-freshness-toggle");
+    const advisoryFreshnessPopover = document.getElementById("advisory-freshness-popover");
+    const advisoryFreshnessLabel = document.getElementById("advisory-freshness-label");
+    const advisoryFreshnessHeadline = document.getElementById("advisory-freshness-headline");
+    const advisoryFreshnessExplanation = document.getElementById("advisory-freshness-explanation");
+    const advisoryFreshnessObserved = document.getElementById("advisory-freshness-observed");
+    const advisoryFreshnessSource = document.getElementById("advisory-freshness-source");
+    const advisoryFreshnessSession = document.getElementById("advisory-freshness-session");
+    const advisoryFreshnessNextLive = document.getElementById("advisory-freshness-next-live");
+    const advisoryFreshnessRefreshNote = document.getElementById("advisory-freshness-refresh-note");
+    const advisoryFreshnessClose = document.getElementById("advisory-freshness-close");
+    const advisoryFreshnessRetry = document.getElementById("advisory-freshness-retry");
     
     // Telemetry DOM Bindings
     const reqIdElement = document.getElementById("header-req-id");

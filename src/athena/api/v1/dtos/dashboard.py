@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -91,3 +92,20 @@ class MarketSessionStatusDTO(BaseModel):
     next_close: datetime | None = None
     holiday_name: str | None = None
     message: str
+
+
+class AdvisoryFreshnessDTO(BaseModel):
+    """Server-classified freshness of the shared dashboard market observation."""
+
+    model_config = ConfigDict(frozen=True)
+
+    status: Literal["CURRENT", "AGING", "STALE", "UNAVAILABLE"]
+    tone: Literal["GOOD", "WARNING", "DANGER", "NEUTRAL"]
+    observed_at: datetime | None = None
+    age_seconds: int | None = None
+    freshness_limit_seconds: int | None = None
+    source: str
+    headline: str
+    explanation: str
+    market_session: str
+    next_live_at: datetime | None = None

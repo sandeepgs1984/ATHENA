@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.147.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.148.7">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -152,6 +152,51 @@
                          ids/behavior — a divider is the only new thing. -->
                     <div class="header-actions">
                         <div class="header-status-group">
+                            <div id="advisory-freshness-menu" class="freshness-menu" hidden>
+                                <button
+                                    id="advisory-freshness-toggle"
+                                    class="btn freshness-toggle tone-neutral"
+                                    type="button"
+                                    aria-expanded="false"
+                                    aria-controls="advisory-freshness-popover"
+                                >
+                                    <i class="fa-regular fa-clock" aria-hidden="true"></i>
+                                    <span id="advisory-freshness-label">Checking data</span>
+                                </button>
+                                <div
+                                    id="advisory-freshness-popover"
+                                    class="freshness-popover"
+                                    role="dialog"
+                                    aria-modal="false"
+                                    aria-labelledby="advisory-freshness-headline"
+                                    hidden
+                                >
+                                    <div class="freshness-popover-header">
+                                        <strong id="advisory-freshness-headline">Freshness unavailable</strong>
+                                        <button
+                                            id="advisory-freshness-close"
+                                            class="freshness-popover-close"
+                                            type="button"
+                                            aria-label="Close freshness details"
+                                            title="Close"
+                                        >
+                                            <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                                        </button>
+                                    </div>
+                                    <p id="advisory-freshness-explanation">Waiting for an authoritative observation.</p>
+                                    <dl class="freshness-details">
+                                        <div><dt>Observed</dt><dd id="advisory-freshness-observed">Unavailable</dd></div>
+                                        <div><dt>Source</dt><dd id="advisory-freshness-source">market_snapshot</dd></div>
+                                        <div><dt>Session</dt><dd id="advisory-freshness-session">Unavailable</dd></div>
+                                        <div><dt>Next live</dt><dd id="advisory-freshness-next-live">Unavailable</dd></div>
+                                    </dl>
+                                    <p id="advisory-freshness-refresh-note" class="freshness-refresh-note" hidden></p>
+                                    <button id="advisory-freshness-retry" class="freshness-retry" type="button" hidden>
+                                        <i class="fa-solid fa-rotate" aria-hidden="true"></i>
+                                        <span>Retry</span>
+                                    </button>
+                                </div>
+                            </div>
                             <button id="kite-status-btn" class="btn btn-kite unknown" type="button" title="Kite market-data session" hidden>
                                 <i class="fa-solid fa-link"></i>
                                 <span id="kite-status-label">KITE</span>
@@ -1639,7 +1684,7 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.147.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.148.7"></script>
 
     <!-- DarvaX satellite tab (ADR-010 Amendment 1) — the ONLY DarvaX reference
          in this file, and the flag guard itself. This asset is served solely by
