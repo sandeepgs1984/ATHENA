@@ -83,6 +83,39 @@ suite and visible in the browser within a minute:
 **Implementation metrics.** ~2,000 insertions across 22 files, 38 tests,
 4 design-doc sections, 1 new MILESTONES section (DX-10, six milestones).
 
+**DX-11 — in-app methodology guide, requested directly by the owner.**
+*"add world class ux reading guide about darvax... complete information about
+darvax (what it is, how it works, each and every minute detail)."* A dialog
+opened from a header `Guide` button — deliberately not a fourth screener mode,
+since it is reference material orthogonal to which live view is open.
+
+- 12 sections behind a sticky TOC: what DarvaX is, the Darvas box (with an
+  inline SVG diagram), the four DAR-CARD rules quoted **verbatim**, all seven
+  actions, every card field explained, the three views, the three filters, the
+  stop-loss's own documented self-contradiction (10% canonical vs 1% tight),
+  liquidity, the screened universe, the DX-5 sufficiency gate, and an explicit
+  list of what DarvaX will not do.
+- Every quote and threshold is grounded, not paraphrased: `test_dx11_guide.py`
+  cross-checks the four rule quotes against `DAR_CARD_TEXT` character-for-
+  character, and every numeric claim (box confirmation bars, swing threshold,
+  retest tolerance, both stop percentages, the 200-trade/500-day sufficiency
+  gate, the 20-session liquidity window) against the config or code constant
+  that actually produces it. A reference document that can drift from the code
+  it describes is worse than none, because it keeps being trusted after it
+  goes wrong.
+- Verified live, not just in markup: opening moves focus into the dialog,
+  Escape/backdrop/× all close it and return focus to the opening button —
+  confirmed with a **real** click, since `element.click()` in a test harness
+  does not set `document.activeElement` the way user interaction does and gave
+  a false negative on the first pass. The diagram's six labels were checked
+  programmatically (`getBBox()` pairwise overlap, zero collisions) given this
+  project's repeat history of that exact defect elsewhere in the UI.
+- One existing test, `test_there_is_no_market_cap_filter`, had to be narrowed
+  to the filter bar rather than the whole page: the guide's honest disclosure
+  that DarvaX has no market-cap data (and therefore no such filter) is the
+  opposite of what that test existed to catch, and both now hold at once.
+- 20 tests added, full suite green.
+
 **Plain-language pass (DX-10cʹ), added after owner review of the filters.** The
 owner reported the DX-10b filter names as *"more confusing and not at all user
 friendly"* and asked *"stop means stop loss?"*. Both were fair, and the second is

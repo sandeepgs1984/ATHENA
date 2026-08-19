@@ -265,3 +265,55 @@ Three tests that pinned literal label prose were re-anchored to the option value
 across these attempts. Pinning wording meant every legitimate improvement failed
 a test for no reason that mattered, which trains the reflex to edit the
 expectation — turning a guard into a formality.
+
+---
+
+## 9. DX-11: the in-app "How DarvaX works" guide
+
+Owner's request, verbatim: *"add world class ux reading guide about darvax...
+complete information about darvax (what it is, how it works, each and every
+minute detail)."*
+
+**Placement.** A dialog reachable from a `Guide` button in the header, not a
+fourth mode alongside Advisor/Levels/Table. Those three switch what live sweep
+data is on screen; the guide is reference material that applies regardless of
+which one is open, so folding it into the mode switch would make "how does
+this work" compete for a slot with "what should I do today" — different
+questions, asked at different times.
+
+**Structure.** Twelve sections behind a sticky table of contents: what DarvaX
+is, the Darvas box (with an inline SVG diagram — floor, ceiling, breakout,
+retest, stop-loss, and the new higher box that forms after), the four DAR-CARD
+rules quoted verbatim, what each of the seven actions means, how to read every
+field on a card, the three views, the three filters, the stop-loss (including
+the deck's own 10%-vs-1% self-contradiction), liquidity, the screened universe,
+the DX-5 validation status, and what DarvaX deliberately will not do.
+
+**Grounding, not paraphrase.** Every quoted rule and every numeric threshold in
+the guide is asserted in `test_dx11_guide.py` against the same source it
+describes — `DAR_CARD_TEXT` for the four rules, `config.py` for box/swing/
+retest/stop parameters, `validation/summary.py` for the 200-trade/500-day
+sufficiency gate, `screening/liquidity.py` for the 20-session window. A
+reference document that can drift from the code it documents is worse than no
+document, because it is trusted while being wrong; this is the guard against
+that specific failure.
+
+**Verified in-browser, not just asserted in markup:** opening moves focus into
+the dialog and closing (Escape, backdrop click, or the × button) returns it to
+the button that opened it — checked with a real click, since a synthetic
+`element.click()` does not set `document.activeElement` the way a user
+interaction does and gave a false negative on the first pass. The TOC's 12
+links were checked to scroll their sections into view. The box diagram's six
+labels were checked programmatically (`getBBox()` pairwise overlap) for zero
+collisions, given this project's repeat history of that exact defect in the
+Levels ladder. The panel was also checked at 400px: the TOC switches to a
+horizontal row, the page never scrolls sideways.
+
+**One existing test had to be narrowed, not the guide.**
+`test_there_is_no_market_cap_filter` banned the phrase "market cap" anywhere on
+the page. The guide's §12 says *"It will not filter on market
+capitalisation... liquidity is the closest measured substitute"* — disclosing
+an absence, the opposite of offering the feature the original test existed to
+prevent. Rescoped to the filter bar and to form-control attributes specifically,
+so the guide's honest disclosure and the original guard against an invented
+filter both hold at once.

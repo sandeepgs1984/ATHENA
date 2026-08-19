@@ -11,7 +11,7 @@
     not touch dashboard.js/dashboard.css. ATHENA's asset-versioning discipline is
     therefore unaffected by anything here.
   -->
-  <link rel="stylesheet" href="/darvax/static/darvax.css?v=0.1.0-dx10d1">
+  <link rel="stylesheet" href="/darvax/static/darvax.css?v=0.1.0-dx11a">
 </head>
 <body>
   <div class="wrap">
@@ -41,9 +41,344 @@
           <button id="view-screener" type="button" role="tab" aria-selected="true">Screener</button>
           <button id="view-signals" type="button" role="tab" aria-selected="false">Scan symbols</button>
         </div>
+        <button id="guide-open" type="button" class="ghost" aria-haspopup="dialog">
+          Guide
+        </button>
         <a class="ghost link" href="/dashboard/">&larr; ATHENA</a>
       </div>
     </header>
+
+    <!-- ===================== Guide (DX-11) =====================
+      Everything below is sourced from the code that computes it, never
+      paraphrased from memory: DAR_CARD_TEXT in signals/models.py for the four
+      rule quotes, config.py for every threshold, engine.py for every formula.
+      test_dx11_guide.py cross-checks the rule quotes and the numeric defaults
+      against those same sources, so this panel cannot silently drift from the
+      methodology it describes.
+    -->
+    <div id="guide-backdrop" class="guide-backdrop" hidden></div>
+    <div id="guide" class="guide" role="dialog" aria-modal="true"
+         aria-labelledby="guide-title" tabindex="-1" hidden>
+      <header class="guide-head">
+        <h2 id="guide-title">How DarvaX works</h2>
+        <button id="guide-close" type="button" class="ghost" aria-label="Close guide">
+          &times;
+        </button>
+      </header>
+
+      <div class="guide-body">
+        <nav class="guide-toc" aria-label="Guide sections">
+          <a href="#gd-what">1. What DarvaX is</a>
+          <a href="#gd-box">2. The Darvas box</a>
+          <a href="#gd-rules">3. The four DAR-CARD rules</a>
+          <a href="#gd-actions">4. What each action means</a>
+          <a href="#gd-card">5. Reading a card</a>
+          <a href="#gd-views">6. The three views</a>
+          <a href="#gd-filters">7. The filters</a>
+          <a href="#gd-stop">8. The stop-loss</a>
+          <a href="#gd-liquidity">9. Liquidity</a>
+          <a href="#gd-universe">10. What gets screened</a>
+          <a href="#gd-validation">11. Validated, or not?</a>
+          <a href="#gd-limits">12. What DarvaX will not do</a>
+        </nav>
+
+        <div class="guide-content">
+
+          <section id="gd-what">
+            <h3>1. What DarvaX is</h3>
+            <p>
+              DarvaX is an experimental, advisory-only reading of Nicolas
+              Darvas' box method, applied to ATHENA's own candle history. It is
+              a satellite module (<a href="/dashboard/" class="inline">ADR-010</a>) —
+              deliberately separate from ATHENA's own analytical pipeline.
+            </p>
+            <ul class="checklist">
+              <li>It <strong>never</strong> contributes to ATHENA's score,
+                confidence, risk sizing, Decision object or TradePlan. Turning
+                DarvaX off changes nothing else ATHENA does.</li>
+              <li>It writes to its own database, <code>db/darvax.db</code>,
+                separate from ATHENA's <code>db/athena.db</code>. It reads
+                ATHENA's candles read-only and writes nothing back to them.</li>
+              <li>It <strong>never places an order.</strong> Recording a
+                holding, running a sweep, or scanning a symbol are all reads
+                and local writes — nothing here talks to a broker.</li>
+              <li>Its output carries the badge <span class="pill warn">EXPERIMENTAL &middot; UNVALIDATED</span>
+                everywhere it appears, for the reason in
+                <a href="#gd-validation" class="inline">section&nbsp;11</a>.</li>
+            </ul>
+          </section>
+
+          <section id="gd-box">
+            <h3>2. The Darvas box</h3>
+            <p>
+              Darvas watched for a stock to trade inside a tight, repeating
+              range — a <strong>box</strong> — bounded by a ceiling (the high
+              it kept failing to clear) and a floor (the low it kept holding
+              above). His method has exactly one thing to say about a box:
+              wait for the top or the bottom to give way, then act on which one
+              did.
+            </p>
+            <figure class="boxfig">
+              <svg viewBox="0 0 460 220" role="img" aria-labelledby="boxfig-title">
+                <title id="boxfig-title">A Darvas box: a floor, a ceiling, a
+                  breakout above the ceiling with a stop-loss set below it, and
+                  a retest that comes back to the ceiling before continuing up.</title>
+                <line x1="20" y1="150" x2="20" y2="30" class="bx-axis"/>
+                <line x1="20" y1="150" x2="440" y2="150" class="bx-axis"/>
+                <rect x="60" y="80" width="160" height="55" class="bx-box"/>
+                <line x1="60" y1="80"  x2="300" y2="80"  class="bx-ceiling"/>
+                <line x1="60" y1="135" x2="300" y2="135" class="bx-floor"/>
+                <line x1="60" y1="100" x2="300" y2="100" class="bx-stop"/>
+                <path d="M 60 132 L 90 118 L 120 128 L 150 95 L 180 105 L 210 60
+                         L 230 82 L 250 70 L 300 45 L 340 30"
+                      class="bx-price" fill="none"/>
+                <text x="225" y="76"  class="bx-label bx-lbl-ceiling">ceiling</text>
+                <text x="225" y="148" class="bx-label bx-lbl-floor">floor</text>
+                <text x="305" y="103" class="bx-label bx-lbl-stop">stop-loss (rule B)</text>
+                <text x="215" y="55"  class="bx-label bx-lbl-break">breakout</text>
+                <text x="240" y="92"  class="bx-label bx-lbl-retest">retest</text>
+                <text x="340" y="24"  class="bx-label bx-lbl-new">new, higher box forms here</text>
+              </svg>
+            </figure>
+            <p>
+              DarvaX confirms a ceiling or floor once it has survived
+              <strong>3 bars</strong> unbeaten (<code>box.confirmation_bars</code>
+              — the deck names no number, so this is the value used by the
+              classical Darvas implementations it cites), and treats a bounce
+              of <strong>5%</strong> or more as a genuine swing pivot rather
+              than noise (<code>swing.threshold_pct</code>, deck p.32). A
+              <strong>retest</strong> counts if price comes back within
+              <strong>2%</strong> of the ceiling and still closes above it
+              (<code>breakout.retest_tolerance_pct</code>) — the deck shows
+              retests qualitatively, without naming a tolerance, so this
+              number is DarvaX's own and is stated as such rather than
+              attributed to Darvas.
+            </p>
+          </section>
+
+          <section id="gd-rules">
+            <h3>3. The four DAR-CARD rules</h3>
+            <p>
+              Everything DarvaX classifies traces back to exactly four rules,
+              quoted verbatim from Darvas' own card (deck p.67). DarvaX adds
+              no fifth rule and no judgement beyond them.
+            </p>
+            <dl class="rulecard">
+              <dt><span class="rulechip" title="">A</span> Hold</dt>
+              <dd>&ldquo;A stock is in a rising trend when it is in its topmost
+                box. As long as it remains there its price fluctuations should
+                be ignored and the stock is a HOLD.&rdquo;</dd>
+              <dt><span class="rulechip" title="">B</span> Buy</dt>
+              <dd>&ldquo;If the price of the stock moves above the top of this
+                topmost box the stock becomes a BUY. A 10 percent stop-loss
+                should be set on the first breakout.&rdquo;</dd>
+              <dt><span class="rulechip" title="">C</span> Sell</dt>
+              <dd>&ldquo;Having formed a new higher box, if the price falls
+                below the bottom into the shaded area of this box the stock is
+                a SELL.&rdquo;</dd>
+              <dt><span class="rulechip" title="">D</span> No reason</dt>
+              <dd>&ldquo;There is no reason to HOLD or BUY a stock that is not
+                in its topmost box.&rdquo;</dd>
+            </dl>
+            <p class="dim">
+              Rule C is also the trailing stop the method actually uses:
+              Darvas never took profit at a level, he rode the trend until a
+              new, higher box formed and then exited if price fell out of it.
+              This is why DarvaX shows no target price
+              (<a href="#gd-card" class="inline">section&nbsp;5</a>).
+            </p>
+          </section>
+
+          <section id="gd-actions">
+            <h3>4. What each action means</h3>
+            <p>
+              A <strong>tier</strong> says what the price is doing; an
+              <strong>action</strong> says what that implies for you
+              specifically — the same rule-C state means &ldquo;get out&rdquo;
+              if you hold the instrument and nothing at all if you don't. Nine
+              actions, no fewer, because collapsing &ldquo;get out&rdquo; and
+              &ldquo;nothing to do&rdquo; into one label would be advice about
+              a position that may not exist.
+            </p>
+            <table class="guide-table">
+              <thead><tr><th>Action</th><th>Rule</th><th>Means</th><th>Risk-bearing?</th></tr></thead>
+              <tbody>
+                <tr><td><span class="act a-ENTER">Buy</span></td><td>B</td>
+                  <td>Price cleared the topmost box ceiling.</td><td>Yes</td></tr>
+                <tr><td><span class="act a-ENTER_ON_RETEST">Buy on retest</span></td><td>B</td>
+                  <td>Broke out, came back to test the ceiling, held above it.</td><td>Yes</td></tr>
+                <tr><td><span class="act a-WAIT">Wait</span></td><td>A</td>
+                  <td>Coiled inside the topmost box. Nothing to do until it clears.</td><td>No</td></tr>
+                <tr><td><span class="act a-HOLD">Hold</span></td><td>A</td>
+                  <td>You hold it, and it is still inside its topmost box &mdash;
+                    ignore the fluctuations.</td><td>No</td></tr>
+                <tr><td><span class="act a-EXIT_IF_HELD">Exit if held</span></td><td>C</td>
+                  <td>Fell below the box floor. DarvaX has no position on
+                    record, so this is conditional.</td><td>No</td></tr>
+                <tr><td><span class="act a-EXIT">Exit</span></td><td>C or stop</td>
+                  <td>You hold it, and either the stop-loss or rule C fired.</td><td>No</td></tr>
+                <tr><td><span class="act a-NO_ENTRY">No entry</span></td><td>D</td>
+                  <td>Not in its topmost box, or no box has formed yet.</td><td>No</td></tr>
+              </tbody>
+            </table>
+          </section>
+
+          <section id="gd-card">
+            <h3>5. Reading a card</h3>
+            <dl class="deflist">
+              <dt>Now</dt><dd>Today's close.</dd>
+              <dt>Buy above</dt><dd>The entry trigger &mdash; the prior day's
+                high (deck p.44, &ldquo;Enter above the Previous Day High
+                Price&rdquo;). Only set alongside a stop-loss, so most WATCH
+                rows have none yet.</dd>
+              <dt>Ceiling / Floor</dt><dd>The top and bottom of the topmost box.</dd>
+              <dt>Stop-loss</dt><dd>See <a href="#gd-stop" class="inline">section&nbsp;8</a>.</dd>
+              <dt>Risk now</dt><dd>What buying at today's close would risk if
+                the stop-loss is hit &mdash; <code>(close &minus; stop) /
+                close</code>. Deliberately <strong>not</strong> risk-to-trigger:
+                the stop is defined 10% below the trigger by construction, so
+                that figure is a constant 10% on every single row and would
+                understate real exposure the moment price has run past the
+                trigger.</dd>
+              <dt>To buy level</dt><dd>How far today's price is from the buy
+                trigger. &ldquo;through&rdquo; means price is already past
+                it &mdash; good news, not an error.</dd>
+              <dt>Box height</dt><dd><code>(ceiling &minus; floor) / floor</code>.
+                The height of the range itself &mdash; <strong>not</strong> a
+                distance from your buy level. Measured on a real sweep, the
+                buy level sits above the ceiling on 91% of candidates but
+                <strong>inside the box</strong> on the other 9%, so there is
+                no relationship between the two to assume.</dd>
+              <dt>R = &hellip;</dt><dd>The per-share risk the method itself
+                defines: buy level minus stop-loss. 1R/2R/3R are that distance
+                measured upward. <strong>Not a target</strong> &mdash; see the
+                note in <a href="#gd-rules" class="inline">section&nbsp;3</a>
+                on why Darvas never gave one. An &ldquo;already +N.R&rdquo;
+                marker means price has covered that many multiples of the risk
+                before you would have paid anything for it.</dd>
+              <dt>&#8377;cr/day</dt><dd>See <a href="#gd-liquidity" class="inline">section&nbsp;9</a>.</dd>
+            </dl>
+          </section>
+
+          <section id="gd-views">
+            <h3>6. The three views</h3>
+            <dl class="deflist">
+              <dt>Advisor</dt><dd>&ldquo;What do I do today?&rdquo; in urgency
+                order: sell first, then hold, then buy candidates. Best for a
+                quick daily check.</dd>
+              <dt>Levels</dt><dd>A to-scale price ladder per instrument &mdash;
+                floor, ceiling, buy level, stop-loss, now &mdash; because
+                Darvas is a visual method and neither other view draws the
+                picture. Best for studying one or a handful of candidates.</dd>
+              <dt>Table</dt><dd>Every instrument, every field, sortable and
+                filterable, nothing summarised. Best when you want the whole
+                universe in front of you at once.</dd>
+            </dl>
+          </section>
+
+          <section id="gd-filters">
+            <h3>7. The filters</h3>
+            <dl class="deflist">
+              <dt>Stop-loss placement</dt><dd>Whether the stop-loss lands
+                above or below the level price broke out from. Above it, a
+                stop-out still leaves part of the breakout move; below it, a
+                stop-out gives the whole move back. On a real sweep, 57% of
+                candidates carry a stop-loss below their breakout level.</dd>
+              <dt>Liquidity</dt><dd>A floor on median traded value &mdash; see
+                <a href="#gd-liquidity" class="inline">section&nbsp;9</a>.</dd>
+              <dt>Box height</dt><dd>A tight box keeps the floor &mdash; rule
+                C's exit &mdash; closer to the buy level. Not a claim that
+                tight is safer; DarvaX makes no safety claim about a method
+                labelled experimental and unvalidated.</dd>
+            </dl>
+          </section>
+
+          <section id="gd-stop">
+            <h3>8. The stop-loss</h3>
+            <p>
+              The deck contradicts itself on stop sizing: Darvas' own canonical
+              rule is <strong>10%</strong> below entry on the first breakout
+              (p.67); DarvaX's own &ldquo;How to Play&rdquo; section elsewhere
+              in the same deck says <strong>1%</strong> (p.44). A 1% stop on a
+              breakout entry is removed by ordinary noise, so these are not two
+              versions of one system. DarvaX defaults to the
+              <strong>canonical, attributable 10% rule</strong> and treats the
+              1% variant as configuration, not as a second recommendation.
+            </p>
+            <p>
+              For a recorded holding, the stop-loss is computed once, when you
+              add the position, and <strong>frozen from that point on</strong>:
+              if the active policy is later changed, an already-open position
+              keeps the stop it was actually protected by rather than being
+              silently re-priced.
+            </p>
+          </section>
+
+          <section id="gd-liquidity">
+            <h3>9. Liquidity</h3>
+            <p>
+              DarvaX has no market-capitalisation data anywhere in ATHENA, so
+              it measures <strong>traded value</strong> instead: the
+              <strong>median</strong> of (close &times; volume) over the last
+              <strong>20 sessions</strong>, shown in &#8377; crore per day.
+              Median, not mean, so one 500&times; volume spike cannot flatter
+              an otherwise thin stock. An instrument with fewer than 10 of
+              those 20 sessions available reports as
+              <strong>unmeasured</strong> &mdash; a gap in DarvaX's own data,
+              never shown as a claim that the instrument is illiquid.
+            </p>
+          </section>
+
+          <section id="gd-universe">
+            <h3>10. What gets screened</h3>
+            <p>
+              A sweep screens the <code>darvax_discovery</code> universe (ADR-011),
+              ATHENA's own resolved instrument universe, read as data through
+              DarvaX's existing read-only port. DarvaX imports no ATHENA
+              resolver directly &mdash; it never asks ATHENA a question, it
+              only reads what ATHENA has already published.
+            </p>
+          </section>
+
+          <section id="gd-validation">
+            <h3>11. Validated, or not?</h3>
+            <p>
+              Every DarvaX output carries the status
+              <span class="pill warn">EXPERIMENTAL_UNVALIDATED</span> because
+              the source deck ships <strong>no backtest evidence of any
+              kind</strong>. DarvaX runs its own outcome harness against
+              ATHENA's real history, but the result only becomes
+              <span class="pill ok">VALIDATED</span> once it clears a
+              sufficiency gate: at least <strong>200 closed trades</strong>
+              <em>and</em> at least <strong>500 trading days</strong> of
+              coverage. Short of either bar, a measured expectancy is not
+              evidence &mdash; it is a coin flip that has not been tossed
+              enough times to mean anything, so the label stays honest about
+              that rather than dressing up an insufficient sample as a result.
+            </p>
+          </section>
+
+          <section id="gd-limits">
+            <h3>12. What DarvaX will not do</h3>
+            <ul class="checklist">
+              <li>It will not give you a profit target. The method has none;
+                see <a href="#gd-rules" class="inline">section&nbsp;3</a>.</li>
+              <li>It will not produce a single blended score. Eligibility is a
+                classification onto Darvas' own four rules, never a 0&ndash;100
+                index &mdash; that would manufacture precision the method
+                cannot support.</li>
+              <li>It will not filter on market capitalisation. ATHENA holds no
+                such data; liquidity is the closest measured substitute and is
+                labelled as such.</li>
+              <li>It will not place an order, ever, under any configuration.</li>
+              <li>It will not let a config change silently reprice a position
+                you already hold &mdash; see <a href="#gd-stop" class="inline">section&nbsp;8</a>.</li>
+            </ul>
+          </section>
+
+        </div>
+      </div>
+    </div>
 
     <!-- ===================== Screener (DX-6c) ===================== -->
     <section id="screener">
@@ -313,6 +648,6 @@
     </footer>
   </div>
 
-  <script src="/darvax/static/darvax.js?v=0.1.0-dx10d1"></script>
+  <script src="/darvax/static/darvax.js?v=0.1.0-dx11a"></script>
 </body>
 </html>

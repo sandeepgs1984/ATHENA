@@ -128,10 +128,23 @@ def test_filter_controls_exist(element_id: str):
 def test_there_is_no_market_cap_filter():
     """ATHENA holds no capitalisation data: no market_cap column, no share count,
     and a broker dump reporting last_price = 0 for every row. A control labelled
-    "market cap" would therefore be filtering on something invented."""
-    lowered = HTML.lower()
+    "market cap" would therefore be filtering on something invented.
+
+    Scoped to the filter bar specifically, not the whole page: DX-11's guide
+    explicitly explains the absence ("It will not filter on market
+    capitalisation... liquidity is the closest measured substitute"), which is
+    the opposite of offering the filter and must not trip this guard.
+    """
+    bar = HTML[HTML.index('<div class="bar">') : HTML.index("</section>", HTML.index('<div class="bar">'))]
+    lowered = bar.lower()
     for claim in ("market cap", "marketcap", "mcap"):
-        assert claim not in lowered, f"page offers a {claim!r} filter it has no data for"
+        assert claim not in lowered, f"the filter bar offers a {claim!r} control it has no data for"
+    # And no select/option anywhere carries a market-cap id or value, guide included.
+    import re
+    for tag in re.findall(r'<(?:select|option)[^>]*(?:id|value)="[^"]*"', HTML, re.IGNORECASE):
+        assert "mcap" not in tag.lower() and "marketcap" not in tag.lower(), (
+            f"a form control references market cap: {tag}"
+        )
 
 
 def test_unmeasured_liquidity_is_reported_not_silently_dropped():

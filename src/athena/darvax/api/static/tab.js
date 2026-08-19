@@ -38,7 +38,7 @@
   // parent page's reload cache-bypass, so a hard reload of the dashboard leaves
   // a stale frame document in place. Changing this string changes the URL, and
   // a URL the browser has never seen cannot be served from cache.
-  var UI_VERSION = "0.1.0-dx10d1";
+  var UI_VERSION = "0.1.0-dx11a";
 
   function warn(reason) {
     // One line, once. DarvaX must not spam or destabilise ATHENA's console.

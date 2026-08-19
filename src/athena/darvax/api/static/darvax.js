@@ -285,6 +285,10 @@
     signalsView: document.getElementById("signals-view"),
     viewScreener: document.getElementById("view-screener"),
     viewSignals: document.getElementById("view-signals"),
+    guideOpen: document.getElementById("guide-open"),
+    guideClose: document.getElementById("guide-close"),
+    guide: document.getElementById("guide"),
+    guideBackdrop: document.getElementById("guide-backdrop"),
     // Advisor zones (DX-7c)
     posZone: document.getElementById("positions-zone"),
     posChips: document.getElementById("pos-chips"),
@@ -332,6 +336,51 @@
     fClear: document.getElementById("f-clear"),
     filterNote: document.getElementById("filter-note")
   };
+
+  /*
+    DX-11 — the in-app methodology guide.
+
+    A dialog, not a fourth mode alongside Advisor/Levels/Table: those three
+    switch what live sweep data you are looking at, and the guide is reference
+    material that applies regardless of which one is open. Folding it into the
+    mode switch would make "how does this work" compete for a slot with "what
+    should I do today", which are different questions asked at different times.
+
+    Every fact in the panel is sourced from the code that computes it
+    (DAR_CARD_TEXT, config.py, engine.py) rather than paraphrased — see
+    test_dx11_guide.py, which cross-checks the rule quotes and thresholds
+    against those same sources so the guide cannot silently drift from the
+    methodology it describes.
+  */
+  var guideOpenerEl = null;
+
+  function openGuide() {
+    guideOpenerEl = document.activeElement;
+    S.guideBackdrop.hidden = false;
+    S.guide.hidden = false;
+    S.guide.focus();
+    document.addEventListener("keydown", onGuideKeydown);
+  }
+
+  function closeGuide() {
+    S.guide.hidden = true;
+    S.guideBackdrop.hidden = true;
+    document.removeEventListener("keydown", onGuideKeydown);
+    // Return focus to whatever opened it, not just to <body>: a keyboard user
+    // who opened the guide from the header button should land back there,
+    // not lose their place on the page.
+    if (guideOpenerEl && typeof guideOpenerEl.focus === "function") {
+      guideOpenerEl.focus();
+    }
+  }
+
+  function onGuideKeydown(e) {
+    if (e.key === "Escape") closeGuide();
+  }
+
+  S.guideOpen.addEventListener("click", openGuide);
+  S.guideClose.addEventListener("click", closeGuide);
+  S.guideBackdrop.addEventListener("click", closeGuide);
 
   var TIERS = [
     { key: "ACTIONABLE", cls: "t-actionable", title: "Actionable",
