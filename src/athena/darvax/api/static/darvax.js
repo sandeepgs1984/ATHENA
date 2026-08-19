@@ -289,6 +289,18 @@
     guideClose: document.getElementById("guide-close"),
     guide: document.getElementById("guide"),
     guideBackdrop: document.getElementById("guide-backdrop"),
+    freshnessButton: document.getElementById("sweep-freshness-button"),
+    freshnessLabel: document.getElementById("sweep-freshness-label"),
+    freshnessPopover: document.getElementById("sweep-freshness-popover"),
+    freshnessClose: document.getElementById("sweep-freshness-close"),
+    freshnessTitle: document.getElementById("sweep-freshness-title"),
+    freshnessExplanation: document.getElementById("sweep-freshness-explanation"),
+    freshnessThrough: document.getElementById("sweep-freshness-through"),
+    freshnessExpected: document.getElementById("sweep-freshness-expected"),
+    freshnessSession: document.getElementById("sweep-freshness-session"),
+    freshnessNext: document.getElementById("sweep-freshness-next"),
+    freshnessWarnings: document.getElementById("sweep-freshness-warnings"),
+    freshnessRetry: document.getElementById("sweep-freshness-retry"),
     // Advisor zones (DX-7c)
     posZone: document.getElementById("positions-zone"),
     posChips: document.getElementById("pos-chips"),
@@ -404,7 +416,8 @@
   var screen = {
     rows: [],
     sweep: null,
-    currentDigest: null,
+    freshness: null,
+    latestAttemptWarning: "",
     filter: "",
     showOther: false,
     closed: {},
@@ -415,6 +428,102 @@
     mode: "advisor",
     visible: []
   };
+
+  function readableDate(value, withTime) {
+    if (!value) return "Unavailable";
+    var parsed = new Date(value);
+    if (isNaN(parsed.getTime())) return String(value);
+    var options = withTime
+      ? { day: "2-digit", month: "short", year: "numeric", hour: "2-digit",
+          minute: "2-digit", hour12: true, timeZone: "Asia/Kolkata" }
+      : { day: "2-digit", month: "short", year: "numeric", timeZone: "Asia/Kolkata" };
+    return new Intl.DateTimeFormat("en-IN", options).format(parsed) +
+      (withTime ? " IST" : "");
+  }
+
+  function readableSession(value) {
+    var labels = {
+      NORMAL: "Normal trading day",
+      WEEKEND: "Weekend",
+      HOLIDAY: "Market holiday"
+    };
+    return labels[value] || value || "Unavailable";
+  }
+
+  function closeFreshness() {
+    S.freshnessPopover.hidden = true;
+    S.freshnessButton.setAttribute("aria-expanded", "false");
+  }
+
+  function openFreshness() {
+    S.freshnessPopover.hidden = false;
+    S.freshnessButton.setAttribute("aria-expanded", "true");
+    S.freshnessPopover.focus();
+  }
+
+  function renderFreshness() {
+    var freshness = screen.freshness;
+    if (!freshness) {
+      S.freshnessButton.dataset.status = "UNAVAILABLE";
+      S.freshnessLabel.textContent = "Sweep status unavailable";
+      S.freshnessTitle.textContent = "Sweep freshness unavailable";
+      S.freshnessExplanation.textContent =
+        "DarvaX did not receive an authoritative freshness reading.";
+      S.freshnessThrough.textContent = "Unavailable";
+      S.freshnessExpected.textContent = "Unavailable";
+      S.freshnessSession.textContent = "Unavailable";
+      S.freshnessNext.textContent = "Unavailable";
+      S.freshnessWarnings.hidden = true;
+      S.freshnessWarnings.textContent = "";
+      return;
+    }
+
+    S.freshnessButton.dataset.status = freshness.status;
+    S.freshnessLabel.textContent = freshness.headline;
+    S.freshnessTitle.textContent = freshness.headline;
+    S.freshnessExplanation.textContent = freshness.explanation;
+    S.freshnessThrough.textContent = readableDate(freshness.data_through, false);
+    S.freshnessExpected.textContent = readableDate(freshness.expected_session, false);
+    S.freshnessSession.textContent = readableSession(freshness.market_session);
+    S.freshnessNext.textContent = readableDate(freshness.next_live_at, true);
+    S.freshnessWarnings.textContent = "";
+    var warnings = (freshness.warnings || []).slice();
+    if (screen.latestAttemptWarning &&
+        warnings.indexOf(screen.latestAttemptWarning) === -1) {
+      warnings.push(screen.latestAttemptWarning);
+    }
+    warnings.forEach(function (warning) {
+      S.freshnessWarnings.appendChild(el("li", "", warning));
+    });
+    S.freshnessWarnings.hidden = !warnings.length;
+    S.freshnessRetry.textContent = freshness.status === "CURRENT" ?
+      "Refresh" : "Retry";
+  }
+
+  S.freshnessButton.addEventListener("click", function () {
+    if (S.freshnessPopover.hidden) openFreshness(); else closeFreshness();
+  });
+  S.freshnessClose.addEventListener("click", function () {
+    closeFreshness();
+    S.freshnessButton.focus();
+  });
+  S.freshnessRetry.addEventListener("click", function () {
+    S.freshnessRetry.disabled = true;
+    loadScreen().finally(function () { S.freshnessRetry.disabled = false; });
+  });
+  document.addEventListener("click", function (event) {
+    var target = event.target;
+    if (!S.freshnessPopover.hidden &&
+        (!target || !target.closest || !target.closest(".sweep-freshness"))) {
+      closeFreshness();
+    }
+  });
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape" && !S.freshnessPopover.hidden) {
+      closeFreshness();
+      S.freshnessButton.focus();
+    }
+  });
 
   function num(raw, dp) {
     if (raw === null || raw === undefined || raw === "") return null;
@@ -776,6 +885,7 @@
   function renderMeta() {
     var sweep = screen.sweep;
     if (!sweep) { S.meta.hidden = true; return; }
+    var freshness = screen.freshness;
     var bits = [];
     bits.push('<span><span class="k">sweep</span> <span class="v">' + esc(sweep.sweep_id) + "</span></span>");
     if (sweep.as_of) {
@@ -788,34 +898,13 @@
       bits.push('<span><span class="k">skipped</span> <span class="v">' +
         sweep.skipped.length + "</span></span>");
     }
-    if (sweep.partial) {
-      bits.push('<span class="flag warn">partial — sweep was cancelled</span>');
-    }
-    // Freshness stated as a fact, not as a session count: the trading calendar
-    // is ATHENA's concern and this page must not guess at it.
-    //
-    // Compared against the *local* date, not toISOString(): as_of is an IST
-    // trading date, and UTC is behind IST by 5h30m, so a UTC "today" reads as
-    // yesterday for the first five and a half hours of every Indian day — long
-    // enough to hide a stale screen every single morning.
-    if (sweep.as_of) {
-      var asOfDate = sweep.as_of.slice(0, 10);
-      var now = new Date();
-      var today = now.getFullYear() + "-" +
-        String(now.getMonth() + 1).padStart(2, "0") + "-" +
-        String(now.getDate()).padStart(2, "0");
-      if (asOfDate < today) {
-        bits.push('<span class="flag warn" title="The latest bar this screen saw is ' +
-          esc(asOfDate) + '">not the latest session</span>');
-      }
-    }
-    // A screen produced under different methodology settings than are in force
-    // now is misleading unless the mismatch is stated.
-    if (screen.currentDigest && sweep.methodology_digest &&
-        screen.currentDigest !== sweep.methodology_digest) {
-      bits.push('<span class="flag bad" title="sweep ' + esc(sweep.methodology_digest) +
-        " · current " + esc(screen.currentDigest) +
-        '">methodology changed since this sweep</span>');
+    if (freshness) {
+      bits.push('<span class="flag ' +
+        (freshness.status === "CURRENT" ? "" : "warn") + '">' +
+        esc(freshness.headline) + "</span>");
+      (freshness.warnings || []).forEach(function (warning) {
+        bits.push('<span class="flag warn">' + esc(warning) + "</span>");
+      });
     }
     S.meta.innerHTML = bits.join("");
     S.meta.hidden = false;
@@ -873,7 +962,9 @@
       .then(function (payload) {
         screen.rows = payload.data || [];
         screen.sweep = payload.sweep || null;
-        screen.currentDigest = payload.current_methodology_digest || null;
+        screen.freshness = payload.freshness || null;
+        screen.latestAttemptWarning = payload.latest_attempt_warning || "";
+        renderFreshness();
         renderScreen();
         if (screen.sweep) {
           // Report what the SWEEP evaluated, not how many rows arrived: those
@@ -909,14 +1000,20 @@
               ? " The sweep record says it did not finish (" + evaluated +
                 " recorded as evaluated), so treat this as a possibly partial " +
                 "sweep and re-run it to be sure."
+              : "") +
+            (screen.latestAttemptWarning
+              ? " " + screen.latestAttemptWarning
               : ""),
-            truncated || incomplete
+            truncated || incomplete || Boolean(screen.latestAttemptWarning)
           );
         } else {
-          screenSay("");
+          screenSay(screen.latestAttemptWarning, Boolean(screen.latestAttemptWarning));
         }
       })
-      .catch(function (err) { screenSay(err.message, true); });
+      .catch(function (err) {
+        if (!screen.freshness) renderFreshness();
+        screenSay(err.message, true);
+      });
   }
 
   function showProgress(on) {

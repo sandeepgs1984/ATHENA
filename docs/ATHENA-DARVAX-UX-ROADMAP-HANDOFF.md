@@ -3,26 +3,35 @@
 **Snapshot date:** 2026-08-19  
 **Branch observed:** `feature/live-dashboard`  
 **Latest commit:** `a5f1de5` — `docs(design): add ATHENA & DarvaX UX roadmap as a durable reference`  
-**Test suite at handoff:** AUX-1a focused gates pass; full-suite result is
-recorded in the newest `IMPLEMENTATION_SUMMARY.md` entry.
-**Current working milestone:** **AUX-1a - ATHENA persistent data freshness,
-implemented with an owner-reported presentation fix and awaiting re-review.**
-The first review found a translucent oversized failure popover and misleading
-“last successful” copy when no reading had loaded. The fix makes the surface
-compact and opaque, adds close/retry controls, and separates initial-load
-failure from retained-last-good failure. A second review confirmed the service
-data after restart but found the panel detached from its control; it is now
-anchored directly below the freshness button with a mobile viewport fallback.
-The latest owner screenshot then exposed a frontend vocabulary mismatch: the
-server returned `CURRENT` for a fully covered closed-session review while the
-compact control displayed `Data unavailable`. The control now maps `CURRENT`
-to `Data current` during live markets and `Closed review` outside them; no
-browser-side freshness thresholds were added.
-The retry control is explicitly hidden after a successful reading and appears
-only for initial-load or retained-last-good refresh failures.
-On 2026-08-19 the owner delegated
-prioritisation, approved a six-item delivery sequence, and then approved AUX-1a
-for implementation. The selected sequence is tracked in
+**Test suite at handoff:** **2,020 passing**, with one FastAPI/Starlette
+deprecation warning. Ruff passes; `mypy` is not installed in the workspace.
+**Current working milestone:** **AUX-1b - calendar-aware DarvaX daily-sweep
+freshness, implemented and ready for owner review.** AUX-1a is approved.
+
+AUX-1b adds a DarvaX-owned immutable classifier and an additive freshness DTO
+to `/api/v1/darvax/screen/latest`. It compares persisted `as_of` coverage with
+the latest completed NSE session, keeps sweep completion age separate, and
+reports partial/cancelled output, coverage integrity, and methodology digest
+compatibility without changing DAR-CARD methodology. The browser renders that
+contract in a persistent compact header control and does not classify dates.
+
+The Calendar Engine crosses the satellite boundary only through a small
+read-only structural port injected by the existing `api/darvax_mount.py` seam.
+DarvaX does not import ATHENA calendar/config modules, read dashboard state, or
+write to `athena.db`. Missing calendar authority fails closed to `UNAVAILABLE`.
+Desktop and 390x844 browser checks verified the anchored opaque panel,
+dismissal behavior, and absence of horizontal clipping. The isolated browser
+lacked ATHENA authentication, so it correctly exercised the unavailable path.
+
+Owner-browser review then exposed and corrected two live-path gaps. The mount
+adapter now consumes the real single-object `load_config` contract, and a
+newer failed sweep no longer hides the latest authoritative completed or
+cancelled screen. `latest_attempt` metadata and a warning preserve the failed
+attempt for audit and owner visibility. Regression coverage exercises both the
+real repo config and failed-after-completed fallback path.
+
+On 2026-08-19 the owner delegated prioritisation and approved a six-item
+delivery sequence. The selected sequence is tracked in
 `docs/design/ATHENA-DARVAX-UX-ROADMAP.md` and `docs/MILESTONES.md`; the other
 roadmap ideas remain unscheduled.
 
@@ -57,8 +66,8 @@ reproposing what already exists, followed by 29 concrete, scoped ideas.
 
 **Do not skip the active review gate.** Read
 `docs/design/ATHENA-ADVISORY-FRESHNESS-DESIGN.md`, inspect the implemented
-AUX-1a evidence, and wait for owner approval. Do not start AUX-1b or a later
-selected item until AUX-1a completes its full review and approval cycle.
+AUX-1b evidence, and wait for owner approval. Do not start AUX-2 or a later
+selected item until AUX-1b completes its review and approval cycle.
 
 ---
 

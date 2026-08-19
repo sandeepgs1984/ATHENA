@@ -22,6 +22,8 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from athena.calendar.engine import CalendarEngine
+from athena.config.loader import load_config
 from athena.errors import ConfigError
 
 if TYPE_CHECKING:  # pragma: no cover - typing only, never an runtime import
@@ -74,6 +76,31 @@ def _default_repo_root() -> Path:
     return root
 
 
+def _build_session_calendar(
+    config_dir: Path,
+) -> tuple[CalendarEngine | None, str, str | None]:
+    """Build the host-owned read-only calendar passed across the mount seam.
+
+    Session dates and hours are ATHENA market facts, not DarvaX methodology.
+    Constructing the engine here keeps the satellite blind to ATHENA's config
+    models while still giving it an authoritative calendar through a narrow
+    structural port.
+    """
+    try:
+        config = load_config(config_dir)
+        return (
+            CalendarEngine.from_config_dir(config_dir, config.market),
+            config.market.timezone,
+            None,
+        )
+    except (ConfigError, OSError, ValueError) as exc:
+        return (
+            None,
+            "Asia/Kolkata",
+            f"DarvaX freshness configuration unavailable: {exc}",
+        )
+
+
 def mount_darvax_if_enabled(
     app: FastAPI,
     *,
@@ -111,10 +138,16 @@ def mount_darvax_if_enabled(
             f"wired, or set {_ACTIVATION_KEY}=false in config/darvax.json."
         )
 
+    session_calendar, market_timezone, freshness_setup_error = (
+        _build_session_calendar(resolved_config_dir)
+    )
     darvax_app = create_darvax_app(
         config_dir=resolved_config_dir,
         market_data=SqliteMarketDataAdapter(repo),  # type: ignore[arg-type]
         repo_root=resolved_root,
+        session_calendar=session_calendar,
+        market_timezone=market_timezone,
+        freshness_setup_error=freshness_setup_error,
     )
 
     # DarvaX delegates authentication to ATHENA instead of standing up a second

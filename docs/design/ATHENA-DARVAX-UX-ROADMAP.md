@@ -18,7 +18,7 @@ transition remains gated by owner review.
 
 | Priority | Milestone | Selected roadmap item | Status |
 |---:|---|---|---|
-| 1 | **AUX-1a / AUX-1b** | Persistent data-freshness indicator — ATHENA first, then DarvaX | **AUX-1a implemented; popover presentation and control anchoring corrected; owner re-review pending**; AUX-1b planned and blocked |
+| 1 | **AUX-1a / AUX-1b** | Persistent data-freshness indicator — ATHENA first, then DarvaX | **AUX-1a approved 2026-08-19**; AUX-1b ready for owner review |
 | 2 | **AUX-2** | Visible last successful cycle and overdue warning | Planned |
 | 3 | **AUX-3** | Confidence band visible in the Decisions list | Planned |
 | 4 | **DX-12b** | DarvaX trend badge on Advisor cards and Levels view | Planned; continuation of DX-12a |

@@ -17,7 +17,6 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
-
 from tests.darvax.test_dx4b_tab import _strip_js_comments
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -126,8 +125,8 @@ def test_only_results_are_view_specific():
 @pytest.mark.parametrize(
     ("state", "marker"),
     [
-        ("partial sweep", "partial"),
-        ("methodology changed", "methodology changed"),
+        ("authoritative freshness", "payload.freshness"),
+        ("integrity warnings", "freshness.warnings"),
         ("progress stage", "p-stage"),
         ("skip reasons", "skipped-list"),
     ],
@@ -136,13 +135,11 @@ def test_each_state_is_still_rendered_by_the_script(state: str, marker: str):
     assert marker in CODE, f"{state} is no longer rendered"
 
 
-def test_a_cancelled_sweep_keeps_its_results():
-    """Discarding completed work would be worse than reporting it as partial —
-    verified live at DX-8c: cancelling at 1,450 of 2,191 kept the tickets and
-    flagged the sweep."""
-    assert "partial" in CODE
+def test_a_cancelled_sweep_keeps_results_and_renders_server_warnings():
+    """The API owns cancellation warnings; the browser keeps rendering rows."""
     render = CODE.split("function renderMeta")[1].split("\n  function ")[0]
-    assert "partial" in render
+    assert "freshness.warnings" in render
+    assert "sweep.partial" not in render
 
 
 def test_the_progress_bar_and_cancel_are_not_advisor_only():

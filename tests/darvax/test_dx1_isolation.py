@@ -17,6 +17,7 @@ import json
 import os
 import subprocess
 import sys
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -27,6 +28,7 @@ from athena.api.app import create_app
 from athena.api.config import APISettings
 from athena.api.darvax_mount import (
     DARVAX_MOUNT_PATH,
+    _build_session_calendar,
     darvax_activation_requested,
     mount_darvax_if_enabled,
 )
@@ -42,6 +44,17 @@ pytestmark = pytest.mark.usefixtures("athena_config_darvax_disabled")
 
 #: The one file in ATHENA core allowed to reference athena.darvax (ADR-010 §4).
 APPROVED_SEAM = SRC_ROOT / "api" / "darvax_mount.py"
+
+
+def test_mount_calendar_adapter_uses_real_config_contract() -> None:
+    calendar, timezone_name, setup_error = _build_session_calendar(
+        REPO_ROOT / "config"
+    )
+
+    assert calendar is not None
+    assert timezone_name == "Asia/Kolkata"
+    assert setup_error is None
+    assert calendar.context_for(date(2026, 8, 19)).is_trading_session
 
 
 def _write_darvax_config(config_dir: Path, **overrides: object) -> Path:
@@ -506,6 +519,6 @@ def test_no_test_can_reach_the_owners_production_darvax_database(tmp_path):
         if store is None:
             continue
         resolved = Path(store.path).resolve()
-        assert REPO_ROOT / "db" / "darvax.db" != resolved, (
+        assert resolved != REPO_ROOT / "db" / "darvax.db", (
             f"a test mounted DarvaX against the production database at {resolved}"
         )

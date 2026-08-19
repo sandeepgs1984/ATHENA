@@ -341,21 +341,55 @@ def latest_screen(
     # mismatch is invisible without both values.
     current_digest = methodology_digest(request.app.state.darvax_config.methodology)
 
-    sweep = store.latest_sweep()
+    latest_attempt = store.latest_sweep()
+    sweep = store.latest_authoritative_sweep()
+    attempt_warning = None
+    if latest_attempt is not None and (
+        sweep is None or latest_attempt.sweep_id != sweep.sweep_id
+    ):
+        attempt_warning = (
+            f"Latest sweep {latest_attempt.state}; showing the most recent "
+            "stable sweep."
+            if sweep is not None
+            else f"Latest sweep {latest_attempt.state}; no stable sweep is available."
+        )
     if sweep is None:
+        freshness = request.app.state.darvax_freshness_classifier.classify(
+            sweep=None,
+            current_methodology_digest=current_digest,
+            reference_time=request.app.state.darvax_freshness_clock(),
+        )
         # An honest empty state, not an error: no sweep has ever run.
         return _envelope(
-            [], sweep=None, count=0, current_methodology_digest=current_digest
+            [],
+            sweep=None,
+            freshness=freshness.to_payload(),
+            count=0,
+            current_methodology_digest=current_digest,
+            latest_attempt=(
+                _sweep_payload(latest_attempt) if latest_attempt is not None else None
+            ),
+            latest_attempt_warning=attempt_warning,
         )
 
     results = store.list_screen_results(
         sweep.sweep_id, tier=parsed_tier, limit=limit
     )
+    freshness = request.app.state.darvax_freshness_classifier.classify(
+        sweep=sweep,
+        current_methodology_digest=current_digest,
+        reference_time=request.app.state.darvax_freshness_clock(),
+    )
     return _envelope(
         [_screen_payload(r) for r in results],
         sweep=_sweep_payload(sweep),
+        freshness=freshness.to_payload(),
         count=len(results),
         current_methodology_digest=current_digest,
+        latest_attempt=(
+            _sweep_payload(latest_attempt) if latest_attempt is not None else None
+        ),
+        latest_attempt_warning=attempt_warning,
     )
 
 

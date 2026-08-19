@@ -101,28 +101,35 @@ def test_the_page_never_invents_a_score():
         "tiers",
         "filter",
         "toggle-other",
+        "sweep-freshness-button",
+        "sweep-freshness-popover",
+        "sweep-freshness-title",
+        "sweep-freshness-warnings",
+        "sweep-freshness-retry",
     ],
 )
 def test_required_state_containers_exist(element_id: str):
     assert f'id="{element_id}"' in HTML, f"missing required element #{element_id}"
 
 
-def test_partial_stale_and_digest_mismatch_states_are_implemented():
-    """Three states that are easy to omit and misleading to omit."""
-    assert "sweep.partial" in JS_CODE
-    assert "not the latest session" in JS_CODE
-    assert "methodology changed since this sweep" in JS_CODE
+def test_server_freshness_and_integrity_states_are_rendered():
+    """The browser presents the API contract; it does not classify the sweep."""
+    assert "payload.freshness" in JS_CODE
+    assert "payload.latest_attempt_warning" in JS_CODE
+    assert "freshness.status" in JS_CODE
+    assert "freshness.explanation" in JS_CODE
+    assert "freshness.warnings" in JS_CODE
+    assert "screen.latestAttemptWarning" in JS_CODE
 
 
-def test_freshness_uses_local_date_not_utc():
-    """Regression guard: `toISOString()` yields the UTC date, which is a day
-    behind IST for the first 5h30m of every Indian day — long enough to hide a
-    stale screen every morning. Caught by live verification, not by a fixture.
-    """
-    assert "toISOString" not in JS_CODE, (
-        "freshness must compare against the local date; toISOString is UTC"
-    )
-    assert "now.getFullYear()" in JS_CODE
+def test_browser_does_not_infer_freshness_or_methodology_mismatch():
+    """AUX-1b moves calendar and digest truth behind the API boundary."""
+    render = JS_CODE.split("function renderMeta")[1].split("\n  function ")[0]
+    assert "new Date" not in render
+    assert "sweep.partial" not in render
+    assert "methodology_digest" not in render
+    assert "current_methodology_digest" not in render
+    assert "toISOString" not in JS_CODE
 
 
 def test_skipped_instruments_are_rendered_with_reasons():
@@ -242,6 +249,8 @@ def test_empty_state_still_carries_the_digest(client):
     body = client.get(f"{DARVAX_MOUNT_PATH}/api/screen/latest", headers=headers).json()
     assert body["sweep"] is None
     assert body["current_methodology_digest"]
+    assert body["freshness"]["status"] == "UNAVAILABLE"
+    assert body["freshness"]["headline"] == "Sweep freshness unavailable"
 
 
 def test_every_field_the_page_reads_is_in_the_screen_payload():

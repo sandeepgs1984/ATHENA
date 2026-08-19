@@ -1,8 +1,8 @@
 # AUX-1 — Persistent Advisory Data Freshness
 
-**Status:** Implementation complete - owner review pending
-**Active milestone:** AUX-1a — ATHENA freshness contract and persistent header indicator  
-**Follow-on milestone:** AUX-1b — DarvaX daily-sweep freshness indicator  
+**Status:** AUX-1a approved; AUX-1b ready for owner review
+**Completed milestone:** AUX-1a — ATHENA freshness contract and persistent header indicator  
+**Review milestone:** AUX-1b — DarvaX daily-sweep freshness indicator  
 **Selected:** 2026-08-19, priority 1 in the owner-approved advisory UX sequence
 
 ## Objective
@@ -134,7 +134,7 @@ silently assigned a market-data freshness they do not consume.
 
 ## AUX-1b — DarvaX design boundary
 
-AUX-1b will classify the persisted sweep against the latest expected trading
+AUX-1b classifies the persisted sweep against the latest expected trading
 session, using Calendar Engine output supplied by the server. Its persistent
 header wording must distinguish:
 
@@ -146,6 +146,57 @@ header wording must distinguish:
 It will replace the browser-local date comparison in `renderMeta()` with the
 authoritative DTO. It will not make DarvaX depend on ATHENA dashboard state or
 write to ATHENA's database.
+
+### Authority and classification
+
+DarvaX owns a pure, immutable sweep-freshness classifier. It accepts the
+persisted `SweepRecord`, current methodology digest, Calendar Engine, and an
+injected reference time. It never reads the wall clock inside the business
+rule.
+
+The latest expected session is the newest configured trading session whose
+close is not later than the reference time. During pre-open or an open session,
+the current day is therefore not yet expected from a daily-bar sweep. After
+close, it is expected. Weekends, holidays, and special sessions are resolved by
+the Calendar Engine rather than weekday arithmetic.
+
+The freshness state answers only whether daily market-data coverage reaches
+that expected session:
+
+- `CURRENT` — `as_of` covers the latest expected completed session;
+- `STALE` — `as_of` predates that session; and
+- `UNAVAILABLE` — no authoritative completed observation can be established.
+
+`AGING` is intentionally unused for daily sweeps because elapsed wall-clock
+time is not a valid proxy for missing trading sessions. Sweep age is still
+shown as the separate neutral fact **Screened {elapsed time} ago**.
+
+Partial/cancelled output and methodology-digest mismatch are integrity
+warnings, not fabricated freshness states. They remain explicit fields in the
+DTO and can raise the presentation tone without changing the session-coverage
+classification.
+
+### AUX-1b acceptance criteria
+
+1. DarvaX shows a persistent freshness control in its own header on every
+   DarvaX view after the first successful load.
+2. The server DTO names data-through date, sweep completion time, latest
+   expected completed session, source, state, explanation, partial status, and
+   methodology compatibility.
+3. Pre-open, open-session, post-close, weekend, holiday, special-session,
+   missing-sweep, incomplete-sweep, stale-sweep, partial-sweep, and digest-
+   mismatch cases are deterministic and tested.
+4. Browser JavaScript contains no local-date or session-freshness
+   classification; it renders the returned DTO and may derive only neutral
+   elapsed wording from the authoritative completion timestamp.
+5. The in-page sweep metadata and persistent header agree and distinguish
+   **Data through** from **Screened**.
+6. DarvaX remains isolated: its own API, assets, configuration and database;
+   no ATHENA dashboard state and no writes to `athena.db`.
+7. Loading, unavailable, current, stale, partial, methodology-changed, keyboard
+   activation, dismissal, and narrow desktop presentation are verified.
+8. The full suite passes, frozen contracts remain additive, replayability is
+   preserved, and no order-placement surface is introduced.
 
 ## AUX-1a acceptance criteria
 
@@ -178,10 +229,9 @@ write to ATHENA's database.
 
 ## Design gate
 
-The owner approved AUX-1a for implementation on 2026-08-19. The implementation
-preserves the approved authority, placement, wording model, and explicit
-separation from AUX-2. AUX-1b remains planned and must not begin until the
-owner reviews and approves AUX-1a.
+The owner approved AUX-1a for implementation and approved its completed UI on
+2026-08-19. AUX-1b began only after that approval, remains inside the DarvaX
+satellite boundary, and is now stopped at its owner review gate.
 
 ## AUX-1a milestone review summary
 
@@ -211,6 +261,65 @@ owner reviews and approves AUX-1a.
   its accessible label and all header actions remain available.
 - **Technical debt:** None introduced. AUX-1b intentionally remains separate
   because daily-sweep freshness has different authority and timing semantics.
-- **Remaining work:** Owner review and approval of AUX-1a, followed by a new
-  approval gate before AUX-1b.
+- **Owner review:** Approved 2026-08-19.
+- **Remaining work:** AUX-1b implementation and its independent owner review.
+- **Ready for review:** Approved.
+
+## AUX-1b milestone review summary
+
+- **Name:** AUX-1b - calendar-aware DarvaX daily-sweep freshness.
+- **Objective:** Give every DarvaX view one persistent, truthful answer about
+  whether its daily sweep covers the latest completed NSE session, without
+  using browser dates or treating overnight wall-clock age as staleness.
+- **Scope completed:** Pure immutable sweep-freshness classifier; additive API
+  DTO; injected read-only Calendar port; persistent header control; accessible
+  anchored details; last-good failure handling; narrow-screen presentation.
+- **Files created:** `src/athena/darvax/screening/freshness.py` and
+  `tests/darvax/test_aux1b_freshness.py`.
+- **Files modified:** DarvaX API app/routes/store/static assets, ATHENA's
+  existing DarvaX mount seam, DarvaX regression tests, roadmap/design/handoff docs,
+  `docs/MILESTONES.md`, `ATHENA_BRIEFING.md`, and this implementation log.
+- **Public API changed:** `GET /api/v1/darvax/screen/latest` now includes an
+  additive `freshness` object. Existing sweep fields and behavior are
+  unchanged.
+- **Tests added:** Deterministic current, stale, unavailable, pre-open,
+  open-session, post-close, weekend, partial, cancelled, coverage-integrity,
+  and methodology-digest cases, plus API and static UI regressions.
+- **Test results:** Full suite **2,020 passing** with one existing
+  FastAPI/Starlette deprecation warning. Ruff passes. `mypy` is unavailable in
+  the workspace (`No module named mypy`).
+- **Coverage summary:** All classifier outcomes and integrity warnings are
+  covered, including missing Calendar authority and missing sweep data. API
+  serialization, server-side authority, cache-busters, and rendering behavior
+  are regression-tested. The real ATHENA configuration contract and the case
+  where a newer failed sweep must not hide the latest stable screen are also
+  covered.
+- **Browser evidence:** Desktop and 390x844 layouts show a stable compact
+  control and opaque anchored panel without overlap or horizontal clipping;
+  click, close, outside-click, and Escape dismissal work. The isolated browser
+  had no ATHENA authentication and therefore correctly exercised the
+  fail-closed unavailable state rather than live persisted sweep data.
+- **Architecture compliance:** DarvaX owns the classifier and depends only on
+  a small structural read-only session-calendar port. ATHENA configuration and
+  Calendar Engine are adapted only at the existing `api/darvax_mount.py` seam.
+  No DarvaX write to `athena.db`, dashboard-state dependency, methodology
+  change, hidden clock, or provider coupling was introduced.
+- **ADR compliance:** ADR-005 and ADR-010 remain intact. The API extension is
+  additive and read-only; no ADR is required.
+- **Contracts and replayability:** Frozen domain contracts are unchanged. The
+  reference time is injectable and classification remains deterministic.
+- **Risks discovered:** Missing Calendar setup must fail closed to
+  `UNAVAILABLE`; it must never fall back to weekday arithmetic. A newer failed
+  sweep must remain auditable without replacing the last completed/cancelled
+  screen presented to the owner. Browser QA of a live sweep requires an
+  authenticated session.
+- **Owner-browser correction:** Live review exposed a tuple-unpack assumption
+  at the ATHENA-to-DarvaX config seam and a failed sweep masking the prior
+  completed screen. The seam now uses the real `load_config` return contract;
+  the API serves the newest authoritative completed/cancelled screen and
+  separately reports any newer failed attempt as a visible warning.
+- **Technical debt:** None introduced.
+- **Remaining work:** Owner review and approval of AUX-1b. AUX-2 and every
+  later selected milestone remain blocked by this gate.
+- **Commit message:** `feat(darvax): add calendar-aware sweep freshness`.
 - **Ready for review:** Yes.

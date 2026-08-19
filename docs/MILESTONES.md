@@ -14,8 +14,8 @@ sweep freshness require separate authoritative contracts.
 
 | Order | Milestone | Scope | Status |
 |---:|---|---|---|
-| 1 | **AUX-1a** | Server-authoritative ATHENA freshness DTO and persistent Decisions/Market header indicator | 🔄 Implemented; popover presentation and control anchoring corrected; owner re-review pending |
-| 1b | **AUX-1b** | Calendar-aware DarvaX sweep/data freshness using the shared semantics | ⏳ Planned; blocked by AUX-1a approval |
+| 1 | **AUX-1a** | Server-authoritative ATHENA freshness DTO and persistent Decisions/Market header indicator | ✅ Approved 2026-08-19 |
+| 1b | **AUX-1b** | Calendar-aware DarvaX sweep/data freshness using the shared semantics | 🟡 Ready for owner re-review; live config and failed-sweep fallback corrected, 2,020 tests pass |
 | 2 | **AUX-2** | Visible last successful ATHENA cycle and overdue warning outside Live Operations | ⏳ Planned |
 | 3 | **AUX-3** | Confidence band visible in the Decisions list | ⏳ Planned |
 | 4 | **DX-12b** | DarvaX 50/100 EMA trend badge on Advisor cards and Levels view | ⏳ Planned; continuation of DX-12a |

@@ -12,9 +12,11 @@ here — those are DX-4 and DX-2/DX-3 respectively.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
@@ -26,6 +28,10 @@ from athena.darvax.adapters import SqliteMarketDataAdapter
 from athena.darvax.api.routes import router as routes_router
 from athena.darvax.config import load_darvax_config
 from athena.darvax.ports import DarvaxMarketDataPort
+from athena.darvax.screening.freshness import (
+    DarvaxSessionCalendarPort,
+    DarvaxSweepFreshnessClassifier,
+)
 from athena.darvax.screening.sweep import SweepRunner
 from athena.darvax.store import DARVAX_SCHEMA_VERSION, DarvaxRepository
 from athena.errors import AthenaError
@@ -59,6 +65,10 @@ def create_darvax_app(
     config_dir: Path | str,
     market_data: DarvaxMarketDataPort,
     repo_root: Path | str | None = None,
+    session_calendar: DarvaxSessionCalendarPort | None = None,
+    market_timezone: str = "Asia/Kolkata",
+    freshness_setup_error: str | None = None,
+    freshness_clock: Callable[[], datetime] | None = None,
 ) -> FastAPI:
     """Build the DarvaX sub-application.
 
@@ -107,6 +117,14 @@ def create_darvax_app(
     app.state.darvax_config = config
     app.state.darvax_store = store
     app.state.darvax_market_data = market_data
+    app.state.darvax_freshness_classifier = DarvaxSweepFreshnessClassifier(
+        calendar=session_calendar,
+        timezone_name=market_timezone,
+        setup_error=freshness_setup_error,
+    )
+    app.state.darvax_freshness_clock = freshness_clock or (
+        lambda: datetime.now(ZoneInfo(market_timezone))
+    )
     # One sweep coordinator per mounted app, not a module global: the runner's
     # lifetime is this sub-application's, so two apps cannot contend over one
     # another's sweeps and there is no hidden process-wide state (DX-6b).

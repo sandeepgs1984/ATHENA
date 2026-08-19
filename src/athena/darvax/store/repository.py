@@ -476,6 +476,21 @@ class DarvaxRepository:
         rows = self._sweep_rows("ORDER BY started_at DESC LIMIT 1", ())
         return rows[0] if rows else None
 
+    def latest_authoritative_sweep(self) -> SweepRecord | None:
+        """Newest stable sweep whose persisted results are safe to present.
+
+        Failed and running attempts remain available through ``latest_sweep``
+        for progress and audit history.  They must not, however, hide the last
+        completed screen merely because they were started more recently.
+        Cancelled sweeps qualify because their retained rows are explicitly
+        marked partial and are therefore honest, bounded observations.
+        """
+        rows = self._sweep_rows(
+            "WHERE state IN (?, ?) ORDER BY started_at DESC LIMIT 1",
+            ("completed", "cancelled"),
+        )
+        return rows[0] if rows else None
+
     def get_sweep(self, sweep_id: str) -> SweepRecord | None:
         rows = self._sweep_rows("WHERE sweep_id=?", (sweep_id,))
         return rows[0] if rows else None

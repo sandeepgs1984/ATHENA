@@ -6,6 +6,95 @@ status updated on approval.
 
 ---
 
+## AUX-1b: calendar-aware DarvaX daily-sweep freshness
+
+**Summary.** Added a persistent, server-authoritative DarvaX freshness answer
+that reports whether the latest persisted daily sweep covers the newest
+completed NSE session. The result distinguishes market-data coverage from
+sweep completion age and exposes integrity warnings without changing DAR-CARD
+classification or ATHENA decisions.
+
+**Objective.** Let the owner determine whether DarvaX's daily screening output
+is current across open sessions, after close, weekends, holidays, missing-data
+conditions, and methodology changes without relying on browser-local dates.
+
+**Scope completed.** Added a pure immutable sweep-freshness classifier,
+additive API DTO, injected read-only session-calendar port, persistent DarvaX
+header control, accessible anchored details, last-good failure behavior, and
+responsive presentation. `CURRENT`, `STALE`, and `UNAVAILABLE` are based on
+completed trading sessions; wall-clock age is shown only as a neutral fact.
+Owner-browser review also hardened the real config seam and made failed sweep
+attempts fall back to the newest authoritative completed/cancelled screen
+while remaining visibly reported.
+
+**Files created.** `src/athena/darvax/screening/freshness.py`;
+`tests/darvax/test_aux1b_freshness.py`.
+
+**Files modified.** `src/athena/api/darvax_mount.py`; DarvaX API app/routes and
+static HTML/JS/CSS assets; DarvaX sweep, screener UI, and honest-state tests;
+AUX design/roadmap/handoff docs; `docs/MILESTONES.md`; `ATHENA_BRIEFING.md`; and
+this implementation log.
+
+**Public APIs changed.** `GET /api/v1/darvax/screen/latest` now includes an
+additive `freshness` object with state, coverage dates, completion time,
+explanation, next session, partial status, coverage integrity, and methodology
+compatibility. Existing fields remain unchanged.
+
+**Tests added.** Seven focused deterministic classifier tests plus updated API,
+repository, static UI, cache-buster, real-config, and honest-state regressions.
+Cases cover current, stale, unavailable, pre-open, open, post-close, weekend,
+missing calendar, partial/cancelled output, incomplete coverage, digest
+mismatch, and a newer failed sweep preserving the last stable screen.
+
+**Test results.** Full suite: **2,020 passing** with one FastAPI/Starlette
+deprecation warning. Ruff passes. `mypy` is unavailable in the workspace
+(`/opt/homebrew/opt/python@3.14/bin/python3.14: No module named mypy`).
+
+**Coverage summary.** Every classifier outcome and integrity warning has
+deterministic coverage. API serialization, missing-sweep behavior,
+server-authoritative frontend rendering, and release asset references are
+regression-tested. Browser QA covered desktop and 390x844 layouts, click,
+close, outside-click and Escape dismissal, stable anchoring, and zero
+horizontal clipping. The isolated browser lacked ATHENA authentication and
+therefore correctly exercised the fail-closed unavailable state.
+
+**Architecture compliance.** DarvaX owns the business rule and depends only on
+a structural read-only session-calendar port. ATHENA adapts its Calendar
+Engine at the existing mount seam; DarvaX has no direct ATHENA calendar/config
+import, dashboard-state dependency, provider coupling, or write to
+`athena.db`. The clock is injected, behavior is deterministic and replayable,
+and frozen contracts remain unchanged.
+
+**ADR compliance.** ADR-005 and ADR-010 remain intact. The API extension is
+additive and read-only. No ADR is required.
+
+**Risks discovered.** Daily freshness is unsafe without calendar authority;
+the implementation fails closed rather than guessing with weekday arithmetic.
+A failed latest sweep is not authoritative screen data and must not hide the
+last stable result. Live-sweep browser verification requires an authenticated
+ATHENA session.
+
+**Owner-browser correction.** The live DarvaX page exposed two gaps not visible
+in isolated unavailable-state QA: `_build_session_calendar` incorrectly
+unpacked the single `AthenaConfig` returned by `load_config`, and
+`latest_screen` selected the newest failed sweep instead of the newest stable
+screen. Both are fixed. The latest failed attempt remains in audit metadata and
+is shown as a warning while completed/cancelled rows remain available.
+
+**Technical debt introduced.** None.
+
+**Suggested improvements.** After owner approval, AUX-2 can reuse the visual
+language while retaining its distinct scheduled-cycle authority.
+
+**Remaining work.** Owner review/approval of AUX-1b. AUX-2 and all later
+selected advisory UX milestones remain blocked by this gate.
+
+**Commit message.** `feat(darvax): add calendar-aware sweep freshness`
+
+**Ready for review.** Yes.
+
+---
+
 ## AUX-1a: persistent ATHENA advisory data freshness
 
 **Summary.** Added one persistent, server-authoritative freshness answer to the
@@ -82,20 +171,19 @@ non-truncating header label, and distinct wording for “no reading loaded” ve
 after this backend route is introduced; a browser asset refresh alone cannot
 load the new endpoint.
 
-**Technical debt introduced.** None. DarvaX daily-sweep freshness remains
-intentionally unimplemented because it requires separate session-date and
-sweep-completion semantics.
+**Technical debt introduced.** None. DarvaX daily-sweep freshness was kept in
+the separately reviewed AUX-1b milestone because it requires distinct
+session-date and sweep-completion semantics.
 
-**Suggested improvements.** Begin AUX-1b only after owner approval and reuse
-the four-state wording contract without coupling DarvaX to ATHENA dashboard
-state.
+**Suggested improvements.** AUX-1b began only after approval and reused the
+shared wording contract without coupling DarvaX to ATHENA dashboard state.
 
-**Remaining work.** Owner review/approval of AUX-1a. AUX-1b and all later
-selected advisory UX milestones remain blocked by that gate.
+**Remaining work.** AUX-1a is approved. AUX-1b is ready for its independent
+owner review.
 
 **Commit message.** `feat(dashboard): add authoritative advisory freshness status`
 
-**Ready for review.** Yes.
+**Ready for review.** Approved 2026-08-19.
 
 ---
 

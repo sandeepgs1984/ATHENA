@@ -11,7 +11,7 @@
     not touch dashboard.js/dashboard.css. ATHENA's asset-versioning discipline is
     therefore unaffected by anything here.
   -->
-  <link rel="stylesheet" href="/darvax/static/darvax.css?v=0.1.0-dx12a">
+  <link rel="stylesheet" href="/darvax/static/darvax.css?v=0.1.0-aux1b-final">
 </head>
 <body>
   <div class="wrap">
@@ -37,6 +37,43 @@
         <span class="ver" id="version">&mdash;</span>
       </div>
       <div class="actions">
+        <div class="sweep-freshness">
+          <button
+            id="sweep-freshness-button"
+            type="button"
+            class="ghost freshness-button"
+            aria-expanded="false"
+            aria-controls="sweep-freshness-popover">
+            <span class="freshness-dot" aria-hidden="true"></span>
+            <span id="sweep-freshness-label">Loading sweep status&hellip;</span>
+          </button>
+          <section
+            id="sweep-freshness-popover"
+            class="freshness-popover"
+            aria-labelledby="sweep-freshness-title"
+            tabindex="-1"
+            hidden>
+            <div class="freshness-popover-head">
+              <strong id="sweep-freshness-title">Sweep freshness</strong>
+              <button
+                id="sweep-freshness-close"
+                type="button"
+                class="ghost icon-button"
+                aria-label="Close sweep freshness details">&times;</button>
+            </div>
+            <p id="sweep-freshness-explanation" class="freshness-explanation"></p>
+            <dl class="freshness-details">
+              <div><dt>Data through</dt><dd id="sweep-freshness-through">&mdash;</dd></div>
+              <div><dt>Expected</dt><dd id="sweep-freshness-expected">&mdash;</dd></div>
+              <div><dt>Session type</dt><dd id="sweep-freshness-session">&mdash;</dd></div>
+              <div><dt>Next live</dt><dd id="sweep-freshness-next">&mdash;</dd></div>
+            </dl>
+            <ul id="sweep-freshness-warnings" class="freshness-warnings" hidden></ul>
+            <button id="sweep-freshness-retry" type="button" class="ghost">
+              Retry
+            </button>
+          </section>
+        </div>
         <div class="viewswitch" role="tablist" aria-label="DarvaX views">
           <button id="view-screener" type="button" role="tab" aria-selected="true">Screener</button>
           <button id="view-signals" type="button" role="tab" aria-selected="false">Scan symbols</button>
@@ -675,6 +712,6 @@
     </footer>
   </div>
 
-  <script src="/darvax/static/darvax.js?v=0.1.0-dx12a"></script>
+  <script src="/darvax/static/darvax.js?v=0.1.0-aux1b-final"></script>
 </body>
 </html>

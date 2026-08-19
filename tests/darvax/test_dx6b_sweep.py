@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import threading
+from dataclasses import replace
 from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -310,6 +311,23 @@ def test_a_sweep_that_fails_outright_records_the_failure(store):
     assert "universe unavailable" in progress.error
 
 
+def test_latest_authoritative_sweep_ignores_a_newer_failed_attempt(store):
+    completed_id = run_to_completion(make_runner(store, FakeMarketData(["AAA"])))
+    completed = store.get_sweep(completed_id)
+    failed = replace(
+        completed,
+        sweep_id="swp-newer-failed",
+        started_at=completed.started_at + timedelta(minutes=1),
+        finished_at=completed.finished_at + timedelta(minutes=1),
+        state="failed",
+        partial=True,
+    )
+    store.save_sweep(failed)
+
+    assert store.latest_sweep().sweep_id == failed.sweep_id
+    assert store.latest_authoritative_sweep().sweep_id == completed_id
+
+
 # --------------------------------------------------------------------------- #
 # 6. Retention — bounded from day one
 # --------------------------------------------------------------------------- #
@@ -439,6 +457,8 @@ def test_latest_screen_is_an_honest_empty_state_before_any_sweep(client):
     assert body["sweep"] is None
     assert body["count"] == 0
     assert body["darvax_status"] == "EXPERIMENTAL_UNVALIDATED"
+    assert body["freshness"]["status"] == "UNAVAILABLE"
+    assert body["freshness"]["headline"] == "Sweep freshness unavailable"
 
 
 def test_screen_round_trip_through_the_api(client):
@@ -451,11 +471,42 @@ def test_screen_round_trip_through_the_api(client):
     assert body["count"] == 2
     assert body["sweep"]["state"] == "completed"
     assert body["sweep"]["evaluated"] == 2
+    assert body["freshness"]["status"] == "UNAVAILABLE"
     assert set(body["sweep"]["tier_counts"]) == {t.value for t in DarvaxTier}
     row = body["data"][0]
     assert row["status"] == "EXPERIMENTAL_UNVALIDATED"
     assert row["explanation"], "the persisted explanation must be served"
     assert isinstance(row["close"], str), "decimals serialise as strings"
+
+
+def test_latest_screen_keeps_completed_rows_when_a_newer_attempt_failed(client):
+    headers = get_auth_headers(client, Role.ADMIN)
+    started = client.post(f"{DARVAX_MOUNT_PATH}/api/screen", headers=headers)
+    assert started.status_code == 200, started.text
+    client.darvax_app.state.darvax_sweep_runner.join(timeout=30)
+
+    store = client.darvax_app.state.darvax_store
+    completed = store.latest_sweep()
+    failed = replace(
+        completed,
+        sweep_id="swp-api-newer-failed",
+        started_at=completed.started_at + timedelta(minutes=1),
+        finished_at=completed.finished_at + timedelta(minutes=1),
+        state="failed",
+        partial=True,
+    )
+    store.save_sweep(failed)
+
+    body = client.get(f"{DARVAX_MOUNT_PATH}/api/screen/latest", headers=headers).json()
+
+    assert body["count"] == 2
+    assert body["sweep"]["sweep_id"] == completed.sweep_id
+    assert body["sweep"]["state"] == "completed"
+    assert body["latest_attempt"]["sweep_id"] == failed.sweep_id
+    assert body["latest_attempt"]["state"] == "failed"
+    assert body["latest_attempt_warning"] == (
+        "Latest sweep failed; showing the most recent stable sweep."
+    )
 
 
 def test_a_concurrent_start_is_refused_with_409(client):
