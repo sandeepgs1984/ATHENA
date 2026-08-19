@@ -9,6 +9,31 @@ dashboard and the DarvaX satellite.
 needed in athena as well as darvax to make advisory dashboard world class and
 best user experience, these improvements can be anything!"
 
+## Owner-selected delivery sequence (2026-08-19)
+
+The owner delegated prioritisation and approved the following sequence. This
+table is the stable reference for the selected work; the remaining roadmap
+ideas stay unscheduled. Only one milestone may be active at a time, and every
+transition remains gated by owner review.
+
+| Priority | Milestone | Selected roadmap item | Status |
+|---:|---|---|---|
+| 1 | **AUX-1a / AUX-1b** | Persistent data-freshness indicator — ATHENA first, then DarvaX | **AUX-1a in design**; AUX-1b planned |
+| 2 | **AUX-2** | Visible last successful cycle and overdue warning | Planned |
+| 3 | **AUX-3** | Confidence band visible in the Decisions list | Planned |
+| 4 | **DX-12b** | DarvaX trend badge on Advisor cards and Levels view | Planned; continuation of DX-12a |
+| 5 | **AUX-4** | Daily near-miss digest | Planned |
+| 6 | **AUX-5** | ATHENA “My track record” panel | Planned |
+
+The persistent-freshness idea is intentionally split. ATHENA consumes
+intraday observations and scheduled cycles, while DarvaX presents a daily
+sweep with its own `as_of` and completion timestamps. One browser-derived age
+rule would mislabel at least one surface. `AUX-1a` and `AUX-1b` therefore share
+wording and severity semantics but retain separate authoritative contracts.
+
+Design authority for the active milestone:
+[`ATHENA-ADVISORY-FRESHNESS-DESIGN.md`](ATHENA-ADVISORY-FRESHNESS-DESIGN.md).
+
 **Published, filterable version:** the same 29 ideas, filterable live by surface
 and effort, are published as an interactive artifact
 (`https://claude.ai/code/artifact/f7a4ed60-8da1-4dfa-b664-f9a11f9b0485`). This

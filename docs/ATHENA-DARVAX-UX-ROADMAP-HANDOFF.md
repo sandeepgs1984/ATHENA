@@ -4,9 +4,11 @@
 **Branch observed:** `feature/live-dashboard`  
 **Latest commit:** `a5f1de5` — `docs(design): add ATHENA & DarvaX UX roadmap as a durable reference`  
 **Test suite at handoff:** 1,999 tests collected, full suite green.  
-**Current working milestone:** None. The roadmap this document hands off is a
-**menu of 29 unstarted ideas**, not a track with a milestone in flight. Nothing
-in it is scheduled or approved.
+**Current working milestone:** **AUX-1a — ATHENA persistent data freshness, in
+design and awaiting owner design review.** On 2026-08-19 the owner delegated
+prioritisation and approved a six-item delivery sequence. The selected sequence
+is tracked in `docs/design/ATHENA-DARVAX-UX-ROADMAP.md` and
+`docs/MILESTONES.md`; the other roadmap ideas remain unscheduled.
 
 This document is a continuity aid, not the authority on project status. Before
 touching anything, read `ATHENA_BRIEFING.md` in full, then verify
@@ -37,11 +39,10 @@ reproposing what already exists, followed by 29 concrete, scoped ideas.
    server-side JS assembly, security, testing). Read the relevant sections
    before touching a module you haven't worked in.
 
-**Do not start implementing anything yet.** The roadmap is a menu, not a
-queue. Your first message to the owner should confirm which item (or items)
-to pick up — do not autonomously work down the list in effort order or any
-other order you invent. If the owner has already told you which item(s) via
-their own message to you, proceed from there.
+**Do not skip the active design gate.** Read
+`docs/design/ATHENA-ADVISORY-FRESHNESS-DESIGN.md` and resume AUX-1a only after
+the owner approves that design. Do not start AUX-1b or a later selected item
+until AUX-1a completes its full review and approval cycle.
 
 ---
 

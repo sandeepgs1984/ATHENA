@@ -4,6 +4,27 @@ Official milestone roadmap per the milestone-based workflow (AGENTS.md).
 One milestone at a time; owner approval gates every transition. A milestone
 too large for a single-sitting review is split BEFORE implementation.
 
+## Advisory UX Priority Track (selected 2026-08-19)
+
+Owner-approved delivery order selected from
+[`docs/design/ATHENA-DARVAX-UX-ROADMAP.md`](design/ATHENA-DARVAX-UX-ROADMAP.md).
+The remaining roadmap ideas are still an unscheduled menu. AUX-1 was split
+before implementation because ATHENA's intraday freshness and DarvaX's daily
+sweep freshness require separate authoritative contracts.
+
+| Order | Milestone | Scope | Status |
+|---:|---|---|---|
+| 1 | **AUX-1a** | Server-authoritative ATHENA freshness DTO and persistent Decisions/Market header indicator | 🔄 In design — owner review pending |
+| 1b | **AUX-1b** | Calendar-aware DarvaX sweep/data freshness using the shared semantics | ⏳ Planned; blocked by AUX-1a approval |
+| 2 | **AUX-2** | Visible last successful ATHENA cycle and overdue warning outside Live Operations | ⏳ Planned |
+| 3 | **AUX-3** | Confidence band visible in the Decisions list | ⏳ Planned |
+| 4 | **DX-12b** | DarvaX 50/100 EMA trend badge on Advisor cards and Levels view | ⏳ Planned; continuation of DX-12a |
+| 5 | **AUX-4** | Daily near-miss digest for symbols close to their validated trigger | ⏳ Planned |
+| 6 | **AUX-5** | ATHENA “My track record” rollup over existing journal/outcome data | ⏳ Planned |
+
+Active design:
+[`docs/design/ATHENA-ADVISORY-FRESHNESS-DESIGN.md`](design/ATHENA-ADVISORY-FRESHNESS-DESIGN.md).
+
 ## Phase 0 — Foundations ✅ APPROVED (2026-07-20)
 
 Delivered as one batch before this workflow existed; retroactive milestone map:
