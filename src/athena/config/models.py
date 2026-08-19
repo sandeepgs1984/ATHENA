@@ -1189,6 +1189,7 @@ class RefreshScheduleConfig(_Strict):
 
     enabled: bool = True
     interval_minutes: int | None = Field(default=None, ge=1, le=120)
+    overdue_grace_minutes: int = Field(default=5, ge=0, le=60)
 
 
 class ClosingScheduleConfig(_Strict):

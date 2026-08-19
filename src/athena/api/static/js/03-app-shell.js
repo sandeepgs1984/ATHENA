@@ -9,6 +9,9 @@
     const TICKER_TABS = new Set(["decisions", "market"]);
     let lastAdvisoryFreshness = null;
     let advisoryFreshnessLoading = false;
+    let advisoryFreshnessFailureMode = "";
+    let lastAthenaCycleStatus = null;
+    let athenaCycleStatusLoading = false;
 
     function switchTab(tabId, options = {}) {
         state.activeTab = tabId;
@@ -294,12 +297,25 @@
         return "Data unavailable";
     }
 
+    function renderSharedFreshnessIndicator() {
+        if (!advisoryFreshnessToggle) return;
+        const cycleStatus = String(lastAthenaCycleStatus?.status || "").toUpperCase();
+        const cycleEscalated = cycleStatus === "FAILED" || cycleStatus === "OVERDUE";
+        const source = cycleEscalated ? lastAthenaCycleStatus : lastAdvisoryFreshness;
+        const tone = String(source?.tone || "NEUTRAL").toLowerCase();
+        advisoryFreshnessToggle.className = `btn freshness-toggle tone-${tone}`;
+        advisoryFreshnessToggle.classList.toggle(
+            "refresh-failed",
+            Boolean(advisoryFreshnessFailureMode)
+        );
+        advisoryFreshnessLabel.textContent = cycleEscalated
+            ? cycleStatus === "FAILED" ? "Cycle failed" : "Cycle overdue"
+            : advisoryFreshnessToggleLabel(lastAdvisoryFreshness);
+    }
+
     function renderAdvisoryFreshness(data, failureMode = "") {
         if (!advisoryFreshnessToggle || !data) return;
-        const tone = String(data.tone || "NEUTRAL").toLowerCase();
-        advisoryFreshnessToggle.className = `btn freshness-toggle tone-${tone}`;
-        advisoryFreshnessToggle.classList.toggle("refresh-failed", Boolean(failureMode));
-        advisoryFreshnessLabel.textContent = advisoryFreshnessToggleLabel(data);
+        advisoryFreshnessFailureMode = failureMode;
         advisoryFreshnessHeadline.textContent = data.headline || "Freshness unavailable";
         advisoryFreshnessExplanation.textContent = data.explanation || "No freshness explanation is available.";
         advisoryFreshnessObserved.textContent = formatFreshnessDate(data.observed_at);
@@ -313,6 +329,26 @@
                 ? "No freshness reading was loaded. Retry after ATHENA finishes restarting."
                 : "";
         advisoryFreshnessRetry.hidden = !failureMode;
+        renderSharedFreshnessIndicator();
+    }
+
+    function renderAthenaCycleStatus(data, failureMode = "") {
+        if (!athenaCycleHeadline || !data) return;
+        athenaCycleHeadline.textContent = data.headline || "Cycle history unavailable";
+        athenaCycleExplanation.textContent = failureMode
+            ? "ATHENA could not load persisted cycle history. Market-data freshness above is unaffected."
+            : data.explanation || "No cycle explanation is available.";
+        athenaCycleLastSuccess.textContent = formatFreshnessDate(data.last_successful_at);
+        athenaCycleLatestAttempt.textContent = data.latest_attempt_status
+            ? `${data.latest_attempt_status} · ${formatFreshnessDate(data.latest_attempt_at)}`
+            : "Unavailable";
+        const status = String(data.status || "UNAVAILABLE").toUpperCase();
+        athenaCycleExpectedBy.textContent = formatFreshnessDate(data.expected_by);
+        if (athenaCycleExpectedRow) {
+            athenaCycleExpectedRow.hidden = status === "CLOSED";
+        }
+        athenaCycleOperations.hidden = !(status === "FAILED" || status === "OVERDUE");
+        renderSharedFreshnessIndicator();
     }
 
     async function loadAdvisoryFreshness() {
@@ -349,6 +385,34 @@
         }
     }
 
+    async function loadAthenaCycleStatus() {
+        if (athenaCycleStatusLoading) return;
+        athenaCycleStatusLoading = true;
+        try {
+            const res = await apiRequest("/api/v1/dashboard/cycle-status", { skipToast: true });
+            lastAthenaCycleStatus = res && res.data ? res.data : null;
+            renderAthenaCycleStatus(lastAthenaCycleStatus);
+        } catch (err) {
+            console.error("Failed to load ATHENA cycle status", err);
+            if (lastAthenaCycleStatus) {
+                renderAthenaCycleStatus(lastAthenaCycleStatus, "retained");
+            } else {
+                lastAthenaCycleStatus = {
+                    status: "UNAVAILABLE",
+                    tone: "NEUTRAL",
+                    headline: "Cycle history unavailable"
+                };
+                renderAthenaCycleStatus(lastAthenaCycleStatus, "unavailable");
+            }
+        } finally {
+            athenaCycleStatusLoading = false;
+        }
+    }
+
+    async function loadHeaderAuthorityStatus() {
+        await Promise.all([loadAdvisoryFreshness(), loadAthenaCycleStatus()]);
+    }
+
     function closeAdvisoryFreshnessPopover() {
         if (!advisoryFreshnessPopover || !advisoryFreshnessToggle) return;
         advisoryFreshnessPopover.hidden = true;
@@ -367,7 +431,13 @@
         });
         advisoryFreshnessRetry?.addEventListener("click", event => {
             event.stopPropagation();
-            loadAdvisoryFreshness();
+            loadHeaderAuthorityStatus();
+        });
+        athenaCycleOperations?.addEventListener("click", event => {
+            event.stopPropagation();
+            closeAdvisoryFreshnessPopover();
+            window.history.pushState({ tabId: "operations" }, "", "/dashboard/operations");
+            switchTab("operations");
         });
         document.addEventListener("click", (event) => {
             if (advisoryFreshnessMenu && !advisoryFreshnessMenu.contains(event.target)) {
@@ -388,7 +458,7 @@
             await loadMarketSessionStatus();
             const [res] = await Promise.all([
                 apiRequest("/api/v1/market/ticker", { skipToast: true }),
-                loadAdvisoryFreshness()
+                loadHeaderAuthorityStatus()
             ]);
             const data = (res && res.data) ? res.data : {};
             renderTickerIndex("nifty", data.nifty || {});

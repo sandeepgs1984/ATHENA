@@ -73,7 +73,7 @@ def test_advisory_freshness_header_uses_server_authority(client: TestClient) -> 
     assert 'id="advisory-freshness-close"' in html
     assert 'id="advisory-freshness-retry"' in html
     assert "/api/v1/dashboard/advisory-freshness" in js
-    assert "data.tone" in js
+    assert "source?.tone" in js
     assert "lastAdvisoryFreshness" in js
     assert "Showing the last successful reading" in js
     assert "No freshness reading was loaded" in js
@@ -95,6 +95,31 @@ def test_advisory_freshness_header_uses_server_authority(client: TestClient) -> 
     assert "position: fixed" in css[css.find("@media (max-width: 720px)") :]
     assert "background: rgba(15, 23, 42, 0.99)" in css
     assert "overflow-wrap: anywhere" in css
+
+
+def test_athena_cycle_status_extends_freshness_popover_without_merging_authority(
+    client: TestClient,
+) -> None:
+    """AUX-2 displays persisted full-cycle health beside, not inside, freshness."""
+    html = client.get("/dashboard/").text
+    css = _fetch_full_css(client)
+    js = client.get("/dashboard/dashboard.js").text
+
+    assert 'id="athena-cycle-headline"' in html
+    assert 'id="athena-cycle-last-success"' in html
+    assert 'id="athena-cycle-latest-attempt"' in html
+    assert 'id="athena-cycle-expected-by"' in html
+    assert 'id="athena-cycle-operations"' in html
+    assert "/api/v1/dashboard/cycle-status" in js
+    assert 'athenaCycleExpectedRow.hidden = status === "CLOSED"' in js
+    assert "loadHeaderAuthorityStatus" in js
+    assert "Promise.all([loadAdvisoryFreshness(), loadAthenaCycleStatus()])" in js
+    assert 'cycleStatus === "FAILED" || cycleStatus === "OVERDUE"' in js
+    assert 'cycleStatus === "FAILED" ? "Cycle failed" : "Cycle overdue"' in js
+    assert "Market-data freshness above is unaffected" in js
+    assert 'switchTab("operations")' in js
+    assert ".cycle-status-section" in css
+    assert "overflow-y: auto" in css
 
 
 def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None:
@@ -279,7 +304,7 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
     assert "dashboard.css?v=9.148.7" in html
-    assert "dashboard.js?v=9.148.7" in html
+    assert "dashboard.js?v=9.149.1" in html
     assert 'id="advisor-pulse"' in html
     assert 'id="header-diagnostics-popover"' in html
     assert 'id="decision-actionability-banner"' in html

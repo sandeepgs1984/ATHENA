@@ -61,7 +61,7 @@ def test_chart_modal_release_gate_prevents_internal_scroll(client: TestClient) -
     css = _full_css(client)
 
     assert "dashboard.css?v=9.148.7" in html
-    assert "dashboard.js?v=9.148.7" in html
+    assert "dashboard.js?v=9.149.1" in html
     assert ".chart-modal-container" in css
     assert "height: 80vh" in css
     assert "width: 80vw" in css

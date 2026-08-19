@@ -6,15 +6,21 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Request, status
 
-from athena.api.dependencies import get_advisory_freshness_service, get_dashboard_service
+from athena.api.dependencies import (
+    get_advisory_freshness_service,
+    get_athena_cycle_status_service,
+    get_dashboard_service,
+)
 from athena.api.v1.dtos import AthenaResponse, ResponseMeta
 from athena.api.v1.dtos.dashboard import (
     AdvisoryFreshnessDTO,
+    AthenaCycleStatusDTO,
     CalendarDataDTO,
     DashboardSummaryDTO,
     MarketSessionStatusDTO,
 )
 from athena.api.v1.services.advisory_freshness_service import AdvisoryFreshnessService
+from athena.api.v1.services.athena_cycle_status_service import AthenaCycleStatusService
 from athena.api.v1.services.dashboard_service import DashboardService
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
@@ -119,6 +125,32 @@ def get_advisory_freshness(
 ) -> AthenaResponse[AdvisoryFreshnessDTO]:
     """Return a Calendar Engine-aware classification for the shared header."""
     data = service.get_freshness(as_of=as_of)
+    request_id = getattr(request.state, "request_id", "unknown")
+    return AthenaResponse(
+        status="success",
+        data=data,
+        meta=ResponseMeta(
+            request_id=request_id,
+            api_version="v1",
+            as_of=datetime.now(tz=timezone.utc),
+        ),
+    )
+
+
+@router.get(
+    "/cycle-status",
+    response_model=AthenaResponse[AthenaCycleStatusDTO],
+    summary="Get ATHENA full-cycle cadence status",
+    status_code=status.HTTP_200_OK,
+    operation_id="getAthenaCycleStatus",
+)
+def get_athena_cycle_status(
+    request: Request,
+    as_of: datetime | None = None,
+    service: AthenaCycleStatusService = Depends(get_athena_cycle_status_service),  # noqa: B008
+) -> AthenaResponse[AthenaCycleStatusDTO]:
+    """Return a read-only projection of persisted full REFRESH cycle health."""
+    data = service.get_status(as_of=as_of)
     request_id = getattr(request.state, "request_id", "unknown")
     return AthenaResponse(
         status="success",

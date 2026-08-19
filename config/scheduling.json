@@ -10,7 +10,8 @@
   },
   "refresh": {
     "enabled": true,
-    "interval_minutes": null
+    "interval_minutes": null,
+    "overdue_grace_minutes": 5
   },
   "closing": {
     "enabled": true,

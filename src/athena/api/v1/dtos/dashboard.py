@@ -109,3 +109,22 @@ class AdvisoryFreshnessDTO(BaseModel):
     explanation: str
     market_session: str
     next_live_at: datetime | None = None
+
+
+class AthenaCycleStatusDTO(BaseModel):
+    """Read-only health projection for ATHENA's full validation cadence."""
+
+    model_config = ConfigDict(frozen=True)
+
+    status: Literal["CURRENT", "OVERDUE", "FAILED", "CLOSED", "UNAVAILABLE"]
+    tone: Literal["GOOD", "DANGER", "NEUTRAL"]
+    headline: str
+    explanation: str
+    last_successful_at: datetime | None = None
+    last_successful_run_id: str | None = None
+    latest_attempt_at: datetime | None = None
+    latest_attempt_status: str | None = None
+    expected_by: datetime | None = None
+    market_session: str
+    interval_minutes: int
+    grace_minutes: int

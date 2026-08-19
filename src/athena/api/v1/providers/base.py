@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     )
     from athena.domain.enums import Timeframe
     from athena.domain.market import Candle
+    from athena.domain.run import RunRecord
     from athena.export.models import ExportArtifact, ExportSnapshot
     from athena.orchestration.models import SystemPipelineResult
     from athena.orchestration.schedule_models import PipelineScheduleRun
@@ -147,6 +148,16 @@ class PipelineRunProvider(Protocol):
 
 
 @runtime_checkable
+class CycleRunHistoryProvider(Protocol):
+    """Read-only access to persisted runtime cycle provenance."""
+
+    def list_runs(
+        self, *, trigger: str | None = None, limit: int = 100
+    ) -> list[RunRecord]:
+        ...
+
+
+@runtime_checkable
 class SchedulerHistoryProvider(Protocol):
     """Abstract provider for scheduled run histories."""
 
@@ -233,4 +244,3 @@ class BacktestRunProvider(Protocol):
 
     def get_run(self, run_id: str) -> BacktestRun | None:
         ...
-

@@ -195,6 +195,22 @@
                                         <i class="fa-solid fa-rotate" aria-hidden="true"></i>
                                         <span>Retry</span>
                                     </button>
+                                    <section class="cycle-status-section" aria-labelledby="athena-cycle-label">
+                                        <div class="cycle-status-heading">
+                                            <span id="athena-cycle-label">ATHENA cycle</span>
+                                            <strong id="athena-cycle-headline">Checking cycle</strong>
+                                        </div>
+                                        <p id="athena-cycle-explanation">Waiting for persisted full-cycle history.</p>
+                                        <dl class="freshness-details cycle-status-details">
+                                            <div><dt>Last success</dt><dd id="athena-cycle-last-success">Unavailable</dd></div>
+                                            <div><dt>Latest attempt</dt><dd id="athena-cycle-latest-attempt">Unavailable</dd></div>
+                                            <div id="athena-cycle-expected-row"><dt>Expected by</dt><dd id="athena-cycle-expected-by">Unavailable</dd></div>
+                                        </dl>
+                                        <button id="athena-cycle-operations" class="freshness-retry" type="button" hidden>
+                                            <i class="fa-solid fa-wave-square" aria-hidden="true"></i>
+                                            <span>Open Live Operations</span>
+                                        </button>
+                                    </section>
                                 </div>
                             </div>
                             <button id="kite-status-btn" class="btn btn-kite unknown" type="button" title="Kite market-data session" hidden>
@@ -1684,7 +1700,7 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.148.7"></script>
+    <script src="/dashboard/dashboard.js?v=9.149.1"></script>
 
     <!-- DarvaX satellite tab (ADR-010 Amendment 1) — the ONLY DarvaX reference
          in this file, and the flag guard itself. This asset is served solely by

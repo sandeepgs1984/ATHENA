@@ -21,6 +21,7 @@ from athena.api.platform.providers.metadata_provider import (
 from athena.api.v1.providers.base import (
     BacktestRunProvider,
     CandleHistoryProvider,
+    CycleRunHistoryProvider,
     DecisionProvider,
     ExportGenerationProvider,
     ExportQueryProvider,
@@ -59,6 +60,7 @@ from athena.api.v1.providers.sqlite_providers import (
 )
 from athena.api.v1.services.advisory_freshness_service import AdvisoryFreshnessService
 from athena.api.v1.services.analytics_service import AnalyticsService
+from athena.api.v1.services.athena_cycle_status_service import AthenaCycleStatusService
 from athena.api.v1.services.backtests_service import BacktestsService
 from athena.api.v1.services.candidates_service import CandidatesService
 from athena.api.v1.services.dashboard_service import DashboardService
@@ -395,6 +397,18 @@ def get_advisory_freshness_service(request: Request) -> AdvisoryFreshnessService
     repo = getattr(request.app.state, "sqlite_repo", None)
     return AdvisoryFreshnessService(
         repo,
+        get_dashboard_service(request),
+        config_dir=_find_repo_root() / "config",
+    )
+
+
+def get_athena_cycle_status_service(request: Request) -> AthenaCycleStatusService:
+    """Read-only status for persisted full ATHENA validation cycles."""
+    history: CycleRunHistoryProvider | None = getattr(
+        request.app.state, "sqlite_repo", None
+    )
+    return AthenaCycleStatusService(
+        history,
         get_dashboard_service(request),
         config_dir=_find_repo_root() / "config",
     )

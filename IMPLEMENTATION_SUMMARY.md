@@ -6,6 +6,82 @@ status updated on approval.
 
 ---
 
+## AUX-2: visible ATHENA full-cycle health
+
+**Summary.** Added a read-only, server-authoritative status for ATHENA's full
+validation cadence. The dashboard now exposes the last successful full cycle,
+latest attempt, expected deadline, and explicit `CURRENT`, `OVERDUE`, `FAILED`,
+`CLOSED`, or `UNAVAILABLE` state in the existing header details panel.
+
+**Objective.** Let the owner distinguish current market observations from the
+health of ATHENA's latest complete board validation without opening Live
+Operations or treating broker connectivity as proof that the board is current.
+
+**Scope completed.** Added a deterministic projection over persisted runtime
+run records, configurable five-minute overdue grace, immutable DTO, dependency
+provider, read-only dashboard endpoint, separate cycle section in the existing
+freshness popover, header escalation for overdue/failed cycles, retry behavior,
+closed-session copy that reports the last completed cycle without displaying
+an obsolete live-session deadline, and a direct route to Live Operations for
+investigation. Only full `REFRESH` runs satisfy cadence; `FAST` runs never do.
+
+**Files created.** `docs/design/ATHENA-CYCLE-STATUS-DESIGN.md`;
+`src/athena/api/v1/services/athena_cycle_status_service.py`;
+`tests/api/v1/test_athena_cycle_status.py`.
+
+**Files modified.** `config/scheduling.json`; configuration models; dashboard
+provider/dependency/DTO/router modules; dashboard shell HTML/CSS/JS; hosting and
+release-gate regressions; `docs/MILESTONES.md`; the UX roadmap handoff; and this
+implementation log.
+
+**Public APIs changed.** Added `GET /api/v1/dashboard/cycle-status`, returning
+the immutable cycle status, tone, explanation, last successful cycle, latest
+attempt, expected deadline, market session, configured interval, and grace.
+Existing endpoints and frozen analytical contracts are unchanged.
+
+**Tests added.** Added seven deterministic service/API cases covering current,
+overdue, failed, running, closed-session, unavailable-history, and full-cycle
+trigger filtering. Hosting regressions verify that cycle health and market-data
+freshness remain separate authorities while sharing one accessible popover.
+
+**Test results.** Focused AUX-2 and dashboard release gates: **17 passing**.
+Full suite after closed-session presentation polish: **2,027 passing**. Ruff
+passes for every changed Python file. `git diff --check` passes.
+
+**Coverage summary.** Status precedence, configured cadence and grace,
+session-aware deadlines, persisted provenance, failure escalation, Live
+Operations routing, dual-authority loading, and static asset references are
+covered. No mutation or browser-side cycle classification was introduced.
+
+**Architecture compliance.** The service is a pure read-only projection over
+the existing run-history provider and Calendar-backed dashboard session
+service. It preserves determinism, replayability, provider independence,
+explainability, and the frozen analytical pipeline. Runtime and configuration
+remain authoritative; the browser only renders the returned classifications.
+
+**ADR compliance.** ADR-005 remains intact. The endpoint is additive and
+read-only, introduces no order-placement path, and requires no ADR.
+
+**Risks discovered.** A successful `FAST` revalidation can look recent while
+the complete board is overdue; trigger filtering is therefore safety-critical.
+An absent run store must fail closed to `UNAVAILABLE`, never infer health from
+the dashboard timestamp.
+
+**Technical debt introduced.** None.
+
+**Suggested improvements.** Keep cycle status and market freshness visually
+adjacent but semantically separate. Any future scheduler notification should
+reuse this projection rather than duplicate cadence logic.
+
+**Remaining work.** Owner review/approval of AUX-2. AUX-3 and later advisory UX
+milestones remain blocked by this gate.
+
+**Commit message.** `feat(dashboard): expose full-cycle validation health`
+
+**Ready for review.** Yes.
+
+---
+
 ## AUX-1b: calendar-aware DarvaX daily-sweep freshness
 
 **Summary.** Added a persistent, server-authoritative DarvaX freshness answer
@@ -83,15 +159,15 @@ is shown as a warning while completed/cancelled rows remain available.
 
 **Technical debt introduced.** None.
 
-**Suggested improvements.** After owner approval, AUX-2 can reuse the visual
-language while retaining its distinct scheduled-cycle authority.
+**Suggested improvements.** AUX-2 reuses the visual language while retaining
+its distinct scheduled-cycle authority.
 
-**Remaining work.** Owner review/approval of AUX-1b. AUX-2 and all later
-selected advisory UX milestones remain blocked by this gate.
+**Remaining work.** AUX-1b is approved. AUX-2 is the active owner-review gate;
+all later selected advisory UX milestones remain blocked by that gate.
 
 **Commit message.** `feat(darvax): add calendar-aware sweep freshness`
 
-**Ready for review.** Yes.
+**Ready for review.** Approved 2026-08-19.
 
 ---
 
@@ -178,8 +254,8 @@ session-date and sweep-completion semantics.
 **Suggested improvements.** AUX-1b began only after approval and reused the
 shared wording contract without coupling DarvaX to ATHENA dashboard state.
 
-**Remaining work.** AUX-1a is approved. AUX-1b is ready for its independent
-owner review.
+**Remaining work.** AUX-1a and AUX-1b are approved. AUX-2 is the active
+owner-review gate.
 
 **Commit message.** `feat(dashboard): add authoritative advisory freshness status`
 

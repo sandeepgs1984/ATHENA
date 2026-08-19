@@ -2,33 +2,35 @@
 
 **Snapshot date:** 2026-08-19  
 **Branch observed:** `feature/live-dashboard`  
-**Latest commit:** `a5f1de5` — `docs(design): add ATHENA & DarvaX UX roadmap as a durable reference`  
-**Test suite at handoff:** **2,020 passing**, with one FastAPI/Starlette
-deprecation warning. Ruff passes; `mypy` is not installed in the workspace.
-**Current working milestone:** **AUX-1b - calendar-aware DarvaX daily-sweep
-freshness, implemented and ready for owner review.** AUX-1a is approved.
+**Latest commit:** `7d54ce3` — `feat(darvax): add calendar-aware sweep freshness`
+**Test suite at handoff:** **2,027 passing**. Ruff passes for changed Python
+files.
+**Current working milestone:** **AUX-2 - visible ATHENA full-cycle health,
+implemented and ready for owner review.** AUX-1a and AUX-1b are approved.
 
-AUX-1b adds a DarvaX-owned immutable classifier and an additive freshness DTO
-to `/api/v1/darvax/screen/latest`. It compares persisted `as_of` coverage with
-the latest completed NSE session, keeps sweep completion age separate, and
-reports partial/cancelled output, coverage integrity, and methodology digest
-compatibility without changing DAR-CARD methodology. The browser renders that
-contract in a persistent compact header control and does not classify dates.
+AUX-2 adds `GET /api/v1/dashboard/cycle-status`, a read-only projection over
+persisted runtime `RunRecord` history. Only full `REFRESH` runs count toward
+the configured validation cadence; a recent `FAST` symbol refresh cannot make
+the full board appear current. The result reports the last successful run,
+latest attempt, expected deadline, and one of `CURRENT`, `OVERDUE`, `FAILED`,
+`CLOSED`, or `UNAVAILABLE`.
 
-The Calendar Engine crosses the satellite boundary only through a small
-read-only structural port injected by the existing `api/darvax_mount.py` seam.
-DarvaX does not import ATHENA calendar/config modules, read dashboard state, or
-write to `athena.db`. Missing calendar authority fails closed to `UNAVAILABLE`.
-Desktop and 390x844 browser checks verified the anchored opaque panel,
-dismissal behavior, and absence of horizontal clipping. The isolated browser
-lacked ATHENA authentication, so it correctly exercised the unavailable path.
+For a closed session, the UI labels the last cycle factually and hides the
+live-only `Expected by` deadline. The deterministic API timestamp remains
+available for replay and audit.
 
-Owner-browser review then exposed and corrected two live-path gaps. The mount
-adapter now consumes the real single-object `load_config` contract, and a
-newer failed sweep no longer hides the latest authoritative completed or
-cancelled screen. `latest_attempt` metadata and a warning preserve the failed
-attempt for audit and owner visibility. Regression coverage exercises both the
-real repo config and failed-after-completed fallback path.
+Cycle health is intentionally a separate authority from AUX-1 market-data
+freshness. Both are presented in the existing anchored header popover, but the
+cycle section explicitly states that market-data freshness is unaffected by a
+cycle lookup failure. `FAILED` and `OVERDUE` escalate the compact header label
+and reveal an **Open Live Operations** action. The browser renders server
+classifications and performs no cadence arithmetic.
+
+The cadence is derived from the existing refresh schedule plus the configured
+five-minute grace period. The service uses the Calendar-backed dashboard
+session status so closed-market review is neutral rather than overdue. Missing
+run history fails closed to `UNAVAILABLE`; no broker, ticker, or dashboard
+timestamp is accepted as proof that a full validation completed.
 
 On 2026-08-19 the owner delegated prioritisation and approved a six-item
 delivery sequence. The selected sequence is tracked in
@@ -65,9 +67,9 @@ reproposing what already exists, followed by 29 concrete, scoped ideas.
    before touching a module you haven't worked in.
 
 **Do not skip the active review gate.** Read
-`docs/design/ATHENA-ADVISORY-FRESHNESS-DESIGN.md`, inspect the implemented
-AUX-1b evidence, and wait for owner approval. Do not start AUX-2 or a later
-selected item until AUX-1b completes its review and approval cycle.
+`docs/design/ATHENA-CYCLE-STATUS-DESIGN.md`, inspect the implemented AUX-2
+evidence, and wait for owner approval. Do not start AUX-3 or a later selected
+item until AUX-2 completes its review and approval cycle.
 
 ---
 

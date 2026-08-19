@@ -79,6 +79,13 @@
     const advisoryFreshnessRefreshNote = document.getElementById("advisory-freshness-refresh-note");
     const advisoryFreshnessClose = document.getElementById("advisory-freshness-close");
     const advisoryFreshnessRetry = document.getElementById("advisory-freshness-retry");
+    const athenaCycleHeadline = document.getElementById("athena-cycle-headline");
+    const athenaCycleExplanation = document.getElementById("athena-cycle-explanation");
+    const athenaCycleLastSuccess = document.getElementById("athena-cycle-last-success");
+    const athenaCycleLatestAttempt = document.getElementById("athena-cycle-latest-attempt");
+const athenaCycleExpectedBy = document.getElementById("athena-cycle-expected-by");
+const athenaCycleExpectedRow = document.getElementById("athena-cycle-expected-row");
+    const athenaCycleOperations = document.getElementById("athena-cycle-operations");
     
     // Telemetry DOM Bindings
     const reqIdElement = document.getElementById("header-req-id");
