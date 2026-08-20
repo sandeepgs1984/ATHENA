@@ -6,6 +6,86 @@ status updated on approval.
 
 ---
 
+## DX-12b: 50/100 EMA trend badge on Advisor cards and the Levels view
+
+**Summary.** Added a small, omit-when-absent trend badge (`↑ trend` /
+`↓ trend` / `mixed`) beside the existing action chip on Advisor buy
+tickets, held-position tickets, and the Levels ladder header. Pure frontend
+continuation of DX-12a — no backend, schema, or API change.
+
+**Objective.** Surface the 50/100-session EMA trend context DX-12a already
+persists and serves (Table view + filter) on the two remaining surfaces the
+owner asked for, without influencing DarvaX's DAR-CARD classification or
+introducing a second implementation of the trend classification logic.
+
+**Scope completed.** Added a `trendChip(row)` helper reusing the existing
+`trendStateFor` classification (unchanged from DX-12a); wired it into
+`buyTicket()`, `holdingTicket()`, and `ladderCard()` immediately after each
+card's `actionChip(row)`; added `.trendchip` CSS deliberately distinct from
+`.act`'s filled-pill recipe (outlined, no uppercase/letter-spacing) so the
+badge reads as context rather than a second recommendation; bumped the DarvaX
+asset version; added one clause to the DX-11 in-app guide noting the badge's
+two new locations.
+
+**Files created.** `tests/darvax/test_dx12b_trend_badge.py`.
+
+**Files modified.** `src/athena/darvax/api/static/darvax.js`,
+`src/athena/darvax/api/static/darvax.css`,
+`src/athena/darvax/api/static/index.html` (guide clause + asset version),
+`src/athena/darvax/api/static/tab.js` (asset version), `docs/MILESTONES.md`,
+the UX roadmap handoff, and this implementation log.
+
+**Public APIs changed.** None. `ema_50`/`ema_100` were already served by DX-12a;
+no field, route, or schema changed.
+
+**Tests added.** 13 — reuse-not-reimplementation of the classification
+function; omission (not a placeholder) when trend is unmeasured; all three
+card builders wired at the correct position; the Levels ladder chart itself
+untouched (collision-risk guard); tooltip disclosure of non-Darvas origin on
+all three states; CSS distinctness from `.act`; the trend module's public
+surface unchanged and still free of any tier/action/eligibility name. Two
+guards (reuse, CSS distinctness) proven non-vacuous by reintroducing the exact
+bug each guards against and confirming failure before restoring.
+
+**Test results.** Full suite: **2,041 passing** (2,028 → 2,041). Ruff
+clean on the new test file. Verified live against a fresh sweep on an isolated
+scratch database (never the owner's `db/darvax.db`): Advisor buy cards,
+a held-position card, and the Levels ladder header all rendered the badge
+correctly where trend data existed and correctly omitted it where absent; the
+badge's header position was measured to sit fully above the ladder chart with
+no overlap. The owner's real sweep/position counts were confirmed unchanged
+before and after.
+
+**Coverage summary.** Classification reuse, absence-handling, wiring position
+in all three card builders, ladder-chart non-interference, tooltip honesty,
+CSS distinctness, and the trend module's unchanged public surface are covered.
+
+**Architecture compliance.** DarvaX's DAR-CARD `tier`/`action` classification
+is untouched — the badge is presentation only, computed from
+already-persisted values via the same function the Table filter uses.
+Explainability-as-data (ADR-005) holds: nothing is re-derived that wasn't
+already computed and served.
+
+**ADR compliance.** ADR-010 (DarvaX isolation) unaffected — no schema, no
+new import surface, no coupling to ATHENA core. No ADR required.
+
+**Risks discovered.** None new. The label-collision risk this design
+specifically avoided (badge in the header, never touching the price ladder)
+is the same class of defect the Levels view was redesigned once already to
+eliminate — recorded here as the reason for that placement choice, not as
+a new finding.
+
+**Technical debt introduced.** None.
+
+**Suggested improvements.** None pending from this milestone. AUX-4 and AUX-5
+are next in the approved sequence.
+
+**Remaining work.** DX-12b is implemented, tested, and verified live;
+awaiting owner review and approval. AUX-4 and AUX-5 remain unstarted per the
+owner's explicit instruction not to begin them while DX-12b is active.
+
+---
+
 ## AUX-3: persisted confidence bands in the Decisions list
 
 **Summary.** Added a compact confidence band to each Decisions-list row using

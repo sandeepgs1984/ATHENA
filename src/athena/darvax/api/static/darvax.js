@@ -1186,6 +1186,39 @@
     return '<span class="act a-' + esc(action) + '">' + esc(label) + badge + "</span>";
   }
 
+  /*
+    DX-12b — a trend badge on the Advisor and Levels cards.
+
+    Reuses trendStateFor (DX-12a) rather than a second classification: the
+    same three states that drive the Table's trend filter now drive this
+    badge, so the two can never disagree about what "above both EMAs" means.
+
+    Omitted entirely (returns "") when trendStateFor is null — insufficient
+    history is absence, not a fourth state, and the badge must not manufacture
+    one. Deliberately NOT styled like .act: this is a trend-context overlay,
+    not a DAR-CARD rule, and must never read as competing with the actual
+    action chip beside it.
+  */
+  var TREND_CHIP = {
+    above: { arrow: "\u2191", label: "trend", cls: "t-above",
+      title: "Trading above both its 50 and 100-session EMA \u2014 a " +
+        "trend-context overlay, not one of Darvas' own rules." },
+    below: { arrow: "\u2193", label: "trend", cls: "t-below",
+      title: "Trading below both its 50 and 100-session EMA \u2014 a " +
+        "trend-context overlay, not one of Darvas' own rules." },
+    mixed: { arrow: "\u2194", label: "mixed", cls: "t-mixed",
+      title: "The 50 and 100-session EMA disagree on direction \u2014 no " +
+        "clear trend read either way. Not one of Darvas' own rules." }
+  };
+
+  function trendChip(row) {
+    var state = trendStateFor(row);
+    if (state === null) return "";
+    var t = TREND_CHIP[state];
+    return '<span class="trendchip ' + t.cls + '" title="' + esc(t.title) + '">' +
+      t.arrow + " " + t.label + "</span>";
+  }
+
   function money(raw) {
     var v = num(raw);
     return v === null ? "—" : "₹" + v.toLocaleString("en-IN");
@@ -1238,7 +1271,7 @@
       '<article class="ticket buy">' +
         '<header><span class="pos">' + (index + 1) + "</span>" +
           '<span class="sym">' + esc(row.symbol) + "</span>" +
-          actionChip(row) + "</header>" +
+          actionChip(row) + trendChip(row) + "</header>" +
         '<dl class="lines">' +
           "<dt>Buy above</dt><dd class=\"key\">" +
             (buy === null ? "—" : money(row.trigger_price)) + "</dd>" +
@@ -1265,6 +1298,7 @@
         '<header><span class="sym">' + esc(p.instrument_id.split(":").pop()) +
           "</span>" +
           (row ? actionChip(row) : '<span class="act a-none">no reading</span>') +
+          (row ? trendChip(row) : "") +
           '<span class="spacer"></span>' +
           (ret === null ? "" : '<span class="ret ' + (ret >= 0 ? "up" : "down") +
             '">' + (ret >= 0 ? "+" : "") + ret.toFixed(2) + "%</span>") +
@@ -1584,7 +1618,7 @@
     return '' +
       '<article class="lcard">' +
         '<header><span class="sym">' + esc(row.symbol) + "</span>" +
-          actionChip(row) + "</header>" +
+          actionChip(row) + trendChip(row) + "</header>" +
         levelChart(row, position) +
         rLine(row) +
         held +

@@ -11,7 +11,7 @@
     not touch dashboard.js/dashboard.css. ATHENA's asset-versioning discipline is
     therefore unaffected by anything here.
   -->
-  <link rel="stylesheet" href="/darvax/static/darvax.css?v=0.1.0-aux1b-final">
+  <link rel="stylesheet" href="/darvax/static/darvax.css?v=0.1.0-dx12b">
 </head>
 <body>
   <div class="wrap">
@@ -300,7 +300,10 @@
                 rule (5/10/20/200), not a trend filter. This is a trend-context
                 overlay added on top of the classification, the same footing as
                 liquidity and box height: informational, filterable, and never
-                part of the tier or action itself.</dd>
+                part of the tier or action itself. On the Advisor and Levels
+                views it also shows as a small <strong>trend badge</strong>
+                beside the action chip &mdash; omitted entirely when there is
+                not yet enough history to read it, rather than guessed.</dd>
             </dl>
           </section>
 
@@ -712,6 +715,6 @@
     </footer>
   </div>
 
-  <script src="/darvax/static/darvax.js?v=0.1.0-aux1b-final"></script>
+  <script src="/darvax/static/darvax.js?v=0.1.0-dx12b"></script>
 </body>
 </html>

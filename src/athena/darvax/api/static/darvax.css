@@ -527,6 +527,26 @@ ul.ev .d { color: var(--dim); opacity: .8; }
   text-decoration: none; cursor: help;
 }
 
+/*
+  DX-12b — the trend badge.
+
+  Deliberately NOT another .act variant: .act is the recommendation itself
+  (buy/hold/sell), and this is context riding beside it — a trend-context
+  overlay, not a DAR-CARD rule. Outlined rather than filled, smaller type,
+  no letter-spacing/uppercase treatment, so it recedes next to the action
+  chip instead of competing with it for the eye's first read.
+*/
+.trendchip {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 1px 7px; border-radius: 999px;
+  font-size: 10.5px; font-weight: 600;
+  border: 1px solid transparent;
+  cursor: help;
+}
+.trendchip.t-above { color: var(--good); border-color: rgba(79,168,122,.35); }
+.trendchip.t-below { color: var(--bad); border-color: rgba(192,101,95,.35); }
+.trendchip.t-mixed { color: var(--dim); border-color: var(--line); }
+
 .chips { display: flex; gap: 6px; flex-wrap: wrap; }
 
 /* ---- zone 2: the shortlist -------------------------------------------- */

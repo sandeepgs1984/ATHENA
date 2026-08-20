@@ -18,14 +18,16 @@ sweep freshness require separate authoritative contracts.
 | 1b | **AUX-1b** | Calendar-aware DarvaX sweep/data freshness using the shared semantics | ✅ Approved 2026-08-19 |
 | 2 | **AUX-2** | Visible last successful ATHENA cycle and overdue warning outside Live Operations | ✅ Approved 2026-08-20 |
 | 3 | **AUX-3** | Confidence band visible in the Decisions list | ✅ Approved 2026-08-20; 2,028 tests pass |
-| 4 | **DX-12b** | DarvaX 50/100 EMA trend badge on Advisor cards and Levels view | ⏭ Next design gate; continuation of approved DX-12a |
+| 4 | **DX-12b** | DarvaX 50/100 EMA trend badge on Advisor cards and Levels view | 🔄 Ready for review — implemented 2026-08-20, 2,041 tests pass |
 | 5 | **AUX-4** | Daily near-miss digest for symbols close to their validated trigger | ⏳ Planned |
 | 6 | **AUX-5** | ATHENA “My track record” rollup over existing journal/outcome data | ⏳ Planned |
 
-Next milestone design gate: **DX-12b**. Read the DX-12a implementation record
-and `src/athena/darvax/screening/trend.py`, then define the persisted 50/100 EMA
-trend presentation for Advisor cards and the Levels view only. The approved
-AUX-3 design record remains at
+DX-12b is implemented and awaiting owner review (2026-08-20) — no backend or
+schema change; reuses the persisted `ema_50`/`ema_100` and the existing
+`trendStateFor` classification (DX-12a) to render an omit-when-absent trend
+badge beside the action chip on Advisor cards, held-position cards, and the
+Levels ladder header. AUX-4 and AUX-5 remain sequenced behind it, not started.
+The approved AUX-3 design record remains at
 [`docs/design/ATHENA-DECISION-LIST-CONFIDENCE-DESIGN.md`](design/ATHENA-DECISION-LIST-CONFIDENCE-DESIGN.md).
 The approved freshness and cycle foundations remain documented in
 [`docs/design/ATHENA-ADVISORY-FRESHNESS-DESIGN.md`](design/ATHENA-ADVISORY-FRESHNESS-DESIGN.md).

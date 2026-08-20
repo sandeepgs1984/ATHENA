@@ -1,13 +1,26 @@
 # ATHENA & DarvaX UX Roadmap — Agent Handoff
 
-**Snapshot date:** 2026-08-20  
+**Snapshot date:** 2026-08-20 (updated — DX-12b implemented)  
 **Branch observed:** `feature/live-dashboard`  
-**Latest commit:** `a53a168` — `feat(dashboard): expose full-cycle validation health`  
-**Test suite at handoff:** **2,028 passing**. Ruff passes for changed Python
-files.
-**Current working milestone:** **DX-12b - DarvaX 50/100 EMA trend badge on
-Advisor cards and Levels view; next Design gate, not yet implemented.** AUX-1a,
-AUX-1b, AUX-2, and AUX-3 are approved.
+**Latest commit:** `a53a168` — `feat(dashboard): expose full-cycle validation health`
+(DX-12b's own commit is not yet made — the AI provides a commit message,
+the owner commits)  
+**Test suite at handoff:** **2,041 passing** (2,028 → 2,041 for DX-12b). Ruff
+clean on all changed/added files.
+**Current working milestone:** **DX-12b — DarvaX 50/100 EMA trend badge on
+Advisor cards and Levels view. Implemented, tested, verified live against a
+scratch database, and awaiting owner review — not yet approved.** Do not
+begin AUX-4 or AUX-5 until the owner approves DX-12b. AUX-1a, AUX-1b, AUX-2,
+and AUX-3 are approved.
+
+DX-12b reuses DX-12a's persisted `ema_50`/`ema_100` and its existing
+`trendStateFor` classification (no backend/schema change) to render an
+omit-when-absent trend badge beside the action chip on Advisor buy tickets,
+held-position tickets, and the Levels ladder header. The badge lives in each
+card's header row only — it does not touch `levelChart()` or the price
+ladder, deliberately avoiding the label-collision class of bug that
+redesigned the Levels view once already. See `IMPLEMENTATION_SUMMARY.md`'s
+DX-12b entry for full detail.
 
 AUX-3 is owner-approved as of 2026-08-20. It adds the nullable
 `analysis.confidence_level` field to the Decisions read model and renders
@@ -56,11 +69,10 @@ reproposing what already exists, followed by 29 concrete, scoped ideas.
    server-side JS assembly, security, testing). Read the relevant sections
    before touching a module you haven't worked in.
 
-**Start with the DX-12b Design gate.** Read the DX-12a entry in
-`IMPLEMENTATION_SUMMARY.md`, inspect `src/athena/darvax/screening/trend.py`, and
-trace the persisted trend values through the DarvaX DTO and dashboard rendering
-paths. Define the Advisor-card badge and Levels-view presentation before
-editing code. Do not start AUX-4 or AUX-5 while DX-12b is active.
+**DX-12b's Design step is done and it is implemented** — see this file's
+top status block and `IMPLEMENTATION_SUMMARY.md`'s DX-12b entry for what
+was built and how it was verified. It is awaiting owner review, not
+approved yet. Do not start AUX-4 or AUX-5 until the owner approves it.
 
 ---
 
@@ -234,11 +246,10 @@ effort tier. A few notes on ones that carry extra context worth knowing before
 you scope them:
 
 - **"Trend badge on Advisor cards"** (Visual & interaction polish, DarvaX,
-  quick win) is explicitly **DX-12b**, the direct continuation of DX-12a
-  (50/100 EMA trend context, already shipped on the Table view and as a
-  filter). If the owner picks this one, read `IMPLEMENTATION_SUMMARY.md`'s
-  DX-12a entry and `src/athena/darvax/screening/trend.py` first — the data
-  this badge needs already exists on every `ScreenResult`.
+  quick win) was **DX-12b** — done, awaiting owner review (2026-08-20). It
+  ended up covering the Levels view too, per the owner's own scoping
+  instruction, not just Advisor. See `IMPLEMENTATION_SUMMARY.md`'s DX-12b
+  entry. This item is no longer open to pick up.
 - **"Owner-authored price/level alerts"** (Alerts, big bet) is the single
   idea with the most architectural surface area — it needs a rules engine
   and a per-cycle evaluation pass, not just a UI change. Treat this as
