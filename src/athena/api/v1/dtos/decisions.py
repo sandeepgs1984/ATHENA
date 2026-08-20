@@ -406,6 +406,33 @@ class TrackRecordDTO(BaseModel):
     plan_adherence_rate_pct: Decimal | None = None
 
 
+class NearMissItemDTO(BaseModel):
+    """One WATCH decision within AUX-4a's configured score margin of the
+    trade threshold, exactly as persisted in the daily briefing file."""
+
+    model_config = ConfigDict(frozen=True)
+
+    decision_id: str
+    instrument_id: str | None = None
+    composite: Decimal
+    score_gap: Decimal
+    trade_threshold: int
+
+
+class NearMissDigestDTO(BaseModel):
+    """AUX-4c: a read of AUX-4a's already-persisted daily near-miss digest
+    (file-only by design, DD-9 webhook+file) -- never a recomputation.
+    `as_of`/`briefing_id` are None when no briefing file has ever been
+    written, distinct from a briefing that ran and found zero near misses."""
+
+    model_config = ConfigDict(frozen=True)
+
+    as_of: datetime | None = None
+    briefing_id: str | None = None
+    count: int = 0
+    items: list[NearMissItemDTO] = Field(default_factory=list)
+
+
 class CounterfactualGapDTO(BaseModel):
     """One failed quality gate's exact numeric distance to passing (M-X2).
     Computed from already-persisted values vs. current config thresholds —

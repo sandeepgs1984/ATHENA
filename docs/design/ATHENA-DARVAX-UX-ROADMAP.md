@@ -24,8 +24,8 @@ transition remains gated by owner review.
 | 4 | **DX-12b** | DarvaX trend badge on Advisor cards and Levels view | Approved 2026-08-20; 2,041 tests pass |
 | 5 | **AUX-4a** | ATHENA daily near-miss digest (score-margin) | Approved 2026-08-20; 2,055 tests pass |
 | 5b | **AUX-4b** | DarvaX's own near-miss digest | Approved 2026-08-20; 2,069 tests pass |
-| 6 | **AUX-5** | ATHENA “My track record” panel | Ready for review 2026-08-20 |
-| 7 | **AUX-4c** | Surface near-miss digests in the dashboard UI (both surfaces) | Planned -- needs its own Design pass |
+| 6 | **AUX-5** | ATHENA “My track record” panel | Approved 2026-08-20 |
+| 7 | **AUX-4c** | Surface near-miss digests in the dashboard UI (both surfaces) | Ready for review 2026-08-20 |
 
 The persistent-freshness idea is intentionally split. ATHENA consumes
 intraday observations and scheduled cycles, while DarvaX presents a daily

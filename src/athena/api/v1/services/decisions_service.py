@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -34,6 +35,8 @@ from athena.api.v1.dtos import (
     GateResultDTO,
     JournalEntryDTO,
     MarketHealthContextDTO,
+    NearMissDigestDTO,
+    NearMissItemDTO,
     QuerySpecification,
     RegimeContextDTO,
     ResetDecisionsResultDTO,
@@ -44,7 +47,7 @@ from athena.api.v1.dtos import (
     TradePlanDTO,
     TradePlanFreshnessDTO,
 )
-from athena.api.v1.services.ops_service import default_backup_dir, default_db_path
+from athena.api.v1.services.ops_service import default_backup_dir, default_briefings_dir, default_db_path
 from athena.calendar.engine import CalendarEngine
 from athena.config.loader import load_config, load_decision_config, load_external_links_file
 from athena.data.store.backup import create_backup, prune_backups
@@ -463,6 +466,46 @@ class DecisionsService:
             adherence_pass_count=adherence_pass_count,
             plan_adherence_rate_pct=plan_adherence_rate_pct,
         )
+
+    def get_near_misses(self) -> NearMissDigestDTO:
+        """AUX-4c: surface AUX-4a's already-persisted daily near-miss digest.
+        The digest is file-only by design (DD-9 webhook+file) -- this reads
+        the most recently modified `brief-*.json` under the configured
+        file-notifier output dir, the same directory BriefingDispatcher's
+        FileNotifier already writes to. Never recomputes near-miss
+        detection; a missing/corrupt file degrades to an empty digest with
+        as_of=None rather than raising, mirroring OpsService.list_backups'
+        defensive sidecar-parsing convention."""
+        briefings_dir = default_briefings_dir(self._config_dir)
+        if not briefings_dir.exists():
+            return NearMissDigestDTO()
+
+        candidates = sorted(
+            briefings_dir.glob("brief-*.json"), key=lambda p: p.stat().st_mtime, reverse=True
+        )
+        if not candidates:
+            return NearMissDigestDTO()
+
+        try:
+            payload = json.loads(candidates[0].read_text(encoding="utf-8"))
+            items = [
+                NearMissItemDTO(
+                    decision_id=nm["decision_id"],
+                    instrument_id=nm.get("instrument_id"),
+                    composite=nm["composite"],
+                    score_gap=nm["score_gap"],
+                    trade_threshold=nm["trade_threshold"],
+                )
+                for nm in payload.get("near_misses", [])
+            ]
+            return NearMissDigestDTO(
+                as_of=datetime.fromisoformat(payload["as_of"]) if "as_of" in payload else None,
+                briefing_id=payload.get("briefing_id"),
+                count=len(items),
+                items=items,
+            )
+        except (OSError, ValueError, KeyError, TypeError):
+            return NearMissDigestDTO()
 
     def get_decision_analogs(self, decision_id: str, *, limit: int = 5) -> DecisionAnalogsDTO:
         """Nearest-neighbor historical decisions by score/confidence/risk

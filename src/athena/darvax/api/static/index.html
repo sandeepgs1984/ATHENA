@@ -11,7 +11,7 @@
     not touch dashboard.js/dashboard.css. ATHENA's asset-versioning discipline is
     therefore unaffected by anything here.
   -->
-  <link rel="stylesheet" href="/darvax/static/darvax.css?v=0.1.0-dx12b">
+  <link rel="stylesheet" href="/darvax/static/darvax.css?v=0.1.0-aux4c">
 </head>
 <body>
   <div class="wrap">
@@ -607,6 +607,33 @@
           </p>
         </section>
 
+        <!-- AUX-4c — a read of AUX-4b's already-persisted digest file, written
+             once per completed sweep. Never a recomputation of near-miss
+             detection; this can go stale between sweeps by design (DX-4a). -->
+        <section class="zone" id="near-miss-zone" hidden>
+          <header class="zonehead">
+            <h2>Near misses</h2>
+            <span class="dim" id="near-miss-sub"></span>
+          </header>
+          <p class="dim cardnote">
+            Not yet buy candidates &mdash; these are still sitting inside their
+            box, but price has moved within a small margin of the level the
+            method needs it to clear. Nothing to act on yet; just worth
+            watching, since a small further move could turn one into a buy
+            candidate above.
+          </p>
+          <table class="signals" id="near-miss-table">
+            <thead>
+              <tr><th>Symbol</th><th>Close</th><th>Level to clear</th><th>% away</th></tr>
+            </thead>
+            <tbody id="near-miss-tbody"></tbody>
+          </table>
+          <p class="dim cardnote">
+            From the last completed sweep's digest, not the live screen above
+            &mdash; run a new sweep to refresh it.
+          </p>
+        </section>
+
         <p class="dim restline" id="rest-line" hidden></p>
       </div>
 
@@ -715,6 +742,6 @@
     </footer>
   </div>
 
-  <script src="/darvax/static/darvax.js?v=0.1.0-dx12b"></script>
+  <script src="/darvax/static/darvax.js?v=0.1.0-aux4c"></script>
 </body>
 </html>

@@ -112,6 +112,10 @@ const athenaCycleExpectedRow = document.getElementById("athena-cycle-expected-ro
     const trackReturnDetail = document.getElementById("track-return-detail");
     const trackAdherence = document.getElementById("track-adherence");
     const trackJournalDetail = document.getElementById("track-journal-detail");
+
+    // AUX-4c "Near Misses" DOM Bindings
+    const nearMissAsOf = document.getElementById("near-miss-asof");
+    const nearMissTbody = document.getElementById("near-miss-tbody");
     const holdingsTbody = document.getElementById("holdings-tbody");
     
     // Charts DOM Bindings

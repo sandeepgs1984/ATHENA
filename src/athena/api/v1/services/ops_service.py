@@ -34,6 +34,7 @@ from athena.api.v1.dtos.ops import (
     StageTelemetryDTO,
 )
 from athena.api.v1.dtos.pipelines import PipelineRunFilterParams
+from athena.config.loader import load_notifications_config
 from athena.data.store.backup import create_backup, restore_backup
 from athena.data.store.repository import SqliteRepository
 from athena.errors import RepositoryError
@@ -72,6 +73,14 @@ def default_backup_dir() -> Path:
     if env:
         return Path(env)
     return _resolve_repo_root() / "db" / "backups"
+
+
+def default_briefings_dir(config_dir: Path) -> Path:
+    """Resolve the daily-briefing file-notifier output dir the same way
+    BriefingDispatcher itself does (DD-9 webhook+file) -- relative to repo
+    root unless the configured path is already absolute."""
+    output_dir = Path(load_notifications_config(config_dir).channels.file.output_dir)
+    return output_dir if output_dir.is_absolute() else _resolve_repo_root() / output_dir
 
 
 class OpsService:

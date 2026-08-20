@@ -58,6 +58,14 @@
             } else {
                 setEmptyTrackRecordState();
             }
+
+            // 5. Fetch AUX-4c near-miss digest (a read of AUX-4a's persisted file)
+            const nearMissRes = await apiRequest("/api/v1/decisions/near-misses", { skipToast: true }).catch(() => null);
+            if (nearMissRes && nearMissRes.data) {
+                renderNearMissCard(nearMissRes.data);
+            } else {
+                setEmptyNearMissState();
+            }
         } catch (err) {
             setEmptyPortfolioState();
         }
@@ -83,6 +91,7 @@
         `;
         renderSectorChart({});
         setEmptyTrackRecordState();
+        setEmptyNearMissState();
     }
 
     // AUX-5 "My track record" — pure display of the TrackRecordDTO rollup,
@@ -126,6 +135,52 @@
         trackReturnDetail.textContent = "No closed trades yet";
         trackAdherence.textContent = "—";
         trackJournalDetail.textContent = "No journal entries yet";
+    }
+
+    // AUX-4c — a read of AUX-4a's already-persisted daily near-miss digest
+    // (DD-9 file channel). Rows arrive pre-sorted nearest-first (builder.py
+    // sorts by score_gap); this only caps how many render, it never re-sorts.
+    var NEAR_MISS_MAX_ROWS = 20;
+
+    function renderNearMissCard(digest) {
+        if (!nearMissTbody) return;
+
+        if (!digest.as_of) {
+            setEmptyNearMissState();
+            return;
+        }
+
+        var asOfText = "As of " + formatDecisionTime(digest.as_of) +
+            (digest.briefing_id ? " (" + escapeDecisionHtml(digest.briefing_id) + ")" : "");
+        nearMissAsOf.textContent = asOfText;
+
+        if (!digest.items || digest.items.length === 0) {
+            nearMissTbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">' +
+                "No decisions were within the configured margin at the last briefing." + "</td></tr>";
+            return;
+        }
+
+        var shown = digest.items.slice(0, NEAR_MISS_MAX_ROWS);
+        nearMissTbody.innerHTML = shown.map(function (item) {
+            return "<tr>" +
+                "<td>" + escapeDecisionHtml(item.instrument_id || item.decision_id) + "</td>" +
+                "<td>" + escapeDecisionHtml(String(item.composite)) + "</td>" +
+                "<td>" + escapeDecisionHtml(String(item.trade_threshold)) + "</td>" +
+                "<td>" + escapeDecisionHtml(String(item.score_gap)) + "</td>" +
+                "</tr>";
+        }).join("");
+
+        if (digest.items.length > shown.length) {
+            nearMissTbody.innerHTML += '<tr><td colspan="4" class="text-center text-muted">' +
+                "nearest " + shown.length + " of " + digest.items.length + " shown, closest to the trade level first" +
+                "</td></tr>";
+        }
+    }
+
+    function setEmptyNearMissState() {
+        if (!nearMissTbody) return;
+        nearMissAsOf.textContent = "No briefing has run yet";
+        nearMissTbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No briefing has run yet.</td></tr>';
     }
 
     function updateDayChange(dayChangePct) {

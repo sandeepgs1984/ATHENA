@@ -77,3 +77,43 @@ def write_digest(
     json_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
     text_path.write_text(render_digest_text(sweep_id, as_of, candidates), encoding="utf-8")
     return json_path, text_path
+
+
+def resolve_output_dir(configured: str) -> Path:
+    """Same relative-to-CWD resolution `sweep.py`'s writer already applies --
+    duplicated rather than imported across the writer/reader split since
+    it's two lines, matching this file's own stated convention of small
+    duplication over coupling."""
+    output_dir = Path(configured)
+    return output_dir if output_dir.is_absolute() else Path.cwd() / output_dir
+
+
+_EMPTY_DIGEST: dict = {"sweep_id": None, "as_of": None, "near_miss_count": 0, "near_misses": []}
+
+
+def read_latest_digest(output_dir: Path) -> dict:
+    """AUX-4c: read the most recently written digest (AUX-4b writes one per
+    completed sweep, never overwriting the previous one) -- never
+    recomputes near-miss detection, only reads what a sweep already
+    persisted. A missing directory, no digest yet, or a corrupt file all
+    degrade to the same empty shape rather than raising -- a UI read should
+    never fail a page load over a stale/malformed artifact."""
+    if not output_dir.exists():
+        return dict(_EMPTY_DIGEST)
+
+    candidates = sorted(
+        output_dir.glob("near-miss-*.json"), key=lambda p: p.stat().st_mtime, reverse=True
+    )
+    if not candidates:
+        return dict(_EMPTY_DIGEST)
+
+    try:
+        payload = json.loads(candidates[0].read_text(encoding="utf-8"))
+        return {
+            "sweep_id": payload.get("sweep_id"),
+            "as_of": payload.get("as_of"),
+            "near_miss_count": int(payload.get("near_miss_count", 0)),
+            "near_misses": list(payload.get("near_misses", [])),
+        }
+    except (OSError, ValueError, KeyError, TypeError):
+        return dict(_EMPTY_DIGEST)

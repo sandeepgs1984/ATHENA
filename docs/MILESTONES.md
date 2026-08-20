@@ -21,8 +21,8 @@ sweep freshness require separate authoritative contracts.
 | 4 | **DX-12b** | DarvaX 50/100 EMA trend badge on Advisor cards and Levels view | ✅ Approved 2026-08-20; 2,041 tests pass |
 | 5 | **AUX-4a** | ATHENA daily near-miss digest (score-margin, in DailyBriefingBuilder) | ✅ Approved 2026-08-20; 2,055 tests pass |
 | 5b | **AUX-4b** | DarvaX's own near-miss digest, written once per completed sweep | ✅ Approved 2026-08-20; 2,069 tests pass |
-| 6 | **AUX-5** | ATHENA “My track record” rollup over existing journal/outcome data | 🔄 Ready for review; 2,075 tests pass |
-| 7 | **AUX-4c** | Surface near-miss digests in the dashboard UI (ATHENA + DarvaX) — both currently file-only, per AUX-4a/4b's own design | ⏳ Planned — needs its own Design pass |
+| 6 | **AUX-5** | ATHENA “My track record” rollup over existing journal/outcome data | ✅ Approved 2026-08-20; 2,075 tests pass |
+| 7 | **AUX-4c** | Surface near-miss digests in the dashboard UI (ATHENA + DarvaX) — both currently file-only, per AUX-4a/4b's own design | 🔄 Ready for review; 2,086 tests pass |
 
 DX-12b was owner-approved 2026-08-20 after live visual verification on the
 owner's own real system. AUX-4 was split into AUX-4a/AUX-4b before
@@ -35,16 +35,30 @@ confirmed on the owner's own real, live system (129 real near-misses in a
 real `athena brief --dry-run` run; 35 real near-misses in a real DarvaX
 sweep, with the math spot-checked by hand against the digest's own numbers).
 
-**AUX-4c is newly registered, not started.** Both AUX-4a and AUX-4b are
-file-only by design, matching the roadmap item's own "folded into the
-existing morning briefing" wording — neither surfaces in the ATHENA
-dashboard or DarvaX's own UI. The owner asked for that as a separate
-milestone once this became visible during review. Needs its own Design step
-(where in each UI, how it refreshes, whether it reads the file the digest
-already writes or needs its own persisted/served representation) before
-implementation — not started yet, queued behind AUX-5.
+**AUX-4c is implemented, awaiting owner review.** Both AUX-4a and AUX-4b
+were file-only by design, matching the roadmap item's own "folded into the
+existing morning briefing" wording — neither surfaced in the ATHENA
+dashboard or DarvaX's own UI. Design resolved to reading each digest's
+already-persisted file directly (mirroring `OpsService.list_backups`'
+glob-directory-plus-defensive-JSON-parse convention) rather than adding new
+persistence — a missing/corrupt file degrades to an honest empty state
+(`as_of=None` distinct from "ran and found none"), never a fabricated
+result. ATHENA: new `GET /api/v1/decisions/near-misses` reads the most
+recently modified `brief-*.json` under the configured file-notifier output
+dir; surfaced as a new "Near Misses" card on the Overview tab. DarvaX: new
+`GET /darvax/api/screen/near-misses` reads the most recently written
+`near-miss-*.json` under the configured digest dir; surfaced as a new "Near
+misses" zone in the Advisor view, independent of the live sweep state by
+design (it can go stale between sweeps, same as the digest itself). Verified
+live against an isolated scratch server for the DarvaX side; the ATHENA
+side's verification incidentally read the owner's real, current
+`artifacts/briefings/brief-2026-08-20.json` (a pre-existing characteristic
+of `get_decisions_service`'s dependency wiring, which resolves `config_dir`
+to the real repo root regardless of `ATHENA_CONFIG_DIR` — read-only, no
+write, but flagged as a risk below since it affects verification
+methodology, not just this milestone).
 
-**AUX-5 is implemented, awaiting owner review.** Scoped ATHENA-only per the
+**AUX-5 was owner-approved 2026-08-20.** Scoped ATHENA-only per the
 roadmap doc's own "Surface: ATHENA" tag — "DarvaX's own realized-performance
 view" is a separate, unscheduled roadmap idea, not part of this milestone.
 Real-data check before design: `decision_journal`, `trade_outcomes`, and

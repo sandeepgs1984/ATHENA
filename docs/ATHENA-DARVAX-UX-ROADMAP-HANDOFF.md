@@ -1,26 +1,33 @@
 # ATHENA & DarvaX UX Roadmap — Agent Handoff
 
-**Snapshot date:** 2026-08-20 (updated — AUX-5 implemented, awaiting owner review)  
+**Snapshot date:** 2026-08-20 (updated — AUX-4c implemented, awaiting owner review)  
 **Branch observed:** `feature/live-dashboard`  
 **Latest commit:** `a53a168` — `feat(dashboard): expose full-cycle validation health`
 (none of this track's own commits are made yet — the AI provides a
 commit message per milestone, the owner commits)  
-**Test suite at handoff:** **2,075 passing** (2,041 -> 2,055 for AUX-4a,
--> 2,069 for AUX-4b, -> 2,075 for AUX-5). Ruff clean on all changed/added files.
-**Current working milestone:** **AUX-5, implemented, awaiting owner
-review.** AUX-1a, AUX-1b, AUX-2, AUX-3, DX-12b, AUX-4a, and AUX-4b are all
-approved — AUX-4a/4b each independently confirmed by the owner on their own
-real, live system (129 real near-misses in a real `athena brief` run; 35 in
-a real DarvaX sweep, spot-checked by hand). AUX-5 rolls up journal +
-realized-outcome history into a new 3-card "My track record" row on the
-Overview tab (Win Rate / Avg Return per Trade / Plan Adherence);
-ATHENA-only per the roadmap's own "Surface: ATHENA" tag, verified against
-fixtures (real `decision_journal`/`trade_outcomes` are both empty on the
-owner's live system) then spot-checked against one real journaled+closed
-decision on an isolated scratch server. **AUX-4c is still registered, not
-started:** both AUX-4a and AUX-4b are file-only by design and do not
-surface in any UI — the owner asked for that as its own milestone, queued
-behind AUX-5.
+**Test suite at handoff:** **2,086 passing** (2,041 -> 2,055 for AUX-4a,
+-> 2,069 for AUX-4b, -> 2,075 for AUX-5, -> 2,086 for AUX-4c). Ruff clean on
+all changed/added files.
+**Current working milestone:** **AUX-4c, implemented, awaiting owner
+review.** AUX-1a, AUX-1b, AUX-2, AUX-3, DX-12b, AUX-4a, AUX-4b, and AUX-5
+are all approved — AUX-4a/4b each independently confirmed by the owner on
+their own real, live system (129 real near-misses in a real `athena brief`
+run; 35 in a real DarvaX sweep, spot-checked by hand). AUX-5 rolled up
+journal + realized-outcome history into a new 3-card "My track record" row
+on the Overview tab (Win Rate / Avg Return per Trade / Plan Adherence).
+**AUX-4c** surfaces AUX-4a's and AUX-4b's near-miss digests by reading each
+already-persisted file directly (mirroring `OpsService.list_backups`'
+glob-plus-defensive-parse convention rather than adding new persistence): a
+new "Near Misses" card on the ATHENA Overview tab, and a new "Near misses"
+zone in DarvaX's Advisor view (independent of the live sweep state — it can
+go stale between sweeps by design, same as the digest itself). Verified
+live: the DarvaX side against a fully isolated scratch server; the ATHENA
+side incidentally read the owner's real `artifacts/briefings/
+brief-2026-08-20.json` because `get_decisions_service`'s dependency
+hardcodes `config_dir` to the real repo root regardless of
+`ATHENA_CONFIG_DIR` — read-only, pre-existing, not introduced by this
+milestone, but flagged as a risk for future scratch-isolated verification
+work on any config-reading `DecisionsService` method.
 
 DX-12b reuses DX-12a's persisted `ema_50`/`ema_100` and its existing
 `trendStateFor` classification (no backend/schema change) to render an

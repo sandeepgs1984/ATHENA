@@ -19,6 +19,7 @@ from athena.api.v1.dtos import (
     DecisionFilterParams,
     DecisionTraceDTO,
     JournalEntryDTO,
+    NearMissDigestDTO,
     PaginationParams,
     RecordJournalRequest,
     RecordOutcomeRequest,
@@ -128,6 +129,32 @@ def get_track_record(
     return AthenaResponse(
         status="success",
         data=record,
+        meta=ResponseMeta(
+            request_id=request_id, api_version="v1", as_of=datetime.now(tz=timezone.utc)
+        ),
+    )
+
+
+@router.get(
+    "/near-misses",
+    response_model=AthenaResponse[NearMissDigestDTO],
+    summary="Latest persisted daily near-miss digest",
+    status_code=status.HTTP_200_OK,
+    operation_id="getNearMisses",
+)
+def get_near_misses(
+    request: Request,
+    service: DecisionsService = Depends(get_decisions_service),  # noqa: B008
+    principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.READ)),  # noqa: B008
+) -> AthenaResponse[NearMissDigestDTO]:
+    """AUX-4c: a read of AUX-4a's already-persisted daily briefing file (never
+    a recomputation) — WATCH decisions within the configured score margin of
+    the trade threshold, as of the most recent `athena brief` run."""
+    digest = service.get_near_misses()
+    request_id = getattr(request.state, "request_id", "unknown")
+    return AthenaResponse(
+        status="success",
+        data=digest,
         meta=ResponseMeta(
             request_id=request_id, api_version="v1", as_of=datetime.now(tz=timezone.utc)
         ),

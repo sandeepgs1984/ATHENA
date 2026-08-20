@@ -318,6 +318,43 @@
                         </div>
                     </div>
 
+                    <!-- AUX-4c — a read of AUX-4a's already-persisted daily near-miss
+                         digest (DD-9 file channel). File-only artifact, surfaced here
+                         for the first time; never a recomputation of near-miss detection. -->
+                    <div class="card mt-4">
+                        <div class="card-header">
+                            <h2>Near Misses</h2>
+                            <p class="metric-desc" style="margin: 4px 0 0; font-size: 0.8rem;">
+                                Not a TRADE call &mdash; these are WATCH decisions whose composite
+                                score is close (within the configured margin) to the score
+                                needed to qualify as a trade. Nothing to act on now; worth
+                                watching for tomorrow's briefing.
+                            </p>
+                            <p class="metric-desc" id="near-miss-asof" style="margin: 4px 0 0; font-size: 0.8rem;">
+                                No briefing has run yet
+                            </p>
+                        </div>
+                        <div class="card-body">
+                            <div id="near-miss-list" class="holdings-scroll">
+                                <table class="data-table holdings-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Symbol</th>
+                                            <th>Score</th>
+                                            <th>Trade threshold</th>
+                                            <th>Points short</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="near-miss-tbody">
+                                        <tr>
+                                            <td colspan="4" class="text-center text-muted">No briefing has run yet.</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="overview-workstation mt-4">
                         <div class="overview-main-column">
                         <div class="card overview-holdings-card">
@@ -1727,7 +1764,7 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.149.3"></script>
+    <script src="/dashboard/dashboard.js?v=9.149.4"></script>
 
     <!-- DarvaX satellite tab (ADR-010 Amendment 1) — the ONLY DarvaX reference
          in this file, and the flag guard itself. This asset is served solely by

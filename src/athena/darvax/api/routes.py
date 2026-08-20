@@ -29,6 +29,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
 from athena.api.security import Permission, RequirePermission
 from athena.darvax import __version__ as darvax_version
 from athena.darvax.config import methodology_digest
+from athena.darvax.digest import read_latest_digest, resolve_output_dir
 from athena.darvax.positions.models import DarvaxPosition
 from athena.darvax.scan import scan_instruments
 from athena.darvax.screening.models import (
@@ -409,6 +410,20 @@ def list_sweeps(
         )
     sweeps = request.app.state.darvax_store.list_sweeps(limit=limit)
     return _envelope([_sweep_payload(s) for s in sweeps], count=len(sweeps))
+
+
+@router.get("/screen/near-misses", summary="Latest near-miss digest (experimental)")
+def get_near_misses(
+    request: Request,
+    _principal: Annotated[
+        object, Depends(RequirePermission(Permission.READ))
+    ] = None,
+) -> dict[str, Any]:
+    """AUX-4c: a read of AUX-4b's already-persisted digest file (written
+    once per completed sweep) -- never a recomputation."""
+    output_dir = resolve_output_dir(request.app.state.darvax_config.near_miss.output_dir)
+    digest = read_latest_digest(output_dir)
+    return _envelope(digest)
 
 
 @router.get(

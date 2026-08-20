@@ -340,6 +340,9 @@
     buyZone: document.getElementById("buy-zone"),
     buySub: document.getElementById("buy-sub"),
     buyTickets: document.getElementById("buy-tickets"),
+    nearMissZone: document.getElementById("near-miss-zone"),
+    nearMissSub: document.getElementById("near-miss-sub"),
+    nearMissTbody: document.getElementById("near-miss-tbody"),
     restLine: document.getElementById("rest-line"),
     // Conviction filters (DX-10b)
     fStop: document.getElementById("f-stop"),
@@ -1348,6 +1351,44 @@
     S.buyTickets.innerHTML = shortlist.map(buyTicket).join("");
   }
 
+  // ------------------------------------------------------- near misses (AUX-4c)
+
+  // A read of AUX-4b's already-persisted digest file (written once per
+  // completed sweep) -- independent of the live `screen` state above, so it
+  // is fetched once at boot rather than re-rendered on every screen update.
+  function nearMissRow(item) {
+    return "<tr>" +
+      "<td>" + esc(item.symbol) + "</td>" +
+      "<td>" + money(item.close) + "</td>" +
+      "<td>" + money(item.buy_level) + "</td>" +
+      "<td>" + esc(num(item.distance_to_breakout_pct, 2)) + "%</td>" +
+      "</tr>";
+  }
+
+  function renderNearMisses(digest) {
+    if (!S.nearMissZone) return;
+    var items = (digest && digest.near_misses) || [];
+    if (!digest || !digest.sweep_id) {
+      S.nearMissZone.hidden = true;
+      return;
+    }
+    S.nearMissZone.hidden = false;
+    if (!items.length) {
+      S.nearMissSub.textContent = "none in the last completed sweep";
+      S.nearMissTbody.innerHTML = "";
+      return;
+    }
+    S.nearMissSub.textContent = items.length + " in the last completed sweep (" +
+      digest.sweep_id + ")";
+    S.nearMissTbody.innerHTML = items.map(nearMissRow).join("");
+  }
+
+  function loadNearMisses() {
+    return request("/darvax/api/screen/near-misses")
+      .then(function (payload) { renderNearMisses(payload.data); })
+      .catch(function () { renderNearMisses(null); });
+  }
+
   // ------------------------------------------------------------- positions
 
   function posSay(message, isError) {
@@ -2084,4 +2125,6 @@
   loadPositions();
 
   loadScreen();
+
+  loadNearMisses();
 })();
