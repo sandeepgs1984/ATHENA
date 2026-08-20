@@ -39,6 +39,7 @@ from athena.api.v1.dtos import (
     ResetDecisionsResultDTO,
     ResourceReference,
     TraceStageDTO,
+    TrackRecordDTO,
     TradeOutcomeDTO,
     TradePlanDTO,
     TradePlanFreshnessDTO,
@@ -404,6 +405,64 @@ class DecisionsService:
         """Most recent realized outcome for a decision, or None if never logged."""
         outcome = self._provider.get_trade_outcome(decision_id)
         return self._map_trade_outcome(outcome) if outcome is not None else None
+
+    def get_track_record(self) -> TrackRecordDTO:
+        """AUX-5: rollup of everything the owner has ever journaled or closed.
+        Reuses the exact per-outcome return/holding arithmetic already
+        established for decision analogs (_outcome_return_and_holding) — this
+        is a wider aggregate over every closed outcome, not just
+        nearest-neighbor analogs. None (never a fabricated 0) whenever the
+        underlying sample is empty."""
+        journal = self._provider.list_journal()
+        accepted = sum(1 for e in journal if e.user_action is UserAction.ACCEPTED)
+        rejected = sum(1 for e in journal if e.user_action is UserAction.REJECTED)
+        ignored = sum(1 for e in journal if e.user_action is UserAction.IGNORED)
+        accept_rate_pct = (Decimal(accepted) / Decimal(len(journal))) * 100 if journal else None
+
+        outcomes = self._provider.list_trade_outcomes()
+        win_count = sum(1 for o in outcomes if o.pnl > 0)
+        loss_count = sum(1 for o in outcomes if o.pnl < 0)
+        breakeven_count = sum(1 for o in outcomes if o.pnl == 0)
+        win_rate_pct = (Decimal(win_count) / Decimal(len(outcomes))) * 100 if outcomes else None
+        total_pnl = sum((o.pnl for o in outcomes), Decimal("0"))
+
+        returns: list[Decimal] = []
+        holdings: list[Decimal] = []
+        for o in outcomes:
+            return_pct, holding_days = self._outcome_return_and_holding(o)
+            if return_pct is not None:
+                returns.append(return_pct)
+            if holding_days is not None:
+                holdings.append(holding_days)
+        avg_return_pct = sum(returns) / Decimal(len(returns)) if returns else None
+        avg_holding_days = sum(holdings) / Decimal(len(holdings)) if holdings else None
+
+        adherence_checks = [v for o in outcomes for v in o.adherence.values()]
+        adherence_pass_count = sum(1 for v in adherence_checks if v)
+        plan_adherence_rate_pct = (
+            (Decimal(adherence_pass_count) / Decimal(len(adherence_checks))) * 100
+            if adherence_checks
+            else None
+        )
+
+        return TrackRecordDTO(
+            journal_entry_count=len(journal),
+            accepted_count=accepted,
+            rejected_count=rejected,
+            ignored_count=ignored,
+            accept_rate_pct=accept_rate_pct,
+            closed_trade_count=len(outcomes),
+            win_count=win_count,
+            loss_count=loss_count,
+            breakeven_count=breakeven_count,
+            win_rate_pct=win_rate_pct,
+            total_pnl=total_pnl,
+            avg_return_pct=avg_return_pct,
+            avg_holding_days=avg_holding_days,
+            adherence_check_count=len(adherence_checks),
+            adherence_pass_count=adherence_pass_count,
+            plan_adherence_rate_pct=plan_adherence_rate_pct,
+        )
 
     def get_decision_analogs(self, decision_id: str, *, limit: int = 5) -> DecisionAnalogsDTO:
         """Nearest-neighbor historical decisions by score/confidence/risk

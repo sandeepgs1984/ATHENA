@@ -291,6 +291,33 @@
                         </div>
                     </div>
 
+                    <!-- AUX-5 "My track record" — rollup over already-persisted decision
+                         journal + realized-outcome data (19-decision-brief-history.js logs
+                         these per-decision; this is the first place they're summarized). -->
+                    <div class="grid-layout cols-3 mt-4">
+                        <div class="card val-card">
+                            <div class="card-body">
+                                <h3>Win Rate</h3>
+                                <div class="metric-value" id="track-win-rate">—</div>
+                                <p class="metric-desc" id="track-win-detail">No trades logged yet</p>
+                            </div>
+                        </div>
+                        <div class="card val-card">
+                            <div class="card-body">
+                                <h3>Avg Return / Trade</h3>
+                                <div class="metric-value" id="track-avg-return">—</div>
+                                <p class="metric-desc" id="track-return-detail">No closed trades yet</p>
+                            </div>
+                        </div>
+                        <div class="card val-card">
+                            <div class="card-body">
+                                <h3>Plan Adherence</h3>
+                                <div class="metric-value" id="track-adherence">—</div>
+                                <p class="metric-desc" id="track-journal-detail">No journal entries yet</p>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="overview-workstation mt-4">
                         <div class="overview-main-column">
                         <div class="card overview-holdings-card">
@@ -1700,7 +1727,7 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.149.2"></script>
+    <script src="/dashboard/dashboard.js?v=9.149.3"></script>
 
     <!-- DarvaX satellite tab (ADR-010 Amendment 1) — the ONLY DarvaX reference
          in this file, and the flag guard itself. This asset is served solely by

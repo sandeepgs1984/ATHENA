@@ -1,19 +1,26 @@
 # ATHENA & DarvaX UX Roadmap — Agent Handoff
 
-**Snapshot date:** 2026-08-20 (updated — DX-12b implemented)  
+**Snapshot date:** 2026-08-20 (updated — AUX-5 implemented, awaiting owner review)  
 **Branch observed:** `feature/live-dashboard`  
 **Latest commit:** `a53a168` — `feat(dashboard): expose full-cycle validation health`
-(DX-12b's own commit is not yet made — the AI provides a commit message,
-the owner commits)  
-**Test suite at handoff:** **2,069 passing** (2,041 -> 2,055 for AUX-4a,
--> 2,069 for AUX-4b). Ruff clean on all changed/added files.
-**Current working milestone:** **AUX-4a implemented, awaiting review.**
-AUX-4 was split into AUX-4a (ATHENA) / AUX-4b (DarvaX) before implementing --
-**AUX-4b needs an owner design decision before it can start**: DarvaX has no
-notification mechanism today, and its sweeps are deliberately
-owner-triggered-only (DX-4a's own performance evidence), which conflicts with
-a *daily* digest unless the owner confirms how it should trigger. AUX-1a,
-AUX-1b, AUX-2, AUX-3, and DX-12b are all approved.
+(none of this track's own commits are made yet — the AI provides a
+commit message per milestone, the owner commits)  
+**Test suite at handoff:** **2,075 passing** (2,041 -> 2,055 for AUX-4a,
+-> 2,069 for AUX-4b, -> 2,075 for AUX-5). Ruff clean on all changed/added files.
+**Current working milestone:** **AUX-5, implemented, awaiting owner
+review.** AUX-1a, AUX-1b, AUX-2, AUX-3, DX-12b, AUX-4a, and AUX-4b are all
+approved — AUX-4a/4b each independently confirmed by the owner on their own
+real, live system (129 real near-misses in a real `athena brief` run; 35 in
+a real DarvaX sweep, spot-checked by hand). AUX-5 rolls up journal +
+realized-outcome history into a new 3-card "My track record" row on the
+Overview tab (Win Rate / Avg Return per Trade / Plan Adherence);
+ATHENA-only per the roadmap's own "Surface: ATHENA" tag, verified against
+fixtures (real `decision_journal`/`trade_outcomes` are both empty on the
+owner's live system) then spot-checked against one real journaled+closed
+decision on an isolated scratch server. **AUX-4c is still registered, not
+started:** both AUX-4a and AUX-4b are file-only by design and do not
+surface in any UI — the owner asked for that as its own milestone, queued
+behind AUX-5.
 
 DX-12b reuses DX-12a's persisted `ema_50`/`ema_100` and its existing
 `trendStateFor` classification (no backend/schema change) to render an
@@ -71,10 +78,11 @@ reproposing what already exists, followed by 29 concrete, scoped ideas.
    server-side JS assembly, security, testing). Read the relevant sections
    before touching a module you haven't worked in.
 
-**DX-12b, AUX-4a, and AUX-4b are all implemented, awaiting review** -- see
-`IMPLEMENTATION_SUMMARY.md`'s entries for each. AUX-4b's trigger question
-(the owner chose: fire once per completed sweep, never on a schedule) is
-resolved. **AUX-5 is the next Design gate** once these are approved.
+**DX-12b, AUX-4a, and AUX-4b are all approved** -- see
+`IMPLEMENTATION_SUMMARY.md`'s entries for each. **AUX-5 is the current
+Design gate.** AUX-4c (surfacing AUX-4a/4b's near-miss digests in the
+dashboard UI, currently file-only) is registered but not started, queued
+behind AUX-5.
 
 ---
 

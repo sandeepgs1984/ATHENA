@@ -377,6 +377,35 @@ class DecisionAnalogsDTO(BaseModel):
     outcomes_sample_size: int = 0
 
 
+class TrackRecordDTO(BaseModel):
+    """Rollup of the owner's full journal + realized-outcome history (AUX-5).
+    Pure aggregation over already-persisted per-decision data — no new
+    tracking, no new domain computation. Reuses the exact win-rate/avg-return/
+    avg-holding arithmetic already established for decision analogs (M-X1);
+    None (never a fabricated 0) when a sample is empty."""
+
+    model_config = ConfigDict(frozen=True)
+
+    journal_entry_count: int = 0
+    accepted_count: int = 0
+    rejected_count: int = 0
+    ignored_count: int = 0
+    accept_rate_pct: Decimal | None = None
+
+    closed_trade_count: int = 0
+    win_count: int = 0
+    loss_count: int = 0
+    breakeven_count: int = 0
+    win_rate_pct: Decimal | None = None
+    total_pnl: Decimal = Decimal("0")
+    avg_return_pct: Decimal | None = None
+    avg_holding_days: Decimal | None = None
+
+    adherence_check_count: int = 0
+    adherence_pass_count: int = 0
+    plan_adherence_rate_pct: Decimal | None = None
+
+
 class CounterfactualGapDTO(BaseModel):
     """One failed quality gate's exact numeric distance to passing (M-X2).
     Computed from already-persisted values vs. current config thresholds —

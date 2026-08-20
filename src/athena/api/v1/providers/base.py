@@ -100,6 +100,16 @@ class DecisionProvider(Protocol):
         """Most recent realized outcome for one decision, or None if never logged."""
         ...
 
+    def list_journal(self, *, limit: int = 500) -> list[DecisionJournalEntry]:
+        """All journal entries, newest first — for rollups (AUX-5) rather
+        than a single decision's response."""
+        ...
+
+    def list_trade_outcomes(self, *, limit: int = 500) -> list[TradeOutcome]:
+        """All realized outcomes, newest first — for rollups (AUX-5) rather
+        than a single decision's outcome."""
+        ...
+
     def list_recent_decisions(self, *, limit: int = 500) -> list[Decision]:
         """Most recent decisions, newest first, unfiltered — for read-only
         analytical queries (e.g. historical analog matching) that need a raw

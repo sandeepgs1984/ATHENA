@@ -26,6 +26,7 @@ from athena.api.v1.dtos import (
     ResetDecisionsResultDTO,
     ResponseMeta,
     SortParams,
+    TrackRecordDTO,
     TradeOutcomeDTO,
     TradePlanFreshnessDTO,
 )
@@ -100,6 +101,33 @@ def list_latest_decisions(
     return AthenaResponse(
         status="success",
         data=list(items),
+        meta=ResponseMeta(
+            request_id=request_id, api_version="v1", as_of=datetime.now(tz=timezone.utc)
+        ),
+    )
+
+
+@router.get(
+    "/track-record",
+    response_model=AthenaResponse[TrackRecordDTO],
+    summary="Rollup of the owner's full journal + realized-outcome history",
+    status_code=status.HTTP_200_OK,
+    operation_id="getTrackRecord",
+)
+def get_track_record(
+    request: Request,
+    service: DecisionsService = Depends(get_decisions_service),  # noqa: B008
+    principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.READ)),  # noqa: B008
+) -> AthenaResponse[TrackRecordDTO]:
+    """AUX-5 "My track record" — win rate, avg return, plan adherence, and
+    journal action breakdown, aggregated from data already captured per
+    decision (journal entries + realized outcomes). A rollup view only; no
+    new tracking, no new domain computation."""
+    record = service.get_track_record()
+    request_id = getattr(request.state, "request_id", "unknown")
+    return AthenaResponse(
+        status="success",
+        data=record,
         meta=ResponseMeta(
             request_id=request_id, api_version="v1", as_of=datetime.now(tz=timezone.utc)
         ),

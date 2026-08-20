@@ -106,9 +106,117 @@ module's shape.
 gain a `near_miss` entry alongside the other config blocks it documents, if
 the owner wants that reference kept current for this key too.
 
-**Remaining work.** AUX-4a and AUX-4b are both implemented, tested, and
-verified live; awaiting owner review. AUX-5 is next once these are
-approved.
+**Remaining work.** AUX-4a and AUX-4b were both owner-approved 2026-08-20,
+each independently confirmed on the owner's own real system. Neither
+surfaces in a UI -- both are file-only by design, matching the roadmap
+item's own "folded into the existing morning briefing" wording -- and the
+owner asked for that as a separate milestone (AUX-4c, not started) once it
+became visible during review, queued behind AUX-5 (now implemented,
+awaiting review).
+
+---
+
+## AUX-5: ATHENA "My track record" rollup
+
+**Summary.** A new Overview-tab panel rolling up everything already
+captured per decision -- journal action (accept/reject/ignore) and realized
+outcome (win/loss, return %, holding period, plan adherence) -- into three
+at-a-glance cards. Owner directed building it now with a proper empty state
+after a real-data check showed `decision_journal`/`trade_outcomes` both at
+zero rows on the live system.
+
+**Objective.** Close the "captured but never summarized" gap the roadmap
+doc itself named: `TradeOutcome` already computes PnL and adherence per
+decision, but nothing rolled it up across the owner's full history.
+
+**Scope completed.** ATHENA-only, per the roadmap doc's own "Surface:
+ATHENA" tag on this item ("DarvaX's own realized-performance view" is a
+separate, unscheduled roadmap idea, not part of this milestone). Added
+`DecisionProvider.list_journal`/`list_trade_outcomes` (the repository
+already had both; only the provider Protocol and its two concrete
+implementations were missing them). New `DecisionsService.get_track_record`
+reuses the exact win-rate/avg-return/avg-holding arithmetic already
+established for decision analogs (M-X1's `_outcome_return_and_holding`) --
+deliberately "avg return %" rather than the roadmap wording's "R-multiple",
+since that is what the codebase already computes and persists; inventing a
+second, different aggregate convention for the same underlying data was
+rejected as unnecessary. New read-only `GET /api/v1/decisions/track-record`
+route, registered before the `/{decision_id}` catch-all (same placement
+precedent as the existing `/latest` route). Surfaced as a new 3-card row on
+the Overview tab (Win Rate / Avg Return per Trade / Plan Adherence), loaded
+alongside the existing portfolio summary fetch in `loadPortfolioData()`.
+
+**Files created.** `tests/api/v1/test_aux5_track_record.py`.
+
+**Files modified.** `src/athena/api/v1/providers/base.py` (Protocol
+additions), `src/athena/api/v1/providers/sqlite_providers.py`,
+`src/athena/api/v1/providers/in_memory.py`, `src/athena/api/v1/dtos/
+decisions.py` (`TrackRecordDTO`), `src/athena/api/v1/dtos/__init__.py`,
+`src/athena/api/v1/services/decisions_service.py` (`get_track_record`),
+`src/athena/api/v1/routers/decisions.py`, `src/athena/api/static/
+index.html` (new card row, JS version bump), `src/athena/api/static/js/
+00-state-and-dom.js`, `src/athena/api/static/js/08-portfolio.js`,
+`docs/MILESTONES.md`, the UX roadmap, and this implementation log. Two
+pre-existing tests asserting the exact `dashboard.js?v=` string
+(`test_dashboard_hosting.py`, `test_decision_chart_release_gate.py`) updated
+in lockstep with the version bump.
+
+**Public APIs changed.** New `GET /api/v1/decisions/track-record` endpoint
+and `TrackRecordDTO` schema, additive only -- no existing route, DTO field,
+or config key changed.
+
+**Tests added.** 6 -- empty-history yields `None` rates rather than
+fabricated zeros, journal action breakdown and accept rate, win/loss/
+breakeven counts and total PnL, avg return % and avg holding days over real
+outcomes, plan-adherence rate flattened across multiple outcomes' checks,
+and a WATCH-side outcome with no `TradePlan` (empty adherence dict)
+correctly excluded from the sample rather than counted as failed checks.
+The adherence-flattening guard proven non-vacuous by reintroducing a bug
+that defaulted missing per-key checks to `False` instead of skipping them,
+confirming the test failed, then restoring.
+
+**Test results.** Full suite: **2,075 passing** (2,069 -> 2,075). Verified
+live against an isolated scratch server (own config, own database, never
+the owner's real `db/athena.db` or `db/darvax.db`): confirmed the correct
+empty state ("No closed trades yet" / "No journal entries yet") against a
+freshly-seeded scratch DB, then journaled and closed one real decision
+through the live API and confirmed the Overview cards updated correctly
+(100.0% win rate, +5.10% avg return, 33% plan adherence, accept/reject/
+ignore breakdown) -- screenshotted both states.
+
+**Coverage summary.** Journal tally, outcome win/loss/breakeven
+classification, return/holding aggregation, and adherence-rate flattening
+(including the no-TradePlan edge case) are all covered at the unit level.
+
+**Architecture compliance.** Pure read-side aggregation over
+already-persisted `DecisionJournalEntry`/`TradeOutcome` rows -- no new
+domain computation, no change to scoring/confidence/risk/Decision/
+TradePlan logic, no write path added. ADR-005 (explainability-as-data)
+respected: every rate is arithmetic over values the engine already
+persisted (`pnl`, `adherence`, `holding_seconds`), not a client-side or
+newly-invented rationale.
+
+**ADR compliance.** No ADR required -- additive read-only endpoint, no
+architecture change.
+
+**Risks discovered.** None new. The real-data-empty finding
+(`decision_journal`/`trade_outcomes`/`darvax_positions` all at zero rows)
+was surfaced to the owner before implementation, per the same
+verify-against-real-data discipline used for AUX-4a/4b -- here applied by
+asking the owner how to proceed rather than by finding a live defect,
+since there was no live sample to check against.
+
+**Technical debt introduced.** None.
+
+**Suggested improvements.** The "equity curve / R-multiple distribution
+sparkline" roadmap idea (Surface: ATHENA + DarvaX) pairs naturally with this
+panel once there is real closed-trade history to chart. "DarvaX's own
+realized-performance view" (Surface: DarvaX) remains a separate, unscheduled
+roadmap idea using `darvax_positions` rather than this milestone's data.
+
+**Remaining work.** Awaiting owner review. AUX-4c (surfacing AUX-4a/AUX-4b's
+near-miss digests in the dashboard UI) is next in the owner-selected
+sequence and still needs its own Design pass.
 
 ---
 
@@ -203,13 +311,10 @@ rather than a shared private helper.
 
 **Suggested improvements.** None pending for AUX-4a itself.
 
-**Remaining work.** AUX-4a is implemented, tested, and verified live;
-awaiting owner review. **AUX-4b (DarvaX's own near-miss digest) needs a
-design decision from the owner before implementation begins** — DarvaX has
-no notification mechanism today, and its sweeps are deliberately
-owner-triggered rather than scheduled (DX-4a's own performance evidence),
-which conflicts with "daily" unless the owner confirms how DarvaX's digest
-should actually trigger. AUX-5 remains sequenced behind AUX-4b, not started.
+**Remaining work.** AUX-4a was owner-approved 2026-08-20, confirmed on the
+owner's own real system (129 real near-misses in a real `athena brief
+--dry-run` run). It is file-only by design and does not surface in the
+dashboard — see AUX-4c below, registered as its own milestone for that.
 
 ---
 

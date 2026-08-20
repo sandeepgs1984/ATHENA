@@ -104,6 +104,14 @@ const athenaCycleExpectedRow = document.getElementById("athena-cycle-expected-ro
     const poolAllocatedBar = document.getElementById("pool-allocated-bar");
     const poolReserveVal = document.getElementById("pool-reserve-val");
     const poolReserveBar = document.getElementById("pool-reserve-bar");
+
+    // AUX-5 "My track record" DOM Bindings
+    const trackWinRate = document.getElementById("track-win-rate");
+    const trackWinDetail = document.getElementById("track-win-detail");
+    const trackAvgReturn = document.getElementById("track-avg-return");
+    const trackReturnDetail = document.getElementById("track-return-detail");
+    const trackAdherence = document.getElementById("track-adherence");
+    const trackJournalDetail = document.getElementById("track-journal-detail");
     const holdingsTbody = document.getElementById("holdings-tbody");
     
     // Charts DOM Bindings

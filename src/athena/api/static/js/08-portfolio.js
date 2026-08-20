@@ -50,6 +50,14 @@
             } else {
                 renderNavChart([]);
             }
+
+            // 4. Fetch AUX-5 "My track record" rollup
+            const trackRes = await apiRequest("/api/v1/decisions/track-record", { skipToast: true }).catch(() => null);
+            if (trackRes && trackRes.data) {
+                renderTrackRecordCard(trackRes.data);
+            } else {
+                setEmptyTrackRecordState();
+            }
         } catch (err) {
             setEmptyPortfolioState();
         }
@@ -74,6 +82,50 @@
             </tr>
         `;
         renderSectorChart({});
+        setEmptyTrackRecordState();
+    }
+
+    // AUX-5 "My track record" — pure display of the TrackRecordDTO rollup,
+    // no client-side recomputation of any rate (ADR-005: every number shown
+    // is already computed server-side by DecisionsService.get_track_record).
+    function renderTrackRecordCard(t) {
+        if (!trackWinRate) return;
+
+        if (t.closed_trade_count > 0) {
+            trackWinRate.textContent = `${Number(t.win_rate_pct).toFixed(1)}%`;
+            trackWinDetail.textContent = `${t.win_count}W / ${t.loss_count}L / ${t.breakeven_count}BE — ${t.closed_trade_count} closed trades`;
+            trackAvgReturn.textContent = `${Number(t.avg_return_pct) >= 0 ? "+" : ""}${Number(t.avg_return_pct).toFixed(2)}%`;
+            const pnlValue = Number(t.total_pnl);
+            const pnlTone = pnlValue > 0 ? "good" : (pnlValue < 0 ? "bad" : "neutral");
+            trackReturnDetail.innerHTML = `Total PnL <span class="tone-${pnlTone}-text">₹ ${pnlValue.toLocaleString("en-IN", {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>`;
+        } else {
+            trackWinRate.textContent = "—";
+            trackWinDetail.textContent = "No closed trades yet";
+            trackAvgReturn.textContent = "—";
+            trackReturnDetail.textContent = "No closed trades yet";
+        }
+
+        if (t.adherence_check_count > 0) {
+            trackAdherence.textContent = `${Number(t.plan_adherence_rate_pct).toFixed(0)}%`;
+        } else {
+            trackAdherence.textContent = "—";
+        }
+
+        if (t.journal_entry_count > 0) {
+            trackJournalDetail.textContent = `${t.accepted_count} accepted · ${t.rejected_count} rejected · ${t.ignored_count} ignored`;
+        } else {
+            trackJournalDetail.textContent = "No journal entries yet";
+        }
+    }
+
+    function setEmptyTrackRecordState() {
+        if (!trackWinRate) return;
+        trackWinRate.textContent = "—";
+        trackWinDetail.textContent = "No trades logged yet";
+        trackAvgReturn.textContent = "—";
+        trackReturnDetail.textContent = "No closed trades yet";
+        trackAdherence.textContent = "—";
+        trackJournalDetail.textContent = "No journal entries yet";
     }
 
     function updateDayChange(dayChangePct) {

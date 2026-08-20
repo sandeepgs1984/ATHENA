@@ -19,9 +19,10 @@ sweep freshness require separate authoritative contracts.
 | 2 | **AUX-2** | Visible last successful ATHENA cycle and overdue warning outside Live Operations | ✅ Approved 2026-08-20 |
 | 3 | **AUX-3** | Confidence band visible in the Decisions list | ✅ Approved 2026-08-20; 2,028 tests pass |
 | 4 | **DX-12b** | DarvaX 50/100 EMA trend badge on Advisor cards and Levels view | ✅ Approved 2026-08-20; 2,041 tests pass |
-| 5 | **AUX-4a** | ATHENA daily near-miss digest (score-margin, in DailyBriefingBuilder) | 🔄 Ready for review — implemented 2026-08-20, 2,055 tests pass |
-| 5b | **AUX-4b** | DarvaX's own near-miss digest, written once per completed sweep | 🔄 Ready for review — implemented 2026-08-20, 2,069 tests pass |
-| 6 | **AUX-5** | ATHENA “My track record” rollup over existing journal/outcome data | ⏳ Planned |
+| 5 | **AUX-4a** | ATHENA daily near-miss digest (score-margin, in DailyBriefingBuilder) | ✅ Approved 2026-08-20; 2,055 tests pass |
+| 5b | **AUX-4b** | DarvaX's own near-miss digest, written once per completed sweep | ✅ Approved 2026-08-20; 2,069 tests pass |
+| 6 | **AUX-5** | ATHENA “My track record” rollup over existing journal/outcome data | 🔄 Ready for review; 2,075 tests pass |
+| 7 | **AUX-4c** | Surface near-miss digests in the dashboard UI (ATHENA + DarvaX) — both currently file-only, per AUX-4a/4b's own design | ⏳ Planned — needs its own Design pass |
 
 DX-12b was owner-approved 2026-08-20 after live visual verification on the
 owner's own real system. AUX-4 was split into AUX-4a/AUX-4b before
@@ -29,7 +30,38 @@ implementing, the same way AUX-1 was split, because the owner chose to cover
 both surfaces and DarvaX architecturally cannot be pulled into ATHENA's
 notification module (ADR-010's one-way isolation seam).
 
-**AUX-4a** (ATHENA) is implemented and awaiting review: reframed from the
+**AUX-4a and AUX-4b were both owner-approved 2026-08-20**, each independently
+confirmed on the owner's own real, live system (129 real near-misses in a
+real `athena brief --dry-run` run; 35 real near-misses in a real DarvaX
+sweep, with the math spot-checked by hand against the digest's own numbers).
+
+**AUX-4c is newly registered, not started.** Both AUX-4a and AUX-4b are
+file-only by design, matching the roadmap item's own "folded into the
+existing morning briefing" wording — neither surfaces in the ATHENA
+dashboard or DarvaX's own UI. The owner asked for that as a separate
+milestone once this became visible during review. Needs its own Design step
+(where in each UI, how it refreshes, whether it reads the file the digest
+already writes or needs its own persisted/served representation) before
+implementation — not started yet, queued behind AUX-5.
+
+**AUX-5 is implemented, awaiting owner review.** Scoped ATHENA-only per the
+roadmap doc's own "Surface: ATHENA" tag — "DarvaX's own realized-performance
+view" is a separate, unscheduled roadmap idea, not part of this milestone.
+Real-data check before design: `decision_journal`, `trade_outcomes`, and
+`darvax_positions` are all at zero rows on the owner's live system, so this
+was verified against fixtures, not real history — same non-vacuous-guard
+verification discipline as AUX-4a/4b, applied at the unit level since there
+was no live sample to check against. New read-only `GET
+/api/v1/decisions/track-record` reuses the exact win-rate/avg-return/
+avg-holding arithmetic already established for decision analogs (M-X1,
+`_outcome_return_and_holding`) rather than inventing new math — "avg return
+%" over closed outcomes, not the roadmap wording's "R-multiple", since that's
+what the codebase already computes and persists. Surfaced as a new 3-card row
+on the Overview tab (Win Rate / Avg Return per Trade / Plan Adherence) with
+an explicit empty state ("No closed trades yet" / "No journal entries yet")
+rather than a fabricated zero.
+
+**AUX-4a** (ATHENA) reframed from the
 roadmap's "symbols close to their buy trigger" wording after finding ATHENA
 persists no entry-price level short of a TRADE decision
 (`Decision.trade_plan` is `None` otherwise) — the honest, already-persisted
@@ -39,8 +71,7 @@ counterfactual endpoint (M-X2). Verified live against the owner's real
 database (read-only; row counts confirmed unchanged): 112 real near-misses
 found and rendered correctly.
 
-**AUX-4b** (DarvaX) is implemented and awaiting review. The owner resolved the
-trigger question directly: the digest fires once per completed sweep rather
+**AUX-4b** (DarvaX). The owner resolved the trigger question directly: the digest fires once per completed sweep rather
 than on any schedule, which inherits DX-4a's "never scheduled" design by
 construction. Reuses `distance_to_breakout_pct` (DX-3, already persisted) --
 the same field the Levels view's "Approaching their level" zone reads -- with

@@ -168,6 +168,12 @@ class SqliteDecisionProvider:
     def get_trade_outcome(self, decision_id: str) -> TradeOutcome | None:
         return self._repo.get_trade_outcome(decision_id)
 
+    def list_journal(self, *, limit: int = 500) -> list[DecisionJournalEntry]:
+        return self._repo.list_journal(limit=limit)
+
+    def list_trade_outcomes(self, *, limit: int = 500) -> list[TradeOutcome]:
+        return self._repo.list_trade_outcomes(limit=limit)
+
     def list_recent_decisions(self, *, limit: int = 500) -> list[Decision]:
         return self._repo.list_decisions(limit=limit)
 

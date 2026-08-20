@@ -166,6 +166,14 @@ class InMemoryDecisionProvider:
     def get_trade_outcome(self, decision_id: str) -> TradeOutcome | None:
         return self.trade_outcomes.get(decision_id)
 
+    def list_journal(self, *, limit: int = 500) -> list[DecisionJournalEntry]:
+        ordered = sorted(self.journal_entries.values(), key=lambda e: e.action_ts, reverse=True)
+        return ordered[:limit]
+
+    def list_trade_outcomes(self, *, limit: int = 500) -> list[TradeOutcome]:
+        ordered = sorted(self.trade_outcomes.values(), key=lambda o: o.closed_ts, reverse=True)
+        return ordered[:limit]
+
     def list_recent_decisions(self, *, limit: int = 500) -> list[Decision]:
         ordered = sorted(self.decisions, key=lambda d: d.ts, reverse=True)
         return ordered[:limit]
