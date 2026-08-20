@@ -81,6 +81,7 @@ class DecisionAnalysisDTO(BaseModel):
 
     score_ref: ResourceReference | None = None
     confidence_ref: ResourceReference | None = None
+    confidence_level: Literal["HIGH", "MEDIUM", "LOW"] | None = None
     risk_ref: ResourceReference | None = None
     gate_results: list[GateResultDTO] = Field(default_factory=list)
 
@@ -99,15 +100,9 @@ class DecisionDTO(BaseModel):
 class DecisionFilterParams(FilterParams):
     """Filter parameters for decisions collection queries."""
 
-    instrument_id: str | None = Field(
-        default=None, description="Filter by instrument identifier"
-    )
-    decision_type: str | None = Field(
-        default=None, description="Filter by decision action type"
-    )
-    direction: str | None = Field(
-        default=None, description="Filter by trade direction (LONG, SHORT)"
-    )
+    instrument_id: str | None = Field(default=None, description="Filter by instrument identifier")
+    decision_type: str | None = Field(default=None, description="Filter by decision action type")
+    direction: str | None = Field(default=None, description="Filter by trade direction (LONG, SHORT)")
 
 
 class TraceStageDTO(BaseModel):
@@ -321,9 +316,7 @@ class RecordOutcomeRequest(BaseModel):
     entry_price: Decimal
     exit_price: Decimal
     quantity: int = Field(..., ge=1)
-    closed_ts: datetime | None = Field(
-        default=None, description="Defaults to now if omitted"
-    )
+    closed_ts: datetime | None = Field(default=None, description="Defaults to now if omitted")
 
 
 class TradeOutcomeDTO(BaseModel):
@@ -434,4 +427,3 @@ class TradePlanFreshnessDTO(BaseModel):
     decay_fraction: Decimal | None = None
     status: Literal["NO_PLAN", "FRESH", "AGING", "STALE", "EXPIRED"]
     summary: str
-

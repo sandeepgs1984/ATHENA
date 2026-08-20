@@ -18,9 +18,9 @@ transition remains gated by owner review.
 
 | Priority | Milestone | Selected roadmap item | Status |
 |---:|---|---|---|
-| 1 | **AUX-1a / AUX-1b** | Persistent data-freshness indicator — ATHENA first, then DarvaX | **AUX-1a approved 2026-08-19**; AUX-1b ready for owner review |
-| 2 | **AUX-2** | Visible last successful cycle and overdue warning | Planned |
-| 3 | **AUX-3** | Confidence band visible in the Decisions list | Planned |
+| 1 | **AUX-1a / AUX-1b** | Persistent data-freshness indicator — ATHENA first, then DarvaX | Approved 2026-08-19 |
+| 2 | **AUX-2** | Visible last successful cycle and overdue warning | Approved 2026-08-20 |
+| 3 | **AUX-3** | Confidence band visible in the Decisions list | Implemented; ready for owner review; 2,028 tests pass |
 | 4 | **DX-12b** | DarvaX trend badge on Advisor cards and Levels view | Planned; continuation of DX-12a |
 | 5 | **AUX-4** | Daily near-miss digest | Planned |
 | 6 | **AUX-5** | ATHENA “My track record” panel | Planned |
@@ -32,7 +32,7 @@ rule would mislabel at least one surface. `AUX-1a` and `AUX-1b` therefore share
 wording and severity semantics but retain separate authoritative contracts.
 
 Design authority for the active milestone:
-[`ATHENA-ADVISORY-FRESHNESS-DESIGN.md`](ATHENA-ADVISORY-FRESHNESS-DESIGN.md).
+[`ATHENA-DECISION-LIST-CONFIDENCE-DESIGN.md`](ATHENA-DECISION-LIST-CONFIDENCE-DESIGN.md).
 
 **Published, filterable version:** the same 29 ideas, filterable live by surface
 and effort, are published as an interactive artifact

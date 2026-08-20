@@ -6,6 +6,80 @@ status updated on approval.
 
 ---
 
+## AUX-3: persisted confidence bands in the Decisions list
+
+**Summary.** Added a compact confidence band to each Decisions-list row using
+the canonical persisted confidence assessment. Rows now show `Conf High`,
+`Conf Med`, `Conf Low`, or an explicit unavailable state without changing the
+underlying Decision or TradePlan.
+
+**Objective.** Let the owner scan evidence reliability directly in the long
+decision rail while keeping confidence clearly separate from expected profit,
+score, risk, and actionability.
+
+**Scope completed.** Added an additive nullable confidence-level field to the
+Decisions analysis DTO; projected only valid persisted `DecisionReport`
+confidence assessments; cached pipeline details once per run during a list
+request; rendered accessible semantic bands and unavailable copy; and added an
+explanatory tooltip stating that confidence measures evidence reliability, not
+expected profit.
+
+**Files created.**
+`docs/design/ATHENA-DECISION-LIST-CONFIDENCE-DESIGN.md`.
+
+**Files modified.** Decisions DTO and service; Decisions-list JavaScript and
+card styles; dashboard asset versions; core API, latest-router, hosting, and
+release-gate regressions; `docs/MILESTONES.md`; the selected UX roadmap and
+handoff; and this implementation log.
+
+**Public APIs changed.** Added nullable
+`analysis.confidence_level: HIGH | MEDIUM | LOW | null` to the existing
+Decisions-list response. Existing fields and frozen analytical contracts are
+unchanged.
+
+**Tests added.** Added projection coverage for HIGH, MEDIUM, and LOW decisions
+sharing one persisted run; run-detail cache verification; unavailable-state
+serialization; and static UI, accessibility-copy, style, and asset-version
+regressions.
+
+**Test results.** Full suite: **2,028 passing**. Ruff passes for all changed
+Python implementation and test files. `git diff --check` passes. The isolated
+browser reached ATHENA's owner unlock page but did not share the authenticated
+owner session, so signed-in visual confirmation remains an owner-review item.
+
+**Coverage summary.** Canonical report projection, accepted enum values,
+failed/missing report behavior, per-run request caching, nullable API output,
+accessible labels, explanatory copy, semantic tones, and asset references are
+covered.
+
+**Architecture compliance.** The API remains a read-only projection over
+persisted decision evidence. Confidence is not recomputed from score, risk,
+price, or browser state. Determinism, replayability, provider independence,
+explainability, and frozen analytical boundaries are preserved.
+
+**ADR compliance.** ADR-005 remains intact. The API extension is additive and
+read-only, introduces no order-placement path, and requires no ADR.
+
+**Risks discovered.** Confidence is easily misread as win probability. The UI
+therefore names it as a band, exposes an unavailable state, and explicitly
+states that it reflects evidence reliability rather than expected profit.
+
+**Technical debt introduced.** None.
+
+**Suggested improvements.** Preserve the present informational-only behavior.
+Any future confidence sorting or filtering should be a separate owner-approved
+milestone and continue to use the persisted assessment.
+
+**Remaining work.** Owner visual review and approval of AUX-3. DX-12b and all
+later selected advisory UX milestones remain blocked by this gate.
+
+**Commit message.**
+`feat(dashboard): surface confidence bands in decision rows`
+
+**Ready for review.** Yes.
+
+---
+
 ## AUX-2: visible ATHENA full-cycle health
 
 **Summary.** Added a read-only, server-authoritative status for ATHENA's full
@@ -73,12 +147,12 @@ the dashboard timestamp.
 adjacent but semantically separate. Any future scheduler notification should
 reuse this projection rather than duplicate cadence logic.
 
-**Remaining work.** Owner review/approval of AUX-2. AUX-3 and later advisory UX
-milestones remain blocked by this gate.
+**Remaining work.** AUX-2 is approved. AUX-3 is the active owner-review gate;
+all later selected advisory UX milestones remain blocked by that gate.
 
 **Commit message.** `feat(dashboard): expose full-cycle validation health`
 
-**Ready for review.** Yes.
+**Ready for review.** Approved 2026-08-20.
 
 ---
 

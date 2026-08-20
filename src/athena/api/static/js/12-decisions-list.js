@@ -663,6 +663,28 @@
         { type: "INSUFFICIENT_DATA", label: "Insufficient data", dot: "var(--text-muted)", accent: "rgba(148, 163, 184, 0.45)", wash: "rgba(148, 163, 184, 0.04)", hint: "not enough data yet" },
     ];
 
+    function decisionConfidenceBand(decision) {
+        const level = String(decision?.analysis?.confidence_level || "").toUpperCase();
+        const bands = {
+            HIGH: { className: "high", label: "Conf High", accessibleLabel: "High confidence" },
+            MEDIUM: { className: "medium", label: "Conf Med", accessibleLabel: "Medium confidence" },
+            LOW: { className: "low", label: "Conf Low", accessibleLabel: "Low confidence" },
+        };
+        const band = bands[level];
+        if (band) {
+            return {
+                ...band,
+                title: `${band.accessibleLabel}. ATHENA confidence reflects evidence reliability, not expected profit.`,
+            };
+        }
+        return {
+            className: "unavailable",
+            label: "Conf —",
+            accessibleLabel: "Confidence unavailable",
+            title: "No persisted confidence band is available for this decision.",
+        };
+    }
+
     // DT-1: was renderDeckCard, building a fixed-width horizontal carousel
     // card. Same data, same fields — just a full-width vertical row now that
     // the carousels are a permanent left-hand list instead of a scroller.
@@ -681,6 +703,7 @@
         const planStatusTitle = planFreshness.has_trade_plan
             ? formatTradePlanFreshnessBadge(planFreshness)
             : "No authorized TradePlan for this decision";
+        const confidenceBand = decisionConfidenceBand(d);
         const rawType = String((d.metadata && d.metadata.decision_type) || "").toUpperCase();
         const currentPlanBlocked = decisionHasHistoricalTradePlan(d);
         const noteText = currentPlanBlocked
@@ -715,7 +738,7 @@
         // div with no way for a keyboard user to reach or activate it.
         row.setAttribute("tabindex", "0");
         row.setAttribute("role", "button");
-        row.setAttribute("aria-label", `View ${symbol} decision`);
+        row.setAttribute("aria-label", `View ${symbol} decision. ${confidenceBand.accessibleLabel}`);
         row.innerHTML = `
             <div style="flex: 1 1 auto; min-width: 0;">
                 <div class="symbol-row-top">
@@ -728,6 +751,7 @@
                 </div>
                 <div class="symbol-row-mid">
                     <span class="symbol-row-score">${escapeDecisionHtml(scoreLabel)}</span>
+                    <span class="symbol-row-confidence confidence-${escapeDecisionHtml(confidenceBand.className)}" title="${escapeDecisionHtml(confidenceBand.title)}">${escapeDecisionHtml(confidenceBand.label)}</span>
                     <span class="symbol-row-plan-status tone-${escapeDecisionHtml(planStatusClass)}" title="${escapeDecisionHtml(planStatusTitle)}">${escapeDecisionHtml(planStatus)}</span>
                     <span class="symbol-row-time">${escapeDecisionHtml(dateStr)}</span>
                 </div>

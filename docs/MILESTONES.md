@@ -16,15 +16,15 @@ sweep freshness require separate authoritative contracts.
 |---:|---|---|---|
 | 1 | **AUX-1a** | Server-authoritative ATHENA freshness DTO and persistent Decisions/Market header indicator | ✅ Approved 2026-08-19 |
 | 1b | **AUX-1b** | Calendar-aware DarvaX sweep/data freshness using the shared semantics | ✅ Approved 2026-08-19 |
-| 2 | **AUX-2** | Visible last successful ATHENA cycle and overdue warning outside Live Operations | 🟡 Ready for owner review; 2,027 tests pass |
-| 3 | **AUX-3** | Confidence band visible in the Decisions list | ⏳ Planned |
+| 2 | **AUX-2** | Visible last successful ATHENA cycle and overdue warning outside Live Operations | ✅ Approved 2026-08-20 |
+| 3 | **AUX-3** | Confidence band visible in the Decisions list | 🟡 Ready for owner review; 2,028 tests pass |
 | 4 | **DX-12b** | DarvaX 50/100 EMA trend badge on Advisor cards and Levels view | ⏳ Planned; continuation of DX-12a |
 | 5 | **AUX-4** | Daily near-miss digest for symbols close to their validated trigger | ⏳ Planned |
 | 6 | **AUX-5** | ATHENA “My track record” rollup over existing journal/outcome data | ⏳ Planned |
 
 Active milestone design and review:
-[`docs/design/ATHENA-CYCLE-STATUS-DESIGN.md`](design/ATHENA-CYCLE-STATUS-DESIGN.md).
-The approved freshness foundation remains documented in
+[`docs/design/ATHENA-DECISION-LIST-CONFIDENCE-DESIGN.md`](design/ATHENA-DECISION-LIST-CONFIDENCE-DESIGN.md).
+The approved freshness and cycle foundations remain documented in
 [`docs/design/ATHENA-ADVISORY-FRESHNESS-DESIGN.md`](design/ATHENA-ADVISORY-FRESHNESS-DESIGN.md).
 
 ## Phase 0 — Foundations ✅ APPROVED (2026-07-20)

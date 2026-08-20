@@ -1,36 +1,25 @@
 # ATHENA & DarvaX UX Roadmap — Agent Handoff
 
-**Snapshot date:** 2026-08-19  
+**Snapshot date:** 2026-08-20  
 **Branch observed:** `feature/live-dashboard`  
-**Latest commit:** `7d54ce3` — `feat(darvax): add calendar-aware sweep freshness`
-**Test suite at handoff:** **2,027 passing**. Ruff passes for changed Python
+**Latest commit:** `a53a168` — `feat(dashboard): expose full-cycle validation health`  
+**Test suite at handoff:** **2,028 passing**. Ruff passes for changed Python
 files.
-**Current working milestone:** **AUX-2 - visible ATHENA full-cycle health,
-implemented and ready for owner review.** AUX-1a and AUX-1b are approved.
+**Current working milestone:** **AUX-3 - Decisions-list confidence band,
+implemented and ready for owner review.** AUX-1a, AUX-1b, and AUX-2 are
+approved.
 
-AUX-2 adds `GET /api/v1/dashboard/cycle-status`, a read-only projection over
-persisted runtime `RunRecord` history. Only full `REFRESH` runs count toward
-the configured validation cadence; a recent `FAST` symbol refresh cannot make
-the full board appear current. The result reports the last successful run,
-latest attempt, expected deadline, and one of `CURRENT`, `OVERDUE`, `FAILED`,
-`CLOSED`, or `UNAVAILABLE`.
+AUX-3 adds the nullable `analysis.confidence_level` field to the Decisions read
+model and renders `Conf High`, `Conf Med`, `Conf Low`, or `Conf -` on each
+decision row. The only authority is the canonical persisted `DecisionReport`
+confidence assessment. Score, price, risk, and browser state are never used to
+infer a band; missing or invalid report data remains explicitly unavailable.
 
-For a closed session, the UI labels the last cycle factually and hides the
-live-only `Expected by` deadline. The deterministic API timestamp remains
-available for replay and audit.
-
-Cycle health is intentionally a separate authority from AUX-1 market-data
-freshness. Both are presented in the existing anchored header popover, but the
-cycle section explicitly states that market-data freshness is unaffected by a
-cycle lookup failure. `FAILED` and `OVERDUE` escalate the compact header label
-and reveal an **Open Live Operations** action. The browser renders server
-classifications and performs no cadence arithmetic.
-
-The cadence is derived from the existing refresh schedule plus the configured
-five-minute grace period. The service uses the Calendar-backed dashboard
-session status so closed-market review is neutral rather than overdue. Missing
-run history fails closed to `UNAVAILABLE`; no broker, ticker, or dashboard
-timestamp is accepted as proof that a full validation completed.
+The tooltip states that ATHENA confidence reflects evidence reliability, not
+expected profit. The band is informational only: it does not change sorting,
+filtering, Decision classification, TradePlan authorization, or any analytical
+contract. A per-request run cache loads each pipeline detail once even when
+many list rows share the same run.
 
 On 2026-08-19 the owner delegated prioritisation and approved a six-item
 delivery sequence. The selected sequence is tracked in
@@ -67,9 +56,9 @@ reproposing what already exists, followed by 29 concrete, scoped ideas.
    before touching a module you haven't worked in.
 
 **Do not skip the active review gate.** Read
-`docs/design/ATHENA-CYCLE-STATUS-DESIGN.md`, inspect the implemented AUX-2
-evidence, and wait for owner approval. Do not start AUX-3 or a later selected
-item until AUX-2 completes its review and approval cycle.
+`docs/design/ATHENA-DECISION-LIST-CONFIDENCE-DESIGN.md`, inspect the implemented
+AUX-3 evidence, and wait for owner approval. Do not start DX-12b or a later
+selected item until AUX-3 completes its review and approval cycle.
 
 ---
 

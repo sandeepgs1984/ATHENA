@@ -59,7 +59,7 @@ def get_auth_headers(client: TestClient, role: Role, username: str = "analyst") 
 
     from athena.api.security.dependencies import get_session_store
     from athena.api.security.models import ROLE_PERMISSIONS, AuthenticatedPrincipal, Session
-    
+
     session = Session(
         session_id="sess-test-run",
         user_id=user.user_id,
@@ -103,7 +103,7 @@ def get_api_key_headers(
 
     raw_secret = "super_secure_raw_secret_value"
     hashed_secret = hashlib.sha256(raw_secret.encode()).hexdigest()
-    
+
     actual_perms = permissions if permissions is not None else (Permission.READ,)
     key_meta = APIKeyMetadata(
         key_id="key-core-test",
@@ -124,6 +124,7 @@ def get_api_key_headers(
 # Setup Clean Repositories Fixture
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(autouse=True)
 def clean_and_seed_providers() -> None:
     """Fixture resetting and seeding clean mock provider structures."""
@@ -137,6 +138,8 @@ def clean_and_seed_providers() -> None:
     dec_p.decisions.clear()  # type: ignore[attr-defined]
     if hasattr(dec_p, "traces"):
         dec_p.traces.clear()  # type: ignore[attr-defined]
+    if hasattr(dec_p, "run_details"):
+        dec_p.run_details.clear()  # type: ignore[attr-defined]
 
     port_p = get_portfolio_provider()
     port_p.portfolio = None  # type: ignore[attr-defined]
@@ -154,6 +157,7 @@ def clean_and_seed_providers() -> None:
 # ---------------------------------------------------------------------------
 # Endpoint Tests
 # ---------------------------------------------------------------------------
+
 
 class TestDecisionsAPI:
     def test_list_decisions_requires_auth(self, client) -> None:
@@ -213,6 +217,74 @@ class TestDecisionsAPI:
         assert response.status_code == 200
         assert len(response.json()["data"]) == 1
         assert response.json()["data"][0]["metadata"]["decision_id"] == "dec-1"
+
+    def test_list_decisions_projects_persisted_confidence_once_per_run(self, client, monkeypatch) -> None:
+        headers = get_auth_headers(client, Role.READONLY)
+        dec_p = get_decision_provider()
+        now = datetime.now(tz=timezone.utc)
+        dec_p.decisions.extend(  # type: ignore[attr-defined]
+            [
+                Decision(
+                    decision_id="dec-high",
+                    ts=now,
+                    run_id="run-shared",
+                    cycle_id="cycle-1",
+                    instrument_id="HIGHCO",
+                    direction=Direction.LONG,
+                    decision_type=DecisionType.WATCH,
+                    explanation="persisted high confidence",
+                ),
+                Decision(
+                    decision_id="dec-medium",
+                    ts=now,
+                    run_id="run-shared",
+                    cycle_id="cycle-1",
+                    instrument_id="MEDCO",
+                    direction=Direction.LONG,
+                    decision_type=DecisionType.WATCH,
+                    explanation="persisted medium confidence",
+                ),
+                Decision(
+                    decision_id="dec-low",
+                    ts=now,
+                    run_id="run-shared",
+                    cycle_id="cycle-1",
+                    instrument_id="LOWCO",
+                    direction=Direction.LONG,
+                    decision_type=DecisionType.WATCH,
+                    explanation="persisted low confidence",
+                ),
+            ]
+        )
+        dec_p.run_details["run-shared"] = {  # type: ignore[attr-defined]
+            "pipeline": {
+                "decision_reports": {
+                    "dec-high": {"confidence": {"status": "OK", "level": "HIGH"}},
+                    "dec-medium": {"confidence": {"status": "OK", "level": "MEDIUM"}},
+                    "dec-low": {"confidence": {"status": "OK", "level": "LOW"}},
+                }
+            }
+        }
+        original_get_run_detail = dec_p.get_run_detail
+        calls = 0
+
+        def counted_get_run_detail(run_id: str):
+            nonlocal calls
+            calls += 1
+            return original_get_run_detail(run_id)
+
+        monkeypatch.setattr(dec_p, "get_run_detail", counted_get_run_detail)
+
+        response = client.get("/api/v1/decisions?page_size=10", headers=headers)
+
+        assert response.status_code == 200
+        by_id = {row["metadata"]["decision_id"]: row["analysis"]["confidence_level"] for row in response.json()["data"]}
+        assert by_id == {
+            "dec-high": "HIGH",
+            "dec-medium": "MEDIUM",
+            "dec-low": "LOW",
+        }
+        assert calls == 1
 
     def test_get_decision_details_success(self, client) -> None:
         headers = get_auth_headers(client, Role.ANALYST)
@@ -290,7 +362,7 @@ class TestDecisionsAPI:
                                 }
                             ],
                         },
-                        "confidence": {"status": "UNKNOWN"},
+                        "confidence": {"status": "OK", "level": "HIGH"},
                         "risk": {"status": "UNKNOWN"},
                         "regime": {
                             "status": "ASSESSED",
@@ -329,6 +401,7 @@ class TestDecisionsAPI:
         assert data["metadata"]["decision_id"] == "dec-detail-1"
         assert data["analysis"]["score_ref"]["id"] == "score-99"
         assert data["analysis"]["score_ref"]["resource_type"] == "score"
+        assert data["analysis"]["confidence_level"] == "HIGH"
         assert data["analysis"]["gate_results"][0]["gate"] == "DATA"
         assert data["analysis"]["gate_results"][0]["passed"] is True
         assert data["trade_plan"]["entry_low"] == "100.00"
@@ -336,29 +409,27 @@ class TestDecisionsAPI:
         assert data["trade_plan"]["targets"] == ["104.00", "106.00"]
         assert data["trade_plan"]["risk_reward"] == "2.50"
 
-        depth_response = client.get(
-            "/api/v1/decisions/dec-detail-1/depth", headers=headers
-        )
+        depth_response = client.get("/api/v1/decisions/dec-detail-1/depth", headers=headers)
         assert depth_response.status_code == 200
         depth = depth_response.json()["data"]
         assert depth["eligibility"]["status"] == "INCLUDED"
         assert depth["eligibility"]["rules"][0]["rule"] == "liquidity"
         assert depth["score"]["value"] == "72.5"
         assert depth["score"]["dimensions"][0]["name"] == "trend"
-        assert depth["score"]["dimensions"][0]["contributions"][0]["reference"] == (
-            "regime-1"
-        )
-        assert depth["confidence"]["status"] == "UNKNOWN"
+        assert depth["score"]["dimensions"][0]["contributions"][0]["reference"] == ("regime-1")
+        assert depth["confidence"]["status"] == "OK"
+        assert depth["confidence"]["level"] == "HIGH"
 
-        context_response = client.get(
-            "/api/v1/decisions/dec-detail-1/context", headers=headers
-        )
+        context_response = client.get("/api/v1/decisions/dec-detail-1/context", headers=headers)
         assert context_response.status_code == 200
         context = context_response.json()["data"]
         assert context["decision_id"] == "dec-detail-1"
         assert context["calendar"]["exchange"]
         assert context["calendar"]["session_type"] in {
-            "NORMAL", "WEEKEND", "HOLIDAY", "MUHURAT",
+            "NORMAL",
+            "WEEKEND",
+            "HOLIDAY",
+            "MUHURAT",
         }
         assert context["regime"]["status"] == "ASSESSED"
         assert context["regime"]["labels"] == ["BULL_TREND", "NORMAL_VOLATILITY"]
@@ -441,9 +512,7 @@ class TestDecisionsAPI:
         assert outcome["adherence"]["hit_stop"] is False
         assert outcome["holding_seconds"] >= 0
 
-        fetched_outcome = client.get(
-            "/api/v1/decisions/dec-journal-1/outcome", headers=read_headers
-        )
+        fetched_outcome = client.get("/api/v1/decisions/dec-journal-1/outcome", headers=read_headers)
         assert fetched_outcome.json()["data"]["pnl"] == "35.00"
 
     def test_decision_journal_not_found(self, client) -> None:
@@ -487,9 +556,14 @@ class TestDecisionsAPI:
         for decision_id, run_id, score, confidence, risk, mode in specs:
             dec_p.decisions.append(  # type: ignore[attr-defined]
                 Decision(
-                    decision_id=decision_id, ts=now, run_id=run_id, cycle_id="cycle-analog",
-                    instrument_id="TCS", direction=Direction.NONE,
-                    decision_type=DecisionType.WATCH, explanation="analog test",
+                    decision_id=decision_id,
+                    ts=now,
+                    run_id=run_id,
+                    cycle_id="cycle-analog",
+                    instrument_id="TCS",
+                    direction=Direction.NONE,
+                    decision_type=DecisionType.WATCH,
+                    explanation="analog test",
                 )
             )
             report = _report(score, confidence, risk, unknown=(mode == "unknown"))
@@ -509,9 +583,7 @@ class TestDecisionsAPI:
             headers=write_headers,
         )
 
-        response = client.get(
-            "/api/v1/decisions/dec-analog-target/analogs?limit=5", headers=headers
-        )
+        response = client.get("/api/v1/decisions/dec-analog-target/analogs?limit=5", headers=headers)
         assert response.status_code == 200
         data = response.json()["data"]
         assert data["decision_id"] == "dec-analog-target"
@@ -575,9 +647,14 @@ class TestDecisionsAPI:
         for decision_id, run_id, score, confidence, risk in specs:
             dec_p.decisions.append(  # type: ignore[attr-defined]
                 Decision(
-                    decision_id=decision_id, ts=now, run_id=run_id, cycle_id="cycle-mix",
-                    instrument_id="TCS", direction=Direction.NONE,
-                    decision_type=DecisionType.WATCH, explanation="analog mix test",
+                    decision_id=decision_id,
+                    ts=now,
+                    run_id=run_id,
+                    cycle_id="cycle-mix",
+                    instrument_id="TCS",
+                    direction=Direction.NONE,
+                    decision_type=DecisionType.WATCH,
+                    explanation="analog mix test",
                 )
             )
             dec_p.run_details[run_id] = {  # type: ignore[attr-defined]
@@ -591,7 +668,9 @@ class TestDecisionsAPI:
         client.post(
             "/api/v1/decisions/dec-mix-win/outcome",
             json={
-                "entry_price": "100.00", "exit_price": "110.00", "quantity": 10,
+                "entry_price": "100.00",
+                "exit_price": "110.00",
+                "quantity": 10,
                 "closed_ts": (now + timedelta(days=3)).isoformat(),
             },
             headers=write_headers,
@@ -601,15 +680,15 @@ class TestDecisionsAPI:
         client.post(
             "/api/v1/decisions/dec-mix-loss/outcome",
             json={
-                "entry_price": "100.00", "exit_price": "95.00", "quantity": 10,
+                "entry_price": "100.00",
+                "exit_price": "95.00",
+                "quantity": 10,
                 "closed_ts": (now + timedelta(days=7)).isoformat(),
             },
             headers=write_headers,
         )
 
-        response = client.get(
-            "/api/v1/decisions/dec-mix-target/analogs?limit=5", headers=headers
-        )
+        response = client.get("/api/v1/decisions/dec-mix-target/analogs?limit=5", headers=headers)
         assert response.status_code == 200
         data = response.json()["data"]
         assert data["outcomes_sample_size"] == 2
@@ -631,14 +710,17 @@ class TestDecisionsAPI:
         now = datetime.now(tz=timezone.utc)
         dec_p.decisions.append(  # type: ignore[attr-defined]
             Decision(
-                decision_id="dec-analog-no-fp", ts=now, run_id="run-analog-no-fp",
-                cycle_id="cycle-analog", instrument_id="TCS", direction=Direction.NONE,
-                decision_type=DecisionType.INSUFFICIENT_DATA, explanation="no fingerprint",
+                decision_id="dec-analog-no-fp",
+                ts=now,
+                run_id="run-analog-no-fp",
+                cycle_id="cycle-analog",
+                instrument_id="TCS",
+                direction=Direction.NONE,
+                decision_type=DecisionType.INSUFFICIENT_DATA,
+                explanation="no fingerprint",
             )
         )
-        response = client.get(
-            "/api/v1/decisions/dec-analog-no-fp/analogs", headers=headers
-        )
+        response = client.get("/api/v1/decisions/dec-analog-no-fp/analogs", headers=headers)
         assert response.status_code == 200
         data = response.json()["data"]
         assert data["analogs"] == []
@@ -653,24 +735,25 @@ class TestDecisionsAPI:
         now = datetime.now(tz=timezone.utc)
         dec_p.decisions.append(  # type: ignore[attr-defined]
             Decision(
-                decision_id="dec-reset-1", ts=now, run_id="run-reset-1",
-                cycle_id="cycle-reset", instrument_id="TCS", direction=Direction.NONE,
-                decision_type=DecisionType.WATCH, explanation="reset test",
+                decision_id="dec-reset-1",
+                ts=now,
+                run_id="run-reset-1",
+                cycle_id="cycle-reset",
+                instrument_id="TCS",
+                direction=Direction.NONE,
+                decision_type=DecisionType.WATCH,
+                explanation="reset test",
             )
         )
 
         admin_headers = get_auth_headers(client, Role.ADMIN)
         operator_headers = get_auth_headers(client, Role.OPERATOR, username="operator-reset")
 
-        wrong_token = client.post(
-            "/api/v1/decisions/reset", headers=admin_headers, json={"confirmation": "YES"}
-        )
+        wrong_token = client.post("/api/v1/decisions/reset", headers=admin_headers, json={"confirmation": "YES"})
         assert wrong_token.status_code == 400
         assert dec_p.decisions  # untouched
 
-        forbidden = client.post(
-            "/api/v1/decisions/reset", headers=operator_headers, json={"confirmation": "CONFIRM"}
-        )
+        forbidden = client.post("/api/v1/decisions/reset", headers=operator_headers, json={"confirmation": "CONFIRM"})
         assert forbidden.status_code == 403
         assert dec_p.decisions  # untouched
 
@@ -679,9 +762,14 @@ class TestDecisionsAPI:
         now = datetime.now(tz=timezone.utc)
         dec_p.decisions.append(  # type: ignore[attr-defined]
             Decision(
-                decision_id="dec-reset-2", ts=now, run_id="run-reset-2",
-                cycle_id="cycle-reset", instrument_id="INFY", direction=Direction.NONE,
-                decision_type=DecisionType.WATCH, explanation="reset test 2",
+                decision_id="dec-reset-2",
+                ts=now,
+                run_id="run-reset-2",
+                cycle_id="cycle-reset",
+                instrument_id="INFY",
+                direction=Direction.NONE,
+                decision_type=DecisionType.WATCH,
+                explanation="reset test 2",
             )
         )
         dec_p.traces["dec-reset-2"] = DecisionTrace(  # type: ignore[attr-defined]
@@ -690,9 +778,7 @@ class TestDecisionsAPI:
         )
 
         headers = get_auth_headers(client, Role.ADMIN)
-        ok = client.post(
-            "/api/v1/decisions/reset", headers=headers, json={"confirmation": "CONFIRM"}
-        )
+        ok = client.post("/api/v1/decisions/reset", headers=headers, json={"confirmation": "CONFIRM"})
         assert ok.status_code == 200
         data = ok.json()["data"]
         assert data["total_deleted"] >= 2  # at least the decision + its trace
@@ -711,21 +797,31 @@ class TestDecisionsAPI:
         dec_p = get_decision_provider()
         now = datetime.now(tz=timezone.utc)
         plan = TradePlan(
-            entry_low=Decimal("100"), entry_high=Decimal("101"), stop_loss=Decimal("98"),
-            targets=(Decimal("104"),), position_size=10, risk_amount=Decimal("20"),
-            risk_reward=Decimal("2"), valid_from=now, valid_until=now + timedelta(hours=1),
+            entry_low=Decimal("100"),
+            entry_high=Decimal("101"),
+            stop_loss=Decimal("98"),
+            targets=(Decimal("104"),),
+            position_size=10,
+            risk_amount=Decimal("20"),
+            risk_reward=Decimal("2"),
+            valid_from=now,
+            valid_until=now + timedelta(hours=1),
         )
         dec_p.decisions.append(  # type: ignore[attr-defined]
             Decision(
-                decision_id="dec-cf-trade", ts=now, run_id="run-cf-trade", cycle_id="c",
-                instrument_id="TCS", direction=Direction.LONG, decision_type=DecisionType.TRADE,
-                explanation="trade", trade_plan=plan,
+                decision_id="dec-cf-trade",
+                ts=now,
+                run_id="run-cf-trade",
+                cycle_id="c",
+                instrument_id="TCS",
+                direction=Direction.LONG,
+                decision_type=DecisionType.TRADE,
+                explanation="trade",
+                trade_plan=plan,
                 gate_results=(GateResult(QualityGate.CONFIDENCE, True, "ok"),),
             )
         )
-        response = client.get(
-            "/api/v1/decisions/dec-cf-trade/counterfactual", headers=headers
-        )
+        response = client.get("/api/v1/decisions/dec-cf-trade/counterfactual", headers=headers)
         assert response.status_code == 200
         data = response.json()["data"]
         assert data["is_trade"] is True
@@ -738,8 +834,13 @@ class TestDecisionsAPI:
         now = datetime.now(tz=timezone.utc)
         dec_p.decisions.append(  # type: ignore[attr-defined]
             Decision(
-                decision_id="dec-cf-watch", ts=now, run_id="run-cf-watch", cycle_id="c",
-                instrument_id="TCS", direction=Direction.NONE, decision_type=DecisionType.WATCH,
+                decision_id="dec-cf-watch",
+                ts=now,
+                run_id="run-cf-watch",
+                cycle_id="c",
+                instrument_id="TCS",
+                direction=Direction.NONE,
+                decision_type=DecisionType.WATCH,
                 explanation="watch",
                 gate_results=(
                     GateResult(QualityGate.DATA, True, "ok"),
@@ -756,7 +857,9 @@ class TestDecisionsAPI:
                 "decision_reports": {
                     "dec-cf-watch": {
                         "score": {
-                            "status": "OK", "composite": "56.0", "completeness": "0.9",
+                            "status": "OK",
+                            "composite": "56.0",
+                            "completeness": "0.9",
                             "components": [
                                 {"dimension": "market_quality", "value": "62.0"},
                             ],
@@ -767,9 +870,7 @@ class TestDecisionsAPI:
                 }
             }
         }
-        response = client.get(
-            "/api/v1/decisions/dec-cf-watch/counterfactual", headers=headers
-        )
+        response = client.get("/api/v1/decisions/dec-cf-watch/counterfactual", headers=headers)
         assert response.status_code == 200
         data = response.json()["data"]
         assert data["is_trade"] is False
@@ -794,29 +895,29 @@ class TestDecisionsAPI:
         now = datetime.now(tz=timezone.utc)
         dec_p.decisions.append(  # type: ignore[attr-defined]
             Decision(
-                decision_id="dec-cf-nodir", ts=now, run_id="run-cf-nodir", cycle_id="c",
-                instrument_id="TCS", direction=Direction.NONE, decision_type=DecisionType.WATCH,
+                decision_id="dec-cf-nodir",
+                ts=now,
+                run_id="run-cf-nodir",
+                cycle_id="c",
+                instrument_id="TCS",
+                direction=Direction.NONE,
+                decision_type=DecisionType.WATCH,
                 explanation="watch",
-                gate_results=tuple(
-                    GateResult(gate, True, "ok") for gate in QualityGate
-                ),
+                gate_results=tuple(GateResult(gate, True, "ok") for gate in QualityGate),
             )
         )
         dec_p.run_details["run-cf-nodir"] = {  # type: ignore[attr-defined]
             "pipeline": {
                 "decision_reports": {
                     "dec-cf-nodir": {
-                        "score": {"status": "OK", "composite": "75.0", "completeness": "1.0",
-                                  "components": []},
+                        "score": {"status": "OK", "composite": "75.0", "completeness": "1.0", "components": []},
                         "confidence": {"status": "OK", "overall": "80.0"},
                         "risk": {"status": "OK", "overall": "10.0"},
                     }
                 }
             }
         }
-        response = client.get(
-            "/api/v1/decisions/dec-cf-nodir/counterfactual", headers=headers
-        )
+        response = client.get("/api/v1/decisions/dec-cf-nodir/counterfactual", headers=headers)
         assert response.status_code == 200
         data = response.json()["data"]
         assert data["score_gap"] == "0"
@@ -830,15 +931,18 @@ class TestDecisionsAPI:
         now = datetime.now(tz=timezone.utc)
         dec_p.decisions.append(  # type: ignore[attr-defined]
             Decision(
-                decision_id="dec-fresh-noplan", ts=now, run_id="run-fresh-noplan", cycle_id="c",
-                instrument_id="TCS", direction=Direction.NONE, decision_type=DecisionType.WATCH,
+                decision_id="dec-fresh-noplan",
+                ts=now,
+                run_id="run-fresh-noplan",
+                cycle_id="c",
+                instrument_id="TCS",
+                direction=Direction.NONE,
+                decision_type=DecisionType.WATCH,
                 explanation="watch",
                 gate_results=(GateResult(QualityGate.CONFIDENCE, False, "confidence low"),),
             )
         )
-        response = client.get(
-            "/api/v1/decisions/dec-fresh-noplan/plan-freshness", headers=headers
-        )
+        response = client.get("/api/v1/decisions/dec-fresh-noplan/plan-freshness", headers=headers)
         assert response.status_code == 200
         data = response.json()["data"]
         assert data["has_trade_plan"] is False
@@ -855,15 +959,27 @@ class TestDecisionsAPI:
         valid_from = datetime(2026, 7, 25, 9, 15, tzinfo=timezone.utc)
         valid_until = valid_from + timedelta(minutes=100)
         plan = TradePlan(
-            entry_low=Decimal("100"), entry_high=Decimal("101"), stop_loss=Decimal("98"),
-            targets=(Decimal("104"),), position_size=10, risk_amount=Decimal("20"),
-            risk_reward=Decimal("2"), valid_from=valid_from, valid_until=valid_until,
+            entry_low=Decimal("100"),
+            entry_high=Decimal("101"),
+            stop_loss=Decimal("98"),
+            targets=(Decimal("104"),),
+            position_size=10,
+            risk_amount=Decimal("20"),
+            risk_reward=Decimal("2"),
+            valid_from=valid_from,
+            valid_until=valid_until,
         )
         dec_p.decisions.append(  # type: ignore[attr-defined]
             Decision(
-                decision_id="dec-fresh-plan", ts=valid_from, run_id="run-fresh-plan", cycle_id="c",
-                instrument_id="TCS", direction=Direction.NONE, decision_type=DecisionType.WATCH,
-                explanation="watch", trade_plan=plan,
+                decision_id="dec-fresh-plan",
+                ts=valid_from,
+                run_id="run-fresh-plan",
+                cycle_id="c",
+                instrument_id="TCS",
+                direction=Direction.NONE,
+                decision_type=DecisionType.WATCH,
+                explanation="watch",
+                trade_plan=plan,
                 gate_results=(GateResult(QualityGate.CONFIDENCE, False, "confidence low"),),
             )
         )
@@ -897,9 +1013,7 @@ class TestDecisionsAPI:
 
     def test_plan_freshness_not_found(self, client) -> None:
         headers = get_auth_headers(client, Role.ANALYST)
-        response = client.get(
-            "/api/v1/decisions/dec-invalid/plan-freshness", headers=headers
-        )
+        response = client.get("/api/v1/decisions/dec-invalid/plan-freshness", headers=headers)
         assert response.status_code == 404
 
 
@@ -1113,9 +1227,7 @@ class TestPipelinesAPI:
             ]
         )
 
-        data = client.get(
-            "/api/v1/pipelines/validation-funnel", headers=headers
-        ).json()["data"]
+        data = client.get("/api/v1/pipelines/validation-funnel", headers=headers).json()["data"]
         assert data["available"] is True
         assert data["run_id"] == "run-scoped"
         by_id = {s["id"]: s for s in data["stages"]}
@@ -1142,18 +1254,12 @@ class TestPipelinesAPI:
                     final_context=PipelineContext(
                         run_id=f"run-{idx}",
                         as_of=as_of,
-                        data={
-                            "universe_members": {
-                                "AAA": {"symbol": "AAA", "included": included}
-                            }
-                        },
+                        data={"universe_members": {"AAA": {"symbol": "AAA", "included": included}}},
                     ),
                 )
             )
 
-        data = client.get(
-            "/api/v1/pipelines/validation-funnel", headers=headers
-        ).json()["data"]
+        data = client.get("/api/v1/pipelines/validation-funnel", headers=headers).json()["data"]
         by_id = {s["id"]: s for s in data["stages"]}
         assert by_id["universe"]["count"] == 1
         assert by_id["eligible"]["count"] == 1

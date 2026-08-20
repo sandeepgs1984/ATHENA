@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 from zoneinfo import ZoneInfo
 
 from athena.api.exceptions import DecisionNotFoundError, DecisionsResetConfirmationError
@@ -66,6 +66,9 @@ if TYPE_CHECKING:
     from athena.domain.decision import Decision, TraceStage
 
 
+ConfidenceLevel = Literal["HIGH", "MEDIUM", "LOW"]
+
+
 class DecisionsService:
     """Orchestrates decision retrieval and DTO mapping."""
 
@@ -93,6 +96,10 @@ class DecisionsService:
         # (owner-reported, 2026-08-04: up to page_size extra serialized
         # round-trips per page was part of the Decisions & Trace slowness).
         self._instrument_name_cache: dict[str, str] | None = None
+        # Confidence lives in the persisted decision report, not the
+        # Decision aggregate. Cache reports by run while mapping a list so
+        # a large board does not perform one provider lookup per row.
+        self._confidence_level_cache: dict[str, ConfidenceLevel | None] | None = None
 
     def list_decisions(
         self,
@@ -105,10 +112,12 @@ class DecisionsService:
         result = self._provider.get_decisions(spec)
 
         self._instrument_name_cache = self._load_instrument_names(result.items)
+        self._confidence_level_cache = self._load_confidence_levels(result.items)
         try:
             dto_items = tuple(self._map_to_dto(d) for d in result.items)
         finally:
             self._instrument_name_cache = None
+            self._confidence_level_cache = None
         return CollectionResult(
             items=dto_items,
             total_count=result.total_count,
@@ -132,10 +141,12 @@ class DecisionsService:
             return ()
         decisions = tuple(self._repo.list_latest_decisions_by_instrument())
         self._instrument_name_cache = self._load_instrument_names(decisions)
+        self._confidence_level_cache = self._load_confidence_levels(decisions)
         try:
             return tuple(self._map_to_dto(d) for d in decisions)
         finally:
             self._instrument_name_cache = None
+            self._confidence_level_cache = None
 
     def _load_instrument_names(self, decisions: tuple[Decision, ...]) -> dict[str, str]:
         if self._repo is None:
@@ -156,6 +167,41 @@ class DecisionsService:
             raise DecisionNotFoundError(f"Decision '{decision_id}' not found")
         return self._map_to_dto(d)
 
+    def _load_confidence_levels(self, decisions: tuple[Decision, ...]) -> dict[str, ConfidenceLevel | None]:
+        pipelines: dict[str, Mapping[str, Any]] = {}
+        levels: dict[str, ConfidenceLevel | None] = {}
+        for decision in decisions:
+            pipeline = pipelines.get(decision.run_id)
+            if pipeline is None:
+                detail = self._provider.get_run_detail(decision.run_id)
+                raw_pipeline = detail.get("pipeline", detail)
+                pipeline = raw_pipeline if isinstance(raw_pipeline, Mapping) else {}
+                pipelines[decision.run_id] = pipeline
+            report = self._fetch_report(decision, pipeline=pipeline)
+            levels[decision.decision_id] = self._confidence_level_from_report(report)
+        return levels
+
+    def _lookup_confidence_level(self, decision: Decision) -> ConfidenceLevel | None:
+        if self._confidence_level_cache is not None:
+            return self._confidence_level_cache.get(decision.decision_id)
+        return self._confidence_level_from_report(self._fetch_report(decision))
+
+    @staticmethod
+    def _confidence_level_from_report(
+        report: Mapping[str, Any],
+    ) -> ConfidenceLevel | None:
+        confidence = report.get("confidence")
+        if not isinstance(confidence, Mapping) or confidence.get("status") != "OK":
+            return None
+        level = confidence.get("level")
+        if level == "HIGH":
+            return "HIGH"
+        if level == "MEDIUM":
+            return "MEDIUM"
+        if level == "LOW":
+            return "LOW"
+        return None
+
     def _lookup_instrument_name(self, instrument_id: str | None) -> str | None:
         """Real company name from the instruments table — None (never a
         fabricated value) if no repo is wired, the instrument isn't found,
@@ -172,14 +218,8 @@ class DecisionsService:
 
     def _map_to_dto(self, d: Decision) -> DecisionDTO:
         # Resolve enums safely to strings
-        direction_str = (
-            d.direction.value if hasattr(d.direction, "value") else str(d.direction)
-        )
-        dec_type_str = (
-            d.decision_type.value
-            if hasattr(d.decision_type, "value")
-            else str(d.decision_type)
-        )
+        direction_str = d.direction.value if hasattr(d.direction, "value") else str(d.direction)
+        dec_type_str = d.decision_type.value if hasattr(d.decision_type, "value") else str(d.decision_type)
 
         metadata = DecisionMetadataDTO(
             decision_id=d.decision_id,
@@ -206,23 +246,12 @@ class DecisionsService:
                 )
 
         analysis = DecisionAnalysisDTO(
-            score_ref=(
-                ResourceReference(id=d.score_ref, resource_type="score")
-                if d.score_ref
-                else None
-            ),
+            score_ref=(ResourceReference(id=d.score_ref, resource_type="score") if d.score_ref else None),
             confidence_ref=(
-                ResourceReference(
-                    id=d.confidence_ref, resource_type="confidence"
-                )
-                if d.confidence_ref
-                else None
+                ResourceReference(id=d.confidence_ref, resource_type="confidence") if d.confidence_ref else None
             ),
-            risk_ref=(
-                ResourceReference(id=d.risk_ref, resource_type="risk")
-                if d.risk_ref
-                else None
-            ),
+            confidence_level=self._lookup_confidence_level(d),
+            risk_ref=(ResourceReference(id=d.risk_ref, resource_type="risk") if d.risk_ref else None),
             gate_results=gates,
         )
 
@@ -255,11 +284,7 @@ class DecisionsService:
             raise DecisionNotFoundError(f"Decision '{decision_id}' not found")
 
         trace = self._provider.get_trace(decision_id)
-        stages = (
-            [self._map_trace_stage(s) for s in trace.stages]
-            if trace is not None
-            else []
-        )
+        stages = [self._map_trace_stage(s) for s in trace.stages] if trace is not None else []
         return DecisionTraceDTO(
             decision_id=d.decision_id,
             instrument_id=d.instrument_id or "UNKNOWN",
@@ -288,9 +313,7 @@ class DecisionsService:
             instrument_id=decision.instrument_id,
             eligibility=eligibility,
             score=self._map_analysis_block(report.get("score"), kind="score"),
-            confidence=self._map_analysis_block(
-                report.get("confidence"), kind="confidence"
-            ),
+            confidence=self._map_analysis_block(report.get("confidence"), kind="confidence"),
             risk=self._map_analysis_block(report.get("risk"), kind="risk"),
         )
 
@@ -331,9 +354,7 @@ class DecisionsService:
             external_links=links,
         )
 
-    def record_journal_entry(
-        self, decision_id: str, user_action: str, notes: str
-    ) -> JournalEntryDTO:
+    def record_journal_entry(self, decision_id: str, user_action: str, notes: str) -> JournalEntryDTO:
         """Persist the owner's response to a decision (M-X0, R-9)."""
         decision = self._provider.get_decision(decision_id)
         if decision is None:
@@ -353,9 +374,7 @@ class DecisionsService:
         entry = self._provider.get_journal_entry(decision_id)
         return self._map_journal_entry(entry) if entry is not None else None
 
-    def record_trade_outcome(
-        self, decision_id: str, req: RecordOutcomeRequest
-    ) -> TradeOutcomeDTO:
+    def record_trade_outcome(self, decision_id: str, req: RecordOutcomeRequest) -> TradeOutcomeDTO:
         """Persist a realized outcome. PnL, holding time, and TradePlan adherence
         are computed here — deterministic and explainable, never client-supplied."""
         decision = self._provider.get_decision(decision_id)
@@ -365,9 +384,7 @@ class DecisionsService:
         closed_ts = req.closed_ts or datetime.now(tz=timezone.utc)
         pnl = self._compute_pnl(decision.direction, req.entry_price, req.exit_price, req.quantity)
         holding_seconds = max(0, int((closed_ts - decision.ts).total_seconds()))
-        adherence = self._compute_adherence(
-            decision.trade_plan, decision.direction, req.entry_price, req.exit_price
-        )
+        adherence = self._compute_adherence(decision.trade_plan, decision.direction, req.entry_price, req.exit_price)
 
         outcome = TradeOutcome(
             outcome_id=trade_outcome_id(decision_id, closed_ts),
@@ -415,11 +432,7 @@ class DecisionsService:
             fp = self._fingerprint(report)
             if fp is None:
                 continue
-            distance = (
-                (fp[0] - target_fp[0]) ** 2
-                + (fp[1] - target_fp[1]) ** 2
-                + (fp[2] - target_fp[2]) ** 2
-            ).sqrt()
+            distance = ((fp[0] - target_fp[0]) ** 2 + (fp[1] - target_fp[1]) ** 2 + (fp[2] - target_fp[2]) ** 2).sqrt()
             scored.append((distance, candidate, fp))
 
         scored.sort(key=lambda item: (item[0], item[1].ts), reverse=False)
@@ -519,11 +532,7 @@ class DecisionsService:
         score = report.get("score")
         confidence = report.get("confidence")
         risk = report.get("risk")
-        if not (
-            isinstance(score, Mapping)
-            and isinstance(confidence, Mapping)
-            and isinstance(risk, Mapping)
-        ):
+        if not (isinstance(score, Mapping) and isinstance(confidence, Mapping) and isinstance(risk, Mapping)):
             return None
         if score.get("status") != "OK" or confidence.get("status") != "OK" or risk.get("status") != "OK":
             return None
@@ -555,16 +564,12 @@ class DecisionsService:
         thresholds = load_decision_config(self._config_dir).thresholds
         report = self._fetch_report(decision)
         score_block = report.get("score") if isinstance(report.get("score"), Mapping) else {}
-        confidence_block = (
-            report.get("confidence") if isinstance(report.get("confidence"), Mapping) else {}
-        )
+        confidence_block = report.get("confidence") if isinstance(report.get("confidence"), Mapping) else {}
         risk_block = report.get("risk") if isinstance(report.get("risk"), Mapping) else {}
 
         score_current = self._decimal_or_none(score_block.get("composite"))
         score_required = Decimal(thresholds.min_composite_for_trade)
-        score_gap = (
-            max(Decimal(0), score_required - score_current) if score_current is not None else None
-        )
+        score_gap = max(Decimal(0), score_required - score_current) if score_current is not None else None
         confidence_current = self._decimal_or_none(confidence_block.get("overall"))
         risk_current = self._decimal_or_none(risk_block.get("overall"))
         completeness_current = self._decimal_or_none(score_block.get("completeness"))
@@ -576,44 +581,52 @@ class DecisionsService:
                 continue
             if g.gate is QualityGate.CONFIDENCE:
                 required = Decimal(thresholds.min_confidence_for_trade)
-                gap = (
-                    max(Decimal(0), required - confidence_current)
-                    if confidence_current is not None else None
+                gap = max(Decimal(0), required - confidence_current) if confidence_current is not None else None
+                gates.append(
+                    CounterfactualGapDTO(
+                        gate=g.gate.value,
+                        detail=g.detail,
+                        current=confidence_current,
+                        required=required,
+                        gap=gap,
+                    )
                 )
-                gates.append(CounterfactualGapDTO(
-                    gate=g.gate.value, detail=g.detail,
-                    current=confidence_current, required=required, gap=gap,
-                ))
             elif g.gate is QualityGate.RISK:
                 required = Decimal(thresholds.max_risk_for_trade)
-                gap = (
-                    max(Decimal(0), risk_current - required)
-                    if risk_current is not None else None
+                gap = max(Decimal(0), risk_current - required) if risk_current is not None else None
+                gates.append(
+                    CounterfactualGapDTO(
+                        gate=g.gate.value,
+                        detail=g.detail,
+                        current=risk_current,
+                        required=required,
+                        gap=gap,
+                    )
                 )
-                gates.append(CounterfactualGapDTO(
-                    gate=g.gate.value, detail=g.detail,
-                    current=risk_current, required=required, gap=gap,
-                ))
             elif g.gate is QualityGate.MARKET:
                 required = Decimal(thresholds.market_floor)
-                gap = (
-                    max(Decimal(0), required - market_current)
-                    if market_current is not None else None
+                gap = max(Decimal(0), required - market_current) if market_current is not None else None
+                gates.append(
+                    CounterfactualGapDTO(
+                        gate=g.gate.value,
+                        detail=g.detail,
+                        current=market_current,
+                        required=required,
+                        gap=gap,
+                    )
                 )
-                gates.append(CounterfactualGapDTO(
-                    gate=g.gate.value, detail=g.detail,
-                    current=market_current, required=required, gap=gap,
-                ))
             elif g.gate is QualityGate.EVIDENCE:
                 required = Decimal(str(thresholds.min_evidence_completeness))
-                gap = (
-                    max(Decimal(0), required - completeness_current)
-                    if completeness_current is not None else None
+                gap = max(Decimal(0), required - completeness_current) if completeness_current is not None else None
+                gates.append(
+                    CounterfactualGapDTO(
+                        gate=g.gate.value,
+                        detail=g.detail,
+                        current=completeness_current,
+                        required=required,
+                        gap=gap,
+                    )
                 )
-                gates.append(CounterfactualGapDTO(
-                    gate=g.gate.value, detail=g.detail,
-                    current=completeness_current, required=required, gap=gap,
-                ))
             else:
                 gates.append(CounterfactualGapDTO(gate=g.gate.value, detail=g.detail))
 
@@ -622,15 +635,19 @@ class DecisionsService:
         # on the decision itself — check them directly, never recomputed.
         if not gates and (score_gap is None or score_gap <= 0):
             if decision.direction is Direction.NONE:
-                gates.append(CounterfactualGapDTO(
-                    gate="DIRECTION",
-                    detail="no clear trend direction from regime (required for a TRADE)",
-                ))
+                gates.append(
+                    CounterfactualGapDTO(
+                        gate="DIRECTION",
+                        detail="no clear trend direction from regime (required for a TRADE)",
+                    )
+                )
             elif decision.trade_plan is None:
-                gates.append(CounterfactualGapDTO(
-                    gate="TRADE_PLAN",
-                    detail="ATR/SMA indicators unavailable to build a trade plan",
-                ))
+                gates.append(
+                    CounterfactualGapDTO(
+                        gate="TRADE_PLAN",
+                        detail="ATR/SMA indicators unavailable to build a trade plan",
+                    )
+                )
 
         summary = self._counterfactual_summary(score_gap, gates)
 
@@ -665,9 +682,7 @@ class DecisionsService:
         return None
 
     @staticmethod
-    def _counterfactual_summary(
-        score_gap: Decimal | None, gates: list[CounterfactualGapDTO]
-    ) -> str:
+    def _counterfactual_summary(score_gap: Decimal | None, gates: list[CounterfactualGapDTO]) -> str:
         parts: list[str] = []
         if score_gap is not None and score_gap > 0:
             parts.append(f"score +{score_gap:.1f}")
@@ -683,9 +698,7 @@ class DecisionsService:
             return f"Blocked on: {', '.join(non_numeric)} — see gate detail."
         return "No persisted gap — decision has not yet been through a full scoring cycle."
 
-    def get_trade_plan_freshness(
-        self, decision_id: str, *, as_of: datetime | None = None
-    ) -> TradePlanFreshnessDTO:
+    def get_trade_plan_freshness(self, decision_id: str, *, as_of: datetime | None = None) -> TradePlanFreshnessDTO:
         """Deterministic decay clock for a decision's TradePlan validity window
         (M-X3). Pure arithmetic over the plan's already-persisted
         valid_from/valid_until and an as_of instant — never a recomputed
@@ -740,10 +753,7 @@ class DecisionsService:
         if status == "EXPIRED":
             return f"{pct}% of the validity window has elapsed — this plan has EXPIRED."
         remaining_minutes = max(0, int(remaining_seconds // 60))
-        return (
-            f"{pct}% of the validity window elapsed — plan is {status}, "
-            f"{remaining_minutes} min remaining."
-        )
+        return f"{pct}% of the validity window elapsed — plan is {status}, {remaining_minutes} min remaining."
 
     @staticmethod
     def _compute_pnl(direction, entry_price, exit_price, quantity):
@@ -847,9 +857,7 @@ class DecisionsService:
             holiday_name=ctx.holiday_name,
             is_weekly_expiry=ctx.is_weekly_expiry,
             is_monthly_expiry=ctx.is_monthly_expiry,
-            events=[
-                CalendarEventDTO(kind=e.kind, name=e.name) for e in ctx.events
-            ],
+            events=[CalendarEventDTO(kind=e.kind, name=e.name) for e in ctx.events],
         )
 
     @staticmethod
@@ -885,11 +893,7 @@ class DecisionsService:
         dimensions = raw.get("dimensions")
         return MarketHealthContextDTO(
             status="ASSESSED",
-            dimensions=(
-                {str(k): str(v) for k, v in dimensions.items()}
-                if isinstance(dimensions, Mapping)
-                else {}
-            ),
+            dimensions=({str(k): str(v) for k, v in dimensions.items()} if isinstance(dimensions, Mapping) else {}),
             explanation=str(raw.get("explanation") or ""),
             evidence=cls._map_context_evidence(raw.get("evidence")),
         )
@@ -909,10 +913,7 @@ class DecisionsService:
                     break
             if member is None:
                 for candidate in raw_members.values():
-                    if (
-                        isinstance(candidate, Mapping)
-                        and candidate.get("instrument_id") == instrument_id
-                    ):
+                    if isinstance(candidate, Mapping) and candidate.get("instrument_id") == instrument_id:
                         member = candidate
                         break
 
@@ -935,11 +936,7 @@ class DecisionsService:
                         rule=str(item.get("rule") or "unknown"),
                         passed=bool(item.get("passed")),
                         explanation=str(item.get("explanation") or "No explanation recorded."),
-                        inputs=(
-                            {str(k): str(v) for k, v in inputs.items()}
-                            if isinstance(inputs, Mapping)
-                            else {}
-                        ),
+                        inputs=({str(k): str(v) for k, v in inputs.items()} if isinstance(inputs, Mapping) else {}),
                     )
                 )
         exclusions = member.get("exclusion_reasons")
@@ -949,11 +946,7 @@ class DecisionsService:
                 member.get("eligibility_summary")
                 or ("Included in universe." if included else "Excluded from universe.")
             ),
-            exclusion_reasons=(
-                [str(reason) for reason in exclusions]
-                if isinstance(exclusions, list)
-                else []
-            ),
+            exclusion_reasons=([str(reason) for reason in exclusions] if isinstance(exclusions, list) else []),
             rules=rules,
         )
 
@@ -980,32 +973,17 @@ class DecisionsService:
                         contributions.append(
                             AnalysisContributionDTO(
                                 source=str(contribution.get("source") or "unknown"),
-                                reference=str(
-                                    contribution.get("reference")
-                                    or contribution.get("reference_id")
-                                    or ""
-                                ),
-                                description=str(
-                                    contribution.get("description")
-                                    or "No description recorded."
-                                ),
+                                reference=str(contribution.get("reference") or contribution.get("reference_id") or ""),
+                                description=str(contribution.get("description") or "No description recorded."),
                                 points=contribution.get("points"),
                             )
                         )
                 dimensions.append(
                     AnalysisDimensionDTO(
-                        name=str(
-                            item.get("dimension")
-                            or item.get("name")
-                            or "unknown"
-                        ),
+                        name=str(item.get("dimension") or item.get("name") or "unknown"),
                         status=str(item.get("status") or "UNKNOWN"),
                         value=item.get("value"),
-                        level=(
-                            str(item["level"])
-                            if item.get("level") not in (None, "UNKNOWN")
-                            else None
-                        ),
+                        level=(str(item["level"]) if item.get("level") not in (None, "UNKNOWN") else None),
                         weight=item.get("weight"),
                         weighted=item.get("weighted"),
                         explanation=str(item.get("explanation") or ""),

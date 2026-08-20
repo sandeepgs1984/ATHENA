@@ -37,9 +37,7 @@ def test_latest_decisions_requires_auth(client: TestClient) -> None:
     assert response.status_code == 401
 
 
-def test_latest_decisions_returns_one_per_instrument(
-    client: TestClient, tmp_path
-) -> None:
+def test_latest_decisions_returns_one_per_instrument(client: TestClient, tmp_path) -> None:
     repo = SqliteRepository(tmp_path / "router-latest.db")
     repo.initialize()
     now = datetime.now(tz=timezone.utc)
@@ -57,12 +55,11 @@ def test_latest_decisions_returns_one_per_instrument(
     assert payload["status"] == "success"
     by_instrument = {row["metadata"]["instrument_id"]: row["metadata"]["decision_id"] for row in payload["data"]}
     assert by_instrument == {"SYN-AAA": "dec-aaa-newer", "SYN-BBB": "dec-bbb"}
+    assert all(row["analysis"]["confidence_level"] is None for row in payload["data"])
     repo.close()
 
 
-def test_latest_decisions_empty_repo_returns_empty_list(
-    client: TestClient, tmp_path
-) -> None:
+def test_latest_decisions_empty_repo_returns_empty_list(client: TestClient, tmp_path) -> None:
     repo = SqliteRepository(tmp_path / "router-latest-empty.db")
     repo.initialize()
     client.app.state.sqlite_repo = repo
