@@ -5,15 +5,16 @@
 **Latest commit:** `a53a168` — `feat(dashboard): expose full-cycle validation health`  
 **Test suite at handoff:** **2,028 passing**. Ruff passes for changed Python
 files.
-**Current working milestone:** **AUX-3 - Decisions-list confidence band,
-implemented and ready for owner review.** AUX-1a, AUX-1b, and AUX-2 are
-approved.
+**Current working milestone:** **DX-12b - DarvaX 50/100 EMA trend badge on
+Advisor cards and Levels view; next Design gate, not yet implemented.** AUX-1a,
+AUX-1b, AUX-2, and AUX-3 are approved.
 
-AUX-3 adds the nullable `analysis.confidence_level` field to the Decisions read
-model and renders `Conf High`, `Conf Med`, `Conf Low`, or `Conf -` on each
-decision row. The only authority is the canonical persisted `DecisionReport`
-confidence assessment. Score, price, risk, and browser state are never used to
-infer a band; missing or invalid report data remains explicitly unavailable.
+AUX-3 is owner-approved as of 2026-08-20. It adds the nullable
+`analysis.confidence_level` field to the Decisions read model and renders
+`Conf High`, `Conf Med`, `Conf Low`, or `Conf -` on each decision row. The only
+authority is the canonical persisted `DecisionReport` confidence assessment.
+The authenticated dashboard was visually checked for value agreement,
+clipping, and row stability.
 
 The tooltip states that ATHENA confidence reflects evidence reliability, not
 expected profit. The band is informational only: it does not change sorting,
@@ -55,10 +56,11 @@ reproposing what already exists, followed by 29 concrete, scoped ideas.
    server-side JS assembly, security, testing). Read the relevant sections
    before touching a module you haven't worked in.
 
-**Do not skip the active review gate.** Read
-`docs/design/ATHENA-DECISION-LIST-CONFIDENCE-DESIGN.md`, inspect the implemented
-AUX-3 evidence, and wait for owner approval. Do not start DX-12b or a later
-selected item until AUX-3 completes its review and approval cycle.
+**Start with the DX-12b Design gate.** Read the DX-12a entry in
+`IMPLEMENTATION_SUMMARY.md`, inspect `src/athena/darvax/screening/trend.py`, and
+trace the persisted trend values through the DarvaX DTO and dashboard rendering
+paths. Define the Advisor-card badge and Levels-view presentation before
+editing code. Do not start AUX-4 or AUX-5 while DX-12b is active.
 
 ---
 

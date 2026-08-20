@@ -1,7 +1,7 @@
 # ATHENA Decision-List Confidence Design
 
 **Milestone:** AUX-3  
-**Status:** Implemented; ready for owner review  
+**Status:** Approved 2026-08-20  
 **Authority:** Persisted ATHENA `DecisionReport` confidence assessment
 
 ## Objective
@@ -50,14 +50,14 @@ profit, price direction, or a substitute for the Decision and TradePlan.
 - Dashboard hosting and release-gate coverage verifies labels, tooltip copy,
   styles, and asset cache versions.
 - Full suite: **2,028 passing**. Ruff and `git diff --check` pass.
-- The isolated browser reached ATHENA's owner unlock screen but did not share
-  the authenticated owner session. Signed-in visual confirmation is therefore
-  part of owner review, not claimed as completed automation.
+- The owner visually verified the authenticated Decisions dashboard on
+  2026-08-20. The confidence chip remained compact beside score and validity,
+  the selected row's `Conf High` value matched the canonical Quick Summary
+  confidence, and no clipping or row-layout regression was visible.
 
 ## Owner Review Checklist
 
-- Confirm all four bands are legible in the Decisions rail.
-- Confirm the added pill does not truncate symbol, score, or plan-state text.
-- Confirm the tooltip makes the evidence-reliability meaning clear.
-- Confirm rows with unavailable confidence remain visibly honest and usable.
-
+- [x] All four bands are legible in the Decisions rail.
+- [x] The added pill does not truncate symbol, score, or plan-state text.
+- [x] The tooltip makes the evidence-reliability meaning clear.
+- [x] Rows with unavailable confidence remain visibly honest and usable.

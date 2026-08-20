@@ -20,8 +20,8 @@ transition remains gated by owner review.
 |---:|---|---|---|
 | 1 | **AUX-1a / AUX-1b** | Persistent data-freshness indicator — ATHENA first, then DarvaX | Approved 2026-08-19 |
 | 2 | **AUX-2** | Visible last successful cycle and overdue warning | Approved 2026-08-20 |
-| 3 | **AUX-3** | Confidence band visible in the Decisions list | Implemented; ready for owner review; 2,028 tests pass |
-| 4 | **DX-12b** | DarvaX trend badge on Advisor cards and Levels view | Planned; continuation of DX-12a |
+| 3 | **AUX-3** | Confidence band visible in the Decisions list | Approved 2026-08-20; 2,028 tests pass |
+| 4 | **DX-12b** | DarvaX trend badge on Advisor cards and Levels view | Next design gate; continuation of DX-12a |
 | 5 | **AUX-4** | Daily near-miss digest | Planned |
 | 6 | **AUX-5** | ATHENA “My track record” panel | Planned |
 
@@ -31,8 +31,13 @@ sweep with its own `as_of` and completion timestamps. One browser-derived age
 rule would mislabel at least one surface. `AUX-1a` and `AUX-1b` therefore share
 wording and severity semantics but retain separate authoritative contracts.
 
-Design authority for the active milestone:
+Approved AUX-3 design record:
 [`ATHENA-DECISION-LIST-CONFIDENCE-DESIGN.md`](ATHENA-DECISION-LIST-CONFIDENCE-DESIGN.md).
+
+DX-12b is next. It must begin with the Design step and remain limited to
+displaying already-persisted 50/100 EMA trend context on DarvaX Advisor cards
+and the Levels view. It must not alter DarvaX eligibility, tier, action, or
+ATHENA decision logic.
 
 **Published, filterable version:** the same 29 ideas, filterable live by surface
 and effort, are published as an interactive artifact

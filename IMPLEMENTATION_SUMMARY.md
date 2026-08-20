@@ -70,13 +70,18 @@ states that it reflects evidence reliability rather than expected profit.
 Any future confidence sorting or filtering should be a separate owner-approved
 milestone and continue to use the persisted assessment.
 
-**Remaining work.** Owner visual review and approval of AUX-3. DX-12b and all
-later selected advisory UX milestones remain blocked by this gate.
+**Remaining work.** AUX-3 was visually verified and owner-approved on
+2026-08-20. DX-12b is the next Design gate; AUX-4 and AUX-5 remain sequenced
+behind it.
+
+**Owner review.** The authenticated Decisions dashboard showed compact
+confidence chips without clipping or row-layout drift. The selected symbol's
+`Conf High` chip matched the canonical Quick Summary confidence.
 
 **Commit message.**
 `feat(dashboard): surface confidence bands in decision rows`
 
-**Ready for review.** Yes.
+**Ready for review.** Approved 2026-08-20.
 
 ---
 
@@ -147,8 +152,8 @@ the dashboard timestamp.
 adjacent but semantically separate. Any future scheduler notification should
 reuse this projection rather than duplicate cadence logic.
 
-**Remaining work.** AUX-2 is approved. AUX-3 is the active owner-review gate;
-all later selected advisory UX milestones remain blocked by that gate.
+**Remaining work.** AUX-2 and AUX-3 are approved. DX-12b is the next Design
+gate; AUX-4 and AUX-5 remain sequenced behind it.
 
 **Commit message.** `feat(dashboard): expose full-cycle validation health`
 
@@ -459,7 +464,7 @@ Design→Implement→Test workflow.
   schema change was too large for one sitting per the project's own
   "split it before implementing" rule. This milestone (DX-12a) covers the
   backend, Table, and filter; **DX-12b** (Advisor badge + Levels view) is
-  proposed as the next milestone, pending review of this one.
+  the next approved continuation and must begin at the Design gate.
 - 29 new tests (14 backend + 15 frontend), full suite 1,970→1,999 passing.
   Two guards proven non-vacuous by reintroducing the exact bug they guard
   (missing non-Darvas disclosure; a hardcoded colspan) and confirming the
