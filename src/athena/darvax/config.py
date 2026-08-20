@@ -220,6 +220,34 @@ class DarvaxMethodologyConfig(_Strict):
         return self
 
 
+class DarvaxNearMissConfig(_Strict):
+    """AUX-4b: a digest written after each sweep, not on a schedule.
+
+    DarvaX's sweeps are deliberately owner-triggered, never scheduled
+    (DX-4a's own measured performance evidence backs that design) -- a
+    calendar-daily digest would conflict with it. This fires once per
+    completed sweep instead, which the owner confirmed is the right trigger.
+    """
+
+    enabled: bool = Field(
+        default=True,
+        description="Off entirely disables the digest write; the sweep itself is unaffected either way.",
+    )
+    near_miss_pct_max: Decimal = Field(
+        default=Decimal("2"), gt=Decimal(0), le=Decimal(25),
+        description=(
+            "A WATCH-tier signal counts as a near-miss when distance_to_"
+            "breakout_pct is within this many percent of the buy level -- "
+            "the same already-persisted field the Levels view's 'Approaching "
+            "their level' zone reads, not a new computation."
+        ),
+    )
+    output_dir: str = Field(
+        default="artifacts/darvax_digests",
+        description="Relative to the DarvaX process's own working directory.",
+    )
+
+
 class DarvaxConfig(_Strict):
     """The complete DarvaX configuration contract, owned entirely by DarvaX."""
 
@@ -243,6 +271,7 @@ class DarvaxConfig(_Strict):
     )
     scan: DarvaxScanConfig = Field(default_factory=DarvaxScanConfig)
     screener: DarvaxScreenerConfig = Field(default_factory=DarvaxScreenerConfig)
+    near_miss: DarvaxNearMissConfig = Field(default_factory=DarvaxNearMissConfig)
 
 
 def methodology_digest(methodology: DarvaxMethodologyConfig) -> str:

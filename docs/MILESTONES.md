@@ -18,15 +18,44 @@ sweep freshness require separate authoritative contracts.
 | 1b | **AUX-1b** | Calendar-aware DarvaX sweep/data freshness using the shared semantics | ✅ Approved 2026-08-19 |
 | 2 | **AUX-2** | Visible last successful ATHENA cycle and overdue warning outside Live Operations | ✅ Approved 2026-08-20 |
 | 3 | **AUX-3** | Confidence band visible in the Decisions list | ✅ Approved 2026-08-20; 2,028 tests pass |
-| 4 | **DX-12b** | DarvaX 50/100 EMA trend badge on Advisor cards and Levels view | 🔄 Ready for review — implemented 2026-08-20, 2,041 tests pass |
-| 5 | **AUX-4** | Daily near-miss digest for symbols close to their validated trigger | ⏳ Planned |
+| 4 | **DX-12b** | DarvaX 50/100 EMA trend badge on Advisor cards and Levels view | ✅ Approved 2026-08-20; 2,041 tests pass |
+| 5 | **AUX-4a** | ATHENA daily near-miss digest (score-margin, in DailyBriefingBuilder) | 🔄 Ready for review — implemented 2026-08-20, 2,055 tests pass |
+| 5b | **AUX-4b** | DarvaX's own near-miss digest, written once per completed sweep | 🔄 Ready for review — implemented 2026-08-20, 2,069 tests pass |
 | 6 | **AUX-5** | ATHENA “My track record” rollup over existing journal/outcome data | ⏳ Planned |
 
-DX-12b is implemented and awaiting owner review (2026-08-20) — no backend or
-schema change; reuses the persisted `ema_50`/`ema_100` and the existing
-`trendStateFor` classification (DX-12a) to render an omit-when-absent trend
-badge beside the action chip on Advisor cards, held-position cards, and the
-Levels ladder header. AUX-4 and AUX-5 remain sequenced behind it, not started.
+DX-12b was owner-approved 2026-08-20 after live visual verification on the
+owner's own real system. AUX-4 was split into AUX-4a/AUX-4b before
+implementing, the same way AUX-1 was split, because the owner chose to cover
+both surfaces and DarvaX architecturally cannot be pulled into ATHENA's
+notification module (ADR-010's one-way isolation seam).
+
+**AUX-4a** (ATHENA) is implemented and awaiting review: reframed from the
+roadmap's "symbols close to their buy trigger" wording after finding ATHENA
+persists no entry-price level short of a TRADE decision
+(`Decision.trade_plan` is `None` otherwise) — the honest, already-persisted
+near-miss signal is a WATCH decision's composite-score gap to the trade
+threshold, reusing the exact arithmetic already shipped for the decision
+counterfactual endpoint (M-X2). Verified live against the owner's real
+database (read-only; row counts confirmed unchanged): 112 real near-misses
+found and rendered correctly.
+
+**AUX-4b** (DarvaX) is implemented and awaiting review. The owner resolved the
+trigger question directly: the digest fires once per completed sweep rather
+than on any schedule, which inherits DX-4a's "never scheduled" design by
+construction. Reuses `distance_to_breakout_pct` (DX-3, already persisted) --
+the same field the Levels view's "Approaching their level" zone reads -- with
+the same trigger-then-ceiling fallback `distance_to_breakout()` itself uses.
+A file-only writer, self-contained in `athena.darvax` per this satellite's
+own established convention of duplicating small logic rather than importing
+`athena.notifications`. Verified live against an isolated scratch sweep
+(never the owner's real `db/darvax.db`): 35 real near-misses found and
+correctly worded ("clears" vs "buy above" depending on which level was
+used). One real defect caught by that live verification and fixed before
+review: the first version required `trigger_price` specifically and silently
+discarded all 37 real candidates a fresh sweep actually had, since DX-3 sets
+`trigger_price` only alongside a stop and essentially no WATCH row carries
+one.
+
 The approved AUX-3 design record remains at
 [`docs/design/ATHENA-DECISION-LIST-CONFIDENCE-DESIGN.md`](design/ATHENA-DECISION-LIST-CONFIDENCE-DESIGN.md).
 The approved freshness and cycle foundations remain documented in

@@ -5,13 +5,15 @@
 **Latest commit:** `a53a168` — `feat(dashboard): expose full-cycle validation health`
 (DX-12b's own commit is not yet made — the AI provides a commit message,
 the owner commits)  
-**Test suite at handoff:** **2,041 passing** (2,028 → 2,041 for DX-12b). Ruff
-clean on all changed/added files.
-**Current working milestone:** **DX-12b — DarvaX 50/100 EMA trend badge on
-Advisor cards and Levels view. Implemented, tested, verified live against a
-scratch database, and awaiting owner review — not yet approved.** Do not
-begin AUX-4 or AUX-5 until the owner approves DX-12b. AUX-1a, AUX-1b, AUX-2,
-and AUX-3 are approved.
+**Test suite at handoff:** **2,069 passing** (2,041 -> 2,055 for AUX-4a,
+-> 2,069 for AUX-4b). Ruff clean on all changed/added files.
+**Current working milestone:** **AUX-4a implemented, awaiting review.**
+AUX-4 was split into AUX-4a (ATHENA) / AUX-4b (DarvaX) before implementing --
+**AUX-4b needs an owner design decision before it can start**: DarvaX has no
+notification mechanism today, and its sweeps are deliberately
+owner-triggered-only (DX-4a's own performance evidence), which conflicts with
+a *daily* digest unless the owner confirms how it should trigger. AUX-1a,
+AUX-1b, AUX-2, AUX-3, and DX-12b are all approved.
 
 DX-12b reuses DX-12a's persisted `ema_50`/`ema_100` and its existing
 `trendStateFor` classification (no backend/schema change) to render an
@@ -69,10 +71,10 @@ reproposing what already exists, followed by 29 concrete, scoped ideas.
    server-side JS assembly, security, testing). Read the relevant sections
    before touching a module you haven't worked in.
 
-**DX-12b's Design step is done and it is implemented** — see this file's
-top status block and `IMPLEMENTATION_SUMMARY.md`'s DX-12b entry for what
-was built and how it was verified. It is awaiting owner review, not
-approved yet. Do not start AUX-4 or AUX-5 until the owner approves it.
+**DX-12b, AUX-4a, and AUX-4b are all implemented, awaiting review** -- see
+`IMPLEMENTATION_SUMMARY.md`'s entries for each. AUX-4b's trigger question
+(the owner chose: fire once per completed sweep, never on a schedule) is
+resolved. **AUX-5 is the next Design gate** once these are approved.
 
 ---
 

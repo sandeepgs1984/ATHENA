@@ -32,11 +32,13 @@ import logging
 import threading
 import uuid
 from collections.abc import Callable, Sequence
-from decimal import Decimal
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
+from decimal import Decimal
+from pathlib import Path
 
 from athena.darvax.config import DarvaxConfig, methodology_digest
+from athena.darvax.digest import write_digest
 from athena.darvax.ports import DarvaxMarketDataPort
 from athena.darvax.scan import scan_instruments
 from athena.darvax.screening.engine import screen_signals, tier_counts
@@ -44,7 +46,8 @@ from athena.darvax.screening.liquidity import (
     LIQUIDITY_WINDOW_BARS,
     traded_value,
 )
-from athena.darvax.screening.models import SweepRecord
+from athena.darvax.screening.models import ScreenResult, SweepRecord
+from athena.darvax.screening.near_miss import near_miss_candidates
 from athena.darvax.screening.trend import TREND_LOOKBACK_BARS, TrendReading, trend_reading
 from athena.darvax.signals.models import DarvaxSignal
 from athena.darvax.store.repository import DarvaxRepository
@@ -246,6 +249,7 @@ class SweepRunner:
                 pruned = self.store.prune_sweeps(self.config.screener.retain_sweeps)
                 if pruned:
                     logger.info("DarvaX pruned %d old sweep(s)", pruned)
+                self._write_near_miss_digest(sweep_id, started, results)
 
             self._set(
                 state=state,
@@ -305,6 +309,39 @@ class SweepRunner:
                 liquidity[signal.instrument_id] = value
             trend[signal.instrument_id] = trend_reading(candles)
         return liquidity, trend
+
+    def _write_near_miss_digest(
+        self, sweep_id: str, started: datetime, results: Sequence[ScreenResult],
+    ) -> None:
+        """AUX-4b: a digest written once per completed sweep, never on a
+        schedule (DX-4a's own evidence backs "never scheduled" for the sweep
+        itself; this inherits that by construction -- it can only ever fire
+        as a side effect of a sweep the owner already triggered).
+
+        A write failure here must not retroactively fail a sweep that has
+        already completed and been recorded as such -- logged loudly,
+        isolated, never re-raised, the same pattern the per-instrument reads
+        above already use.
+        """
+        if not self.config.near_miss.enabled:
+            return
+        try:
+            candidates = near_miss_candidates(
+                results, max_pct=self.config.near_miss.near_miss_pct_max,
+            )
+            output_dir = Path(self.config.near_miss.output_dir)
+            if not output_dir.is_absolute():
+                output_dir = Path.cwd() / output_dir
+            write_digest(output_dir, sweep_id, started, candidates)
+            logger.info(
+                "DarvaX sweep %s wrote a near-miss digest: %d candidate(s)",
+                sweep_id, len(candidates),
+            )
+        except Exception:
+            logger.exception(
+                "DarvaX sweep %s completed, but its near-miss digest failed to write",
+                sweep_id,
+            )
 
     def _record(
         self,

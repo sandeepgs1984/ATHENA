@@ -1271,6 +1271,17 @@ class NotificationsConfig(_Strict):
     require_runs: bool = True
     degrade_without_decisions: bool = True
     max_runs_scanned: int = Field(default=200, ge=1, le=5000)
+    near_miss_score_gap_max: int = Field(
+        default=5, ge=0, le=100,
+        description=(
+            "AUX-4a. A WATCH decision counts as a near-miss when it passed every "
+            "quality gate and its composite score sits within this many points of "
+            "thresholds.min_composite_for_trade. The gap itself is never "
+            "recomputed here -- it is the same score_gap arithmetic already "
+            "shipped for the decision counterfactual endpoint (M-X2), read a "
+            "second time rather than re-derived."
+        ),
+    )
 
 
 class FailureAlertsConfig(_Strict):

@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from athena.config.models import NotificationsConfig
+from athena.config.models import DecisionThresholdsCfg, NotificationsConfig
 from athena.data.store.repository import SqliteRepository
 from athena.errors import BriefingError
 from athena.notifications.builder import DailyBriefingBuilder, DecisionSummarySource
@@ -25,6 +25,7 @@ class BriefingDispatcher:
         *,
         tzinfo: ZoneInfo,
         decision_source: DecisionSummarySource | None = None,
+        decision_thresholds: DecisionThresholdsCfg | None = None,
         notifiers: Sequence[Notifier] | None = None,
         repo_root: Path | None = None,
     ) -> None:
@@ -32,6 +33,7 @@ class BriefingDispatcher:
             raise BriefingError("notifications are disabled in config/notifications.json")
         self._builder = DailyBriefingBuilder(
             repo, config, tzinfo=tzinfo, decision_source=decision_source,
+            decision_thresholds=decision_thresholds,
         )
         self._config = config
         self._repo_root = Path(repo_root) if repo_root is not None else Path.cwd()

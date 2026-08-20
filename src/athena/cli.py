@@ -473,6 +473,11 @@ def _cmd_brief(args: argparse.Namespace) -> int:
     tz = ZoneInfo(cfg.market.timezone)
     as_of = _parse_as_of(args.as_of, tz)
 
+    # AUX-4a: near-miss detection needs the same trade-threshold config the
+    # decision pipeline itself classifies WATCH-vs-TRADE against, read here
+    # once rather than duplicated as a literal.
+    decision_thresholds = load_decision_config(config_dir).thresholds
+
     with _open_repo(cfg) as repo:
         dispatcher = BriefingDispatcher(
             repo,
@@ -480,6 +485,7 @@ def _cmd_brief(args: argparse.Namespace) -> int:
             tzinfo=tz,
             repo_root=_repo_root(),
             decision_source=SqliteDecisionSummarySource(repo, tzinfo=tz),
+            decision_thresholds=decision_thresholds,
         )
         result = dispatcher.dispatch(as_of=as_of, dry_run=bool(args.dry_run))
 
@@ -487,6 +493,7 @@ def _cmd_brief(args: argparse.Namespace) -> int:
     print(f"status          : {result.briefing.status.value}")
     print(f"runs            : {len(result.briefing.runs)}")
     print(f"decisions       : {len(result.briefing.decisions)}")
+    print(f"near misses     : {len(result.briefing.near_misses)}")
     if result.briefing.degradation_reasons:
         print(f"degraded        : {', '.join(result.briefing.degradation_reasons)}")
     for receipt in result.receipts:

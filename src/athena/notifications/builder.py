@@ -10,10 +10,11 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from datetime import datetime
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Protocol
 from zoneinfo import ZoneInfo
 
-from athena.config.models import NotificationsConfig
+from athena.config.models import DecisionThresholdsCfg, NotificationsConfig
 from athena.data.store.repository import SqliteRepository
 from athena.domain.decision import Decision, DecisionTrace
 from athena.domain.enums import RunStatus
@@ -22,10 +23,12 @@ from athena.errors import BriefingError
 from athena.notifications.models import (
     BriefingDecisionSummary,
     BriefingJournalPrompt,
+    BriefingNearMiss,
     BriefingRunSummary,
     BriefingStatus,
     DailyBriefing,
 )
+from athena.notifications.near_miss import is_near_miss, near_miss_reading
 
 
 class DecisionSummarySource(Protocol):
@@ -45,11 +48,16 @@ class DailyBriefingBuilder:
         *,
         tzinfo: ZoneInfo,
         decision_source: DecisionSummarySource | None = None,
+        decision_thresholds: DecisionThresholdsCfg | None = None,
     ) -> None:
         self._repo = repo
         self._config = config
         self._tzinfo = tzinfo
         self._decision_source = decision_source
+        # AUX-4a. Optional and degrades gracefully (empty near_misses, no
+        # failure) rather than required -- a briefing must still assemble for
+        # an owner who has not wired decision thresholds through yet.
+        self._decision_thresholds = decision_thresholds
 
     def build(self, *, as_of: datetime) -> DailyBriefing:
         if as_of.tzinfo is None:
@@ -69,12 +77,20 @@ class DailyBriefingBuilder:
         if any(r.status == RunStatus.FAILED.value for r in run_summaries):
             reasons.append("one_or_more_runs_failed")
 
-        decisions = self._decision_summaries(as_of)
+        source_items = (
+            self._decision_source.list_for_day(as_of)
+            if self._decision_source is not None else ()
+        )
+        raw_decisions = self._decisions_for_day(as_of, source_items)
+        traces = self._traces_by_decision(source_items)
+        decisions = self._decision_summaries(raw_decisions, traces)
         if not decisions and self._config.degrade_without_decisions:
             reasons.append("no_decision_summaries")
 
+        near_misses = self._near_misses(raw_decisions)
+
         journal_prompts = self._journal_prompts(decisions)
-        day_summary = _build_day_summary(run_summaries, decisions, journal_prompts)
+        day_summary = _build_day_summary(run_summaries, decisions, journal_prompts, near_misses)
 
         if not runs:
             status = BriefingStatus.FAILED
@@ -86,7 +102,7 @@ class DailyBriefingBuilder:
 
         text = _render_text(
             briefing_id, as_of, status, run_summaries, decisions,
-            day_summary, journal_prompts, tuple(reasons),
+            day_summary, journal_prompts, tuple(reasons), near_misses,
         )
         machine = {
             "briefing_id": briefing_id,
@@ -98,6 +114,7 @@ class DailyBriefingBuilder:
             "decisions": [d.to_dict() for d in decisions],
             "day_summary": dict(day_summary),
             "journal_prompts": [p.to_dict() for p in journal_prompts],
+            "near_misses": [n.to_dict() for n in near_misses],
             "degradation_reasons": list(reasons),
         }
         return DailyBriefing(
@@ -111,6 +128,7 @@ class DailyBriefingBuilder:
             degradation_reasons=tuple(reasons),
             day_summary=day_summary,
             journal_prompts=journal_prompts,
+            near_misses=near_misses,
         )
 
     def _runs_for_day(self, as_of: datetime) -> list[RunRecord]:
@@ -135,28 +153,79 @@ class DailyBriefingBuilder:
             quotes_written=int(ingest.get("quotes_written", 0) or 0),
         )
 
-    def _decision_summaries(self, as_of: datetime) -> tuple[BriefingDecisionSummary, ...]:
-        if self._decision_source is None:
-            return ()
+    def _decisions_for_day(
+        self, as_of: datetime, items: Sequence[Decision | tuple[Decision, DecisionTrace | None]],
+    ) -> list[Decision]:
+        """The day's raw Decision objects, filtered from one already-fetched
+        read. Shared by _decision_summaries and _near_misses via a single
+        list_for_day() call in build() so both read the exact same
+        population -- calling the source twice risked a near-miss list
+        computed against a subtly different set than the summary list."""
         day = as_of.astimezone(self._tzinfo).date()
-        items = self._decision_source.list_for_day(as_of)
-        out: list[BriefingDecisionSummary] = []
+        out: list[Decision] = []
         for item in items:
-            if isinstance(item, tuple):
-                decision, trace = item
-            else:
-                decision, trace = item, None
+            decision = item[0] if isinstance(item, tuple) else item
             if decision.ts.astimezone(self._tzinfo).date() != day:
                 continue
-            out.append(BriefingDecisionSummary(
-                decision_id=decision.decision_id,
-                decision_type=decision.decision_type.value,
-                instrument_id=decision.instrument_id,
-                direction=decision.direction.value,
-                explanation=decision.explanation,
-                trace_stage_count=len(trace.stages) if trace is not None else 0,
-            ))
+            out.append(decision)
+        return out
+
+    def _traces_by_decision(
+        self, items: Sequence[Decision | tuple[Decision, DecisionTrace | None]],
+    ) -> dict[str, DecisionTrace | None]:
+        return {
+            item[0].decision_id: item[1]
+            for item in items
+            if isinstance(item, tuple)
+        }
+
+    def _decision_summaries(
+        self, decisions: Sequence[Decision], traces: Mapping[str, DecisionTrace | None],
+    ) -> tuple[BriefingDecisionSummary, ...]:
+        out = [
+            BriefingDecisionSummary(
+                decision_id=d.decision_id,
+                decision_type=d.decision_type.value,
+                instrument_id=d.instrument_id,
+                direction=d.direction.value,
+                explanation=d.explanation,
+                trace_stage_count=(
+                    len(t.stages) if (t := traces.get(d.decision_id)) is not None else 0
+                ),
+            )
+            for d in decisions
+        ]
         out.sort(key=lambda d: d.decision_id)
+        return tuple(out)
+
+    def _near_misses(self, decisions: Sequence[Decision]) -> tuple[BriefingNearMiss, ...]:
+        """WATCH decisions that passed every gate and sit within the
+        configured margin of the trade threshold (AUX-4a). Degrades to empty
+        -- never raises -- when decision_thresholds was not supplied, matching
+        how a missing decision_source degrades the decisions list rather than
+        failing the whole briefing."""
+        if self._decision_thresholds is None:
+            return ()
+        max_gap = Decimal(self._config.near_miss_score_gap_max)
+        out: list[BriefingNearMiss] = []
+        for d in decisions:
+            reading = near_miss_reading(self._repo, d, self._decision_thresholds)
+            if not is_near_miss(d, reading, max_gap=max_gap):
+                continue
+            out.append(BriefingNearMiss(
+                decision_id=d.decision_id,
+                instrument_id=d.instrument_id,
+                # Quantized here, at the point of rendering for a human to
+                # read -- the score engine's own composite carries far more
+                # precision than a person scanning a daily digest needs.
+                # Verified live: an unquantized composite read
+                # "0.20875703116003326572919967 points short", which is noise
+                # a reader has to visually filter past to find the number.
+                composite=str(_quantize_score(reading.composite)),
+                score_gap=str(_quantize_score(reading.score_gap)),
+                trade_threshold=self._decision_thresholds.min_composite_for_trade,
+            ))
+        out.sort(key=lambda n: (Decimal(n.score_gap), n.decision_id))
         return tuple(out)
 
     def _journal_prompts(
@@ -184,10 +253,22 @@ class DailyBriefingBuilder:
         return tuple(prompts)
 
 
+_SCORE_PLACES = Decimal("0.01")
+
+
+def _quantize_score(value: Decimal) -> Decimal:
+    """Two decimal places for a human reading a daily digest. The score
+    engine's own composite carries far more precision than that -- verified
+    live, an unquantized value read as a 26-digit tail a reader has to
+    visually filter past to find the number that matters."""
+    return value.quantize(_SCORE_PLACES, rounding=ROUND_HALF_UP)
+
+
 def _build_day_summary(
     runs: Sequence[BriefingRunSummary],
     decisions: Sequence[BriefingDecisionSummary],
     prompts: Sequence[BriefingJournalPrompt],
+    near_misses: Sequence[BriefingNearMiss] = (),
 ) -> dict[str, object]:
     by_trigger = Counter(r.trigger for r in runs)
     by_status = Counter(r.status for r in runs)
@@ -200,6 +281,7 @@ def _build_day_summary(
         "decisions_by_type": dict(sorted(by_decision_type.items())),
         "journal_prompts_pending": len(prompts),
         "closing_run_present": any(r.trigger == "CLOSING" for r in runs),
+        "near_miss_count": len(near_misses),
     }
 
 
@@ -212,6 +294,7 @@ def _render_text(
     day_summary: Mapping[str, object],
     journal_prompts: Sequence[BriefingJournalPrompt],
     reasons: Sequence[str],
+    near_misses: Sequence[BriefingNearMiss] = (),
 ) -> str:
     lines = [
         f"ATHENA Daily Briefing {briefing_id}",
@@ -226,6 +309,7 @@ def _render_text(
         f"by_type={day_summary.get('decisions_by_type', {})}",
         f"  journal_prompts_pending={day_summary.get('journal_prompts_pending', 0)} "
         f"closing_run_present={day_summary.get('closing_run_present', False)}",
+        f"  near_misses={day_summary.get('near_miss_count', 0)}",
         "",
         f"Runs ({len(runs)}):",
     ]
@@ -247,6 +331,17 @@ def _render_text(
             lines.append(
                 f"  - {d.decision_id} {d.decision_type} {inst} {d.direction} "
                 f"stages={d.trace_stage_count}: {d.explanation}"
+            )
+    lines.append("")
+    lines.append(f"Near misses ({len(near_misses)}):")
+    if not near_misses:
+        lines.append("  (none)")
+    else:
+        for n in near_misses:
+            inst = n.instrument_id or "-"
+            lines.append(
+                f"  - {n.decision_id} {inst}: composite {n.composite}/100, "
+                f"{n.score_gap} points short of the trade level ({n.trade_threshold})"
             )
     lines.append("")
     lines.append(f"Journal prompts ({len(journal_prompts)}):")

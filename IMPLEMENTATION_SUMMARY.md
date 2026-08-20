@@ -6,6 +6,213 @@ status updated on approval.
 
 ---
 
+## AUX-4b: DarvaX's own near-miss digest
+
+**Summary.** A digest written once per completed DarvaX sweep listing
+WATCH-tier signals within a configured margin of their buy level. Owner
+resolved the open trigger question directly: fire after each sweep rather
+than on a schedule, which inherits DX-4a's "never scheduled" sweep design by
+construction rather than conflicting with it.
+
+**Objective.** Cover the DarvaX half of the owner's "also cover DarvaX
+somehow" answer to the AUX-4 scope question, without pulling DarvaX into
+ATHENA's notification module (architecturally forbidden by ADR-010's
+one-way isolation seam) and without inventing a new computation.
+
+**Scope completed.** Reused `distance_to_breakout_pct` (DX-3, already
+persisted on every `ScreenResult`) -- the same field the Levels view's
+"Approaching their level" zone already reads. Added
+`screening/near_miss.py` (pure classification: WATCH tier, not yet crossed
+the level, within the configured margin) and `darvax/digest.py` (a small,
+self-contained file writer -- deliberately not importing
+`athena.notifications`, matching this satellite's established convention of
+duplicating small logic rather than depending on an ATHENA-core module,
+same reasoning `signals/ema.py` already states for re-deriving its own
+EMA). Wired into `sweep.py`'s `_run()` immediately after a sweep completes
+successfully; a digest write failure is logged and isolated, never allowed
+to retroactively fail a sweep that already succeeded.
+
+**A real defect caught by live verification, not by any unit test.** The
+first version required `trigger_price` specifically. DX-3 only sets
+`trigger_price` alongside a stop, so on a real 2,191-instrument sweep every
+single WATCH row with a distance (484 of them) used the box-ceiling fallback
+instead -- the filter silently discarded all 37 real near-misses that sweep
+actually had, reporting a plausible-looking empty digest. A synthetic test
+fixture would only have caught this if its author happened to omit
+`trigger_price`, which the original fixture did not. Fixed to use the same
+trigger-then-ceiling fallback `distance_to_breakout()` itself already uses,
+with `buy_level_basis` recording which one applied -- mirroring
+`breakout_reference` -- and a dedicated regression test pinning the real
+484-vs-0 ratio this defect exhibited.
+
+**Files created.** `src/athena/darvax/screening/near_miss.py`,
+`src/athena/darvax/digest.py`, `tests/darvax/test_aux4b_near_miss.py`.
+
+**Files modified.** `src/athena/darvax/config.py`
+(`DarvaxNearMissConfig`), `src/athena/darvax/screening/sweep.py`
+(`_write_near_miss_digest`), `docs/MILESTONES.md`, the UX roadmap and its
+handoff, and this implementation log.
+
+**Public APIs changed.** None -- `config/darvax.json`'s `near_miss` block is
+additive and DarvaX-owned entirely; no ATHENA-side config, route, or schema
+changed.
+
+**Tests added.** 14 -- classification (within margin, beyond margin,
+already-crossed exclusion, non-WATCH exclusion, missing-both-levels
+exclusion, missing-distance exclusion, trigger-over-ceiling precedence, the
+ceiling-fallback regression case, sort order), the digest writer (JSON+text
+content, the empty case), and sweep wiring (digest written on completion,
+skipped when disabled, isolated from a write failure). Two guards proven
+non-vacuous by reintroducing the exact bug each catches (the already-crossed
+exclusion; the trigger_price-only regression) and confirming failure before
+restoring.
+
+**Test results.** Full suite: **2,069 passing** (2,055 → 2,069). Ruff clean
+on every changed/added file. **Verified live against an isolated scratch
+sweep** (own config, own database, never the owner's real `db/darvax.db`):
+a real 2,191-instrument sweep produced **35 real near-misses**
+(ENEXT50, NEULANDLAB, CRAFTSMAN, KEI, and others), each correctly worded
+("clears" for a ceiling-based level, "buy above" for a genuine trigger).
+The owner's real DarvaX sweep count (30) was confirmed unchanged before and
+after both verification passes.
+
+**Coverage summary.** Classification correctness (all exclusion branches),
+the trigger/ceiling fallback and its precedence, digest content and format,
+and sweep-completion wiring including failure isolation are covered.
+
+**Architecture compliance.** DarvaX's DAR-CARD classification (`tier`,
+`action`) is untouched -- the digest is a read of already-persisted values,
+never a new analytical computation. The sweep's "never scheduled,
+owner-triggered only" design (DX-4a) is preserved by construction: the
+digest can only fire as a side effect of a sweep the owner already started.
+No coupling introduced to ATHENA's own notification module.
+
+**ADR compliance.** ADR-010 (DarvaX isolation) upheld -- `config/darvax.json`
+gained a key DarvaX alone owns and parses; no new ATHENA-side awareness of
+DarvaX beyond the existing `enabled` flag. No ADR required.
+
+**Risks discovered.** The trigger_price-only defect above -- recorded as the
+clearest evidence yet in this track that a synthetic fixture proves a
+function handles the *shape* of input its author imagined, not the
+distribution real data actually has. Live verification against a real
+sweep is what caught it.
+
+**Technical debt introduced.** None. The digest writer is intentionally
+file-only for this milestone (matching the "smallest reviewable milestone"
+principle); a webhook channel can be added later without changing this
+module's shape.
+
+**Suggested improvements.** `docs/design/DARVAX-CONFIGURATION.md` should
+gain a `near_miss` entry alongside the other config blocks it documents, if
+the owner wants that reference kept current for this key too.
+
+**Remaining work.** AUX-4a and AUX-4b are both implemented, tested, and
+verified live; awaiting owner review. AUX-5 is next once these are
+approved.
+
+---
+
+## AUX-4a: ATHENA daily near-miss digest (score-margin)
+
+**Summary.** Added a new section to the existing daily briefing
+(`notifications/builder.py`) listing WATCH decisions that passed every
+quality gate and sit within a configured margin of the trade threshold.
+Reframed from the roadmap's original "symbols close to their buy trigger"
+wording after finding ATHENA persists no entry-price level for anything short
+of a TRADE decision.
+
+**Objective.** Surface a genuine, already-computed near-miss signal in the
+existing daily dispatch, without inventing a new analytical computation or
+re-deriving anything the pipeline did not already persist.
+
+**Scope completed.** Traced `Decision.trade_plan` (`None` unless
+`decision_type is TRADE`) to establish there is no persisted entry-price
+level for a WATCH decision. Found the honest substitute already built and
+shipped: `decisions_service.py`'s `get_decision_counterfactual` (M-X2)
+computes `score_gap = max(0, required - current)` over the same persisted
+report this milestone needed. Added `notifications/near_miss.py` reusing that
+exact formula (duplicated, not imported, across the api/notifications layer
+boundary — same arithmetic, kept honest by test parity). A WATCH decision
+counts as a near-miss only when every quality gate already passed; one
+blocked by a failed gate is excluded regardless of how small its score gap
+is, since that decision is not "close" in any sense this metric describes.
+
+**Files created.** `src/athena/notifications/near_miss.py`,
+`tests/runtime/test_aux4a_near_miss.py`.
+
+**Files modified.** `src/athena/notifications/builder.py` (near-miss
+computation, one `list_for_day()` call shared instead of two, score
+quantization for display), `src/athena/notifications/dispatch.py`
+(`decision_thresholds` pass-through), `src/athena/notifications/models.py`
+(`BriefingNearMiss`), `src/athena/config/models.py`
+(`near_miss_score_gap_max`), `src/athena/cli.py` (`_cmd_brief` wiring +
+output line), `docs/MILESTONES.md`, the UX roadmap and its handoff, and this
+implementation log.
+
+**Public APIs changed.** `NotificationsConfig.near_miss_score_gap_max: int`
+(default 5, additive). `DailyBriefing.near_misses: tuple[BriefingNearMiss,
+...]` (additive field). No existing field or contract changed.
+
+**Tests added.** 14 — score-gap extraction and its absent-not-zero handling
+on a missing/malformed report; the gap-never-negative case verified against
+the real function (not hand-reconstructed arithmetic); all four
+`is_near_miss` branches (within margin, exceeds margin, TRADE type, failed
+gate); the config default/bounds; four builder-integration cases including
+that `list_for_day()` is called exactly once per build; and a dedicated
+regression test for the quantization defect found during live verification.
+The failed-gate exclusion — the single most safety-critical distinction — was
+proven non-vacuous by removing the check and confirming two tests fail
+before restoring.
+
+**Test results.** Full suite: **2,055 passing** (2,041 → 2,055). Ruff clean
+on every changed/added file. **Verified live against the owner's real
+`db/athena.db`** (config pointed at the real absolute db path, output
+redirected to an isolated scratch directory): `athena brief --dry-run`
+found and correctly rendered **112 real near-misses** from real WATCH
+decisions (WIPRO, TCS, INFY, NMDC, and others), each showing a correctly
+quantized composite and score gap. Decision row count confirmed unchanged
+before and after (137,236). A run-count delta observed during verification
+was traced to the owner's own live `--with-cycles` server firing an
+unrelated scheduled REFRESH cycle in the background (confirmed by its
+`RUNNING` status and timestamp), not to this milestone's read-only code path.
+
+**Coverage summary.** Score-gap extraction, absence handling, all
+`is_near_miss` branches, config bounds, the shared single-fetch invariant,
+end-to-end builder assembly (text/machine/day_summary), and display
+quantization are covered.
+
+**Architecture compliance.** Read-only over already-persisted values
+(the composite score and its trade threshold) plus current config — no
+recomputation of score, confidence, or risk. `DailyBriefingBuilder` still
+renders only; it does not re-run the decision pipeline. No coupling to
+DarvaX introduced.
+
+**ADR compliance.** No ADR required — additive config, additive model field,
+no architecture change.
+
+**Risks discovered.** An unrounded composite/gap rendered as a 20+ digit
+decimal tail in the real digest, found only by verifying against real
+production data rather than synthetic fixtures alone — fixed with a
+dedicated quantization helper and a regression test pinning it.
+
+**Technical debt introduced.** None. The score-gap formula is duplicated
+(not shared via import) between `api/v1/services/decisions_service.py` and
+`notifications/near_miss.py`, a deliberate choice to avoid an inappropriate
+cross-layer import; kept honest by identical test coverage on both sides
+rather than a shared private helper.
+
+**Suggested improvements.** None pending for AUX-4a itself.
+
+**Remaining work.** AUX-4a is implemented, tested, and verified live;
+awaiting owner review. **AUX-4b (DarvaX's own near-miss digest) needs a
+design decision from the owner before implementation begins** — DarvaX has
+no notification mechanism today, and its sweeps are deliberately
+owner-triggered rather than scheduled (DX-4a's own performance evidence),
+which conflicts with "daily" unless the owner confirms how DarvaX's digest
+should actually trigger. AUX-5 remains sequenced behind AUX-4b, not started.
+
+---
+
 ## DX-12b: 50/100 EMA trend badge on Advisor cards and the Levels view
 
 **Summary.** Added a small, omit-when-absent trend badge (`↑ trend` /
@@ -80,9 +287,9 @@ a new finding.
 **Suggested improvements.** None pending from this milestone. AUX-4 and AUX-5
 are next in the approved sequence.
 
-**Remaining work.** DX-12b is implemented, tested, and verified live;
-awaiting owner review and approval. AUX-4 and AUX-5 remain unstarted per the
-owner's explicit instruction not to begin them while DX-12b is active.
+**Remaining work.** DX-12b was owner-approved 2026-08-20 after the owner's own
+live visual verification on their real system (real sweep, badge present/absent
+exactly as expected, no regressions). AUX-4 is next.
 
 ---
 

@@ -66,6 +66,29 @@ class BriefingDecisionSummary:
 
 
 @dataclass(frozen=True, slots=True)
+class BriefingNearMiss:
+    """A WATCH decision that passed every gate and sits within the configured
+    margin of the trade threshold (AUX-4a). ``composite`` and ``score_gap`` are
+    read from the same persisted report the decision counterfactual endpoint
+    (M-X2) uses -- never recomputed here."""
+
+    decision_id: str
+    instrument_id: str | None
+    composite: str
+    score_gap: str
+    trade_threshold: int
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "decision_id": self.decision_id,
+            "instrument_id": self.instrument_id,
+            "composite": self.composite,
+            "score_gap": self.score_gap,
+            "trade_threshold": self.trade_threshold,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class BriefingJournalPrompt:
     """Prompt to record a user action/outcome for a decision (R6 / Blueprint §8)."""
 
@@ -97,6 +120,7 @@ class DailyBriefing:
     degradation_reasons: tuple[str, ...] = ()
     day_summary: Mapping[str, object] = field(default_factory=dict)
     journal_prompts: tuple[BriefingJournalPrompt, ...] = ()
+    near_misses: tuple[BriefingNearMiss, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.briefing_id:
@@ -121,6 +145,7 @@ class DailyBriefing:
             "decisions": [d.to_dict() for d in self.decisions],
             "day_summary": dict(self.day_summary),
             "journal_prompts": [p.to_dict() for p in self.journal_prompts],
+            "near_misses": [n.to_dict() for n in self.near_misses],
             "text_summary": self.text_summary,
             "machine": dict(self.machine),
             "degradation_reasons": list(self.degradation_reasons),
