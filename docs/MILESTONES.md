@@ -22,7 +22,9 @@ sweep freshness require separate authoritative contracts.
 | 5 | **AUX-4a** | ATHENA daily near-miss digest (score-margin, in DailyBriefingBuilder) | ✅ Approved 2026-08-20; 2,055 tests pass |
 | 5b | **AUX-4b** | DarvaX's own near-miss digest, written once per completed sweep | ✅ Approved 2026-08-20; 2,069 tests pass |
 | 6 | **AUX-5** | ATHENA “My track record” rollup over existing journal/outcome data | ✅ Approved 2026-08-20; 2,075 tests pass |
-| 7 | **AUX-4c** | Surface near-miss digests in the dashboard UI (ATHENA + DarvaX) — both currently file-only, per AUX-4a/4b's own design | 🔄 Ready for review; 2,086 tests pass |
+| 7 | **AUX-4c** | Surface near-miss digests in the dashboard UI (ATHENA + DarvaX) — both currently file-only, per AUX-4a/4b's own design | ✅ Approved 2026-08-20; 2,086 tests pass |
+| 8 | **AUX-6** | "See the other view" cross-link — quiet affordance linking a symbol's ATHENA Decision Brief and its DarvaX read, and vice versa | 🔄 Ready for review; 2,105 tests pass |
+| 9 | **AUX-7** | "Symbol 360" page — ATHENA Decision, DarvaX screen result, saved-symbol status, and journal history for one instrument, side by side | ⏳ Planned — "Big bet" effort in the roadmap doc; needs its own Design/split pass, queued behind AUX-6 |
 
 DX-12b was owner-approved 2026-08-20 after live visual verification on the
 owner's own real system. AUX-4 was split into AUX-4a/AUX-4b before
@@ -35,7 +37,11 @@ confirmed on the owner's own real, live system (129 real near-misses in a
 real `athena brief --dry-run` run; 35 real near-misses in a real DarvaX
 sweep, with the math spot-checked by hand against the digest's own numbers).
 
-**AUX-4c is implemented, awaiting owner review.** Both AUX-4a and AUX-4b
+**AUX-4c was owner-approved 2026-08-20**, after a same-day copy refinement
+pass (owner verified live, then asked for the term "near miss" itself to be
+self-explanatory — both panels gained a plain-language explainer; see
+IMPLEMENTATION_SUMMARY.md's AUX-4c entry for the "Composite score" naming
+collision this caught and fixed along the way). Both AUX-4a and AUX-4b
 were file-only by design, matching the roadmap item's own "folded into the
 existing morning briefing" wording — neither surfaced in the ATHENA
 dashboard or DarvaX's own UI. Design resolved to reading each digest's
@@ -100,6 +106,106 @@ review: the first version required `trigger_price` specifically and silently
 discarded all 37 real candidates a fresh sweep actually had, since DX-3 sets
 `trigger_price` only alongside a stop and essentially no WATCH row carries
 one.
+
+**AUX-6 and AUX-7 are newly registered, from the "Unify the two advisory
+lanes" roadmap category.** The owner-selected priority track (AUX-1a
+through AUX-4c) closed fully approved 2026-08-20; these are the owner's
+next pick from the still-unscheduled menu. The roadmap doc lists these as
+two separate items of very different size — "See the other view" cross-link
+(Medium effort) and the full "Symbol 360" page (Big bet) — and the owner
+confirmed wanting both. Split before implementation the same way AUX-1 and
+AUX-4 were: AUX-6 (the smaller cross-link) starts Design first; AUX-7
+(Symbol 360) is queued behind it and will very likely need its own
+sub-milestone split once its Design step runs, given its "Big bet" sizing.
+
+**AUX-6 is implemented, awaiting owner review — and it surfaced a real
+architectural boundary mid-implementation.** ADR-010 Amendment 1's existing,
+test-enforced rule ("ATHENA's own dashboard assets may never reference
+DarvaX by name anywhere but one script tag") turned out to forbid the
+ATHENA -> DarvaX half of this feature exactly as first built (ATHENA's
+Decision Brief calling a DarvaX endpoint directly) — caught immediately by
+the full test suite (`test_dx4_surface.py`, `test_dx4b_tab.py`), not
+discovered late. Rather than weaken that boundary, the ATHENA -> DarvaX
+link is instead injected entirely from DarvaX's own `tab.js` — the one file
+already responsible for DOM-injecting things into ATHENA's page (DX-4b) —
+which watches `#decision-brief-title` for a real instrument and adds a
+quiet link only when DarvaX has a signal for it. No ADR amendment needed;
+this fits inside the existing Amendment 1 pattern rather than extending it.
+The DarvaX -> ATHENA half needed no such workaround (DarvaX may read ATHENA
+by design) and lives directly in `darvax.js`, bulk-fetching
+`GET /api/v1/decisions/latest` once per page load. Both links navigate in
+the **same tab** (see the fix below for why) rather than touching the
+DarvaX nav tab's iframe at all. Verified live end-to-end on an isolated
+scratch server in both directions, including the
+`?decision=`/`?symbol=&mode=table` deep-link plumbing each side needed —
+though see below, that scratch verification had a real gap.
+
+**Three real bugs caught by the owner's own live screenshots across three
+fix passes the same day — the first two attempts each insufficient in a
+different way.** Both links originally opened in a new tab
+(`target="_blank"` + `rel="noopener"`) under a mistaken belief that this
+was needed to avoid the DarvaX nav tab's iframe going stale; in fact
+neither link ever touches that iframe, so the new-tab behavior solved a
+problem that didn't exist while creating a real one — every click landed
+on a login screen instead of the target page. **Attempt 1**: dropped
+`noopener`, theorizing the new tab would then inherit `sessionStorage`
+(where the ATHENA token lives) from its opener. Owner re-tested, identical
+failure. **Attempt 2**: dropped `target` entirely, same-tab navigation —
+this genuinely fixed the auth failure (same browsing context, nothing to
+inherit), but broke a *different* case on the very next owner screenshot:
+viewed through ATHENA's own embedded "DarvaX" nav tab (an iframe), an
+untargeted link only navigates that iframe, so clicking the DarvaX-side
+"ATHENA ↗" chip opened a second, nested ATHENA dashboard inside the DarvaX
+pane instead of the real one. **Attempt 3, the actual fix**:
+`target="_top"` on the DarvaX -> ATHENA link only — always navigates the
+outermost window of the current tab (still no new browsing context, so
+auth is untouched), and is a harmless no-op when not embedded. The
+ATHENA -> DarvaX link never needed this, since `tab.js` only ever runs in
+ATHENA's own top-level page and is never itself nested. Separately, the
+injected ATHENA-side link had also rendered as a full-width banner rather
+than a small chip (column-flexbox `align-self` default) — fixed with an
+explicit `align-self`. **Testing-methodology gap surfaced by this**: every
+scratch-server verification here used the `ATHENA_SINGLE_USER=true` auth
+bypass for convenience, which disables the auth check entirely — neither
+of the first two live-verification passes actually exercised real
+authentication, which is exactly why attempt 1 looked correct in scratch
+testing.
+
+**A fourth bug, same day: the ATHENA -> DarvaX link's destination, not
+just its target.** Even after `target="_top"` fixed the nesting, the link
+still pointed straight at DarvaX's standalone `/darvax/...` page — clicking
+it replaced the whole ATHENA dashboard, sidebar and all, exactly the
+"sidebar of tabs is missing" the owner caught from a real screenshot. Fix:
+the link now points at `tab.js`'s own embedded-tab route
+(`/dashboard/darvax?symbol=&mode=`) instead, and `build()` was extended to
+read those same params back out of the URL and forward them into the
+iframe's `src`, so the embedded view opens pre-scoped rather than
+unfiltered. Verified correct by direct inspection of the constructed
+`iframe.src`. **One thing this session's scratch-testing tool could not
+conclusively confirm** — flagged as possibly a tooling artifact — **turned
+out to be a real, fifth bug**, confirmed once the owner re-tested on their
+own system: the sidebar stayed correctly, but the content pane showed
+Overview, not DarvaX. Root-caused by temporarily instrumenting a live page
+(patched `classList.remove`/`className` to log a stack trace on every
+mutation) rather than guessing further: `tab.js`'s own governing comment
+claiming ATHENA's `navItems`/`tabPanes` are a stale snapshot "invisible" to
+this tab was wrong for this exact timing. ATHENA's own bootstrap captures
+those NodeLists (and runs `switchTab("overview")`, since "darvax" isn't
+one of its own tab ids) only *after* an async auth-status fetch resolves —
+which happens after this file's synchronous `build()`/`activate(false)`
+has already run and injected the pane, so by the time `switchTab` captures
+its NodeLists, this pane already exists and gets included — and promptly
+deactivated. No fixed delay can reliably win that race, so the fix adds a
+`MutationObserver` that watches for exactly this clobbering and reasserts
+activation once, then disconnects (both on success and after a 5-second
+safety timeout), so it never fights a real, later, deliberate tab switch.
+Re-verified live across three fresh page loads and a +800ms check: stayed
+active every time; a genuine subsequent click to another tab still worked
+normally.
+
+See IMPLEMENTATION_SUMMARY.md's AUX-6 entry for full detail; regression
+tests were rewritten/added across all five attempts to pin the final
+design; full suite 2,105 passing.
 
 The approved AUX-3 design record remains at
 [`docs/design/ATHENA-DECISION-LIST-CONFIDENCE-DESIGN.md`](design/ATHENA-DECISION-LIST-CONFIDENCE-DESIGN.md).

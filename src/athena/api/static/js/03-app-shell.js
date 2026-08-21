@@ -109,10 +109,22 @@
     function initializeRoute() {
         const pathParts = window.location.pathname.split("/");
         const pathTab = pathParts[pathParts.length - 1];
-        if (["overview", "market", "strategies", "decisions", "operations"].includes(pathTab)) {
-            switchTab(pathTab);
-        } else {
-            switchTab("overview");
+        const tab = ["overview", "market", "strategies", "decisions", "operations"].includes(pathTab)
+            ? pathTab
+            : "overview";
+        const loaded = switchTab(tab);
+
+        // AUX-6: an external deep link may land here with ?decision=<id> —
+        // open that decision's brief once the Decisions & Trace tab's own
+        // data load has finished, so the symbol list is populated and the
+        // row highlight lands correctly. Deliberately generic: this file
+        // must stay unaware of which satellite module, if any, sent the link
+        // (see ADR-010's isolation rule, enforced by test_dx4_surface.py).
+        if (tab === "decisions") {
+            const targetDecisionId = new URLSearchParams(window.location.search).get("decision");
+            if (targetDecisionId && typeof selectBriefing === "function") {
+                loaded.then(() => selectBriefing(targetDecisionId));
+            }
         }
     }
 

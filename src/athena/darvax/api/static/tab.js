@@ -38,7 +38,7 @@
   // parent page's reload cache-bypass, so a hard reload of the dashboard leaves
   // a stale frame document in place. Changing this string changes the URL, and
   // a URL the browser has never seen cannot be served from cache.
-  var UI_VERSION = "0.1.0-aux4c";
+  var UI_VERSION = "0.1.0-aux6f";
 
   function warn(reason) {
     // One line, once. DarvaX must not spam or destabilise ATHENA's console.
@@ -100,7 +100,22 @@
     frame.title = "DarvaX (experimental)";
     // embedded=1 lets the page drop its redundant back-link inside the tab.
     // It never hides the experimental banner.
-    frame.setAttribute("data-src", "/darvax/?embedded=1&v=" + UI_VERSION);
+    var frameSrc = "/darvax/?embedded=1&v=" + UI_VERSION;
+    // AUX-6: a cross-link from ATHENA's own Decision Brief lands on
+    // /dashboard/darvax?symbol=&mode= (this file's own ROUTE, so the
+    // outer page keeps ATHENA's sidebar rather than dropping to DarvaX's
+    // bare standalone page) -- forward those same params into the iframe
+    // so the embedded view opens pre-scoped instead of unfiltered. Read
+    // once at build() time: this whole file only runs on a fresh page
+    // load (a plain <a href> navigation, not an SPA route change), so
+    // there is no later point where these params could change underneath
+    // an already-built iframe.
+    var outerParams = new URLSearchParams(window.location.search);
+    var crosslinkSymbol = outerParams.get("symbol");
+    var crosslinkMode = outerParams.get("mode");
+    if (crosslinkSymbol) frameSrc += "&symbol=" + encodeURIComponent(crosslinkSymbol);
+    if (crosslinkMode) frameSrc += "&mode=" + encodeURIComponent(crosslinkMode);
+    frame.setAttribute("data-src", frameSrc);
     frame.setAttribute("loading", "lazy");
     panel.appendChild(frame);
     paneHost.appendChild(panel);
@@ -147,9 +162,21 @@
       activate(true);
     });
 
-    // ATHENA's switchTab only knows its own snapshotted nav items, so it cannot
-    // deactivate this tab. Listen in the capture phase and stand down ourselves
-    // whenever the user picks one of ATHENA's tabs.
+    // ATHENA's switchTab reads navItems/tabPanes captured with
+    // querySelectorAll -- but NOT at page-parse time as the name "snapshot"
+    // suggests. ATHENA's own bootstrap (dashboard.js) defers that capture,
+    // and its own routing, behind an async auth-status fetch that resolves
+    // AFTER this deferred script has already run -- so by the time it
+    // captures those NodeLists, this tab's nav item/pane already exist and
+    // ARE included. A real, owner-caught bug proved this: on a deep link to
+    // ROUTE, activate(false) below would win the race and set this tab
+    // active, only for ATHENA's own switchTab("overview") to fire moments
+    // later (unaware "darvax" isn't one of its own tab ids) and deactivate
+    // it right back out from under the owner, landing on Overview instead
+    // of DarvaX with no visible failure at all. Listening for ATHENA's own
+    // clicks (below) is a completely different, NON-racy case -- a click
+    // is synchronous and happens well after all of this has settled -- so
+    // it is untouched by the fix beneath it.
     document.querySelectorAll(".nav-item").forEach(function (item) {
       if (item.getAttribute("data-tab") === TAB_ID) return;
       item.addEventListener("click", standDown, true);
@@ -163,15 +190,124 @@
       }
     });
 
-    // Deep link: /dashboard/darvax opens straight into the tab.
-    if (window.location.pathname === ROUTE) activate(false);
+    // Deep link: /dashboard/darvax opens straight into the tab. Racy
+    // against ATHENA's own async routing (see the comment above) --
+    // activate now, but also watch for ATHENA's bootstrap clobbering it
+    // and reassert exactly once, rather than guessing a delay long enough
+    // to always run after a network round trip whose timing this file has
+    // no way to know.
+    if (window.location.pathname === ROUTE) {
+      activate(false);
+      var reassertOnce = new MutationObserver(function () {
+        if (panel.classList.contains("active")) return;
+        reassertOnce.disconnect();
+        activate(false);
+      });
+      reassertOnce.observe(paneHost, { attributes: true, attributeFilter: ["class"], subtree: true });
+      // Nothing to reassert against forever -- ATHENA's own routing settles
+      // within one fetch round trip, not seconds. Stop watching well after
+      // that so a page that never triggers it doesn't run an observer for
+      // the rest of the session.
+      setTimeout(function () { reassertOnce.disconnect(); }, 5000);
+    }
+  }
+
+  // AUX-6 "See the other view" — a quiet link on ATHENA's Decision Brief when
+  // DarvaX also has a persisted signal for the same instrument. Injected
+  // entirely from here, never from any ATHENA asset: ATHENA's own dashboard
+  // stays completely unaware DarvaX exists, the same constraint that governs
+  // everything else in this file. A missing/removed ATHENA hook degrades to
+  // silently doing nothing, per this file's own degradation contract.
+  var ATHENA_TOKEN_KEY = "athena.access_token";
+  var crosslinkEl = null;
+  var crosslinkRequestId = 0;
+
+  function crosslinkToken() {
+    try {
+      return sessionStorage.getItem(ATHENA_TOKEN_KEY) || "";
+    } catch (err) {
+      return "";
+    }
+  }
+
+  function removeCrossLink() {
+    if (crosslinkEl && crosslinkEl.parentElement) {
+      crosslinkEl.parentElement.removeChild(crosslinkEl);
+    }
+    crosslinkEl = null;
+  }
+
+  function checkCrossLink(instrumentId, bareSymbol) {
+    var requestId = ++crosslinkRequestId;
+    removeCrossLink();
+    if (!instrumentId) return;
+    var headers = {};
+    var bearer = crosslinkToken();
+    if (bearer) headers.Authorization = "Bearer " + bearer;
+    fetch("/darvax/api/signals/" + encodeURIComponent(instrumentId), { headers: headers })
+      .then(function (res) {
+        if (requestId !== crosslinkRequestId || !res.ok) return;
+        var metaRow = document.getElementById("decision-brief-meta-row");
+        if (!metaRow || !metaRow.parentElement) return;
+        var link = document.createElement("a");
+        link.className = "context-chip tone-neutral";
+        // Same-tab navigation, deliberately -- a new tab (even without
+        // rel="noopener") is not reliably guaranteed to inherit this tab's
+        // sessionStorage across real browsers, and that is exactly where
+        // the ATHENA auth token lives. Owner-verified real bug: a "_blank"
+        // link opened to a login screen instead of the target page.
+        // Same-tab navigation is the same top-level browsing context, so
+        // there is nothing to inherit -- the token is simply already there.
+        //
+        // Links to THIS file's own ROUTE (/dashboard/darvax), not directly
+        // to /darvax/ -- owner-caught real UX bug: a direct link dropped
+        // the owner onto DarvaX's bare standalone page with ATHENA's own
+        // sidebar/chrome gone entirely. build() above reads these same
+        // ?symbol=/&mode= params back out of this exact URL and forwards
+        // them into the embedded iframe's src, so the click instead opens
+        // ATHENA's own DarvaX tab, pre-scoped to the right symbol, with
+        // the rest of the dashboard still around it.
+        link.href = ROUTE + "?symbol=" + encodeURIComponent(bareSymbol) + "&mode=table";
+        // #decision-brief-header is a column flexbox; an unstyled child
+        // stretches to its full width by default (flex's align-self:
+        // stretch), which is why this first rendered as a wide banner
+        // instead of a small chip. inline-flex + align-self: flex-start
+        // makes it hug its own content, matching every other .context-chip
+        // usage elsewhere on the page.
+        link.style.display = "inline-flex";
+        link.style.alignSelf = "flex-start";
+        link.style.marginTop = "6px";
+        // .context-chip is normally applied to a <span>; as an <a> it would
+        // otherwise pick up the browser's default underline.
+        link.style.textDecoration = "none";
+        link.textContent = LABEL + " also has a read on this →";
+        metaRow.parentElement.insertBefore(link, metaRow.nextSibling);
+        crosslinkEl = link;
+      })
+      .catch(function () {
+        // Unreachable, disabled, or a transient failure — no link, no noise.
+      });
+  }
+
+  function watchDecisionBrief() {
+    var titleEl = document.getElementById("decision-brief-title");
+    if (!titleEl || typeof MutationObserver === "undefined") return;
+    var lastInstrument = null;
+    new MutationObserver(function () {
+      var instrumentId = titleEl.getAttribute("title");
+      if (instrumentId === lastInstrument) return;
+      lastInstrument = instrumentId;
+      checkCrossLink(instrumentId, titleEl.textContent || "");
+    }).observe(titleEl, { attributes: true, attributeFilter: ["title"] });
   }
 
   try {
     if (document.readyState === "loading") {
       document.addEventListener("DOMContentLoaded", build);
+      document.addEventListener("DOMContentLoaded", watchDecisionBrief);
     } else {
       build();
+      watchDecisionBrief();
     }
   } catch (err) {
     // Absolute last resort: DarvaX failing must never break ATHENA's dashboard.

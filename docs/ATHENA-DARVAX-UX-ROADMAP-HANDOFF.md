@@ -1,33 +1,132 @@
 # ATHENA & DarvaX UX Roadmap — Agent Handoff
 
-**Snapshot date:** 2026-08-20 (updated — AUX-4c implemented, awaiting owner review)  
+**Snapshot date:** 2026-08-20 (updated — AUX-6 implemented, awaiting owner review)  
 **Branch observed:** `feature/live-dashboard`  
 **Latest commit:** `a53a168` — `feat(dashboard): expose full-cycle validation health`
 (none of this track's own commits are made yet — the AI provides a
 commit message per milestone, the owner commits)  
-**Test suite at handoff:** **2,086 passing** (2,041 -> 2,055 for AUX-4a,
--> 2,069 for AUX-4b, -> 2,075 for AUX-5, -> 2,086 for AUX-4c). Ruff clean on
-all changed/added files.
-**Current working milestone:** **AUX-4c, implemented, awaiting owner
-review.** AUX-1a, AUX-1b, AUX-2, AUX-3, DX-12b, AUX-4a, AUX-4b, and AUX-5
-are all approved — AUX-4a/4b each independently confirmed by the owner on
-their own real, live system (129 real near-misses in a real `athena brief`
-run; 35 in a real DarvaX sweep, spot-checked by hand). AUX-5 rolled up
-journal + realized-outcome history into a new 3-card "My track record" row
-on the Overview tab (Win Rate / Avg Return per Trade / Plan Adherence).
-**AUX-4c** surfaces AUX-4a's and AUX-4b's near-miss digests by reading each
-already-persisted file directly (mirroring `OpsService.list_backups`'
-glob-plus-defensive-parse convention rather than adding new persistence): a
-new "Near Misses" card on the ATHENA Overview tab, and a new "Near misses"
-zone in DarvaX's Advisor view (independent of the live sweep state — it can
-go stale between sweeps by design, same as the digest itself). Verified
-live: the DarvaX side against a fully isolated scratch server; the ATHENA
-side incidentally read the owner's real `artifacts/briefings/
-brief-2026-08-20.json` because `get_decisions_service`'s dependency
-hardcodes `config_dir` to the real repo root regardless of
-`ATHENA_CONFIG_DIR` — read-only, pre-existing, not introduced by this
-milestone, but flagged as a risk for future scratch-isolated verification
-work on any config-reading `DecisionsService` method.
+**Test suite at handoff:** **2,105 passing** (2,041 -> 2,055 for AUX-4a,
+-> 2,069 for AUX-4b, -> 2,075 for AUX-5, -> 2,086 for AUX-4c, -> 2,105 for
+AUX-6, across five owner-caught fix passes the same day). Ruff clean on all
+changed/added files.
+**Current working milestone:** **AUX-6, implemented, awaiting owner
+review.** The owner-selected priority track (AUX-1a through AUX-4c) closed
+fully approved 2026-08-20. The owner's next pick, from the "Unify the two
+advisory lanes" roadmap category, is both items there — split before
+implementation the same way AUX-1/AUX-4 were, since they're two very
+differently sized items (Medium vs. "Big bet"): **AUX-6** ("See the other
+view" cross-link) is built; **AUX-7** ("Symbol 360" page) is queued behind
+it and will likely need its own split once its Design step runs.
+
+**AUX-6 surfaced a real architectural boundary mid-implementation — read
+this before touching either dashboard's JS.** ADR-010 Amendment 1's
+existing, test-enforced rule ("ATHENA's own dashboard assets may never
+reference DarvaX by name anywhere but one script tag") forbids the ATHENA
+-> DarvaX half of a cross-link living in any `src/athena/api/static/`
+file — the first attempt put it in `13-decision-brief-core.js` and the full
+suite caught it immediately (`test_dx4_surface.py`,
+`test_dx4b_tab.py`). The fix, not a workaround: DarvaX's own `tab.js` (the
+one file already responsible for DOM-injecting things into ATHENA's page,
+DX-4b) watches `#decision-brief-title`'s `title` attribute via
+`MutationObserver` and injects the link itself when DarvaX has a signal for
+that instrument — extending Amendment 1's existing accepted pattern, no ADR
+needed. The DarvaX -> ATHENA half needed no such workaround (DarvaX may
+read ATHENA by design) and lives directly in `darvax.js`. **Any future
+cross-lane UI work should assume this same asymmetry**: DarvaX-owned files
+may reference ATHENA freely; ATHENA-owned files may never reference DarvaX,
+full stop, even in a comment.
+
+**Two more real bugs on top of that, and a testing-methodology gap they
+exposed — read this before wiring any future cross-lane link.** Both
+cross-links originally opened in a new tab, which broke authentication —
+the new tab has no guaranteed way to inherit `sessionStorage` (where the
+ATHENA token lives), so every click landed on a login screen. Fix attempt 1
+(dropping `rel="noopener"` alone) looked right in scratch testing but the
+owner's real system proved it still broken — because **every scratch
+server this session used `ATHENA_SINGLE_USER=true`**, which disables the
+auth check entirely and cannot exercise this bug at all. Fix attempt 2
+(dropping `target` entirely, same-tab navigation) genuinely fixed the auth
+failure — but broke a *different* case the owner caught on the very next
+screenshot: viewed through ATHENA's own embedded "DarvaX" nav tab (an
+iframe via `tab.js`), an untargeted link only navigates that iframe, so the
+DarvaX-side "ATHENA ↗" chip opened a second, nested ATHENA dashboard inside
+the DarvaX pane instead of the real one. **Final fix**: `target="_top"` on
+the DarvaX -> ATHENA link only — always navigates the outermost window of
+the *same tab* (no new browsing context, so auth is untouched) and is a
+harmless no-op when not embedded. The ATHENA -> DarvaX link (injected by
+`tab.js`) never needed this, since `tab.js` only ever runs in ATHENA's own
+top-level page and is never itself nested — it stays untargeted.
+`darvax.js`'s own pre-existing top comment had already documented the
+sessionStorage fragility that started this — check it, and remember DarvaX
+can be viewed either standalone or embedded, before reaching for any
+`target` value on a future cross-lane link. **Lesson for future sessions
+verifying anything auth-dependent**: `ATHENA_SINGLE_USER=true` is fine for
+functional/data checks, but it cannot prove an auth-carryover fix works —
+that needs a real authenticated run, which for a live dashboard means the
+owner's own system.
+
+**A fourth real bug on top of those three, same day: the link's
+destination, not its target.** After `target="_top"` fixed the nesting, the
+ATHENA -> DarvaX link still pointed straight at DarvaX's standalone
+`/darvax/...` page — clicking it replaced ATHENA's entire dashboard,
+sidebar and all, which is exactly what the owner's next screenshot caught
+("sidebar of tabs is missing"). Fixed by pointing the link at `tab.js`'s
+own `ROUTE` (`/dashboard/darvax?symbol=&mode=`) instead of `/darvax/`
+directly, and extending `build()` to read those same params back out of
+the URL and forward them into the iframe's `src`. Verified correct by
+direct inspection of the constructed `iframe.src`.
+
+**A fifth real bug — what looked like a possible tooling artifact turned
+out to be a genuine race condition.** The prior note here guessed the
+"pane doesn't visually activate" question might be a scratch-tool quirk.
+The owner re-tested on their real system and proved it was real: sidebar
+correct, but content pane showed Overview instead of DarvaX. Root-caused by
+temporarily patching `panel.classList.remove`/`className` to log a stack
+trace on every mutation and loading a real deep link — the trace pointed
+straight at ATHENA's own `switchTab("overview")`, called from
+`initializeRoute` from `bootstrapSession`. **The load-bearing assumption
+this file's own top comment made — that ATHENA's `navItems`/`tabPanes` are
+a stale snapshot "invisible" to a dynamically-injected tab — is wrong for
+this specific timing.** ATHENA's bootstrap captures those NodeLists (and
+runs its own routing) only *after* an async `/api/v1/auth/status` fetch
+resolves, which happens after this file's synchronous `build()` has
+already run and injected the pane — so by the time `switchTab` captures
+its NodeLists, this pane already exists and gets included, then promptly
+deactivated since "darvax" isn't one of ATHENA's own tab ids. **Fix**: no
+fixed delay can reliably win a race against an async fetch whose timing
+this file can't know, so a `MutationObserver` now watches for exactly this
+clobbering after a deep-link activation and reasserts once, then
+disconnects — both on success and after a 5-second safety timeout, so it
+never fights a real, later, deliberate tab switch. Verified live across
+three fresh page loads plus a +800ms check (stayed active every time) and
+confirmed a genuine subsequent click to another tab still works normally.
+**Lesson for future sessions**: when a live-testing tool shows unexpected
+behavior, instrument the actual code with a stack-trace-capturing patch
+before concluding it's the tool's fault — the fourth bug's "maybe a tooling
+artifact" guess delayed finding this by one full round trip with the
+owner.
+
+AUX-1a, AUX-1b, AUX-2, AUX-3, DX-12b, AUX-4a, AUX-4b, AUX-5, and AUX-4c are
+all approved — AUX-4a/4b each independently confirmed by the owner on their
+own real, live system (129 real near-misses in a real `athena brief` run;
+35 in a real DarvaX sweep, spot-checked by hand). AUX-5 rolled up journal +
+realized-outcome history into a new 3-card "My track record" row on the
+Overview tab. AUX-4c surfaced AUX-4a's and AUX-4b's near-miss digests by
+reading each already-persisted file directly (mirroring
+`OpsService.list_backups`'s glob-plus-defensive-parse convention); the
+owner's live review asked for the term itself to be self-explanatory, so
+both panels carry a plain-language explainer — see
+IMPLEMENTATION_SUMMARY.md's AUX-4c entry for the exact wording and the
+"Composite score" naming collision that refinement pass caught (an existing
+UX-8 regression guard; fixed with the app's established "Score" label).
+
+One flagged, not-yet-fixed risk carried over from AUX-4c:
+`get_decisions_service`'s dependency hardcodes `config_dir` to the real
+repo root regardless of `ATHENA_CONFIG_DIR`, discovered during that
+milestone's live verification (read-only, harmless, but will bite any
+future config-reading `DecisionsService` method's scratch-isolated
+testing) — a background task was spawned for it, see the session's task
+list.
 
 DX-12b reuses DX-12a's persisted `ema_50`/`ema_100` and its existing
 `trendStateFor` classification (no backend/schema change) to render an

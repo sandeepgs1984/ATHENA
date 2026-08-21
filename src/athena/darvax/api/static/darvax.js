@@ -1222,6 +1222,52 @@
       t.arrow + " " + t.label + "</span>";
   }
 
+  // AUX-6 "See the other view" — instrument_id -> decision_id, fetched once
+  // per page load from ATHENA's own "one decision per instrument" endpoint
+  // (the same one AUX-1a's freshness work already established as the
+  // canonical latest-per-instrument read). A plain existence lookup: no
+  // DarvaX card ever recomputes or reinterprets what the decision means.
+  var athenaDecisionByInstrument = {};
+
+  function athenaChip(instrumentId) {
+    var decisionId = athenaDecisionByInstrument[instrumentId];
+    if (!decisionId) return "";
+    // target="_top", not a new tab and not a plain same-document link.
+    // Two real bugs, in order: (1) target="_blank" opened a new tab with no
+    // guaranteed access to this tab's sessionStorage (where the ATHENA auth
+    // token lives), landing on a login screen. (2) Removing target
+    // entirely broke when this page is viewed *embedded* -- ATHENA's own
+    // DarvaX nav tab (tab.js) loads /darvax/ inside an iframe, and an
+    // untargeted link only navigates that iframe, so clicking this opened
+    // a second, nested ATHENA dashboard inside the DarvaX pane instead of
+    // the real one. target="_top" always navigates the outermost window of
+    // THIS SAME TAB -- still no new browsing context, so sessionStorage is
+    // untouched -- and is a harmless no-op when this page isn't embedded.
+    return '<a class="crosslink-chip" target="_top" ' +
+      'href="/dashboard/decisions?decision=' + encodeURIComponent(decisionId) + '" ' +
+      'title="Open this instrument’s ATHENA Decision Brief">' +
+      "ATHENA ↗</a>";
+  }
+
+  function loadAthenaCrossLinks() {
+    return request("/api/v1/decisions/latest")
+      .then(function (payload) {
+        var items = (payload && payload.data) || [];
+        var map = {};
+        items.forEach(function (d) {
+          var id = d.metadata && d.metadata.instrument_id;
+          var decisionId = d.metadata && d.metadata.decision_id;
+          if (id && decisionId) map[id] = decisionId;
+        });
+        athenaDecisionByInstrument = map;
+        renderScreen();
+      })
+      .catch(function () {
+        // ATHENA unreachable or no decisions yet — cards simply show no
+        // cross-link, same as any other "nothing to show" case.
+      });
+  }
+
   function money(raw) {
     var v = num(raw);
     return v === null ? "—" : "₹" + v.toLocaleString("en-IN");
@@ -1274,7 +1320,7 @@
       '<article class="ticket buy">' +
         '<header><span class="pos">' + (index + 1) + "</span>" +
           '<span class="sym">' + esc(row.symbol) + "</span>" +
-          actionChip(row) + trendChip(row) + "</header>" +
+          actionChip(row) + trendChip(row) + athenaChip(row.instrument_id) + "</header>" +
         '<dl class="lines">' +
           "<dt>Buy above</dt><dd class=\"key\">" +
             (buy === null ? "—" : money(row.trigger_price)) + "</dd>" +
@@ -1302,6 +1348,7 @@
           "</span>" +
           (row ? actionChip(row) : '<span class="act a-none">no reading</span>') +
           (row ? trendChip(row) : "") +
+          athenaChip(p.instrument_id) +
           '<span class="spacer"></span>' +
           (ret === null ? "" : '<span class="ret ' + (ret >= 0 ? "up" : "down") +
             '">' + (ret >= 0 ? "+" : "") + ret.toFixed(2) + "%</span>") +
@@ -1659,7 +1706,7 @@
     return '' +
       '<article class="lcard">' +
         '<header><span class="sym">' + esc(row.symbol) + "</span>" +
-          actionChip(row) + trendChip(row) + "</header>" +
+          actionChip(row) + trendChip(row) + athenaChip(row.instrument_id) + "</header>" +
         levelChart(row, position) +
         rLine(row) +
         held +
@@ -2122,9 +2169,25 @@
   S.sellTickets.addEventListener("click", onTicketClick);
   S.holdTickets.addEventListener("click", onTicketClick);
 
+  // AUX-6 "See the other view" — a cross-link from an ATHENA Decision Brief
+  // lands here with ?symbol=<bare>&mode=table. Applied before loadScreen()'s
+  // first renderScreen() so the opening render is already scoped to that
+  // symbol, not an unfiltered flash followed by a jump.
+  (function applyCrossLinkParams() {
+    var params = new URLSearchParams(window.location.search);
+    var symbol = params.get("symbol");
+    if (symbol) {
+      screen.filter = symbol.toUpperCase();
+      if (S.filter) S.filter.value = screen.filter;
+    }
+    if (params.get("mode") === "table") setMode("table");
+  })();
+
   loadPositions();
 
   loadScreen();
 
   loadNearMisses();
+
+  loadAthenaCrossLinks();
 })();

@@ -6,6 +6,263 @@ status updated on approval.
 
 ---
 
+## AUX-6: "See the other view" cross-link
+
+**Summary.** A quiet link between a symbol's ATHENA Decision Brief and its
+DarvaX read, and vice versa — the "Unify the two advisory lanes" roadmap
+category's smaller item, split off from the bigger "Symbol 360" page (AUX-7,
+queued behind it) the same way AUX-1 and AUX-4 were split before
+implementation.
+
+**Objective.** Close the roadmap's own "not even a link between a symbol's
+two views" gap, without building the full unified page yet.
+
+**Scope completed.** Both directions reuse existing endpoints only —
+`GET /darvax/api/signals/{instrument_id}` (an existence check) and
+`GET /api/v1/decisions/latest` (already built for AUX-1a) — no new backend
+route or DTO. **DarvaX -> ATHENA** (architecturally unremarkable, DarvaX may
+read ATHENA by design): `darvax.js` bulk-fetches the latest-decisions list
+once per page load into an `instrument_id -> decision_id` map; `athenaChip()`
+renders a link to `/dashboard/decisions?decision=<id>` wherever the map has
+an entry (buy tickets, holding tickets, ladder cards). **ATHENA -> DarvaX**
+required a real mid-implementation pivot — see the finding below — and ended
+up living entirely in DarvaX's own `tab.js`: it watches
+`#decision-brief-title`'s `title` attribute (already set to the full
+instrument_id on every render) via `MutationObserver`, and on a change,
+checks DarvaX's own signal endpoint and injects a link after
+`#decision-brief-meta-row` when one exists. Both links use
+`target="_blank"`, deliberately bypassing the DarvaX nav tab's iframe (its
+`src` is set once on first activation and never re-navigated per DX-4b, so
+an in-place link could silently land on a stale symbol). New `?symbol=` /
+`?mode=table` handling in `darvax.js` and `?decision=` handling in
+`03-app-shell.js`'s `initializeRoute()` make both landings deep-link
+correctly rather than requiring a second manual search.
+
+**A real architectural boundary found and respected, not worked around.**
+The first version put the ATHENA -> DarvaX half directly in
+`13-decision-brief-core.js` (fetching `/darvax/api/signals/...`, linking to
+`/darvax/...`). The full test suite caught this immediately:
+`test_dx4_surface.py::test_darvax_ui_does_not_touch_athena_dashboard_assets`
+and two `test_dx4b_tab.py` guards enforce, byte-for-byte, that ATHENA's own
+dashboard assets (`src/athena/api/static/js/*.js`, `*.css`) may never
+reference "darvax" anywhere — not even in a comment — except the one
+already-permitted `tab.js` script tag (ADR-010 Amendment 1). This is not a
+new rule this milestone bent; it is an existing, deliberately strict one
+this milestone's first attempt genuinely violated. Per CLAUDE.md's rule for
+genuine architectural limitations, the response was to stop, not patch
+around the string match, and find a path that respects the boundary:
+`tab.js` already DOM-injects things into ATHENA's page from outside
+ATHENA's own codebase (DX-4b's nav tab/panel/iframe), so extending that
+exact, already-accepted pattern to inject this link too required no ADR
+amendment — it fits inside Amendment 1 rather than widening it. The
+reverted ATHENA-side code and the final `tab.js`-based design are both
+recorded here so a future reader sees why the feature lives where it does.
+
+**Files created.** `tests/darvax/test_aux6_crosslink.py`.
+
+**Files modified.** `src/athena/darvax/api/static/darvax.js`
+(`athenaChip`, `loadAthenaCrossLinks`, `applyCrossLinkParams`),
+`src/athena/darvax/api/static/darvax.css` (`.crosslink-chip`),
+`src/athena/darvax/api/static/tab.js` (`checkCrossLink`,
+`watchDecisionBrief`, `removeCrossLink`, `crosslinkToken`),
+`src/athena/api/static/js/03-app-shell.js` (`?decision=` handling in
+`initializeRoute()` — generic, carries no DarvaX awareness), asset version
+bumps on both sides (DarvaX `0.1.0-aux4c` -> `0.1.0-aux6`, `tab.js`'s
+`UI_VERSION` kept in lockstep per its own pinned test), `docs/MILESTONES.md`,
+the UX roadmap, and this implementation log.
+
+**Public APIs changed.** None — both directions reuse existing, already
+read-only endpoints.
+
+**Tests added.** 12 — DarvaX-side chip/map/URL-param logic (5), tab.js-side
+injection/token-reuse/stale-response-guard logic (6), and a dedicated
+"no ATHENA asset references DarvaX" pin specific to this feature (redundant
+with the suite-wide guard, kept anyway so a reader of this test file alone
+sees the constraint that shaped the design). Two guards proven non-vacuous
+by reintroducing the exact bug each catches (out-of-order response handling
+in `checkCrossLink`; the URL-param ordering check) and confirming failure
+before restoring.
+
+**Test results.** Full suite: **2,098 passing** (2,086 -> 2,098). Verified
+live end-to-end on an isolated scratch server (own config, own database):
+generated a real ATHENA decision and a real DarvaX signal for the same
+instrument (`NSE:360ONE`), confirmed the DarvaX Advisor view rendered the
+"ATHENA ↗" chip on a real buy card with the correct decision-id link,
+confirmed the `?decision=` deep-link opened the correct ATHENA Decision
+Brief and `tab.js` injected the correct "DarvaX also has a read on this →"
+link into it, and confirmed the `?symbol=&mode=table` deep-link landed on
+DarvaX's Table view pre-filtered to the right symbol after a real universe
+sweep.
+
+**Coverage summary.** Chip-rendering conditions, bulk-map construction,
+URL-param application order, DOM-injection targeting, stale-link removal,
+out-of-order-response guarding, and shared-token reuse are covered at the
+unit level on both sides.
+
+**Architecture compliance.** ADR-010's one-way isolation is upheld exactly,
+including the stricter "ATHENA assets never reference DarvaX by name"
+sub-rule this milestone had not previously exercised directly — verified by
+the existing enforced tests, not just by inspection. No new backend route,
+no new DTO, no change to scoring/confidence/risk/Decision/TradePlan/DAR-CARD
+logic.
+
+**ADR compliance.** No ADR amendment needed. The ATHENA -> DarvaX injection
+extends DX-4b's existing, already-accepted `tab.js` DOM-injection pattern
+rather than introducing a new one.
+
+**Risks discovered.** None new beyond the one already resolved above. The
+`get_decisions_service` config_dir risk flagged during AUX-4c remains
+open and unrelated to this milestone (a background task is tracking it).
+
+**Technical debt introduced.** None.
+
+**Suggested improvements.** AUX-7 ("Symbol 360" page) is the natural next
+step in this same roadmap category and will reuse the same instrument_id
+join this milestone established. The DarvaX -> ATHENA chip currently
+appears on Advisor/Levels cards only, not Table view rows — deliberate for
+this pass given Table view can list thousands of rows, but a future
+refinement could extend it there if the owner wants it.
+
+**Remaining work.** Awaiting owner review.
+
+**Post-review fix pass (2026-08-20, same day, before approval) — three
+attempts on the DarvaX -> ATHENA link, the first two each insufficient in a
+different way.** Owner verified live on their real system with real
+screenshots each time and caught a genuinely new failure mode on each
+pass.
+
+*Attempt 1 (`target="_blank"` + `rel="noopener"`) — broke auth.* Both
+cross-link `<a>` tags originally opened in a new tab, under a mistaken
+belief that a new tab was needed to avoid the DarvaX nav tab's iframe going
+stale — in fact neither link ever touches that iframe (both point directly
+at the standalone `/darvax/...`/`/dashboard/decisions?...` pages), so the
+new-tab behavior solved nothing while creating a real problem. Every click
+landed the new tab on a login screen instead of the target page, because
+that's where the ATHENA auth token (`sessionStorage`) lives and a fresh tab
+has no guaranteed way to inherit it.
+
+*Attempt 2 (dropped `noopener`, kept a new tab) — still broke auth.*
+Theorized the new tab would inherit the opener's `sessionStorage` once
+`noopener` was gone. The owner re-tested on their real system and hit the
+identical failure — this did not work, and neither live-verification pass
+in this session had actually caught it, because every scratch server used
+here runs with `ATHENA_SINGLE_USER=true` for convenience, which disables
+the auth check entirely and cannot exercise this bug at all.
+
+*Attempt 3 (dropped `target` entirely, same-tab navigation) — fixed auth,
+broke the embedded case.* Same-tab navigation is not cross-tab storage
+inheritance at all — it's the same top-level browsing context continuing
+to the next page, so there is nothing to inherit; the token is simply
+already there. `darvax.js`'s own pre-existing top-of-file comment had
+already documented this exact fragility ("sessionStorage is per browsing
+context: opening /darvax/ in a brand-new tab has no token") — the first
+place this should have been checked. This genuinely fixed the auth
+failure, but broke a *different* case the owner caught on the next
+screenshot: viewed through ATHENA's own "DarvaX" nav tab (which loads
+`/darvax/` inside an iframe via `tab.js`), an untargeted link only
+navigates that iframe -- clicking the DarvaX-side "ATHENA ↗" chip opened a
+second, nested ATHENA dashboard rendered inside the DarvaX pane instead of
+navigating the real page.
+
+*Final fix: `target="_top"` on the DarvaX -> ATHENA link only.* `_top`
+always navigates the outermost window of the current tab -- still no new
+browsing context, so `sessionStorage` is untouched exactly like plain
+same-tab navigation -- and it is a harmless no-op when the page isn't
+embedded. The ATHENA -> DarvaX link (injected by `tab.js`) did not need
+this: `tab.js` only ever runs in ATHENA's own top-level page, never nested
+inside an iframe itself, so its injected link was never at risk of this
+failure mode and stays untargeted.
+
+Separately, a visual bug (fixed correctly on the first attempt): the
+ATHENA-side injected link rendered as a full-width banner instead of a
+small chip -- `#decision-brief-header` is a column flexbox, and an unstyled
+child defaults to `align-self: stretch`, filling the container's full
+width. Fixed with explicit `align-self: flex-start` (plus
+`text-decoration: none`, since `.context-chip` is normally applied to a
+`<span>` and this is the first place it's used as an `<a>`). Also widened
+`.ticket header`/`.lcard header` to `flex-wrap: wrap` so the new
+"ATHENA ↗" chip doesn't clip on narrower cards.
+
+Regression tests updated across all three attempts to pin the final
+design (`target="_top"` present on the DarvaX-side chip, absent entirely on
+the ATHENA-side injected link, `noopener` absent from both, `align-self` on
+the injected link) — full suite: **2,101 passing** throughout (no net test
+count change; existing tests were rewritten in place as the design
+changed). Re-verified live against a scratch server for all three
+scenarios: standalone DarvaX page, embedded DarvaX nav tab (clicking
+"ATHENA ↗" from inside the iframe correctly navigated the outer page with
+no nesting), and visual chip sizing on both sides. Per the
+testing-methodology gap noted above, that environment's auth bypass still
+means it cannot mechanically prove the auth fix itself; the owner's own
+real system is the only environment that can close that specific loop.
+
+**Fourth bug (same day) — the ATHENA -> DarvaX link's *destination* was
+wrong, not just its `target`.** After the `target="_blank"` fix, the link
+still pointed straight at `/darvax/?symbol=...&mode=table` -- DarvaX's
+standalone page. Clicking it correctly stayed same-tab, but replaced the
+*entire* ATHENA dashboard with DarvaX's bare page, sidebar and all other
+chrome gone -- the owner caught this from a real screenshot ("sidebar of
+tabs is missing"). Fix: the link now points at `ROUTE`
+(`/dashboard/darvax`, `tab.js`'s own embedded-tab route) instead of
+`/darvax/` directly, carrying the same `?symbol=&mode=` query string.
+`build()` was extended to read those same params back out of the outer
+page's own URL at construction time and forward them into the iframe's
+`data-src`, so the embedded view opens pre-scoped to the right symbol
+instead of unfiltered -- confirmed correct by direct inspection of the
+constructed `iframe.src`. 2 more regression tests added (17 total in the
+file); full suite: **2,103 passing**.
+
+**Fifth bug (same day) — a genuine race condition, not the tooling
+artifact it was first suspected to be.** The prior fix's own "known
+verification gap" note guessed the visual-activation question might be a
+scratch-testing-tool quirk. The owner re-tested on their real system and
+proved it was a real bug: after clicking the ATHENA -> DarvaX link, the
+sidebar correctly stayed (fourth bug fixed), but the content pane showed
+Overview, not DarvaX.
+
+**Root cause, found by instrumenting a live page rather than guessing
+further.** Temporarily patched `panel.classList.remove` and the
+`className` setter to log a stack trace on every mutation, then loaded a
+real deep link. The trace was unambiguous:
+```
+at panel.classList.remove (tab.js)
+at dashboard.js (switchTab's tabPanes.forEach)
+at switchTab
+at initializeRoute
+at bootstrapSession
+```
+`tab.js`'s own governing comment claimed ATHENA's `navItems`/`tabPanes` are
+a "STATIC NodeList" captured "at load," making this tab invisible to
+`switchTab()`. That assumption was wrong for this exact timing: ATHENA's
+own bootstrap captures those NodeLists (and runs its own routing) only
+after an async `/api/v1/auth/status` fetch resolves -- which happens
+*after* this deferred script's synchronous `build()`/`activate(false)`
+already ran and injected the pane. By the time `switchTab("overview")`
+finally captures `tabPanes`, this pane already exists in the DOM and IS
+included -- so `switchTab`, unaware "darvax" isn't one of its own tab ids,
+correctly-by-its-own-logic deactivates it moments after activation. A
+console instrumentation session confirmed the class was present at `+0ms`
+and gone by `+200ms`, exactly matching this explanation.
+
+**The fix.** No fixed delay could reliably win this race -- the auth
+fetch's timing isn't knowable from this file. Instead, the deep-link
+activation now also starts a `MutationObserver` on the tab-panes container
+that watches for exactly this clobbering and reasserts activation once,
+immediately, then disconnects -- both on success (so it never fights a
+real, later, deliberate tab switch within the same page load) and on a
+5-second safety timeout (so a page that never triggers ATHENA's async
+routing doesn't run an observer for the rest of the session). Re-verified
+live across three fresh page loads plus a check at +800ms: the pane stayed
+active every time. Also verified a real subsequent click to a different
+ATHENA tab still works normally (the observer has already disconnected by
+then). 3 more regression tests added (19 total in the file, one pinning
+the race-reassertion logic, one pinning that it gives up rather than
+fighting later navigation); full suite: **2,105 passing**. The debug
+instrumentation (classList/className patching) was removed before this
+was considered done -- it does not ship.
+
+---
+
 ## AUX-4c: surface near-miss digests in both dashboards
 
 **Summary.** AUX-4a's and AUX-4b's near-miss digests were file-only by
@@ -128,7 +385,9 @@ tightening). The Levels view could gain the same near-miss zone the
 Advisor view got here, if the owner wants it in both DarvaX views rather
 than just the primary one.
 
-**Remaining work.** Awaiting owner review.
+**Remaining work.** Owner-approved 2026-08-20. The owner's next pick, from
+the "Unify the two advisory lanes" roadmap category, was AUX-6 ("See the
+other view" cross-link) and AUX-7 ("Symbol 360" page, queued behind it).
 
 **Post-review refinement (2026-08-20, same day, before approval).** Owner
 verified live on their real system (DarvaX correctly showed one real

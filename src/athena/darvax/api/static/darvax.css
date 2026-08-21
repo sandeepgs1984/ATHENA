@@ -547,6 +547,17 @@ ul.ev .d { color: var(--dim); opacity: .8; }
 .trendchip.t-below { color: var(--bad); border-color: rgba(192,101,95,.35); }
 .trendchip.t-mixed { color: var(--dim); border-color: var(--line); }
 
+/* AUX-6 "See the other view" cross-link — same pill treatment as .trendchip,
+   its own class since it links out rather than describing a state. */
+.crosslink-chip {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 1px 7px; border-radius: 999px;
+  font-size: 10.5px; font-weight: 600;
+  border: 1px solid var(--line); color: var(--dim);
+  text-decoration: none;
+}
+.crosslink-chip:hover { color: var(--text); border-color: var(--dim); }
+
 .chips { display: flex; gap: 6px; flex-wrap: wrap; }
 
 /* ---- zone 2: the shortlist -------------------------------------------- */
@@ -646,7 +657,7 @@ ul.ev .d { color: var(--dim); opacity: .8; }
   background: var(--panel); border: 1px solid var(--line);
   border-radius: 8px; padding: 12px 13px;
 }
-.ticket header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.ticket header { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
 .ticket header .spacer { flex: 1; }
 .ticket .pos {
   font: 600 11px/1 var(--mono); color: var(--dim); min-width: 16px; text-align: right;
@@ -727,7 +738,7 @@ ul.ev .d { color: var(--dim); opacity: .8; }
   background: var(--panel); border: 1px solid var(--line);
   border-radius: 8px; padding: 13px;
 }
-.lcard header { display: flex; align-items: center; gap: 9px; margin-bottom: 12px; }
+.lcard header { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; margin-bottom: 12px; }
 .lcard .sym { font-weight: 650; font-size: 15px; flex: 1; }
 
 /* --- the ladder itself -------------------------------------------------- */

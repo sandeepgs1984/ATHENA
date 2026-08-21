@@ -25,7 +25,9 @@ transition remains gated by owner review.
 | 5 | **AUX-4a** | ATHENA daily near-miss digest (score-margin) | Approved 2026-08-20; 2,055 tests pass |
 | 5b | **AUX-4b** | DarvaX's own near-miss digest | Approved 2026-08-20; 2,069 tests pass |
 | 6 | **AUX-5** | ATHENA “My track record” panel | Approved 2026-08-20 |
-| 7 | **AUX-4c** | Surface near-miss digests in the dashboard UI (both surfaces) | Ready for review 2026-08-20 |
+| 7 | **AUX-4c** | Surface near-miss digests in the dashboard UI (both surfaces) | Approved 2026-08-20 |
+| 8 | **AUX-6** | "See the other view" cross-link (item 2 above) | Ready for review 2026-08-20 |
+| 9 | **AUX-7** | "Symbol 360" page (item 2 above) | Planned — Big bet, needs its own split |
 
 The persistent-freshness idea is intentionally split. ATHENA consumes
 intraday observations and scheduled cycles, while DarvaX presents a daily
