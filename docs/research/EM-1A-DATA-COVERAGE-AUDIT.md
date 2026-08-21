@@ -1,6 +1,6 @@
 # EM-1a Data Coverage Audit and Frozen Research Contract
 
-**Status:** Implemented; awaiting owner review  
+**Status:** Approved 2026-08-21
 **Observed:** 21 Aug 2026 IST  
 **Ledger:** `db/athena.db`, schema version 15  
 **Governing boundary:** ADR-012  
@@ -97,6 +97,9 @@ The symbol-day and checkpoint field lists are frozen in the machine-readable con
 4. Exclude the 512 epoch-default quote rows from any derived dataset.
 5. Re-run this audit and obtain owner approval for a non-empty accepted checkpoint set before label generation.
 
-## Owner review gate
+## Owner review outcome
 
-EM-1a is ready for review as a coverage audit and frozen contract. EM-1b remains blocked and must not start automatically. Owner approval must either accept these constraints or explicitly request a documented contract revision.
+The owner approved EM-1a on 21 Aug 2026 as a coverage audit and frozen
+contract. The approval accepts the fail-closed conclusion; it does not waive
+the remediation gate or authorize labels. EM-1b remains blocked until the
+EM-1r remediation sequence admits a non-empty checkpoint set.

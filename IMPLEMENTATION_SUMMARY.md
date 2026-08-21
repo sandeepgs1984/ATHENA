@@ -6,6 +6,82 @@ status updated on approval.
 
 ---
 
+## EM-1r1: Research data remediation architecture and acceptance plan
+
+**Summary.** Recorded owner approval of the fail-closed EM-1a audit and split
+the required research-data remediation into five independently reviewable
+gates. EM-1b remains blocked and no labels or research records were created.
+
+**Objective.** Freeze ownership, ordering, provenance, acceptance criteria,
+and stop conditions for repairing the data defects found by EM-1a without
+changing ATHENA's frozen architecture or contaminating canonical decisions.
+
+**Scope completed.** Defined infrastructure-owned source acquisition,
+canonical persistence through existing boundaries, read-only EMR access, and
+EMR-owned immutable manifests; registered EM-1r2 corporate actions, EM-1r3
+intraday reconstruction, EM-1r4 point-in-time cohort/quote hygiene, and EM-1r5
+re-audit; and made non-empty checkpoint approval the sole EM-1b unblock gate.
+
+**Files created.** `docs/design/EM-1-RESEARCH-DATA-REMEDIATION-PLAN.md`.
+
+**Files modified.** `docs/research/EM-1A-DATA-COVERAGE-AUDIT.md`,
+`docs/MILESTONES.md`, `docs/design/ATHENA-EXPLOSIVE-MOVE-RADAR-ROADMAP.md`,
+`ATHENA_BRIEFING.md`, and this implementation log.
+
+**Public APIs added.** None. No schema, provider protocol, repository, REST,
+dashboard, canonical decision, or EMR runtime contract changed.
+
+**Tests added.** None; this is a documentation and milestone-design gate.
+
+**Test results.** Full repository suite: 2,115 passed. Documentation whitespace
+validation passed. Repository-wide Ruff remains red with 285 pre-existing
+issues across 90 files; this documentation-only milestone added no Python
+violations and did not modify unrelated modules to conceal that baseline.
+
+**Coverage summary.** EM-1r1 preserves EM-1a's measured zero-checkpoint
+result. It adds acceptance coverage for source authority, bounded provenance,
+duplicate-free complete sessions, dated population evidence, invalid quote
+timestamps, deterministic replay, and exclusion accounting.
+
+**Architecture compliance.** ADR-012 isolation is preserved: acquisition is
+infrastructure-owned, canonical persistence uses existing boundaries, EMR
+reads through explicit read-only ports, and research manifests remain EMR
+owned. Canonical ATHENA and DarvaX behavior are unchanged.
+
+**ADR compliance.** ADR-012 is sufficient for the documented design. Any
+future need to alter canonical schema or `MarketDataProvider` is an explicit
+stop requiring a separate ADR proposal before implementation.
+
+**Risks discovered.** Source licensing/authority, historical membership
+availability, and ambiguous intraday overlaps remain unresolved owner gates.
+Re-ingestion depth and runtime cannot be estimated honestly before sources and
+study bounds are chosen.
+
+**Technical debt introduced.** None. This milestone registers remediation
+work instead of hiding existing data debt in label code.
+
+**Suggested improvements.** Prefer authoritative re-ingestion over inferred
+normalization, and prefer point-in-time membership over a survivor cohort when
+the evidence is obtainable at acceptable cost.
+
+**Remaining work.** Owner review of EM-1r1 and decisions on corporate-action
+source, population contract, and intraday repair source. EM-1r2 through EM-1r5
+must then proceed one approval at a time. EM-1b remains blocked.
+
+**Implementation metrics.** One design document created; five remediation
+gates registered; three owner decisions named; zero code, schema, labels,
+features, models, scanners, or UI changes.
+
+**Phase outcome.** EM-1r1 implemented and ready for owner review. Work stops
+here; no remediation ingestion or EM-1b implementation was started.
+
+**Commit hash / branch.** Pending owner commit; the AI performed no git write
+actions.
+
+**Review status.** Ready for owner review.
+
+---
+
 ## EM-1a: Explosive Move Radar data coverage and event contract
 
 **Summary.** Audited the production ATHENA ledger for Explosive Move Radar
@@ -80,23 +156,22 @@ membership/listing lifecycle evidence. If historical membership cannot be
 obtained, formally narrow the research claim to a named survivor cohort before
 rerunning EM-1a.
 
-**Remaining work.** Owner review of EM-1a is required. EM-1b remains blocked
-until the audit remediation gate is satisfied and a non-empty accepted
-checkpoint set is approved. EM-1c through EM-8 remain pending in milestone
-order.
+**Remaining work.** EM-1a is owner-approved. EM-1b remains blocked until the
+EM-1r remediation gate is satisfied and a non-empty accepted checkpoint set is
+approved. EM-1c through EM-8 remain pending in milestone order.
 
 **Implementation metrics.** Five files created, four tracking/orientation files
 updated, two immutable readiness DTOs, two pure assessment functions, three
 event families, six thresholds, nine candidate checkpoints, zero accepted
 checkpoints, and eight regression tests.
 
-**Phase outcome.** EM-1a implemented and ready for owner review. Work stops
-here; no EM-1b dataset or labels were started.
+**Phase outcome.** EM-1a approved 2026-08-21. No EM-1b dataset or labels were
+started.
 
 **Commit hash / branch.** Pending owner commit; the AI performed no git write
 actions.
 
-**Review status.** Ready for owner review.
+**Review status.** Approved 2026-08-21.
 
 ---
 

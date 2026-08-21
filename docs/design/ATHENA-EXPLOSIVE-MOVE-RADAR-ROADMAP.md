@@ -2,10 +2,10 @@
 
 | Field | Value |
 |---|---|
-| Status | EM-1a implemented; awaiting owner review |
+| Status | EM-1a approved; EM-1r1 implemented awaiting owner review |
 | Governing ADR | ADR-012 (Accepted 2026-08-21) |
 | Started | 2026-08-21 |
-| Current gate | EM-1b blocked by EM-1a approval and documented data remediation |
+| Current gate | EM-1b blocked until EM-1r5 approves non-empty checkpoints |
 | Canonical ATHENA impact | None permitted |
 
 ## 1. Purpose
@@ -126,7 +126,7 @@ Delivered ADR-012, this roadmap, milestone registration, and an explicit no-cano
 
 ### EM-1a - Data coverage and event contract
 
-**Status:** Implemented 2026-08-21; awaiting owner review.
+**Status:** Approved 2026-08-21; zero checkpoints accepted.
 
 Inventory daily/intraday/quote/universe/sector/index/corporate-action/price-band/halt/catalyst coverage; quantify survivorship and adjustment risk; freeze labels, exclusions, checkpoints, and dataset/manifest contracts.
 
@@ -137,6 +137,19 @@ and canonical complete intraday sessions are unavailable. No labels, features,
 models, scanners, or UI were created.
 
 **Acceptance:** every claimed source is measured, unavailable evidence is explicit, false corporate-action labels have a tested prevention policy, point-in-time limitations are plain, and the owner approves the usable research scope.
+
+### EM-1r - Research data remediation
+
+**Status:** EM-1r1 implemented 2026-08-21; awaiting owner review.
+
+The approval-gated EM-1r1 through EM-1r5 sequence covers authoritative
+corporate actions, canonical intraday sessions, point-in-time population/quote
+hygiene, and the final coverage re-audit. Its frozen ownership, provenance,
+acceptance, and stop conditions live in
+`docs/design/EM-1-RESEARCH-DATA-REMEDIATION-PLAN.md`.
+
+No EM-1r milestone creates labels. Only owner approval of EM-1r5 with a
+non-empty accepted checkpoint set unblocks EM-1b.
 
 ### EM-1b - Deterministic historical event dataset
 
@@ -196,4 +209,10 @@ Each review summary records objective, completed scope, architecture alignment, 
 
 ## 13. Current handoff
 
-ADR-012 is Accepted, EM-0 is owner-approved, and EM-1a is implemented awaiting owner review. The next agent must read `ATHENA_BRIEFING.md`, ATHENA-002 Sections 2 and 19, ADR-011, ADR-012, this roadmap, `docs/research/EM-1A-DATA-COVERAGE-AUDIT.md`, and the EM section in `docs/MILESTONES.md`. Review EM-1a only; do not start EM-1b until the owner approves the milestone and the audit's data-remediation gate is satisfied.
+ADR-012 is Accepted, and EM-0 and EM-1a are owner-approved. EM-1a accepted
+zero checkpoints. EM-1r1 is implemented and awaiting owner review. The next
+agent must read `ATHENA_BRIEFING.md`, ATHENA-002 Sections 2 and 19, ADR-011,
+ADR-012, this roadmap, `docs/research/EM-1A-DATA-COVERAGE-AUDIT.md`,
+`docs/design/EM-1-RESEARCH-DATA-REMEDIATION-PLAN.md`, and the EM section in
+`docs/MILESTONES.md`. Review EM-1r1 only. Do not start EM-1r2 before its owner
+data-authority decisions, and do not start EM-1b before EM-1r5 approval.

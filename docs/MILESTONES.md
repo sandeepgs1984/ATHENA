@@ -18,16 +18,22 @@ trade signal, does not alter canonical ATHENA scoring, confidence, risk,
 Decision, or TradePlan contracts, and never places orders. DarvaX remains an
 independent advisory lane.
 
-ADR-012 is accepted and EM-0 is owner-approved. EM-1a is implemented as a
-fail-closed coverage audit and frozen event contract and now awaits owner
-review. AUX-7 remains planned and unstarted; accepting this independent
+ADR-012 is accepted; EM-0 and EM-1a are owner-approved. EM-1a remains a
+fail-closed coverage audit with zero accepted checkpoints. EM-1r1 freezes the
+required remediation architecture and now awaits owner review. AUX-7 remains
+planned and unstarted; accepting this independent
 research track does not silently advance either track.
 
 | Milestone | Objective | Status |
 |---|---|---|
 | EM-0 | Review and accept the isolated EMR architecture boundary | ✅ Approved 2026-08-21 |
-| EM-1a | Audit historical coverage, survivorship, corporate actions, and event-label feasibility | 🟡 Implemented 2026-08-21 — awaiting owner review |
-| EM-1b | Build the deterministic point-in-time research dataset and labels | Blocked by EM-1a approval and required data remediation |
+| EM-1a | Audit historical coverage, survivorship, corporate actions, and event-label feasibility | ✅ Approved 2026-08-21 — zero checkpoints accepted |
+| EM-1r1 | Freeze remediation architecture, ordering, provenance, and acceptance gates | 🟡 Implemented 2026-08-21 — awaiting owner review |
+| EM-1r2 | Acquire authoritative corporate actions and persist bounded provenance | Blocked by EM-1r1 approval and owner source decision |
+| EM-1r3 | Reconstruct canonical duplicate-free complete intraday sessions | Blocked by EM-1r2 approval |
+| EM-1r4 | Freeze point-in-time cohort and enforce quote timestamp hygiene | Blocked by EM-1r3 approval |
+| EM-1r5 | Re-audit coverage and approve a non-empty checkpoint set | Blocked by EM-1r4 approval |
+| EM-1b | Build the deterministic point-in-time research dataset and labels | Blocked by EM-1r5 approval |
 | EM-1c | Publish unconditional base rates and freeze minimum cohort support | Blocked by EM-1b approval |
 | EM-2 | Implement cutoff-safe feature families and feasibility gates | Planned |
 | EM-3 | Publish historical conditional analysis and defensible feature selection | Planned |
@@ -37,12 +43,11 @@ research track does not silently advance either track.
 | EM-7 | Run isolated shadow validation and OFF-vs-shadow performance comparison | Planned |
 | EM-8 | Decide research-only, continued shadow, retirement, or a new integration ADR | Planned |
 
-**Current handoff:** Review `docs/research/EM-1A-DATA-COVERAGE-AUDIT.md`,
-`config/explosive_move.json`, and the fail-closed contracts/tests. EM-1a found
-zero research-safe checkpoints. Do not start EM-1b until the owner approves
-EM-1a and authoritative corporate actions, canonical intraday slots, and
-point-in-time membership are available or the research claim is formally
-narrowed.
+**Current handoff:** Review
+`docs/design/EM-1-RESEARCH-DATA-REMEDIATION-PLAN.md`. EM-1a is approved, but
+found zero research-safe checkpoints. EM-1r1 is documentation-only and awaits
+owner review. Do not start EM-1r2 until its three data-authority choices are
+approved; do not start EM-1b until EM-1r5 approves a non-empty checkpoint set.
 
 ## Advisory UX Priority Track (selected 2026-08-19)
 
