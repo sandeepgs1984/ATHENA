@@ -1,7 +1,8 @@
 # EM-1 Research Data Remediation Plan
 
-**Milestone:** EM-1r2
-**Status:** Implemented and self-validated 2026-08-21; awaiting owner review
+**Track:** EM-1r
+**Current milestone:** EM-1r4 - next, not started
+**Status:** EM-1r1 through EM-1r3 approved 2026-08-21
 **Governing boundary:** ADR-012
 **Input audit:** `docs/research/EM-1A-DATA-COVERAGE-AUDIT.md`
 
@@ -74,8 +75,8 @@ duplicate-free complete sessions.
 - OHLCV invariants, timezone, session bounds, and replay identity pass;
 - completeness and exclusion counts are persisted in a manifest.
 
-**Implementation status (2026-08-21):** Implemented and self-validated;
-awaiting owner review. The provider-owned capture service persists immutable,
+**Implementation status (2026-08-21):** Owner-approved. The provider-owned
+capture service persists immutable,
 content-addressed source rows before the provider-free reconstruction contract
 admits only complete exact-slot regular sessions. Identical duplicates may be
 collapsed by the frozen normalization rule; conflicting duplicates,
@@ -150,7 +151,7 @@ tests proving provider and canonical-decision isolation, and the full ATHENA
 suite. Large-data acceptance evidence records runtime and database query
 volume, but performance cannot weaken correctness gates.
 
-## 7. Approved owner decisions for EM-1r2
+## 7. Approved owner decisions governing EM-1r2 and EM-1r3
 
 The owner approved these decisions together on 2026-08-21.
 
@@ -177,7 +178,7 @@ The owner approved these decisions together on 2026-08-21.
 Decision 3 governs EM-1r3 and is recorded now for continuity; EM-1r2 performs
 no intraday repair.
 
-## 8. Explicit non-goals
+## 8. EM-1r2 explicit non-goals
 
 EM-1r2 does not acquire point-in-time membership, integrate external
 corporate-action vendors, build generalized data-cleaning infrastructure,
@@ -196,6 +197,23 @@ The implementation and measured evidence are recorded in
 - Materialization accepted 2,009 actions and preserved 5,321 exclusions.
 - Identical replay reproduced the same manifest and replay IDs and inserted
   zero duplicate rows.
-- EM-1r2 performed zero intraday repairs. EM-1r3 remains the owner of that work.
+- EM-1r2 performed zero intraday repairs. EM-1r3 remained the owner of that
+  work and was subsequently owner-approved.
 
-EM-1r2 stops at owner review. EM-1r3 must not start automatically.
+## 10. EM-1r3 measured outcome
+
+- Three deterministic fixture symbol-sessions were evaluated; one session
+  with two authoritative rows was admitted and two sessions were excluded.
+- Repairs comprised two authoritative Kite re-ingestion rows and one
+  byte-equivalent duplicate collapse. One missing slot remained unrepaired.
+- One retrieval failure and one missing-slot session were excluded by stable,
+  manifest-recorded reasons. Interpolated or synthetic OHLCV rows: zero.
+- Provider-free replay reproduced the manifest identity, and source-evidence
+  tampering was rejected.
+- Eight focused tests and the full 2,145-test repository suite passed. Focused
+  Ruff checks passed; the repository-wide Ruff baseline remains 285 findings
+  across 90 unrelated files.
+
+These are deterministic contract-test measurements, not production
+historical-coverage claims. EM-1r3 was owner-approved on 2026-08-21. EM-1r4 is
+the only next milestone and has not started.

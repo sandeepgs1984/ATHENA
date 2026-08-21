@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | EM-1a approved; EM-1r1 implemented awaiting owner review |
+| Status | EM-1r3 approved; EM-1r4 is next and not started |
 | Governing ADR | ADR-012 (Accepted 2026-08-21) |
 | Started | 2026-08-21 |
 | Current gate | EM-1b blocked until EM-1r5 approves non-empty checkpoints |
@@ -140,7 +140,8 @@ models, scanners, or UI were created.
 
 ### EM-1r - Research data remediation
 
-**Status:** EM-1r1 implemented 2026-08-21; awaiting owner review.
+**Status:** EM-1r1 through EM-1r3 approved 2026-08-21. EM-1r4 is next and has
+not started.
 
 The approval-gated EM-1r1 through EM-1r5 sequence covers authoritative
 corporate actions, canonical intraday sessions, point-in-time population/quote
@@ -209,10 +210,10 @@ Each review summary records objective, completed scope, architecture alignment, 
 
 ## 13. Current handoff
 
-ADR-012 is Accepted, and EM-0 and EM-1a are owner-approved. EM-1a accepted
-zero checkpoints. EM-1r1 is implemented and awaiting owner review. The next
-agent must read `ATHENA_BRIEFING.md`, ATHENA-002 Sections 2 and 19, ADR-011,
-ADR-012, this roadmap, `docs/research/EM-1A-DATA-COVERAGE-AUDIT.md`,
-`docs/design/EM-1-RESEARCH-DATA-REMEDIATION-PLAN.md`, and the EM section in
-`docs/MILESTONES.md`. Review EM-1r1 only. Do not start EM-1r2 before its owner
-data-authority decisions, and do not start EM-1b before EM-1r5 approval.
+ADR-012 is Accepted. EM-0, EM-1a, and EM-1r1 through EM-1r3 are
+owner-approved. EM-1a accepted zero checkpoints. The dedicated continuation
+context is `docs/ATHENA-EMR-HANDOFF.md`; read it before beginning work.
+EM-1r4 is the only next milestone and has not started. Do not broaden its
+scope into point-in-time membership acquisition, labels, features, models,
+scanners, UI, or EM-1r5. EM-1b remains blocked until owner approval of EM-1r5
+with a non-empty checkpoint set.

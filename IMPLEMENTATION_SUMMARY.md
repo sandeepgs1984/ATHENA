@@ -529,15 +529,15 @@ and rejects tampered inputs. Identical inputs reproduce the replay identity.
 population measurements remain deferred. The cohort is explicitly survivor
 cohort research, not point-in-time NSE membership evidence. Missing or
 ambiguous data remains UNKNOWN/excluded; there is no interpolation fallback.
-EM-1r4 remains blocked pending owner approval of this milestone.
+EM-1r4 is the next approval-gated milestone and has not started.
 
-**Phase outcome.** EM-1r3 is implemented and self-validated, ready for owner
-review. Work stops here; EM-1r4 and later milestones were not started.
+**Phase outcome.** EM-1r3 was owner-approved on 2026-08-21. Work stops here;
+EM-1r4 and later milestones were not started.
 
 **Commit hash / branch.** Pending owner commit; the AI performed no git write
 actions.
 
-**Review status.** Ready for owner review.
+**Review status.** Approved by owner 2026-08-21.
 
 ---
 
