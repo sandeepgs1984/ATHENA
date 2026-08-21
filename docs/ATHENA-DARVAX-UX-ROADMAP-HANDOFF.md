@@ -206,10 +206,12 @@ filtering, Decision classification, TradePlan authorization, or any analytical
 contract. A per-request run cache loads each pipeline detail once even when
 many list rows share the same run.
 
-On 2026-08-19 the owner delegated prioritisation and approved a six-item
-delivery sequence. The selected sequence is tracked in
-`docs/design/ATHENA-DARVAX-UX-ROADMAP.md` and `docs/MILESTONES.md`; the other
-roadmap ideas remain unscheduled.
+On 2026-08-19 the owner delegated prioritisation and began approving a
+delivery sequence one milestone at a time, since grown to nine (AUX-1a
+through AUX-7, with several splits along the way — AUX-1 -> 1a/1b, AUX-4 ->
+4a/4b/4c). The selected sequence is tracked in
+`docs/design/ATHENA-DARVAX-UX-ROADMAP.md` and `docs/MILESTONES.md`; the
+other roadmap ideas remain unscheduled until the owner picks the next one.
 
 This document is a continuity aid, not the authority on project status. Before
 touching anything, read `ATHENA_BRIEFING.md` in full, then verify
