@@ -23,8 +23,8 @@ sweep freshness require separate authoritative contracts.
 | 5b | **AUX-4b** | DarvaX's own near-miss digest, written once per completed sweep | ✅ Approved 2026-08-20; 2,069 tests pass |
 | 6 | **AUX-5** | ATHENA “My track record” rollup over existing journal/outcome data | ✅ Approved 2026-08-20; 2,075 tests pass |
 | 7 | **AUX-4c** | Surface near-miss digests in the dashboard UI (ATHENA + DarvaX) — both currently file-only, per AUX-4a/4b's own design | ✅ Approved 2026-08-20; 2,086 tests pass |
-| 8 | **AUX-6** | "See the other view" cross-link — quiet affordance linking a symbol's ATHENA Decision Brief and its DarvaX read, and vice versa | 🔄 Ready for review; 2,105 tests pass |
-| 9 | **AUX-7** | "Symbol 360" page — ATHENA Decision, DarvaX screen result, saved-symbol status, and journal history for one instrument, side by side | ⏳ Planned — "Big bet" effort in the roadmap doc; needs its own Design/split pass, queued behind AUX-6 |
+| 8 | **AUX-6** | "See the other view" cross-link — quiet affordance linking a symbol's ATHENA Decision Brief and its DarvaX read, and vice versa | ✅ Approved 2026-08-21; 2,105 tests pass |
+| 9 | **AUX-7** | "Symbol 360" page — ATHENA Decision, DarvaX screen result, saved-symbol status, and journal history for one instrument, side by side | ⏳ Planned — "Big bet" effort in the roadmap doc; needs its own Design/split pass |
 
 DX-12b was owner-approved 2026-08-20 after live visual verification on the
 owner's own real system. AUX-4 was split into AUX-4a/AUX-4b before
@@ -118,7 +118,14 @@ AUX-4 were: AUX-6 (the smaller cross-link) starts Design first; AUX-7
 (Symbol 360) is queued behind it and will very likely need its own
 sub-milestone split once its Design step runs, given its "Big bet" sizing.
 
-**AUX-6 is implemented, awaiting owner review — and it surfaced a real
+**AUX-6 was owner-approved 2026-08-21**, confirmed working on the owner's
+own real system after five owner-caught fix passes the same day (see
+IMPLEMENTATION_SUMMARY.md's AUX-6 entry for the full account of each one —
+worth reading before touching either dashboard's cross-lane code again).
+AUX-7 ("Symbol 360" page) is next in the owner-selected sequence and has
+not been started.
+
+**AUX-6, as shipped, surfaced a real
 architectural boundary mid-implementation.** ADR-010 Amendment 1's existing,
 test-enforced rule ("ATHENA's own dashboard assets may never reference
 DarvaX by name anywhere but one script tag") turned out to forbid the

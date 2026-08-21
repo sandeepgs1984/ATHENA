@@ -123,7 +123,11 @@ appears on Advisor/Levels cards only, not Table view rows — deliberate for
 this pass given Table view can list thousands of rows, but a future
 refinement could extend it there if the owner wants it.
 
-**Remaining work.** Awaiting owner review.
+**Remaining work.** Owner-approved 2026-08-21, confirmed working on their
+own real system after the five fix passes below. AUX-7 ("Symbol 360" page)
+is next in the owner-selected sequence — not started, "Big bet" sizing per
+the roadmap doc, will need its own Design step and likely its own further
+split before implementation.
 
 **Post-review fix pass (2026-08-20, same day, before approval) — three
 attempts on the DarvaX -> ATHENA link, the first two each insufficient in a
