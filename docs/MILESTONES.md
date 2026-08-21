@@ -4,7 +4,7 @@ Official milestone roadmap per the milestone-based workflow (AGENTS.md).
 One milestone at a time; owner approval gates every transition. A milestone
 too large for a single-sitting review is split BEFORE implementation.
 
-## Explosive Move Radar Research Track (proposed 2026-08-21)
+## Explosive Move Radar Research Track (accepted 2026-08-21)
 
 **Source:** Owner assignment dated 2026-08-21
 
@@ -18,26 +18,28 @@ trade signal, does not alter canonical ATHENA scoring, confidence, risk,
 Decision, or TradePlan contracts, and never places orders. DarvaX remains an
 independent advisory lane.
 
-No EMR implementation milestone may start until ADR-012 is accepted. AUX-7
-remains planned and unstarted; registering this proposal does not supersede or
-silently advance the Advisory UX Priority Track.
+ADR-012 is accepted and EM-0 is owner-approved. EM-1a is eligible for an
+explicit owner start but remains unstarted. AUX-7 remains planned and
+unstarted; accepting this independent research track does not silently advance
+either track.
 
 | Milestone | Objective | Status |
 |---|---|---|
-| EM-0 | Review and accept the isolated EMR architecture boundary | Proposed — owner/Chief Architect review required |
-| EM-1a | Audit historical coverage, survivorship, corporate actions, and event-label feasibility | Blocked by EM-0 |
+| EM-0 | Review and accept the isolated EMR architecture boundary | ✅ Approved 2026-08-21 |
+| EM-1a | Audit historical coverage, survivorship, corporate actions, and event-label feasibility | ⏳ Ready for explicit owner start — not started |
 | EM-1b | Build the deterministic point-in-time research dataset and labels | Blocked by EM-1a approval |
-| EM-1c | Publish unconditional and conditional base rates with uncertainty | Blocked by EM-1b approval |
-| EM-2 | Implement leakage-safe feature families and feasibility gates | Planned |
-| EM-3 | Establish deterministic score and calibrated probability baselines | Planned |
-| EM-4 | Run walk-forward validation, calibration, and stability analysis | Planned |
-| EM-5 | Add replayable EMR persistence and research reporting | Planned |
-| EM-6 | Add the EMR research user experience only after evidence gates pass | Planned |
-| EM-7 | Shadow the live scanner with fail-closed freshness and lifecycle states | Planned |
-| EM-8 | Complete production-readiness review and decide whether to promote | Planned |
+| EM-1c | Publish unconditional base rates and freeze minimum cohort support | Blocked by EM-1b approval |
+| EM-2 | Implement cutoff-safe feature families and feasibility gates | Planned |
+| EM-3 | Publish historical conditional analysis and defensible feature selection | Planned |
+| EM-4 | Evaluate and calibrate the expansion-probability model; decide live go/no-go | Planned |
+| EM-5 | Implement the replayable bulk-input live scanner without UI | Planned |
+| EM-6 | Add the EMR research UI only after scanner approval | Planned |
+| EM-7 | Run isolated shadow validation and OFF-vs-shadow performance comparison | Planned |
+| EM-8 | Decide research-only, continued shadow, retirement, or a new integration ADR | Planned |
 
-**Current handoff:** Review ADR-012. If accepted, select EM-1a and perform only
-the coverage audit; do not build features, models, scanners, or UI in EM-1a.
+**Current handoff:** EM-0 is complete. Start EM-1a only after explicit owner
+authorization and perform only the coverage/event-contract audit; do not build
+features, models, scanners, or UI in EM-1a.
 
 ## Advisory UX Priority Track (selected 2026-08-19)
 

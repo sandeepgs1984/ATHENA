@@ -6,6 +6,81 @@ status updated on approval.
 
 ---
 
+## EM-0: Explosive Move Radar architecture and research contract
+
+**Summary.** Accepted ADR-012 and approved the Explosive Move Radar (EMR)
+research-and-delivery roadmap after owner review. EMR remains a research-first,
+advisory-only capability; no production model, ranking, recommendation, or
+execution behavior was added in this milestone.
+
+**Objective.** Freeze the EMR boundary, evidence standard, leakage controls,
+feasibility contract, and performance-isolation requirements before any dataset
+or model implementation begins.
+
+**Scope completed.** ADR-012 now requires chronological TRAIN, VALIDATION,
+CALIBRATION, and untouched FINAL TEST partitions (or equivalent nested
+walk-forward evaluation); prohibits final-test influence over features,
+thresholds, model classes, calibration, or shortlist sizes; requires conditional
+results to publish sample size, event count, and uncertainty; prevents very
+small cohorts from being promoted regardless of apparent lift; adds
+`remaining_session_minutes` to move-feasibility analysis; and requires EMR to
+avoid per-symbol provider calls and prove no material degradation with EMR OFF
+versus shadow mode. The roadmap preserves the approved EM-1a/EM-1b/EM-1c split
+and carries these controls into the relevant research, modeling, shadow, and
+production gates.
+
+**Files created.** `docs/adr/ADR-012-explosive-move-radar-boundary.md` and
+`docs/design/ATHENA-EXPLOSIVE-MOVE-RADAR-ROADMAP.md`.
+
+**Files modified.** `docs/MILESTONES.md`, `ATHENA_BRIEFING.md`, and this
+implementation log.
+
+**Public APIs added.** None.
+
+**Tests added.** None; this is a documentation and architecture milestone.
+
+**Test results.** Documentation integrity and whitespace checks passed. Runtime
+tests were not required because no executable code or configuration changed.
+
+**Coverage summary.** Not applicable to a documentation-only milestone.
+
+**Architecture compliance.** The canonical ATHENA decision pipeline remains
+unchanged. EMR is explicitly observational/advisory, provider-independent,
+replayable, deterministic for a fixed research snapshot, and prohibited from
+placing orders or silently altering ATHENA scoring, risk, decisions, or
+TradePlans.
+
+**ADR compliance.** ADR-012 is `Accepted`. No amendment to an existing frozen
+ADR was required.
+
+**Risks discovered.** Historical data coverage, rare-event cohort size,
+probability calibration, label leakage, and live scanner overhead remain the
+principal risks. The accepted contract now makes each one a measured gate
+instead of an implicit assumption.
+
+**Technical debt introduced.** None.
+
+**Suggested improvements.** Begin EM-1a with an explicit owner start, then
+inventory provider fields and historical coverage before defining labels or
+support thresholds.
+
+**Remaining work.** EM-1a is ready but unstarted. EM-1b through EM-8 remain
+pending and must follow the milestone approval sequence in
+`docs/MILESTONES.md`.
+
+**Implementation metrics.** Two governing documents created, three orientation
+and tracking documents updated, zero runtime files changed, zero public
+contracts changed.
+
+**Phase outcome.** EM-0 complete and owner-approved on 2026-08-21. Work stops
+here; EM-1a requires a separate explicit start.
+
+**Commit hash / branch.** Pending owner commit; the AI performed no git write
+actions.
+
+**Review status.** Approved after incorporating the four owner-requested
+refinements. Ready for commit.
+
 ## AUX-6: "See the other view" cross-link
 
 **Summary.** A quiet link between a symbol's ATHENA Decision Brief and its

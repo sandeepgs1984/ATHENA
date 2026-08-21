@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Proposed |
+| Status | Accepted |
 | Date | 2026-08-21 |
 | Owners | Chief Architect / Project Owner |
 | Scope | Explosive Move Radar (EMR) research and advisory lane |
@@ -17,7 +17,7 @@ ATHENA-002 freezes the canonical module map and requires an accepted ADR before 
 
 ## Decision
 
-If accepted, ATHENA will add Explosive Move Radar as an isolated research satellite inside the modular monolith under `athena.explosive_move`.
+ATHENA will add Explosive Move Radar as an isolated research satellite inside the modular monolith under `athena.explosive_move`.
 
 ### 1. Isolation from canonical ATHENA decisions
 
@@ -70,7 +70,16 @@ Missing or stale evidence is `UNKNOWN`, never zero or fabricated. Required unava
 
 ### 7. Time safety and replayability
 
-Historical features use only information available at their declared cutoff. Labels may use later observations only as outcomes. Fitting, calibration, threshold selection, and evaluation use chronological splits. Identical source manifests, configuration, and artifacts must reproduce labels, features, ranks, and evidence.
+Historical features use only information available at their declared cutoff. Labels may use later observations only as outcomes. Identical source manifests, configuration, and artifacts must reproduce labels, features, ranks, and evidence.
+
+Model development uses four chronological, non-overlapping roles:
+
+1. `TRAIN` fits candidate models;
+2. `VALIDATION` selects feature sets, model classes, hyperparameters, decision thresholds, and operational shortlist sizes;
+3. `CALIBRATION` fits the probability calibrator only, after every preceding choice is frozen; and
+4. `FINAL TEST` remains untouched until one final evaluation of the frozen pipeline.
+
+The final test must never influence thresholds, features, model classes, calibration, or shortlist sizes. A nested walk-forward design is permitted only when it preserves these semantic boundaries, records every partition and artifact, and keeps each outer test fold untouched by all choices evaluated on it.
 
 ### 8. Model promotion sequence
 
@@ -83,11 +92,21 @@ EMR uses the simplest defensible method first:
 
 Required evaluation includes base rate, precision at useful shortlist sizes, recall, false-positive rate, lift, precision-recall AUC, Brier score, calibration error, reliability curves, MFE, MAE, time-to-target, target hit rate by probability bucket, and regime stability. In-sample accuracy cannot promote a model.
 
+Every conditional-frequency table must publish its sample size, event count, and uncertainty. Very small cohorts cannot be promoted as evidence regardless of apparent lift. EM-1c must freeze the exact minimum-support policy before any feature, cohort, threshold, or model can be promoted.
+
+Feasibility evidence must include `remaining_session_minutes` alongside completed move, remaining range, price band, and ATR. An estimate that cannot complete within the remaining session must fail closed or be labelled infeasible according to the versioned EMR policy.
+
 ### 9. Live-state contract
 
 If the evidence gate passes, the scanner may publish `INACTIVE`, `WATCH`, `DEVELOPING`, `CONFIRMED`, `HIGH_CONVICTION`, `FADING`, `INVALIDATED`, and `TARGET_REACHED`. EM-5 must freeze the exact transition contract before implementation. Transitions are deterministic, persisted, explainable, and versioned. They remain research observations and never authorize a trade.
 
-### 10. Safety and scope
+### 10. Performance isolation
+
+EMR may not perform per-symbol provider calls or materially degrade canonical ATHENA operation. The live scanner consumes coherent bulk inputs only.
+
+EM-5 must measure and persist scanner duration and database query volume. EM-7 must compare EMR disabled with EMR shadow mode for dashboard load time, symbol-validation latency, canonical cycle timing, database query latency and volume, CPU and memory use, and EMR scanner-cycle duration. A material regression blocks promotion until it is explained, bounded, and owner-approved.
+
+### 11. Safety and scope
 
 EMR is advisory research only. It contains no order placement, broker execution, or automatic position management. It will not claim to find a +10% mover every day. Its purpose is to test whether rare, historically supported asymmetry can be ranked better than the unconditional base rate.
 
@@ -134,5 +153,8 @@ Rejected. Zero is observed; unavailable is unknown. Conflating them distorts est
 - Architecture tests prevent EMR imports into canonical scoring, risk, decision, and TradePlan modules.
 - Coverage reports distinguish unavailable, partial, excluded, and observed evidence.
 - EM-1a freezes event and adjustment contracts before label generation.
+- EM-1c freezes minimum cohort support and uncertainty reporting before conditional evidence is promoted.
 - EM-4 publishes out-of-sample calibration and shortlist utility before EM-5.
+- EM-4 preserves explicit `TRAIN`, `VALIDATION`, `CALIBRATION`, and untouched `FINAL TEST` roles.
+- EM-5 and EM-7 enforce the performance-isolation measurements in Section 10.
 - EM-8 requires owner approval and a separate ADR for canonical integration.

@@ -2,10 +2,10 @@
 
 | Field | Value |
 |---|---|
-| Status | Architecture proposal awaiting owner approval |
-| Governing ADR | ADR-012 (Proposed) |
+| Status | Architecture approved; research not started |
+| Governing ADR | ADR-012 (Accepted 2026-08-21) |
 | Started | 2026-08-21 |
-| Current gate | EM-0 architecture and research contract |
+| Current gate | EM-0 approved; EM-1a ready for explicit owner start |
 | Canonical ATHENA impact | None permitted |
 
 ## 1. Purpose
@@ -89,7 +89,7 @@ Each checkpoint is a separate prediction problem with its own cutoff, base rate,
 | Relative strength | symbol vs sector and broad index | synchronized observations |
 | Leadership | sector breadth and index leadership | partial coverage explicit |
 | Regime | trend, volatility, breadth | persisted ATHENA evidence only |
-| Feasibility | completed move, remaining range, price band, ATR | fail closed if required data is unknown |
+| Feasibility | completed move, remaining range, remaining session minutes, price band, ATR | fail closed if required data is unknown |
 
 ## 7. Data-readiness risks
 
@@ -120,9 +120,9 @@ This is not permission to create every file at once. Each approved milestone add
 
 ### EM-0 - Architecture and research contract
 
-**Status:** Ready for owner / Chief Architect review.
+**Status:** Approved 2026-08-21.
 
-Deliver ADR-012, this roadmap, milestone registration, and an explicit no-canonical-impact statement. **Exit:** owner accepts ADR-012. No code begins before acceptance.
+Delivered ADR-012, this roadmap, milestone registration, and an explicit no-canonical-impact statement. **Exit:** owner accepted ADR-012 after the four review refinements were incorporated. No EMR implementation was started in EM-0.
 
 ### EM-1a - Data coverage and event contract
 
@@ -136,7 +136,7 @@ Build immutable symbol-day/checkpoint records, event labels, deterministic parti
 
 ### EM-1c - Base-rate research report
 
-Publish event frequencies by threshold, year, sector, cohort, and regime with sample counts, uncertainty, caveats, and a proceed/narrow/acquire-data/stop recommendation. No feature lift is claimed here.
+Publish event frequencies by threshold, year, sector, cohort, and regime with sample counts, event counts, uncertainty, caveats, and a proceed/narrow/acquire-data/stop recommendation. Freeze the minimum-support policy that prevents very small cohorts from being promoted regardless of apparent lift. No feature lift is claimed here.
 
 ### EM-2 - Cutoff-safe feature engineering
 
@@ -144,15 +144,15 @@ Implement versioned evidence families with observed-at cutoffs and explicit unkn
 
 ### EM-3 - Historical conditional analysis
 
-Publish conditional frequencies, lift, interactions, sample counts, uncertainty, ablations, and regime stability. Select only defensible features for modelling.
+Publish conditional frequencies, lift, interactions, sample counts, event counts, uncertainty, ablations, and regime stability. Enforce EM-1c's minimum-support policy and select only defensible features for modelling.
 
 ### EM-4 - Expansion probability model
 
-Evaluate deterministic score, empirical tables, logistic baseline, and only then a justified tree or boosted-tree model. Produce chronological walk-forward metrics, calibration, false-positive rate, MFE, MAE, time-to-target, and target hit rate by probability bucket. This is the live-scanner go/no-go gate.
+Evaluate deterministic score, empirical tables, logistic baseline, and only then a justified tree or boosted-tree model. Preserve explicit chronological `TRAIN`, `VALIDATION`, `CALIBRATION`, and untouched `FINAL TEST` roles; the final test cannot select features, model classes, hyperparameters, thresholds, calibration, or shortlist sizes. Produce walk-forward metrics, calibration, false-positive rate, MFE, MAE, time-to-target, and target hit rate by probability bucket. This is the live-scanner go/no-go gate.
 
 ### EM-5 - Intraday live scanner
 
-If EM-4 passes, freeze and implement the `INACTIVE`, `WATCH`, `DEVELOPING`, `CONFIRMED`, `HIGH_CONVICTION`, `FADING`, `INVALIDATED`, and `TARGET_REACHED` transition contract, coherent bulk-input ranking, feasibility gates, checkpoint updates, evidence explanations, and replay. No UI.
+If EM-4 passes, freeze and implement the `INACTIVE`, `WATCH`, `DEVELOPING`, `CONFIRMED`, `HIGH_CONVICTION`, `FADING`, `INVALIDATED`, and `TARGET_REACHED` transition contract, coherent bulk-input ranking, feasibility gates including remaining session minutes, checkpoint updates, evidence explanations, and replay. No UI and no per-symbol provider calls. Persist scanner duration and database query volume for the later isolation comparison.
 
 ### EM-6 - Market Intelligence UI
 
@@ -160,7 +160,7 @@ If EM-5 is approved, add `Explosive Move Radar` with permanent Experimental labe
 
 ### EM-7 - Live shadow validation
 
-Run without affecting ATHENA. Track precision, lift, calibration, MFE, MAE, misses, false positives, regime drift, data failures, and latency.
+Run without affecting ATHENA. Track precision, lift, calibration, MFE, MAE, misses, false positives, regime drift, data failures, and latency. Compare EMR disabled with EMR shadow mode for dashboard load time, symbol-validation latency, canonical cycle timing, database query latency and volume, CPU and memory use, and EMR scanner-cycle duration. Any material canonical regression blocks promotion.
 
 ### EM-8 - Integration decision
 
@@ -169,6 +169,8 @@ Choose research-only, continued shadow validation, retirement, or a separate ADR
 ## 10. Model and evaluation gates
 
 EM-4 cannot pass on accuracy or ROC AUC alone. It must report base rate, precision/lift at practical shortlist sizes, recall, precision-recall AUC, Brier score, calibration error, reliability, cohort/regime stability, uncertainty, ablations, simple-baseline comparison, and false-positive/false-negative review.
+
+EM-4's final test is a once-only evaluation surface for the frozen pipeline. Results from it may reject or retire the pipeline, but may not feed back into feature, model, threshold, calibration, or shortlist choices under the same test designation.
 
 No universal numeric threshold is invented now. EM-1c establishes the real base rate and operational shortlist size; EM-4 proposes evidence-based gates for owner approval before live work.
 
@@ -186,4 +188,4 @@ Each review summary records objective, completed scope, architecture alignment, 
 
 ## 13. Current handoff
 
-The next agent must read `ATHENA_BRIEFING.md`, ATHENA-002 Sections 2 and 19, ADR-011, ADR-012, this roadmap, and the EM section in `docs/MILESTONES.md`. If ADR-012 is not accepted, make no EMR code changes. If accepted, update its status and begin only EM-1a, then stop for owner review.
+ADR-012 is Accepted and EM-0 is owner-approved. EM-1a is the next eligible milestone but is not started. The next agent must read `ATHENA_BRIEFING.md`, ATHENA-002 Sections 2 and 19, ADR-011, ADR-012, this roadmap, and the EM section in `docs/MILESTONES.md`; begin only EM-1a after an explicit owner start, then stop for owner review.
