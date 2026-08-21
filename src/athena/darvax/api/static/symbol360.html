@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Symbol 360 — DarvaX</title>
+  <!--
+    AUX-7 "Symbol 360" (roadmap: "One search box, one page: ATHENA's
+    Decision, DarvaX's screen result, saved-symbol status, and journal
+    history for that instrument, side by side"). DarvaX-OWNED, same as
+    every other file in this directory (ADR-010 DX-4): this page fetches
+    ATHENA's own API directly from its own JS, which is architecturally
+    fine in this direction (DarvaX may read ATHENA) -- the reverse is what
+    AUX-6 proved is forbidden. Pure presentation over data every engine
+    already persists (ADR-005): no new backend route, no new domain
+    computation, everything here already exists behind an endpoint AUX-5
+    or AUX-6 (or ATHENA core) already established.
+  -->
+  <link rel="stylesheet" href="/darvax/static/darvax.css?v=0.1.0-aux7">
+</head>
+<body>
+  <div class="wrap">
+    <div class="banner" role="alert">
+      <strong>EXPERIMENTAL &middot; UNVALIDATED</strong>
+      <span>
+        The DarvaX section below is a parallel advisory lane. It <em>never</em>
+        contributes to ATHENA's scoring, confidence, risk, Decision or
+        TradePlan. The source methodology ships no backtest evidence &mdash;
+        validation is ADR-010 DX-5. The ATHENA section is unrelated and
+        carries ATHENA's own, already-validated pipeline output. Advisory
+        only; ATHENA never places orders.
+      </span>
+    </div>
+
+    <header class="head">
+      <div class="brand">
+        <span class="mark">&#9633;</span>
+        <span>Symbol 360</span>
+      </div>
+      <div class="actions">
+        <a class="ghost link" href="/darvax/">&larr; DarvaX</a>
+      </div>
+    </header>
+
+    <section class="zone s360-search">
+      <form id="s360-form" autocomplete="off">
+        <input id="s360-input" type="text" placeholder="Symbol, e.g. INFY or NSE:INFY"
+               aria-label="Symbol" spellcheck="false">
+        <button type="submit" class="primary">Look up</button>
+      </form>
+      <p class="dim" id="s360-note"></p>
+    </section>
+
+    <div id="s360-result" hidden>
+      <h2 id="s360-title" class="s360-title"></h2>
+
+      <section class="zone">
+        <header class="zonehead">
+          <h2>ATHENA Decision</h2>
+          <button id="s360-save-toggle" type="button" class="ghost" aria-pressed="false">
+            &#9734; Save symbol
+          </button>
+        </header>
+        <div id="s360-athena-card" class="card s360-card"></div>
+      </section>
+
+      <section class="zone">
+        <header class="zonehead">
+          <h2>DarvaX Read</h2>
+          <span class="dim s360-exp-flag">EXPERIMENTAL &middot; UNVALIDATED</span>
+        </header>
+        <div id="s360-darvax-card" class="card s360-card"></div>
+      </section>
+
+      <section class="zone">
+        <header class="zonehead">
+          <h2>Journal History</h2>
+          <span class="dim" id="s360-history-sub"></span>
+        </header>
+        <table class="signals s360-history-table">
+          <thead>
+            <tr><th>Date</th><th>Decision</th><th>Response</th><th>Outcome</th></tr>
+          </thead>
+          <tbody id="s360-history-tbody"></tbody>
+        </table>
+      </section>
+    </div>
+
+    <p class="dim cardnote">
+      Every value on this page was computed and persisted by the engine that
+      produced it (ATHENA's decision pipeline or DarvaX's screening engine) --
+      this page only renders what already exists, never recomputes or rewords
+      it.
+    </p>
+  </div>
+
+  <script src="/darvax/static/symbol360.js?v=0.1.0-aux7"></script>
+</body>
+</html>

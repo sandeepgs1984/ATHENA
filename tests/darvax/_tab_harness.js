@@ -7,7 +7,11 @@
   ATHENA hook produces a single warning and nothing else — no throw into the
   host page.
 
-  Usage:  node _tab_harness.js <path-to-tab.js> <full|degraded|deeplink>
+  Usage:  node _tab_harness.js <path-to-tab.js> <full|degraded|deeplink> [search]
+  [search] is an optional query string (e.g. "?symbol=ABDL&view=symbol360")
+  applied to window.location.search in deeplink mode, so a test can assert
+  what build() actually does with cross-lane params -- not just that it
+  mentions them in source.
   Emits a single JSON line describing what happened.
 */
 "use strict";
@@ -16,6 +20,7 @@ const fs = require("fs");
 
 const source = fs.readFileSync(process.argv[2], "utf8");
 const mode = process.argv[3] || "full";
+const search = process.argv[4] || "";
 
 const warnings = [];
 const appended = { nav: [], panes: [], head: [] };
@@ -111,7 +116,7 @@ global.document = {
 global.window = {
   location: {
     pathname: mode === "deeplink" ? "/dashboard/darvax" : "/dashboard/overview",
-    search: "",
+    search: mode === "deeplink" ? search : "",
   },
   history: { pushState() {} },
   addEventListener() {},

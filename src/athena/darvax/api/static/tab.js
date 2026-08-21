@@ -38,7 +38,7 @@
   // parent page's reload cache-bypass, so a hard reload of the dashboard leaves
   // a stale frame document in place. Changing this string changes the URL, and
   // a URL the browser has never seen cannot be served from cache.
-  var UI_VERSION = "0.1.0-aux6f";
+  var UI_VERSION = "0.1.0-aux7";
 
   function warn(reason) {
     // One line, once. DarvaX must not spam or destabilise ATHENA's console.
@@ -100,7 +100,6 @@
     frame.title = "DarvaX (experimental)";
     // embedded=1 lets the page drop its redundant back-link inside the tab.
     // It never hides the experimental banner.
-    var frameSrc = "/darvax/?embedded=1&v=" + UI_VERSION;
     // AUX-6: a cross-link from ATHENA's own Decision Brief lands on
     // /dashboard/darvax?symbol=&mode= (this file's own ROUTE, so the
     // outer page keeps ATHENA's sidebar rather than dropping to DarvaX's
@@ -113,6 +112,16 @@
     var outerParams = new URLSearchParams(window.location.search);
     var crosslinkSymbol = outerParams.get("symbol");
     var crosslinkMode = outerParams.get("mode");
+    // AUX-7: view=symbol360 is the same idea one page over -- a
+    // ?symbol=&view=symbol360 landing on this ROUTE means "open Symbol 360
+    // inside ATHENA's own DarvaX tab", not the main screener. Without this
+    // branch, showSymbol360Link()/symbol360Chip() below would have to link
+    // straight at /darvax/symbol360, which is exactly the AUX-6 bug 4
+    // pattern repeated: it drops ATHENA's sidebar/chrome entirely instead
+    // of staying inside this tab's iframe.
+    var frameSrc = outerParams.get("view") === "symbol360"
+      ? "/darvax/symbol360?embedded=1&v=" + UI_VERSION
+      : "/darvax/?embedded=1&v=" + UI_VERSION;
     if (crosslinkSymbol) frameSrc += "&symbol=" + encodeURIComponent(crosslinkSymbol);
     if (crosslinkMode) frameSrc += "&mode=" + encodeURIComponent(crosslinkMode);
     frame.setAttribute("data-src", frameSrc);
@@ -281,12 +290,56 @@
         // otherwise pick up the browser's default underline.
         link.style.textDecoration = "none";
         link.textContent = LABEL + " also has a read on this →";
-        metaRow.parentElement.insertBefore(link, metaRow.nextSibling);
+        // showSymbol360Link runs synchronously just after this fetch starts,
+        // so by the time this resolves it has usually already inserted its
+        // own link right after metaRow -- anchor after it when present, so
+        // the two links land in a deterministic order instead of racing.
+        var anchor = symbol360El || metaRow;
+        anchor.parentElement.insertBefore(link, anchor.nextSibling);
         crosslinkEl = link;
       })
       .catch(function () {
         // Unreachable, disabled, or a transient failure — no link, no noise.
       });
+  }
+
+  // AUX-7 "Symbol 360" — unlike the DarvaX-signal link above, this is shown
+  // unconditionally: ATHENA's own decision, saved-symbol status, and journal
+  // history are all useful on that page even when DarvaX has nothing for
+  // the instrument, so there is no existence check to gate it on.
+  var symbol360El = null;
+
+  function removeSymbol360Link() {
+    if (symbol360El && symbol360El.parentElement) {
+      symbol360El.parentElement.removeChild(symbol360El);
+    }
+    symbol360El = null;
+  }
+
+  function showSymbol360Link(instrumentId, bareSymbol) {
+    removeSymbol360Link();
+    if (!instrumentId) return;
+    var metaRow = document.getElementById("decision-brief-meta-row");
+    if (!metaRow || !metaRow.parentElement) return;
+    var link = document.createElement("a");
+    link.className = "context-chip tone-neutral";
+    // Same reasoning as checkCrossLink's link above: same-tab navigation,
+    // no target, since tab.js only ever runs in ATHENA's own top-level page.
+    // Links to THIS file's own ROUTE, not straight at /darvax/symbol360 --
+    // an owner-caught bug identical to AUX-6's bug 4: a direct link dropped
+    // ATHENA's own sidebar/chrome entirely. build() above reads view=symbol360
+    // back out of this exact URL and points the embedded iframe at
+    // /darvax/symbol360 instead of the main screener, so the click opens
+    // Symbol 360 inside ATHENA's own DarvaX tab, sidebar intact.
+    link.href = ROUTE + "?symbol=" + encodeURIComponent(bareSymbol) + "&view=symbol360";
+    link.style.display = "inline-flex";
+    link.style.alignSelf = "flex-start";
+    link.style.marginTop = "6px";
+    link.style.marginLeft = "6px";
+    link.style.textDecoration = "none";
+    link.textContent = "View Symbol 360 →";
+    metaRow.parentElement.insertBefore(link, metaRow.nextSibling);
+    symbol360El = link;
   }
 
   function watchDecisionBrief() {
@@ -298,6 +351,7 @@
       if (instrumentId === lastInstrument) return;
       lastInstrument = instrumentId;
       checkCrossLink(instrumentId, titleEl.textContent || "");
+      showSymbol360Link(instrumentId, titleEl.textContent || "");
     }).observe(titleEl, { attributes: true, attributeFilter: ["title"] });
   }
 

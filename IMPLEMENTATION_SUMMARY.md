@@ -6,6 +6,210 @@ status updated on approval.
 
 ---
 
+## AUX-7: "Symbol 360" page
+
+**Summary.** A single DarvaX-owned page (`/darvax/symbol360`) that looks up
+one instrument and shows ATHENA's latest Decision, DarvaX's screen result
+(with a raw-signal fallback), saved-symbol status, and a per-instrument
+journal history table, side by side — the "Unify the two advisory lanes"
+roadmap category's bigger item, the sibling AUX-6 was split off from.
+Implemented directly per the owner's explicit instruction ("you only finish
+symbol 360 page and udpate docs properly"), resolving the one open design
+question AUX-6's handoff had deliberately left open (where the page should
+live) by direct application of AUX-6's own ADR-010 Amendment 1 asymmetry
+finding rather than pausing to ask again.
+
+**Objective.** Close the roadmap's "one search box, one page" gap without
+duplicating any of AUX-5/AUX-6's existing joins or inventing new backend
+computation.
+
+**Scope completed.** Zero new backend endpoints — confirmed by research
+before writing any code that every value needed is already served: ATHENA's
+decision via `GET /api/v1/decisions?instrument_id=X&page_size=1` (the
+existing `instrument_id` filter, already sorted newest-first by default);
+DarvaX's read via the existing bulk `GET /darvax/api/screen/latest?limit=5000`
+filtered client-side (the same convention `darvax.js`'s own `screenRowFor()`
+already uses), falling back to the existing
+`GET /darvax/api/signals/{instrument_id}` when no current sweep row exists
+for the instrument; saved-symbol status via the existing
+`GET`/`POST`/`DELETE /api/v1/saved-symbols`; and journal history via the
+same `GET /api/v1/decisions?instrument_id=X` list (page_size=10) joined
+against each decision's existing `/journal` and `/outcome` endpoints (both
+return `200` with `data: null` when nothing recorded, never `404`, so the
+join needed no special-casing). `symbol360.js` is a self-contained IIFE
+duplicating the small `token()`/`request()`/`esc()`/`num()`/`money()`
+helpers already in `darvax.js` rather than importing them, matching the
+established DarvaX convention of no load-order dependency between its own
+static files. Two entry points, both reusing patterns AUX-6 had to get
+right the hard way: an unconditional "View Symbol 360 →" link injected by
+`tab.js` into ATHENA's Decision Brief (same-tab navigation, no `target`,
+since `tab.js` never runs nested), and a "360°" chip on DarvaX's own
+Advisor/Levels/Table cards (`target="_top"`, identical reasoning to
+`athenaChip`, since those cards can be viewed standalone or embedded inside
+ATHENA's DarvaX nav-tab iframe).
+
+**The architectural placement question, resolved.** AUX-6's handoff
+flagged "where does a page needing both lanes' data live" as a
+stop-and-ask question rather than a call to make unilaterally, since ADR-010
+Amendment 1 forbids ATHENA-owned assets from referencing DarvaX at all. The
+owner's instruction to finish the page was treated as authorization to
+resolve this with the asymmetry AUX-6 had already established rather than
+pausing again: DarvaX may reference ATHENA freely; ATHENA may never
+reference DarvaX. A page needing both lanes' data therefore has exactly one
+legal home under the existing, unweakened rule — DarvaX-owned, never an
+ATHENA route. No ADR amendment needed; this is a direct application of the
+existing rule, not an exception to it.
+
+**Files created.** `src/athena/darvax/api/static/symbol360.html`,
+`src/athena/darvax/api/static/symbol360.js`,
+`tests/darvax/test_aux7_symbol360.py`.
+
+**Files modified.** `src/athena/darvax/api/app.py` (new `GET /symbol360`
+route, mirroring the existing `darvax_index()` no-cache pattern),
+`src/athena/darvax/api/static/darvax.css` (`.s360-*` rules for the search
+form, decision-card definition lists, the EXPERIMENTAL flag, and the
+history table), `src/athena/darvax/api/static/darvax.js`
+(`symbol360Chip`, wired into `buyTicket`, `holdingTicket`, `ladderCard`),
+`src/athena/darvax/api/static/tab.js` (`showSymbol360Link`,
+`removeSymbol360Link`, wired into the existing `watchDecisionBrief`
+observer; `checkCrossLink`'s insertion anchor made deterministic relative
+to the new link), `src/athena/darvax/api/static/index.html` (asset version
+bump), `docs/MILESTONES.md`, the UX roadmap, the handoff doc, and this
+implementation log.
+
+**Public APIs changed.** None — every value is read from an existing,
+already-tested endpoint.
+
+**Tests added.** 11, in `tests/darvax/test_aux7_symbol360.py`: the new
+route serves the page (mirroring `test_dx4b_tab.py`'s
+`test_05_enabled_darvax_serves_the_tab_asset` pattern), a dedicated
+ADR-010 "no ATHENA asset references DarvaX" pin specific to this feature
+(redundant with the suite-wide guard, kept anyway per this track's own
+established convention), the exact endpoint URLs `symbol360.js` calls for
+each of the four data sources, the `?symbol=` query-param read-back on
+load, `tab.js`'s unconditional (never signal-gated) link injection with no
+`target` and no ATHENA-internal calls, and `darvax.js`'s `target="_top"`
+chip wired into all three card renderers. Two of the most safety-critical
+guards (the ADR-010 scan and the `target="_top"` chip) were proven
+non-vacuous by temporarily reintroducing the exact bug each catches via a
+small Python script, confirming the test failed, then restoring and
+confirming it passed again.
+
+**Test results.** Full suite: **2,156 passing** (2,145 -> 2,156). Verified
+live end-to-end on an isolated scratch server (own config copied from the
+repo, own database at a scratch path, `ATHENA_SINGLE_USER=true` with an
+empty `ATHENA_OWNER_PASSWORD_HASH` — never the owner's real
+`db/athena.db`/`db/darvax.db`): searched a real instrument with real
+decision history (`INFY`), confirmed the ATHENA Decision card, the DarvaX
+Read card's graceful fallback (a real `404` from
+`/darvax/api/signals/NSE:INFY`, handled by the `.catch()` exactly as
+designed, rendering "DarvaX has no read on this instrument yet."), and the
+10-row journal history table all rendered correctly; exercised the
+saved-symbol toggle's full round trip (`DELETE` then `POST`, each
+confirmed against the network log and the button's label flipping
+correctly both times); and confirmed both entry points work — the "360°"
+chip's HTML/wiring via source and the passing test suite, and the
+ATHENA-side "View Symbol 360 →" link by clicking it live from a real
+Decision Brief (`ABDL`) in the ATHENA dashboard and confirming same-tab
+navigation landed on a Symbol 360 page pre-populated with ABDL's real data
+via the `?symbol=` query param.
+
+**Coverage summary.** Route serving, the ADR-010 isolation guard, every
+endpoint URL `symbol360.js` constructs, the query-param read-back on load,
+and both entry points' link-construction logic are covered at the unit
+level; the full data-loading/rendering/toggle flow is covered by live
+end-to-end browser verification.
+
+**Architecture compliance.** ADR-010's one-way isolation is upheld exactly
+— the page and both its entry-point links live entirely in DarvaX-owned
+files, verified by the same suite-wide and feature-specific guards AUX-6
+established. No new backend route beyond a single static-file-serving
+endpoint, no new DTO, no change to scoring/confidence/risk/Decision/
+TradePlan/DAR-CARD logic, no new domain computation of any kind — pure
+frontend composition over already-persisted, already-explainable data
+(ADR-005).
+
+**ADR compliance.** No ADR amendment needed. The page's placement is a
+direct application of ADR-010 Amendment 1's existing asymmetry, not an
+extension or exception to it.
+
+**Risks discovered.** None new.
+
+**Technical debt introduced.** None.
+
+**Suggested improvements.** None identified during this pass — the next
+roadmap item is the owner's to pick from the still-unscheduled menu in
+`docs/design/ATHENA-DARVAX-UX-ROADMAP.md`.
+
+**Remaining work.** Implemented, tested, and live-verified; awaiting owner
+review and approval. Do not mark this milestone Approved in
+`docs/MILESTONES.md` until the owner confirms.
+
+**Post-review fix pass (2026-08-21, same day) — a sixth instance of AUX-6's
+bug 4, this time in AUX-7.** The owner's own screenshots showed both
+"View Symbol 360 →" (from ATHENA's Decision Brief) and the "360°" chip (on
+DarvaX's own cards) landing on a bare page with ATHENA's sidebar gone
+entirely, and a follow-up screenshot showed the DarvaX screener page in the
+same state. Root cause was exactly AUX-6's already-documented bug 4,
+reintroduced fresh: both links pointed straight at
+`/darvax/symbol360?symbol=...` instead of at `tab.js`'s own `ROUTE`
+(`/dashboard/darvax`), so a click replaced the entire tab with DarvaX's
+standalone sub-application — sidebar, chrome, and all — rather than staying
+inside ATHENA's own embedded DarvaX tab. Despite reading and citing the
+AUX-6 postmortem while designing AUX-7's two entry points, the same mistake
+was made again, because the design reasoning focused on the vertical
+question (should this page exist inside ATHENA or DarvaX) and never
+re-checked the horizontal one (does the *link into it* stay inside
+ATHENA's chrome).
+
+**Fix.** Both links now target `ROUTE + "?symbol=...&view=symbol360"`
+(`showSymbol360Link` in `tab.js`: same-tab, no `target`; `symbol360Chip` in
+`darvax.js`: `target="_top"`, same reasoning as `athenaChip`). `build()`'s
+existing `?symbol=`/`?mode=` forwarding into the embedded iframe's `src`
+gained a third branch: `?view=symbol360` now points the iframe at
+`/darvax/symbol360?embedded=1&v=...&symbol=...` instead of the main
+screener's `/darvax/?embedded=1&v=...`. `symbol360.js` gained matching
+`embedded=1` handling (mirroring `darvax.js`'s own convention) so the
+page's own "← DarvaX" back-link carries `embedded=1` forward when clicked
+from inside the iframe, swapping the iframe's content back to the main
+screener without ever navigating out of it.
+
+**Tests.** Two new behavioural tests execute `tab.js` in Node against the
+existing DOM-stub harness (`tests/darvax/_tab_harness.js`, extended to
+accept an optional query string on its `deeplink` mode) and assert what
+`build()` actually sets the iframe's `src` to — not a source-level grep,
+per this whole test file's own standard for exactly this class of bug:
+`test_symbol360_deep_link_points_the_embedded_iframe_at_symbol360` (a
+`?view=symbol360` deep link retargets the iframe at `/darvax/symbol360`)
+and `test_plain_deep_link_without_view_param_still_opens_the_main_screener`
+(the existing AUX-1b/AUX-6 deep-link case is unaffected). The two existing
+source-level tests for each link's `href` were also updated to assert the
+new `ROUTE`-based construction and explicitly assert `/darvax/symbol360`
+does **not** appear directly in either link. The behavioural test was
+proven non-vacuous: temporarily reverting `build()`'s branch to always use
+the main-screener `frameSrc` reproduced the exact failure, confirmed by a
+failing assertion, before restoring.
+
+**Test results.** Full suite: **2,158 passing** (2,156 -> 2,158). Live
+re-verified on a fresh isolated scratch server, reproducing the owner's
+exact click path: opened a real Decision Brief (`ABDL`), clicked
+"View Symbol 360 →", confirmed via `document.querySelector(".darvax-embed").src`
+that the outer URL stayed on ATHENA's own `/dashboard/darvax?...` route
+(sidebar fully intact, screenshotted) while the iframe loaded
+`/darvax/symbol360?embedded=1&...`, then clicked the embedded page's
+"← DarvaX" link and confirmed it swapped the iframe back to the main
+screener in place, with the sidebar never affected.
+
+**Lesson recorded in the handoff doc.** Citing a postmortem while designing
+is not the same as re-deriving its checklist against the new feature;
+AUX-7's Design step correctly resolved the postmortem's open architectural
+question (where the page lives) but never re-ran its list of the five
+concrete failure modes against the two new links being written. See the
+handoff doc's updated cross-lane gotchas section for the generalized
+version of this lesson.
+
+---
+
 ## EM-1r3: Canonical intraday session reconstruction
 
 **Summary.** Implemented immutable authoritative five-minute source capture,
@@ -560,18 +764,15 @@ below for detail.
 
 **Technical debt introduced.** None.
 
-**Suggested improvements.** AUX-7 ("Symbol 360" page) is the natural next
-step in this same roadmap category and will reuse the same instrument_id
-join this milestone established. The DarvaX -> ATHENA chip currently
-appears on Advisor/Levels cards only, not Table view rows — deliberate for
-this pass given Table view can list thousands of rows, but a future
-refinement could extend it there if the owner wants it.
+**Suggested improvements.** AUX-7 ("Symbol 360" page, see its own entry
+above) reused the same instrument_id join this milestone established. The
+DarvaX -> ATHENA chip currently appears on Advisor/Levels cards only, not
+Table view rows — deliberate for this pass given Table view can list
+thousands of rows, but a future refinement could extend it there if the
+owner wants it.
 
 **Remaining work.** Owner-approved 2026-08-21, confirmed working on their
-own real system after the five fix passes below. AUX-7 ("Symbol 360" page)
-is next in the owner-selected sequence — not started, "Big bet" sizing per
-the roadmap doc, will need its own Design step and likely its own further
-split before implementation.
+own real system after the five fix passes below.
 
 **Post-review fix pass (2026-08-20, same day, before approval) — three
 attempts on the DarvaX -> ATHENA link, the first two each insufficient in a

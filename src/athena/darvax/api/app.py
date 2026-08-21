@@ -186,6 +186,15 @@ def create_darvax_app(
             headers={"Cache-Control": "no-cache, must-revalidate"},
         )
 
+    @app.get("/symbol360", include_in_schema=False)
+    def darvax_symbol360() -> FileResponse:
+        """AUX-7 "Symbol 360" — a clean URL for symbol360.html, same
+        no-cache reasoning as darvax_index() above."""
+        return FileResponse(
+            static_dir / "symbol360.html",
+            headers={"Cache-Control": "no-cache, must-revalidate"},
+        )
+
     @app.get("/status")
     def darvax_status() -> dict[str, object]:
         """What DarvaX has wired up. No market data, no methodology output."""

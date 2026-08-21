@@ -1202,3 +1202,25 @@ tr .lv-yourstop, .lstrip .lv-yourstop { color: var(--bad); }
   }
   .guide-content { padding: 18px 16px 40px; }
 }
+
+/* ---- Symbol 360 (AUX-7) --------------------------------------------- */
+
+.s360-search form { display: flex; gap: 8px; max-width: 420px; }
+.s360-search .dim { margin-top: 8px; }
+.s360-title { font-size: 20px; margin: 0 0 4px; }
+.s360-card { font-size: 13px; }
+.s360-card dl.lines {
+  display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 0;
+}
+.s360-card dl.lines dt {
+  font-size: 11px; color: var(--dim); text-transform: uppercase;
+  letter-spacing: 0.05em; align-self: center;
+}
+.s360-card dl.lines dd { margin: 0; font: 13px/1.4 var(--mono); }
+.s360-exp-flag {
+  font-size: 10.5px; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--warn); border: 1px solid var(--warn); border-radius: 3px;
+  padding: 1px 6px;
+}
+.s360-history-table td, .s360-history-table th { white-space: nowrap; }
+.s360-save-star { color: var(--warn); }

@@ -1229,6 +1229,25 @@
   // DarvaX card ever recomputes or reinterprets what the decision means.
   var athenaDecisionByInstrument = {};
 
+  // AUX-7 "Symbol 360" -- unlike athenaChip below, this is never gated on
+  // ATHENA having a decision for the instrument: the page itself degrades
+  // gracefully section-by-section when a source has nothing, so the link
+  // is always worth offering. Links to ATHENA's own /dashboard/darvax route
+  // with view=symbol360 (tab.js's ROUTE, read back out by its build()),
+  // never straight at /darvax/symbol360 -- an owner-caught bug identical to
+  // athenaChip's own history below: a direct link to the bare DarvaX page
+  // drops ATHENA's sidebar/chrome entirely, whether this chip is clicked
+  // from the standalone page (target="_top" is a no-op there, but the href
+  // itself must still be the ATHENA route) or from inside ATHENA's own
+  // DarvaX nav tab iframe (target="_top" then breaks out to the top window,
+  // landing on that same route with the iframe already retargeted at
+  // Symbol 360 instead of the main screener).
+  function symbol360Chip(symbol) {
+    return '<a class="crosslink-chip" target="_top" ' +
+      'href="/dashboard/darvax?symbol=' + encodeURIComponent(symbol) + '&view=symbol360" ' +
+      'title="Open Symbol 360 for ' + esc(symbol) + '">360°</a>';
+  }
+
   function athenaChip(instrumentId) {
     var decisionId = athenaDecisionByInstrument[instrumentId];
     if (!decisionId) return "";
@@ -1320,7 +1339,8 @@
       '<article class="ticket buy">' +
         '<header><span class="pos">' + (index + 1) + "</span>" +
           '<span class="sym">' + esc(row.symbol) + "</span>" +
-          actionChip(row) + trendChip(row) + athenaChip(row.instrument_id) + "</header>" +
+          actionChip(row) + trendChip(row) + athenaChip(row.instrument_id) +
+          symbol360Chip(row.symbol) + "</header>" +
         '<dl class="lines">' +
           "<dt>Buy above</dt><dd class=\"key\">" +
             (buy === null ? "—" : money(row.trigger_price)) + "</dd>" +
@@ -1349,6 +1369,7 @@
           (row ? actionChip(row) : '<span class="act a-none">no reading</span>') +
           (row ? trendChip(row) : "") +
           athenaChip(p.instrument_id) +
+          symbol360Chip(p.instrument_id.split(":").pop()) +
           '<span class="spacer"></span>' +
           (ret === null ? "" : '<span class="ret ' + (ret >= 0 ? "up" : "down") +
             '">' + (ret >= 0 ? "+" : "") + ret.toFixed(2) + "%</span>") +
@@ -1706,7 +1727,8 @@
     return '' +
       '<article class="lcard">' +
         '<header><span class="sym">' + esc(row.symbol) + "</span>" +
-          actionChip(row) + trendChip(row) + athenaChip(row.instrument_id) + "</header>" +
+          actionChip(row) + trendChip(row) + athenaChip(row.instrument_id) +
+          symbol360Chip(row.symbol) + "</header>" +
         levelChart(row, position) +
         rLine(row) +
         held +

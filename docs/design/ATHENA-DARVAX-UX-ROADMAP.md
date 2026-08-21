@@ -27,7 +27,7 @@ transition remains gated by owner review.
 | 6 | **AUX-5** | ATHENA “My track record” panel | Approved 2026-08-20 |
 | 7 | **AUX-4c** | Surface near-miss digests in the dashboard UI (both surfaces) | Approved 2026-08-20 |
 | 8 | **AUX-6** | "See the other view" cross-link (item 2 above) | Approved 2026-08-21 |
-| 9 | **AUX-7** | "Symbol 360" page (item 2 above) | Planned — Big bet, needs its own split |
+| 9 | **AUX-7** | "Symbol 360" page (item 2 above) | Ready for review 2026-08-21 |
 
 The persistent-freshness idea is intentionally split. ATHENA consumes
 intraday observations and scheduled cycles, while DarvaX presents a daily

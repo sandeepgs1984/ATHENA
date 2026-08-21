@@ -1,17 +1,20 @@
 # ATHENA & DarvaX UX Roadmap — Agent Handoff
 
 **Snapshot date:** 2026-08-21 — **AUX-6 owner-approved, confirmed working on
-the owner's own real system.** Nothing is currently in flight; **AUX-7 is
-next and has not been started.**
+the owner's own real system. AUX-7 ("Symbol 360" page) is implemented,
+tested, live-verified, and awaiting owner review** — the owner-selected
+priority track's final item; nothing else is currently in flight.
 **Branch observed:** `feature/live-dashboard`  
 **Latest commit:** `a53a168` — `feat(dashboard): expose full-cycle validation health`
-(none of this track's own commits are made yet — the AI provides a
-commit message per milestone, the owner commits)  
-**Test suite at handoff:** **2,105 passing.** Ruff clean on all changed/added
+(AUX-7's own commit is not made yet — the AI provides a commit message per
+milestone, the owner commits)  
+**Test suite at handoff:** **2,158 passing.** Ruff clean on all changed/added
 files. Progression: 2,041 -> 2,055 (AUX-4a) -> 2,069 (AUX-4b) -> 2,075
 (AUX-5) -> 2,086 (AUX-4c) -> 2,105 (AUX-6, across five owner-caught fix
 passes in one day — see below, this is the part worth reading in full
-before touching any cross-lane code).
+before touching any cross-lane code) -> 2,156 (AUX-7 initial) -> 2,158
+(AUX-7's own post-review fix pass, a sixth instance of AUX-6's bug 4 —
+see the new gotcha below before writing any more cross-lane links).
 
 ## Message to whichever agent picks this up next
 
@@ -19,13 +22,17 @@ Start with `docs/MILESTONES.md` and the top entry of
 `IMPLEMENTATION_SUMMARY.md` per the standard orientation checklist — don't
 trust this paragraph's status claims over those two files if they ever
 disagree. As of this snapshot: the owner-selected priority track is
-**AUX-1a through AUX-6, all approved.** The next item in the owner's own
-sequence is **AUX-7 ("Symbol 360" page)** — a "Big bet"-sized item that has
-not been designed yet and will almost certainly need its own split before
-implementation, the same way AUX-1 and AUX-4 were split. Do not start
-implementing it directly; start at the Design step, per the mandatory
-workflow, and expect to come back to the owner with a proposed split before
-writing code. Section 5 below has concrete starting notes for it.
+**AUX-1a through AUX-6, approved; AUX-7 implemented and ready for
+review, awaiting the owner's own testing and approval.** If you're picking
+this up because the owner approved AUX-7 in the meantime, flip its row in
+`docs/MILESTONES.md` and `docs/design/ATHENA-DARVAX-UX-ROADMAP.md` to
+Approved and check whether the owner named a next roadmap item — the
+"Not yet scheduled" candidates in section 5 below are real options, not a
+committed plan. If AUX-7 review turned up a bug, treat it the way AUX-6's
+five bugs were treated: root-cause on the actual code (see the
+testing-methodology lesson below), fix, add a non-vacuous regression test,
+re-verify live, update the docs' bug account — don't just patch and move on
+silently.
 
 **Before you write a single line of cross-lane (ATHENA <-> DarvaX) UI
 code, read the AUX-6 postmortem immediately below in full.** It cost five
@@ -159,6 +166,69 @@ test names) lives in `IMPLEMENTATION_SUMMARY.md`'s AUX-6 entry — read it
 before modifying `tab.js`, `darvax.js`, or any ATHENA asset that might
 touch DarvaX.
 
+### AUX-7 ("Symbol 360"): the architectural question this doc used to leave open, now resolved
+
+Section 5 of an earlier version of this document flagged "where does a
+page needing both lanes' data live" as a stop-and-ask question rather than
+a call to make unilaterally. It got resolved by direct application of the
+AUX-6 postmortem's own asymmetry, once the owner said to just finish the
+page: **DarvaX may reference ATHENA freely; ATHENA may never reference
+DarvaX.** A page needing both lanes' data therefore has exactly one legal
+home — DarvaX-owned, at `/darvax/symbol360` — never an ATHENA route. If a
+future cross-lane page ever seems to need the opposite (ATHENA fetching
+DarvaX data), that is still the stop-and-ask case; this one wasn't, because
+the asymmetry already permits it in this direction.
+
+The other question this doc's earlier version raised — "check whether
+saved-symbol status and journal history are already exposed via an
+endpoint before assuming new backend work is needed" — resolved cleanly to
+**no new backend endpoints at all**. Everything the page needs was already
+live: `GET /api/v1/decisions?instrument_id=X&page_size=N` (instrument
+filter, sorted newest-first by default — `page_size=1` for the latest
+decision, `page_size=10` for history) plus the existing per-decision
+`/journal`/`/outcome` endpoints (both `200` with `data: null` when nothing
+recorded, never `404`) for ATHENA's half; the existing bulk
+`GET /darvax/api/screen/latest?limit=5000` filtered client-side (same
+convention `darvax.js`'s own `screenRowFor()` already used), falling back
+to the existing `GET /darvax/api/signals/{instrument_id}` when no current
+sweep row exists, for DarvaX's half; and the existing
+`GET`/`POST`/`DELETE /api/v1/saved-symbols` for the save toggle. Worth
+re-reading before assuming a "Big bet"-tagged roadmap item automatically
+needs new domain computation — this one didn't, once the actual API
+surface was checked rather than assumed.
+
+One new gotcha for the "five gotchas" list above, discovered while wiring
+the two entry points: when two independently-injected pieces of UI can
+both attach near the same DOM anchor (here, `tab.js`'s synchronous
+`showSymbol360Link` and its existing async `checkCrossLink`, both anchored
+off `#decision-brief-meta-row`), insertion order is nondeterministic unless
+one explicitly anchors after the other. Fixed by having the async one
+insert after the synchronous one's element when present
+(`var anchor = symbol360El || metaRow`) — a small thing, but exactly the
+kind of ordering bug that's invisible in isolated testing of either piece
+alone and only shows up once both are on the page together.
+
+**A sixth instance of bug 4 happened anyway, in this very milestone, the
+same day.** Both entry points above were first built linking straight at
+`/darvax/symbol360?symbol=...` — precisely the "direct link to the bare
+standalone page instead of `tab.js`'s own `ROUTE`" mistake bug 4 above
+already documents in detail, made again despite that exact postmortem
+being read and cited while designing these two links. The owner's
+screenshots showed ATHENA's sidebar gone entirely on both links. **The
+generalizable lesson, worth internalizing before it costs a seventh
+repeat**: reading a postmortem and re-deriving its architectural
+conclusion (where should this page live) is not the same as re-running its
+concrete checklist against the new code being written (does *this specific
+link* stay inside ATHENA's chrome). The fix itself was small — both links
+now go through `ROUTE + "?symbol=...&view=symbol360"`, and `build()`'s
+existing `?symbol=`/`?mode=` iframe-src forwarding gained a third branch
+for `?view=symbol360` pointing the iframe at `/darvax/symbol360` instead of
+the main screener — but the mistake itself cost a full owner round trip
+that a five-second re-read of bug 4 above, applied deliberately rather than
+just cited, would have caught before the owner ever saw it. Full detail
+(exact diff, exact test names, live-verification transcript) in
+`IMPLEMENTATION_SUMMARY.md`'s AUX-7 entry, under "Post-review fix pass."
+
 ### Everything else approved before AUX-6
 
 AUX-1a, AUX-1b, AUX-2, AUX-3, DX-12b, AUX-4a, AUX-4b, AUX-5, and AUX-4c are
@@ -245,7 +315,8 @@ reproposing what already exists, followed by 29 concrete, scoped ideas.
 **AUX-1a through AUX-6 are all approved** — see `IMPLEMENTATION_SUMMARY.md`'s
 entry for each (newest first; AUX-6's entry is the longest and most
 important to read given the postmortem above). **AUX-7 ("Symbol 360" page)
-is next, not started, needs its own Design step.** AUX-4c
+is implemented, tested, and live-verified, awaiting owner review** — see
+its own `IMPLEMENTATION_SUMMARY.md` entry (newest, at the top). AUX-4c
 (surfacing AUX-4a/4b's near-miss digests in the dashboard UI) is also done
 — both are file-only digests now surfaced with a plain-language explainer
 on each dashboard.
@@ -327,24 +398,35 @@ hold, no ADR is silently required, and `IMPLEMENTATION_SUMMARY.md` /
 These cost real time and real risk earlier in this same UX effort. Read them
 before touching the corresponding surface.
 
-### Cross-lane UI (ATHENA <-> DarvaX): five gotchas in one milestone
+### Cross-lane UI (ATHENA <-> DarvaX): six gotchas, one of them repeated once already
 
-Full account at the top of this document ("AUX-6 postmortem"). The
-one-sentence version of each, for quick reference once you've read the
-full thing at least once: (1) ATHENA's own assets may never reference
-DarvaX by name, anywhere, even in a comment — inject cross-lane UI from
-`tab.js` instead. (2) A cross-lane link must never use `target="_blank"` —
-cross-tab `sessionStorage` inheritance isn't reliable, and `ATHENA_SINGLE_USER=true`
+Full account at the top of this document ("AUX-6 postmortem" and, right
+below it, AUX-7's own "sixth instance of bug 4"). The one-sentence version
+of each, for quick reference once you've read the full thing at least
+once: (1) ATHENA's own assets may never reference DarvaX by name, anywhere,
+even in a comment — inject cross-lane UI from `tab.js` instead. (2) A
+cross-lane link must never use `target="_blank"` — cross-tab
+`sessionStorage` inheritance isn't reliable, and `ATHENA_SINGLE_USER=true`
 scratch testing can't catch this since it disables auth entirely. (3) A
 link that might render inside DarvaX's embedded iframe (via ATHENA's own
 "DarvaX" nav tab) needs `target="_top"`, or it nests a dashboard inside a
-pane instead of navigating the real page. (4) A link meant to land inside
-ATHENA's own chrome must target `tab.js`'s `ROUTE`
-(`/dashboard/darvax?...`), never `/darvax/` directly, or the sidebar
-disappears. (5) A deep link to that `ROUTE` races against ATHENA's own
-async auth-bootstrap-then-route sequence and will lose without a
-`MutationObserver`-based reassertion — don't assume a "static NodeList"
-comment is still accurate without checking the actual timing.
+pane instead of navigating the real page. (4) **A link meant to land inside
+ATHENA's own chrome must target `tab.js`'s `ROUTE` (`/dashboard/darvax?...`
+with whatever `?view=`/`?mode=`/`?symbol=` params `build()` already
+understands or needs extending to understand), never `/darvax/...`
+directly, or the sidebar disappears — this one was made twice, once in
+AUX-6 and, despite having read that postmortem, again in AUX-7 for a new
+page (`/darvax/symbol360`). Before adding ANY new href that points into
+DarvaX from a cross-lane UI element, grep this file and `darvax.js` for
+existing `ROUTE`/`/dashboard/darvax` usages and follow that pattern
+precisely — do not construct a fresh direct link to a DarvaX page path,
+ever, no matter how good the reason seems in the moment.** (5) A deep link
+to that `ROUTE` races against ATHENA's own async auth-bootstrap-then-route
+sequence and will lose without a `MutationObserver`-based reassertion —
+don't assume a "static NodeList" comment is still accurate without
+checking the actual timing. (6) Two independently-injected pieces of UI
+anchored near the same DOM element (an async one and a sync one) need an
+explicit ordering rule, or their insertion order is nondeterministic.
 
 ### DarvaX: never test against the owner's real database
 
@@ -445,51 +527,20 @@ this section adds context the roadmap doc itself doesn't carry.
 "Daily near-miss digest" both sides (AUX-4a/4b), "surface the near-miss
 digests in the dashboard UI" (AUX-4c), "My track record panel" (AUX-5),
 "See the other view cross-link" (AUX-6, see the postmortem above before
-touching anything near it again), the persistent freshness indicators
-(AUX-1a/1b), the last-successful-cycle indicator (AUX-2), and the
-confidence band in the Decisions list (AUX-3).
+touching anything near it again), "Symbol 360" page (AUX-7, implemented
+and awaiting owner review — see its own section above before touching
+`symbol360.html`/`symbol360.js` or either entry point again), the
+persistent freshness indicators (AUX-1a/1b), the last-successful-cycle
+indicator (AUX-2), and the confidence band in the Decisions list (AUX-3).
 
-**AUX-7 — "Symbol 360" page — is next, and is where you should start.**
-Roadmap doc's own description: "One search box, one page: ATHENA's
-Decision, DarvaX's screen result, saved-symbol status, and journal history
-for that instrument, side by side." Tagged "Big bet" effort and "Pure
-presentation over data every engine already persists — no new analytical
-logic, respects explainability-as-data throughout" (i.e. the roadmap's own
-author believed no new domain computation is needed — verify that's still
-true before designing, the same way AUX-4a's near-miss framing had to be
-corrected once the actual persisted-data shape was checked).
+**Nothing from the "Unify the two advisory lanes" category remains open.**
+The owner-selected priority track (AUX-1a through AUX-7) is either approved
+or awaiting review in full. Whoever picks this up next should confirm with
+the owner what they want to schedule next — the candidates below are real
+options from the still-unscheduled roadmap menu, not a committed plan.
 
-Before proposing a design, at minimum:
-- Read what AUX-6 already built and reuse it rather than duplicating: the
-  `instrument_id -> decision_id` join `darvax.js`'s `loadAthenaCrossLinks()`
-  already does via `GET /api/v1/decisions/latest`, and the DarvaX-signal
-  existence check `tab.js`'s `checkCrossLink()` does via
-  `GET /darvax/api/signals/{instrument_id}`. A Symbol 360 page needs
-  exactly these two lookups, just rendered as a full page instead of a
-  quiet chip.
-- Decide where this page actually lives, given the ADR-010 asymmetry from
-  the postmortem above: since it needs to show BOTH ATHENA and DarvaX data
-  together on one page, does it live as a new ATHENA route (meaning DarvaX
-  data must be fetched by ATHENA's frontend, which is exactly what
-  Amendment 1 forbids for ATHENA-owned assets) — or does it need to live
-  as a DarvaX-owned page/route instead (matching the established
-  asymmetry: DarvaX may reference ATHENA, not the reverse), or does it need
-  a genuinely new, neutral page that itself isn't "owned" by either lane's
-  existing asset-isolation rules? **This is exactly the kind of
-  architectural question the postmortem above says to stop and ask about
-  rather than deciding unilaterally** — surface it to the owner as part of
-  the Design step, don't guess.
-- Check whether "saved-symbol status" and "journal history" are already
-  exposed via an endpoint (search for "saved" and "journal" across
-  `src/athena/api/v1/routers/`) before assuming new backend work is needed.
-- Given "Big bet" sizing and this session's own precedent of splitting
-  oversized milestones (AUX-1, AUX-4), expect this to become 2-3
-  sub-milestones (e.g., page shell + ATHENA half; DarvaX half; saved-symbol
-  and journal history integration) rather than one — propose the split to
-  the owner before implementing any of it.
-
-**Not yet scheduled, but real candidates the owner might pick next if not
-AUX-7**: "Owner-authored price/level alerts" (Alerts, big bet — the single
+**Not yet scheduled, but real candidates the owner might pick next**:
+"Owner-authored price/level alerts" (Alerts, big bet — the single
 idea with the most architectural surface area; needs a rules engine and a
 per-cycle evaluation pass, not just a UI change; treat as multiple
 milestones from the start). "DarvaX's own realized-performance view"
