@@ -1208,6 +1208,11 @@ tr .lv-yourstop, .lstrip .lv-yourstop { color: var(--bad); }
 .s360-search form { display: flex; gap: 8px; max-width: 420px; }
 .s360-search .dim { margin-top: 8px; }
 .s360-title { font-size: 20px; margin: 0 0 4px; }
+.s360-title-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
+}
+.s360-title-row .s360-title { margin: 0; }
 .s360-card { font-size: 13px; }
 .s360-card dl.lines {
   display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 0;

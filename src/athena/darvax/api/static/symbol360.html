@@ -16,7 +16,7 @@
     computation, everything here already exists behind an endpoint AUX-5
     or AUX-6 (or ATHENA core) already established.
   -->
-  <link rel="stylesheet" href="/darvax/static/darvax.css?v=0.1.0-aux7c">
+  <link rel="stylesheet" href="/darvax/static/darvax.css?v=0.1.0-aux8b">
 </head>
 <body>
   <div class="wrap">
@@ -52,7 +52,11 @@
     </section>
 
     <div id="s360-result" hidden>
-      <h2 id="s360-title" class="s360-title"></h2>
+      <div class="s360-title-row">
+        <h2 id="s360-title" class="s360-title"></h2>
+        <button id="s360-scan-btn" type="button" class="primary">Scan &amp; Validate</button>
+      </div>
+      <p class="dim" id="s360-scan-note"></p>
 
       <section class="zone">
         <header class="zonehead">
@@ -94,6 +98,6 @@
     </p>
   </div>
 
-  <script src="/darvax/static/symbol360.js?v=0.1.0-aux7c"></script>
+  <script src="/darvax/static/symbol360.js?v=0.1.0-aux8b"></script>
 </body>
 </html>

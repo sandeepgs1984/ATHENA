@@ -71,6 +71,7 @@ sweep freshness require separate authoritative contracts.
 | 7 | **AUX-4c** | Surface near-miss digests in the dashboard UI (ATHENA + DarvaX) — both currently file-only, per AUX-4a/4b's own design | ✅ Approved 2026-08-20; 2,086 tests pass |
 | 8 | **AUX-6** | "See the other view" cross-link — quiet affordance linking a symbol's ATHENA Decision Brief and its DarvaX read, and vice versa | ✅ Approved 2026-08-21; 2,105 tests pass |
 | 9 | **AUX-7** | "Symbol 360" page — ATHENA Decision, DarvaX screen result, saved-symbol status, and journal history for one instrument, side by side | ✅ Approved 2026-08-21; 2,165 tests pass |
+| 10 | **AUX-8** | "Scan & Validate" on Symbol 360 — on-demand ATHENA validation + DarvaX scan for one symbol, run concurrently | ✅ Approved 2026-08-21; 2,181 tests pass |
 
 DX-12b was owner-approved 2026-08-20 after live visual verification on the
 owner's own real system. AUX-4 was split into AUX-4a/AUX-4b before
@@ -334,7 +335,64 @@ the DarvaX Read card's no-current-sweep-row fallback (a real 404 against
 `/darvax/api/signals/...`, handled gracefully), the saved-symbol toggle's
 full DELETE→POST round trip, the journal history table, and both entry
 points — including clicking the injected ATHENA-side link end-to-end into
-a correctly pre-populated Symbol 360 page. Awaiting owner approval.
+a correctly pre-populated Symbol 360 page.
+
+**AUX-8 ("Scan & Validate" on Symbol 360) is implemented and ready for
+review, 2026-08-21** — the owner's follow-up ask right after approving
+AUX-7: "one option where user will enter symbol and result should be both
+athena validation and darvax validation after scanning the symbol
+properly." AUX-7's "Look up" only ever reads whatever each engine has
+already persisted; this adds a second, explicit "Scan & Validate" button
+(design confirmed with the owner as a *separate* action, not folded into
+"Look up") that actually re-runs both engines for the current symbol,
+concurrently, each card updating independently as its engine finishes.
+ATHENA's half reuses the exact candidate-upsert-then-validate pipeline
+`09-market-intelligence.js`'s `validateSymbolsNow` already uses (a real,
+scoped Kite ingest); DarvaX's half reuses the existing per-instrument
+`/darvax/api/scan` endpoint. No new route on either side going in — pure
+frontend composition, same as AUX-7 itself, gated by an out-of-order-
+response guard (a `scanRequestId` counter, same convention as AUX-6's
+`checkCrossLink`) so a slow response for a superseded symbol can never
+clobber a card that has since moved on.
+
+**A real inconsistency the owner caught from two side-by-side screenshots,
+fixed same day.** DarvaX's `/darvax/api/scan` deliberately runs no
+DAR-CARD classification (its own docstring: "adding no methodology of its
+own") — it only produces a raw `DarvaxSignal`, not the tier/action-
+classified `ScreenResult` a full universe sweep produces. So "Look up"
+(reading a real sweep's `ScreenResult`) and "Scan & Validate" (calling
+`/scan`) rendered two visibly different shapes for the identical symbol —
+`TIER`/`ACTION`/`BUY ABOVE`/`STOP LOSS` versus a thinner `SIGNAL`/`RULE`
+reading — confusing on one page with one search box. Root cause understood
+before touching code: the classification step already exists as a pure,
+already-tested function (`screen_signal` in
+`src/athena/darvax/screening/engine.py`), needing only the one signal
+`/scan` already produces. Fixed by wiring that exact function into
+`/darvax/api/scan`'s handler and returning its result in a new, purely
+additive `screened` field (a placeholder, never-persisted sweep id, since
+this reading is never written to the sweep table) — no schema change, no
+invented methodology, and no effect on DarvaX's own existing "Scan
+symbols" UI (which already ignores the per-signal response shape
+entirely). Symbol 360 now renders a fresh scan through the same row branch
+"Look up" uses, with an explicit "freshly scanned, doesn't know about any
+position you hold" disclosure rather than presenting it as equivalent to
+a completed sweep.
+
+Sixteen tests in `tests/darvax/test_aux8_scan_validate.py`, four proven
+non-vacuous: both lanes' endpoint calls and payload shapes, the
+concurrency (`Promise.all`, not sequential), the out-of-order-response
+guard on both lanes, a new lookup invalidating an in-flight scan, and —
+the two backend-level ones, hitting the real route over real (fake-
+market-data) candles rather than a source grep — that `/darvax/api/scan`
+actually returns a classified `screened` result and that it is never
+persisted as a real sweep. Full suite 2,181 passing (2,165 -> 2,178 initial
+-> 2,181 after the classification fix). Live-verified end-to-end on an
+isolated scratch server: the real candidate-upsert → validate → Kite
+ingest → fresh Decision sequence and the real DarvaX scan both completed
+successfully and rendered correctly in one click; a follow-up "Look up"
+for a different symbol correctly reset the scan state. See
+`IMPLEMENTATION_SUMMARY.md`'s AUX-8 entry for full detail.
+**Owner-approved 2026-08-21.**
 
 The approved AUX-3 design record remains at
 [`docs/design/ATHENA-DECISION-LIST-CONFIDENCE-DESIGN.md`](design/ATHENA-DECISION-LIST-CONFIDENCE-DESIGN.md).

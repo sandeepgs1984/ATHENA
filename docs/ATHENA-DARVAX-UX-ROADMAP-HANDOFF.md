@@ -1,13 +1,13 @@
 # ATHENA & DarvaX UX Roadmap — Agent Handoff
 
-**Snapshot date:** 2026-08-21 — **AUX-6 and AUX-7 both owner-approved.**
-The owner-selected priority track (AUX-1a through AUX-7) is fully approved;
-nothing is currently in flight.
+**Snapshot date:** 2026-08-21 — **AUX-6, AUX-7, and AUX-8 all owner-
+approved.** The owner-selected priority track (AUX-1a through AUX-8) is
+fully approved; nothing is currently in flight.
 **Branch observed:** `feature/live-dashboard`  
 **Latest commit:** `a53a168` — `feat(dashboard): expose full-cycle validation health`
-(AUX-7's own commit is not made yet — the AI provides a commit message per
-milestone, the owner commits)  
-**Test suite at handoff:** **2,165 passing.** Ruff clean on all changed/added
+(none of AUX-7's/AUX-8's own commits are made yet — the AI provides a
+commit message per milestone, the owner commits)  
+**Test suite at handoff:** **2,181 passing.** Ruff clean on all changed/added
 files. Progression: 2,041 -> 2,055 (AUX-4a) -> 2,069 (AUX-4b) -> 2,075
 (AUX-5) -> 2,086 (AUX-4c) -> 2,105 (AUX-6, across five owner-caught fix
 passes in one day — see below, this is the part worth reading in full
@@ -15,24 +15,25 @@ before touching any cross-lane code) -> 2,156 (AUX-7 initial) -> 2,158
 (AUX-7's own post-review fix pass, a sixth instance of AUX-6's bug 4 — see
 the new gotcha below) -> 2,165 (a further post-approval polish pass on
 DarvaX Read's ACTION field and the ATHENA Decision card's timestamp — see
-the new section below before touching either).
+the new section below before touching either) -> 2,178 (AUX-8 initial) ->
+2,181 (AUX-8's own fix, wiring DarvaX's existing signal classifier into its
+on-demand scan endpoint — see the new section below before touching
+`/darvax/api/scan` or `darvaxScanNow` again).
 
 ## Message to whichever agent picks this up next
 
 Start with `docs/MILESTONES.md` and the top entry of
 `IMPLEMENTATION_SUMMARY.md` per the standard orientation checklist — don't
 trust this paragraph's status claims over those two files if they ever
-disagree. As of this snapshot: the owner-selected priority track is
-**AUX-1a through AUX-7, all approved.** Nothing from the "Unify the two
-advisory lanes" roadmap category remains open. Check whether the owner has
-named a next roadmap item before starting anything — the "Not yet
-scheduled" candidates in section 5 below are real options, not a committed
-plan. If you're picking this up because a further AUX-7 bug surfaced after
-this snapshot, treat it the way every bug in this milestone (and AUX-6
-before it) was treated: root-cause on the actual code (see the
-testing-methodology lesson below), fix, add a non-vacuous regression test,
-re-verify live, update the docs' bug account — don't just patch and move on
-silently.
+disagree. As of this snapshot: **AUX-1a through AUX-8 are all approved.**
+Nothing from the "Unify the two advisory lanes" roadmap category remains
+open. Check whether the owner has named a next roadmap item before
+starting anything — the "Not yet scheduled" candidates in section 5 below
+are real options, not a committed plan. If a further bug surfaces, treat
+it the way every bug in this track (AUX-6, AUX-7, and AUX-8 alike) was
+treated: root-cause on the actual code (see the testing-methodology lesson
+below), fix, add a non-vacuous regression test, re-verify live, update the
+docs' bug account — don't just patch and move on silently.
 
 **Before you write a single line of cross-lane (ATHENA <-> DarvaX) UI
 code, read the AUX-6 postmortem immediately below in full.** It cost five
@@ -275,6 +276,54 @@ into `symbol360.js` per this file's own no-cross-import rule. Full detail
 in `IMPLEMENTATION_SUMMARY.md`'s AUX-7 entry, under "Post-approval polish
 pass."
 
+### AUX-8 ("Scan & Validate"): reusing an on-demand endpoint doesn't mean the result matches a passive read
+
+Right after approving AUX-7, the owner asked for a natural next step: enter
+a symbol and get both engines' validation "after scanning the symbol
+properly" — not just a read of whatever each already happens to have
+persisted. Design confirmed with the owner up front (a genuine fork worth
+asking about, not deciding alone): **two separate actions, not one** —
+"Look up" stays free/instant, "Scan & Validate" is a second, explicit
+button shown only once a symbol is loaded, since ATHENA's half makes a
+real Kite ingest call and both halves persist new data.
+
+Both halves reuse existing, already-shipped pipelines: ATHENA's
+candidate-upsert-then-validate sequence (`09-market-intelligence.js`'s
+`validateSymbolsNow`) and DarvaX's per-instrument `POST /darvax/api/scan`.
+Zero new routes going in — pure frontend composition, matching AUX-7's own
+framing exactly.
+
+**Then the owner compared two screenshots of the same symbol and asked
+"shouldn't this be the same as Look up?" — and they were right.** DarvaX's
+`/scan` endpoint was deliberately built to skip classification (its own
+docstring says so) — it produces a raw signal (`SIGNAL`/`RULE`), not a
+sweep's tier/action-classified `ScreenResult`
+(`TIER`/`ACTION`/`BUY ABOVE`/`STOP LOSS`). Reusing an existing endpoint
+because it does "the same kind of thing" isn't enough — it has to produce
+comparable *output*, not just live in the same conceptual space, or two
+buttons on the same page for the same symbol will visibly disagree. **The
+generalizable lesson**: before wiring an existing endpoint into a new UI
+path, check what its response actually contains against what a sibling
+path already shows, not just whether the endpoint name matches the intent.
+
+The fix was clean specifically because the classification already existed
+as a separate, pure, already-tested function (`screen_signal`) that a real
+sweep also calls — wiring it into `/scan`'s handler too, as a new additive
+`screened` field, needed no new methodology and no schema change. Full
+technical detail (exact diff, exact test names, live-verification
+transcript, and why the fix is architecturally safe — no effect on
+DarvaX's own existing "Scan symbols" feature) is in
+`IMPLEMENTATION_SUMMARY.md`'s AUX-8 entry.
+
+**One more thing worth internalizing before extending "Scan symbols"
+itself**: that button on DarvaX's main screener page has the exact same
+underlying gap this fix solved for Symbol 360 (its `/scan` call now
+returns a classified `screened` result too), but the button's own
+frontend code (`darvax.js`'s `scan()`) doesn't read it — it only shows a
+count and reloads the last sweep. Flagged as a suggested improvement in
+the AUX-8 implementation entry, not fixed here: out of this milestone's
+scope, but a real, ready-made follow-up if the owner wants it.
+
 ### Everything else approved before AUX-6
 
 AUX-1a, AUX-1b, AUX-2, AUX-3, DX-12b, AUX-4a, AUX-4b, AUX-5, and AUX-4c are
@@ -358,12 +407,12 @@ reproposing what already exists, followed by 29 concrete, scoped ideas.
    server-side JS assembly, security, testing). Read the relevant sections
    before touching a module you haven't worked in.
 
-**AUX-1a through AUX-7 are all approved** — see `IMPLEMENTATION_SUMMARY.md`'s
-entry for each (newest first; AUX-6's and AUX-7's entries are the longest
-and most important to read given the postmortems above). AUX-4c
-(surfacing AUX-4a/4b's near-miss digests in the dashboard UI) is also done
-— both are file-only digests now surfaced with a plain-language explainer
-on each dashboard.
+**AUX-1a through AUX-8 are all approved** — see `IMPLEMENTATION_SUMMARY.md`'s
+entry for each (newest first; AUX-6's, AUX-7's, and AUX-8's entries are the
+longest and most important to read given the postmortems above). AUX-4c (surfacing
+AUX-4a/4b's near-miss digests in the dashboard UI) is also done — both are
+file-only digests now surfaced with a plain-language explainer on each
+dashboard.
 
 ---
 
@@ -574,15 +623,20 @@ digests in the dashboard UI" (AUX-4c), "My track record panel" (AUX-5),
 touching anything near it again), "Symbol 360" page (AUX-7, approved — see
 its own sections above, including the post-approval ACTION-field lessons,
 before touching `symbol360.html`/`symbol360.js` or either entry point
-again), the
-persistent freshness indicators (AUX-1a/1b), the last-successful-cycle
+again), "Scan & Validate" on Symbol 360 (AUX-8, approved — see its own
+section above, including the `screen_signal` wiring lesson, before
+touching `athenaValidateNow`/`darvaxScanNow` or `/darvax/api/scan` again),
+the persistent freshness indicators (AUX-1a/1b), the last-successful-cycle
 indicator (AUX-2), and the confidence band in the Decisions list (AUX-3).
 
-**Nothing from the "Unify the two advisory lanes" category remains open.**
-The owner-selected priority track (AUX-1a through AUX-7) is either approved
-or awaiting review in full. Whoever picks this up next should confirm with
-the owner what they want to schedule next — the candidates below are real
-options from the still-unscheduled roadmap menu, not a committed plan.
+**The "Unify the two advisory lanes" category is fully worked through.**
+The owner-selected priority track (AUX-1a through AUX-8) is fully
+approved. Whoever picks this up next should
+confirm with the owner what they want to schedule next — the candidates
+below are real options from the still-unscheduled roadmap menu, not a
+committed plan. DarvaX's own "Scan symbols" feature could reuse AUX-8's new
+`screened` field too (see the AUX-8 section above) — a real, ready-made
+follow-up if the owner wants it, not yet scheduled.
 
 **Not yet scheduled, but real candidates the owner might pick next**:
 "Owner-authored price/level alerts" (Alerts, big bet — the single

@@ -72,7 +72,7 @@
   // "back to ATHENA" link instead of relying on ATHENA's own sidebar.
   if (window.location.search.indexOf("embedded=1") !== -1) {
     var backLink = document.querySelector("a.link[href='/darvax/']");
-    if (backLink) backLink.setAttribute("href", "/darvax/?embedded=1&v=0.1.0-aux7c");
+    if (backLink) backLink.setAttribute("href", "/darvax/?embedded=1&v=0.1.0-aux8b");
   }
 
   var els = {
@@ -84,11 +84,19 @@
     athenaCard: document.getElementById("s360-athena-card"),
     darvaxCard: document.getElementById("s360-darvax-card"),
     saveToggle: document.getElementById("s360-save-toggle"),
+    scanBtn: document.getElementById("s360-scan-btn"),
+    scanNote: document.getElementById("s360-scan-note"),
     historySub: document.getElementById("s360-history-sub"),
     historyTbody: document.getElementById("s360-history-tbody")
   };
 
   var current = { instrumentId: null, bareSymbol: null, saved: false };
+
+  // Bumped on every lookup() and every scanAndValidate() call so a stale
+  // scan response (from a previous symbol, or superseded by a second click)
+  // can never overwrite a card that has since moved on to something else --
+  // same out-of-order-response guard convention tab.js's checkCrossLink uses.
+  var scanRequestId = 0;
 
   function normalizeInstrumentId(raw) {
     var v = (raw || "").trim().toUpperCase();
@@ -190,12 +198,23 @@
     return reason ? ' title="' + esc(reason) + '"' : "";
   }
 
-  function renderDarvaxCard(row, signal) {
+  function renderDarvaxCard(row, signal, freshlyScanned) {
     if (!row && !signal) {
       els.darvaxCard.innerHTML = '<p class="dim">DarvaX has no read on this instrument yet.</p>';
       return;
     }
     if (row) {
+      // "Scan & Validate" (AUX-8) classifies its fresh signal with the exact
+      // same screen_signal() a real sweep uses, so it renders through this
+      // same branch as a sweep's ScreenResult -- identical shape, identical
+      // fields. The only difference worth telling the owner about: it skips
+      // the sweep-wide held-position/liquidity/trend context (screen_signal's
+      // own documented optional inputs), so it's flagged, not silently
+      // presented as equivalent to a completed universe sweep.
+      var rowIntro = freshlyScanned
+        ? "Freshly scanned just now — not the last completed universe sweep, " +
+          "and doesn't know about any position you hold in this symbol."
+        : "";
       var lines =
         "<dt>Tier</dt><dd>" + esc(row.tier) + "</dd>" +
         "<dt>Action</dt><dd" + actionTitleAttr(row) + ">" + actionLabel(row) + "</dd>" +
@@ -204,23 +223,28 @@
         "<dt>Stop loss</dt><dd>" + money(row.stop_price) + "</dd>" +
         "<dt>Box</dt><dd>" + money(row.box_bottom) + " – " + money(row.box_top) + "</dd>";
       els.darvaxCard.innerHTML =
+        (rowIntro ? '<p class="dim">' + esc(rowIntro) + "</p>" : "") +
         '<dl class="lines">' + lines + "</dl>" +
         (row.action_reason_plain
           ? '<p class="why" style="margin-top:8px;">' + esc(row.action_reason_plain) + "</p>"
           : "");
       return;
     }
-    // No current sweep row for this instrument, but a raw signal exists from
-    // an ad hoc scan -- show the lighter-weight reading rather than nothing,
-    // clearly labelled as such (it carries no tier/action, only the box
-    // computation itself).
+    // No current sweep row for this instrument, but a raw signal exists --
+    // either an earlier ad hoc scan (passive lookup path) or the one this
+    // page's own "Scan & Validate" button just triggered (freshlyScanned) --
+    // show the lighter-weight reading rather than nothing, clearly labelled
+    // as such (it carries no tier/action, only the box computation itself).
+    var intro = freshlyScanned
+      ? "Freshly scanned just now — not yet part of a saved universe sweep."
+      : "No current sweep row for this instrument — showing its last scanned signal instead.";
     var lines2 =
       "<dt>Signal</dt><dd>" + esc(signal.signal_type) + "</dd>" +
       "<dt>Rule</dt><dd>" + esc(signal.darvas_rule) + "</dd>" +
       "<dt>Close</dt><dd>" + money(signal.close) + "</dd>" +
       "<dt>Box</dt><dd>" + money(signal.box_bottom) + " – " + money(signal.box_top) + "</dd>";
     els.darvaxCard.innerHTML =
-      '<p class="dim">No current sweep row for this instrument — showing its last scanned signal instead.</p>' +
+      '<p class="dim">' + esc(intro) + "</p>" +
       '<dl class="lines">' + lines2 + "</dl>" +
       (signal.explanation
         ? '<p class="why" style="margin-top:8px;">' + esc(signal.explanation) + "</p>"
@@ -242,6 +266,102 @@
       })
       .catch(function () { renderDarvaxCard(null, null); });
   }
+
+  // ---------------------------------------------------- Scan & Validate now
+
+  // Owner-requested: "Look up" above only ever reads whatever each engine
+  // has already persisted -- this is a second, explicit action that actually
+  // re-runs both engines for the current symbol. Deliberately not folded
+  // into "Look up" itself: ATHENA's half makes a real Kite ingest call and
+  // both halves persist new data (a Decision, a DarvaxSignal), so neither
+  // should fire on every search, only when the owner asks for it.
+  //
+  // The two engines run concurrently and update their own card independently
+  // as each finishes -- ATHENA's live ingest is typically the slower of the
+  // two -- and a failure in one (e.g. an expired Kite session) never blocks
+  // or corrupts the other's result.
+
+  function setScanNote(message, isError) {
+    els.scanNote.textContent = message || "";
+    els.scanNote.style.color = isError ? "var(--bad)" : "";
+  }
+
+  function athenaValidateNow(instrumentId, bareSymbol, requestId) {
+    els.athenaCard.innerHTML = '<p class="dim">Scanning…</p>';
+    // /market/validate requires the symbol to already be a known candidate;
+    // upserting first (idempotent -- safe even if it already is one) is the
+    // same two-call sequence ATHENA's own dashboard already uses for this
+    // (09-market-intelligence.js's validateSymbolsNow), reused here rather
+    // than invented fresh.
+    return request("/api/v1/market/candidates", {
+      method: "POST",
+      body: { symbol: bareSymbol }
+    }).then(function () {
+      return request("/api/v1/market/validate", {
+        method: "POST",
+        body: { symbols: [bareSymbol] }
+      });
+    }).then(function () {
+      // /validate returns run counts, not the decision itself -- the fresh
+      // decision is picked up by re-running the exact same read lookup()
+      // already uses, so the card can never render two different shapes of
+      // "an ATHENA decision" depending on how it got there.
+      if (requestId !== scanRequestId) return;
+      return loadAthenaDecision(instrumentId);
+    }).catch(function (err) {
+      if (requestId !== scanRequestId) return;
+      els.athenaCard.innerHTML = '<p class="dim" style="color:var(--bad);">' +
+        "Could not run ATHENA validation: " + esc(err.message || "unknown error") + "</p>";
+    });
+  }
+
+  function darvaxScanNow(instrumentId, requestId) {
+    els.darvaxCard.innerHTML = '<p class="dim">Scanning…</p>';
+    return request("/darvax/api/scan", {
+      method: "POST",
+      body: { instrument_ids: [instrumentId] }
+    }).then(function (payload) {
+      if (requestId !== scanRequestId) return;
+      // The scan response's "screened" array carries the same
+      // tier/action-classified shape a real sweep's ScreenResult does
+      // (screen_signal applied server-side to the fresh signal) -- rendered
+      // through the same row branch as "Look up", not the raw-signal
+      // fallback, so the two actions can never show two different shapes of
+      // "a DarvaX read" for one symbol. Falls back to the unclassified
+      // signal only if, somehow, classification is missing from the
+      // response (an older server, never this one).
+      var screened = (payload && payload.screened) || [];
+      if (screened.length) {
+        renderDarvaxCard(screened[0], null, true);
+        return;
+      }
+      var signals = (payload && payload.data) || [];
+      renderDarvaxCard(null, signals[0] || null, true);
+    }).catch(function (err) {
+      if (requestId !== scanRequestId) return;
+      els.darvaxCard.innerHTML = '<p class="dim" style="color:var(--bad);">' +
+        "Could not run DarvaX scan: " + esc(err.message || "unknown error") + "</p>";
+    });
+  }
+
+  function scanAndValidate() {
+    if (!current.instrumentId) return;
+    var requestId = ++scanRequestId;
+    var instrumentId = current.instrumentId;
+    var bareSymbol = current.bareSymbol;
+    els.scanBtn.disabled = true;
+    setScanNote("Scanning " + bareSymbol + " with both engines…");
+    Promise.all([
+      athenaValidateNow(instrumentId, bareSymbol, requestId),
+      darvaxScanNow(instrumentId, requestId)
+    ]).then(function () {
+      if (requestId === scanRequestId) setScanNote("Scanned just now.");
+    }).then(function () {
+      if (requestId === scanRequestId) els.scanBtn.disabled = false;
+    });
+  }
+
+  els.scanBtn.addEventListener("click", scanAndValidate);
 
   // ------------------------------------------------------- saved-symbol star
 
@@ -341,6 +461,13 @@
     var bare = bareSymbolOf(instrumentId);
     current.instrumentId = instrumentId;
     current.bareSymbol = bare;
+    // Invalidate any scanAndValidate() still in flight for a previous
+    // symbol, and reset its own UI -- otherwise a slow ATHENA validate call
+    // for the OLD symbol could resolve after this new lookup and clobber
+    // the card that now belongs to a different one.
+    scanRequestId++;
+    els.scanBtn.disabled = false;
+    setScanNote("");
     setNote("");
     els.result.hidden = false;
     els.title.textContent = bare;

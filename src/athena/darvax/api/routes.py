@@ -32,6 +32,7 @@ from athena.darvax.config import methodology_digest
 from athena.darvax.digest import read_latest_digest, resolve_output_dir
 from athena.darvax.positions.models import DarvaxPosition
 from athena.darvax.scan import scan_instruments
+from athena.darvax.screening.engine import screen_signal
 from athena.darvax.screening.models import (
     RISK_BEARING_ACTIONS,
     DarvaxTier,
@@ -490,8 +491,19 @@ def scan(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
         ) from exc
 
+    # AUX-8: classify each signal with the same pure function a real sweep
+    # uses (screen_signal), so an on-demand scan's result carries the same
+    # tier/action/buy-above/stop-loss shape as a sweep's ScreenResult -- not
+    # a second, thinner reading a caller has to know to interpret differently.
+    # Never persisted: "adhoc-scan" is not a real sweep id, and this classifies
+    # without the owner's held-position context or sweep-wide liquidity/trend
+    # (screen_signal's own documented, purely-additive optional inputs) -- a
+    # deliberately smaller scope than a full sweep, not a second methodology.
+    screened = [screen_signal(s, sweep_id="adhoc-scan") for s in result.signals]
+
     return _envelope(
         [_signal_payload(s) for s in result.signals],
+        screened=[_screen_payload(r) for r in screened],
         requested=result.requested,
         evaluated=result.evaluated,
         timeframe=result.timeframe.value,

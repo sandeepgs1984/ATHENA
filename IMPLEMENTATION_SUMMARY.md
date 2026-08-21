@@ -6,6 +6,174 @@ status updated on approval.
 
 ---
 
+## AUX-8: "Scan & Validate" on Symbol 360
+
+**Summary.** A second, explicit action on Symbol 360 (AUX-7) beyond the
+existing passive "Look up": a "Scan & Validate" button that actually
+re-runs both engines for the current symbol — ATHENA's real, scoped
+candidate-upsert-then-validate pipeline (Kite ingest + full
+regime→eligibility→scoring→decision cycle) and DarvaX's per-instrument
+scan — concurrently, updating each card independently as its engine
+finishes. Owner request: "one option where user will enter symbol and
+result should be both athena validation and darvax validation after
+scanning the symbol properly." No new backend route on either side for
+this half of the milestone; a second, owner-caught issue (below) did
+require one small, additive backend change.
+
+**Objective.** Close the gap between a page that only ever shows whatever
+is already persisted and the owner's ask for an on-demand, fresh reading
+from both lanes for one symbol.
+
+**Design confirmed with the owner before implementation.** Two separate
+actions, not one combined action: "Look up" stays free/instant (today's
+behavior, no side effects); "Scan & Validate" is a second button shown
+only once a symbol is loaded. ATHENA's half makes a real Kite ingest call
+and both halves persist new data (a `Decision`, a `DarvaxSignal`), so
+neither may fire silently on every search — only on explicit request,
+matching every other one-click "run the real pipeline" button already in
+this app (Portfolio's "Ingest + score", the Universe panel's "Add &
+validate", DarvaX's own "Scan symbols").
+
+**Scope completed.** `athenaValidateNow` calls `POST /api/v1/market/candidates`
+(idempotent upsert) then `POST /api/v1/market/validate` (the same two-call
+sequence `09-market-intelligence.js`'s `validateSymbolsNow` already uses),
+then re-runs the existing `loadAthenaDecision` reader to pick up the fresh
+decision (`/validate` returns run counts, not the decision itself).
+`darvaxScanNow` calls `POST /darvax/api/scan` with the current instrument
+id. Both run via `Promise.all`, each showing its own "Scanning…" state and,
+on failure, its own inline error — one lane's failure (e.g. an expired
+Kite session) never touches the other's card. An out-of-order-response
+guard (`scanRequestId`, incremented on every `lookup()` and every
+`scanAndValidate()` call, same convention as AUX-6's `checkCrossLink`)
+means a slow response for a symbol the owner has since navigated away from
+can never overwrite the wrong card.
+
+**A real inconsistency the owner caught from two side-by-side
+screenshots of the same symbol, root-caused and fixed the same day.**
+`POST /darvax/api/scan` deliberately runs no DAR-CARD classification —
+its own module docstring (`src/athena/darvax/scan.py`) states "adding no
+methodology of its own" — so it only ever produced a raw `DarvaxSignal`
+(`SIGNAL`/`RULE`/`CLOSE`/`BOX`), never the tier/action-classified
+`ScreenResult` a full universe sweep produces
+(`TIER`/`ACTION`/`BUY ABOVE`/`STOP LOSS`). "Look up" (reading a real
+sweep's `ScreenResult` when one exists) and "Scan & Validate" (calling
+`/scan`) therefore rendered two visibly different shapes for the identical
+symbol — confusing on a page built around one search box showing one
+consistent read per engine. The classification step already existed as a
+pure, already-tested function needing only the one signal `/scan` already
+produces: `screen_signal` in `src/athena/darvax/screening/engine.py`.
+Fixed by wiring it into the `/scan` route's handler
+(`src/athena/darvax/api/routes.py`) and returning the classified result in
+a new `screened` field, additive alongside the existing `data` field — no
+schema or persistence change (the placeholder `sweep_id="adhoc-scan"` is
+never written to the sweep table, only the underlying signal is, exactly
+as before), no invented methodology (the classifier is reused verbatim,
+just newly wired into a second caller), and no effect on DarvaX's own
+existing "Scan symbols" UI (`darvax.js`'s `scan()` already ignores the
+per-signal response shape entirely, reading only `evaluated`/`requested`/
+`skipped`). `symbol360.js`'s `darvaxScanNow` now renders the classified
+`screened[0]` through the exact same row branch `loadDarvaxRead` uses for
+a real sweep row, falling back to the unclassified signal only if
+`screened` is somehow absent (an older server, never this one). The row
+branch gained an explicit disclosure when freshly scanned — "not the last
+completed universe sweep, and doesn't know about any position you hold in
+this symbol" — since the ad hoc classification deliberately omits
+`screen_signal`'s own documented optional context (held-position
+personalization, sweep-wide liquidity, trend), a smaller scope than a full
+sweep by design, not silently presented as equivalent to one.
+
+**Files modified.** `src/athena/darvax/api/routes.py` (import
+`screen_signal`; `scan()` route classifies each fresh signal and returns
+`screened`), `src/athena/darvax/api/static/symbol360.html` (`Scan &
+Validate` button + status note, inside `#s360-result` so it only appears
+once a symbol is loaded), `src/athena/darvax/api/static/symbol360.js`
+(`athenaValidateNow`, `darvaxScanNow`, `scanAndValidate`, `setScanNote`,
+`scanRequestId`; `renderDarvaxCard` extended with a `freshlyScanned` flag
+on both its row and signal branches; `lookup()` invalidates any in-flight
+scan), `src/athena/darvax/api/static/darvax.css` (`.s360-title-row`),
+asset version bumps (`0.1.0-aux7c` → `0.1.0-aux8` → `0.1.0-aux8b` for the
+classification fix), `docs/MILESTONES.md`, the UX roadmap, and this
+implementation log.
+
+**Public APIs changed.** One additive field: `POST /darvax/api/scan`'s
+response gained a `screened` array (classified `ScreenResult` payloads,
+same shape `/darvax/api/screen/latest` already returns per row) alongside
+the pre-existing `data` array. No breaking change to any existing
+consumer — `darvax.js`'s own "Scan symbols" feature never read the
+per-signal shape of `data` to begin with.
+
+**Tests added.** 16, in `tests/darvax/test_aux8_scan_validate.py`: the
+button lives inside `#s360-result` as a genuinely separate action from
+"Look up"; `scanAndValidate` is a no-op without a loaded symbol; the
+ATHENA lane's candidate-upsert-then-validate call order and its own
+scoped inline error handling; the DarvaX lane's endpoint call, its
+preference for the classified `screened` result over the raw-signal
+fallback (with explicit ordering asserted), and its own scoped inline
+error handling; `renderDarvaxCard`'s freshly-scanned disclosure on both
+branches; both lanes' out-of-order-response guards and `Promise.all`
+concurrency; `lookup()` invalidating an in-flight scan; and two real,
+route-level backend tests (a `FakeMarketData` fixture with one clean
+breakout instrument, mounted through a real `TestClient`) proving
+`/darvax/api/scan` actually returns a classified `ACTIONABLE`/`ENTER`-type
+`screened` row over real candle data, and that this classification is
+never persisted as a real sweep (`/screen/latest` never sees it). Four of
+the most safety-critical guards proven non-vacuous by reintroducing the
+exact bug each catches and confirming failure before restoring: the
+`screened`-field wiring itself, the frontend's preference for `screened`
+over the raw fallback, and (carried over from the guard pattern already
+established) the stale-response and stale-lookup guards.
+
+**Test results.** Full suite: **2,181 passing** (2,165 → 2,178 initial
+implementation → 2,181 after the classification fix). Live-verified
+end-to-end on two fresh isolated scratch servers (own config, own
+database, `ATHENA_SINGLE_USER` bypass, never the owner's real
+`db/athena.db`/`db/darvax.db`): the full real sequence — candidate upsert
+(201), DarvaX scan (200), ATHENA validate (200 — a genuine scoped Kite
+ingest against the scratch environment), and the decision re-fetch (200)
+— completed successfully in one click, rendering a real fresh `WATCH`
+decision and a real fresh DarvaX signal; a subsequent "Look up" for a
+different symbol correctly reset the scan button/note state. After the
+classification fix, re-verified that "Scan & Validate" now renders the
+identical `TIER`/`ACTION`/`BUY ABOVE`/`STOP LOSS`/`BOX` shape "Look up"
+would show for a real sweep row, with the freshly-scanned disclosure
+present.
+
+**Coverage summary.** Both lanes' request construction, response handling,
+concurrency, error isolation, and stale-response guarding are covered at
+the unit level; the classification wiring is covered at the real-route
+level over real (fixture) candle data; the full end-to-end flow (both real
+mutating calls, both card renders, the button/note lifecycle) is covered
+by live browser verification.
+
+**Architecture compliance.** No schema change, no new persistence path, no
+new domain computation — the DarvaX classification reuses an existing,
+already-tested pure function verbatim; the ATHENA half reuses an existing,
+already-shipped pipeline verbatim. ADR-010's one-way isolation is
+untouched (all new code lives in DarvaX-owned files calling ATHENA's
+already-public API, the same direction AUX-7 already established as
+architecturally sound). No order-placement code introduced or implied —
+both actions only ever ingest/score/classify, never place, modify, or
+cancel anything.
+
+**ADR compliance.** No ADR amendment needed.
+
+**Risks discovered.** None new.
+
+**Technical debt introduced.** None.
+
+**Suggested improvements.** DarvaX's own "Scan symbols" feature on the
+main screener page could be extended to surface its own `/scan` response's
+new `screened` field directly (today it only shows a summary count and
+reloads the last sweep, which won't show a freshly scanned symbol that
+wasn't already part of that sweep) — out of scope for this milestone,
+which only needed to fix Symbol 360's inconsistency, but a natural
+follow-up if the owner wants "Scan symbols" to show its own result
+immediately too.
+
+**Remaining work.** Owner-approved 2026-08-21.
+
+---
+
 ## AUX-7: "Symbol 360" page
 
 **Summary.** A single DarvaX-owned page (`/darvax/symbol360`) that looks up

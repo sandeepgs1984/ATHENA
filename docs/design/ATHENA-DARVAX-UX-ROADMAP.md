@@ -28,6 +28,7 @@ transition remains gated by owner review.
 | 7 | **AUX-4c** | Surface near-miss digests in the dashboard UI (both surfaces) | Approved 2026-08-20 |
 | 8 | **AUX-6** | "See the other view" cross-link (item 2 above) | Approved 2026-08-21 |
 | 9 | **AUX-7** | "Symbol 360" page (item 2 above) | Approved 2026-08-21 |
+| 10 | **AUX-8** | "Scan & Validate" on Symbol 360 — on-demand ATHENA validation + DarvaX scan for one symbol | Approved 2026-08-21 |
 
 The persistent-freshness idea is intentionally split. ATHENA consumes
 intraday observations and scheduled cycles, while DarvaX presents a daily
