@@ -1,8 +1,8 @@
 # EM-1 Research Data Remediation Plan
 
-**Milestone:** EM-1r1  
-**Status:** Implemented 2026-08-21; awaiting owner review  
-**Governing boundary:** ADR-012  
+**Milestone:** EM-1r2
+**Status:** Implemented and self-validated 2026-08-21; awaiting owner review
+**Governing boundary:** ADR-012
 **Input audit:** `docs/research/EM-1A-DATA-COVERAGE-AUDIT.md`
 
 ## 1. Decision
@@ -39,8 +39,8 @@ write an ADR proposal before implementation.
 Freeze ownership, ordering, evidence standards, and stop conditions. This is a
 documentation-only milestone and creates no ingestion or research data.
 
-**Exit:** owner approves this plan and resolves the source/scope choices listed
-in Section 7.
+**Exit:** approved 2026-08-21. The three source/scope choices are frozen in
+Section 7.
 
 ### EM-1r2 - Authoritative corporate-action coverage
 
@@ -74,11 +74,12 @@ duplicate-free complete sessions.
 - OHLCV invariants, timezone, session bounds, and replay identity pass;
 - completeness and exclusion counts are persisted in a manifest.
 
-### EM-1r4 - Point-in-time cohort and quote hygiene
+### EM-1r4 - Cohort admission and quote hygiene
 
-Implement one approved historical-population contract: authoritative dated
-membership/listing lifecycle, or an explicitly named survivor cohort with a
-narrow claim. Exclude epoch-default quotes from all research reads.
+Apply the survivor-cohort contract frozen by EM-1r2 to research admission and
+exclude epoch-default quotes from all research reads. Acquiring authoritative
+point-in-time historical membership remains a separate future option and is
+not part of the current remediation scope.
 
 **Acceptance:**
 
@@ -133,19 +134,52 @@ tests proving provider and canonical-decision isolation, and the full ATHENA
 suite. Large-data acceptance evidence records runtime and database query
 volume, but performance cannot weaken correctness gates.
 
-## 7. Owner decisions required before EM-1r2
+## 7. Approved owner decisions for EM-1r2
 
-1. Approve an authoritative corporate-action source and permitted study bounds.
-2. Choose authoritative historical membership/listing evidence or approve a
-   formally named survivor-cohort research claim.
-3. Approve re-ingestion as the preferred intraday repair source; deterministic
-   normalization is a fallback only for slots with unambiguous provenance.
+The owner approved these decisions together on 2026-08-21.
 
-These are data-authority decisions, not UI or modelling choices. EM-1r2 must
-not start until they are recorded in its milestone design.
+1. **Corporate actions:** official NSE corporate-action filings and reports are
+   authoritative for splits, bonuses, mergers, and other label-distorting
+   actions. Kite is not a corporate-action authority. A research interval is
+   covered only when retrieval manifests prove the required official NSE
+   interval is complete enough for the stated analysis. Incomplete, ambiguous,
+   or unresolved records fail closed with a provenance reason; ATHENA never
+   guesses or silently adjusts them.
+2. **Historical population:** initial EMR work uses the formally named
+   `ATHENA_CURRENT_CANONICAL_SURVIVOR_COHORT_V1`, frozen from the currently
+   available canonical `athena_core` universe. It is survivor-cohort research,
+   never point-in-time historical NSE-universe evidence. Every artifact and
+   survivorship-sensitive conclusion must display this limitation. Cohort
+   metadata is replaceable without changing event or feature contracts. Current
+   membership must never be projected backward.
+3. **Intraday repair:** authoritative Kite re-ingestion is the preferred repair
+   path. Deterministic normalization is allowed only when a malformed or missing
+   slot is uniquely attributable and no market information is invented. OHLCV
+   interpolation or synthesis is prohibited. Unrepairable candles remain
+   missing/`UNKNOWN` and are admitted or excluded by the dataset contract.
+
+Decision 3 governs EM-1r3 and is recorded now for continuity; EM-1r2 performs
+no intraday repair.
 
 ## 8. Explicit non-goals
 
-EM-1r1 does not acquire data, alter schemas, change provider protocols, repair
-candles, create a survivor cohort, generate labels, compute base rates, train a
-model, rank symbols, mount a scanner, or affect canonical ATHENA decisions.
+EM-1r2 does not acquire point-in-time membership, integrate external
+corporate-action vendors, build generalized data-cleaning infrastructure,
+repair candles, generate labels, compute base rates, train a model, rank
+symbols, mount a scanner, or affect canonical ATHENA decisions.
+
+## 9. EM-1r2 measured outcome
+
+The implementation and measured evidence are recorded in
+`docs/research/EM-1R2-CORPORATE-ACTION-COVERAGE-REPORT.md`.
+
+- The official NSE interval from 2023-08-11 through 2026-08-21 is represented
+  by 37 of 37 complete monthly retrieval slices and 7,330 source records.
+- The frozen survivor cohort contains 518 current canonical instruments. The
+  result is explicitly not point-in-time historical NSE-universe evidence.
+- Materialization accepted 2,009 actions and preserved 5,321 exclusions.
+- Identical replay reproduced the same manifest and replay IDs and inserted
+  zero duplicate rows.
+- EM-1r2 performed zero intraday repairs. EM-1r3 remains the owner of that work.
+
+EM-1r2 stops at owner review. EM-1r3 must not start automatically.

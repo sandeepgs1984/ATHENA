@@ -6,6 +6,130 @@ status updated on approval.
 
 ---
 
+## EM-1r2: Authoritative corporate-action coverage materialization
+
+**Summary.** Implemented bounded official-NSE corporate-action acquisition,
+normalization, survivor-cohort matching, canonical persistence, exclusion
+accounting, and deterministic replay evidence. Kite is not used as a
+corporate-action authority, and no intraday candle repair was performed.
+
+**Objective.** Establish manifest-proven corporate-action coverage for the
+approved initial EMR survivor cohort without guessing ambiguous actions,
+claiming point-in-time historical membership, or changing the frozen EMR event
+and feature contracts.
+
+**Scope completed.** Added monthly official-NSE acquisition with immutable raw
+artifacts and SHA-256 manifests; fail-closed coverage assessment; explicit
+action classification and exclusion reasons; strict canonical identity
+resolution; atomic, idempotent persistence; source-manifest replay; and a
+measured coverage report for 11 Aug 2023 through 21 Aug 2026. Recorded the
+approved intraday-repair policy for EM-1r3 without implementing it.
+
+**Files created.**
+`src/athena/data/providers/nse_corporate_actions_provider.py`,
+`src/athena/data/corporate_action_ingestion.py`,
+`src/athena/explosive_move/corporate_action_coverage.py`,
+`src/athena/explosive_move/em1r2_materialize.py`, four focused test modules,
+and `docs/research/EM-1R2-CORPORATE-ACTION-COVERAGE-REPORT.md`.
+
+**Files modified.** `src/athena/data/store/repository.py`,
+`docs/research/EM-1R2-CORPORATE-ACTION-COVERAGE-CONTRACT.md`,
+`docs/design/EM-1-RESEARCH-DATA-REMEDIATION-PLAN.md`,
+`docs/MILESTONES.md`, `ATHENA_BRIEFING.md`, and this implementation log.
+
+**Public APIs added.** Research-bounded official-NSE acquisition and
+materialization entry points; immutable coverage, cohort, source-slice,
+normalization, exclusion, and replay DTOs; and repository operations for
+atomic corporate-action persistence. No REST, dashboard, scoring, Decision,
+TradePlan, provider protocol, or execution API changed.
+
+**Tests added.** Twenty-two focused tests cover official-source parsing,
+monthly boundaries, immutable artifacts, malformed rows, strict identity
+resolution, classification and exclusion behavior, gap-free coverage,
+idempotent persistence, manifest replay, hash validation, and path
+containment.
+
+**Test results.** Focused EM-1r2 suite: 22 passed in 0.60s. Full repository
+suite: 2,137 passed with one upstream Starlette deprecation warning in
+139.75s. Focused Ruff checks for the new EM-1r2 modules and tests passed;
+repository-wide Ruff remains red at the existing baseline of 285 findings
+across 90 files, including six `SIM117` findings in the shared repository
+module. `git diff --check` passed. Mypy could not run because the executable is
+not installed in the active environment; this is a disclosed verification
+gap, not a passing result.
+
+**Coverage summary.** The approved
+`ATHENA_CURRENT_CANONICAL_SURVIVOR_COHORT_V1` contains 518 current canonical
+symbols and is explicitly not point-in-time historical-universe evidence. All
+37 monthly source slices are present and parseable for the study interval.
+The official source returned 7,330 rows: 2,009 accepted actions across 440
+cohort symbols and 5,321 explicit exclusions across 1,790 source symbols.
+Accepted actions comprise 48 bonuses, 6 demergers, 1,911 dividends, 9 rights
+issues, and 35 splits. Exclusions comprise 175 ambiguous classifications and
+5,146 symbols outside the cohort; malformed-source and identity-conflict
+exclusions were zero.
+
+**Architecture compliance.** ADR-012 isolation is preserved. Official-source
+acquisition remains infrastructure-owned, canonical writes use repository
+boundaries, research evidence is immutable and replayable, and fixed event and
+feature contracts are unchanged. No order-placement behavior was added.
+
+**ADR compliance.** The implementation follows ADR-012 and the approved
+EM-1r2 contract. Official NSE is authoritative; Kite is not. Coverage is
+accepted only for the manifest-proven bounded interval. Unsupported,
+ambiguous, or unresolvable records fail closed with persisted provenance. No
+new ADR is required.
+
+**Risks discovered.** Canonical instrument records currently have blank ISINs,
+so all 2,009 accepted actions required the documented strict exact
+symbol-and-series fallback
+`SYMBOL_SERIES_CANONICAL_ISIN_UNAVAILABLE`. This is deterministic but weaker
+than ISIN matching and must remain visible in research provenance. Survivor
+bias can materially affect conclusions and must be stated in every downstream
+dataset, metric, and report.
+
+**Technical debt introduced.** No generalized cleaner, vendor integration, or
+synthetic data path was introduced. The missing canonical ISIN population and
+the existing repository-wide Ruff baseline remain pre-existing debt.
+
+**Suggested improvements.** Populate authoritative canonical ISINs before a
+future rematerialization, and acquire authoritative point-in-time membership
+only in its separately approved milestone so the survivor cohort can be
+replaced without changing event or feature contracts.
+
+**Remaining work.** Owner review and approval of EM-1r2. EM-1r3 may then
+authoritatively re-ingest intraday candles and apply only uniquely
+deterministic, versioned normalization. It must not interpolate or synthesize
+OHLCV values. EM-1b remains blocked.
+
+**Implementation metrics.** Corporate-action retrieval manifests: 37/37
+complete slices; accepted/excluded rows: 2,009/5,321; authoritative
+re-ingestion repairs: 0; deterministic normalization repairs: 0;
+synthetic/interpolated repairs: 0. The unrepaired EM-1a baseline remains
+173,063 surplus 5-minute rows across 150,740 duplicate logical slots, plus 16
+known 15-minute duplicates and incomplete 15-minute sessions. All nine
+checkpoint candidates remain unaccepted; no additional checkpoint-level
+data-quality exclusions were introduced in EM-1r2.
+
+**Provenance and replay evidence.** Original retrieval manifest:
+`af1d2dc9860f9eda82dddddb1a69807c9866db1025be89a75f5caba07466c99a`.
+Materialized manifest and ID:
+`8e1fd6c17365abe1a5ea3ac41fc00f83d36d8c972ef1ea7d725e51d28272a22c`.
+Replay ID:
+`b88cc5338cc0f98614a58260c094597fea5ccb0e001a247e0579a45212180a52`.
+Replay reproduced the same identities and inserted zero new rows, proving
+deterministic, idempotent materialization for the frozen artifacts.
+
+**Phase outcome.** EM-1r2 is implemented and self-validated, ready for owner
+review. Work stops here; EM-1r3 and later EM milestones were not started.
+
+**Commit hash / branch.** Pending owner commit on
+`feature/live-dashboard`; the AI performed no git write actions.
+
+**Review status.** Ready for owner review.
+
+---
+
 ## EM-1r1: Research data remediation architecture and acceptance plan
 
 **Summary.** Recorded owner approval of the fail-closed EM-1a audit and split

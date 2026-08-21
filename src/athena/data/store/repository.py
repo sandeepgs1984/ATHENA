@@ -31,8 +31,8 @@ from athena.domain.enums import Timeframe
 from athena.domain.market import (
     Candle,
     CorporateAction,
-    Instrument,
     InstitutionalFlowSession,
+    Instrument,
     MarketSnapshot,
     Quote,
 )
@@ -445,6 +445,59 @@ class SqliteRepository:
             "(action_id, instrument_id, action_type, ex_date, details_json) VALUES (?,?,?,?,?)",
             ser.corporate_action_to_row(action),
         )
+
+    def add_corporate_actions(self, actions: Sequence[CorporateAction]) -> int:
+        """Insert an official action batch atomically and idempotently.
+
+        Replaying identical evidence is a no-op. Reusing an action ID for
+        different evidence fails the entire batch before any row is written.
+        """
+
+        rows_by_id: dict[str, tuple[object, ...]] = {}
+        for action in actions:
+            row = ser.corporate_action_to_row(action)
+            current = rows_by_id.get(action.action_id)
+            if current is not None and current != row:
+                raise RepositoryError(
+                    f"corporate-action conflict within batch for action_id={action.action_id}"
+                )
+            rows_by_id[action.action_id] = row
+        rows = sorted(rows_by_id.values())
+        if not rows:
+            return 0
+        try:
+            with self._lock:
+                with self._conn:
+                    ids = tuple(row[0] for row in rows)
+                    placeholders = ",".join("?" for _ in ids)
+                    existing = {
+                        row[0]: tuple(row)
+                        for row in self._conn.execute(
+                            "SELECT action_id, instrument_id, action_type, ex_date, details_json "
+                            f"FROM corporate_actions WHERE action_id IN ({placeholders})",
+                            ids,
+                        ).fetchall()
+                    }
+                    for row in rows:
+                        current = existing.get(row[0])
+                        if current is not None and current != row:
+                            raise RepositoryError(
+                                f"corporate-action replay conflict for action_id={row[0]}"
+                            )
+                    pending = [row for row in rows if row[0] not in existing]
+                    self._conn.executemany(
+                        "INSERT INTO corporate_actions "
+                        "(action_id, instrument_id, action_type, ex_date, details_json) "
+                        "VALUES (?,?,?,?,?)",
+                        pending,
+                    )
+                    return len(pending)
+        except RepositoryError:
+            raise
+        except sqlite3.IntegrityError as exc:
+            raise RepositoryError(f"integrity violation: {exc}") from exc
+        except sqlite3.Error as exc:
+            raise RepositoryError(f"write failed: {exc}") from exc
 
     def get_corporate_actions(self, instrument_id: str) -> list[CorporateAction]:
         rows = self._query_all(
