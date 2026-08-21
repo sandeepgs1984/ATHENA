@@ -6,6 +6,81 @@ status updated on approval.
 
 ---
 
+## EM-1r3: Canonical intraday session reconstruction
+
+**Summary.** Implemented immutable authoritative five-minute source capture,
+exact exchange-slot reconstruction, explicit quarantine rules, normalized
+artifacts, deterministic provider-free replay, and tamper detection. No UI,
+canonical candle repository, scoring, Decision, or TradePlan behavior changed.
+
+**Objective.** Produce duplicate-free complete regular-session evidence for
+EMR research without inventing OHLCV data or hiding source ambiguity.
+
+**Scope completed.** The Data layer re-ingests provider rows and persists raw
+content-addressed artifacts. The provider-free EMR contract admits only exact
+calendar slots, collapses only byte-equivalent logical duplicates, excludes
+retrieval failures, missing slots, malformed timestamps, off-grid rows,
+out-of-session rows, and conflicting duplicates, and persists all repair and
+exclusion counts in an immutable manifest.
+
+**Files created.** `src/athena/data/intraday_reconstruction_ingestion.py`,
+`src/athena/explosive_move/intraday_reconstruction.py`, and two focused test
+modules under `tests/data_layer/` and `tests/explosive_move/`.
+
+**Files modified.** `docs/design/EM-1-RESEARCH-DATA-REMEDIATION-PLAN.md`,
+`docs/MILESTONES.md`, `ATHENA_BRIEFING.md`, and this implementation log.
+
+**Public APIs added.** Immutable source-capture, normalized-artifact,
+session-reconstruction, and manifest DTOs; Data-owned capture/replay service;
+canonical payload serializers; exact-slot reconstruction; immutable artifact
+writers. No REST, dashboard, provider protocol, or execution API changed.
+
+**Tests added.** Eight focused tests cover complete admission, exact-slot
+roundtrip, identical duplicate collapse, retrieval failure, missing slots,
+off-grid timestamps, conflicting duplicates, provider-free replay, source
+digest verification, and tamper rejection.
+
+**Measured evidence.** The deterministic three-symbol fixture captured four
+rows across three requested symbol-sessions. One session and two rows were
+admitted; two sessions were excluded (one retrieval failure and one missing
+slot). Repairs comprised two authoritative re-ingested admitted rows and one
+identical-duplicate collapse. One slot remained unrepaired. Interpolated or
+synthetic rows: zero. These measurements validate the contract only and are
+not production historical-coverage claims.
+
+**Test results.** The focused EM-1r3 suite passed 8 tests. The full repository
+suite passed 2,145 tests. Ruff passes for every EM-1r3 source and test file;
+the repository-wide Ruff check remains at the pre-existing baseline of 285
+findings across 90 unrelated files. `git diff --check` passes.
+
+**Architecture and ADR compliance.** ADR-012 isolation is preserved. Provider
+access remains Data-owned; reconstruction and replay are provider-free and
+deterministic; the approved current canonical survivor-cohort identity and
+limitation are persisted; frozen event/feature contracts are unchanged. NSE
+remains the corporate-action authority and Kite is used only for approved
+intraday re-ingestion. No ADR is required.
+
+**Provenance and replay evidence.** Raw captures, normalized payloads, and the
+manifest are immutable and content-addressed. Replay reads only persisted
+evidence, verifies byte counts and SHA-256 identities, reconstructs sessions,
+and rejects tampered inputs. Identical inputs reproduce the replay identity.
+
+**Known limitations and remaining work.** Production-scale historical
+population measurements remain deferred. The cohort is explicitly survivor
+cohort research, not point-in-time NSE membership evidence. Missing or
+ambiguous data remains UNKNOWN/excluded; there is no interpolation fallback.
+EM-1r4 remains blocked pending owner approval of this milestone.
+
+**Phase outcome.** EM-1r3 is implemented and self-validated, ready for owner
+review. Work stops here; EM-1r4 and later milestones were not started.
+
+**Commit hash / branch.** Pending owner commit; the AI performed no git write
+actions.
+
+**Review status.** Ready for owner review.
+
+---
+
 ## EM-1r2: Authoritative corporate-action coverage materialization
 
 **Summary.** Implemented bounded official-NSE corporate-action acquisition,

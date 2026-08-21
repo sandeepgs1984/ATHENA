@@ -74,6 +74,22 @@ duplicate-free complete sessions.
 - OHLCV invariants, timezone, session bounds, and replay identity pass;
 - completeness and exclusion counts are persisted in a manifest.
 
+**Implementation status (2026-08-21):** Implemented and self-validated;
+awaiting owner review. The provider-owned capture service persists immutable,
+content-addressed source rows before the provider-free reconstruction contract
+admits only complete exact-slot regular sessions. Identical duplicates may be
+collapsed by the frozen normalization rule; conflicting duplicates,
+off-grid/out-of-session rows, retrieval failures, and missing slots fail
+closed with manifest-recorded reasons. No OHLCV interpolation or synthesis is
+permitted.
+
+The deterministic fixture cohort measured three symbol-sessions: one admitted
+and two excluded. Four captured rows produced two admitted authoritative rows,
+one identical-duplicate collapse, one unrepaired missing slot, one retrieval
+failure, and zero invented rows. Provider-free replay reproduced the manifest
+identity, and tampered source evidence was rejected. These are contract-test
+measurements, not a claim of production historical coverage.
+
 ### EM-1r4 - Cohort admission and quote hygiene
 
 Apply the survivor-cohort contract frozen by EM-1r2 to research admission and
