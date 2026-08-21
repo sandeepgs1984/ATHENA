@@ -238,10 +238,10 @@ def test_action_label_map_matches_darvax_js_exactly():
     file's own convention (no cross-file import), so pinned equal to
     darvax.js's own ACTION_LABEL to guard against the two silently drifting
     apart if either is edited alone."""
-    own = _fn(SYMBOL360_JS, "actionWithValue")
+    own = _fn(SYMBOL360_JS, "actionLabel")
     for code, label in {
         "ENTER": "Buy",
-        "ENTER_ON_RETEST": "Buy on dip",
+        "ENTER_ON_RETEST": "Buy on retest",
         "WAIT": "Wait",
         "HOLD": "Hold",
         "EXIT": "Sell",
@@ -254,18 +254,60 @@ def test_action_label_map_matches_darvax_js_exactly():
     assert "ACTION_LABEL[row.action]" in own
 
 
-def test_action_value_is_bracketed_with_the_actionable_price():
-    """The label alone ("Buy on dip") is clearer than the raw code, but the
-    owner specifically asked for the concrete price alongside it rather than
-    requiring the separate "Buy above" row below to be read together with it."""
-    body = _fn(SYMBOL360_JS, "actionWithValue")
-    assert '"ENTER"' in body and '"ENTER_ON_RETEST"' in body
-    assert "row.trigger_price" in body
-    assert '"EXIT"' in body and '"EXIT_IF_HELD"' in body
-    assert "row.stop_price" in body
+def test_action_label_has_no_bracketed_price():
+    """An earlier version of this fix bracketed the same trigger/stop price
+    already shown one line below ("Buy above" / "Stop loss") -- live review
+    found that confusing duplication, not extra clarity, so the label must
+    stay plain. Regression guard against re-adding it."""
+    body = _fn(SYMBOL360_JS, "actionLabel")
+    assert "trigger_price" not in body
+    assert "stop_price" not in body
+    assert "money(" not in body
 
 
 def test_darvax_card_action_row_uses_the_humanized_helper():
     body = _fn(SYMBOL360_JS, "renderDarvaxCard")
-    assert "actionWithValue(row)" in body
+    assert "actionLabel(row)" in body
     assert "esc(row.action)" not in body, "must not fall back to the raw DAR-CARD code"
+
+
+def test_action_row_carries_a_tooltip_with_the_persisted_reason():
+    """Owner-reported: "Buy on retest" alone doesn't say what the retest
+    price actually is. The tooltip must reuse the same already-persisted
+    action_reason_plain this card already prints as its own "why" paragraph
+    (which carries the concrete box-top value) -- never a new sentence."""
+    body = _fn(SYMBOL360_JS, "actionTitleAttr")
+    assert "row.action_reason_plain" in body
+    assert "actionTitleAttr(row)" in _fn(SYMBOL360_JS, "renderDarvaxCard")
+
+
+def test_darvax_js_action_chip_also_carries_the_same_tooltip():
+    """Same fix applied to the Advisor/Levels/holdingTicket/ladderCard pill
+    chip, not just Symbol 360 -- the owner asked for it wherever the action
+    shows, and actionChip is the one shared renderer for all of those."""
+    body = _fn(DARVAX_JS, "actionChip")
+    assert "row.action_reason_plain" in body
+    assert "title=" in body
+
+
+# --------------------------------------------------------------------------- #
+# 6. ATHENA Decision card: a readable "As of" timestamp, ATHENA's own convention
+# --------------------------------------------------------------------------- #
+
+
+def test_as_of_uses_athenas_own_readable_time_format():
+    """Owner-reported: "As of" showed the raw ISO timestamp
+    (2026-08-21T15:45:45.282951+05:30) instead of a readable date. Mirrors
+    ATHENA's own established convention (05-utils.js's formatDecisionTime:
+    "21 Aug, 03:45 pm IST"), duplicated per this file's own no-cross-file-
+    import rule rather than shared."""
+    body = _fn(SYMBOL360_JS, "formatDecisionTime")
+    assert "Asia/Kolkata" in body
+    assert '" IST"' in body
+    assert "toLocaleString" in body
+
+
+def test_athena_card_as_of_line_uses_the_formatter_not_the_raw_timestamp():
+    body = _fn(SYMBOL360_JS, "renderAthenaCard")
+    assert "formatDecisionTime(meta.ts)" in body
+    assert "esc(meta.ts)" not in body

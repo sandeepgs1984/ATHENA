@@ -1,20 +1,21 @@
 # ATHENA & DarvaX UX Roadmap — Agent Handoff
 
-**Snapshot date:** 2026-08-21 — **AUX-6 owner-approved, confirmed working on
-the owner's own real system. AUX-7 ("Symbol 360" page) is implemented,
-tested, live-verified, and awaiting owner review** — the owner-selected
-priority track's final item; nothing else is currently in flight.
+**Snapshot date:** 2026-08-21 — **AUX-6 and AUX-7 both owner-approved.**
+The owner-selected priority track (AUX-1a through AUX-7) is fully approved;
+nothing is currently in flight.
 **Branch observed:** `feature/live-dashboard`  
 **Latest commit:** `a53a168` — `feat(dashboard): expose full-cycle validation health`
 (AUX-7's own commit is not made yet — the AI provides a commit message per
 milestone, the owner commits)  
-**Test suite at handoff:** **2,158 passing.** Ruff clean on all changed/added
+**Test suite at handoff:** **2,165 passing.** Ruff clean on all changed/added
 files. Progression: 2,041 -> 2,055 (AUX-4a) -> 2,069 (AUX-4b) -> 2,075
 (AUX-5) -> 2,086 (AUX-4c) -> 2,105 (AUX-6, across five owner-caught fix
 passes in one day — see below, this is the part worth reading in full
 before touching any cross-lane code) -> 2,156 (AUX-7 initial) -> 2,158
-(AUX-7's own post-review fix pass, a sixth instance of AUX-6's bug 4 —
-see the new gotcha below before writing any more cross-lane links).
+(AUX-7's own post-review fix pass, a sixth instance of AUX-6's bug 4 — see
+the new gotcha below) -> 2,165 (a further post-approval polish pass on
+DarvaX Read's ACTION field and the ATHENA Decision card's timestamp — see
+the new section below before touching either).
 
 ## Message to whichever agent picks this up next
 
@@ -22,14 +23,13 @@ Start with `docs/MILESTONES.md` and the top entry of
 `IMPLEMENTATION_SUMMARY.md` per the standard orientation checklist — don't
 trust this paragraph's status claims over those two files if they ever
 disagree. As of this snapshot: the owner-selected priority track is
-**AUX-1a through AUX-6, approved; AUX-7 implemented and ready for
-review, awaiting the owner's own testing and approval.** If you're picking
-this up because the owner approved AUX-7 in the meantime, flip its row in
-`docs/MILESTONES.md` and `docs/design/ATHENA-DARVAX-UX-ROADMAP.md` to
-Approved and check whether the owner named a next roadmap item — the
-"Not yet scheduled" candidates in section 5 below are real options, not a
-committed plan. If AUX-7 review turned up a bug, treat it the way AUX-6's
-five bugs were treated: root-cause on the actual code (see the
+**AUX-1a through AUX-7, all approved.** Nothing from the "Unify the two
+advisory lanes" roadmap category remains open. Check whether the owner has
+named a next roadmap item before starting anything — the "Not yet
+scheduled" candidates in section 5 below are real options, not a committed
+plan. If you're picking this up because a further AUX-7 bug surfaced after
+this snapshot, treat it the way every bug in this milestone (and AUX-6
+before it) was treated: root-cause on the actual code (see the
 testing-methodology lesson below), fix, add a non-vacuous regression test,
 re-verify live, update the docs' bug account — don't just patch and move on
 silently.
@@ -229,6 +229,52 @@ just cited, would have caught before the owner ever saw it. Full detail
 (exact diff, exact test names, live-verification transcript) in
 `IMPLEMENTATION_SUMMARY.md`'s AUX-7 entry, under "Post-review fix pass."
 
+**Post-approval: DarvaX Read's ACTION field, three small lessons in one
+review.** After the owner approved the milestone, live review of a real
+row surfaced a genuine gap and then a genuine overcorrection, both worth
+knowing before touching this field again:
+
+1. **A pre-existing humanization map, missed.** Symbol 360's DarvaX card
+   printed `row.action` raw (`ENTER_ON_RETEST`) instead of reusing
+   `darvax.js`'s own `ACTION_LABEL` map, which every other DarvaX view
+   (Advisor, Table) had already been using since well before AUX-7. Lesson:
+   before rendering any DarvaX field this page duplicates logic for, check
+   whether an existing humanization/formatting convention already exists
+   elsewhere in `darvax.js` and reuse it rather than rendering the raw
+   value and assuming that's fine because "it's just DarvaX-internal data."
+2. **A "clarifying" addition that made things worse, caught by live
+   review, not by a test.** The first fix also bracketed the row's trigger
+   price next to the label (e.g. "Buy on dip (₹140.46)"), reasoning this
+   made the action self-contained. It shipped, was tested (source-level
+   guards passed), and only reading the actual rendered page revealed it
+   duplicated the very next row ("Buy above ₹140.46"), reading as confusing
+   repetition rather than added clarity. Reverted everywhere it had been
+   added (`symbol360.js` and, for consistency, `darvax.js`'s
+   `actionChip`/`actionCell`, both restored to their untouched original
+   form). Lesson: a test proving a value renders correctly cannot catch
+   that the value is *redundant next to another value already on screen* —
+   that only shows up by looking at the actual rendered card as a whole,
+   not at one field's test in isolation.
+3. **The label itself was actually misleading, once questioned.** "Buy on
+   dip" implies buying at a lower price; the actual mechanic (persisted in
+   `action_reason_plain`) is a pullback-and-retest of an already-broken-out
+   level, with the real entry trigger identical to a plain `ENTER` — buy
+   *above* a price, never at a dip. Renamed app-wide to "Buy on retest" per
+   the owner's explicit choice among offered options, with a `title`
+   tooltip on both `actionChip` and Symbol 360's own Action row reusing the
+   row's own `action_reason_plain` (never a newly written sentence) so the
+   concrete retest level is one hover away. Lesson: a label copied verbatim
+   from an existing convention can still be wrong on its own terms — reusing
+   `ACTION_LABEL` fixed the *raw-code* problem but not this deeper
+   *wording* problem, and only the owner asking "how much dip?" surfaced it.
+
+A second, independent fix in the same pass: the ATHENA Decision card's "As
+of" line printed a raw ISO timestamp instead of going through ATHENA's own
+established `formatDecisionTime` convention (`05-utils.js`) — duplicated
+into `symbol360.js` per this file's own no-cross-import rule. Full detail
+in `IMPLEMENTATION_SUMMARY.md`'s AUX-7 entry, under "Post-approval polish
+pass."
+
 ### Everything else approved before AUX-6
 
 AUX-1a, AUX-1b, AUX-2, AUX-3, DX-12b, AUX-4a, AUX-4b, AUX-5, and AUX-4c are
@@ -312,11 +358,9 @@ reproposing what already exists, followed by 29 concrete, scoped ideas.
    server-side JS assembly, security, testing). Read the relevant sections
    before touching a module you haven't worked in.
 
-**AUX-1a through AUX-6 are all approved** — see `IMPLEMENTATION_SUMMARY.md`'s
-entry for each (newest first; AUX-6's entry is the longest and most
-important to read given the postmortem above). **AUX-7 ("Symbol 360" page)
-is implemented, tested, and live-verified, awaiting owner review** — see
-its own `IMPLEMENTATION_SUMMARY.md` entry (newest, at the top). AUX-4c
+**AUX-1a through AUX-7 are all approved** — see `IMPLEMENTATION_SUMMARY.md`'s
+entry for each (newest first; AUX-6's and AUX-7's entries are the longest
+and most important to read given the postmortems above). AUX-4c
 (surfacing AUX-4a/4b's near-miss digests in the dashboard UI) is also done
 — both are file-only digests now surfaced with a plain-language explainer
 on each dashboard.
@@ -527,9 +571,10 @@ this section adds context the roadmap doc itself doesn't carry.
 "Daily near-miss digest" both sides (AUX-4a/4b), "surface the near-miss
 digests in the dashboard UI" (AUX-4c), "My track record panel" (AUX-5),
 "See the other view cross-link" (AUX-6, see the postmortem above before
-touching anything near it again), "Symbol 360" page (AUX-7, implemented
-and awaiting owner review — see its own section above before touching
-`symbol360.html`/`symbol360.js` or either entry point again), the
+touching anything near it again), "Symbol 360" page (AUX-7, approved — see
+its own sections above, including the post-approval ACTION-field lessons,
+before touching `symbol360.html`/`symbol360.js` or either entry point
+again), the
 persistent freshness indicators (AUX-1a/1b), the last-successful-cycle
 indicator (AUX-2), and the confidence band in the Decisions list (AUX-3).
 

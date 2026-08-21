@@ -70,7 +70,7 @@ sweep freshness require separate authoritative contracts.
 | 6 | **AUX-5** | ATHENA “My track record” rollup over existing journal/outcome data | ✅ Approved 2026-08-20; 2,075 tests pass |
 | 7 | **AUX-4c** | Surface near-miss digests in the dashboard UI (ATHENA + DarvaX) — both currently file-only, per AUX-4a/4b's own design | ✅ Approved 2026-08-20; 2,086 tests pass |
 | 8 | **AUX-6** | "See the other view" cross-link — quiet affordance linking a symbol's ATHENA Decision Brief and its DarvaX read, and vice versa | ✅ Approved 2026-08-21; 2,105 tests pass |
-| 9 | **AUX-7** | "Symbol 360" page — ATHENA Decision, DarvaX screen result, saved-symbol status, and journal history for one instrument, side by side | 🔄 Ready for review 2026-08-21; 2,158 tests pass |
+| 9 | **AUX-7** | "Symbol 360" page — ATHENA Decision, DarvaX screen result, saved-symbol status, and journal history for one instrument, side by side | ✅ Approved 2026-08-21; 2,165 tests pass |
 
 DX-12b was owner-approved 2026-08-20 after live visual verification on the
 owner's own real system. AUX-4 was split into AUX-4a/AUX-4b before
@@ -306,6 +306,25 @@ existing convention) swaps the iframe back to the main screener in place.
 See `IMPLEMENTATION_SUMMARY.md`'s AUX-7 entry for full detail, and the
 handoff doc for the generalized lesson (citing a postmortem while
 designing is not the same as re-checking its checklist against new code).
+
+**Owner-approved 2026-08-21**, immediately followed in the same session by
+a smaller post-approval polish pass on DarvaX Read's ACTION field, caught
+by the owner from a live screenshot of a real `ACTIONABLE` row: the raw
+DAR-CARD code (`ENTER_ON_RETEST`) was shown verbatim instead of going
+through DarvaX's own existing `ACTION_LABEL` humanization (an AUX-7
+oversight, not a new gap); a first fix additionally bracketed the trigger
+price next to the label, which the owner then flagged as confusing
+duplication against the already-adjacent "Buy above" row and had reverted;
+and the label itself ("Buy on dip") was renamed app-wide to "Buy on
+retest" per the owner's explicit choice, with a hover tooltip on both
+`darvax.js`'s `actionChip` and Symbol 360's own Action row reusing the
+row's existing persisted `action_reason_plain` (never a new sentence) to
+explain the concrete retest mechanic. A second, independent polish item in
+the same pass fixed the ATHENA Decision card's "As of" line, which showed
+a raw ISO timestamp instead of ATHENA's own established readable-time
+convention. Six new tests, two proven non-vacuous; full suite 2,165
+passing. Live re-verified on a fresh scratch server. See
+`IMPLEMENTATION_SUMMARY.md`'s AUX-7 entry for the full account.
 
 Live-verified end-to-end on an
 isolated scratch server (own config, own database, real

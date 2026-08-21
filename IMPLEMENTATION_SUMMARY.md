@@ -208,6 +208,94 @@ concrete failure modes against the two new links being written. See the
 handoff doc's updated cross-lane gotchas section for the generalized
 version of this lesson.
 
+**Post-approval polish pass (2026-08-21, same day) — DarvaX Read's ACTION
+field.** After owner approval, live review of a real `ACTIONABLE` row
+surfaced three successive readability issues in the same field, each fixed
+in turn on the same day:
+
+1. **Raw DAR-CARD code shown verbatim.** Symbol 360's DarvaX Read card
+   rendered `row.action` directly (`ENTER_ON_RETEST`) instead of going
+   through DarvaX's own, already-shipped `ACTION_LABEL` humanization map
+   (used on Advisor/Table views since DX-7c/DX-9a) — an oversight in the
+   original AUX-7 implementation, not a new design decision. Fixed by
+   duplicating the same map into `symbol360.js` (matching this file's
+   established no-cross-import convention) and routing the Action row
+   through it.
+2. **A bracketed price, then found to be redundant on review.** The first
+   fix attempt additionally bracketed the row's `trigger_price`/`stop_price`
+   next to the label (e.g. "Buy on dip (₹140.46)"), reasoning the label
+   alone didn't say what price the action referred to. Live review (a real
+   screenshot) showed this duplicated the already-adjacent "Buy above
+   ₹140.46" row one line below, reading as confusing repetition rather than
+   clarity. Reverted in both `symbol360.js` and — since the same bracket had
+   also been added to `darvax.js`'s `actionChip`/`actionCell` for
+   consistency — there too, restoring `actionChip`/`actionCell` to their
+   pre-existing, unmodified form.
+3. **"Buy on dip" itself renamed to "Buy on retest," plus a tooltip.**
+   Independent of the bracket, the owner asked what "buy on dip" actually
+   meant given the visible entry price is "buy above X," not a dip price.
+   The underlying mechanic (already correctly captured by the persisted
+   `action_reason_plain`, e.g. "Price broke out and has dipped back to test
+   ₹138, the level it cleared.") is that the dip is historical context — a
+   pullback to retest a level already broken out — and the actual entry
+   trigger is mechanically identical to a plain `ENTER`: buy above the
+   trigger price. "Buy on dip" implied buying at a lower price, which the
+   mechanic does not do. Per owner direction (offered as a multiple-choice
+   design question, "Buy on retest" selected), `ACTION_LABEL.ENTER_ON_RETEST`
+   was renamed from "Buy on dip" to "Buy on retest" in both `darvax.js` and
+   `symbol360.js` — an app-wide label change (Advisor cards, Table view,
+   Symbol 360), not a Symbol-360-only tweak, since the label is shared.
+   The owner also asked for a tooltip with the concrete values explaining
+   what "retest" means: both `actionChip` (darvax.js, used by
+   `buyTicket`/`holdingTicket`/`ladderCard`) and Symbol 360's own Action
+   `<dd>` now carry a `title` attribute set to the row's own
+   `action_reason_plain` — the exact same, already-persisted sentence
+   already rendered as the visible "why" paragraph elsewhere on the same
+   card, never a newly authored or recomputed explanation (ADR-005).
+   `docs/design/DARVAX-PLAIN-UI-DESIGN.md`'s plain-vocabulary reference
+   table updated to match; the historical DX-8b entry in
+   `docs/MILESTONES.md` describing the original "Buy on dip" wording
+   decision is left untouched as a frozen record of what was decided then.
+
+**Tests.** Six new tests in `tests/darvax/test_aux7_symbol360.py`:
+`ACTION_LABEL` equality between the two files (guards against the maps
+drifting apart), a regression guard that the label carries no bracketed
+price (proven non-vacuous by reintroducing the bracket and confirming
+failure), that `renderDarvaxCard` calls the humanized helper rather than
+falling back to the raw code, that both `actionChip` and Symbol 360's own
+Action row carry a `title` built from `action_reason_plain` (the
+`actionChip` guard also proven non-vacuous), and that `renderAthenaCard`'s
+"As of" line uses ATHENA's own readable-time convention rather than the raw
+ISO timestamp (also proven non-vacuous). Full suite: **2,165 passing**
+(2,158 -> 2,165 across this pass and the readable-timestamp fix below).
+
+**A second polish item, same pass — the ATHENA Decision card's "As of"
+timestamp.** Symbol 360 rendered `meta.ts` verbatim
+(`2026-08-21T15:45:45.282951+05:30`) instead of going through ATHENA's own
+established `formatDecisionTime` convention (`05-utils.js`, already used
+for every other "As of" line across the ATHENA dashboard: "21 Aug, 03:45 pm
+IST"). Fixed by duplicating that exact formatting function into
+`symbol360.js` (same no-cross-import convention as every other helper in
+this file) and routing the ATHENA card's "As of" line through it.
+
+**Live re-verification.** All three action-field fixes and the timestamp
+fix were verified on a fresh isolated scratch server: the readable "As of"
+value confirmed directly against real ATHENA decision data; the DarvaX
+Read card's action field confirmed via a mocked `screen/latest` response
+carrying a real `ENTER_ON_RETEST` row with `action_reason_plain` set to the
+exact production sentence, screenshotted showing "Buy on retest" (no raw
+code, no redundant bracket) with the tooltip attribute present on the
+underlying element, matching this milestone's own established
+non-mock-the-database discipline (network layer mocked in the browser to
+reach an otherwise-unreachable data state on a deliberately empty scratch
+database; the server, database, and every other layer are real).
+
+**Asset versions bumped twice more this pass** — `0.1.0-aux7` (initial,
+never bumped for the routing fix above; corrected retroactively) ->
+`0.1.0-aux7b` (routing fix) -> `0.1.0-aux7c` (this action-field/timestamp
+pass) — across `index.html`, `symbol360.html`, `tab.js`'s `UI_VERSION`, and
+`symbol360.js`'s own embedded-back-link version string.
+
 ---
 
 ## EM-1r3: Canonical intraday session reconstruction

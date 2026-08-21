@@ -72,7 +72,7 @@
   // "back to ATHENA" link instead of relying on ATHENA's own sidebar.
   if (window.location.search.indexOf("embedded=1") !== -1) {
     var backLink = document.querySelector("a.link[href='/darvax/']");
-    if (backLink) backLink.setAttribute("href", "/darvax/?embedded=1&v=0.1.0-aux7b");
+    if (backLink) backLink.setAttribute("href", "/darvax/?embedded=1&v=0.1.0-aux7c");
   }
 
   var els = {
@@ -105,6 +105,22 @@
     els.note.style.color = isError ? "var(--bad)" : "";
   }
 
+  // Same convention ATHENA's own dashboard uses for every "As of" line
+  // (05-utils.js's formatDecisionTime) -- duplicated per this file's own
+  // no-cross-file-import rule rather than shared, so a raw ISO timestamp
+  // never reaches this page any more literally than it reaches ATHENA's own.
+  function formatDecisionTime(value) {
+    var date = new Date(value);
+    if (isNaN(date.getTime())) return "Unknown time";
+    return date.toLocaleString("en-IN", {
+      timeZone: "Asia/Kolkata",
+      day: "2-digit",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit"
+    }) + " IST";
+  }
+
   // -------------------------------------------------------- ATHENA decision
 
   function renderAthenaCard(decision) {
@@ -117,7 +133,7 @@
     var plan = decision.trade_plan;
     var lines =
       "<dt>Type</dt><dd>" + esc(meta.decision_type) + " &middot; " + esc(meta.direction) + "</dd>" +
-      "<dt>As of</dt><dd>" + esc(meta.ts) + "</dd>" +
+      "<dt>As of</dt><dd>" + esc(formatDecisionTime(meta.ts)) + "</dd>" +
       "<dt>Confidence</dt><dd>" + esc(analysis.confidence_level || "—") + "</dd>";
     if (plan) {
       lines += "<dt>Entry zone</dt><dd>" + money(plan.entry_low) + " – " + money(plan.entry_high) + "</dd>" +
@@ -148,7 +164,7 @@
   // this page any more literally than it reaches any other DarvaX view.
   var ACTION_LABEL = {
     ENTER: "Buy",
-    ENTER_ON_RETEST: "Buy on dip",
+    ENTER_ON_RETEST: "Buy on retest",
     WAIT: "Wait",
     HOLD: "Hold",
     EXIT: "Sell",
@@ -156,19 +172,22 @@
     NO_ENTRY: "Skip"
   };
 
-  function actionWithValue(row) {
-    var label = ACTION_LABEL[row.action] || row.action || "—";
-    // The bracketed value is the same already-persisted price this card
-    // shows again a line below ("Buy above" / "Stop loss") -- repeated here
-    // so the action line is self-contained rather than requiring the two
-    // rows be read together to know what price the action refers to.
-    if ((row.action === "ENTER" || row.action === "ENTER_ON_RETEST") && num(row.trigger_price) !== null) {
-      return esc(label) + " (" + money(row.trigger_price) + ")";
-    }
-    if ((row.action === "EXIT" || row.action === "EXIT_IF_HELD") && num(row.stop_price) !== null) {
-      return esc(label) + " (" + money(row.stop_price) + ")";
-    }
-    return esc(label);
+  function actionLabel(row) {
+    // Label only, deliberately no bracketed price: this card already shows
+    // "Buy above"/"Stop loss" as their own dt/dd rows immediately below --
+    // repeating the same number in the action line itself read as
+    // confusing duplication, not extra clarity, once actually seen live.
+    return esc(ACTION_LABEL[row.action] || row.action || "—");
+  }
+
+  // Owner-reported: "Buy on retest" alone doesn't say what price the retest
+  // actually is. Reuses the same already-persisted action_reason_plain this
+  // card already prints as its own "why" paragraph below (e.g. "Price broke
+  // out and has dipped back to test ₹138, the level it cleared.") -- never
+  // a new sentence, so a hover and the prose beneath it can never disagree.
+  function actionTitleAttr(row) {
+    var reason = row.action_reason_plain || row.action_reason || "";
+    return reason ? ' title="' + esc(reason) + '"' : "";
   }
 
   function renderDarvaxCard(row, signal) {
@@ -179,7 +198,7 @@
     if (row) {
       var lines =
         "<dt>Tier</dt><dd>" + esc(row.tier) + "</dd>" +
-        "<dt>Action</dt><dd>" + actionWithValue(row) + "</dd>" +
+        "<dt>Action</dt><dd" + actionTitleAttr(row) + ">" + actionLabel(row) + "</dd>" +
         "<dt>Close</dt><dd>" + money(row.close) + "</dd>" +
         "<dt>Buy above</dt><dd>" + money(row.trigger_price) + "</dd>" +
         "<dt>Stop loss</dt><dd>" + money(row.stop_price) + "</dd>" +

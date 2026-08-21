@@ -112,7 +112,7 @@ nothing to say collapse behind one line.
 | Today | Proposed | Methodology (on expand) |
 |---|---|---|
 | `BREAKOUT` / ACTIONABLE | **Buy** | Darvas rule B — buy above the topmost box |
-| `BREAKOUT_RETEST` | **Buy on dip** | rule B, on the retest |
+| `BREAKOUT_RETEST` | **Buy on retest** | rule B, on the retest |
 | `INSIDE_TOPMOST_BOX` / WATCH | **Wait** | rule A |
 | `BELOW_BOX_BOTTOM` / EXIT_RELEVANT | **Sell** | rule C |
 | `NOT_IN_TOPMOST_BOX` / NO_BOX | **Skip** | rule D |

@@ -1167,7 +1167,7 @@
   // the server, and this turns it into words a human reads.
   var ACTION_LABEL = {
     ENTER: "Buy",
-    ENTER_ON_RETEST: "Buy on dip",
+    ENTER_ON_RETEST: "Buy on retest",
     WAIT: "Wait",
     HOLD: "Hold",
     EXIT: "Sell",
@@ -1186,7 +1186,17 @@
         'to box detection, and the detection increment is only marginally ' +
         'significant.">unvalidated</abbr>'
       : "";
-    return '<span class="act a-' + esc(action) + '">' + esc(label) + badge + "</span>";
+    // Owner-reported: "Buy on retest" alone doesn't say what price the
+    // retest actually is, and the row's own "Buy above" value is easy to
+    // miss reading past a small pill chip. The hover title is the same
+    // action_reason_plain already rendered as this ticket's own "why"
+    // paragraph (e.g. "Price broke out and has dipped back to test ₹138,
+    // the level it cleared.") -- reused, not reworded, so the chip and the
+    // prose below it can never disagree.
+    var title = row.action_reason_plain || row.action_reason || "";
+    return '<span class="act a-' + esc(action) + '"' +
+      (title ? ' title="' + esc(title) + '"' : "") +
+      ">" + esc(label) + badge + "</span>";
   }
 
   /*
