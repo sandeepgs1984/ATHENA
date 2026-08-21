@@ -72,7 +72,7 @@
   // "back to ATHENA" link instead of relying on ATHENA's own sidebar.
   if (window.location.search.indexOf("embedded=1") !== -1) {
     var backLink = document.querySelector("a.link[href='/darvax/']");
-    if (backLink) backLink.setAttribute("href", "/darvax/?embedded=1&v=0.1.0-aux7");
+    if (backLink) backLink.setAttribute("href", "/darvax/?embedded=1&v=0.1.0-aux7b");
   }
 
   var els = {
@@ -142,6 +142,35 @@
 
   // ---------------------------------------------------------- DarvaX's read
 
+  // Same labels darvax.js's own ACTION_LABEL uses (Advisor/Levels/Table) --
+  // duplicated per this file's own established convention rather than
+  // imported, so a raw DAR-CARD code (e.g. "ENTER_ON_RETEST") never reaches
+  // this page any more literally than it reaches any other DarvaX view.
+  var ACTION_LABEL = {
+    ENTER: "Buy",
+    ENTER_ON_RETEST: "Buy on dip",
+    WAIT: "Wait",
+    HOLD: "Hold",
+    EXIT: "Sell",
+    EXIT_IF_HELD: "Sell if held",
+    NO_ENTRY: "Skip"
+  };
+
+  function actionWithValue(row) {
+    var label = ACTION_LABEL[row.action] || row.action || "—";
+    // The bracketed value is the same already-persisted price this card
+    // shows again a line below ("Buy above" / "Stop loss") -- repeated here
+    // so the action line is self-contained rather than requiring the two
+    // rows be read together to know what price the action refers to.
+    if ((row.action === "ENTER" || row.action === "ENTER_ON_RETEST") && num(row.trigger_price) !== null) {
+      return esc(label) + " (" + money(row.trigger_price) + ")";
+    }
+    if ((row.action === "EXIT" || row.action === "EXIT_IF_HELD") && num(row.stop_price) !== null) {
+      return esc(label) + " (" + money(row.stop_price) + ")";
+    }
+    return esc(label);
+  }
+
   function renderDarvaxCard(row, signal) {
     if (!row && !signal) {
       els.darvaxCard.innerHTML = '<p class="dim">DarvaX has no read on this instrument yet.</p>';
@@ -150,7 +179,7 @@
     if (row) {
       var lines =
         "<dt>Tier</dt><dd>" + esc(row.tier) + "</dd>" +
-        "<dt>Action</dt><dd>" + esc(row.action) + "</dd>" +
+        "<dt>Action</dt><dd>" + actionWithValue(row) + "</dd>" +
         "<dt>Close</dt><dd>" + money(row.close) + "</dd>" +
         "<dt>Buy above</dt><dd>" + money(row.trigger_price) + "</dd>" +
         "<dt>Stop loss</dt><dd>" + money(row.stop_price) + "</dd>" +

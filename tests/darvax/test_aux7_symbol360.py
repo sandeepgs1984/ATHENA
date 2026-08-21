@@ -225,3 +225,47 @@ def test_plain_deep_link_without_view_param_still_opens_the_main_screener():
     assert outcome["frameDataSrc"] is not None
     assert outcome["frameDataSrc"].startswith("/darvax/?")
     assert "/darvax/symbol360" not in outcome["frameDataSrc"]
+
+
+# --------------------------------------------------------------------------- #
+# 5. DarvaX Read's ACTION field: humanized label, not a raw DAR-CARD code
+# --------------------------------------------------------------------------- #
+
+
+def test_action_label_map_matches_darvax_js_exactly():
+    """Owner-reported: the DarvaX Read card showed the raw code
+    ("ENTER_ON_RETEST") instead of a readable label. Duplicated here per this
+    file's own convention (no cross-file import), so pinned equal to
+    darvax.js's own ACTION_LABEL to guard against the two silently drifting
+    apart if either is edited alone."""
+    own = _fn(SYMBOL360_JS, "actionWithValue")
+    for code, label in {
+        "ENTER": "Buy",
+        "ENTER_ON_RETEST": "Buy on dip",
+        "WAIT": "Wait",
+        "HOLD": "Hold",
+        "EXIT": "Sell",
+        "EXIT_IF_HELD": "Sell if held",
+        "NO_ENTRY": "Skip",
+    }.items():
+        entry = code + ": \"" + label + "\""
+        assert entry in SYMBOL360_JS, f"symbol360.js ACTION_LABEL missing {entry!r}"
+        assert entry in DARVAX_JS, f"darvax.js ACTION_LABEL missing {entry!r}"
+    assert "ACTION_LABEL[row.action]" in own
+
+
+def test_action_value_is_bracketed_with_the_actionable_price():
+    """The label alone ("Buy on dip") is clearer than the raw code, but the
+    owner specifically asked for the concrete price alongside it rather than
+    requiring the separate "Buy above" row below to be read together with it."""
+    body = _fn(SYMBOL360_JS, "actionWithValue")
+    assert '"ENTER"' in body and '"ENTER_ON_RETEST"' in body
+    assert "row.trigger_price" in body
+    assert '"EXIT"' in body and '"EXIT_IF_HELD"' in body
+    assert "row.stop_price" in body
+
+
+def test_darvax_card_action_row_uses_the_humanized_helper():
+    body = _fn(SYMBOL360_JS, "renderDarvaxCard")
+    assert "actionWithValue(row)" in body
+    assert "esc(row.action)" not in body, "must not fall back to the raw DAR-CARD code"
