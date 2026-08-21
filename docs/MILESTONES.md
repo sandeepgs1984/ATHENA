@@ -18,16 +18,16 @@ trade signal, does not alter canonical ATHENA scoring, confidence, risk,
 Decision, or TradePlan contracts, and never places orders. DarvaX remains an
 independent advisory lane.
 
-ADR-012 is accepted and EM-0 is owner-approved. EM-1a is eligible for an
-explicit owner start but remains unstarted. AUX-7 remains planned and
-unstarted; accepting this independent research track does not silently advance
-either track.
+ADR-012 is accepted and EM-0 is owner-approved. EM-1a is implemented as a
+fail-closed coverage audit and frozen event contract and now awaits owner
+review. AUX-7 remains planned and unstarted; accepting this independent
+research track does not silently advance either track.
 
 | Milestone | Objective | Status |
 |---|---|---|
 | EM-0 | Review and accept the isolated EMR architecture boundary | ✅ Approved 2026-08-21 |
-| EM-1a | Audit historical coverage, survivorship, corporate actions, and event-label feasibility | ⏳ Ready for explicit owner start — not started |
-| EM-1b | Build the deterministic point-in-time research dataset and labels | Blocked by EM-1a approval |
+| EM-1a | Audit historical coverage, survivorship, corporate actions, and event-label feasibility | 🟡 Implemented 2026-08-21 — awaiting owner review |
+| EM-1b | Build the deterministic point-in-time research dataset and labels | Blocked by EM-1a approval and required data remediation |
 | EM-1c | Publish unconditional base rates and freeze minimum cohort support | Blocked by EM-1b approval |
 | EM-2 | Implement cutoff-safe feature families and feasibility gates | Planned |
 | EM-3 | Publish historical conditional analysis and defensible feature selection | Planned |
@@ -37,9 +37,12 @@ either track.
 | EM-7 | Run isolated shadow validation and OFF-vs-shadow performance comparison | Planned |
 | EM-8 | Decide research-only, continued shadow, retirement, or a new integration ADR | Planned |
 
-**Current handoff:** EM-0 is complete. Start EM-1a only after explicit owner
-authorization and perform only the coverage/event-contract audit; do not build
-features, models, scanners, or UI in EM-1a.
+**Current handoff:** Review `docs/research/EM-1A-DATA-COVERAGE-AUDIT.md`,
+`config/explosive_move.json`, and the fail-closed contracts/tests. EM-1a found
+zero research-safe checkpoints. Do not start EM-1b until the owner approves
+EM-1a and authoritative corporate actions, canonical intraday slots, and
+point-in-time membership are available or the research claim is formally
+narrowed.
 
 ## Advisory UX Priority Track (selected 2026-08-19)
 

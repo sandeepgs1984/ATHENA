@@ -2,10 +2,10 @@
 
 | Field | Value |
 |---|---|
-| Status | Architecture approved; research not started |
+| Status | EM-1a implemented; awaiting owner review |
 | Governing ADR | ADR-012 (Accepted 2026-08-21) |
 | Started | 2026-08-21 |
-| Current gate | EM-0 approved; EM-1a ready for explicit owner start |
+| Current gate | EM-1b blocked by EM-1a approval and documented data remediation |
 | Canonical ATHENA impact | None permitted |
 
 ## 1. Purpose
@@ -126,7 +126,15 @@ Delivered ADR-012, this roadmap, milestone registration, and an explicit no-cano
 
 ### EM-1a - Data coverage and event contract
 
+**Status:** Implemented 2026-08-21; awaiting owner review.
+
 Inventory daily/intraday/quote/universe/sector/index/corporate-action/price-band/halt/catalyst coverage; quantify survivorship and adjustment risk; freeze labels, exclusions, checkpoints, and dataset/manifest contracts.
+
+The measured audit is `docs/research/EM-1A-DATA-COVERAGE-AUDIT.md`; the
+machine-readable contract is `config/explosive_move.json`. The audit accepted
+zero checkpoints because corporate-action authority, point-in-time membership,
+and canonical complete intraday sessions are unavailable. No labels, features,
+models, scanners, or UI were created.
 
 **Acceptance:** every claimed source is measured, unavailable evidence is explicit, false corporate-action labels have a tested prevention policy, point-in-time limitations are plain, and the owner approves the usable research scope.
 
@@ -188,4 +196,4 @@ Each review summary records objective, completed scope, architecture alignment, 
 
 ## 13. Current handoff
 
-ADR-012 is Accepted and EM-0 is owner-approved. EM-1a is the next eligible milestone but is not started. The next agent must read `ATHENA_BRIEFING.md`, ATHENA-002 Sections 2 and 19, ADR-011, ADR-012, this roadmap, and the EM section in `docs/MILESTONES.md`; begin only EM-1a after an explicit owner start, then stop for owner review.
+ADR-012 is Accepted, EM-0 is owner-approved, and EM-1a is implemented awaiting owner review. The next agent must read `ATHENA_BRIEFING.md`, ATHENA-002 Sections 2 and 19, ADR-011, ADR-012, this roadmap, `docs/research/EM-1A-DATA-COVERAGE-AUDIT.md`, and the EM section in `docs/MILESTONES.md`. Review EM-1a only; do not start EM-1b until the owner approves the milestone and the audit's data-remediation gate is satisfied.

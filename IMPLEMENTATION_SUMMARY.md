@@ -6,6 +6,100 @@ status updated on approval.
 
 ---
 
+## EM-1a: Explosive Move Radar data coverage and event contract
+
+**Summary.** Audited the production ATHENA ledger for Explosive Move Radar
+research readiness and froze a machine-readable event, checkpoint, partition,
+manifest, and exclusion contract. The result is deliberately fail-closed:
+EM-1a accepts zero research checkpoints and authorizes no label generation.
+
+**Objective.** Determine whether existing daily, intraday, quote, universe,
+sector, index, corporate-action, price-band, halt, and catalyst data can support
+point-in-time exceptional-move research without survivorship, adjustment, or
+timestamp leakage.
+
+**Scope completed.** Measured schema-15 production coverage; quantified daily
+depth and intraday duplicate/partial-session defects; documented current-only
+membership and lifecycle limits; froze `TOUCH`, `CLOSE`, and `OPEN_TO_HIGH`
+families at 5%, 8%, 10%, 12%, 15%, and 20%; retained all nine proposed
+checkpoints as candidates but accepted none; and implemented immutable pure
+readiness contracts that block missing or incomplete corporate-action coverage,
+known actions in raw windows, absent point-in-time membership, and incomplete
+or non-canonical checkpoint sessions.
+
+**Files created.** `src/athena/explosive_move/__init__.py`,
+`src/athena/explosive_move/contracts.py`, `config/explosive_move.json`,
+`tests/explosive_move/test_em1a_contracts.py`, and
+`docs/research/EM-1A-DATA-COVERAGE-AUDIT.md`.
+
+**Files modified.** `docs/MILESTONES.md`,
+`docs/design/ATHENA-EXPLOSIVE-MOVE-RADAR-ROADMAP.md`, `ATHENA_BRIEFING.md`,
+and this implementation log.
+
+**Public APIs added.** Research-only Python exports for the frozen event enums,
+corporate-action coverage DTO, readiness DTO, and pure symbol-day/checkpoint
+readiness assessments. No REST, dashboard, canonical domain, or production
+scanner API was added.
+
+**Tests added.** Eight focused tests cover frozen event values, immutable DTOs,
+authoritative zero-action coverage, missing/incomplete coverage, known actions,
+missing point-in-time membership, and non-canonical/incomplete checkpoints.
+
+**Test results.** Focused EM-1a suite: 8 passed. Full repository suite: 2,115
+passed. Ruff checks for the new package and tests passed.
+
+**Coverage summary.** The ledger contains 1,395,749 daily Kite bars across
+2,204 instruments from 11 Aug 2023 through 21 Aug 2026; 1,915 instruments have
+at least 252 daily bars and 1,844 have at least 400. The 5-minute store contains
+844,914 rows but only 671,851 canonical instrument/session/minute slots, with
+173,063 surplus rows and up to four records in one logical slot. Corporate
+actions and adjusted candles both have zero persisted rows. Membership,
+listing lifecycle, price-band, halt, and catalyst history is not authoritative
+for the proposed study.
+
+**Architecture compliance.** The work is isolated under ADR-012, deterministic,
+provider-independent, immutable at its domain boundary, replay-safe for fixed
+inputs, and fail-closed. Canonical ATHENA scoring, confidence, risk, Decision,
+TradePlan, DarvaX, order planning, and execution behavior are unchanged.
+
+**ADR compliance.** ADR-012 remains Accepted and unchanged. ADR-011's dated
+membership boundary is respected. No architecture change or new ADR is needed.
+
+**Risks discovered.** Missing authoritative corporate actions can create false
+move labels; current-only membership creates survivorship bias; timestamp drift
+and duplicated intraday slots can create false checkpoint observations; 512
+quote instruments contain epoch-default timestamps; and price-band, halt, and
+catalyst evidence is unavailable.
+
+**Technical debt introduced.** None. The audit exposes pre-existing data debt
+and prevents downstream code from concealing it.
+
+**Suggested improvements.** Acquire bounded corporate-action provenance,
+normalize or re-ingest canonical complete intraday sessions, and acquire dated
+membership/listing lifecycle evidence. If historical membership cannot be
+obtained, formally narrow the research claim to a named survivor cohort before
+rerunning EM-1a.
+
+**Remaining work.** Owner review of EM-1a is required. EM-1b remains blocked
+until the audit remediation gate is satisfied and a non-empty accepted
+checkpoint set is approved. EM-1c through EM-8 remain pending in milestone
+order.
+
+**Implementation metrics.** Five files created, four tracking/orientation files
+updated, two immutable readiness DTOs, two pure assessment functions, three
+event families, six thresholds, nine candidate checkpoints, zero accepted
+checkpoints, and eight regression tests.
+
+**Phase outcome.** EM-1a implemented and ready for owner review. Work stops
+here; no EM-1b dataset or labels were started.
+
+**Commit hash / branch.** Pending owner commit; the AI performed no git write
+actions.
+
+**Review status.** Ready for owner review.
+
+---
+
 ## EM-0: Explosive Move Radar architecture and research contract
 
 **Summary.** Accepted ADR-012 and approved the Explosive Move Radar (EMR)

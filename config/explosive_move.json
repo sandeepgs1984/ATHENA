@@ -1,0 +1,65 @@
+{
+  "_meta": {
+    "description": "Frozen EM-1a research contract; not a production scanner configuration",
+    "governing_adr": "ADR-012",
+    "milestone": "EM-1a"
+  },
+  "contract_version": "em-event-contract-v1",
+  "study_scope": {
+    "status": "BLOCKED",
+    "reason": "Corporate-action authority and canonical intraday checkpoints are unavailable"
+  },
+  "event_contract": {
+    "families": ["TOUCH", "CLOSE", "OPEN_TO_HIGH"],
+    "threshold_percent": [5, 8, 10, 12, 15, 20],
+    "regular_session_ist": {"open": "09:15", "close": "15:30"},
+    "reference_prices": {
+      "TOUCH": "previous_session_adjusted_close",
+      "CLOSE": "previous_session_adjusted_close",
+      "OPEN_TO_HIGH": "regular_session_open"
+    },
+    "target_horizon": "same_regular_session",
+    "pre_open": "EXCLUDED",
+    "special_sessions": "CALENDAR_AUTHORITY_ONLY"
+  },
+  "checkpoints": {
+    "candidate_ist": ["09:20", "09:30", "09:45", "10:00", "10:30", "11:00", "12:00", "13:00", "14:00"],
+    "accepted_ist": [],
+    "status": "BLOCKED_NON_CANONICAL_INTRADAY_GRID"
+  },
+  "adjustments": {
+    "preferred_strategy": "FULLY_ADJUSTED",
+    "missing_authoritative_coverage": "BLOCK_DATASET",
+    "raw_corporate_action_window": "EXCLUDE"
+  },
+  "unknown_evidence": {
+    "price_band": "UNKNOWN",
+    "halt": "UNKNOWN",
+    "catalyst": "UNKNOWN"
+  },
+  "partition_roles": ["TRAIN", "VALIDATION", "CALIBRATION", "FINAL_TEST"],
+  "symbol_day_fields": [
+    "instrument_id", "exchange", "symbol", "session_date", "membership_as_of",
+    "reference_close", "session_open", "session_high", "session_close",
+    "event_family", "threshold_percent", "label", "exclusion_reasons"
+  ],
+  "checkpoint_fields": [
+    "instrument_id", "session_date", "checkpoint_ist", "remaining_session_minutes",
+    "price_at_checkpoint", "session_high_so_far", "event_family", "threshold_percent",
+    "label", "exclusion_reasons"
+  ],
+  "manifest_fields": [
+    "manifest_id", "contract_version", "created_at", "study_start", "study_end",
+    "universe_name", "membership_snapshot_ids", "source_provenance",
+    "corporate_action_coverage", "accepted_checkpoints", "partition_role",
+    "included_row_count", "excluded_row_count", "exclusion_counts"
+  ],
+  "exclusion_reasons": [
+    "CORPORATE_ACTION_COVERAGE_UNAVAILABLE",
+    "CORPORATE_ACTION_COVERAGE_INCOMPLETE",
+    "UNADJUSTED_CORPORATE_ACTION_WINDOW",
+    "POINT_IN_TIME_MEMBERSHIP_UNAVAILABLE",
+    "NON_CANONICAL_INTRADAY_GRID",
+    "INCOMPLETE_INTRADAY_SESSION"
+  ]
+}
