@@ -6,6 +6,7 @@ Allows clean mocking of services and providers in unit tests.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from fastapi import Request
@@ -216,6 +217,19 @@ def _find_repo_root() -> Path:
     return repo_root
 
 
+def _resolve_config_dir() -> Path:
+    """Config dir for dependency providers, honoring ATHENA_CONFIG_DIR.
+
+    Mirrors athena.cli._config_dir()/app.py's app-startup resolution so a
+    scratch-isolated server (ATHENA_CONFIG_DIR set) never silently falls
+    through to the real repo's config directory.
+    """
+    env_dir = os.environ.get("ATHENA_CONFIG_DIR")
+    if env_dir:
+        return Path(env_dir)
+    return _find_repo_root() / "config"
+
+
 def get_decisions_service(request: Request) -> DecisionsService:
     """Dependency provider for DecisionsService."""
     provider = getattr(request.app.state, "decision_provider", _decision_provider)
@@ -224,7 +238,7 @@ def get_decisions_service(request: Request) -> DecisionsService:
     repo = getattr(request.app.state, "sqlite_repo", None)
     return DecisionsService(
         provider,
-        config_dir=_find_repo_root() / "config",
+        config_dir=_resolve_config_dir(),
         db_path=db_path,
         backup_dir=backup_dir,
         repo=repo,
@@ -243,7 +257,7 @@ def get_market_history_service(request: Request) -> MarketHistoryService:
     return MarketHistoryService(
         provider,
         freshness_threshold_minutes=freshness_minutes,
-        config_dir=_find_repo_root() / "config",
+        config_dir=_resolve_config_dir(),
         repo=repo,
     )
 
@@ -260,7 +274,7 @@ def get_opportunities_service(request: Request) -> OpportunitiesService:
         raise RuntimeError("sqlite_repo is required for top opportunities")
     market_history = get_market_history_service(request)
     return OpportunitiesService(
-        repo, market_history=market_history, config_dir=_find_repo_root() / "config",
+        repo, market_history=market_history, config_dir=_resolve_config_dir(),
     )
 
 
@@ -291,12 +305,11 @@ def get_candidates_service(request: Request) -> CandidatesService:
     """Dependency provider for CandidatesService."""
     store = getattr(request.app.state, "candidate_store", _candidate_store)
     repo = getattr(request.app.state, "sqlite_repo", None)
-    repo_root = _find_repo_root()
     return CandidatesService(
         store,
         repo=repo,
-        config_dir=repo_root / "config",
-        repo_root=repo_root,
+        config_dir=_resolve_config_dir(),
+        repo_root=_find_repo_root(),
     )
 
 
@@ -398,7 +411,7 @@ def get_advisory_freshness_service(request: Request) -> AdvisoryFreshnessService
     return AdvisoryFreshnessService(
         repo,
         get_dashboard_service(request),
-        config_dir=_find_repo_root() / "config",
+        config_dir=_resolve_config_dir(),
     )
 
 
@@ -410,7 +423,7 @@ def get_athena_cycle_status_service(request: Request) -> AthenaCycleStatusServic
     return AthenaCycleStatusService(
         history,
         get_dashboard_service(request),
-        config_dir=_find_repo_root() / "config",
+        config_dir=_resolve_config_dir(),
     )
 
 

@@ -111,8 +111,9 @@ extends DX-4b's existing, already-accepted `tab.js` DOM-injection pattern
 rather than introducing a new one.
 
 **Risks discovered.** None new beyond the one already resolved above. The
-`get_decisions_service` config_dir risk flagged during AUX-4c remains
-open and unrelated to this milestone (a background task is tracking it).
+`get_decisions_service` config_dir risk flagged during AUX-4c has since
+been fixed — see the "Resolved (2026-08-21)" note under the AUX-4c entry
+below for detail.
 
 **Technical debt introduced.** None.
 
@@ -378,6 +379,19 @@ the owner's real files during scratch-server verification unless the
 dependency is reworked to honor the env var. Flagged for a future
 investigation rather than fixed here, since reworking dependency injection
 is out of scope for a UI-surfacing milestone.
+
+*Resolved (2026-08-21):* `src/athena/api/dependencies.py` gained a shared
+`_resolve_config_dir()` helper (checks `ATHENA_CONFIG_DIR`, falls back to
+`_find_repo_root() / "config"`) and all six provider functions that were
+hardcoding `_find_repo_root() / "config"` — `get_decisions_service`,
+`get_market_history_service`, `get_opportunities_service`,
+`get_candidates_service`, `get_advisory_freshness_service`, and
+`get_athena_cycle_status_service` — now go through it. Matches the
+pattern already used by `athena.cli._config_dir()`, `app.py`'s startup
+resolution, and `StrategyService`/`DashboardService`'s own
+`_resolve_config_dir()`. Full suite passing (2,107, incl. 2 new tests in
+`tests/api/test_dependencies.py`). No ADR needed — config-resolution
+consistency fix, no architecture/module-boundary change.
 
 **Technical debt introduced.** None.
 
