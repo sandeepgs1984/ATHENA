@@ -22,9 +22,9 @@ ADR-012 is accepted; EM-0, EM-1a, EM-1r1, EM-1r2, and EM-1r3 are
 owner-approved.
 EM-1a remains a fail-closed coverage audit with zero accepted checkpoints.
 EM-1r3 approved deterministic, provider-free replay of immutable five-minute
-source captures. EM-1r4 is the next milestone and has not started. AUX-7 is
-implemented and awaiting owner review; accepting this independent research
-track does not silently advance either track.
+source captures. EM-1r4 is implemented and awaiting owner review. AUX-8 is
+approved on the independent DarvaX/Symbol-360 track; accepting this
+independent research track does not silently advance either track.
 
 | Milestone | Objective | Status |
 |---|---|---|
@@ -33,7 +33,7 @@ track does not silently advance either track.
 | EM-1r1 | Freeze remediation architecture, ordering, provenance, and acceptance gates | ✅ Approved 2026-08-21 |
 | EM-1r2 | Acquire authoritative corporate actions and persist bounded provenance | ✅ Approved 2026-08-21 |
 | EM-1r3 | Reconstruct canonical duplicate-free complete intraday sessions | ✅ Approved 2026-08-21 |
-| EM-1r4 | Freeze point-in-time cohort and enforce quote timestamp hygiene | 🟡 Next milestone — not started |
+| EM-1r4 | Apply the frozen survivor-cohort contract to research admission and enforce quote-timestamp hygiene | 🔄 Ready for review 2026-08-21; 2,216 tests pass |
 | EM-1r5 | Re-audit coverage and approve a non-empty checkpoint set | Blocked by EM-1r4 approval |
 | EM-1b | Build the deterministic point-in-time research dataset and labels | Blocked by EM-1r5 approval |
 | EM-1c | Publish unconditional base rates and freeze minimum cohort support | Blocked by EM-1b approval |
@@ -45,10 +45,53 @@ track does not silently advance either track.
 | EM-7 | Run isolated shadow validation and OFF-vs-shadow performance comparison | Planned |
 | EM-8 | Decide research-only, continued shadow, retirement, or a new integration ADR | Planned |
 
-**Current handoff:** Read `docs/ATHENA-EMR-HANDOFF.md`. EM-1r4 is the only
-authorized next milestone; it has not started. Do not start EM-1r5 without
-owner approval of EM-1r4, and do not start EM-1b until EM-1r5 approves a
-non-empty checkpoint set.
+**Note on the EM-1r4 title (2026-08-22):** earlier drafts of this row read
+"Freeze point-in-time cohort," which reads as if EM-1r4 acquires genuine
+point-in-time historical NSE membership. It does not, and the handoff doc
+and remediation plan are both explicit that doing so is an explicit
+non-goal (that would require a new external data-source decision). The
+title above is corrected to say what the milestone actually does: apply
+the *already-frozen* EM-1r2 survivor-cohort contract to admission
+decisions, honestly labelled as survivor-cohort research rather than
+point-in-time history.
+
+**EM-1r4 is implemented and ready for owner review, 2026-08-21.** New pure
+domain module `src/athena/explosive_move/cohort_admission.py`
+(`assess_symbol_day_cohort_admission`, `assess_quote_timestamp_hygiene`,
+`CohortAdmissionManifest`) plus a Data-layer orchestration service
+(`src/athena/data/cohort_admission_ingestion.py`, `run()`/`replay()`,
+mirroring EM-1r3's own separation of calendar resolution from pure
+admission logic). No provider, no network call, no schema change — EM-1r4
+introduces no new external evidence, only classification over what's
+already persisted. 34 new tests (28 pure-contract, 6 real-repository
+integration), two proven non-vacuous by reintroducing the exact bug each
+catches, plus a third non-vacuous regression test for a genuine bug found
+during real-data verification (the ingestion service crashed on any quote
+timestamp landing in a year the calendar engine has no data for — e.g. the
+real 1970 epoch-default rows — instead of excluding it; fixed by treating
+"no calendar authority for this date" as fail-closed exclusion, not a
+crash). Full suite **2,216 passing** (2,181 → 2,215 initial → 2,216 after
+the calendar-coverage fix).
+
+**Real production-scale evidence** (run against a scratch copy of the real
+database, never the original — the service only reads canonical tables):
+518 survivor-cohort instruments; 81,326 symbol-days assessed over
+2026-01-01..2026-08-21 (the only interval the real calendar config
+currently covers — a genuine, reported limitation, not a workaround), all
+81,326 admitted (0 listing/delisting exclusions, since no instrument in
+this ledger has a populated `listed_date`/`delisted_date` yet — the
+contract and its test coverage exist for when such evidence becomes
+available); 196,461 quotes assessed for those same cohort instruments, 511
+rejected as Unix-epoch defaults, 14,103 rejected as outside session
+bounds, 0 outside study bounds, for a combined 7.4% quote rejection rate.
+Deterministic replay reproduced an identical `replay_id` from the
+manifest's own frozen inputs alone (never re-reading the live, mutable
+canonical tables). See `IMPLEMENTATION_SUMMARY.md`'s EM-1r4 entry for full
+detail. Awaiting owner approval.
+
+**Current handoff:** Read `docs/ATHENA-EMR-HANDOFF.md`. EM-1r4 awaits
+owner review. Do not start EM-1r5 without owner approval of EM-1r4, and do
+not start EM-1b until EM-1r5 approves a non-empty checkpoint set.
 
 ## Advisory UX Priority Track (selected 2026-08-19)
 

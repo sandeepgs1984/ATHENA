@@ -1,8 +1,8 @@
 # ATHENA Explosive Move Radar Handoff
 
-**Snapshot:** 2026-08-21
+**Snapshot:** 2026-08-21 (EM-1r4 implementation added 2026-08-22)
 **Governing boundary:** ADR-012
-**Current state:** EM-1r3 owner-approved; EM-1r4 is next and not started
+**Current state:** EM-1r3 owner-approved; EM-1r4 implemented and awaiting owner review
 
 ## 1. Current milestone state
 
@@ -13,13 +13,25 @@
 | EM-1r1 | Owner-approved 2026-08-21 |
 | EM-1r2 | Owner-approved 2026-08-21 |
 | EM-1r3 | Owner-approved 2026-08-21 |
-| EM-1r4 | Next milestone; not started |
+| EM-1r4 | Implemented, tested, live-verified; awaiting owner review |
 | EM-1r5 | Blocked until EM-1r4 owner approval |
 | EM-1b | Blocked until EM-1r5 approves a non-empty checkpoint set |
 
 EMR remains isolated research. Nothing completed so far changes ATHENA's UI,
 score, confidence, risk, eligibility, Decision, TradePlan, scanner, broker, or
 order behavior.
+
+**If you're picking this up because the owner approved EM-1r4 in the
+meantime:** flip its row in `docs/MILESTONES.md`,
+`docs/design/ATHENA-EXPLOSIVE-MOVE-RADAR-ROADMAP.md`, and
+`docs/design/EM-1-RESEARCH-DATA-REMEDIATION-PLAN.md` to Approved, and do
+not start EM-1r5 without a fresh, explicit owner instruction to do so (this
+handoff's own read order and non-goals apply to EM-1r5 just as strictly as
+they did to EM-1r4). If EM-1r4 review turned up a bug, treat it the way
+the real calendar-coverage bug found during this milestone's own
+verification was treated: root-cause on the actual code, fix, add a
+non-vacuous regression test, re-verify against real (copied, never
+original) data, update this handoff and `IMPLEMENTATION_SUMMARY.md`.
 
 ## 2. Mandatory read order
 
@@ -91,6 +103,58 @@ Read the live files. Do not infer current state from a prior chat summary.
 
 The EM-1r3 numbers prove the reconstruction contract against deterministic
 fixtures. They do not claim production-scale historical coverage.
+
+### EM-1r4 (implemented 2026-08-22, awaiting owner approval -- not yet in the approved baseline above)
+
+Unlike EM-1r2/EM-1r3, these are real production-scale numbers, not a
+fixture: the service has no provider/network step, so running it against a
+scratch copy of the real database (never the original) was cheap and gave
+genuine evidence rather than a small deterministic sample.
+
+- Cohort: 518 survivor-cohort instruments (identical to EM-1r2's own
+  cohort -- unchanged since then).
+- Study window actually exercised: 2026-01-01 through 2026-08-21 -- **not**
+  EM-1r2's full 2023-08-11..2026-08-21 interval, because the real
+  `config/calendar/*.json` currently only has holiday/expiry data loaded
+  for 2026. This is a genuine, reported limitation discovered during
+  verification, not a workaround chosen for convenience: any future EM-1r
+  milestone enumerating historical sessions (EM-1r5, EM-1b) will hit the
+  same wall until the calendar config is extended with historical years.
+- Symbol-day admission: 81,326 assessed, 81,326 admitted, 0 excluded (both
+  reasons are zero because no instrument in this ledger has a populated
+  `listed_date`/`delisted_date` yet -- the exclusion contract and its test
+  coverage exist and are proven correct on synthetic fixtures, they simply
+  have nothing to catch in today's real data).
+- Quote-timestamp hygiene: 196,461 quotes assessed for the 518 cohort
+  instruments, 181,847 admitted, 511 rejected as Unix-epoch defaults, 0
+  rejected as outside study bounds, **14,103 rejected as outside session
+  bounds** -- a real, previously unmeasured data-quality finding (7.4%
+  combined rejection rate). Worth investigating separately why this many
+  quotes land outside 09:15-15:30 IST; EM-1r4 excludes them from research,
+  it does not diagnose why they exist upstream.
+- Deterministic replay reproduced an identical `replay_id` and
+  `manifest_id` from the manifest's own frozen inputs (cohort, listing
+  snapshot, and a content-addressed quote-snapshot artifact) -- confirmed
+  to hold even after the live canonical tables were mutated between the
+  original run and the replay (a dedicated regression test proves this,
+  not just an assumption).
+- A real bug found and fixed during this same verification pass: the
+  ingestion service crashed (`CalendarError`) on any quote timestamp
+  landing in a year the calendar engine has no data for -- exactly what
+  happens for the real 1970 epoch-default rows, since no calendar config
+  covers 1970. Fixed by treating "no calendar authority for this date" as
+  a fail-closed exclusion (`TIMESTAMP_OUTSIDE_SESSION_BOUNDS`), never a
+  crash -- proven non-vacuous the same way as every other guard in this
+  track.
+- Validation: 34 new tests (28 pure-contract in
+  `tests/explosive_move/test_em1r4_cohort_admission.py`, 6 real-repository
+  integration in `tests/data_layer/test_em1r4_cohort_admission_ingestion.py`,
+  plus the calendar-coverage regression test added after the bug above),
+  four proven non-vacuous; full repository suite passed 2,216 tests;
+  focused Ruff clean on all new/changed files, repository-wide Ruff at the
+  pre-existing 286-finding baseline (confirmed unrelated to this milestone
+  by re-running with EM-1r4's own files excluded -- still 286); `git diff
+  --check` passed.
 
 ## 5. EM-1r4 authorized scope
 

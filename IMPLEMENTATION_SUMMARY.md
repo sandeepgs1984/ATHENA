@@ -6,6 +6,210 @@ status updated on approval.
 
 ---
 
+## EM-1r4: Cohort admission and quote-timestamp hygiene
+
+**Summary.** Applies the EM-1r2 survivor-cohort contract
+(`ATHENA_CURRENT_CANONICAL_SURVIVOR_COHORT_V1`) to per-symbol-day research
+admission, and rejects Unix-epoch and out-of-study/out-of-session quote
+timestamps from research reads — without ever projecting current
+membership backward as point-in-time historical evidence (ADR-012 §6;
+EM-1a's own finding that no instrument in this ledger has a populated
+`listed_date`/`delisted_date`). No provider, no network call, no schema
+change: EM-1r4 introduces no new external evidence, only classification
+over what EM-1r2/canonical ingestion already persisted.
+
+**Objective.** Satisfy the remediation plan's EM-1r4 acceptance criteria
+(every admitted symbol-day has dated eligibility evidence; current
+membership never projected backward; listing/delisting ambiguity
+excluded; the cohort name and limitation appear in every manifest;
+Unix-epoch and out-of-study/out-of-session timestamps rejected; sector
+history reported `UNKNOWN`) so EM-1r5 has a real admission/hygiene
+contract to re-audit against.
+
+**A stale milestone title corrected.** `docs/MILESTONES.md`'s EM-1r4 row
+previously read "Freeze point-in-time cohort," which reads as if this
+milestone acquires genuine point-in-time historical NSE membership. Both
+`docs/ATHENA-EMR-HANDOFF.md` and the remediation plan are explicit that
+doing so is an out-of-scope non-goal (it would require a new external
+data-source decision). Verified against every frozen contract the handoff
+references before writing any code, per the owner's explicit instruction
+to do so; the title is corrected to describe what the milestone actually
+does — apply the already-frozen survivor-cohort contract to admission,
+honestly labelled as survivor-cohort research, never point-in-time
+history.
+
+**Scope completed.** New pure domain module
+`src/athena/explosive_move/cohort_admission.py`:
+`assess_symbol_day_cohort_admission` (admits an instrument-session_date
+pair only if the instrument is in the frozen `SurvivorCohort` and its
+listing/delisting evidence, when present, is not internally inconsistent
+or session-incompatible; the eligibility evidence date recorded is always
+the cohort's own `resolution_date`, never the session date, by
+construction — "current membership is never projected backward" is a
+structural property of every record, not a convention callers must
+remember); `assess_quote_timestamp_hygiene` (rejects, in order, a quote
+whose UTC instant is exactly Unix epoch zero, a quote outside
+`[study_start, study_end]`, or a quote outside the session's own
+open/close bounds — calendar resolution stays in the Data-layer
+orchestration service, matching EM-1r3's own separation of calendar facts
+from pure admission logic); `CohortAdmissionManifest` (immutable evidence:
+cohort + a frozen `listed_date`/`delisted_date` snapshot for replay,
+symbol-day counts and a deterministic admission-set digest, and a fully
+itemised list of rejected quotes alongside a content-addressed snapshot
+artifact of every quote assessed — admitted rows are reported as counts
+plus a digest rather than itemised in full, since at survivor-cohort scale
+an itemised list of every admitted row would bloat the manifest without
+adding evidence beyond what the digest already proves reproducibly).
+
+New Data-layer orchestration service
+`src/athena/data/cohort_admission_ingestion.py`
+(`CohortAdmissionIngestionService.run()`/`.replay()`): builds the cohort
+via the exact same `list_instruments()` + `list_resolved_universe()` +
+validate-then-`build_survivor_cohort()` sequence
+`corporate_action_ingestion.py` (EM-1r2) already established; enumerates
+NORMAL sessions via the existing `CalendarEngine`, matching EM-1r3's
+`_regular_sessions`; freezes the cohort instruments' quote rows as a
+content-addressed artifact (mirroring EM-1r3's raw/normalized-artifact
+pattern) so replay never depends on the live, growing `quotes` table.
+
+**A real bug found and fixed during this milestone's own verification.**
+The orchestration service called `CalendarEngine.context_for()`
+unconditionally for every quote before checking hygiene — correct against
+every unit/integration fixture (which use a hand-written fake calendar
+that answers for any year), but a real run against a copy of production
+data raised `CalendarError` and aborted the entire ingestion the moment it
+reached a quote timestamped at the real Unix epoch (1970), since the real
+`config/calendar/*.json` only has data loaded for 2026. Root-caused by
+running against real data, not by inspection: the bug was invisible to
+every test written before that point, because none of them modeled a
+calendar with genuinely limited year coverage. **Fixed** by treating "no
+calendar authority for this date" (`CalendarError`) as a fail-closed
+`TIMESTAMP_OUTSIDE_SESSION_BOUNDS` exclusion rather than letting the
+exception propagate — consistent with ADR-012 §6/§7's own "fail closed on
+uncertainty" principle: if there is no calendar evidence a date was even a
+valid trading session, that is exactly the kind of uncertainty this gate
+exists to exclude, not crash over. A new fake
+(`_CalendarWithLimitedCoverage`, raising `CalendarError` outside a
+configurable covered-years set) reproduces the real calendar's behavior in
+tests going forward. This is the same "instrument the actual failure
+before guessing" discipline this repository's cross-lane UI work
+established earlier — the difference here is the failure surfaced from
+running the real code against real data, not from an owner report.
+
+**Files created.** `src/athena/explosive_move/cohort_admission.py`,
+`src/athena/data/cohort_admission_ingestion.py`,
+`tests/explosive_move/test_em1r4_cohort_admission.py`,
+`tests/data_layer/test_em1r4_cohort_admission_ingestion.py`.
+
+**Files modified.** `docs/MILESTONES.md` (EM-1r4 row/title corrected and
+narrative added), `docs/ATHENA-EMR-HANDOFF.md`,
+`docs/design/EM-1-RESEARCH-DATA-REMEDIATION-PLAN.md`,
+`docs/design/ATHENA-EXPLOSIVE-MOVE-RADAR-ROADMAP.md`, this implementation
+log.
+
+**Public APIs changed.** None — new domain/orchestration modules only, no
+change to any existing canonical or EMR contract.
+
+**Tests added.** 34: 28 pure-contract tests (symbol-day admission for
+in-cohort/out-of-cohort/listing-ambiguous cases; quote hygiene for
+epoch/out-of-study/out-of-session/admitted cases; manifest contract
+validation, identity, and JSON round-trip); 6 real-repository integration
+tests (a real `SqliteRepository` + a fake calendar, covering the
+end-to-end run, the cohort-validation guard mirrored from EM-1r2, listing-
+ambiguity exclusion end-to-end, and three replay tests including one that
+mutates the live tables between run and replay to prove replay never
+re-reads them); plus the calendar-coverage regression test added after
+finding the bug above. Four of the most safety-critical guards proven
+non-vacuous by reintroducing the exact bug each catches and confirming
+failure before restoring: the epoch-timestamp check, the listing/delisting
+ambiguity check, the never-projects-backward eligibility-date guarantee,
+and the calendar-coverage-gap fail-closed fix.
+
+**Test results.** Full repository suite: **2,216 passing** (2,181 → 2,215
+initial implementation → 2,216 after the calendar-coverage fix). Focused
+Ruff clean on all four new files (one style finding fixed inline during
+development, `SIM103`). Repository-wide Ruff at 286 findings across
+unrelated files — confirmed unrelated to this milestone by re-running Ruff
+with EM-1r4's own files excluded (still 286; EM-1a/EM-1r3's documented
+baseline was 285, so the +1 predates this milestone). `git diff --check`
+passed on all new/changed files.
+
+**Real production-scale evidence**, run against a scratch copy of the
+real database (`db/athena.db` copied to a session-scoped scratch path,
+never opened directly — the service only reads canonical tables, but
+copying first is the same discipline this repository's other real-data
+verification passes already follow), cleaned up after: 518 survivor-cohort
+instruments (`athena_core` universe, unchanged since EM-1r2); study window
+2026-01-01 through 2026-08-21 — not EM-1r2's full 2023-08-11..2026-08-21
+interval, because the real calendar config currently has holiday/expiry
+data loaded only for 2026 (a genuine, reported limitation: any future
+EM-1r milestone enumerating historical sessions will hit the same wall
+until the calendar config gains historical years); 81,326 symbol-days
+assessed, all 81,326 admitted, 0 excluded on either reason (listing/
+delisting exclusions currently never fire in real data, since no
+instrument in this ledger carries a populated `listed_date`/
+`delisted_date` — the contract and its tests exist for when such evidence
+becomes available); 196,461 quotes assessed for the 518 cohort
+instruments, 181,847 admitted, 511 rejected as Unix-epoch defaults, 0
+rejected as outside study bounds, 14,103 rejected as outside session
+bounds (7.4% combined rejection rate — a real, previously unmeasured
+data-quality finding, not diagnosed further here since root-causing why
+quotes land outside trading hours is outside this milestone's scope).
+Deterministic, provider-free replay reproduced an identical `replay_id`
+and `manifest_id` from the manifest's own frozen inputs, confirmed to hold
+even after the live canonical tables were mutated between the original run
+and replay.
+
+**Coverage summary.** Symbol-day admission (cohort membership, listing/
+delisting ambiguity in both directions and the internally-inconsistent
+case, the never-projects-backward guarantee, the always-`UNKNOWN`-sector
+invariant) and quote hygiene (all three rejection reasons plus the
+timezone-independence of the epoch check) are covered at the pure-function
+level; cohort validation, end-to-end admission/hygiene counts, and
+replay-from-frozen-evidence (including under live-table mutation) are
+covered at the real-repository integration level; the calendar-coverage
+fail-closed fix is covered by a dedicated regression test modeling the
+real calendar's limited-year behavior.
+
+**Architecture compliance.** ADR-012's boundary is unchanged: no provider
+import, no per-symbol network request, no canonical schema or table
+mutation, no labels/features/models/scanners/UI, no change to canonical
+scoring/confidence/risk/decision/TradePlan. Verified by inspection (both
+new files import only `athena.domain`, `athena.calendar`,
+`athena.explosive_move`, and `athena.data.store.repository` — zero imports
+from scoring/confidence/risk/decision/journal/capital/portfolio) since no
+automated architecture-isolation test yet exists for the `explosive_move`
+package (a pre-existing gap noted for future EMR milestones, not
+introduced or fixed here).
+
+**ADR compliance.** No ADR amendment needed — EM-1r4 is a direct extension
+of the existing `explosive_move`/EM-1r2 contracts within ADR-012's already
+frozen boundary, not a module-map or contract change requiring one.
+
+**Risks discovered.** The calendar-coverage crash (found and fixed, see
+above). The 14,103 out-of-session quote rejections are a real, unexplained
+data-quality signal worth a future, separate investigation (not fixed or
+diagnosed here — EM-1r4's job is to exclude such data from research, not
+to explain why it exists upstream).
+
+**Technical debt introduced.** None. (The calendar-config historical-year
+gap is a pre-existing environmental limitation, not new debt.)
+
+**Suggested improvements.** Extend `config/calendar/*.json` with
+historical years before EM-1r5/EM-1b attempt to enumerate a genuinely
+multi-year study window — this milestone's own real run could only
+exercise 2026 for exactly that reason. Investigate the 14,103 real
+out-of-session quote rejections separately from this milestone.
+
+**Remaining work.** Implemented, tested, and verified against both
+synthetic fixtures and real (copied) production data; awaiting owner
+review and approval. Do not mark this milestone Approved in
+`docs/MILESTONES.md`, the remediation plan, or the roadmap doc until the
+owner confirms, and do not start EM-1r5 without a fresh, explicit
+authorization to do so even after EM-1r4 is approved.
+
+---
+
 ## AUX-8: "Scan & Validate" on Symbol 360
 
 **Summary.** A second, explicit action on Symbol 360 (AUX-7) beyond the

@@ -1,7 +1,7 @@
 # EM-1 Research Data Remediation Plan
 
 **Track:** EM-1r
-**Current milestone:** EM-1r4 - next, not started
+**Current milestone:** EM-1r4 - implemented 2026-08-22, awaiting owner review
 **Status:** EM-1r1 through EM-1r3 approved 2026-08-21
 **Governing boundary:** ADR-012
 **Input audit:** `docs/research/EM-1A-DATA-COVERAGE-AUDIT.md`
@@ -106,6 +106,26 @@ not part of the current remediation scope.
 - the cohort name and limitation appear in every manifest and report;
 - timestamps at the Unix epoch or outside study/session bounds are rejected;
 - sector history remains `UNKNOWN` where it is not point-in-time authoritative.
+
+**Implementation status (2026-08-22): implemented, awaiting owner review.**
+`assess_symbol_day_cohort_admission` (dated eligibility evidence is always
+the cohort's own `resolution_date`, never the session date) and
+`assess_quote_timestamp_hygiene` (Unix-epoch, out-of-study, and
+out-of-session rejection, in that order) both satisfy every acceptance
+criterion above and are proven so by 28 focused contract tests plus 6
+real-repository integration tests. A real run against a copy of the
+production database (518 cohort instruments, the only calendar-covered
+window 2026-01-01..2026-08-21) admitted all 81,326 symbol-days assessed
+(zero listing/delisting exclusions currently fire, since no instrument
+carries a populated `listed_date`/`delisted_date`) and rejected 511 of
+196,461 quotes as Unix-epoch defaults plus 14,103 as outside session
+bounds. Deterministic, provider-free replay reproduced identical manifest
+and replay identities from the manifest's own frozen inputs. These are
+real production-scale measurements, not a fixture -- EM-1r4 has no
+provider/network step, so running it against real (copied) canonical data
+was both safe and informative. Acquiring authoritative point-in-time
+historical membership remains explicitly out of scope, exactly as framed
+above.
 
 ### EM-1r5 - Coverage re-audit and checkpoint admission
 
