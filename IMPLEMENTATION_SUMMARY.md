@@ -6,6 +6,211 @@ status updated on approval.
 
 ---
 
+## EM-1r3 production capture infrastructure + calendar-contract correction
+
+**Summary.** Before starting EM-1r5, discovered EM-1r3 had only ever been
+fixture-tested, never run at production scale — owner authorized a real,
+resumable, rate-limited capture across the full 518-instrument survivor
+cohort and the frozen 2023-08-11..2026-08-21 study window. Built the
+capture infrastructure, then discovered launching it against the full
+window would crash immediately: `config/calendar/holidays.json` only had
+2026 data. Researched and populated authoritative NSE holiday coverage for
+2023-2025, and fixed a real `CalendarEngine` bug the research surfaced
+(every configured special session was hardcoded to `MUHURAT` regardless of
+its declared type). The real 518-symbol sweep itself has not yet run.
+
+**Objective.** Make the frozen, unmodified EM-1r3 contract
+(`intraday_reconstruction.py`, `intraday_reconstruction_ingestion.py`)
+resumable and rate-limit-safe for a real, multi-hour production run, then
+clear the calendar-coverage blocker standing between that run and the
+frozen 3-year study window — without weakening EM-1r3's admission
+criteria, shortening the study window, or synthesizing any data.
+
+**Scope completed — capture infrastructure.**
+`src/athena/data/retrying_provider.py`: `RetryingMarketDataProvider`, a
+narrow wrapper retrying only the failure class Kite's own transport does
+not (network-level failures and 5xx responses, both arriving as
+`ProviderError` distinguishable only by message) with bounded exponential
+backoff; 4xx-other-than-429 and unrelated logic errors are classified
+permanent and never retried, since retrying them cannot change the
+outcome and would burn real API quota.
+`src/athena/data/intraday_production_capture.py`:
+`ProductionIntradayCaptureRunner` batches the 518-instrument cohort into
+small resumable sub-cohorts, checkpoints progress to disk after each batch
+(a restart skips completed instruments, never re-issuing real API calls
+for already-captured evidence), and produces a `ProductionCaptureSummary`
+aggregating every batch's own genuine, unmodified
+`IntradayReconstructionManifest`. Includes `RecentHistoryTruncationObservation`
+— a real, reproducible pattern found diagnosing this work via 25+ live
+Kite API calls (including a direct bypass of ATHENA's own request
+construction): 5-minute historical candles for sessions within roughly the
+last ~2-3 weeks are truncated to 72 of the expected 75 slots (cutting off
+at 15:10 IST instead of 15:25), confirmed not an ATHENA-side defect (widening
+the raw request `to` parameter has no effect) and confirmed to resolve for
+older sessions (a fine-grained sweep found a precise, stable boundary: 17
+days back is affected, 20 days back is not). Per explicit owner
+instruction, this is recorded as a neutral, evidence-only label
+(`RECENT_PROVIDER_HISTORY_TRUNCATION`) with an explicit `hypothesis` field
+— "delayed provider backfill" is offered as an unverified hypothesis,
+never asserted as confirmed Kite behavior.
+
+**Scope completed — calendar-contract correction (owner-approved
+2026-08-22).** Researched and added 2023-2025 NSE Capital Market Segment
+(CMTR) trading-holiday data exclusively from primary NSE circular PDFs
+(`archives.nseindia.com`/`nsearchives.nseindia.com`) — no blogs, broker
+summaries, or generic holiday sites, per explicit owner instruction. Found
+and included two 2024 mid-year "partial modification" addenda the base
+December-2023 circular did not cover: 2024-05-20 (Parliamentary Elections,
+NSE/CMTR/61518) and 2024-11-20 (Maharashtra Assembly Elections,
+NSE/CMTR/64960) — 2024's real closure count is 16 days, not the 14 in the
+original annual circular. Full per-circular provenance (download ref,
+circular ref, date, title, URL, segment, retrieval date) recorded in
+`holidays.json`'s `_meta.sources` (a field the config loader's `_Strict`
+schema deliberately strips before validation, so this required no schema
+change).
+
+That research also surfaced a real, latent `CalendarEngine` bug:
+`context_for()` hardcoded every `special_sessions` entry to
+`SessionType.MUHURAT`, even though `SpecialSession.type` was already a
+free-form configurable field and `CalendarContext.is_trading_session`
+already anticipated a `SessionType.SPECIAL` the engine never produced.
+Confirmed via a primary source (NSE/CMTR/65729) that 2025-02-01 (a
+Saturday) ran a genuine full standard-hours live session (09:15-15:30 IST)
+for the Union Budget — under the old hardcoded logic this would have been
+misclassified as MUHURAT and silently excluded from EM-1r3 capture even
+though it is a real, fully capturable 75-slot session. **Fixed narrowly**:
+`CalendarEngine` now parses `SpecialSession.type` into the actual
+`SessionType` (restricted to `MUHURAT`/`SPECIAL`, fails loudly on anything
+else via a new `_parse_special_session_type` helper) instead of assuming
+MUHURAT; `intraday_reconstruction_ingestion.py`'s `_regular_sessions()`
+now treats a `SPECIAL`-classified day exactly like `NORMAL` for capture
+purposes (the slot-generation code, `expected_intraday_opens`, already
+derived per-day open/close from `CalendarContext` and needed no change).
+
+A second, distinct finding from the same research: two confirmed-**live**
+(not mock — real trades, real settlement obligations) NSE Disaster-Recovery
+site drills ran split-window sessions (09:15-10:00, then 11:30-12:30 IST)
+on 2024-01-20 and 2024-03-02. `CalendarContext` has exactly one
+open/close-window pair per day and cannot represent a mid-session gap.
+Per explicit owner instruction — "do not distort historical market
+structure merely to satisfy the dataset" — these are **not** forced into
+the existing model (which would fabricate ~1.5 hours of nonexistent
+trading time). A new `SessionType.KNOWN_UNSUPPORTED_SPECIAL_SESSION` and a
+new `HolidaysFile.known_unsupported_special_sessions` config list (default
+`[]`, fully backward compatible) make this an explicit, queryable
+classification distinct from an ordinary `WEEKEND` — `CalendarEngine`
+checks it before the weekend fallback — rather than a silent
+misclassification. EM-1r3 still excludes these dates from capture with no
+change to its own frozen contract. Additional similar DR-drill Saturdays
+likely exist across the 3-year window (e.g. 2024-05-18 was reported in the
+press) but were not exhaustively enumerated, since each shares the same
+representational gap and the same resolution.
+
+**Files created.** `src/athena/data/retrying_provider.py`,
+`src/athena/data/intraday_production_capture.py`,
+`tests/data_layer/test_retrying_provider.py`,
+`tests/data_layer/test_em1r3_production_capture.py`.
+
+**Files modified.** `src/athena/domain/enums.py` (new `SessionType.KNOWN_UNSUPPORTED_SPECIAL_SESSION`),
+`src/athena/config/models.py` (new `UnsupportedSpecialSession` model,
+`HolidaysFile.known_unsupported_special_sessions`),
+`src/athena/calendar/engine.py` (type-respecting special-session
+classification, known-unsupported-session handling),
+`src/athena/data/intraday_reconstruction_ingestion.py` (`_regular_sessions()`
+now also captures `SPECIAL` days), `config/calendar/holidays.json`
+(2023-2025 data added; 2026 data unchanged), `tests/unit/test_calendar.py`,
+`tests/data_layer/test_em1r3_intraday_reconstruction_ingestion.py`,
+`docs/MILESTONES.md`, this implementation log.
+
+**Public APIs changed.** None on any canonical or EMR contract.
+`CalendarEngine.__init__` gained a new required constructor parameter
+(`known_unsupported_sessions`), but the only caller in the repository is
+its own `from_config_dir()` classmethod (confirmed by grep — no other
+direct construction site exists), so this is not a breaking change for any
+real consumer. `HolidaysFile` gained a new field with a default, so any
+config file without it still validates unchanged.
+
+**Tests added.** 30 for the capture infrastructure (`test_retrying_provider.py`,
+`test_em1r3_production_capture.py`, including a `RecentHistoryTruncationObservation`
+aggregation test using a wide 09:15-15:30 fake session and dedicated unit
+tests for the two failure/truncation classification helpers) plus 8 for
+the calendar correction (5 in `test_calendar.py`: configured full-session
+Saturday overrides weekend, correct 75-slot generation for it, Muhurat
+still resolves correctly after the type fix, known-unsupported is not
+WEEKEND, invalid special-session type fails loudly; 3 in the EM-1r3
+ingestion test file: SPECIAL captured like NORMAL, KNOWN_UNSUPPORTED
+excluded, plain WEEKEND still excluded) — 38 new tests total. Five of the
+most safety-critical guards proven non-vacuous by reintroducing the exact
+bug each catches and confirming failure before restoring: both truncation/
+failure-classification helpers, the special-session type fix, the
+`_regular_sessions()` SPECIAL-inclusion fix, and the known-unsupported
+exclusion.
+
+**Test results.** Full repository suite: **2,254 passing** (2,216 after
+EM-1r4 → 2,246 after the capture-infrastructure tests → 2,254 after the
+calendar-correction tests). Ruff clean on every new/modified file.
+`git diff --check` clean.
+
+**Coverage summary.** Retry/backoff classification (transient vs.
+permanent, exhaustion, recovery) is covered at the unit level; the
+resumable checkpoint/batching runner is covered via a simulated mid-run
+crash using the same full cohort both attempts (a partial-cohort
+crash-simulation was tried first and rejected — `SurvivorCohort.cohort_id`
+is a content hash over instrument IDs, so a partial cohort produces a
+different id and incorrectly trips the runner's own different-cohort
+guard); the truncation observation is covered end-to-end via a fake
+provider that reproduces the exact real diagnostic pattern. The calendar
+fix is covered for all four classification paths (NORMAL, WEEKEND,
+MUHURAT, SPECIAL, KNOWN_UNSUPPORTED_SPECIAL_SESSION) plus slot generation
+and config-validation failure.
+
+**Architecture compliance.** EM-1r3's own frozen contract
+(`intraday_reconstruction.py`) is untouched. `intraday_reconstruction_ingestion.py`
+changed by exactly one line (the `_regular_sessions()` filter), an explicit,
+scoped exception the owner granted this turn — not a silent contract
+change. The calendar fix lives entirely in `calendar/` and `config/models.py`
+(the canonical session authority, not EMR-specific code), per explicit
+owner instruction not to introduce "EMR-specific calendar logic." No
+multi-window/split-session calendar architecture was introduced, per
+explicit owner scope boundary — confirmed-live split-session days are
+excluded, not represented.
+
+**ADR compliance.** No ADR needed. The calendar fix is a correctness fix
+to existing canonical infrastructure (the domain model already declared
+`SessionType.SPECIAL` as a valid trading session; the engine simply never
+produced it), not a boundary or module-map change. ADR-012's EMR isolation
+is unaffected.
+
+**Risks discovered.** The Kite recent-history-truncation pattern (recorded
+as evidence, not yet fully quantified against the real 518-symbol
+population — that measurement is exactly what the pending real sweep will
+produce). The DR-drill split-session gap is a real, if small
+(single-digit-days-out-of-~750), population loss the calendar model
+cannot currently recover — flagged as a known limitation, not resolved.
+
+**Technical debt introduced.** None. The `known_unsupported_special_sessions`
+list is a deliberate, minimal, additive schema field, not a workaround.
+
+**Suggested improvements.** Before EM-4 final model validation, refresh
+the recent tail of the study window — if Kite has by then backfilled the
+truncated sessions, add them deterministically rather than permanently
+excluding the newest part of the sample (owner's explicit forward note,
+2026-08-22 — not implemented now). If DR-drill split-session days are ever
+found to matter materially to EMR results, design multi-window session
+support as its own dedicated calendar-architecture milestone/ADR, not as
+an EMR-specific patch. Exhaustively enumerate remaining DR-drill Saturdays
+across the 3-year window if their cumulative population loss ever needs
+precise quantification.
+
+**Remaining work.** Owner-approved 2026-08-22 to build the capture
+infrastructure and fix the calendar gate; the real 518-instrument
+production sweep against the live Kite API has not yet been launched,
+pending final owner confirmation given its scale and duration. EM-1r5
+remains blocked until that sweep completes and its results are reviewed
+and approved.
+
+---
+
 ## EM-1r4: Cohort admission and quote-timestamp hygiene
 
 **Summary.** Applies the EM-1r2 survivor-cohort contract
@@ -201,12 +406,8 @@ multi-year study window — this milestone's own real run could only
 exercise 2026 for exactly that reason. Investigate the 14,103 real
 out-of-session quote rejections separately from this milestone.
 
-**Remaining work.** Implemented, tested, and verified against both
-synthetic fixtures and real (copied) production data; awaiting owner
-review and approval. Do not mark this milestone Approved in
-`docs/MILESTONES.md`, the remediation plan, or the roadmap doc until the
-owner confirms, and do not start EM-1r5 without a fresh, explicit
-authorization to do so even after EM-1r4 is approved.
+**Remaining work.** Owner-approved 2026-08-22. The owner explicitly
+authorized starting EM-1r5 in the same instance.
 
 ---
 

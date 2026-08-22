@@ -1,8 +1,8 @@
 # EM-1 Research Data Remediation Plan
 
 **Track:** EM-1r
-**Current milestone:** EM-1r4 - implemented 2026-08-22, awaiting owner review
-**Status:** EM-1r1 through EM-1r3 approved 2026-08-21
+**Current milestone:** EM-1r5 - authorized 2026-08-22, not started
+**Status:** EM-1r1 through EM-1r4 approved
 **Governing boundary:** ADR-012
 **Input audit:** `docs/research/EM-1A-DATA-COVERAGE-AUDIT.md`
 
@@ -107,7 +107,7 @@ not part of the current remediation scope.
 - timestamps at the Unix epoch or outside study/session bounds are rejected;
 - sector history remains `UNKNOWN` where it is not point-in-time authoritative.
 
-**Implementation status (2026-08-22): implemented, awaiting owner review.**
+**Implementation status: owner-approved 2026-08-22.**
 `assess_symbol_day_cohort_admission` (dated eligibility evidence is always
 the cohort's own `resolution_date`, never the session date) and
 `assess_quote_timestamp_hygiene` (Unix-epoch, out-of-study, and

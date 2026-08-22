@@ -22,7 +22,11 @@ ADR-012 is accepted; EM-0, EM-1a, EM-1r1, EM-1r2, and EM-1r3 are
 owner-approved.
 EM-1a remains a fail-closed coverage audit with zero accepted checkpoints.
 EM-1r3 approved deterministic, provider-free replay of immutable five-minute
-source captures. EM-1r4 is implemented and awaiting owner review. AUX-8 is
+source captures. EM-1r4 is owner-approved (2026-08-22). A real, production-scale
+EM-1r3 capture across the full survivor cohort is authorized and its
+infrastructure built (see the EM-1r3 production capture note below); a
+prerequisite calendar-contract correction is complete and validated, and the
+live sweep itself has not yet run. AUX-8 is
 approved on the independent DarvaX/Symbol-360 track; accepting this
 independent research track does not silently advance either track.
 
@@ -33,7 +37,7 @@ independent research track does not silently advance either track.
 | EM-1r1 | Freeze remediation architecture, ordering, provenance, and acceptance gates | ✅ Approved 2026-08-21 |
 | EM-1r2 | Acquire authoritative corporate actions and persist bounded provenance | ✅ Approved 2026-08-21 |
 | EM-1r3 | Reconstruct canonical duplicate-free complete intraday sessions | ✅ Approved 2026-08-21 |
-| EM-1r4 | Apply the frozen survivor-cohort contract to research admission and enforce quote-timestamp hygiene | 🔄 Ready for review 2026-08-21; 2,216 tests pass |
+| EM-1r4 | Apply the frozen survivor-cohort contract to research admission and enforce quote-timestamp hygiene | ✅ Approved 2026-08-22; 2,216 tests pass |
 | EM-1r5 | Re-audit coverage and approve a non-empty checkpoint set | Blocked by EM-1r4 approval |
 | EM-1b | Build the deterministic point-in-time research dataset and labels | Blocked by EM-1r5 approval |
 | EM-1c | Publish unconditional base rates and freeze minimum cohort support | Blocked by EM-1b approval |
@@ -55,7 +59,7 @@ the *already-frozen* EM-1r2 survivor-cohort contract to admission
 decisions, honestly labelled as survivor-cohort research rather than
 point-in-time history.
 
-**EM-1r4 is implemented and ready for owner review, 2026-08-21.** New pure
+**EM-1r4 was owner-approved 2026-08-22.** New pure
 domain module `src/athena/explosive_move/cohort_admission.py`
 (`assess_symbol_day_cohort_admission`, `assess_quote_timestamp_hygiene`,
 `CohortAdmissionManifest`) plus a Data-layer orchestration service
@@ -87,11 +91,59 @@ bounds, 0 outside study bounds, for a combined 7.4% quote rejection rate.
 Deterministic replay reproduced an identical `replay_id` from the
 manifest's own frozen inputs alone (never re-reading the live, mutable
 canonical tables). See `IMPLEMENTATION_SUMMARY.md`'s EM-1r4 entry for full
-detail. Awaiting owner approval.
+detail.
 
-**Current handoff:** Read `docs/ATHENA-EMR-HANDOFF.md`. EM-1r4 awaits
-owner review. Do not start EM-1r5 without owner approval of EM-1r4, and do
-not start EM-1b until EM-1r5 approves a non-empty checkpoint set.
+**EM-1r3 production capture (in progress, 2026-08-22).** Before starting
+EM-1r5, discovered EM-1r3 had only ever been fixture-tested, never run at
+production scale — owner authorized a real, resumable, rate-limited
+capture across the full 518-instrument survivor cohort and the frozen
+2023-08-11..2026-08-21 study window. Built (all tested, EM-1r3's own frozen
+contract in `intraday_reconstruction.py`/`intraday_reconstruction_ingestion.py`
+unmodified except the one calendar-correctness change below):
+`src/athena/data/retrying_provider.py` (bounded retry/backoff for transient
+network/5xx provider failures only — the transport already retries 429s),
+`src/athena/data/intraday_production_capture.py` (checkpointed, resumable
+per-instrument batching over EM-1r3's own `capture()`, plus a neutral
+`RecentHistoryTruncationObservation` evidence field — a real, reproducible
+pattern found diagnosing this work: recent-session 5-minute Kite data is
+truncated to 72 of 75 slots inside roughly the last ~2-3 weeks, confirmed
+not an ATHENA request-construction defect; framed as an unverified
+hypothesis, never asserted as confirmed provider behavior, per owner
+instruction). 48 new tests, all passing; two failure-classification helpers
+proven non-vacuous.
+
+**Calendar-contract correction (owner-approved 2026-08-22).** Launching the
+sweep against the full study window surfaced that `config/calendar/holidays.json`
+only had 2026 data — `CalendarEngine` fails loudly for any other year, which
+would have crashed EM-1r3's session enumeration at 2023-08-11. Researched and
+populated authoritative NSE Capital Market Segment (CMTR) circulars for
+2023–2025 (holidays, both 2024 election-holiday addenda, and Muhurat dates —
+see `holidays.json`'s `_meta.sources` for full per-year circular provenance).
+That research also surfaced a real `CalendarEngine` bug: every `special_sessions`
+entry was hardcoded to `SessionType.MUHURAT` regardless of its configured
+`type`, so a genuine full-shaped Saturday session (2025-02-01, NSE/CMTR/65729,
+the Union Budget live session) would have been misclassified and silently
+excluded from EM-1r3 capture. Fixed narrowly: `CalendarEngine` now reads
+`SpecialSession.type` from configuration (restricted to `MUHURAT`/`SPECIAL`,
+fails loudly otherwise); `_regular_sessions()` now treats `SPECIAL` exactly
+like `NORMAL` for capture. A second finding — confirmed-live but
+split/multi-window DR-drill sessions (2024-01-20, 2024-03-02) — cannot be
+represented by the single open/close-window model; per explicit owner
+instruction, these are **not** forced into the model. A new
+`SessionType.KNOWN_UNSUPPORTED_SPECIAL_SESSION` and a new
+`known_unsupported_special_sessions` config list make this an explicit,
+queryable exclusion instead of a silent `WEEKEND` misclassification; EM-1r3
+still excludes them from capture (no schema/contract change to
+`intraday_reconstruction.py`). 8 new tests (calendar + EM-1r3 ingestion),
+all three new behaviors proven non-vacuous by reintroducing the exact bug
+each guards against. Full suite **2,254 passing**, Ruff clean.
+
+**Current handoff:** Read `docs/ATHENA-EMR-HANDOFF.md`. With the calendar
+gate cleared, the real 518-instrument production sweep is ready to launch
+against the frozen study window — pending final owner go-ahead given its
+scale (live Kite API, many hours). EM-1r5 remains blocked until that sweep
+completes and its results are reviewed and approved. Do not start EM-1b
+until EM-1r5 approves a non-empty checkpoint set.
 
 ## Advisory UX Priority Track (selected 2026-08-19)
 

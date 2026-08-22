@@ -192,13 +192,20 @@ class IntradayReconstructionIngestionService:
             raise ValueError("replayed session records do not match manifest")
         return IntradayReconstructionResult(manifest, manifest_path, True)
 
+    #: A configured full-shaped special session (e.g. a Saturday Budget-day
+    #: live session) is exchange-confirmed and has real open/close boundaries
+    #: -- treated exactly like a NORMAL day for capture purposes. A session
+    #: the calendar cannot faithfully represent (KNOWN_UNSUPPORTED_SPECIAL_SESSION,
+    #: e.g. a split-window DR drill) is deliberately excluded, not guessed at.
+    _CAPTURABLE_SESSION_TYPES = (SessionType.NORMAL, SessionType.SPECIAL)
+
     def _regular_sessions(
         self, start: date, end: date
     ) -> tuple[tuple[date, tuple[datetime, ...]], ...]:
         result = []
         cursor = start
         while cursor <= end:
-            if self._calendar.context_for(cursor).session_type is SessionType.NORMAL:
+            if self._calendar.context_for(cursor).session_type in self._CAPTURABLE_SESSION_TYPES:
                 result.append((cursor, self._expected_slots(cursor)))
             cursor = date.fromordinal(cursor.toordinal() + 1)
         return tuple(result)

@@ -1,12 +1,143 @@
 {
   "_meta": {
-    "description": "NSE equity-segment trading holidays. DATA file consumed by the Calendar Engine.",
-    "source": "NSE holiday list 2026 (via cleartax.in summary of NSE circular), fetched 2026-07-20",
-    "verify_against": "https://nsearchives.nseindia.com/content/circulars/CMTR71775.pdf",
-    "verified_by_owner": false
+    "description": "NSE equity capital-market-segment trading holidays. DATA file consumed by the Calendar Engine.",
+    "verified_by_owner": false,
+    "note": "2023-2025 populated 2026-08-22 to satisfy the EM-1r3 production capture's frozen 3-year study window. Sourced exclusively from NSE Capital Market Segment (CMTR) circulars per the owner's authoritative-source-hierarchy requirement -- no blogs, broker articles, or generic holiday sites.",
+    "sources": [
+      {
+        "years": [2023],
+        "circular": "NSE/CMTR/54757",
+        "circular_ref": "150/2022",
+        "circular_date": "2022-12-08",
+        "title": "Trading holidays for the calendar year 2023",
+        "url": "https://archives.nseindia.com/content/circulars/CMTR54757.pdf",
+        "segment": "Capital Market",
+        "retrieved": "2026-08-22"
+      },
+      {
+        "years": [2024],
+        "circular": "NSE/CMTR/59722",
+        "circular_ref": "154/2023",
+        "circular_date": "2023-12-12",
+        "title": "Trading holidays for the calendar year 2024",
+        "url": "https://nsearchives.nseindia.com/content/circulars/CMTR59722.pdf",
+        "segment": "Capital Market",
+        "retrieved": "2026-08-22"
+      },
+      {
+        "years": [2024],
+        "circular": "NSE/CMTR/61518",
+        "circular_ref": "52/2024",
+        "circular_date": "2024-04-08",
+        "title": "Trading Holiday on May 20, 2024 on account of Parliamentary Elections in Mumbai -- partial modification of NSE/CMTR/59722",
+        "url": "https://nsearchives.nseindia.com/content/circulars/CMTR61518.pdf",
+        "segment": "Capital Market",
+        "retrieved": "2026-08-22"
+      },
+      {
+        "years": [2024],
+        "circular": "NSE/CMTR/64960",
+        "circular_ref": "154/2024",
+        "circular_date": "2024-11-08",
+        "title": "Trading Holiday on November 20, 2024 on account of Assembly Elections in Maharashtra -- partial modification of NSE/CMTR/59722",
+        "url": "https://nsearchives.nseindia.com/content/circulars/CMTR64960.pdf",
+        "segment": "Capital Market",
+        "retrieved": "2026-08-22"
+      },
+      {
+        "years": [2025],
+        "circular": "NSE/CMTR/65587",
+        "circular_ref": "170/2024",
+        "circular_date": "2024-12-13",
+        "title": "Trading holidays for the calendar year 2025",
+        "url": "https://nsearchives.nseindia.com/content/circulars/CMTR65587.pdf",
+        "segment": "Capital Market",
+        "retrieved": "2026-08-22"
+      },
+      {
+        "years": [2025],
+        "circular": "NSE/CMTR/65729",
+        "circular_ref": "172/2024",
+        "circular_date": "2024-12-23",
+        "title": "Live Trading Session on February 01, 2025 (Saturday) -- Presentation of Union Budget: full standard-hours session (09:15-15:30 IST)",
+        "url": "https://nsearchives.nseindia.com/content/circulars/CMTR65729.pdf",
+        "segment": "Capital Market",
+        "retrieved": "2026-08-22"
+      },
+      {
+        "years": [2026],
+        "circular": "NSE/CMTR/71775",
+        "title": "NSE holiday list 2026 (via cleartax.in summary of NSE circular)",
+        "url": "https://nsearchives.nseindia.com/content/circulars/CMTR71775.pdf",
+        "segment": "Capital Market",
+        "retrieved": "2026-07-20",
+        "note": "Pre-existing entry from before the 2026-08-22 2023-2025 extension; not independently re-verified in this pass."
+      }
+    ],
+    "known_unsupported_special_sessions_evidence": [
+      {
+        "date": "2024-01-20",
+        "circular": "NSE/CMTR -- Live trading sessions from Disaster Recovery (DR) site",
+        "note": "Confirmed LIVE (not mock) split-window session: 09:15-10:00 and 11:30-12:30 IST, intra-day Primary-to-DR-site switchover, real trades and settlement obligations. The calendar model represents one continuous open/close window per day and cannot faithfully express a mid-session gap; deliberately excluded rather than distorted or flattened into a false continuous session. See the 2026-08-22 calendar-contract review.",
+        "retrieved": "2026-08-22"
+      },
+      {
+        "date": "2024-03-02",
+        "circular": "NSE/CMTR -- Live trading sessions from Disaster Recovery (DR) site, Circular Ref. No. 08/2024",
+        "note": "Confirmed LIVE (not mock) split-window session: 09:15-10:00 and 11:30-12:30 IST, intra-day Primary-to-DR-site switchover. Same representational gap as 2024-01-20.",
+        "retrieved": "2026-08-22"
+      },
+      {
+        "date": "n/a",
+        "note": "Additional DR-drill Saturdays likely exist across the 2023-2025 window (e.g. 2024-05-18 was reported in the press) but were not exhaustively enumerated -- each shares the same split-window shape and the same representational gap as the two dates above."
+      }
+    ]
   },
-  "years": [2026],
+  "years": [2023, 2024, 2025, 2026],
   "holidays": [
+    { "date": "2023-01-26", "name": "Republic Day" },
+    { "date": "2023-03-07", "name": "Holi" },
+    { "date": "2023-03-30", "name": "Ram Navami" },
+    { "date": "2023-04-04", "name": "Mahavir Jayanti" },
+    { "date": "2023-04-07", "name": "Good Friday" },
+    { "date": "2023-04-14", "name": "Dr. Baba Saheb Ambedkar Jayanti" },
+    { "date": "2023-05-01", "name": "Maharashtra Day" },
+    { "date": "2023-06-28", "name": "Bakri Id" },
+    { "date": "2023-08-15", "name": "Independence Day" },
+    { "date": "2023-09-19", "name": "Ganesh Chaturthi" },
+    { "date": "2023-10-02", "name": "Mahatma Gandhi Jayanti" },
+    { "date": "2023-10-24", "name": "Dussehra" },
+    { "date": "2023-11-14", "name": "Diwali-Balipratipada" },
+    { "date": "2023-11-27", "name": "Gurunanak Jayanti" },
+    { "date": "2023-12-25", "name": "Christmas" },
+    { "date": "2024-01-26", "name": "Republic Day" },
+    { "date": "2024-03-08", "name": "Mahashivratri" },
+    { "date": "2024-03-25", "name": "Holi" },
+    { "date": "2024-03-29", "name": "Good Friday" },
+    { "date": "2024-04-11", "name": "Id-Ul-Fitr (Ramadan Eid)" },
+    { "date": "2024-04-17", "name": "Shri Ram Navmi" },
+    { "date": "2024-05-01", "name": "Maharashtra Day" },
+    { "date": "2024-05-20", "name": "Parliamentary Elections (Mumbai)" },
+    { "date": "2024-06-17", "name": "Bakri Id" },
+    { "date": "2024-07-17", "name": "Moharram" },
+    { "date": "2024-08-15", "name": "Independence Day/Parsi New Year" },
+    { "date": "2024-10-02", "name": "Mahatma Gandhi Jayanti" },
+    { "date": "2024-11-15", "name": "Gurunanak Jayanti" },
+    { "date": "2024-11-20", "name": "Assembly Elections in Maharashtra" },
+    { "date": "2024-12-25", "name": "Christmas" },
+    { "date": "2025-02-26", "name": "Mahashivratri" },
+    { "date": "2025-03-14", "name": "Holi" },
+    { "date": "2025-03-31", "name": "Id-Ul-Fitr (Ramadan Eid)" },
+    { "date": "2025-04-10", "name": "Shri Mahavir Jayanti" },
+    { "date": "2025-04-14", "name": "Dr. Baba Saheb Ambedkar Jayanti" },
+    { "date": "2025-04-18", "name": "Good Friday" },
+    { "date": "2025-05-01", "name": "Maharashtra Day" },
+    { "date": "2025-08-15", "name": "Independence Day" },
+    { "date": "2025-08-27", "name": "Ganesh Chaturthi" },
+    { "date": "2025-10-02", "name": "Mahatma Gandhi Jayanti/Dussehra" },
+    { "date": "2025-10-22", "name": "Diwali-Balipratipada" },
+    { "date": "2025-11-05", "name": "Prakash Gurpurb Sri Guru Nanak Dev" },
+    { "date": "2025-12-25", "name": "Christmas" },
     { "date": "2026-01-15", "name": "Maharashtra municipal elections" },
     { "date": "2026-01-26", "name": "Republic Day" },
     { "date": "2026-03-03", "name": "Holi" },
@@ -26,12 +157,54 @@
   ],
   "special_sessions": [
     {
+      "date": "2023-11-12",
+      "type": "MUHURAT",
+      "name": "Diwali-Laxmi Pujan (Muhurat Trading)",
+      "timings_note": "Notified by a separate NSE circular; not sourced in this pass (EM-1r3 does not depend on exact Muhurat timings, only on the date being classified MUHURAT, not NORMAL/SPECIAL)",
+      "open": null,
+      "close": null
+    },
+    {
+      "date": "2024-11-01",
+      "type": "MUHURAT",
+      "name": "Diwali Laxmi Pujan (Muhurat Trading)",
+      "timings_note": "Notified by a separate NSE circular; not sourced in this pass (EM-1r3 does not depend on exact Muhurat timings, only on the date being classified MUHURAT, not NORMAL/SPECIAL)",
+      "open": null,
+      "close": null
+    },
+    {
+      "date": "2025-02-01",
+      "type": "SPECIAL",
+      "name": "Live Trading Session -- Presentation of Union Budget",
+      "timings_note": "NSE/CMTR/65729: full standard-hours session on a Saturday, pre-open 09:00-09:08, normal market 09:15-15:30 IST -- same shape as an ordinary trading day.",
+      "open": "09:15:00",
+      "close": "15:30:00"
+    },
+    {
+      "date": "2025-10-21",
+      "type": "MUHURAT",
+      "name": "Diwali Laxmi Pujan (Muhurat Trading)",
+      "timings_note": "Notified by a separate NSE circular; not sourced in this pass (EM-1r3 does not depend on exact Muhurat timings, only on the date being classified MUHURAT, not NORMAL/SPECIAL)",
+      "open": null,
+      "close": null
+    },
+    {
       "date": "2026-11-08",
       "type": "MUHURAT",
       "name": "Diwali Laxmi Pujan (Muhurat Trading)",
       "timings_note": "Notified by NSE circular closer to the date; null until then",
       "open": null,
       "close": null
+    }
+  ],
+  "known_unsupported_special_sessions": [
+    {
+      "date": "2024-01-20",
+      "name": "NSE Disaster Recovery (DR) site live trading drill -- split-window session (09:15-10:00, 11:30-12:30 IST), not representable by a single open/close window"
+    },
+    {
+      "date": "2024-03-02",
+      "name": "NSE Disaster Recovery (DR) site live trading drill -- split-window session (09:15-10:00, 11:30-12:30 IST), not representable by a single open/close window"
     }
   ]
 }

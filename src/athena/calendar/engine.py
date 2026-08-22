@@ -26,6 +26,24 @@ def _parse_date(raw: str, source: str) -> date:
         raise CalendarError(f"Invalid date '{raw}' in {source}: {exc}") from exc
 
 
+#: A special session's declared type must be one of these -- HOLIDAY/WEEKEND/NORMAL
+#: are produced by dedicated calendar logic, never by a configured special session.
+_ALLOWED_SPECIAL_SESSION_TYPES = (SessionType.MUHURAT, SessionType.SPECIAL)
+
+
+def _parse_special_session_type(raw: str, source: str) -> SessionType:
+    try:
+        session_type = SessionType(raw)
+    except ValueError as exc:
+        raise CalendarError(f"Invalid special session type '{raw}' in {source}: {exc}") from exc
+    if session_type not in _ALLOWED_SPECIAL_SESSION_TYPES:
+        raise CalendarError(
+            f"special session type '{raw}' in {source} must be one of "
+            f"{[t.value for t in _ALLOWED_SPECIAL_SESSION_TYPES]}"
+        )
+    return session_type
+
+
 class CalendarEngine:
     """Answers: what kind of trading day is <date>, and what should modules know about it?"""
 
@@ -33,7 +51,8 @@ class CalendarEngine:
         self,
         market: MarketConfig,
         holidays: dict[date, str],
-        special_sessions: dict[date, tuple[str, time | None, time | None]],
+        special_sessions: dict[date, tuple[SessionType, str, time | None, time | None]],
+        known_unsupported_sessions: dict[date, str],
         weekly_expiries: frozenset[date],
         monthly_expiries: frozenset[date],
         events: dict[date, tuple[CalendarEvent, ...]],
@@ -42,6 +61,7 @@ class CalendarEngine:
         self._market = market
         self._holidays = holidays
         self._special = special_sessions
+        self._unsupported = known_unsupported_sessions
         self._weekly = weekly_expiries
         self._monthly = monthly_expiries
         self._events = events
@@ -55,8 +75,17 @@ class CalendarEngine:
             _parse_date(h.date, "holidays.json"): h.name for h in holidays_file.holidays
         }
         special = {
-            _parse_date(s.date, "holidays.json"): (s.name, s.open, s.close)
+            _parse_date(s.date, "holidays.json"): (
+                _parse_special_session_type(s.type, "holidays.json"),
+                s.name,
+                s.open,
+                s.close,
+            )
             for s in holidays_file.special_sessions
+        }
+        known_unsupported = {
+            _parse_date(u.date, "holidays.json"): u.name
+            for u in holidays_file.known_unsupported_special_sessions
         }
         weekly = frozenset(_parse_date(d, "expiries.json") for d in expiries_file.weekly)
         monthly = frozenset(_parse_date(d, "expiries.json") for d in expiries_file.monthly)
@@ -70,6 +99,7 @@ class CalendarEngine:
             market=market,
             holidays=holidays,
             special_sessions=special,
+            known_unsupported_sessions=known_unsupported,
             weekly_expiries=weekly,
             monthly_expiries=monthly,
             events=events,
@@ -92,11 +122,13 @@ class CalendarEngine:
             events=self._events.get(d, ()),
         )
 
-        # Special sessions (e.g. Muhurat) take precedence — they can fall on weekends.
+        # Special sessions (e.g. Muhurat, a full-session Saturday) take
+        # precedence — they can fall on weekends. The session type is
+        # whatever the configuration explicitly declares, never assumed.
         if d in self._special:
-            name, open_t, close_t = self._special[d]
+            session_type, name, open_t, close_t = self._special[d]
             return CalendarContext(
-                session_type=SessionType.MUHURAT,
+                session_type=session_type,
                 open_time=open_t,
                 close_time=close_t,
                 holiday_name=name,
@@ -109,6 +141,21 @@ class CalendarEngine:
                 open_time=None,
                 close_time=None,
                 holiday_name=self._holidays[d],
+                **common,
+            )
+
+        # A real, confirmed trading day the calendar model cannot faithfully
+        # represent (e.g. a split-window DR-drill session) — deliberately
+        # distinct from WEEKEND so it is never mistaken for an ordinary
+        # non-trading day. Checked before the weekend fallback since these
+        # dates are, by definition, days generic weekday/weekend logic
+        # would otherwise misclassify.
+        if d in self._unsupported:
+            return CalendarContext(
+                session_type=SessionType.KNOWN_UNSUPPORTED_SPECIAL_SESSION,
+                open_time=None,
+                close_time=None,
+                holiday_name=self._unsupported[d],
                 **common,
             )
 

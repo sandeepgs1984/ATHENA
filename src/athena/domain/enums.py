@@ -20,6 +20,11 @@ class SessionType(str, Enum):
     HOLIDAY = "HOLIDAY"
     MUHURAT = "MUHURAT"
     SPECIAL = "SPECIAL"
+    #: A real, confirmed NSE trading session the calendar model cannot
+    #: faithfully represent (e.g. a split/multi-window DR-drill session) --
+    #: deliberately distinct from WEEKEND so it is never silently mistaken
+    #: for an ordinary non-trading day (2026-08-22 calendar-contract review).
+    KNOWN_UNSUPPORTED_SPECIAL_SESSION = "KNOWN_UNSUPPORTED_SPECIAL_SESSION"
 
 
 @unique

@@ -4,11 +4,14 @@ correct CalendarContext for 10 dates including a holiday and Muhurat."""
 from __future__ import annotations
 
 from datetime import date
+from zoneinfo import ZoneInfo
 
 import pytest
+from tests.conftest import rewrite_json
 
 from athena.calendar.engine import CalendarEngine
 from athena.config.loader import load_config
+from athena.data.validation.calendar_expectations import expected_intraday_opens
 from athena.domain.enums import SessionType
 from athena.errors import CalendarError
 
@@ -77,3 +80,61 @@ def test_determinism_same_input_same_output(engine):
     a = engine.context_for(date(2026, 7, 20))
     b = engine.context_for(date(2026, 7, 20))
     assert a == b
+
+
+# --------------------------------------------------------------------------- #
+# Calendar-contract correction (2026-08-22): a configured special session's
+# own declared type is respected instead of every entry being hardcoded to
+# MUHURAT, and a real trading day the model cannot faithfully represent
+# (a split-window DR drill) is classified distinctly from an ordinary WEEKEND.
+# --------------------------------------------------------------------------- #
+
+
+def test_configured_full_session_saturday_overrides_weekend(engine):
+    """2025-02-01 (Saturday): NSE/CMTR/65729 ran a full standard-hours live
+    session for the Union Budget -- must be SPECIAL, not WEEKEND, and must
+    carry the real open/close boundaries, not invented or null ones."""
+
+    ctx = engine.context_for(date(2025, 2, 1))
+    assert ctx.session_type is SessionType.SPECIAL
+    assert ctx.is_trading_session
+    assert ctx.open_time.strftime("%H:%M") == "09:15"
+    assert ctx.close_time.strftime("%H:%M") == "15:30"
+
+
+def test_special_session_slot_generation_matches_a_full_regular_session(engine):
+    opens = expected_intraday_opens(engine, date(2025, 2, 1), 5, ZoneInfo("Asia/Kolkata"))
+    assert len(opens) == 75
+    assert opens[0].strftime("%H:%M") == "09:15"
+    assert opens[-1].strftime("%H:%M") == "15:25"
+
+
+def test_known_unsupported_special_session_is_not_weekend(engine):
+    """2024-01-20 (Saturday): a real, live DR-drill session with a
+    split-window shape the single open/close-window model cannot express.
+    Must be classified distinctly, never silently as WEEKEND, and must not
+    be treated as an assertable trading session."""
+
+    ctx = engine.context_for(date(2024, 1, 20))
+    assert ctx.session_type is SessionType.KNOWN_UNSUPPORTED_SPECIAL_SESSION
+    assert ctx.session_type is not SessionType.WEEKEND
+    assert not ctx.is_trading_session
+    assert ctx.holiday_name is not None
+
+
+def test_muhurat_type_still_resolves_to_muhurat_after_the_type_fix(engine):
+    """A configured MUHURAT entry must still resolve to MUHURAT now that the
+    engine reads ``type`` from configuration instead of hardcoding it --
+    guards against the fix silently defaulting every entry to SPECIAL."""
+
+    ctx = engine.context_for(date(2024, 11, 1))
+    assert ctx.session_type is SessionType.MUHURAT
+
+
+def test_invalid_special_session_type_fails_loudly(config_dir):
+    rewrite_json(config_dir / "calendar" / "holidays.json", lambda data: data["special_sessions"].append(
+        {"date": "2025-01-01", "type": "NORMAL", "name": "bogus special session"}
+    ))
+    config = load_config(config_dir)
+    with pytest.raises(CalendarError, match="must be one of"):
+        CalendarEngine.from_config_dir(config_dir, config.market)

@@ -146,3 +146,74 @@ def test_replay_rejects_tampered_source_artifact(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="artifact digest mismatch"):
         _service(tmp_path, provider=None).replay(captured.manifest_path)
+
+
+# --------------------------------------------------------------------------- #
+# Calendar-contract correction (2026-08-22): a configured SPECIAL session
+# (e.g. a full-shaped Saturday like the 2025-02-01 Budget session) must be
+# captured exactly like a NORMAL day. A KNOWN_UNSUPPORTED_SPECIAL_SESSION
+# (e.g. a split-window DR drill) must be excluded, not guessed at.
+# --------------------------------------------------------------------------- #
+
+SPECIAL_DAY = date(2026, 8, 22)
+UNSUPPORTED_DAY = date(2026, 8, 23)
+WEEKEND_DAY = date(2026, 8, 24)
+
+
+class _MixedCalendar:
+    """One SPECIAL day (full-shaped), one KNOWN_UNSUPPORTED day, one WEEKEND."""
+
+    def context_for(self, session_date: date) -> CalendarContext:
+        if session_date == SPECIAL_DAY:
+            session_type, open_t, close_t = SessionType.SPECIAL, time(9, 15), time(9, 25)
+        elif session_date == UNSUPPORTED_DAY:
+            session_type, open_t, close_t = SessionType.KNOWN_UNSUPPORTED_SPECIAL_SESSION, None, None
+        else:
+            session_type, open_t, close_t = SessionType.WEEKEND, None, None
+        return CalendarContext(
+            context_date=session_date,
+            session_type=session_type,
+            exchange="NSE",
+            timezone="Asia/Kolkata",
+            open_time=open_t,
+            close_time=close_t,
+        )
+
+
+def test_special_session_is_captured_like_a_normal_day() -> None:
+    service = IntradayReconstructionIngestionService(
+        calendar=_MixedCalendar(),  # type: ignore[arg-type]
+        evidence_root=Path("/tmp/unused"),
+        timezone_name="Asia/Kolkata",
+    )
+
+    sessions = service._regular_sessions(SPECIAL_DAY, SPECIAL_DAY)
+
+    assert len(sessions) == 1
+    session_date, expected_slots = sessions[0]
+    assert session_date == SPECIAL_DAY
+    assert len(expected_slots) == 2  # 09:15-09:25 fake window, 5-min slots
+
+
+def test_known_unsupported_special_session_is_excluded_from_capture() -> None:
+    service = IntradayReconstructionIngestionService(
+        calendar=_MixedCalendar(),  # type: ignore[arg-type]
+        evidence_root=Path("/tmp/unused"),
+        timezone_name="Asia/Kolkata",
+    )
+
+    sessions = service._regular_sessions(UNSUPPORTED_DAY, UNSUPPORTED_DAY)
+
+    assert sessions == ()
+
+
+def test_plain_weekend_still_excluded_from_capture() -> None:
+    service = IntradayReconstructionIngestionService(
+        calendar=_MixedCalendar(),  # type: ignore[arg-type]
+        evidence_root=Path("/tmp/unused"),
+        timezone_name="Asia/Kolkata",
+    )
+
+    sessions = service._regular_sessions(WEEKEND_DAY, WEEKEND_DAY)
+
+    assert sessions == ()

@@ -1625,10 +1625,24 @@ class SpecialSession(_Strict):
     close: time | None = None
 
 
+class UnsupportedSpecialSession(_Strict):
+    """A real, confirmed NSE trading session the calendar model cannot
+    faithfully represent (e.g. a split/multi-window DR-drill session).
+
+    Deliberately excluded from capture rather than distorted to fit the
+    single open/close-window model -- provenance for ``name`` belongs in
+    this file's ``_meta`` block, matching ``Holiday``'s convention.
+    """
+
+    date: str
+    name: str
+
+
 class HolidaysFile(_Strict):
     years: list[int]
     holidays: list[Holiday]
     special_sessions: list[SpecialSession]
+    known_unsupported_special_sessions: list[UnsupportedSpecialSession] = Field(default_factory=list)
 
 
 class ExpiriesFile(_Strict):

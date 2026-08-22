@@ -1,8 +1,22 @@
 # ATHENA Explosive Move Radar Handoff
 
-**Snapshot:** 2026-08-21 (EM-1r4 implementation added 2026-08-22)
+**Snapshot:** 2026-08-21 (EM-1r4 implementation added 2026-08-22; EM-1r3
+production-capture infrastructure + calendar-contract correction added
+2026-08-22)
 **Governing boundary:** ADR-012
-**Current state:** EM-1r3 owner-approved; EM-1r4 implemented and awaiting owner review
+**Current state:** EM-1r4 owner-approved (2026-08-22). Before starting
+EM-1r5, discovered EM-1r3 had only ever been fixture-tested at production
+scale — owner authorized a real, resumable capture across the full
+518-instrument survivor cohort and frozen 2023-08-11..2026-08-21 study
+window. Capture infrastructure is built and tested
+(`src/athena/data/retrying_provider.py`,
+`src/athena/data/intraday_production_capture.py`); a prerequisite
+calendar-contract correction (2023-2025 NSE holiday data plus a real
+`CalendarEngine` special-session bug fix, both owner-approved 2026-08-22)
+is complete and validated. **The real 518-symbol sweep has not yet run** —
+see the EM-1r3 production capture entry (top, second entry) in
+`IMPLEMENTATION_SUMMARY.md` for full detail. EM-1r5 does not start until
+that sweep completes and its results are reviewed and approved.
 
 ## 1. Current milestone state
 
@@ -12,9 +26,9 @@
 | EM-1a | Owner-approved 2026-08-21; zero checkpoints accepted |
 | EM-1r1 | Owner-approved 2026-08-21 |
 | EM-1r2 | Owner-approved 2026-08-21 |
-| EM-1r3 | Owner-approved 2026-08-21 |
-| EM-1r4 | Implemented, tested, live-verified; awaiting owner review |
-| EM-1r5 | Blocked until EM-1r4 owner approval |
+| EM-1r3 | Owner-approved 2026-08-21; real production-capture infrastructure built and calendar-gate cleared 2026-08-22, live sweep not yet run |
+| EM-1r4 | Owner-approved 2026-08-22 |
+| EM-1r5 | Blocked until the real EM-1r3 production sweep completes and is reviewed |
 | EM-1b | Blocked until EM-1r5 approves a non-empty checkpoint set |
 
 EMR remains isolated research. Nothing completed so far changes ATHENA's UI,
@@ -104,7 +118,7 @@ Read the live files. Do not infer current state from a prior chat summary.
 The EM-1r3 numbers prove the reconstruction contract against deterministic
 fixtures. They do not claim production-scale historical coverage.
 
-### EM-1r4 (implemented 2026-08-22, awaiting owner approval -- not yet in the approved baseline above)
+### EM-1r4 (owner-approved 2026-08-22)
 
 Unlike EM-1r2/EM-1r3, these are real production-scale numbers, not a
 fixture: the service has no provider/network step, so running it against a
