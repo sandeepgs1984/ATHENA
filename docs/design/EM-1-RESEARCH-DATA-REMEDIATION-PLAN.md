@@ -1,16 +1,21 @@
 # EM-1 Research Data Remediation Plan
 
 **Track:** EM-1r
-**Current milestone:** EM-1r5 - authorized 2026-08-22, not started
-**Status:** EM-1r1 through EM-1r4 approved
+**Current milestone:** EM-1r5 - approved 2026-08-26; EM-1b is next, not started
+**Status:** EM-1r1 through EM-1r5 approved
 **Governing boundary:** ADR-012
 **Input audit:** `docs/research/EM-1A-DATA-COVERAGE-AUDIT.md`
 
 ## 1. Decision
 
-EM-1a is owner-approved as an honest, fail-closed audit. It authorizes no
-historical labels because the ledger currently admits zero research-safe
-checkpoints. EM-1b remains blocked.
+EM-1a is owner-approved as an honest, fail-closed audit. It authorized no
+historical labels because the ledger admitted zero research-safe
+checkpoints at that time. EM-1r5 (2026-08-26) re-ran EM-1a's own
+measurement against the real, corrected EM-1r2/EM-1r3/EM-1r4 evidence and
+the owner approved all 9 candidate checkpoints as `accepted_ist` —
+research-ready evidence, not predictive value or scanner fitness. See
+`artifacts/research/em1r5/reaudit_result.json` and
+`IMPLEMENTATION_SUMMARY.md`'s top entry. EM-1b is now unblocked.
 
 The remediation is split into small approval-gated milestones. No milestone
 may create labels, features, models, rankings, scanner output, or UI until
@@ -27,7 +32,7 @@ following ownership rules remain true:
 | Canonical market records | Existing ATHENA persistence layer | EMR never mutates canonical data; ingestion uses existing repository boundaries. |
 | Coverage and provenance manifests | EMR research storage | Immutable manifests record source, bounds, counts, exclusions, and content identity. |
 | Research reads | Explicit read-only ports | EMR receives frozen inputs and cannot import concrete providers. |
-| Labels and partitions | EMR research storage | Still prohibited until EM-1r5 is approved. |
+| Labels and partitions | EMR research storage | EM-1r5 approved 2026-08-26; EM-1b may now begin building them. |
 
 No canonical schema or `MarketDataProvider` contract change is approved by
 EM-1r1. If a later remediation milestone cannot fit these boundaries, stop and

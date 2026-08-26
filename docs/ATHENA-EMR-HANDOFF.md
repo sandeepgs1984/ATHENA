@@ -1,44 +1,44 @@
 # ATHENA Explosive Move Radar Handoff
 
-**Snapshot:** 2026-08-21 (EM-1r4 implementation added 2026-08-22; EM-1r3
-production-capture infrastructure + calendar-contract correction added
-2026-08-22)
+**Snapshot:** 2026-08-26 (EM-1r5 approved; supersedes the 2026-08-21/22
+snapshot below)
 **Governing boundary:** ADR-012
-**Current state:** EM-1r4 owner-approved (2026-08-22). The real 518-
-instrument EM-1r3 production sweep ran to completion 2026-08-24 (~49
-hours) but was **INVALIDATED**: a post-completion audit found 0 of
-385,910 sessions admitted, root-caused to a confirmed `KiteProvider`
-request-boundary defect (not a data-availability problem — Kite's `to`
-parameter silently excludes a candle whose open time equals it exactly).
-Fixed, tested, and re-verified live. The invalidated evidence (5.8GB) is
-preserved, not deleted, at
-`artifacts/research/em1r3-INVALIDATED-2026-08-24-provider-boundary-defect/`.
-A permanent process rule (CLAUDE.md) now requires a real-provider canary
-with an explicit admission threshold and automatic fail-fast before any
-future expensive external-data run — implemented in
-`src/athena/data/em1r3_production_canary.py` and wired into the capture
-CLI. **The corrected sweep completed 2026-08-26**: 92.81% admission
-(358,177/385,910 sessions), 104/104 manifests deterministically
-replay-verified, full test suite passing. Two new findings reported
-honestly rather than smoothed over: an unverified single-day anomaly
-(2024-01-22, all 518 instruments zero-candle, immaterial in scale) and
-the already-disclosed survivor-cohort late-listing limitation now
-empirically visible. See the top entry in `IMPLEMENTATION_SUMMARY.md` for
-the complete Review Summary. EM-1r5 does not start until the owner
-reviews and approves that summary.
+**Current state:** EM-1r5 is owner-approved (2026-08-26) — **all 9
+candidate checkpoints are accepted** in `config/explosive_move.json`,
+research-ready evidence only (explicitly not predictive value,
+calibration, or scanner fitness). This followed a real incident and
+recovery: the original EM-1r3 production sweep (2026-08-24, ~49 hours)
+was **INVALIDATED** after a post-completion audit found 0 of 385,910
+sessions admitted, root-caused to a confirmed `KiteProvider`
+request-boundary defect (Kite's `to` parameter silently excludes a candle
+whose open time equals it exactly — not a data-availability problem).
+Fixed, tested, re-verified live, and a permanent real-provider-canary
+rule added to CLAUDE.md. The corrected sweep completed 2026-08-26: 92.81%
+admission (358,177/385,910 sessions), 104/104 manifests
+deterministically replay-verified. EM-1r5 then re-ran EM-1a's coverage
+measurement against this real evidence, adopting an owner-designed
+corporate-action contamination rule (calculation-window-crossing, not a
+fixed proximity window) that flagged only 2,001 TOUCH/CLOSE symbol-days
+(~0.51% of population) and zero OPEN_TO_HIGH symbol-days. Six real
+DEMERGER actions remain an explicit, unresolved `IDENTITY_CHANGE_RISK`
+limitation for future feature/model work to check against. Full evidence:
+`artifacts/research/em1r5/reaudit_result.json`. See
+`IMPLEMENTATION_SUMMARY.md`'s top entry for the complete EM-1r5 Review
+Summary. **EM-1b is unblocked and is the next milestone — not yet
+started.**
 
 ## 1. Current milestone state
 
 | Milestone | State |
 |---|---|
 | EM-0 | Owner-approved 2026-08-21 |
-| EM-1a | Owner-approved 2026-08-21; zero checkpoints accepted |
+| EM-1a | Owner-approved 2026-08-21; superseded by EM-1r5's real re-audit (all 9 checkpoints now accepted) |
 | EM-1r1 | Owner-approved 2026-08-21 |
 | EM-1r2 | Owner-approved 2026-08-21 |
-| EM-1r3 | Owner-approved 2026-08-21; corrected production sweep COMPLETE 2026-08-26 (92.81% admission, replay-verified) — awaiting owner review |
+| EM-1r3 | Owner-approved 2026-08-21; corrected production sweep COMPLETE 2026-08-26 (92.81% admission, replay-verified) |
 | EM-1r4 | Owner-approved 2026-08-22 |
-| EM-1r5 | Blocked until the owner reviews and approves the EM-1r3 Production Capture Review Summary |
-| EM-1b | Blocked until EM-1r5 approves a non-empty checkpoint set |
+| EM-1r5 | Owner-approved 2026-08-26 — all 9 candidate checkpoints accepted (research-ready evidence only) |
+| EM-1b | Unblocked — next milestone, not yet started |
 
 EMR remains isolated research. Nothing completed so far changes ATHENA's UI,
 score, confidence, risk, eligibility, Decision, TradePlan, scanner, broker, or

@@ -44,8 +44,13 @@ def test_frozen_config_matches_code_contract() -> None:
     assert payload["event_contract"]["families"] == [item.value for item in EVENT_FAMILIES]
     assert payload["event_contract"]["threshold_percent"] == list(EVENT_THRESHOLDS_PERCENT)
     assert payload["checkpoints"]["candidate_ist"] == list(CANDIDATE_CHECKPOINTS_IST)
-    assert payload["checkpoints"]["accepted_ist"] == []
-    assert payload["study_scope"]["status"] == "BLOCKED"
+    # EM-1r5 (owner-approved 2026-08-26): all 9 candidates promoted to
+    # accepted_ist -- research-ready, not predictive-value-approved. See
+    # config/explosive_move.json's _meta.checkpoint_acceptance for the full
+    # semantic boundary and artifacts/research/em1r5/reaudit_result.json
+    # for the measured evidence.
+    assert payload["checkpoints"]["accepted_ist"] == list(CANDIDATE_CHECKPOINTS_IST)
+    assert payload["study_scope"]["status"] == "CHECKPOINT_EVIDENCE_READY"
 
 
 def test_zero_actions_without_authoritative_coverage_fails_closed() -> None:

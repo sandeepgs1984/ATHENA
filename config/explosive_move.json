@@ -2,12 +2,19 @@
   "_meta": {
     "description": "Frozen EM-1a research contract; not a production scanner configuration",
     "governing_adr": "ADR-012",
-    "milestone": "EM-1a"
+    "milestone": "EM-1a",
+    "checkpoint_acceptance": {
+      "milestone": "EM-1r5",
+      "approved": "2026-08-26",
+      "run_id_reference": "artifacts/research/em1r5/reaudit_result.json",
+      "accepted_ist_semantics": "accepted_ist means the checkpoint has sufficient trustworthy historical evidence (admitted intraday session, cohort membership, quote/data hygiene, corporate-action boundary validity) to participate in subsequent EMR research. It does NOT mean: predictive value, statistical significance, calibration, production-scanner fitness, equal model weight, EM-4 evidence gate passage, or any influence on canonical ATHENA decisions.",
+      "why_all_nine": "All nine candidates showed identical admitted-symbol-day support (356,225 for TOUCH/CLOSE, 358,177 for OPEN_TO_HIGH) because the relevant EM-1r5 gates -- admitted intraday session, cohort membership, quote/data hygiene, corporate-action boundary validity -- are all session-level facts under today's evidence, not checkpoint-time-level facts. No evidence-quality dimension differentiates one candidate from another at this milestone; predictive differentiation among checkpoints (e.g. P(TOUCH_10 | 09:20) vs P(TOUCH_10 | 14:00)) is a separate, later research question for EM-1c onward, not decided here."
+    }
   },
   "contract_version": "em-event-contract-v1",
   "study_scope": {
-    "status": "BLOCKED",
-    "reason": "Corporate-action authority and canonical intraday checkpoints are unavailable"
+    "status": "CHECKPOINT_EVIDENCE_READY",
+    "reason": "EM-1r5 (2026-08-26): corporate-action authority and canonical intraday checkpoints are now available via the corrected EM-1r3 production capture. All 9 candidate checkpoints owner-approved as accepted_ist -- research-ready, not predictive-value-approved."
   },
   "event_contract": {
     "families": ["TOUCH", "CLOSE", "OPEN_TO_HIGH"],
@@ -24,8 +31,8 @@
   },
   "checkpoints": {
     "candidate_ist": ["09:20", "09:30", "09:45", "10:00", "10:30", "11:00", "12:00", "13:00", "14:00"],
-    "accepted_ist": [],
-    "status": "BLOCKED_NON_CANONICAL_INTRADAY_GRID"
+    "accepted_ist": ["09:20", "09:30", "09:45", "10:00", "10:30", "11:00", "12:00", "13:00", "14:00"],
+    "status": "ACCEPTED_EM1R5_RESEARCH_READY"
   },
   "adjustments": {
     "preferred_strategy": "FULLY_ADJUSTED",

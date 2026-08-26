@@ -2,10 +2,10 @@
 
 | Field | Value |
 |---|---|
-| Status | EM-1r4 approved 2026-08-22; EM-1r5 authorized to begin |
+| Status | EM-1r5 approved 2026-08-26 — all 9 candidate checkpoints accepted |
 | Governing ADR | ADR-012 (Accepted 2026-08-21) |
 | Started | 2026-08-21 |
-| Current gate | EM-1b blocked until EM-1r5 approves non-empty checkpoints |
+| Current gate | EM-1b unblocked — next milestone, not yet started |
 | Canonical ATHENA impact | None permitted |
 
 ## 1. Purpose
@@ -140,10 +140,9 @@ models, scanners, or UI were created.
 
 ### EM-1r - Research data remediation
 
-**Status:** EM-1r1 through EM-1r4 approved. EM-1r5 is authorized to begin
-(2026-08-22) -- see
-`docs/design/EM-1-RESEARCH-DATA-REMEDIATION-PLAN.md`'s EM-1r4 section and
-`IMPLEMENTATION_SUMMARY.md` for EM-1r4's full detail.
+**Status:** EM-1r1 through EM-1r5 approved (2026-08-26) -- see
+`docs/design/EM-1-RESEARCH-DATA-REMEDIATION-PLAN.md` and
+`IMPLEMENTATION_SUMMARY.md`'s top entry for EM-1r5's full detail.
 
 The approval-gated EM-1r1 through EM-1r5 sequence covers authoritative
 corporate actions, canonical intraday sessions, point-in-time population/quote
@@ -151,8 +150,9 @@ hygiene, and the final coverage re-audit. Its frozen ownership, provenance,
 acceptance, and stop conditions live in
 `docs/design/EM-1-RESEARCH-DATA-REMEDIATION-PLAN.md`.
 
-No EM-1r milestone creates labels. Only owner approval of EM-1r5 with a
-non-empty accepted checkpoint set unblocks EM-1b.
+No EM-1r milestone creates labels. EM-1r5 approved all 9 candidate
+checkpoints as `accepted_ist` (research-ready evidence only, not
+predictive value) -- EM-1b is now unblocked.
 
 ### EM-1b - Deterministic historical event dataset
 
@@ -212,11 +212,11 @@ Each review summary records objective, completed scope, architecture alignment, 
 
 ## 13. Current handoff
 
-ADR-012 is Accepted. EM-0, EM-1a, and EM-1r1 through EM-1r3 are
-owner-approved. EM-1a accepted zero checkpoints. The dedicated continuation
-context is `docs/ATHENA-EMR-HANDOFF.md`; read it before beginning work.
-EM-1r4 is owner-approved (2026-08-22); it did not broaden its scope into
+ADR-012 is Accepted. EM-0, EM-1a, and EM-1r1 through EM-1r5 are
+owner-approved. EM-1a's own zero-checkpoint audit is superseded by
+EM-1r5's real re-audit (2026-08-26): all 9 candidate checkpoints accepted
+as research-ready evidence. The dedicated continuation context is
+`docs/ATHENA-EMR-HANDOFF.md`; read it before beginning work. EM-1r4 is
+owner-approved (2026-08-22); it did not broaden its scope into
 point-in-time membership acquisition, labels, features, models, scanners,
-or UI. EM-1r5 is now authorized. EM-1b remains blocked until owner
-approval of EM-1r5
-with a non-empty checkpoint set.
+or UI. **EM-1b is unblocked and is the next milestone — not yet started.**

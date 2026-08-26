@@ -6,6 +6,184 @@ status updated on approval.
 
 ---
 
+## EM-1r5: Coverage re-audit and checkpoint admission
+
+**Summary.** Re-ran EM-1a's original coverage measurement — unmodified —
+against the real, corrected EM-1r2/EM-1r3/EM-1r4 evidence. All 9
+candidate checkpoints (09:20–14:00 IST) show identical, substantial
+admitted-symbol-day support (356,225 for TOUCH/CLOSE, 358,177 for
+OPEN_TO_HIGH), since the relevant gates are all session-level facts under
+today's evidence, not checkpoint-time-level facts. Owner approved
+promoting all 9 to `accepted_ist` — explicitly research-ready evidence
+only, never predictive value, calibration, or scanner fitness. Adopted a
+new, owner-designed reusable contract for corporate-action contamination:
+**calculation-window-crossing, not a fixed proximity window** — measured
+to avoid 5,970–7,971 symbol-days of unnecessary exclusion a naive
+ex-date+3-session rule would have caused.
+
+**Objective.** Satisfy EM-1r5's frozen acceptance criteria (every claimed
+source/bound reproducible from persisted provenance; corporate-action,
+membership/cohort, quote, and candle gates all pass; admitted checkpoints
+have duplicate-free complete-session evidence; exclusions counted by
+stable reason code; owner approves a non-empty checkpoint set) so EM-1b
+has a real, evidence-backed accepted checkpoint set to build from.
+
+**Scope completed.** New pure domain module
+`src/athena/explosive_move/corporate_action_boundary.py`:
+`corporate_action_crosses_boundary()` derives directly from EM-1a's
+already-frozen `config/explosive_move.json` `reference_prices`/
+`target_horizon` — TOUCH/CLOSE reference `previous_session_adjusted_close`
+and target the current session, so contamination occurs exactly when
+`session_date` **is** a corporate action's `ex_date` for that instrument
+(previous session pre-action, current session already post-action); once
+both sides sit on the same side of every relevant ex_date, there is no
+contamination regardless of how many sessions later. `OPEN_TO_HIGH`
+references only `regular_session_open` — mathematically immune, since
+open and high are always on the same side of any boundary within one
+session. A second function, `naive_ex_date_plus_n_window_excludes()`,
+exists solely to measure how much a rejected fixed-window alternative
+would have over-excluded — never used for any real admission decision.
+
+New Data-layer orchestration script
+`src/athena/data/em1r5_checkpoint_reaudit.py`: wires real evidence into
+EM-1a's frozen, completely unmodified `assess_symbol_day_readiness`/
+`assess_checkpoint_readiness` (`contracts.py`) — corporate-action
+coverage and per-instrument ex_dates from the real, owner-approved EM-1r2
+manifest (2,009 accepted actions: DIVIDEND 1,911, BONUS 48, SPLIT 35,
+RIGHTS 9, DEMERGER 6); `canonical_intraday_grid`/`complete_intraday_session`
+from the real, corrected EM-1r3 manifests (ADMITTED status);
+`point_in_time_membership_available` from EM-1r4's own frozen
+`assess_symbol_day_cohort_admission`, run fresh against the live
+(read-only) instruments table; `corporate_action_in_reference_window`
+from the new boundary contract. Produces a deterministic, content-hashed
+report (`run_id`, matching the `manifest_id` convention used throughout
+EM-1r2/EM-1r3) with full provenance (EM-1r2 manifest id, EM-1r3
+capture_run_id and cohort_id) at
+`artifacts/research/em1r5/reaudit_result.json`. Makes zero Kite API
+calls, mutates zero canonical tables, and does not itself edit
+`config/explosive_move.json` — that edit is a separate, explicit step
+taken only after the owner's approval, matching EM-1r5's own acceptance
+criterion ("the owner approves a non-empty checkpoint set").
+
+**Real measured results** (2023-08-11 to 2026-08-21, 518-instrument
+cohort, 385,910 symbol-days evaluated per family):
+
+| Family | Reference basis | Admitted | CA-boundary flagged | CA sole reason |
+|---|---|---|---|---|
+| TOUCH | previous session close → same session | 356,225 (92.31%) | 2,001 (0.52%) | 1,952 (0.51%) |
+| CLOSE | previous session close → same session | 356,225 (92.31%) | 2,001 (0.52%) | 1,952 (0.51%) |
+| OPEN_TO_HIGH | same-session open only | 358,177 (92.81%) | 0 | 0 |
+
+CA-flagged breakdown (TOUCH/CLOSE) by type: DIVIDEND 1,906, BONUS 48,
+SPLIT 35, RIGHTS 9, DEMERGER 6 — dividends dominate the count but the
+population cost stays small (0.51%). Naive ex-date+3-session rule would
+have additionally excluded 5,970 (TOUCH/CLOSE) and 7,971 (OPEN_TO_HIGH,
+which needed zero exclusions) symbol-days — the real, measured cost of
+proximity-based exclusion the boundary rule avoided. Concrete examples
+captured: `NSE:360ONE` excluded on its 2023-11-10 dividend ex-date;
+`NSE:BALKRISIND` admissible exactly 1 session after its 2023-08-11
+ex-date, demonstrating the rule does not over-exclude once both sides are
+post-action.
+
+**Demerger limitation, explicitly not resolved here.** Six real DEMERGER
+actions (`NSE:ITC` 2025-01-06, `NSE:SIEMENS` 2025-04-07, `NSE:ABFRL`
+2025-05-22, `NSE:TMPV` 2025-10-14, `NSE:HINDUNILVR` 2025-12-05, `NSE:VEDL`
+2026-04-30) are flagged in the report as `IDENTITY_CHANGE_RISK` candidates
+per owner instruction — a demerger can represent more than mechanical
+price rescaling (potential instrument-identity discontinuity). Carried
+forward as a documented limitation for any future long-horizon
+feature/model to explicitly check against, not resolved by a window here.
+
+**Checkpoint identity finding, reported honestly.** All 9 candidate
+checkpoints show byte-identical admitted-symbol-day counts within each
+family. This is a real, derived property of today's evidence (none of
+EM-1r3's admission status, EM-1r4's cohort check, or the new boundary
+rule vary by intraday checkpoint time — they are all session-level facts)
+— not an implementation shortcut, and explicitly not evidence of
+predictive equivalence between checkpoints. Owner decision: this is
+legitimate and expected; do not invent artificial checkpoint
+differentiation to make the result look more granular than the evidence
+supports.
+
+**Files created.** `src/athena/explosive_move/corporate_action_boundary.py`,
+`src/athena/data/em1r5_checkpoint_reaudit.py`,
+`tests/explosive_move/test_corporate_action_boundary.py`,
+`tests/data_layer/test_em1r5_checkpoint_reaudit.py`.
+
+**Files modified.** `config/explosive_move.json` (`accepted_ist`
+populated with all 9 candidates; `study_scope.status` →
+`CHECKPOINT_EVIDENCE_READY`; `checkpoints.status` →
+`ACCEPTED_EM1R5_RESEARCH_READY`; new `_meta.checkpoint_acceptance` block
+recording the exact `accepted_ist` semantic boundary and why all 9 were
+accepted together, verbatim per owner instruction),
+`tests/explosive_move/test_em1a_contracts.py` (the frozen-config-match
+test updated to assert the new, owner-approved values — the pure
+`contracts.py` function tests in the same file are completely unchanged),
+`docs/MILESTONES.md`, `docs/ATHENA-EMR-HANDOFF.md`,
+`docs/design/EM-1-RESEARCH-DATA-REMEDIATION-PLAN.md`,
+`docs/design/ATHENA-EXPLOSIVE-MOVE-RADAR-ROADMAP.md`, this log.
+
+**Public APIs changed.** None on any canonical or non-EMR contract.
+`contracts.py` (EM-1a's own frozen module) is completely unmodified.
+
+**Tests added.** 14 (10 for the boundary contract — including a direct
+reproduction of the owner's own illustrative examples: TOUCH/CLOSE
+crossing exactly on the ex_date session, never crossing 1-100 sessions
+after, OPEN_TO_HIGH never crossing, multiple ex_dates gating their own
+sessions independently, and 3 tests proving the naive alternative
+over-excludes relative to the adopted rule; 4 for the re-audit script's
+small pure extraction helpers). The core boundary-crossing rule proven
+non-vacuous by reintroducing the exact bug it guards against and
+confirming failure before restoring. Full suite: **2,284 passing**
+(2,270 → 2,284). Ruff clean on every new/modified file. `git diff --check`
+clean.
+
+**Coverage summary.** The boundary-crossing rule is covered for every
+family × timing combination the owner's own examples specified. The
+re-audit script's EM-1r2-manifest-shape-specific extraction logic
+(coverage completeness, ex_date grouping, action-type grouping) is
+covered directly; the main orchestration logic reuses already-tested
+pure functions (`corporate_action_crosses_boundary`,
+`assess_symbol_day_readiness`, `assess_checkpoint_readiness`,
+`assess_symbol_day_cohort_admission`) and was cross-validated against the
+real run's own internal arithmetic (358,177 EM-1r3-admitted minus 1,952
+CA-sole-exclusions equals exactly 356,225 TOUCH/CLOSE admitted).
+
+**Architecture compliance.** EM-1a's frozen contract (`contracts.py`) is
+completely unmodified — the new boundary module is an additive, reusable
+extension built on top of it, matching the same pattern EM-1r2/EM-1r3/
+EM-1r4 each used against their own prior frozen layers. The re-audit
+script lives in `data/` (I/O, orchestration), not `explosive_move/`
+(pure domain), preserving ADR-012's package boundary. No labels,
+features, models, rankings, scanner output, or UI were created — EM-1r5
+stays strictly a coverage/evidence decision.
+
+**ADR compliance.** No ADR needed — a correctness-scoped extension of
+already-frozen EM-1a machinery, not a boundary or module-map change.
+
+**Risks discovered.** None new. The demerger identity-change risk (6
+real cases) and the checkpoint-identity finding are both carried forward
+explicitly as documented, unresolved research considerations, not silent
+gaps.
+
+**Technical debt introduced.** None.
+
+**Suggested improvements.** Before any future feature/model uses long
+historical continuity across a demerger, its required history must be
+checked against that instrument's identity-change boundary — do not
+assume pre/post-demerger price history represents an unchanged
+instrument. Later milestones (EM-1c onward) must independently measure
+checkpoint-specific predictive metrics (base rate, Precision@K, PR-AUC,
+Brier score, calibration, lift, MFE/MAE, regime stability, sample
+support) — evidence equivalence at EM-1r5 must never be assumed to imply
+predictive equivalence.
+
+**Remaining work.** Owner-approved 2026-08-26. EM-1b (deterministic
+point-in-time research dataset and labels) is the next milestone, per the
+mandatory one-milestone-at-a-time workflow — not started in this change.
+
+---
+
 ## EM-1r3 corrected production capture: complete
 
 **Summary.** The corrected 518-instrument EM-1r3 production sweep

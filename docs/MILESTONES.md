@@ -18,15 +18,15 @@ trade signal, does not alter canonical ATHENA scoring, confidence, risk,
 Decision, or TradePlan contracts, and never places orders. DarvaX remains an
 independent advisory lane.
 
-ADR-012 is accepted; EM-0, EM-1a, EM-1r1, EM-1r2, and EM-1r3 are
-owner-approved.
-EM-1a remains a fail-closed coverage audit with zero accepted checkpoints.
-EM-1r3 approved deterministic, provider-free replay of immutable five-minute
-source captures. EM-1r4 is owner-approved (2026-08-22). A real, production-scale
-EM-1r3 capture across the full survivor cohort is authorized and its
-infrastructure built (see the EM-1r3 production capture note below); a
-prerequisite calendar-contract correction is complete and validated, and the
-live sweep itself has not yet run. AUX-8 is
+ADR-012 is accepted; EM-0, EM-1a, EM-1r1, EM-1r2, EM-1r3, EM-1r4, and
+EM-1r5 are all owner-approved. EM-1a's own zero-checkpoint audit is
+superseded by EM-1r5's real re-audit: **all 9 candidate checkpoints are
+now accepted** (`config/explosive_move.json`), on the strength of the
+corrected real EM-1r3 production capture. Acceptance means research-ready
+evidence, explicitly not predictive value, calibration, or production-
+scanner fitness — see the EM-1r5 note below and
+`artifacts/research/em1r5/reaudit_result.json` for the measured evidence.
+EM-1b is unblocked but not yet started. AUX-8 is
 approved on the independent DarvaX/Symbol-360 track; accepting this
 independent research track does not silently advance either track.
 
@@ -38,8 +38,8 @@ independent research track does not silently advance either track.
 | EM-1r2 | Acquire authoritative corporate actions and persist bounded provenance | ✅ Approved 2026-08-21 |
 | EM-1r3 | Reconstruct canonical duplicate-free complete intraday sessions | ✅ Approved 2026-08-21 |
 | EM-1r4 | Apply the frozen survivor-cohort contract to research admission and enforce quote-timestamp hygiene | ✅ Approved 2026-08-22; 2,216 tests pass |
-| EM-1r5 | Re-audit coverage and approve a non-empty checkpoint set | Blocked by EM-1r4 approval |
-| EM-1b | Build the deterministic point-in-time research dataset and labels | Blocked by EM-1r5 approval |
+| EM-1r5 | Re-audit coverage and approve a non-empty checkpoint set | ✅ Approved 2026-08-26 — all 9 candidate checkpoints accepted (research-ready, not predictive-value-approved) |
+| EM-1b | Build the deterministic point-in-time research dataset and labels | Unblocked — next milestone, not yet started |
 | EM-1c | Publish unconditional base rates and freeze minimum cohort support | Blocked by EM-1b approval |
 | EM-2 | Implement cutoff-safe feature families and feasibility gates | Planned |
 | EM-3 | Publish historical conditional analysis and defensible feature selection | Planned |
@@ -177,12 +177,34 @@ limitation now empirically visible (137 instruments, mostly explained by
 not-yet-listed status at study_start). See `IMPLEMENTATION_SUMMARY.md`'s
 top entry for the complete Review Summary.
 
-**Current handoff:** Read `docs/ATHENA-EMR-HANDOFF.md`. The corrected
-EM-1r3 evidence is complete, audited, and replay-verified — awaiting
-owner/Chief Architect review of the Review Summary. Per explicit
-instruction, EM-1r5 is **not** implemented in this change. EM-1r5 remains
-blocked until the owner reviews and approves this summary. Do not start
-EM-1b until EM-1r5 approves a non-empty checkpoint set.
+**EM-1r5 APPROVED (2026-08-26).** Re-ran EM-1a's coverage measurement
+against the real, corrected EM-1r2/EM-1r3/EM-1r4 evidence
+(`src/athena/data/em1r5_checkpoint_reaudit.py`). All 9 candidate
+checkpoints show identical, substantial admitted-symbol-day support —
+356,225 for TOUCH/CLOSE, 358,177 for OPEN_TO_HIGH — since the relevant
+gates (admitted intraday session, cohort membership, corporate-action
+boundary validity) are all session-level facts under today's evidence,
+not checkpoint-time-level facts. Owner approved promoting all 9 to
+`accepted_ist`, explicitly as research-ready evidence only — not
+predictive value, calibration, or scanner fitness; that differentiation
+is deferred to EM-1c onward.
+
+New reusable contract, owner-designed: corporate-action contamination is
+**calculation-window-dependent, not proximity-window-dependent**
+(`src/athena/explosive_move/corporate_action_boundary.py`) — a rejected
+alternative fixed ex-date+N-session window was measured and shown to
+over-exclude by 5,970-7,971 symbol-days versus the adopted boundary rule.
+Real measured impact: 2,001 TOUCH/CLOSE symbol-days flagged (1,952 as the
+sole exclusion reason, ~0.51% of population); OPEN_TO_HIGH mathematically
+immune (0 flagged), confirmed empirically. Six real DEMERGER actions
+flagged as an explicit, unresolved `IDENTITY_CHANGE_RISK` provenance
+limitation, carried forward for future feature/model work to check
+against, not resolved here. Full evidence:
+`artifacts/research/em1r5/reaudit_result.json`. Full suite 2,284 passing.
+
+**Current handoff:** Read `docs/ATHENA-EMR-HANDOFF.md`. EM-1b (deterministic
+point-in-time research dataset and labels) is the next milestone —
+unblocked, not yet started.
 
 ## Advisory UX Priority Track (selected 2026-08-19)
 
