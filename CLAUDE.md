@@ -31,6 +31,38 @@ Per ATHENA-001 §2 D-3.
 - Before writing any code: review the relevant ATHENA-002 section; confirm alignment with the Constitution, Blueprint, ADRs, phase scope, and Definition of Done. If anything conflicts, ASK before implementing. Never silently change architecture; genuine architectural limitations → stop, document, propose an ADR, wait for approval.
 - Engineering principles: clarity over cleverness; simplicity over abstraction; configuration over hardcoding; pure functions; one responsibility per module/class/function; deterministic execution; no hidden state; no magic numbers; explicit contracts; every calculation explainable; every failure fails loudly; composition over inheritance; minimal dependencies; business logic independent of providers.
 - Phase discipline: exactly one phase at a time; next phase only after all documented acceptance criteria pass. No speculative features, no placeholders unless explicitly requested, no anticipating future phases.
+
+## Expensive external-data runs (mandatory)
+
+Adopted 2026-08-24, after a real ~49-hour EM-1r3 production capture (518
+instruments, live Kite API) ran to completion against a defective provider
+request boundary and produced ~0% usable admission — a systemic defect a
+few seconds of real-provider checking would have caught before the sweep
+even started.
+
+- Before launching any expensive real-provider operation (long-running,
+  large API-call volume, or otherwise costly to redo), run a small,
+  **real-provider canary** first: a handful of representative real calls
+  covering the shape of what the full run will do (old data, recent data,
+  and any known edge cases the domain has).
+- Define an **explicit, numeric admission/quality threshold** for the
+  canary up front — not a vibe check. A canary that "ran without crashing"
+  proves nothing; it must prove the data coming back is actually usable at
+  a stated rate.
+- **Automatically fail fast** if the canary misses the threshold: refuse
+  to proceed to the full run, with a clear message naming what failed and
+  why. This must be the default behavior of the launcher itself, not a
+  step a human has to remember to run separately.
+- A canary must correctly distinguish a **systemic defect** (the failure
+  mode this rule exists to catch) from a **known, already-diagnosed,
+  bounded limitation** of the data source — never let it fail on the
+  latter, or the gate will be disabled out of frustration the first time
+  it fires on a case everyone already understands.
+- See `src/athena/data/em1r3_production_canary.py` for the reference
+  implementation and `tests/data_layer/test_em1r3_production_canary.py`
+  for what "prove it catches the real incident shape" looks like in
+  practice.
+
 ## Milestone workflow (mandatory — official development standard)
 
 - Every phase divides into small, independently reviewable milestones (roadmap: `docs/MILESTONES.md`). Cycle per milestone: Design → Implement → Test → Self-Validate → Milestone Review Summary → owner/principal-engineer review → approval → next milestone. NEVER auto-continue to the next milestone; always stop and wait for approval.

@@ -138,12 +138,51 @@ still excludes them from capture (no schema/contract change to
 all three new behaviors proven non-vacuous by reintroducing the exact bug
 each guards against. Full suite **2,254 passing**, Ruff clean.
 
-**Current handoff:** Read `docs/ATHENA-EMR-HANDOFF.md`. With the calendar
-gate cleared, the real 518-instrument production sweep is ready to launch
-against the frozen study window — pending final owner go-ahead given its
-scale (live Kite API, many hours). EM-1r5 remains blocked until that sweep
-completes and its results are reviewed and approved. Do not start EM-1b
-until EM-1r5 approves a non-empty checkpoint set.
+**EM-1r3 production sweep INVALIDATED (2026-08-24).** The real sweep
+launched under the calendar fix above ran to completion (~49 hours,
+518/518 instruments, two Kite token-expiry recoveries) — but a
+post-completion audit found 0 of 385,910 sessions admitted. Root cause: a
+confirmed, live-verified defect in `KiteProvider._historical()` (Kite's
+`to` boundary is exclusive of a candle whose open time equals it exactly;
+EM-1r3's own all-or-nothing admission rule then correctly excluded nearly
+every session). Not a data-availability problem — the underlying market
+data was present the whole time. Fixed (`kite_provider.py`, one-interval
+`to` widening for intraday timeframes, existing per-row filter unchanged
+so nothing can leak beyond the caller's requested range), tested (11 new
+tests, non-vacuous), and re-verified live across multiple instruments and
+dates before spending further Kite quota. The invalidated run's 5.8GB of
+evidence was preserved (not deleted) at
+`artifacts/research/em1r3-INVALIDATED-2026-08-24-provider-boundary-defect/`
+with a full written notice. See `IMPLEMENTATION_SUMMARY.md`'s top entry
+for complete detail.
+
+**Permanent process rule adopted (CLAUDE.md, 2026-08-24):** every
+expensive external-data-provider run must now pass a real-provider canary
+with an explicit admission/quality threshold, with automatic fail-fast if
+it misses, before scaling out — codified in
+`src/athena/data/em1r3_production_canary.py` and wired into the capture
+CLI so it cannot be silently skipped.
+
+**EM-1r3 corrected production capture COMPLETE (2026-08-26).** Ran
+2026-08-24 15:27 UTC to 2026-08-26 14:05 UTC (46.63 hours true capture
+time, three token-expiry cycles all auto-recovered by the supervisor).
+**92.81% of all 385,910 requested sessions admitted** (358,177) — a
+complete reversal from the invalidated run's 0%. 104/104 manifests
+deterministically replay-verified, zero failures. Full test suite 2,270
+passing. Two new findings from running at true scale, both reported
+honestly: a single-day, 100%-uniform, cause-unverified anomaly
+(2024-01-22, 518/518 zero-candle sessions, immaterial at 0.13% of
+population) and the already-disclosed survivor-cohort late-listing
+limitation now empirically visible (137 instruments, mostly explained by
+not-yet-listed status at study_start). See `IMPLEMENTATION_SUMMARY.md`'s
+top entry for the complete Review Summary.
+
+**Current handoff:** Read `docs/ATHENA-EMR-HANDOFF.md`. The corrected
+EM-1r3 evidence is complete, audited, and replay-verified — awaiting
+owner/Chief Architect review of the Review Summary. Per explicit
+instruction, EM-1r5 is **not** implemented in this change. EM-1r5 remains
+blocked until the owner reviews and approves this summary. Do not start
+EM-1b until EM-1r5 approves a non-empty checkpoint set.
 
 ## Advisory UX Priority Track (selected 2026-08-19)
 

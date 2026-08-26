@@ -4,19 +4,28 @@
 production-capture infrastructure + calendar-contract correction added
 2026-08-22)
 **Governing boundary:** ADR-012
-**Current state:** EM-1r4 owner-approved (2026-08-22). Before starting
-EM-1r5, discovered EM-1r3 had only ever been fixture-tested at production
-scale — owner authorized a real, resumable capture across the full
-518-instrument survivor cohort and frozen 2023-08-11..2026-08-21 study
-window. Capture infrastructure is built and tested
-(`src/athena/data/retrying_provider.py`,
-`src/athena/data/intraday_production_capture.py`); a prerequisite
-calendar-contract correction (2023-2025 NSE holiday data plus a real
-`CalendarEngine` special-session bug fix, both owner-approved 2026-08-22)
-is complete and validated. **The real 518-symbol sweep has not yet run** —
-see the EM-1r3 production capture entry (top, second entry) in
-`IMPLEMENTATION_SUMMARY.md` for full detail. EM-1r5 does not start until
-that sweep completes and its results are reviewed and approved.
+**Current state:** EM-1r4 owner-approved (2026-08-22). The real 518-
+instrument EM-1r3 production sweep ran to completion 2026-08-24 (~49
+hours) but was **INVALIDATED**: a post-completion audit found 0 of
+385,910 sessions admitted, root-caused to a confirmed `KiteProvider`
+request-boundary defect (not a data-availability problem — Kite's `to`
+parameter silently excludes a candle whose open time equals it exactly).
+Fixed, tested, and re-verified live. The invalidated evidence (5.8GB) is
+preserved, not deleted, at
+`artifacts/research/em1r3-INVALIDATED-2026-08-24-provider-boundary-defect/`.
+A permanent process rule (CLAUDE.md) now requires a real-provider canary
+with an explicit admission threshold and automatic fail-fast before any
+future expensive external-data run — implemented in
+`src/athena/data/em1r3_production_canary.py` and wired into the capture
+CLI. **The corrected sweep completed 2026-08-26**: 92.81% admission
+(358,177/385,910 sessions), 104/104 manifests deterministically
+replay-verified, full test suite passing. Two new findings reported
+honestly rather than smoothed over: an unverified single-day anomaly
+(2024-01-22, all 518 instruments zero-candle, immaterial in scale) and
+the already-disclosed survivor-cohort late-listing limitation now
+empirically visible. See the top entry in `IMPLEMENTATION_SUMMARY.md` for
+the complete Review Summary. EM-1r5 does not start until the owner
+reviews and approves that summary.
 
 ## 1. Current milestone state
 
@@ -26,9 +35,9 @@ that sweep completes and its results are reviewed and approved.
 | EM-1a | Owner-approved 2026-08-21; zero checkpoints accepted |
 | EM-1r1 | Owner-approved 2026-08-21 |
 | EM-1r2 | Owner-approved 2026-08-21 |
-| EM-1r3 | Owner-approved 2026-08-21; real production-capture infrastructure built and calendar-gate cleared 2026-08-22, live sweep not yet run |
+| EM-1r3 | Owner-approved 2026-08-21; corrected production sweep COMPLETE 2026-08-26 (92.81% admission, replay-verified) — awaiting owner review |
 | EM-1r4 | Owner-approved 2026-08-22 |
-| EM-1r5 | Blocked until the real EM-1r3 production sweep completes and is reviewed |
+| EM-1r5 | Blocked until the owner reviews and approves the EM-1r3 Production Capture Review Summary |
 | EM-1b | Blocked until EM-1r5 approves a non-empty checkpoint set |
 
 EMR remains isolated research. Nothing completed so far changes ATHENA's UI,

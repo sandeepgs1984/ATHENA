@@ -44,6 +44,19 @@ _CHUNK_DAYS = {
     Timeframe.D1: 2000,
 }
 
+#: Kite's historical-candle `to` boundary is exclusive of a candle whose
+#: open time equals `to` exactly (verified live, 2026-08-24: requesting
+#: to=15:25:00 drops the real 15:25 candle; to=15:26:00 returns it). The raw
+#: upstream request is widened by one interval so that candle is actually
+#: retrieved; the per-row filter in `_historical()` still enforces the
+#: caller's exact [start, end] semantics, so this cannot leak a candle
+#: beyond what was requested.
+_INTRADAY_INTERVAL_MINUTES = {
+    Timeframe.M1: 1,
+    Timeframe.M5: 5,
+    Timeframe.M15: 15,
+}
+
 
 def _parse_kite_ts(raw: str) -> datetime:
     s = raw.strip().replace(" ", "T")
@@ -407,9 +420,12 @@ class KiteProvider:
         while cursor <= end:
             chunk_end = min(cursor + timedelta(days=chunk_days - 1), end)
             path = f"/instruments/historical/{token}/{kite_interval}"
+            kite_to = chunk_end
+            if timeframe in _INTRADAY:
+                kite_to = chunk_end + timedelta(minutes=_INTRADAY_INTERVAL_MINUTES[timeframe])
             params = {
                 "from": cursor.astimezone(IST).strftime("%Y-%m-%d %H:%M:%S"),
-                "to": chunk_end.astimezone(IST).strftime("%Y-%m-%d %H:%M:%S"),
+                "to": kite_to.astimezone(IST).strftime("%Y-%m-%d %H:%M:%S"),
             }
             payload = self._transport.get_json(path, params)
             data = payload.get("data") or {}

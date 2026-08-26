@@ -6,6 +6,294 @@ status updated on approval.
 
 ---
 
+## EM-1r3 corrected production capture: complete
+
+**Summary.** The corrected 518-instrument EM-1r3 production sweep
+(new `capture_run_id`: `em1r3-production-2026-08-24-corrected`) ran to
+genuine completion 2026-08-26, gated by the mandatory pre-flight canary
+(passed on every launch, including all resumes after token expiry) and
+supervised end-to-end by the self-healing supervisor built for this
+workstream. **92.81% of all requested sessions admitted** — a complete
+reversal from the invalidated run's 0%. Full admission/quality audit,
+deterministic replay verification (104/104 manifests, zero failures),
+and the complete test suite all pass. Two new, real findings surfaced by
+running at true production scale and are reported honestly below rather
+than smoothed over.
+
+**Objective.** Produce genuine, usable EM-1r3 research evidence across
+the full frozen survivor cohort and study window, using the corrected
+provider, and determine whether the resulting coverage is sufficient for
+EM-1r5 to meaningfully re-audit.
+
+**Capture facts.** Cohort: 518 instruments (`athena_core`,
+resolution date 2026-08-24). Study window: 2023-08-11 to 2026-08-21
+(frozen, unchanged). True capture window (from the manifests' own
+`captured_at` timestamps, immune to any checkpoint bookkeeping):
+2026-08-24T15:27:45Z to 2026-08-26T14:05:46Z — **46.63 hours**, spanning
+three real Kite token-expiry cycles, each caught and recovered
+automatically by the supervisor (two with zero corrupted batches; the
+checkpoint's own `finished_at` field is genuinely accurate this time,
+since the supervisor's completion-detection fix prevented the
+post-completion relaunch churn that corrupted it on the invalidated run).
+Evidence on disk: ~11GB, matching the pre-launch projection almost
+exactly.
+
+**Coverage results.**
+
+| Metric | Count | % of 385,910 requested |
+|---|---|---|
+| Requested sessions | 385,910 | 100% |
+| Successfully retrieved (no fetch error) | 385,836 | 99.98% |
+| **Admitted (all 75 slots present)** | **358,177** | **92.81%** |
+| Excluded — MISSING_SLOT | 27,659 | 7.17% |
+| Excluded — RETRIEVAL_FAILED | 74 | 0.02% |
+| Excluded — other | 0 | 0% |
+
+Repairs: `AUTHORITATIVE_REINGESTION` = 26,863,275 (this is admitted
+candle-rows, i.e. 358,177 × 75 exactly — the contract's own definition of
+this counter, confirmed by reading `intraday_reconstruction.py`, not a
+bug). `IDENTICAL_DUPLICATE_COLLAPSE` = 0. Provider failure breakdown (the
+74 `RETRIEVAL_FAILED`): 69 other/4xx, 2 http_5xx, 3 network. Zero
+instruments came back with zero admitted sessions (`zero_admitted_instruments_count: 0`)
+— every one of the 518 has substantial usable data.
+
+**Recent-history-truncation tail (the previously-diagnosed, real,
+separately-tracked pattern) — quantified as required.** 3,120 sessions
+affected (0.81% of the total population), dates 2026-08-03 through
+2026-08-21 (the final ~13-14 trading days of the frozen window),
+consistent across many symbols (not one instrument's quirk). This is the
+same phenomenon diagnosed 2026-08-22 and is unrelated to the provider fix
+— genuinely incomplete recent data, correctly and honestly excluded, not
+papered over. Immaterial to the population as a whole at under 1%.
+
+**Two new findings from running at true production scale (not visible
+at fixture or smoke-test scale):**
+
+1. **A single-day, 100%-uniform anomaly: 2024-01-22.** All 518
+   instruments returned zero candles for this date (`source_rows: 0`,
+   missing slot at 09:15 — the session's very first slot, meaning nothing
+   came back at all, not a partial fetch). 2024-01-22 was a Monday.
+   **Cause not verified** — candidate explanations are an NSE trading
+   holiday or reduced session not present in the current calendar
+   coverage (populated from the CMTR base circular plus its two known
+   2024 addenda; a third, undocumented modification cannot be ruled out
+   without checking further NSE circulars for that specific date), or a
+   Kite-side historical-data gap unrelated to whether trading actually
+   occurred. Per this project's discipline against asserting unverified
+   causes, this is reported as an open, unverified anomaly, not a
+   diagnosed one. Immaterial in scale (518 of 385,910 sessions, 0.13%),
+   but worth a follow-up circular check before being dismissed.
+2. **The already-disclosed survivor-cohort late-listing limitation, now
+   empirically visible.** 137 instruments show at least one zero-row
+   exclusion outside the 2024-01-22 anomaly and the recent tail; for 72 of
+   them, the zero-row period starts exactly at `study_start`
+   (2023-08-11) and runs contiguously until a point where real data
+   begins (e.g. one instrument has no data until mid-2025) — the exact
+   signature of an instrument not yet listed at the start of the frozen
+   window. This is not a new limitation; it is the `SURVIVOR_COHORT_LIMITATION`
+   this entire workstream (EM-1r2 onward) has carried as an explicit,
+   disclosed caveat from the start, now visible in real numbers rather
+   than as an abstract risk.
+
+**Files created/modified this entry covers.** No source changes —
+this entry documents the real capture run itself. See the two entries
+below (provider fix + canary, and capture infrastructure + calendar
+correction) for all code changes that made this run possible.
+
+**Tests.** Full suite still **2,270 passing** (unchanged from the
+provider-fix entry — this run exercised the already-tested code paths
+against real data, introducing no new source changes). Ruff clean.
+
+**Verification performed.** (1) Population sanity: cohort_instrument_ids
+across all 104 manifests union to exactly the 518 checkpointed
+instruments, matching `completed_instrument_ids`. (2) Deterministic
+replay: **104/104 manifests replay-verified, 0 failures** — every
+batch's `replay_id` reproduces from its own frozen inputs alone, without
+any provider or network access. (3) Full ATHENA test suite: 2,270
+passing, Ruff clean, `git diff --check` clean.
+
+**Coverage summary.** Admission is high and broad-based (92.81% overall,
+zero fully-failed instruments) with the shortfall almost entirely
+explained by two already-understood mechanisms (the recent tail, and
+survivor-cohort late listings) plus one small, honestly-flagged open
+question (2024-01-22). This is a materially different, and materially
+more trustworthy, evidence base than the invalidated run.
+
+**Architecture compliance.** No canonical or EMR contract touched by this
+run. EM-1r3's own admission contract was exercised exactly as approved,
+unmodified.
+
+**ADR compliance.** N/A — this entry is a real capture run, not a code
+change.
+
+**Risks discovered.** The 2024-01-22 anomaly (open, unverified,
+immaterial in scale, flagged above). No other new risks; the recent-tail
+risk was already known and is now precisely quantified (0.81% of
+population).
+
+**Technical debt introduced.** None.
+
+**Suggested improvements.** (1) Check NSE Capital Market Segment
+circulars specifically around January 2024 for any modification to the
+base 2024 holiday circular that might explain 2024-01-22, before treating
+it as resolved either way. (2) The owner's standing forward note from
+2026-08-22 remains open: before EM-4 final model validation, refresh the
+recent tail — if Kite has by then backfilled the truncated sessions, add
+them deterministically rather than permanently excluding the newest part
+of the sample. (3) The DR-drill split-session Saturdays flagged earlier
+in this workstream remain not exhaustively enumerated; still immaterial
+at this population scale.
+
+**Remaining work.** Owner-approved 2026-08-24 authorization fulfilled:
+corrected capture completed, audited, replay-verified, and tested. Per
+explicit instruction, EM-1r5 is **not** implemented in this change.
+Awaiting owner/Chief Architect review of this summary before any further
+EMR work begins.
+
+---
+
+## EM-1r3 production sweep incident: provider boundary defect, fix, invalidation, and the permanent canary-gate rule
+
+**Summary.** The real 518-instrument EM-1r3 production sweep (started
+2026-08-22, see the entry below) ran to completion 2026-08-24 after ~49
+hours and two Kite token-expiry recoveries — but a post-completion audit
+found **0 admitted sessions out of 385,910 requested**. Root-caused to a
+confirmed, live-verified defect in `KiteProvider._historical()`, not a
+data-availability problem. Fixed, tested, re-verified live, and the
+previous sweep's evidence formally invalidated. The owner additionally
+mandated a permanent process rule (CLAUDE.md) requiring a real-provider
+canary with an explicit admission threshold before any future expensive
+external-data run.
+
+**Objective.** Diagnose why a real, completed, 49-hour production capture
+produced zero usable research evidence; fix the actual defect without
+weakening EM-1r3's admission contract or the frozen study window; prove
+the fix live before spending further Kite quota; invalidate the corrupted
+evidence without deleting it; and make this specific failure mode
+structurally unable to consume another 49 hours undetected in the future.
+
+**Root cause.** `_historical()` requested Kite's historical-candle `to`
+boundary as exactly the open time of the last desired 5-minute slot (e.g.
+`15:25:00`). Live-verified 2026-08-24 against NSE:RELIANCE, 2023-08-11:
+`to=15:25:00` → 74 candles (the real 15:25 candle silently dropped);
+`to=15:26:00` → 75 candles (included). Kite's `to` is exclusive at the
+exact instant a candle opens. EM-1r3's own admission contract is
+all-or-nothing per session (no partial credit), so this one-candle gap
+correctly and honestly excluded essentially every session in the sweep —
+the contract behaved exactly as designed against defective input, and the
+underlying market data was present in Kite's series the entire time.
+
+**Fix.** `_historical()` now widens the raw upstream `to` sent to Kite by
+one timeframe interval, for intraday timeframes only (M1/M5/M15; D1 is
+untouched — no evidence of the same defect there, and daily bars aren't
+keyed by exact-minute boundaries the same way). The existing per-row
+filter (`ts < start or ts > end: continue`) is unchanged and still
+enforces the caller's exact `[start, end]` semantics, so the fix cannot
+leak a candle beyond what was originally requested — verified by a
+dedicated test using a fixture with a real extra candle just past `end`.
+
+**Files created.** `src/athena/data/em1r3_production_canary.py` (the
+permanent pre-flight canary: `canary_dates()` auto-selects the oldest,
+mid-window, and newest dates in a study window, walked to the nearest
+capturable session; `run_canary()` runs a small real capture over those
+dates plus any caller-supplied fixed dates — e.g. the newly-supported
+SPECIAL full-session Saturday — and reports a `CanaryResult` with an
+explicit `historical_admission_rate` that never counts the known,
+separately-diagnosed recent-history-truncation tail against the
+threshold), `tests/data_layer/test_em1r3_production_canary.py` (6 tests,
+including one that reproduces the exact 2026-08-22 incident shape —
+every session missing its final slot — and proves the canary catches it,
+and one proving the known recent-tail pattern alone never fails the
+gate).
+
+**Files modified.** `src/athena/data/providers/kite_provider.py` (the
+fix), `tests/data_layer/test_kite_provider.py` (5 new regression tests:
+final candle retained, no candle beyond `end` leaks, an ordinary
+non-boundary-aligned request is unaffected, the raw `to` sent upstream is
+widened by exactly one interval for M5/M15, D1 requests are untouched),
+`src/athena/data/em1r3_production_capture_cli.py` (every launch — fresh
+or resumed — now runs the canary against a real 5-instrument subset of
+the actual cohort, plus the known SPECIAL date if it falls in the study
+window, and refuses with a clear message + nonzero exit to proceed to the
+full sweep if it fails; a `--skip-canary` escape hatch exists for local
+testing against a fake provider only), `CLAUDE.md` (new mandatory
+"Expensive external-data runs" rule), this implementation log.
+
+**Public APIs changed.** None on any canonical or EMR contract.
+`KiteProvider._historical()`'s external behavior for callers is unchanged
+except that it now actually returns the candle it always should have.
+
+**Tests added.** 11 (5 `kite_provider` regression + 6 canary), all
+proven non-vacuous by reintroducing the exact fix/threshold logic each
+targets and confirming failure before restoring. Full suite: **2,270
+passing**. Ruff clean. `git diff --check` clean.
+
+**Real verification performed (live Kite API, before any further real
+sweep launched).** (1) Direct diagnostics: 3 liquid instruments
+(RELIANCE/INFY/TCS) x 4 dates (2023-08-11, 2024-01-15, 2026-01-14, and the
+known-truncated 2026-08-10) — all non-truncated dates now show 75/75
+ADMITTED; the genuinely incomplete recent date still correctly shows
+72/75 EXCLUDED (the fix does not paper over real incompleteness). (2) A
+bounded production smoke gate: 5 symbols x 5 representative dates
+(older/mid/holiday-boundary/the SPECIAL Saturday/the known-truncated
+date) — 25/25 ADMITTED where data is genuinely complete, 0/5 correctly
+excluded for the genuinely partial date.
+
+**Invalidation.** The original sweep's full evidence tree (5.8GB) was
+moved, not deleted, to
+`artifacts/research/em1r3-INVALIDATED-2026-08-24-provider-boundary-defect/`
+with a written `INVALIDATION_NOTICE.md` covering the defect, evidence,
+fix, and re-verification — preserved for audit per this project's "never
+silently discard evidence" convention. A fresh, empty
+`artifacts/research/em1r3/` was prepared for the corrected re-run, which
+uses a **new** `capture_run_id` and checkpoint so it can never merge with
+the invalidated data.
+
+**Coverage summary.** The provider fix is covered at the exact boundary
+it broke (final-candle retention, no-leak, non-boundary-aligned requests,
+per-timeframe widening amount, D1 non-regression). The canary is covered
+for date-selection correctness (never lands on a weekend), the systemic-
+failure detection path (reproducing the real incident shape), the
+known-limitation exemption path (recent-tail-only failures never trip the
+gate), and caller-supplied extra dates.
+
+**Architecture compliance.** The fix lives entirely in the shared
+provider layer (`data/providers/`), not in EMR-specific code — a
+correctness fix to canonical infrastructure, matching how the calendar
+fix earlier in this workstream was scoped. EM-1r3's own frozen contract
+(`intraday_reconstruction.py`) is completely untouched; its all-or-nothing
+admission rule was not weakened to accommodate the defect — the defect
+was fixed instead, per explicit owner instruction.
+
+**ADR compliance.** No ADR needed — this is a bug fix to existing
+infrastructure, not a boundary or module-map change.
+
+**Risks discovered.** The `KiteProvider._historical()` boundary defect
+was live in the codebase before this workstream and could in principle
+have affected any other caller passing an `end` that lands exactly on a
+candle's open time — audited: the only other real caller
+(`data/ingestion/engine.py`'s live daily ingestion) passes `end_ts=as_of`,
+a live wall-clock instant that essentially never aligns to an exact
+5-minute boundary, so it was very unlikely to have been materially
+affected in practice, and is provably unaffected either way after the fix
+(the non-boundary-aligned regression test covers exactly this case).
+
+**Technical debt introduced.** None. The canary and its threshold are a
+deliberate, permanent, documented safeguard, not a workaround.
+
+**Suggested improvements.** None beyond what's already captured in the
+EM-1r3 production capture entry below (the recent-tail refresh-before-EM-4
+note, and the not-yet-exhaustively-enumerated DR-drill Saturdays).
+
+**Remaining work.** Owner-approved 2026-08-24 to fix, test, invalidate,
+and codify the canary rule. The corrected 518-instrument production sweep
+has not yet been relaunched, pending final disk-space headroom (the
+corrected run will genuinely admit data this time, so its storage
+footprint will be materially larger than the invalidated run's) and
+owner go-ahead.
+
+---
+
 ## EM-1r3 production capture infrastructure + calendar-contract correction
 
 **Summary.** Before starting EM-1r5, discovered EM-1r3 had only ever been

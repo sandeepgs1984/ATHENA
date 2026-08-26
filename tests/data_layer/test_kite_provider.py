@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -444,3 +444,130 @@ class TestUnscopedCatalogIsRefused:
         assert raw["symbols"] == [], (
             "a non-empty kite.json symbol list silently narrows any unscoped run"
         )
+
+
+class _BoundaryExclusiveTransport:
+    """Reproduces Kite's real, live-verified `to` semantics (2026-08-24,
+    direct API probe against NSE:RELIANCE on 2023-08-11): a candle whose
+    open time equals the requested `to` exactly is excluded from the
+    response. `to` must be strictly greater than a candle's open time for
+    Kite to include it -- confirmed via to=15:25:00 (74 candles, missing
+    15:25) vs to=15:26:00 (75 candles, includes it)."""
+
+    def __init__(self, candles: list[list]) -> None:
+        self._candles = candles
+        self.calls: list[dict] = []
+
+    def get_text(self, path, params=None):
+        if path.startswith("/instruments/"):
+            return _INSTRUMENTS_CSV
+        raise ProviderError(f"unexpected text path {path}")
+
+    def get_json(self, path: str, params=None) -> dict:
+        param_map = dict(params)
+        self.calls.append(param_map)
+        from_dt = datetime.strptime(param_map["from"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=IST)
+        to_dt = datetime.strptime(param_map["to"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=IST)
+        included = [
+            row for row in self._candles
+            if from_dt <= datetime.fromisoformat(row[0]) < to_dt
+        ]
+        return {"status": "success", "data": {"candles": included}}
+
+
+def _full_session_candles() -> list[list]:
+    """A genuinely complete NSE regular session: 76 real 5-minute candles
+    from 09:15 through 15:30 -- one more than EM-1r3's own 75-slot [09:15,
+    15:25] contract expects, so the extra 15:30 candle can prove the fix
+    never leaks a candle beyond the caller's requested `end`."""
+
+    candles = []
+    cursor = datetime(2023, 8, 11, 9, 15, tzinfo=IST)
+    end = datetime(2023, 8, 11, 15, 30, tzinfo=IST)
+    price = 1000.0
+    while cursor <= end:
+        candles.append([cursor.isoformat(), price, price + 1, price - 1, price, 1000])
+        cursor += timedelta(minutes=5)
+        price += 0.5
+    return candles
+
+
+class TestKiteProviderBoundaryInclusiveHistorical:
+    """Regression for the 2026-08-24 finding: the EM-1r3 real production
+    capture silently excluded the final candle of essentially every one of
+    385,910 requested sessions because `_historical()` sent Kite a `to`
+    equal to the last desired candle's open time -- which Kite treats as
+    exclusive. This is a provider request-construction defect, not a data
+    availability gap: the underlying market data was always present."""
+
+    def test_final_expected_candle_is_retained(self):
+        """Before the fix this returned 74 candles (missing 15:25); the
+        fix must retain the true final slot."""
+        transport = _BoundaryExclusiveTransport(_full_session_candles())
+        provider = KiteProvider(_config(), transport)
+        start = datetime(2023, 8, 11, 9, 15, tzinfo=IST)
+        end = datetime(2023, 8, 11, 15, 25, tzinfo=IST)  # EM-1r3's own last expected slot
+
+        candles = provider.intraday_candles("NSE:RELIANCE", Timeframe.M5, start, end)
+
+        assert len(candles) == 75
+        assert candles[-1].ts_open == end
+
+    def test_no_candle_beyond_the_caller_requested_end_leaks_through(self):
+        """The fixture includes a real 15:30 candle the caller never asked
+        for -- widening the raw upstream request must never surface it."""
+        transport = _BoundaryExclusiveTransport(_full_session_candles())
+        provider = KiteProvider(_config(), transport)
+        start = datetime(2023, 8, 11, 9, 15, tzinfo=IST)
+        end = datetime(2023, 8, 11, 15, 25, tzinfo=IST)
+
+        candles = provider.intraday_candles("NSE:RELIANCE", Timeframe.M5, start, end)
+
+        assert all(c.ts_open <= end for c in candles)
+        assert end + timedelta(minutes=5) not in {c.ts_open for c in candles}
+
+    def test_ordinary_request_unaffected_when_end_is_not_on_a_candle_boundary(self):
+        """A caller asking for a range that ends well past the last real
+        candle (the common case -- e.g. "give me everything up to now")
+        must return exactly the same candles as before this fix."""
+        transport = _BoundaryExclusiveTransport(_full_session_candles())
+        provider = KiteProvider(_config(), transport)
+        start = datetime(2023, 8, 11, 9, 15, tzinfo=IST)
+        end = datetime(2023, 8, 11, 23, 59, tzinfo=IST)
+
+        candles = provider.intraday_candles("NSE:RELIANCE", Timeframe.M5, start, end)
+
+        assert len(candles) == 76  # the full fixture, 09:15 through 15:30
+
+    @pytest.mark.parametrize("timeframe,expected_widen_minutes", [
+        (Timeframe.M5, 5),
+        (Timeframe.M15, 15),
+    ])
+    def test_raw_request_to_is_widened_by_exactly_one_interval(self, timeframe, expected_widen_minutes):
+        """Verifies the actual mechanism, not just the end-to-end outcome:
+        the upstream `to` sent to Kite is the caller's `end` plus one
+        interval -- never more, never less."""
+        transport = _BoundaryExclusiveTransport(_full_session_candles())
+        provider = KiteProvider(_config(), transport)
+        start = datetime(2023, 8, 11, 9, 15, tzinfo=IST)
+        end = datetime(2023, 8, 11, 15, 25, tzinfo=IST)
+
+        provider.intraday_candles("NSE:RELIANCE", timeframe, start, end)
+
+        historical_calls = [c for c in transport.calls if "to" in c]
+        assert historical_calls, "expected at least one historical request"
+        sent_to = datetime.strptime(historical_calls[-1]["to"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=IST)
+        assert sent_to == end + timedelta(minutes=expected_widen_minutes)
+
+    def test_daily_candles_are_not_widened(self):
+        """D1 bars are keyed by whole calendar dates -- this fix only
+        targets the intraday exact-open-time boundary Kite actually
+        exhibited; daily requests must be byte-for-byte unchanged."""
+        transport = FakeKiteTransport()
+        provider = KiteProvider(_config(), transport)
+
+        provider.daily_candles("NSE:INFY", date(2026, 2, 10), date(2026, 2, 12))
+
+        historical_calls = [c for c in transport.calls if c[0].startswith("/instruments/historical/")]
+        params = dict(historical_calls[-1][1])
+        assert params["to"] == "2026-02-12 23:59:59"
