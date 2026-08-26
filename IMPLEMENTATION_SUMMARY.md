@@ -6,6 +6,306 @@ status updated on approval.
 
 ---
 
+## EM-1b: Deterministic historical event dataset and chronological partitions
+
+**Summary.** Measured the real eligible-label distribution across the
+full frozen study window (743 real trading sessions, 355,724–357,659
+eligible symbol-day observations depending on family) and proposed exact
+chronological partition cutoff dates backed by that measurement, per
+owner instruction to derive dates from real data rather than a blind
+percentage split. Owner approved the exact proposal
+(2026-08-26): **TRAIN** 2023-08-14→2025-05-31 (440 sessions, 59.2%),
+**VALIDATION** 2025-06-01→2025-09-30 (85, 11.4%), **CALIBRATION**
+2025-10-01→2025-12-31 (61, 8.2%), **FINAL_TEST** 2026-01-01→2026-08-21
+(157, 21.1%, sealed holdout). Froze the partition contract, then
+generated the full deterministic production label dataset and assigned
+partitions per that contract. A real determinism bug was found and fixed
+during generation (see Risks below).
+
+**Objective.** Satisfy EM-1b's scope: immutable symbol-day/checkpoint
+label records, deterministic partitions/manifests, and leakage/session/
+replay verification, so EM-1c can compute base rates against real,
+partition-assigned, reproducible evidence.
+
+**Scope completed.**
+
+*Partition proposal and measurement* — `src/athena/data/em1b_partition_measurement.py`:
+real per-date, per-family, per-threshold, per-checkpoint eligible/
+positive/negative/already-occurred aggregate counts across all 518
+instruments and all 743 real trading sessions (corrected EM-1r3 evidence
++ approved EM-1r2 corporate-action evidence + the EM-1r5 boundary rule),
+written to `artifacts/research/em1b/partition_measurement.json`. Presented
+as a 14-point "EM-1b Chronological Partition Proposal" (eligible
+populations, positive-event base rates by family/threshold/checkpoint
+with the rare +10%/+20% thresholds specifically called out, descriptive
+quarterly regime distribution, boundary-leakage analysis, purge/embargo
+assessment) and owner-approved as submitted, with an explicit
+"+20% support stays honestly thin, not artificially repaired" acceptance
+note.
+
+*Partition contract* — `src/athena/explosive_move/partitions.py` (pure,
+frozen): `PartitionRole` enum, `PartitionBoundary` dataclass, the four
+approved boundaries validated at import time (`_validated()`: rejects
+overlapping or gapped boundaries — proven non-vacuous by reintroducing
+each defect and confirming rejection), and `partition_for_session_date()`
+— a pure function of the date alone, so partition assignment is
+inherently order-independent and cannot vary by symbol, checkpoint,
+family, or threshold for the same session date. Mirrored into
+`config/explosive_move.json`'s new `_meta.partition_contract` block
+(exact dates, semantics, FINAL_TEST-sealing rule, and the eligible-
+population note below), kept in sync with the code by a dedicated
+config-matches-contract test.
+
+*Boundary-leakage analysis, verified not assumed.* `target_horizon:
+same_regular_session` (frozen in config) was checked directly against
+the executing code, not just the config value: `evaluate_touch_label`/
+`evaluate_close_label` are only ever called with a single calendar day's
+own grouped candle list — no candle from any other session ever enters
+either function, so no forward label horizon can cross a session
+boundary, and therefore none can cross a partition boundary either. The
+only cross-boundary read is TOUCH/CLOSE's previous-session close (a
+backward-looking, already-resolved reference price, not a future leak).
+**Conclusion: no purge/embargo is required**, and none was added.
+
+*Label dataset generation* — `src/athena/data/em1b_label_dataset_generation.py`:
+one pass over the real corrected EM-1r3 candle evidence, honoring the
+`symbol_day_fields`/`checkpoint_fields`/`manifest_fields` schema already
+frozen in `config/explosive_move.json` before this milestone. Writes,
+per partition, a gzip JSONL symbol-day file (one row per instrument ×
+session × event_family × threshold_percent) and a gzip JSONL checkpoint
+file (one row per instrument × session × checkpoint_ist × event_family ×
+threshold_percent), plus a content-hashed manifest
+(`artifacts/research/em1b/manifests/{manifest_id}.json`) and a top-level
+`dataset_index.json`. All Decimal prices serialized as strings, never
+floats. `created_at` is set to the real, already-fixed `finished_at`
+timestamp recorded in the EM-1r3 capture checkpoint (a genuine historical
+fact about the upstream evidence), not a `datetime.now()` read — honoring
+both the frozen schema's field name and ATHENA's no-wall-clock
+determinism rule.
+
+**Real measured results** (full dataset, cross-validated independently
+against `em1b_partition_measurement.py`'s separately-computed aggregates
+— every number below matches exactly between the two independently
+written scripts):
+
+| Partition | Sessions | Symbol-day included | Symbol-day excluded | Checkpoint included | Checkpoint excluded |
+|---|---|---|---|---|---|
+| TRAIN | 440 | 3,701,466 | 12,024 | 33,313,194 | 108,216 |
+| VALIDATION | 85 | 755,580 | 4,704 | 6,800,220 | 42,336 |
+| CALIBRATION | 61 | 557,478 | 1,224 | 5,017,302 | 11,016 |
+| FINAL_TEST | 157 | 1,400,118 | 5,268 | 12,601,062 | 47,412 |
+
+Checkpoint-level outcome breakdown (all families/thresholds/checkpoints
+combined):
+
+| Partition | POSITIVE | NEGATIVE | ALREADY_OCCURRED |
+|---|---|---|---|
+| TRAIN | 330,932 | 32,823,738 | 158,524 |
+| VALIDATION | 34,146 | 6,751,026 | 15,048 |
+| CALIBRATION | 22,394 | 4,984,668 | 10,240 |
+| FINAL_TEST | 93,738 | 12,456,954 | 50,370 |
+
+Symbol-day base rates by family/threshold/partition were measured and
+reported in full in the approved partition proposal (TOUCH/CLOSE/
+OPEN_TO_HIGH × 5/8/10/12/15/20% × all 4 partitions); +20% support is
+genuinely thin everywhere (1–99 events per partition per family — a real
+property of the underlying event rarity, not an artifact of the chosen
+cutoffs) and is reported honestly rather than smoothed over, per the
+owner's explicit instruction on interpreting +20%.
+
+Corporate-action exclusions (the sole real exclusion reason observed —
+coverage/cohort gates never fired): `UNADJUSTED_CORPORATE_ACTION_WINDOW`,
+2,004 (TRAIN) / 784 (VALIDATION) / 204 (CALIBRATION) / 878 (FINAL_TEST)
+raw (family, session) pairs, applied independently of partition dates per
+the EM-1r5 boundary rule, exactly as required.
+
+**Replay/hash/manifests.** Each partition's manifest records
+`payload_files.{symbol_day,checkpoint}.sha256` and a content-hashed
+`manifest_id` (fingerprint excludes `created_at`, matching the
+EM-1r2/EM-1r3/EM-1r5 provenance convention). Verified live: (1) re-ran the
+generator on 2 real instruments (`NSE:360ONE`, `NSE:3MINDIA`) twice —
+byte-identical gzip output and identical `manifest_id`s both times; (2)
+extracted the same 2 instruments' rows from the full 518-instrument
+production output and diffed against the isolated 2-instrument run —
+**every row identical across all 4 partitions, both symbol-day and
+checkpoint files** (proves the full run's per-instrument computation is
+unaffected by which other instruments are processed alongside it); (3)
+independently cross-validated every included/excluded row count against
+`em1b_partition_measurement.py`'s separately-computed aggregates — exact
+match on all 4 partitions.
+
+**Partition-isolation verification.** `partition_for_session_date()` is
+called exactly once per (instrument, session_date) and the resulting
+`role` is used for every family/threshold/checkpoint row generated for
+that date — structurally, a session date cannot be split across
+partitions. `tests/explosive_move/test_partitions.py` proves: every
+calendar day across the full frozen study window resolves to exactly one
+partition; assignment is deterministic across repeated calls; assignment
+is independent of caller iteration order (shuffled vs. forward date lists
+produce identical per-date mappings); the exact approved cutoff dates are
+locked down; `config/explosive_move.json`'s mirror matches the code
+contract exactly.
+
+**FINAL_TEST sealing.** No model, feature, or calibration work has
+touched FINAL_TEST — this milestone only generated and partition-tagged
+the dataset. The partition contract's `final_test_sealing` clause is
+recorded in `config/explosive_move.json` verbatim, restating the owner's
+prohibition list (feature/checkpoint/event-family/threshold/model-class
+selection, hyperparameter/XPS/calibration/operating-threshold/ranking-
+policy/architecture decisions) for every future milestone to read before
+touching FINAL_TEST.
+
+**Eligible-population note, explained not just observed.** EM-1b's
+eligible symbol-day population (355,724/355,724/357,659 for
+TOUCH/CLOSE/OPEN_TO_HIGH) is slightly smaller than EM-1r5's reported
+admitted-session counts (356,225/356,225/358,177) because label
+computation additionally requires a valid **previous** admitted session
+to supply the TOUCH/CLOSE reference close — a structural requirement of
+the label contract, not a readiness-gate exclusion. Every instrument's
+chronologically first admitted session has no such predecessor: exactly
+-518 (one per instrument) for OPEN_TO_HIGH, which has zero corporate-
+action exclusions to begin with; -501 for TOUCH/CLOSE, since a handful of
+instruments' first admitted session was already excluded for
+corporate-action-boundary reasons independent of this rule. Recorded in
+`config/explosive_move.json`'s `_meta.partition_contract.eligible_population_note`.
+
+**Files created.** `src/athena/explosive_move/partitions.py`,
+`src/athena/data/em1b_partition_measurement.py`,
+`src/athena/data/em1b_label_dataset_generation.py`,
+`tests/explosive_move/test_partitions.py`,
+`tests/data_layer/test_em1b_label_dataset_generation.py`,
+`artifacts/research/em1b/{partition_measurement.json,labels/,manifests/,dataset_index.json}`
+(git-ignored real evidence).
+
+**Files modified.** `src/athena/explosive_move/event_labels.py`
+(promoted the measurement script's private per-checkpoint-scan
+optimization to public `first_touch_time()`/`outcome_from_touch_time()`,
+now shared by both the measurement and generation scripts instead of
+duplicated), `tests/explosive_move/test_event_labels.py` (equivalence
+tests moved here to test the now-public functions directly),
+`config/explosive_move.json` (`study_scope.status` →
+`LABEL_DATASET_GENERATED`; new `_meta.partition_contract` block),
+`tests/explosive_move/test_em1a_contracts.py` (frozen-config-match test
+updated for the new status value), `docs/MILESTONES.md`,
+`docs/ATHENA-EMR-HANDOFF.md`,
+`docs/design/EM-1-RESEARCH-DATA-REMEDIATION-PLAN.md`,
+`docs/design/ATHENA-EXPLOSIVE-MOVE-RADAR-ROADMAP.md`,
+`ATHENA_BRIEFING.md` (§6 repo map — EM-1b now has a real label dataset,
+not zero as previously stated), this log.
+
+**Public APIs changed.** None on any canonical or non-EMR contract.
+EM-1a's frozen `contracts.py` remains completely unmodified.
+
+**Tests added.** 34 total: 11 for the partition contract's structural
+invariants (boundary validation, coverage, determinism, order-
+independence, config-mirror match) plus 3 more added this session for
+full-window coverage/determinism/order-independence; 6 for
+`event_labels.py`'s promoted `first_touch_time`/`outcome_from_touch_time`
+(4 equivalence cases against the reference `evaluate_touch_label`, 1
+none-case, 1 non-vacuous boundary regression); 9 for the generation
+script's pure helpers, including a non-vacuous regression test for the
+real gzip-determinism bug found this milestone (see Risks). Full suite:
+**2,329 passing** (2,305 → 2,329). Ruff clean on every new/modified file.
+
+**Coverage summary.** Every pure, safety-critical piece of new logic
+(partition contract, boundary validation, row-count arithmetic,
+deterministic gzip writer) has a dedicated non-vacuous test. The
+generator's I/O orchestration (real DB reads, real 11GB candle evidence)
+is not unit-tested directly — following the same precedent as
+`em1r5_checkpoint_reaudit.py` — but was validated by three independent
+live checks against the real production run: byte-identical replay,
+identical per-instrument output between isolated and full-cohort runs,
+and exact cross-validation against a separately-written measurement
+script.
+
+**Architecture compliance.** `partitions.py` and `event_labels.py` are
+pure `explosive_move/` domain modules (no I/O); both generation/
+measurement scripts live in `data/` (orchestration), preserving ADR-012's
+package boundary. EM-1a's frozen `contracts.py` is untouched. No
+features, model, scanner, UI, canonical score input, or production
+recommendation was created — EM-1b stays strictly a labeled-dataset
+milestone.
+
+**ADR compliance.** No ADR needed — an additive dataset-generation
+milestone built entirely on already-frozen EM-1a/EM-1r5 contracts, per
+the approved partition and label specifications.
+
+**Risks discovered.** One real determinism bug, found and fixed before
+the production run: `gzip.open()` embeds the current wall-clock time in
+its header by default, so two runs over byte-identical JSONL content
+produced *different* compressed bytes and therefore different
+`sha256`/`manifest_id` — silently breaking replayability. Fixed with a
+pinned `mtime=0` writer (`_deterministic_gzip_writer`), verified
+byte-identical across independent runs, and locked down with a
+non-vacuous regression test (`test_deterministic_gzip_writer_is_non_vacuous_against_plain_gzip_open`).
+A second bug (row-count double-counting in the manifest's
+included/excluded arithmetic) was caught via manual cross-check against
+real canary numbers before the production run and fixed by extracting
+the scaling math into a single named, tested helper
+(`_manifest_row_counts`). Both bugs were caught by this milestone's own
+verification discipline before they reached the real production dataset,
+not discovered afterward.
+
+**Technical debt introduced.** None.
+
+**Suggested improvements.** EM-1c and later milestones must never
+inspect FINAL_TEST for any development decision before the approved
+final evaluation gate, per the sealing rule recorded in this milestone.
+Any future EM-2+ learned preprocessing (normalization, scaling,
+imputation, encoding) must fit exclusively on TRAIN and apply unchanged
+to later partitions, per the owner's feature-lookback rule — this
+milestone did not implement any such preprocessing, so there is nothing
+to retrofit, but the constraint should be checked explicitly when EM-2
+begins.
+
+**Remaining work.** Owner approved the exact chronological partition
+proposal (2026-08-26). Dataset generated and self-validated (2026-08-27).
+Awaiting Owner/Chief Architect Milestone Review Summary approval before
+EM-1c (unconditional base rates, minimum cohort support) starts, per the
+mandatory one-milestone-at-a-time workflow — not started in this change.
+
+**Suggested commit message.**
+
+```
+feat(explosive-move): generate EM-1b deterministic label dataset with approved chronological partitions
+
+- Add src/athena/explosive_move/partitions.py: frozen, pure
+  TRAIN/VALIDATION/CALIBRATION/FINAL_TEST partition contract per the
+  owner-approved 2026-08-26 chronological partition proposal, backed by
+  real measured eligible-observation/positive-event distributions.
+- Add src/athena/data/em1b_partition_measurement.py: real per-date,
+  per-family/threshold/checkpoint aggregate measurement across the full
+  518-instrument, 743-session study window, used to derive the approved
+  partition cutoffs from real data rather than a blind percentage split.
+- Add src/athena/data/em1b_label_dataset_generation.py: generates the
+  deterministic production symbol-day/checkpoint label dataset and
+  assigns the approved partitions, honoring the schema already frozen in
+  config/explosive_move.json.
+- Promote event_labels.py's per-checkpoint-scan optimization
+  (first_touch_time/outcome_from_touch_time) to public, shared functions
+  to avoid duplicating the same logic across the measurement and
+  generation scripts.
+- Fix a real determinism bug found before the production run: gzip's
+  default wall-clock mtime header made byte-identical content hash
+  differently across runs, breaking replayability; pin mtime=0.
+- Fix a row-count double-counting bug in the manifest's included/excluded
+  arithmetic, caught via cross-check against real canary numbers.
+- Update config/explosive_move.json (_meta.partition_contract,
+  study_scope.status), ATHENA_BRIEFING.md, and EMR docs/roadmap/handoff
+  to reflect the generated dataset and approved partitions.
+- Add 34 tests (partition-contract invariants, label-function
+  equivalence, gzip-determinism non-vacuous regression, row-count math).
+
+Real measured results: 743 trading sessions, 355,724-357,659 eligible
+symbol-day observations, partitioned TRAIN 440 / VALIDATION 85 /
+CALIBRATION 61 / FINAL_TEST 157 sessions per the owner's exact approved
+cutoff dates. Full suite 2,329 passing, Ruff clean.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+```
+
+---
+
 ## EM-1r5: Coverage re-audit and checkpoint admission
 
 **Summary.** Re-ran EM-1a's original coverage measurement — unmodified —

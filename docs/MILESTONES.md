@@ -26,7 +26,11 @@ corrected real EM-1r3 production capture. Acceptance means research-ready
 evidence, explicitly not predictive value, calibration, or production-
 scanner fitness — see the EM-1r5 note below and
 `artifacts/research/em1r5/reaudit_result.json` for the measured evidence.
-EM-1b is unblocked but not yet started. AUX-8 is
+EM-1b's deterministic production label dataset has been generated and the
+owner-approved chronological TRAIN/VALIDATION/CALIBRATION/FINAL_TEST
+partitions (2026-08-26) assigned — see `config/explosive_move.json`'s
+`_meta.partition_contract` and `artifacts/research/em1b/dataset_index.json`.
+Awaiting Milestone Review Summary approval before EM-1c starts. AUX-8 is
 approved on the independent DarvaX/Symbol-360 track; accepting this
 independent research track does not silently advance either track.
 
@@ -39,7 +43,7 @@ independent research track does not silently advance either track.
 | EM-1r3 | Reconstruct canonical duplicate-free complete intraday sessions | ✅ Approved 2026-08-21 |
 | EM-1r4 | Apply the frozen survivor-cohort contract to research admission and enforce quote-timestamp hygiene | ✅ Approved 2026-08-22; 2,216 tests pass |
 | EM-1r5 | Re-audit coverage and approve a non-empty checkpoint set | ✅ Approved 2026-08-26 — all 9 candidate checkpoints accepted (research-ready, not predictive-value-approved) |
-| EM-1b | Build the deterministic point-in-time research dataset and labels | Unblocked — next milestone, not yet started |
+| EM-1b | Build the deterministic point-in-time research dataset and labels | 🔄 Ready for review — dataset generated, chronological partitions approved and assigned (2026-08-26/27) |
 | EM-1c | Publish unconditional base rates and freeze minimum cohort support | Blocked by EM-1b approval |
 | EM-2 | Implement cutoff-safe feature families and feasibility gates | Planned |
 | EM-3 | Publish historical conditional analysis and defensible feature selection | Planned |
@@ -202,9 +206,34 @@ limitation, carried forward for future feature/model work to check
 against, not resolved here. Full evidence:
 `artifacts/research/em1r5/reaudit_result.json`. Full suite 2,284 passing.
 
-**Current handoff:** Read `docs/ATHENA-EMR-HANDOFF.md`. EM-1b (deterministic
-point-in-time research dataset and labels) is the next milestone —
-unblocked, not yet started.
+**EM-1b Chronological Partition Proposal APPROVED (2026-08-26).**
+Owner/Chief-Architect-approved exact TRAIN/VALIDATION/CALIBRATION/
+FINAL_TEST cutoff dates, backed by real measured eligible-observation and
+positive-event distributions across the full frozen study window
+(`artifacts/research/em1b/partition_measurement.json`, 743 real trading
+sessions, 355,724-357,659 eligible symbol-day observations depending on
+family). TRAIN 2023-08-14→2025-05-31 (440 sessions, 59.2%), VALIDATION
+2025-06-01→2025-09-30 (85, 11.4%), CALIBRATION 2025-10-01→2025-12-31 (61,
+8.2%), FINAL_TEST 2026-01-01→2026-08-21 (157, 21.1%) — sealed per the
+approval's FINAL_TEST-sealing rule. Frozen contract:
+`src/athena/explosive_move/partitions.py` and
+`config/explosive_move.json`'s `_meta.partition_contract`.
+
+**EM-1b production label dataset GENERATED (2026-08-27), pending review.**
+`src/athena/data/em1b_label_dataset_generation.py` produced the full
+deterministic symbol-day and checkpoint label dataset
+(`artifacts/research/em1b/{labels,manifests,dataset_index.json}`),
+partition-assigned per the approved cutoffs above. A real determinism bug
+was found and fixed during this milestone (gzip's default wall-clock
+mtime header made byte-identical content hash differently across runs);
+fixed with a pinned `mtime=0` writer and locked down with a non-vacuous
+regression test. See `IMPLEMENTATION_SUMMARY.md`'s top entry for the full
+Milestone Review Summary.
+
+**Current handoff:** Read `docs/ATHENA-EMR-HANDOFF.md`. EM-1b's dataset
+and partitions are generated and self-validated, awaiting Owner/Chief
+Architect Milestone Review Summary approval before EM-1c (unconditional
+base rates, minimum cohort support) starts.
 
 ## Advisory UX Priority Track (selected 2026-08-19)
 

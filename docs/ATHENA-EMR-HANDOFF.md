@@ -1,7 +1,7 @@
 # ATHENA Explosive Move Radar Handoff
 
-**Snapshot:** 2026-08-26 (EM-1r5 approved; supersedes the 2026-08-21/22
-snapshot below)
+**Snapshot:** 2026-08-27 (EM-1b dataset generated, pending review;
+supersedes the 2026-08-26 snapshot below)
 **Governing boundary:** ADR-012
 **Current state:** EM-1r5 is owner-approved (2026-08-26) — **all 9
 candidate checkpoints are accepted** in `config/explosive_move.json`,
@@ -22,10 +22,20 @@ fixed proximity window) that flagged only 2,001 TOUCH/CLOSE symbol-days
 (~0.51% of population) and zero OPEN_TO_HIGH symbol-days. Six real
 DEMERGER actions remain an explicit, unresolved `IDENTITY_CHANGE_RISK`
 limitation for future feature/model work to check against. Full evidence:
-`artifacts/research/em1r5/reaudit_result.json`. See
-`IMPLEMENTATION_SUMMARY.md`'s top entry for the complete EM-1r5 Review
-Summary. **EM-1b is unblocked and is the next milestone — not yet
-started.**
+`artifacts/research/em1r5/reaudit_result.json`.
+
+**EM-1b (2026-08-26/27):** the owner approved a real-measurement-backed
+chronological partition proposal — TRAIN 2023-08-14→2025-05-31 (440
+sessions), VALIDATION 2025-06-01→2025-09-30 (85), CALIBRATION
+2025-10-01→2025-12-31 (61), FINAL_TEST 2026-01-01→2026-08-21 (157,
+sealed) — frozen in `src/athena/explosive_move/partitions.py` and
+`config/explosive_move.json`'s `_meta.partition_contract`. The
+deterministic production label dataset was then generated
+(`src/athena/data/em1b_label_dataset_generation.py`) and partition-
+assigned: `artifacts/research/em1b/{labels,manifests,dataset_index.json}`.
+See `IMPLEMENTATION_SUMMARY.md`'s top entry for the complete EM-1b Review
+Summary. **EM-1b is self-validated and awaiting Owner/Chief Architect
+Milestone Review Summary approval; EM-1c has not started.**
 
 ## 1. Current milestone state
 
@@ -38,7 +48,7 @@ started.**
 | EM-1r3 | Owner-approved 2026-08-21; corrected production sweep COMPLETE 2026-08-26 (92.81% admission, replay-verified) |
 | EM-1r4 | Owner-approved 2026-08-22 |
 | EM-1r5 | Owner-approved 2026-08-26 — all 9 candidate checkpoints accepted (research-ready evidence only) |
-| EM-1b | Unblocked — next milestone, not yet started |
+| EM-1b | Partitions approved 2026-08-26; dataset generated 2026-08-27, awaiting Milestone Review Summary approval |
 
 EMR remains isolated research. Nothing completed so far changes ATHENA's UI,
 score, confidence, risk, eligibility, Decision, TradePlan, scanner, broker, or

@@ -50,7 +50,11 @@ def test_frozen_config_matches_code_contract() -> None:
     # semantic boundary and artifacts/research/em1r5/reaudit_result.json
     # for the measured evidence.
     assert payload["checkpoints"]["accepted_ist"] == list(CANDIDATE_CHECKPOINTS_IST)
-    assert payload["study_scope"]["status"] == "CHECKPOINT_EVIDENCE_READY"
+    # EM-1b (owner-approved 2026-08-26/27): the deterministic production
+    # label dataset has been generated and the approved chronological
+    # partitions assigned. See _meta.partition_contract and
+    # artifacts/research/em1b/dataset_index.json for the generated evidence.
+    assert payload["study_scope"]["status"] == "LABEL_DATASET_GENERATED"
 
 
 def test_zero_actions_without_authoritative_coverage_fails_closed() -> None:

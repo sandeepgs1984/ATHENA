@@ -9,12 +9,28 @@
       "run_id_reference": "artifacts/research/em1r5/reaudit_result.json",
       "accepted_ist_semantics": "accepted_ist means the checkpoint has sufficient trustworthy historical evidence (admitted intraday session, cohort membership, quote/data hygiene, corporate-action boundary validity) to participate in subsequent EMR research. It does NOT mean: predictive value, statistical significance, calibration, production-scanner fitness, equal model weight, EM-4 evidence gate passage, or any influence on canonical ATHENA decisions.",
       "why_all_nine": "All nine candidates showed identical admitted-symbol-day support (356,225 for TOUCH/CLOSE, 358,177 for OPEN_TO_HIGH) because the relevant EM-1r5 gates -- admitted intraday session, cohort membership, quote/data hygiene, corporate-action boundary validity -- are all session-level facts under today's evidence, not checkpoint-time-level facts. No evidence-quality dimension differentiates one candidate from another at this milestone; predictive differentiation among checkpoints (e.g. P(TOUCH_10 | 09:20) vs P(TOUCH_10 | 14:00)) is a separate, later research question for EM-1c onward, not decided here."
+    },
+    "partition_contract": {
+      "milestone": "EM-1b",
+      "approved": "2026-08-26",
+      "contract_version": "em1b-partition-v1",
+      "source_module": "src/athena/explosive_move/partitions.py",
+      "dataset_index_reference": "artifacts/research/em1b/dataset_index.json",
+      "boundaries": [
+        {"role": "TRAIN", "start_date": "2023-08-14", "end_date": "2025-05-31", "sessions": 440},
+        {"role": "VALIDATION", "start_date": "2025-06-01", "end_date": "2025-09-30", "sessions": 85},
+        {"role": "CALIBRATION", "start_date": "2025-10-01", "end_date": "2025-12-31", "sessions": 61},
+        {"role": "FINAL_TEST", "start_date": "2026-01-01", "end_date": "2026-08-21", "sessions": 157}
+      ],
+      "semantics": "Strictly chronological, contiguous, non-overlapping, whole-session assignment, backed by real measured eligible-observation and positive-event distributions across the frozen study window (artifacts/research/em1b/partition_measurement.json). Frozen unless changed later through an explicit Owner/Chief Architect decision.",
+      "final_test_sealing": "FINAL_TEST is a protected holdout: its label outcomes may not be used for feature/checkpoint/event-family/threshold/model-class selection, hyperparameter or XPS weight tuning, probability calibration, or operating-threshold/ranking-policy/architecture decisions before the approved final evaluation gate. Dataset-integrity checks (row counts, partition membership, replay verification) may inspect it freely.",
+      "eligible_population_note": "EM-1b's eligible symbol-day population is slightly smaller than EM-1r5's reported admitted-session counts (355,724/355,724/357,659 vs EM-1r5's 356,225/356,225/358,177 for TOUCH/CLOSE/OPEN_TO_HIGH) because label computation additionally requires a valid PREVIOUS admitted session to supply the TOUCH/CLOSE reference close -- a structural requirement of the label contract, not a readiness-gate exclusion. Every instrument's chronologically first admitted session has no such predecessor and is therefore unconditionally excluded from EM-1b's population (exactly -518, one per instrument, for OPEN_TO_HIGH, which otherwise has zero corporate-action exclusions; -501 for TOUCH/CLOSE since a handful of instruments' first admitted session was already going to be excluded for corporate-action-boundary reasons independent of this rule)."
     }
   },
   "contract_version": "em-event-contract-v1",
   "study_scope": {
-    "status": "CHECKPOINT_EVIDENCE_READY",
-    "reason": "EM-1r5 (2026-08-26): corporate-action authority and canonical intraday checkpoints are now available via the corrected EM-1r3 production capture. All 9 candidate checkpoints owner-approved as accepted_ist -- research-ready, not predictive-value-approved."
+    "status": "LABEL_DATASET_GENERATED",
+    "reason": "EM-1b (2026-08-26/27): the deterministic production label dataset has been generated and the owner-approved chronological TRAIN/VALIDATION/CALIBRATION/FINAL_TEST partitions assigned (see _meta.partition_contract). Research-ready for EM-1c analysis; FINAL_TEST is a sealed holdout per the partition contract's final_test_sealing clause."
   },
   "event_contract": {
     "families": ["TOUCH", "CLOSE", "OPEN_TO_HIGH"],

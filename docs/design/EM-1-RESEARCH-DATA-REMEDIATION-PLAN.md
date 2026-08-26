@@ -1,8 +1,8 @@
 # EM-1 Research Data Remediation Plan
 
 **Track:** EM-1r
-**Current milestone:** EM-1r5 - approved 2026-08-26; EM-1b is next, not started
-**Status:** EM-1r1 through EM-1r5 approved
+**Current milestone:** EM-1b - dataset generated 2026-08-27, awaiting Milestone Review Summary approval
+**Status:** EM-1r1 through EM-1r5 approved; EM-1b self-validated, pending review
 **Governing boundary:** ADR-012
 **Input audit:** `docs/research/EM-1A-DATA-COVERAGE-AUDIT.md`
 
@@ -15,7 +15,14 @@ measurement against the real, corrected EM-1r2/EM-1r3/EM-1r4 evidence and
 the owner approved all 9 candidate checkpoints as `accepted_ist` —
 research-ready evidence, not predictive value or scanner fitness. See
 `artifacts/research/em1r5/reaudit_result.json` and
-`IMPLEMENTATION_SUMMARY.md`'s top entry. EM-1b is now unblocked.
+`IMPLEMENTATION_SUMMARY.md`'s top entry. EM-1b then measured the real
+eligible-label distribution, and the owner approved an exact chronological
+TRAIN/VALIDATION/CALIBRATION/FINAL_TEST partition proposal (2026-08-26).
+The deterministic production label dataset has been generated and
+partition-assigned per that approval
+(`artifacts/research/em1b/{labels,manifests,dataset_index.json}`),
+self-validated, and is awaiting Milestone Review Summary approval before
+EM-1c starts.
 
 The remediation is split into small approval-gated milestones. No milestone
 may create labels, features, models, rankings, scanner output, or UI until
@@ -32,7 +39,7 @@ following ownership rules remain true:
 | Canonical market records | Existing ATHENA persistence layer | EMR never mutates canonical data; ingestion uses existing repository boundaries. |
 | Coverage and provenance manifests | EMR research storage | Immutable manifests record source, bounds, counts, exclusions, and content identity. |
 | Research reads | Explicit read-only ports | EMR receives frozen inputs and cannot import concrete providers. |
-| Labels and partitions | EMR research storage | EM-1r5 approved 2026-08-26; EM-1b may now begin building them. |
+| Labels and partitions | EMR research storage | EM-1r5 approved 2026-08-26; EM-1b generated the dataset and assigned the owner-approved chronological partitions 2026-08-27 (`src/athena/explosive_move/partitions.py`, `src/athena/data/em1b_label_dataset_generation.py`). |
 
 No canonical schema or `MarketDataProvider` contract change is approved by
 EM-1r1. If a later remediation milestone cannot fit these boundaries, stop and
