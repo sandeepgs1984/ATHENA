@@ -46,8 +46,8 @@ independent research track does not silently advance either track.
 | EM-1b | Build the deterministic point-in-time research dataset and labels | ✅ Approved 2026-08-27 — dataset generated, chronological partitions assigned |
 | EM-1c prerequisite | Acquire and replay real historical NIFTY 50/INDIA VIX regime evidence (owner-mandated before EM-1c can use regime) | ✅ Approved 2026-08-27 — 743/743 sessions classified, 0 UNKNOWN; three real calendar defects found and fixed |
 | EM-1c | Publish unconditional base rates (TRAIN-only) and freeze minimum cohort support | ✅ Approved 2026-08-27 — base rates published across all required dimensions; minimum-support policy frozen (n≥1,000, k≥10) |
-| EM-2 | Implement cutoff-safe feature families and feasibility gates | 🔄 Ready for review 2026-08-27 — 28-field evidence contract (em2-evidence-v1) generated for TRAIN (206,351 symbol-day rows, 1,857,159 checkpoint snapshots) |
-| EM-3 | Publish historical conditional analysis and defensible feature selection | Planned |
+| EM-2 | Implement cutoff-safe feature families and feasibility gates | ✅ Approved 2026-08-27 — 28-field evidence contract (em2-evidence-v1) generated for TRAIN (206,351 symbol-day rows, 1,857,159 checkpoint snapshots) |
+| EM-3 v1 | Publish historical conditional analysis and defensible feature selection | 🔄 Ready for review 2026-08-27 — univariate, checkpoint-level TRAIN analysis: 185,004 cells, 14,727 EXPLORATORY_CANDIDATE |
 | EM-4 | Evaluate and calibrate the expansion-probability model; decide live go/no-go | Planned |
 | EM-5 | Implement the replayable bulk-input live scanner without UI | Planned |
 | EM-6 | Add the EMR research UI only after scanner approval | Planned |
@@ -274,27 +274,41 @@ claimed as feature lift here): GAP_UP sessions show ~2.7x the TOUCH_10
 rate of GAP_DOWN sessions; HIGH_VOLATILITY sessions show ~2x the rate of
 LOW_VOLATILITY sessions.
 
-**EM-2 evidence dataset GENERATED (2026-08-27), pending review.**
-Implemented the owner-approved, contract-corrected `em2-evidence-v1`
-manifest — exactly 28 fields (15 SESSION_INVARIANT: 13 PRIOR_HISTORY + 2
-SESSION_OPEN_CONTEXT; 13 CHECKPOINT_DYNAMIC), each classified
-EVIDENCE_ONLY or CANDIDATE_FEATURE, every canonical indicator
-(SMA/EMA/RSI/ATR/MACD/ADX/VWAP) reused completely unmodified from
-`athena.indicators.calculations`. Generated the real TRAIN evidence
-dataset: 206,351 symbol-day rows, 1,857,159 checkpoint snapshots (518
-instruments). UNKNOWN rates are real and honest — 0% for
-regime-conditioned fields (thanks to EM-1c's own extra warm-up
-acquisition), climbing from ~1% (GAP_PCT) to ~12% (SMA50_REL) purely
-from the accepted, un-remediated pre-TRAIN warm-up shortfall — with a
-clean, monotonic ramp by calendar month matching each field's exact
-frozen lookback boundary. Deterministic replay and per-instrument
-production-scale isolation both verified byte-identical. See
+**EM-2 APPROVED (2026-08-27).** Implemented the owner-approved,
+contract-corrected `em2-evidence-v1` manifest — exactly 28 fields (15
+SESSION_INVARIANT: 13 PRIOR_HISTORY + 2 SESSION_OPEN_CONTEXT; 13
+CHECKPOINT_DYNAMIC), each classified EVIDENCE_ONLY or CANDIDATE_FEATURE,
+every canonical indicator (SMA/EMA/RSI/ATR/MACD/ADX/VWAP) reused
+completely unmodified from `athena.indicators.calculations`. Generated
+the real TRAIN evidence dataset: 206,351 symbol-day rows, 1,857,159
+checkpoint snapshots (518 instruments). UNKNOWN rates are real and
+honest — 0% for regime-conditioned fields (thanks to EM-1c's own extra
+warm-up acquisition), climbing from ~1% (GAP_PCT) to ~12% (SMA50_REL)
+purely from the accepted, un-remediated pre-TRAIN warm-up shortfall.
+
+**EM-3 v1 conditional analysis PUBLISHED (2026-08-27), pending review.**
+Joined EM-2's 22 CANDIDATE_FEATURE fields with EM-1b's checkpoint-level
+labels and EM-1c's checkpoint-specific baselines, TRAIN only, univariate
+and checkpoint-level per the owner's approved v1 scope
+(`src/athena/explosive_move/conditional_analysis.py` +
+`src/athena/data/em3_conditional_analysis.py`). Real result: 1,857,159
+joined rows → 185,004 aggregation cells → **14,727 EXPLORATORY_CANDIDATE**
+(never `VALIDATED_SIGNAL`, a forbidden term), 2,121 `INSUFFICIENT_SUPPORT`,
+2,124 `MISSINGNESS_DIAGNOSTIC`, all stamped `TRAIN-DISCOVERED / UNVALIDATED`.
+Strongest real finding: REL_VOLUME_C's top quintile at 09:20 shows 2.75x
+lift over TOUCH_10's checkpoint baseline (n=38,706, k=1,031), rising to
+3.58x by 14:00 even as its raw rate falls with natural ALREADY_OCCURRED
+attrition — raw rate and relative lift move in *opposite* directions
+across the session. Shape distribution across 3,078 groups: 56.1%
+U-shaped, 26.2% monotonic increasing — real, descriptive, not acted on
+here. Interactions, rule mining, and any model work are explicitly
+deferred, recorded in every manifest, not silently dropped. See
 `IMPLEMENTATION_SUMMARY.md`'s top entry for the full review.
 
-**Current handoff:** Read `docs/ATHENA-EMR-HANDOFF.md`. EM-2's evidence
-dataset is generated and self-validated, awaiting Owner/Chief Architect
-Milestone Review Summary approval. EM-3 (historical conditional
-analysis) has not started.
+**Current handoff:** Read `docs/ATHENA-EMR-HANDOFF.md`. EM-3 v1's
+conditional analysis is published and self-validated, awaiting
+Owner/Chief Architect Milestone Review Summary approval. EM-4
+(expansion probability model) has not started.
 
 ## Advisory UX Priority Track (selected 2026-08-19)
 

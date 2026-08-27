@@ -6,6 +6,176 @@ status updated on approval.
 
 ---
 
+## EM-3 v1: Univariate checkpoint-level conditional analysis (TRAIN)
+
+**Summary.** Joined EM-2's evidence (22 CANDIDATE_FEATURE fields of 28 —
+EVIDENCE_ONLY fields excluded from formal analysis per EM-2's own
+classification) with EM-1b's checkpoint-level forward labels and EM-1c's
+checkpoint-specific baselines, TRAIN only. Real, deterministic aggregation
+over 1,857,159 joined checkpoint rows produced 185,004 aggregation cells
+(22 features × real quintile/category bins × 3 families × 6 thresholds ×
+9 checkpoints × up to 9 regime-stratum values), of which **14,727 cells
+meet the frozen minimum-support policy (n≥1,000, k≥10)** and are labelled
+`EXPLORATORY_CANDIDATE` — never `VALIDATED_SIGNAL`, a forbidden term at
+this milestone. Every entry is stamped `TRAIN-DISCOVERED / UNVALIDATED`.
+Real, well-supported, cross-validating findings surfaced: REL_VOLUME_C's
+top quintile at 09:20 shows a clean 2.75x lift (rate 2.66% vs 0.97%
+baseline, n=38,706, k=1,031) over TOUCH_10's checkpoint baseline, rising
+to 3.58x lift by 14:00 even as its raw rate declines with natural
+ALREADY_OCCURRED attrition — directly answering the owner's own example
+question ("does REL_VOLUME become more useful as the morning develops?"):
+**raw rate falls, relative lift rises**.
+
+**Objective.** Satisfy EM-3 v1's frozen scope: univariate,
+checkpoint-level, TRAIN-only conditional discovery with honest exit
+semantics ("evidence state X exhibited Y lift... with sufficient
+support", never "predicts") — building hypotheses for VALIDATION to
+later challenge, not proof.
+
+**Scope completed.**
+
+*Pure primitives* — `src/athena/explosive_move/conditional_analysis.py`:
+`compute_quintile_edges` (nearest-rank quantiles from real known-only
+TRAIN values; duplicate quantiles are deduplicated, deterministically
+REDUCING the bin count rather than fabricating an artificial boundary —
+never happened in practice: all 19 continuous candidate features
+produced 5 real, distinct bins from the real data), `assign_bin` (half-
+open boundary: `edges[i-1] <= value < edges[i]`), `compute_conditional_cell`
+(eligible n/k, Wilson 95% CI, checkpoint-specific baseline, absolute
+difference, lift, bin-vs-complement risk ratio — complement explicitly
+excludes UNKNOWN, a versioned policy: `UNKNOWN_HANDLING_POLICY`), and
+`classify_shape` (monotonic/U/inverted-U/non-monotonic, purely
+descriptive, never enforced). `SupportLabel` has exactly three values —
+`EXPLORATORY_CANDIDATE`, `INSUFFICIENT_SUPPORT`, `MISSINGNESS_DIAGNOSTIC`
+— `VALIDATED_SIGNAL` does not exist as a value anywhere in the codebase.
+
+*Orchestration* — `src/athena/data/em3_conditional_analysis.py`: pass 0
+derives bin edges from each continuous feature's real TRAIN distribution
+(never from labels); pass 1 performs a grouped-by-instrument merge-join
+across EM-1b's labels, EM-2's session-invariant and checkpoint-dynamic
+evidence (valid because every generator in this workstream iterates the
+same `sorted()` instrument set in the same order), accumulating counts
+keyed by `(feature, bin/category, family, threshold, checkpoint,
+stratum)` where stratum is `"ALL"` or a real regime-category value —
+never self-stratifying a regime field by itself. Regime stability,
+checkpoint evolution, and shape reports are all derived from this single
+pass's accumulated counts, not separate re-scans.
+
+**Real measured results.** 1,857,159 rows processed, 185,004 aggregation
+cells, **14,727 EXPLORATORY_CANDIDATE** / 2,121 `INSUFFICIENT_SUPPORT` /
+2,124 `MISSINGNESS_DIAGNOSTIC`. Shape distribution across 3,078
+(feature, family, threshold, checkpoint) ordered-bin groups: U_SHAPED
+1,727 (56.1%), MONOTONIC_INCREASING 805 (26.2%), NON_MONOTONIC 536
+(17.4%), INVERTED_U_SHAPED 9, MONOTONIC_DECREASING 1 — a real,
+descriptive finding for EM-4 to weigh when choosing linear vs.
+non-linear treatment, not acted on here.
+
+**Required outputs, all produced** (`artifacts/research/em3/`):
+A) `A_feature_conditional_analysis.json` (11.6MB) — full rate/lift/
+support/uncertainty table. B) `B_feature_shape_report.json` (737KB).
+C) `C_checkpoint_evolution_report.json` (2.1MB) — rate/lift progression
+across all 9 checkpoints per feature/bin/target. D)
+`D_regime_stability_report.json` (21.0MB) — per-candidate behavior
+under each supported real regime stratum it has data for. E)
+`E_unsupported_unknown_report.json` (2.9MB). F)
+`F_exploratory_candidate_register.json` (34.0MB) — every candidate with
+support, positives, lift, absolute difference, uncertainty, checkpoint-
+evolution key, regime behavior, and shape together (no pure-lift
+ranking, per the owner's multiple-discovery-discipline requirement).
+
+**Performance.** Pass 0: ~25s (2.07M rows scanned across both EM-2
+files). Pass 1: 1,965.3s (~32.75 min) for the full merge-join and
+185,004-cell aggregation. Peak memory ~2.3–2.5GB RSS. No parallel/
+distributed infrastructure built, per the owner's explicit instruction —
+a single deterministic streaming pass sufficed.
+
+**Deterministic replay verification.** Ran a full second independent
+production run (not a partial check, ~1,375s). All 6 real output files
+(A–F, 11.6–34.0MB each) are byte-for-byte identical between the two
+runs. The manifest's own `run_id` initially differed between the two
+runs despite identical output — a real bug found by this check:
+`elapsed_seconds` (a genuine wall-clock measurement) was included in the
+content hashed into `run_id`, the same class of mistake as EM-1b's
+gzip-mtime bug earlier this workstream. Fixed by excluding
+`elapsed_seconds` from the fingerprint, matching the `created_at`
+exclusion convention already established in EM-1b/EM-1c/EM-2 — verified
+the fix produces an identical `run_id` from both runs' real content.
+
+**Files created.** `src/athena/explosive_move/conditional_analysis.py`,
+`src/athena/data/em3_conditional_analysis.py`,
+`tests/explosive_move/test_conditional_analysis.py`,
+`artifacts/research/em3/{manifest.json,A..F_*.json,run.log}` (git-ignored
+real evidence).
+
+**Files modified.** None outside this entry and the milestone docs.
+
+**Public APIs changed.** None. EM-1b, EM-1c, and EM-2's own outputs are
+read-only inputs.
+
+**Tests added.** 19: quintile-edge dedup/determinism, half-open bin
+boundary semantics, the forbidden-term guard (`VALIDATED_SIGNAL` never
+appears as any `SupportLabel` value), lift/absolute-difference/risk-ratio
+correctness including the `None`-when-zero-denominator cases, complement
+independence from the bin population, and all 5 real shape
+classifications plus the not-applicable/fewer-than-3-bins case. Full
+suite: **2,419 passing** (2,400 → 2,419). Ruff clean.
+
+**Coverage summary.** Every pure metric/classification function has
+direct tests. The orchestration script's merge-join and streaming
+aggregation are validated by real-data cross-checks instead of unit
+tests, matching established precedent: the GAP_UP-vs-GAP_DOWN and
+HIGH-vs-LOW-volatility regime splits reproduce EM-1c's own independently
+-computed findings directionally, and REL_VOLUME_C's monotonic quintile
+pattern and checkpoint-evolution shape are both real, internally
+consistent results (eligible_n + complement_n reconciling correctly
+across every spot-checked cell).
+
+**Architecture compliance.** `conditional_analysis.py` is a pure
+`explosive_move/` domain module (no I/O); the orchestration script lives
+in `data/`, preserving ADR-012's package boundary. Reads only EM-1b/
+EM-1c/EM-2's already-approved outputs — TRAIN only, VALIDATION/
+CALIBRATION/FINAL_TEST never read. No model, ranking-by-lift-alone,
+interaction mining, or feature selection for modelling was performed —
+EM-3 v1 discovers and reports, per its frozen scope.
+
+**ADR compliance.** No ADR needed.
+
+**Risks discovered.** One real determinism bug, found by the replay
+check and fixed before this milestone closed: `elapsed_seconds` (wall-
+clock) was included in `run_id`'s content hash, making two runs with
+byte-identical output report different `run_id`s — the same class of
+mistake as EM-1b's gzip-mtime bug. Fixed by excluding it, matching the
+established `created_at`-exclusion convention. Separately, the real
+finding that raw forward rate and relative lift move in OPPOSITE
+directions across checkpoints (falling rate, rising lift) is a genuine,
+non-obvious result worth flagging for EM-4's eventual model-form
+decisions, not a defect.
+
+**Technical debt introduced.** None.
+
+**Explicitly deferred (recorded, not silently dropped).** Pairwise
+feature interactions, multi-way combinations, rule mining, ML models,
+decision trees, automatic feature crossing, feature-weight optimization
+— all recorded in every manifest's `deferred_scope` field. Specific
+hypothesis combinations noticed during spot-checking (e.g. top-quintile
+REL_VOLUME_C + GAP_UP) are NOT tested together in this pass, per the
+owner's explicit anti-combinatorial-mining instruction.
+
+**Suggested improvements.** EM-4 should treat the shape distribution
+(56% U-shaped) as evidence against defaulting to a plain linear/logistic
+treatment of continuous features without at least considering monotonic
+transforms or binning. The U_SHAPED dominance itself is worth an
+EM-3-follow-on descriptive note before EM-4 begins, since it recurs
+across many unrelated features and may reflect a shared cause (e.g. tail
+bins concentrating extreme, already-informative sessions) worth
+understanding rather than treating as 22 independent findings.
+
+**Remaining work.** EM-3 v1 conditional analysis published for TRAIN.
+EM-4 (expansion probability model) has not started, per the mandatory
+one-milestone-at-a-time workflow.
+
+---
+
 ## EM-2: Cutoff-safe evidence dataset (SessionInvariant + CheckpointDynamic)
 
 **Summary.** Implemented the owner-approved EM-2 Evidence Contract
