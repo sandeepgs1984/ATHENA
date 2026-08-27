@@ -6,6 +6,151 @@ status updated on approval.
 
 ---
 
+## EM-4C: real VALIDATION comparison (deterministic vs. logistic vs. base rate)
+
+**Summary.** Opened real VALIDATION outcomes for the first time in this
+workstream, exactly as gated: only after EM-4A and EM-4B were both
+frozen. Scored all 18 real (family x threshold) combinations' real
+VALIDATION population (518 instruments, 85 sessions, 380,232 joined
+checkpoint rows) with both the frozen deterministic score (EM-4A, using
+EM-3's real TRAIN-discovered register) and the frozen logistic model
+(EM-4B). Result: the logistic model beats the deterministic model on
+pooled PR-AUC in **18 of 18** real combinations, often by a wide margin
+(e.g. CLOSE_15: 0.475 vs 0.007; TOUCH_10: 0.178 vs 0.034) -- a
+consistent, genuinely out-of-sample finding, not cherry-picked. Real
+MFE/MAE/time-to-target computed for the TOUCH_10 flagship's 1,211 real
+positive VALIDATION observations against real EM-1r3 intraday candles.
+CALIBRATION and FINAL_TEST were never opened.
+
+**Objective.** Produce the EM-4 Modeling Contract's mandatory "EM-4C
+Validation Comparison Review" and stop there for Owner/Chief Architect
+review -- never auto-continuing into EM-4D (calibration) or EM-4E
+(sealed FINAL_TEST).
+
+**Scope completed.**
+
+*Scoring* (`src/athena/explosive_move/em4c_scoring.py`, pure Python,
+no numpy/scikit-learn -- applying an already-frozen linear model is
+just a dot product + sigmoid, verified byte-identical against a real
+sklearn `predict_proba` call on a real EM-4B artifact before being
+trusted). `em4b_preprocessing.deserialize_preprocessing` added as the
+round-trip counterpart to the artifact's persisted preprocessing
+block, so EM-4C never needs to refit anything to score with a frozen
+model.
+
+*Orchestration* (`src/athena/data/em4c_validation_evaluation.py`):
+joins real EM-2 VALIDATION evidence with real EM-1b VALIDATION labels
+(same merge-join convention as EM-3/EM-4B); for each of the 18 models,
+computes pooled PR-AUC/Brier/calibration bins (`em4c_metrics`),
+Precision@5/10/20 and Lift@5/10/20 averaged over every real
+session-date x checkpoint cross-section -- never pooled across dates
+(`em4c_ranking`), checkpoint stability (per-checkpoint pooled
+Precision@10/Lift@10 across all VALIDATION dates), and regime
+stability (per regime-category pooled Precision@10/Lift@10, for
+regime_trend/regime_volatility/regime_gap independently). Real
+MFE/MAE/time-to-target for the flagship uses `forward_excursion.py`
+unchanged against real EM-1r3 VALIDATION-session intraday candles.
+Probability-language discipline enforced structurally: Brier/
+calibration are computed only for the logistic model's sigmoid output,
+never for the deterministic score.
+
+**Real results (headline).**
+- **PR-AUC**: logistic > deterministic in 18/18 real combinations.
+  Deterministic PR-AUC ranges 0.0005-0.106 (often barely above the
+  real base rate); logistic PR-AUC ranges 0.012-0.475.
+- **Precision@10 / Lift@10** (mean across real cross-sections,
+  logistic): from 0.76% precision / 44.6x lift (OPEN_TO_HIGH_20, the
+  rarest threshold) to 36.1% precision / 25.0x lift (CLOSE_5, the most
+  common). Deterministic Precision@10 never exceeds 14.9% on any
+  combination.
+- **TOUCH_10 flagship checkpoint stability**: real per-checkpoint lift
+  is monotonically non-decreasing through the session (09:20: 112x ->
+  14:00: 315x) even as the checkpoint's own base rate falls (0.45% ->
+  0.13%) -- directly corroborating EM-3's own TRAIN-only finding ("raw
+  rate falls, relative lift rises") now confirmed out-of-sample.
+- **TOUCH_10 flagship regime stability**: real lift stays strong and
+  positive across all 3 regime_trend values (BULL_TREND 253x, BEAR_TREND
+  221x, SIDEWAYS 176x) and all values of regime_volatility/regime_gap --
+  no regime-dependent collapse.
+- **TOUCH_10 flagship real excursion** (1,211 real positive VALIDATION
+  observations): MFE mean 13.4% / median 12.4% (well past the 10%
+  threshold itself -- real positives tend to overshoot), MAE mean 2.6%
+  / median 2.3% (modest real adverse excursion before the touch),
+  time-to-target mean 155.7 / median 140.0 minutes.
+- **Top real logistic effects** (TOUCH_10, by |coefficient|):
+  checkpoint intercept shifts dominate (early checkpoints +, late -,
+  consistent with the checkpoint-stability finding above), followed by
+  `return_from_prev_close_c` (+0.72) and `atr14_norm` (+0.53) as the
+  strongest real feature effects.
+
+**Files created.** `src/athena/explosive_move/em4c_scoring.py`,
+`src/athena/data/em4c_validation_evaluation.py` +
+`tests/explosive_move/test_em4c_scoring.py` (synthetic fixtures) +
+one new test in `test_em4b_preprocessing.py` (the
+`deserialize_preprocessing` round-trip). No dedicated test file for
+the orchestration script itself, matching this workstream's existing
+convention (`em3_conditional_analysis.py`/`em4b_logistic_fitting.py`
+compose already-unit-tested pure modules and are exercised via real
+execution, not a parallel test suite).
+
+**Real artifacts.** `artifacts/research/em4c/{FAMILY}_{THRESHOLD}.json`
+x18, `FLAGSHIP_EXCURSION.json`, `SUMMARY.json` (git-ignored, real run:
+380,232 joined rows, 691.5s total).
+
+**Tests added.** 6 (5 scoring, 1 round-trip). Full suite (clean Python
+3.13/NumPy/scikit-learn env): 2,508 passed (was 2,502), 0 failed, 0
+skipped. Ruff: zero net-new findings.
+
+**Architecture compliance.** VALIDATION opened only after EM-4B froze,
+per the exact approved sequence. CALIBRATION/FINAL_TEST never read.
+No EMR contract/partition/label semantics changed. No git actions
+taken by the AI.
+
+**ADR compliance.** No ADR required -- executes the already-approved
+EM-4 Modeling Contract's EM-4C step exactly.
+
+**Risks discovered / technical debt introduced.** None new.
+
+**Suggested improvements.** None beyond what's already queued
+(toolchain reproducibility gap, autouse-fixture blast radius, backup
+fail-open safety, Ruff baseline cleanup -- all previously recorded,
+none touched by this milestone).
+
+**Remaining work.** Owner/Chief Architect review of this real
+comparison, choosing GO / NARROW / NO-GO / propose-nonlinear per the
+EM-4 Modeling Contract. If GO or NARROW: EM-4D (calibration hierarchy
+-- Platt-first, isotonic only if CALIBRATION support clears k>=50) and
+EM-4E (sealed FINAL_TEST, run once) remain, in that order, each its
+own gated milestone. Not started; this AI is explicitly stopping here
+per the Contract's own instruction, awaiting Owner decision.
+
+**Commit message (for sandeep to use himself):**
+```
+feat(explosive_move): open real VALIDATION for EM-4C comparison
+
+- Add em4c_scoring.py (pure Python: dot product + sigmoid over an
+  already-frozen EM-4B artifact, verified byte-identical against a
+  real sklearn predict_proba call) and
+  em4b_preprocessing.deserialize_preprocessing (the round-trip
+  counterpart to the persisted artifact's preprocessing block) so
+  EM-4C never needs scikit-learn to score with a frozen model.
+- Add em4c_validation_evaluation.py and run the real EM-4C comparison:
+  all 18 (family x threshold) models scored against real VALIDATION
+  (380,232 joined checkpoint rows) -- logistic beats deterministic on
+  PR-AUC in 18/18 combinations; real Precision@K/Lift@K per
+  session-date x checkpoint cross-section, checkpoint/regime
+  stability, and real MFE/MAE/time-to-target for the TOUCH_10
+  flagship (1,211 real positive VALIDATION observations).
+- Update docs/MILESTONES.md and IMPLEMENTATION_SUMMARY.md with the
+  real EM-4C results; CALIBRATION/FINAL_TEST remain sealed pending
+  Owner's GO/NARROW/NO-GO decision on this comparison.
+```
+
+**Ready for review:** yes -- this is the mandatory EM-4C stop point.
+Awaiting Owner/Chief Architect decision before EM-4D/EM-4E.
+
+---
+
 ## EM-4B: 18 pooled logistic baselines, TRAIN-only, chronological CV
 
 **Summary.** Fit the EM-4 Modeling Contract's approved logistic

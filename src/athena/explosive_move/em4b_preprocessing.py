@@ -210,3 +210,34 @@ def transform_row(row: dict, spec: PreprocessingSpec) -> list[float]:
 
 def transform_rows(rows: list[dict], spec: PreprocessingSpec) -> list[list[float]]:
     return [transform_row(row, spec) for row in rows]
+
+
+def deserialize_preprocessing(payload: dict) -> PreprocessingSpec:
+    """Reconstructs a ``PreprocessingSpec`` from a frozen EM-4B model
+    artifact's persisted ``preprocessing`` block -- the round-trip
+    counterpart to ``em4b_logistic_fitting._serialize_preprocessing``.
+    Lets EM-4C score real observations against an already-fitted model
+    without ever needing to refit (or even import numpy/scikit-learn --
+    this function and ``transform_row`` are pure Python)."""
+
+    continuous_fields = tuple(payload["continuous_fields"])
+    categorical_fields = tuple(payload["categorical_fields"])
+    continuous_stats = {
+        name: ContinuousFieldStats(name, s["median"], s["mean"], s["std"], s["known_n"])
+        for name, s in payload["continuous_stats"].items()
+    }
+    categorical_specs = {
+        name: CategoricalFieldSpec(name, tuple(categories))
+        for name, categories in payload["categorical_specs"].items()
+    }
+    checkpoint_field = payload["checkpoint_field"]
+    checkpoint_spec = CategoricalFieldSpec(checkpoint_field, tuple(payload["checkpoint_categories"]))
+
+    return PreprocessingSpec(
+        contract_version=payload["contract_version"], continuous_fields=continuous_fields,
+        categorical_fields=categorical_fields, checkpoint_field=checkpoint_field,
+        continuous_stats=continuous_stats, categorical_specs=categorical_specs,
+        checkpoint_spec=checkpoint_spec, feature_names=tuple(payload["feature_names"]),
+        dropped_zero_variance_columns=tuple(payload["dropped_zero_variance_columns"]),
+        fit_row_count=payload["fit_row_count"],
+    )

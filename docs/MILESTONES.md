@@ -50,7 +50,7 @@ independent research track does not silently advance either track.
 | EM-3 v1 | Publish historical conditional analysis and defensible feature selection | ✅ Approved 2026-08-27 — univariate, checkpoint-level TRAIN analysis: 185,004 cells, 14,727 EXPLORATORY_CANDIDATE |
 | EM-4A | Deterministic evidence score (frozen vote rules over EM-3's register) | ✅ Approved 2026-08-27 |
 | EM-4B | Fit 18 pooled logistic baselines (TRAIN-only, chronological CV) | ✅ Approved 2026-08-27 — all 18 (family×threshold) models converged, deterministic replay verified; C=0.01 selected for 13/18, 0.1 for 4/18, 1.0 for 1/18 |
-| EM-4C | Open real VALIDATION outcomes; compare deterministic vs. logistic vs. base rate | 🔄 Ready to start, pending Owner go-ahead |
+| EM-4C | Open real VALIDATION outcomes; compare deterministic vs. logistic vs. base rate | 🔄 Ready for review 2026-08-27 — logistic beats deterministic on PR-AUC in 18/18 real (family×threshold) combinations; logistic Precision@10/Lift@10 real and consistent across all 9 checkpoints and all 3 regime dimensions for the TOUCH_10 flagship |
 | EM-4D/E | Calibration; sealed FINAL_TEST evaluation | Planned |
 | EM-5 | Implement the replayable bulk-input live scanner without UI | Planned |
 | EM-6 | Add the EMR research UI only after scanner approval | Planned |

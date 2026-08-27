@@ -9,6 +9,7 @@ from decimal import Decimal
 
 from athena.explosive_move.em4b_preprocessing import (
     UNKNOWN_CATEGORY,
+    deserialize_preprocessing,
     fit_preprocessing,
     transform_row,
 )
@@ -109,6 +110,31 @@ def test_fit_row_count_recorded():
     rows = [_row(Decimal("10"), "BULL_TREND", "09:20"), _row(Decimal("20"), "BEAR_TREND", "09:30")]
     spec = _fit(rows)
     assert spec.fit_row_count == 2
+
+
+def test_deserialize_round_trips_to_identical_transform():
+    rows = [_row(Decimal("10"), "BULL_TREND", "09:20"), _row(Decimal("20"), "BEAR_TREND", "09:30"),
+            _row(None, None, "09:20")]
+    spec = _fit(rows)
+    payload = {
+        "contract_version": spec.contract_version,
+        "continuous_fields": list(spec.continuous_fields),
+        "categorical_fields": list(spec.categorical_fields),
+        "checkpoint_field": spec.checkpoint_field,
+        "continuous_stats": {
+            n: {"median": s.median, "mean": s.mean, "std": s.std, "known_n": s.known_n}
+            for n, s in spec.continuous_stats.items()
+        },
+        "categorical_specs": {n: list(s.categories) for n, s in spec.categorical_specs.items()},
+        "checkpoint_categories": list(spec.checkpoint_spec.categories),
+        "feature_names": list(spec.feature_names),
+        "dropped_zero_variance_columns": list(spec.dropped_zero_variance_columns),
+        "fit_row_count": spec.fit_row_count,
+    }
+    restored = deserialize_preprocessing(payload)
+    row = _row(Decimal("15"), "BEAR_TREND", "09:30")
+    assert transform_row(row, restored) == transform_row(row, spec)
+    assert restored.feature_names == spec.feature_names
 
 
 def test_transform_is_deterministic():
