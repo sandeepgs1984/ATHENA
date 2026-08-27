@@ -6,6 +6,147 @@ status updated on approval.
 
 ---
 
+## EM-1c: TRAIN-only base-rate research report
+
+**Summary.** Computed real, TRAIN-only base rates directly from EM-1b's
+own approved, persisted dataset (3,713,490 symbol-day rows, 33,421,410
+checkpoint rows) across every owner-required dimension — event family,
+threshold, checkpoint, TRAIN-period year, sector, and canonical regime
+(trend/volatility/gap, using EM-1c's own prerequisite evidence). Every
+rate carries a Wilson 95% confidence interval. Derived and froze a
+minimum-support policy (n≥1,000 eligible, k≥10 positive events) directly
+from the real support distribution, not picked blindly. Surfaced several
+real, well-supported descriptive hypotheses for EM-2/EM-3 (gap-up
+sessions show ~2.7x the TOUCH_10 rate of gap-down sessions; high-
+volatility sessions show ~2x the rate of low-volatility ones).
+
+**Objective.** Satisfy EM-1c's frozen scope: publish unconditional
+(TRAIN-only, marginal — no feature lift, no interactions) base rates
+with sample counts, event counts, uncertainty, and caveats; freeze the
+minimum-support policy that prevents small cohorts from being promoted
+regardless of apparent lift.
+
+**Scope completed.**
+
+*Wilson interval + minimum-support policy* —
+`src/athena/explosive_move/wilson_interval.py` (pure): the standard
+Wilson score interval (preferred over the normal/Wald approximation,
+which breaks down at the small-n, extreme-proportion regime this report
+lives in throughout — TOUCH_20 rates are routinely under 0.05%).
+`meets_minimum_support(eligible_n, positive_k)` implements the frozen
+policy: **n≥1,000 AND k≥10**. Derived from the real TRAIN distribution:
+at this threshold, family/threshold/year/checkpoint/regime breakdowns
+pass almost universally (their real populations are large: 100%, 100%,
+100%, 100%, 98.1%/92.6%/92.6% respectively), while sector breakdowns —
+the genuinely small-cohort case the policy exists to catch — correctly
+fail 25.1% of the time (95 of 378 real sector×family×threshold cells),
+concentrated exactly where real intuition says they should be (small
+sectors like Diversified/Textiles/Construction Materials at rare
+thresholds like TOUCH_20). A subgroup failing either bound may still be
+reported descriptively but must never support a promotion/selection
+decision in EM-2/EM-3, however favorable its apparent rate looks.
+
+*Report generation* — `src/athena/data/em1c_base_rate_report.py`:
+streams EM-1b's real `TRAIN_symbol_day.jsonl.gz`/`TRAIN_checkpoint.jsonl.gz`
+directly (the frozen, already-approved dataset — not a parallel
+re-derivation), joins sector from the canonical `instruments` table
+(read-only) and regime from EM-1c's own prerequisite evidence
+(`artifacts/research/em1c-regime/regime_by_session.json`), and writes
+`artifacts/research/em1c/base_rate_report.json`. Marginal breakdowns
+only, per the roadmap's own EM-1c scope ("No feature lift is claimed
+here"). TRAIN only — VALIDATION/CALIBRATION/FINAL_TEST were never read.
+
+**Real measured results** (TRAIN, 440 sessions, 491 distinct instruments
+with eligible observations, 205,303-206,305 eligible symbol-day
+observations by family):
+
+*By family/threshold* (headline, +10%): TOUCH 1.08% (CI [1.04%,1.13%],
+n=205,303, k=2,226), CLOSE 0.49% (n=205,303, k=1,015), OPEN_TO_HIGH
+0.87% (n=206,305, k=1,799). All family/threshold/year/checkpoint cells
+meet minimum support.
+
+*Already-occurred attrition, TOUCH_10* (a clean, monotonic real pattern):
+forward rate declines from 0.97% at 09:20 (243 already-occurred, 0.1%)
+to 0.31% at 14:00 (1,591 already-occurred, 0.8%) — exactly the expected
+shape as the remaining intraday window shrinks.
+
+*Regime-conditioned findings, well-supported, flagged as hypotheses for
+EM-2/EM-3, not claimed as feature lift here*: GAP_UP sessions show
+TOUCH_10 rate 1.87% vs GAP_DOWN 0.70% (n=21,924/15,042, k=409/105) — a
+~2.7x difference. HIGH_VOLATILITY sessions show 1.81% vs LOW_VOLATILITY
+0.92% (n=10,810/34,329, k=196/315) — a ~2x difference. BULL_TREND shows
+a smaller elevation (1.16%) over BEAR/SIDEWAYS (~0.98-1.00%).
+
+*Sector*: rates range from 0.23% (Construction Materials) to 2.94%
+("UNKNOWN" sector — 18 cohort instruments with no canonical sector
+classification, worth investigating for selection bias before treating
+as a real effect) across well-supported sectors; several sector×TOUCH_20
+cells have zero or single-digit positive counts and are flagged
+insufficient by the frozen policy.
+
+**Files created.** `src/athena/explosive_move/wilson_interval.py`,
+`src/athena/data/em1c_base_rate_report.py`,
+`tests/explosive_move/test_wilson_interval.py`,
+`artifacts/research/em1c/base_rate_report.json` (git-ignored real
+evidence).
+
+**Files modified.** None outside this entry and the roadmap/milestone
+docs.
+
+**Public APIs changed.** None. EM-1b's dataset and EM-1c's own regime
+prerequisite evidence are read-only inputs; no canonical table touched.
+
+**Tests added.** 10, covering the Wilson interval (reference value,
+zero/all-successes edge cases, rare-event asymmetry, invalid-input
+guards) and the frozen minimum-support policy (both bounds required
+independently). Full suite: **2,359 passing** (2,349 → 2,359). Ruff
+clean on every new file.
+
+**Coverage summary.** The two genuinely risk-bearing pure functions
+(Wilson interval, minimum-support check) are directly tested, including
+a hand-computed reference value and the small-n/rare-event regime this
+report actually operates in throughout. The aggregation script's I/O
+(streaming ~37M real JSONL rows) is not unit-tested directly, matching
+established precedent for this workstream's orchestration scripts; it
+was validated by cross-checking its `by_family_threshold` output against
+the exact same real numbers independently computed twice already this
+workstream (EM-1b's partition-measurement script and EM-1b's own
+generation script) — all three agree exactly.
+
+**Architecture compliance.** `wilson_interval.py` is a pure
+`explosive_move/` domain module (no I/O); the report script lives in
+`data/` (orchestration), preserving ADR-012's package boundary. Reads
+only EM-1b's already-approved output, EM-1c's own already-approved
+regime evidence, and the canonical `instruments` table (read-only,
+sector column only) — writes nothing to any canonical table. No
+features, model, scanner, UI, or production recommendation created.
+
+**ADR compliance.** No ADR needed.
+
+**Risks discovered.** None new. The "UNKNOWN sector" cohort's elevated
+apparent rate (18 instruments, 2.94% vs a 0.2-3.0% range for classified
+sectors) is flagged as a real, well-supported-by-count-but-unexplained
+finding that could reflect selection bias (which kinds of instruments
+lack sector classification) rather than a genuine sector effect — noted
+as a limitation, not resolved here.
+
+**Technical debt introduced.** None.
+
+**Suggested improvements.** EM-2/EM-3 should investigate the gap/
+volatility-conditioned findings above as candidate features, and resolve
+the "UNKNOWN sector" cohort's identity before treating its elevated rate
+as informative. The minimum-support policy's n≥1,000/k≥10 bounds should
+be revisited if a future milestone's population differs materially in
+shape from TRAIN's (e.g. CALIBRATION/FINAL_TEST are much smaller
+partitions and may need their own support floor when they are eventually
+used for their intended purposes).
+
+**Remaining work.** TRAIN-only base rates published, minimum-support
+policy frozen. EM-2 (cutoff-safe feature engineering) has not started,
+per the mandatory one-milestone-at-a-time workflow.
+
+---
+
 ## EM-1c prerequisite: Historical regime evidence (NIFTY 50 / INDIA VIX)
 
 **Summary.** Before EM-1c can report base rates by market regime, the

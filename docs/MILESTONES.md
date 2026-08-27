@@ -44,8 +44,8 @@ independent research track does not silently advance either track.
 | EM-1r4 | Apply the frozen survivor-cohort contract to research admission and enforce quote-timestamp hygiene | ✅ Approved 2026-08-22; 2,216 tests pass |
 | EM-1r5 | Re-audit coverage and approve a non-empty checkpoint set | ✅ Approved 2026-08-26 — all 9 candidate checkpoints accepted (research-ready, not predictive-value-approved) |
 | EM-1b | Build the deterministic point-in-time research dataset and labels | ✅ Approved 2026-08-27 — dataset generated, chronological partitions assigned |
-| EM-1c prerequisite | Acquire and replay real historical NIFTY 50/INDIA VIX regime evidence (owner-mandated before EM-1c can use regime) | 🔄 Ready for review 2026-08-27 — 743/743 sessions classified, 0 UNKNOWN; three real calendar defects found and fixed |
-| EM-1c | Publish unconditional base rates (TRAIN-only) and freeze minimum cohort support | Blocked by regime-prerequisite approval |
+| EM-1c prerequisite | Acquire and replay real historical NIFTY 50/INDIA VIX regime evidence (owner-mandated before EM-1c can use regime) | ✅ Approved 2026-08-27 — 743/743 sessions classified, 0 UNKNOWN; three real calendar defects found and fixed |
+| EM-1c | Publish unconditional base rates (TRAIN-only) and freeze minimum cohort support | 🔄 Ready for review 2026-08-27 — base rates published across all required dimensions; minimum-support policy frozen (n≥1,000, k≥10) |
 | EM-2 | Implement cutoff-safe feature families and feasibility gates | Planned |
 | EM-3 | Publish historical conditional analysis and defensible feature selection | Planned |
 | EM-4 | Evaluate and calibrate the expansion-probability model; decide live go/no-go | Planned |
@@ -258,12 +258,27 @@ replicates real production behavior, not a new invented rule. **Result:
 UNKNOWN.** See `IMPLEMENTATION_SUMMARY.md`'s top entry for the full
 review.
 
-**Current handoff:** Read `docs/ATHENA-EMR-HANDOFF.md`. The historical
-regime evidence is generated and self-validated, awaiting Owner/Chief
-Architect review before regime may be used as an EM-1c analytical
-dimension. EM-1c itself (TRAIN-only base rates by family/threshold/
-checkpoint/sector/regime, minimum cohort support policy) has not
-started.
+**EM-1c PUBLISHED (2026-08-27), pending review.** Computed real,
+TRAIN-only base rates directly from EM-1b's own approved dataset
+(3.7M symbol-day rows, 33.4M checkpoint rows) across every required
+dimension (family, threshold, checkpoint, TRAIN-period year, sector,
+canonical regime) — every rate with a Wilson 95% CI
+(`src/athena/explosive_move/wilson_interval.py`). Froze the minimum-
+support policy (**n≥1,000, k≥10**) directly from the real support
+distribution: family/threshold/year/checkpoint/regime breakdowns pass
+almost universally, while sector breakdowns correctly fail 25.1% of the
+time (95/378 cells), concentrated exactly at small sectors × rare
+thresholds. Headline TOUCH_10 rate: 1.08% (n=205,303, k=2,226). Real,
+well-supported descriptive findings flagged as EM-2/EM-3 hypotheses (not
+claimed as feature lift here): GAP_UP sessions show ~2.7x the TOUCH_10
+rate of GAP_DOWN sessions; HIGH_VOLATILITY sessions show ~2x the rate of
+LOW_VOLATILITY sessions. See `IMPLEMENTATION_SUMMARY.md`'s top entry for
+the full report.
+
+**Current handoff:** Read `docs/ATHENA-EMR-HANDOFF.md`. EM-1c's base-rate
+report and frozen minimum-support policy are published and
+self-validated, awaiting Owner/Chief Architect Milestone Review Summary
+approval. EM-2 (cutoff-safe feature engineering) has not started.
 
 ## Advisory UX Priority Track (selected 2026-08-19)
 
