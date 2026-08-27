@@ -45,8 +45,8 @@ independent research track does not silently advance either track.
 | EM-1r5 | Re-audit coverage and approve a non-empty checkpoint set | ✅ Approved 2026-08-26 — all 9 candidate checkpoints accepted (research-ready, not predictive-value-approved) |
 | EM-1b | Build the deterministic point-in-time research dataset and labels | ✅ Approved 2026-08-27 — dataset generated, chronological partitions assigned |
 | EM-1c prerequisite | Acquire and replay real historical NIFTY 50/INDIA VIX regime evidence (owner-mandated before EM-1c can use regime) | ✅ Approved 2026-08-27 — 743/743 sessions classified, 0 UNKNOWN; three real calendar defects found and fixed |
-| EM-1c | Publish unconditional base rates (TRAIN-only) and freeze minimum cohort support | 🔄 Ready for review 2026-08-27 — base rates published across all required dimensions; minimum-support policy frozen (n≥1,000, k≥10) |
-| EM-2 | Implement cutoff-safe feature families and feasibility gates | Planned |
+| EM-1c | Publish unconditional base rates (TRAIN-only) and freeze minimum cohort support | ✅ Approved 2026-08-27 — base rates published across all required dimensions; minimum-support policy frozen (n≥1,000, k≥10) |
+| EM-2 | Implement cutoff-safe feature families and feasibility gates | 🔄 Ready for review 2026-08-27 — 28-field evidence contract (em2-evidence-v1) generated for TRAIN (206,351 symbol-day rows, 1,857,159 checkpoint snapshots) |
 | EM-3 | Publish historical conditional analysis and defensible feature selection | Planned |
 | EM-4 | Evaluate and calibrate the expansion-probability model; decide live go/no-go | Planned |
 | EM-5 | Implement the replayable bulk-input live scanner without UI | Planned |
@@ -258,7 +258,7 @@ replicates real production behavior, not a new invented rule. **Result:
 UNKNOWN.** See `IMPLEMENTATION_SUMMARY.md`'s top entry for the full
 review.
 
-**EM-1c PUBLISHED (2026-08-27), pending review.** Computed real,
+**EM-1c APPROVED (2026-08-27).** Computed real,
 TRAIN-only base rates directly from EM-1b's own approved dataset
 (3.7M symbol-day rows, 33.4M checkpoint rows) across every required
 dimension (family, threshold, checkpoint, TRAIN-period year, sector,
@@ -272,13 +272,29 @@ thresholds. Headline TOUCH_10 rate: 1.08% (n=205,303, k=2,226). Real,
 well-supported descriptive findings flagged as EM-2/EM-3 hypotheses (not
 claimed as feature lift here): GAP_UP sessions show ~2.7x the TOUCH_10
 rate of GAP_DOWN sessions; HIGH_VOLATILITY sessions show ~2x the rate of
-LOW_VOLATILITY sessions. See `IMPLEMENTATION_SUMMARY.md`'s top entry for
-the full report.
+LOW_VOLATILITY sessions.
 
-**Current handoff:** Read `docs/ATHENA-EMR-HANDOFF.md`. EM-1c's base-rate
-report and frozen minimum-support policy are published and
-self-validated, awaiting Owner/Chief Architect Milestone Review Summary
-approval. EM-2 (cutoff-safe feature engineering) has not started.
+**EM-2 evidence dataset GENERATED (2026-08-27), pending review.**
+Implemented the owner-approved, contract-corrected `em2-evidence-v1`
+manifest — exactly 28 fields (15 SESSION_INVARIANT: 13 PRIOR_HISTORY + 2
+SESSION_OPEN_CONTEXT; 13 CHECKPOINT_DYNAMIC), each classified
+EVIDENCE_ONLY or CANDIDATE_FEATURE, every canonical indicator
+(SMA/EMA/RSI/ATR/MACD/ADX/VWAP) reused completely unmodified from
+`athena.indicators.calculations`. Generated the real TRAIN evidence
+dataset: 206,351 symbol-day rows, 1,857,159 checkpoint snapshots (518
+instruments). UNKNOWN rates are real and honest — 0% for
+regime-conditioned fields (thanks to EM-1c's own extra warm-up
+acquisition), climbing from ~1% (GAP_PCT) to ~12% (SMA50_REL) purely
+from the accepted, un-remediated pre-TRAIN warm-up shortfall — with a
+clean, monotonic ramp by calendar month matching each field's exact
+frozen lookback boundary. Deterministic replay and per-instrument
+production-scale isolation both verified byte-identical. See
+`IMPLEMENTATION_SUMMARY.md`'s top entry for the full review.
+
+**Current handoff:** Read `docs/ATHENA-EMR-HANDOFF.md`. EM-2's evidence
+dataset is generated and self-validated, awaiting Owner/Chief Architect
+Milestone Review Summary approval. EM-3 (historical conditional
+analysis) has not started.
 
 ## Advisory UX Priority Track (selected 2026-08-19)
 

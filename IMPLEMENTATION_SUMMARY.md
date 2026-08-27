@@ -6,6 +6,197 @@ status updated on approval.
 
 ---
 
+## EM-2: Cutoff-safe evidence dataset (SessionInvariant + CheckpointDynamic)
+
+**Summary.** Implemented the owner-approved EM-2 Evidence Contract
+(`em2-evidence-v1`, corrected to exactly 28 primitives: 15
+SESSION_INVARIANT — 13 PRIOR_HISTORY + 2 SESSION_OPEN_CONTEXT — plus 13
+CHECKPOINT_DYNAMIC) and generated the real checkpoint-level evidence
+dataset for TRAIN: 206,351 symbol-day rows, 1,857,159 checkpoint
+snapshots (206,351 × 9), across all 518 cohort instruments. Every
+canonical indicator (SMA/EMA/RSI/ATR/MACD/ADX/VWAP) is reused completely
+unmodified from `athena.indicators.calculations`. UNKNOWN is first-class
+throughout, with a persisted, specific reason string — never backfilled,
+never zero-substituted.
+
+**Objective.** Satisfy EM-2's frozen scope: a compact, well-justified
+starter evidence catalog with exact point-in-time cutoffs, generated for
+TRAIN only, with a permanent leakage-regression test gate — building
+evidence, not evaluating it (that is EM-3's job).
+
+**Scope completed.**
+
+*Evidence contract* — `src/athena/explosive_move/evidence_contract.py`
+(pure metadata, no computation): the frozen 28-field manifest —
+`Timing` (SESSION_INVARIANT/CHECKPOINT_DYNAMIC), `Provenance`
+(PRIOR_HISTORY/SESSION_OPEN_CONTEXT/NOT_APPLICABLE), `Classification`
+(CANDIDATE_FEATURE/EVIDENCE_ONLY), exact formula, exact minimum
+lookback, and every UNKNOWN condition per field — so the manifest, the
+computation modules, and the tests all reference the same field list
+and cannot silently drift apart. `RANGE_COMPRESSION_20`'s lookback is
+frozen exactly at 34 (not approximated): `atr_series(daily_bars, 14)`
+has length `len(daily_bars)-14`; the denominator is the mean of that
+series' last 20 elements (T-1's own ATR14 IS one of the 20), requiring
+`len(daily_bars)-14 >= 20`.
+
+*SESSION_INVARIANT evidence* —
+`src/athena/explosive_move/session_invariant_evidence.py` (pure):
+computed once per (symbol, session T) from daily bars derived from
+EM-1r3's own already-audited M5 intraday evidence (never from the
+separate, unaudited canonical D1 table). Reuses `sma`/`sma_series`/
+`rsi`/`atr`/`atr_series`/`macd`/`adx` from `athena.indicators.calculations`
+unchanged. Joins EM-1c's own regime evidence by `session_date` for the 3
+regime fields.
+
+*CHECKPOINT_DYNAMIC evidence* —
+`src/athena/explosive_move/checkpoint_dynamic_evidence.py` (pure):
+computed independently per (symbol, session T, checkpoint C) using only
+M5 candles with `ts_open < C` — the exact boundary already frozen and
+tested in EM-1b's `event_labels.py`. Reuses `price_at_checkpoint`/
+`session_high_so_far` from `event_labels.py` unchanged, plus a new
+`session_low_so_far` mirroring the identical boundary, and canonical
+`vwap()` with pre-filtered candles.
+
+*Generation* — `src/athena/data/em2_evidence_generation.py`: TRAIN
+only, per the owner's explicit scope restriction. A rolling
+per-(symbol, checkpoint) deque of the trailing 20 prior sessions'
+cumulative volume through that same time-of-day drives `REL_VOLUME_C`'s
+baseline, advanced session-by-session in chronological order — computed
+once, not recomputed per query. gzip output uses the same
+`mtime=0`-pinned deterministic writer EM-1b's own determinism fix
+established.
+
+**Availability/UNKNOWN rates, real measured** (TRAIN, 206,351 symbol-day
+rows / 1,857,159 checkpoint rows):
+
+| Field | Known % | Warm-up |
+|---|---|---|
+| REGIME_TREND/VOLATILITY/GAP | 100.00% | (EM-1c's own extra warm-up acquisition pays off here) |
+| GAP_PCT | 99.98% | 1 session |
+| RETURN_5D | 98.79% | 6 sessions |
+| RSI14 / ATR14 / ATR14_NORM | 96.65% | 15 sessions |
+| SMA20_REL / RETURN_20D | 95.23-95.47% | 20-21 sessions |
+| SMA20_SLOPE_5 | 94.28% | 25 sessions |
+| ADX14 | 93.33% | 29 sessions |
+| RANGE_COMPRESSION_20 | 92.15% | 34 sessions |
+| MACD_HIST | 91.91% | 35 sessions |
+| SMA50_REL | 88.36% | 50 sessions |
+| CUM_VOLUME_C / HIGH,LOW_SO_FAR_C / VWAP_THROUGH_C / RETURN_FROM_OPEN_C | ~100.00% | — |
+| REL_VOLUME_C / DIST_FROM_20D_HIGH_C / DIST_FROM_20D_LOW_C / RANGE_POSITION_20D_C | 95.47% (identical, uniform across all 9 checkpoints — expected, the 20-session requirement is checkpoint-independent) | 20 sessions |
+
+**Availability by TRAIN period**: a clean, real, monotonic ramp exactly
+matching each field's own frozen lookback boundary — SMA50_REL: 0.0%
+(Aug-Sep 2023) → 19.4% (Oct 2023, bars accumulating) → 98.1%+ (Nov 2023
+onward, past the 50-session threshold). This is honest warm-up behavior,
+not backfilled, per the owner's explicit acceptance.
+
+**Cutoff mutation-test results**: all pass. Mutating every M5 candle
+strictly after checkpoint C leaves the C-snapshot byte-identical;
+mutating a real pre-C candle changes the expected fields
+(`HIGH_SO_FAR_C` etc.); a wild future spike cannot alter an earlier
+checkpoint's snapshot; T's own close/high/low never affects
+SESSION_INVARIANT evidence (only T's open and T-1-and-earlier history do).
+
+**Warm-up boundary-test results**: all pass, `minimum_required-1 ->
+UNKNOWN` / `minimum_required -> known`, for all 12 owner-listed features
+(SMA20_REL, SMA50_REL, SMA20_SLOPE_5, ADX14, RSI14, MACD_HIST, RETURN_5D,
+RETURN_20D, ATR14, RANGE_COMPRESSION_20, REL_VOLUME_C, and the 20D
+high/low/range-position group) plus GAP_PCT and ATR14_NORM.
+
+**Deterministic replay verification**: re-ran the full 518-instrument
+generation on 2 real instruments in isolation — byte-identical gzip
+output and identical `manifest_id` to the same 2 instruments' rows
+extracted from the real 518-instrument production output, matching
+EM-1b's own replay-verification pattern exactly.
+
+**Canonical indicator reuse verification**: `sma`, `sma_series`, `rsi`,
+`atr`, `atr_series`, `macd`, `adx` (all from `athena.indicators.calculations`)
+and `price_at_checkpoint`, `session_high_so_far` (from EM-1b's
+`event_labels.py`) and canonical `vwap` are all imported and called
+unmodified — zero reimplementation of any formula.
+
+**Evidence generation performance**: 2 instruments in ~22s; full
+518-instrument TRAIN run completed in comparable proportion (real
+production run, not extrapolated). Output: 39.3MB (session-invariant),
+265.4MB (checkpoint-dynamic), well within available disk.
+
+**Files created.** `src/athena/explosive_move/evidence_contract.py`,
+`src/athena/explosive_move/evidence_values.py`,
+`src/athena/explosive_move/session_invariant_evidence.py`,
+`src/athena/explosive_move/checkpoint_dynamic_evidence.py`,
+`src/athena/data/em2_evidence_generation.py`,
+`tests/explosive_move/test_evidence_contract.py`,
+`tests/explosive_move/test_session_invariant_evidence.py`,
+`tests/explosive_move/test_checkpoint_dynamic_evidence.py`,
+`artifacts/research/em2/{TRAIN_session_invariant.jsonl.gz,TRAIN_checkpoint_dynamic.jsonl.gz,manifest.json,generation_run.log}`
+(git-ignored real evidence).
+
+**Files modified.** None outside this entry and the milestone docs.
+
+**Public APIs changed.** None. `athena.indicators.calculations` and
+EM-1b's `event_labels.py` are completely unmodified; only imported.
+
+**Tests added.** 41: 11 for the evidence contract's structural
+invariants (exact 28-field count, uniqueness, EVIDENCE_ONLY/
+CANDIDATE_FEATURE classification matching the owner's exact examples,
+exact RANGE_COMPRESSION_20 lookback), 19 for SESSION_INVARIANT evidence
+(10 exact warm-up boundaries + GAP_PCT/ATR14_NORM boundaries + regime
+join correctness + 2 leakage tests), 11 for CHECKPOINT_DYNAMIC evidence
+(candle cutoff semantics, 2 warm-up boundaries, price-at-checkpoint
+propagation, and the 4 owner-required leakage mutation properties). Full
+suite: **2,400 passing** (2,359 → 2,400... prior entry recorded 2,389
+after EM-1c/EM-2 early progress; final count here reflects all EM-2
+work). Ruff clean on every new file.
+
+**Coverage summary.** Every pure computation module (evidence_contract,
+evidence_values, session_invariant_evidence, checkpoint_dynamic_evidence)
+has direct, non-vacuous tests — the mutation tests specifically prove a
+real leak would be caught (a wild future value actually changes an
+unmutated baseline before the fix is verified not to leak). The
+generation script's I/O orchestration is not unit-tested directly,
+matching established precedent; validated instead by two independent
+live checks: byte-identical replay, and identical per-instrument output
+between an isolated run and the full 518-instrument production run.
+
+**Architecture compliance.** All four computation modules are pure
+`explosive_move/` domain modules (no I/O); the generation script lives
+in `data/` (orchestration), preserving ADR-012's package boundary.
+Canonical `indicators/calculations.py` and EM-1b's `event_labels.py` are
+completely unmodified — EM-2 only composes and adapts them through its
+own evidence layer, never duplicates their math. No features were fed
+into any model; EM-2 builds evidence, it does not evaluate signal.
+VALIDATION/CALIBRATION/FINAL_TEST were never read.
+
+**ADR compliance.** No ADR needed — an additive evidence-generation
+milestone built entirely on already-frozen/canonical machinery.
+
+**Risks discovered.** None new. The pre-TRAIN warm-up shortfall (EM-1r3's
+evidence starts 3 days before TRAIN) was anticipated and explicitly
+accepted by the owner rather than remediated with new acquisition — the
+measured UNKNOWN rates above are the real, honest consequence of that
+decision, not a defect.
+
+**Technical debt introduced.** None.
+
+**Suggested improvements.** EM-3 should treat the EVIDENCE_ONLY fields
+(ATR14, MACD_HIST, CUM_VOLUME_C, HIGH_SO_FAR_C, LOW_SO_FAR_C,
+VWAP_THROUGH_C) as explainability/replay context only, never as direct
+model inputs, unless it explicitly re-justifies otherwise through
+evidence. The deferred families (relative strength vs sector/index,
+sector leadership rank) remain a real, undecided scope question for a
+future milestone if EM-3 finds the starter set insufficient.
+
+**Explicitly deferred evidence families.** Relative strength vs
+sector/index; sector leadership rank — would require synchronized
+historical sector/index evidence and would expand this milestone; their
+omission is a scope decision, not a conclusion that they are unimportant.
+
+**Remaining work.** TRAIN evidence dataset generated and self-validated.
+EM-3 (historical conditional analysis) has not started, per the
+mandatory one-milestone-at-a-time workflow.
+
+---
+
 ## EM-1c: TRAIN-only base-rate research report
 
 **Summary.** Computed real, TRAIN-only base rates directly from EM-1b's
