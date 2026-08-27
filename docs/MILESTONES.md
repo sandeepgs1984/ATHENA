@@ -47,8 +47,11 @@ independent research track does not silently advance either track.
 | EM-1c prerequisite | Acquire and replay real historical NIFTY 50/INDIA VIX regime evidence (owner-mandated before EM-1c can use regime) | ✅ Approved 2026-08-27 — 743/743 sessions classified, 0 UNKNOWN; three real calendar defects found and fixed |
 | EM-1c | Publish unconditional base rates (TRAIN-only) and freeze minimum cohort support | ✅ Approved 2026-08-27 — base rates published across all required dimensions; minimum-support policy frozen (n≥1,000, k≥10) |
 | EM-2 | Implement cutoff-safe feature families and feasibility gates | ✅ Approved 2026-08-27 — 28-field evidence contract (em2-evidence-v1) generated for TRAIN (206,351 symbol-day rows, 1,857,159 checkpoint snapshots) |
-| EM-3 v1 | Publish historical conditional analysis and defensible feature selection | 🔄 Ready for review 2026-08-27 — univariate, checkpoint-level TRAIN analysis: 185,004 cells, 14,727 EXPLORATORY_CANDIDATE |
-| EM-4 | Evaluate and calibrate the expansion-probability model; decide live go/no-go | Planned |
+| EM-3 v1 | Publish historical conditional analysis and defensible feature selection | ✅ Approved 2026-08-27 — univariate, checkpoint-level TRAIN analysis: 185,004 cells, 14,727 EXPLORATORY_CANDIDATE |
+| EM-4A | Deterministic evidence score (frozen vote rules over EM-3's register) | ✅ Approved 2026-08-27 |
+| EM-4B | Fit 18 pooled logistic baselines (TRAIN-only, chronological CV) | ✅ Approved 2026-08-27 — all 18 (family×threshold) models converged, deterministic replay verified; C=0.01 selected for 13/18, 0.1 for 4/18, 1.0 for 1/18 |
+| EM-4C | Open real VALIDATION outcomes; compare deterministic vs. logistic vs. base rate | 🔄 Ready to start, pending Owner go-ahead |
+| EM-4D/E | Calibration; sealed FINAL_TEST evaluation | Planned |
 | EM-5 | Implement the replayable bulk-input live scanner without UI | Planned |
 | EM-6 | Add the EMR research UI only after scanner approval | Planned |
 | EM-7 | Run isolated shadow validation and OFF-vs-shadow performance comparison | Planned |

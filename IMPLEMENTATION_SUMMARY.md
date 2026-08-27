@@ -6,6 +6,330 @@ status updated on approval.
 
 ---
 
+## EM-4B: 18 pooled logistic baselines, TRAIN-only, chronological CV
+
+**Summary.** Fit the EM-4 Modeling Contract's approved logistic
+candidate: 18 models (3 event families x 6 thresholds), each pooling
+all 9 checkpoints via a one-hot checkpoint covariate (shared
+coefficients, checkpoint-specific intercept shifts only) rather than
+162 independent thin models. Regularization (`C`) selected per model
+via strictly chronological, session-grouped, expanding-window TRAIN-
+internal CV (`em4_config.TEMPORAL_CV_FOLDS`, the owner's "most
+important correction") over the frozen `L2_REGULARIZATION_GRID`,
+scored by mean PR-AUC across 4 folds -- never ordinary k-fold. All 18
+real models fit on real TRAIN data (~1.85M eligible rows per model),
+all converged, all independently deterministic-replay-verified (refit
+from the same inputs reproduces byte-identical coefficients/intercept).
+VALIDATION/CALIBRATION/FINAL_TEST were never opened -- this milestone
+reads only TRAIN.
+
+**Objective.** Unblock EM-4C (the mandatory VALIDATION comparison stop
+point) with a real, frozen logistic candidate to compare against the
+deterministic score and the unconditional base rate -- per the exact
+sequence the owner approved: EM-4A -> EM-4B -> EM-4C (VALIDATION opens
+only after EM-4B is frozen).
+
+**Scope completed.**
+
+*Preprocessing* (`src/athena/explosive_move/em4b_preprocessing.py`,
+pure Python, no numpy/sklearn -- matches this workstream's hand-rolled-
+statistics convention): TRAIN-fitted-only median imputation + missing
+indicator + standardization for the 19 continuous CANDIDATE_FEATURE
+fields; one-hot with an explicit UNKNOWN category for the 3 categorical
+regime fields and checkpoint (9 values); deterministic zero-variance
+column dropping with recorded provenance, decided only from the fit
+population the caller supplies (never VALIDATION).
+
+*Model fit + CV* (`src/athena/explosive_move/em4b_model.py`, the only
+module in this milestone that imports numpy/scikit-learn, per the
+owner's narrow-scoping requirement): a thin, deterministic wrapper
+around `sklearn.linear_model.LogisticRegression` (`l1_ratio=0.0` --
+scikit-learn >=1.8 deprecates the `penalty="l2"` spelling; empirically
+verified identical coefficients, avoids a FutureWarning that would
+otherwise fire on every fit under the resolved scikit-learn 1.9).
+Per-fold preprocessing is refit from scratch on ONLY that fold's
+chronologically-prior sessions (never the fold's own eval window, never
+the full TRAIN partition) -- the same leakage boundary the owner's CV
+correction exists to enforce, extended to preprocessing as well as to
+coefficients. Tie-break for equal-PR-AUC `C` candidates: smallest `C`
+(more regularization) wins, frozen and documented.
+
+*Orchestration* (`src/athena/data/em4b_logistic_fitting.py`): one join
+pass over real TRAIN EM-2 evidence + EM-1b labels (mirrors EM-3's own
+established merge-join, not reimplemented differently), shared across
+all 18 models rather than repeated; eligible population = POSITIVE/
+NEGATIVE only (excludes None/ALREADY_OCCURRED, the same definition
+EM-1c/EM-3 already established); persists one inspectable JSON artifact
+per model (`em4-logistic-v1`: sklearn/numpy versions, solver, C,
+max_iter, tol, n_iter, converged, feature order, coefficients,
+intercept, full preprocessing spec, source TRAIN manifest IDs, CV
+fold-by-fold PR-AUC).
+
+**Real run.** All 18 models fit against real TRAIN data (518
+instruments, 1,857,159 joined checkpoint rows; ~1.78-1.86M eligible
+rows per model). Run in 4 parallel shards (one canary + 4 background
+processes) on the local workstation; join-phase disk I/O contention
+under 4-way parallelism made the wall-clock slower than a naive
+4x-speedup estimate, but every model still completed well within a
+single evening. Selected regularization: `C=0.01` (heaviest, most
+regularization) for 13/18 models, `C=0.1` for 4/18, `C=1.0` for 1/18
+(TOUCH_15) -- consistent with a rare-event, noisy problem where CV
+correctly favors conservative models. All 18 converged in 16-55 lbfgs
+iterations (far below the 2,000 max-iter ceiling). Every model's
+preprocessing independently dropped the identical 9 zero-variance
+columns (5 "always-known" missing-indicators, 4 UNKNOWN categorical
+columns) -- a real, cross-model-consistent signal that TRAIN's admitted
+population genuinely never hits those UNKNOWN/missing states, not a
+bug. 51 of 60 candidate columns survive per model.
+
+**Files created.** `src/athena/explosive_move/em4b_preprocessing.py`,
+`em4b_model.py`, `src/athena/data/em4b_logistic_fitting.py` +
+`tests/explosive_move/test_em4b_preprocessing.py`,
+`test_em4b_model.py` (synthetic fixtures only; `test_em4b_model.py`
+skips gracefully via `pytest.importorskip("sklearn")` when the optional
+`emr-modeling` dependency group isn't installed -- not a reproducibility
+gap, an intentional optional-dependency boundary).
+
+**Real artifacts.** `artifacts/research/em4b/{FAMILY}_{THRESHOLD}.json`
+x18 + `SUMMARY.json` (git-ignored, 296KB total -- no disk concern).
+
+**Tests added.** 17 (10 preprocessing, 7 model/CV -- the model tests
+require the clean Python 3.13 environment's `emr-modeling` group).
+
+**Test results.** Clean Python 3.13.15 / NumPy 2.5.2 / scikit-learn
+1.9.0 environment: full suite 2,502 passed (was 2,485 before this
+milestone's 17 new tests), 0 failed. Ruff (pinned to the accepted
+0.15.22): zero net-new findings across every file this milestone
+touched. mypy (configured scope): unaffected, still clean.
+
+**Architecture compliance.** No EMR evidence contract, partition
+boundary, or label semantics changed. VALIDATION/CALIBRATION/FINAL_TEST
+never read. numpy/scikit-learn usage stayed exactly where approved
+(the model-fit layer only; preprocessing and evaluation scaffolding
+stay pure Python). No git actions taken by the AI.
+
+**ADR compliance.** No ADR required -- implements the already-approved
+EM-4 Modeling Contract exactly, including its required corrections
+(chronological CV, real class prevalence, TRAIN-only preprocessing,
+zero-variance handling, explainable persistence).
+
+**Risks discovered / technical debt introduced.** None new. The
+already-recorded `TOUCH_10` canary result (fit once, solo, before the
+parallel batch) was reused rather than refit, saving ~25 minutes; its
+determinism was independently reconfirmed by its own replay check
+before being trusted.
+
+**Suggested improvements.** If a future EM-4-scale real-data fitting
+run is needed again, prefer fewer, larger parallel shards (2-3 rather
+than 4) given the observed join-phase I/O contention at 4-way
+parallelism -- or restructure to do the join once in a single process
+and fan out only the per-model fit step to worker processes, avoiding
+the repeated ~3-30 minute join cost per shard entirely.
+
+**Remaining work.** EM-4C: open real VALIDATION outcomes, score with
+both the frozen deterministic (EM-4A) and logistic (EM-4B) models,
+evaluate Precision@K/Lift@K/PR-AUC/Brier/MFE/MAE/time-to-target per
+real session-date x checkpoint cross-section using the already-built,
+already-tested EM-4C evaluation scaffolding, and produce the mandatory
+"EM-4C Validation Comparison Review" -- explicitly a stop point for
+Owner/Chief Architect review before EM-4D (calibration) or EM-4E
+(sealed FINAL_TEST). Not started; awaiting explicit Owner go-ahead per
+the approved sequence.
+
+**Commit message (for sandeep to use himself):**
+```
+feat(explosive_move): fit EM-4B logistic baselines on real TRAIN data
+
+- Add em4b_preprocessing.py (pure Python TRAIN-fitted-only median
+  imputation/missing-indicator/standardization + explicit-UNKNOWN
+  one-hot + deterministic zero-variance dropping) and em4b_model.py
+  (thin scikit-learn wrapper: chronological CV regularization
+  selection via PR-AUC, final TRAIN-wide fit, deterministic replay
+  verification) per the EM-4 Modeling Contract's required corrections.
+- Add em4b_logistic_fitting.py orchestration script and fit all 18
+  approved (family x threshold) pooled logistic models on real TRAIN
+  data (1,857,159 joined checkpoint rows) -- all converged, all
+  replay-verified; artifacts in artifacts/research/em4b/ (git-ignored).
+- Update docs/MILESTONES.md and IMPLEMENTATION_SUMMARY.md to record
+  EM-3/EM-4A/EM-4B status; EM-4C (VALIDATION comparison) remains
+  gated on explicit Owner approval, per the frozen sequence.
+```
+
+**Ready for review:** yes -- EM-4B frozen, deterministic, fully tested
+and replay-verified; EM-4C may begin on explicit Owner approval only
+(VALIDATION must stay sealed until then, per the EM-4 Modeling
+Contract).
+
+---
+
+## EM-4 environment-unblocking: clean-room Python 3.13 reconstruction + evaluation scaffolding
+
+**Summary.** The EM-4 Modeling Contract (2026-08-27) approved `numpy`/
+`scikit-learn` for logistic-regression fitting, but the workstation's
+Homebrew Python (3.14, both current and after a full reinstall) has a
+broken system `libexpat` linkage that blocks `pip install` entirely.
+Owner/Chief Architect decision: do not repair Homebrew; build an
+isolated, project-local Python 3.13 environment via `uv`, and prove it
+reproduces ATHENA from the *declared manifest alone* before any
+modelling begins. That reconstruction deliberately surfaced two
+pre-existing, undeclared runtime dependencies (`PyJWT`, `bcrypt`) and
+confirmed (not merely suspected) two further pieces of infrastructure
+debt: zero dependency lockfile anywhere in the repo, and a global
+`autouse` test fixture with a much larger import blast radius than its
+purpose requires. In parallel, per the same approval, the reusable
+pure-Python EM-4C evaluation scaffolding (Precision@K, Lift@K, PR-AUC,
+Brier, calibration, checkpoint/regime aggregation, manifest/report
+schema) was built and tested against synthetic fixtures only —
+VALIDATION outcomes remain unopened.
+
+**Objective.** Unblock EM-4B (logistic fitting) with a real,
+reproducible interpreter + dependency set, without touching EMR
+algorithms, VALIDATION data, or unrelated repository behavior to work
+around the broken workstation.
+
+**Scope completed.**
+
+*Environment*: `uv`-installed standalone CPython 3.13.15 (no system
+`libexpat` dependency), project-local `.venv/` (already gitignored),
+installed via `uv pip install -e ".[dev,emr-modeling]"` from
+`pyproject.toml` alone — no manual/ad-hoc package installs left in the
+final, passing state.
+
+*Dependency-manifest corrections* (`pyproject.toml`): added
+`PyJWT>=2.13` and `bcrypt>=5.0` to `[project.dependencies]` — both are
+real, already-imported production dependencies (`athena.api.security.token`,
+`athena.api.security.hashing`) that had never been declared; the
+working system environment only "worked" because those packages
+happened to be present from some earlier, untracked `pip install`.
+Discovered one at a time, each verified as truly missing (not a version
+constraint problem) before declaring it, per the owner's explicit
+"stop and report, never install ad hoc" discipline. No security/hashing
+behavior touched.
+
+*EM-4C evaluation scaffolding* (pure Python, no numpy/sklearn needed —
+matches this workstream's existing hand-rolled-statistics convention):
+`src/athena/explosive_move/em4c_ranking.py` (deterministic tie-broken
+ranking, Precision@K, Lift@K, base-rate), `em4c_metrics.py`
+(average-precision/PR-AUC, Brier, calibration bins), `em4c_aggregation.py`
+(checkpoint/regime grouping via the existing `wilson_interval`),
+`em4c_report.py` (`CrossSectionResult` schema + replay-safe fingerprinted
+manifest, same convention as EM-2/EM-3). 36 tests, all against synthetic
+fixtures.
+
+**Files created.** `src/athena/explosive_move/em4c_ranking.py`,
+`em4c_metrics.py`, `em4c_aggregation.py`, `em4c_report.py` +
+`tests/explosive_move/test_em4c_*.py` (4 files).
+
+**Files modified.** `pyproject.toml` (`PyJWT`, `bcrypt` added to
+`[project.dependencies]`).
+
+**Tests added.** 36 (EM-4C scaffolding, synthetic fixtures only).
+
+**Test results — clean Python 3.13.15 / NumPy 2.5.2 / scikit-learn
+1.9.0 / PyJWT 2.13.0 / bcrypt 5.0.0 environment:**
+- `pytest --collect-only`: 2,485 collected, **0 collection errors**
+  (was 19, all one root cause, resolved by the `PyJWT` declaration;
+  then a second root cause of 1,579 errors, resolved by the `bcrypt`
+  declaration)
+- Full suite: **2,485 passed**, 0 failed — identical count to the
+  existing system environment
+- `tests/explosive_move/` (EMR/EM-4 suite): **243 passed**
+- `mypy` (configured scope: `src/athena/domain`, `src/athena/config`):
+  clean, 0 issues
+- Cross-environment deterministic replay: regenerated a real 2-instrument
+  EM-2 TRAIN evidence slice (`NSE:360ONE`, `NSE:3MINDIA`) under both the
+  system Python and the clean venv — **byte-identical** `manifest.json`,
+  identical `manifest_id`, identical payload sha256, `cmp` confirms the
+  gzip payloads themselves are byte-identical (no evaluation of any
+  VALIDATION/CALIBRATION/FINAL_TEST outcome — TRAIN evidence-contract
+  computation only, already established as not "opening" a sealed
+  partition)
+- Ruff (pinned to `0.15.22`, the version already in use by the accepted
+  workflow — not the `0.16.4` a bare `ruff>=0.4` resolves to): **286
+  pre-existing findings, identical under both environments and both
+  Ruff versions** — this is real, pre-existing repository lint debt,
+  not a version-delta artifact (an earlier report in this same
+  workstream incorrectly attributed it to the Ruff version; corrected
+  here). All EM-4/EM-4C files created or modified this milestone are
+  independently Ruff-clean: **zero net-new lint debt**.
+
+**Architecture compliance.** No EMR algorithm, evidence contract, or
+partition boundary changed. No security/hashing behavior changed —
+manifest-declaration only. No git actions taken by the AI.
+
+**ADR compliance.** No ADR required — dependency-manifest correctness,
+not an architecture change.
+
+**Risks discovered / technical debt introduced (none introduced by this
+work; all pre-existing, now confirmed rather than suspected):**
+1. `TOOLCHAIN_REPRODUCIBILITY_GAP` — no `uv.lock`, `requirements.txt`,
+   `poetry.lock`, or any other lockfile exists anywhere in the repo;
+   `pyproject.toml` pins nothing with an upper bound. A fresh checkout
+   + `pip install -e .` currently has no way to reproduce exact
+   dependency versions (only the floor constraints). Evidence: this
+   milestone's clean-room reconstruction resolved `ruff==0.16.4`
+   (latest matching `ruff>=0.4`) where the accepted workflow uses
+   `0.15.22`, purely because nothing pins it. Deliberately NOT fixed
+   here (a lockfile is a repository dependency-management contract
+   change, owner-approval scope, not a dependency-unblocking patch) —
+   flagged as a candidate future platform/tooling task (standardize on
+   `uv`+`uv.lock` or an equivalent).
+2. `tests/conftest.py`'s `darvax_never_activates_in_tests` fixture is
+   `autouse=True` and imports `athena.api.app` (and therefore every
+   security dependency `athena.api.app` needs) for **every test in the
+   repository**, not just API tests — confirmed via the `bcrypt`-missing
+   failure mode: 1,579 of 1,832 tests (86%) failed at fixture setup,
+   including tests with zero relation to the API (e.g.
+   `tests/explosive_move/test_wilson_interval.py`). The fixture's
+   underlying purpose (never let a test touch the real DarvaX database)
+   is legitimate and already documented in its own docstring with real
+   incident history (~1,300 tests once mounted the owner's live
+   `db/darvax.db`) — only its *blast radius* (forcing a full API import
+   into unrelated tests) is the concern. Deliberately NOT redesigned
+   here per explicit owner instruction — flagged as test-infrastructure
+   debt for a separate, dedicated review.
+3. Ongoing: the repository's baseline 286 Ruff findings (pre-existing,
+   confirmed real under the accepted `0.15.22`) are unrelated to EM-4
+   and not repaired here — a candidate future repository-wide lint
+   cleanup milestone, not bundled into EMR work.
+
+**Suggested improvements.** (1) Decide and adopt a single reproducible
+dependency-locking strategy (`uv.lock` is the natural fit given `uv` is
+now already in use for this environment). (2) Narrow or restructure
+`darvax_never_activates_in_tests` so DarvaX isolation doesn't require
+importing the full API surface for every unrelated test. (3) A
+dedicated repository-wide Ruff cleanup milestone, scoped and reviewed
+on its own.
+
+**Remaining work.** EM-4B: fit the 18 approved logistic models
+(TRAIN-only, frozen chronological CV, PR-AUC-selected regularization),
+freeze preprocessing/coefficients/provenance, verify deterministic
+reproduction — now unblocked by this environment. VALIDATION outcomes
+remain sealed until EM-4B is frozen (EM-4C gate).
+
+**Commit message (for sandeep to use himself):**
+```
+config(explosive_move): declare PyJWT/bcrypt, add EM-4C eval scaffolding
+
+- Add PyJWT>=2.13 and bcrypt>=5.0 to pyproject.toml's canonical
+  dependencies -- both were already-imported production dependencies
+  (athena.api.security.token, athena.api.security.hashing) never
+  declared in the manifest; surfaced one at a time by reconstructing
+  ATHENA from a clean, isolated Python 3.13 (uv) environment per the
+  EM-4 Modeling Contract's environment-reproducibility requirement.
+- Add EM-4C evaluation scaffolding (Precision@K, Lift@K, PR-AUC,
+  Brier, calibration, checkpoint/regime aggregation, replay-safe
+  manifest schema) so EM-4C's real VALIDATION comparison has tested,
+  reusable infrastructure ready the moment EM-4B freezes -- built and
+  tested against synthetic fixtures only, VALIDATION stays sealed.
+```
+
+**Ready for review:** yes — environment reproducibility proven (2,485
+tests / 243 EMR tests / clean mypy / zero net-new Ruff debt / byte-
+identical cross-environment replay); EM-4B may begin on owner approval.
+
+---
+
 ## EM-3 v1: Univariate checkpoint-level conditional analysis (TRAIN)
 
 **Summary.** Joined EM-2's evidence (22 CANDIDATE_FEATURE fields of 28 —

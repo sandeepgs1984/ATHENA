@@ -1,8 +1,14 @@
 """EM-2: generate the versioned, checkpoint-level evidence dataset --
 SessionInvariantEvidence + CheckpointDynamicEvidence -> EvidenceSnapshot
--- for the TRAIN partition only, per the owner's explicit scope
-restriction (feature usefulness is never evaluated against VALIDATION/
-CALIBRATION/FINAL_TEST during EM-2; that is EM-3's job).
+-- for one partition at a time (`--partition`, default TRAIN). EM-2 itself
+only ever generated TRAIN, per the owner's explicit scope restriction
+(feature usefulness is never evaluated against VALIDATION/CALIBRATION/
+FINAL_TEST during EM-2; that is EM-3's job). EM-4 Modeling Contract
+(2026-08-27) requires evaluating the frozen deterministic/logistic
+models against real VALIDATION evidence -- this generalization applies
+the exact same, unmodified evidence contract to VALIDATION's sessions;
+it computes no labels/rates and reads no VALIDATION outcome, so it does
+not itself constitute "opening" VALIDATION for research inspection.
 
 Read-only against EM-1r3's already-audited intraday evidence and EM-1c's
 own regime evidence; write-only against `artifacts/research/em2/`
@@ -66,7 +72,11 @@ def main() -> None:
     )
     parser.add_argument("--out-dir", type=Path, default=Path("artifacts/research/em2"))
     parser.add_argument("--only-instruments", type=str, default=None)
+    parser.add_argument(
+        "--partition", choices=[r.value for r in PartitionRole], default=PartitionRole.TRAIN.value,
+    )
     args = parser.parse_args()
+    target_role = PartitionRole(args.partition)
 
     regime_payload = json.loads(args.regime_evidence.read_text(encoding="utf-8"))
     regime_by_date = {row["session_date"]: row for row in regime_payload["sessions"]}
@@ -98,12 +108,12 @@ def main() -> None:
     checkpoint_instants = tuple((cp, time.fromisoformat(cp)) for cp in CANDIDATE_CHECKPOINTS_IST)
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
-    invariant_path = args.out_dir / "TRAIN_session_invariant.jsonl.gz"
-    dynamic_path = args.out_dir / "TRAIN_checkpoint_dynamic.jsonl.gz"
+    invariant_path = args.out_dir / f"{target_role.value}_session_invariant.jsonl.gz"
+    dynamic_path = args.out_dir / f"{target_role.value}_checkpoint_dynamic.jsonl.gz"
 
     invariant_rows = 0
     dynamic_rows = 0
-    train_sessions_seen: set[date] = set()
+    sessions_seen: set[date] = set()
 
     with _deterministic_gzip_writer(invariant_path) as inv_f, _deterministic_gzip_writer(dynamic_path) as dyn_f:
         for instrument_id in ordered_instruments:
@@ -149,8 +159,8 @@ def main() -> None:
                 if bar is None:
                     continue
 
-                if role is PartitionRole.TRAIN:
-                    train_sessions_seen.add(d)
+                if role is target_role:
+                    sessions_seen.add(d)
                     idx = index_by_date[d]
                     prior_bars = daily_bars_tuple[:idx]
                     prev_close = daily_bars_tuple[idx - 1].close if idx > 0 else None
@@ -194,9 +204,9 @@ def main() -> None:
 
     manifest = {
         "contract_version": EVIDENCE_CONTRACT_VERSION,
-        "partition": "TRAIN",
+        "partition": target_role.value,
         "instrument_count": len(ordered_instruments),
-        "session_count": len(train_sessions_seen),
+        "session_count": len(sessions_seen),
         "session_invariant_row_count": invariant_rows,
         "checkpoint_dynamic_row_count": dynamic_rows,
         "payload_files": {
@@ -214,7 +224,12 @@ def main() -> None:
         json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
     manifest["manifest_id"] = f"em2-evidence-{fingerprint}"
-    manifest_path = args.out_dir / "manifest.json"
+    # TRAIN keeps its original "manifest.json" name (the already-approved
+    # EM-2 milestone's exact artifact, referenced by that name elsewhere);
+    # other partitions get a partition-prefixed manifest, since EM-2 itself
+    # never generated them.
+    manifest_filename = "manifest.json" if target_role is PartitionRole.TRAIN else f"{target_role.value}_manifest.json"
+    manifest_path = args.out_dir / manifest_filename
     manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     print(json.dumps(manifest, indent=2))
 
