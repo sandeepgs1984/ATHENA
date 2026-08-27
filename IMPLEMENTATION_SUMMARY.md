@@ -6,6 +6,203 @@ status updated on approval.
 
 ---
 
+## EM-1c prerequisite: Historical regime evidence (NIFTY 50 / INDIA VIX)
+
+**Summary.** Before EM-1c can report base rates by market regime, the
+canonical `RegimeEngine` needed real historical NIFTY 50/INDIA VIX D1
+history it never had (existing DB coverage was only 2026-04-20 onward).
+Acquired 2023-05-01→2026-08-21 via the corrected KiteProvider path,
+validated it against real existing evidence and the real trading
+calendar, found and fixed **three real calendar defects** in the
+process (a superseded holiday date and two undocumented special trading
+sessions — confirmed via NSE's own published circulars, not guessed),
+resolved 14 real INDIA VIX value discrepancies via an explicit
+source-authority policy, then chronologically replayed the unmodified
+`RegimeEngine` across all 743 real EMR study sessions with an explicit,
+tested point-in-time-safe (no-leakage) rule. **100% of sessions got a
+complete regime classification, zero UNKNOWN.**
+
+**Objective.** Satisfy the owner's prerequisite before regime can be
+used as an EM-1c analytical dimension: audit the RegimeEngine's real
+contract, determine checkpoint-leakage safety, acquire and validate real
+historical index/VIX evidence, reconstruct regime with no look-ahead,
+and report before resuming EM-1c.
+
+**Scope completed.**
+
+*Contract audit* (before any acquisition, per owner instruction): traced
+the real production caller (`src/athena/ops/owner_validation.py`) and
+real ingestion cadence (`docs/ops/HOST_SCHEDULE.md`: CLOSING cycle runs
+15:45 IST, after market close) to determine that **today's own D1 candle
+does not exist in the candles table until after market close** — so any
+live intraday regime read is structurally based on data through T-1
+only. This resolved the owner's single most important question
+(session-level vs checkpoint-level regime) without any engine change:
+a session-level regime, computed with an explicit T-1 cutoff, is safe
+for every checkpoint on that session, because none of the engine's real
+inputs vary by intraday time-of-day.
+
+*Rejected substitute*: found `NSE:NIFTYAXIS` with near-full-window D1
+coverage already in the DB; investigated and rejected — it is a real
+Axis Mutual Fund NIFTY-ETF *unit* (~₹208/share), not the NIFTY 50 index.
+
+*Acquisition + validation* — `src/athena/data/em1c_regime_evidence_acquisition.py`:
+fetched real D1 history for `NSE:NIFTY 50`/`NSE:INDIA VIX` (823 candles
+each) via `KiteProvider.daily_candles()`, validated against (a) the real
+existing DB overlap (2026-04-20 onward, exact OHLCV match required),
+(b) the real trading calendar (missing/duplicate/unexpected-non-trading
+days), (c) timezone-awareness. Never writes to the canonical DB — EMR
+evidence persists only to `artifacts/research/em1c-regime/` (git-ignored),
+matching every prior EMR acquisition script.
+
+**Three real calendar defects found and fixed, each confirmed via NSE's
+own published circulars (not guessed):**
+
+| Date | Defect | Fix | Citation |
+|---|---|---|---|
+| 2023-06-28/29 | Calendar had Bakri Id on 06-28 (the original annual circular); a real Kite candle on 06-28 contradicted it | NSE Clearing revised the holiday to 06-29 one day before it took effect — calendar corrected to reflect the *final* effective date, not the original publication | NCL/CMPT/57291, 2023-06-27 |
+| 2024-05-18 | A third real DR-drill Saturday, undocumented (calendar's own 2026-08-22 note had anticipated but not enumerated it) | Added as `KNOWN_UNSUPPORTED_SPECIAL_SESSION`, same split-window shape (09:15-10:00, 11:30-12:30 IST) as the two already-known drills — deliberately excluded rather than flattened into a false continuous session | NSE DR-site live-trading-drill circular; press corroboration |
+| 2026-02-01 | A real full-session Sunday (Union Budget, first Sunday session since 1999), classified as ordinary WEEKEND | Added as `SPECIAL`, full standard hours 09:15-15:30 IST | NSE/CMTR/72349, Circular Ref. 11/2026, 2026-01-16 |
+
+New governance principle documented in `config/calendar/holidays.json`'s
+`_meta.governance_principle`: an annual holiday circular is not
+automatically final — later revisions and one-off special-session
+circulars must be resolved into the calendar too.
+
+**INDIA VIX overlap resolution** (14 dates, 2026-08-04→2026-08-21, all
+≤1.2% relative difference): applied the owner's source-authority policy
+— attempted authoritative NSE cross-check (NSE's historical-VIX report
+page was not reachable by this environment's WebFetch tool, timed out on
+two independent attempts); found one real independent third-party
+corroboration (CEIC, republishing official NSE data: 2026-08-19 close
+11.32, matching the freshly-fetched value) and applied it; the other 13
+fell back to the freshly-fetched Kite series per the owner's documented
+default. **The canonical DB was never overwritten** — full provenance
+(existing value/source, fetched value/timestamp, absolute/relative
+difference, selected value, selection reason) preserved for all 14 in
+the acquisition manifest. Documented as unresolved provider-vintage
+uncertainty, never claimed as a proven cause.
+
+*Point-in-time regime replay* — `src/athena/explosive_move/regime_replay.py`
+(pure) + `src/athena/data/em1c_regime_historical_reconstruction.py`
+(orchestration): reuses the canonical, completely unmodified
+`RegimeEngine`/`config/regime.json`. Calls the engine twice per session
+and combines results — once with D1 history strictly before session_date
+(kept: trend, volatility), once additionally including session_date's
+own real candle (kept: gap only, since session_date's real open is
+legitimate information at any checkpoint but its close/high/low are
+not). Gap is explicitly `GAP_UNKNOWN` (never silently computed from the
+wrong T-1-vs-T-2 pair) when session_date's own candle is genuinely
+absent from the acquired series.
+
+**Real measured results** (all 743 EMR study sessions, 2023-08-14 to
+2026-08-21): **100% complete regime evidence, zero UNKNOWN** in any
+dimension (50-session slow-SMA warm-up fully covered by acquiring from
+2023-05-01). TREND: BULL_TREND 402 (54.1%), BEAR_TREND 185 (24.9%),
+SIDEWAYS 156 (21.0%). VOLATILITY: NORMAL 501 (67.4%), LOW 200 (26.9%),
+HIGH 42 (5.7%). GAP: NO_GAP 603 (81.2%), GAP_UP 77 (10.4%), GAP_DOWN 63
+(8.5%). Yearly TREND distribution shows a real, descriptive regime
+narrative: 2023 mixed (47 bull/14 bear/32 sideways), 2024 strongly
+bull-dominated (176/29/40), 2025 more contested (134/75/39), 2026
+majority bear (45/67/45) — directly relevant to EM-1c's later
+regime-conditioned base rates.
+
+**Replay/determinism verification.** Re-ran the full 743-session
+reconstruction twice from the same accepted acquisition evidence:
+byte-identical output, identical `run_id` both times.
+
+**Leakage tests** — `tests/explosive_move/test_regime_replay.py`, all 6
+owner-required properties proven directly (plus 3 supplementary):
+(1) session T's own close cannot affect T's regime; (2) modifying T's
+close/high/low after the checkpoint boundary does not alter
+pre-close-boundary classification; (3) modifying T-1 history legitimately
+changes T's classification (BULL vs BEAR, demonstrated); (4) future
+sessions cannot influence earlier regimes; (5) the exact `trend_ma_slow`
+(50-session) warm-up boundary is proven, not approximated (50 candles →
+classified, 49 → `TREND_UNKNOWN`); (6) zero warm-up produces `UNKNOWN`,
+never backfilled from future/current data. Plus: gap correctly uses T's
+real open; gap is `UNKNOWN` when T's own candle is absent; volatility
+strictly respects the T-1 VIX cutoff.
+
+**Files created.** `src/athena/data/em1c_regime_evidence_acquisition.py`,
+`src/athena/data/em1c_regime_historical_reconstruction.py`,
+`src/athena/explosive_move/regime_replay.py`,
+`tests/data_layer/test_em1c_regime_evidence_acquisition.py`,
+`tests/explosive_move/test_regime_replay.py`,
+`artifacts/research/em1c-regime/{acquisition/,regime_by_session.json}`
+(git-ignored real evidence).
+
+**Files modified.** `config/calendar/holidays.json` (the three calendar
+corrections above, plus a new `governance_principle` note and full
+citation provenance for each), `tests/unit/test_calendar.py` (updated
+the 2026-02-01 acceptance-table row from WEEKEND to SPECIAL, matching the
+real correction; added two new regression tests: the Bakri Id revision,
+and 2024-05-18's DR-drill classification), this log.
+
+**Public APIs changed.** None. `RegimeEngine`/`config/regime.json` are
+completely unmodified, per explicit owner instruction.
+
+**Tests added.** 20 total: 9 for the acquisition script's validation/
+resolution logic (known-vs-unexplained gap and special-session
+classification, overlap-resolution provenance), 9 for the regime-replay
+leakage properties, 2 new calendar regression tests. Full suite:
+**2,349 passing** (2,331 → 2,349). Ruff clean on every new/modified file
+in this milestone (the repository's ~286 pre-existing Ruff findings are
+in unrelated files this milestone never touched).
+
+**Coverage summary.** Every pure, safety-critical piece of logic (the
+point-in-time replay rule, the known-gap/known-special-session
+classification, the overlap-resolution policy) has dedicated tests,
+several non-vacuous (leaked values would visibly change the assertion,
+not just fail to be caught). The acquisition script's live I/O
+(real Kite calls, real DB reads) is not unit-tested directly, matching
+established precedent for this workstream's orchestration scripts — it
+was instead validated by two full, real acquisition + reconstruction
+runs producing consistent, cross-checked, deterministic results.
+
+**Architecture compliance.** `regime_replay.py` is a pure
+`explosive_move/` domain module (no I/O); both new scripts live in
+`data/` (orchestration), preserving ADR-012's package boundary. The
+canonical `RegimeEngine`/`config/regime.json` are completely unmodified
+— this milestone only supplies real historical inputs and combines two
+calls' outputs, never redesigns the engine or introduces an EMR-specific
+regime definition. No canonical table was written to.
+
+**ADR compliance.** No ADR needed — a real-evidence-acquisition and
+calendar-correctness milestone built entirely on already-frozen
+canonical machinery (`RegimeEngine`) and existing calendar architecture
+(the split-window special-session pattern already existed; this
+milestone only added new dates using it).
+
+**Risks discovered.** The three calendar defects above were real,
+load-bearing gaps in the canonical trading-day authority (used
+throughout ATHENA, not just EMR) — found only because this milestone's
+acquisition happened to cross exactly those dates. There is no
+systematic guarantee other undiscovered calendar gaps do not exist
+elsewhere in the 2023-2026 window; this milestone fixed what it found,
+not a general calendar re-audit. The 14 INDIA VIX discrepancies remain
+formally unresolved (a documented uncertainty, not a proven cause).
+
+**Technical debt introduced.** None.
+
+**Suggested improvements.** A dedicated, systematic calendar re-audit
+(cross-checking the full holidays.json against NSE's complete circular
+history for 2023-2026, not just dates this milestone happened to touch)
+would be valuable given two of three real gaps found here were pure
+luck of which dates this acquisition's date range crossed. NSE's own
+historical-VIX report page could not be reached by this environment's
+tools (confirmed timeout, twice) — a future session with different
+network/browser tooling could attempt a more definitive resolution of
+the 14 VIX discrepancies.
+
+**Remaining work.** Per the owner's explicit closing instruction,
+stopping here for Owner/Chief Architect review before using regime as an
+EM-1c analytical dimension. EM-1c itself (TRAIN-only base rates by
+family/threshold/checkpoint/sector/regime, per the owner's earlier
+approval) has not yet started.
+
+---
+
 ## EM-1b: Deterministic historical event dataset and chronological partitions
 
 **Summary.** Measured the real eligible-label distribution across the

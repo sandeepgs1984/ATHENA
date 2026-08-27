@@ -43,8 +43,9 @@ independent research track does not silently advance either track.
 | EM-1r3 | Reconstruct canonical duplicate-free complete intraday sessions | ✅ Approved 2026-08-21 |
 | EM-1r4 | Apply the frozen survivor-cohort contract to research admission and enforce quote-timestamp hygiene | ✅ Approved 2026-08-22; 2,216 tests pass |
 | EM-1r5 | Re-audit coverage and approve a non-empty checkpoint set | ✅ Approved 2026-08-26 — all 9 candidate checkpoints accepted (research-ready, not predictive-value-approved) |
-| EM-1b | Build the deterministic point-in-time research dataset and labels | 🔄 Ready for review — dataset generated, chronological partitions approved and assigned (2026-08-26/27) |
-| EM-1c | Publish unconditional base rates and freeze minimum cohort support | Blocked by EM-1b approval |
+| EM-1b | Build the deterministic point-in-time research dataset and labels | ✅ Approved 2026-08-27 — dataset generated, chronological partitions assigned |
+| EM-1c prerequisite | Acquire and replay real historical NIFTY 50/INDIA VIX regime evidence (owner-mandated before EM-1c can use regime) | 🔄 Ready for review 2026-08-27 — 743/743 sessions classified, 0 UNKNOWN; three real calendar defects found and fixed |
+| EM-1c | Publish unconditional base rates (TRAIN-only) and freeze minimum cohort support | Blocked by regime-prerequisite approval |
 | EM-2 | Implement cutoff-safe feature families and feasibility gates | Planned |
 | EM-3 | Publish historical conditional analysis and defensible feature selection | Planned |
 | EM-4 | Evaluate and calibrate the expansion-probability model; decide live go/no-go | Planned |
@@ -219,7 +220,7 @@ approval's FINAL_TEST-sealing rule. Frozen contract:
 `src/athena/explosive_move/partitions.py` and
 `config/explosive_move.json`'s `_meta.partition_contract`.
 
-**EM-1b production label dataset GENERATED (2026-08-27), pending review.**
+**EM-1b production label dataset GENERATED and APPROVED (2026-08-27).**
 `src/athena/data/em1b_label_dataset_generation.py` produced the full
 deterministic symbol-day and checkpoint label dataset
 (`artifacts/research/em1b/{labels,manifests,dataset_index.json}`),
@@ -227,13 +228,42 @@ partition-assigned per the approved cutoffs above. A real determinism bug
 was found and fixed during this milestone (gzip's default wall-clock
 mtime header made byte-identical content hash differently across runs);
 fixed with a pinned `mtime=0` writer and locked down with a non-vacuous
-regression test. See `IMPLEMENTATION_SUMMARY.md`'s top entry for the full
-Milestone Review Summary.
+regression test. Owner-approved the same day. See
+`IMPLEMENTATION_SUMMARY.md`'s EM-1b entry for the full Milestone Review
+Summary.
 
-**Current handoff:** Read `docs/ATHENA-EMR-HANDOFF.md`. EM-1b's dataset
-and partitions are generated and self-validated, awaiting Owner/Chief
-Architect Milestone Review Summary approval before EM-1c (unconditional
-base rates, minimum cohort support) starts.
+**EM-1c prerequisite: historical regime evidence (2026-08-27), pending
+review.** Before EM-1c can report base rates by regime, the canonical
+`RegimeEngine` needed real historical NIFTY 50/INDIA VIX D1 history it
+never had. Acquired 2023-05-01→2026-08-21 via the corrected KiteProvider
+path (`src/athena/data/em1c_regime_evidence_acquisition.py`), found and
+fixed **three real calendar defects** in the process — confirmed via
+NSE's own circulars, not guessed: the 2023 Bakri Id holiday was later
+revised from June 28 to June 29 (NCL/CMPT/57291) and the calendar still
+had the superseded date; two undocumented full/special sessions
+(2024-05-18 DR-drill, 2026-02-01 Union Budget Sunday session) were
+missing entirely. Resolved 14 real INDIA VIX value discrepancies via an
+explicit source-authority policy (no canonical DB overwrite). Then
+chronologically replayed the completely unmodified `RegimeEngine` across
+all 743 real EMR study sessions
+(`src/athena/explosive_move/regime_replay.py` +
+`src/athena/data/em1c_regime_historical_reconstruction.py`) with an
+explicit, 9-test-proven point-in-time-safe rule (session T's regime uses
+only D1 history strictly before T for trend/volatility; T's own real
+open, never its close/high/low, for gap) — contract audit found ATHENA's
+own live system is naturally T-1-cutoff-safe by construction (today's D1
+candle doesn't exist until the 15:45 IST CLOSING cycle), so this
+replicates real production behavior, not a new invented rule. **Result:
+743/743 sessions (100%) got a complete regime classification, zero
+UNKNOWN.** See `IMPLEMENTATION_SUMMARY.md`'s top entry for the full
+review.
+
+**Current handoff:** Read `docs/ATHENA-EMR-HANDOFF.md`. The historical
+regime evidence is generated and self-validated, awaiting Owner/Chief
+Architect review before regime may be used as an EM-1c analytical
+dimension. EM-1c itself (TRAIN-only base rates by family/threshold/
+checkpoint/sector/regime, minimum cohort support policy) has not
+started.
 
 ## Advisory UX Priority Track (selected 2026-08-19)
 

@@ -34,7 +34,10 @@ ACCEPTANCE_DATES = [
      "Diwali Laxmi Pujan (Muhurat Trading)", False, False),          # Sunday + Muhurat
     ("2026-07-23", SessionType.NORMAL, None, True, False),           # weekly expiry (fixture)
     ("2026-07-30", SessionType.NORMAL, None, False, True),           # monthly expiry (fixture)
-    ("2026-02-01", SessionType.WEEKEND, None, False, False),         # Sunday + BUDGET event
+    # Sunday + BUDGET event; real NSE/CMTR/72349 full standard-hours session
+    # discovered 2026-08-27 during EM-1c's regime-evidence acquisition --
+    # was WEEKEND before that date's real special session was known.
+    ("2026-02-01", SessionType.SPECIAL, "Live Trading Session -- Presentation of Union Budget", False, False),
 ]
 
 
@@ -138,3 +141,36 @@ def test_invalid_special_session_type_fails_loudly(config_dir):
     config = load_config(config_dir)
     with pytest.raises(CalendarError, match="must be one of"):
         CalendarEngine.from_config_dir(config_dir, config.market)
+
+
+def test_2023_bakri_id_revision_overrides_the_original_annual_circular(engine):
+    """NSE's original 2023 annual holiday circular (NSE/CMTR/54757) listed
+    Bakri Id on June 28; NSE Clearing circular NCL/CMPT/57291 (2023-06-27)
+    revised it to June 29 the day before it took effect. Discovered
+    2026-08-27 via a real Kite candle on June 28 contradicting the
+    then-current calendar. The FINAL effective calendar must reflect the
+    revision, not the original annual publication -- June 28 is a normal
+    trading day, June 29 is the holiday."""
+
+    june_28 = engine.context_for(date(2023, 6, 28))
+    assert june_28.session_type is SessionType.NORMAL
+    assert june_28.is_trading_session
+
+    june_29 = engine.context_for(date(2023, 6, 29))
+    assert june_29.session_type is SessionType.HOLIDAY
+    assert june_29.holiday_name == "Bakri Id"
+    assert not june_29.is_trading_session
+
+
+def test_2024_05_18_dr_drill_is_known_unsupported_special_session(engine):
+    """A third real DR-drill Saturday (in addition to 2024-01-20,
+    2024-03-02), discovered 2026-08-27 via a real Kite candle during EM-1c's
+    regime-evidence acquisition -- this file's own 2026-08-22 note had
+    anticipated this date but not yet enumerated it. Same split-window
+    shape (09:15-10:00, 11:30-12:30 IST) as the other two."""
+
+    ctx = engine.context_for(date(2024, 5, 18))
+    assert ctx.session_type is SessionType.KNOWN_UNSUPPORTED_SPECIAL_SESSION
+    assert ctx.session_type is not SessionType.WEEKEND
+    assert not ctx.is_trading_session
+    assert ctx.holiday_name is not None

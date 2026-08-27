@@ -3,6 +3,7 @@
     "description": "NSE equity capital-market-segment trading holidays. DATA file consumed by the Calendar Engine.",
     "verified_by_owner": false,
     "note": "2023-2025 populated 2026-08-22 to satisfy the EM-1r3 production capture's frozen 3-year study window. Sourced exclusively from NSE Capital Market Segment (CMTR) circulars per the owner's authoritative-source-hierarchy requirement -- no blogs, broker articles, or generic holiday sites.",
+    "governance_principle": "An annual trading-holiday circular is NOT automatically final. NSE sometimes issues a later official revision/corrigendum that supersedes a specific date in an already-published annual schedule (e.g. the 2023 Bakri Id date below), and separately issues one-off circulars for exceptional/special trading sessions (DR-drill switchovers, Budget-day sessions) that never appear in the annual holiday list at all. Historical calendar reconstruction must resolve the FINAL effective calendar from: (1) the annual schedule, (2) any subsequent official revision of that schedule, and (3) official exceptional/special-session circulars -- never trust a single static annual publication in isolation. Discovered 2026-08-27 during EM-1c's regime-evidence acquisition, when a real Kite candle on 2023-06-28 (the originally-published Bakri Id date) contradicted the then-current calendar; investigation found NSE Clearing circular NCL/CMPT/57291 (2023-06-27) had revised the holiday to 2023-06-29 in response to a Maharashtra government holiday change, one day before it took effect.",
     "sources": [
       {
         "years": [2023],
@@ -13,6 +14,16 @@
         "url": "https://archives.nseindia.com/content/circulars/CMTR54757.pdf",
         "segment": "Capital Market",
         "retrieved": "2026-08-22"
+      },
+      {
+        "years": [2023],
+        "circular": "NCL/CMPT/57291",
+        "circular_ref": "N/A",
+        "circular_date": "2023-06-27",
+        "title": "Revision of Bakri Id (Id-Ul-Zuha) trading holiday from June 28, 2023 to June 29, 2023, following a Maharashtra government holiday change; supersedes the June 28 date in NSE/CMTR/54757",
+        "url": "https://archives.nseindia.com/content/circulars/CMPT57291.pdf",
+        "segment": "Capital Market",
+        "retrieved": "2026-08-27"
       },
       {
         "years": [2024],
@@ -72,6 +83,16 @@
         "segment": "Capital Market",
         "retrieved": "2026-07-20",
         "note": "Pre-existing entry from before the 2026-08-22 2023-2025 extension; not independently re-verified in this pass."
+      },
+      {
+        "years": [2026],
+        "circular": "NSE/CMTR/72349",
+        "circular_ref": "11/2026",
+        "circular_date": "2026-01-16",
+        "title": "Live Trading Session on February 01, 2026 (Sunday) -- Presentation of Union Budget: full standard-hours session (09:15-15:30 IST), first Sunday session since 1999",
+        "url": "https://nsearchives.nseindia.com/content/circulars/CMTR72349.pdf",
+        "segment": "Capital Market",
+        "retrieved": "2026-08-27"
       }
     ],
     "known_unsupported_special_sessions_evidence": [
@@ -88,8 +109,10 @@
         "retrieved": "2026-08-22"
       },
       {
-        "date": "n/a",
-        "note": "Additional DR-drill Saturdays likely exist across the 2023-2025 window (e.g. 2024-05-18 was reported in the press) but were not exhaustively enumerated -- each shares the same split-window shape and the same representational gap as the two dates above."
+        "date": "2024-05-18",
+        "circular": "NSE -- Live trading sessions from Disaster Recovery (DR) site (equity/CM segment); press coverage of the same NSE announcement confirms identical timings to 2024-01-20/2024-03-02",
+        "note": "Confirmed via real Kite D1 candle data during EM-1c's regime-evidence acquisition (2026-08-27): a real, coherent NIFTY 50/INDIA VIX candle exists for this Saturday, previously absent from this file -- this is the date this file's own 2026-08-22 placeholder note anticipated ('2024-05-18 was reported in the press') but had not yet enumerated. Confirmed LIVE (not mock) split-window session: 09:15-10:00 and 11:30-12:30 IST, intra-day Primary-to-DR-site switchover -- same shape and same representational gap as 2024-01-20/2024-03-02. (An 11:45-12:40 IST window reported in some press coverage refers to a separate closing-session schedule, not the normal-market window used here.)",
+        "retrieved": "2026-08-27"
       }
     ]
   },
@@ -102,7 +125,7 @@
     { "date": "2023-04-07", "name": "Good Friday" },
     { "date": "2023-04-14", "name": "Dr. Baba Saheb Ambedkar Jayanti" },
     { "date": "2023-05-01", "name": "Maharashtra Day" },
-    { "date": "2023-06-28", "name": "Bakri Id" },
+    { "date": "2023-06-29", "name": "Bakri Id" },
     { "date": "2023-08-15", "name": "Independence Day" },
     { "date": "2023-09-19", "name": "Ganesh Chaturthi" },
     { "date": "2023-10-02", "name": "Mahatma Gandhi Jayanti" },
@@ -189,6 +212,14 @@
       "close": null
     },
     {
+      "date": "2026-02-01",
+      "type": "SPECIAL",
+      "name": "Live Trading Session -- Presentation of Union Budget",
+      "timings_note": "NSE/CMTR/72349 (Circular Ref. No. 11/2026, dated 2026-01-16): full standard-hours session on a Sunday -- the first Sunday session since 1999 -- pre-open 09:00-09:08, normal market 09:15-15:30 IST, same shape as an ordinary trading day. Discovered 2026-08-27 during EM-1c's regime-evidence acquisition via a real Kite D1 candle on this date that the calendar had not yet classified.",
+      "open": "09:15:00",
+      "close": "15:30:00"
+    },
+    {
       "date": "2026-11-08",
       "type": "MUHURAT",
       "name": "Diwali Laxmi Pujan (Muhurat Trading)",
@@ -204,6 +235,10 @@
     },
     {
       "date": "2024-03-02",
+      "name": "NSE Disaster Recovery (DR) site live trading drill -- split-window session (09:15-10:00, 11:30-12:30 IST), not representable by a single open/close window"
+    },
+    {
+      "date": "2024-05-18",
       "name": "NSE Disaster Recovery (DR) site live trading drill -- split-window session (09:15-10:00, 11:30-12:30 IST), not representable by a single open/close window"
     }
   ]
