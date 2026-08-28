@@ -239,6 +239,71 @@ class TestCandles:
                                 datetime(2026, 1, 31, tzinfo=IST)) == []
 
 
+class TestBulkCandlesForInstruments:
+    """`candles_for_instruments` -- EM-5's grouped bulk read (ADR-012
+    Section 10: one query across a scan's whole eligible universe, never
+    one `get_candles` call per symbol)."""
+
+    def test_groups_candles_by_instrument(self, repo):
+        other = "NSE:BBB"
+        repo.upsert_instrument(_instrument())
+        repo.upsert_instrument(_instrument(iid=other, symbol="BBB"))
+        repo.add_candles([_candle(date(2026, 2, 2)), _candle(date(2026, 2, 3))])
+        repo.add_candles([Candle(instrument_id=other, timeframe=Timeframe.D1,
+                                 ts_open=datetime(2026, 2, 2, 9, 15, tzinfo=IST),
+                                 open=Decimal("50"), high=Decimal("51"), low=Decimal("49"),
+                                 close=Decimal("50"), volume=500, source="test")])
+        got = repo.candles_for_instruments(
+            [INST, other], Timeframe.D1, datetime(2026, 2, 1, tzinfo=IST), datetime(2026, 2, 28, tzinfo=IST)
+        )
+        assert {c.ts_open.date() for c in got[INST]} == {date(2026, 2, 2), date(2026, 2, 3)}
+        assert [c.close for c in got[other]] == [Decimal("50")]
+
+    def test_instrument_with_no_candles_in_range_is_omitted(self, repo):
+        repo.upsert_instrument(_instrument())
+        assert repo.candles_for_instruments(
+            [INST], Timeframe.D1, datetime(2026, 1, 1, tzinfo=IST), datetime(2026, 1, 31, tzinfo=IST)
+        ) == {}
+
+    def test_empty_instrument_list_returns_empty_dict(self, repo):
+        assert repo.candles_for_instruments(
+            [], Timeframe.D1, datetime(2026, 1, 1, tzinfo=IST), datetime(2026, 1, 31, tzinfo=IST)
+        ) == {}
+
+    def test_result_matches_per_symbol_get_candles(self, repo):
+        other = "NSE:BBB"
+        repo.upsert_instrument(_instrument())
+        repo.upsert_instrument(_instrument(iid=other, symbol="BBB"))
+        repo.add_candles([_candle(date(2026, 2, d)) for d in (2, 3, 4)])
+        repo.add_candles([Candle(instrument_id=other, timeframe=Timeframe.D1,
+                                 ts_open=datetime(2026, 2, 3, 9, 15, tzinfo=IST),
+                                 open=Decimal("50"), high=Decimal("51"), low=Decimal("49"),
+                                 close=Decimal("50"), volume=500, source="test")])
+        start, end = datetime(2026, 2, 1, tzinfo=IST), datetime(2026, 2, 28, tzinfo=IST)
+        bulk = repo.candles_for_instruments([INST, other], Timeframe.D1, start, end)
+        assert bulk[INST] == repo.get_candles(INST, Timeframe.D1, start, end)
+        assert bulk[other] == repo.get_candles(other, Timeframe.D1, start, end)
+
+    def test_chunks_beyond_500_instruments(self, repo):
+        # SQLite's host-parameter cap forces chunking above ~500 -- proves
+        # the loop actually iterates rather than silently truncating.
+        ids = [f"NSE:SYM{i:04d}" for i in range(600)]
+        for iid in ids:
+            repo.upsert_instrument(_instrument(iid=iid, symbol=iid.split(":")[1]))
+        repo.add_candles([Candle(instrument_id=ids[0], timeframe=Timeframe.D1,
+                                 ts_open=datetime(2026, 2, 2, 9, 15, tzinfo=IST),
+                                 open=Decimal("10"), high=Decimal("11"), low=Decimal("9"),
+                                 close=Decimal("10"), volume=100, source="test")])
+        repo.add_candles([Candle(instrument_id=ids[599], timeframe=Timeframe.D1,
+                                 ts_open=datetime(2026, 2, 2, 9, 15, tzinfo=IST),
+                                 open=Decimal("20"), high=Decimal("21"), low=Decimal("19"),
+                                 close=Decimal("20"), volume=200, source="test")])
+        got = repo.candles_for_instruments(
+            ids, Timeframe.D1, datetime(2026, 2, 1, tzinfo=IST), datetime(2026, 2, 28, tzinfo=IST)
+        )
+        assert set(got) == {ids[0], ids[599]}
+
+
 class TestTransactions:
     def test_rollback_on_exception(self, repo):
         repo.upsert_instrument(_instrument())

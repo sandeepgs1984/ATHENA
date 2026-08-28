@@ -333,6 +333,36 @@ class SqliteRepository:
         )
         return [ser.row_to_candle(r) for r in rows]
 
+    def candles_for_instruments(
+        self, instrument_ids: Sequence[str], timeframe: Timeframe, start: datetime, end: datetime
+    ) -> dict[str, list[Candle]]:
+        """Candles for many instruments in one inclusive range, grouped by
+        instrument -- one query (or a handful of chunked queries) rather
+        than one `get_candles` call per symbol. Added for EM-5's scan-cycle
+        bulk read (ADR-012 Section 10: no per-symbol query across a scan's
+        whole eligible universe), following `candle_coverage`'s own
+        chunked-`IN(...)` pattern exactly. Instruments with no candles in
+        range are omitted, not returned as an empty list."""
+
+        result: dict[str, list[Candle]] = {}
+        if not instrument_ids:
+            return result
+        chunk_size = 500
+        ids = list(instrument_ids)
+        for chunk_start in range(0, len(ids), chunk_size):
+            chunk = ids[chunk_start : chunk_start + chunk_size]
+            marks = ",".join("?" * len(chunk))
+            rows = self._query_all(
+                f"SELECT instrument_id, timeframe, ts_open, open, high, low, close, volume, source, "
+                f"adjusted FROM candles WHERE timeframe=? AND instrument_id IN ({marks}) "
+                f"AND ts_open>=? AND ts_open<=? ORDER BY instrument_id, ts_open",
+                (timeframe.value, *chunk, start.isoformat(), end.isoformat()),
+            )
+            for row in rows:
+                candle = ser.row_to_candle(row)
+                result.setdefault(candle.instrument_id, []).append(candle)
+        return result
+
     # ------------------------------------------------------------- quotes (append-only)
 
     def add_quotes(self, quotes: Sequence[Quote]) -> int:

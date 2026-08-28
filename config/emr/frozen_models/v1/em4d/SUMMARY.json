@@ -1,0 +1,31 @@
+{
+  "contract_version": "em4d-calibration-v1",
+  "partition": "CALIBRATION",
+  "source_run_ids": {
+    "em4b_run_ids": {
+      "TOUCH_5": "em4-logistic-v1-TOUCH-5-f10f62e82bd499717932d399111243a78f3e1a168c9178de52c2315aec2cb8f4",
+      "TOUCH_8": "em4-logistic-v1-TOUCH-8-9a4618302dbc40354e73b0ba34c3749b3be1c7e0cd808729620c074495191342",
+      "TOUCH_10": "em4-logistic-v1-TOUCH-10-acab7433e4d6ff3869117c9169e6c92f633f792387d4039070ea30468425ff7e",
+      "TOUCH_12": "em4-logistic-v1-TOUCH-12-d562859f9681a829e2d2d8d65459f5ee66b2e7f29ffdecf8cf67c8a2f06d3006",
+      "TOUCH_15": "em4-logistic-v1-TOUCH-15-909ccd9620394a51a1f6a405e7e63bf20d49a96b754ef78daabade7aab3894ef",
+      "TOUCH_20": "em4-logistic-v1-TOUCH-20-ce738888aa0db0c63bd5a15e4910dc079c29ac28a6c1803ac8cbe5827b68b63c",
+      "CLOSE_5": "em4-logistic-v1-CLOSE-5-303d4c98ba20f7834b4b9e436bed79afad30889a60ef60f27ffd260c8615b5f1",
+      "CLOSE_8": "em4-logistic-v1-CLOSE-8-afd3fe1dd830dfba42f49b77fc89ac1befdeeba2931c7f817beee93f047dd660",
+      "CLOSE_10": "em4-logistic-v1-CLOSE-10-5798050bb9da375926ae9cd69c38e6e213cc1ea057fd059caf3c9c7b62d14287",
+      "CLOSE_12": "em4-logistic-v1-CLOSE-12-2e97203fa0dedc36c4a52a8507638f0143af490c7532f7bfb6afc41adc4261a2",
+      "CLOSE_15": "em4-logistic-v1-CLOSE-15-98c1f28ac6ab0151d437709fbd576a48f05143f46821ef5aa83cf79640c051d0",
+      "CLOSE_20": "em4-logistic-v1-CLOSE-20-36ca7944ba014f859440d4194a3c8af26a7eddeb486bbd2622fbaee8ed28fab2",
+      "OPEN_TO_HIGH_5": "em4-logistic-v1-OPEN_TO_HIGH-5-b3403de8b41bbc760c81cffef946b67a655dcb5a7968da3d746ec27822ba848c",
+      "OPEN_TO_HIGH_8": "em4-logistic-v1-OPEN_TO_HIGH-8-d2f9a5d3e8f67d646cbc2741d0d60b5ef42087954e817b72f1c9ce13ecd9ae3b",
+      "OPEN_TO_HIGH_10": "em4-logistic-v1-OPEN_TO_HIGH-10-2febf724556f5ee5c0ece5c80a26cd7c812e4472608adfb4f3fc79114d5814a4",
+      "OPEN_TO_HIGH_12": "em4-logistic-v1-OPEN_TO_HIGH-12-fa87b1271040ee242b7cbbb91eeffbfdc7ca14bdc996ba6bf07f55a5c2e014d2",
+      "OPEN_TO_HIGH_15": "em4-logistic-v1-OPEN_TO_HIGH-15-ff047a8cd7f1bf4cdb2b53781eaa21d8abb3ae4331ef7744afbe0da852581abd",
+      "OPEN_TO_HIGH_20": "em4-logistic-v1-OPEN_TO_HIGH-20-b009d6518c44086c013a747822ad06d5f224bb7913b475279cee1bc337731d03"
+    }
+  },
+  "rows_processed": 279495,
+  "cells_total": 162,
+  "cells_flagged_insufficient_support": [],
+  "cells_flagged_unstable_fit": [],
+  "elapsed_seconds": 137.4
+}

@@ -2,7 +2,13 @@
 
 | Field | Value |
 |---|---|
-| Status | **Proposed — awaiting Owner/Chief Architect approval** |
+| Status | **Accepted — Owner/Chief Architect approved 2026-08-28** |
+| Checkpoint-price parity decision | `PARITY_ACCEPTABLE` |
+| Live reference semantic | `FIRST_OBSERVED_POST_CHECKPOINT_TRADE` (honest naming — the first Kite `/quote` snapshot this diagnostic *observed* with `last_trade_time >= C`, not a claim of literal first-exchange-trade-after-C, since `/quote` is poll/snapshot-based) |
+| Max observation delay | `MAX_CHECKPOINT_OBSERVATION_DELAY_SECONDS = 300` (frozen operational parameter, set above the diagnostic's observed max latency of 188s, not fitted to it; EM-5 must not dynamically retune) |
+| Diagnostic manifest | `em5-checkpoint-price-diagnostic-6ca8b3854421a7b55e0766d9c28643c1681cc59ef9accf11fe03ed44db21e28a` |
+| Known limitation | 6-symbol/18-observation sample proves EM-5's engineering parity gate, not full-universe equivalence — that is EM-7's job. Also: `last_trade_time`'s 1-second resolution can alias multiple real trades within the same second for extremely high-frequency names (irrelevant at checkpoint-minute granularity). |
+| Provider/network contract amendment | Superseded: "zero provider/network calls" → "zero **unauthorized** provider/network calls." The narrow, explicit exception: only the checkpoint-reference-price collector may call Kite's existing batched `/quote` capability (never one request per symbol, existing rate-limit/backoff reused, request counts measured/persisted). All other EM-5 evidence stays canonical/cached ATHENA data. |
 | Date | 2026-08-28 |
 | Governing | ADR-012 (Explosive Move Radar Research Boundary), EM-4 Modeling Contract (frozen artifacts), ADR-010 (DarvaX satellite pattern — architectural precedent reused directly) |
 | Scope | EM-5 only: live scanner engineering/replay. No UI (EM-6), no shadow validation (EM-7), no canonical integration (EM-8) |

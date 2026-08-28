@@ -1,0 +1,65 @@
+{
+  "contract_version": "em5-frozen-model-manifest-v1",
+  "version": "v1",
+  "sources": {
+    "em4b": {
+      "source_dir": "artifacts/research/em4b",
+      "file_count": 19,
+      "sha256": {
+        "CLOSE_10.json": "8b6ac6b93b7ddaa4dfa9ea5e807455d346ae4a0ab1e22bd328f012bcae7e33f3",
+        "CLOSE_12.json": "966a423d7f4232bda127bb2b43585ad62fee1e541d171b0b0e202de4de9bd5ba",
+        "CLOSE_15.json": "ba3d0464033ab8f91a6c016c3bfadc5f228c541b2f2a0ce4cff5230325846c2c",
+        "CLOSE_20.json": "e7238d7778fb0478cb3b17ca67c667f8f205d15d0c3b65eb222edd63149369f0",
+        "CLOSE_5.json": "0242b6aacca6b771ac6b6dc9ca6025aeb71115412ff88238cd84a81b40e37e11",
+        "CLOSE_8.json": "12e57ace51e93877c9ab926650c4f514e7652f61d2d853a1160ecc06a3c1e432",
+        "OPEN_TO_HIGH_10.json": "3edcc1cdd16e4afa8332bfd881eca31a25ccc4cbe8219b648ce094cb9e2d1a2d",
+        "OPEN_TO_HIGH_12.json": "0a0431347c05a40f70f26389c6f6c3a781500caab7c2664e1a38c710a5a534b8",
+        "OPEN_TO_HIGH_15.json": "78e70679368fa75c38ad314ecf67a9a76511de2f0be37de9071b7d5e6206c134",
+        "OPEN_TO_HIGH_20.json": "6224f0523d97cfeb5888ccef159c1d046c6183bf4f36a10273addd89d9a69750",
+        "OPEN_TO_HIGH_5.json": "df2e5b3de2c0f543fb98d7e5380312202bb9998010ed45b9f44286069c7bf972",
+        "OPEN_TO_HIGH_8.json": "aa655219757a43503982fdd157be59083a6ce850f7f0b89841a7e65ca9d774ed",
+        "SUMMARY.json": "130a191690744cf87e11ac665ed8b13d7db0847588835523e5a73a53b6d067bc",
+        "TOUCH_10.json": "8490f0421bc5ca0f3c5367b82b3fdff98377e47973f41e234c348fd511740a76",
+        "TOUCH_12.json": "6c92e5d148fde0e2d61cc07ecd946bf3df4f522021b02c8d4018d965bc325b7e",
+        "TOUCH_15.json": "1b2219409de7d7fef74e0fa0e49d44f7463da2c41aa59292befc7931f7ecbf80",
+        "TOUCH_20.json": "4b2b00020eb645e6b5f4e0ed306d1fb58ba8cba6c5f3854d184485c2c3dcb977",
+        "TOUCH_5.json": "a1abb844ae665a3da8726b55c1f4969112f1a18c584d153326f4c41e45b61f8a",
+        "TOUCH_8.json": "2a0d36854ddc2bbdbb0b5649bd522d9d32844732ee49aaa07f0a67db64c50e88"
+      }
+    },
+    "em4d": {
+      "source_dir": "artifacts/research/em4d",
+      "file_count": 19,
+      "sha256": {
+        "CLOSE_10.json": "df68f2786beddafd8bb4c4d3c4a34974e8176f344f2533db663210665f773a31",
+        "CLOSE_12.json": "f960a2daaaa735d1fd581e811a2ad869c693d8ceb973b7fc4918f63d6d5cff16",
+        "CLOSE_15.json": "500aeb3ceed7804528d6abc509fd998eaa1a6c1cd0784d69039b8fdd839e1fad",
+        "CLOSE_20.json": "ad91fbd69541c4888d52c0fbbe9f75e915ac40fe6226f5110b430defd4ad1caf",
+        "CLOSE_5.json": "456bb68cc9308df4216bd929366582b737260252d7944f3547cabfa7b9f78ace",
+        "CLOSE_8.json": "2896349c8e59388d9930cd8c330b5c9574186d576215684e244cd98d10714ae9",
+        "OPEN_TO_HIGH_10.json": "061206f621591569b2552e8a585e0c7c5a1935dd751d23068f5fe12da70561b1",
+        "OPEN_TO_HIGH_12.json": "691752b0445f75cf520c23cdd823b2fe717e668577321c292f16fb27115667b1",
+        "OPEN_TO_HIGH_15.json": "d706645acb132b7ed770970d42da188f8db39cfb8f06595268f5b0eae0f1398d",
+        "OPEN_TO_HIGH_20.json": "22c1fb08ea7981ad47b514bf98c0215c05aa40f83925fd577c38d9550ff29583",
+        "OPEN_TO_HIGH_5.json": "0faadb31fe1865855e7002e2b1ca87520451ea8a1f3219ddfb3f76ba1e5e9d76",
+        "OPEN_TO_HIGH_8.json": "f2b7ebb1766fb0c05e54e32cf8ee9337da0a1205e8c236c639146032af70c6e6",
+        "SUMMARY.json": "1b8a1d37b86c4801231661a77e922d02fc7c3fcc82b33c7f42cf324bef2b6f6b",
+        "TOUCH_10.json": "3d87412d176e307dc94a40f3908819fb1fe6136dc40fe3965162016e417c8bfb",
+        "TOUCH_12.json": "da2d07bd979be45c4e599003b82cb1b7700e39cc5822637a1dc3244bec26338c",
+        "TOUCH_15.json": "b100cd4f9447b7110beb2523f55cc5f4c1c5605701662bf86ef72c61f2a52c79",
+        "TOUCH_20.json": "082c8f71795d79c5547fdd1cd131103d7fd34a9370a2dd4d4cbead2b700dc386",
+        "TOUCH_5.json": "9b02e4a7dfd737cae52303b92ab3ed7bc8120970c958b659c302db87071d7a02",
+        "TOUCH_8.json": "bad4066e6024195487315ad271b5fed9ce66d2082516bc65fd780bfc1d4a19ff"
+      }
+    },
+    "em3": {
+      "source_dir": "artifacts/research/em3",
+      "file_count": 2,
+      "sha256": {
+        "F_exploratory_candidate_register.json": "5aff5dcf947adb8fb014278c23ddbf5a74cf4d31b3b9d16b861286796b23695d",
+        "manifest.json": "9c3d4f3ef69bc9a9a3f3b90bd8740ea0a58dcc6237bca3332ca48c12a8658e14"
+      }
+    }
+  },
+  "manifest_id": "em5-frozen-models-v1-4d113b96f0c86a862066e139dfa59f5ac04ff17f8fc6df9275e012d59689dc1f"
+}

@@ -1,0 +1,177 @@
+{
+  "contract_version": "em4-logistic-v1",
+  "source_run_ids": {
+    "em2_train_manifest_id": "em2-evidence-ff80a37a830a92f79c72db5afd4577d46baf6409cc3c01977488d6c48ee6b11b",
+    "em1b_train_manifest_id": "em1b-6b4356ddd24c20f466c724776a9b019235f74ed6a38ff5a402fbce804cdebe67",
+    "em4_config_version": "em4-config-v1"
+  },
+  "models_fit": {
+    "CLOSE_10": {
+      "selected_c": 0.01,
+      "converged": true,
+      "train_row_count": 1847727,
+      "train_positive_count": 9135,
+      "replay_verified": true,
+      "elapsed_seconds": 1772.9,
+      "run_id": "em4-logistic-v1-CLOSE-10-5798050bb9da375926ae9cd69c38e6e213cc1ea057fd059caf3c9c7b62d14287"
+    },
+    "CLOSE_12": {
+      "selected_c": 0.01,
+      "converged": true,
+      "train_row_count": 1847727,
+      "train_positive_count": 4644,
+      "replay_verified": true,
+      "elapsed_seconds": 2010.4,
+      "run_id": "em4-logistic-v1-CLOSE-12-2e97203fa0dedc36c4a52a8507638f0143af490c7532f7bfb6afc41adc4261a2"
+    },
+    "CLOSE_15": {
+      "selected_c": 0.1,
+      "converged": true,
+      "train_row_count": 1847727,
+      "train_positive_count": 2313,
+      "replay_verified": true,
+      "elapsed_seconds": 2520.7,
+      "run_id": "em4-logistic-v1-CLOSE-15-98c1f28ac6ab0151d437709fbd576a48f05143f46821ef5aa83cf79640c051d0"
+    },
+    "CLOSE_20": {
+      "selected_c": 0.01,
+      "converged": true,
+      "train_row_count": 1847727,
+      "train_positive_count": 522,
+      "replay_verified": true,
+      "elapsed_seconds": 1800.6,
+      "run_id": "em4-logistic-v1-CLOSE-20-36ca7944ba014f859440d4194a3c8af26a7eddeb486bbd2622fbaee8ed28fab2"
+    },
+    "CLOSE_5": {
+      "selected_c": 0.01,
+      "converged": true,
+      "train_row_count": 1847727,
+      "train_positive_count": 63342,
+      "replay_verified": true,
+      "elapsed_seconds": 2413.8,
+      "run_id": "em4-logistic-v1-CLOSE-5-303d4c98ba20f7834b4b9e436bed79afad30889a60ef60f27ffd260c8615b5f1"
+    },
+    "CLOSE_8": {
+      "selected_c": 0.01,
+      "converged": true,
+      "train_row_count": 1847727,
+      "train_positive_count": 17685,
+      "replay_verified": true,
+      "elapsed_seconds": 1794.6,
+      "run_id": "em4-logistic-v1-CLOSE-8-afd3fe1dd830dfba42f49b77fc89ac1befdeeba2931c7f817beee93f047dd660"
+    },
+    "OPEN_TO_HIGH_10": {
+      "selected_c": 0.01,
+      "converged": true,
+      "train_row_count": 1851914,
+      "train_positive_count": 11360,
+      "replay_verified": true,
+      "elapsed_seconds": 2500.7,
+      "run_id": "em4-logistic-v1-OPEN_TO_HIGH-10-2febf724556f5ee5c0ece5c80a26cd7c812e4472608adfb4f3fc79114d5814a4"
+    },
+    "OPEN_TO_HIGH_12": {
+      "selected_c": 0.1,
+      "converged": true,
+      "train_row_count": 1854238,
+      "train_positive_count": 6799,
+      "replay_verified": true,
+      "elapsed_seconds": 1801.1,
+      "run_id": "em4-logistic-v1-OPEN_TO_HIGH-12-fa87b1271040ee242b7cbbb91eeffbfdc7ca14bdc996ba6bf07f55a5c2e014d2"
+    },
+    "OPEN_TO_HIGH_15": {
+      "selected_c": 0.1,
+      "converged": true,
+      "train_row_count": 1855811,
+      "train_positive_count": 3422,
+      "replay_verified": true,
+      "elapsed_seconds": 1774.4,
+      "run_id": "em4-logistic-v1-OPEN_TO_HIGH-15-ff047a8cd7f1bf4cdb2b53781eaa21d8abb3ae4331ef7744afbe0da852581abd"
+    },
+    "OPEN_TO_HIGH_20": {
+      "selected_c": 0.1,
+      "converged": true,
+      "train_row_count": 1856673,
+      "train_positive_count": 360,
+      "replay_verified": true,
+      "elapsed_seconds": 2003.2,
+      "run_id": "em4-logistic-v1-OPEN_TO_HIGH-20-b009d6518c44086c013a747822ad06d5f224bb7913b475279cee1bc337731d03"
+    },
+    "OPEN_TO_HIGH_5": {
+      "selected_c": 0.01,
+      "converged": true,
+      "train_row_count": 1812367,
+      "train_positive_count": 67006,
+      "replay_verified": true,
+      "elapsed_seconds": 1762.8,
+      "run_id": "em4-logistic-v1-OPEN_TO_HIGH-5-b3403de8b41bbc760c81cffef946b67a655dcb5a7968da3d746ec27822ba848c"
+    },
+    "OPEN_TO_HIGH_8": {
+      "selected_c": 0.01,
+      "converged": true,
+      "train_row_count": 1845912,
+      "train_positive_count": 21927,
+      "replay_verified": true,
+      "elapsed_seconds": 1976.2,
+      "run_id": "em4-logistic-v1-OPEN_TO_HIGH-8-d2f9a5d3e8f67d646cbc2741d0d60b5ef42087954e817b72f1c9ce13ecd9ae3b"
+    },
+    "TOUCH_10": {
+      "selected_c": 0.01,
+      "converged": true,
+      "train_row_count": 1840318,
+      "train_positive_count": 12625,
+      "replay_verified": true,
+      "elapsed_seconds": 1475.5,
+      "run_id": "em4-logistic-v1-TOUCH-10-acab7433e4d6ff3869117c9169e6c92f633f792387d4039070ea30468425ff7e"
+    },
+    "TOUCH_12": {
+      "selected_c": 0.01,
+      "converged": true,
+      "train_row_count": 1843641,
+      "train_positive_count": 7605,
+      "replay_verified": true,
+      "elapsed_seconds": 1745.5,
+      "run_id": "em4-logistic-v1-TOUCH-12-d562859f9681a829e2d2d8d65459f5ee66b2e7f29ffdecf8cf67c8a2f06d3006"
+    },
+    "TOUCH_15": {
+      "selected_c": 1.0,
+      "converged": true,
+      "train_row_count": 1846093,
+      "train_positive_count": 3937,
+      "replay_verified": true,
+      "elapsed_seconds": 1958.5,
+      "run_id": "em4-logistic-v1-TOUCH-15-909ccd9620394a51a1f6a405e7e63bf20d49a96b754ef78daabade7aab3894ef"
+    },
+    "TOUCH_20": {
+      "selected_c": 0.01,
+      "converged": true,
+      "train_row_count": 1847552,
+      "train_positive_count": 716,
+      "replay_verified": true,
+      "elapsed_seconds": 1571.1,
+      "run_id": "em4-logistic-v1-TOUCH-20-ce738888aa0db0c63bd5a15e4910dc079c29ac28a6c1803ac8cbe5827b68b63c"
+    },
+    "TOUCH_5": {
+      "selected_c": 0.01,
+      "converged": true,
+      "train_row_count": 1782654,
+      "train_positive_count": 73194,
+      "replay_verified": true,
+      "elapsed_seconds": 2395.6,
+      "run_id": "em4-logistic-v1-TOUCH-5-f10f62e82bd499717932d399111243a78f3e1a168c9178de52c2315aec2cb8f4"
+    },
+    "TOUCH_8": {
+      "selected_c": 0.01,
+      "converged": true,
+      "train_row_count": 1831135,
+      "train_positive_count": 24340,
+      "replay_verified": true,
+      "elapsed_seconds": 1771.5,
+      "run_id": "em4-logistic-v1-TOUCH-8-9a4618302dbc40354e73b0ba34c3749b3be1c7e0cd808729620c074495191342"
+    }
+  },
+  "rows_processed": 1857159,
+  "model_count": 18,
+  "all_converged": true,
+  "all_replay_verified": true,
+  "sum_of_fit_elapsed_seconds": 35049.1
+}

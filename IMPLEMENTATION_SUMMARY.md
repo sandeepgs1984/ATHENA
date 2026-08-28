@@ -6,6 +6,261 @@ status updated on approval.
 
 ---
 
+## EM-5 v1 live scanner implementation + fail-fast production canary gate
+
+**Summary.** Implements the full EM-5 v1 replayable live scanner (contract
+`docs/design/EM-5-LIVE-SCANNER-CONTRACT.md`): eligibility, live evidence
+assembly (with the Owner-accepted checkpoint-price synthetic-candle
+substitution), frozen-model inference against the real promoted
+`config/emr/frozen_models/v1/` artifacts, deterministic scoring,
+explanation, ranking, the state machine, EM-5's own isolated SQLite
+ledger, and one orchestrating `run_scan_cycle`. On top of that, this
+change set adds the contract Section 14 fail-fast operational gate
+(`canary_gate.py`) required before any full-universe live run, plus two
+unrelated test-infrastructure fixes discovered while validating all of
+the above (see the governance note and the disk-safety note below).
+
+**Governance record (corrected 2026-08-28).** An earlier draft of this
+entry flagged an apparent gap: the previous log entry ("EM-5
+checkpoint-price live parity diagnostic") gated scanner implementation on
+Owner decisions this log couldn't see as formally recorded. **Owner/Chief
+Architect correction (2026-08-28): those decisions were given at the
+time, before implementation began — the persistent log simply failed to
+capture them. This is not retroactive approval; it documents approval
+that already existed.** For the permanent record:
+
+* checkpoint-price live diagnostic reviewed;
+* decision: `PARITY ACCEPTABLE`;
+* `EM-5-LIVE-SCANNER-CONTRACT.md`: **`ACCEPTED`** (the contract document's
+  own status header already correctly recorded this — only this log and
+  `docs/MILESTONES.md`'s summary line had drifted, now corrected);
+* live reference semantic frozen as `FIRST_OBSERVED_POST_CHECKPOINT_TRADE`;
+* `MAX_CHECKPOINT_OBSERVATION_DELAY_SECONDS = 300`;
+* narrow batched Kite `/quote` access authorized for checkpoint-reference
+  capture only;
+* EM-5 production scanner implementation explicitly authorized;
+* EM-6 remains blocked pending EM-5 milestone review (still true today —
+  EM-5 is not yet closed; see Remaining work).
+
+**Objective.** Turn the frozen EM-4B/EM-4D research artifacts into a
+replayable, deterministic, isolated live scanner that never touches
+canonical ATHENA state, plus the mandatory fail-fast canary gate
+(CLAUDE.md's "Expensive external-data runs" rule, reused verbatim per the
+contract) that must pass before any full-universe live run is allowed.
+
+**Scope completed.**
+
+*Live scanner* (`src/athena/explosive_move/live/`): `eligibility.py`
+(hard vs. contextual, §4), `evidence_assembly.py` (live checkpoint-price
+synthetic-candle substitution, §2), `frozen_inference.py`
+(SHA256-integrity-verified artifact loading, §1), `deterministic_scoring.py`,
+`explanation.py` (logit contributions), `ranking.py`, `state_machine.py`,
+`checkpoint_reference_price.py` (the one narrow authorized Kite `/quote`
+seam, §2), `market_data_port.py` (read-only bulk view over
+`SqliteRepository`, §10), and `scanner.py`'s `run_scan_cycle` wiring all of
+it together. EM-5's own isolated ledger: `explosive_move/store/`
+(`schema.py`, `repository.py` — separate `db/emr.db`, ADR-012 §3).
+Supporting: `calendar/session_time.py`, `data/em5_artifact_promotion.py`
+(promotes EM-4B/EM-4D research output into the SHA256-manifested
+`config/emr/frozen_models/v1/` artifacts the live path reads), and a new
+grouped-query method on `SqliteRepository` for the bulk market-data port.
+
+*Fail-fast production canary gate* (`live/canary_gate.py`, contract
+§14): makes zero Kite calls — reuses ATHENA's own already-ingested real
+M5 candle at `ts_open == checkpoint_instant` as the checkpoint reference
+price (exactly the frozen model's own training-time definition, and more
+faithful than a live quote per the diagnostic's own parity evidence).
+Checks, per real historical session: (1) the 99% all-22-fields-known
+completeness floor on the mature-history (>=50 admitted daily bars)
+symbol slice, re-derived from the evidence contract rather than
+hardcoded; (2) a <=2pp regression bound against the Section 14 baseline
+table; and six hard invariants checked independently of the numeric
+floor — frozen-artifact SHA256 integrity, a real-data checkpoint-boundary
+regression check (proves the live synthetic-candle substitution is
+field-for-field identical to using the real boundary candle directly, not
+just synthetic test fixtures), zero provider/network calls (asserted, not
+logged), no systemic stale data, replay determinism (two independent runs
+into two throwaway ledgers, byte-identical evidence/logits/probabilities/
+ranks), and structurally well-formed hard-eligibility inputs. Fails
+closed and names exactly which check failed, same discipline as
+`em1r3_production_canary.py`.
+
+**Real finding: the canary cannot pass today.** `run_scan_cycle` has no
+live regime feed wired in (its own docstring already says so — EM-1c's
+`regime_by_session.json` is a research artifact, not an operational
+feed), so `REGIME_TREND`/`REGIME_VOLATILITY`/`REGIME_GAP` — 3 of the 22
+`CANDIDATE_FEATURE` fields — are UNKNOWN on every single row. Since the
+completeness floor is "fraction of rows with ALL 22 fields known," this
+holds the canary's completeness rate at a **hard, permanent 0%**, not
+just below 99% — proven by test
+(`test_regime_never_wired_holds_completeness_at_zero_percent`). This is
+the gate correctly catching a real gap, not a bug in the gate.
+**Owner/Chief Architect ruling (2026-08-28): wire the real canonical
+ATHENA regime source (RegimeEngine, via the smallest read-only
+adapter/port necessary) into `regime_lookup` — do not rescope the floor
+to exclude regime fields.** Regime fields are part of the frozen EM-2
+evidence/model contract; a scanner that permanently supplies them as
+UNKNOWN is not faithfully executing the contract EM-4 was trained and
+validated on, and weakening the canary to make it pass would change what
+the gate measures. Explicitly rejected: an EMR-specific regime
+definition, a cohort proxy, hardcoded regime values, defaulted UNKNOWNs,
+dropping regime fields from the 22-field completeness calculation, or
+changing frozen model preprocessing to hide the gap. The dependency stays
+strictly one-way (canonical ATHENA regime → EMR evidence, never the
+reverse) — this is tracked as the sole remaining blocker to EM-5 CLOSED;
+see the follow-up canonical-regime-wiring milestone.
+
+**Disk-safety note (unrelated to EM-5, discovered while testing it).**
+Validating this milestone twice ran the shared machine out of disk space:
+(1) `DecisionsService`/`PortfolioService` reset endpoints unconditionally
+back up the real `db/athena.db` before resetting, regardless of the
+test `client` fixture's in-memory DI override, at ~4.3GB per run; (2) the
+shared `config_dir` test fixture copies the whole `config/` tree per
+test, and this milestone's new `config/emr/frozen_models/` (~35MB) times
+~90 fixture call sites times pytest's default multi-session tmp-dir
+retention ballooned to 40GB+ in one session. Both fixed (see Files
+modified) and verified: two full-suite runs with disk checked before/after
+showed zero net change. No real data was lost in either incident — only
+disposable backup/temp copies were created.
+
+**Files created.** 17 new modules under `src/athena/explosive_move/live/`
+and `src/athena/explosive_move/store/`, `src/athena/calendar/session_time.py`,
+`src/athena/data/em5_artifact_promotion.py`; 16 new test files under
+`tests/explosive_move/`, `tests/calendar/`, `tests/data_layer/`; 39
+promoted-artifact JSON files under `config/emr/frozen_models/v1/`
+(generated by `em5_artifact_promotion.py`, SHA256-manifested).
+
+**Files modified.** `src/athena/data/store/repository.py` (new grouped
+bulk-candle query for the market-data port) + `tests/data_layer/test_repository.py`;
+`docs/design/EM-5-LIVE-SCANNER-CONTRACT.md`. Disk-safety fixes:
+`tests/conftest.py` (autouse `ATHENA_DB_PATH`/`ATHENA_BACKUP_DIR`
+redirect to a throwaway path; `config_dir` fixture excludes
+`frozen_models` from its copy) and `pyproject.toml`
+(`tmp_path_retention_policy = "failed"`).
+
+**Public APIs added.** `run_scan_cycle`/`ScanCycleConfig`/`ScanCycleResult`,
+`run_em5_production_canary`/`CanaryGateResult` (+ `select_mature_history_instruments`),
+`EmrRepository`, `EmrMarketDataPort`/`SqliteEmrMarketDataAdapter`,
+`load_frozen_model`/`FrozenModel`, `evaluate_candidate_eligibility`,
+`determine_next_state`, `promote` (artifact promotion). No existing public
+API changed.
+
+**Tests added.** 16 new test files. `tests/explosive_move/`: 377 passed,
+1 skipped. Full suite: **2,644 passed, 1 skipped, 0 failed** in ~72s.
+Ruff clean on every new/modified file.
+
+**Architecture compliance.** EM-5 stays isolated per ADR-012: its own
+SQLite file (`db/emr.db`), read-only `EmrMarketDataPort` Protocol over
+already-ingested ATHENA data (no write method exists, structurally),
+Kite provider access confined to one file
+(`checkpoint_reference_price.py`, enforced by `test_em5_isolation.py`),
+no numpy/scikit-learn import anywhere in the live path (enforced by
+`test_em5_no_model_learning.py`). No canonical ATHENA Decision/scoring/
+risk/portfolio/execution code touched. No order-placement code anywhere.
+No git actions taken by the AI.
+
+**ADR compliance.** Implements ADR-012's EM-5 scope as designed; no new
+ADR required by this change set itself — see the governance note above
+for the one open process question (contract-acceptance sequencing).
+
+**Risks discovered / technical debt introduced.** (1) The regime-feed gap
+above blocks the canary from ever passing until resolved — must be
+decided before any live run, not deferred. (2) The `DecisionsService`/
+`PortfolioService` pre-reset backup unconditionally targets
+`default_db_path()`/`default_backup_dir()` regardless of DI overrides —
+fixed for tests via env var redirection, but the same unconditional
+resolution exists in production code too; worth a deliberate look at
+whether that's the intended production behavior (probably yes — it's the
+real safety backup there) versus whether it should be injectable like the
+rest of the service's constructor already allows.
+
+**Suggested improvements.** None beyond the regime-wiring work below.
+
+**Milestone status: EM-5 implementation — COMPLETE PENDING CANARY**
+(Owner/Chief Architect ruling, 2026-08-28). Not `EM-5 COMPLETE`, not
+`EM-5 FAILED`: the scanner implementation exists, the contract is
+`ACCEPTED`, and the full suite is green — but EM-5 does not close until
+the real-data production canary passes against the unchanged 99%
+completeness floor, with the canonical regime source wired in. EM-6
+remains blocked until then.
+
+**Remaining work.** (1) Wire the real canonical ATHENA regime source into
+`run_scan_cycle`'s `regime_lookup` via the smallest necessary read-only
+adapter/port over the existing RegimeEngine (see the regime-gap ruling
+above) — no EMR-specific regime logic, no proxy, no defaults. (2) Rerun
+`run_em5_production_canary` against real data with that wiring in place
+and report the full metric set the Owner specified (eligible universe
+count, all-22-known %, per-field known %, UNKNOWN counts/reasons,
+regime-field completeness, checkpoint-price capture coverage and latency
+distribution, batched Kite request count, zero-unauthorized-network-call
+confirmation, scanner runtime, TOUCH_10 ranked candidates, deterministic
+replay result, persistence/reload result, isolation result). (3) If the
+canary passes, return **Milestone Review Summary — EM-5 FINAL** for the
+Owner's `EM-5 → CLOSED / GO → EM-6` decision. If regime completeness is
+still poor after wiring, stop and diagnose — do not relax the gate. (4) A
+CLI/operational wrapper to invoke the canary before a live `run_scan_cycle`
+day remains out of scope until asked for (this change set implements the
+gate as a library function only). Explicitly out of scope for the
+regime-wiring change: no model/calibration/threshold/rank-cutoff/
+observation-window/completeness-gate retuning, no FINAL_TEST access, no
+EM-6 work.
+
+**Commit message (for sandeep to use himself):**
+
+Two separate logical change sets — recommend committing the disk-safety
+fix first (it's what makes the second commit's own test run trustworthy):
+
+```
+fix(test-infra): stop the test suite from touching production disk
+
+- Redirect ATHENA_DB_PATH/ATHENA_BACKUP_DIR to a throwaway path for
+  every test (autouse fixture) -- DecisionsService/PortfolioService
+  reset endpoints back up the real db/athena.db unconditionally before
+  resetting, regardless of the test client's in-memory DI override,
+  which made a real ~4.3GB copy of the production DB on every run of
+  the reset tests.
+- Exclude config/emr/frozen_models from the config_dir fixture's copy
+  -- nothing using that fixture reads it, but at ~35MB times ~90 call
+  sites times pytest's multi-session tmp-dir retention it ballooned to
+  40GB+ in one session.
+- Set tmp_path_retention_policy = "failed" so passing tests' temp dirs
+  are deleted immediately instead of accumulating, as a permanent
+  safety net against this class of bug recurring.
+```
+
+```
+feat(explosive_move): implement EM-5 v1 live scanner and production canary gate
+
+- Add the full EM-5 v1 live scanner (eligibility, evidence assembly
+  with checkpoint-price substitution, frozen inference, deterministic
+  scoring, explanation, ranking, state machine, run_scan_cycle) per
+  docs/design/EM-5-LIVE-SCANNER-CONTRACT.md, isolated behind its own
+  SQLite ledger and a read-only market-data port (ADR-012).
+- Add em5_artifact_promotion.py and the promoted, SHA256-manifested
+  config/emr/frozen_models/v1/ artifacts the live path loads.
+- Add canary_gate.py -- the contract Section 14 fail-fast operational
+  gate: zero-Kite-call real-data canary, 99% completeness floor with a
+  <=2pp regression bound, and six independent hard invariants
+  (artifact integrity, real-data boundary regression, zero network
+  calls, no stale data, replay determinism, well-formed inputs).
+- Document a real finding: the canary cannot pass today because
+  run_scan_cycle has no live regime feed wired in, holding
+  all-22-fields-known completeness at a permanent 0%.
+- Record governance: Owner/Chief Architect confirmed 2026-08-28 that
+  PARITY ACCEPTABLE and EM-5 contract ACCEPTED were both given before
+  this implementation began (contract doc's own status header already
+  had this right; only this log and MILESTONES.md had drifted) --
+  correcting the record, not backdating approval. Ruling: wire the real
+  canonical regime source rather than rescoping the completeness floor.
+```
+
+**Ready for review:** implementation yes; milestone status is
+**COMPLETE PENDING CANARY** — not ready to close until the real-data
+production canary passes with canonical regime wired in (see Remaining
+work above).
+
+---
+
 ## EM-5 checkpoint-price live parity diagnostic (Final Blocker A)
 
 **Summary.** Owner-authorized (2026-08-28), narrow, read-only diagnostic
@@ -122,6 +377,16 @@ EM-5's real production `allowed_observation_delay` from this
 diagnostic's measured 0-188s latency evidence (not from the
 diagnostic's own generous 300s collection window). Then, and only
 then, EM-5 scanner implementation may begin.
+
+> **Correction appended 2026-08-28 (Owner/Chief Architect):** this
+> remaining work was completed the same day — PARITY ACCEPTABLE was
+> decided, `MAX_CHECKPOINT_OBSERVATION_DELAY_SECONDS` was frozen at 300,
+> and EM-5 contract reached `ACCEPTED`, authorizing scanner
+> implementation. That approval was given before implementation began;
+> this log entry's own "Remaining work" text just wasn't updated at the
+> time to reflect it. See the "EM-5 v1 live scanner implementation"
+> entry above for the full governance record and what was built under
+> that authorization.
 
 **Commit message (for sandeep to use himself):**
 ```
