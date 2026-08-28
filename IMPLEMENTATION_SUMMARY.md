@@ -153,6 +153,63 @@ unchanged: **EM-5 = COMPLETE PENDING CANARY**. Not CLOSED. `EM-6` blocked.
 **Ready for review:** yes -- see the separate "EM-5 Monday Readiness
 Report" delivered in-session for the go/no-go checklist.
 
+**Addendum: final pre-Monday operator audit (same day).** Owner/Chief
+Architect final review found real, necessary gaps in the operator flow
+itself (not new functionality -- correctness fixes so Monday's dry run
+actually holds):
+
+* **Request accounting** -- `run_preflight` now takes the real 9-symbol
+  Monday scope (not a generic canary symbol), resolves the whole catalog
+  once, and returns the resulting provider for reuse across every
+  `run_capture_phase` call that day -- one catalog fetch total, never one
+  per checkpoint. A single unresolvable symbol is now isolated and
+  reported by name at preflight, before any capture begins (the `NSE:E2E`
+  incident shape, closed for Track B specifically, not for the underlying
+  `_ensure_catalog()` debt).
+* **Provisional evolution evidence** -- confirmed (already true by
+  design, not changed): `capture_provisional_m5` persists the complete
+  raw response window each request returns, never one selected candle,
+  so successive checkpoint captures can show a logical row
+  appearing/changing/disappearing.
+* **Full capture provenance** -- `ProvisionalCapture` now carries every
+  field required: `run_id`, `checkpoint`, `request_ts`, `requested_start`/
+  `requested_end`, `provider_name`, `success`/`error`, `retry_count`,
+  alongside the untransformed raw candles.
+* **Restart/idempotency safety** -- `run_capture_phase` is now
+  idempotent: a checkpoint already captured on disk is never re-fetched
+  or overwritten; a checkpoint more than `LATE_CHECKPOINT_GRACE_SECONDS`
+  (reused, not reinvented: the same frozen 300s
+  `MAX_CHECKPOINT_OBSERVATION_DELAY_SECONDS`) past its own instant is
+  marked `NOT_OBSERVED_LIVE` and never captured at all -- a late process
+  start or a sleep/wake spanning checkpoints can no longer masquerade
+  stale data as live. `now` must be timezone-aware or the call fails
+  loudly.
+* **Calendar verification** -- new `calendar_preflight` confirms
+  2026-08-31 as `SessionType.NORMAL` through the real `CalendarEngine`
+  (not hardcoded); refuses to proceed on a real non-trading day.
+* **Settlement-timing guard** -- `run_settlement_comparison_phase` now
+  refuses to run before `MINIMUM_DAYS_BEFORE_LIKELY_SETTLED` (21 days,
+  a caution threshold grounded in the settlement-repair investigation's
+  own real evidence, not a proof) have passed since the session, unless
+  explicitly `force=True`'d.
+
+**Complete offline dry run executed** (real calendar/disk checks, fake
+provider standing in for Kite): preflight -> capture at 09:22 (only
+09:20 due) -> simulated restart at 09:32 (09:20 correctly untouched,
+byte-identical; 09:30 newly captured) -> simulated late arrival at 10:20
+(09:45/10:00 correctly marked `NOT_OBSERVED_LIVE`, never captured) ->
+premature settlement-comparison attempt at +2 days (correctly refused)
+-> comparison at +25 days (runs; `classification` legitimately `None`
+here because this specific dry-run scenario's late-start path never
+captured the checkpoints carrying drift -- the classification mechanism
+itself is separately proven by
+`test_produces_a_populated_report_from_a_real_capture_and_settled_refetch`,
+which does capture a drifted row and gets `TIMESTAMP_ONLY_PROVISIONAL_DRIFT`).
+Full suite: **2,714 passed, 1 skipped, 0 failed** throughout. No files
+changed after the dry run.
+
+**`TRACK_B_OPERATOR_READY = TRUE`.**
+
 ---
 
 ## EM-5 M5 settlement repair (REL_VOLUME_C historical fix) + Track B tooling built

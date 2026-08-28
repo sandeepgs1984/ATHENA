@@ -10,13 +10,20 @@ from decimal import Decimal
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import pytest
+
 from athena.data.em5_track_b_capture_cli import (
     DEFAULT_SYMBOL_LIQUIDITY_BUCKETS,
+    calendar_preflight,
     estimate_request_budget,
+    is_likely_settled,
     run_capture_phase,
     run_settlement_comparison_phase,
 )
-from athena.data.live_m5_provisional_settlement_diagnostic import TRACK_B_CHECKPOINT_SCHEDULE
+from athena.data.live_m5_provisional_settlement_diagnostic import (
+    TRACK_B_CHECKPOINT_SCHEDULE,
+    PreflightError,
+)
 from athena.domain.enums import Timeframe
 from athena.domain.market import Candle
 
@@ -54,12 +61,12 @@ class TestEstimateRequestBudget:
 
 
 class TestRunCapturePhase:
-    def test_captures_only_checkpoints_that_have_already_elapsed(self, tmp_path: Path):
+    def test_future_checkpoints_are_not_yet_due_not_captured(self, tmp_path: Path):
         provider = _FakeProvider(ts_close_pairs=[
             (datetime.combine(SESSION_DATE, datetime.strptime(cp, "%H:%M").time(), tzinfo=IST), "100")
             for cp in TRACK_B_CHECKPOINT_SCHEDULE
         ])
-        now = datetime(2026, 8, 31, 10, 5, tzinfo=IST)  # only 09:20/09:30/09:45/10:00 have happened
+        now = datetime(2026, 8, 31, 9, 22, tzinfo=IST)  # only 09:20 has happened, within grace
 
         manifest = run_capture_phase(
             provider=provider, session_date=SESSION_DATE, session_open_time=datetime(2026, 8, 31, 9, 15).time(),
@@ -68,7 +75,66 @@ class TestRunCapturePhase:
         )
 
         assert manifest.checkpoints == TRACK_B_CHECKPOINT_SCHEDULE  # full schedule recorded...
-        assert len(manifest.capture_file_paths) == 4  # ...but only 4 actually captured this call
+        assert len(manifest.capture_file_paths) == 1  # ...but only 09:20 actually captured this call
+
+    def test_a_checkpoint_more_than_the_grace_window_stale_is_not_observed_live_not_captured(self, tmp_path: Path):
+        """A late process start (or a system sleep/wake spanning several
+        checkpoints) must never let a now-stale request masquerade as a
+        live capture of an already-elapsed checkpoint."""
+        provider = _FakeProvider(ts_close_pairs=[
+            (datetime.combine(SESSION_DATE, datetime.strptime(cp, "%H:%M").time(), tzinfo=IST), "100")
+            for cp in TRACK_B_CHECKPOINT_SCHEDULE
+        ])
+        now = datetime(2026, 8, 31, 10, 5, tzinfo=IST)  # 09:20/09:30/09:45 are all >5min stale; 10:00 is exactly 5min
+
+        manifest = run_capture_phase(
+            provider=provider, session_date=SESSION_DATE, session_open_time=datetime(2026, 8, 31, 9, 15).time(),
+            tzinfo=IST, output_dir=tmp_path, run_id="em5-trackb-test",
+            symbol_liquidity_buckets={"NSE:TEST": "high"}, now=now,
+        )
+
+        # Only 10:00 (exactly at the 300s grace boundary) was captured;
+        # 09:20/09:30/09:45 are all well past the grace window.
+        assert len(manifest.capture_file_paths) == 1
+        assert "1000" in manifest.capture_file_paths[0]
+
+    def test_rerunning_after_a_restart_never_recaptures_or_overwrites_a_completed_checkpoint(self, tmp_path: Path):
+        provider = _FakeProvider(ts_close_pairs=[(datetime(2026, 8, 31, 9, 20, tzinfo=IST), "100")])
+        first_now = datetime(2026, 8, 31, 9, 21, tzinfo=IST)
+        run_capture_phase(
+            provider=provider, session_date=SESSION_DATE, session_open_time=datetime(2026, 8, 31, 9, 15).time(),
+            tzinfo=IST, output_dir=tmp_path, run_id="em5-trackb-test",
+            symbol_liquidity_buckets={"NSE:TEST": "high"}, now=first_now,
+        )
+        first_capture_path = tmp_path / "em5-trackb-test__0920__NSE_TEST.json"
+        original_bytes = first_capture_path.read_bytes()
+
+        # A different provider (simulating a restart with a different live
+        # connection) must never be consulted for a checkpoint already on disk.
+        provider_after_restart = _FakeProvider(ts_close_pairs=[(datetime(2026, 8, 31, 9, 20, tzinfo=IST), "999")])
+        later_now = datetime(2026, 8, 31, 9, 40, tzinfo=IST)  # 09:20 is now stale too, if it were re-attempted
+        manifest = run_capture_phase(
+            provider=provider_after_restart, session_date=SESSION_DATE,
+            session_open_time=datetime(2026, 8, 31, 9, 15).time(), tzinfo=IST, output_dir=tmp_path,
+            run_id="em5-trackb-test", symbol_liquidity_buckets={"NSE:TEST": "high"}, now=later_now,
+        )
+
+        assert first_capture_path.read_bytes() == original_bytes  # byte-identical, never overwritten
+        assert str(first_capture_path) in manifest.capture_file_paths
+
+    def test_now_must_be_timezone_aware(self, tmp_path: Path):
+        provider = _FakeProvider(ts_close_pairs=[])
+        try:
+            run_capture_phase(
+                provider=provider, session_date=SESSION_DATE,
+                session_open_time=datetime(2026, 8, 31, 9, 15).time(), tzinfo=IST, output_dir=tmp_path,
+                run_id="em5-trackb-test", symbol_liquidity_buckets={"NSE:TEST": "high"},
+                now=datetime(2026, 8, 31, 9, 20),  # naive
+            )
+            raised = False
+        except ValueError:
+            raised = True
+        assert raised
 
     def test_writes_one_immutable_capture_file_per_symbol_per_captured_checkpoint(self, tmp_path: Path):
         provider = _FakeProvider(ts_close_pairs=[(datetime(2026, 8, 31, 9, 20, tzinfo=IST), "100")])
@@ -120,12 +186,71 @@ class TestRunSettlementComparisonPhase:
         settled_provider = _FakeProvider(ts_close_pairs=[
             (datetime(2026, 8, 31, 9, 40, tzinfo=IST), "102"),
         ])
-        report = run_settlement_comparison_phase(provider=settled_provider, manifest=manifest, tzinfo=IST)
+        report = run_settlement_comparison_phase(
+            provider=settled_provider, manifest=manifest, tzinfo=IST,
+            today=date(2026, 9, 25),  # comfortably past MINIMUM_DAYS_BEFORE_LIKELY_SETTLED
+        )
 
         assert report["classification"] == "TIMESTAMP_ONLY_PROVISIONAL_DRIFT"
         assert report["ohlcv_exact_match_rate_overall"] == 1.0
+
+    def test_refuses_to_run_before_the_session_is_likely_settled(self, tmp_path: Path):
+        capture_provider = _FakeProvider(ts_close_pairs=[(datetime(2026, 8, 31, 9, 20, tzinfo=IST), "100")])
+        manifest = run_capture_phase(
+            provider=capture_provider, session_date=SESSION_DATE,
+            session_open_time=datetime(2026, 8, 31, 9, 15).time(), tzinfo=IST, output_dir=tmp_path,
+            run_id="em5-trackb-test", symbol_liquidity_buckets={"NSE:A": "high"},
+            now=datetime(2026, 8, 31, 9, 21, tzinfo=IST),
+        )
+
+        with pytest.raises(PreflightError, match="not be settled yet"):
+            run_settlement_comparison_phase(
+                provider=capture_provider, manifest=manifest, tzinfo=IST,
+                today=date(2026, 9, 2),  # only 2 days later
+            )
+
+    def test_force_overrides_the_settlement_timing_guard(self, tmp_path: Path):
+        capture_provider = _FakeProvider(ts_close_pairs=[(datetime(2026, 8, 31, 9, 20, tzinfo=IST), "100")])
+        manifest = run_capture_phase(
+            provider=capture_provider, session_date=SESSION_DATE,
+            session_open_time=datetime(2026, 8, 31, 9, 15).time(), tzinfo=IST, output_dir=tmp_path,
+            run_id="em5-trackb-test", symbol_liquidity_buckets={"NSE:A": "high"},
+            now=datetime(2026, 8, 31, 9, 21, tzinfo=IST),
+        )
+
+        report = run_settlement_comparison_phase(
+            provider=capture_provider, manifest=manifest, tzinfo=IST, today=date(2026, 9, 2), force=True,
+        )
+        assert report is not None
 
 
 def test_default_symbol_buckets_exclude_the_known_unresolvable_e2e_symbol():
     assert "NSE:E2E" not in DEFAULT_SYMBOL_LIQUIDITY_BUCKETS
     assert set(DEFAULT_SYMBOL_LIQUIDITY_BUCKETS.values()) == {"high", "medium", "low"}
+
+
+class TestCalendarPreflight:
+    """Real `CalendarEngine`, real `config/`, zero Kite/network calls --
+    proves Monday (2026-08-31) is genuinely recognized as a normal trading
+    session through ATHENA's own canonical calendar, not a hardcoded
+    assumption, and that a real non-trading day is correctly refused."""
+
+    CONFIG_DIR = Path(__file__).resolve().parents[2] / "config"
+
+    def test_2026_08_31_is_recognized_as_a_normal_trading_session(self):
+        from athena.domain.enums import SessionType
+
+        session_type = calendar_preflight(config_dir=self.CONFIG_DIR, session_date=date(2026, 8, 31))
+        assert session_type is SessionType.NORMAL
+
+    def test_a_real_weekend_is_refused_rather_than_silently_overridden(self):
+        with pytest.raises(PreflightError, match="not a scannable session"):
+            calendar_preflight(config_dir=self.CONFIG_DIR, session_date=date(2026, 8, 30))  # real Sunday
+
+
+class TestIsLikelySettled:
+    def test_false_before_the_minimum_days_have_passed(self):
+        assert is_likely_settled(session_date=date(2026, 8, 31), today=date(2026, 9, 10)) is False
+
+    def test_true_once_the_minimum_days_have_passed(self):
+        assert is_likely_settled(session_date=date(2026, 8, 31), today=date(2026, 9, 21)) is True

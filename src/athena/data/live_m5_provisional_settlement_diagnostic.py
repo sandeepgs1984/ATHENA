@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import json
 import shutil
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from datetime import time as time_of_day
@@ -51,23 +52,57 @@ from athena.domain.market import Candle
 
 @dataclass(frozen=True, slots=True)
 class ProvisionalCapture:
+    """One immutable capture record. Every field the Owner's provenance
+    requirement (2026-08-28, weekend Track B audit) named is present:
+    `run_id` (diagnostic run ID), `instrument_id` (instrument/token),
+    `checkpoint`, `request_ts` (actual request timestamp -- may differ
+    slightly from `requested_end`, the checkpoint instant, by real
+    scheduling/network latency), `requested_start`/`requested_end` (the
+    from/to range actually sent to the provider), `candles` (the complete
+    raw response window returned for that range, never filtered down to
+    one selected candle -- this is what lets a later comparison see
+    whether a given logical row appeared/changed/disappeared across
+    checkpoints, not just what one candle looked like once),
+    `provider_name`, `success`/`error`, `retry_count`."""
+
+    run_id: str
     instrument_id: str
+    checkpoint: str
     session_date: date
-    captured_at: datetime
+    requested_start: datetime
+    requested_end: datetime
+    request_ts: datetime
+    provider_name: str
+    success: bool
+    error: str | None
+    retry_count: int | None
     candles: tuple[Candle, ...]
+
+    @property
+    def captured_at(self) -> datetime:
+        """Alias for `requested_end` -- the checkpoint instant used as the
+        query's upper bound. Kept for the earlier, narrower call sites
+        that only need this one field."""
+        return self.requested_end
 
     def to_dict(self) -> dict:
         return {
-            "instrument_id": self.instrument_id, "session_date": self.session_date.isoformat(),
-            "captured_at": self.captured_at.isoformat(),
-            "candles": [_candle_to_json(c) for c in self.candles],
+            "run_id": self.run_id, "instrument_id": self.instrument_id, "checkpoint": self.checkpoint,
+            "session_date": self.session_date.isoformat(), "requested_start": self.requested_start.isoformat(),
+            "requested_end": self.requested_end.isoformat(), "request_ts": self.request_ts.isoformat(),
+            "provider_name": self.provider_name, "success": self.success, "error": self.error,
+            "retry_count": self.retry_count, "candles": [_candle_to_json(c) for c in self.candles],
         }
 
     @classmethod
     def from_dict(cls, payload: dict) -> ProvisionalCapture:
         return cls(
-            instrument_id=payload["instrument_id"], session_date=date.fromisoformat(payload["session_date"]),
-            captured_at=datetime.fromisoformat(payload["captured_at"]),
+            run_id=payload["run_id"], instrument_id=payload["instrument_id"], checkpoint=payload["checkpoint"],
+            session_date=date.fromisoformat(payload["session_date"]),
+            requested_start=datetime.fromisoformat(payload["requested_start"]),
+            requested_end=datetime.fromisoformat(payload["requested_end"]),
+            request_ts=datetime.fromisoformat(payload["request_ts"]), provider_name=payload["provider_name"],
+            success=payload["success"], error=payload["error"], retry_count=payload["retry_count"],
             candles=tuple(_candle_from_json(c) for c in payload["candles"]),
         )
 
@@ -96,20 +131,43 @@ def capture_provisional_m5(
     session_date: date,
     session_open_time: time_of_day,
     tzinfo: tzinfo_type,
-    captured_at: datetime,
+    checkpoint_instant: datetime,
+    checkpoint: str,
+    run_id: str,
+    now: Callable[[], datetime] | None = None,
 ) -> tuple[ProvisionalCapture, ...]:
-    """One real fetch per instrument, session open through `captured_at` --
-    intended to be called DURING a live session (`captured_at` = real now).
-    Raises whatever `ProviderError` the real fetch raises; callers persist
-    each returned capture (`to_dict`/`json.dumps`) unchanged, immediately,
-    before doing anything else with it."""
+    """One real fetch per instrument, session open through
+    `checkpoint_instant` -- the complete raw response window each request
+    returns, never filtered to a single selected candle. A single
+    instrument's failure is caught and recorded on its own
+    `ProvisionalCapture` (`success=False`, real `error` text, empty
+    `candles`) -- it never aborts the other instruments' captures, and it
+    is never retried in a way that would re-trigger a catalog refetch
+    (retry policy belongs to the `provider` -- pass a
+    `RetryingMarketDataProvider` for real resilience; `retry_count` is
+    read from its `.stats` if present, else left `None`)."""
 
+    clock = now or (lambda: datetime.now(tz=tzinfo))
     start = datetime.combine(session_date, session_open_time, tzinfo=tzinfo)
     captures = []
     for instrument_id in instrument_ids:
-        candles = provider.intraday_candles(instrument_id, Timeframe.M5, start, captured_at)
+        stats = getattr(provider, "stats", None)
+        retries_before = stats.retries_performed if stats is not None else None
+        request_ts = clock()
+        try:
+            candles = provider.intraday_candles(instrument_id, Timeframe.M5, start, checkpoint_instant)
+            success, error = True, None
+        except Exception as exc:  # isolate this instrument's failure, never propagate to the others
+            candles, success, error = [], False, str(exc)
+        retries_after = stats.retries_performed if stats is not None else None
+        retry_count = (
+            (retries_after - retries_before) if retries_before is not None and retries_after is not None else None
+        )
         captures.append(ProvisionalCapture(
-            instrument_id=instrument_id, session_date=session_date, captured_at=captured_at,
+            run_id=run_id, instrument_id=instrument_id, checkpoint=checkpoint, session_date=session_date,
+            requested_start=start, requested_end=checkpoint_instant, request_ts=request_ts,
+            provider_name=getattr(provider, "name", provider.__class__.__name__),
+            success=success, error=error, retry_count=retry_count,
             candles=tuple(sorted(candles, key=lambda c: c.ts_open)),
         ))
     return tuple(captures)

@@ -1,24 +1,31 @@
 """EM-5 Track B: the Monday (2026-08-31) live capture operator flow (Owner/
-Chief Architect authorization, 2026-08-28 + weekend-prep authorization,
-2026-08-28). Ties together `live_m5_provisional_settlement_diagnostic.py`'s
-already-tested pieces into one executable-with-minimal-decisions script.
+Chief Architect authorization, 2026-08-28 weekend hardening + final
+pre-Monday operator audit). Ties together
+`live_m5_provisional_settlement_diagnostic.py`'s already-tested pieces
+into one executable-with-minimal-decisions script.
 
-Two phases, run as two separate invocations on the day:
+Two phases, run as two separate invocations, potentially weeks apart:
 
   1. `run_capture_phase(...)` -- during the live session, at each of the 9
      frozen checkpoints (`TRACK_B_CHECKPOINT_SCHEDULE`). Makes real Kite
      calls; writes nothing to `db/athena.db`; persists every raw response
-     unchanged as immutable JSON.
-  2. `run_settlement_comparison_phase(...)` -- once the day has settled
-     (in practice: run this again a few weeks later, matching the
-     settlement-repair investigation's own evidence), re-fetches the same
+     window unchanged as immutable JSON, with full provenance
+     (`ProvisionalCapture`). Idempotent: rerunning after a restart never
+     re-captures (and never overwrites) a checkpoint already on disk, and
+     never fabricates a checkpoint whose live window has already passed --
+     see `_capture_status` for the exact three-way classification
+     (CAPTURED / ALREADY_CAPTURED / NOT_OBSERVED_LIVE / NOT_YET_DUE).
+  2. `run_settlement_comparison_phase(...)` -- only once the day should
+     reasonably be treated as settled (see `is_likely_settled` -- refuses
+     to run otherwise unless explicitly overridden), re-fetches the same
      sessions through the normal historical route and produces the
-     populated classification report.
+     populated classification report via content-only OHLCV matching.
 
-Preflight (`kite_auth_preflight`, `disk_space_preflight`) runs before
-phase 1 commits to anything. No labels/outcomes. No FINAL_TEST access. No
-timestamp rounding/flooring/nearest-match anywhere in this file or its
-dependencies.
+Preflight (`run_preflight`: calendar, Kite auth + real symbol-catalog
+resolution, disk space) must pass before phase 1 commits to anything --
+any failure raises `PreflightError`, and the caller must not start a
+partial capture. No labels/outcomes. No FINAL_TEST access. No timestamp
+rounding/flooring/nearest-match anywhere in this file or its dependencies.
 """
 
 from __future__ import annotations
@@ -28,22 +35,27 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from datetime import time as time_of_day
 from datetime import tzinfo as tzinfo_type
+from enum import Enum
 from pathlib import Path
 
 from athena.data.live_m5_provisional_settlement_diagnostic import (
     TRACK_B_CHECKPOINT_SCHEDULE,
+    PreflightError,
     ProvisionalCapture,
     TrackBRunManifest,
     build_classification_report_skeleton,
     capture_provisional_m5,
     compare_provisional_to_settled,
     disk_space_preflight,
-    kite_auth_preflight,
     populate_classification_report,
     read_capture,
     write_capture,
 )
+from athena.domain.enums import SessionType, Timeframe
 from athena.domain.interfaces import MarketDataProvider
+from athena.explosive_move.live.checkpoint_reference_price import (
+    MAX_CHECKPOINT_OBSERVATION_DELAY_SECONDS,
+)
 
 #: Real, currently-active NSE instruments (verified during the 2026-08-28
 #: investigation -- excludes NSE:E2E, which is separately known-unresolvable
@@ -59,13 +71,45 @@ DEFAULT_SYMBOL_LIQUIDITY_BUCKETS: dict[str, str] = {
 
 DEFAULT_MINIMUM_DISK_FREE_GB = 2.0
 
+#: A checkpoint captured no later than this many seconds after its own
+#: instant counts as a genuine live observation. Reused, not reinvented:
+#: the same frozen `MAX_CHECKPOINT_OBSERVATION_DELAY_SECONDS` (300s) EM-5's
+#: real checkpoint-price collector already uses for the identical
+#: question ("how late can an observation be and still count as this
+#: checkpoint's own"). A late process start, a system sleep/wake, or a
+#: restart that only gets to a checkpoint after this window has elapsed
+#: must record NOT_OBSERVED_LIVE for it, never a fabricated "live" capture.
+LATE_CHECKPOINT_GRACE_SECONDS = MAX_CHECKPOINT_OBSERVATION_DELAY_SECONDS
+
+#: A settled-comparison fetch is refused by default before this many days
+#: have passed since the session -- the settlement-repair investigation's
+#: own real evidence (`IMPLEMENTATION_SUMMARY.md`, 2026-08-28) found data
+#: as recent as ~1-4 weeks old still off-grid/incomplete, and a genuinely
+#: old (14+ month) date fully clean. This is a caution threshold, not a
+#: proof of settlement -- `force=True` exists for a deliberate override,
+#: never a default.
+MINIMUM_DAYS_BEFORE_LIKELY_SETTLED = 21
+
+
+class CheckpointCaptureStatus(str, Enum):
+    CAPTURED = "CAPTURED"
+    ALREADY_CAPTURED = "ALREADY_CAPTURED"
+    NOT_YET_DUE = "NOT_YET_DUE"
+    NOT_OBSERVED_LIVE = "NOT_OBSERVED_LIVE"
+
 
 @dataclass(frozen=True, slots=True)
 class RequestBudget:
-    """9 symbols x 9 checkpoints for the provisional capture; later, one
-    settled-comparison fetch per symbol (each covers the whole session in
-    one request, per the settlement-repair module's own established
-    per-instrument-not-per-day discipline)."""
+    """Precise accounting for "81 provisional-capture requests": 9 symbols
+    x 9 checkpoints = 81 real `intraday_candles` calls, one per
+    (symbol, checkpoint) pair, made sequentially through a single shared,
+    already-catalog-resolved provider instance -- never nested, never
+    multiplied. A transient failure on one call may be retried by the
+    wrapping `RetryingMarketDataProvider` (bounded, real backoff), which
+    adds to that ONE call's own retry count but never issues additional
+    base requests beyond the 81. The later settlement-comparison phase
+    adds exactly one more request per symbol (9), for 90 total across the
+    whole two-phase campaign."""
 
     symbol_count: int
     checkpoint_count: int
@@ -90,14 +134,92 @@ def estimate_request_budget(
     return RequestBudget(symbol_count=symbol_count, checkpoint_count=checkpoint_count)
 
 
-def run_preflight(*, config_dir: Path, min_disk_free_gb: float = DEFAULT_MINIMUM_DISK_FREE_GB) -> tuple[str, float]:
-    """Both preflight checks, in the Owner-specified order. Raises
-    `PreflightError` (from the diagnostic module) on the first failure --
-    the caller must not proceed to any real capture if this raises."""
+def calendar_preflight(*, config_dir: Path, session_date: date) -> SessionType:
+    """Confirms `session_date` through ATHENA's own canonical
+    `CalendarEngine` -- never a hardcoded assumption. Raises
+    `PreflightError` unless the session is genuinely scannable (NORMAL or
+    SPECIAL, the same set `eligibility.SCANNABLE_SESSION_TYPES` already
+    freezes) -- a MUHURAT, WEEKEND, HOLIDAY, or unsupported-special session
+    must stop the run rather than silently capturing anyway."""
 
-    verified_symbol = kite_auth_preflight(config_dir)
+    from athena.calendar.engine import CalendarEngine
+    from athena.config.loader import load_config
+    from athena.explosive_move.live.eligibility import SCANNABLE_SESSION_TYPES
+
+    cfg = load_config(config_dir)
+    calendar = CalendarEngine.from_config_dir(config_dir, cfg.market)
+    session_type = calendar.context_for(session_date).session_type
+    if session_type not in SCANNABLE_SESSION_TYPES:
+        raise PreflightError(
+            f"calendar preflight failed: {session_date.isoformat()} is {session_type.value}, "
+            f"not a scannable session ({sorted(t.value for t in SCANNABLE_SESSION_TYPES)})"
+        )
+    return session_type
+
+
+@dataclass(frozen=True, slots=True)
+class PreflightResult:
+    session_type: SessionType
+    resolved_symbol_count: int
+    unresolved_symbols: tuple[str, ...]
+    disk_free_gb: float
+    provider: MarketDataProvider
+
+
+def run_preflight(
+    *,
+    config_dir: Path,
+    session_date: date,
+    instrument_ids: tuple[str, ...] = tuple(DEFAULT_SYMBOL_LIQUIDITY_BUCKETS),
+    min_disk_free_gb: float = DEFAULT_MINIMUM_DISK_FREE_GB,
+) -> PreflightResult:
+    """All required preflight checks, in order: calendar, Kite auth +
+    real catalog resolution of the ACTUAL Monday symbol list (not a
+    generic canary symbol), disk space. Raises `PreflightError` on the
+    first failure -- the caller must not start any capture if this
+    raises. Building the provider here (once, with the real symbol scope)
+    and returning it for reuse in `run_capture_phase` is exactly the
+    "pre-resolve/cache the nine instrument tokens during preflight"
+    requirement: `KiteProvider._ensure_catalog()` caches on this single
+    successful resolution, so every one of the 81 later capture calls
+    reuses it -- no repeated catalog downloads. If catalog resolution
+    itself fails (e.g. one bad symbol), that failure is isolated and
+    reported here, before any real capture is attempted, rather than
+    silently re-triggering a fresh catalog fetch on every subsequent call
+    (the `NSE:E2E` incident this guards against)."""
+
+    from athena.config.env import load_dotenv
+    from athena.data.providers.kite_provider import KiteProvider
+    from athena.errors import ProviderError
+
+    session_type = calendar_preflight(config_dir=config_dir, session_date=session_date)
+
+    load_dotenv()
+    bare_symbols = sorted({iid.split(":", 1)[1] for iid in instrument_ids})
+    try:
+        provider = KiteProvider.from_config_dir(config_dir, symbols=bare_symbols)
+        resolved = provider.instruments()
+    except ProviderError as exc:
+        raise PreflightError(f"Kite auth/catalog preflight failed: {exc}") from exc
+    resolved_symbols = {i.symbol.upper() for i in resolved}
+    unresolved = tuple(s for s in bare_symbols if s.upper() not in resolved_symbols)
+    if unresolved:
+        raise PreflightError(
+            f"Kite catalog preflight failed: symbol(s) not resolvable: {unresolved} -- "
+            f"isolated here, before any capture; not a reason to retry the whole catalog"
+        )
+
     free_gb = disk_space_preflight(minimum_free_gb=min_disk_free_gb)
-    return verified_symbol, free_gb
+    return PreflightResult(
+        session_type=session_type, resolved_symbol_count=len(resolved_symbols), unresolved_symbols=(),
+        disk_free_gb=free_gb, provider=provider,
+    )
+
+
+def _capture_file_path(output_dir: Path, run_id: str, checkpoint: str, instrument_id: str) -> Path:
+    safe_checkpoint = checkpoint.replace(":", "")
+    safe_instrument = instrument_id.replace(":", "_").replace(" ", "-")
+    return output_dir / f"{run_id}__{safe_checkpoint}__{safe_instrument}.json"
 
 
 def run_capture_phase(
@@ -114,32 +236,62 @@ def run_capture_phase(
     kite_auth_verified_symbol: str = "",
     disk_free_gb_at_start: float = 0.0,
 ) -> TrackBRunManifest:
-    """Captures every symbol at every checkpoint that has already elapsed
-    by `now` (a checkpoint in the future is simply skipped this call --
-    rerun later in the day to fill in the rest; never reconstruct a missed
-    live checkpoint after the fact by fetching a later window and pretending
-    it was captured at the checkpoint instant)."""
+    """Idempotent and restart-safe. For each checkpoint, per instrument:
+
+    - if a capture file already exists on disk for (run_id, checkpoint,
+      instrument), it is never re-fetched or overwritten (ALREADY_CAPTURED);
+    - if the checkpoint is still in the future relative to `now`, it is
+      skipped entirely this call (NOT_YET_DUE) -- rerun later the same day;
+    - if the checkpoint has already elapsed by more than
+      `LATE_CHECKPOINT_GRACE_SECONDS`, it is never captured at all --
+      recorded as NOT_OBSERVED_LIVE, exactly like a genuinely missed
+      checkpoint, never reconstructed after the fact (a late process
+      start, or a system sleep/wake spanning the checkpoint, must not
+      let a now-stale request masquerade as a live one);
+    - otherwise it is captured for real (CAPTURED).
+
+    `now` must be timezone-aware in `tzinfo` (or comparably aware) --
+    comparing it against the timezone-aware `checkpoint_instant` values
+    this function builds fails loudly (a naive/aware comparison raises
+    `TypeError`) rather than silently misordering checkpoints."""
+
+    if now.tzinfo is None:
+        raise ValueError("run_capture_phase: `now` must be timezone-aware")
 
     output_dir.mkdir(parents=True, exist_ok=True)
     instrument_ids = tuple(symbol_liquidity_buckets)
     capture_paths: list[str] = []
+    status_by_checkpoint: dict[str, str] = {}
 
     for checkpoint in checkpoints:
         checkpoint_instant = datetime.combine(
             session_date, time_of_day.fromisoformat(checkpoint), tzinfo=tzinfo,
         )
+        existing = [
+            _capture_file_path(output_dir, run_id, checkpoint, iid) for iid in instrument_ids
+        ]
+        if all(p.is_file() for p in existing):
+            status_by_checkpoint[checkpoint] = CheckpointCaptureStatus.ALREADY_CAPTURED.value
+            capture_paths.extend(str(p) for p in existing)
+            continue
         if checkpoint_instant > now:
-            continue  # do not fabricate a capture for a checkpoint that hasn't happened yet
+            status_by_checkpoint[checkpoint] = CheckpointCaptureStatus.NOT_YET_DUE.value
+            continue
+        seconds_late = (now - checkpoint_instant).total_seconds()
+        if seconds_late > LATE_CHECKPOINT_GRACE_SECONDS:
+            status_by_checkpoint[checkpoint] = CheckpointCaptureStatus.NOT_OBSERVED_LIVE.value
+            continue
+
         captures = capture_provisional_m5(
             provider=provider, instrument_ids=instrument_ids, session_date=session_date,
-            session_open_time=session_open_time, tzinfo=tzinfo, captured_at=checkpoint_instant,
+            session_open_time=session_open_time, tzinfo=tzinfo, checkpoint_instant=checkpoint_instant,
+            checkpoint=checkpoint, run_id=run_id, now=lambda: now,
         )
         for capture in captures:
-            safe_checkpoint = checkpoint.replace(":", "")
-            safe_instrument = capture.instrument_id.replace(":", "_").replace(" ", "-")
-            path = output_dir / f"{run_id}__{safe_checkpoint}__{safe_instrument}.json"
+            path = _capture_file_path(output_dir, run_id, checkpoint, capture.instrument_id)
             write_capture(capture, path)
             capture_paths.append(str(path))
+        status_by_checkpoint[checkpoint] = CheckpointCaptureStatus.CAPTURED.value
 
     manifest = TrackBRunManifest(
         run_id=run_id, session_date=session_date, checkpoints=checkpoints, instrument_ids=instrument_ids,
@@ -147,21 +299,44 @@ def run_capture_phase(
         kite_auth_verified_symbol=kite_auth_verified_symbol, disk_free_gb_at_start=disk_free_gb_at_start,
         capture_file_paths=tuple(capture_paths), started_at=now, finished_at=now,
     )
+    manifest_payload = manifest.to_dict()
+    manifest_payload["checkpoint_status"] = status_by_checkpoint
     (output_dir / f"{run_id}__manifest.json").write_text(
-        json.dumps(manifest.to_dict(), indent=2), encoding="utf-8",
+        json.dumps(manifest_payload, indent=2), encoding="utf-8",
     )
     return manifest
 
 
+def is_likely_settled(
+    *, session_date: date, today: date, minimum_days: int = MINIMUM_DAYS_BEFORE_LIKELY_SETTLED,
+) -> bool:
+    """A caution check, not a proof: the settlement-repair investigation's
+    real evidence never established an exact settle boundary, only that
+    data 1-4 weeks old was still affected while 14+-month-old data was
+    fully clean. Refusing the comparison phase before `minimum_days` have
+    passed avoids repeating that same mistake with Track B's own evidence
+    -- the market closing on session_date is NOT sufficient grounds on
+    its own."""
+
+    return (today - session_date).days >= minimum_days
+
+
 def run_settlement_comparison_phase(
-    *, provider: MarketDataProvider, manifest: TrackBRunManifest, tzinfo: tzinfo_type,
+    *, provider: MarketDataProvider, manifest: TrackBRunManifest, tzinfo: tzinfo_type, today: date, force: bool = False,
 ) -> dict:
     """Re-fetches each instrument's whole session through the normal
-    historical route (now that it should have settled) and produces the
-    populated classification report -- content-based comparison only, per
-    `compare_provisional_to_settled`."""
+    historical route and produces the populated classification report --
+    content-based comparison only, per `compare_provisional_to_settled`.
+    Refuses to run (raises `PreflightError`) unless `is_likely_settled`
+    or `force=True` -- `force` exists for a deliberate, informed Owner
+    override, never as this function's own default judgment."""
 
-    from athena.domain.enums import Timeframe
+    if not force and not is_likely_settled(session_date=manifest.session_date, today=today):
+        raise PreflightError(
+            f"settlement comparison refused: only {(today - manifest.session_date).days} day(s) since "
+            f"{manifest.session_date.isoformat()}, fewer than {MINIMUM_DAYS_BEFORE_LIKELY_SETTLED} -- "
+            "this session may not be settled yet; pass force=True only as a deliberate, informed override"
+        )
 
     session_start = datetime.combine(manifest.session_date, time_of_day(0, 0), tzinfo=tzinfo)
     session_end = datetime.combine(manifest.session_date, time_of_day(23, 59, 59), tzinfo=tzinfo)
@@ -175,11 +350,16 @@ def run_settlement_comparison_phase(
     for instrument_id, captures in provisional_by_instrument.items():
         settled_candles = provider.intraday_candles(instrument_id, Timeframe.M5, session_start, session_end)
         settled = ProvisionalCapture(
-            instrument_id=instrument_id, session_date=manifest.session_date,
-            captured_at=session_end, candles=tuple(sorted(settled_candles, key=lambda c: c.ts_open)),
+            run_id=manifest.run_id, instrument_id=instrument_id, checkpoint="SETTLED_FULL_SESSION",
+            session_date=manifest.session_date, requested_start=session_start, requested_end=session_end,
+            request_ts=session_end, provider_name=getattr(provider, "name", provider.__class__.__name__),
+            success=True, error=None, retry_count=None,
+            candles=tuple(sorted(settled_candles, key=lambda c: c.ts_open)),
         )
         all_comparisons = []
         for provisional in captures:
+            if not provisional.success:
+                continue  # a failed provisional capture has no candles to compare
             all_comparisons.extend(compare_provisional_to_settled(provisional=provisional, settled=settled))
         comparisons_by_instrument[instrument_id] = tuple(all_comparisons)
 

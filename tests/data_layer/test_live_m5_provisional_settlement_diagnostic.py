@@ -44,8 +44,13 @@ def _candle(ts: datetime, *, o="100", c="100", v=1000) -> Candle:
                   close=close_val, volume=v, source="test")
 
 
-def _capture(candles: list[Candle], captured_at: datetime) -> ProvisionalCapture:
-    return ProvisionalCapture(instrument_id=INST, session_date=SESSION, captured_at=captured_at, candles=tuple(candles))
+def _capture(candles: list[Candle], captured_at: datetime, *, checkpoint: str = "09:30") -> ProvisionalCapture:
+    start = datetime.combine(SESSION, time_of_day(9, 15), tzinfo=IST)
+    return ProvisionalCapture(
+        run_id="test-run", instrument_id=INST, checkpoint=checkpoint, session_date=SESSION,
+        requested_start=start, requested_end=captured_at, request_ts=captured_at, provider_name="test",
+        success=True, error=None, retry_count=0, candles=tuple(candles),
+    )
 
 
 @dataclass
@@ -67,12 +72,15 @@ class TestCaptureProvisionalM5:
 
         captures = capture_provisional_m5(
             provider=provider, instrument_ids=(INST,), session_date=SESSION,
-            session_open_time=time_of_day(9, 15), tzinfo=IST, captured_at=now,
+            session_open_time=time_of_day(9, 15), tzinfo=IST, checkpoint_instant=now,
+            checkpoint="09:30", run_id="test-run",
         )
 
         assert len(captures) == 1
         assert [c.ts_open.minute for c in captures[0].candles] == [15, 25]
         assert captures[0].captured_at == now
+        assert captures[0].success is True
+        assert captures[0].run_id == "test-run"
 
 
 class TestCaptureRoundTrip:
@@ -147,8 +155,10 @@ class TestCompareProvisionalToSettled:
         provisional = _capture([_candle(datetime(2026, 8, 31, 9, 15, tzinfo=IST))],
                                datetime(2026, 8, 31, 10, 0, tzinfo=IST))
         other_session = ProvisionalCapture(
-            instrument_id=INST, session_date=date(2026, 9, 1), captured_at=datetime(2026, 9, 3, tzinfo=IST),
-            candles=(),
+            run_id="test-run", instrument_id=INST, checkpoint="09:30", session_date=date(2026, 9, 1),
+            requested_start=datetime(2026, 9, 1, 9, 15, tzinfo=IST), requested_end=datetime(2026, 9, 3, tzinfo=IST),
+            request_ts=datetime(2026, 9, 3, tzinfo=IST), provider_name="test", success=True, error=None,
+            retry_count=0, candles=(),
         )
         with pytest.raises(ValueError, match="must match"):
             compare_provisional_to_settled(provisional=provisional, settled=other_session)
