@@ -6,6 +6,151 @@ status updated on approval.
 
 ---
 
+## EM-5 checkpoint-price live parity diagnostic (Final Blocker A)
+
+**Summary.** Owner-authorized (2026-08-28), narrow, read-only diagnostic
+to resolve EM-5's last real blocker: does ATHENA's live Kite quote path
+reproduce the exact checkpoint-price semantic (`price_at_checkpoint`:
+open of the M5 candle whose `ts_open == C`) the frozen EM-4 model was
+trained/calibrated/FINAL_TEST-validated on? Schema inspection first
+(no assumption): Kite's real `/quote` response carries two distinct
+timestamps, `timestamp` (quote-snapshot time) and `last_trade_time`
+(authoritative last-trade time); both existing consumers
+(`KiteProvider.quotes()`, `kite_ltp.py`) silently prefer `timestamp`,
+discarding the trade-authoritative one. A fully isolated diagnostic
+module was built (does not modify `Quote`/`quotes()`/`kite_ltp.py`),
+a tiny live semantic canary passed (with one bounded, understood
+limitation documented: 1-second `last_trade_time` resolution can't
+disambiguate multiple real trades within the same second for an
+extremely high-frequency name — irrelevant at checkpoint-minute
+granularity), then a real live capture ran during real market hours
+against a representative 6-instrument sample for today's remaining
+checkpoints (12:00, 13:00, 14:00 — earlier checkpoints were already
+past when the diagnostic became ready and are recorded as
+`NOT_OBSERVED_LIVE`, never fabricated). **Result: 18/18 real
+observations, max 0.0685% price difference vs. the real historical
+candle-open, negligible logit/calibrated-probability impact on the
+frozen TOUCH_10 model. Recommendation: PARITY ACCEPTABLE** — not a
+self-granted acceptance; the Owner's explicit decision remains
+outstanding.
+
+**Objective.** Prove or disprove live/historical checkpoint-price
+parity with real, measured, live evidence before any EM-5 scanner
+code touches the 7 price-dependent frozen features — never patch
+around a measured discrepancy, never invent an untested substitution.
+
+**Scope completed.**
+
+*Diagnostic module* (`src/athena/data/em5_checkpoint_price_diagnostic.py`,
+11 tests, all against injected fake fetch/clock/sleep — no live call
+in any test): `DualTimestampObservation` (both Kite timestamps kept
+separate), `fetch_dual_timestamp_quotes` (one batched `/quote` call,
+inherits `UrllibKiteTransport`'s existing <=1 req/s pacing and 429
+backoff unmodified), `run_semantic_canary` and
+`capture_checkpoint_observations` (stops polling an instrument the
+moment it qualifies, persists every poll for audit,
+`NO_CHECKPOINT_PRICE` on window expiry, never falls back to a
+pre-checkpoint trade).
+
+*Real live run*: Kite session verified authorized with one minimal
+canary call before anything larger; 90s/3-instrument semantic canary;
+representative sample derived from real historical TRAIN
+`CUM_VOLUME_C` volume (2 high/2 medium/2 low liquidity — `NSE:IDEA`,
+`NSE:YESBANK`, `NSE:MFSL`, `NSE:CHOLAFIN`, `NSE:MRF`, `NSE:HONAUT`);
+full capture for `12:00`/`13:00`/`14:00`; real historical M5 candles
+fetched post-close via `KiteProvider.intraday_candles` for the
+comparison; real EM-2 session-invariant evidence computed from real
+daily bars for the frozen-model impact test (7 price-dependent
+fields recomputed under both price variants, scored through the
+unmodified frozen `TOUCH_10` EM-4B coefficients + EM-4D calibration —
+no fitting, no FINAL_TEST access anywhere).
+
+**Real results.**
+- Historical parity: 18/18 comparable, 8/18 exact match, median diff
+  0.0075%, max 0.0685%, zero observations exceeding 0.1%/0.25%/0.5%.
+- Compare to the rejected prior-candle-close substitution's real
+  measured mismatch (29.6-35.2% of pairs, max 3.92%) — two to three
+  orders of magnitude closer.
+- Frozen-model impact (TOUCH_10): raw logit differences 0 to
+  +/-0.046 (small against the model's own real checkpoint-intercept
+  spread of +1.03 to -1.33); calibrated-probability differences
+  ~1e-8 to ~1.3e-5 (negligible next to TOUCH_10's own ~0.3-1% base
+  rate). Rank order identical between price variants at all 3
+  checkpoints within the 6-instrument sample (explicitly flagged as
+  illustrative only, not a full-universe top-K overlap test).
+
+**Files created.** `src/athena/data/em5_checkpoint_price_diagnostic.py`
++ `tests/data_layer/test_em5_checkpoint_price_diagnostic.py` (11
+tests). A throwaway one-off runner script used for the live capture
+was deleted after the diagnostic concluded, per its own docstring.
+
+**Real artifacts.** `artifacts/research/em5_diagnostic/` (git-ignored):
+`semantic_canary_20260828.jsonl`, `checkpoint_capture_20260828.jsonl`,
+`today_candles_20260828.json`, `prior_daily_bars_20260827.json`,
+`parity_comparison_20260828.json`, `model_impact_20260828.json`,
+`MANIFEST.json` (deterministic fingerprint, matching the established
+EMR convention).
+
+**Tests added.** 11. Full suite: 2,520 passed, 0 failed, 1 skipped
+(system Python without the optional `emr-modeling` group, unaffected
+by this milestone). Ruff: zero net-new findings.
+
+**Architecture compliance.** Read-only `/quote` and `/instruments`
+calls only (structurally impossible to call an order endpoint — not
+in `UrllibKiteTransport`'s allowlist). No shared `Quote`/`quotes()`/
+`kite_ltp.py` modified. No ATHENA Decision/risk/portfolio/execution
+touched. No FINAL_TEST access. No git actions taken by the AI.
+
+**ADR compliance.** No ADR required — a bounded, read-only diagnostic
+under ADR-012's existing research-boundary rules, not new production
+scope.
+
+**Risks discovered / technical debt introduced.** The `timestamp` vs
+`last_trade_time` conflation in `KiteProvider.quotes()`/`kite_ltp.py`
+(pre-existing, confirmed real, not touched by this diagnostic per the
+Owner's explicit "do not modify shared quote semantics" instruction) —
+worth a future, separate, deliberate review of whether production
+consumers should be updated, out of scope here.
+
+**Suggested improvements.** None beyond what's already queued for
+EM-5 proper.
+
+**Remaining work.** Owner's PARITY ACCEPTABLE / PARITY NOT ACCEPTABLE
+decision, and separately, EM-5 contract `ACCEPTED` status. If accepted:
+freeze the live `checkpoint_reference_price(C)` function and set
+EM-5's real production `allowed_observation_delay` from this
+diagnostic's measured 0-188s latency evidence (not from the
+diagnostic's own generous 300s collection window). Then, and only
+then, EM-5 scanner implementation may begin.
+
+**Commit message (for sandeep to use himself):**
+```
+feat(explosive_move): resolve EM-5 checkpoint-price parity via live diagnostic
+
+- Add em5_checkpoint_price_diagnostic.py -- fully isolated (does not
+  modify Quote/KiteProvider.quotes()/kite_ltp.py), parses and persists
+  Kite's two distinct /quote timestamps (timestamp vs last_trade_time)
+  separately, since existing consumers silently conflate them.
+- Run the real, live, Owner-authorized diagnostic during real market
+  hours (2026-08-28): schema inspection, semantic canary (passed, one
+  bounded 1-second-resolution limitation documented), live capture for
+  today's remaining checkpoints (12:00/13:00/14:00; earlier checkpoints
+  recorded NOT_OBSERVED_LIVE, never fabricated) against a real
+  historical-volume-derived representative sample.
+- Result: 18/18 real observations, max 0.0685% price difference vs.
+  the real historical candle-open, negligible frozen-TOUCH_10-model
+  logit/probability impact -- recommend PARITY ACCEPTABLE (Owner
+  decision, and EM-5 ACCEPTED status, remain outstanding).
+- Update docs/design/EM-5-LIVE-SCANNER-CONTRACT.md's checkpoint-price
+  section with the full resolution and evidence.
+```
+
+**Ready for review:** yes — Final Blocker A diagnostic complete, real
+evidence returned. Awaiting Owner's PARITY ACCEPTABLE/NOT ACCEPTABLE
+decision and EM-5 contract acceptance.
+
+---
+
 ## EM-4E: sealed, one-shot FINAL_TEST evaluation
 
 **Summary.** Under the Owner-approved frozen FINAL_TEST policy
@@ -145,6 +290,28 @@ feat(explosive_move): run the sealed EM-4E FINAL_TEST evaluation
 **Ready for review:** yes -- this is the terminal EM-4 evidence step.
 Awaiting Owner/Chief Architect GO/NARROW/NO-GO decision. FINAL_TEST
 must not be read again.
+
+**Owner clarification request (2026-08-28, no metric recalculated --
+documentation only).** The reported TOUCH_10 numbers (base rate 0.47%,
+P@10 11.1%, L@10 27.6x) do NOT satisfy `L@10 = P@10 / base_rate`
+(that naive ratio is 23.8x, not 27.6x) -- confirmed by direct
+inspection of the real artifact, not assumed. This is because, exactly
+as the frozen EM-4C contract (`em4c_ranking.lift_at_k`) already
+specifies: **Lift@K is the mean of 1,086 independent per-(session-date
+x checkpoint)-cross-section lift ratios**, each computed as that one
+cross-section's own `Precision@10 / that same cross-section's own base
+rate` -- never the pooled population's base rate. Precision@10's
+reported mean (11.1%) averages over 1,413 cross-sections (every
+cross-section with >=1 known-score observation), while Lift@10's
+reported mean (27.6x) averages over only 1,086 (`lift_at_k` returns
+`None`, excluded from the mean, whenever a cross-section's own base
+rate is exactly 0 -- undefined lift, not zero). So the two displayed
+"mean" numbers are aggregates over two different-sized populations of
+per-cross-section values, not two views of the same aggregate -- by
+design, matching real session-to-session base-rate variation (which is
+substantial here given ALREADY_OCCURRED depletion through the day).
+No calculation changed; this note exists purely so the aggregation
+semantics are unambiguous to a future reader.
 
 ---
 
