@@ -40,6 +40,12 @@ packages = ["src/athena"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src", "."]
+# Only retain tmp_path dirs for FAILED tests (for debugging) -- passing
+# tests' tmp dirs are deleted immediately instead of accumulating for the
+# default 3 sessions. 2026-08-28: config_dir-fixture bloat (see conftest.py)
+# let retained tmp dirs balloon to 40GB+ within one session and ran the
+# shared disk out of space twice.
+tmp_path_retention_policy = "failed"
 
 [tool.ruff]
 line-length = 120
