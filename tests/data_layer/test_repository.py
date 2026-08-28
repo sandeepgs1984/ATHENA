@@ -386,6 +386,24 @@ class TestBulkCandlesForInstruments:
             [], Timeframe.D1, datetime(2026, 1, 1, tzinfo=IST), datetime(2026, 1, 31, tzinfo=IST)
         ) == {}
 
+    def test_query_plan_uses_the_range_index_not_a_table_scan(self, repo):
+        """EM-5 runs this query across a 500+ instrument universe every
+        checkpoint (ADR-012 Section 10) -- a real EXPLAIN QUERY PLAN
+        check, not just an index existing in schema.py, proves SQLite
+        actually chooses it for this exact query shape (IN-list on
+        instrument_id, equality on timeframe, range on ts_open)."""
+        marks = ",".join("?" * 3)
+        sql = (
+            f"SELECT instrument_id, timeframe, ts_open, open, high, low, close, volume, source, "
+            f"adjusted FROM candles WHERE timeframe=? AND instrument_id IN ({marks}) "
+            f"AND ts_open>=? AND ts_open<=? ORDER BY instrument_id, ts_open"
+        )
+        params = ("5m", "NSE:A", "NSE:B", "NSE:C", "2026-08-01T00:00:00+05:30", "2026-08-31T23:59:00+05:30")
+        plan = repo.connection.execute("EXPLAIN QUERY PLAN " + sql, params).fetchall()
+        detail = " ".join(str(row[-1]) for row in plan)
+        assert "idx_candles_range" in detail
+        assert "SCAN candles" not in detail  # a full table scan would defeat the index entirely
+
     def test_result_matches_per_symbol_get_candles(self, repo):
         other = "NSE:BBB"
         repo.upsert_instrument(_instrument())

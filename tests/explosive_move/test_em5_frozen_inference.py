@@ -80,3 +80,34 @@ def test_filename_absent_from_manifest_is_rejected(tmp_path):
 
     with pytest.raises(FrozenModelIntegrityError, match="not recorded"):
         load_frozen_model(config_dir=tmp_path, version="v1", family="TOUCH", threshold_percent=10)
+
+
+def test_genuinely_missing_artifact_file_fails_closed_with_the_typed_error(tmp_path):
+    """A file the manifest lists but that never made it to disk (a partial
+    promotion, a botched deploy) must fail exactly like a hash mismatch --
+    a bare FileNotFoundError would still stop the load, but silently, with
+    no consistent typed-failure story for callers to handle."""
+    root = tmp_path / "emr" / "frozen_models" / "v1"
+    (root / "em4b").mkdir(parents=True)
+    (root / "em4d").mkdir(parents=True)
+
+    real_root = CONFIG_DIR / "emr" / "frozen_models" / "v1"
+    manifest = (real_root / "FROZEN_MODEL_MANIFEST.json").read_text(encoding="utf-8")
+    (root / "FROZEN_MODEL_MANIFEST.json").write_text(manifest, encoding="utf-8")
+    # em4b/TOUCH_10.json is recorded in the manifest but deliberately never written.
+    (root / "em4d" / "TOUCH_10.json").write_text(
+        (real_root / "em4d" / "TOUCH_10.json").read_text(encoding="utf-8"), encoding="utf-8",
+    )
+
+    with pytest.raises(FrozenModelIntegrityError, match="could not be read"):
+        load_frozen_model(config_dir=tmp_path, version="v1", family="TOUCH", threshold_percent=10)
+
+
+def test_missing_manifest_file_fails_closed_with_the_typed_error(tmp_path):
+    root = tmp_path / "emr" / "frozen_models" / "v1"
+    (root / "em4b").mkdir(parents=True)
+    (root / "em4d").mkdir(parents=True)
+    # No FROZEN_MODEL_MANIFEST.json written at all.
+
+    with pytest.raises(FrozenModelIntegrityError, match="cannot read manifest"):
+        load_frozen_model(config_dir=tmp_path, version="v1", family="TOUCH", threshold_percent=10)

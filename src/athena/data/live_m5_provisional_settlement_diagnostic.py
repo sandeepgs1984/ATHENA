@@ -36,7 +36,8 @@ can never contaminate canonical data with an unsettled row).
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+import shutil
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from datetime import time as time_of_day
 from datetime import tzinfo as tzinfo_type
@@ -224,4 +225,182 @@ def classify_diagnosis(comparisons: tuple[RowComparison, ...]) -> DiagnosisOutco
         return DiagnosisOutcome.MAPPING_AMBIGUOUS
     if any(not c.ohlcv_exact_match for c in off_grid):
         return DiagnosisOutcome.PROVISIONAL_OHLCV_ALSO_CHANGES
+    return DiagnosisOutcome.TIMESTAMP_ONLY_PROVISIONAL_DRIFT
+
+
+# --------------------------------------------------------------------------- #
+# Monday execution package: preflight checks, run manifest, report skeleton
+# --------------------------------------------------------------------------- #
+
+#: The authoritative frozen checkpoint set, verified 2026-08-28 directly
+#: against the promoted EM-4B artifacts' `checkpoint_ist__*` one-hot
+#: feature categories, the EM-4D calibration keys, and
+#: `config/explosive_move.json`'s own `checkpoints.candidate_ist`/
+#: `accepted_ist` -- all three agree unanimously, across all 18
+#: (family, threshold) combos. This is NOT re-derived from
+#: `athena.explosive_move.contracts.CANDIDATE_CHECKPOINTS_IST` (which
+#: already matches it) -- it is pinned here as its own independently-
+#: verified constant so Track B's schedule can never silently drift from
+#: what was actually proven, even if the contracts module ever changes.
+TRACK_B_CHECKPOINT_SCHEDULE: tuple[str, ...] = (
+    "09:20", "09:30", "09:45", "10:00", "10:30", "11:00", "12:00", "13:00", "14:00",
+)
+
+
+class PreflightError(Exception):
+    """A Monday-morning precondition failed -- refuse to start the live
+    capture rather than run it against a broken environment."""
+
+
+def kite_auth_preflight(config_dir) -> str:
+    """One minimal real Kite call (resolve the catalog for a single known
+    instrument) before committing to the full capture -- the same "small
+    canary before the larger run" discipline the EM-5 checkpoint-price
+    diagnostic and CLAUDE.md's own expensive-run rule already established.
+    Returns the resolved instrument's real symbol on success; raises
+    `PreflightError` (never a bare provider exception) otherwise."""
+
+    from athena.config.env import load_dotenv
+    from athena.data.providers.kite_provider import KiteProvider
+    from athena.errors import ProviderError
+
+    load_dotenv()
+    try:
+        provider = KiteProvider.from_config_dir(config_dir, symbols=["INFY"])
+        instruments = provider.instruments()
+    except ProviderError as exc:
+        raise PreflightError(f"Kite auth preflight failed: {exc}") from exc
+    if not instruments:
+        raise PreflightError("Kite auth preflight: catalog resolved but returned zero instruments")
+    return instruments[0].symbol
+
+
+def disk_space_preflight(*, path=".", minimum_free_gb: float = 2.0) -> float:
+    """Real free space check before starting a capture campaign (2026-08-28
+    session: two separate real disk-exhaustion incidents earlier the same
+    day). Returns real free GB on success; raises `PreflightError` if below
+    `minimum_free_gb`."""
+
+    free_bytes = shutil.disk_usage(path).free
+    free_gb = free_bytes / (1024**3)
+    if free_gb < minimum_free_gb:
+        raise PreflightError(
+            f"disk space preflight failed: {free_gb:.2f}GB free, need >= {minimum_free_gb}GB"
+        )
+    return free_gb
+
+
+@dataclass(frozen=True, slots=True)
+class TrackBRunManifest:
+    """Immutable record of one Track B capture campaign -- symbols,
+    schedule, and every capture file produced, so the later settlement
+    comparison (potentially run by a different process, another day) has
+    an authoritative, self-describing index rather than having to
+    rediscover raw files by convention."""
+
+    run_id: str
+    session_date: date
+    checkpoints: tuple[str, ...]
+    instrument_ids: tuple[str, ...]
+    liquidity_bucket_by_instrument: dict[str, str]
+    kite_auth_verified_symbol: str
+    disk_free_gb_at_start: float
+    capture_file_paths: tuple[str, ...] = field(default_factory=tuple)
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+
+    def to_dict(self) -> dict:
+        return {
+            "run_id": self.run_id, "session_date": self.session_date.isoformat(),
+            "checkpoints": list(self.checkpoints), "instrument_ids": list(self.instrument_ids),
+            "liquidity_bucket_by_instrument": self.liquidity_bucket_by_instrument,
+            "kite_auth_verified_symbol": self.kite_auth_verified_symbol,
+            "disk_free_gb_at_start": self.disk_free_gb_at_start,
+            "capture_file_paths": list(self.capture_file_paths),
+            "started_at": self.started_at.isoformat() if self.started_at else None,
+            "finished_at": self.finished_at.isoformat() if self.finished_at else None,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: dict) -> TrackBRunManifest:
+        return cls(
+            run_id=payload["run_id"], session_date=date.fromisoformat(payload["session_date"]),
+            checkpoints=tuple(payload["checkpoints"]), instrument_ids=tuple(payload["instrument_ids"]),
+            liquidity_bucket_by_instrument=payload["liquidity_bucket_by_instrument"],
+            kite_auth_verified_symbol=payload["kite_auth_verified_symbol"],
+            disk_free_gb_at_start=payload["disk_free_gb_at_start"],
+            capture_file_paths=tuple(payload.get("capture_file_paths", ())),
+            started_at=datetime.fromisoformat(payload["started_at"]) if payload.get("started_at") else None,
+            finished_at=datetime.fromisoformat(payload["finished_at"]) if payload.get("finished_at") else None,
+        )
+
+
+def build_classification_report_skeleton(
+    *, run_id: str, session_date: date, checkpoints: tuple[str, ...],
+    liquidity_bucket_by_instrument: dict[str, str],
+) -> dict:
+    """The exact field/table skeleton `Milestone Review Summary -- EM-5
+    Track B` needs, per the Owner's enumeration -- structure only, every
+    value `None`/empty until a real comparison populates it. Never
+    pre-filled with a conclusion; `populate_classification_report` is the
+    only thing allowed to fill it in, and only from a real
+    `RowComparison` set."""
+
+    return {
+        "run_id": run_id, "session_date": session_date.isoformat(), "checkpoints": list(checkpoints),
+        "liquidity_bucket_by_instrument": liquidity_bucket_by_instrument,
+        "provisional_capture_inventory": None, "settled_capture_inventory": None,
+        "raw_timestamp_behavior_by_checkpoint": None,
+        "ohlcv_exact_match_rate_overall": None, "ohlcv_exact_match_rate_by_checkpoint": None,
+        "ohlcv_exact_match_rate_by_liquidity": None,
+        "unique_mapping_rate_overall": None, "unique_mapping_rate_by_checkpoint": None,
+        "timestamp_offset_seconds_by_checkpoint": None,
+        "evidence_field_differences": None,
+        "logit_probability_rank_impact": None,
+        "classification": None,
+        "recommended_correction": None,
+        "expected_effect_on_frozen_em2_evidence": None,
+        "full_canary_safe_to_run": None,
+    }
+
+
+def populate_classification_report(
+    skeleton: dict, *, comparisons_by_instrument: dict[str, tuple[RowComparison, ...]],
+) -> dict:
+    """Fills the skeleton from real `RowComparison` data only -- one
+    classification per instrument, and one overall classification via the
+    Owner's same priority rule (ambiguous > OHLCV-changed > timestamp-only)
+    applied across every instrument's off-grid rows combined, so a single
+    ambiguous or changed row anywhere cannot be masked by averaging."""
+
+    report = dict(skeleton)
+    all_comparisons = tuple(c for comps in comparisons_by_instrument.values() for c in comps)
+    off_grid = [c for c in all_comparisons if not c.provisional_was_on_grid]
+
+    report["provisional_capture_inventory"] = {
+        iid: len(comps) for iid, comps in comparisons_by_instrument.items()
+    }
+    report["ohlcv_exact_match_rate_overall"] = (
+        sum(1 for c in off_grid if c.ohlcv_exact_match) / len(off_grid) if off_grid else None
+    )
+    report["unique_mapping_rate_overall"] = (
+        sum(1 for c in off_grid if c.mapping_unique) / len(off_grid) if off_grid else None
+    )
+    by_checkpoint: dict[str, list[RowComparison]] = {}
+    for c in off_grid:
+        by_checkpoint.setdefault(c.provisional_ts.strftime("%H:%M"), []).append(c)
+    report["ohlcv_exact_match_rate_by_checkpoint"] = {
+        cp: sum(1 for c in rows if c.ohlcv_exact_match) / len(rows) for cp, rows in by_checkpoint.items()
+    }
+    report["unique_mapping_rate_by_checkpoint"] = {
+        cp: sum(1 for c in rows if c.mapping_unique) / len(rows) for cp, rows in by_checkpoint.items()
+    }
+    report["timestamp_offset_seconds_by_checkpoint"] = {
+        cp: [c.timestamp_offset_seconds for c in rows if c.timestamp_offset_seconds is not None]
+        for cp, rows in by_checkpoint.items()
+    }
+
+    if off_grid:
+        report["classification"] = classify_diagnosis(all_comparisons).value
+    return report
     return DiagnosisOutcome.TIMESTAMP_ONLY_PROVISIONAL_DRIFT

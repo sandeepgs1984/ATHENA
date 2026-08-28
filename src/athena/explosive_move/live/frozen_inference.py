@@ -77,7 +77,10 @@ def _verify(path: Path, expected_sha256: dict[str, str], filename: str) -> None:
     expected = expected_sha256.get(filename)
     if expected is None:
         raise FrozenModelIntegrityError(f"{filename} not recorded in FROZEN_MODEL_MANIFEST.json")
-    actual = _sha256(path)
+    try:
+        actual = _sha256(path)
+    except OSError as exc:
+        raise FrozenModelIntegrityError(f"{path} could not be read: {exc}") from exc
     if actual != expected:
         raise FrozenModelIntegrityError(f"{path} sha256 mismatch: manifest says {expected}, file is {actual}")
 
@@ -100,7 +103,10 @@ def load_frozen_model(*, config_dir: Path, version: str, family: str, threshold_
     never silently trusts a drifted file."""
 
     root = Path(config_dir) / "emr" / "frozen_models" / version
-    manifest = json.loads((root / "FROZEN_MODEL_MANIFEST.json").read_text(encoding="utf-8"))
+    try:
+        manifest = json.loads((root / "FROZEN_MODEL_MANIFEST.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise FrozenModelIntegrityError(f"cannot read manifest at {root}: {exc}") from exc
 
     filename = f"{family}_{threshold_percent}.json"
     em4b_path = root / "em4b" / filename

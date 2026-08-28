@@ -53,3 +53,29 @@ def test_corrupted_register_bytes_are_rejected(tmp_path):
 
     with pytest.raises(DeterministicRulesIntegrityError, match="sha256 mismatch"):
         load_deterministic_rules(config_dir=tmp_path, version="v1")
+
+
+def test_genuinely_missing_register_file_fails_closed_with_the_typed_error(tmp_path):
+    root = tmp_path / "emr" / "frozen_models" / "v1"
+    (root / "em3").mkdir(parents=True)
+    real_root = CONFIG_DIR / "emr" / "frozen_models" / "v1"
+    (root / "FROZEN_MODEL_MANIFEST.json").write_text(
+        (real_root / "FROZEN_MODEL_MANIFEST.json").read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    # F_exploratory_candidate_register.json is recorded in the manifest but
+    # deliberately never written; manifest.json (em3's own) is present.
+    (root / "em3" / "manifest.json").write_text(
+        (real_root / "em3" / "manifest.json").read_text(encoding="utf-8"), encoding="utf-8"
+    )
+
+    with pytest.raises(DeterministicRulesIntegrityError, match="could not be read"):
+        load_deterministic_rules(config_dir=tmp_path, version="v1")
+
+
+def test_missing_manifest_file_fails_closed_with_the_typed_error(tmp_path):
+    root = tmp_path / "emr" / "frozen_models" / "v1"
+    (root / "em3").mkdir(parents=True)
+    # No FROZEN_MODEL_MANIFEST.json written at all.
+
+    with pytest.raises(DeterministicRulesIntegrityError, match="cannot read manifest"):
+        load_deterministic_rules(config_dir=tmp_path, version="v1")

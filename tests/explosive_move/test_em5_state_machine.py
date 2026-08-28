@@ -133,3 +133,39 @@ def test_no_probability_or_confidence_parameter_exists_anywhere_in_the_signature
     forbidden_substrings = ("probability", "confidence", "final_test", "threshold_prob")
     for name in params:
         assert not any(bad in name.lower() for bad in forbidden_substrings), name
+
+
+class TestExactRankCutoffBoundaries:
+    """The frozen 20/10/5 cutoffs are inclusive (`rank <= cutoff`) --
+    proven at the exact boundary values, not just interior ranks like the
+    rest of this file uses (15, 8, 3)."""
+
+    def test_rank_20_is_inside_watch_band_rank_21_is_not(self):
+        inside = _next(rank=20, prior_state=ScannerState.INACTIVE, ever_reached=ScannerState.INACTIVE)
+        outside = _next(rank=21, prior_state=ScannerState.INACTIVE, ever_reached=ScannerState.INACTIVE)
+        assert inside.to_state == ScannerState.WATCH
+        assert outside.to_state == ScannerState.INACTIVE
+
+    def test_rank_10_is_inside_confirmed_band_rank_11_is_only_watch(self):
+        inside = _next(rank=10, prior_state=ScannerState.WATCH, ever_reached=ScannerState.WATCH)
+        outside = _next(rank=11, prior_state=ScannerState.INACTIVE, ever_reached=ScannerState.INACTIVE)
+        assert inside.to_state == ScannerState.CONFIRMED
+        assert outside.to_state == ScannerState.WATCH
+
+    def test_rank_5_is_inside_high_conviction_band_rank_6_is_only_confirmed(self):
+        inside = _next(rank=5, prior_state=ScannerState.CONFIRMED, ever_reached=ScannerState.CONFIRMED)
+        outside = _next(rank=6, prior_state=ScannerState.WATCH, ever_reached=ScannerState.WATCH)
+        assert inside.to_state == ScannerState.HIGH_CONVICTION
+        assert outside.to_state == ScannerState.CONFIRMED
+
+    def test_boundaries_hold_under_a_non_default_rank_cutoffs_configuration(self):
+        """The inclusive-boundary rule itself is exercised, not just the
+        default 20/10/5 magnitudes -- proves determine_next_state reads
+        `rank_cutoffs` rather than having 20/10/5 baked in anywhere."""
+        custom = RankCutoffs(watch_rank=30, confirmed_rank=15, high_conviction_rank=7)
+        inside = _next(rank=30, prior_state=ScannerState.INACTIVE, ever_reached=ScannerState.INACTIVE,
+                      rank_cutoffs=custom)
+        outside = _next(rank=31, prior_state=ScannerState.INACTIVE, ever_reached=ScannerState.INACTIVE,
+                       rank_cutoffs=custom)
+        assert inside.to_state == ScannerState.WATCH
+        assert outside.to_state == ScannerState.INACTIVE

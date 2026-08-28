@@ -183,3 +183,70 @@ def test_two_independent_runs_against_identical_inputs_produce_byte_identical_sc
         assert a["calibrated_probability"] == b["calibrated_probability"]
         assert a["rank"] == b["rank"]
         assert a["state"] == b["state"]
+
+
+def test_empty_universe_completes_cleanly_with_zero_candidates(tmp_path):
+    """A resolved universe with zero instruments (e.g. a misconfigured or
+    not-yet-populated universe name) must not error -- it is a real,
+    legitimate empty result, not a failure."""
+    athena_repo = _seed_athena_repo(tmp_path / "athena")
+    market_port = SqliteEmrMarketDataAdapter(athena_repo)
+    athena_repo.save_resolved_universe("em5-empty-universe", [], resolved_at=CHECKPOINT_INSTANT)
+    emr_repo = EmrRepository(tmp_path / "emr" / "emr.db")
+    emr_repo.initialize()
+
+    result = run_scan_cycle(
+        config=ScanCycleConfig(
+            universe="em5-empty-universe", session_date=SESSION_DATE, checkpoint=CHECKPOINT,
+            checkpoint_instant=CHECKPOINT_INSTANT, session_open_time=datetime(2026, 8, 28, 9, 15).time(),
+            model_version="v1", config_dir=CONFIG_DIR, max_staleness_minutes=30.0,
+            max_checkpoint_price_delay_seconds=300.0,
+        ),
+        market_port=market_port, emr_repo=emr_repo, calendar_context_session_type=SessionType.NORMAL,
+        collect_checkpoint_prices=_fake_collector, now=lambda: CHECKPOINT_INSTANT,
+    )
+
+    assert result.status == "COMPLETE"
+    assert result.eligible_count == 0
+    assert result.ineligible_count == 0
+    assert result.candidates_persisted == 0
+    athena_repo.close()
+    emr_repo.close()
+
+
+def test_an_instrument_with_zero_todays_candles_is_ineligible_but_produces_no_candidate_row(tmp_path):
+    """scanner.py skips evidence assembly entirely for an instrument with
+    no M5 data today (`if not today: continue`) -- it is still counted in
+    `ineligible_count` (via `len(universe_ids) - eligible_count`) but,
+    unlike every other ineligibility reason, gets no persisted candidate
+    row explaining why. This test pins that real asymmetry rather than
+    leaving it as an unverified assumption."""
+    athena_repo = _seed_athena_repo(tmp_path / "athena")  # seeds NSE:AAA, NSE:BBB with full data
+    no_data_instrument = "NSE:NODATA"
+    athena_repo.upsert_instrument(_instrument(no_data_instrument, "NODATA"))
+    mixed_universe = "em5-mixed-universe"
+    athena_repo.save_resolved_universe(
+        mixed_universe, [*INSTRUMENTS, no_data_instrument], resolved_at=CHECKPOINT_INSTANT,
+    )
+    # no_data_instrument gets neither daily nor M5 candles at all.
+    market_port = SqliteEmrMarketDataAdapter(athena_repo)
+    emr_repo = EmrRepository(tmp_path / "emr" / "emr.db")
+    emr_repo.initialize()
+
+    result = run_scan_cycle(
+        config=ScanCycleConfig(
+            universe=mixed_universe, session_date=SESSION_DATE, checkpoint=CHECKPOINT,
+            checkpoint_instant=CHECKPOINT_INSTANT, session_open_time=datetime(2026, 8, 28, 9, 15).time(),
+            model_version="v1", config_dir=CONFIG_DIR, max_staleness_minutes=30.0,
+            max_checkpoint_price_delay_seconds=300.0, families_thresholds=(("TOUCH", 10),),
+        ),
+        market_port=market_port, emr_repo=emr_repo, calendar_context_session_type=SessionType.NORMAL,
+        collect_checkpoint_prices=_fake_collector, now=lambda: CHECKPOINT_INSTANT,
+    )
+
+    assert result.eligible_count == len(INSTRUMENTS)
+    assert result.ineligible_count == 1  # NSE:NODATA counted...
+    rows = emr_repo.list_candidates(run_id=result.run_id)
+    assert {r["instrument_id"] for r in rows} == set(INSTRUMENTS)  # ...but no explaining row exists for it
+    athena_repo.close()
+    emr_repo.close()

@@ -3,6 +3,9 @@ scan-run/candidate/transition persistence round-trips."""
 
 from __future__ import annotations
 
+import pytest
+
+from athena.errors import RepositoryError
 from athena.explosive_move.store.repository import EmrRepository
 from athena.explosive_move.store.schema import EMR_SCHEMA_VERSION
 
@@ -150,3 +153,93 @@ def test_save_and_list_transitions_round_trips(tmp_path):
         instrument_id="NSE:INFY", family="TOUCH", threshold_percent=10, session_date="2026-08-28",
     )
     assert [r["to_state"] for r in rows] == ["WATCH", "CONFIRMED"]
+
+
+def test_data_survives_a_close_and_reopen_against_the_same_file(tmp_path):
+    """Simulates a process restart: a fresh EmrRepository instance opened
+    against the same on-disk file must see everything a prior instance
+    persisted before closing -- not just round-trip within one open
+    connection, which every other test here already covers."""
+    path = tmp_path / "emr.db"
+    first = EmrRepository(path)
+    first.initialize()
+    first.save_scan_run(_scan_run())
+    first.save_candidates([_candidate()])
+    first.save_transitions([_transition()])
+    first.close()
+
+    second = EmrRepository(path)
+    second.initialize()  # idempotent -- must not lose or duplicate existing data
+    try:
+        assert second.get_scan_run("run-1")["status"] == "RUNNING"
+        assert len(second.list_candidates(run_id="run-1")) == 1
+        assert len(second.list_transitions(
+            instrument_id="NSE:INFY", family="TOUCH", threshold_percent=10, session_date="2026-08-28",
+        )) == 1
+    finally:
+        second.close()
+
+
+def test_save_candidates_rolls_back_the_whole_batch_on_integrity_violation(tmp_path):
+    """`save_candidates` writes one `executemany` inside a single
+    transaction -- a NOT NULL violation on the second row must roll back
+    the first row too, never leaving a partial batch persisted."""
+    repo = _repo(tmp_path)
+    repo.save_scan_run(_scan_run())
+    valid = _candidate(instrument_id="NSE:INFY")
+    invalid = _candidate(instrument_id="NSE:TCS", raw_logistic_estimate=None)  # NOT NULL column
+
+    with pytest.raises(RepositoryError):
+        repo.save_candidates([valid, invalid])
+
+    assert repo.list_candidates(run_id="run-1") == []
+
+
+def test_save_transitions_rolls_back_the_whole_batch_on_integrity_violation(tmp_path):
+    repo = _repo(tmp_path)
+    valid = _transition(sequence_number=1)
+    invalid = _transition(sequence_number=2, to_state=None)  # NOT NULL column
+
+    with pytest.raises(RepositoryError):
+        repo.save_transitions([valid, invalid])
+
+    assert repo.list_transitions(
+        instrument_id="NSE:INFY", family="TOUCH", threshold_percent=10, session_date="2026-08-28",
+    ) == []
+
+
+def test_list_candidates_for_symbol_query_plan_uses_the_instrument_index(tmp_path):
+    """`list_candidates_for_symbol` runs once per (instrument, family,
+    threshold) combo every scan cycle -- real EXPLAIN QUERY PLAN proof
+    that `idx_emr_candidates_instrument` (schema.py) is actually chosen,
+    not just present."""
+    repo = _repo(tmp_path)
+    conn = repo._connect()
+    sql = (
+        "SELECT run_id, checkpoint, rank, raw_logit, raw_logistic_estimate, deterministic_score, "
+        "calibrated_probability, probability_language, em4b_model_version, em4d_calibration_version, "
+        "checkpoint_price, checkpoint_price_semantic, checkpoint_snapshot_timestamp, "
+        "checkpoint_last_trade_time, checkpoint_price_latency_seconds, evidence_timestamp, "
+        "evidence_completeness_known, evidence_completeness_total, freshness, feasibility, "
+        "feasibility_reason, state, state_reason, created_ts, logit_contributions_json "
+        "FROM emr_candidates WHERE instrument_id = ? AND family = ? AND threshold_percent = ? "
+        "AND session_date = ? ORDER BY created_ts"
+    )
+    plan = conn.execute("EXPLAIN QUERY PLAN " + sql, ("NSE:INFY", "TOUCH", 10, "2026-08-28")).fetchall()
+    detail = " ".join(str(row[-1]) for row in plan)
+    assert "idx_emr_candidates_instrument" in detail
+    assert "SCAN emr_candidates" not in detail
+
+
+def test_list_transitions_query_plan_uses_the_instrument_index(tmp_path):
+    repo = _repo(tmp_path)
+    conn = repo._connect()
+    sql = (
+        "SELECT run_id, checkpoint, sequence_number, from_state, to_state, reason, created_ts "
+        "FROM emr_transitions WHERE instrument_id = ? AND family = ? AND threshold_percent = ? "
+        "AND session_date = ? ORDER BY sequence_number"
+    )
+    plan = conn.execute("EXPLAIN QUERY PLAN " + sql, ("NSE:INFY", "TOUCH", 10, "2026-08-28")).fetchall()
+    detail = " ".join(str(row[-1]) for row in plan)
+    assert "idx_emr_transitions_instrument" in detail
+    assert "SCAN emr_transitions" not in detail

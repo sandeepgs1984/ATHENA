@@ -6,6 +6,155 @@ status updated on approval.
 
 ---
 
+## EM-5 weekend hardening + checkpoint-set provenance + Monday Track B package
+
+**Summary.** Owner/Chief Architect weekend authorization (2026-08-28):
+verify the authoritative frozen checkpoint set from real artifacts,
+harden EM-5 offline (nothing touching the open live-M5-semantics
+question), and prepare (not run) the Monday Track B execution package.
+No new model behavior. 2026-08-28's provisional data untouched. `EM-6`
+not started.
+
+**1. Checkpoint-set provenance -- resolved, no discrepancy.** Checked, in
+the Owner's specified order, directly against the real promoted
+artifacts: (a) all 18 `config/emr/frozen_models/v1/em4b/*.json` files'
+`checkpoint_ist__*` one-hot feature categories; (b) all 18
+`em4d/*.json` calibration keys; (c) `config/explosive_move.json`'s own
+`checkpoints.candidate_ist`/`accepted_ist`. **All three agree
+unanimously**: `09:20, 09:30, 09:45, 10:00, 10:30, 11:00, 12:00, 13:00,
+14:00` -- exactly the set already coded as
+`athena.explosive_move.contracts.CANDIDATE_CHECKPOINTS_IST` and already
+used by every EM-5 module and the canary. No discrepancy found; no
+schedule/config/doc change needed. Pinned independently as
+`TRACK_B_CHECKPOINT_SCHEDULE` in `live_m5_provisional_settlement_diagnostic.py`
+so a future change to `contracts.py` can never silently desync Track B's
+schedule from what was actually proven (test:
+`test_pinned_to_the_artifact_verified_authoritative_set`).
+
+**2. Offline hardening -- audited against the Owner's 15-item checklist,
+gaps filled.** Full audit (background agent, cited every existing test by
+file:function) found most items already COVERED (frozen-artifact
+promotion, deterministic replay, ranking-tie determinism, state-machine
+transitions, `NO_CHECKPOINT_PRICE` paths, corrupted-artifact fail-closed,
+import/isolation, 300s checkpoint-price window). Real gaps found and
+fixed:
+
+* **Persistence/reload/restart** -- was PARTIAL (only within-one-connection
+  round trips tested). Added `test_data_survives_a_close_and_reopen_against_the_same_file`.
+* **Rank-cutoff exact boundaries** -- was tested only at interior values
+  (15, 8, 3). Added 4 tests at the exact 20/21, 10/11, 5/6 boundaries
+  plus one under a non-default `RankCutoffs` configuration.
+* **Missing (not just corrupted) frozen-artifact files** -- a genuinely
+  absent file previously raised a bare `FileNotFoundError`, not the
+  module's own typed integrity error. Fixed in both
+  `frozen_inference.py` and `deterministic_scoring.py` (`_verify` and the
+  manifest read both now catch `OSError`/`JSONDecodeError`/`KeyError` and
+  re-raise the typed error) -- a small, zero-semantic-ambiguity
+  robustness fix, not a behavior change to any frozen value. 4 new tests.
+* **Empty/partial universe handling** -- was untested at the scanner
+  level. Added `test_empty_universe_completes_cleanly_with_zero_candidates`
+  and `test_an_instrument_with_zero_todays_candles_is_ineligible_but_produces_no_candidate_row`
+  (the latter pins a real, previously-unverified asymmetry: such an
+  instrument counts toward `ineligible_count` but gets no persisted
+  candidate row explaining why -- documented, not changed).
+* **EM-5 store transaction rollback** -- untested (the main `athena.db`
+  repository had this; the isolated EMR store didn't). Added rollback
+  tests for both `save_candidates` and `save_transitions`.
+* **SQLite query-plan verification** -- untested for any EM-5-relevant
+  query. Added real `EXPLAIN QUERY PLAN` tests proving
+  `candles_for_instruments` uses `idx_candles_range` and
+  `list_candidates_for_symbol`/`list_transitions` use
+  `idx_emr_candidates_instrument`/`idx_emr_transitions_instrument` --
+  index seeks confirmed, no table scans.
+
+Not pursued (diminishing returns / already reasonably covered): a fully
+end-to-end real-transport zero-network-call test (isolation is already
+proven structurally by `test_em5_isolation.py` plus fake-clock collector
+tests); a synthetic large-N automated performance test (the real
+518-symbol benchmark below is the more meaningful evidence and isn't
+portable as a CI fixture).
+
+**Real full-518-symbol performance benchmark** (real `db/athena.db`,
+`athena_core` universe, 2026-08-27 -- a real, now-settled post-repair
+session, one checkpoint, all 18 family/threshold combos, isolated temp
+EMR ledger, zero writes to production):
+
+| Metric | Value |
+|---|---|
+| Wall clock | 12.9s |
+| CPU (user + system) | 9.2s |
+| Peak RSS | 1,366 MB |
+| DB read latency | 7.6s (59% of total -- dominant cost, proportional to real data volume, not a query-plan defect; see above) |
+| Evidence generation | 2.15s |
+| Inference (18 combos x 518 instruments) | 1.67s |
+| Result | COMPLETE, 518/518 eligible, 9,324 candidates persisted |
+
+**3. Monday Track B execution package -- prepared, not run.** New
+`em5_track_b_capture_cli.py` ties the diagnostic module's tested pieces
+into two callable phases: `run_capture_phase` (real Kite calls during the
+live session; skips any checkpoint that hasn't elapsed yet rather than
+reconstructing a missed one after the fact; writes nothing to
+`db/athena.db`; persists every raw capture as immutable JSON plus a
+`TrackBRunManifest`) and `run_settlement_comparison_phase` (re-fetches
+through the normal historical route once settled, produces the populated
+classification report via the already-approved content-only OHLCV
+matching). Preflight: `kite_auth_preflight` (one minimal real catalog
+call before committing to anything) + `disk_space_preflight` (>=2GB free
+required, given today's two real disk incidents). Symbol selection: 9
+real, currently-active instruments (`NSE:E2E` excluded), 3 per liquidity
+tier, derived from real 90-day average volume at investigation time.
+Request budget: 81 provisional-capture requests (9 symbols x 9
+checkpoints) + 9 settlement-comparison requests = 90 total, well inside
+Kite's real ~3 req/s historical pacing (~30s of actual request time).
+Report skeleton (`build_classification_report_skeleton`) has every field
+the Owner's `Milestone Review Summary -- EM-5 Track B` needs, populated
+only from real comparisons, never pre-filled with a conclusion.
+
+**4. Technical debt -- confirmed separately recorded, not touched.**
+`NSE:E2E` and the `_ensure_catalog()` negative-caching behavior remain
+documented in the prior entry as their own risk items, explicitly out of
+EM-5's scope; not modified this session.
+
+**Files created.** `src/athena/data/em5_track_b_capture_cli.py`,
+`tests/data_layer/test_em5_track_b_capture_cli.py` (6 tests).
+
+**Files modified.** `src/athena/explosive_move/live/frozen_inference.py`,
+`src/athena/explosive_move/live/deterministic_scoring.py` (missing-file
+fail-closed fix). `tests/explosive_move/test_em5_store.py` (+5),
+`tests/explosive_move/test_em5_state_machine.py` (+4),
+`tests/explosive_move/test_em5_frozen_inference.py` (+2),
+`tests/explosive_move/test_em5_deterministic_scoring.py` (+2),
+`tests/explosive_move/test_em5_scanner.py` (+2),
+`tests/data_layer/test_repository.py` (+1),
+`tests/data_layer/test_live_m5_provisional_settlement_diagnostic.py` (+7),
+`src/athena/data/live_m5_provisional_settlement_diagnostic.py`
+(`TRACK_B_CHECKPOINT_SCHEDULE`, preflight functions, `TrackBRunManifest`,
+report skeleton/populate functions).
+
+**Tests added.** 30 new. Full suite: **2,705 passed, 1 skipped, 0
+failed**. Ruff clean on every new/modified file.
+
+**Architecture compliance.** No new model behavior. No labels/outcomes.
+No FINAL_TEST access. No frozen EM-2/EM-4 value changed -- the
+missing-file fix only changes which exception TYPE is raised, never a
+model coefficient, calibration, or threshold. 2026-08-28's provisional M5
+data was not read, written, or otherwise touched by any of this work.
+
+**Risks / technical debt.** None new. The two items from the prior entry
+(`NSE:E2E`, `_ensure_catalog()` negative caching) remain open, unchanged.
+
+**Remaining work.** Execute Track B live at the next market session
+(2026-08-31): run `run_preflight`, then `run_capture_phase` at each
+elapsed checkpoint through the day, then (once settled)
+`run_settlement_comparison_phase`, then return `Milestone Review Summary
+-- EM-5 Track B` per the Owner's exact required fields. Milestone status
+unchanged: **EM-5 = COMPLETE PENDING CANARY**. Not CLOSED. `EM-6` blocked.
+
+**Ready for review:** yes -- see the separate "EM-5 Monday Readiness
+Report" delivered in-session for the go/no-go checklist.
+
+---
+
 ## EM-5 M5 settlement repair (REL_VOLUME_C historical fix) + Track B tooling built
 
 **Summary.** Owner/Chief Architect authorized (2026-08-28) a targeted,

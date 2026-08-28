@@ -15,11 +15,17 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from athena.data.live_m5_provisional_settlement_diagnostic import (
+    TRACK_B_CHECKPOINT_SCHEDULE,
     DiagnosisOutcome,
+    PreflightError,
     ProvisionalCapture,
+    TrackBRunManifest,
+    build_classification_report_skeleton,
     capture_provisional_m5,
     classify_diagnosis,
     compare_provisional_to_settled,
+    disk_space_preflight,
+    populate_classification_report,
     read_capture,
     write_capture,
 )
@@ -211,3 +217,99 @@ class TestClassifyDiagnosis:
 
         with pytest.raises(ValueError, match="no off-grid provisional rows"):
             classify_diagnosis(comparisons)
+
+
+class TestTrackBCheckpointSchedule:
+    def test_pinned_to_the_artifact_verified_authoritative_set(self):
+        """Verified 2026-08-28 directly against the promoted EM-4B
+        checkpoint_ist one-hot categories, the EM-4D calibration keys (all
+        18 combos, unanimous), and config/explosive_move.json's own
+        checkpoints.candidate_ist/accepted_ist -- all three agree. This
+        pins that finding so a future change to the contracts module can
+        never silently desync Track B's schedule from what was proven."""
+        assert TRACK_B_CHECKPOINT_SCHEDULE == (
+            "09:20", "09:30", "09:45", "10:00", "10:30", "11:00", "12:00", "13:00", "14:00",
+        )
+
+
+class TestDiskSpacePreflight:
+    def test_passes_when_free_space_exceeds_the_minimum(self, tmp_path: Path):
+        free_gb = disk_space_preflight(path=tmp_path, minimum_free_gb=0.001)
+        assert free_gb > 0.001
+
+    def test_raises_when_free_space_is_below_the_minimum(self, tmp_path: Path):
+        with pytest.raises(PreflightError, match="disk space preflight failed"):
+            disk_space_preflight(path=tmp_path, minimum_free_gb=1_000_000.0)
+
+
+class TestTrackBRunManifest:
+    def test_round_trips_through_json(self, tmp_path: Path):
+        manifest = TrackBRunManifest(
+            run_id="em5-trackb-20260831", session_date=date(2026, 8, 31),
+            checkpoints=TRACK_B_CHECKPOINT_SCHEDULE, instrument_ids=(INST,),
+            liquidity_bucket_by_instrument={INST: "high"},
+            kite_auth_verified_symbol="INFY", disk_free_gb_at_start=42.0,
+            capture_file_paths=("a.json", "b.json"),
+            started_at=datetime(2026, 8, 31, 9, 0, tzinfo=IST),
+            finished_at=datetime(2026, 8, 31, 14, 5, tzinfo=IST),
+        )
+        path = tmp_path / "manifest.json"
+        path.write_text(json.dumps(manifest.to_dict(), indent=2), encoding="utf-8")
+
+        restored = TrackBRunManifest.from_dict(json.loads(path.read_text()))
+
+        assert restored == manifest
+
+
+class TestClassificationReportSkeleton:
+    def test_skeleton_has_every_required_field_and_no_conclusion(self):
+        skeleton = build_classification_report_skeleton(
+            run_id="em5-trackb-20260831", session_date=date(2026, 8, 31),
+            checkpoints=TRACK_B_CHECKPOINT_SCHEDULE, liquidity_bucket_by_instrument={INST: "high"},
+        )
+
+        required_fields = (
+            "provisional_capture_inventory", "settled_capture_inventory",
+            "raw_timestamp_behavior_by_checkpoint", "ohlcv_exact_match_rate_overall",
+            "ohlcv_exact_match_rate_by_checkpoint", "ohlcv_exact_match_rate_by_liquidity",
+            "unique_mapping_rate_overall", "unique_mapping_rate_by_checkpoint",
+            "timestamp_offset_seconds_by_checkpoint", "evidence_field_differences",
+            "logit_probability_rank_impact", "classification", "recommended_correction",
+            "expected_effect_on_frozen_em2_evidence", "full_canary_safe_to_run",
+        )
+        for field_name in required_fields:
+            assert field_name in skeleton
+            assert skeleton[field_name] is None
+
+    def test_populate_reports_timestamp_only_drift_from_real_comparisons(self):
+        skeleton = build_classification_report_skeleton(
+            run_id="em5-trackb-20260831", session_date=date(2026, 8, 31),
+            checkpoints=TRACK_B_CHECKPOINT_SCHEDULE, liquidity_bucket_by_instrument={INST: "high"},
+        )
+        provisional = _capture([_candle(datetime(2026, 8, 31, 9, 43, 55, tzinfo=IST), c="102")],
+                               datetime(2026, 8, 31, 10, 0, tzinfo=IST))
+        settled = _capture([_candle(datetime(2026, 8, 31, 9, 40, tzinfo=IST), c="102")],
+                           datetime(2026, 9, 3, tzinfo=IST))
+        comparisons = compare_provisional_to_settled(provisional=provisional, settled=settled)
+
+        populated = populate_classification_report(skeleton, comparisons_by_instrument={INST: comparisons})
+
+        assert populated["classification"] == DiagnosisOutcome.TIMESTAMP_ONLY_PROVISIONAL_DRIFT.value
+        assert populated["ohlcv_exact_match_rate_overall"] == 1.0
+        assert populated["unique_mapping_rate_overall"] == 1.0
+        assert populated["timestamp_offset_seconds_by_checkpoint"]["09:43"] == [pytest.approx(235.0)]
+
+    def test_populate_leaves_classification_none_when_no_off_grid_evidence_exists(self):
+        skeleton = build_classification_report_skeleton(
+            run_id="em5-trackb-20260831", session_date=date(2026, 8, 31),
+            checkpoints=TRACK_B_CHECKPOINT_SCHEDULE, liquidity_bucket_by_instrument={INST: "high"},
+        )
+        provisional = _capture([_candle(datetime(2026, 8, 31, 9, 15, tzinfo=IST))],
+                               datetime(2026, 8, 31, 9, 20, tzinfo=IST))
+        settled = _capture([_candle(datetime(2026, 8, 31, 9, 15, tzinfo=IST))],
+                           datetime(2026, 9, 3, tzinfo=IST))
+        comparisons = compare_provisional_to_settled(provisional=provisional, settled=settled)
+
+        populated = populate_classification_report(skeleton, comparisons_by_instrument={INST: comparisons})
+
+        assert populated["classification"] is None

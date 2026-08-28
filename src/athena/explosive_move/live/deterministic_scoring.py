@@ -39,7 +39,10 @@ def _verify(path: Path, expected_sha256: dict[str, str]) -> None:
     expected = expected_sha256.get(path.name)
     if expected is None:
         raise DeterministicRulesIntegrityError(f"{path.name} not recorded in FROZEN_MODEL_MANIFEST.json")
-    actual = _sha256(path)
+    try:
+        actual = _sha256(path)
+    except OSError as exc:
+        raise DeterministicRulesIntegrityError(f"{path} could not be read: {exc}") from exc
     if actual != expected:
         raise DeterministicRulesIntegrityError(f"{path} sha256 mismatch: manifest says {expected}, file is {actual}")
 
@@ -63,8 +66,11 @@ def load_deterministic_rules(*, config_dir: Path, version: str) -> Deterministic
     `frozen_inference.load_frozen_model`."""
 
     root = Path(config_dir) / "emr" / "frozen_models" / version
-    frozen_manifest = json.loads((root / "FROZEN_MODEL_MANIFEST.json").read_text(encoding="utf-8"))
-    expected_sha256 = frozen_manifest["sources"]["em3"]["sha256"]
+    try:
+        frozen_manifest = json.loads((root / "FROZEN_MODEL_MANIFEST.json").read_text(encoding="utf-8"))
+        expected_sha256 = frozen_manifest["sources"]["em3"]["sha256"]
+    except (OSError, json.JSONDecodeError, KeyError) as exc:
+        raise DeterministicRulesIntegrityError(f"cannot read manifest at {root}: {exc}") from exc
 
     register_path = root / "em3" / _REGISTER_FILENAME
     manifest_path = root / "em3" / _MANIFEST_FILENAME
