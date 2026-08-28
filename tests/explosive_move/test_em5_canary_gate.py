@@ -30,6 +30,8 @@ UNIVERSE_NAME = "em5-canary-test-universe"
 MATURE_INSTRUMENT = "NSE:MATURE"
 IMMATURE_INSTRUMENT = "NSE:IMMATURE"
 CHECKPOINTS = ("09:20", "09:30", "10:00")
+NIFTY = "NSE:NIFTY 50"
+VIX = "NSE:INDIA VIX"
 
 
 def _instrument(iid: str, symbol: str) -> Instrument:
@@ -60,7 +62,7 @@ def _today_m5_through(iid: str, last_time: str) -> list[Candle]:
     return candles
 
 
-def _seed_repo(tmp_path: Path) -> SqliteRepository:
+def _seed_repo(tmp_path: Path, *, with_regime_data: bool = True) -> SqliteRepository:
     repo = SqliteRepository(tmp_path / "athena.db")
     repo.initialize()
     for iid in (MATURE_INSTRUMENT, IMMATURE_INSTRUMENT):
@@ -78,12 +80,35 @@ def _seed_repo(tmp_path: Path) -> SqliteRepository:
     ]
     repo.add_candles(immature_daily)
     repo.add_candles(_today_m5_through(IMMATURE_INSTRUMENT, "10:00"))
+
+    if with_regime_data:
+        # Real NIFTY 50 / INDIA VIX D1 history so the canonical regime
+        # source (Owner ruling 2026-08-28) resolves genuine, non-UNKNOWN
+        # labels -- 60 rising sessions clears RegimeConfig's real
+        # trend_ma_slow=50 default with margin.
+        for iid in (NIFTY, VIX):
+            repo.upsert_instrument(_instrument(iid, iid.split(":")[1]))
+        nifty_daily = [
+            _daily_candle(NIFTY, SESSION_DATE - timedelta(days=i), str(20000 + (60 - i) * 5))
+            for i in range(60, 0, -1)
+        ]
+        repo.add_candles(nifty_daily)
+        repo.add_candles([_daily_candle(NIFTY, SESSION_DATE, "20500")])  # real ~1% gap up vs prior close 20295
+        repo.add_candles([_daily_candle(VIX, SESSION_DATE - timedelta(days=1), "15.0")])  # inside [12, 20]
     return repo
 
 
 @pytest.fixture()
 def canary_setup(tmp_path):
     athena_repo = _seed_repo(tmp_path)
+    market_port = SqliteEmrMarketDataAdapter(athena_repo)
+    yield market_port
+    athena_repo.close()
+
+
+@pytest.fixture()
+def canary_setup_no_regime(tmp_path):
+    athena_repo = _seed_repo(tmp_path, with_regime_data=False)
     market_port = SqliteEmrMarketDataAdapter(athena_repo)
     yield market_port
     athena_repo.close()
@@ -114,26 +139,46 @@ def test_all_immature_universe_fails_closed_without_running_a_scan(canary_setup)
     assert result.completeness == ()
 
 
-def test_regime_never_wired_holds_completeness_at_zero_percent(canary_setup):
-    """EM-5 v1 has no live regime feed (`run_scan_cycle`'s own docstring:
-    regime fields are honestly UNKNOWN unless a caller wires one in).
-    `all_fields_known_rate` is the fraction of rows where ALL 22
-    CANDIDATE_FEATURE fields are known (matching the contract Section 14
-    baseline table's own "all-22-fields-known %" definition) -- and since
-    REGIME_TREND/REGIME_VOLATILITY/REGIME_GAP are 3 of those 22 fields and
-    are UNKNOWN on every single row without a wired regime source, NO row
-    can ever be fully complete: the rate is a hard, permanent 0%, not just
-    "below the 99% floor." This is not a bug in the gate: it is the gate
-    correctly catching that EM-5 cannot honestly claim contract Section
-    14's numeric floor until a live regime source is wired into
-    `run_scan_cycle`'s `regime_lookup` parameter (or the floor is
-    explicitly rescoped to exclude regime fields, per Owner decision)."""
+def test_canonical_regime_wiring_resolves_real_labels_and_lifts_completeness(canary_setup):
+    """Owner/Chief Architect ruling (2026-08-28): wire the real canonical
+    RegimeEngine into `run_scan_cycle`'s `regime_lookup` rather than
+    rescoping the completeness floor. With real NIFTY 50/INDIA VIX history
+    seeded, REGIME_TREND/REGIME_VOLATILITY/REGIME_GAP resolve to genuine
+    labels instead of the permanent 0% the unwired gate produced -- proving
+    the wiring is actually connected, not just present in source."""
 
     result = _run(canary_setup)
+    assert result.regime_assessment == {
+        "trend": "BULL_TREND", "volatility": "NORMAL_VOLATILITY", "gap": "GAP_UP",
+    }
+    # This fixture seeds no PRIOR-SESSION M5 candles, so REL_VOLUME_C stays
+    # genuinely UNKNOWN regardless of regime -- all_fields_known_rate can
+    # legitimately stay 0% here (a fixture gap, not a regime regression).
+    # The claim this test actually proves: regime fields specifically are
+    # now fully known on every mature-instrument row, where before wiring
+    # they were unknown on all of them.
+    for c in result.completeness:
+        field_rate = result.field_known_count[c.checkpoint]
+        verified = result.field_verified_count[c.checkpoint]
+        assert verified > 0
+        for regime_field in ("regime_trend", "regime_volatility", "regime_gap"):
+            assert field_rate.get(regime_field, 0) == verified  # every mature instrument, every regime field known
+
+
+def test_regime_source_still_degrades_honestly_when_index_data_is_absent(canary_setup_no_regime):
+    """Without real NIFTY/VIX history in the repository, the canonical
+    regime source (not an EMR-specific fallback) correctly reports
+    `*_UNKNOWN` rather than fabricating a label -- the same honest
+    degradation `test_em5_regime_source.py` proves at the unit level,
+    reproduced here through the full canary path."""
+
+    result = _run(canary_setup_no_regime)
+    assert result.regime_assessment == {
+        "trend": "TREND_UNKNOWN", "volatility": "VOLATILITY_UNKNOWN", "gap": "GAP_UNKNOWN",
+    }
     assert result.passed is False
     for c in result.completeness:
         assert c.all_fields_known_rate == 0.0
-        assert c.passes_floor is False
         assert f"COMPLETENESS_FLOOR[{c.checkpoint}]" in result.failure_reasons
 
 

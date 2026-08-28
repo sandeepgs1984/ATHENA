@@ -6,6 +6,234 @@ status updated on approval.
 
 ---
 
+## EM-5 canonical regime wiring + real-data canary run (STOP -- two new blockers found, unrelated to regime)
+
+**Summary.** Per the Owner/Chief Architect's 2026-08-28 ruling, wired the
+real canonical `RegimeEngine` into `run_scan_cycle` (a new read-only
+`live/regime_source.py` adapter reusing `regime_replay.reconstruct_session_regime`
+completely unmodified) and reran the contract Section 14 production canary
+against the **real** `db/athena.db` (read-only, zero writes) for the real
+518-instrument `athena_core` universe on session 2026-08-28. **Regime
+wiring is confirmed correct: real, non-UNKNOWN labels resolved, 518/518
+instruments' regime fields known at every checkpoint tested.** But the
+canary still does not pass -- for two reasons that have nothing to do
+with regime, discovered only by running against real data as instructed.
+Per the Owner's own "if regime completeness is still unexpectedly poor,
+STOP and diagnose it, do not relax the gate" rule, this entry reports the
+diagnosis and stops for direction rather than working around either
+finding unilaterally.
+
+**Objective.** Replace EM-5's permanently-`None` regime feed with the real
+canonical source, then prove the unchanged 99% canary floor against real
+data with that wiring in place.
+
+**Scope completed.**
+
+*`live/regime_source.py`* (new): `build_canonical_regime_lookup(*, market_port, config_dir, tzinfo)`
+returns a `regime_lookup(session_date) -> dict` closure. Resolves real
+NIFTY 50 / INDIA VIX instrument IDs the same way production's only other
+real regime consumer already does (`ops/owner_validation.py`'s
+`_resolve_index_candles`/`_vix_from_candles`: config-first via
+`KiteProviderConfig.index_instruments`/`india_vix_instrument`, falling
+back to the same literal symbols), reads their D1 candles through the
+existing `EmrMarketDataPort` (one bulk call, never per-symbol), and calls
+`regime_replay.reconstruct_session_regime` -- the exact, unmodified,
+Owner-approved (2026-08-27) point-in-time-safe wrapper EM-1c's own
+historical reconstruction already uses. No EMR-specific regime logic, no
+proxy, no hardcoded labels, no defaulted UNKNOWNs: when real index data is
+absent, `RegimeEngine`'s own `*_UNKNOWN` labels come back honestly (proven
+by test, both at the unit level and reproduced through the full canary
+path). Dependency direction verified one-way by the existing ADR-012
+isolation suite (`test_em5_isolation.py`, all 4 tests still pass
+unmodified -- `athena.regime` was never in its forbidden-import lists,
+so no test change was needed to prove the boundary holds).
+
+`canary_gate.py` now builds this lookup once per canary run and passes it
+into every `run_scan_cycle` call (both replay replicas, same instance --
+regime is session-level, not checkpoint-dependent). Also extended
+`CanaryGateResult` with real per-field diagnostics the Owner's report
+request needs: `regime_assessment` (session-level, real labels),
+`field_known_count`/`field_verified_count` (per-checkpoint, per-field,
+computed from the real non-substituted boundary-check row -- real
+trailing REL_VOLUME history and real regime now wired in there too, not
+the placeholder empty/None the boundary check used before), and
+`checkpoint_price_coverage` (qualified vs. universe).
+
+**Real canary run results (2026-08-28, session_date=2026-08-28, universe=athena_core, 518 instruments, config_dir=real `config/`, model_version=v1, zero writes to db/athena.db).**
+
+| Metric | 09:20 | 09:30 | 09:45 / 10:00 |
+|---|---|---|---|
+| Eligible universe count | 518 / 518 | 518 / 518 | 518 / 518 (eligibility itself unaffected) |
+| Checkpoint-price capture coverage | 518/518 qualified | 518/518 qualified | **0/518 qualified** |
+| Regime-field completeness | 518/518 (100%) | 518/518 (100%) | n/a -- boundary check never ran (no real candle to verify against) |
+| All-22-fields-known rate | 0% | 0% | 0% |
+| Per-field known rate | **21 of 22 fields at 100%** (only `rel_volume_c` at 0%) | same | n/a |
+| Batched Kite request count | 0 | 0 | 0 |
+| Zero unauthorized network calls | confirmed | confirmed | confirmed |
+| Deterministic replay | byte-identical | byte-identical | byte-identical |
+| Checkpoint-boundary regression | PASS (518 instruments) | PASS (518 instruments) | **FAIL -- 0 instruments had a real boundary candle to verify against** |
+| Scanner runtime (one full 518-instrument, 18-combo scan, one checkpoint) | ~11s | ~11s | ~11s |
+| Isolation result | all 4 `test_em5_isolation.py` tests pass | | |
+| TOUCH_10 top-5 ranked (09:30, real) | `NSE:TDPOWERSYS` p=0.276, `NSE:JGCHEM` p=0.132, `NSE:ATHERENERG` p=0.121, `NSE:NEWGEN` p=0.055, `NSE:BALRAMCHIN` p=0.050 | | |
+
+**Finding 1 (regime -- RESOLVED): regime wiring works.** At every
+checkpoint tested, all 518 instruments' `regime_trend`/`regime_volatility`/
+`regime_gap` are known with real labels (2026-08-28's real assessment:
+`SIDEWAYS` / `LOW_VOLATILITY` / `NO_GAP`) -- not the permanent UNKNOWN
+the pre-wiring canary showed. The Owner's regime ruling is fully
+implemented and proven against real data.
+
+**Finding 2 (NEW, unrelated to regime): real M5 candle timestamps drift
+off the canonical 5-minute grid as each session progresses.** Direct
+inspection of `db/athena.db` (real `NSE:INFY`, and confirmed universe-wide
+via exact-timestamp counts): 2026-08-28's real M5 candles land exactly on
+`:00/:05/:10...` through roughly 09:35-09:40, then drift to timestamps
+like `09:43:55`, `09:58:55`, `09:59:31` -- no longer landing on the exact
+checkpoint boundary at all. Universe-wide exact-match counts confirm it:
+526/526 at 09:20 and 09:30, **0/526 at 09:45 and 10:00**. The same pattern
+recurs on 2026-08-27 and 2026-08-26 -- this is a real, recurring
+production ingestion characteristic, not a one-day fluke. This breaks two
+things that require an exact `ts_open == checkpoint_instant` match: this
+canary's own zero-network checkpoint-price collector (deliberately
+designed to reuse the real historical candle instead of a live Kite call
+-- see `canary_gate.py`'s own docstring) and the `CHECKPOINT_BOUNDARY_REGRESSION`
+invariant. **It likely does NOT affect true live EM-5 operation** --
+production's real checkpoint-price path (`checkpoint_reference_price.py`)
+polls Kite's live `/quote` for `last_trade_time >= checkpoint_instant`,
+which is timestamp-tolerant by design, not an exact-grid match. But it
+does mean this canary, as designed, can only validate checkpoints against
+real data up through roughly 09:35-09:40 today -- not proof one way or
+the other for 09:45 onward.
+
+**Finding 3 (NEW, unrelated to regime): `REL_VOLUME_C` does not clear its
+own frozen 20-prior-qualifying-session minimum in real data, even at the
+clean 09:20/09:30 checkpoints.** Direct probe (`NSE:INFY`, checkpoint
+09:20, the real 40-calendar-day `REL_VOLUME_LOOKBACK_CALENDAR_DAYS`
+window): 26 prior sessions have *some* M5 data, but only **14** have a
+qualifying candle at-or-before 09:20 time-of-day -- short of the frozen
+contract's 20-session minimum (`evidence_contract.py`'s own
+`minimum_lookback_sessions` for `REL_VOLUME_C`). This is the field-level
+reason `all_fields_known_rate` reads exactly 0% even at the two clean
+checkpoints: `rel_volume_c` is the *only* one of 22 fields at 0% known --
+every other field, including all three regime fields, is 100% known
+(518/518) at 09:20 and 09:30. Root cause not yet investigated further
+(a real data-coverage gap in ATHENA's own ingested M5 history, or the
+40-day window being too tight against real trading-day density with some
+sessions' own early coverage gaps -- undetermined without more digging).
+
+**Why this entry stops here rather than reporting EM-5 FINAL.** The
+Owner's instructions were explicit: after regime wiring, rerun the
+*unchanged* canary and report; if completeness is still poor, stop and
+diagnose rather than relax the gate; do not add new scanner behavior or
+retune thresholds/windows. Findings 2 and 3 are real, previously-unknown,
+and outside the regime-wiring scope this milestone was authorized for --
+fixing either (redesigning the canary's checkpoint-price mechanism, or
+adjusting `REL_VOLUME_LOOKBACK_CALENDAR_DAYS` or investigating the
+session-coverage gap) is exactly the kind of change the Owner said not to
+make unilaterally. This is that stop.
+
+**Files created.** `src/athena/explosive_move/live/regime_source.py`,
+`tests/explosive_move/test_em5_regime_source.py` (4 tests).
+
+**Files modified.** `src/athena/explosive_move/live/canary_gate.py` (wires
+`regime_lookup` into both replay replicas; adds `regime_assessment`,
+`field_known_count`/`field_verified_count`, `checkpoint_price_coverage` to
+`CanaryGateResult`; the boundary-check pass now uses real trailing
+REL_VOLUME history and the real regime row instead of the placeholder
+empty/`None` it used before). `tests/explosive_move/test_em5_canary_gate.py`
+(seeds real NIFTY/VIX history; replaces the old "regime never wired holds
+completeness at 0%" test with one proving real wiring resolves genuine
+labels, plus one proving the honest-UNKNOWN degradation path still holds
+when index data is absent).
+
+**Public APIs added.** `regime_source.build_canonical_regime_lookup`,
+`regime_source.RegimeRow`. `CanaryGateResult` gained three new fields
+(`regime_assessment`, `field_known_count`/`field_verified_count`,
+`checkpoint_price_coverage`) -- additive, no existing field changed.
+
+**Tests added.** 4 new (`test_em5_regime_source.py`) + 2 rewritten in
+`test_em5_canary_gate.py` (net +2 in that file, now 7). `tests/explosive_move/`:
+382 passed, 1 skipped. Full suite: **2,649 passed, 1 skipped, 0 failed**
+in ~75s. Ruff clean on every new/modified file. `test_em5_isolation.py`:
+4/4 pass, unmodified -- one-way canonical-regime-to-EMR dependency
+confirmed still holds.
+
+**Architecture compliance.** No canonical decision/risk/scoring/
+portfolio/orders/execution/orchestration module imports `athena.explosive_move`
+(unchanged, still enforced). `athena.explosive_move.live.regime_source`
+imports only `athena.regime`/`athena.explosive_move.regime_replay`/
+`athena.config` -- canonical-to-EMR, the only permitted direction. No
+write path into `db/athena.db` anywhere in this change set; the real
+canary run above was 100% read-only against production data (verified:
+`EmrMarketDataPort` exposes no write method, structurally). No git
+actions taken by the AI beyond what was explicitly authorized in the
+prior milestone entry.
+
+**ADR compliance.** No ADR required -- reuses ADR-012's existing
+isolation pattern and the already-approved `reconstruct_session_regime`
+function unmodified.
+
+**Risks discovered / technical debt introduced.** Findings 2 and 3 above
+are the real risk: EM-5's actual live-run readiness cannot be fully
+certified by this canary design until at least one of them is resolved or
+explicitly accepted as a known, bounded limitation (Owner decision,
+mirroring how the EM-1r3 canary rule itself distinguishes a systemic
+defect from an already-understood one). Finding 2 in particular deserves
+a decision on whether the checkpoint-boundary-regression invariant and
+the zero-network checkpoint-price collector should be redesigned to
+tolerate near-checkpoint real candles (with an explicit, frozen tolerance
+window) rather than requiring an exact timestamp match -- a real product/
+engineering tradeoff, not something to decide silently.
+
+**Suggested improvements.** (1) A dedicated, separate investigation into
+why real M5 ingestion timestamps drift off the 5-minute grid after the
+first ~20-25 minutes of each session -- this could matter well beyond
+EM-5 (any other consumer relying on exact M5 grid alignment). (2) Confirm
+whether `REL_VOLUME_C`'s 20-session minimum was ever validated against
+real (not just research-corpus) M5 coverage before now.
+
+**Remaining work.** Owner decision on Findings 2 and 3: accept as known,
+bounded, already-diagnosed limitations (and decide how EM-5's canary
+should then measure completeness -- e.g. restricting the canary itself to
+checkpoints with clean real data, which is a canary-design change, not a
+threshold relaxation) or treat either as a defect requiring a fix before
+EM-5 can close. Until that decision, milestone status stays **EM-5
+implementation: COMPLETE PENDING CANARY** (unchanged from the prior
+entry) -- not `CLOSED`, not `FAILED`. `EM-6` remains blocked.
+
+**Commit message (for sandeep to use himself):**
+
+```
+feat(explosive_move): wire canonical regime into EM-5 and diagnose real-data canary blockers
+
+- Add live/regime_source.py: wires the real, unmodified RegimeEngine
+  (via regime_replay.reconstruct_session_regime, Owner-approved
+  2026-08-27) into run_scan_cycle's regime_lookup, resolving real NIFTY
+  50/INDIA VIX history through the existing read-only EmrMarketDataPort.
+  Honestly degrades to *_UNKNOWN when index data is absent -- no
+  EMR-specific regime logic, no proxy, no defaults.
+- Wire it into canary_gate.py's run_em5_production_canary; extend
+  CanaryGateResult with regime_assessment, per-field known-count/
+  verified-count, and checkpoint-price coverage for the Owner's
+  requested diagnostic report.
+- Run the real production canary against db/athena.db (read-only,
+  518-instrument athena_core universe, 2026-08-28): confirms regime
+  wiring resolves genuine non-UNKNOWN labels (518/518 known at every
+  checkpoint tested). Two new, regime-unrelated blockers found and
+  documented rather than worked around: (1) real M5 candle timestamps
+  drift off the 5-minute grid after ~09:35-09:40 each session,
+  breaking exact-timestamp lookups; (2) REL_VOLUME_C's frozen
+  20-session minimum is not met even at clean checkpoints (14 of 20
+  real qualifying sessions found). Per Owner instruction, stopping to
+  report rather than redesigning either mechanism unilaterally.
+```
+
+**Ready for review:** diagnosis complete, awaiting Owner decision on
+Findings 2/3 before any further EM-5 canary work. Not `EM-5 FINAL` --
+the canary still does not pass, for reasons proven unrelated to regime.
+
+---
+
 ## EM-5 v1 live scanner implementation + fail-fast production canary gate
 
 **Summary.** Implements the full EM-5 v1 replayable live scanner (contract
