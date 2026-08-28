@@ -34,12 +34,27 @@ def sigmoid(x: float) -> float:
     return z / (1.0 + z)
 
 
+def score_logit(
+    observation: dict, *, feature_names: tuple[str, ...], coefficients: tuple[float, ...],
+    intercept: float, preprocessing: PreprocessingSpec,
+) -> float:
+    """The frozen model's raw pre-sigmoid linear score -- EM-4D's Platt
+    scaling calibrates THIS value, never the already-squashed
+    probability (double-sigmoiding a probability is not what Platt
+    scaling means)."""
+
+    transformed = transform_row(observation, preprocessing)
+    if tuple(preprocessing.feature_names) != feature_names:
+        raise ValueError("preprocessing.feature_names does not match the artifact's feature_names")
+    return intercept + sum(c * x for c, x in zip(coefficients, transformed, strict=True))
+
+
 def score_logistic(
     observation: dict, *, feature_names: tuple[str, ...], coefficients: tuple[float, ...],
     intercept: float, preprocessing: PreprocessingSpec,
 ) -> float:
-    transformed = transform_row(observation, preprocessing)
-    if tuple(preprocessing.feature_names) != feature_names:
-        raise ValueError("preprocessing.feature_names does not match the artifact's feature_names")
-    linear = intercept + sum(c * x for c, x in zip(coefficients, transformed, strict=True))
+    linear = score_logit(
+        observation, feature_names=feature_names, coefficients=coefficients,
+        intercept=intercept, preprocessing=preprocessing,
+    )
     return sigmoid(linear)

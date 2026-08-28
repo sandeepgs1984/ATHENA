@@ -6,6 +6,180 @@ status updated on approval.
 
 ---
 
+## EM-4D: Platt-scaling calibration of all 18 frozen logistic models
+
+**Summary.** Owner/Chief Architect GO decision (2026-08-28) on EM-4C
+approved proceeding to calibration for all 18 models (explicitly not
+narrowing, not proposing nonlinear models). Generated real EM-2
+CALIBRATION evidence for the first time (61 sessions, 279,495
+checkpoint rows) via the already-generalized `em2_evidence_generation.py
+--partition CALIBRATION`, then fit Platt scaling (frozen checkpoint ->
+pooled -> uncalibrated hierarchy) on top of each frozen EM-4B model's
+own raw logit -- the base models' coefficients and preprocessing were
+never touched, refit, or feature-selected. FINAL_TEST was never read,
+imported, or referenced. Result: **all 162 (family x threshold x
+checkpoint) cells calibrated** -- 135 checkpoint-specific, 27 pooled
+family x threshold fallback, **0 insufficient-support, 0 unstable
+fits**. The Platt corrections were consistently small (a in
+~1.0-1.2, meaning the raw EM-4B models were already reasonably
+calibrated going in) -- calibration made a real but modest difference,
+not a large correction.
+
+**Objective.** Fit and report calibration exactly per the Owner's
+explicit EM-4D scope, then stop and present the exact proposed frozen
+FINAL_TEST policy for approval -- never opening FINAL_TEST in this
+milestone.
+
+**Scope completed.**
+
+*Calibration math* (`src/athena/explosive_move/em4d_calibration.py`,
+pure Python, no numpy/scikit-learn): Platt's own 1999 procedure --
+2-parameter logistic regression of label on the frozen model's raw
+logit, fit by Newton's method (2x2 Hessian, closed-form inverse), using
+Platt's target-smoothing rule (t+ = (N+ + 1)/(N+ + 2), t- = 1/(N- + 2))
+rather than raw {0,1} targets -- without this smoothing the MLE
+diverges whenever the base model already separates classes well on
+CALIBRATION, which a genuinely useful model does. Hierarchy reuses
+`em4_config`'s already-frozen minimum-support policy verbatim
+(n>=1000, k>=10) -- no new number invented. Isotonic candidacy
+(k>=50) is recorded as a descriptive flag only, never auto-applied,
+per the frozen policy.
+
+*Scoring extension* (`src/athena/explosive_move/em4c_scoring.py`):
+added `score_logit` (the frozen model's raw pre-sigmoid linear score)
+alongside the existing `score_logistic` -- Platt scaling calibrates
+the raw logit, never the already-squashed probability.
+
+*Orchestration* (`src/athena/data/em4d_calibration_run.py`): joins
+real EM-2 CALIBRATION evidence with real EM-1b CALIBRATION labels
+(same merge-join convention as EM-3/EM-4B/EM-4C); for each of the 18
+models and each of its 9 checkpoints, decides the calibration level,
+fits Platt where support allows, and reports raw vs. calibrated Brier
+and a 10-bin reliability diagram -- always evaluated against that
+checkpoint's own real CALIBRATION rows, even when the fitted
+parameters came from the pooled fallback (so a reader can see whether
+a pooled calibration still explains a specific checkpoint's real
+behavior). FINAL_TEST is architecturally absent from this script's
+entire argument list and import graph.
+
+**Real results.**
+- **Hierarchy**: 135/162 cells checkpoint-specific, 27/162 pooled
+  fallback (the rarer thresholds, e.g. TOUCH_20/OPEN_TO_HIGH_20, where
+  a handful of checkpoints' own real CALIBRATION positive counts fall
+  below k>=10). 0 cells UNCALIBRATED_INSUFFICIENT_SUPPORT.
+- **Isotonic candidacy**: 88/162 cells clear the higher k>=50 bar --
+  recorded, not acted on.
+- **Fit stability**: 0/162 cells failed to converge.
+- **Brier movement**: small and roughly balanced (76 cells improved,
+  86 cells worsened) -- expected, not concerning: Platt scaling
+  minimizes smoothed log-loss, not Brier directly, and the raw models
+  were already close to calibrated (TOUCH_10's real Platt `a`
+  coefficients range 1.02-1.23 across its 9 checkpoints -- a mild
+  scaling correction, not a large one; `raw_brier` vs
+  `calibrated_brier` differ only in the 4th-5th decimal place at every
+  TOUCH_10 checkpoint).
+
+**Files created.** `src/athena/explosive_move/em4d_calibration.py`,
+`src/athena/data/em4d_calibration_run.py` +
+`tests/explosive_move/test_em4d_calibration.py` (10 tests, synthetic
+fixtures).
+
+**Files modified.** `src/athena/explosive_move/em4c_scoring.py`
+(added `score_logit`) + 1 new test in `test_em4c_scoring.py`.
+
+**Real artifacts.** `artifacts/research/em2/CALIBRATION_*.jsonl.gz`
+(real CALIBRATION evidence, generated for the first time),
+`artifacts/research/em4d/{FAMILY}_{THRESHOLD}.json` x18 +
+`SUMMARY.json` (git-ignored; real run: 279,495 joined rows, 137.4s).
+
+**Tests added.** 11 (10 calibration hierarchy/Newton-fit, 1 scoring).
+Full suite (clean Python 3.13/NumPy/scikit-learn env): 2,519 passed
+(was 2,508), 0 failed. Ruff: zero net-new findings.
+
+**Architecture compliance.** CALIBRATION used only to fit the
+2-parameter Platt transform; EM-4B's coefficients/preprocessing
+untouched. FINAL_TEST never opened. No EMR contract/partition/label
+semantics changed. No git actions taken by the AI.
+
+**ADR compliance.** No ADR required -- executes the already-approved
+EM-4 Modeling Contract's EM-4D step exactly, under the Owner's
+explicit 2026-08-28 GO decision.
+
+**Risks discovered / technical debt introduced.** None new.
+
+**Suggested improvements.** None beyond what's already queued.
+
+**Remaining work.** EM-4E: the sealed, one-shot FINAL_TEST evaluation
+-- blocked on Owner approval of the exact frozen policy below. Not
+started; this AI is explicitly stopping here.
+
+---
+
+### Proposed frozen FINAL_TEST policy (for Owner approval before EM-4E)
+
+Everything below is frozen as of this milestone -- EM-4E's evaluation
+code will have no fitting capability at all; it can only load these
+exact artifacts and score.
+
+1. **Models**: all 18 EM-4B logistic artifacts, exactly as frozen
+   (`artifacts/research/em4b/{FAMILY}_{THRESHOLD}.json`) -- coefficients,
+   intercept, and preprocessing unchanged. No re-selection, no dropping
+   any of the 18.
+2. **Calibration**: the exact 162 Platt `(A, B)` pairs (or
+   `UNCALIBRATED_INSUFFICIENT_SUPPORT` marker) fit in this milestone
+   (`artifacts/research/em4d/{FAMILY}_{THRESHOLD}.json`) applied
+   verbatim per (family, threshold, checkpoint) cell. Isotonic is not
+   used for any cell, regardless of candidacy flag.
+3. **Deterministic score (EM-4A)**: the same frozen vote rules over
+   EM-3's TRAIN-discovered register, unchanged, run alongside the
+   logistic model as the comparison baseline (as in EM-4C).
+4. **Base rate**: FINAL_TEST's own real unconditional rate per
+   cross-section (computed the same way EM-4C computed it on
+   VALIDATION -- never borrowed from TRAIN/VALIDATION/CALIBRATION).
+5. **Metrics**: identical suite to EM-4C -- pooled PR-AUC, Brier
+   (calibrated logistic only), 10-bin reliability, Precision@5/10/20
+   and Lift@5/10/20 per real session-date x checkpoint cross-section
+   (never pooled), checkpoint stability, regime stability, and real
+   MFE/MAE/time-to-target for the TOUCH_10 flagship.
+6. **No new choices**: no new regularization grid, no new CV, no new
+   feature set, no new checkpoints/thresholds/families, no new ranking
+   or tie-break rule, no new bin edges. Every methodological knob
+   already frozen (EM-4/EM-4A/EM-4B/EM-4D) carries forward verbatim.
+7. **Run-once discipline**: FINAL_TEST is read exactly once, by one
+   script invocation, producing one immutable report. No exploratory
+   queries, no partial peeks, no re-running with different arguments
+   after seeing a first result.
+8. **Decision after, not during**: GO / NARROW / NO-GO is decided from
+   the FINAL_TEST report alone, using the same evidence lens EM-4C
+   used (PR-AUC vs. deterministic/base rate, Precision@K/Lift@K,
+   stability, no cherry-picking a subset after the fact).
+
+**Commit message (for sandeep to use himself):**
+```
+feat(explosive_move): calibrate EM-4B logistic models on real CALIBRATION
+
+- Add em4d_calibration.py (pure Python: Platt's 1999 target-smoothed
+  2-parameter Newton fit, checkpoint-specific -> pooled -> uncalibrated
+  hierarchy reusing em4_config's frozen minimum-support policy
+  verbatim) and add score_logit to em4c_scoring.py (the frozen
+  model's raw pre-sigmoid logit, which Platt scaling calibrates).
+- Add em4d_calibration_run.py and run the real EM-4D calibration:
+  generated real EM-2 CALIBRATION evidence for the first time (61
+  sessions, 279,495 rows), then calibrated all 162 (family x
+  threshold x checkpoint) cells -- 135 checkpoint-specific, 27 pooled
+  fallback, 0 insufficient-support, 0 unstable fits. FINAL_TEST never
+  opened.
+- Update docs/MILESTONES.md and IMPLEMENTATION_SUMMARY.md with the
+  real EM-4D results and the exact proposed frozen FINAL_TEST policy,
+  awaiting Owner approval before EM-4E.
+```
+
+**Ready for review:** yes -- EM-4D complete, FINAL_TEST still sealed.
+Awaiting Owner/Chief Architect approval of the frozen FINAL_TEST
+policy above before EM-4E may run.
+
+---
+
 ## EM-4C: real VALIDATION comparison (deterministic vs. logistic vs. base rate)
 
 **Summary.** Opened real VALIDATION outcomes for the first time in this

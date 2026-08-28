@@ -9,7 +9,7 @@ from decimal import Decimal
 import pytest
 
 from athena.explosive_move.em4b_preprocessing import fit_preprocessing
-from athena.explosive_move.em4c_scoring import score_logistic, sigmoid
+from athena.explosive_move.em4c_scoring import score_logistic, score_logit, sigmoid
 
 
 def test_sigmoid_matches_hand_computed_values():
@@ -51,6 +51,21 @@ def test_score_logistic_rejects_feature_name_mismatch():
         score_logistic(
             row, feature_names=("wrong",), coefficients=(1.0,), intercept=0.0, preprocessing=spec,
         )
+
+
+def test_score_logit_is_sigmoids_pre_image():
+    spec = _fixture_spec()
+    coefficients = tuple(0.1 * i for i in range(len(spec.feature_names)))
+    row = {"rsi14": Decimal("50"), "regime_trend": "BULL_TREND", "checkpoint_ist": "09:20"}
+    logit = score_logit(
+        row, feature_names=spec.feature_names, coefficients=coefficients, intercept=0.2,
+        preprocessing=spec,
+    )
+    prob = score_logistic(
+        row, feature_names=spec.feature_names, coefficients=coefficients, intercept=0.2,
+        preprocessing=spec,
+    )
+    assert prob == pytest.approx(sigmoid(logit))
 
 
 def test_score_logistic_is_deterministic():
