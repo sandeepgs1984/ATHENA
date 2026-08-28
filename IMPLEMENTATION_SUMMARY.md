@@ -6,6 +6,159 @@ status updated on approval.
 
 ---
 
+## EM-5 M5 settlement repair (REL_VOLUME_C historical fix) + Track B tooling built
+
+**Summary.** Owner/Chief Architect authorized (2026-08-28) a targeted,
+transactional repair of the live M5 timestamp-drift/missing-early-session
+defect (Finding 2/3 from the prior investigation) for REL_VOLUME_C's
+historical support only -- current-day (2026-08-28) live M5 semantics
+remain a separate, still-open question (Track B), explicitly not touched
+by this repair and not resolvable until the next live trading session
+(2026-08-31; today's market was already closed when this ran).
+
+**What shipped.** `SqliteRepository.replace_candles` (new: atomic
+DELETE+INSERT for one (instrument, timeframe, range), used only by this
+repair path -- `add_candles`'s upsert semantics are unchanged everywhere
+else). `live_m5_settlement_repair.py`: re-fetches a date range from Kite's
+real historical endpoint per instrument (one request, never one per day)
+and atomically replaces each affected session's M5 slice, producing a
+`RepairManifest` with every field the Owner's requirements specified.
+`live_m5_provisional_settlement_diagnostic.py`: Track B's capture/compare/
+classify tooling (`capture_provisional_m5`, `compare_provisional_to_settled`
+-- exact-OHLCV-content matching only, never nearest-timestamp/floor/round
+-- and `classify_diagnosis` implementing the Owner's exact
+`TIMESTAMP_ONLY_PROVISIONAL_DRIFT`/`PROVISIONAL_OHLCV_ALSO_CHANGES`/
+`MAPPING_AMBIGUOUS` decision rule), built and fully tested now so it's
+ready to run the moment the market reopens.
+
+**Real backup.** `db/backups/athena-pre-m5-settlement-repair-20260828.db`
+(integrity-verified, 3,404,333 records) taken before any write, using the
+existing `athena.data.store.backup.create_backup` utility.
+
+**Real canary (3 instruments x 2 sessions) then real full backfill
+(537 instruments -- see exclusion note -- x 31 calendar days, 2026-07-28
+through 2026-08-27, session 2026-08-28 itself deliberately out of scope).**
+Full combined results (manifest:
+`artifacts/ops/m5_settlement_repair_20260828/repair_manifest.json`,
+git-ignored):
+
+| Metric | Before | After |
+|---|---|---|
+| Off-grid M5 candles (537 instruments x 31 days) | 1,051,481 | **0** |
+| Missing-early-session records | 9,490 | 4,296 (genuine Kite-side gaps, not repairable by re-fetch) |
+| REL_VOLUME_C resolvable prior sessions (checkpoint 09:20, all 3 liquidity tiers sampled) | 12-14 of 23 | **23 of 23** (need >=20) |
+| Real canary result, checkpoints 09:20/09:30 (unaffected by today's still-open Track B question) | FAIL (0% completeness) | **PASS** -- 100% all-22-fields-known, all hard invariants pass, real 518-instrument universe |
+
+**Two real operational incidents during the run, both diagnosed and
+resolved, zero data corruption at any point (every write is atomic;
+a failed request writes nothing).**
+
+1. `NSE:E2E` is not resolvable in Kite's live symbol catalog right now.
+   `KiteProvider._ensure_catalog()` only caches on success, so a single
+   unresolvable symbol in the requested scope made it re-download the
+   *entire* ~10,210-row NSE catalog on every one of 538 calls before
+   failing anyway -- this, not the historical-data pacing, was the real
+   cause of the first attempt's ~30-minute runtime and zero writes.
+   Excluded `NSE:E2E` (flagged, not silently dropped) and reran.
+2. The resulting rate-limit pressure caused 85 of the remaining 537
+   instruments (alphabetically first, requested while the prior attempt's
+   load was still cooling down) to fail with real HTTP 429s. Retried just
+   those 85 once the window cleared -- all 85 succeeded, zero failures
+   remained.
+
+**Files created.** `src/athena/data/live_m5_settlement_repair.py`,
+`src/athena/data/live_m5_provisional_settlement_diagnostic.py`,
+`tests/data_layer/test_live_m5_settlement_repair.py` (9 tests),
+`tests/data_layer/test_live_m5_provisional_settlement_diagnostic.py`
+(12 tests). `artifacts/ops/m5_settlement_repair_20260828/repair_manifest.json`
+(git-ignored, real evidence).
+
+**Files modified.** `src/athena/data/store/repository.py` (`replace_candles`)
++ `tests/data_layer/test_repository.py` (6 new tests, `TestReplaceCandles`).
+
+**Tests added.** 27 new (6 + 9 + 12). Full suite: **2,676 passed, 1
+skipped, 0 failed**. Ruff clean on every new/modified file (pre-existing
+`SIM117` findings in `repository.py` are unchanged in count from before
+this change -- not introduced by it).
+
+**Architecture compliance.** No labels/outcomes touched. No FINAL_TEST
+access. No EM-2/EM-4 formula changes -- `replace_candles` and the repair
+modules operate purely on raw OHLCV candles, upstream of every frozen
+evidence computation. `add_candles`'s append-only-by-convention semantics
+are unchanged for every other caller; `replace_candles` exists as a
+narrow, explicitly-labeled exception for this repair path only, per the
+Owner's explicit instruction not to create a second candle store or
+mutate rows without provenance -- every write is provenance-tracked via
+the manifest and reversible via the pre-repair backup.
+
+**Risks / technical debt.** (1) `NSE:E2E` remains unrepaired and
+unresolved -- needs its own investigation (real delisting/rename/symbol
+mismatch?) before it can be included in any future repair or ingestion
+cycle. (2) The `_ensure_catalog()` cache-only-on-success behavior is a
+real latent operational hazard beyond this repair -- any single bad
+symbol in a future multi-symbol `KiteProvider` construction will silently
+multiply into a full-catalog re-download per call rather than failing
+fast once. Worth a small, separate, low-risk fix (cache the catalog
+regardless of the missing-symbol check's outcome, or validate against the
+cached catalog rather than failing before it's ever stored) -- proposed,
+not implemented, out of scope here. (3) The 4,296 remaining
+missing-early-session records are a genuine Kite-side data gap even in
+settled historical responses -- not something a re-fetch resolves; worth
+knowing this is close to the practical ceiling for this data source.
+
+**Suggested improvements.** A forward-looking ongoing settlement-
+reconciliation mechanism (Owner's item 8: direction only, not approved)
+-- see the next entry's outline once Track B closes; this repair was
+explicitly a one-off, not a recurring job.
+
+**Remaining work.** Track B (live provisional-vs-settled M5 semantic
+diagnostic) at the next live market session (2026-08-31) -- capture
+during the session, compare once settled, classify, and only then can
+the Owner's items 3-6 (Live Semantic Report, classification, exact
+live-ingestion correction, expected final-canary behavior) be returned.
+Until then: mark any full 9-checkpoint canary run against a still-open
+session `CANARY_BLOCKED_LIVE_M5_SEMANTICS`, not PASS -- the two-checkpoint
+real PASS above is real and correctly scoped to what's actually resolved,
+not a claim that the full canary passes today.
+
+**Commit message (for sandeep to use himself):**
+
+```
+feat(data): repair M5 settlement drift for REL_VOLUME_C, add Track B tooling
+
+- Add SqliteRepository.replace_candles -- atomic DELETE+INSERT for one
+  (instrument, timeframe, range), used only by the new settlement-repair
+  path; add_candles's upsert semantics are unchanged everywhere else.
+- Add live_m5_settlement_repair.py: re-fetches Kite's real historical
+  endpoint per instrument (one request, not one per day) and atomically
+  replaces each affected session's M5 slice, producing a full audit
+  manifest (rows before/after, off-grid before/after, missing-early-
+  session before/after, request/retry/failure counts).
+- Add live_m5_provisional_settlement_diagnostic.py: Track B's capture/
+  compare/classify tooling for the live current-session M5 semantic
+  question, built and tested now so it is ready for the next live
+  market session (today's was already closed).
+- Run the real Owner-authorized backfill against db/athena.db (real
+  backup taken first): 537 instruments (NSE:E2E excluded -- unresolvable
+  in Kite's live catalog, flagged separately) x 31 calendar days.
+  Off-grid candles 1,051,481 -> 0; REL_VOLUME_C's 20-session requirement
+  now resolves 23/23 available sessions (was 12-14/23) across all three
+  liquidity tiers sampled; a real production canary at the two
+  checkpoints unaffected by today's still-open live-M5-semantics
+  question now PASSES (100% completeness, real 518-instrument universe).
+- Document two real operational incidents (a single unresolvable symbol
+  poisoning catalog caching across 538 calls; the resulting rate-limit
+  pressure), both diagnosed and resolved without any data corruption.
+```
+
+**Ready for review:** REL_VOLUME_C historical-support defect is fixed and
+proven. Milestone status unchanged: **EM-5 = COMPLETE PENDING CANARY**
+(regime: RESOLVED; REL_VOLUME_C: REPAIRED; current-day M5 semantics:
+OPEN BLOCKER, Track B pending 2026-08-31; 99% gate: UNCHANGED; EM-6:
+BLOCKED). Not `EM-5 FINAL`.
+
+---
+
 ## EM-5 canonical regime wiring + real-data canary run (STOP -- two new blockers found, unrelated to regime)
 
 **Summary.** Per the Owner/Chief Architect's 2026-08-28 ruling, wired the
@@ -231,6 +384,56 @@ feat(explosive_move): wire canonical regime into EM-5 and diagnose real-data can
 **Ready for review:** diagnosis complete, awaiting Owner decision on
 Findings 2/3 before any further EM-5 canary work. Not `EM-5 FINAL` --
 the canary still does not pass, for reasons proven unrelated to regime.
+
+**Addendum (2026-08-28, same day): root-cause investigation complete,
+per Owner directive -- no code changed.** Full M5 timestamp root-cause
+report and REL_VOLUME_C 20-session support audit returned to the Owner
+in-session (not duplicated here in full -- see chat transcript for the
+complete report with raw evidence tables). Summary of conclusions:
+
+* **M5 timestamp drift (Finding 2) is a live-ingestion-recency
+  phenomenon, not a research-data or canary-code defect.** Direct
+  comparison of a genuinely historical EM-1r3 raw Kite capture
+  (`NSE:M&MFIN`, 2024-12-10, all 75 slots) against live `db/athena.db`
+  data for 2026-08-26/27/28 proves Kite's historical API returns
+  perfectly grid-aligned timestamps for settled dates; `KiteProvider`
+  applies zero transformation to `ts_open` end-to-end (traced through
+  `kite_provider.py` -> `ingestion/engine.py` -> `repository.py`); the
+  drift is confined to very-recent data, matching the already-documented
+  `RECENT_PROVIDER_HISTORY_TRUNCATION` pattern this same live-ingestion
+  boundary produced before (2026-08-22). `config/ingestion.json`'s
+  `lookback_minutes=30` + `skip_existing=true`, combined with
+  `add_candles`'s exact-timestamp-keyed upsert, mechanically explains why
+  a provisional/imprecise timestamp captured while a bar was still
+  settling is never later corrected. EM-1r3's own research capture is
+  structurally protected (`SessionExclusionReason.OFF_GRID_TIMESTAMP`
+  fails a whole session closed on exactly this condition) -- the live
+  path has no equivalent check.
+* **REL_VOLUME_C (Finding 3) fails for a different, specific reason:
+  missing early-session (pre-checkpoint) candles on 9-11 of the 23
+  trading sessions with any data in the 40-day window**, not off-grid
+  timestamps among candles that exist (every rejected session's first
+  captured candle arrives after the checkpoint entirely, in some cases
+  hours after market open) -- confirmed identical across high/medium/low
+  liquidity instruments (`NSE:IDEA`, `NSE:IRCTC`, `NSE:HONAUT`). A
+  further 6 of 40 calendar days have zero M5 data at all.
+* **Findings 2 and 3 share a common upstream cause category (inconsistent
+  live-ingestion coverage of each session's opening minutes) but are
+  mechanically distinct symptoms**, not literally the same rejected
+  rows -- confirmed by direct classification, not assumed.
+* **Recommended correction (NOT implemented, pending Owner approval):** a
+  targeted one-off re-fetch of the affected recent window, now that
+  those dates have aged past Kite's apparent settle lag, should retrieve
+  Kite's now-fully-settled clean data and is expected to resolve both
+  findings without touching frozen EM-2/EM-4 semantics -- offered as a
+  hypothesis for approval, not assumed correct or acted on.
+* **Whether the unchanged 99% canary is expected to pass after that
+  correction:** likely yes for the checkpoints/sessions the backfill
+  covers, but not verified -- would need to be proven by rerunning the
+  unchanged canary after any approved correction, not assumed.
+
+No files changed in this addendum. Milestone status unchanged:
+**COMPLETE PENDING CANARY.**
 
 ---
 

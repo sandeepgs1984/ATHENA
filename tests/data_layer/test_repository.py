@@ -239,6 +239,122 @@ class TestCandles:
                                 datetime(2026, 1, 31, tzinfo=IST)) == []
 
 
+def _m5(ts: datetime, close="100") -> Candle:
+    c = Decimal(close)
+    return Candle(instrument_id=INST, timeframe=Timeframe.M5, ts_open=ts,
+                  open=c, high=c + 1, low=c - 1, close=c, volume=1000, source="test")
+
+
+class TestReplaceCandles:
+    """`replace_candles` -- the M5 settlement-repair path (Owner-authorized
+    2026-08-28): unlike `add_candles`'s upsert, a corrected candle at a
+    DIFFERENT exact ts_open than the old drifted one must not sit alongside
+    it -- the whole range gets one canonical sequence."""
+
+    def test_a_corrected_timestamp_replaces_rather_than_accumulates_alongside_the_drifted_one(self, repo):
+        repo.upsert_instrument(_instrument())
+        drifted = _m5(datetime(2026, 8, 28, 9, 43, 55, tzinfo=IST))
+        repo.add_candles([drifted])
+
+        settled = _m5(datetime(2026, 8, 28, 9, 45, 0, tzinfo=IST), close="101")
+        deleted, inserted = repo.replace_candles(
+            INST, Timeframe.M5,
+            datetime(2026, 8, 28, 9, 40, tzinfo=IST), datetime(2026, 8, 28, 9, 50, tzinfo=IST),
+            [settled],
+        )
+
+        assert deleted == 1
+        assert inserted == 1
+        got = repo.get_candles(INST, Timeframe.M5,
+                               datetime(2026, 8, 28, 9, 40, tzinfo=IST), datetime(2026, 8, 28, 9, 50, tzinfo=IST))
+        assert len(got) == 1
+        assert got[0].ts_open == datetime(2026, 8, 28, 9, 45, 0, tzinfo=IST)
+        assert got[0].close == Decimal("101")
+
+    def test_candles_outside_the_replacement_range_are_untouched(self, repo):
+        repo.upsert_instrument(_instrument())
+        before = _m5(datetime(2026, 8, 28, 9, 15, tzinfo=IST))
+        after = _m5(datetime(2026, 8, 28, 10, 15, tzinfo=IST))
+        repo.add_candles([before, after])
+
+        repo.replace_candles(
+            INST, Timeframe.M5,
+            datetime(2026, 8, 28, 9, 40, tzinfo=IST), datetime(2026, 8, 28, 9, 50, tzinfo=IST),
+            [],
+        )
+
+        got = repo.get_candles(INST, Timeframe.M5,
+                               datetime(2026, 8, 28, 0, 0, tzinfo=IST), datetime(2026, 8, 28, 23, 59, tzinfo=IST))
+        assert {c.ts_open for c in got} == {before.ts_open, after.ts_open}
+
+    def test_replacing_with_an_empty_list_deletes_without_reinserting(self, repo):
+        repo.upsert_instrument(_instrument())
+        repo.add_candles([_m5(datetime(2026, 8, 28, 9, 43, 55, tzinfo=IST))])
+
+        deleted, inserted = repo.replace_candles(
+            INST, Timeframe.M5,
+            datetime(2026, 8, 28, 9, 40, tzinfo=IST), datetime(2026, 8, 28, 9, 50, tzinfo=IST),
+            [],
+        )
+
+        assert (deleted, inserted) == (1, 0)
+        remaining = repo.get_candles(
+            INST, Timeframe.M5, datetime(2026, 8, 28, 9, 40, tzinfo=IST), datetime(2026, 8, 28, 9, 50, tzinfo=IST),
+        )
+        assert remaining == []
+
+    def test_rejects_a_candle_whose_ts_open_falls_outside_the_declared_range(self, repo):
+        repo.upsert_instrument(_instrument())
+        outside = _m5(datetime(2026, 8, 28, 11, 0, tzinfo=IST))
+        with pytest.raises(ValueError, match="ts_open must fall within"):
+            repo.replace_candles(
+                INST, Timeframe.M5,
+                datetime(2026, 8, 28, 9, 40, tzinfo=IST), datetime(2026, 8, 28, 9, 50, tzinfo=IST),
+                [outside],
+            )
+
+    def test_rejects_a_candle_for_a_different_instrument_or_timeframe(self, repo):
+        repo.upsert_instrument(_instrument())
+        wrong_tf = Candle(instrument_id=INST, timeframe=Timeframe.M1,
+                          ts_open=datetime(2026, 8, 28, 9, 45, tzinfo=IST),
+                          open=Decimal("100"), high=Decimal("101"), low=Decimal("99"),
+                          close=Decimal("100"), volume=1000, source="test")
+        with pytest.raises(ValueError, match="must match instrument_id/timeframe"):
+            repo.replace_candles(
+                INST, Timeframe.M5,
+                datetime(2026, 8, 28, 9, 40, tzinfo=IST), datetime(2026, 8, 28, 9, 50, tzinfo=IST),
+                [wrong_tf],
+            )
+
+    def test_a_failed_replacement_leaves_the_original_data_intact(self, repo):
+        """The delete and insert are one transaction -- an integrity
+        failure on the insert half (two candles colliding on the same
+        exact (instrument, timeframe, ts_open) unique key, which the plain
+        INSERT this method uses -- deliberately not an upsert -- rejects)
+        must roll back the delete half too, never leaving the range with
+        neither the old nor the new data."""
+        repo.upsert_instrument(_instrument())
+        original = _m5(datetime(2026, 8, 28, 9, 43, 55, tzinfo=IST))
+        repo.add_candles([original])
+
+        colliding_pair = [
+            _m5(datetime(2026, 8, 28, 9, 45, tzinfo=IST), close="101"),
+            _m5(datetime(2026, 8, 28, 9, 45, tzinfo=IST), close="102"),
+        ]
+
+        with pytest.raises(RepositoryError, match="integrity violation"):
+            repo.replace_candles(
+                INST, Timeframe.M5,
+                datetime(2026, 8, 28, 9, 40, tzinfo=IST), datetime(2026, 8, 28, 9, 50, tzinfo=IST),
+                colliding_pair,
+            )
+
+        got = repo.get_candles(INST, Timeframe.M5,
+                               datetime(2026, 8, 28, 9, 40, tzinfo=IST), datetime(2026, 8, 28, 9, 50, tzinfo=IST))
+        assert len(got) == 1
+        assert got[0].ts_open == original.ts_open
+
+
 class TestBulkCandlesForInstruments:
     """`candles_for_instruments` -- EM-5's grouped bulk read (ADR-012
     Section 10: one query across a scan's whole eligible universe, never

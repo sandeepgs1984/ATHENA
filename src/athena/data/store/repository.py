@@ -322,6 +322,53 @@ class SqliteRepository:
         )
         return len(rows)
 
+    def replace_candles(
+        self, instrument_id: str, timeframe: Timeframe, start: datetime, end: datetime,
+        candles: Sequence[Candle],
+    ) -> tuple[int, int]:
+        """Atomically replace every candle for (instrument_id, timeframe)
+        whose ts_open falls in [start, end] with exactly `candles` -- one
+        DELETE + one INSERT in a single transaction, leaving one canonical
+        sequence for that range rather than the old rows sitting alongside
+        the new ones. `add_candles`'s upsert only overwrites a row sharing
+        the exact same ts_open; a corrected candle at a different exact
+        timestamp (the real symptom of the settlement-drift defect this
+        exists to repair) would otherwise be added alongside the old one,
+        not replace it.
+
+        For the M5 settlement-repair path only (Owner-authorized
+        2026-08-28) -- candles remain append-only-by-convention everywhere
+        else in the codebase; this method's existence does not change that.
+
+        Returns (rows_deleted, rows_inserted).
+        """
+        if any(c.instrument_id != instrument_id or c.timeframe is not timeframe for c in candles):
+            raise ValueError("replace_candles: every candle must match instrument_id/timeframe")
+        if any(not (start <= c.ts_open <= end) for c in candles):
+            raise ValueError("replace_candles: every candle's ts_open must fall within [start, end]")
+        rows = [ser.candle_to_row(c) for c in candles]
+        try:
+            with self._lock:
+                with self._conn:
+                    cur = self._conn.execute(
+                        "DELETE FROM candles WHERE instrument_id=? AND timeframe=? "
+                        "AND ts_open>=? AND ts_open<=?",
+                        (instrument_id, timeframe.value, start.isoformat(), end.isoformat()),
+                    )
+                    deleted = cur.rowcount or 0
+                    if rows:
+                        self._conn.executemany(
+                            "INSERT INTO candles "
+                            "(instrument_id, timeframe, ts_open, open, high, low, close, volume, source, "
+                            "adjusted) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                            rows,
+                        )
+            return deleted, len(rows)
+        except sqlite3.IntegrityError as exc:
+            raise RepositoryError(f"integrity violation: {exc}") from exc
+        except sqlite3.Error as exc:
+            raise RepositoryError(f"replace_candles failed: {exc}") from exc
+
     def get_candles(
         self, instrument_id: str, timeframe: Timeframe, start: datetime, end: datetime
     ) -> list[Candle]:
