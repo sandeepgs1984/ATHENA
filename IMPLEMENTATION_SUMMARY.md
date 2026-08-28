@@ -6,6 +6,148 @@ status updated on approval.
 
 ---
 
+## EM-4E: sealed, one-shot FINAL_TEST evaluation
+
+**Summary.** Under the Owner-approved frozen FINAL_TEST policy
+(recorded in the EM-4D entry below), this milestone opened FINAL_TEST
+for the first and only time in this entire EMR workstream: real EM-2
+evidence generated for FINAL_TEST (157 sessions, 702,702 checkpoint
+rows -- 2026-01-01 through 2026-08-21, entirely outside TRAIN/
+VALIDATION/CALIBRATION), scored against the exact frozen EM-4B
+coefficients, frozen EM-4D Platt calibration, and frozen EM-4A
+deterministic rules -- nothing refit, nothing reselected. Before ever
+touching FINAL_TEST, the new evaluation script was dry-run against
+already-open VALIDATION data and its output verified byte-identical
+(deterministic scores, within-checkpoint Precision@K/Lift@K) or
+mathematically-expected-different (pooled cross-checkpoint PR-AUC,
+which per-checkpoint calibration legitimately reshuffles) against
+EM-4C's already-known real results, before the one real invocation.
+
+**Headline result: calibrated logistic beats deterministic on PR-AUC
+in 18/18 real combinations on FINAL_TEST** -- replicating EM-4C's
+VALIDATION finding on a third, fully independent, never-before-touched
+partition. Checkpoint stability, regime stability, and the flagship's
+real MFE/MAE/time-to-target excursion are all consistent with
+VALIDATION's own real numbers.
+
+**Objective.** Execute the Owner-approved frozen FINAL_TEST policy
+exactly once, structurally incapable of fitting/refitting/reselecting
+anything, and report the result for the Owner's GO/NARROW/NO-GO
+decision -- the terminal evidence step of the EM-4 Modeling Contract.
+
+**Scope completed.**
+
+*Evaluation script*
+(`src/athena/data/em4e_final_test_evaluation.py`): structurally
+sealed -- no scikit-learn import, no Newton's method, no
+regularization grid; only ever applies already-frozen linear
+coefficients (`em4c_scoring.score_logit`) and already-frozen Platt
+parameters (`em4d_calibration.apply_platt_scaling`). Accepts
+`--partition` (defaulting to `FINAL_TEST`) solely so the identical
+code could be pre-flight-verified against VALIDATION before the one
+real run -- never used to re-run against FINAL_TEST itself. Same
+merge-join convention as EM-3/EM-4B/EM-4C/EM-4D; identical metric
+suite to EM-4C (pooled PR-AUC/Brier/10-bin reliability, Precision@K/
+Lift@K per real session-date x checkpoint cross-section, checkpoint
+stability, regime stability, real flagship MFE/MAE/time-to-target).
+
+**Pre-flight verification (before FINAL_TEST was ever read).** Dry-run
+against VALIDATION reproduced: identical deterministic PR-AUC/base
+rate: identical within-checkpoint Precision@10/Lift@10 (byte-for-byte
+equal to EM-4C's own recorded values, confirming the calibration
+transform preserves within-checkpoint ranking exactly, as it
+mathematically must for a>0); pooled PR-AUC differed only slightly
+(0.175 calibrated vs 0.178 uncalibrated for TOUCH_10) -- the
+mathematically-expected consequence of applying 9 *different*
+per-checkpoint Platt transforms before pooling across checkpoints,
+not a bug.
+
+**Real FINAL_TEST results.**
+- **PR-AUC**: calibrated logistic > deterministic in **18/18** real
+  combinations (e.g. CLOSE_5: 0.562 vs 0.186; TOUCH_10: 0.211 vs
+  0.037) -- the same pattern EM-4C found on VALIDATION, now confirmed
+  on genuinely fresh, never-touched data.
+- **Precision@10 / Lift@10** (mean, logistic): from 0.2%/33.7x
+  (OPEN_TO_HIGH_20, rarest) to 46.9%/23.4x (CLOSE_5, most common).
+- **TOUCH_10 checkpoint stability**: lift rises through the session
+  (09:20: 97.8x -> 14:00: 308.5x) as the checkpoint base rate falls
+  (0.72% -> 0.16%) -- the identical qualitative pattern found on
+  VALIDATION, replicated on FINAL_TEST.
+- **TOUCH_10 regime stability**: lift stays strongly positive across
+  every value of regime_trend (105-161x), regime_volatility
+  (77-173x), and regime_gap (50-190x) -- no regime-dependent collapse.
+- **TOUCH_10 real excursion** (3,253 real positive FINAL_TEST
+  observations): MFE mean 13.0%/median 11.9%, MAE mean 3.1%/median
+  3.1%, time-to-target mean 143.2/median 125.0 minutes -- consistent
+  with VALIDATION's real 13.4%/12.4%, 2.6%/2.3%, 155.7/140.0 minutes.
+- All 9 of TOUCH_10's checkpoints used `CHECKPOINT_SPECIFIC`
+  calibration, matching EM-4D's own determination exactly.
+
+**Files created.** `src/athena/data/em4e_final_test_evaluation.py`. No
+dedicated test file, matching this workstream's established
+orchestration-script convention (composes already-unit-tested pure
+modules: `deterministic_score`, `em4c_scoring`, `em4d_calibration`,
+`em4c_ranking/metrics`) -- correctness was verified by the VALIDATION
+dry-run described above, executed before FINAL_TEST was ever read.
+
+**Real artifacts.** `artifacts/research/em2/FINAL_TEST_*.jsonl.gz`
+(real FINAL_TEST evidence, generated for the first time),
+`artifacts/research/em4e/{FAMILY}_{THRESHOLD}.json` x18,
+`FLAGSHIP_EXCURSION.json`, `SUMMARY.json` (git-ignored; real run:
+702,702 joined rows, 1,331.9s).
+
+**Tests added.** 0 new (pre-flight-verified via dry run against
+already-open VALIDATION, not a new synthetic-fixture suite -- see
+above). Full suite unaffected (clean Python 3.13/NumPy/scikit-learn
+env): 2,519 passed, 0 failed. Ruff: zero net-new findings.
+
+**Architecture compliance.** FINAL_TEST read exactly once, by exactly
+one script invocation with default arguments, producing one immutable
+report. No fitting capability exists anywhere in the evaluation code
+path. No EMR contract/partition/label semantics changed. No git
+actions taken by the AI.
+
+**ADR compliance.** No ADR required -- executes the Owner's own
+frozen FINAL_TEST policy exactly as approved.
+
+**Risks discovered / technical debt introduced.** None.
+
+**Suggested improvements.** None beyond what's already queued.
+
+**Remaining work.** This is the terminal evidence step of the EM-4
+Modeling Contract. **GO / NARROW / NO-GO is the Owner/Chief
+Architect's decision to make from this report** -- not this AI's to
+declare. If GO or NARROW: EM-5 (replayable bulk-input live scanner,
+no UI) is next per the roadmap. FINAL_TEST must not be read again
+regardless of the decision made here.
+
+**Commit message (for sandeep to use himself):**
+```
+feat(explosive_move): run the sealed EM-4E FINAL_TEST evaluation
+
+- Add em4e_final_test_evaluation.py -- structurally sealed (no
+  scikit-learn, no fitting capability anywhere in the code path),
+  applies only already-frozen EM-4B coefficients + EM-4D Platt
+  calibration + EM-4A deterministic rules. Pre-flight-verified via a
+  dry run against already-open VALIDATION (byte-identical
+  deterministic/within-checkpoint results vs EM-4C's own recorded
+  values) before FINAL_TEST was ever read.
+- Generate real EM-2 FINAL_TEST evidence for the first time (157
+  sessions, 702,702 rows) and run the one real, sealed FINAL_TEST
+  evaluation: calibrated logistic beats deterministic on PR-AUC in
+  18/18 real combinations, replicating EM-4C's VALIDATION finding on
+  a third, independent partition; checkpoint/regime stability and
+  flagship MFE/MAE/time-to-target both consistent with VALIDATION.
+- Update docs/MILESTONES.md and IMPLEMENTATION_SUMMARY.md with the
+  real FINAL_TEST results; GO/NARROW/NO-GO is the Owner's decision.
+```
+
+**Ready for review:** yes -- this is the terminal EM-4 evidence step.
+Awaiting Owner/Chief Architect GO/NARROW/NO-GO decision. FINAL_TEST
+must not be read again.
+
+---
+
 ## EM-4D: Platt-scaling calibration of all 18 frozen logistic models
 
 **Summary.** Owner/Chief Architect GO decision (2026-08-28) on EM-4C
