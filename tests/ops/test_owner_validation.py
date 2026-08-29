@@ -434,6 +434,135 @@ class TestOwnerValidationPipeline:
         )
         assert detail["sector_health"] == {}
 
+    def test_sector_health_wired_into_scoring_evidence_and_decision_trace(
+        self, repo: SqliteRepository, config_dir: Path
+    ) -> None:
+        """ID-P0/SD-3 (wiring only, no threshold recalibration): Instrument.sector
+        is resolved per instrument inside `_scan_eligible` and threaded into
+        ScoringEngine.score()/EvidenceAggregationEngine.aggregate()/
+        DecisionEngine.decide() — all three already accepted `sector_health`
+        before this change; only the call sites were missing it. Exercised
+        end-to-end against the real production config/sector_index_mapping.json
+        (config_dir points at production config, not a copy).
+
+        Three instruments share IDENTICAL daily candle series (seed=100), so
+        every OTHER scoring component must come out byte-identical across all
+        three — proving the wiring touches sector_quality alone:
+        - AAA: sector mapped ("Information Technology") + real NIFTY IT proxy
+          index candles present -> sector_quality resolves OK.
+        - BBB: sector set but to an UNMAPPED value ("Capital Goods", per
+          config/sector_index_mapping.json's own _meta list of deliberately
+          unmapped sectors) -> sector_quality stays UNKNOWN, never guessed.
+        - CCC: no sector at all (Instrument.sector is None) -> same honest
+          UNKNOWN path, and the pipeline must not fail for a sector-less symbol.
+        """
+        store = SqliteCandidateStore(repo)
+        sectors = {"AAA": "Information Technology", "BBB": "Capital Goods", "CCC": None}
+        for sym, sector in sectors.items():
+            store.upsert_candidate(symbol=sym)
+            iid = f"NSE:{sym}"
+            repo.upsert_instrument(
+                Instrument(
+                    instrument_id=iid, symbol=sym, exchange="NSE", series="EQ",
+                    status="ACTIVE", sector=sector,
+                )
+            )
+            repo.add_candles(_candles(iid, seed=100))
+        repo.upsert_instrument(
+            Instrument(
+                instrument_id="NSE:NIFTY IT", symbol="NIFTY IT", exchange="NSE",
+                series="INDICES", status="ACTIVE",
+            )
+        )
+        repo.add_candles(_candles("NSE:NIFTY IT", n=80, seed=30000))
+
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        ingestion = IngestionResult(
+            as_of=AS_OF, instruments_upserted=4, candles_fetched=320, candles_written=320,
+            quotes_fetched=0, quotes_written=0, datasets_validated=4, datasets_skipped_empty=0,
+        )
+        detail = pipe.run(
+            RunTrigger.PREMARKET, as_of=AS_OF, ingestion=ingestion,
+            run_id="run-test-sector-wiring",
+        )
+        reports = detail["decision_reports"]
+        assert reports
+        by_instrument = {r["decision"]["instrument_id"]: r for r in reports.values()}
+        aaa, bbb, ccc = by_instrument["NSE:AAA"], by_instrument["NSE:BBB"], by_instrument["NSE:CCC"]
+
+        def sector_component(report):
+            return next(
+                c for c in report["score"]["components"] if c["dimension"] == "sector_quality"
+            )
+
+        aaa_sector, bbb_sector, ccc_sector = (
+            sector_component(aaa), sector_component(bbb), sector_component(ccc)
+        )
+
+        # 1. UNKNOWN without an applicable SectorHealthResult (both the
+        # unmapped-sector and the no-sector case).
+        assert bbb_sector["status"] == "UNKNOWN", bbb_sector
+        assert bbb_sector["value"] is None
+        assert ccc_sector["status"] == "UNKNOWN", ccc_sector
+        assert ccc_sector["value"] is None
+
+        # 2. Known when a valid matching SectorHealthResult exists.
+        assert aaa_sector["status"] == "OK", aaa_sector
+        assert aaa_sector["value"] is not None
+
+        # 3. The existing configured 15% weight is used unchanged, for every
+        # instrument regardless of known/UNKNOWN status (weight is config, not
+        # data-driven).
+        assert aaa_sector["weight"] == bbb_sector["weight"] == ccc_sector["weight"] == 15
+
+        # 5. No unrelated scoring component changes — all three instruments
+        # have identical daily candles, differing only in Instrument.sector.
+        other_dims = {"trend", "momentum", "market_quality", "liquidity", "technical_structure"}
+        by_dim = {
+            iid: {c["dimension"]: c for c in report["score"]["components"]}
+            for iid, report in (("AAA", aaa), ("BBB", bbb), ("CCC", ccc))
+        }
+        for dim in other_dims:
+            values = {iid: by_dim[iid][dim]["value"] for iid in by_dim}
+            statuses = {iid: by_dim[iid][dim]["status"] for iid in by_dim}
+            assert len(set(values.values())) == 1, (dim, values)
+            assert len(set(statuses.values())) == 1, (dim, statuses)
+
+        # 4. Composite re-normalization behaves exactly per the existing
+        # contract: completeness = known_weight / 100, and AAA (sector known)
+        # has exactly 0.15 more known weight than BBB/CCC (sector UNKNOWN) —
+        # no other dimension's known/UNKNOWN status differs between them.
+        aaa_completeness = Decimal(aaa["score"]["completeness"])
+        bbb_completeness = Decimal(bbb["score"]["completeness"])
+        ccc_completeness = Decimal(ccc["score"]["completeness"])
+        assert bbb_completeness == ccc_completeness
+        assert aaa_completeness - bbb_completeness == Decimal("0.15")
+
+        # 6. EvidenceBundle receives Sector Health provenance for AAA only.
+        assert "SECTOR_HEALTH" in aaa["evidence"]["present_sources"]
+        assert aaa["evidence"]["provenance"].get("SECTOR_HEALTH", 0) > 0
+        assert "SECTOR_HEALTH" not in bbb["evidence"]["present_sources"]
+        assert "SECTOR_HEALTH" not in ccc["evidence"]["present_sources"]
+
+        # 7. Decision reasoning trace receives the existing Sector Health
+        # explanation for AAA only, and it's non-empty (ADR-005).
+        aaa_stage_names = {s["stage"] for s in aaa["reasoning"]["stages"]}
+        bbb_stage_names = {s["stage"] for s in bbb["reasoning"]["stages"]}
+        ccc_stage_names = {s["stage"] for s in ccc["reasoning"]["stages"]}
+        assert "sector_health" in aaa_stage_names
+        assert "sector_health" not in bbb_stage_names
+        assert "sector_health" not in ccc_stage_names
+        sector_stage = next(s for s in aaa["reasoning"]["stages"] if s["stage"] == "sector_health")
+        assert sector_stage["summary"]
+
+        # 8. Symbols without a resolvable sector continue through the existing
+        # UNKNOWN path rather than failing the pipeline — real decisions, not
+        # a crash or a silently-dropped instrument.
+        for report in (aaa, bbb, ccc):
+            assert report["decision"]["type"] in {
+                "TRADE", "WATCH", "NO_TRADE", "INSUFFICIENT_DATA",
+            }
+
     def test_repeat_validate_with_same_as_of_does_not_orphan_earlier_decision(
         self, repo: SqliteRepository, config_dir: Path
     ) -> None:

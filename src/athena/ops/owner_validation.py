@@ -263,15 +263,17 @@ class OwnerValidationPipeline:
             health_result=health_result,
         )
 
-        # SD-2/DD-12: SectorHealthEngine (M2.3, approved) was built and tested
-        # but never instantiated anywhere in the live pipeline — the sector
-        # index candle history it needs didn't exist until DD-12's Kite
-        # ingestion change. This computes and persists real per-sector
-        # assessments for whichever sectors config/sector_index_mapping.json
-        # explicitly maps; it does NOT touch ScoringEngine/sector_quality —
-        # that remains SD-3, a separate owner-gated decision with its own
-        # before/after replay-diff requirement.
+        # SD-2/DD-12/SD-3 (ID-P0): SectorHealthEngine (M2.3, approved) computes
+        # and persists real per-sector assessments for whichever sectors
+        # config/sector_index_mapping.json explicitly maps. SD-3 (ID-P0) wires
+        # the result into the per-instrument workflow via `sector_results`,
+        # resolved per instrument by `Instrument.sector` inside
+        # `_scan_eligible` (never guessed, never substituted) and threaded
+        # into ScoringEngine.score()/EvidenceAggregationEngine.aggregate()/
+        # DecisionEngine.decide() — all three already accepted this parameter
+        # before this change; only the call sites were missing it.
         sector_health_payload: dict[str, object] = {}
+        sector_results: Mapping[str, Any] = {}
         sector_candles = self._sector_candles_for_health(candles_by_id)
         if sector_candles:
             sector_cfg = load_sector_health_config(self._config_dir)
@@ -320,6 +322,8 @@ class OwnerValidationPipeline:
                 market_health_score=score_build.score,
                 calendar_context=calendar.context_for(as_of.date()),
                 universe_result=result,
+                sector_results=sector_results,
+                instruments=instruments,
             )
             scan_stats = {
                 "total": scan_report.statistics.total,
@@ -752,6 +756,8 @@ class OwnerValidationPipeline:
         market_health_score=None,
         calendar_context=None,
         universe_result=None,
+        sector_results: Mapping[str, Any] | None = None,
+        instruments: Sequence[Instrument] | None = None,
     ):
         from athena.confidence import ConfidenceEngine
         from athena.config.loader import (
@@ -789,6 +795,19 @@ class OwnerValidationPipeline:
 
         index_id, index_candles = self._resolve_index_candles(candles_by_id)
 
+        # SD-3 (ID-P0): Instrument.sector is the sole authoritative stock ->
+        # sector relationship (never ADR-011's symbol_group/resolve_universe,
+        # which models universe/scan eligibility, not sector taxonomy — see
+        # docs/research/ID-0-RUNTIME-AUDIT-ARCHITECTURE-REPORT.md §6). A
+        # symbol with no `.sector`, a `.sector` with no
+        # config/sector_index_mapping.json entry, or a mapped sector with no
+        # resolvable SectorHealthResult this cycle all resolve to the same
+        # honest `None` below — never fabricated, never guessed.
+        sector_results = sector_results or {}
+        sector_by_instrument: dict[str, str] = {
+            inst.instrument_id: inst.sector for inst in (instruments or ()) if inst.sector
+        }
+
         captured_regime: dict[str, object] = {"payload": None}
         shared_market_health: dict[str, object] = {"value": market_health}
         shared_score: dict[str, object] = {"value": market_health_score}
@@ -818,6 +837,8 @@ class OwnerValidationPipeline:
         def builder(instrument_id: str) -> InstrumentPlan:
             cs = list(candles_by_id.get(instrument_id, ()))
             box: dict[str, Any] = {}
+            sector_name = sector_by_instrument.get(instrument_id)
+            sector_health_result = sector_results.get(sector_name) if sector_name else None
 
             def ind_stage(ctx):
                 indicators = indicator_engine.compute_all(
@@ -916,6 +937,7 @@ class OwnerValidationPipeline:
                         regime=ctx.get("regime"),
                         market_health=ctx.get("market_health"),
                         market_health_score=shared_score["value"],
+                        sector_health=sector_health_result,
                         vwap=ctx.get("vwap"),
                         confluence=ctx.get("confluence"),
                     )
@@ -926,6 +948,11 @@ class OwnerValidationPipeline:
                     as_of=ctx.as_of,
                     regime=ctx.get("regime"),
                     market_health=ctx.get("market_health"),
+                    sector_health=(
+                        {sector_name: sector_health_result}
+                        if sector_health_result is not None
+                        else None
+                    ),
                     required_sources=(EvidenceSource.REGIME,),
                 )
                 confidence = confidence_engine.assess(
@@ -965,6 +992,7 @@ class OwnerValidationPipeline:
                     regime=ctx.get("regime"),
                     indicators=ctx.get("indicators"),
                     market_health=ctx.get("market_health"),
+                    sector_health=sector_health_result,
                 )
                 self._repo.save_decision(outcome.decision, trace=outcome.trace)
                 box["cap"] = ScanCapture(

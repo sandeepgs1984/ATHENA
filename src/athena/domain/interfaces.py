@@ -113,11 +113,15 @@ class InstitutionalFlowProvider(Protocol):
 
 @runtime_checkable
 class IntelligenceModule(Protocol):
-    """The universal module contract (ATHENA-002 §7.1, ADR-003).
+    """DORMANT/LEGACY (ADR-003 Amendment 1, ID-P0, 2026-08-29) — do not implement.
 
-    Modules declare what they read and write; the orchestrator derives the
-    DAG, validates it at startup, and can later re-evaluate only affected
-    modules (event-driven evolution, §8.4) without touching module code.
+    Originally the universal module contract (ATHENA-002 §7.1, ADR-003).
+    ID-0's runtime audit found no analytical engine implements this Protocol
+    anywhere in production code. ATHENA's canonical live pipeline mechanism
+    is ``athena.runtime.workflow.WorkflowStage`` — a stage declares
+    ``depends_on``/``produces`` and a ``run(ctx) -> Mapping`` callable
+    instead. See ADR-003 Amendment 1 for the canonical rule for new stages;
+    do not implement this Protocol for any new production stage.
     """
 
     name: str

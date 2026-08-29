@@ -6,6 +6,165 @@ status updated on approval.
 
 ---
 
+## ID-P0 — Runtime architecture alignment + Sector Health wiring
+
+**Summary.** ID-0 was reviewed and accepted with conditions (2026-08-29).
+This prerequisite milestone clears the two architectural inconsistencies
+ID-0 found before any Intraday Intelligence stage gets added: (A) resolve
+the ADR-003 dormant-vs-live pipeline-mechanism ambiguity, and (B) wire the
+already-computed, already-consumer-ready `SectorHealthResult` into live
+scoring/evidence/decision via `Instrument.sector`. No numeric threshold
+was tuned; no ORB/RVOL/intraday-ATR/EntryQualification/other ID-1+ work
+was started; EMR and DarvaX were not touched.
+
+**PART A — ADR-003 resolution.** ADR-003 Amendment 1 accepted:
+`runtime.workflow.WorkflowContext`/`WorkflowStage`/`WorkflowDefinition`/
+`WorkflowEngine` is now the documented canonical production pipeline
+runtime — no migration, since it already was the live one. The originally
+specified `domain.context.PipelineContext`/`ContextDelta` and
+`domain.interfaces.IntelligenceModule` are marked dormant/legacy in their
+own module docstrings (not deleted — deletion needs its own future
+dependency-verified cleanup milestone) and a new architecture test
+(`tests/architecture/test_pipeline_mechanism_boundary.py`) fails the suite
+if any production module imports them again. `docs/ATHENA-TECHNICAL-ARCHITECTURE.md`
+corrected in four places that had presented `PipelineContext`/
+`IntelligenceModule` as governing the live engines (§2.1, §2.8, §3.3 twice,
+the known-gaps list, and the glossary).
+
+**PART B — Sector Health wiring.** `OwnerValidationPipeline.run()`'s
+already-computed `sector_results` (keyed by sector name) and its resolved
+`instruments` list now flow into `_scan_eligible()`, which resolves each
+instrument's sector once via `Instrument.sector` (never ADR-011's
+`symbol_group`/`resolve_universe`, which has no `SECTOR` `GroupKind` and
+models scan-universe membership, not sector taxonomy) and passes the
+matching `SectorHealthResult` into `ScoringEngine.score(sector_health=...)`,
+`EvidenceAggregationEngine.aggregate(sector_health={sector: result})`, and
+`DecisionEngine.decide(sector_health=...)` — all three parameters already
+existed and were already handled correctly; only the call sites were
+missing them. A symbol with no `.sector`, a `.sector` with no
+`config/sector_index_mapping.json` entry, or a mapped sector with no
+resolvable `SectorHealthResult` this cycle all resolve to the same honest
+`None` — never fabricated, never guessed. `SectorHealthEngine`'s own
+methodology, `config/scoring.json`'s weights, and `config/decision.json`'s
+thresholds are all untouched.
+
+**PART C — scoring-effect evidence.** New test
+`test_sector_health_wired_into_scoring_evidence_and_decision_trace`
+(`tests/ops/test_owner_validation.py`) proves, against three instruments
+sharing byte-identical daily candles (differing only in `.sector`) and the
+real production `config/sector_index_mapping.json`: `sector_quality` stays
+`UNKNOWN` with no `.sector` and with an explicitly unmapped `.sector`
+("Capital Goods"); resolves `OK` with a mapped, resolvable sector
+("Information Technology" → real NIFTY IT proxy candles); the configured
+15-of-100 weight is unchanged in all three cases; every other scoring
+component (`trend`, `momentum`, `market_quality`, `liquidity`,
+`technical_structure`) is byte-identical across all three instruments;
+composite completeness differs by exactly 0.15 between the known and
+UNKNOWN cases, matching the existing weighted-mean-of-known-components
+contract with no other change; `EvidenceBundle.present_sources`/
+`provenance` carry `SECTOR_HEALTH` only for the mapped instrument; the
+decision reasoning trace carries a non-empty `sector_health` stage only
+for the mapped instrument; and all three instruments still reach a real
+decision (`TRADE`/`WATCH`/`NO_TRADE`/`INSUFFICIENT_DATA`), never a crash.
+
+**PART D — documentation corrections.** `docs/ATHENA-WORKFLOW-METHODOLOGY.md`:
+FAST cadence corrected from the stale 5-minute/400-symbol figures to the
+live 10-minute/150-symbol config, with the 2026-08-10 incident noted (§16,
+§22); the Known-Gaps item, the Stage 5 blockquote, and the Stage 7 scoring
+table's `sector_quality` row updated to reflect the PART B wiring instead
+of "always UNKNOWN" (§8, §10, §20). No documentation was found anywhere
+actually claiming intraday candles are unused by the live decision
+pipeline (checked directly — §5/§10 of the same document already
+correctly state VWAP/confluence feed Scoring); nothing needed correcting
+there beyond what ID-0's own report already states accurately.
+
+**PART E — isolation.** No file under `src/athena/explosive_move/` or
+`src/athena/darvax/` was read for editing purposes beyond what ID-0's
+audit already inspected; none was modified. `tests/darvax/test_dx1_isolation.py`
+and `tests/explosive_move/test_em5_isolation.py` both still pass unchanged.
+
+**Governance note (important, flagged for owner attention):** `docs/MILESTONES.md`'s
+pre-existing SD-2/SD-3 history shows that wiring `sector_quality` into
+scoring was originally scoped as a single gated milestone bundling the
+wiring *and* a threshold recalibration, specifically because a prior
+impact model estimated up to 218/363 (60.1%) of one historical book's
+TRADE/WATCH/NO_TRADE classifications could shift once sector data stopped
+being permanently `UNKNOWN`. ID-P0's owner instruction explicitly separated
+these — wire now, make the effect explicit (PART C), do not tune any
+threshold — which this milestone followed exactly. `docs/MILESTONES.md`'s
+SD-3 row and the SD-2 entry are updated to record that only the wiring half
+is done. **A before/after replay diff over the real live book (the kind
+SD-3 always intended) has not been run** — only synthetic-fixture evidence
+exists so far. Recommend running that replay diff before treating the
+current `config/decision.json` thresholds as still well-calibrated with
+this component now regularly resolving to real values.
+
+**Files created.** `tests/architecture/test_pipeline_mechanism_boundary.py`.
+
+**Files modified.** `docs/adr/ADR-003-pipeline-context.md` (Amendment 1),
+`docs/ATHENA-TECHNICAL-ARCHITECTURE.md`, `docs/ATHENA-WORKFLOW-METHODOLOGY.md`,
+`docs/MILESTONES.md`, `src/athena/domain/context.py`,
+`src/athena/domain/interfaces.py`, `src/athena/ops/owner_validation.py`,
+`tests/ops/test_owner_validation.py`.
+
+**Tests added.** 3 new (2 architecture-boundary, 1 owner_validation
+integration test with 8 internal assertion groups covering PART C
+requirements 1-8). Full suite: **2,717 passed, 1 skipped** (pre-existing,
+unrelated), 0 failed. Ruff clean on every new/modified file (one
+pre-existing, unrelated import-sort warning in `domain/interfaces.py`
+confirmed via diff to predate this change). `mypy` clean in its configured
+scope (`src/athena/domain`, `src/athena/config` — `ops/owner_validation.py`
+is outside mypy's configured scope, consistent with the rest of that file).
+
+**Architecture compliance.** ADR-001/002/006/007/009/010/011/012 all
+unaffected and re-verified (see the ID-0 report's ADR Impact Matrix, §13,
+for the reasoning per ADR). ADR-003 formally amended, not silently
+reinterpreted. No new domain object, no schema change, no new config key.
+Deterministic/replayable execution preserved — no clock/randomness touched.
+
+**Risks / technical debt.** The governance note above (real-book impact of
+sector_quality no longer being permanently UNKNOWN, unmeasured beyond
+synthetic fixtures) is the one open item carried forward. Everything else
+ID-0 flagged as an open question for ID-1 (the `IndicatorsConfig`
+per-timeframe limitation, the `ExecutionQuality` provider-Protocol gap,
+`IndicatorResult`'s missing timeframe/session provenance) remains
+untouched and unresolved, as instructed — out of ID-P0's scope.
+
+**Remaining work.** Owner review of this milestone; a decision on whether
+to run the sector_quality real-book replay diff before or alongside ID-1;
+then ID-1 scope finalization per the ID-0 report §15.
+
+**Commit message (for the owner to use, not run by the AI):**
+
+```
+feat(architecture): align pipeline runtime doc + wire Sector Health (ID-P0)
+
+- Amend ADR-003: adopt runtime.workflow.WorkflowContext/WorkflowStage as
+  the canonical pipeline mechanism; mark PipelineContext/ContextDelta/
+  IntelligenceModule dormant/legacy in their own docstrings (not deleted)
+  -- ID-0 found zero non-test production callers of the latter
+- Add tests/architecture/test_pipeline_mechanism_boundary.py so a future
+  Intraday Intelligence stage cannot silently reintroduce the dormant
+  contract instead of the live one
+- Wire SectorHealthEngine's already-computed per-cycle results into
+  ScoringEngine.score()/EvidenceAggregationEngine.aggregate()/
+  DecisionEngine.decide() via Instrument.sector -- all three already
+  accepted sector_health; only owner_validation.py's three call sites
+  were missing it (a deliberately deferred milestone, SD-3's wiring half)
+- Add an owner_validation integration test proving the wiring touches
+  only sector_quality, preserves the existing UNKNOWN path for
+  unmapped/unresolvable sectors, and leaves every other scoring
+  component, weight, and threshold unchanged
+- Correct ATHENA-TECHNICAL-ARCHITECTURE.md/ATHENA-WORKFLOW-METHODOLOGY.md/
+  MILESTONES.md wherever they described PipelineContext as live, sector
+  health as unwired, or FAST's stale pre-2026-08-10 5min/400 cadence
+```
+
+**Milestone status.** Ready for review. Awaiting owner approval before
+ID-1.
+
+---
+
 ## ID-0 — Intraday Intelligence: runtime audit + architecture freeze
 
 **Summary.** Owner assignment dated 2026-08-29 kicking off a new Intraday

@@ -1,4 +1,18 @@
-"""PipelineContext — the single shared immutable object of every cycle (F-1, ADR-003)."""
+"""PipelineContext — DORMANT/LEGACY (ADR-003 Amendment 1, ID-P0, 2026-08-29).
+
+ID-0's runtime audit found zero non-test callers of ``PipelineContext``,
+``ContextDelta``, or the ``IntelligenceModule`` Protocol anywhere in ATHENA's
+production code. ATHENA's actual, live, production pipeline runtime is
+``athena.runtime.workflow`` (``WorkflowContext``/``WorkflowStage``/
+``WorkflowDefinition``/``WorkflowEngine``), wired inside
+``OwnerValidationPipeline._scan_eligible``. See ADR-003 Amendment 1 for the
+full history and the canonical rule for writing new pipeline stages.
+
+DO NOT use these types for any new production stage, including Intraday
+Intelligence (ID-1+) work. They remain here, not deleted, only because
+removal has not yet been verified completely safe and trivial — that is a
+separate future cleanup milestone's job, not this one's.
+"""
 
 from __future__ import annotations
 

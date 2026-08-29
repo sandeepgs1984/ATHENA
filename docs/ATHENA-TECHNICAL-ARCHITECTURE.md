@@ -79,8 +79,9 @@ documented as such — covering `Instrument`, `Candle`, `CorporateAction`,
 `MarketHealthScore`, `RegimeAssessment`, `Universe` (`domain/market.py`);
 `Evidence`, `Signal`, `Score`, `ConfidenceAssessment` (`domain/evidence.py`);
 `TradePlan`, `RiskEvaluation`, `Decision`, `DecisionTrace`, `Position`
-(`domain/decision.py`); plus `PipelineContext` (`domain/context.py`) and
-`RunRecord`/`ConfigurationSnapshot` (`domain/run.py`).
+(`domain/decision.py`); plus `PipelineContext` (`domain/context.py`, **dormant/
+legacy — see the note below**) and `RunRecord`/`ConfigurationSnapshot`
+(`domain/run.py`).
 
 - **Money is always `Decimal`.** `Candle.open/high/low/close: Decimal`
   (`market.py:45-48`), `TradePlan.stop_loss/risk_amount: Decimal`
@@ -91,14 +92,20 @@ documented as such — covering `Instrument`, `Candle`, `CorporateAction`,
   pattern repeats on `Quote` (`market.py:115-117`), `MarketSnapshot`
   (`market.py:131-133`), `Decision` (`decision.py:136-137`), and `Evidence`
   (`evidence.py:33-34`). A naive datetime cannot enter the domain layer at all.
-- **`PipelineContext`** (`context.py:26-69`) is the one object that looks
-  mutable across a run but isn't: its `data` mapping is wrapped in
-  `MappingProxyType` in `__post_init__` (line 42), `.get()` raises with a
-  producer hint if a key is missing (lines 44-49), and `.with_delta()` raises
-  if a stage tries to re-produce a key another stage already set (lines
-  55-61) — it returns a *new* `PipelineContext` rather than mutating the
-  existing one. This is what "no hidden state" means concretely: a stage
-  cannot silently overwrite another stage's output.
+- **`PipelineContext`** (`context.py:26-69`) is **dormant/legacy scaffolding,
+  not the live runtime** (ADR-003 Amendment 1, ID-P0, 2026-08-29 — ID-0's
+  runtime audit found zero non-test production callers). It reads as if it
+  were the one shared per-run object — `data` wrapped in `MappingProxyType`
+  in `__post_init__` (line 42), `.get()` raising with a producer hint if a
+  key is missing (lines 44-49), `.with_delta()` raising if a stage tries to
+  re-produce a key another stage already set (lines 55-61), returning a
+  *new* `PipelineContext` rather than mutating the existing one — but no
+  analytical engine actually constructs or consumes it. ATHENA's real,
+  live per-cycle context is `runtime.workflow.WorkflowContext`
+  (§3.2 below; ADR-003 Amendment 1), which enforces the identical "no hidden
+  state, no silent overwrite" guarantee through its own `_merge` method
+  instead. Both mechanisms illustrate the same principle; only the
+  Workflow one is wired into any real decision.
 - **No shared `Clock` abstraction.** Determinism is achieved by injecting an
   `as_of`/`now` parameter at each engine's boundary rather than through a
   central clock object — stated explicitly in `market_health/engine.py:13`
@@ -280,9 +287,13 @@ import caches) and asserts `athena.darvax` is absent from `sys.modules` when
 disabled (line 77); a companion test uses `ast` inspection to fail if the
 import were ever hoisted to module scope (`test_04b_the_seam_imports_darvax_lazily_not_at_module_scope`,
 line 173). No equivalent single-file seam exists for boundaries *between*
-core modules (e.g. `scoring/` and `risk/`) — those rely on the `Protocol`
-contract in `domain/interfaces.py:115` (`IntelligenceModule`) and each
-engine's declared `consumes`/`produces`, not an import gate.
+core modules (e.g. `scoring/` and `risk/`) — those rely on plain function
+signatures plus each stage's `depends_on`/`produces` declaration on its
+`WorkflowStage` (`athena.runtime.workflow`, wired in
+`ops/owner_validation.py` — see §3.1/§3.2), not an import gate. **Not**
+`domain/interfaces.py:115`'s `IntelligenceModule` Protocol — despite its own
+docstring calling it "the universal module contract," ID-0's runtime audit
+(ADR-003 Amendment 1, 2026-08-29) found no engine implements it; see §3.3.
 
 ---
 
@@ -368,8 +379,12 @@ clean 17. Representative examples beyond the two already covered in
 
 - `domain/interfaces.py:115` — `IntelligenceModule(Protocol)`, described in
   its own docstring as "the universal module contract (ATHENA-002 §7.1,
-  ADR-003)" — this is the Protocol that actually governs the
-  regime/scoring/decision engines' shape.
+  ADR-003)" — **but ID-0's runtime audit (ADR-003 Amendment 1, 2026-08-29)
+  found no engine implements it and it has zero non-test callers.** What
+  actually governs the regime/scoring/decision engines' shape is each
+  engine's plain method signature plus its `WorkflowStage`'s
+  `depends_on`/`produces` declaration (§3.1/§3.2) — this Protocol is
+  dormant/legacy scaffolding, not a live contract.
 - `orchestration/models.py:134` — `PipelineStage(Protocol)`.
 - `scheduling/dry_run.py:27` — `DryRunPipeline(Protocol)`.
 - `data/providers/kite_transport.py:39` — `KiteTransport(Protocol)`.
@@ -381,9 +396,12 @@ README's "17 modules behind Protocol interfaces" is best read as ATHENA-002
 §2's module count (an architecture-document convention), not a literal count
 of `Protocol` class definitions in the codebase — the real number is roughly
 double, and skews toward API/data plumbing rather than the regime-to-decision
-chain, where `domain/interfaces.py`'s three Protocols
-(`MarketDataProvider`/`InstitutionalFlowProvider`/`IntelligenceModule`) are
-what actually govern the engines directly.
+chain. Of `domain/interfaces.py`'s three Protocols, only two actually govern
+anything live: `MarketDataProvider` (ADR-002, every provider implementation)
+and `InstitutionalFlowProvider` (ADR-008). `IntelligenceModule` is dormant
+(see immediately above) — the regime-to-decision chain's real per-stage
+contract is each `WorkflowStage`'s `depends_on`/`produces` declaration, not
+this Protocol.
 
 ### 3.4 Portfolio/planning stack — no order-placement code (verified, not assumed)
 
@@ -1061,10 +1079,26 @@ knows these were found and not simply missed:
    aren't set in the environment — worth noticing before trusting
    `GET /api/version` output as meaningful provenance. See
    [§4.6](#46-platform-diagnostics).
-10. **No automated module-boundary enforcement outside the DarvaX seam.** No
-    import-linter or architecture test exists for boundaries between core
-    modules (e.g. `scoring/` and `risk/`) — only Protocol typing, contract
-    tests, and review. See [§2.8](#28-module-boundary-enforcement).
+10. **No automated module-boundary enforcement outside the DarvaX seam
+    (and, since ID-P0, one narrower exception).** No general import-linter
+    or architecture test exists for boundaries between core modules (e.g.
+    `scoring/` and `risk/`) — only Protocol typing, contract tests, and
+    review. See [§2.8](#28-module-boundary-enforcement). One specific
+    boundary now IS enforced by test: `tests/architecture/test_pipeline_mechanism_boundary.py`
+    fails the suite if any production module imports the dormant
+    `PipelineContext`/`ContextDelta`/`IntelligenceModule` types (item 11
+    below) — narrower than a general import-linter, but a real, verified
+    guard for the one boundary ID-0 found actually mattered.
+11. **`PipelineContext`/`ContextDelta`/`IntelligenceModule` (ADR-003's
+    originally specified mechanism) are dormant — zero non-test production
+    callers.** ATHENA's real, live per-cycle pipeline runtime is
+    `runtime.workflow.WorkflowContext`/`WorkflowStage`/`WorkflowEngine`
+    (§2.1, §3.1, §3.2, §3.3). Found and resolved by ID-0/ID-P0
+    (2026-08-29): see ADR-003 Amendment 1 and
+    `docs/research/ID-0-RUNTIME-AUDIT-ARCHITECTURE-REPORT.md`. The dormant
+    types are documented as legacy in their own module docstrings rather
+    than deleted, pending a future cleanup milestone's dependency
+    verification.
 
 ---
 
@@ -1076,7 +1110,8 @@ knows these were found and not simply missed:
 | Explainability-as-data | A computed value and its rationale are persisted as one object, never reconstructed later | ADR-005 |
 | Provider abstraction | Business logic depends on a `Protocol`, never a concrete broker/data-source class | ADR-002, `domain/interfaces.py` |
 | Modular monolith | One deployable process, internally divided by Protocol-typed module boundaries, not by network service | ADR-001 |
-| PipelineContext | The one per-run object every pipeline stage reads from/writes to, immutable after each stage's contribution | `domain/context.py` |
+| PipelineContext | **Dormant/legacy** (ADR-003 Amendment 1) — reads as if it were the one per-run object every stage reads/writes, but has zero non-test production callers | `domain/context.py` |
+| WorkflowContext | The real, live per-run object every pipeline stage reads from/writes to (via `WorkflowStage`/`WorkflowEngine`), immutable after each stage's contribution | `runtime/workflow.py`, ADR-003 Amendment 1 |
 | Satellite module | An opt-in, self-contained module (own config/db/schema/frontend) mounted through exactly one seam file | ADR-010, `api/darvax_mount.py` |
 | DAR-CARD | Darvas' own four-rule trading card, quoted verbatim wherever DarvaX cites it | `darvax/signals/models.py` `DAR_CARD_TEXT` |
 | WAL mode | SQLite's write-ahead log, enabling concurrent readers alongside a writer | `data/store/repository.py:114`, ADR-009 |

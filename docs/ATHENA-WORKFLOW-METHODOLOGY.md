@@ -280,8 +280,8 @@ Only 8 sectors currently have an index mapping (others get no result at all — 
 **Four dimensions**, same discipline of explicit `*_UNKNOWN` on insufficient history: trend (10/30-day SMA cross, needs 30 candles), breadth (advance ratio — see note below), momentum (10-day rate of change vs a **3.0%** bar, needs 11 candles), volatility (20-day realized standard deviation of returns vs 1.0%/2.5% bands, needs 21 candles).
 
 > **Important, verified findings — read before assuming this feeds scoring:**
-> - **Sector breadth is always `SECTOR_BREADTH_UNKNOWN` in production.** It requires a `constituent_breadth` input that the live pipeline never actually supplies (deferred to a future Universe Engine milestone).
-> - **Sector Health does not currently feed Scoring or Decisions.** `ScoringEngine._sector_quality()` can accept it, but the live per-symbol scan never passes `sector_health` into either the scoring or decision call — so `sector_quality` is `UNKNOWN` in every live run today. Sector Health is computed and persisted purely for display.
+> - **Sector breadth is always `SECTOR_BREADTH_UNKNOWN` in production.** It requires a `constituent_breadth` input that the live pipeline never actually supplies (deferred to a future Universe Engine milestone). This is unchanged by the wiring below — `sector_quality` still averages over whichever dimensions are scoreable, and `breadth` remains excluded from that average until constituent breadth ships.
+> - **Sector Health now feeds Scoring, Evidence, and Decision reasoning (ID-P0, 2026-08-29).** `Instrument.sector` (never ADR-011's `symbol_group`/`resolve_universe`, which models scan-universe membership, not sector taxonomy) is resolved per instrument inside `OwnerValidationPipeline._scan_eligible` and threaded into `ScoringEngine.score(sector_health=...)`, `EvidenceAggregationEngine.aggregate(sector_health=...)`, and `DecisionEngine.decide(sector_health=...)`. `sector_quality` is `OK` whenever the instrument has a `.sector` value with a `config/sector_index_mapping.json` entry whose proxy index has a resolvable `SectorHealthResult` that cycle; otherwise it stays the same honest `UNKNOWN` as before ("no sector health assessment available") — never guessed, never substituted. See ADR-003 Amendment 1 / `docs/research/ID-0-RUNTIME-AUDIT-ARCHITECTURE-REPORT.md` §6 for the full before/after.
 > - **Sector Health does not feed "Index Leadership"** on the dashboard. That's a separate, computationally unrelated feature built on raw index price-change arithmetic (see §17) — the two happen to share the same sector→index config file, nothing more.
 > - No numeric 0–100 sector score exists. A `SectorHealthScore` domain type mirroring the blueprint's momentum/leadership/relative-strength/participation/rotation composite is defined but never constructed anywhere.
 
@@ -327,7 +327,7 @@ pie showData
 | **trend** | 20 | regime trend label → points (80/50/20) **+** ADX bonus (ramps 0→+10 pts as ADX goes 15→25) **+** multi-timeframe confluence bonus (up to +10 pts, proportional to agreement ratio) |
 | **momentum** | 20 | RSI ramped linearly: 40→20 pts, 50→50 pts, 60→80 pts |
 | **market_quality** | 20 | the F-5 total directly, when available (fallback: average of categorical market-health labels) |
-| **sector_quality** | 15 | average of sector-health dimension labels (`UNKNOWN` in production today — see §8) |
+| **sector_quality** | 15 | average of sector-health dimension labels for the instrument's own `Instrument.sector` (`UNKNOWN` when unmapped/unresolvable this cycle — see §8) |
 | **liquidity** | 10 | Volume MA ramped 30→70 pts between 250,000 and 500,000 shares/day |
 | **technical_structure** | 15 | 70 pts if above SMA else 30 · **+10 pts flat** if MACD histogram is positive · + VWAP-reclaim bonus (ramps 0→+10 pts as deviation above VWAP goes 0%→1.5%) |
 
@@ -522,7 +522,7 @@ gantt
     section Every session
     REFRESH full universe every 15 min :active, refresh, 09:15, 375m
     section Owner opt in
-    FAST decision list only every 5 min :fastrun, 09:15, 375m
+    FAST decision list only every 10 min :fastrun, 09:15, 375m
 ```
 
 | Trigger | Cadence | Scope | Fetches daily candles? |
@@ -530,7 +530,17 @@ gantt
 | **PREMARKET** | once/day, 08:15, before market open | full owner candidate universe | yes |
 | **REFRESH** | every 15 min while the session is open (09:15–15:30) | full universe | yes |
 | **CLOSING** | once/day, at/after 15:45 and session close | full universe | yes |
-| **FAST** *(opt-in)* | every 5 min while the session is open | only symbols with a current decision, capped at 400, single 5-minute timeframe | **no** — REFRESH already keeps daily candles correct; FAST exists purely to keep intraday/decision freshness tighter between full cycles without competing for the same rate-limited Kite historical endpoint |
+| **FAST** *(opt-in)* | every 10 min while the session is open | only symbols with a current decision, capped at 150, single 5-minute timeframe | **no** — REFRESH already keeps daily candles correct; FAST exists purely to keep intraday/decision freshness tighter between full cycles without competing for the same rate-limited Kite historical endpoint |
+
+> **Corrected 2026-08-29 (ID-P0).** This section previously read "every 5
+> min ... capped at 400." `config/scheduling.json`'s own `_meta` comment
+> records that the fast tier was "scaled back 2026-08-10" from
+> 5-minute/400-symbol to the current 10-minute/150-symbol setting: the
+> original setting drove the shared Kite historical endpoint to ~42% duty
+> cycle, starving ad-hoc single-symbol validation requests. The config
+> remains authoritative — see [§7.1 of the technical architecture
+> doc](ATHENA-TECHNICAL-ARCHITECTURE.md#71-cadence-engine) for the full
+> incident record.
 
 Every trigger is suppressed entirely on a non-trading day (weekend/holiday), determined via the trading calendar — not just wall-clock time-of-day, since Kite's own quotes are legitimately frozen at the last real close on a closed day.
 
@@ -598,7 +608,7 @@ A "no gaps" document has to be honest about *actual* gaps between the declared a
 
 1. **8 of the 12 canonical `DecisionType` values are never produced by any engine today** — only `TRADE`, `WATCH`, `NO_TRADE`, `INSUFFICIENT_DATA` are live (§13). `WAIT`, `REDUCE_POSITION`, `INCREASE_POSITION`, `PARTIAL_EXIT`, `FULL_EXIT`, `AVOID_SECTOR`, `MARKET_CLOSED`, and `DATA_VALIDATION_FAILED` are consumed downstream but never constructed.
 2. **Circuit-limit risk (ADR-006) is proposed, not implemented.** No `circuit_proximity_risk` risk dimension and no circuit-limit fields on `Quote` exist in the running code yet.
-3. **Sector Health does not feed Scoring or Decisions in production**, despite the scoring engine being able to accept it — the live scan path never supplies it, so `sector_quality` is `UNKNOWN` in every real run today (§8, §10). It's computed purely for dashboard display.
+3. ~~Sector Health does not feed Scoring or Decisions in production~~ — **fixed 2026-08-29 (ID-P0).** `Instrument.sector` is now resolved per instrument and threaded into `ScoringEngine.score()`, `EvidenceAggregationEngine.aggregate()`, and `DecisionEngine.decide()` (§8, §10). `sector_quality` is `OK` for instruments with a mapped, resolvable sector this cycle, `UNKNOWN` otherwise — never guessed. See ADR-003 Amendment 1.
 4. **Sector breadth is always `SECTOR_BREADTH_UNKNOWN`** in production — the constituent-level breadth input it needs is deferred to a future Universe Engine milestone.
 5. **`config/risk.json`'s daily-loss / consecutive-loss / no-trade circuit-breaker policy** is schema-validated on load, but no confirmed runtime enforcement point was found during this pass — treat as configured, not confirmed-enforced, pending a direct verification.
 6. **The frozen `Evidence`/`EvidenceCategory` domain contract** (11 categories, the eventual input to a fully evidence-driven Decision Engine) is defined but never instantiated by any live engine — the actual live evidence mechanism is the coarser `EvidenceSource`/`EvidenceBundle` pipeline described in §9.
@@ -659,7 +669,7 @@ Every numeric threshold cited in this document, by file, for quick lookup:
 | `sizing.json` | model / rounding | WHOLE_SHARE / ROUND_DOWN |
 | `capital.json` | total_capital / reserved / max per-position / max per-sector | ₹10,00,000 / 20% / 10% / 30% |
 | `scheduling.json` | refresh interval | 15 min |
-| `scheduling.json` | fast interval / max_symbols | 5 min / 400 |
+| `scheduling.json` | fast interval / max_symbols | 10 min / 150 (scaled back 2026-08-10 from 5 min / 400 — see §16) |
 | `providers/kite.json` | historical / quote batch / other rate limits | 3/s · 500/batch @ 1/s · 10/s |
 
 ---

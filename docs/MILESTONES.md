@@ -20,7 +20,8 @@ never auto-continuing past an owner approval gate.
 
 | Milestone | Objective | Status |
 |---|---|---|
-| ID-0 | Runtime audit + architecture freeze — verify current data flow, `PipelineContext` reality, indicator reusability, Sector Health wiring, `TradePlan`/freshness machinery, and provider data availability; propose (not implement) the smallest architecture-compatible intraday extension | 🔄 Ready for review 2026-08-29 — report complete, recommendation GO WITH CONDITIONS. No production code modified. Awaiting owner approval before ID-1 |
+| ID-0 | Runtime audit + architecture freeze — verify current data flow, `PipelineContext` reality, indicator reusability, Sector Health wiring, `TradePlan`/freshness machinery, and provider data availability; propose (not implement) the smallest architecture-compatible intraday extension | ✅ Approved with conditions 2026-08-29 — recommendation GO WITH CONDITIONS accepted; conditions addressed by ID-P0 below |
+| ID-P0 | Prerequisite: resolve the ADR-003 dormant-vs-live ambiguity + wire existing Sector Health into live scoring/evidence/decision — the two architectural inconsistencies ID-0 found, cleared before any new intraday stage is added | 🔄 Ready for review 2026-08-29 — implementation complete, full suite green (2,717 passed, 1 pre-existing skip). Awaiting owner approval before ID-1 |
 | ID-1 | TBD — scope proposed in the ID-0 report §15, pending owner approval | Planned |
 
 **ID-0 headline findings (full detail in the report):** (1) `intraday_candles()`
@@ -3157,7 +3158,27 @@ and must not ship without owner sign-off on the recalibration.
 |---|---|---|---|
 | **SD-1** Wire calendar + universe into Risk | Thread the existing `CalendarContext` and `UniverseResult` from `run()` into `_scan_eligible()` → `RiskEngine.assess()`. Activates `event_risk` and `concentration_indicator`. Includes the approved follow-up fix for scoped re-validations: use last full-cycle breadth for concentration and real configured index candles for regime/gap context. Note: `concentration_indicator` is universe-breadth-derived and therefore shared across symbols — it raises risk *completeness* and honesty, it does **not** add per-symbol differentiation. Only `event_risk` can vary per symbol, and only on instruments with calendar events | None — existing objects, existing parameters, no contract/schema change | ✅ Completed / approved (2026-07-29) |
 | **SD-2** Sector health data decision | Owner decision, not an AI call: either (a) ingest real NSE sector indices via Kite (new data source → **DD-gated**), or (b) derive sector aggregates from the constituent candles already held, using `instruments.sector` (new method → needs a design decision / ADR since M2.3's engine contract assumes an index series) | **DD or ADR** depending on option chosen | ✅ Approved — Option A implemented ([`DD-12`](decisions/DD-12-sector-health-data-source.md), 2026-08-01) |
-| **SD-3** Wire sector_quality + recalibrate thresholds | Only after SD-2 lands. Pass `sector_health` into `ScoringEngine.score()`, then re-tune `config/decision.json` watch/trade thresholds against the impact table above so the change doesn't silently reclassify 20–39% of the book. Ships with a before/after replay diff | Config change to decision thresholds — **owner approval required** | ⏳ Proposed — SD-2 now resolved (2026-08-01); still requires its own separate owner approval and replay diff before this starts |
+| **SD-3** Wire sector_quality + recalibrate thresholds | Only after SD-2 lands. Pass `sector_health` into `ScoringEngine.score()`, then re-tune `config/decision.json` watch/trade thresholds against the impact table above so the change doesn't silently reclassify 20–39% of the book. Ships with a before/after replay diff | Config change to decision thresholds — **owner approval required** | 🔄 **Wiring half done under ID-P0 (2026-08-29, not SD-3 itself)** — see the note immediately below. Threshold recalibration remains separately proposed and un-started |
+
+**SD-3 status note (2026-08-29):** ID-P0 (the Intraday Intelligence
+program's prerequisite architecture milestone) wired `sector_health` into
+`ScoringEngine.score()`, `EvidenceAggregationEngine.aggregate()`, and
+`DecisionEngine.decide()` per an explicit, current owner instruction that
+also explicitly forbade tuning any threshold as part of that change ("this
+is expected behavior, but it must be made explicit... do NOT tune any
+thresholds based on changed composites"). **This is only the wiring half
+of what SD-3 originally scoped as one gated milestone** — the impact
+table above (modelled: up to 218/363, 60.1%, of one historical book's
+TRADE/WATCH/NO_TRADE band could shift with real sector data) was the
+reason SD-3 bundled recalibration into the same approval gate in the
+first place, and that reasoning still applies. `config/decision.json`'s
+watch/trade thresholds are untouched by ID-P0. Real-world impact on the
+live book should be watched (a before/after replay diff over live
+candidates, the kind SD-3 always intended, has not been run) before
+treating the current thresholds as still well-calibrated with a
+15-of-100-weight component now regularly resolving to real values instead
+of always `UNKNOWN`. See ID-P0's Milestone Review Summary for the
+synthetic-fixture evidence gathered so far.
 | **SD-4** Scoring granularity (continuous ramps) | Replace RSI/liquidity/ADX step functions with anchor-preserving linear ramps. Distinct composite scores rise from 21 → 248 across the live book. `technical_structure` deferred (needs a normalizing band with no existing anchor). | Config: `adx.weak`, `liquidity.low_volume_floor_ratio` | ✅ Completed / approved (2026-07-29) |
 
 #### SD-2 — Option A implemented and approved (2026-08-01)
@@ -3177,12 +3198,13 @@ command (reusing the existing `LiveIngestionEngine`/validator/quarantine
 path, not new candle-fetching logic) one-time-backfills history for the 8
 indices.
 
-**Scoring/decision are provably untouched.** `ScoringEngine.score()`'s only
-call site (`owner_validation.py`'s `sco_stage`) does not pass
-`sector_health` — confirmed by direct code reading, not inference —
-so `sector_quality` remains exactly `UNKNOWN` for every symbol, unchanged.
-`SD-3` (wiring it into scoring) remains a fully separate, still-unstarted,
-owner-gated decision.
+**Scoring/decision were provably untouched at the time this SD-2 entry was
+written.** `ScoringEngine.score()`'s only call site (`owner_validation.py`'s
+`sco_stage`) did not pass `sector_health` — confirmed by direct code
+reading, not inference — so `sector_quality` was exactly `UNKNOWN` for
+every symbol at that point. **This changed under ID-P0 (2026-08-29)** — see
+the SD-3 status note above; the wiring is now live, threshold
+recalibration is not.
 
 Validation note: full suite 1,166 passed (7 new tests covering the new
 config models and an end-to-end `OwnerValidationPipeline.run()` check
