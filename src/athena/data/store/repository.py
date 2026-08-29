@@ -444,7 +444,9 @@ class SqliteRepository:
         )
         return [ser.row_to_quote(r) for r in rows]
 
-    def get_latest_quote(self, instrument_id: str) -> Quote | None:
+    def get_latest_quote(
+        self, instrument_id: str, *, as_of: datetime | None = None
+    ) -> Quote | None:
         """Most recent quote only (ID-1: `SessionContext.latest_quote_ts`).
 
         `get_quotes()` returns the full unbounded history for an instrument —
@@ -452,12 +454,36 @@ class SqliteRepository:
         per-instrument freshness read, which only ever needs the single
         latest row. Bounded by the existing `(instrument_id, ts)` primary
         key's index — no new index, no schema change.
+
+        `as_of` (ID-5F, market-time point-in-time safety, same contract as
+        `list_candles_recent`'s ID-5E fix): when given, only quotes with
+        `ts<=as_of` are eligible -- applied in SQL BEFORE `ORDER BY ...
+        LIMIT 1`, never as a Python filter after (which could return None
+        or the wrong row once an eligible earlier quote exists but an
+        unbounded fetch already returned a later, ineligible one).
+        `as_of=None` (the default) preserves the exact pre-ID-5F behavior
+        byte-for-byte for every existing live-current-state caller. This
+        bounds MARKET-TIME (`ts`) only -- the `quotes` table already
+        retains one row per distinct timestamp (append-only, PRIMARY KEY
+        `(instrument_id, ts)`), so no schema change was needed to support
+        this; it says nothing about whether a since-superseded quote at
+        that exact market timestamp was ever itself later corrected
+        (knowledge-time/bitemporal replay, still unsupported).
         """
-        rows = self._query_all(
-            "SELECT instrument_id, ts, last_price, volume, source FROM quotes "
-            "WHERE instrument_id=? ORDER BY ts DESC LIMIT 1",
-            (instrument_id,),
-        )
+        if as_of is not None:
+            if as_of.tzinfo is None:
+                raise ValueError("get_latest_quote as_of must be timezone-aware")
+            rows = self._query_all(
+                "SELECT instrument_id, ts, last_price, volume, source FROM quotes "
+                "WHERE instrument_id=? AND ts<=? ORDER BY ts DESC LIMIT 1",
+                (instrument_id, as_of.isoformat()),
+            )
+        else:
+            rows = self._query_all(
+                "SELECT instrument_id, ts, last_price, volume, source FROM quotes "
+                "WHERE instrument_id=? ORDER BY ts DESC LIMIT 1",
+                (instrument_id,),
+            )
         return ser.row_to_quote(rows[0]) if rows else None
 
     # ------------------------------------------------------------- market snapshots

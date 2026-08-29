@@ -339,13 +339,18 @@ dependency graph:
 5. **`risk_stage`**, `depends_on=("indicators", "regime")`
 6. **`dec_stage`**, `depends_on=("scoring", "confidence", "risk")`, which
    persists the result via `self._repo.save_decision(...)`
-7. **`session_stage`** (ID-1, 2026-08-29; extended ID-5C, 2026-08-29) —
-   `produces=("session_context", "gap_context")`, no `depends_on`, nothing
-   else depends on it. Computes a `SessionContext` (`athena.session`) from
-   the same 5m/15m candles + a bounded `repo.get_latest_quote()` read —
-   genuinely live every cycle, but purely additive foundation work: no
-   existing stage's inputs, outputs, or the topological order among
-   stages 1-6 changed. Declared **last** in the stage list specifically so
+7. **`session_stage`** (ID-1, 2026-08-29; extended ID-5C, 2026-08-29; ID-5F,
+   2026-08-30) — `produces=("session_context", "gap_context")`, no
+   `depends_on`, nothing else depends on it. Computes a `SessionContext`
+   (`athena.session`) from the same 5m/15m candles + a bounded
+   `repo.get_latest_quote(instrument_id, as_of=ctx.as_of)` read (ID-5F:
+   the `as_of` bound is new — see [§9 item 17](#9-known-documentationimplementation-gaps)
+   — `SessionContext`'s own `QUOTE_UNAVAILABLE` freshness methodology is
+   unchanged, only the source of `latest_quote_ts` is now market-time
+   safe) — genuinely live every cycle, but purely additive foundation
+   work: no existing stage's inputs, outputs, or the topological order
+   among stages 1-6 changed. Declared **last** in the stage list
+   specifically so
    Kahn's declaration-index tie-break cannot reorder stages 1-6 relative
    to each other (proven by
    `tests/ops/test_owner_validation.py::test_id1_session_stage_is_produced_without_perturbing_existing_stage_order`,
@@ -1377,8 +1382,9 @@ knows these were found and not simply missed:
     began 2026-07-28) — whether a rolling cap should be introduced once
     more history accumulates is an explicit, undecided OWNER_PENDING
     policy question, not resolved by this milestone.
-17. **`list_candles_recent()` had no point-in-time cutoff — fixed by
-    ID-5E (2026-08-29), MARKET-TIME safety only.** Every prior ID
+17. **`list_candles_recent()`/`get_latest_quote()` had no point-in-time
+    cutoff — fixed by ID-5E (candles, 2026-08-29) and ID-5F (quotes,
+    2026-08-30), MARKET-TIME safety only.** Every prior ID
     milestone since ID-P0.1 documented this as an unresolved replay
     limitation: `list_candles_recent(instrument_id, timeframe, limit=N)`
     returned the latest N rows overall, with no way to bound retrieval by
@@ -1417,16 +1423,28 @@ knows these were found and not simply missed:
     actually persisted/known to ATHENA, so KNOWLEDGE-TIME/bitemporal
     replay (reconstructing exactly what ATHENA knew at a past instant,
     including a since-corrected provisional value) remains unsupported
-    and is not claimed solved. Quote history (`get_latest_quote`, feeding
-    `SessionContext.latest_quote_ts`) has the identical unbounded-latest
-    gap and was audited but explicitly left out of this milestone's scope
-    (candle retrieval only) — a known, undecided remaining gap, not a
-    schema limitation (the `quotes` table is already append-only history,
-    so a future fix needs no migration). `get_latest_snapshot()`
-    (`MarketSnapshot`) and institutional-flow/candidate-universe-
-    membership/config-version point-in-time reconstruction are likewise
-    identified-but-unsolved — full deterministic historical pipeline
-    replay is NOT claimed by ID-5E, only market-time candle safety.
+    and is not claimed solved. **Quote history (`get_latest_quote`,
+    feeding `SessionContext.latest_quote_ts`) had the identical
+    unbounded-latest gap — CLOSED by ID-5F (2026-08-30).** Quote-schema
+    audit confirmed the `quotes` table's `PRIMARY KEY (instrument_id, ts)`
+    already retains one row per distinct timestamp (append-only), so no
+    migration was needed: `get_latest_quote(instrument_id, *, as_of=None)`
+    now applies the identical `ts<=?` SQL-before-`ORDER BY ...LIMIT 1`
+    contract, and `session_stage` (its one production caller anywhere in
+    `src/athena/`) passes `as_of=ctx.as_of`. `SessionContext`'s own
+    `QUOTE_UNAVAILABLE` freshness methodology is completely unchanged —
+    only the source of `latest_quote_ts` is now market-time safe. Proven
+    non-vacuously: a real pipeline run's `latest_quote_ts` leaked a future
+    quote's timestamp before the fix, restored after. `get_latest_snapshot()`
+    (`MarketSnapshot`) remains the next identified-but-unsolved gap — ID-5F
+    found a bounded sibling `get_latest_snapshot_before(before)` already
+    exists in the repository but is unused by the analytical caller, a
+    concrete head start for a future narrow milestone, not acted on.
+    Institutional-flow/candidate-universe-membership/config-version
+    point-in-time reconstruction are likewise identified-but-unsolved —
+    full deterministic historical pipeline replay is NOT claimed by either
+    ID-5E or ID-5F; **candle and quote market-time retrieval are now both
+    closed**, snapshot and knowledge-time/bitemporal replay are not.
 
 ---
 

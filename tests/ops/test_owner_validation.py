@@ -14,11 +14,12 @@ from athena.data.ingestion.models import IngestionResult
 from athena.data.store.repository import SqliteRepository
 from athena.domain.decision import Decision
 from athena.domain.enums import DecisionType, Direction, RunStatus, RunTrigger, Timeframe
-from athena.domain.market import Candle, Instrument
+from athena.domain.market import Candle, Instrument, Quote
 from athena.domain.run import RunRecord
 from athena.intraday import GapDirection, RelativeStrengthRelation
 from athena.ops.owner_candidates import SqliteCandidateStore, normalize_candidate_symbol
 from athena.ops.owner_validation import OwnerValidationPipeline
+from athena.session import SessionDataQualityStatus
 
 IST = ZoneInfo("Asia/Kolkata")
 AS_OF = datetime(2026, 3, 2, 9, 30, tzinfo=IST)
@@ -1734,6 +1735,113 @@ class TestOwnerValidationPipeline:
         noisy = recorded[-1]
 
         assert noisy == clean
+
+    def test_id5f_session_context_latest_quote_ts_is_invariant_to_a_future_quote(
+        self, repo: SqliteRepository, config_dir: Path, monkeypatch
+    ) -> None:
+        """ID-5F §11/§12 (SessionContext Pipeline Invariance / Future-Quote
+        Non-Vacuous Proof): `SessionContext.latest_quote_ts` must be
+        byte-identical whether or not the repository ALSO holds a quote
+        dated after this run's own `as_of` (as it would after further real
+        polling since that historical instant). Proven the same way as
+        ID-5E's own proofs: run the identical historical cycle twice, add
+        a future-dated quote between runs, assert the recorded
+        SessionContext is unchanged."""
+        from athena.session import SessionContextEngine
+
+        recorded: list[object] = []
+        real_assess = SessionContextEngine.assess
+
+        def spy_assess(self, *args, **kwargs):
+            result = real_assess(self, *args, **kwargs)
+            recorded.append(result)
+            return result
+
+        monkeypatch.setattr(SessionContextEngine, "assess", spy_assess)
+
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        iid = "NSE:AAA"
+        repo.upsert_instrument(
+            Instrument(instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE")
+        )
+        repo.add_candles(_candles(iid, seed=100))
+        repo.add_candles(_intraday_candles(iid, date(2026, 1, 20), n=2, seed=100))
+        real_quote_ts = datetime(2026, 1, 20, 9, 20, tzinfo=IST)
+        repo.add_quotes([
+            Quote(instrument_id=iid, ts=real_quote_ts, last_price=Decimal("100"),
+                  volume=1000, source="test"),
+        ])
+
+        as_of = datetime(2026, 1, 20, 9, 25, tzinfo=IST)
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        ingestion = IngestionResult(
+            as_of=as_of, instruments_upserted=1, candles_fetched=82, candles_written=82,
+            quotes_fetched=1, quotes_written=1, datasets_validated=1, datasets_skipped_empty=0,
+        )
+        pipe.run(RunTrigger.PREMARKET, as_of=as_of, ingestion=ingestion, run_id="run-quote-clean")
+        clean = recorded[-1]
+        assert clean.latest_quote_ts == real_quote_ts
+        assert clean.data_quality is not SessionDataQualityStatus.QUOTE_UNAVAILABLE
+
+        # Future quote dated after as_of -- already present in the
+        # repository, as real further polling would leave it, before
+        # replaying the SAME historical as_of again.
+        repo.add_quotes([
+            Quote(instrument_id=iid, ts=datetime(2026, 1, 20, 9, 40, tzinfo=IST),
+                  last_price=Decimal("999999"), volume=1, source="test"),
+        ])
+        pipe.run(RunTrigger.PREMARKET, as_of=as_of, ingestion=ingestion, run_id="run-quote-noisy")
+        noisy = recorded[-1]
+
+        assert noisy == clean
+        assert noisy.latest_quote_ts == real_quote_ts
+
+    def test_id5f_no_historical_quote_preserves_quote_unavailable_semantics(
+        self, repo: SqliteRepository, config_dir: Path, monkeypatch
+    ) -> None:
+        """ID-5F §16: with zero quotes at or before `as_of` (only a future
+        one exists), `SessionContext` must still degrade to
+        `QUOTE_UNAVAILABLE` -- ID-5F must not accidentally return the
+        oldest future quote just because it's the only one in the
+        database."""
+        from athena.session import SessionContextEngine
+
+        recorded: list[object] = []
+        real_assess = SessionContextEngine.assess
+
+        def spy_assess(self, *args, **kwargs):
+            result = real_assess(self, *args, **kwargs)
+            recorded.append(result)
+            return result
+
+        monkeypatch.setattr(SessionContextEngine, "assess", spy_assess)
+
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        iid = "NSE:AAA"
+        repo.upsert_instrument(
+            Instrument(instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE")
+        )
+        repo.add_candles(_candles(iid, seed=100))
+        repo.add_candles(_intraday_candles(iid, date(2026, 1, 20), n=2, seed=100))
+        repo.add_candles(_timeframe_candles(iid, date(2026, 1, 20), Timeframe.M15, 15, n=1, seed=100))
+        repo.add_quotes([
+            Quote(instrument_id=iid, ts=datetime(2026, 1, 20, 9, 40, tzinfo=IST),
+                  last_price=Decimal("999999"), volume=1, source="test"),
+        ])
+
+        as_of = datetime(2026, 1, 20, 9, 25, tzinfo=IST)
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        ingestion = IngestionResult(
+            as_of=as_of, instruments_upserted=1, candles_fetched=83, candles_written=83,
+            quotes_fetched=1, quotes_written=1, datasets_validated=1, datasets_skipped_empty=0,
+        )
+        pipe.run(RunTrigger.PREMARKET, as_of=as_of, ingestion=ingestion, run_id="run-quote-future-only")
+
+        ctx = recorded[-1]
+        assert ctx.latest_quote_ts is None
+        assert ctx.data_quality is SessionDataQualityStatus.QUOTE_UNAVAILABLE
 
     def test_repeat_validate_with_same_as_of_does_not_orphan_earlier_decision(
         self, repo: SqliteRepository, config_dir: Path

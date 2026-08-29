@@ -1167,7 +1167,11 @@ class OwnerValidationPipeline:
                 fifteen_min_candles = self._repo.get_candles(
                     instrument_id, Timeframe.M15, day_start, ctx.as_of
                 )
-                latest_quote = self._repo.get_latest_quote(instrument_id)
+                # ID-5F: bounded by ctx.as_of -- a historical replay must
+                # not receive a quote timestamped after its own analytical
+                # instant (the same market-time point-in-time gap ID-5E
+                # closed for candles).
+                latest_quote = self._repo.get_latest_quote(instrument_id, as_of=ctx.as_of)
                 session_context = session_engine.assess(
                     instrument_id,
                     as_of=ctx.as_of,

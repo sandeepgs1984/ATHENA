@@ -6,6 +6,158 @@ status updated on approval.
 
 ---
 
+## ID-5F — Point-in-Time Quote Retrieval & SessionContext Replay Safety
+
+**Summary.** Narrow infrastructure/correctness milestone, NOT a trading
+methodology change. Closes the one remaining candle-adjacent replay gap
+ID-5E's own caller audit identified: `get_latest_quote()` had no
+point-in-time cutoff, so `SessionContext.latest_quote_ts` (and therefore
+`SessionDataQualityStatus`) could receive a future-dated quote during a
+historical replay even though every candle input is now correctly bounded
+(ID-5E).
+
+**Quote schema audit (before any code, per the milestone's own audit-first
+requirement).** `quotes` table: `PRIMARY KEY (instrument_id, ts)` — a
+composite key with `ts` as part of it, so every distinct timestamp is its
+own retained row; `add_quotes` does a plain `INSERT` (not upsert), meaning
+quote HISTORY IS RETAINED, append-only, confirmed by direct schema
+inspection, not merely assumed from ID-5E's own summary. `get_quotes()`
+already returns the full unbounded history per instrument. `get_latest_quote()`
+had `ORDER BY ts DESC LIMIT 1`, no cutoff — the exact same anti-pattern
+`list_candles_recent` had before ID-5E.
+
+**Feasibility gate: PASSED.** Quote history is genuinely retained (not a
+single-row-per-instrument table), so market-time point-in-time retrieval is
+achievable without any schema migration.
+
+**Production caller audit.** Exactly ONE caller of `get_latest_quote()`
+exists anywhere in `src/athena/`: `owner_validation.py`'s `session_stage`,
+which feeds `SessionContextEngine.assess(..., latest_quote_ts=...)` at the
+run's own `ctx.as_of` — classified EXPLICIT_AS_OF_ANALYTICAL, fixed.
+`get_quotes()`'s own 4 callers (dashboard presentation, ingestion/cohort
+tooling) are unrelated to `get_latest_quote` and were not in scope — none
+needed a market-time cutoff added (they already read the caller's own
+choice of range, or are live-presentation reads).
+
+**Fix — repository contract.** `SqliteRepository.get_latest_quote(
+instrument_id, *, as_of: datetime | None = None)`. `as_of=None` runs the
+exact pre-ID-5F query, byte-for-byte. When `as_of` is given, `AND ts<=?` is
+added to the WHERE clause BEFORE `ORDER BY ts DESC LIMIT 1` — never a
+fetch-then-Python-reject (which would return `None` even when a valid
+earlier quote exists, per the milestone's own explicit warning). A naive
+`as_of` is rejected (`ValueError`), matching ID-5E's own candle contract.
+
+**Fix — production caller.** `session_stage` now passes
+`as_of=ctx.as_of`. `SessionContextEngine`'s own quote-availability/
+freshness methodology (`_combine_quality`'s `latest_quote_ts is None and
+ctx.is_trading_session` → `QUOTE_UNAVAILABLE`) is completely untouched —
+only the SOURCE of `latest_quote_ts` changed, never the interpretation of
+its presence/absence. No staleness/max-age/freshness threshold was
+introduced.
+
+**Non-vacuous verification.** (1) Repository level: reverted to a
+fetch-then-Python-reject implementation (fetch unconditional latest, return
+`None` if it's after `as_of`) — confirmed 4 of the 10 new tests fail
+(`test_2`/`test_5`/`test_7` wrongly return `None` instead of the correct
+earlier quote; `test_8`'s naive-rejection guard also disappears in that
+implementation shape), restored, re-confirmed all 10 pass. (2) Pipeline
+level: reverted `session_stage`'s call to omit `as_of`, confirmed
+`test_id5f_session_context_latest_quote_ts_is_invariant_to_a_future_quote`
+fails (`latest_quote_ts` leaks the future quote's `09:40` timestamp instead
+of the real `09:20` one), restored, re-confirmed passing.
+
+**Query-plan evidence.** `EXPLAIN QUERY PLAN` for the new
+`ts<=? ORDER BY ts DESC LIMIT 1` query: `SEARCH quotes USING INDEX
+sqlite_autoindex_quotes_1` — SQLite's own automatic primary-key index, not
+a table scan, no new index added.
+
+**Snapshot replay audit (identified, not solved, per explicit instruction
+not to expand scope).** `get_latest_snapshot()` (unbounded, used by
+`_resolve_snapshot`) has the identical gap. Notably, a bounded sibling
+`get_latest_snapshot_before(before)` ALREADY EXISTS in the repository but
+is not used by the analytical caller — a real, concrete head start for a
+future narrow snapshot-replay milestone, documented here rather than acted
+on now.
+
+**Knowledge-time limitation.** Unchanged from ID-5E: `ts<=as_of` bounds
+MARKET-TIME only. If a quote's own `last_price` at a given `ts` was ever
+itself later corrected, this schema retains no observation/version
+history to reconstruct that — not claimed solved.
+
+**Files created.** None.
+
+**Files modified.** `src/athena/data/store/repository.py`
+(`get_latest_quote`'s new `as_of` parameter), `src/athena/ops/owner_validation.py`
+(`session_stage`'s one call site bounded), `tests/data_layer/test_repository.py`
+(10 new contract tests), `tests/ops/test_owner_validation.py` (2 new
+pipeline-invariance tests), `docs/ATHENA-TECHNICAL-ARCHITECTURE.md`,
+`docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md` (this entry).
+
+**Tests added.** 12 new (10 repository-level contract tests — no-cutoff-
+preserves-behavior, cutoff-returns-eligible, exact-boundary, future-
+excluded, future-does-not-hide-earlier [non-vacuous], all-future-returns-
+none, multiple-historical-choose-nearest, naive-rejected, instrument-
+isolation, indexed query plan; 2 pipeline-level invariance tests, both
+non-vacuously verified). Full suite: **2,915 passed, 1 skipped**
+(pre-existing, unrelated), 0 failed. Ruff clean (same 7 pre-existing,
+unrelated `repository.py` SIM117 findings). Mypy: zero new failures —
+`owner_validation.py` stays at 24, `repository.py` stays at 10.
+
+**Architecture compliance.** No schema migration (quote history was
+already retained), no new repository capability beyond one optional
+keyword parameter, no ADR touched, no `WorkflowStage` added.
+`SessionContext` phase derivation (`PRE_OPEN`/`REGULAR`/`CLOSED`/
+`NOT_A_TRADING_SESSION`) completely untouched — only `latest_quote_ts`
+selection changed.
+
+**Structural regression.** None — Gap/RelativeStrength/RelativeVolume/
+ORB/VWAP/scoring/confidence/risk/Decision/TradePlan unaffected; none of
+them depend on quotes.
+
+**Point-in-time replay status after ID-5F.** Candles: market-time bounded
+(ID-5E). Quotes: market-time bounded (ID-5F). Snapshots: still unresolved
+(a bounded sibling API exists but is unused by the analytical caller).
+Knowledge-time/bitemporal replay: still unsupported for both candles and
+quotes.
+
+**ID-5B status.** Unchanged, untouched — still pending 2026-08-31.
+
+**EMR/DarvaX isolation.** Confirmed preserved — no quote-retrieval code in
+either track was inspected, imported, or modified.
+
+**Remaining work.** Owner review of this milestone. ID-5B remains
+separately gated on 2026-08-31.
+
+**Commit message (for the owner to use, not run by the AI):**
+
+```
+fix(data): add point-in-time quote retrieval safety (ID-5F)
+
+- Add optional as_of parameter to SqliteRepository.get_latest_quote() --
+  SQL-level ts<=as_of cutoff applied BEFORE ORDER BY/LIMIT 1, never a
+  fetch-then-Python-reject (which would hide a valid earlier quote
+  behind a later, ineligible one); as_of=None preserves pre-ID-5F
+  behavior byte-for-byte
+- Audit the quotes schema first: PRIMARY KEY (instrument_id, ts) already
+  retains full history, append-only -- no schema migration needed
+- Thread as_of through session_stage's one production caller of
+  get_latest_quote -- SessionContext's own quote-availability/freshness
+  methodology (QUOTE_UNAVAILABLE semantics) is completely unchanged,
+  only the source of latest_quote_ts is now bounded
+- Identify get_latest_snapshot() as the next candidate for a future
+  narrow snapshot-replay milestone (a bounded get_latest_snapshot_before
+  sibling already exists but is unused) -- not acted on here
+- 12 new tests; 2 non-vacuously proven at the real pipeline level
+  (latest_quote_ts leaked a future quote's timestamp before the fix);
+  full suite (2,915) green, zero new mypy failures
+```
+
+**Milestone status.** Ready for review. ID-5B remains separately gated
+on the next active trading session (2026-08-31); ID-5 overall stays open
+until both close.
+
+---
+
 ## ID-5E — Point-in-Time Candle Retrieval & Replay-Safety Foundation
 
 **Summary.** Infrastructure/correctness milestone, explicitly NOT a trading

@@ -672,6 +672,108 @@ class TestQuotesAndSnapshots:
         assert latest.india_vix == Decimal("14.2")
 
 
+class TestGetLatestQuotePointInTime:
+    """ID-5F: `get_latest_quote(..., as_of=...)` -- market-time
+    point-in-time safety for quotes, same contract as ID-5E's
+    `list_candles_recent(..., as_of=...)`. See §27 of the ID-5F milestone
+    spec for the 10-item checklist this class covers."""
+
+    def _q(self, ts: datetime, price: str = "100") -> Quote:
+        return Quote(instrument_id=INST, ts=ts, last_price=Decimal(price),
+                     volume=1000, source="test")
+
+    def test_1_no_as_of_returns_latest(self, repo):
+        repo.upsert_instrument(_instrument())
+        repo.add_quotes([
+            self._q(datetime(2026, 2, 2, 9, 16, tzinfo=IST), "100"),
+            self._q(datetime(2026, 2, 2, 9, 20, tzinfo=IST), "101"),
+        ])
+        got = repo.get_latest_quote(INST)
+        assert got.ts == datetime(2026, 2, 2, 9, 20, tzinfo=IST)
+
+    def test_2_as_of_returns_latest_eligible_quote(self, repo):
+        repo.upsert_instrument(_instrument())
+        repo.add_quotes([
+            self._q(datetime(2026, 2, 2, 9, 16, tzinfo=IST), "100"),
+            self._q(datetime(2026, 2, 2, 9, 20, tzinfo=IST), "101"),
+            self._q(datetime(2026, 2, 2, 9, 30, tzinfo=IST), "999"),  # future relative to as_of
+        ])
+        got = repo.get_latest_quote(INST, as_of=datetime(2026, 2, 2, 9, 24, tzinfo=IST))
+        assert got.ts == datetime(2026, 2, 2, 9, 20, tzinfo=IST)
+        assert got.last_price == Decimal("101")
+
+    def test_3_exact_boundary_quote_included(self, repo):
+        repo.upsert_instrument(_instrument())
+        repo.add_quotes([self._q(datetime(2026, 2, 2, 9, 20, tzinfo=IST))])
+        got = repo.get_latest_quote(INST, as_of=datetime(2026, 2, 2, 9, 20, tzinfo=IST))
+        assert got is not None
+
+    def test_4_future_quote_excluded(self, repo):
+        repo.upsert_instrument(_instrument())
+        repo.add_quotes([self._q(datetime(2026, 2, 2, 9, 25, tzinfo=IST))])
+        got = repo.get_latest_quote(INST, as_of=datetime(2026, 2, 2, 9, 20, tzinfo=IST))
+        assert got is None
+
+    def test_5_future_quote_does_not_hide_a_valid_earlier_quote(self, repo):
+        """§12 non-vacuous shape: a later, ineligible quote existing in the
+        database must not prevent the correct earlier one from being
+        returned -- proven with an extreme price on the future quote so
+        any leak would be obvious."""
+        repo.upsert_instrument(_instrument())
+        repo.add_quotes([
+            self._q(datetime(2026, 2, 2, 9, 20, tzinfo=IST), "101"),
+            self._q(datetime(2026, 2, 2, 9, 30, tzinfo=IST), "999999"),
+        ])
+        got = repo.get_latest_quote(INST, as_of=datetime(2026, 2, 2, 9, 25, tzinfo=IST))
+        assert got.ts == datetime(2026, 2, 2, 9, 20, tzinfo=IST)
+        assert got.last_price == Decimal("101")
+
+    def test_6_all_quotes_after_as_of_returns_none(self, repo):
+        repo.upsert_instrument(_instrument())
+        repo.add_quotes([self._q(datetime(2026, 2, 2, 9, 30, tzinfo=IST))])
+        got = repo.get_latest_quote(INST, as_of=datetime(2026, 2, 2, 9, 15, tzinfo=IST))
+        assert got is None
+
+    def test_7_multiple_historical_quotes_choose_nearest_at_or_before_cutoff(self, repo):
+        repo.upsert_instrument(_instrument())
+        repo.add_quotes([
+            self._q(datetime(2026, 2, 2, 9, 16, tzinfo=IST), "1"),  # Q1
+            self._q(datetime(2026, 2, 2, 9, 20, tzinfo=IST), "2"),  # Q2
+            self._q(datetime(2026, 2, 2, 9, 24, tzinfo=IST), "3"),  # Q3
+            self._q(datetime(2026, 2, 2, 9, 30, tzinfo=IST), "4"),  # Q4
+        ])
+        got = repo.get_latest_quote(INST, as_of=datetime(2026, 2, 2, 9, 24, tzinfo=IST))
+        assert got.last_price == Decimal("3")
+
+    def test_8_naive_as_of_rejected(self, repo):
+        repo.upsert_instrument(_instrument())
+        with pytest.raises(ValueError, match="timezone-aware"):
+            repo.get_latest_quote(INST, as_of=datetime(2026, 2, 2, 9, 20))
+
+    def test_9_instrument_isolation(self, repo):
+        repo.upsert_instrument(_instrument())
+        repo.upsert_instrument(_instrument(iid="INE-REPO-0002", symbol="BBB"))
+        repo.add_quotes([
+            self._q(datetime(2026, 2, 2, 9, 20, tzinfo=IST), "100"),
+            Quote(instrument_id="INE-REPO-0002", ts=datetime(2026, 2, 2, 9, 25, tzinfo=IST),
+                  last_price=Decimal("999"), volume=1000, source="test"),
+        ])
+        got = repo.get_latest_quote(INST, as_of=datetime(2026, 2, 2, 9, 30, tzinfo=IST))
+        assert got.instrument_id == INST
+        assert got.last_price == Decimal("100")
+
+    def test_10_query_plan_uses_existing_primary_key_not_a_full_table_scan(self, repo):
+        repo.upsert_instrument(_instrument())
+        repo.add_quotes([self._q(datetime(2026, 2, 2, 9, 20, tzinfo=IST))])
+        plan = repo.connection.execute(
+            "EXPLAIN QUERY PLAN SELECT instrument_id, ts, last_price, volume, source FROM quotes "
+            "WHERE instrument_id=? AND ts<=? ORDER BY ts DESC LIMIT 1",
+            (INST, "2026-02-02T09:30:00+05:30"),
+        ).fetchall()
+        plan_text = " ".join(str(row) for row in plan)
+        assert "SCAN quotes" not in plan_text
+
+
 class TestCorporateActions:
     def test_roundtrip(self, repo):
         repo.upsert_instrument(_instrument())
