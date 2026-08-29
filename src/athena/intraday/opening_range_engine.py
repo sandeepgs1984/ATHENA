@@ -47,7 +47,7 @@ from athena.intraday.opening_range_models import (
     OpeningRangeRelation,
     OpeningRangeWindow,
 )
-from athena.session.engine import completed_candles
+from athena.session.engine import canonical_slot_candles, completed_candles
 from athena.session.models import SessionContext, SessionPhase
 
 _WINDOW_MINUTES = {OpeningRangeWindow.OR15: 15, OpeningRangeWindow.OR30: 30}
@@ -77,7 +77,16 @@ class OpeningRangeEngine:
         # the canonical 09:40:00) is excluded here, once, so it can never
         # substitute for a missing canonical slot, alter a range's high/low/
         # volume, or trigger a false breakout anywhere downstream.
-        canonical = self._canonical_slots(completed, session_context, calendar, tzinfo)
+        # ID-4: the canonical-slot filter itself is now the shared
+        # `athena.session.canonical_slot_candles` primitive (promoted out of
+        # this class so `RelativeStrengthEngine` reuses the identical
+        # authority rather than a second copy) -- behavior unchanged.
+        canonical = canonical_slot_candles(
+            completed, Timeframe.M5, _BAR_STEP_MINUTES,
+            session_open_ts=session_context.session_open_ts,
+            session_close_ts=session_context.session_close_ts,
+            calendar=calendar, session_date=session_context.session_date, tzinfo=tzinfo,
+        )
         return {
             window: self._assess_window(
                 window, instrument_id, as_of=as_of, session_context=session_context,
@@ -85,33 +94,6 @@ class OpeningRangeEngine:
             )
             for window in OpeningRangeWindow
         }
-
-    @staticmethod
-    def _canonical_slots(
-        completed: Sequence[Candle],
-        session_context: SessionContext,
-        calendar: CalendarEngine,
-        tzinfo: ZoneInfo,
-    ) -> list[Candle]:
-        """Restrict to candles whose ``ts_open`` is an exact expected M5
-        opening slot for this session, per ``expected_intraday_opens`` (the
-        same calendar authority ID-1's own missing-bar detection already
-        trusts). Returns ``completed`` unfiltered when the session's own
-        open/close aren't notified yet (e.g. an unconfirmed Muhurat) or the
-        calendar can't compute expectations at all -- ``_formation``'s
-        earlier NOT_APPLICABLE/NOT_AVAILABLE checks already return before any
-        candle from this list is ever inspected in that case, so there is
-        nothing to protect."""
-        if session_context.session_open_ts is None or session_context.session_close_ts is None:
-            return list(completed)
-        expected = set(
-            expected_intraday_opens(
-                calendar, session_context.session_date, _BAR_STEP_MINUTES, tzinfo,
-            )
-        )
-        if not expected:
-            return list(completed)
-        return [c for c in completed if c.ts_open in expected]
 
     # ------------------------------------------------------------- formation
 

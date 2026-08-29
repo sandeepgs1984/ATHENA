@@ -24,6 +24,7 @@ from athena.intraday.opening_range_models import (
     OpeningRangeRelation,
     OpeningRangeWindow,
 )
+from athena.intraday.relative_strength_models import RelativeStrengthContext, RelativeStrengthRelation
 from athena.scoring.models import ConfluenceInputs
 from athena.session import SessionContextEngine
 
@@ -53,6 +54,26 @@ def _dummy_or(window: OpeningRangeWindow) -> OpeningRangeEvidence:
         first_breakout_ts=None, bars_since_breakout=None, max_extension_from_range_pct=None,
         current_extension_pct=None, returned_inside_range=None,
         explanation=f"{window.value}: not exercised in this test",
+    )
+
+
+def _dummy_rs() -> RelativeStrengthContext:
+    """A minimal, valid, fully-unavailable RelativeStrengthContext — ID-4's
+    own engine/wiring is tested separately (`test_relative_strength.py`);
+    this module tests VWAP/confluence formalization and just needs a
+    harmless, schema-valid placeholder to satisfy IntradaySignalSet's
+    contract."""
+    unknown = RelativeStrengthRelation.UNKNOWN
+    return RelativeStrengthContext(
+        instrument_id=IID, sector=None, market_benchmark_id="NSE:NIFTY 50",
+        sector_benchmark_id=None, session_date=DAY, as_of=AS_OF,
+        comparison_start_ts=None, comparison_cutoff_ts=None,
+        stock_return_pct=None, sector_return_pct=None, market_return_pct=None,
+        stock_vs_sector_pct=None, stock_vs_market_pct=None, sector_vs_market_pct=None,
+        stock_vs_sector_relation=unknown, stock_vs_market_relation=unknown,
+        sector_vs_market_relation=unknown,
+        stock_available=False, sector_available=False, market_available=False,
+        explanation="not exercised in this test",
     )
 
 
@@ -86,6 +107,7 @@ def _assess(engine, session_context, *, vwap=None, confluence=None, as_of=AS_OF)
         vwap=vwap, confluence=confluence,
         five_min_sma_period=FIVE_PERIOD, fifteen_min_sma_period=FIFTEEN_PERIOD,
         or15=_dummy_or(OpeningRangeWindow.OR15), or30=_dummy_or(OpeningRangeWindow.OR30),
+        relative_strength=_dummy_rs(),
     )
 
 
@@ -281,6 +303,7 @@ def test_7_identical_inputs_produce_identical_artifacts(engine, session_context)
         vwap=vwap, confluence=confluence,
         five_min_sma_period=FIVE_PERIOD, fifteen_min_sma_period=FIFTEEN_PERIOD,
         or15=_dummy_or(OpeningRangeWindow.OR15), or30=_dummy_or(OpeningRangeWindow.OR30),
+        relative_strength=_dummy_rs(),
     )
     assert a == b
 
@@ -292,4 +315,5 @@ def test_naive_as_of_rejected(engine, session_context):
             session_context=session_context, vwap=None, confluence=None,
             five_min_sma_period=FIVE_PERIOD, fifteen_min_sma_period=FIFTEEN_PERIOD,
             or15=_dummy_or(OpeningRangeWindow.OR15), or30=_dummy_or(OpeningRangeWindow.OR30),
+            relative_strength=_dummy_rs(),
         )

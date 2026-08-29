@@ -304,7 +304,7 @@ Verified against the code, this framing needs two corrections stated plainly
 rather than repeated — the actual architecture is more interesting than the
 one-line summary, and an implementation document should say so.
 
-### 3.1 The real per-instrument execution graph has 8 stages (was 6; ID-1 added `session`, ID-2 added `intraday_analytics`), not 8 or 11
+### 3.1 The real per-instrument execution graph has 9 stages (was 6; ID-1 added `session`, ID-2 added `intraday_analytics`, ID-4 added `relative_strength`), not 8 or 11
 
 `ATHENA_BRIEFING.md` describes "regime → market health → evidence → indicators
 → score → confidence → risk → decision" — 8 named stages. The actual live
@@ -377,10 +377,36 @@ dependency graph:
    bounded by `athena.session.session_day_start(as_of, tz)` through the
    repository's existing `get_candles()` rather than a fixed
    `list_candles_recent(limit=100)`, and `OpeningRangeEngine` now filters to
-   exact canonical expected M5 timestamps (`_canonical_slots()`) before any
-   formation/relation/breakout computation, so an off-grid row can never
-   substitute for a missing canonical slot. See
-   [§9 item 12](#9-known-documentationimplementation-gaps).
+   exact canonical expected M5 timestamps (`athena.session.canonical_slot_candles`,
+   a shared authority — promoted from a private `_canonical_slots()`,
+   ID-4) before any formation/relation/breakout computation, so an
+   off-grid row can never substitute for a missing canonical slot. See
+   [§9 item 12](#9-known-documentationimplementation-gaps). **ID-4** adds
+   `relative_strength=ctx.get("relative_strength")` to this stage's
+   `IntradayAnalyticsEngine.assess()` call — composed, not recomputed.
+9. **`relative_strength_stage`** (ID-4, 2026-08-29) —
+   `depends_on=("session",)`, `produces=("relative_strength",)`.
+   Computes `athena.intraday.RelativeStrengthContext`
+   (`RelativeStrengthEngine`) — stock-vs-sector/market point-in-time
+   comparative performance, NOT RSI, no scoring/composite/ranking use.
+   Fetches its own bounded stock M5 series (same pattern as VWAP/ORB); the
+   market benchmark's and each mapped sector's own M5 series are fetched
+   ONCE per run (`market_five_min`/`sector_five_min_by_sector`, resolved
+   in `_scan_eligible`'s outer scope), not per instrument. Depends only on
+   `session` (for `SessionContext`'s open/close/date, which also govern
+   the market/sector canonical-slot filtering) — no dependency on
+   `indicators`, since nothing here reuses `ind_stage`'s output.
+   `intraday_analytics_stage` (item 8) gains this as a third declared
+   dependency to compose the result onto `IntradaySignalSet`. Proven not
+   to perturb the six pre-existing structural stages' relative order,
+   same Kahn-sort technique as items 7/8's own proofs
+   (`test_id4_relative_strength_stage_does_not_perturb_existing_stage_order`).
+   Market/sector benchmark identity is reused, never re-derived: the same
+   `index_id` `_resolve_index_candles` already resolves for regime, and the
+   same `Instrument.sector` → `config/sector_index_mapping.json` →
+   `config/index_intelligence.json` chain `SectorHealthEngine` already
+   uses. See [§9 item 13](#9-known-documentationimplementation-gaps) for a
+   severe real-data limitation found here.
 
 Sector health and universe are computed **once per run**, not per instrument —
 `universe_engine.build(...)` and `SectorHealthEngine(sector_cfg).assess_many(...)`
@@ -390,7 +416,10 @@ health *is* additionally resolved per-instrument, via `Instrument.sector`,
 inside `builder()` — see ADR-003 Amendment 1's SD-3 wiring, ID-P0 — but the
 `SectorHealthEngine.assess_many()` computation itself stays run-level.)
 `session_stage` is per-instrument (its own 5m/15m/quote reads vary by
-instrument), unlike sector/universe.
+instrument), unlike sector/universe. `relative_strength_stage` (ID-4) is a
+hybrid: its own stock M5 read is per-instrument, but the market-benchmark
+and each mapped sector's own M5 series are resolved once per run (like
+sector health/universe) and shared across every instrument that reads them.
 
 The dependency *direction* the briefing describes is real and import-verified:
 `scoring/engine.py:20-32` imports from indicators/market_health/regime/
@@ -1192,6 +1221,35 @@ knows these were found and not simply missed:
     SMA(9)/SMA(5) genuinely reads across a session boundary early in the
     day today; whether that cross-session reach is intentional is an open
     methodology question for the owner, not yet decided either way.
+13. **`RelativeStrengthContext` (ID-4) is universally unavailable in live
+    production RIGHT NOW because index M5 canonical coverage is far worse
+    than equities' own (2026-08-29).** ID-4's own real-data audit (read-only,
+    production retrieval path — no test-only limit) found the market
+    benchmark (`NSE:NIFTY 50`) and all 8 sector-mapped indexes
+    (`config/sector_index_mapping.json`) each fetched 109 real M5 rows for
+    the checked session but had only **1/75 canonical M5 slots** (09:15
+    only — the very next real row is off-grid `09:43:55`), materially worse
+    than the equity-side drift item 12 found (which stays clean through 5
+    canonical slots before onset). Because `RelativeStrengthEngine`'s
+    `comparison_cutoff_ts` is the minimum across whichever constituents are
+    available (by design — never an asynchronous per-constituent
+    endpoint), the market benchmark's single-bar coverage drags the GLOBAL
+    cutoff down to `09:15` for every candidate regardless of how much
+    better that candidate's own stock/sector canonical coverage is; since
+    `09:15` is also every constituent's own opening reference, every
+    "closing point" collapses onto its own opening bar, correctly
+    triggering the same-bar-unavailable rule. Measured result: 0/526 real
+    active candidates had `stock_available`/`sector_available`/
+    `market_available` — every relation `UNKNOWN`. This is a genuine data
+    limitation, not an engine defect: 17 synthetic tests (7 non-vacuously
+    verified) prove the engine produces real, verifiable, non-degenerate
+    values whenever canonical data genuinely supports a comparison, and the
+    owner_validation integration test confirms this with seeded clean
+    index M5 data. Not fixed or worked around here — no nearest-neighbor/
+    alignment rule was invented, per explicit instruction; flagged for an
+    owner decision (e.g. improve index M5 ingestion quality, or relax
+    comparison granularity to M15) before this evidence is practically
+    useful. See the ID-4 Milestone Review Summary for the full evidence.
 
 ---
 

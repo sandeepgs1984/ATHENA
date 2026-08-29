@@ -6,6 +6,233 @@ status updated on approval.
 
 ---
 
+## ID-4 — Market → Sector → Stock RelativeStrengthContext
+
+**Summary.** ID-3.1 was owner-approved; ID-3/ID-3.1 closed together. New
+`RelativeStrengthContext` — point-in-time stock-vs-sector/market
+comparative-performance evidence, joining `IntradaySignalSet` alongside
+VWAP/trend/OR15/OR30. NOT RSI (Relative Strength Index), not a scoring
+input, not a Decision gate, not a composite/cross-sectional ranking — a
+market → sector → stock POINT-IN-TIME MEASUREMENT, not a causal/gating
+chain. A real-data audit against the production retrieval path found a
+severe, universal availability limitation (see below) — reported honestly,
+not worked around.
+
+**Benchmark/mapping audit (Section 2, before any code).** No new benchmark
+config, no second sector mapping. Market benchmark: reused the exact
+`index_id` `OwnerValidationPipeline._resolve_index_candles` already
+resolves once per run for regime (`config/providers/kite.json`'s
+`index_instruments[0]`, `"NSE:NIFTY 50"`). Sector mapping: reused the exact
+`Instrument.sector` → `config/sector_index_mapping.json` →
+`config/index_intelligence.json` chain `_sector_candles_for_health`
+already uses for `SectorHealthEngine` (SD-2/SD-3/ID-P0), applied to each
+mapped sector's M5 series instead of its D1 series. No architectural
+ambiguity found — both authorities were already unambiguous and reused
+as-is.
+
+**New `athena.intraday.relative_strength_models`/`relative_strength_engine`:**
+- `RelativeStrengthRelation` (`OUTPERFORMING`/`UNDERPERFORMING`/`MATCHING`/
+  `UNKNOWN`) — zero-threshold sign-of-differential only; no
+  STRONGLY_OUTPERFORMING/band methodology imported from presentation-layer
+  conventions elsewhere in ATHENA.
+- `RelativeStrengthContext` — `stock_return_pct`/`sector_return_pct`/
+  `market_return_pct`, the three pairwise differentials and relations,
+  `comparison_start_ts`/`comparison_cutoff_ts` (one shared window, never
+  per-constituent), `stock_available`/`sector_available`/`market_available`
+  flags (`UNKNOWN` is never substituted with `MATCHING`).
+- `RelativeStrengthEngine.assess()`: for each constituent, the "opening
+  reference" is the candle whose `ts_open` is EXACTLY the session's own
+  open instant (a genuinely missing opening slot → unavailable, never a
+  later bar silently substituted). `comparison_cutoff_ts` = the minimum of
+  whichever constituents' own latest canonical completed bar IS available;
+  each constituent's own closing point is the latest of ITS canonical bars
+  at-or-before that cutoff — never a later bar even if the constituent
+  itself has one (a "faster" stock cannot outrun a "slower" index). A
+  constituent whose closing point doesn't genuinely fall after its opening
+  (real production data: an index's canonical M5 coverage can be just its
+  own first bar) is honestly reported unavailable rather than emitting a
+  zero-duration, near-meaningless return — proven non-vacuously (both this
+  rule and the canonical-slot filter itself were each independently
+  reverted and confirmed the relevant new test fails without them).
+
+**Shared authority promoted (small ID-3.1 refactor, not a new decision).**
+`OpeningRangeEngine`'s private `_canonical_slots` was promoted to
+`athena.session.canonical_slot_candles` (pure extraction, ORB's own 59
+tests pass unmodified) so `RelativeStrengthEngine` reuses the identical
+canonical-slot authority rather than a second copy — per ID-4's own
+instruction not to invent a second grid. `SessionContextEngine.assess`'s
+inline open/close-ts computation was similarly extracted to
+`athena.session.session_open_close_ts` (behavior-identical — verified
+`ctx.open_time`/`ctx.close_time` are always set/unset together in
+`CalendarEngine`) so run-level market/sector reads get the session's own
+bounds without needing a full per-instrument `SessionContext`.
+
+**Completed/canonical candle semantics.** Every constituent (stock, market
+benchmark, sector index) filtered through `athena.session.completed_candles()`
+then `canonical_slot_candles()` — the same two authorities ID-1/ID-2.1/
+ID-3.1 already established, no third copy.
+
+**Partial availability.** Sector mapping absent/unmapped/index data
+unavailable → `sector_available=False`, `stock_vs_sector`/`sector_vs_market`
+relations `UNKNOWN` — but `stock_vs_market` still computes independently
+when stock+market are both available (and symmetrically for a market
+outage with sector present). Proven by dedicated tests.
+
+**Run-level vs per-instrument lifecycle.** Market benchmark M5 series and
+each of the 8 mapped sectors' M5 series are fetched ONCE per run (not once
+per stock) — `market_five_min`/`sector_five_min_by_sector`, resolved in
+`_scan_eligible`'s outer scope before `builder()`, shared by every
+instrument. Only the stock's own M5 series is fetched per instrument.
+
+**Workflow integration.** One new `WorkflowStage("relative_strength", ...,
+depends_on=("session",), produces=("relative_strength",))` — depends only
+on `session` (for `SessionContext`'s open/close/date, which also govern
+market/sector canonical filtering); no dependency on `indicators` since RS
+recomputes nothing `ind_stage` produced. `intraday_analytics_stage` gains
+`"relative_strength"` as a third declared dependency (alongside its
+existing `session`/`indicators`) to compose the result onto
+`IntradaySignalSet` — proven not to perturb the six pre-existing
+structural stages' relative order (Kahn-sort ordering proof, same
+technique as ID-1/ID-2/ID-3.1's own proofs).
+
+**Structural regression.** Unaffected — full pre-existing suite
+(VWAP/trend/OR15/OR30/scoring/confidence/risk/Decision/TradePlan) passes
+unmodified; `RelativeStrengthContext` is not read by any of them.
+
+**Real-data availability audit (read-only, production retrieval path, no
+test-only limit).** Market benchmark (`NSE:NIFTY 50`) and all 8 mapped
+sector indexes each fetched 109 real M5 rows for the session — but per
+ID-4's own required drift check, **every one of them has only 1/75
+canonical M5 slots** (09:15 only; the very next real row is off-grid
+`09:43:55`) — a materially WORSE canonical-coverage collapse than
+equities' own drift (which stays clean through 5 canonical slots before
+onset). Because `comparison_cutoff_ts` is the minimum across whichever
+constituents are available, the market benchmark's single-bar coverage
+drags the GLOBAL cutoff down to `09:15` for every candidate regardless of
+how much better the stock's or sector's own canonical coverage is — and
+`09:15 == comparison_start_ts`, so every constituent's own "closing point"
+collapses to its own opening bar, correctly triggering the same-bar
+unavailable rule. Result across 526/528 active real candidates:
+**stock_available: 0/526, sector_available: 0/526, market_available:
+0/526** — every relation `UNKNOWN`, comparison lag a uniform 390 minutes
+(09:15 → 15:45 as_of) for all 526. Separately, sector mapping itself
+covers 204/526 candidates (`Instrument.sector` present and mapped) — a
+real, independent, non-M5 finding. **This is a genuine, severe, honestly-
+surfaced data limitation, not an engine defect** — `RelativeStrengthEngine`
+was proven correct against 17 synthetic tests (7 non-vacuously verified by
+reverting the fix and confirming failure) and produces real, verifiable,
+non-degenerate values whenever canonical data genuinely supports a
+comparison (confirmed via the owner_validation integration test seeding
+clean synthetic index M5 data). No nearest-neighbor/alignment workaround
+was invented to make this real limitation disappear, per the milestone's
+explicit instruction.
+
+**Persistence decision.** Not persisted — same reconstructable-from-
+canonical-data reasoning as `SessionContext`/`IntradaySignalSet`/
+`OpeningRangeEvidence`.
+
+**Files created.** `src/athena/intraday/relative_strength_models.py`,
+`src/athena/intraday/relative_strength_engine.py`,
+`tests/market_intel/test_relative_strength.py` (17 tests).
+
+**Files modified.** `src/athena/session/engine.py` (`session_open_close_ts`,
+`canonical_slot_candles`), `src/athena/session/__init__.py` (exports),
+`src/athena/intraday/opening_range_engine.py` (reuses shared
+`canonical_slot_candles`, behavior unchanged), `src/athena/intraday/models.py`
+(`IntradaySignalSet.relative_strength`), `src/athena/intraday/engine.py`
+(`IntradayAnalyticsEngine.assess()` accepts/wires `relative_strength`),
+`src/athena/intraday/__init__.py`, `src/athena/ops/owner_validation.py`
+(run-level market/sector M5 resolution, new `relative_strength_stage`,
+`intraday_analytics_stage`'s third dependency),
+`tests/market_intel/test_intraday_analytics.py` (dummy-RS fixture),
+`tests/ops/test_owner_validation.py` (2 new: ordering proof + real-cycle
+integration), `docs/ATHENA-TECHNICAL-ARCHITECTURE.md`, `docs/MILESTONES.md`,
+`IMPLEMENTATION_SUMMARY.md` (this entry).
+
+**Tests added.** 19 new (17 engine-level in `test_relative_strength.py`,
+covering all `§30` requirements — session returns, exact differentials, all
+3 relation labels, partial availability, common-cutoff/common-start
+semantics, forming-candle exclusion, off-grid-endpoint exclusion (both
+non-vacuously verified by reverting the relevant rule), determinism, real
+special-session anchoring, non-trading-session robustness; 2 in
+`test_owner_validation.py`, ordering proof + real-cycle integration, the
+latter non-vacuously verified). Full suite: **2,825 passed, 1 skipped**
+(pre-existing, unrelated), 0 failed. Ruff clean on every new/modified
+file. `mypy` clean in its configured scope (unaffected).
+
+**Architecture compliance.** One new `WorkflowStage`, no new repository
+API, no ADR touched. No `KiteProvider`/broker-specific reference in the new
+engine (confirmed by grep — only `owner_validation.py`'s existing
+`load_kite_provider_config`-derived `index_id`, already the case
+pre-ID-4). No dormant `PipelineContext`/`ContextDelta`/`IntelligenceModule`
+use (guard test scans all of `src/athena`, still passes). No order-
+placement code. Deterministic/replayable — every function takes `as_of`
+explicitly, no `datetime.now()`, no I/O inside the engine. No EMR or
+DarvaX module imported, read, or referenced anywhere in the changed files
+(both isolation suites pass unmodified).
+
+**Point-in-time replay boundary.** Unchanged, not claimed solved — same
+ID-P0.1 limitation as every prior Intraday Intelligence milestone.
+
+**OR30 limitation status.** Unchanged, carried forward: still real,
+still not a required entry condition, not touched by this milestone.
+
+**Confluence open-question status.** Unchanged, carried forward: still
+open (does 5m/15m confluence intend to read across a session boundary
+early in the day?), not resolved or touched here.
+
+**Risks / technical debt.** The market/sector M5 canonical-coverage
+collapse (above) means `RelativeStrengthContext` is, on this real
+snapshot, universally unavailable in live production RIGHT NOW — a severe
+finding requiring an owner decision (e.g. improve index M5 ingestion
+quality, or relax comparison granularity to M15) before this evidence is
+practically useful, separate from and more severe than OR30's own 0.6%
+finding. Not fixed or worked around here, per explicit instruction.
+
+**Remaining work.** Owner review of this milestone, including the
+real-data availability finding above; then ID-5 scope pending explicit
+owner approval — not started here.
+
+**Commit message (for the owner to use, not run by the AI):**
+
+```
+feat(intraday): add ID-4 RelativeStrengthContext (stock vs sector/market)
+
+- Add athena.intraday.relative_strength_{models,engine}: point-in-time
+  stock-vs-sector/market comparative performance -- NOT RSI, no BUY/SELL,
+  no composite/ranked score; zero-threshold OUTPERFORMING/UNDERPERFORMING/
+  MATCHING/UNKNOWN relations only
+- Reuse existing authorities only: OwnerValidationPipeline's own resolved
+  market-benchmark index_id, and the existing Instrument.sector ->
+  sector_index_mapping.json -> index_intelligence.json chain
+  SectorHealthEngine already uses -- no new benchmark config, no second
+  sector mapping
+- Common-cutoff design: one shared comparison window across stock/sector/
+  market, never an asynchronous per-constituent endpoint; a genuinely
+  missing opening slot or a same-bar-only comparison reports unavailable
+  rather than a fabricated/degenerate return -- both non-vacuously proven
+- Promote OpeningRangeEngine's private canonical-slot filter to shared
+  athena.session.canonical_slot_candles (ID-3.1's own logic, reused not
+  duplicated); extract session_open_close_ts similarly (pure refactor,
+  ORB's 59 tests pass unmodified)
+- New relative_strength WorkflowStage (depends_on session only);
+  intraday_analytics_stage gains it as a third dependency -- proven not to
+  perturb the six pre-existing structural stages' order
+- 19 new tests; full suite (2,825) green
+- Real-data audit (read-only, production retrieval path): market
+  benchmark and all 8 mapped sector indexes each have only 1/75 canonical
+  M5 slots today, collapsing RelativeStrengthContext to universally
+  unavailable (0/526 stock/sector/market_available) on this real
+  snapshot -- a severe, honestly-reported data limitation, not an engine
+  defect (engine proven correct via 17 synthetic tests); flagged for
+  owner decision, not worked around
+```
+
+**Milestone status.** Ready for review. Awaiting owner approval before
+ID-5.
+
+---
+
 ## ID-3.1 — Canonical Intraday Session Retrieval & ORB Slot Integrity
 
 **Summary.** ID-3's architecture and ORB evidence contract were accepted in

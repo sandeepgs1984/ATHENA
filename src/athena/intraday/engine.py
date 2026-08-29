@@ -45,6 +45,7 @@ from athena.intraday.models import (
     VwapRelation,
 )
 from athena.intraday.opening_range_models import OpeningRangeEvidence
+from athena.intraday.relative_strength_models import RelativeStrengthContext
 from athena.scoring.models import ConfluenceInputs
 from athena.session.models import SessionContext
 
@@ -68,6 +69,7 @@ class IntradayAnalyticsEngine:
         fifteen_min_sma_period: int,
         or15: OpeningRangeEvidence,
         or30: OpeningRangeEvidence,
+        relative_strength: RelativeStrengthContext,
     ) -> IntradaySignalSet:
         if as_of.tzinfo is None:
             raise ValueError("IntradayAnalyticsEngine.assess as_of must be timezone-aware")
@@ -93,11 +95,13 @@ class IntradayAnalyticsEngine:
         return IntradaySignalSet(
             instrument_id=instrument_id, session_date=session_date, as_of=as_of,
             vwap=vwap_evidence, trend=trend, or15=or15, or30=or30,
+            relative_strength=relative_strength,
             data_quality=session_context.data_quality,
             explanation=(
                 f"{instrument_id} intraday evidence as of {as_of.isoformat()}: "
                 f"vwap={vwap_evidence.relation.value}, trend={trend_label.value}, "
                 f"or15={or15.formation.status.value}, or30={or30.formation.status.value}, "
+                f"rs_stock_vs_market={relative_strength.stock_vs_market_relation.value}, "
                 f"session_data_quality={session_context.data_quality.value} — "
                 f"analytical evidence only, not a trade signal"
             ),

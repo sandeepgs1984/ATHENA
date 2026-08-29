@@ -22,6 +22,7 @@ from enum import Enum, unique
 
 from athena.domain.enums import Timeframe
 from athena.intraday.opening_range_models import OpeningRangeEvidence
+from athena.intraday.relative_strength_models import RelativeStrengthContext
 from athena.session.models import SessionDataQualityStatus
 
 
@@ -118,11 +119,12 @@ class VwapEvidence:
 class IntradaySignalSet:
     """Analytical evidence container for one instrument at one moment —
     NOT a trade signal. Composable: future milestones add typed evidence
-    fields here (relative volume, relative strength, …) without
-    redesigning this contract or forcing a premature BUY/SELL/probability
-    onto it. ``or15``/``or30`` (ID-3) are the first such addition —
-    parallel opening-range evidence windows, neither treated as canonically
-    superior."""
+    fields here (relative volume, …) without redesigning this contract or
+    forcing a premature BUY/SELL/probability onto it. ``or15``/``or30``
+    (ID-3) are parallel opening-range evidence windows, neither treated as
+    canonically superior. ``relative_strength`` (ID-4) is stock-vs-sector/
+    market point-in-time comparative performance — not RSI, not a
+    composite score."""
 
     instrument_id: str
     session_date: date
@@ -131,6 +133,7 @@ class IntradaySignalSet:
     trend: IntradayTrendContext
     or15: OpeningRangeEvidence
     or30: OpeningRangeEvidence
+    relative_strength: RelativeStrengthContext
     data_quality: SessionDataQualityStatus
     explanation: str
 

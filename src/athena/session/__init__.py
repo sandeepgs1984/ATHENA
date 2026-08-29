@@ -6,11 +6,13 @@ Descriptive only: no signals, no gates, no trading interpretation. See
 
 from athena.session.engine import (
     SessionContextEngine,
+    canonical_slot_candles,
     classify_session_phase,
     completed_candles,
     is_candle_completed,
     latest_completed_candle,
     session_day_start,
+    session_open_close_ts,
 )
 from athena.session.models import (
     SessionContext,
@@ -25,9 +27,11 @@ __all__ = [
     "SessionDataQualityStatus",
     "SessionPhase",
     "TimeframeProvenance",
+    "canonical_slot_candles",
     "classify_session_phase",
     "completed_candles",
     "is_candle_completed",
     "latest_completed_candle",
     "session_day_start",
+    "session_open_close_ts",
 ]

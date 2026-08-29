@@ -91,6 +91,62 @@ def session_day_start(as_of: datetime, tzinfo: ZoneInfo) -> datetime:
     return datetime(local_date.year, local_date.month, local_date.day, tzinfo=tzinfo)
 
 
+def session_open_close_ts(
+    ctx: CalendarContext, *, session_date: date, tzinfo: ZoneInfo
+) -> tuple[datetime | None, datetime | None]:
+    """Session open/close instants for ``session_date`` (``ctx`` is the
+    calendar context for that date), derived purely from
+    the calendar's own day-specific open/close — never a hardcoded 09:15/
+    15:30, correctly varies for a real special session (e.g. a Sunday
+    full-hours session). ``(None, None)`` when the day isn't a trading
+    session or its exact open/close hasn't been notified yet (e.g. an
+    unconfirmed Muhurat). Extracted (ID-4) as its own reusable primitive —
+    previously computed inline only inside ``SessionContextEngine.assess``;
+    a run-level consumer that needs the session's own bounds without a full
+    per-instrument ``SessionContext`` (e.g. a shared market/sector-index
+    read) can now call this directly instead of duplicating the calendar
+    read."""
+    if not ctx.is_trading_session or ctx.open_time is None or ctx.close_time is None:
+        return None, None
+    open_ts = datetime.combine(session_date, ctx.open_time, tzinfo=tzinfo)
+    close_ts = datetime.combine(session_date, ctx.close_time, tzinfo=tzinfo)
+    return open_ts, close_ts
+
+
+def canonical_slot_candles(
+    candles: Sequence[Candle],
+    timeframe: Timeframe,
+    step_minutes: int,
+    *,
+    session_open_ts: datetime | None,
+    session_close_ts: datetime | None,
+    calendar: CalendarEngine,
+    session_date: date,
+    tzinfo: ZoneInfo,
+) -> list[Candle]:
+    """Restrict ``candles`` to those whose ``ts_open`` is an exact expected
+    opening slot for this session, per ``expected_intraday_opens`` — the one
+    canonical-slot authority shared by every consumer that must not let an
+    off-grid/unexpected timestamp (e.g. a settlement-drifted ``09:43:55``
+    instead of the canonical ``09:40:00``) substitute for a missing
+    canonical slot, alter a computed value, or create a false event
+    (``OpeningRangeEngine``, ID-3.1; ``RelativeStrengthEngine``, ID-4).
+    Callers pass already completed-candle-filtered input — this filters
+    canonical-slot membership only, not completion.
+
+    Returns ``candles`` unfiltered when the session's own open/close aren't
+    notified yet (e.g. an unconfirmed Muhurat) or the calendar can't compute
+    expectations at all — callers already handle that case (their own
+    NOT_APPLICABLE/NOT_AVAILABLE/unavailable branches) before any candle
+    from this list is ever inspected, so there is nothing to protect."""
+    if session_open_ts is None or session_close_ts is None:
+        return list(candles)
+    expected = set(expected_intraday_opens(calendar, session_date, step_minutes, tzinfo))
+    if not expected:
+        return list(candles)
+    return [c for c in candles if c.ts_open in expected]
+
+
 def classify_session_phase(
     ctx: CalendarContext, sessions: SessionsConfig, *, as_of: datetime, tzinfo: ZoneInfo
 ) -> SessionPhase:
@@ -139,15 +195,8 @@ class SessionContextEngine:
         ctx = calendar.context_for(session_date)
         phase = classify_session_phase(ctx, sessions, as_of=as_of, tzinfo=tzinfo)
 
-        session_open_ts = (
-            datetime.combine(session_date, ctx.open_time, tzinfo=tzinfo)
-            if ctx.is_trading_session and ctx.open_time is not None
-            else None
-        )
-        session_close_ts = (
-            datetime.combine(session_date, ctx.close_time, tzinfo=tzinfo)
-            if ctx.is_trading_session and ctx.close_time is not None
-            else None
+        session_open_ts, session_close_ts = session_open_close_ts(
+            ctx, session_date=session_date, tzinfo=tzinfo
         )
         elapsed_seconds, remaining_seconds = self._elapsed_remaining(
             as_of, session_open_ts, session_close_ts

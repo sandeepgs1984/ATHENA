@@ -16,6 +16,7 @@ from athena.domain.decision import Decision
 from athena.domain.enums import DecisionType, Direction, RunStatus, RunTrigger, Timeframe
 from athena.domain.market import Candle, Instrument
 from athena.domain.run import RunRecord
+from athena.intraday import RelativeStrengthRelation
 from athena.ops.owner_candidates import SqliteCandidateStore, normalize_candidate_symbol
 from athena.ops.owner_validation import OwnerValidationPipeline
 
@@ -1030,6 +1031,132 @@ class TestOwnerValidationPipeline:
         assert signal_set.or15.formation.status is OpeningRangeFormationStatus.COMPLETE
         assert signal_set.or15.formation.bars_present == 3
         assert signal_set.vwap.relation is not VwapRelation.VWAP_UNAVAILABLE
+
+    def test_id4_relative_strength_stage_does_not_perturb_existing_stage_order(
+        self, repo: SqliteRepository, config_dir: Path
+    ) -> None:
+        """ID-4 §21/§22: the new `relative_strength` stage explicitly
+        depends only on `session` (a real dependency, not an undeclared
+        closure read) — and, since nothing among scoring/confidence/risk/
+        decision depends on IT, and `intraday_analytics` merely gains it as
+        a THIRD declared dependency (alongside its existing `session`/
+        `indicators`), the six pre-existing structural stages (already
+        proven order-stable under ID-1/ID-2's own additions) must keep
+        their exact relative order here too."""
+        from athena.runtime.workflow import WorkflowStage, build_definition
+
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        iid = "NSE:AAA"
+        repo.upsert_instrument(
+            Instrument(instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE")
+        )
+        repo.add_candles(_candles(iid, seed=100))
+        repo.add_candles(_intraday_candles(iid, AS_OF.date(), seed=100))
+
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        ingestion = IngestionResult(
+            as_of=AS_OF, instruments_upserted=1, candles_fetched=86, candles_written=86,
+            quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+        )
+        detail = pipe.run(
+            RunTrigger.PREMARKET, as_of=AS_OF, ingestion=ingestion, run_id="run-test-rs-stage"
+        )
+        assert detail["decision_reports"], "relative_strength stage must not break the existing scan"
+
+        noop = lambda ctx: {}  # noqa: E731
+        stages = [
+            WorkflowStage("indicators", noop, produces=("indicators", "vwap", "confluence")),
+            WorkflowStage("regime", noop, produces=("regime", "market_health")),
+            WorkflowStage("scoring", noop, depends_on=("indicators", "regime"), produces=("scoring",)),
+            WorkflowStage("confidence", noop, depends_on=("scoring", "regime"),
+                          produces=("evidence_bundle", "confidence")),
+            WorkflowStage("risk", noop, depends_on=("indicators", "regime"), produces=("risk",)),
+            WorkflowStage("decision", noop, depends_on=("scoring", "confidence", "risk"),
+                          produces=("outcome",)),
+            WorkflowStage("session", noop, produces=("session_context",)),
+        ]
+        original_order = build_definition("pre-id4", stages).execution_order
+        with_rs = build_definition(
+            "post-id4",
+            [
+                *stages,
+                WorkflowStage(
+                    "relative_strength", noop, depends_on=("session",),
+                    produces=("relative_strength",),
+                ),
+                WorkflowStage(
+                    "intraday_analytics", noop,
+                    depends_on=("session", "indicators", "relative_strength"),
+                    produces=("intraday_signal_set",),
+                ),
+            ],
+        ).execution_order
+        pre_existing_names = [n for n in with_rs if n not in ("relative_strength", "intraday_analytics")]
+        assert tuple(pre_existing_names) == original_order
+        assert "relative_strength" in with_rs
+        assert with_rs.index("relative_strength") < with_rs.index("intraday_analytics")
+
+    def test_id4_intraday_signal_set_carries_real_relative_strength_from_a_real_cycle(
+        self, repo: SqliteRepository, config_dir: Path, monkeypatch
+    ) -> None:
+        """ID-4 §19/#21: `IntradaySignalSet.relative_strength` must be
+        genuinely populated from real repository data for the actual
+        authoritative market benchmark (NSE:NIFTY 50, resolved the exact
+        same way regime already resolves it) and a real, mapped sector
+        index (NSE:NIFTY IT, via the real config/sector_index_mapping.json
+        + config/index_intelligence.json chain) — not a placeholder."""
+        from athena.intraday.engine import IntradayAnalyticsEngine
+
+        recorded: dict[str, object] = {}
+        real_assess = IntradayAnalyticsEngine.assess
+
+        def spy_assess(self, *args, **kwargs):
+            result = real_assess(self, *args, **kwargs)
+            recorded["signal_set"] = result
+            return result
+
+        monkeypatch.setattr(IntradayAnalyticsEngine, "assess", spy_assess)
+
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        iid = "NSE:AAA"
+        repo.upsert_instrument(
+            Instrument(
+                instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE",
+                sector="Information Technology",
+            )
+        )
+        repo.upsert_instrument(
+            Instrument(instrument_id="NSE:NIFTY 50", symbol="NIFTY 50", exchange="NSE",
+                       series="INDEX", status="ACTIVE")
+        )
+        repo.upsert_instrument(
+            Instrument(instrument_id="NSE:NIFTY IT", symbol="NIFTY IT", exchange="NSE",
+                       series="INDEX", status="ACTIVE")
+        )
+        repo.add_candles(_candles(iid, seed=100))
+        repo.add_candles(_intraday_candles(iid, AS_OF.date(), n=2, seed=100))
+        repo.add_candles(_intraday_candles("NSE:NIFTY 50", AS_OF.date(), n=2, seed=1000))
+        repo.add_candles(_intraday_candles("NSE:NIFTY IT", AS_OF.date(), n=2, seed=500))
+
+        as_of = datetime(2026, 3, 2, 9, 30, tzinfo=IST)  # both 5m bars completed for all three
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        ingestion = IngestionResult(
+            as_of=as_of, instruments_upserted=3, candles_fetched=86, candles_written=86,
+            quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+        )
+        detail = pipe.run(RunTrigger.PREMARKET, as_of=as_of, ingestion=ingestion, run_id="run-rs")
+
+        assert detail["decision_reports"]
+        rs = recorded["signal_set"].relative_strength
+        assert rs.market_benchmark_id == "NSE:NIFTY 50"
+        assert rs.sector_benchmark_id == "NSE:NIFTY IT"
+        assert rs.stock_available and rs.sector_available and rs.market_available
+        assert rs.stock_return_pct == Decimal("1")
+        assert rs.sector_return_pct == Decimal("0.2")
+        assert rs.market_return_pct == Decimal("0.1")
+        assert rs.stock_vs_market_relation is RelativeStrengthRelation.OUTPERFORMING
 
     def test_repeat_validate_with_same_as_of_does_not_orphan_earlier_decision(
         self, repo: SqliteRepository, config_dir: Path

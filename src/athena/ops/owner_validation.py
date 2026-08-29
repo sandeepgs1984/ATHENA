@@ -767,15 +767,22 @@ class OwnerValidationPipeline:
         from athena.config.loader import (
             load_confidence_config,
             load_decision_config,
+            load_index_intelligence_config,
             load_market_health_config,
             load_risk_assessment_config,
             load_scoring_config,
+            load_sector_index_mapping_config,
         )
         from athena.decision import DecisionEngine
         from athena.evidence import EvidenceAggregationEngine, EvidenceSource
         from athena.indicators import IndicatorEngine, IndicatorName, IndicatorStatus
         from athena.indicators import calculations as calc
-        from athena.intraday import IntradayAnalyticsEngine, OpeningRangeEngine, OpeningRangeWindow
+        from athena.intraday import (
+            IntradayAnalyticsEngine,
+            OpeningRangeEngine,
+            OpeningRangeWindow,
+            RelativeStrengthEngine,
+        )
         from athena.market_health import MarketHealthEngine
         from athena.regime import RegimeEngine
         from athena.risk import RiskEngine
@@ -798,6 +805,7 @@ class OwnerValidationPipeline:
         session_tzinfo = ZoneInfo(cfg.market.timezone)
         intraday_analytics_engine = IntradayAnalyticsEngine()
         opening_range_engine = OpeningRangeEngine()
+        relative_strength_engine = RelativeStrengthEngine()
         risk_engine = RiskEngine(risk_cfg)
         evidence_engine = EvidenceAggregationEngine()
         decision_engine = DecisionEngine(decision_cfg)
@@ -816,6 +824,39 @@ class OwnerValidationPipeline:
         sector_results = sector_results or {}
         sector_by_instrument: dict[str, str] = {
             inst.instrument_id: inst.sector for inst in (instruments or ()) if inst.sector
+        }
+
+        # ID-4: RelativeStrengthContext's market/sector sides, computed
+        # ONCE per run (not once per stock) -- reuses the exact same
+        # authorities SD-2/SD-3 (ID-P0) already established, never a
+        # second benchmark config or a second sector mapping:
+        #   - `index_id` (just resolved above) is the SAME market-benchmark
+        #     identity already authoritative for regime this cycle.
+        #   - sector -> index_key -> instrument_id is the SAME
+        #     config/sector_index_mapping.json + config/index_intelligence.json
+        #     chain `_sector_candles_for_health` already uses for
+        #     SectorHealthEngine, applied here to resolve each mapped
+        #     sector's OWN M5 series instead of its D1 series.
+        # Each series is a single session-bounded `get_candles` read (ID-3.1
+        # semantics, never `list_candles_recent(limit=N)`), fetched once and
+        # shared by every instrument in that sector/the whole universe.
+        day_start_run = session_day_start(as_of, session_tzinfo)
+        market_five_min = self._repo.get_candles(index_id, Timeframe.M5, day_start_run, as_of)
+        sector_to_index_id: dict[str, str] = {}
+        try:
+            sector_mapping_cfg = load_sector_index_mapping_config(self._config_dir)
+            index_intel_cfg = load_index_intelligence_config(self._config_dir)
+            instrument_by_key = {t.key: t.instrument_id for t in index_intel_cfg.tracked_indices}
+            sector_to_index_id = {
+                m.sector: instrument_by_key[m.index_key]
+                for m in sector_mapping_cfg.mappings
+                if m.index_key in instrument_by_key
+            }
+        except Exception:
+            sector_to_index_id = {}
+        sector_five_min_by_sector: dict[str, list[Candle]] = {
+            sector_name: self._repo.get_candles(sector_index_id, Timeframe.M5, day_start_run, as_of)
+            for sector_name, sector_index_id in sector_to_index_id.items()
         }
 
         captured_regime: dict[str, object] = {"payload": None}
@@ -1089,6 +1130,37 @@ class OwnerValidationPipeline:
                 )
                 return {"session_context": session_context}
 
+            def relative_strength_stage(ctx):
+                # ID-4: stock's own session-bounded M5 read (same pattern
+                # as VWAP/ORB/session_stage — a fourth independent,
+                # identically-shaped bounded read, same rationale as
+                # intraday_analytics_stage's own §15 note above).
+                # `market_five_min`/`sector_five_min_by_sector` are the
+                # run-level shared reads resolved once above — never
+                # refetched per instrument, per §22/§23's "do not recompute
+                # identical market/sector series per stock" instruction.
+                stock_five_min = self._repo.get_candles(
+                    instrument_id, Timeframe.M5,
+                    session_day_start(ctx.as_of, session_tzinfo), ctx.as_of,
+                )
+                sector_index_id = sector_to_index_id.get(sector_name) if sector_name else None
+                rs_context = relative_strength_engine.assess(
+                    instrument_id,
+                    as_of=ctx.as_of,
+                    session_context=ctx.get("session_context"),
+                    sector=sector_name,
+                    market_benchmark_id=index_id,
+                    sector_benchmark_id=sector_index_id,
+                    stock_five_min_candles=stock_five_min,
+                    market_five_min_candles=market_five_min,
+                    sector_five_min_candles=(
+                        sector_five_min_by_sector.get(sector_name, []) if sector_name else []
+                    ),
+                    calendar=calendar,
+                    tzinfo=session_tzinfo,
+                )
+                return {"relative_strength": rs_context}
+
             def intraday_analytics_stage(ctx):
                 # ID-2 foundation: formalizes the existing "vwap"/
                 # "confluence" outputs `ind_stage` already produced this
@@ -1146,6 +1218,7 @@ class OwnerValidationPipeline:
                     fifteen_min_sma_period=scoring_cfg.confluence.fifteen_min_sma_period,
                     or15=orb_by_window[OpeningRangeWindow.OR15],
                     or30=orb_by_window[OpeningRangeWindow.OR30],
+                    relative_strength=ctx.get("relative_strength"),
                 )
                 return {"intraday_signal_set": signal_set}
 
@@ -1196,18 +1269,33 @@ class OwnerValidationPipeline:
                         session_stage,
                         produces=("session_context",),
                     ),
+                    # ID-4 foundation stage. Depends only on "session" (for
+                    # SessionContext's session_open_ts/close_ts/date, which
+                    # also govern the market-benchmark/sector-index
+                    # canonical filtering here). No dependency on
+                    # "indicators" — RelativeStrengthContext doesn't reuse
+                    # anything ind_stage produced, it fetches its own bounded
+                    # stock M5 series. Nothing among scoring/confidence/risk/
+                    # decision depends on it.
+                    WorkflowStage(
+                        "relative_strength",
+                        relative_strength_stage,
+                        depends_on=("session",),
+                        produces=("relative_strength",),
+                    ),
                     # ID-2 foundation stage. Depends on "session" (for
-                    # SessionContext/data-quality) and "indicators" (to
-                    # reuse the existing vwap/confluence outputs, not
-                    # recompute them) — both already resolved by the time
-                    # this runs. Nothing among scoring/confidence/risk/
-                    # decision depends on it, so it cannot perturb their
-                    # existing relative order (see
+                    # SessionContext/data-quality), "indicators" (to reuse
+                    # the existing vwap/confluence outputs, not recompute
+                    # them), and (ID-4) "relative_strength" (to compose it
+                    # onto IntradaySignalSet, not recompute it) — all three
+                    # already resolved by the time this runs. Nothing among
+                    # scoring/confidence/risk/decision depends on it, so it
+                    # cannot perturb their existing relative order (see
                     # test_id2_intraday_analytics_stage_does_not_perturb_existing_stage_order).
                     WorkflowStage(
                         "intraday_analytics",
                         intraday_analytics_stage,
-                        depends_on=("session", "indicators"),
+                        depends_on=("session", "indicators", "relative_strength"),
                         produces=("intraday_signal_set",),
                     ),
                 ],
