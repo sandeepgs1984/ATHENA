@@ -25,8 +25,9 @@ never auto-continuing past an owner approval gate.
 | ID-P0.1 | Measurement-only checkpoint: quantify the real historical decision/composite impact of activating Sector Health, via a deterministic replay against a scratch copy of the real production book — no tuning | ✅ Owner approved 2026-08-29 — measured impact accepted; no threshold recalibration performed |
 | ID-1 | Intraday Data Semantics & Session Context Foundation — explicit intraday provenance, deterministic completed-candle semantics, a `SessionContext` artifact, session-data-quality UNKNOWN semantics. Foundation only: no signals, no scoring/threshold change | ✅ Owner approved 2026-08-29 — `athena.session` package + one new live `WorkflowStage`; full suite green (2,743 passed, 1 pre-existing skip) |
 | ID-2 | Intraday Analytical Context & Trend Foundation — `IntradaySignalSet`/`IntradayTrendContext` typed evidence formalizing the existing live VWAP relation + 5m/15m confluence direction. Still foundation: no EntryQualification, no new gates, no scoring change | ✅ Architecture accepted 2026-08-29 (contract, single-authoritative-calculation principle, `WorkflowStage` integration, isolation) — **not fully closed**: a completed-candle correctness gap found in owner code review, fixed by ID-2.1 below |
-| ID-2.1 | Corrective: `ind_stage`'s VWAP/confluence inputs did not filter through ID-1's completed-candle rule, so a still-forming 5m/15m bar could silently influence them even though `SessionContext` already knew it wasn't complete. Fix input-time correctness only — no VWAP formula, confluence period, or scoring weight/bonus changed. Also: rename the disagreement trend label `NEUTRAL` → `MIXED` (owner decision) | 🔄 Ready for review 2026-08-29 — one authoritative `athena.session.completed_candles()` filter now governs both VWAP and confluence; full suite green (2,768 passed, 1 pre-existing skip). Recommendation: ID-3 READY |
-| ID-3 | TBD — first core intraday signal methodology (ORB / VWAP behavior / gap behavior / RVOL candidates); scope not yet defined, awaiting owner direction | Planned |
+| ID-2.1 | Corrective: `ind_stage`'s VWAP/confluence inputs did not filter through ID-1's completed-candle rule, so a still-forming 5m/15m bar could silently influence them even though `SessionContext` already knew it wasn't complete. Fix input-time correctness only — no VWAP formula, confluence period, or scoring weight/bonus changed. Also: rename the disagreement trend label `NEUTRAL` → `MIXED` (owner decision) | ✅ Owner approved 2026-08-29 — one authoritative `athena.session.completed_candles()` filter now governs both VWAP and confluence; full suite green (2,768 passed, 1 pre-existing skip) |
+| ID-3 | Opening Range Intelligence — `OpeningRangeEvidence` (OR15/OR30 parallel windows, neither canonical) as new typed evidence in `IntradaySignalSet`. First genuinely new intraday methodology, still evidence-only: no Decision gate, no TradePlan change, no EntryQualification | 🔄 Ready for review 2026-08-29 — `athena.intraday.opening_range_engine.OpeningRangeEngine` + real-data sanity check; full suite green (2,795 passed, 1 pre-existing skip). Recommendation: ID-3 READY FOR OWNER REVIEW |
+| ID-4 | TBD — RelativeStrengthContext (market → sector → stock), per ID-2's original deferral; or ID-3's real-data finding about the shared candle-fetch limit, pending owner direction | Planned |
 
 **ID-0 headline findings (full detail in the report):** (1) `intraday_candles()`
 is genuinely live across all six runtime flows and already reaches
@@ -116,6 +117,38 @@ disagreement trend label `NEUTRAL` → `MIXED` (owner decision: "neutral"
 could misread as price structure itself being flat, when what's actually
 known is that the two timeframes disagree) — no consumer depended on the
 old name. No ORB/gap/RVOL/EntryQualification/new threshold introduced.
+
+**ID-3 summary (full detail in the Milestone Review Summary given to the
+owner in-chat, 2026-08-29):** new `OpeningRangeEvidence`
+(`athena.intraday.opening_range_engine.OpeningRangeEngine`) — OR15/OR30 as
+two parallel, non-competing evidence windows (no preference/score/winner
+between them). Range boundaries anchor to `SessionContext.session_open_ts`
+(never a hardcoded 09:15 — proven against a real special session).
+Formation status (`FORMING`/`COMPLETE`/`INCOMPLETE_DATA`/`NOT_AVAILABLE`/
+`NOT_APPLICABLE`) distinguishes "window still running" from "window's time
+elapsed but a real bar is missing" — never silently treats a partial range
+as final. Current relation (`ABOVE`/`BELOW`/`INSIDE`/`AT_HIGH`/`AT_LOW`)
+is a snapshot; breakout/breakdown is a separately-modelled, non-repeating
+TRANSITION (the first observed crossing only — proven non-vacuously that
+a still-forming candle cannot alter either). Raw measurements only
+(`bars_since_breakout`, extension percentages, `returned_inside_range`) —
+no STRONG/WEAK/FAILED label, no confirmation buffer, no volume-confirmed
+breakout. Raw opening-range volume recorded; RVOL explicitly still
+deferred (real 5m history remains ~25 sessions deep — thin for a
+time-of-day baseline, per ID-2's own finding). Extends the existing
+`intraday_analytics_stage` (no new `WorkflowStage`) since it already
+produces `IntradaySignalSet`; still no dependency from
+scoring/confidence/risk/decision onto any of this. A read-only real-data
+sanity check (scratch copy of `db/athena.db`, never the original) found a
+genuine, precisely-diagnosed limitation: on that snapshot's most recent
+real day, every one of 537 real instruments had 100-130 real `5m` rows in
+that single session (vs. the canonical ~75), pushing the session's own
+clean opening bars out of the `limit=100` fetch shared with VWAP/
+confluence/session before OR15/OR30 ever saw them — a diagnostic run with
+a larger, test-only limit resolved OR15/OR30 to `COMPLETE` for 526/527 real
+instruments, confirming the algorithm itself is correct and the fetch
+limit is the actual constraint. Not changed here — a shared limit
+affecting four consumers is a real decision, not a one-snapshot tuning call.
 
 ## Explosive Move Radar Research Track (accepted 2026-08-21)
 

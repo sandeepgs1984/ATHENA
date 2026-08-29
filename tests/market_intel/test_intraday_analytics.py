@@ -16,6 +16,14 @@ from athena.config.loader import load_config
 from athena.domain.enums import Timeframe
 from athena.indicators.models import IndicatorEvidence, IndicatorName, IndicatorResult, IndicatorStatus
 from athena.intraday import IntradayAnalyticsEngine, IntradayTrendLabel, VwapRelation
+from athena.intraday.opening_range_models import (
+    BreakoutEvent,
+    OpeningRangeEvidence,
+    OpeningRangeFormation,
+    OpeningRangeFormationStatus,
+    OpeningRangeRelation,
+    OpeningRangeWindow,
+)
 from athena.scoring.models import ConfluenceInputs
 from athena.session import SessionContextEngine
 
@@ -25,6 +33,27 @@ IID = "NSE:TEST"
 AS_OF = datetime(2026, 8, 28, 9, 40, tzinfo=IST)
 DAY = date(2026, 8, 28)
 FIVE_PERIOD, FIFTEEN_PERIOD = 9, 5
+
+
+def _dummy_or(window: OpeningRangeWindow) -> OpeningRangeEvidence:
+    """A minimal, valid, NOT_APPLICABLE OpeningRangeEvidence — ID-3's own
+    engine/wiring is tested separately (`test_opening_range.py`); this
+    module tests VWAP/confluence formalization and just needs a harmless,
+    schema-valid placeholder to satisfy IntradaySignalSet's contract."""
+    formation = OpeningRangeFormation(
+        window=window, range_start=None, range_end=None, high=None, low=None,
+        high_ts=None, low_ts=None, range_width=None, range_width_pct=None,
+        volume=None, bars_expected=None, bars_present=0,
+        status=OpeningRangeFormationStatus.NOT_APPLICABLE,
+        explanation=f"{window.value}: not exercised in this test",
+    )
+    return OpeningRangeEvidence(
+        instrument_id=IID, session_date=DAY, as_of=AS_OF, formation=formation,
+        relation=OpeningRangeRelation.UNAVAILABLE, breakout_event=BreakoutEvent.NOT_OBSERVED,
+        first_breakout_ts=None, bars_since_breakout=None, max_extension_from_range_pct=None,
+        current_extension_pct=None, returned_inside_range=None,
+        explanation=f"{window.value}: not exercised in this test",
+    )
 
 
 @pytest.fixture()
@@ -56,6 +85,7 @@ def _assess(engine, session_context, *, vwap=None, confluence=None, as_of=AS_OF)
         IID, as_of=as_of, session_date=DAY, session_context=session_context,
         vwap=vwap, confluence=confluence,
         five_min_sma_period=FIVE_PERIOD, fifteen_min_sma_period=FIFTEEN_PERIOD,
+        or15=_dummy_or(OpeningRangeWindow.OR15), or30=_dummy_or(OpeningRangeWindow.OR30),
     )
 
 
@@ -250,6 +280,7 @@ def test_7_identical_inputs_produce_identical_artifacts(engine, session_context)
         IID, as_of=AS_OF, session_date=DAY, session_context=session_context,
         vwap=vwap, confluence=confluence,
         five_min_sma_period=FIVE_PERIOD, fifteen_min_sma_period=FIFTEEN_PERIOD,
+        or15=_dummy_or(OpeningRangeWindow.OR15), or30=_dummy_or(OpeningRangeWindow.OR30),
     )
     assert a == b
 
@@ -260,4 +291,5 @@ def test_naive_as_of_rejected(engine, session_context):
             IID, as_of=datetime(2026, 8, 28, 9, 40), session_date=DAY,
             session_context=session_context, vwap=None, confluence=None,
             five_min_sma_period=FIVE_PERIOD, fifteen_min_sma_period=FIFTEEN_PERIOD,
+            or15=_dummy_or(OpeningRangeWindow.OR15), or30=_dummy_or(OpeningRangeWindow.OR30),
         )

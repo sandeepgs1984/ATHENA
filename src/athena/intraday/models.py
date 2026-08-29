@@ -21,6 +21,7 @@ from decimal import Decimal
 from enum import Enum, unique
 
 from athena.domain.enums import Timeframe
+from athena.intraday.opening_range_models import OpeningRangeEvidence
 from athena.session.models import SessionDataQualityStatus
 
 
@@ -117,15 +118,19 @@ class VwapEvidence:
 class IntradaySignalSet:
     """Analytical evidence container for one instrument at one moment —
     NOT a trade signal. Composable: future milestones add typed evidence
-    fields here (ORB state, relative volume, relative strength, …) without
+    fields here (relative volume, relative strength, …) without
     redesigning this contract or forcing a premature BUY/SELL/probability
-    onto it."""
+    onto it. ``or15``/``or30`` (ID-3) are the first such addition —
+    parallel opening-range evidence windows, neither treated as canonically
+    superior."""
 
     instrument_id: str
     session_date: date
     as_of: datetime
     vwap: VwapEvidence
     trend: IntradayTrendContext
+    or15: OpeningRangeEvidence
+    or30: OpeningRangeEvidence
     data_quality: SessionDataQualityStatus
     explanation: str
 

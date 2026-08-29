@@ -927,6 +927,50 @@ class TestOwnerValidationPipeline:
         assert session_context.five_min.latest_completed_bar_ts == datetime(2026, 3, 2, 9, 20, tzinfo=IST)
         assert vwap is not None and vwap.status.value == "OK"
 
+    def test_id3_intraday_signal_set_carries_or15_or30_from_a_real_cycle(
+        self, repo: SqliteRepository, config_dir: Path, monkeypatch
+    ) -> None:
+        """ID-3 §10/#25: `IntradaySignalSet.or15`/`.or30` must be genuinely
+        populated (not left as a placeholder) by a real pipeline cycle, and
+        `OpeningRangeEngine` must receive real 5m candles from the real
+        repository — proving the wiring inside `intraday_analytics_stage`
+        actually runs, not just that the dataclass accepts the fields."""
+        from athena.intraday.engine import IntradayAnalyticsEngine
+        from athena.intraday.opening_range_models import OpeningRangeFormationStatus
+
+        recorded: dict[str, object] = {}
+        real_assess = IntradayAnalyticsEngine.assess
+
+        def spy_assess(self, *args, **kwargs):
+            result = real_assess(self, *args, **kwargs)
+            recorded["signal_set"] = result
+            return result
+
+        monkeypatch.setattr(IntradayAnalyticsEngine, "assess", spy_assess)
+
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        iid = "NSE:AAA"
+        repo.upsert_instrument(
+            Instrument(instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE")
+        )
+        repo.add_candles(_candles(iid, seed=100))
+        repo.add_candles(_intraday_candles(iid, AS_OF.date(), n=6, seed=100))  # 09:15..09:40
+
+        as_of = datetime(2026, 3, 2, 9, 30, tzinfo=IST)  # OR15 window (09:15-09:30) just elapsed
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        ingestion = IngestionResult(
+            as_of=as_of, instruments_upserted=1, candles_fetched=86, candles_written=86,
+            quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+        )
+        detail = pipe.run(RunTrigger.PREMARKET, as_of=as_of, ingestion=ingestion, run_id="run-orb")
+
+        assert detail["decision_reports"]
+        signal_set = recorded["signal_set"]
+        assert signal_set.or15.formation.status is OpeningRangeFormationStatus.COMPLETE
+        assert signal_set.or15.formation.bars_present == 3
+        assert signal_set.or30.formation.status is OpeningRangeFormationStatus.FORMING
+
     def test_repeat_validate_with_same_as_of_does_not_orphan_earlier_decision(
         self, repo: SqliteRepository, config_dir: Path
     ) -> None:

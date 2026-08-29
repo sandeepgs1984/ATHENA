@@ -350,7 +350,7 @@ dependency graph:
    `tests/ops/test_owner_validation.py::test_id1_session_stage_is_produced_without_perturbing_existing_stage_order`,
    which reconstructs both the pre- and post-ID-1 graphs and diffs their
    real `execution_order`).
-8. **`intraday_analytics_stage`** (ID-2, 2026-08-29) —
+8. **`intraday_analytics_stage`** (ID-2, 2026-08-29; extended ID-3, 2026-08-29) —
    `depends_on=("session", "indicators")`, `produces=("intraday_signal_set",)`.
    Formalizes the `vwap`/`confluence` values `ind_stage` already produced
    this cycle into typed evidence (`athena.intraday.IntradaySignalSet`/
@@ -363,6 +363,16 @@ dependency graph:
    perturb the other seven stages' relative order, same technique as
    `session_stage`'s own proof
    (`test_id2_intraday_analytics_stage_does_not_perturb_existing_stage_order`).
+   **ID-3** extends this same stage (no new stage — the smallest
+   architecture given it already produces `IntradaySignalSet`) with
+   `OpeningRangeEvidence` (OR15/OR30, `athena.intraday.opening_range_engine.OpeningRangeEngine`):
+   its own real 5m candle fetch, filtered through the same
+   `athena.session.completed_candles()` authority ID-2.1 fixed `ind_stage`
+   to use, plus `data.validation.calendar_expectations.expected_intraday_opens`
+   for the window's own bar-count expectations. Genuinely new evidence
+   (not a formalization of an existing scoring input, unlike VWAP/confluence)
+   but held to the identical rule: no scoring/confidence/risk/decision
+   dependency exists on it.
 
 Sector health and universe are computed **once per run**, not per instrument —
 `universe_engine.build(...)` and `SectorHealthEngine(sector_cfg).assess_many(...)`
@@ -1143,6 +1153,21 @@ knows these were found and not simply missed:
     types are documented as legacy in their own module docstrings rather
     than deleted, pending a future cleanup milestone's dependency
     verification.
+12. **`list_candles_recent(limit=100)` — shared by VWAP/confluence/session/
+    ORB — can exclude a session's own opening bars on a real day with
+    elevated intraday row density.** Found during ID-3's real-data sanity
+    check (2026-08-29, read-only against a scratch copy of `db/athena.db`,
+    never the original): on that snapshot's most recent real trading day,
+    every one of 537 real instruments had 100-130 persisted `5m` rows for
+    that single session alone (versus the canonical ~75), pushing the
+    session's own clean, on-grid opening bars (09:15 onward) out of the
+    shared `limit=100` fetch window before `OpeningRangeEvidence` ever saw
+    them — `OpeningRangeEngine` itself is correct (a diagnostic run with a
+    larger, test-only fetch limit resolved OR15/OR30 to `COMPLETE` for
+    526/527 real instruments checked); the constraint is the shared fetch
+    limit, not the ORB algorithm. Not fixed here — changing a fetch limit
+    shared by four consumers is a real decision, not a one-snapshot tuning
+    call. See `docs/research/ID-3-*` for the full evidence.
 
 ---
 

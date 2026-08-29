@@ -6,6 +6,166 @@ status updated on approval.
 
 ---
 
+## ID-3 — Opening Range Intelligence / ORB Evidence
+
+**Summary.** ID-2.1 was owner-approved. This is Intraday Intelligence's
+first genuinely new intraday market-behavior methodology — but still an
+analytical-evidence milestone, not EntryQualification: `OpeningRangeEvidence`
+(OR15 and OR30, two parallel, non-competing windows) joins `IntradaySignalSet`
+alongside the existing VWAP/trend evidence. No Decision gate, no TradePlan
+change, no BUY/SELL instruction anywhere.
+
+**New `athena.intraday.opening_range_models`/`opening_range_engine`:**
+- `OpeningRangeWindow` (`OR15`/`OR30`) — parallel evidence, no preference,
+  score, or winner between them (owner decision: future replay/walk-forward
+  validation decides that, not this milestone).
+- `OpeningRangeFormationStatus` (`FORMING`/`COMPLETE`/`INCOMPLETE_DATA`/
+  `NOT_AVAILABLE`/`NOT_APPLICABLE`) — distinguishes "the window's own time
+  hasn't elapsed yet" from "elapsed, but a real expected bar is missing"
+  (never silently treated as a finished range) from "not a trading session"
+  from "a real trading session whose open/close isn't notified yet (e.g.
+  an unconfirmed Muhurat)". Only `COMPLETE` range boundaries are ever used
+  for relation/breakout classification.
+- `OpeningRangeRelation` (`ABOVE_RANGE`/`BELOW_RANGE`/`INSIDE_RANGE`/
+  `AT_HIGH`/`AT_LOW`/`UNAVAILABLE`) — a snapshot of where the latest
+  completed price sits, computed from a completed-candle close, never a
+  forming one.
+- `BreakoutEvent` (`UPSIDE_BREAKOUT_EVENT`/`DOWNSIDE_BREAKDOWN_EVENT`/
+  `NO_EVENT`/`NOT_OBSERVED`) — a genuinely modelled TRANSITION, distinct
+  from `OpeningRangeRelation`: requires an observed prior completed bar
+  at/inside the boundary followed by one outside it. Once found, the
+  *same* first crossing is reported (`first_breakout_ts`) rather than
+  being re-flagged on every subsequent still-outside bar. Raw
+  post-breakout measurements (`bars_since_breakout`,
+  `max_extension_from_range_pct`, `current_extension_pct`,
+  `returned_inside_range`) — no STRONG/WEAK/FAILED label, no confirmation
+  count, no volume requirement, no retest logic.
+- Range formation records raw `high`/`low`/timestamps/`range_width(_pct)`/
+  `volume`/`bars_expected`/`bars_present` whenever at least one constituent
+  bar exists, independent of `status` — the status tells a consumer
+  whether to trust it as final, not whether a value exists at all.
+
+**Completed-candle integration.** `OpeningRangeEngine.assess()` filters its
+own 5m candle input through `athena.session.completed_candles()` (the same
+authority ID-2.1 fixed `ind_stage` to use) before any range/relation/
+breakout computation — proven non-vacuously (an extreme forming candle
+crafted to flip a range's high/low is shown to have zero effect one second
+before completion and the full effect at the exact completion boundary).
+`bars_expected` reuses `data.validation.calendar_expectations.expected_intraday_opens`
+(the same calendar authority ID-1's own missing-bar detection already
+uses) rather than a new gap-detection scheme. Window boundaries anchor to
+`SessionContext.session_open_ts` — never a hardcoded 09:15 — verified
+against a real special session (2026-02-01, a real Sunday full-hours
+session) and a real unconfirmed-Muhurat date (`open`/`close` genuinely
+`null` in `config/calendar/holidays.json`).
+
+**Workflow integration.** No new `WorkflowStage`. `intraday_analytics_stage`
+(ID-2) already produces `IntradaySignalSet` and already depends on
+`session` + `indicators`; it now also fetches its own raw 5m candles (the
+same repository call pattern `session_stage` already uses) and calls
+`OpeningRangeEngine` directly — the smallest architecture given the
+existing dependency graph, per the milestone's own instruction not to
+split stages for aesthetics.
+
+**Structural regression.** Unaffected — the full pre-existing suite
+(VWAP/confluence/scoring/confidence/risk/Decision/TradePlan) passes
+unmodified; ORB evidence is not read by any of them.
+
+**Real-data sanity check (read-only, descriptive only).** Ran against a
+throwaway scratch copy of the real production `db/athena.db` (opened
+read-only as source, backed up via `sqlite3.Connection.backup()`; the
+original was never opened for write; the scratch copy was deleted after
+use). At the production `limit=100` candle fetch (unchanged), **0/527**
+active real candidates showed a `COMPLETE` OR15 or OR30 on that snapshot's
+most recent real trading day — traced precisely, not left as a mystery:
+every one of 537 real instruments had 100-130 real persisted `5m` rows for
+that single session (versus the canonical ~75), so the session's own
+clean, on-grid opening bars were pushed out of the shared `limit=100`
+window before ORB ever received them. A diagnostic-only re-run with a
+larger fetch limit (200, not a production change) resolved OR15 and OR30
+to `COMPLETE` for **526/527** real instruments, with a real, plausible
+distribution of relations (`INSIDE_RANGE`/`ABOVE_RANGE`/`BELOW_RANGE`
+roughly 40%/20%/40% for OR15) and breakout events across the whole
+universe — confirming the algorithm itself is correct and the shared fetch
+limit, not ORB's logic, is the practical constraint. Not changed here.
+
+**Persistence decision.** Not persisted — `OpeningRangeEvidence` is a pure
+function of already-canonical candles + `SessionContext` + `as_of`, same
+reasoning as `SessionContext`/`IntradaySignalSet`.
+
+**Files created.** `src/athena/intraday/opening_range_models.py`,
+`src/athena/intraday/opening_range_engine.py`,
+`tests/market_intel/test_opening_range.py` (26 tests).
+
+**Files modified.** `src/athena/intraday/models.py` (`IntradaySignalSet.or15`/`.or30`
+fields), `src/athena/intraday/engine.py` (`IntradayAnalyticsEngine.assess()`
+accepts/wires `or15`/`or30`), `src/athena/intraday/__init__.py`,
+`src/athena/ops/owner_validation.py` (`intraday_analytics_stage` fetches
+5m candles + calls `OpeningRangeEngine`), `tests/market_intel/test_intraday_analytics.py`
+(dummy-OR fixture for tests that don't exercise ORB directly),
+`tests/ops/test_owner_validation.py` (1 new integration test),
+`docs/ATHENA-TECHNICAL-ARCHITECTURE.md` (§3.1 + a new known-gap item),
+`docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md` (this entry).
+
+**Tests added.** 26 new in `test_opening_range.py` (formation/boundaries/
+relation/breakout/special-session/determinism, matching the milestone's
+own 37-item list) + 1 new integration test proving `IntradaySignalSet`
+carries real OR15/OR30 evidence from a real cycle. Full suite: **2,795
+passed, 1 skipped** (pre-existing, unrelated), 0 failed. Ruff clean on
+every new/modified file. `mypy` clean in its configured scope.
+
+**Architecture compliance.** No new `WorkflowStage`, no ADR touched. No
+`KiteProvider`/broker-specific reference anywhere in the opening-range
+code (confirmed by grep). No dormant `PipelineContext`/`ContextDelta`/
+`IntelligenceModule` use (guard test still passes against the new files).
+No order-placement code. Deterministic/replayable — every function takes
+`as_of` explicitly, no `datetime.now()`. No EMR or DarvaX module imported,
+read, or referenced anywhere in `athena.intraday` (both isolation suites
+pass unmodified) — the real-data sanity check queried only ATHENA-core's
+own `candles` table, never any EMR-isolated data.
+
+**Risks / technical debt.** The shared `limit=100` candle-fetch constraint
+found by the real-data sanity check (above) is the one new, real item —
+flagged for owner attention, not fixed here. ID-P0.1's point-in-time
+repository-cutoff limitation remains unaddressed (out of scope, per the
+milestone's own instruction) and is not made worse — every new function
+takes `as_of` explicitly.
+
+**Remaining work.** Owner review of this milestone; then ID-4 scope
+(candidates: `RelativeStrengthContext` per ID-2's original deferral, or
+addressing the candle-fetch-limit finding) pending explicit owner
+approval — not started here.
+
+**Commit message (for the owner to use, not run by the AI):**
+
+```
+feat(intraday): add ID-3 OpeningRangeEvidence (OR15/OR30) evidence
+
+- Add athena.intraday.opening_range_{models,engine}: OpeningRangeEvidence
+  with OR15/OR30 as parallel, non-competing evidence windows (formation
+  status, current relation, breakout/breakdown TRANSITION detection, raw
+  post-breakout measurements) -- analytical evidence only, no BUY/SELL,
+  no entry zone, no stop/target, no STRONG/WEAK/FAILED label
+- Anchor range boundaries to SessionContext.session_open_ts (never a
+  hardcoded 09:15); filter every candle through the existing
+  athena.session.completed_candles() authority (ID-2.1) before any
+  range/relation/breakout computation, proven non-vacuously
+- Extend the existing intraday_analytics_stage (no new WorkflowStage) to
+  also produce or15/or30 on IntradaySignalSet; no scoring/confidence/
+  risk/decision dependency introduced
+- 27 new tests; full suite (2,795) green; existing VWAP/confluence/
+  scoring/confidence/risk/Decision/TradePlan tests pass unmodified
+- Real-data sanity check (read-only, scratch copy of db/athena.db) found
+  and precisely diagnosed a real limitation: the shared limit=100 candle
+  fetch can exclude a session's own opening bars on a day with elevated
+  intraday row density -- flagged for owner attention, not changed here
+```
+
+**Milestone status.** Ready for review. Awaiting owner approval before
+ID-4.
+
+---
+
 ## ID-2.1 — Completed-Candle Alignment & Trend-Semantics Cleanup
 
 **Summary.** ID-2's architecture was accepted in owner review, but the

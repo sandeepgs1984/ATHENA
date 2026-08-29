@@ -1,4 +1,4 @@
-"""Intraday Analytics Engine (ID-2).
+"""Intraday Analytics Engine (ID-2, corrected ID-2.1).
 
 Formalizes intraday evidence ATHENA's live `ScoringEngine` already consumes
 (VWAP relation, 5m/15m confluence direction) into typed, explainable
@@ -10,15 +10,21 @@ calculation" (VWAP: `indicators.calculations.vwap`; confluence direction:
 recomputing them on a possibly-different candle window — recomputing would
 create a second, potentially-diverging "VWAP relation" in the system.
 
-Consequence, stated plainly: the formalized VWAP/confluence evidence here
-inherits whatever candle-completeness properties `ind_stage`'s existing,
-UNCHANGED computation already has — it is not independently re-verified
-against ID-1's completed-candle primitive, by design, to avoid exactly that
-second-authoritative-calculation risk. What ID-1's `SessionContext` DOES
-independently, genuinely guarantee here is `data_quality` — an honest,
-completed-candle-derived signal about whether the underlying intraday data
-for this instrument/session is trustworthy, surfaced on every
-`IntradaySignalSet` alongside the (unchanged) formalized values.
+ID-2.1 closed the one real gap this design had: `ind_stage` itself now
+filters its 5m/15m candle inputs through `athena.session.completed_candles()`
+(ID-1's `ts_open + duration <= as_of` rule) before computing VWAP/confluence
+at all — so the formalized values here are both object-identical to what
+`ScoringEngine` used AND guaranteed completed-candle-only, not merely
+"whatever `ind_stage` happened to compute." `SessionContext.data_quality`
+remains the honest, independent signal about whether the underlying
+intraday data is trustworthy, surfaced on every `IntradaySignalSet`
+alongside the (unchanged) formalized values.
+
+ID-3 adds `OpeningRangeEvidence` (OR15/OR30,
+`athena.intraday.opening_range_engine.OpeningRangeEngine`) as two more
+typed evidence fields on `IntradaySignalSet` — a genuinely new computation
+(not a formalization of an existing scoring input), but held to the exact
+same completed-candle and "no scoring/Decision influence" rules.
 
 No I/O, no clock reads — as_of and every input object are injected by the
 caller, exactly like `ScoringEngine`/`ConfidenceEngine`/every other engine.
@@ -38,6 +44,7 @@ from athena.intraday.models import (
     VwapEvidence,
     VwapRelation,
 )
+from athena.intraday.opening_range_models import OpeningRangeEvidence
 from athena.scoring.models import ConfluenceInputs
 from athena.session.models import SessionContext
 
@@ -59,6 +66,8 @@ class IntradayAnalyticsEngine:
         confluence: ConfluenceInputs | None,
         five_min_sma_period: int,
         fifteen_min_sma_period: int,
+        or15: OpeningRangeEvidence,
+        or30: OpeningRangeEvidence,
     ) -> IntradaySignalSet:
         if as_of.tzinfo is None:
             raise ValueError("IntradayAnalyticsEngine.assess as_of must be timezone-aware")
@@ -83,10 +92,12 @@ class IntradayAnalyticsEngine:
 
         return IntradaySignalSet(
             instrument_id=instrument_id, session_date=session_date, as_of=as_of,
-            vwap=vwap_evidence, trend=trend, data_quality=session_context.data_quality,
+            vwap=vwap_evidence, trend=trend, or15=or15, or30=or30,
+            data_quality=session_context.data_quality,
             explanation=(
                 f"{instrument_id} intraday evidence as of {as_of.isoformat()}: "
                 f"vwap={vwap_evidence.relation.value}, trend={trend_label.value}, "
+                f"or15={or15.formation.status.value}, or30={or30.formation.status.value}, "
                 f"session_data_quality={session_context.data_quality.value} — "
                 f"analytical evidence only, not a trade signal"
             ),

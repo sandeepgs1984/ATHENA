@@ -775,7 +775,7 @@ class OwnerValidationPipeline:
         from athena.evidence import EvidenceAggregationEngine, EvidenceSource
         from athena.indicators import IndicatorEngine, IndicatorName, IndicatorStatus
         from athena.indicators import calculations as calc
-        from athena.intraday import IntradayAnalyticsEngine
+        from athena.intraday import IntradayAnalyticsEngine, OpeningRangeEngine, OpeningRangeWindow
         from athena.market_health import MarketHealthEngine
         from athena.regime import RegimeEngine
         from athena.risk import RiskEngine
@@ -797,6 +797,7 @@ class OwnerValidationPipeline:
         session_engine = SessionContextEngine()
         session_tzinfo = ZoneInfo(cfg.market.timezone)
         intraday_analytics_engine = IntradayAnalyticsEngine()
+        opening_range_engine = OpeningRangeEngine()
         risk_engine = RiskEngine(risk_cfg)
         evidence_engine = EvidenceAggregationEngine()
         decision_engine = DecisionEngine(decision_cfg)
@@ -1056,13 +1057,32 @@ class OwnerValidationPipeline:
                 return {"session_context": session_context}
 
             def intraday_analytics_stage(ctx):
-                # ID-2 foundation only: formalizes the existing "vwap"/
+                # ID-2 foundation: formalizes the existing "vwap"/
                 # "confluence" outputs `ind_stage` already produced this
                 # cycle (declared dependency: "indicators") into typed
                 # evidence — computes nothing new, so it cannot diverge
-                # from what ScoringEngine already saw. Nothing downstream
+                # from what ScoringEngine already saw.
+                #
+                # ID-3 adds genuinely new evidence (OR15/OR30) computed
+                # here rather than as a separate WorkflowStage — this
+                # stage already IS "produce IntradaySignalSet", and ORB
+                # needs only its own raw 5m candle read (same repo call
+                # pattern `session_stage` already uses) plus the already-
+                # declared "session" dependency's SessionContext, so no new
+                # stage/dependency is justified. Nothing downstream
                 # (scoring/confidence/risk/decision) declares a dependency
                 # on "intraday_signal_set" yet.
+                five_min_raw = self._repo.list_candles_recent(
+                    instrument_id, Timeframe.M5, limit=100
+                )
+                orb_by_window = opening_range_engine.assess(
+                    instrument_id,
+                    as_of=ctx.as_of,
+                    session_context=ctx.get("session_context"),
+                    five_min_candles=five_min_raw,
+                    calendar=calendar,
+                    tzinfo=session_tzinfo,
+                )
                 signal_set = intraday_analytics_engine.assess(
                     instrument_id,
                     as_of=ctx.as_of,
@@ -1072,6 +1092,8 @@ class OwnerValidationPipeline:
                     confluence=ctx.get("confluence"),
                     five_min_sma_period=scoring_cfg.confluence.five_min_sma_period,
                     fifteen_min_sma_period=scoring_cfg.confluence.fifteen_min_sma_period,
+                    or15=orb_by_window[OpeningRangeWindow.OR15],
+                    or30=orb_by_window[OpeningRangeWindow.OR30],
                 )
                 return {"intraday_signal_set": signal_set}
 
