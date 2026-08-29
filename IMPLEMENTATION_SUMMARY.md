@@ -6,6 +6,114 @@ status updated on approval.
 
 ---
 
+## ID-P0.1 — Sector Health wiring replay impact validation (measurement only)
+
+**Summary.** ID-P0 was owner-approved. Before ID-1, this checkpoint
+quantified the real historical decision/composite impact of activating
+`sector_quality` (weight 15/100, previously permanently `UNKNOWN`), using a
+deterministic replay against a throwaway scratch copy of the real
+production `db/athena.db` (opened read-only as source; the original was
+never written to). No config, weight, formula, threshold, methodology, or
+mapping was changed. Full report:
+`docs/research/ID-P0.1-SECTOR-WIRING-REPLAY-IMPACT-REPORT.md`.
+
+**Methodology.** `SqliteRepository.list_candles_recent()` has no
+point-in-time cutoff (always the literal most-recent N rows) and neither
+it nor `src/athena/backtest/` provide one — attempting a multi-date
+historical replay would have silently looked ahead. Instead, the
+comparison anchored on the snapshot's own real latest moment
+(2026-08-28T15:45 IST, `RunTrigger.CLOSING`) — where "most recent" and
+"as of" coincide exactly, so no look-ahead is possible — and ran
+`OwnerValidationPipeline.run()` twice against the identical repository
+state, changing exactly one thing: an instance-level monkeypatch of
+`_sector_candles_for_health` to return `{}` for the BASELINE condition
+(reproducing the exact pre-ID-P0 code path), vs. the real, unmodified
+ID-P0 code for the other. Two independent replay attempts (separate
+scratch copies) produced byte-identical `DecisionReport` JSON for all 380
+comparable instruments in both conditions — determinism proven, not
+assumed.
+
+**Key findings.** 143/380 (37.6%) instruments had a resolvable sector;
+237/380 stayed honestly `UNKNOWN`. 15/380 (3.95%) decisions changed type
+(all `WATCH ↔ NO_TRADE`) — roughly 1/15th the scale of the original SD-3
+impact model's 60.1%-of-book worst case, because real per-sector values
+vary rather than being uniformly 20/50/80 and only 37.6% of the book has a
+mapped sector at all. Composite delta among the 143 affected instruments:
+mean +0.24, median −0.04, range −5.32 to +4.47. Risk delta is exactly
+`0.0` for all 380 (`RiskEngine` never accepted `sector_health`). Confidence
+also moves (mean +1.05 among the 143 affected) — traced to source: three
+of `ConfidenceEngine`'s six dimensions (`cross_engine_agreement`,
+`unknown_ratio`, `consistency`) structurally read `scoring.components`,
+and `sector_quality` newly being a known component changes their inputs by
+construction — a real, legitimate, previously-unmeasured second-order
+effect, not a bug. 19 instruments crossed a `config/decision.json`
+composite band (50 or 60); 4 of those crossed 60 without the actual
+`Decision.type` changing (still `WATCH` both times), since `TRADE` also
+requires all six quality gates, a resolvable direction, and a buildable
+`TradePlan` — the existing gate contract working as designed. Structural
+isolation was verified directly, not assumed: `regime`, `market_health`,
+`indicators`, `risk.overall`, and the other five scoring components were
+compared field-for-field across all 380 instruments with zero mismatches.
+
+**Limitations reported, not papered over.** This is a single real
+snapshot, not a multi-date historical replay (see Methodology above); a
+genuine multi-session point-in-time replay would need new repository
+infrastructure, out of scope for a measurement-only checkpoint. One real
+day necessarily has one real regime, so the regime-level breakdown is a
+single bucket — a correct consequence of the limitation, not an analysis
+gap. No `TRADE` decision existed at this particular snapshot in either
+condition.
+
+**Files created.** `docs/research/ID-P0.1-SECTOR-WIRING-REPLAY-IMPACT-REPORT.md`.
+Analysis scripts and the scratch database copies used to produce this
+report were transient (session scratchpad, not committed to the repo) —
+the source `db/athena.db` was opened read-only throughout and never
+modified.
+
+**Files modified.** `docs/MILESTONES.md` (ID-P0 marked owner-approved,
+ID-P0.1 added, SD-3 status note updated with the real measured evidence),
+`IMPLEMENTATION_SUMMARY.md` (this entry).
+
+**Tests added.** None — measurement-only, no production code changed.
+
+**Architecture compliance.** No scoring weight, formula, threshold,
+`SectorHealthEngine` methodology, sector mapping, or UNKNOWN semantics was
+touched. No EMR or DarvaX module was imported, read, or referenced. The
+real production database was never opened for write.
+
+**Risks / technical debt.** Whether SD-3's originally-envisioned threshold
+recalibration is still worth pursuing, given the real measured impact is
+materially smaller than the worst-case model that originally motivated it,
+is an open owner decision — not made here. The point-in-time replay
+infrastructure gap (Methodology above) remains unaddressed; any future
+work wanting a genuine multi-date historical replay will need it built
+first.
+
+**Remaining work.** Owner review of this checkpoint's ID-1 READY
+recommendation; then ID-1 scope finalization per the ID-0 report §15.
+
+**Commit message (for the owner to use, not run by the AI):**
+
+```
+docs(review): measure real Sector Health wiring impact (ID-P0.1)
+
+- Add docs/research/ID-P0.1-SECTOR-WIRING-REPLAY-IMPACT-REPORT.md:
+  deterministic replay of 380 real, currently-eligible instruments from
+  the production book, sector wiring on vs off, everything else held
+  and verified identical -- 3.95% decision-type change rate, composite/
+  confidence/risk deltas, sector- and threshold-level breakdowns, and
+  the point-in-time replay limitation reported rather than worked around
+- Update docs/MILESTONES.md: ID-P0 marked owner-approved, ID-P0.1 added
+  as Ready for review, SD-3's status note updated with the real measured
+  evidence (an order of magnitude below the original worst-case model)
+- No production code, config, weight, threshold, or methodology changed
+```
+
+**Milestone status.** Ready for review. Awaiting owner review before
+ID-1.
+
+---
+
 ## ID-P0 — Runtime architecture alignment + Sector Health wiring
 
 **Summary.** ID-0 was reviewed and accepted with conditions (2026-08-29).
