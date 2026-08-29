@@ -1,21 +1,31 @@
-"""Relative Strength Engine (ID-4).
+"""Relative Strength Engine (ID-4, corrected ID-4.1).
 
 Computes ``RelativeStrengthContext`` from already-fetched candle series for
 one instrument, the market benchmark, and (if mapped) the instrument's
 sector index — no I/O, no clock reads, no randomness. See
 ``relative_strength_models`` for the full contract rationale.
 
-Common-cutoff design (ID-4 §4/§5): for each constituent, an "opening
-reference" candle is the one whose ``ts_open`` is EXACTLY the session's own
-open instant (never a later canonical bar substituted in — a genuinely
-missing opening slot means that constituent's return is unavailable, not
-approximated). ``comparison_cutoff_ts`` is the minimum of whichever
-constituents' own latest canonical completed bar IS available; each
-constituent's own "closing" point is then the latest of ITS canonical bars
-at-or-before that cutoff. A constituent whose closing point does not
-genuinely fall after its opening point (e.g. real production data where an
-index's canonical M5 coverage is only its own first bar — see ID-4's
-real-data audit) is honestly reported unavailable rather than emitting a
+Common-cutoff design (ID-4 §4/§5, corrected ID-4.1 §1/§2): for each
+constituent, an "opening reference" candle is the one whose ``ts_open`` is
+EXACTLY the session's own open instant (never a later canonical bar
+substituted in — a genuinely missing opening slot means that constituent's
+return is unavailable, not approximated). A constituent is COMPARABLE only
+if it has both a genuine opening reference AND at least one later canonical
+bar (``_ConstituentSeries.can_form_return``) — an opening-only constituent
+(real production data: an index whose canonical M5 coverage is just its
+own first bar) can never itself form a return, so ID-4.1 stops letting it
+contribute its single timestamp to ``comparison_cutoff_ts`` at all: doing
+so let one unusable constituent (e.g. the market benchmark) drag the whole
+comparison down to a zero-duration window and silently erase an otherwise
+perfectly valid stock (or stock+sector) return — exactly the real-data
+regression ID-4's own owner review found. ``comparison_cutoff_ts`` is now
+the minimum of only the COMPARABLE constituents' own latest canonical bar
+(``None`` if none are comparable); each comparable constituent's own
+"closing" point is the latest of ITS canonical bars at-or-before that
+cutoff — never a later bar even if that constituent itself has one (a
+"faster" constituent cannot outrun a genuinely slower-but-still-comparable
+one). A constituent whose closing point does not genuinely fall after its
+opening point is honestly reported unavailable rather than emitting a
 zero-duration, near-meaningless "return".
 """
 
@@ -41,6 +51,19 @@ _BAR_STEP_MINUTES = 5  # RS is defined over 5m bars only, matching ORB's scope
 class _ConstituentSeries:
     opening: Candle | None
     canonical: list[Candle]
+
+    @property
+    def latest_ts(self) -> datetime | None:
+        return self.canonical[-1].ts_open if self.canonical else None
+
+    @property
+    def can_form_return(self) -> bool:
+        """COMPARABLE (ID-4.1 §2): a genuine opening reference AND at least
+        one later canonical bar. An opening-only series (data present, but
+        only the session's own first bar) is NOT comparable — data presence
+        alone is not return availability (ID-4.1 §5)."""
+        latest = self.latest_ts
+        return self.opening is not None and latest is not None and latest > self.opening.ts_open
 
 
 class RelativeStrengthEngine:
@@ -85,11 +108,14 @@ class RelativeStrengthEngine:
             else _ConstituentSeries(opening=None, canonical=[])
         )
 
-        stock_latest = stock.canonical[-1].ts_open if stock.canonical else None
-        market_latest = market.canonical[-1].ts_open if market.canonical else None
-        sector_latest = sector_series.canonical[-1].ts_open if sector_series.canonical else None
-        available_latests = [t for t in (stock_latest, sector_latest, market_latest) if t is not None]
-        cutoff = min(available_latests) if available_latests else None
+        # ID-4.1 §2/§9: only COMPARABLE constituents (genuine opening +
+        # a later canonical bar) may contribute to the common cutoff — an
+        # opening-only constituent has data but cannot itself form a
+        # return, so it must not cap the window for the others either.
+        comparable_latests = [
+            s.latest_ts for s in (stock, sector_series, market) if s.can_form_return
+        ]
+        cutoff = min(comparable_latests) if comparable_latests else None
 
         stock_return = self._return(stock, cutoff)
         market_return = self._return(market, cutoff)
@@ -115,7 +141,8 @@ class RelativeStrengthEngine:
             sector_available=sector_return is not None,
             market_available=market_return is not None,
             explanation=self._explain(
-                instrument_id, sector, stock_return, sector_return, market_return,
+                instrument_id, sector, stock, sector_series, market,
+                stock_return, sector_return, market_return,
                 session_context.session_open_ts, cutoff,
             ),
         )
@@ -178,17 +205,30 @@ class RelativeStrengthEngine:
         return RelativeStrengthRelation.MATCHING
 
     @staticmethod
+    def _dimension_reason(series: _ConstituentSeries, value: Decimal | None) -> str:
+        """ID-4.1 §19: distinguish WHY a dimension is unavailable — data
+        presence and return availability are different things (§5), and
+        the explanation should say which one is missing."""
+        if value is not None:
+            return f"{value}%"
+        if series.opening is None:
+            return "unavailable (no canonical bar at session open)"
+        if not series.can_form_return:
+            return "unavailable (only the session-opening canonical bar exists so far)"
+        return "unavailable (no canonical bar at or before the comparison cutoff)"
+
+    @classmethod
     def _explain(
+        cls,
         instrument_id: str, sector: str | None,
+        stock: _ConstituentSeries, sector_series: _ConstituentSeries, market: _ConstituentSeries,
         stock_return: Decimal | None, sector_return: Decimal | None, market_return: Decimal | None,
         start_ts: datetime | None, cutoff: datetime | None,
     ) -> str:
         parts = [
-            f"stock={stock_return}%" if stock_return is not None else "stock=unavailable",
-            f"sector({sector})={sector_return}%"
-            if sector_return is not None
-            else f"sector({sector})=unavailable",
-            f"market={market_return}%" if market_return is not None else "market=unavailable",
+            f"stock={cls._dimension_reason(stock, stock_return)}",
+            f"sector({sector})={cls._dimension_reason(sector_series, sector_return)}",
+            f"market={cls._dimension_reason(market, market_return)}",
         ]
         window = (
             f"comparison {start_ts.isoformat()} -> {cutoff.isoformat()}"

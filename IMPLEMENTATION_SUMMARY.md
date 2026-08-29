@@ -6,6 +6,155 @@ status updated on approval.
 
 ---
 
+## ID-4.1 — Comparable-Constituent Cutoff & Partial-Availability Correctness
+
+**Summary.** ID-4's architecture was accepted in owner review, but the
+review found ID-4 was not fully closed: `RelativeStrengthEngine`'s common
+cutoff was computed from ANY constituent with at least one canonical bar
+— including an "opening-only" constituent (a genuine session-open bar but
+no later one), which cannot itself form a return. On the real ID-4
+snapshot, the market benchmark and every mapped sector index were
+opening-only, so their single 09:15 timestamp dragged the GLOBAL cutoff
+down to 09:15 for every candidate, collapsing `stock_return_pct` (and
+everything else) to universally unavailable — masking the fact that most
+stocks' own session return was perfectly computable. Fixed: only
+COMPARABLE constituents (genuine opening reference AND at least one later
+canonical bar) may contribute to `comparison_cutoff_ts`.
+
+**Root cause.** `_return()` already correctly required a genuinely later
+bar to produce a value, but `assess()` built the candidate cutoff set from
+`latest_ts is not None` (data presence) rather than "this constituent can
+actually form a return" — conflating the two concepts §5 explicitly warns
+apart.
+
+**Fix.** New `_ConstituentSeries.can_form_return` property (opening exists
+AND `latest_ts > opening.ts_open`). `comparison_cutoff_ts` is now
+`min(latest_ts for constituent in (stock, sector, market) if
+constituent.can_form_return)`, `None` if none are comparable. `_return()`
+itself is UNCHANGED — once the cutoff is correctly computed from only
+comparable constituents, its existing same-bar-unavailable/at-or-before
+logic already produces the right answer for every constituent, comparable
+or not. No public contract change: same fields
+(`stock/sector/market_available`, `comparison_cutoff_ts`, `explanation`),
+internal fix only. `explanation` also now distinguishes WHY a dimension is
+unavailable (no opening bar / opening-only so far / no bar at-or-before
+cutoff) rather than one generic "unavailable" string.
+
+**Non-vacuous verification.** Reverted the fix (restored the old "any
+non-None latest" cutoff-set condition) and confirmed 6 of 8 new tests fail
+against it (the other 2 test genuinely pre-existing, unrelated mechanics
+— missing-opening handling and the completed-candle boundary — so are
+regression guards, not proofs of this specific bug); restored and
+confirmed all pass.
+
+**Real-data re-audit (read-only, production retrieval path, same as_of as
+ID-4's own check).** Dimension-level matrix, 526 real active candidates:
+
+| Dimension | Available | Unavailable |
+|---|---|---|
+| Stock return | **526** | 0 |
+| Sector return | 0 | 526 |
+| Market return | 0 | 526 |
+| Stock vs sector | 0 | 526 |
+| Stock vs market | 0 | 526 |
+| Sector vs market | 0 | 526 |
+
+**Engine effect vs data effect, now separated.** Before ID-4.1: 0/526
+stock_available (engine bug masking real data). After ID-4.1: **526/526
+stock_available** — the ENGINE effect is fully resolved; every stock's own
+canonical M5 data was already good enough to compute a real session
+return. The remaining 0/526 for sector/market/every pairwise comparison is
+now a genuine, isolated DATA effect: the market benchmark and all 8 mapped
+sector indexes are still opening-only (1/75 canonical M5 slots — unchanged,
+not touched here). `comparison_cutoff_ts` resolved for all 526 (100%,
+since stock alone is comparable in every case); lag from `as_of`
+(15:45 IST) ranged 35-370 minutes (median 370 ≈ cutoff sitting at ~09:35,
+consistent with ID-3.1's own finding that equity M5 drift begins at the
+session's 6th canonical slot for most instruments), with one instrument's
+own canonical coverage reaching as late as 15:10. The prior ID-4 report's
+"universal availability collapse" wording is retracted — it was
+substantially an engine artifact, not purely a data limitation.
+
+**Index M5 data problem — not solved here, by design.** No
+nearest-neighbor/resampling/forward-fill/quote-substitution/synthetic-candle
+workaround was introduced; no ingestion, backfill, or persisted-candle
+repair was made; no EMR M5 artifacts were used. The market/sector
+comparative dimensions remain genuinely blocked by index M5 canonical
+coverage — a separate, still-open data-quality question.
+
+**Recommendation for next milestone.** With the engine now measuring
+correctly, the remaining blocker is confirmed to be **index M5 data
+quality/ingestion**, and its scope is now precisely quantified (market
+benchmark + all 8 mapped sector indexes: opening-only; 0/526 comparative
+dimensions available; stock's own evidence: 100% available). Recommend
+**(A)** — an index-M5 data-quality/remediation prerequisite — before
+another RS-dependent or comparison-methodology milestone, rather than
+proceeding directly into further signal methodology while comparative
+evidence stays structurally unavailable. Awaiting owner decision.
+
+**Files modified.** `src/athena/intraday/relative_strength_engine.py`
+(`_ConstituentSeries.can_form_return`/`latest_ts`, cutoff-set correction,
+`_dimension_reason`/`_explain`), `tests/market_intel/test_relative_strength.py`
+(8 new tests + test 17's expectations corrected to the fixed behavior),
+`docs/ATHENA-TECHNICAL-ARCHITECTURE.md`, `docs/MILESTONES.md`,
+`IMPLEMENTATION_SUMMARY.md` (this entry).
+
+**Tests added/modified.** 8 new (opening-only market/sector/both,
+no-candles-vs-opening-only parity ×2, missing-stock-opening, forming-bar,
+completion-boundary — 6 of 8 proven non-vacuous); test 17's assertions
+corrected to the fixed (and now-more-useful) expected behavior. Full
+suite: **2,833 passed, 1 skipped** (pre-existing, unrelated), 0 failed.
+Ruff clean. `mypy` clean (unaffected scope).
+
+**Architecture compliance.** No new `WorkflowStage`, no repository/API
+change, no ADR touched, no public `RelativeStrengthContext` field added or
+removed. No EMR/DarvaX reference. Deterministic/replayable — no new I/O,
+no `datetime.now()`.
+
+**Structural regression.** Unaffected — full pre-existing suite passes
+unmodified.
+
+**Point-in-time replay boundary / OR30 / confluence.** Unchanged, carried
+forward — none touched.
+
+**Risks / technical debt.** None new. The index M5 data-quality question
+(now precisely scoped) remains the single open item before RS's
+comparative dimensions become practically useful.
+
+**Remaining work.** Owner review of this milestone and the recommendation
+above; then either an index-M5 data-quality milestone or a further
+signal-methodology milestone, per explicit owner decision — not started
+here.
+
+**Commit message (for the owner to use, not run by the AI):**
+
+```
+fix(intraday): correct RelativeStrengthEngine comparable-constituent
+cutoff (ID-4.1)
+
+- Only constituents that can actually form a return (genuine opening
+  reference + a later canonical bar) may contribute to
+  comparison_cutoff_ts -- an opening-only constituent (real production
+  shape: an index whose canonical M5 coverage is just its own first bar)
+  no longer drags the whole comparison down to a zero-duration window
+- No public contract change: same fields, internal fix only; explanation
+  now distinguishes why each dimension is unavailable
+- 8 new tests (6 non-vacuously proven against the reverted bug); test 17
+  updated to the corrected expected behavior; full suite (2,833) green
+- Real-data re-audit (production retrieval path): stock_return now
+  526/526 available (was 0/526 -- an engine artifact, now resolved);
+  sector/market/every pairwise comparison remain 0/526 -- a genuine,
+  now-isolated index M5 data-quality limitation, not fixed here
+- Recommend an index-M5 data-quality/remediation prerequisite before the
+  next RS-dependent or comparison-methodology milestone
+```
+
+**Milestone status.** Ready for review. Awaiting owner approval and
+decision on the recommended next step (index M5 data-quality prerequisite
+vs. another path).
+
+---
+
 ## ID-4 — Market → Sector → Stock RelativeStrengthContext
 
 **Summary.** ID-3.1 was owner-approved; ID-3/ID-3.1 closed together. New
@@ -228,8 +377,12 @@ feat(intraday): add ID-4 RelativeStrengthContext (stock vs sector/market)
   owner decision, not worked around
 ```
 
-**Milestone status.** Ready for review. Awaiting owner approval before
-ID-5.
+**Milestone status.** Owner-reviewed 2026-08-29. Architecture accepted;
+one corrective partial-availability/common-cutoff correctness issue found
+— fixed in ID-4.1 (see above; that entry also retracts this entry's
+"universal availability collapse" real-data wording, which was
+substantially an engine artifact). Not closed on its own; closed together
+with ID-4.1.
 
 ---
 

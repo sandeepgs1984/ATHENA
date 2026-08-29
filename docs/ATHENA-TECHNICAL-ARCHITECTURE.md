@@ -384,7 +384,7 @@ dependency graph:
    [§9 item 12](#9-known-documentationimplementation-gaps). **ID-4** adds
    `relative_strength=ctx.get("relative_strength")` to this stage's
    `IntradayAnalyticsEngine.assess()` call — composed, not recomputed.
-9. **`relative_strength_stage`** (ID-4, 2026-08-29) —
+9. **`relative_strength_stage`** (ID-4, 2026-08-29; corrected ID-4.1, 2026-08-29) —
    `depends_on=("session",)`, `produces=("relative_strength",)`.
    Computes `athena.intraday.RelativeStrengthContext`
    (`RelativeStrengthEngine`) — stock-vs-sector/market point-in-time
@@ -405,7 +405,15 @@ dependency graph:
    `index_id` `_resolve_index_candles` already resolves for regime, and the
    same `Instrument.sector` → `config/sector_index_mapping.json` →
    `config/index_intelligence.json` chain `SectorHealthEngine` already
-   uses. See [§9 item 13](#9-known-documentationimplementation-gaps) for a
+   uses. **ID-4.1** fixed a partial-availability correctness issue:
+   `comparison_cutoff_ts` was computed from any constituent with at least
+   one canonical bar, not only constituents that can genuinely form a
+   return (`_ConstituentSeries.can_form_return` — a genuine opening
+   reference AND a later canonical bar) — an opening-only constituent
+   (real production shape: an index whose canonical M5 coverage is just
+   its own first bar) was dragging the whole comparison down to a
+   zero-duration window, erasing an otherwise valid stock (or stock+sector)
+   return. See [§9 item 13](#9-known-documentationimplementation-gaps) for a
    severe real-data limitation found here.
 
 Sector health and universe are computed **once per run**, not per instrument —
@@ -1221,35 +1229,33 @@ knows these were found and not simply missed:
     SMA(9)/SMA(5) genuinely reads across a session boundary early in the
     day today; whether that cross-session reach is intentional is an open
     methodology question for the owner, not yet decided either way.
-13. **`RelativeStrengthContext` (ID-4) is universally unavailable in live
-    production RIGHT NOW because index M5 canonical coverage is far worse
-    than equities' own (2026-08-29).** ID-4's own real-data audit (read-only,
-    production retrieval path — no test-only limit) found the market
-    benchmark (`NSE:NIFTY 50`) and all 8 sector-mapped indexes
+13. **`RelativeStrengthContext`'s comparative dimensions (sector/market/
+    every pairwise comparison) remain blocked by index M5 canonical
+    coverage; stock's own dimension does not (2026-08-29, corrected
+    ID-4.1).** ID-4's real-data audit found the market benchmark
+    (`NSE:NIFTY 50`) and all 8 sector-mapped indexes
     (`config/sector_index_mapping.json`) each fetched 109 real M5 rows for
     the checked session but had only **1/75 canonical M5 slots** (09:15
     only — the very next real row is off-grid `09:43:55`), materially worse
     than the equity-side drift item 12 found (which stays clean through 5
-    canonical slots before onset). Because `RelativeStrengthEngine`'s
-    `comparison_cutoff_ts` is the minimum across whichever constituents are
-    available (by design — never an asynchronous per-constituent
-    endpoint), the market benchmark's single-bar coverage drags the GLOBAL
-    cutoff down to `09:15` for every candidate regardless of how much
-    better that candidate's own stock/sector canonical coverage is; since
-    `09:15` is also every constituent's own opening reference, every
-    "closing point" collapses onto its own opening bar, correctly
-    triggering the same-bar-unavailable rule. Measured result: 0/526 real
-    active candidates had `stock_available`/`sector_available`/
-    `market_available` — every relation `UNKNOWN`. This is a genuine data
-    limitation, not an engine defect: 17 synthetic tests (7 non-vacuously
-    verified) prove the engine produces real, verifiable, non-degenerate
-    values whenever canonical data genuinely supports a comparison, and the
-    owner_validation integration test confirms this with seeded clean
-    index M5 data. Not fixed or worked around here — no nearest-neighbor/
-    alignment rule was invented, per explicit instruction; flagged for an
-    owner decision (e.g. improve index M5 ingestion quality, or relax
-    comparison granularity to M15) before this evidence is practically
-    useful. See the ID-4 Milestone Review Summary for the full evidence.
+    canonical slots before onset). ID-4's ORIGINAL engine let this
+    opening-only index data drag the GLOBAL `comparison_cutoff_ts` down to
+    `09:15` for every candidate regardless of how much better that
+    candidate's own stock/sector canonical coverage was — collapsing
+    `stock_available` to 0/526 too, an ENGINE artifact, not a data
+    limitation. ID-4.1 fixed this (`_ConstituentSeries.can_form_return` —
+    only constituents that can genuinely form a return may contribute to
+    the cutoff). Re-measured on the identical production retrieval path:
+    **stock_return available for 526/526 real active candidates**
+    (engine effect resolved); **sector_return/market_return/every
+    pairwise comparison remain 0/526** — the genuine, now cleanly isolated
+    data effect: the market benchmark and all 8 mapped sector indexes are
+    still opening-only. Not fixed or worked around here — no
+    nearest-neighbor/resampling/forward-fill/alignment rule was invented,
+    per explicit instruction; recommended next step is an index-M5
+    data-quality/remediation prerequisite before an RS-dependent or
+    comparison-methodology milestone. See the ID-4 and ID-4.1 Milestone
+    Review Summaries for the full evidence.
 
 ---
 

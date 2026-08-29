@@ -227,13 +227,13 @@ def test_16_forming_candle_cannot_alter_stock_return(engine, calendar, sessions_
 def test_17_off_grid_stock_candle_cannot_become_the_comparison_endpoint(engine, calendar, sessions_cfg):
     """Stock has only its canonical 09:15 bar plus an off-grid 09:23 bar
     with an extreme close -- 09:20/09:25/09:30 are genuinely missing for
-    the stock. Market/sector have full clean coverage through 09:30/09:25.
-    The off-grid 09:23 bar must never become the stock's "latest canonical"
+    the stock, so it is NOT comparable (opening-only). Market/sector have
+    full clean coverage through 09:30/09:25 and ARE comparable. The
+    off-grid 09:23 bar must never become the stock's "latest canonical"
     endpoint (which would wrongly extend the cutoff and use its extreme
-    price) -- the common cutoff must correctly collapse to 09:15 (the
-    stock's only genuine canonical bar), making ALL THREE returns honestly
-    unavailable (a zero-duration comparison), not a fabricated one using
-    the off-grid extreme."""
+    price) -- but per ID-4.1, the stock's own non-comparability must NOT
+    drag market/sector down with it either: their own genuinely valid
+    comparison must survive, with only the stock honestly unavailable."""
     market = [_c(MARKET_ID, 9, 15, open_=1000, close=1000), _c(MARKET_ID, 9, 20, open_=1000, close=1010),
               _c(MARKET_ID, 9, 25, open_=1010, close=1015), _c(MARKET_ID, 9, 30, open_=1015, close=1020)]
     sector = [_c(SECTOR_ID, 9, 15, open_=500, close=500), _c(SECTOR_ID, 9, 20, open_=500, close=505),
@@ -245,13 +245,20 @@ def test_17_off_grid_stock_candle_cannot_become_the_comparison_endpoint(engine, 
     as_of = datetime(2026, 8, 28, 9, 40, tzinfo=IST)
     gapped = _assess(engine, calendar, sessions_cfg, as_of=as_of, stock=stock_gapped,
                       market=market, sector=sector)
-    assert gapped.comparison_cutoff_ts == datetime(2026, 8, 28, 9, 15, tzinfo=IST)
+    # Cutoff = min(sector's own latest 09:25, market's own latest 09:30) --
+    # the off-grid 09:23 never enters, and the stock's non-comparability
+    # doesn't cap the window for the two genuinely comparable constituents.
+    assert gapped.comparison_cutoff_ts == datetime(2026, 8, 28, 9, 25, tzinfo=IST)
     assert gapped.stock_return_pct is None
-    assert gapped.market_return_pct is None
-    assert gapped.sector_return_pct is None
+    assert gapped.stock_available is False
+    assert gapped.sector_return_pct == Decimal("2")  # (510-500)/500*100 through 09:25
+    assert gapped.market_return_pct == Decimal("1.5")  # (1015-1000)/1000*100 through 09:25
+    assert gapped.sector_vs_market_relation is RelativeStrengthRelation.OUTPERFORMING
+    assert gapped.stock_vs_sector_relation is RelativeStrengthRelation.UNKNOWN
+    assert gapped.stock_vs_market_relation is RelativeStrengthRelation.UNKNOWN
 
     # Same market/sector data, but the stock's gap is filled with genuine
-    # canonical bars instead -- the comparison resolves normally.
+    # canonical bars instead -- the stock also resolves normally.
     stock_clean = [
         _c(STOCK_ID, 9, 15, open_=100, close=100), _c(STOCK_ID, 9, 20, open_=100, close=101),
         _c(STOCK_ID, 9, 25, open_=101, close=102), _c(STOCK_ID, 9, 30, open_=102, close=103),
@@ -260,6 +267,158 @@ def test_17_off_grid_stock_candle_cannot_become_the_comparison_endpoint(engine, 
                      market=market, sector=sector)
     assert clean.comparison_cutoff_ts == datetime(2026, 8, 28, 9, 25, tzinfo=IST)
     assert clean.stock_return_pct is not None
+
+
+# --------------------------------------------------------------------------- #
+# ID-4.1 — comparable-constituent cutoff / partial-availability correctness.
+# An opening-only constituent (real production shape: an index whose
+# canonical M5 coverage is just its own first bar) must never cap the
+# common cutoff for OTHER, genuinely comparable constituents. This test
+# block fails against the pre-ID-4.1 implementation (verified by reverting
+# the fix and confirming the failures, then restoring it).
+# --------------------------------------------------------------------------- #
+
+def test_id41_1_opening_only_market_does_not_cap_stock_and_sector_cutoff(engine, calendar, sessions_cfg):
+    """ID-4.1 §10's exact real-production case: market has only its
+    session-opening canonical bar; stock and sector both have genuine
+    later bars. Market must be unavailable WITHOUT erasing stock/sector's
+    own valid comparison."""
+    market = [_c(MARKET_ID, 9, 15, open_=1000, close=1000)]  # opening-only
+    sector = [_c(SECTOR_ID, 9, 15, open_=500, close=500), _c(SECTOR_ID, 9, 20, open_=500, close=505)]
+    stock = [_c(STOCK_ID, 9, 15, open_=100, close=100), _c(STOCK_ID, 9, 20, open_=100, close=103),
+             _c(STOCK_ID, 9, 25, open_=103, close=106)]
+    as_of = datetime(2026, 8, 28, 9, 40, tzinfo=IST)
+    rs = _assess(engine, calendar, sessions_cfg, as_of=as_of, stock=stock, market=market, sector=sector)
+    assert rs.market_available is False
+    assert rs.market_return_pct is None
+    assert rs.stock_available is True
+    assert rs.sector_available is True
+    assert rs.comparison_cutoff_ts == datetime(2026, 8, 28, 9, 20, tzinfo=IST)  # sector's own latest
+    assert rs.stock_return_pct == Decimal("3")  # through stock's own 09:20 bar
+    assert rs.sector_return_pct == Decimal("1")
+    assert rs.stock_vs_sector_relation is RelativeStrengthRelation.OUTPERFORMING
+    assert rs.stock_vs_market_relation is RelativeStrengthRelation.UNKNOWN
+    assert rs.sector_vs_market_relation is RelativeStrengthRelation.UNKNOWN
+
+
+def test_id41_2_opening_only_sector_does_not_cap_stock_and_market_cutoff(engine, calendar, sessions_cfg):
+    sector = [_c(SECTOR_ID, 9, 15, open_=500, close=500)]  # opening-only
+    market = [_c(MARKET_ID, 9, 15, open_=1000, close=1000), _c(MARKET_ID, 9, 20, open_=1000, close=1010)]
+    stock = [_c(STOCK_ID, 9, 15, open_=100, close=100), _c(STOCK_ID, 9, 20, open_=100, close=103),
+             _c(STOCK_ID, 9, 25, open_=103, close=106)]
+    as_of = datetime(2026, 8, 28, 9, 40, tzinfo=IST)
+    rs = _assess(engine, calendar, sessions_cfg, as_of=as_of, stock=stock, market=market, sector=sector)
+    assert rs.sector_available is False
+    assert rs.sector_return_pct is None
+    assert rs.stock_available is True
+    assert rs.market_available is True
+    assert rs.comparison_cutoff_ts == datetime(2026, 8, 28, 9, 20, tzinfo=IST)  # market's own latest
+    assert rs.stock_return_pct == Decimal("3")
+    assert rs.market_return_pct == Decimal("1")
+    assert rs.stock_vs_market_relation is RelativeStrengthRelation.OUTPERFORMING
+    assert rs.stock_vs_sector_relation is RelativeStrengthRelation.UNKNOWN
+    assert rs.sector_vs_market_relation is RelativeStrengthRelation.UNKNOWN
+
+
+def test_id41_3_opening_only_market_and_sector_do_not_erase_valid_stock_return(engine, calendar, sessions_cfg):
+    """ID-4.1 §11's exact case: only stock is comparable. Its own return
+    must survive even though NO pairwise comparison is possible."""
+    market = [_c(MARKET_ID, 9, 15, open_=1000, close=1000)]
+    sector = [_c(SECTOR_ID, 9, 15, open_=500, close=500)]
+    stock = [_c(STOCK_ID, 9, 15, open_=100, close=100), _c(STOCK_ID, 9, 20, open_=100, close=103),
+             _c(STOCK_ID, 9, 25, open_=103, close=106)]
+    as_of = datetime(2026, 8, 28, 9, 40, tzinfo=IST)
+    rs = _assess(engine, calendar, sessions_cfg, as_of=as_of, stock=stock, market=market, sector=sector)
+    assert rs.stock_available is True
+    assert rs.stock_return_pct == Decimal("6")  # (106-100)/100*100 through stock's own latest, 09:25
+    assert rs.comparison_cutoff_ts == datetime(2026, 8, 28, 9, 25, tzinfo=IST)
+    assert rs.market_available is False
+    assert rs.sector_available is False
+    assert rs.stock_vs_sector_relation is RelativeStrengthRelation.UNKNOWN
+    assert rs.stock_vs_market_relation is RelativeStrengthRelation.UNKNOWN
+    assert rs.sector_vs_market_relation is RelativeStrengthRelation.UNKNOWN
+
+
+def test_id41_4_market_no_candles_matches_market_opening_only_availability(engine, calendar, sessions_cfg):
+    """Data presence is not return availability (§5): a market with ZERO
+    rows and a market with ONLY its opening row must produce the SAME
+    availability outcome for the rest of the context."""
+    sector = [_c(SECTOR_ID, 9, 15, open_=500, close=500), _c(SECTOR_ID, 9, 20, open_=500, close=505)]
+    stock = [_c(STOCK_ID, 9, 15, open_=100, close=100), _c(STOCK_ID, 9, 20, open_=100, close=103)]
+    as_of = datetime(2026, 8, 28, 9, 30, tzinfo=IST)
+    no_candles = _assess(engine, calendar, sessions_cfg, as_of=as_of, stock=stock,
+                          market=[], sector=sector)
+    opening_only = _assess(engine, calendar, sessions_cfg, as_of=as_of, stock=stock,
+                            market=[_c(MARKET_ID, 9, 15, open_=1000, close=1000)], sector=sector)
+    assert no_candles.market_available == opening_only.market_available is False
+    assert no_candles.stock_return_pct == opening_only.stock_return_pct == Decimal("3")
+    assert no_candles.comparison_cutoff_ts == opening_only.comparison_cutoff_ts
+
+
+def test_id41_5_sector_no_candles_matches_sector_opening_only_availability(engine, calendar, sessions_cfg):
+    market = [_c(MARKET_ID, 9, 15, open_=1000, close=1000), _c(MARKET_ID, 9, 20, open_=1000, close=1010)]
+    stock = [_c(STOCK_ID, 9, 15, open_=100, close=100), _c(STOCK_ID, 9, 20, open_=100, close=103)]
+    as_of = datetime(2026, 8, 28, 9, 30, tzinfo=IST)
+    no_candles = _assess(engine, calendar, sessions_cfg, as_of=as_of, stock=stock,
+                          market=market, sector=[])
+    opening_only = _assess(engine, calendar, sessions_cfg, as_of=as_of, stock=stock,
+                            market=market, sector=[_c(SECTOR_ID, 9, 15, open_=500, close=500)])
+    assert no_candles.sector_available == opening_only.sector_available is False
+    assert no_candles.stock_return_pct == opening_only.stock_return_pct == Decimal("3")
+    assert no_candles.comparison_cutoff_ts == opening_only.comparison_cutoff_ts
+
+
+def test_id41_6_missing_stock_opening_preserves_valid_sector_vs_market(engine, calendar, sessions_cfg):
+    """ID-4.1 §12: stock has later canonical bars but no exact
+    session-open candle -- its own return is unavailable, but sector-vs-
+    market must not be affected."""
+    stock = [_c(STOCK_ID, 9, 20, open_=100, close=103), _c(STOCK_ID, 9, 25, open_=103, close=106)]
+    market = [_c(MARKET_ID, 9, 15, open_=1000, close=1000), _c(MARKET_ID, 9, 20, open_=1000, close=1010)]
+    sector = [_c(SECTOR_ID, 9, 15, open_=500, close=500), _c(SECTOR_ID, 9, 20, open_=500, close=505)]
+    as_of = datetime(2026, 8, 28, 9, 30, tzinfo=IST)
+    rs = _assess(engine, calendar, sessions_cfg, as_of=as_of, stock=stock, market=market, sector=sector)
+    assert rs.stock_available is False
+    assert rs.stock_return_pct is None
+    assert rs.sector_available is True
+    assert rs.market_available is True
+    assert rs.sector_vs_market_relation is RelativeStrengthRelation.MATCHING
+    assert rs.stock_vs_sector_relation is RelativeStrengthRelation.UNKNOWN
+    assert rs.stock_vs_market_relation is RelativeStrengthRelation.UNKNOWN
+
+
+def test_id41_7_forming_later_bar_does_not_make_a_constituent_comparable(engine, calendar, sessions_cfg):
+    """A later candle that EXISTS in the raw input but hasn't completed
+    yet at as_of must not count toward comparability -- distinct from the
+    off-grid case (test 17), this is a genuinely canonical timestamp that
+    just isn't done forming. Market/sector are independently comparable via
+    their own completed 09:15/09:20 bars (as_of=9:27 >= 09:20+5m=09:25);
+    stock's 09:25 bar exists in the raw input but hasn't completed yet
+    (09:25+5m=09:30 > 9:27), so stock is still opening-only."""
+    market = [_c(MARKET_ID, 9, 15, open_=1000, close=1000), _c(MARKET_ID, 9, 20, open_=1000, close=1010)]
+    sector = [_c(SECTOR_ID, 9, 15, open_=500, close=500), _c(SECTOR_ID, 9, 20, open_=500, close=505)]
+    stock_with_forming_bar = [
+        _c(STOCK_ID, 9, 15, open_=100, close=100), _c(STOCK_ID, 9, 25, open_=100, close=999),
+    ]
+    still_forming = datetime(2026, 8, 28, 9, 27, tzinfo=IST)
+    rs = _assess(engine, calendar, sessions_cfg, as_of=still_forming,
+                 stock=stock_with_forming_bar, market=market, sector=sector)
+    assert rs.stock_available is False
+    assert rs.comparison_cutoff_ts == datetime(2026, 8, 28, 9, 20, tzinfo=IST)  # from sector/market only
+
+
+def test_id41_8_exact_completion_boundary_makes_a_constituent_comparable(engine, calendar, sessions_cfg):
+    market = [_c(MARKET_ID, 9, 15, open_=1000, close=1000), _c(MARKET_ID, 9, 20, open_=1000, close=1010)]
+    sector = [_c(SECTOR_ID, 9, 15, open_=500, close=500), _c(SECTOR_ID, 9, 20, open_=500, close=505)]
+    stock = [_c(STOCK_ID, 9, 15, open_=100, close=100), _c(STOCK_ID, 9, 20, open_=100, close=103)]
+    one_second_before = datetime(2026, 8, 28, 9, 24, 59, tzinfo=IST)
+    at_boundary = datetime(2026, 8, 28, 9, 25, 0, tzinfo=IST)  # 09:20+5m=09:25 -- exact completion
+    before = _assess(engine, calendar, sessions_cfg, as_of=one_second_before, stock=stock,
+                      market=market, sector=sector)
+    at = _assess(engine, calendar, sessions_cfg, as_of=at_boundary, stock=stock,
+                 market=market, sector=sector)
+    assert before.stock_available is False  # 09:20 not yet completed at 09:24:59
+    assert at.stock_available is True
+    assert at.stock_return_pct == Decimal("3")
 
 
 # --------------------------------------------------------------------------- #

@@ -28,8 +28,9 @@ never auto-continuing past an owner approval gate.
 | ID-2.1 | Corrective: `ind_stage`'s VWAP/confluence inputs did not filter through ID-1's completed-candle rule, so a still-forming 5m/15m bar could silently influence them even though `SessionContext` already knew it wasn't complete. Fix input-time correctness only — no VWAP formula, confluence period, or scoring weight/bonus changed. Also: rename the disagreement trend label `NEUTRAL` → `MIXED` (owner decision) | ✅ Owner approved 2026-08-29 — one authoritative `athena.session.completed_candles()` filter now governs both VWAP and confluence; full suite green (2,768 passed, 1 pre-existing skip) |
 | ID-3 | Opening Range Intelligence — `OpeningRangeEvidence` (OR15/OR30 parallel windows, neither canonical) as new typed evidence in `IntradaySignalSet`. First genuinely new intraday methodology, still evidence-only: no Decision gate, no TradePlan change, no EntryQualification | ✅ Architecture + ORB evidence contract accepted 2026-08-29 — **not fully closed**: two production correctness issues found in owner code review (shared `limit=100` candle retrieval; ORB slot-count-vs-canonical-slot completeness), fixed by ID-3.1 below |
 | ID-3.1 | Corrective: (A) session-scoped candle reads (`session_stage`, VWAP, ORB) used a fixed `list_candles_recent(limit=100)`, proven by ID-3's own real-data check to silently drop a session's own opening bars on a high-row-density day; (B) `OpeningRangeEngine` judged range completeness by raw in-window row count, so an off-grid timestamp could substitute for a genuinely missing canonical slot. Fix retrieval semantics + canonical-slot integrity only — no new signal methodology, no scoring/Decision/TradePlan change | ✅ Owner approved 2026-08-29 — bounded `get_candles()` reads (no new repository method) + `OpeningRangeEngine._canonical_slots()`; real-data acceptance check on the production retrieval path: OR15 526/526 COMPLETE, OR30 3/526 COMPLETE (523 honestly INCOMPLETE_DATA — a real, previously-masked finding, not a regression); full suite green (2,806 passed, 1 pre-existing skip) |
-| ID-4 | Market → sector → stock `RelativeStrengthContext` — point-in-time comparative performance evidence, not RSI, not a scoring input, not a market→sector→stock gating chain | 🔄 Ready for review 2026-08-29 — `athena.intraday.relative_strength_engine.RelativeStrengthEngine`; engine proven correct via 19 tests, full suite green (2,825 passed, 1 pre-existing skip); real-data audit found a severe data limitation (see summary below), reported not worked around. Recommendation: ID-4 READY FOR OWNER REVIEW |
-| ID-5 | TBD, pending owner direction after ID-4 review | Planned |
+| ID-4 | Market → sector → stock `RelativeStrengthContext` — point-in-time comparative performance evidence, not RSI, not a scoring input, not a market→sector→stock gating chain | ✅ Architecture accepted 2026-08-29 — **not fully closed**: a common-cutoff/partial-availability correctness issue found in owner code review (an opening-only constituent could drag the whole comparison down), fixed by ID-4.1 below |
+| ID-4.1 | Corrective: `RelativeStrengthEngine`'s comparison cutoff was computed from any constituent with at least one canonical bar, not only constituents that can actually form a return — on the real snapshot this let opening-only market/sector indexes collapse EVERY stock's own otherwise-valid session return to unavailable. Fix comparable-constituent cutoff semantics only — no public contract change, no scoring/Decision/TradePlan change, no index M5 data repair | ✅ Owner approved 2026-08-29 — `_ConstituentSeries.can_form_return`; real-data re-audit on the production retrieval path: stock_return now 526/526 available (was 0/526 — an engine artifact, now resolved); sector/market/every pairwise comparison remain 0/526 (a genuine, now-isolated index M5 data limitation); full suite green (2,833 passed, 1 pre-existing skip). Recommendation: an index-M5 data-quality prerequisite before the next RS-dependent milestone |
+| ID-5 | TBD — likely an index-M5 data-quality/remediation prerequisite (per ID-4.1's recommendation), pending owner decision | Planned |
 
 **ID-0 headline findings (full detail in the report):** (1) `intraday_candles()`
 is genuinely live across all six runtime flows and already reaches
@@ -209,20 +210,45 @@ sector mapping, and vice versa) — `UNKNOWN` is never substituted with
 proven not to perturb the six pre-existing structural stages' order.
 Market-benchmark and sector-index M5 series are fetched ONCE per run
 (shared across the whole universe / each sector's stocks), not per stock.
-A real-data audit (read-only, production retrieval path) found a severe
-limitation: the market benchmark and all 8 mapped sector indexes each have
-only 1/75 canonical M5 slots on the checked real session (worse than
-equities' own drift, which stays clean through 5 slots) — because the
-comparison cutoff is the minimum across constituents, this collapses
-`RelativeStrengthContext` to universally unavailable (0/526
-stock/sector/market_available) in live production RIGHT NOW. This is a
-genuine, honestly-reported data limitation, not an engine defect — the
-engine was proven correct via 17 synthetic tests and produces real,
-verifiable values whenever canonical data genuinely supports a comparison.
-No nearest-neighbor/alignment workaround was invented to make the finding
-disappear, per explicit instruction; flagged for an owner decision (e.g.
-improve index M5 ingestion, or relax comparison granularity) rather than
-silently changed. Full suite: 2,825 passed, 1 pre-existing skip.
+A real-data audit (read-only, production retrieval path) found the market
+benchmark and all 8 mapped sector indexes each have only 1/75 canonical M5
+slots on the checked real session (worse than equities' own drift, which
+stays clean through 5 slots) — the comparison cutoff at the time was
+computed as the minimum across ALL constituents with any canonical bar,
+which (owner review found, ID-4.1) let this opening-only index data
+collapse `RelativeStrengthContext` to universally unavailable, including
+stocks whose own data was perfectly fine. **Corrected in ID-4.1 — see
+below; do not read this paragraph's original "0/526 universal collapse"
+finding as a pure data limitation, it was substantially an engine
+artifact.** Full suite: 2,825 passed, 1 pre-existing skip.
+
+**ID-4.1 summary (full detail in the Milestone Review Summary given to
+the owner in-chat, 2026-08-29):** owner code review of ID-4 found the
+common-cutoff computation used ANY constituent with at least one
+canonical bar, not only constituents that can actually form a return —
+conflating data presence with return availability (an opening-only
+constituent has a genuine session-open bar but no later one, so it can
+never itself produce a return, yet its single timestamp was still allowed
+to cap the shared window for every other constituent). Fixed with one new
+property, `_ConstituentSeries.can_form_return` (opening exists AND a later
+canonical bar exists) — `comparison_cutoff_ts` is now the minimum of only
+comparable constituents' own latest bar (`None` if none are comparable).
+`_return()` itself needed no change: once fed a correctly-computed cutoff,
+its existing same-bar-unavailable logic already produces the right answer
+for every constituent. No public contract change. Proven non-vacuously (6
+of 8 new tests fail against the reverted fix). Real-data re-audit on the
+identical production retrieval path/as_of as ID-4's own check now shows a
+precise, dimension-level truth: **stock_return available for 526/526 real
+candidates** (was 0/526 — the engine bug, now resolved) while
+sector_return/market_return/every pairwise comparison remain 0/526 — a
+genuine, now cleanly isolated index-M5 data-quality limitation (market
+benchmark and all 8 sector indexes still opening-only; unchanged, not
+touched here — no nearest-neighbor/resampling/forward-fill workaround
+introduced). Recommendation: an index-M5 data-quality/remediation
+prerequisite before the next RS-dependent or comparison-methodology
+milestone, rather than proceeding directly into further signal
+methodology while comparative evidence stays structurally unavailable.
+Full suite: 2,833 passed, 1 pre-existing skip.
 
 ## Explosive Move Radar Research Track (accepted 2026-08-21)
 
