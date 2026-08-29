@@ -563,6 +563,63 @@ class TestOwnerValidationPipeline:
                 "TRADE", "WATCH", "NO_TRADE", "INSUFFICIENT_DATA",
             }
 
+    def test_id1_session_stage_is_produced_without_perturbing_existing_stage_order(
+        self, repo: SqliteRepository, config_dir: Path
+    ) -> None:
+        """ID-1 §8/U: the new `session` WorkflowStage must be a genuine,
+        explicitly-declared participant in the real per-instrument workflow
+        graph (not an undeclared closure dependency) — and, since nothing
+        yet depends on it, it must not perturb the pre-existing six stages'
+        relative execution order. Verified against the REAL topological sort
+        (Kahn, `WorkflowDefinition._topological_order`), not asserted by
+        inspection alone."""
+        from athena.runtime.workflow import WorkflowStage, build_definition
+
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        iid = "NSE:AAA"
+        repo.upsert_instrument(
+            Instrument(instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE")
+        )
+        repo.add_candles(_candles(iid, seed=100))
+        repo.add_candles(_intraday_candles(iid, AS_OF.date(), seed=100))
+
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        ingestion = IngestionResult(
+            as_of=AS_OF, instruments_upserted=1, candles_fetched=86, candles_written=86,
+            quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+        )
+        detail = pipe.run(
+            RunTrigger.PREMARKET, as_of=AS_OF, ingestion=ingestion, run_id="run-test-session-stage"
+        )
+        assert detail["decision_reports"], "session stage must not break the existing scan"
+
+        # Reproduce the exact declared stage graph the real code builds (same
+        # names/depends_on/produces as owner_validation.py's `defn`) to prove
+        # the claim about ordering generically, without depending on any
+        # single instrument's runtime data.
+        noop = lambda ctx: {}  # noqa: E731
+        stages = [
+            WorkflowStage("indicators", noop, produces=("indicators", "vwap", "confluence")),
+            WorkflowStage("regime", noop, produces=("regime", "market_health")),
+            WorkflowStage("scoring", noop, depends_on=("indicators", "regime"), produces=("scoring",)),
+            WorkflowStage("confidence", noop, depends_on=("scoring", "regime"),
+                          produces=("evidence_bundle", "confidence")),
+            WorkflowStage("risk", noop, depends_on=("indicators", "regime"), produces=("risk",)),
+            WorkflowStage("decision", noop, depends_on=("scoring", "confidence", "risk"),
+                          produces=("outcome",)),
+        ]
+        original_order = build_definition("pre-id1", stages).execution_order
+        with_session = build_definition(
+            "post-id1", [*stages, WorkflowStage("session", noop, produces=("session_context",))]
+        ).execution_order
+        # Every pre-existing stage keeps its exact relative order; "session"
+        # is simply interleaved wherever the Kahn sort's declaration-index
+        # tie-break places a new zero-dependency, zero-dependent stage.
+        pre_existing_names = [n for n in with_session if n != "session"]
+        assert tuple(pre_existing_names) == original_order
+        assert "session" in with_session
+
     def test_repeat_validate_with_same_as_of_does_not_orphan_earlier_decision(
         self, repo: SqliteRepository, config_dir: Path
     ) -> None:

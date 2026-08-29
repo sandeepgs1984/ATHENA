@@ -6,6 +6,169 @@ status updated on approval.
 
 ---
 
+## ID-1 — Intraday Data Semantics & Session Context Foundation
+
+**Summary.** ID-P0.1 was owner-approved. This is the first real
+implementation milestone of the Intraday Intelligence program — foundation
+only, no trading signal, no scoring/threshold change. It makes ATHENA's
+already-live intraday candles trustworthy and explicitly session-aware for
+future (ID-2+) consumption: explicit intraday provenance, deterministic
+completed-candle semantics, a `SessionContext` artifact, and explicit
+session-data-quality UNKNOWN semantics.
+
+**Storage contract verified first, not redesigned.** `candles` table PK is
+`(instrument_id, timeframe, ts_open)` (confirmed against the real DDL);
+`Candle`/`Quote`/`CalendarContext` domain objects and their exact fields
+were read directly from `domain/market.py`; `MarketConfig.sessions`
+(`config/market.nse.json`: `preopen_start=09:00`, `preopen_end=09:08`,
+`open=09:15`, `close=15:30`) and `CalendarEngine.context_for()`'s real
+open/close-per-day behavior (including special/Muhurat sessions with
+`open=None`/`close=None`) were read directly, not assumed. No schema
+redesign — one small, justified addition: `SqliteRepository.get_latest_quote()`
+(bounded `ORDER BY ts DESC LIMIT 1`, same PK index `get_quotes()` already
+uses, no new index/schema).
+
+**New `athena.session` package** (`models.py`, `engine.py`, `__init__.py`):
+- `TimeframeProvenance` — a **reusable** provenance contract (instrument,
+  timeframe, session date, source-candle window, `as_of`, latest completed
+  bar, bar count, data-quality status, mandatory explanation) — generic
+  over timeframe, not session-specific, so a future intraday indicator
+  wrapper can reuse it instead of inventing its own. Chosen over extending
+  `IndicatorResult` directly, to avoid touching the frozen daily indicator
+  contract for an intraday-only concern.
+- `SessionContext` — session identity/phase/open-close/elapsed-remaining/
+  latest-quote-ts, embedding two `TimeframeProvenance` instances (5m, 15m).
+- `SessionPhase` (`NOT_A_TRADING_SESSION`/`PRE_OPEN`/`REGULAR`/`CLOSED`) —
+  derived **only** from `CalendarContext.open_time`/`close_time` (varies
+  correctly for a special session) and the real, already-existing
+  `preopen_start`/`preopen_end` config — no invented sub-windows ("power
+  hour" etc. explicitly not modeled).
+- `SessionDataQualityStatus` (`SUFFICIENT`/`SESSION_NOT_ACTIVE`/
+  `TIMEFRAME_UNAVAILABLE`/`NO_CURRENT_SESSION_DATA`/`INSUFFICIENT_HISTORY`/
+  `EXPECTED_BAR_MISSING`/`QUOTE_UNAVAILABLE`) — each objectively derivable
+  (no arbitrary numeric threshold): `EXPECTED_BAR_MISSING` reuses the
+  **existing** `data/validation/calendar_expectations.expected_intraday_opens`
+  contract (the same calendar authority ingestion-time gap validation
+  already trusts) instead of inventing a parallel gap-detection scheme.
+- `is_candle_completed`/`latest_completed_candle` — the critical primitive:
+  a bar is completed only once `ts_open + timeframe_duration <= as_of`,
+  deterministic from `ts_open`/`timeframe`/`as_of` alone, no wall clock.
+  Proven at the exact boundary (`==` included, one second earlier excluded)
+  and against a real forming-bar scenario.
+
+**Workflow integration (ADR-003 Amendment 1).** A new `session` `WorkflowStage`
+(`produces=("session_context",)`, no `depends_on`) is wired into
+`OwnerValidationPipeline._scan_eligible`'s real per-instrument graph —
+genuinely live every cycle, not a demo. Declared **last** in the stage
+list specifically so Kahn's declaration-index tie-break cannot reorder the
+pre-existing six stages relative to each other; proven directly (not just
+asserted) by reconstructing both the pre- and post-ID-1 graphs and diffing
+their real `execution_order`. Nothing consumes `session_context` yet — no
+`ScanCapture`/`DecisionReport` field added for it, matching "foundation,
+not yet consumed downstream."
+
+**Regression evidence for existing scoring (unchanged).** The full
+pre-existing test suite — including
+`test_vwap_flows_into_score_without_affecting_confidence`,
+`test_confluence_flows_into_score_without_affecting_confidence`,
+`test_sector_health_wired_into_scoring_evidence_and_decision_trace`, and
+every other `owner_validation`/`decision`/`scoring` test — passes
+**unmodified**. Since `WorkflowEngine.execute()` marks a whole instrument's
+result `FAILED` (deleting its `Decision` from the returned report) if
+**any** declared stage doesn't reach `COMPLETED` — including an
+unconsumed, dependency-free one — every one of these tests already is a
+real regression proof: had `session_stage` thrown for any of their
+fixtures (no intraday data, thin 15m data, no sector, unmapped sector,
+etc.), the corresponding instrument's decision would have vanished from
+`decision_reports` and the test would have failed. None did.
+
+**Persistence decision.** `SessionContext` is **not** separately
+persisted. It is a pure function of already-canonical, already-persisted
+data (candles, quotes, static calendar/session config) plus the injected
+`as_of` — fully reconstructable at any time, exactly like `RegimeResult`/
+`MarketHealthResult`, neither of which gets its own table either.
+
+**Point-in-time replay boundary.** Every `athena.session` function/method
+takes `as_of` as an explicit, required parameter — nothing reads a
+"latest" value internally or falls back to a wall clock. This does not
+solve ID-P0.1's found gap (`list_candles_recent()` has no historical
+cutoff); it deliberately avoids making that gap any worse, so a future
+point-in-time replay milestone inherits one fewer thing to fix, not one more.
+
+**Files created.** `src/athena/session/__init__.py`,
+`src/athena/session/models.py`, `src/athena/session/engine.py`,
+`tests/market_intel/test_session_context.py` (25 tests).
+
+**Files modified.** `src/athena/ops/owner_validation.py` (new `session_stage`,
+new `calendar` parameter threaded into `_scan_eligible`),
+`src/athena/data/store/repository.py` (`get_latest_quote()`),
+`tests/ops/test_owner_validation.py` (1 new topological-order regression
+test), `docs/ATHENA-TECHNICAL-ARCHITECTURE.md` (§3.1 updated: 7 stages, not
+6), `docs/MILESTONES.md` (ID-P0.1 marked owner-approved, ID-1 added),
+`IMPLEMENTATION_SUMMARY.md` (this entry).
+
+**Tests added.** 26 new (25 `athena.session` unit tests + 1
+`owner_validation` topological-order regression test). Full suite:
+**2,743 passed, 1 skipped** (pre-existing, unrelated), 0 failed. Ruff
+clean on every new/modified file (pre-existing, unrelated `SIM117`
+warnings elsewhere in `repository.py` confirmed via diff to predate this
+change). `mypy` clean in its configured scope
+(`src/athena/domain`, `src/athena/config`).
+
+**Architecture compliance.** ADR-001/002/005/006/007/009/010/011/012 all
+unaffected. ADR-003 Amendment 1 followed exactly: the new stage is a
+`WorkflowStage` with explicit `depends_on`/`produces`, no undeclared
+closure dependency, no use of the dormant `PipelineContext`/`ContextDelta`/
+`IntelligenceModule` (the existing `tests/architecture/test_pipeline_mechanism_boundary.py`
+guard still passes). No `KiteProvider`/broker-specific type anywhere in
+`athena.session`. No order-placement code. Deterministic/replayable
+execution preserved — every new function takes `as_of` explicitly, no
+`datetime.now()`, no randomness. No EMR or DarvaX module imported,
+read, or referenced (`tests/darvax/test_dx1_isolation.py` and
+`tests/explosive_move/test_em5_isolation.py` both still pass unmodified).
+
+**Risks / technical debt.** None new. `session_stage`'s robustness against
+every currently-plausible failure mode was reasoned through explicitly
+(calendar-year coverage already guaranteed by an earlier `calendar_context_for()`
+call in `run()`; every dict/enum lookup uses only the two intraday
+timeframes it is ever called with) and confirmed by the full regression
+suite passing — but this reasoning, not a dedicated fault-injection test,
+is the evidence; noted for anyone reviewing this milestone.
+
+**Remaining work.** Owner review of this milestone; then ID-2 scope
+(the first real intraday signal work) pending explicit owner approval —
+not started here.
+
+**Commit message (for the owner to use, not run by the AI):**
+
+```
+feat(session): add ID-1 intraday provenance + SessionContext foundation
+
+- Add athena.session package: TimeframeProvenance (reusable intraday
+  provenance contract), SessionContext, SessionPhase, and
+  SessionDataQualityStatus -- all derived only from existing calendar/
+  session config, no invented trading windows or arbitrary thresholds
+- Add deterministic completed-candle semantics (is_candle_completed /
+  latest_completed_candle) so a still-forming 5m/15m bar can never be
+  read as closed -- proven at the exact ts_open+duration==as_of boundary
+- Reuse the existing calendar_expectations.expected_intraday_opens
+  contract for missing-bar detection instead of a new gap-detection path
+- Wire a new `session` WorkflowStage into OwnerValidationPipeline's real
+  per-instrument graph (ADR-003 Amendment 1), declared last so it cannot
+  perturb the six pre-existing stages' topological order -- proven by a
+  dedicated ordering-diff test, not just asserted
+- Add SqliteRepository.get_latest_quote() (bounded, existing PK index,
+  no schema change) so SessionContext can report real quote freshness
+- 26 new tests; full suite (2,743) green; existing VWAP/confluence/
+  scoring/confidence/risk/Decision/TradePlan tests pass unmodified as
+  live regression proof; no threshold, weight, or methodology touched
+```
+
+**Milestone status.** Ready for review. Awaiting owner approval before
+ID-2.
+
+---
+
 ## ID-P0.1 — Sector Health wiring replay impact validation (measurement only)
 
 **Summary.** ID-P0 was owner-approved. Before ID-1, this checkpoint

@@ -428,6 +428,22 @@ class SqliteRepository:
         )
         return [ser.row_to_quote(r) for r in rows]
 
+    def get_latest_quote(self, instrument_id: str) -> Quote | None:
+        """Most recent quote only (ID-1: `SessionContext.latest_quote_ts`).
+
+        `get_quotes()` returns the full unbounded history for an instrument —
+        fine for the callers that already use it, but wrong for a per-cycle,
+        per-instrument freshness read, which only ever needs the single
+        latest row. Bounded by the existing `(instrument_id, ts)` primary
+        key's index — no new index, no schema change.
+        """
+        rows = self._query_all(
+            "SELECT instrument_id, ts, last_price, volume, source FROM quotes "
+            "WHERE instrument_id=? ORDER BY ts DESC LIMIT 1",
+            (instrument_id,),
+        )
+        return ser.row_to_quote(rows[0]) if rows else None
+
     # ------------------------------------------------------------- market snapshots
 
     def add_snapshot(self, snapshot: MarketSnapshot) -> None:

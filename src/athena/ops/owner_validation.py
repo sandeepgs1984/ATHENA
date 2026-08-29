@@ -324,6 +324,7 @@ class OwnerValidationPipeline:
                 universe_result=result,
                 sector_results=sector_results,
                 instruments=instruments,
+                calendar=calendar,
             )
             scan_stats = {
                 "total": scan_report.statistics.total,
@@ -758,7 +759,10 @@ class OwnerValidationPipeline:
         universe_result=None,
         sector_results: Mapping[str, Any] | None = None,
         instruments: Sequence[Instrument] | None = None,
+        calendar: CalendarEngine | None = None,
     ):
+        from zoneinfo import ZoneInfo
+
         from athena.confidence import ConfidenceEngine
         from athena.config.loader import (
             load_confidence_config,
@@ -777,6 +781,7 @@ class OwnerValidationPipeline:
         from athena.runtime import WorkflowEngine, WorkflowStage, build_definition
         from athena.scanner import DailyMarketScanner, InstrumentPlan, ScanCapture
         from athena.scoring import ConfluenceInputs, ScoringEngine
+        from athena.session import SessionContextEngine
 
         scoring_cfg = load_scoring_config(self._config_dir)
         decision_cfg = load_decision_config(self._config_dir)
@@ -788,6 +793,8 @@ class OwnerValidationPipeline:
         market_health_engine = MarketHealthEngine(market_health_cfg)
         scoring_engine = ScoringEngine(scoring_cfg)
         confidence_engine = ConfidenceEngine(confidence_cfg)
+        session_engine = SessionContextEngine()
+        session_tzinfo = ZoneInfo(cfg.market.timezone)
         risk_engine = RiskEngine(risk_cfg)
         evidence_engine = EvidenceAggregationEngine()
         decision_engine = DecisionEngine(decision_cfg)
@@ -1007,6 +1014,33 @@ class OwnerValidationPipeline:
                 )
                 return {"outcome": True}
 
+            def session_stage(ctx):
+                # ID-1 foundation only: nothing downstream declares a
+                # dependency on "session_context" yet (no EntryQualification
+                # exists). Independent of every other stage by design — its
+                # own reads (5m/15m candles, latest quote), never touching
+                # ind_stage's closure-local intraday series, so it cannot
+                # perturb existing VWAP/confluence/scoring/decision behavior.
+                five_min_candles = self._repo.list_candles_recent(
+                    instrument_id, Timeframe.M5, limit=100
+                )
+                fifteen_min_candles = self._repo.list_candles_recent(
+                    instrument_id, Timeframe.M15, limit=100
+                )
+                latest_quote = self._repo.get_latest_quote(instrument_id)
+                session_context = session_engine.assess(
+                    instrument_id,
+                    as_of=ctx.as_of,
+                    exchange=self._exchange,
+                    calendar=calendar,
+                    sessions=cfg.market.sessions,
+                    tzinfo=session_tzinfo,
+                    five_min_candles=five_min_candles,
+                    fifteen_min_candles=fifteen_min_candles,
+                    latest_quote_ts=latest_quote.ts if latest_quote is not None else None,
+                )
+                return {"session_context": session_context}
+
             defn = build_definition(
                 f"owner-val-{instrument_id}",
                 [
@@ -1042,6 +1076,17 @@ class OwnerValidationPipeline:
                         dec_stage,
                         depends_on=("scoring", "confidence", "risk"),
                         produces=("outcome",),
+                    ),
+                    # ID-1 foundation stage. Declared LAST and with no
+                    # dependencies/dependents so it cannot change the
+                    # existing six stages' relative execution order (Kahn's
+                    # sort batches same-round-ready stages by declaration
+                    # index — see tests/market_intel/test_session_context.py
+                    # / tests/ops/test_owner_validation.py's ordering proof).
+                    WorkflowStage(
+                        "session",
+                        session_stage,
+                        produces=("session_context",),
                     ),
                 ],
             )

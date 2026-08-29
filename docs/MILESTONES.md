@@ -22,8 +22,9 @@ never auto-continuing past an owner approval gate.
 |---|---|---|
 | ID-0 | Runtime audit + architecture freeze — verify current data flow, `PipelineContext` reality, indicator reusability, Sector Health wiring, `TradePlan`/freshness machinery, and provider data availability; propose (not implement) the smallest architecture-compatible intraday extension | ✅ Approved with conditions 2026-08-29 — recommendation GO WITH CONDITIONS accepted; conditions addressed by ID-P0/ID-P0.1 below |
 | ID-P0 | Prerequisite: resolve the ADR-003 dormant-vs-live ambiguity + wire existing Sector Health into live scoring/evidence/decision — the two architectural inconsistencies ID-0 found, cleared before any new intraday stage is added | ✅ Owner approved 2026-08-29 — full suite green (2,717 passed, 1 pre-existing skip) |
-| ID-P0.1 | Measurement-only checkpoint: quantify the real historical decision/composite impact of activating Sector Health, via a deterministic replay against a scratch copy of the real production book — no tuning | 🔄 Ready for review 2026-08-29 — `docs/research/ID-P0.1-SECTOR-WIRING-REPLAY-IMPACT-REPORT.md`. Recommendation: ID-1 READY. Awaiting owner review |
-| ID-1 | TBD — scope proposed in the ID-0 report §15, pending owner approval | Planned |
+| ID-P0.1 | Measurement-only checkpoint: quantify the real historical decision/composite impact of activating Sector Health, via a deterministic replay against a scratch copy of the real production book — no tuning | ✅ Owner approved 2026-08-29 — measured impact accepted; no threshold recalibration performed |
+| ID-1 | Intraday Data Semantics & Session Context Foundation — explicit intraday provenance, deterministic completed-candle semantics, a `SessionContext` artifact, session-data-quality UNKNOWN semantics. Foundation only: no signals, no scoring/threshold change | 🔄 Ready for review 2026-08-29 — `athena.session` package + one new live `WorkflowStage`; full suite green (2,743 passed, 1 pre-existing skip). Recommendation: ID-1 READY FOR OWNER REVIEW |
+| ID-2 | TBD — first real intraday signal work (ORB/RVOL/etc.), pending owner approval of ID-1's scope | Planned |
 
 **ID-0 headline findings (full detail in the report):** (1) `intraday_candles()`
 is genuinely live across all six runtime flows and already reaches
@@ -41,6 +42,26 @@ bug, and a hard prerequisite for the proposed `RelativeStrengthContext`
 artifact. One documentation staleness found: `ATHENA-WORKFLOW-METHODOLOGY.md`
 still states FAST runs every 5 minutes / 400 symbols; live config has been
 10 minutes / 150 symbols since a 2026-08-10 incident-driven scale-back.
+
+**ID-1 summary (full detail in the Milestone Review Summary given to the
+owner in-chat, 2026-08-29):** new `athena.session` package
+(`SessionContextEngine`, `SessionContext`, `TimeframeProvenance`,
+`SessionPhase`, `SessionDataQualityStatus`) — a deterministic,
+calendar/config-derived (never invented-window) intraday foundation.
+Completed-candle semantics (`is_candle_completed`/`latest_completed_candle`)
+guarantee a forming bar can never leak into "latest completed" reads.
+Missing-bar detection reuses the existing `data/validation/calendar_expectations.py`
+contract rather than inventing a parallel gap scheme. Wired as a genuine,
+live, additively-declared `WorkflowStage` (`session`, no `depends_on`,
+nothing depends on it) inside `OwnerValidationPipeline._scan_eligible` —
+proven not to perturb the pre-existing six stages' topological order.
+Existing VWAP/confluence/scoring/confidence/risk/Decision/TradePlan
+behavior is unchanged (the full pre-existing regression suite, unmodified,
+still passes). No persistence added — `SessionContext` is fully
+reconstructable from already-canonical data, same as regime/market health.
+No ADR required — squarely within ADR-003 Amendment 1's already-approved
+canonical pattern. No signal, no gate, no threshold, no EntryQualification
+yet.
 
 ## Explosive Move Radar Research Track (accepted 2026-08-21)
 

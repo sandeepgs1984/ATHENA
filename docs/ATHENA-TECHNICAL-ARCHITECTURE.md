@@ -304,31 +304,46 @@ Verified against the code, this framing needs two corrections stated plainly
 rather than repeated — the actual architecture is more interesting than the
 one-line summary, and an implementation document should say so.
 
-### 3.1 The real per-instrument execution graph has 6 stages, not 8 or 11
+### 3.1 The real per-instrument execution graph has 7 stages (was 6; ID-1 added `session`), not 8 or 11
 
 `ATHENA_BRIEFING.md` describes "regime → market health → evidence → indicators
 → score → confidence → risk → decision" — 8 named stages. The actual live
 driver collapses two pairs of these into single computation steps. The real
-driver is `src/athena/ops/owner_validation.py`'s `builder()` closure (line
-818), which wires `WorkflowStage` objects (`src/athena/runtime/workflow.py:65`)
-into this dependency graph:
+driver is `src/athena/ops/owner_validation.py`'s `builder()` closure, which
+wires `WorkflowStage` objects (`src/athena/runtime/workflow.py:65`) into this
+dependency graph:
 
-1. **`ind_stage`** — indicators, VWAP, confluence (line 822)
-2. **`reg_stage`** — regime **and** market health computed together (line
-   886: `market_health_engine.assess(..., regime=regime)`)
-3. **`sco_stage`**, `depends_on=("indicators", "regime")` (line 910)
+1. **`ind_stage`** — indicators, VWAP, confluence
+2. **`reg_stage`** — regime **and** market health computed together
+   (`market_health_engine.assess(..., regime=regime)`)
+3. **`sco_stage`**, `depends_on=("indicators", "regime")`
 4. **`conf_stage`**, `depends_on=("scoring", "regime")` — evidence bundle
    **and** confidence computed together via `evidence_engine.aggregate()`
-   then `confidence_engine.assess()` (line 924)
-5. **`risk_stage`**, `depends_on=("indicators", "regime")` (line 942)
+   then `confidence_engine.assess()`
+5. **`risk_stage`**, `depends_on=("indicators", "regime")`
 6. **`dec_stage`**, `depends_on=("scoring", "confidence", "risk")`, which
-   persists the result via `self._repo.save_decision(...)` (line 976)
+   persists the result via `self._repo.save_decision(...)`
+7. **`session_stage`** (ID-1, 2026-08-29) — `produces=("session_context",)`,
+   no `depends_on`, nothing else depends on it. Computes a `SessionContext`
+   (`athena.session`) from the same 5m/15m candles + a bounded
+   `repo.get_latest_quote()` read — genuinely live every cycle, but purely
+   additive foundation work: no existing stage's inputs, outputs, or the
+   topological order among stages 1-6 changed. Declared **last** in the
+   stage list specifically so Kahn's declaration-index tie-break cannot
+   reorder stages 1-6 relative to each other (proven by
+   `tests/ops/test_owner_validation.py::test_id1_session_stage_is_produced_without_perturbing_existing_stage_order`,
+   which reconstructs both the pre- and post-ID-1 graphs and diffs their
+   real `execution_order`).
 
 Sector health and universe are computed **once per run**, not per instrument —
-`universe_engine.build(...)` at `ops/owner_validation.py:170` and
-`SectorHealthEngine(sector_cfg).assess_many(...)` at line 278 — feeding a
-shared payload into the per-instrument graph above rather than appearing as
-stages in it.
+`universe_engine.build(...)` and `SectorHealthEngine(sector_cfg).assess_many(...)`
+in `OwnerValidationPipeline.run()` — feeding a shared payload into the
+per-instrument graph above rather than appearing as stages in it. (Sector
+health *is* additionally resolved per-instrument, via `Instrument.sector`,
+inside `builder()` — see ADR-003 Amendment 1's SD-3 wiring, ID-P0 — but the
+`SectorHealthEngine.assess_many()` computation itself stays run-level.)
+`session_stage` is per-instrument (its own 5m/15m/quote reads vary by
+instrument), unlike sector/universe.
 
 The dependency *direction* the briefing describes is real and import-verified:
 `scoring/engine.py:20-32` imports from indicators/market_health/regime/
