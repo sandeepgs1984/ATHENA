@@ -380,6 +380,22 @@ class SqliteRepository:
         )
         return [ser.row_to_candle(r) for r in rows]
 
+    def earliest_candle_ts(self, instrument_id: str, timeframe: Timeframe) -> datetime | None:
+        """The earliest persisted `ts_open` for one instrument/timeframe, or
+        `None` if none exist -- an indexed MIN() seek on `idx_candles_range`
+        (instrument_id, timeframe, ts_open), not a table scan. Added for
+        ID-5D.1: lets a caller retrieve "all available history" for an
+        instrument without hardcoding a lookback-day count that would
+        silently become an undisclosed rolling-window policy once more
+        history accumulates than the hardcoded bound covers."""
+        row = self._query_one(
+            "SELECT MIN(ts_open) FROM candles WHERE instrument_id=? AND timeframe=?",
+            (instrument_id, timeframe.value),
+        )
+        if row is None or row[0] is None:
+            return None
+        return datetime.fromisoformat(row[0])
+
     def candles_for_instruments(
         self, instrument_ids: Sequence[str], timeframe: Timeframe, start: datetime, end: datetime
     ) -> dict[str, list[Candle]]:

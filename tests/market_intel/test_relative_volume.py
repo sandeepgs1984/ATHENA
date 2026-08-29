@@ -380,6 +380,101 @@ def test_29_30_no_threshold_or_trade_fields_on_the_contract():
     assert relation_values == {"ABOVE_BASELINE", "BELOW_BASELINE", "AT_BASELINE", "UNKNOWN"}
 
 
+# --------------------------------------------------------------------------- #
+# 31-35 (ID-5D.1) — current-session contiguous-prefix window correctness
+# --------------------------------------------------------------------------- #
+
+def test_31_current_session_missing_middle_slot_stops_the_contiguous_prefix(
+    engine, calendar, sessions_cfg
+):
+    """ID-5D.1 Issue A: 09:20 is missing between two present canonical
+    bars. The comparison window must stop at the last bar BEFORE the gap
+    (09:15 only) -- the 09:25 bar (with an extreme volume, to make any
+    leak obvious) must contribute ZERO, and the historical denominator
+    must likewise use only its own first 1 slot, not 2."""
+    today = [_m5(9, 15, 100), _m5(9, 25, 999999)]  # 09:20 missing
+    history = _prior_day_bars(date(2026, 8, 21), [50, 50, 50])
+    as_of = datetime(2026, 8, 28, 9, 30, tzinfo=IST)
+    rv = _assess(engine, calendar, sessions_cfg, as_of=as_of, candles=[*today, *history])
+    assert rv.current_canonical_bar_count == 1
+    assert rv.current_cumulative_volume == 100
+    assert rv.comparison_cutoff_ts == datetime(2026, 8, 28, 9, 15, tzinfo=IST)
+    assert rv.historical_average_cumulative_volume == Decimal(50)  # first 1 slot only
+
+
+def test_32_later_canonical_reappearance_does_not_extend_the_prefix(engine, calendar, sessions_cfg):
+    """ID-5D.1 §3: a real-shape drift pattern -- 5 clean canonical bars,
+    then a missing slot, an off-grid row, a still-forming row, and a
+    genuine canonical bar far later in the day. The window must stop at
+    the last of the first 5 bars; nothing after the gap may advance the
+    cumulative volume, bar count, or cutoff, regardless of what
+    reappears later."""
+    clean_prefix = [_m5(9, 15, 10), _m5(9, 20, 20), _m5(9, 25, 30), _m5(9, 30, 40), _m5(9, 35, 50)]
+    # 09:40 missing entirely (no row at all)
+    off_grid = _m5(9, 47, 999999)  # not a canonical 5m slot
+    later_canonical = _m5(15, 10, 999999)  # genuine canonical slot, far later
+    today = [*clean_prefix, off_grid, later_canonical]
+    history = _prior_day_bars(date(2026, 8, 21), [1, 2, 3, 4, 5])
+    as_of = datetime(2026, 8, 28, 15, 15, tzinfo=IST)  # well after 15:10 completes
+    rv = _assess(engine, calendar, sessions_cfg, as_of=as_of, candles=[*today, *history])
+    assert rv.current_canonical_bar_count == 5
+    assert rv.current_cumulative_volume == 10 + 20 + 30 + 40 + 50
+    assert rv.comparison_cutoff_ts == datetime(2026, 8, 28, 9, 35, tzinfo=IST)
+
+
+def test_33_still_forming_row_after_a_gap_does_not_extend_the_prefix(engine, calendar, sessions_cfg):
+    """Same shape as test_32 but the noise after the gap is a still-
+    forming (not-yet-completed) row rather than off-grid -- must have
+    identical zero effect."""
+    clean_prefix = [_m5(9, 15, 10), _m5(9, 20, 20)]
+    # 09:25 missing
+    forming_after_gap = _m5(9, 30, 999999)  # not yet completed at as_of below
+    history = _prior_day_bars(date(2026, 8, 21), [1, 2])
+    as_of = datetime(2026, 8, 28, 9, 34, tzinfo=IST)  # one minute before 09:30 completes
+    without_noise = _assess(
+        engine, calendar, sessions_cfg, as_of=as_of, candles=[*clean_prefix, *history]
+    )
+    with_noise = _assess(
+        engine, calendar, sessions_cfg, as_of=as_of,
+        candles=[*clean_prefix, forming_after_gap, *history],
+    )
+    assert without_noise == with_noise
+    assert with_noise.current_canonical_bar_count == 2
+    assert with_noise.current_cumulative_volume == 30
+
+
+def test_34_exact_completion_boundary_extends_the_contiguous_prefix(engine, calendar, sessions_cfg):
+    """A slot goes from still-forming to completed at its exact
+    completion instant and, since all preceding slots are already
+    present, correctly extends the contiguous prefix at that instant."""
+    today = [_m5(9, 15, 10), _m5(9, 20, 20), _m5(9, 25, 30)]
+    history = _prior_day_bars(date(2026, 8, 21), [1, 2, 3])
+    just_before = datetime(2026, 8, 28, 9, 29, 59, tzinfo=IST)
+    at_completion = datetime(2026, 8, 28, 9, 30, 0, tzinfo=IST)
+    before = _assess(engine, calendar, sessions_cfg, as_of=just_before, candles=[*today, *history])
+    after = _assess(engine, calendar, sessions_cfg, as_of=at_completion, candles=[*today, *history])
+    assert before.current_canonical_bar_count == 2
+    assert before.current_cumulative_volume == 30
+    assert after.current_canonical_bar_count == 3
+    assert after.current_cumulative_volume == 60
+    assert after.comparison_cutoff_ts == datetime(2026, 8, 28, 9, 25, tzinfo=IST)
+
+
+def test_35_leading_gap_leaves_no_valid_prefix_and_is_unavailable(engine, calendar, sessions_cfg):
+    """ID-5D.1 §2 Example C: 09:15 (the session's own first expected
+    slot) is missing, even though later canonical bars exist. There is no
+    valid cumulative-from-session-open prefix, so RVOL must be honestly
+    unavailable -- not silently start from whatever the first present bar
+    happens to be."""
+    today = [_m5(9, 20, 100), _m5(9, 25, 100)]  # 09:15 missing
+    history = _prior_day_bars(date(2026, 8, 21), [1, 1, 1])
+    as_of = datetime(2026, 8, 28, 9, 30, tzinfo=IST)
+    rv = _assess(engine, calendar, sessions_cfg, as_of=as_of, candles=[*today, *history])
+    assert rv.available is False
+    assert rv.current_canonical_bar_count == 0
+    assert rv.current_cumulative_volume is None
+
+
 def test_naive_as_of_rejected(engine, calendar, sessions_cfg):
     sc = _session(calendar, sessions_cfg, as_of=datetime(2026, 8, 28, 9, 30, tzinfo=IST), candles=[])
     with pytest.raises(ValueError, match="timezone-aware"):

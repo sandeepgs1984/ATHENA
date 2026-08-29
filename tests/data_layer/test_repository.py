@@ -257,6 +257,38 @@ class TestCandles:
         assert got[-1].ts_open == base + timedelta(minutes=129)
         assert list(got) == sorted(got, key=lambda c: c.ts_open)
 
+    def test_earliest_candle_ts_returns_the_minimum_ts_open(self, repo):
+        # ID-5D.1: lets a caller retrieve "all available history" for an
+        # instrument without hardcoding a lookback-day count.
+        repo.upsert_instrument(_instrument())
+        repo.add_candles([
+            _m5(datetime(2026, 3, 2, 9, 20, tzinfo=IST)),
+            _m5(datetime(2026, 2, 2, 9, 15, tzinfo=IST)),
+            _m5(datetime(2026, 2, 15, 9, 15, tzinfo=IST)),
+        ])
+        assert repo.earliest_candle_ts(INST, Timeframe.M5) == datetime(2026, 2, 2, 9, 15, tzinfo=IST)
+
+    def test_earliest_candle_ts_is_none_when_no_candles_exist(self, repo):
+        repo.upsert_instrument(_instrument())
+        assert repo.earliest_candle_ts(INST, Timeframe.M5) is None
+
+    def test_earliest_candle_ts_is_scoped_to_its_own_timeframe(self, repo):
+        repo.upsert_instrument(_instrument())
+        repo.add_candles([_candle(date(2026, 1, 1), Timeframe.D1)])
+        repo.add_candles([_m5(datetime(2026, 3, 2, 9, 15, tzinfo=IST))])
+        assert repo.earliest_candle_ts(INST, Timeframe.M5) == datetime(2026, 3, 2, 9, 15, tzinfo=IST)
+
+    def test_earliest_candle_ts_query_plan_uses_index_not_full_table_scan(self, repo):
+        repo.upsert_instrument(_instrument())
+        repo.add_candles([_m5(datetime(2026, 2, 2, 9, 15, tzinfo=IST))])
+        plan = repo.connection.execute(
+            "EXPLAIN QUERY PLAN SELECT MIN(ts_open) FROM candles "
+            "WHERE instrument_id=? AND timeframe=?",
+            (INST, Timeframe.M5.value),
+        ).fetchall()
+        plan_text = " ".join(str(row) for row in plan)
+        assert "SCAN candles" not in plan_text
+
     def test_get_candles_query_plan_uses_index_not_full_table_scan(self, repo):
         # ID-3.1 §16: this bounded query runs per symbol across the full
         # owner-candidate universe every cycle — must be an indexed range

@@ -1521,6 +1521,75 @@ class TestOwnerValidationPipeline:
         assert rv.rvol_ratio == Decimal("2")
         assert rv.relation is RelativeVolumeRelation.ABOVE_BASELINE
 
+    def test_id5d1_retrieval_is_not_capped_at_the_old_hardcoded_120_day_window(
+        self, repo: SqliteRepository, config_dir: Path, monkeypatch
+    ) -> None:
+        """ID-5D.1 Issue B: the ONLY comparable historical settled session
+        seeded here is 2026-01-05 -- a real trading Monday (verified via
+        the real calendar) 238 calendar days before as_of (2026-08-31),
+        well beyond ID-5D's original hardcoded 120-day retrieval window.
+        The corrected retrieval path (`repo.earliest_candle_ts`-based, not
+        a hardcoded lookback) must still find and use it -- proving the
+        analytical baseline POLICY ("use ALL available comparable prior
+        settled sessions") is no longer silently capped by an
+        undisclosed retrieval bound."""
+        from athena.intraday.engine import IntradayAnalyticsEngine
+
+        recorded: dict[str, object] = {}
+        real_assess = IntradayAnalyticsEngine.assess
+
+        def spy_assess(self, *args, **kwargs):
+            result = real_assess(self, *args, **kwargs)
+            recorded["signal_set"] = result
+            return result
+
+        monkeypatch.setattr(IntradayAnalyticsEngine, "assess", spy_assess)
+
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        iid = "NSE:AAA"
+        repo.upsert_instrument(
+            Instrument(instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE")
+        )
+        repo.add_candles(_candles(iid, seed=100))
+        repo.add_candles([_d1(iid, date(2026, 8, 28), open_="98", close="100")])
+        repo.add_candles([_d1(iid, date(2026, 8, 31), open_="103", close="103")])
+
+        def _m5_vol(day: date, hh: int, mm: int, volume: int) -> Candle:
+            ts = datetime(day.year, day.month, day.day, hh, mm, tzinfo=IST)
+            return Candle(
+                instrument_id=iid, timeframe=Timeframe.M5, ts_open=ts,
+                open=Decimal("100"), high=Decimal("101"), low=Decimal("99"), close=Decimal("100"),
+                volume=volume, source="test",
+            )
+
+        far_history_day = date(2026, 1, 5)  # a real trading Monday, 238 days before as_of
+        assert (date(2026, 8, 31) - far_history_day).days > 120
+        repo.add_candles([
+            _m5_vol(far_history_day, 9, 15, 40),
+            _m5_vol(far_history_day, 9, 20, 40),
+        ])
+        repo.add_candles([
+            _m5_vol(date(2026, 8, 31), 9, 15, 100),
+            _m5_vol(date(2026, 8, 31), 9, 20, 100),
+        ])
+
+        as_of = datetime(2026, 8, 31, 9, 30, tzinfo=IST)
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        ingestion = IngestionResult(
+            as_of=as_of, instruments_upserted=1, candles_fetched=86, candles_written=86,
+            quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+        )
+        detail = pipe.run(RunTrigger.PREMARKET, as_of=as_of, ingestion=ingestion, run_id="run-rvol-far")
+
+        assert detail["decision_reports"]
+        rv = recorded["signal_set"].relative_volume
+        assert rv.available is True
+        assert rv.baseline_session_count == 1
+        assert rv.baseline_session_dates == (far_history_day,)
+        assert rv.historical_average_cumulative_volume == Decimal("80")
+        assert rv.rvol_ratio == Decimal("2.5")
+
     def test_repeat_validate_with_same_as_of_does_not_orphan_earlier_decision(
         self, repo: SqliteRepository, config_dir: Path
     ) -> None:

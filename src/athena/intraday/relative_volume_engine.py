@@ -18,13 +18,26 @@ Reuses, never duplicates:
   own open/close instants (never assumes every day shares today's open
   time).
 
-Same-time-of-day alignment (§9): if today has N canonical completed bars
-since its own open, a historical session is comparable only if it (a) has
-at least N canonical expected slots in its OWN session and (b) has EVERY
-ONE of its own first N canonical slots genuinely present. Any historical
-session failing either check is excluded entirely from the baseline —
-never partial-credited, never forced in with a shorter window. Point-in-
-time safety is structural: only sessions with `session_date < session_date`
+Current comparison window (ID-5D.1, corrected): the current session's
+comparison window is the LONGEST CONTIGUOUS PREFIX of today's own expected
+canonical M5 grid, starting at session open — not merely however many
+canonical bars happen to exist regardless of gaps. A missing expected slot
+stops the window there; a canonical bar that reappears later (after a gap,
+e.g. following an off-grid/still-forming stretch) can never retroactively
+extend it. `RelativeVolumeContext` therefore remains genuinely available at
+its own explicit `comparison_cutoff_ts` even long after real time has moved
+past that cutoff (e.g. a live drift onset stalls the prefix at ~09:35 while
+the clock reads 14:00) — this is a true, dated measurement, not staleness;
+whether an old cutoff is still actionable is a later concern (e.g. future
+EntryQualification/freshness logic), never decided here.
+
+Same-time-of-day alignment (§9): if today's own contiguous prefix has N
+bars, a historical session is comparable only if it (a) has at least N
+canonical expected slots in its OWN session and (b) has EVERY ONE of its
+own first N canonical slots genuinely present. Any historical session
+failing either check is excluded entirely from the baseline — never
+partial-credited, never forced in with a shorter window. Point-in-time
+safety is structural: only sessions with `session_date < session_date`
 (the target) are ever considered, by construction, not by a caller-trusted
 filter.
 """
@@ -79,26 +92,42 @@ class RelativeVolumeEngine:
         for c in completed:
             by_date.setdefault(c.ts_open.date(), []).append(c)
 
-        current_canonical = sorted(
-            canonical_slot_candles(
-                by_date.get(session_date, []), Timeframe.M5, _BAR_STEP_MINUTES,
-                session_open_ts=session_context.session_open_ts,
-                session_close_ts=session_context.session_close_ts,
-                calendar=calendar, session_date=session_date, tzinfo=tzinfo,
-            ),
-            key=lambda c: c.ts_open,
+        current_canonical = canonical_slot_candles(
+            by_date.get(session_date, []), Timeframe.M5, _BAR_STEP_MINUTES,
+            session_open_ts=session_context.session_open_ts,
+            session_close_ts=session_context.session_close_ts,
+            calendar=calendar, session_date=session_date, tzinfo=tzinfo,
         )
-        bar_count = len(current_canonical)
+        present_today = {c.ts_open: c for c in current_canonical}
+        expected_today = sorted(expected_intraday_opens(calendar, session_date, _BAR_STEP_MINUTES, tzinfo))
+
+        # ID-5D.1 Issue A fix: the comparison window is the longest
+        # CONTIGUOUS prefix of today's own expected canonical grid, walked
+        # from session open -- a missing slot stops the window there, and a
+        # canonical bar that reappears later (after a gap) can never
+        # retroactively extend it. Counting every present-but-non-contiguous
+        # canonical bar (the pre-ID-5D.1 behavior) let the current window
+        # silently drift out of same-time alignment with the historical
+        # baseline's own first-N-slots comparison below.
+        current_prefix: list[Candle] = []
+        for ts in expected_today:
+            candle = present_today.get(ts)
+            if candle is None:
+                break
+            current_prefix.append(candle)
+
+        bar_count = len(current_prefix)
         start_ts = session_context.session_open_ts
 
         if bar_count == 0:
             return self._unavailable(
                 instrument_id, session_date, as_of, start_ts, None, None, 0, (),
-                "current session has no canonical completed M5 bars yet",
+                "current session has no contiguous canonical completed M5 bars "
+                "from session open yet",
             )
 
-        current_cumulative = sum(c.volume for c in current_canonical)
-        cutoff_ts = current_canonical[-1].ts_open
+        current_cumulative = sum(c.volume for c in current_prefix)
+        cutoff_ts = current_prefix[-1].ts_open
 
         # Same-time-of-day baseline: every candidate day strictly before
         # session_date, by construction -- no look-ahead is possible here.
@@ -158,9 +187,11 @@ class RelativeVolumeEngine:
             baseline_session_count=baseline_count, baseline_session_dates=baseline_dates,
             rvol_ratio=ratio, relation=relation, available=True,
             explanation=(
-                f"{instrument_id} cumulative volume {current_cumulative} through "
-                f"{cutoff_ts.isoformat()} vs historical average {historical_avg} over "
-                f"{baseline_count} comparable settled session(s): {ratio}x ({relation.value})"
+                f"{instrument_id} cumulative volume {current_cumulative} through its "
+                f"contiguous canonical prefix ending {cutoff_ts.isoformat()} (later "
+                f"missing/off-grid data cannot advance this cutoff) vs historical "
+                f"average {historical_avg} over {baseline_count} comparable settled "
+                f"session(s): {ratio}x ({relation.value})"
             ),
         )
 

@@ -6,6 +6,211 @@ status updated on approval.
 
 ---
 
+## ID-5D.1 — RVOL Current-Window Integrity & Retrieval-Policy Correction
+
+**Summary.** Owner code review of ID-5D's actual implementation accepted
+the overall `RelativeVolumeContext` architecture and methodology (cumulative
+same-time-of-day semantics, arithmetic mean, raw ratio, zero-threshold
+relations, no hardcoded baseline-length cap, index-unsupported behavior) but
+found two concrete correctness/policy issues, both fixed here. No RVOL
+methodology changed — this is a correctness/policy correction only.
+
+**Issue A — current-session slot integrity bug.** The original engine
+counted every present canonical current-session bar regardless of
+contiguity: `bar_count = len(current_canonical)`, `cutoff = last present
+bar's ts_open`. If an expected middle slot was missing (e.g. 09:20 absent
+between present 09:15/09:25 bars), the current window silently jumped over
+the gap — `current_cumulative_volume` would sum 09:15+09:25 (using
+`bar_count=2`), while the historical baseline's own first-2-slots rule used
+09:15+09:20. The two sides of the "same-time" comparison were no longer
+actually the same time. Real production shape: canonical rows have been
+observed to reappear later in the session after a drift-onset gap — a naive
+"count all present" approach would let that later reappearance silently
+extend the window across the gap.
+
+**Fix.** The comparison window is now the longest CONTIGUOUS prefix of
+today's own expected canonical M5 grid (`expected_intraday_opens`), walked
+from session open: for each expected slot in order, if a canonical candle
+exists there it joins the window; the first missing slot stops the window
+permanently for that assessment. A canonical bar that reappears later can
+never retroactively extend it. `bar_count`/`current_cumulative_volume`/
+`comparison_cutoff_ts` are all derived from this contiguous prefix, not the
+full canonical set. The historical same-time-alignment rule (§9, unchanged)
+now receives a correctly-aligned `bar_count`.
+
+**Available-vs-stale distinction preserved, per owner instruction.**
+`RelativeVolumeContext` remains genuinely `available=True` at its own
+explicit `comparison_cutoff_ts` even long after real time has moved past
+that cutoff (e.g. a live drift onset stalls the prefix at ~09:35 while the
+clock reads 14:00) — this is a true, dated measurement, not staleness. No
+freshness/actionability threshold was introduced; that is explicitly left
+to a later concern (e.g. future EntryQualification logic). Module docstring
+and `explanation` string updated to state this plainly.
+
+**Issue B — hardcoded 120-day retrieval bound.** ID-5D's workflow-level
+`relative_volume_stage` retrieved M5 history via
+`session_day_start(as_of) - timedelta(days=120)`. This was documented as
+"only a retrieval bound," but the engine's own baseline POLICY is "use ALL
+available comparable prior settled sessions" — once M5 history exceeds 120
+calendar days, the hardcoded bound would silently truncate that policy,
+resolving the still-open OWNER_PENDING rolling-baseline-cap question without
+owner approval.
+
+**Fix.** Audited existing data-availability primitives first — no
+"earliest persisted candle" query existed anywhere in `SqliteRepository`.
+Added `SqliteRepository.earliest_candle_ts(instrument_id, timeframe) ->
+datetime | None` — a single `SELECT MIN(ts_open) FROM candles WHERE
+instrument_id=? AND timeframe=?`, confirmed via `EXPLAIN QUERY PLAN` to use
+`SEARCH candles USING COVERING INDEX idx_candles_range` (the existing
+`(instrument_id, timeframe, ts_open)` index), not a table scan or a new
+index. `relative_volume_stage` now resolves its retrieval lower bound from
+this instead of a hardcoded day count — the smallest correct architecture,
+not a new repository capability beyond the one lookup. No new magic number
+was substituted for 120 (not 180, not 365) — the retrieval is now genuinely
+semantic ("this instrument's own earliest data"), matching whatever the
+baseline policy needs.
+
+**Owner decisions applied as instructed.** Rolling-baseline-cap policy:
+DEFERRED — current policy remains "use ALL available comparable prior
+settled sessions," no hardcoded N, no hidden time-window cap. Corporate-action
+volume adjustment: DEFERRED — remains a documented known limitation, no
+adjustment factor invented.
+
+**Mypy — new issue fixed, pre-existing issues left alone.** ID-5D's new
+`relative_volume_engine.assess(..., calendar=calendar, ...)` call site
+introduced one new `Argument "calendar" ... incompatible type "CalendarEngine
+| None"; expected "CalendarEngine"` error — structurally identical to 3
+pre-existing instances at the same file for `SessionContextEngine`/
+`RelativeStrengthEngine`/`OpeningRangeEngine`, but a genuinely NEW failure,
+not merely "the same kind that already exists." Per explicit owner
+instruction, fixed locally: `cast(CalendarEngine, calendar)` at this one new
+call site only (no broader narrowing/assert added — the 3 pre-existing
+instances are untouched, out of scope). `owner_validation.py`'s total mypy
+error count: 25 (with the ID-5D-introduced error) → 24 (matching its
+pre-ID-5D baseline). Zero new mypy failures from ID-5D.1.
+
+**Non-vacuous verification.** (1) Current-window fix: reverted to
+`current_prefix = sorted(current_canonical, key=...)` (count-all-canonical),
+confirmed 2 new tests fail with exact wrong values
+(`test_31_...missing_middle_slot...`: expected `bar_count=1`, got `2`;
+`test_32_...later_canonical_reappearance...`: expected `bar_count=5`, got
+`6`), restored, re-confirmed all pass. (2) Retrieval fix: reverted to the
+hardcoded 120-day lookback, confirmed the new
+`test_id5d1_retrieval_is_not_capped_at_the_old_hardcoded_120_day_window`
+integration test fails (`available=False` instead of `True`, since the
+238-days-back comparable session fell outside the old window), restored,
+re-confirmed passing. (3) Real-data proof: took real `NSE:RELIANCE`
+2026-08-28 data (11 canonical bars through 10:05), removed the real 09:35
+candle, confirmed the corrected engine's cutoff dropped from 10:05 to 09:30
+exactly (not merely on synthetic fixtures).
+
+**Real-data re-validation (settled 2026-08-28, corrected engine + corrected
+retrieval, same 3 cutoffs as ID-5D).** 526/527 available at every cutoff
+(unchanged from ID-5D). `baseline_session_count` distribution: min 23, max
+24 (one instrument gained one additional comparable session under the
+corrected earliest-candle-based retrieval vs. the old hardcoded window —
+a real, expected effect of the fix, not an anomaly). `rvol_ratio`
+distributions essentially unchanged from ID-5D's own real-data replay
+(real production M5 data is, post-ID-5A-repair, almost always already
+contiguous — the bug's real-world blast radius on this specific historical
+snapshot was small, but structurally real and would recur under any future
+data gap). Zero point-in-time violations.
+
+**Performance re-check.** 2 indexed repository queries per instrument now
+(was 1): the added `earliest_candle_ts` seek (`SEARCH ... USING COVERING
+INDEX`) plus the existing wide-range read (`SEARCH ... USING INDEX
+idx_candles_range`). 903,471 total M5 rows read across 527 instruments for
+3 cutoffs in 7.82s wall-clock — materially unchanged from ID-5D's own
+7.75s; still no N×M query-explosion pattern.
+
+**Live pipeline cost note.** This wide per-instrument M5 read (now 2 queries
+instead of 1) runs once per relevant scan cycle per instrument, same cadence
+as ID-5D's original wiring — not re-read per historical session, not
+repeated within a cycle. No caching was introduced in this milestone; the
+existing architecture's per-cycle cost tolerance is unchanged from ID-5D's
+own accepted evidence. This is not claimed "free" — the measured cost above
+is the actual cost.
+
+**Files created.** None (repository test additions live in the existing
+`tests/data_layer/test_repository.py`).
+
+**Files modified.** `src/athena/intraday/relative_volume_engine.py`
+(contiguous-prefix current-window fix, docstring/explanation wording),
+`src/athena/data/store/repository.py` (`earliest_candle_ts`),
+`src/athena/ops/owner_validation.py` (`relative_volume_stage` retrieval
+fix, `cast()` for the calendar-narrowing mypy fix),
+`tests/market_intel/test_relative_volume.py` (5 new tests: missing-middle-
+slot, later-canonical-reappearance, forming-row-after-gap, exact-completion-
+boundary, leading-gap-unavailable), `tests/data_layer/test_repository.py`
+(4 new tests for `earliest_candle_ts`), `tests/ops/test_owner_validation.py`
+(1 new retrieval-policy integration test), `docs/ATHENA-TECHNICAL-ARCHITECTURE.md`,
+`docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md` (this entry).
+
+**Tests added.** 10 new (5 engine-level, 4 repository-level, 1 workflow
+integration), on top of ID-5D's original 27 — total RVOL-related tests: 37.
+Full suite: **2,890 passed, 1 skipped** (pre-existing, unrelated), 0 failed.
+Ruff clean for every file this milestone touched (7 pre-existing, unrelated
+SIM117 findings elsewhere in `repository.py`, confirmed present in the
+committed HEAD version before this milestone touched the file — not
+introduced here, out of scope to fix). Mypy: zero new failures (see above).
+
+**Architecture compliance.** No new `WorkflowStage`, no ADR touched, no
+public `RelativeVolumeContext` field added or removed, no RVOL methodology
+change. `earliest_candle_ts` is the only new repository capability, and it
+answers exactly the audited absence (no existing data-availability
+primitive could answer this question) — not a speculative addition.
+
+**Structural regression.** Unaffected — full pre-existing suite passes
+unmodified; no other engine reads `RelativeVolumeContext`.
+
+**Point-in-time replay boundary.** Unchanged, not claimed solved — same
+ID-P0.1 limitation as every prior Intraday Intelligence milestone.
+
+**ID-5B status.** Unchanged, untouched — still pending the next active
+trading session (2026-08-31).
+
+**EMR/DarvaX isolation.** Unaffected — no change to either isolation
+boundary.
+
+**Remaining work.** Owner review of this milestone. ID-5B remains
+separately gated on 2026-08-31.
+
+**Commit message (for the owner to use, not run by the AI):**
+
+```
+fix(intraday): correct RVOL current-window integrity + retrieval policy (ID-5D.1)
+
+- Fix RelativeVolumeEngine's current-session comparison window to the
+  longest CONTIGUOUS prefix of today's own expected canonical M5 grid --
+  a missing slot now correctly stops the window instead of being silently
+  jumped over, and a canonical bar reappearing later can never
+  retroactively extend it (owner code review finding)
+- Preserve available-vs-stale distinction: RelativeVolumeContext remains
+  genuinely available at its own explicit comparison_cutoff_ts even long
+  after real time has advanced -- no freshness threshold introduced
+- Replace the hardcoded 120-calendar-day retrieval lookback with
+  SqliteRepository.earliest_candle_ts() (a new single indexed MIN(ts_open)
+  seek) -- the hardcoded bound would have silently become an undisclosed
+  rolling-baseline-cap policy once M5 history exceeded it
+- Defer both the rolling-baseline-cap policy question and corporate-action
+  volume adjustment, per explicit owner instruction -- no new magic number
+  introduced in either fix
+- Fix the one ID-5D-introduced mypy narrowing error locally via cast(),
+  leaving the 3 pre-existing structurally-identical instances untouched
+- 10 new tests (5 engine, 4 repository, 1 workflow integration); all
+  non-vacuously verified by reverting each fix and confirming exact
+  failures; full suite (2,890) green
+- Real-data re-validation on the settled 2026-08-28 session: unchanged
+  526/527 availability; a real-shape synthetic gap injected into real
+  NSE:RELIANCE data confirms the corrected cutoff behavior
+```
+
+**Milestone status.** Ready for review. ID-5B remains separately gated
+on the next active trading session (2026-08-31); ID-5 overall stays open
+until both close.
+
+---
+
 ## ID-5D — Relative Volume / RVOL Context Foundation
 
 **Summary.** Runs in parallel with ID-5B (which stays pending for the next

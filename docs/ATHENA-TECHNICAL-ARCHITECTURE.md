@@ -429,28 +429,50 @@ dependency graph:
    zero-duration window, erasing an otherwise valid stock (or stock+sector)
    return. See [§9 item 13](#9-known-documentationimplementation-gaps) for a
    severe real-data limitation found here.
-10. **`relative_volume_stage`** (ID-5D, 2026-08-29) —
-    `depends_on=("session",)`, `produces=("relative_volume",)`. Computes
-    `athena.intraday.RelativeVolumeContext` (`RelativeVolumeEngine`) —
+10. **`relative_volume_stage`** (ID-5D, 2026-08-29; corrected ID-5D.1,
+    2026-08-29) — `depends_on=("session",)`, `produces=("relative_volume",)`.
+    Computes `athena.intraday.RelativeVolumeContext` (`RelativeVolumeEngine`) —
     cumulative same-time-of-day relative volume, NOT a surge/spike label,
     zero-threshold `ABOVE_BASELINE`/`BELOW_BASELINE`/`AT_BASELINE`/`UNKNOWN`
-    only. Fetches its own bounded M5 read spanning a 120-calendar-day
-    lookback window (a RETRIEVAL bound distinct from the engine's own
-    baseline POLICY of using every comparable session found within
-    whatever is retrieved — currently capped at ~23 trading days by real
-    M5 data availability, not by this bound). Depends only on `session`
-    (for `SessionContext`'s open/close/date, which govern the engine's own
-    canonical-slot alignment) — same dependency shape as
-    `relative_strength_stage`, no dependency on `indicators`.
-    `intraday_analytics_stage` (item 8) gains this as a fourth declared
-    dependency. Proven not to perturb the six pre-existing structural
-    stages' relative order, same Kahn-sort technique as items 7/8/9's own
-    proofs (`test_id5d_relative_volume_stage_does_not_perturb_existing_stage_order`).
+    only. Fetches its own bounded M5 read spanning this instrument's own
+    entire persisted M5 history — **ID-5D.1 corrected** the retrieval
+    lower bound from a hardcoded 120-calendar-day lookback to
+    `repo.earliest_candle_ts(instrument_id, Timeframe.M5)` (a single
+    indexed `MIN(ts_open)` seek on `idx_candles_range`, confirmed by
+    `EXPLAIN QUERY PLAN` to use `SEARCH ... USING COVERING INDEX`, not a
+    table scan), because the hardcoded bound would have silently become
+    an undisclosed rolling-baseline-cap POLICY the moment M5 history
+    exceeded 120 days — resolving the still-OWNER_PENDING rolling-cap
+    question (see below) without owner approval. The RETRIEVAL bound and
+    the engine's own baseline POLICY (using every comparable session
+    found within whatever is retrieved) remain distinct concerns; the
+    corrected retrieval simply stops silently truncating the policy.
+    Depends only on `session` (for `SessionContext`'s open/close/date,
+    which govern the engine's own canonical-slot alignment) — same
+    dependency shape as `relative_strength_stage`, no dependency on
+    `indicators`. `intraday_analytics_stage` (item 8) gains this as a
+    fourth declared dependency. Proven not to perturb the six
+    pre-existing structural stages' relative order, same Kahn-sort
+    technique as items 7/8/9's own proofs
+    (`test_id5d_relative_volume_stage_does_not_perturb_existing_stage_order`).
     Deliberately independent of ID-5B's still-open current-session M5
     semantics question: only canonical completed M5 bars ever contribute
     to either the current cumulative volume or any historical comparison
     session — an off-grid or still-forming row can never enter the
-    contract. See [§9 item 16](#9-known-documentationimplementation-gaps)
+    contract. **ID-5D.1** also corrected a current-session-window
+    correctness bug: the comparison window is now the longest CONTIGUOUS
+    prefix of today's own expected canonical grid from session open, not
+    merely however many canonical bars happen to exist regardless of
+    gaps — a missing slot stops the window there, and a canonical bar
+    reappearing later (e.g. after a real production drift stretch) can
+    never retroactively extend it (proven non-vacuously, both at the
+    engine level and against real settled 2026-08-28 data with an
+    injected gap). `RelativeVolumeContext` therefore remains genuinely
+    available at its own explicit `comparison_cutoff_ts` even long after
+    real time has moved past that cutoff — a true, dated measurement, not
+    staleness; whether an old cutoff is still actionable is a later
+    concern (e.g. future EntryQualification/freshness logic), never
+    decided here. See [§9 item 16](#9-known-documentationimplementation-gaps)
     for known limitations (corporate-action adjustment not audited, and an
     OWNER_PENDING rolling-baseline-cap policy question).
 

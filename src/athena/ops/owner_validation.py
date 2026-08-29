@@ -15,7 +15,7 @@ from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from athena.calendar.engine import CalendarEngine
 from athena.config.loader import (
@@ -1206,18 +1206,22 @@ class OwnerValidationPipeline:
                 return {"relative_strength": rs_context}
 
             def relative_volume_stage(ctx):
-                # ID-5D: this stage's own bounded multi-session M5 read --
-                # same per-instrument-bounded-read pattern as
-                # relative_strength_stage's `stock_five_min`, widened to
-                # span many prior sessions instead of just today. 120
-                # calendar days is a RETRIEVAL bound only, distinct from
-                # RelativeVolumeEngine's own baseline POLICY (which uses
-                # every comparable session found within whatever is
-                # retrieved here -- currently capped at ~23 trading days by
-                # real M5 data availability, not by this bound). Widening
-                # this window as more M5 history accumulates requires no
-                # code change here.
-                lookback_start = session_day_start(ctx.as_of, session_tzinfo) - timedelta(days=120)
+                # ID-5D.1 Issue B fix: retrieve ALL of this instrument's
+                # persisted M5 history, not a hardcoded lookback-day count.
+                # A hardcoded bound (the original ID-5D 120-day window)
+                # would silently become an undisclosed rolling-baseline-cap
+                # POLICY the moment M5 history exceeds it -- resolving the
+                # still-OWNER_PENDING rolling-cap question without owner
+                # approval. `earliest_candle_ts` is a single indexed MIN()
+                # seek on the existing (instrument_id, timeframe, ts_open)
+                # index (`idx_candles_range`), not a table scan, and not a
+                # new repository capability beyond that one lookup. No
+                # instrument history at all falls back to today's own
+                # session start, matching every other stage's bounded-read
+                # shape (an empty read, handled by the engine's existing
+                # honest-unavailable path).
+                earliest_ts = self._repo.earliest_candle_ts(instrument_id, Timeframe.M5)
+                lookback_start = earliest_ts or session_day_start(ctx.as_of, session_tzinfo)
                 wide_five_min = self._repo.get_candles(
                     instrument_id, Timeframe.M5, lookback_start, ctx.as_of,
                 )
@@ -1226,7 +1230,7 @@ class OwnerValidationPipeline:
                     as_of=ctx.as_of,
                     session_context=ctx.get("session_context"),
                     five_min_candles=wide_five_min,
-                    calendar=calendar,
+                    calendar=cast(CalendarEngine, calendar),
                     tzinfo=session_tzinfo,
                 )
                 return {"relative_volume": rv_context}
