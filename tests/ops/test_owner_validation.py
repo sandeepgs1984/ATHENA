@@ -16,7 +16,7 @@ from athena.domain.decision import Decision
 from athena.domain.enums import DecisionType, Direction, RunStatus, RunTrigger, Timeframe
 from athena.domain.market import Candle, Instrument
 from athena.domain.run import RunRecord
-from athena.intraday import RelativeStrengthRelation
+from athena.intraday import GapDirection, RelativeStrengthRelation
 from athena.ops.owner_candidates import SqliteCandidateStore, normalize_candidate_symbol
 from athena.ops.owner_validation import OwnerValidationPipeline
 
@@ -44,6 +44,18 @@ def _candles(instrument_id: str, n: int = 80, seed: int = 100) -> list[Candle]:
             )
         )
     return out
+
+
+def _d1(instrument_id: str, day: date, *, open_: str, close: str) -> Candle:
+    """A single daily (D1) candle at an exact real calendar date — for
+    ID-5C gap tests, which need precise previous-session/current-session
+    D1 rows rather than `_candles()`'s arbitrary date range."""
+    o, c = Decimal(open_), Decimal(close)
+    return Candle(
+        instrument_id=instrument_id, timeframe=Timeframe.D1,
+        ts_open=datetime.combine(day, datetime.min.time(), tzinfo=IST).replace(hour=9, minute=15),
+        open=o, high=max(o, c) + 1, low=min(o, c) - 1, close=c, volume=1_000_000, source="test",
+    )
 
 
 def _intraday_candles(instrument_id: str, day, n: int = 6, seed: int = 100) -> list[Candle]:
@@ -1157,6 +1169,217 @@ class TestOwnerValidationPipeline:
         assert rs.sector_return_pct == Decimal("0.2")
         assert rs.market_return_pct == Decimal("0.1")
         assert rs.stock_vs_market_relation is RelativeStrengthRelation.OUTPERFORMING
+
+    def test_id5c_monday_uses_previous_friday_close_via_real_calendar(
+        self, repo: SqliteRepository, config_dir: Path, monkeypatch
+    ) -> None:
+        """ID-5C §10: a real Monday session must resolve its previous
+        trading session as the immediately preceding Friday via the real
+        calendar authority (`latest_trading_day_on_or_before`), not naive
+        weekday arithmetic. 2026-08-31 is a real Monday; 2026-08-28 is the
+        real immediately preceding Friday (ID-5A's own repaired date)."""
+        from athena.intraday.engine import IntradayAnalyticsEngine
+
+        recorded: dict[str, object] = {}
+        real_assess = IntradayAnalyticsEngine.assess
+
+        def spy_assess(self, *args, **kwargs):
+            result = real_assess(self, *args, **kwargs)
+            recorded["signal_set"] = result
+            return result
+
+        monkeypatch.setattr(IntradayAnalyticsEngine, "assess", spy_assess)
+
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        iid = "NSE:AAA"
+        repo.upsert_instrument(
+            Instrument(instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE")
+        )
+        repo.add_candles(_candles(iid, seed=100))  # unrelated history, for universe eligibility only
+        repo.add_candles([_d1(iid, date(2026, 8, 28), open_="98", close="100")])  # Friday settled close
+        repo.add_candles([_d1(iid, date(2026, 8, 31), open_="103", close="103")])  # Monday's own open
+        repo.add_candles(_intraday_candles(iid, date(2026, 8, 31), n=2, seed=100))
+
+        as_of = datetime(2026, 8, 31, 9, 30, tzinfo=IST)
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        ingestion = IngestionResult(
+            as_of=as_of, instruments_upserted=1, candles_fetched=86, candles_written=86,
+            quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+        )
+        detail = pipe.run(RunTrigger.PREMARKET, as_of=as_of, ingestion=ingestion, run_id="run-gap-monday")
+
+        assert detail["decision_reports"]
+        gap = recorded["signal_set"].gap
+        assert gap.available is True
+        assert gap.previous_session_date == date(2026, 8, 28)
+        assert gap.previous_session_close == Decimal("100")
+        assert gap.current_session_open == Decimal("103")
+        assert gap.gap_pct == Decimal("3")
+        assert gap.direction is GapDirection.GAP_UP
+
+    def test_id5c_holiday_transition_uses_actual_previous_trading_session(
+        self, repo: SqliteRepository, config_dir: Path, monkeypatch
+    ) -> None:
+        """ID-5C §10: Tuesday 2026-09-15's previous trading session is
+        Friday 2026-09-11 (Monday 2026-09-14 is a real exchange holiday,
+        Ganesh Chaturthi, per config/calendar/holidays.json) — proves the
+        calendar-driven resolution correctly skips a holiday, not just a
+        weekend."""
+        from athena.intraday.engine import IntradayAnalyticsEngine
+
+        recorded: dict[str, object] = {}
+        real_assess = IntradayAnalyticsEngine.assess
+
+        def spy_assess(self, *args, **kwargs):
+            result = real_assess(self, *args, **kwargs)
+            recorded["signal_set"] = result
+            return result
+
+        monkeypatch.setattr(IntradayAnalyticsEngine, "assess", spy_assess)
+
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        iid = "NSE:AAA"
+        repo.upsert_instrument(
+            Instrument(instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE")
+        )
+        repo.add_candles(_candles(iid, seed=100))
+        repo.add_candles([_d1(iid, date(2026, 9, 11), open_="98", close="100")])  # Friday before the holiday
+        repo.add_candles([_d1(iid, date(2026, 9, 15), open_="102", close="102")])  # Tuesday after the holiday
+        repo.add_candles(_intraday_candles(iid, date(2026, 9, 15), n=2, seed=100))
+
+        as_of = datetime(2026, 9, 15, 9, 30, tzinfo=IST)
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        ingestion = IngestionResult(
+            as_of=as_of, instruments_upserted=1, candles_fetched=86, candles_written=86,
+            quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+        )
+        detail = pipe.run(RunTrigger.PREMARKET, as_of=as_of, ingestion=ingestion, run_id="run-gap-holiday")
+
+        assert detail["decision_reports"]
+        gap = recorded["signal_set"].gap
+        assert gap.available is True
+        assert gap.previous_session_date == date(2026, 9, 11)
+        assert gap.previous_session_close == Decimal("100")
+        assert gap.gap_pct == Decimal("2")
+
+    def test_id5c_missing_immediate_previous_session_does_not_substitute_stale_candle(
+        self, repo: SqliteRepository, config_dir: Path, monkeypatch
+    ) -> None:
+        """ID-5C §28: the calendar correctly resolves 2026-08-28 (Friday)
+        as Monday 2026-08-31's immediately preceding trading session, but
+        ATHENA's own D1 history is genuinely missing that exact date (only
+        an OLDER row, 2026-08-25, exists). GapContext must report
+        unavailable, never silently substitute the older candle -- proven
+        non-vacuously by reverting the exact-match lookup and confirming
+        this test then wrongly finds a value."""
+        from athena.intraday.engine import IntradayAnalyticsEngine
+
+        recorded: dict[str, object] = {}
+        real_assess = IntradayAnalyticsEngine.assess
+
+        def spy_assess(self, *args, **kwargs):
+            result = real_assess(self, *args, **kwargs)
+            recorded["signal_set"] = result
+            return result
+
+        monkeypatch.setattr(IntradayAnalyticsEngine, "assess", spy_assess)
+
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        iid = "NSE:AAA"
+        repo.upsert_instrument(
+            Instrument(instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE")
+        )
+        repo.add_candles(_candles(iid, seed=100))
+        # Deliberately NO candle at 2026-08-28 (the real immediately
+        # preceding trading session) -- only an older, stale one.
+        repo.add_candles([_d1(iid, date(2026, 8, 25), open_="80", close="95")])
+        repo.add_candles([_d1(iid, date(2026, 8, 31), open_="103", close="103")])
+        repo.add_candles(_intraday_candles(iid, date(2026, 8, 31), n=2, seed=100))
+
+        as_of = datetime(2026, 8, 31, 9, 30, tzinfo=IST)
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        ingestion = IngestionResult(
+            as_of=as_of, instruments_upserted=1, candles_fetched=86, candles_written=86,
+            quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+        )
+        detail = pipe.run(RunTrigger.PREMARKET, as_of=as_of, ingestion=ingestion, run_id="run-gap-stale")
+
+        assert detail["decision_reports"]
+        gap = recorded["signal_set"].gap
+        assert gap.available is False
+        assert gap.previous_session_close is None
+        # The calendar still correctly identifies WHICH date should have
+        # been used, even though ATHENA has no data for it.
+        assert gap.previous_session_date == date(2026, 8, 28)
+
+    def test_id5c_later_m5_data_cannot_change_gap(
+        self, repo: SqliteRepository, config_dir: Path, monkeypatch
+    ) -> None:
+        """ID-5C §5/§14/§15/§16: GapContext is derived purely from D1
+        candles -- an extreme, off-grid, and still-forming M5 row must
+        have zero effect on it. Proven by running the identical scenario
+        twice (clean, then with extreme M5 noise added) and asserting the
+        resulting GapContext is byte-identical both times."""
+        from athena.intraday.engine import IntradayAnalyticsEngine
+
+        recorded: list[object] = []
+        real_assess = IntradayAnalyticsEngine.assess
+
+        def spy_assess(self, *args, **kwargs):
+            result = real_assess(self, *args, **kwargs)
+            recorded.append(result)
+            return result
+
+        monkeypatch.setattr(IntradayAnalyticsEngine, "assess", spy_assess)
+
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        iid = "NSE:AAA"
+        repo.upsert_instrument(
+            Instrument(instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE")
+        )
+        repo.add_candles(_candles(iid, seed=100))
+        repo.add_candles([_d1(iid, date(2026, 8, 28), open_="98", close="100")])
+        repo.add_candles([_d1(iid, date(2026, 8, 31), open_="103", close="103")])
+        repo.add_candles(_intraday_candles(iid, date(2026, 8, 31), n=2, seed=100))
+
+        as_of = datetime(2026, 8, 31, 9, 30, tzinfo=IST)
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        ingestion = IngestionResult(
+            as_of=as_of, instruments_upserted=1, candles_fetched=86, candles_written=86,
+            quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+        )
+        pipe.run(RunTrigger.PREMARKET, as_of=as_of, ingestion=ingestion, run_id="run-gap-clean")
+        baseline_gap = recorded[-1].gap
+        assert baseline_gap.available is True
+        assert baseline_gap.gap_pct == Decimal("3")
+
+        # Add extreme canonical, off-grid, and still-forming M5 rows, then
+        # re-validate -- the gap must come out byte-identical.
+        repo.add_candles([Candle(
+            instrument_id=iid, timeframe=Timeframe.M5,
+            ts_open=datetime(2026, 8, 31, 9, 20, tzinfo=IST),
+            open=Decimal("999999"), high=Decimal("999999"), low=Decimal("999999"),
+            close=Decimal("999999"), volume=1, source="test",
+        )])
+        repo.add_candles([Candle(
+            instrument_id=iid, timeframe=Timeframe.M5,
+            ts_open=datetime(2026, 8, 31, 9, 23, 55, tzinfo=IST),  # off-grid
+            open=Decimal("1"), high=Decimal("999999"), low=Decimal("1"),
+            close=Decimal("999999"), volume=1, source="test",
+        )])
+        repo.add_candles([Candle(
+            instrument_id=iid, timeframe=Timeframe.M5,
+            ts_open=datetime(2026, 8, 31, 9, 25, tzinfo=IST),  # not yet completed at 9:30
+            open=Decimal("1"), high=Decimal("999999"), low=Decimal("1"),
+            close=Decimal("999999"), volume=1, source="test",
+        )])
+        pipe.run(RunTrigger.PREMARKET, as_of=as_of, ingestion=ingestion, run_id="run-gap-noisy")
+        noisy_gap = recorded[-1].gap
+        assert noisy_gap == baseline_gap
 
     def test_repeat_validate_with_same_as_of_does_not_orphan_earlier_decision(
         self, repo: SqliteRepository, config_dir: Path

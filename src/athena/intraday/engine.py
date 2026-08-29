@@ -36,6 +36,7 @@ from datetime import date, datetime
 
 from athena.domain.enums import Timeframe
 from athena.indicators.models import IndicatorResult, IndicatorStatus
+from athena.intraday.gap_models import GapContext
 from athena.intraday.models import (
     IntradaySignalSet,
     IntradayTrendContext,
@@ -70,6 +71,7 @@ class IntradayAnalyticsEngine:
         or15: OpeningRangeEvidence,
         or30: OpeningRangeEvidence,
         relative_strength: RelativeStrengthContext,
+        gap: GapContext,
     ) -> IntradaySignalSet:
         if as_of.tzinfo is None:
             raise ValueError("IntradayAnalyticsEngine.assess as_of must be timezone-aware")
@@ -95,13 +97,14 @@ class IntradayAnalyticsEngine:
         return IntradaySignalSet(
             instrument_id=instrument_id, session_date=session_date, as_of=as_of,
             vwap=vwap_evidence, trend=trend, or15=or15, or30=or30,
-            relative_strength=relative_strength,
+            relative_strength=relative_strength, gap=gap,
             data_quality=session_context.data_quality,
             explanation=(
                 f"{instrument_id} intraday evidence as of {as_of.isoformat()}: "
                 f"vwap={vwap_evidence.relation.value}, trend={trend_label.value}, "
                 f"or15={or15.formation.status.value}, or30={or30.formation.status.value}, "
                 f"rs_stock_vs_market={relative_strength.stock_vs_market_relation.value}, "
+                f"gap={gap.direction.value}, "
                 f"session_data_quality={session_context.data_quality.value} — "
                 f"analytical evidence only, not a trade signal"
             ),

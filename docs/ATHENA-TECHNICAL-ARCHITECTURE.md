@@ -339,17 +339,28 @@ dependency graph:
 5. **`risk_stage`**, `depends_on=("indicators", "regime")`
 6. **`dec_stage`**, `depends_on=("scoring", "confidence", "risk")`, which
    persists the result via `self._repo.save_decision(...)`
-7. **`session_stage`** (ID-1, 2026-08-29) — `produces=("session_context",)`,
-   no `depends_on`, nothing else depends on it. Computes a `SessionContext`
-   (`athena.session`) from the same 5m/15m candles + a bounded
-   `repo.get_latest_quote()` read — genuinely live every cycle, but purely
-   additive foundation work: no existing stage's inputs, outputs, or the
-   topological order among stages 1-6 changed. Declared **last** in the
-   stage list specifically so Kahn's declaration-index tie-break cannot
-   reorder stages 1-6 relative to each other (proven by
+7. **`session_stage`** (ID-1, 2026-08-29; extended ID-5C, 2026-08-29) —
+   `produces=("session_context", "gap_context")`, no `depends_on`, nothing
+   else depends on it. Computes a `SessionContext` (`athena.session`) from
+   the same 5m/15m candles + a bounded `repo.get_latest_quote()` read —
+   genuinely live every cycle, but purely additive foundation work: no
+   existing stage's inputs, outputs, or the topological order among
+   stages 1-6 changed. Declared **last** in the stage list specifically so
+   Kahn's declaration-index tie-break cannot reorder stages 1-6 relative
+   to each other (proven by
    `tests/ops/test_owner_validation.py::test_id1_session_stage_is_produced_without_perturbing_existing_stage_order`,
    which reconstructs both the pre- and post-ID-1 graphs and diffs their
-   real `execution_order`).
+   real `execution_order`). **ID-5C** additionally computes
+   `athena.intraday.GapContext` (`GapEngine`) here — previous-trading-
+   session-close → current-session-open price transition, resolved from
+   this same instrument's already-fetched D1 candle history (`cs`, zero
+   new repository reads) plus
+   `data.validation.calendar_expectations.latest_trading_day_on_or_before`
+   for the previous trading session — no new `WorkflowStage` (this stage
+   already had everything gap resolution needs), so the dependency graph
+   itself is unchanged and the Kahn-ordering proof above needed no update.
+   Deliberately independent of ID-5B's still-open current-session M5
+   semantics question: `GapEngine` never reads M5 data at all.
 8. **`intraday_analytics_stage`** (ID-2, 2026-08-29; extended ID-3, 2026-08-29) —
    `depends_on=("session", "indicators")`, `produces=("intraday_signal_set",)`.
    Formalizes the `vwap`/`confluence` values `ind_stage` already produced
@@ -1285,6 +1296,17 @@ knows these were found and not simply missed:
     never executed; needs an open trading session, next one 2026-08-31).
     ID-5 is not considered fully closed until ID-5B completes. See the
     ID-5/ID-5A Milestone Review Summary for full evidence.
+15. **`GapContext` (ID-5C, 2026-08-29) does not account for corporate
+    actions.** Whether ATHENA's persisted daily (`D1`) candles are
+    split/bonus-adjusted around a corporate action was audited only to
+    the extent of confirming no adjustment mechanism is invoked by
+    `GapEngine` itself — not resolved further. If the underlying D1
+    series is unadjusted, a genuine corporate action between the previous
+    trading session and today could mechanically distort a raw
+    `gap_pct` (e.g. a 1:2 split would show as an artificial ~50% gap
+    down). No adjustment factor was invented to compensate; this is
+    reported as a known, unaddressed limitation, not silently worked
+    around.
 
 ---
 

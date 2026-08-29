@@ -16,6 +16,7 @@ from athena.config.loader import load_config
 from athena.domain.enums import Timeframe
 from athena.indicators.models import IndicatorEvidence, IndicatorName, IndicatorResult, IndicatorStatus
 from athena.intraday import IntradayAnalyticsEngine, IntradayTrendLabel, VwapRelation
+from athena.intraday.gap_models import GapContext, GapDirection
 from athena.intraday.opening_range_models import (
     BreakoutEvent,
     OpeningRangeEvidence,
@@ -77,6 +78,19 @@ def _dummy_rs() -> RelativeStrengthContext:
     )
 
 
+def _dummy_gap() -> GapContext:
+    """A minimal, valid, unavailable GapContext — ID-5C's own engine/
+    wiring is tested separately (`test_gap_context.py`); this module
+    tests VWAP/confluence formalization and just needs a harmless,
+    schema-valid placeholder to satisfy IntradaySignalSet's contract."""
+    return GapContext(
+        instrument_id=IID, session_date=DAY, as_of=AS_OF,
+        previous_session_date=None, previous_session_close=None, current_session_open=None,
+        gap_pct=None, direction=GapDirection.UNKNOWN, available=False,
+        explanation="not exercised in this test",
+    )
+
+
 @pytest.fixture()
 def calendar() -> CalendarEngine:
     cfg = load_config(CONFIG_DIR)
@@ -108,6 +122,7 @@ def _assess(engine, session_context, *, vwap=None, confluence=None, as_of=AS_OF)
         five_min_sma_period=FIVE_PERIOD, fifteen_min_sma_period=FIFTEEN_PERIOD,
         or15=_dummy_or(OpeningRangeWindow.OR15), or30=_dummy_or(OpeningRangeWindow.OR30),
         relative_strength=_dummy_rs(),
+        gap=_dummy_gap(),
     )
 
 
@@ -304,6 +319,7 @@ def test_7_identical_inputs_produce_identical_artifacts(engine, session_context)
         five_min_sma_period=FIVE_PERIOD, fifteen_min_sma_period=FIFTEEN_PERIOD,
         or15=_dummy_or(OpeningRangeWindow.OR15), or30=_dummy_or(OpeningRangeWindow.OR30),
         relative_strength=_dummy_rs(),
+        gap=_dummy_gap(),
     )
     assert a == b
 
@@ -316,4 +332,5 @@ def test_naive_as_of_rejected(engine, session_context):
             five_min_sma_period=FIVE_PERIOD, fifteen_min_sma_period=FIFTEEN_PERIOD,
             or15=_dummy_or(OpeningRangeWindow.OR15), or30=_dummy_or(OpeningRangeWindow.OR30),
             relative_strength=_dummy_rs(),
+            gap=_dummy_gap(),
         )

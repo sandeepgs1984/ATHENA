@@ -21,6 +21,7 @@ from decimal import Decimal
 from enum import Enum, unique
 
 from athena.domain.enums import Timeframe
+from athena.intraday.gap_models import GapContext
 from athena.intraday.opening_range_models import OpeningRangeEvidence
 from athena.intraday.relative_strength_models import RelativeStrengthContext
 from athena.session.models import SessionDataQualityStatus
@@ -124,7 +125,9 @@ class IntradaySignalSet:
     (ID-3) are parallel opening-range evidence windows, neither treated as
     canonically superior. ``relative_strength`` (ID-4) is stock-vs-sector/
     market point-in-time comparative performance — not RSI, not a
-    composite score."""
+    composite score. ``gap`` (ID-5C) is the previous-session-close ->
+    current-session-open price transition — not an intraday return, not
+    gap-fill/-hold/-rejection/-continuation."""
 
     instrument_id: str
     session_date: date
@@ -134,6 +137,7 @@ class IntradaySignalSet:
     or15: OpeningRangeEvidence
     or30: OpeningRangeEvidence
     relative_strength: RelativeStrengthContext
+    gap: GapContext
     data_quality: SessionDataQualityStatus
     explanation: str
 

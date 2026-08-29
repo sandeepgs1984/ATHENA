@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Mapping, Sequence
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -773,11 +773,13 @@ class OwnerValidationPipeline:
             load_scoring_config,
             load_sector_index_mapping_config,
         )
+        from athena.data.validation.calendar_expectations import latest_trading_day_on_or_before
         from athena.decision import DecisionEngine
         from athena.evidence import EvidenceAggregationEngine, EvidenceSource
         from athena.indicators import IndicatorEngine, IndicatorName, IndicatorStatus
         from athena.indicators import calculations as calc
         from athena.intraday import (
+            GapEngine,
             IntradayAnalyticsEngine,
             OpeningRangeEngine,
             OpeningRangeWindow,
@@ -806,6 +808,7 @@ class OwnerValidationPipeline:
         intraday_analytics_engine = IntradayAnalyticsEngine()
         opening_range_engine = OpeningRangeEngine()
         relative_strength_engine = RelativeStrengthEngine()
+        gap_engine = GapEngine()
         risk_engine = RiskEngine(risk_cfg)
         evidence_engine = EvidenceAggregationEngine()
         decision_engine = DecisionEngine(decision_cfg)
@@ -1104,6 +1107,18 @@ class OwnerValidationPipeline:
                 # ind_stage's closure-local intraday series, so it cannot
                 # perturb existing VWAP/confluence/scoring/decision behavior.
                 #
+                # ID-5C: this stage also produces "gap_context" (previous-
+                # trading-session close -> current-session-open) — placed
+                # here rather than a new stage because it needs nothing
+                # this stage doesn't already have (session_date, `cs`'s
+                # already-fetched D1 history) and adding a stage "because
+                # RelativeStrength has one" was explicitly not wanted.
+                # Reuses `cs` (this instrument's D1 candle history,
+                # already fetched once per cycle for ind_stage) directly —
+                # zero new repository reads, and independent of ID-5B's
+                # still-open current-session M5 question by construction
+                # (only D1 candles are read here, never M5).
+                #
                 # ID-3.1 §2/§4: session-scoped, so bounded by calendar day
                 # (`session_day_start` -> `as_of`) rather than a fixed
                 # `limit=100` — the same real-data truncation risk applies
@@ -1128,7 +1143,34 @@ class OwnerValidationPipeline:
                     fifteen_min_candles=fifteen_min_candles,
                     latest_quote_ts=latest_quote.ts if latest_quote is not None else None,
                 )
-                return {"session_context": session_context}
+
+                # ID-5C: previous-trading-session-close -> current-session-
+                # open transition. Zero new I/O -- `cs` (this instrument's
+                # D1 history) is already fetched once per cycle by
+                # OwnerValidationPipeline.run(), the same series ind_stage
+                # already reuses for its own daily indicators. Deliberately
+                # independent of ID-5B's still-open current-session M5
+                # question: only D1 candles are read, never M5.
+                session_date = session_context.session_date
+                previous_session_date = latest_trading_day_on_or_before(
+                    calendar, session_date - timedelta(days=1)
+                )
+                previous_session_close = next(
+                    (c.close for c in cs if c.ts_open.date() == previous_session_date),
+                    None,
+                ) if previous_session_date is not None else None
+                current_session_open = next(
+                    (c.open for c in cs if c.ts_open.date() == session_date), None
+                )
+                gap_context = gap_engine.assess(
+                    instrument_id,
+                    as_of=ctx.as_of,
+                    session_date=session_date,
+                    previous_session_date=previous_session_date,
+                    previous_session_close=previous_session_close,
+                    current_session_open=current_session_open,
+                )
+                return {"session_context": session_context, "gap_context": gap_context}
 
             def relative_strength_stage(ctx):
                 # ID-4: stock's own session-bounded M5 read (same pattern
@@ -1219,6 +1261,7 @@ class OwnerValidationPipeline:
                     or15=orb_by_window[OpeningRangeWindow.OR15],
                     or30=orb_by_window[OpeningRangeWindow.OR30],
                     relative_strength=ctx.get("relative_strength"),
+                    gap=ctx.get("gap_context"),
                 )
                 return {"intraday_signal_set": signal_set}
 
@@ -1267,7 +1310,7 @@ class OwnerValidationPipeline:
                     WorkflowStage(
                         "session",
                         session_stage,
-                        produces=("session_context",),
+                        produces=("session_context", "gap_context"),
                     ),
                     # ID-4 foundation stage. Depends only on "session" (for
                     # SessionContext's session_open_ts/close_ts/date, which

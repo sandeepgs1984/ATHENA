@@ -30,7 +30,7 @@ never auto-continuing past an owner approval gate.
 | ID-3.1 | Corrective: (A) session-scoped candle reads (`session_stage`, VWAP, ORB) used a fixed `list_candles_recent(limit=100)`, proven by ID-3's own real-data check to silently drop a session's own opening bars on a high-row-density day; (B) `OpeningRangeEngine` judged range completeness by raw in-window row count, so an off-grid timestamp could substitute for a genuinely missing canonical slot. Fix retrieval semantics + canonical-slot integrity only — no new signal methodology, no scoring/Decision/TradePlan change | ✅ Owner approved 2026-08-29 — bounded `get_candles()` reads (no new repository method) + `OpeningRangeEngine._canonical_slots()`; real-data acceptance check on the production retrieval path: OR15 526/526 COMPLETE, OR30 3/526 COMPLETE (523 honestly INCOMPLETE_DATA — a real, previously-masked finding, not a regression); full suite green (2,806 passed, 1 pre-existing skip) |
 | ID-4 | Market → sector → stock `RelativeStrengthContext` — point-in-time comparative performance evidence, not RSI, not a scoring input, not a market→sector→stock gating chain | ✅ Architecture accepted 2026-08-29 — **not fully closed**: a common-cutoff/partial-availability correctness issue found in owner code review (an opening-only constituent could drag the whole comparison down), fixed by ID-4.1 below |
 | ID-4.1 | Corrective: `RelativeStrengthEngine`'s comparison cutoff was computed from any constituent with at least one canonical bar, not only constituents that can actually form a return — on the real snapshot this let opening-only market/sector indexes collapse EVERY stock's own otherwise-valid session return to unavailable. Fix comparable-constituent cutoff semantics only — no public contract change, no scoring/Decision/TradePlan change, no index M5 data repair | ✅ Owner approved 2026-08-29 — `_ConstituentSeries.can_form_return`; real-data re-audit on the production retrieval path: stock_return now 526/526 available (was 0/526 — an engine artifact, now resolved); sector/market/every pairwise comparison remain 0/526 (a genuine, now-isolated index M5 data limitation); full suite green (2,833 passed, 1 pre-existing skip). Recommendation: an index-M5 data-quality prerequisite before the next RS-dependent milestone |
-| ID-5 | Core index M5 data-quality root-cause & remediation (per ID-4.1's recommendation) — data-foundation corrective, NOT a trading-methodology milestone. Two gated parts: **ID-5A** (settled-session repair, owner-authorized) and **ID-5B** (live current-session M5 semantics canary) | 🔄 **ID-5A owner-authorized and EXECUTED 2026-08-29** — real `run_settlement_repair()` run for the settled 2026-08-28 gap, 537/537 instruments succeeded, 0 failures; off-grid rows 60,410→0; market benchmark + all 8 sector indexes now 75/75 canonical; RelativeStrength sector/market/pairwise availability restored (204-526/526, matching real sector-mapping coverage); OR30 3/526→526/526 `COMPLETE`; full suite green (2,834 passed, 1 pre-existing skip). **ID-5B not started** — needs an active trading session, target 2026-08-31. ID-5 remains open until ID-5B completes |
+| ID-5 | Core index M5 data-quality root-cause & remediation (per ID-4.1's recommendation) — data-foundation corrective, NOT a trading-methodology milestone. Three parts: **ID-5A** (settled-session repair, owner-authorized), **ID-5B** (live current-session M5 semantics canary), **ID-5C** (Gap & Session-Open Context, parallel, independent of ID-5B) | ✅ **ID-5A owner-authorized, EXECUTED and CLOSED 2026-08-29** — real `run_settlement_repair()` run for the settled 2026-08-28 gap, 537/537 instruments succeeded, 0 failures; off-grid rows 60,410→0; market benchmark + all 8 sector indexes now 75/75 canonical; RelativeStrength sector/market/pairwise availability restored (204-526/526, matching real sector-mapping coverage); OR30 3/526→526/526 `COMPLETE`. 🔄 **ID-5B not started** — needs an active trading session, target 2026-08-31. 🔄 **ID-5C Ready for review 2026-08-29** — `athena.intraday.gap_engine.GapEngine`; new `GapContext` (previous-session-close→current-session-open), independent of ID-5B by construction (D1-only, zero M5); 19 new tests, real-data sanity check 526/527 available on the settled 2026-08-28 session; full suite green (2,853 passed, 1 pre-existing skip). ID-5 overall remains open until ID-5B (and now also ID-5C's review) complete |
 | ID-6 | TBD, pending ID-5B's live-session result (2026-08-31) and the owner's resulting live-M5-handling decision | Planned |
 
 **ID-0 headline findings (full detail in the report):** (1) `intraday_candles()`
@@ -302,6 +302,36 @@ the table). OR30 3/526→526/526 `COMPLETE`. Full suite re-run:
 unchanged, 2,834 passed. Real DB integrity re-verified post-write (`ok`,
 0 FK violations). No ATHENA code touched. ID-5B (live current-session
 semantics) not started — needs 2026-08-31.
+
+**ID-5C summary (full detail in the Milestone Review Summary given to the
+owner in-chat, 2026-08-29):** new `GapContext`
+(`athena.intraday.gap_engine.GapEngine`) — previous-trading-session-close
+→ current-session-open price transition, NOT an intraday return, NOT
+gap-fill/-hold/-rejection/-continuation, zero-threshold `GAP_UP`/
+`GAP_DOWN`/`FLAT`/`UNKNOWN` only. Audited existing gap-related code first
+(`market_health.compute_gap_stability`, `regime.RegimeEngine._gap`, EM's
+own internal `session_invariant_evidence.gap_pct`, dashboard-only
+`_gap_detail`) — none reusable as a canonical per-instrument artifact, so
+`GapContext` is genuinely new, but reuses the existing `(open -
+prior_close)/prior_close*100` formula convention, not a new methodology.
+Previous-session resolution reuses the existing
+`latest_trading_day_on_or_before` calendar helper (zero new calendar
+code) — proven against two real dates: 2026-08-31 Monday → 2026-08-28
+Friday, and 2026-09-15 Tuesday → 2026-09-11 Friday (skipping the real
+2026-09-14 Ganesh Chaturthi holiday). Both previous-close and
+current-open are read from the instrument's own already-fetched D1
+candle history (zero new repository reads, zero M5 dependency of any
+kind) — a missing exact match is honestly unavailable, proven
+non-vacuously that a stale older D1 candle can never silently
+substitute. `GapEngine` itself is pure (no I/O). Composed into the
+existing `session_stage` rather than a new `WorkflowStage` — no new
+graph node/edge, so the existing Kahn-ordering proofs needed no update.
+Independence from later M5 data (canonical, off-grid, forming) proven
+non-vacuously. Real-data sanity check on the settled 2026-08-28 session:
+526/527 real candidates resolve a real `GapContext` (367 `GAP_UP`, 135
+`GAP_DOWN`, 24 `FLAT`; gap_pct −2.18% to +5.28%, median +0.19%). Full
+suite: 2,853 passed, 1 pre-existing skip. ID-5B remains untouched and
+separately gated on 2026-08-31.
 
 ## Explosive Move Radar Research Track (accepted 2026-08-21)
 

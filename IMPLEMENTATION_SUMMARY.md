@@ -6,6 +6,182 @@ status updated on approval.
 
 ---
 
+## ID-5C — Gap & Session-Open Context
+
+**Summary.** Runs in parallel with ID-5B (which stays pending for the next
+active market session, 2026-08-31). New `GapContext` — the previous-
+trading-session-close -> current-session-open price transition — joins
+`IntradaySignalSet`. NOT an intraday return (that stays
+`RelativeStrengthContext`'s job), NOT gap-fill/-hold/-rejection/
+-continuation, no magnitude band. Deliberately independent of ID-5B's
+still-open current-session M5 question: `GapEngine` never reads M5 data at
+all, only daily (`D1`) candles.
+
+**Existing-gap audit (before any code, per §2).** Gap-related code already
+existed in four disconnected places, none reusable as-is:
+`market_health.compute_gap_stability` (EXISTING_PARTIAL — index-level
+rolling stability ratio, no per-instrument value retained),
+`regime.RegimeEngine._gap` (EXISTING_PARTIAL — single-index `GAP_UP`/
+`GAP_DOWN`/`NO_GAP` categorical label, `ordered[-2].close` adjacency, no
+calendar involvement), `explosive_move.session_invariant_evidence.gap_pct`
+(EXISTING_PARTIAL — the one genuine per-instrument `gap_pct`, but
+landlocked inside EM's own evidence contract, not reusable outside it —
+audited for context only, never imported), and
+`market_summary_service._gap_detail` (EXISTING_PRESENTATION_ONLY — pure
+dashboard reformatting of the persisted index aggregate). No canonical,
+per-instrument, independently reusable gap artifact existed
+(`SessionContext`/`IntradaySignalSet` had no gap field at all) — `GapContext`
+is built fresh, but reuses the same `(open - prior_close)/prior_close * 100`
+formula convention already established by `RegimeEngine`/EM, not a new
+methodology.
+
+**Previous-session resolution — reused, not invented.** Zero new calendar
+code needed: `data.validation.calendar_expectations.latest_trading_day_on_or_before(calendar, session_date - 1 day)`
+already existed (used elsewhere for freshness validation) and does exactly
+what §3 requires — correctly resolves Monday→Friday, holiday-transition
+Tuesday→prior-Friday, and multi-day-closure cases via the real calendar,
+never hardcoded weekday arithmetic. Proven against two real calendar dates:
+2026-08-31 (Monday) → 2026-08-28 (Friday), and 2026-09-15 (Tuesday, after
+the real 2026-09-14 Ganesh Chaturthi holiday) → 2026-09-11 (Friday).
+
+**Current-session-open + previous-close sources — zero new I/O.** Both
+resolved from `cs`, the instrument's own daily (`D1`) candle history
+already fetched once per cycle by `OwnerValidationPipeline.run()` (the
+same series `ind_stage` already reuses for its own daily indicators) —
+`current_session_open` = the exact D1 candle whose date equals
+`session_date`, `.open`; `previous_session_close` = the exact D1 candle
+whose date equals the resolved `previous_session_date`, `.close`. No new
+repository read. A missing exact match (session's own D1 row not yet
+ingested, or the resolved previous session's D1 row genuinely absent) is
+honestly unavailable — proven non-vacuously that a stale OLDER D1 candle
+can never silently substitute (reverted the exact-match lookup, confirmed
+the new test then wrongly finds a value, restored).
+
+**GapEngine is pure.** No I/O, no provider, no repository access — takes
+already-resolved `Decimal`/`date` values only. `gap_pct =
+(current_session_open - previous_session_close) / previous_session_close
+* 100`, sign preserved (never `abs()`). `GapDirection` (`GAP_UP`/
+`GAP_DOWN`/`FLAT`/`UNKNOWN`) is a zero-threshold sign read — no
+`SMALL_GAP`/`LARGE_GAP`/magnitude band, no new tunable config value
+introduced anywhere.
+
+**Independence from later M5 data — proven non-vacuously.** An extreme
+canonical, an extreme off-grid, and a still-forming M5 candle were added
+to an otherwise-identical scenario; `GapContext` came out byte-identical
+before and after, since the resolution path never reads M5 at all (proof
+is structural, by construction, not just by test assertion).
+
+**Workflow integration — smallest architecture, zero new stage.**
+Composed into the EXISTING `session_stage` (produces `session_context`
+AND now `gap_context`) rather than a new `WorkflowStage` — needs nothing
+`session_stage` doesn't already have (`session_date`, `cs`). Since no new
+node/edge enters the dependency graph, the existing Kahn-ordering proofs
+required NO update (confirmed: all pre-existing ordering tests pass
+unmodified). `intraday_analytics_stage` already depends on `"session"`, so
+reading `ctx.get("gap_context")` needed no new dependency either.
+
+**IntradaySignalSet integration.** `gap: GapContext` added as a mandatory
+field, composed (not recomputed) inside `intraday_analytics_stage`.
+
+**Real-data sanity check (read-only, scratch copy, settled 2026-08-28 —
+the exact date ID-5A repaired).** 527/528 active candidates resolved;
+**526/527 GapContext available** (1 genuinely missing D1 row, honestly
+unavailable, not fabricated). Direction distribution: 367 `GAP_UP`, 135
+`GAP_DOWN`, 24 `FLAT`. `gap_pct` range: −2.18% to +5.28%, median +0.19% —
+a realistic, plausible real-market distribution.
+
+**Files created.** `src/athena/intraday/gap_models.py`,
+`src/athena/intraday/gap_engine.py`, `tests/market_intel/test_gap_context.py`
+(15 tests).
+
+**Files modified.** `src/athena/intraday/{models,engine,__init__}.py`
+(`IntradaySignalSet.gap`, `IntradayAnalyticsEngine.assess()` wires `gap`),
+`src/athena/ops/owner_validation.py` (`session_stage` also resolves and
+produces `gap_context`), `tests/market_intel/test_intraday_analytics.py`
+(dummy-gap fixture), `tests/ops/test_owner_validation.py` (4 new
+integration tests), `docs/ATHENA-TECHNICAL-ARCHITECTURE.md`,
+`docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md` (this entry).
+
+**Tests added.** 19 new (15 engine-level in `test_gap_context.py` —
+exact formula both directions, exact zero, all UNKNOWN/availability
+paths, determinism, Decimal preservation, no-BUY/SELL-field structural
+proof; 4 integration in `test_owner_validation.py` — real Monday→Friday
+and real holiday-transition calendar resolution, stale-candle
+non-substitution (non-vacuously proven), M5-independence (non-vacuously
+proven against a reverted-calendar-resolution bug too, since all 4 tests
+share that dependency)). Full suite: **2,853 passed, 1 skipped**
+(pre-existing, unrelated), 0 failed. Ruff clean. `mypy` clean.
+
+**Architecture compliance.** No new `WorkflowStage`, no new repository
+API, no ADR touched. No `KiteProvider`/broker-specific reference in
+`gap_engine.py`/`gap_models.py` (confirmed by grep). No dormant
+`PipelineContext`/`ContextDelta`/`IntelligenceModule` use (guard test
+scans all of `src/athena`, still passes). No order-placement code.
+Deterministic/replayable — every function takes `as_of`/dates explicitly,
+no `datetime.now()`, no I/O inside the engine.
+
+**Structural regression.** Unaffected — full pre-existing suite
+(VWAP/trend/OR15/OR30/RelativeStrength/scoring/confidence/risk/Decision/
+TradePlan) passes unmodified; `GapContext` is not read by any of them.
+
+**Corporate actions.** Audited, not solved: whether ATHENA's daily
+candles are split/bonus-adjusted around a corporate action was not
+investigated further — if unadjusted, a genuine corporate action between
+the previous session and today could mechanically distort a raw
+`gap_pct`. Documented as a known limitation, no adjustment factor
+invented.
+
+**Point-in-time replay boundary.** Unchanged, not claimed solved — same
+ID-P0.1 limitation as every prior Intraday Intelligence milestone.
+`GapEngine` itself remains deterministic from explicit inputs.
+
+**ID-5B status.** Unchanged, untouched — still pending the next active
+trading session (2026-08-31). ID-5C does not depend on it and did not
+pre-judge its outcome.
+
+**Persistence decision.** Not persisted — reconstructable from calendar +
+D1 candle history + explicit `as_of`, same reasoning as `SessionContext`/
+`OpeningRangeEvidence`/`RelativeStrengthContext`.
+
+**Risks / technical debt.** The corporate-action adjustment question
+above. No other new risk.
+
+**Remaining work.** Owner review of this milestone. ID-5B remains
+separately gated on 2026-08-31.
+
+**Commit message (for the owner to use, not run by the AI):**
+
+```
+feat(intraday): add ID-5C GapContext (session-open price transition)
+
+- Add athena.intraday.gap_{models,engine}: previous-trading-session-close
+  -> current-session-open price transition -- not an intraday return, no
+  gap-fill/-hold/-rejection/-continuation, zero-threshold GAP_UP/
+  GAP_DOWN/FLAT/UNKNOWN only, no magnitude band
+- Audit existing gap-related code first (market_health, regime, EM's own
+  session_invariant_evidence, dashboard) -- none reusable as a canonical
+  per-instrument artifact; reuse the existing formula convention, not a
+  new methodology
+- Reuse the existing calendar-aware previous-trading-session resolver
+  (latest_trading_day_on_or_before) and the instrument's own already-
+  fetched D1 candle history -- zero new repository reads, zero M5
+  dependency, deliberately independent of ID-5B's still-open live M5
+  question
+- Compose gap resolution into the existing session_stage (no new
+  WorkflowStage, no new dependency edge) -- Kahn-ordering proofs needed
+  no update
+- 19 new tests (stale-candle non-substitution and M5-independence
+  non-vacuously proven); full suite (2,853) green
+- Real-data sanity check on the settled 2026-08-28 session (ID-5A's own
+  repaired date): 526/527 real candidates resolve a real GapContext
+```
+
+**Milestone status.** Ready for review. ID-5B remains separately gated
+on the next active trading session (2026-08-31); ID-5 overall stays open
+until both close.
+
+---
+
 ## ID-5 — Core Index M5 Data Quality, Root-Cause & Remediation
 
 **Summary.** ID-4.1 confirmed `RelativeStrengthEngine` measures correctly;
