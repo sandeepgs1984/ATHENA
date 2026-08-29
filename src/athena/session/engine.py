@@ -45,14 +45,25 @@ def is_candle_completed(candle: Candle, *, as_of: datetime) -> bool:
     return candle.ts_open + timedelta(minutes=minutes) <= as_of
 
 
+def completed_candles(
+    candles: Sequence[Candle], timeframe: Timeframe, *, as_of: datetime
+) -> list[Candle]:
+    """Every candle of ``timeframe`` whose full bar has elapsed at ``as_of``
+    — the single semantic authority for candle completion (ID-2.1 §2): any
+    analytical path that consumes a completed intraday series (VWAP, 5m/15m
+    confluence direction, or a future consumer) must filter through this,
+    not a locally re-derived copy of the formula. A prior-session bar is
+    always included (its duration elapsed long ago); only a still-forming
+    bar at the tail of ``candles`` is ever excluded."""
+    return [c for c in candles if c.timeframe is timeframe and is_candle_completed(c, as_of=as_of)]
+
+
 def latest_completed_candle(
     candles: Sequence[Candle], timeframe: Timeframe, *, as_of: datetime
 ) -> Candle | None:
     """The most recent candle of ``timeframe`` whose full bar has elapsed at
     ``as_of`` — or ``None`` if none has. Never returns a still-forming bar."""
-    completed = [
-        c for c in candles if c.timeframe is timeframe and is_candle_completed(c, as_of=as_of)
-    ]
+    completed = completed_candles(candles, timeframe, as_of=as_of)
     if not completed:
         return None
     return max(completed, key=lambda c: c.ts_open)

@@ -782,7 +782,7 @@ class OwnerValidationPipeline:
         from athena.runtime import WorkflowEngine, WorkflowStage, build_definition
         from athena.scanner import DailyMarketScanner, InstrumentPlan, ScanCapture
         from athena.scoring import ConfluenceInputs, ScoringEngine
-        from athena.session import SessionContextEngine
+        from athena.session import SessionContextEngine, completed_candles
 
         scoring_cfg = load_scoring_config(self._config_dir)
         decision_cfg = load_decision_config(self._config_dir)
@@ -874,8 +874,17 @@ class OwnerValidationPipeline:
                 # exactly the un-reviewed-impact risk SD-2/SD-3 treat
                 # explicitly for sector_quality. `scoring_engine.score()`
                 # takes `vwap` as its own parameter for the same reason.
-                intraday_cs = self._repo.list_candles_recent(
-                    instrument_id, Timeframe.M5, limit=100
+                #
+                # ID-2.1: filtered through the canonical completed-candle
+                # primitive (`athena.session.completed_candles`, ID-1's own
+                # `ts_open + duration <= as_of` rule) before ANY analytical
+                # use — a still-forming last bar must never move VWAP,
+                # confluence, or (transitively) IntradaySignalSet. This is
+                # the one authoritative completed-candle filter; nothing
+                # downstream re-derives its own copy of the formula.
+                intraday_cs = completed_candles(
+                    self._repo.list_candles_recent(instrument_id, Timeframe.M5, limit=100),
+                    Timeframe.M5, as_of=ctx.as_of,
                 )
                 vwap_result = (
                     indicator_engine.compute(IndicatorName.VWAP, intraday_cs, as_of=ctx.as_of)
@@ -897,8 +906,11 @@ class OwnerValidationPipeline:
                     if daily_last_close is not None:
                         confluence_cfg = scoring_cfg.confluence
                         daily_bullish = Decimal(daily_last_close) >= daily_sma.values["value"]
-                        fifteen_min_cs = self._repo.list_candles_recent(
-                            instrument_id, Timeframe.M15, limit=100
+                        fifteen_min_cs = completed_candles(
+                            self._repo.list_candles_recent(
+                                instrument_id, Timeframe.M15, limit=100
+                            ),
+                            Timeframe.M15, as_of=ctx.as_of,
                         )
                         confluence_inputs = ConfluenceInputs(
                             daily_bullish=daily_bullish,

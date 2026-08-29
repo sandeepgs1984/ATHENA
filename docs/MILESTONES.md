@@ -24,7 +24,8 @@ never auto-continuing past an owner approval gate.
 | ID-P0 | Prerequisite: resolve the ADR-003 dormant-vs-live ambiguity + wire existing Sector Health into live scoring/evidence/decision — the two architectural inconsistencies ID-0 found, cleared before any new intraday stage is added | ✅ Owner approved 2026-08-29 — full suite green (2,717 passed, 1 pre-existing skip) |
 | ID-P0.1 | Measurement-only checkpoint: quantify the real historical decision/composite impact of activating Sector Health, via a deterministic replay against a scratch copy of the real production book — no tuning | ✅ Owner approved 2026-08-29 — measured impact accepted; no threshold recalibration performed |
 | ID-1 | Intraday Data Semantics & Session Context Foundation — explicit intraday provenance, deterministic completed-candle semantics, a `SessionContext` artifact, session-data-quality UNKNOWN semantics. Foundation only: no signals, no scoring/threshold change | ✅ Owner approved 2026-08-29 — `athena.session` package + one new live `WorkflowStage`; full suite green (2,743 passed, 1 pre-existing skip) |
-| ID-2 | Intraday Analytical Context & Trend Foundation — `IntradaySignalSet`/`IntradayTrendContext` typed evidence formalizing the existing live VWAP relation + 5m/15m confluence direction. Still foundation: no EntryQualification, no new gates, no scoring change | 🔄 Ready for review 2026-08-29 — `athena.intraday` package + one new live `WorkflowStage`; full suite green (2,765 passed, 1 pre-existing skip). Recommendation: ID-2 READY FOR OWNER REVIEW |
+| ID-2 | Intraday Analytical Context & Trend Foundation — `IntradaySignalSet`/`IntradayTrendContext` typed evidence formalizing the existing live VWAP relation + 5m/15m confluence direction. Still foundation: no EntryQualification, no new gates, no scoring change | ✅ Architecture accepted 2026-08-29 (contract, single-authoritative-calculation principle, `WorkflowStage` integration, isolation) — **not fully closed**: a completed-candle correctness gap found in owner code review, fixed by ID-2.1 below |
+| ID-2.1 | Corrective: `ind_stage`'s VWAP/confluence inputs did not filter through ID-1's completed-candle rule, so a still-forming 5m/15m bar could silently influence them even though `SessionContext` already knew it wasn't complete. Fix input-time correctness only — no VWAP formula, confluence period, or scoring weight/bonus changed. Also: rename the disagreement trend label `NEUTRAL` → `MIXED` (owner decision) | 🔄 Ready for review 2026-08-29 — one authoritative `athena.session.completed_candles()` filter now governs both VWAP and confluence; full suite green (2,768 passed, 1 pre-existing skip). Recommendation: ID-3 READY |
 | ID-3 | TBD — first core intraday signal methodology (ORB / VWAP behavior / gap behavior / RVOL candidates); scope not yet defined, awaiting owner direction | Planned |
 
 **ID-0 headline findings (full detail in the report):** (1) `intraday_candles()`
@@ -89,6 +90,32 @@ No persistence added — same reconstructable-from-canonical-data reasoning
 as `SessionContext`. No ADR required. No ORB/gap/RVOL/relative-strength/
 EntryQualification implemented — explicitly deferred to future ID-3+
 milestones per the owner's own scope.
+
+**ID-2.1 summary (full detail in the Milestone Review Summary given to the
+owner in-chat, 2026-08-29):** owner code review of ID-2 found that
+`ind_stage`'s `intraday_cs`/`fifteen_min_cs` — the candle series feeding
+VWAP and 5m/15m confluence direction — were still `repo.list_candles_recent()`'s
+**raw** result, never filtered through ID-1's own
+`ts_open + duration <= as_of` completed-candle rule, even though
+`SessionContext` already computed exactly that boundary for the same
+candles. Fixed by adding one new, single-authority primitive,
+`athena.session.completed_candles()` (the list-returning sibling of
+`latest_completed_candle`, both now sharing one implementation), and
+filtering both `intraday_cs` and `fifteen_min_cs` through it before any
+VWAP/confluence use — input-time correctness only; the VWAP formula,
+confluence SMA periods (9/5), and the `+10` max confluence bonus are all
+byte-for-byte unchanged. Proven non-vacuously: a crafted extreme forming
+candle is shown to have exactly zero effect one second before it
+completes and a real, deterministic effect at the exact completion
+boundary (verified by temporarily reverting the fix and confirming the new
+tests fail, then restoring it). Two pre-existing confluence tests needed
+their fixture's `as_of` moved later in the session (their assertions
+unchanged) — the fixtures had implicitly assumed the pre-fix "raw candles
+always count" behavior, which was exactly the bug. Also renamed the
+disagreement trend label `NEUTRAL` → `MIXED` (owner decision: "neutral"
+could misread as price structure itself being flat, when what's actually
+known is that the two timeframes disagree) — no consumer depended on the
+old name. No ORB/gap/RVOL/EntryQualification/new threshold introduced.
 
 ## Explosive Move Radar Research Track (accepted 2026-08-21)
 

@@ -6,6 +6,160 @@ status updated on approval.
 
 ---
 
+## ID-2.1 — Completed-Candle Alignment & Trend-Semantics Cleanup
+
+**Summary.** ID-2's architecture was accepted in owner review, but the
+review found ID-2 was not fully closed: `ind_stage`'s VWAP/confluence
+candle inputs were still raw, unfiltered `repo.list_candles_recent()`
+results, never restricted to candles genuinely completed at `as_of` —
+even though `SessionContext` (ID-1) already computed exactly that boundary
+for the same candles. Since ID-2 reuses `ind_stage`'s `vwap`/`confluence`
+objects by identity (the "one authoritative calculation" principle), any
+forming-candle leak there flowed straight into `IntradaySignalSet` too.
+This milestone is a narrowly-scoped correctness fix: input-time only, no
+VWAP formula, confluence period, or scoring weight/bonus changed.
+
+**Root cause, precisely.** `is_candle_completed`/`latest_completed_candle`
+(ID-1, `athena.session`) were used to compute `SessionContext`'s own
+`latest_completed_bar_ts`, but `ind_stage` (`owner_validation.py`) built
+`intraday_cs`/`fifteen_min_cs` directly from `list_candles_recent(...)`
+with no completion filter, then handed those raw series straight to
+`calc.vwap()` and the confluence SMA-direction check. Two separate,
+disagreeing notions of "is this candle usable" coexisted in the same
+cycle.
+
+**Fix — one authoritative completed-candle series.** Added
+`athena.session.completed_candles(candles, timeframe, *, as_of)` — the
+list-returning sibling of the existing `latest_completed_candle`, both now
+built on the same underlying filter (refactored so `latest_completed_candle`
+calls `completed_candles` internally rather than re-deriving its own copy).
+`ind_stage` now filters `intraday_cs`/`fifteen_min_cs` through this
+function immediately after fetching them, before either is passed to
+`indicator_engine.compute(IndicatorName.VWAP, ...)` or `_intraday_direction(...)`.
+No second WorkflowStage was introduced — the existing `ind_stage` reuses
+the canonical helper directly, per the instruction to choose the smallest
+architecture.
+
+**Non-vacuous proof, not just a unit test of the primitive in isolation.**
+Two new integration tests
+(`test_id21_forming_5m_candle_has_zero_influence_until_it_completes`,
+`test_id21_forming_15m_candle_excluded_from_confluence_until_completion`)
+craft 9 (5m, period 9) / 5 (15m, period 5) real completed bars producing a
+deterministic bearish SMA-direction read, then add one extreme forming
+candle (close=500) that would flip the direction to bullish if
+incorrectly included. Run against the real pipeline: one second before the
+forming candle completes, the result is unchanged from the
+no-forming-candle baseline; at the exact completion boundary, the result
+flips. **Verified genuinely non-vacuous**, not just written to look that
+way: the fix was temporarily reverted and both tests were confirmed to
+fail, then the fix was restored and both pass again.
+
+**SessionContext consistency.** A third new test
+(`test_id21_session_context_and_confluence_agree_on_latest_completed_bar`)
+proves `SessionContext.five_min.latest_completed_bar_ts` and the candle
+window VWAP actually used agree on the same boundary — the two
+completed-candle authorities the bug allowed to disagree can no longer do
+so, by construction (both now route through the same primitive).
+
+**Trend label rename (owner decision).** `IntradayTrendLabel.NEUTRAL` →
+`MIXED` for the 5m/15m-disagreement case — `NEUTRAL` could be misread as
+price structure itself being flat, when what's actually known is that the
+two timeframes disagree; `MIXED` describes the evidence directly. No
+consumer depended on the old name (nothing outside `athena.intraday`'s own
+tests referenced it), so this was the safest point to correct it.
+
+**Regression contract for already-completed inputs.** For any `as_of`
+where every supplied intraday candle was already completed, ID-2.1 changes
+nothing: VWAP, `deviation_pct`, `ConfluenceInputs`, every scoring
+component, composite, confidence, risk, decision, and TradePlan are
+unaffected. Confirmed by the full pre-existing suite passing unmodified,
+plus the object-identity parity test from ID-2
+(`test_id2_intraday_signal_set_reuses_the_exact_same_vwap_and_confluence_scoring_used`)
+still passing exactly as before.
+
+**Two pre-existing tests needed a fixture fix, not a weakened assertion.**
+`test_confluence_flows_into_score_without_affecting_confidence` and
+`test_confluence_tolerates_thin_15m_data` generate their 5m/15m candles
+starting at the real session open (09:15) but evaluate at the module's
+shared `AS_OF` (09:30) — before this fix, "raw fetched candles" silently
+included bars timestamped *after* `as_of` (an implicit, undetected
+look-ahead the bug allowed), so the fixtures' intended 9/5-bar SMA windows
+"worked" only by that accident. Fixed by moving each test's own local
+`as_of` later in the session (10:35) so enough real session time has
+elapsed for the same real candles to be genuinely, honestly completed —
+**every existing assertion in both tests is unchanged** (still expects a
+"2/2"/"1/1" confluence contribution with the same agreement); only the
+fixture's internal time-consistency was corrected.
+
+**Files created.** None.
+
+**Files modified.** `src/athena/session/engine.py` (new
+`completed_candles()`, `latest_completed_candle()` refactored to use it),
+`src/athena/session/__init__.py` (export), `src/athena/ops/owner_validation.py`
+(`ind_stage` now filters through `completed_candles()`),
+`src/athena/intraday/models.py` (`NEUTRAL` → `MIXED`),
+`src/athena/intraday/engine.py` (same rename),
+`tests/market_intel/test_intraday_analytics.py` (rename test/assertion),
+`tests/ops/test_owner_validation.py` (2 fixture time fixes + 3 new tests),
+`docs/ATHENA-TECHNICAL-ARCHITECTURE.md` (§3.1 `ind_stage` entry corrected),
+`docs/MILESTONES.md` (ID-2 marked not-fully-closed, ID-2.1 added),
+`IMPLEMENTATION_SUMMARY.md` (this entry).
+
+**Tests added/modified.** 3 new (`test_id21_forming_5m_candle_has_zero_influence_until_it_completes`,
+`test_id21_forming_15m_candle_excluded_from_confluence_until_completion`,
+`test_id21_session_context_and_confluence_agree_on_latest_completed_bar`);
+2 fixture fixes (as above); 1 rename (`test_disagreement_is_neutral_and_visible_not_hidden`
+→ `test_disagreement_is_mixed_and_visible_not_hidden`). Full suite:
+**2,768 passed, 1 skipped** (pre-existing, unrelated), 0 failed. Ruff
+clean on every new/modified file. `mypy` clean in its configured scope.
+
+**Architecture compliance.** No new `WorkflowStage` — the existing
+`ind_stage` reuses the canonical `athena.session.completed_candles()`
+helper directly, the smallest architecture per the milestone's own
+instruction. No dormant `PipelineContext`/`ContextDelta`/`IntelligenceModule`
+use (guard test still passes). No EMR/DarvaX reference (both isolation
+suites still pass unmodified). ADR-001/002/005/006/007/009/010/011/012 all
+unaffected; ADR-003 Amendment 1 unaffected (no new stage).
+
+**Risks / technical debt.** None new. ID-P0.1's point-in-time repository
+cutoff limitation remains unaddressed (explicitly out of scope here, per
+the milestone's own instruction) — every touched helper still takes
+`as_of` explicitly and never assumes the database's latest row is
+eligible, so this fix does not make that limitation any worse.
+
+**Remaining work.** Owner review of this corrective milestone; then ID-3
+scope (first core intraday signal methodology), informed by ID-2's own
+data-readiness assessment — not started here.
+
+**Commit message (for the owner to use, not run by the AI):**
+
+```
+fix(intraday): align VWAP/confluence with ID-1 completed-candle rule
+
+- Add athena.session.completed_candles() -- the list-returning sibling of
+  latest_completed_candle, both now sharing one implementation -- as the
+  single authority for "is this candle done forming" (ts_open + duration
+  <= as_of)
+- Filter ind_stage's intraday_cs/fifteen_min_cs through it before VWAP/
+  confluence use -- before this fix, a still-forming 5m/15m bar could
+  silently move VWAP's deviation_pct and ConfluenceInputs even though
+  SessionContext already knew that bar wasn't complete
+- No VWAP formula, confluence SMA period, or scoring weight/bonus changed
+  -- input-time correctness only, proven non-vacuously (a crafted forming
+  candle has zero effect one second before completion, a real effect at
+  the exact boundary; verified by reverting the fix and watching the new
+  tests fail, then restoring it)
+- Fix two pre-existing confluence tests' fixtures whose as_of implicitly
+  relied on the pre-fix look-ahead; every existing assertion is unchanged
+- Rename IntradayTrendLabel.NEUTRAL -> MIXED for 5m/15m disagreement
+  (owner decision) -- no consumer depended on the old name
+```
+
+**Milestone status.** Ready for review. Awaiting owner approval before
+ID-3.
+
+---
+
 ## ID-2 — Intraday Analytical Context & Trend Foundation
 
 **Summary.** ID-1 was owner-approved. This milestone builds ATHENA's typed,

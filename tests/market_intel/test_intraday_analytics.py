@@ -208,10 +208,13 @@ def test_both_timeframes_bearish_is_bearish(engine, session_context):
     assert sig.trend.trend_label is IntradayTrendLabel.BEARISH
 
 
-def test_disagreement_is_neutral_and_visible_not_hidden(engine, session_context):
+def test_disagreement_is_mixed_and_visible_not_hidden(engine, session_context):
+    """ID-2.1 owner decision: disagreement is labelled MIXED, not NEUTRAL —
+    NEUTRAL could be misread as price structure itself being flat, when
+    what's actually known is that the two timeframes disagree."""
     confluence = ConfluenceInputs(daily_bullish=True, five_min_bullish=True, fifteen_min_bullish=False)
     sig = _assess(engine, session_context, confluence=confluence)
-    assert sig.trend.trend_label is IntradayTrendLabel.NEUTRAL
+    assert sig.trend.trend_label is IntradayTrendLabel.MIXED
     assert "5m=bullish" in sig.trend.explanation and "15m=bearish" in sig.trend.explanation
 
 

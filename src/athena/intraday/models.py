@@ -41,12 +41,18 @@ class VwapRelation(str, Enum):
 class IntradayTrendLabel(str, Enum):
     """A zero-new-methodology aggregation of the two existing 5m/15m
     confluence-direction reads: unanimous agreement -> BULLISH/BEARISH,
-    disagreement -> NEUTRAL (visible, not hidden), either missing ->
-    UNKNOWN. No weights, no numeric threshold."""
+    disagreement -> MIXED (both directions visible, not hidden), either
+    missing -> UNKNOWN. No weights, no numeric threshold.
+
+    ``MIXED``, not ``NEUTRAL`` (ID-2.1, owner decision): "neutral" could be
+    misread as price structure itself being neutral/flat, when what is
+    actually known is that the two timeframes disagree — ``MIXED``
+    describes the evidence directly.
+    """
 
     BULLISH = "BULLISH"
     BEARISH = "BEARISH"
-    NEUTRAL = "NEUTRAL"
+    MIXED = "MIXED"
     UNKNOWN = "UNKNOWN"
 
 

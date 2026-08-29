@@ -161,6 +161,6 @@ class IntradayAnalyticsEngine:
         five_dir = "bullish" if five_min.bullish else "bearish"
         fifteen_dir = "bullish" if fifteen_min.bullish else "bearish"
         return (
-            IntradayTrendLabel.NEUTRAL,
+            IntradayTrendLabel.MIXED,
             f"5m={five_dir} vs 15m={fifteen_dir} — conflicting, no forced direction",
         )

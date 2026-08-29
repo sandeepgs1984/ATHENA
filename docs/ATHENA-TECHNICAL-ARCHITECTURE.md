@@ -313,7 +313,23 @@ driver is `src/athena/ops/owner_validation.py`'s `builder()` closure, which
 wires `WorkflowStage` objects (`src/athena/runtime/workflow.py:65`) into this
 dependency graph:
 
-1. **`ind_stage`** — indicators, VWAP, confluence
+1. **`ind_stage`** — indicators, VWAP, confluence. **ID-2.1 correction
+   (2026-08-29):** the 5m/15m candle series fed to VWAP and to the
+   5m/15m confluence-direction reads are now filtered through
+   `athena.session.completed_candles()` (ID-1's canonical
+   `ts_open + duration <= as_of` rule) before any analytical use — **before**
+   this correction, `ind_stage` read `repo.list_candles_recent()`'s raw
+   result directly, so a still-forming last bar could silently influence
+   VWAP's `deviation_pct` and `ConfluenceInputs.five_min_bullish`/
+   `fifteen_min_bullish`, even though `SessionContext` (ID-1) already knew
+   that same bar wasn't complete. One semantic authority for candle
+   completion now governs both paths (proven non-vacuously — a crafted
+   extreme forming candle is shown to have zero effect one second before
+   completion and a real effect exactly at completion:
+   `tests/ops/test_owner_validation.py::test_id21_forming_5m_candle_has_zero_influence_until_it_completes`
+   / `test_id21_forming_15m_candle_excluded_from_confluence_until_completion`).
+   No VWAP formula, confluence SMA period, or scoring weight/bonus changed
+   — input-time correctness only.
 2. **`reg_stage`** — regime **and** market health computed together
    (`market_health_engine.assess(..., regime=regime)`)
 3. **`sco_stage`**, `depends_on=("indicators", "regime")`

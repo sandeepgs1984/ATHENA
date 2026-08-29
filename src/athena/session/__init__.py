@@ -7,6 +7,7 @@ Descriptive only: no signals, no gates, no trading interpretation. See
 from athena.session.engine import (
     SessionContextEngine,
     classify_session_phase,
+    completed_candles,
     is_candle_completed,
     latest_completed_candle,
 )
@@ -24,6 +25,7 @@ __all__ = [
     "SessionPhase",
     "TimeframeProvenance",
     "classify_session_phase",
+    "completed_candles",
     "is_candle_completed",
     "latest_completed_candle",
 ]
