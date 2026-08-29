@@ -30,7 +30,7 @@ never auto-continuing past an owner approval gate.
 | ID-3.1 | Corrective: (A) session-scoped candle reads (`session_stage`, VWAP, ORB) used a fixed `list_candles_recent(limit=100)`, proven by ID-3's own real-data check to silently drop a session's own opening bars on a high-row-density day; (B) `OpeningRangeEngine` judged range completeness by raw in-window row count, so an off-grid timestamp could substitute for a genuinely missing canonical slot. Fix retrieval semantics + canonical-slot integrity only — no new signal methodology, no scoring/Decision/TradePlan change | ✅ Owner approved 2026-08-29 — bounded `get_candles()` reads (no new repository method) + `OpeningRangeEngine._canonical_slots()`; real-data acceptance check on the production retrieval path: OR15 526/526 COMPLETE, OR30 3/526 COMPLETE (523 honestly INCOMPLETE_DATA — a real, previously-masked finding, not a regression); full suite green (2,806 passed, 1 pre-existing skip) |
 | ID-4 | Market → sector → stock `RelativeStrengthContext` — point-in-time comparative performance evidence, not RSI, not a scoring input, not a market→sector→stock gating chain | ✅ Architecture accepted 2026-08-29 — **not fully closed**: a common-cutoff/partial-availability correctness issue found in owner code review (an opening-only constituent could drag the whole comparison down), fixed by ID-4.1 below |
 | ID-4.1 | Corrective: `RelativeStrengthEngine`'s comparison cutoff was computed from any constituent with at least one canonical bar, not only constituents that can actually form a return — on the real snapshot this let opening-only market/sector indexes collapse EVERY stock's own otherwise-valid session return to unavailable. Fix comparable-constituent cutoff semantics only — no public contract change, no scoring/Decision/TradePlan change, no index M5 data repair | ✅ Owner approved 2026-08-29 — `_ConstituentSeries.can_form_return`; real-data re-audit on the production retrieval path: stock_return now 526/526 available (was 0/526 — an engine artifact, now resolved); sector/market/every pairwise comparison remain 0/526 (a genuine, now-isolated index M5 data limitation); full suite green (2,833 passed, 1 pre-existing skip). Recommendation: an index-M5 data-quality prerequisite before the next RS-dependent milestone |
-| ID-5 | Core index M5 data-quality root-cause & remediation (per ID-4.1's recommendation) — data-foundation corrective, NOT a trading-methodology milestone. Three parts: **ID-5A** (settled-session repair, owner-authorized), **ID-5B** (live current-session M5 semantics canary), **ID-5C** (Gap & Session-Open Context, parallel, independent of ID-5B) | ✅ **ID-5A owner-authorized, EXECUTED and CLOSED 2026-08-29** — real `run_settlement_repair()` run for the settled 2026-08-28 gap, 537/537 instruments succeeded, 0 failures; off-grid rows 60,410→0; market benchmark + all 8 sector indexes now 75/75 canonical; RelativeStrength sector/market/pairwise availability restored (204-526/526, matching real sector-mapping coverage); OR30 3/526→526/526 `COMPLETE`. 🔄 **ID-5B not started** — needs an active trading session, target 2026-08-31. 🔄 **ID-5C Ready for review 2026-08-29** — `athena.intraday.gap_engine.GapEngine`; new `GapContext` (previous-session-close→current-session-open), independent of ID-5B by construction (D1-only, zero M5); 19 new tests, real-data sanity check 526/527 available on the settled 2026-08-28 session; full suite green (2,853 passed, 1 pre-existing skip). ID-5 overall remains open until ID-5B (and now also ID-5C's review) complete |
+| ID-5 | Core index M5 data-quality root-cause & remediation (per ID-4.1's recommendation) — data-foundation corrective, NOT a trading-methodology milestone. Four parts: **ID-5A** (settled-session repair, owner-authorized), **ID-5B** (live current-session M5 semantics canary), **ID-5C** (Gap & Session-Open Context, parallel, independent of ID-5B), **ID-5D** (Relative Volume/RVOL Context Foundation, parallel, independent of ID-5B) | ✅ **ID-5A owner-authorized, EXECUTED and CLOSED 2026-08-29** — real `run_settlement_repair()` run for the settled 2026-08-28 gap, 537/537 instruments succeeded, 0 failures; off-grid rows 60,410→0; market benchmark + all 8 sector indexes now 75/75 canonical; RelativeStrength sector/market/pairwise availability restored (204-526/526, matching real sector-mapping coverage); OR30 3/526→526/526 `COMPLETE`. 🔄 **ID-5B not started** — needs an active trading session, target 2026-08-31. ✅ **ID-5C CLOSED / owner-approved 2026-08-29** — `athena.intraday.gap_engine.GapEngine`; new `GapContext` (previous-session-close→current-session-open), independent of ID-5B by construction (D1-only, zero M5); 19 new tests, real-data sanity check 526/527 available on the settled 2026-08-28 session; full suite green (2,853 passed, 1 pre-existing skip). 🔄 **ID-5D Ready for review 2026-08-29** — `athena.intraday.relative_volume_engine.RelativeVolumeEngine`; new `RelativeVolumeContext` (cumulative same-time-of-day relative volume, no hardcoded baseline-length cap, zero-threshold `ABOVE_BASELINE`/`BELOW_BASELINE`/`AT_BASELINE`/`UNKNOWN` only), independent of ID-5B by construction (canonical-completed-M5-only, honestly unavailable rather than trusting provisional data); real M5 depth ceiling measured at 23 trading days (M5 ingestion starts 2026-07-28); index volume confirmed always zero (RVOL correctly unsupported for indexes); 25 new engine tests + 2 new workflow-integration tests, real-data replay 526/527 available across 3 real cutoffs on the settled 2026-08-28 session, zero point-in-time violations; wired into `IntradaySignalSet`/`owner_validation.py` via a new `relative_volume` `WorkflowStage` (depends only on `session`, matching `relative_strength`'s shape); full suite green (2,880 passed, 1 pre-existing skip). ID-5 overall remains open until ID-5B completes |
 | ID-6 | TBD, pending ID-5B's live-session result (2026-08-31) and the owner's resulting live-M5-handling decision | Planned |
 
 **ID-0 headline findings (full detail in the report):** (1) `intraday_candles()`
@@ -332,6 +332,51 @@ non-vacuously. Real-data sanity check on the settled 2026-08-28 session:
 `GAP_DOWN`, 24 `FLAT`; gap_pct −2.18% to +5.28%, median +0.19%). Full
 suite: 2,853 passed, 1 pre-existing skip. ID-5B remains untouched and
 separately gated on 2026-08-31.
+
+**ID-5D summary (full detail in the Milestone Review Summary given to the
+owner in-chat, 2026-08-29):** new `RelativeVolumeContext`
+(`athena.intraday.relative_volume_engine.RelativeVolumeEngine`) —
+cumulative same-time-of-day relative volume ("is this stock trading more
+or less volume today, through this exact point, than it typically does
+through the same point?"), NOT a surge/spike label, zero-threshold
+`ABOVE_BASELINE`/`BELOW_BASELINE`/`AT_BASELINE`/`UNKNOWN` only. Audited
+existing volume-related code first (`IndicatorName.VOLUME_MA`,
+`ScoringEngine._liquidity`, `market_health.compute_liquidity_aggregate`,
+`OpeningRangeFormation.volume`) — none is a per-instrument historical
+ratio, so `RelativeVolumeContext` is genuinely new; EMR's own
+`REL_VOLUME_C` (hardcoded 20-session baseline) and DarvaX's
+`volume_expansion` (5-bar/50-bar ratio) were audited for awareness only,
+never imported (both remain TRACK_ISOLATED per ADR-010/ADR-012). Real
+historical M5 depth measured at a hard ceiling of 23 trading days before
+2026-08-28 (M5 ingestion begins 2026-07-28) — no baseline-length N is
+hardcoded; the engine uses ALL available comparable prior sessions
+instead, with `baseline_session_count`/`baseline_session_dates` exposing
+full provenance. Same-time-of-day alignment is exact (a historical
+session must have every one of its own first N canonical slots present,
+never partial-credited); point-in-time safety is structural
+(`if d >= session_date: continue`), verified non-vacuously at both the
+engine level (reverting the alignment logic broke 4 tests) and the
+workflow level (reverting the point-in-time guard changed
+`baseline_session_count` from 1→2 and `rvol_ratio` from 2.0→1.333 in a
+real pipeline cycle). Index volume directly queried and confirmed always
+zero (`NSE:NIFTY 50`/`NSE:NIFTY IT`/`NSE:INDIA VIX`) — index RVOL
+correctly reports unavailable, not fabricated. Wired into
+`IntradaySignalSet`/`owner_validation.py` as a new `relative_volume`
+`WorkflowStage` (depends only on `session`, its own bounded 120-calendar-day
+lookback M5 read — a RETRIEVAL bound distinct from the baseline POLICY).
+25 new engine tests + 2 new workflow-integration tests (ordering-proof,
+real-cycle wiring proof). Real-data replay on the settled 2026-08-28
+session at 3 cutoffs (early/mid/late): 526/527 available at every cutoff,
+`baseline_session_count` uniformly 23, zero point-in-time violations;
+`rvol_ratio` distribution (early cutoff) min 0.02/median 0.52/max 80.0.
+Performance: exactly 1 repository query per instrument (single wide-range
+read, indexed via `idx_candles_range`, confirmed by `EXPLAIN QUERY PLAN`),
+935,449 total M5 rows read across 527 instruments × 3 cutoffs in 7.75s —
+no N×M query-explosion pattern. Full suite: 2,880 passed, 1 pre-existing
+skip. OWNER_PENDING: whether a rolling baseline-length cap should be
+introduced once more than 23 trading days of M5 history accumulates (not
+decided here — a future policy question, not a defect). ID-5B remains
+untouched and separately gated on 2026-08-31.
 
 ## Explosive Move Radar Research Track (accepted 2026-08-21)
 

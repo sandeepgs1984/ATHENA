@@ -24,6 +24,7 @@ from athena.domain.enums import Timeframe
 from athena.intraday.gap_models import GapContext
 from athena.intraday.opening_range_models import OpeningRangeEvidence
 from athena.intraday.relative_strength_models import RelativeStrengthContext
+from athena.intraday.relative_volume_models import RelativeVolumeContext
 from athena.session.models import SessionDataQualityStatus
 
 
@@ -127,7 +128,9 @@ class IntradaySignalSet:
     market point-in-time comparative performance — not RSI, not a
     composite score. ``gap`` (ID-5C) is the previous-session-close ->
     current-session-open price transition — not an intraday return, not
-    gap-fill/-hold/-rejection/-continuation."""
+    gap-fill/-hold/-rejection/-continuation. ``relative_volume`` (ID-5D) is
+    cumulative same-time-of-day relative volume — not a surge/spike label,
+    no magnitude threshold."""
 
     instrument_id: str
     session_date: date
@@ -138,6 +141,7 @@ class IntradaySignalSet:
     or30: OpeningRangeEvidence
     relative_strength: RelativeStrengthContext
     gap: GapContext
+    relative_volume: RelativeVolumeContext
     data_quality: SessionDataQualityStatus
     explanation: str
 

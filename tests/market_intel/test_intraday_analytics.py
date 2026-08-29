@@ -26,6 +26,7 @@ from athena.intraday.opening_range_models import (
     OpeningRangeWindow,
 )
 from athena.intraday.relative_strength_models import RelativeStrengthContext, RelativeStrengthRelation
+from athena.intraday.relative_volume_models import RelativeVolumeContext, RelativeVolumeRelation
 from athena.scoring.models import ConfluenceInputs
 from athena.session import SessionContextEngine
 
@@ -91,6 +92,22 @@ def _dummy_gap() -> GapContext:
     )
 
 
+def _dummy_rvol() -> RelativeVolumeContext:
+    """A minimal, valid, unavailable RelativeVolumeContext — ID-5D's own
+    engine/wiring is tested separately (`test_relative_volume.py`); this
+    module tests VWAP/confluence formalization and just needs a harmless,
+    schema-valid placeholder to satisfy IntradaySignalSet's contract."""
+    return RelativeVolumeContext(
+        instrument_id=IID, session_date=DAY, as_of=AS_OF,
+        comparison_start_ts=None, comparison_cutoff_ts=None,
+        current_cumulative_volume=None, current_canonical_bar_count=0,
+        historical_average_cumulative_volume=None,
+        baseline_session_count=0, baseline_session_dates=(),
+        rvol_ratio=None, relation=RelativeVolumeRelation.UNKNOWN, available=False,
+        explanation="not exercised in this test",
+    )
+
+
 @pytest.fixture()
 def calendar() -> CalendarEngine:
     cfg = load_config(CONFIG_DIR)
@@ -123,6 +140,7 @@ def _assess(engine, session_context, *, vwap=None, confluence=None, as_of=AS_OF)
         or15=_dummy_or(OpeningRangeWindow.OR15), or30=_dummy_or(OpeningRangeWindow.OR30),
         relative_strength=_dummy_rs(),
         gap=_dummy_gap(),
+        relative_volume=_dummy_rvol(),
     )
 
 
@@ -320,6 +338,7 @@ def test_7_identical_inputs_produce_identical_artifacts(engine, session_context)
         or15=_dummy_or(OpeningRangeWindow.OR15), or30=_dummy_or(OpeningRangeWindow.OR30),
         relative_strength=_dummy_rs(),
         gap=_dummy_gap(),
+        relative_volume=_dummy_rvol(),
     )
     assert a == b
 
@@ -333,4 +352,5 @@ def test_naive_as_of_rejected(engine, session_context):
             or15=_dummy_or(OpeningRangeWindow.OR15), or30=_dummy_or(OpeningRangeWindow.OR30),
             relative_strength=_dummy_rs(),
             gap=_dummy_gap(),
+            relative_volume=_dummy_rvol(),
         )

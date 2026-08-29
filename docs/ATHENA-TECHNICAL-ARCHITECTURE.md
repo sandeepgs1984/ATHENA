@@ -304,7 +304,7 @@ Verified against the code, this framing needs two corrections stated plainly
 rather than repeated — the actual architecture is more interesting than the
 one-line summary, and an implementation document should say so.
 
-### 3.1 The real per-instrument execution graph has 9 stages (was 6; ID-1 added `session`, ID-2 added `intraday_analytics`, ID-4 added `relative_strength`), not 8 or 11
+### 3.1 The real per-instrument execution graph has 10 stages (was 6; ID-1 added `session`, ID-2 added `intraday_analytics`, ID-4 added `relative_strength`, ID-5D added `relative_volume`), not 8 or 11
 
 `ATHENA_BRIEFING.md` describes "regime → market health → evidence → indicators
 → score → confidence → risk → decision" — 8 named stages. The actual live
@@ -371,7 +371,7 @@ dependency graph:
    `tests/ops/test_owner_validation.py::test_id2_intraday_signal_set_reuses_the_exact_same_vwap_and_confluence_scoring_used`).
    No BUY/SELL/probability field exists on either type. Nothing among
    `scoring`/`confidence`/`risk`/`decision` depends on it — proven not to
-   perturb the other seven stages' relative order, same technique as
+   perturb the other structural stages' relative order, same technique as
    `session_stage`'s own proof
    (`test_id2_intraday_analytics_stage_does_not_perturb_existing_stage_order`).
    **ID-3** extends this same stage (no new stage — the smallest
@@ -395,6 +395,9 @@ dependency graph:
    [§9 item 12](#9-known-documentationimplementation-gaps). **ID-4** adds
    `relative_strength=ctx.get("relative_strength")` to this stage's
    `IntradayAnalyticsEngine.assess()` call — composed, not recomputed.
+   **ID-5D** likewise adds `relative_volume=ctx.get("relative_volume")` —
+   composed, not recomputed; `depends_on` gains `"relative_volume"` as a
+   fourth declared dependency.
 9. **`relative_strength_stage`** (ID-4, 2026-08-29; corrected ID-4.1, 2026-08-29) —
    `depends_on=("session",)`, `produces=("relative_strength",)`.
    Computes `athena.intraday.RelativeStrengthContext`
@@ -426,6 +429,30 @@ dependency graph:
    zero-duration window, erasing an otherwise valid stock (or stock+sector)
    return. See [§9 item 13](#9-known-documentationimplementation-gaps) for a
    severe real-data limitation found here.
+10. **`relative_volume_stage`** (ID-5D, 2026-08-29) —
+    `depends_on=("session",)`, `produces=("relative_volume",)`. Computes
+    `athena.intraday.RelativeVolumeContext` (`RelativeVolumeEngine`) —
+    cumulative same-time-of-day relative volume, NOT a surge/spike label,
+    zero-threshold `ABOVE_BASELINE`/`BELOW_BASELINE`/`AT_BASELINE`/`UNKNOWN`
+    only. Fetches its own bounded M5 read spanning a 120-calendar-day
+    lookback window (a RETRIEVAL bound distinct from the engine's own
+    baseline POLICY of using every comparable session found within
+    whatever is retrieved — currently capped at ~23 trading days by real
+    M5 data availability, not by this bound). Depends only on `session`
+    (for `SessionContext`'s open/close/date, which govern the engine's own
+    canonical-slot alignment) — same dependency shape as
+    `relative_strength_stage`, no dependency on `indicators`.
+    `intraday_analytics_stage` (item 8) gains this as a fourth declared
+    dependency. Proven not to perturb the six pre-existing structural
+    stages' relative order, same Kahn-sort technique as items 7/8/9's own
+    proofs (`test_id5d_relative_volume_stage_does_not_perturb_existing_stage_order`).
+    Deliberately independent of ID-5B's still-open current-session M5
+    semantics question: only canonical completed M5 bars ever contribute
+    to either the current cumulative volume or any historical comparison
+    session — an off-grid or still-forming row can never enter the
+    contract. See [§9 item 16](#9-known-documentationimplementation-gaps)
+    for known limitations (corporate-action adjustment not audited, and an
+    OWNER_PENDING rolling-baseline-cap policy question).
 
 Sector health and universe are computed **once per run**, not per instrument —
 `universe_engine.build(...)` and `SectorHealthEngine(sector_cfg).assess_many(...)`
@@ -1307,6 +1334,19 @@ knows these were found and not simply missed:
     down). No adjustment factor was invented to compensate; this is
     reported as a known, unaddressed limitation, not silently worked
     around.
+16. **`RelativeVolumeContext` (ID-5D, 2026-08-29) does not account for
+    corporate actions, and its baseline-length policy has an
+    OWNER_PENDING question.** Volume series were not audited for
+    split/bonus adjustment artifacts — if unadjusted, a corporate action
+    between a historical comparison session and today could distort the
+    ratio (e.g. a stock split roughly doubling share count without a
+    corresponding real change in traded interest). No adjustment factor
+    was invented. Separately: the engine uses ALL available comparable
+    prior sessions rather than a hardcoded baseline-length N, currently
+    capped at ~23 trading days by real M5 data availability (ingestion
+    began 2026-07-28) — whether a rolling cap should be introduced once
+    more history accumulates is an explicit, undecided OWNER_PENDING
+    policy question, not resolved by this milestone.
 
 ---
 

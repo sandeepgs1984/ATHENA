@@ -26,6 +26,11 @@ typed evidence fields on `IntradaySignalSet` — a genuinely new computation
 (not a formalization of an existing scoring input), but held to the exact
 same completed-candle and "no scoring/Decision influence" rules.
 
+ID-5D adds `relative_volume` (`RelativeVolumeContext`,
+`athena.intraday.relative_volume_engine.RelativeVolumeEngine`) — computed
+and passed in by the caller exactly like `relative_strength`/`gap`, never
+recomputed here.
+
 No I/O, no clock reads — as_of and every input object are injected by the
 caller, exactly like `ScoringEngine`/`ConfidenceEngine`/every other engine.
 """
@@ -47,6 +52,7 @@ from athena.intraday.models import (
 )
 from athena.intraday.opening_range_models import OpeningRangeEvidence
 from athena.intraday.relative_strength_models import RelativeStrengthContext
+from athena.intraday.relative_volume_models import RelativeVolumeContext
 from athena.scoring.models import ConfluenceInputs
 from athena.session.models import SessionContext
 
@@ -72,6 +78,7 @@ class IntradayAnalyticsEngine:
         or30: OpeningRangeEvidence,
         relative_strength: RelativeStrengthContext,
         gap: GapContext,
+        relative_volume: RelativeVolumeContext,
     ) -> IntradaySignalSet:
         if as_of.tzinfo is None:
             raise ValueError("IntradayAnalyticsEngine.assess as_of must be timezone-aware")
@@ -98,13 +105,14 @@ class IntradayAnalyticsEngine:
             instrument_id=instrument_id, session_date=session_date, as_of=as_of,
             vwap=vwap_evidence, trend=trend, or15=or15, or30=or30,
             relative_strength=relative_strength, gap=gap,
+            relative_volume=relative_volume,
             data_quality=session_context.data_quality,
             explanation=(
                 f"{instrument_id} intraday evidence as of {as_of.isoformat()}: "
                 f"vwap={vwap_evidence.relation.value}, trend={trend_label.value}, "
                 f"or15={or15.formation.status.value}, or30={or30.formation.status.value}, "
                 f"rs_stock_vs_market={relative_strength.stock_vs_market_relation.value}, "
-                f"gap={gap.direction.value}, "
+                f"gap={gap.direction.value}, relative_volume={relative_volume.relation.value}, "
                 f"session_data_quality={session_context.data_quality.value} — "
                 f"analytical evidence only, not a trade signal"
             ),

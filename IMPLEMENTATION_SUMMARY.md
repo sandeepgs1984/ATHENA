@@ -6,6 +6,218 @@ status updated on approval.
 
 ---
 
+## ID-5D — Relative Volume / RVOL Context Foundation
+
+**Summary.** Runs in parallel with ID-5B (which stays pending for the next
+active market session, 2026-08-31). New `RelativeVolumeContext` — cumulative
+same-time-of-day relative volume — joins `IntradaySignalSet`. Answers "is
+this stock trading more or less volume today, through this exact point in
+the session, than it typically does through the same point?" — descriptive
+only, no BUY/SELL, no magnitude band. Deliberately independent of ID-5B's
+still-open current-session M5 semantics question: only canonical completed
+M5 bars ever contribute to either side of the comparison; an off-grid or
+still-forming row can never enter the contract, and current-session
+unavailability after the real production drift onset is reported honestly.
+
+**Existing-RVOL audit (before any code, per the milestone's own audit-first
+requirement).** No `EXISTING_CANONICAL` per-instrument relative-volume
+methodology exists anywhere in ATHENA-core: `IndicatorName.VOLUME_MA` is a
+plain moving average (no ratio), `ScoringEngine._liquidity` compares
+`VOLUME_MA` against an absolute floor via linear ramp (not a historical
+ratio), `market_health.compute_liquidity_aggregate` computes a
+cross-sectional absolute turnover median (no ratio), `OpeningRangeFormation.volume`
+is a raw sum (not a ratio). The only genuine RVOL-shaped implementations
+found are `explosive_move.checkpoint_dynamic_evidence.REL_VOLUME_C` (EMR,
+hardcoded 20-session baseline, cumulative-same-time formula, TRACK_ISOLATED)
+and `darvax.primitives.measures.volume_expansion` (DarvaX, 5-bar/50-bar-mean
+ratio, TRACK_ISOLATED) — both audited for awareness only, never imported;
+per ADR-010/ADR-012 this isolation is preserved. `RelativeVolumeContext` is
+therefore genuinely new.
+
+**RVOL semantic chosen.** Cumulative same-time-of-day: today's cumulative
+canonical completed M5 volume from session open through an explicit cutoff,
+divided by the arithmetic mean of the SAME cumulative-through-the-same-cutoff
+figure across every historical settled session for which the comparison is
+genuinely possible. Chosen over single-bar (too noisy) or full-day (comparing
+a partial session against historical FULL-DAY volume is structurally wrong)
+comparison, per the milestone's own stated preference.
+
+**Historical data-depth audit (real data, read-only scratch copy).** M5
+intraday data only exists from 2026-07-28 onward — a hard, non-negotiable
+real-data ceiling (not a design choice), capping any historical baseline at
+a maximum of 23 trading days before the settled target date 2026-08-28.
+526/527 active instruments have all 23 sessions near-fully canonical
+(post-ID-5A repair). No baseline-length N is hardcoded anywhere in this
+milestone: the engine uses ALL available comparable prior sessions instead,
+so widening as more history accumulates requires no code change.
+**OWNER_PENDING:** whether a rolling cap should be introduced once more than
+23 trading days accumulate — not decided here, a future policy question.
+
+**Same-time-of-day alignment and point-in-time safety — the two load-bearing
+contract properties.** If today has N canonical completed bars since its own
+open, a historical session is comparable only if it has at least N canonical
+expected slots AND every one of its own first N canonical slots genuinely
+present — never partial-credited, never forced in with a shorter window.
+Point-in-time safety is structural (`if d >= session_date: continue` inside
+the loop, not a caller-trusted filter) — only sessions strictly before the
+target date are ever considered. Both verified non-vacuously by deliberately
+breaking the logic and confirming tests fail with the exact expected wrong
+values, then restoring: breaking same-time alignment (`expected_d[:bar_count]`
+→ `expected_d`) failed 4 engine tests; breaking the point-in-time guard
+(`d >= session_date` → `d > session_date`) changed a real pipeline cycle's
+`baseline_session_count` from 1→2 and `rvol_ratio` from 2.0→1.333.
+
+**Index-volume audit (real data).** `NSE:NIFTY 50`, `NSE:NIFTY IT`, and
+`NSE:INDIA VIX` all show `volume=0` for every real M5 candle, while equities
+(e.g. `NSE:RELIANCE`) show genuine non-zero volume — confirmed empirically,
+not merely assumed. Index RVOL correctly reports unavailable (zero historical
+average → cannot compute a ratio), never fabricated.
+
+**Engine architecture.** `RelativeVolumeEngine.assess(instrument_id, *, as_of,
+session_context, five_min_candles, calendar, tzinfo)` matches
+`OpeningRangeEngine`/`RelativeStrengthEngine`'s established signature shape
+exactly — accepts `calendar`/`tzinfo` directly and does canonical-slot
+alignment internally (calendar reads are pure/no-I/O by this codebase's own
+convention). No network/repository/provider/clock access. Reuses, never
+duplicates: `athena.session.completed_candles`/`canonical_slot_candles`,
+`data.validation.calendar_expectations.expected_intraday_opens`,
+`athena.session.session_open_close_ts`.
+
+**Workflow integration.** New `relative_volume` `WorkflowStage`,
+`depends_on=("session",)` only — matching `relative_strength`'s dependency
+shape. Its own bounded 120-calendar-day lookback M5 read (a RETRIEVAL bound,
+distinct from the engine's baseline POLICY of using every comparable session
+found within whatever is retrieved). `intraday_analytics` gains it as a
+fourth declared dependency (alongside `session`/`indicators`/
+`relative_strength`); the six pre-existing structural stages keep their
+exact relative order (proven, matching ID-4's own ordering-proof pattern).
+
+**IntradaySignalSet integration.** `relative_volume: RelativeVolumeContext`
+added as a mandatory field, composed (not recomputed) inside
+`intraday_analytics_stage`.
+
+**Real-data settled replay (read-only, scratch copy, settled 2026-08-28, 3
+cutoffs: early ~09:25, mid ~09:40, late ~10:10).** 526/527 candidates
+available at every cutoff (1 genuinely missing current-session data,
+honestly unavailable). `baseline_session_count` uniformly 23 at every
+cutoff. `rvol_ratio` distribution (early cutoff): min 0.021, p25 0.310,
+median 0.516, p75 0.905, max 80.0. Zero point-in-time violations (no
+baseline date >= the target date) across all 1,578 assessed contexts.
+
+**Performance evidence.** Exactly 1 repository query per instrument (single
+wide-range read spanning the full lookback window, reused across all 3
+cutoffs) — not an N-stocks × M-sessions pattern. `EXPLAIN QUERY PLAN`
+confirms `SEARCH candles USING INDEX idx_candles_range` (indexed, not a
+table scan). 935,449 total M5 rows read across 527 instruments in 7.75s
+wall-clock for 3 cutoffs.
+
+**Files created.** `src/athena/intraday/relative_volume_models.py`,
+`src/athena/intraday/relative_volume_engine.py`,
+`tests/market_intel/test_relative_volume.py` (25 tests).
+
+**Files modified.** `src/athena/intraday/{models,engine,__init__}.py`
+(`IntradaySignalSet.relative_volume`, `IntradayAnalyticsEngine.assess()`
+wires `relative_volume`), `src/athena/ops/owner_validation.py` (new
+`relative_volume_stage` + `WorkflowStage`), `tests/market_intel/
+test_intraday_analytics.py` (dummy-rvol fixture), `tests/ops/
+test_owner_validation.py` (2 new integration tests: ordering-proof,
+real-cycle wiring proof), `docs/ATHENA-TECHNICAL-ARCHITECTURE.md`,
+`docs/MILESTONES.md`, `ATHENA_BRIEFING.md`, `IMPLEMENTATION_SUMMARY.md`
+(this entry).
+
+**Tests added.** 27 new (25 engine-level in `test_relative_volume.py` —
+exact cumulative/mean/ratio formula, all three relations, all availability/
+UNKNOWN paths, forming/off-grid exclusion (current AND historical session),
+missing-canonical-slot exclusion, same-time alignment (non-vacuously
+verified), target/future-session point-in-time exclusion, special/Muhurat-
+session exclusion, no-hardcoded-clock proof, determinism, Decimal
+preservation, provenance, cumulative-volume monotonicity, index-shaped
+all-zero-volume graceful unavailability, no-forbidden-fields structural
+proof; 2 integration in `test_owner_validation.py` — stage-ordering proof,
+real-cycle wiring proof with exact expected values (non-vacuously verified
+against the point-in-time guard)). Full suite: **2,880 passed, 1 skipped**
+(pre-existing, unrelated), 0 failed. Ruff clean. `mypy` clean (one
+pre-existing, unrelated `provenance` annotation gap in `engine.py` untouched
+by this milestone; one new `calendar: CalendarEngine | None` narrowing gap
+in `owner_validation.py`, structurally identical to the 3 pre-existing
+instances for `SessionContextEngine`/`RelativeStrengthEngine`/
+`OpeningRangeEngine` at the same call site — not a new category of issue).
+
+**Architecture compliance.** No new repository API, no ADR touched. No
+`KiteProvider`/broker-specific reference in `relative_volume_engine.py`/
+`relative_volume_models.py` (confirmed by grep). No EMR/DarvaX import
+(confirmed by grep — both remain TRACK_ISOLATED). No dormant
+`PipelineContext`/`ContextDelta`/`IntelligenceModule` use. No
+order-placement code. Deterministic/replayable — every function takes
+`as_of`/dates explicitly, no `datetime.now()`, no I/O inside the engine.
+No new config key/threshold introduced anywhere.
+
+**Structural regression.** Unaffected — full pre-existing suite
+(VWAP/trend/OR15/OR30/RelativeStrength/Gap/scoring/confidence/risk/
+Decision/TradePlan) passes unmodified; `RelativeVolumeContext` is not read
+by any of them.
+
+**Point-in-time replay boundary.** Unchanged, not claimed solved — same
+ID-P0.1 limitation as every prior Intraday Intelligence milestone.
+`RelativeVolumeEngine` itself remains deterministic from explicit inputs.
+
+**ID-5B status.** Unchanged, untouched — still pending the next active
+trading session (2026-08-31). ID-5D does not depend on it and did not
+pre-judge its outcome.
+
+**EMR/DarvaX isolation.** Confirmed preserved — `REL_VOLUME_C` and
+`volume_expansion` were read for awareness only, never imported, never
+copied verbatim; no cross-track import exists.
+
+**Persistence decision.** Not persisted — reconstructable from calendar +
+M5 candle history + explicit `as_of`, same reasoning as `SessionContext`/
+`OpeningRangeEvidence`/`RelativeStrengthContext`/`GapContext`.
+
+**Corporate actions.** Not investigated for this milestone — volume series
+were not audited for split/bonus adjustment artifacts. Documented as a
+known limitation, no adjustment factor invented.
+
+**Risks / technical debt.** The corporate-action adjustment question above;
+the OWNER_PENDING rolling-baseline-cap policy question above.
+
+**Remaining work.** Owner review of this milestone. ID-5B remains
+separately gated on 2026-08-31.
+
+**Commit message (for the owner to use, not run by the AI):**
+
+```
+feat(intraday): add ID-5D RelativeVolumeContext (cumulative same-time RVOL)
+
+- Add athena.intraday.relative_volume_{models,engine}: cumulative
+  same-time-of-day relative volume -- not a surge/spike label,
+  zero-threshold ABOVE_BASELINE/BELOW_BASELINE/AT_BASELINE/UNKNOWN only,
+  no magnitude band, no hardcoded baseline-length cap
+- Audit existing volume/RVOL-related code first (VOLUME_MA, ScoringEngine
+  liquidity, market_health liquidity aggregate, OpeningRangeFormation
+  volume, EMR's own REL_VOLUME_C, DarvaX's volume_expansion) -- none
+  reusable as a canonical per-instrument artifact; EMR/DarvaX audited for
+  awareness only, never imported
+- Measure real M5 historical depth (23-trading-day ceiling from
+  2026-07-28 ingestion start) before choosing the baseline mechanic --
+  use ALL available comparable sessions instead of a hardcoded N
+- Exact same-time-slot alignment and structural point-in-time safety,
+  both non-vacuously verified (engine-level and workflow-level)
+- Confirm index volume is always zero via direct real-data query --
+  index RVOL correctly unsupported, not assumed
+- Wire relative_volume as a new WorkflowStage depending only on "session"
+  (matching relative_strength's shape), composed onto IntradaySignalSet
+- 27 new tests; full suite (2,880) green
+- Real-data replay on the settled 2026-08-28 session across 3 cutoffs:
+  526/527 available, zero point-in-time violations; performance
+  confirmed as 1 indexed query per instrument, no N x M query pattern
+```
+
+**Milestone status.** Ready for review. ID-5B remains separately gated
+on the next active trading session (2026-08-31); ID-5 overall stays open
+until both close.
+
+---
+
 ## ID-5C — Gap & Session-Open Context
 
 **Summary.** Runs in parallel with ID-5B (which stays pending for the next

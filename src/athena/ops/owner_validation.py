@@ -784,6 +784,7 @@ class OwnerValidationPipeline:
             OpeningRangeEngine,
             OpeningRangeWindow,
             RelativeStrengthEngine,
+            RelativeVolumeEngine,
         )
         from athena.market_health import MarketHealthEngine
         from athena.regime import RegimeEngine
@@ -808,6 +809,7 @@ class OwnerValidationPipeline:
         intraday_analytics_engine = IntradayAnalyticsEngine()
         opening_range_engine = OpeningRangeEngine()
         relative_strength_engine = RelativeStrengthEngine()
+        relative_volume_engine = RelativeVolumeEngine()
         gap_engine = GapEngine()
         risk_engine = RiskEngine(risk_cfg)
         evidence_engine = EvidenceAggregationEngine()
@@ -1203,6 +1205,32 @@ class OwnerValidationPipeline:
                 )
                 return {"relative_strength": rs_context}
 
+            def relative_volume_stage(ctx):
+                # ID-5D: this stage's own bounded multi-session M5 read --
+                # same per-instrument-bounded-read pattern as
+                # relative_strength_stage's `stock_five_min`, widened to
+                # span many prior sessions instead of just today. 120
+                # calendar days is a RETRIEVAL bound only, distinct from
+                # RelativeVolumeEngine's own baseline POLICY (which uses
+                # every comparable session found within whatever is
+                # retrieved here -- currently capped at ~23 trading days by
+                # real M5 data availability, not by this bound). Widening
+                # this window as more M5 history accumulates requires no
+                # code change here.
+                lookback_start = session_day_start(ctx.as_of, session_tzinfo) - timedelta(days=120)
+                wide_five_min = self._repo.get_candles(
+                    instrument_id, Timeframe.M5, lookback_start, ctx.as_of,
+                )
+                rv_context = relative_volume_engine.assess(
+                    instrument_id,
+                    as_of=ctx.as_of,
+                    session_context=ctx.get("session_context"),
+                    five_min_candles=wide_five_min,
+                    calendar=calendar,
+                    tzinfo=session_tzinfo,
+                )
+                return {"relative_volume": rv_context}
+
             def intraday_analytics_stage(ctx):
                 # ID-2 foundation: formalizes the existing "vwap"/
                 # "confluence" outputs `ind_stage` already produced this
@@ -1262,6 +1290,7 @@ class OwnerValidationPipeline:
                     or30=orb_by_window[OpeningRangeWindow.OR30],
                     relative_strength=ctx.get("relative_strength"),
                     gap=ctx.get("gap_context"),
+                    relative_volume=ctx.get("relative_volume"),
                 )
                 return {"intraday_signal_set": signal_set}
 
@@ -1326,11 +1355,24 @@ class OwnerValidationPipeline:
                         depends_on=("session",),
                         produces=("relative_strength",),
                     ),
+                    # ID-5D foundation stage. Depends only on "session"
+                    # (SessionContext's session_open_ts/close_ts/date govern
+                    # its own canonical-slot alignment) — same dependency
+                    # shape as "relative_strength", independent of
+                    # "indicators". Nothing among scoring/confidence/risk/
+                    # decision depends on it.
+                    WorkflowStage(
+                        "relative_volume",
+                        relative_volume_stage,
+                        depends_on=("session",),
+                        produces=("relative_volume",),
+                    ),
                     # ID-2 foundation stage. Depends on "session" (for
                     # SessionContext/data-quality), "indicators" (to reuse
                     # the existing vwap/confluence outputs, not recompute
-                    # them), and (ID-4) "relative_strength" (to compose it
-                    # onto IntradaySignalSet, not recompute it) — all three
+                    # them), (ID-4) "relative_strength" and (ID-5D)
+                    # "relative_volume" (to compose them onto
+                    # IntradaySignalSet, not recompute them) — all four
                     # already resolved by the time this runs. Nothing among
                     # scoring/confidence/risk/decision depends on it, so it
                     # cannot perturb their existing relative order (see
@@ -1338,7 +1380,7 @@ class OwnerValidationPipeline:
                     WorkflowStage(
                         "intraday_analytics",
                         intraday_analytics_stage,
-                        depends_on=("session", "indicators", "relative_strength"),
+                        depends_on=("session", "indicators", "relative_strength", "relative_volume"),
                         produces=("intraday_signal_set",),
                     ),
                 ],

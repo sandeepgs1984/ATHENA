@@ -1381,6 +1381,146 @@ class TestOwnerValidationPipeline:
         noisy_gap = recorded[-1].gap
         assert noisy_gap == baseline_gap
 
+    def test_id5d_relative_volume_stage_does_not_perturb_existing_stage_order(
+        self, repo: SqliteRepository, config_dir: Path
+    ) -> None:
+        """ID-5D: the new `relative_volume` stage explicitly depends only
+        on `session` (matching `relative_strength`'s own dependency shape)
+        — and, since nothing among scoring/confidence/risk/decision
+        depends on IT, and `intraday_analytics` merely gains it as a
+        FOURTH declared dependency (alongside its existing `session`/
+        `indicators`/`relative_strength`), the six pre-existing structural
+        stages must keep their exact relative order here too."""
+        from athena.runtime.workflow import WorkflowStage, build_definition
+
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        iid = "NSE:AAA"
+        repo.upsert_instrument(
+            Instrument(instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE")
+        )
+        repo.add_candles(_candles(iid, seed=100))
+        repo.add_candles(_intraday_candles(iid, AS_OF.date(), seed=100))
+
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        ingestion = IngestionResult(
+            as_of=AS_OF, instruments_upserted=1, candles_fetched=86, candles_written=86,
+            quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+        )
+        detail = pipe.run(
+            RunTrigger.PREMARKET, as_of=AS_OF, ingestion=ingestion, run_id="run-test-rv-stage"
+        )
+        assert detail["decision_reports"], "relative_volume stage must not break the existing scan"
+
+        noop = lambda ctx: {}  # noqa: E731
+        stages = [
+            WorkflowStage("indicators", noop, produces=("indicators", "vwap", "confluence")),
+            WorkflowStage("regime", noop, produces=("regime", "market_health")),
+            WorkflowStage("scoring", noop, depends_on=("indicators", "regime"), produces=("scoring",)),
+            WorkflowStage("confidence", noop, depends_on=("scoring", "regime"),
+                          produces=("evidence_bundle", "confidence")),
+            WorkflowStage("risk", noop, depends_on=("indicators", "regime"), produces=("risk",)),
+            WorkflowStage("decision", noop, depends_on=("scoring", "confidence", "risk"),
+                          produces=("outcome",)),
+            WorkflowStage("session", noop, produces=("session_context",)),
+            WorkflowStage(
+                "relative_strength", noop, depends_on=("session",), produces=("relative_strength",),
+            ),
+        ]
+        original_order = build_definition("pre-id5d", stages).execution_order
+        with_rv = build_definition(
+            "post-id5d",
+            [
+                *stages,
+                WorkflowStage(
+                    "relative_volume", noop, depends_on=("session",),
+                    produces=("relative_volume",),
+                ),
+                WorkflowStage(
+                    "intraday_analytics", noop,
+                    depends_on=("session", "indicators", "relative_strength", "relative_volume"),
+                    produces=("intraday_signal_set",),
+                ),
+            ],
+        ).execution_order
+        pre_existing_names = [n for n in with_rv if n not in ("relative_volume", "intraday_analytics")]
+        assert tuple(pre_existing_names) == original_order
+        assert "relative_volume" in with_rv
+        assert with_rv.index("relative_volume") < with_rv.index("intraday_analytics")
+
+    def test_id5d_intraday_signal_set_carries_real_relative_volume_from_a_real_cycle(
+        self, repo: SqliteRepository, config_dir: Path, monkeypatch
+    ) -> None:
+        """ID-5D: `IntradaySignalSet.relative_volume` must be genuinely
+        populated from real repository data via the stage's own bounded
+        wide-lookback M5 read — not a placeholder. Today (a real Monday,
+        2026-08-31) has two canonical M5 bars totalling 200 volume; the
+        one comparable historical settled session (Friday 2026-08-28) has
+        the same two same-time-of-day slots totalling 100 volume. The
+        expected ratio (200/100 = 2.0x, ABOVE_BASELINE) proves the real
+        pipeline wiring reaches RelativeVolumeEngine correctly, with
+        `baseline_session_count == 1` exposing full provenance."""
+        from athena.intraday.engine import IntradayAnalyticsEngine
+        from athena.intraday.relative_volume_models import RelativeVolumeRelation
+
+        recorded: dict[str, object] = {}
+        real_assess = IntradayAnalyticsEngine.assess
+
+        def spy_assess(self, *args, **kwargs):
+            result = real_assess(self, *args, **kwargs)
+            recorded["signal_set"] = result
+            return result
+
+        monkeypatch.setattr(IntradayAnalyticsEngine, "assess", spy_assess)
+
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        iid = "NSE:AAA"
+        repo.upsert_instrument(
+            Instrument(instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE")
+        )
+        repo.add_candles(_candles(iid, seed=100))  # unrelated D1 history, for universe eligibility only
+        repo.add_candles([_d1(iid, date(2026, 8, 28), open_="98", close="100")])
+        repo.add_candles([_d1(iid, date(2026, 8, 31), open_="103", close="103")])
+
+        def _m5_vol(day: date, hh: int, mm: int, volume: int) -> Candle:
+            ts = datetime(day.year, day.month, day.day, hh, mm, tzinfo=IST)
+            return Candle(
+                instrument_id=iid, timeframe=Timeframe.M5, ts_open=ts,
+                open=Decimal("100"), high=Decimal("101"), low=Decimal("99"), close=Decimal("100"),
+                volume=volume, source="test",
+            )
+
+        # Comparable historical settled session: Friday 2026-08-28.
+        repo.add_candles([
+            _m5_vol(date(2026, 8, 28), 9, 15, 50),
+            _m5_vol(date(2026, 8, 28), 9, 20, 50),
+        ])
+        # Today: Monday 2026-08-31, same two same-time-of-day slots.
+        repo.add_candles([
+            _m5_vol(date(2026, 8, 31), 9, 15, 100),
+            _m5_vol(date(2026, 8, 31), 9, 20, 100),
+        ])
+
+        as_of = datetime(2026, 8, 31, 9, 30, tzinfo=IST)  # both today's bars completed
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        ingestion = IngestionResult(
+            as_of=as_of, instruments_upserted=1, candles_fetched=86, candles_written=86,
+            quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+        )
+        detail = pipe.run(RunTrigger.PREMARKET, as_of=as_of, ingestion=ingestion, run_id="run-rvol")
+
+        assert detail["decision_reports"]
+        rv = recorded["signal_set"].relative_volume
+        assert rv.available is True
+        assert rv.current_cumulative_volume == 200
+        assert rv.current_canonical_bar_count == 2
+        assert rv.baseline_session_count == 1
+        assert rv.baseline_session_dates == (date(2026, 8, 28),)
+        assert rv.historical_average_cumulative_volume == Decimal("100")
+        assert rv.rvol_ratio == Decimal("2")
+        assert rv.relation is RelativeVolumeRelation.ABOVE_BASELINE
+
     def test_repeat_validate_with_same_as_of_does_not_orphan_earlier_decision(
         self, repo: SqliteRepository, config_dir: Path
     ) -> None:
