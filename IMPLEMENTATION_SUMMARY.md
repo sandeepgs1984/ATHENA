@@ -6,6 +6,137 @@ status updated on approval.
 
 ---
 
+## ID-0 — Intraday Intelligence: runtime audit + architecture freeze
+
+**Summary.** Owner assignment dated 2026-08-29 kicking off a new Intraday
+Intelligence (ID) program (ID-0 → ID-13, advisory-only, no order placement).
+ID-0 is inspection and architecture only — no production code was written or
+modified. Four parallel read-only audits traced: all six scheduled/triggered
+runtime flows (PREMARKET, REFRESH, FAST, CLOSING, dashboard single-symbol
+Revalidate, owner-triggered full-universe validation); `PipelineContext`/
+`ContextDelta` reality and the eight indicators; Sector Health wiring and
+`TradePlan` construction/extensibility; and freshness/revalidation machinery,
+market-data timestamp capability, and provider execution-quality data
+availability. Full report: `docs/research/ID-0-RUNTIME-AUDIT-ARCHITECTURE-REPORT.md`.
+
+**Architecture compliance.** No code changed, so no ADR boundary could be
+crossed. The audit itself surfaced one live architectural fork requiring an
+explicit owner decision before ID-1: ADR-003's documented `PipelineContext`/
+`ContextDelta`/`IntelligenceModule` module contract has zero non-test callers
+anywhere in the codebase — the pipeline that actually runs every cycle uses a
+different, functionally similar but distinctly implemented mechanism
+(`runtime.workflow.WorkflowContext`/`WorkflowStage`/`WorkflowEngine`, a
+Kahn-topological `indicators → regime → scoring → risk → confidence →
+decision` graph wired inside `OwnerValidationPipeline._scan_eligible`). This
+is flagged, not resolved, per CLAUDE.md's "ask before implementing" rule.
+
+**Key findings.** (1) `MarketDataProvider.intraday_candles()` is genuinely
+invoked from all six runtime flows (both 5m and 15m fetched in five of six;
+FAST is 5m-only, persisted with `timeframe` as part of the storage key) and
+is read downstream by `ScoringEngine` — real VWAP-reclaim and 5m/15m
+confluence bonuses already move the composite score today. It reaches
+scoring only: `RegimeEngine`, `DecisionEngine`'s direct inputs, and
+`TradePlan` construction consume zero intraday data — `TradePlan` is built
+entirely from daily last_close and daily 14-period ATR. This corrects an
+earlier review's concern that intraday data "may not participate" in the
+live decision path — it does, just more narrowly than assumed. (2) All eight
+indicators (SMA/EMA/RSI/ATR/MACD/ADX/Volume MA/VWAP) are genuinely
+timeframe-agnostic at the math layer; VWAP is correctly session-reset by
+date comparison; ATR could compute an "intraday ATR" today with zero code
+change. The one real gap: `IndicatorResult` carries no timeframe/session
+provenance, forcing every caller to track it externally by convention. (3)
+Sector Health is computed live every cycle (`SectorHealthEngine.assess_many`)
+but never threaded through three specific call sites in
+`owner_validation.py` (`sco_stage`/`conf_stage`/`dec_stage`) even though
+`ScoringEngine._sector_quality()`, `EvidenceAggregationEngine.aggregate()`,
+and `DecisionEngine.decide()` already accept and correctly handle a
+`sector_health` parameter — a code comment confirms this is a deliberate,
+already-named deferred milestone (SD-3), not an oversight. ADR-011's
+`symbol_group`/`resolve_universe()` machinery has no `SECTOR` `GroupKind`
+and is not a substitute for it — `Instrument.sector` already carries the
+needed mapping. (4) `TradePlan` (frozen, `slots=True`, two keyword-only
+construction sites, manual JSON serialization) is unusually safe to extend
+additively — 7 of 9 candidate future fields are simple additive changes;
+`entry_zone` needs no schema change at all (the two-value `entry_low`/
+`entry_high` structure already exists, just currently populated
+zero-width); persisted "setup freshness" should explicitly not be added,
+since freshness is deliberately kept derived-at-read today to avoid a
+hidden-clock-read ADR-005 violation. (5) The dashboard's synchronous
+single-symbol "Revalidate" action deliberately bypasses `CycleRunnerLock`
+(frozen scoped-validate contract, ADR-007 §5, capped at 20 symbols) — an
+accepted, documented risk, not an oversight. (6) Only 2 of 5 requested
+market-data timestamp types exist in the schema (exchange-sourced candle/
+quote timestamp; coarse per-run start/finish) — quote and candle freshness
+are measurable today, but provider-to-ATHENA latency is not, and would need
+a new ATHENA-local receive-time column. (7) The `MarketDataProvider`
+Protocol has no bid/ask/depth/turnover/circuit-limit fields at all — a
+contract limitation, not an under-populated `KiteProvider`; a meaningful
+`ExecutionQuality` artifact needs an ADR-002-governed Protocol extension
+first.
+
+**Documentation mismatch found.** `ATHENA-WORKFLOW-METHODOLOGY.md` still
+states FAST runs every 5 minutes at 400 symbols; the live config
+(`config/scheduling.json`) has been 10 minutes / 150 symbols since a
+documented 2026-08-10 incident-driven scale-back (Kite historical endpoint
+duty-cycle saturation). `ATHENA-TECHNICAL-ARCHITECTURE.md` already reflects
+the current value correctly — only the methodology doc is stale.
+
+**Proposed architecture (not implemented).** Eight future artifacts
+(`SessionContext`, `IntradaySignalSet`, `IntradayTrendContext`,
+`RelativeStrengthContext`, `EntryQualification`, `IntradayTradePlan`
+metadata, `PlanValidity`/Revalidation state, `ExecutionQuality`) are
+evaluated for purpose/producer/consumers/lifecycle/persistence/
+explainability/ADR-need in the full report §12, along with an ADR impact
+matrix (§13) and a proposed narrow ID-1 scope (§15: resolve the ADR-003
+ambiguity, add timeframe/session provenance to `IndicatorResult`, design
+`SessionContext`/`IntradaySignalSet` without freezing any threshold, decide
+the `IndicatorsConfig` per-timeframe-parameter question). No numeric
+threshold is proposed as frozen anywhere in this report, per the ID
+program's own governance rule.
+
+**Files created.** `docs/research/ID-0-RUNTIME-AUDIT-ARCHITECTURE-REPORT.md`.
+
+**Files modified.** `docs/MILESTONES.md` (new Intraday Intelligence track),
+`IMPLEMENTATION_SUMMARY.md` (this entry).
+
+**Tests added.** None — no code changed.
+
+**Risks / technical debt.** ADR-003 dormant-vs-real pipeline-mechanism
+ambiguity (needs an owner decision before ID-1); `IndicatorsConfig`'s
+one-period-per-indicator-name-globally limitation blocks clean
+multi-timeframe configuration; FAST-only ticks leave 15m confluence data up
+to 15 minutes stale; Sector Health wiring (SD-3) is a hard prerequisite for
+the proposed `RelativeStrengthContext` but sits outside the ID-0..13 track's
+own stated scope — sequencing/ownership needs an explicit owner call.
+
+**Remaining work.** Owner review of the ID-0 report and its GO WITH
+CONDITIONS recommendation; explicit decisions on the five conditions listed
+in the report's §18 before ID-1 scope is finalized and implementation
+begins.
+
+**Commit message (for the owner to use, not run by the AI):**
+
+```
+docs(review): complete ID-0 runtime audit and architecture freeze
+
+- Add docs/research/ID-0-RUNTIME-AUDIT-ARCHITECTURE-REPORT.md: full
+  runtime trace of all six scheduled/triggered flows, PipelineContext/
+  indicator/Sector-Health/TradePlan/freshness/provider-data audit, and
+  a proposed (not implemented) intraday architecture -- establishes
+  verified ground truth before the Intraday Intelligence program's
+  ID-1 begins writing code
+- Add Intraday Intelligence track to docs/MILESTONES.md with ID-0
+  marked Ready for review (GO WITH CONDITIONS) and ID-1 Planned
+  pending owner decisions on the report's five open conditions
+- No production code touched; ID-0 is inspection-only per the owner's
+  explicit instruction
+```
+
+**Milestone status.** Ready for review. Awaiting owner approval before
+ID-1 scope is finalized.
+
+---
+
 ## EM-5 weekend hardening + checkpoint-set provenance + Monday Track B package
 
 **Summary.** Owner/Chief Architect weekend authorization (2026-08-28):

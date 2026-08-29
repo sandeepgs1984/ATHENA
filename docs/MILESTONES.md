@@ -4,6 +4,42 @@ Official milestone roadmap per the milestone-based workflow (AGENTS.md).
 One milestone at a time; owner approval gates every transition. A milestone
 too large for a single-sitting review is split BEFORE implementation.
 
+## Intraday Intelligence Track (ID-0 started 2026-08-29)
+
+**Source:** Owner assignment dated 2026-08-29
+
+**Report:** `docs/research/ID-0-RUNTIME-AUDIT-ARCHITECTURE-REPORT.md`
+
+Extends ATHENA with intraday opportunity identification/management (targeting
+~1-1.5% moves) while preserving the existing daily/structural pipeline.
+Conceptual separation: DAILY/STRUCTURAL (what's worth watching) →
+INTRADAY (whether it's actionable now) → ENTRY/EXECUTION (when/at what
+price) → LIVE PLAN SUPERVISION (still valid?). Advisory-only; no
+order-placement code, ever. Sequenced ID-0 → ID-13, one milestone at a time,
+never auto-continuing past an owner approval gate.
+
+| Milestone | Objective | Status |
+|---|---|---|
+| ID-0 | Runtime audit + architecture freeze — verify current data flow, `PipelineContext` reality, indicator reusability, Sector Health wiring, `TradePlan`/freshness machinery, and provider data availability; propose (not implement) the smallest architecture-compatible intraday extension | 🔄 Ready for review 2026-08-29 — report complete, recommendation GO WITH CONDITIONS. No production code modified. Awaiting owner approval before ID-1 |
+| ID-1 | TBD — scope proposed in the ID-0 report §15, pending owner approval | Planned |
+
+**ID-0 headline findings (full detail in the report):** (1) `intraday_candles()`
+is genuinely live across all six runtime flows and already reaches
+`ScoringEngine` (VWAP-reclaim + 5m/15m confluence bonuses) — narrower than
+assumed (never reaches `RegimeEngine`/`DecisionEngine`-direct/`TradePlan`),
+but not dormant as an earlier review suggested. (2) ADR-003's documented
+`PipelineContext`/`ContextDelta`/`IntelligenceModule` contract is entirely
+dormant (zero non-test callers); the live pipeline runs on a different,
+undocumented-as-canonical mechanism (`runtime.workflow.WorkflowContext`/
+`WorkflowStage`) — needs an explicit owner decision before ID-1 adds new
+stages. (3) Sector Health is computed live every cycle but never threaded
+into scoring/evidence/decision at three specific call sites in
+`owner_validation.py` — already a named, deferred milestone (SD-3), not a
+bug, and a hard prerequisite for the proposed `RelativeStrengthContext`
+artifact. One documentation staleness found: `ATHENA-WORKFLOW-METHODOLOGY.md`
+still states FAST runs every 5 minutes / 400 symbols; live config has been
+10 minutes / 150 symbols since a 2026-08-10 incident-driven scale-back.
+
 ## Explosive Move Radar Research Track (accepted 2026-08-21)
 
 **Source:** Owner assignment dated 2026-08-21
