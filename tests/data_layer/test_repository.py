@@ -313,6 +313,125 @@ def _m5(ts: datetime, close="100") -> Candle:
                   open=c, high=c + 1, low=c - 1, close=c, volume=1000, source="test")
 
 
+class TestListCandlesRecentPointInTime:
+    """ID-5E: `list_candles_recent(..., as_of=...)` -- market-time
+    point-in-time safety. See §32 of the ID-5E milestone spec for the
+    12-item contract this class covers."""
+
+    def test_1_no_cutoff_preserves_old_behavior(self, repo):
+        repo.upsert_instrument(_instrument())
+        candles = [_m5(datetime(2026, 2, 2, 9, 15 + 5 * i, tzinfo=IST)) for i in range(5)]
+        repo.add_candles(candles)
+        without_as_of = repo.list_candles_recent(INST, Timeframe.M5, limit=3)
+        assert [c.ts_open for c in without_as_of] == [c.ts_open for c in candles[-3:]]
+
+    def test_2_cutoff_excludes_future_candle(self, repo):
+        repo.upsert_instrument(_instrument())
+        repo.add_candles([
+            _m5(datetime(2026, 2, 2, 9, 15, tzinfo=IST)),
+            _m5(datetime(2026, 2, 2, 9, 20, tzinfo=IST)),
+            _m5(datetime(2026, 2, 2, 9, 25, tzinfo=IST)),  # future relative to the cutoff below
+        ])
+        got = repo.list_candles_recent(
+            INST, Timeframe.M5, limit=10, as_of=datetime(2026, 2, 2, 9, 20, tzinfo=IST)
+        )
+        assert [c.ts_open for c in got] == [
+            datetime(2026, 2, 2, 9, 15, tzinfo=IST), datetime(2026, 2, 2, 9, 20, tzinfo=IST),
+        ]
+
+    def test_3_exact_ts_open_boundary_is_included(self, repo):
+        repo.upsert_instrument(_instrument())
+        repo.add_candles([_m5(datetime(2026, 2, 2, 9, 15, tzinfo=IST))])
+        got = repo.list_candles_recent(
+            INST, Timeframe.M5, limit=10, as_of=datetime(2026, 2, 2, 9, 15, tzinfo=IST)
+        )
+        assert len(got) == 1
+
+    def test_4_future_rows_cannot_consume_limit(self, repo):
+        """§20/§8: seed A-E (relevant history) plus many future rows dated
+        after the as_of cutoff. limit=3, as_of at E. A Python-filter-after-
+        fetch (or an unbounded SQL fetch) would let the future rows F..J
+        consume the top-3 LIMIT slots, returning an empty or wrong result
+        for a cutoff at E. Correct SQL-level filtering returns C, D, E."""
+        repo.upsert_instrument(_instrument())
+        relevant = [_m5(datetime(2026, 2, 2, 9, 15 + 5 * i, tzinfo=IST), close=str(100 + i))
+                    for i in range(5)]  # A B C D E
+        future_noise = [_m5(datetime(2026, 2, 2, 10, 0, tzinfo=IST) + timedelta(minutes=5 * i),
+                            close=str(999 + i))
+                        for i in range(20)]  # F G H I J ... many more than the LIMIT
+        repo.add_candles([*relevant, *future_noise])
+        as_of_e = relevant[-1].ts_open  # cutoff exactly at E
+        got = repo.list_candles_recent(INST, Timeframe.M5, limit=3, as_of=as_of_e)
+        assert [c.ts_open for c in got] == [c.ts_open for c in relevant[-3:]]  # C, D, E
+
+    def test_5_return_ordering_is_oldest_first_with_or_without_cutoff(self, repo):
+        repo.upsert_instrument(_instrument())
+        candles = [_m5(datetime(2026, 2, 2, 9, 15 + 5 * i, tzinfo=IST)) for i in range(5)]
+        repo.add_candles(candles)
+        got = repo.list_candles_recent(INST, Timeframe.M5, limit=10, as_of=candles[-1].ts_open)
+        assert [c.ts_open for c in got] == sorted(c.ts_open for c in got)
+
+    def test_6_m5_and_m15_cutoffs_are_isolated_by_timeframe(self, repo):
+        repo.upsert_instrument(_instrument())
+        m5 = _m5(datetime(2026, 2, 2, 9, 15, tzinfo=IST))
+        m15 = Candle(instrument_id=INST, timeframe=Timeframe.M15,
+                     ts_open=datetime(2026, 2, 2, 9, 15, tzinfo=IST),
+                     open=Decimal("100"), high=Decimal("101"), low=Decimal("99"),
+                     close=Decimal("100"), volume=1000, source="test")
+        repo.add_candles([m5, m15])
+        as_of = datetime(2026, 2, 2, 9, 20, tzinfo=IST)
+        got_m5 = repo.list_candles_recent(INST, Timeframe.M5, limit=10, as_of=as_of)
+        got_m15 = repo.list_candles_recent(INST, Timeframe.M15, limit=10, as_of=as_of)
+        assert len(got_m5) == 1 and got_m5[0].timeframe is Timeframe.M5
+        assert len(got_m15) == 1 and got_m15[0].timeframe is Timeframe.M15
+
+    def test_7_d1_works_with_a_cutoff(self, repo):
+        repo.upsert_instrument(_instrument())
+        repo.add_candles([_candle(date(2026, 2, d)) for d in (2, 3, 4, 5)])
+        got = repo.list_candles_recent(
+            INST, Timeframe.D1, limit=10,
+            as_of=datetime.combine(date(2026, 2, 3), datetime.min.time(), tzinfo=IST).replace(hour=23),
+        )
+        assert [c.ts_open.date() for c in got] == [date(2026, 2, 2), date(2026, 2, 3)]
+
+    def test_8_9_cutoff_before_all_data_returns_empty(self, repo):
+        repo.upsert_instrument(_instrument())
+        repo.add_candles([_m5(datetime(2026, 2, 2, 9, 15, tzinfo=IST))])
+        got = repo.list_candles_recent(
+            INST, Timeframe.M5, limit=10, as_of=datetime(2026, 2, 1, 9, 15, tzinfo=IST)
+        )
+        assert got == []
+
+    def test_10_cutoff_after_all_data_returns_standard_latest_n(self, repo):
+        repo.upsert_instrument(_instrument())
+        candles = [_m5(datetime(2026, 2, 2, 9, 15 + 5 * i, tzinfo=IST)) for i in range(5)]
+        repo.add_candles(candles)
+        got = repo.list_candles_recent(
+            INST, Timeframe.M5, limit=3, as_of=datetime(2026, 2, 2, 23, 0, tzinfo=IST)
+        )
+        assert [c.ts_open for c in got] == [c.ts_open for c in candles[-3:]]
+
+    def test_11_naive_as_of_rejected(self, repo):
+        repo.upsert_instrument(_instrument())
+        with pytest.raises(ValueError, match="timezone-aware"):
+            repo.list_candles_recent(
+                INST, Timeframe.M5, limit=10, as_of=datetime(2026, 2, 2, 9, 15)
+            )
+
+    def test_12_query_plan_uses_index_not_full_table_scan(self, repo):
+        repo.upsert_instrument(_instrument())
+        repo.add_candles([_m5(datetime(2026, 2, 2, 9, 15, tzinfo=IST))])
+        plan = repo.connection.execute(
+            "EXPLAIN QUERY PLAN SELECT instrument_id, timeframe, ts_open, open, high, low, "
+            "close, volume, source, adjusted FROM candles WHERE instrument_id=? "
+            "AND timeframe=? AND ts_open<=? ORDER BY ts_open DESC LIMIT ?",
+            (INST, Timeframe.M5.value, "2026-02-02T23:59:59+05:30", 10),
+        ).fetchall()
+        plan_text = " ".join(str(row) for row in plan)
+        assert "SCAN candles" not in plan_text
+        assert "SEARCH candles USING INDEX idx_candles_range" in plan_text
+
+
 class TestReplaceCandles:
     """`replace_candles` -- the M5 settlement-repair path (Owner-authorized
     2026-08-28): unlike `add_candles`'s upsert, a corrected candle at a

@@ -1590,6 +1590,151 @@ class TestOwnerValidationPipeline:
         assert rv.historical_average_cumulative_volume == Decimal("80")
         assert rv.rvol_ratio == Decimal("2.5")
 
+    def test_id5e_d1_indicators_are_invariant_to_future_d1_candles(
+        self, repo: SqliteRepository, config_dir: Path, monkeypatch
+    ) -> None:
+        """ID-5E §27 (Daily Future-Leak Proof): `IndicatorEngine.compute_all`
+        (SMA/RSI/ADX/MACD/ATR/VOLUME_MA) reads `cs`, the D1 series
+        `list_candles_recent(..., as_of=as_of)` resolves -- it must be
+        byte-identical whether or not the repository ALSO holds D1 candles
+        dated after this historical `as_of` (as it would after further
+        real ingestion in a genuine replay scenario). Proven by running
+        the identical historical cycle twice: once against clean data,
+        once after adding extreme-valued future D1 rows, and asserting the
+        recorded indicator results are unchanged."""
+        from athena.indicators.engine import IndicatorEngine
+
+        recorded: list[object] = []
+        real_compute_all = IndicatorEngine.compute_all
+
+        def spy_compute_all(self, *args, **kwargs):
+            result = real_compute_all(self, *args, **kwargs)
+            recorded.append(result)
+            return result
+
+        monkeypatch.setattr(IndicatorEngine, "compute_all", spy_compute_all)
+
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        iid = "NSE:AAA"
+        repo.upsert_instrument(
+            Instrument(instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE")
+        )
+        repo.add_candles(_candles(iid, seed=100))  # 2025-11-01 .. 2026-01-19 (80 days)
+        as_of = datetime(2026, 1, 20, 9, 30, tzinfo=IST)  # the historical replay target instant
+
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        ingestion = IngestionResult(
+            as_of=as_of, instruments_upserted=1, candles_fetched=80, candles_written=80,
+            quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+        )
+        pipe.run(RunTrigger.PREMARKET, as_of=as_of, ingestion=ingestion, run_id="run-d1-clean")
+        clean = recorded[-1]
+
+        # Seed extreme-valued FUTURE D1 candles dated after as_of -- already
+        # present in the repository, as real further ingestion would leave
+        # them, before replaying the SAME historical as_of again.
+        future_days = [date(2026, 1, 21) + timedelta(days=i) for i in range(30)]
+        repo.add_candles([
+            Candle(
+                instrument_id=iid, timeframe=Timeframe.D1,
+                ts_open=datetime.combine(d, datetime.min.time(), tzinfo=IST).replace(hour=9, minute=15),
+                open=Decimal("999999"), high=Decimal("999999"), low=Decimal("999999"),
+                close=Decimal("999999"), volume=1, source="test",
+            )
+            for d in future_days
+        ])
+        pipe.run(RunTrigger.PREMARKET, as_of=as_of, ingestion=ingestion, run_id="run-d1-noisy")
+        noisy = recorded[-1]
+
+        assert noisy == clean
+
+    def test_id5e_intraday_signal_set_is_invariant_to_future_intraday_candles(
+        self, repo: SqliteRepository, config_dir: Path, monkeypatch
+    ) -> None:
+        """ID-5E §26 (Historical Replay / Pipeline Invariance Proof): the
+        entire IntradaySignalSet (vwap, confluence/trend, OR15/OR30,
+        RelativeStrength, Gap, RelativeVolume) must be byte-identical
+        whether or not the repository ALSO holds M5/M15/D1 candles dated
+        after this historical `as_of` -- covering §15's confluence fix
+        specifically (the M5/M15 `list_candles_recent(limit=100)` reads
+        feeding SMA(9)/SMA(5) direction) alongside every other
+        as_of-bounded read already exercised by ID-2 through ID-5D's own
+        real-cycle tests. Proven the same way as the D1 proof above: run
+        the identical historical cycle twice, add extreme-valued future
+        M5/M15/D1 noise between runs, assert the recorded IntradaySignalSet
+        is unchanged."""
+        from athena.intraday.engine import IntradayAnalyticsEngine
+
+        recorded: list[object] = []
+        real_assess = IntradayAnalyticsEngine.assess
+
+        def spy_assess(self, *args, **kwargs):
+            result = real_assess(self, *args, **kwargs)
+            recorded.append(result)
+            return result
+
+        monkeypatch.setattr(IntradayAnalyticsEngine, "assess", spy_assess)
+
+        # Same 15 M5 / 8 M15 real-bar shape the existing confluence
+        # integration test uses (both SMA periods, 9 and 5, genuinely
+        # satisfied, none still forming) -- with too few real bars,
+        # confluence is already None in both runs regardless of any
+        # retrieval bug, which would make this proof vacuous.
+        confluence_as_of = datetime(2026, 3, 2, 10, 35, tzinfo=IST)
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        iid = "NSE:AAA"
+        repo.upsert_instrument(
+            Instrument(instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE")
+        )
+        repo.add_candles(_candles(iid, seed=100))
+        repo.add_candles(_timeframe_candles(iid, confluence_as_of.date(), Timeframe.M5, 5, n=15, seed=100))
+        repo.add_candles(_timeframe_candles(iid, confluence_as_of.date(), Timeframe.M15, 15, n=8, seed=100))
+
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        ingestion = IngestionResult(
+            as_of=confluence_as_of, instruments_upserted=1, candles_fetched=103, candles_written=103,
+            quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+        )
+        pipe.run(
+            RunTrigger.PREMARKET, as_of=confluence_as_of, ingestion=ingestion,
+            run_id="run-intraday-clean",
+        )
+        clean = recorded[-1]
+        assert clean.trend.five_min.bullish is not None, "test setup must produce a real confluence signal"
+
+        def _extreme(tf: Timeframe, ts: datetime) -> Candle:
+            return Candle(
+                instrument_id=iid, timeframe=tf, ts_open=ts,
+                open=Decimal("999999"), high=Decimal("999999"), low=Decimal("999999"),
+                close=Decimal("999999"), volume=999999, source="test",
+            )
+
+        # Future noise: later-the-same-day M5/M15 bars (past this run's own
+        # as_of, as they would be after later real ingestion the same
+        # session) plus a future D1 candle. Seeded in bulk (>= the
+        # confluence reads' own limit=100) so an unbounded fetch would
+        # genuinely crowd the real pre-as_of bars out of the LIMIT window
+        # -- not merely add a single row completed_candles would filter
+        # out downstream regardless of retrieval bounding.
+        future_intraday = [
+            _extreme(tf, datetime(2026, 3, 2, 14, 0, tzinfo=IST) + timedelta(minutes=5 * i))
+            for tf in (Timeframe.M5, Timeframe.M15)
+            for i in range(120)
+        ]
+        repo.add_candles([
+            *future_intraday,
+            _extreme(Timeframe.D1, datetime(2026, 3, 3, 9, 15, tzinfo=IST)),
+        ])
+        pipe.run(
+            RunTrigger.PREMARKET, as_of=confluence_as_of, ingestion=ingestion,
+            run_id="run-intraday-noisy",
+        )
+        noisy = recorded[-1]
+
+        assert noisy == clean
+
     def test_repeat_validate_with_same_as_of_does_not_orphan_earlier_decision(
         self, repo: SqliteRepository, config_dir: Path
     ) -> None:
@@ -1719,7 +1864,7 @@ class TestOwnerValidationPipeline:
         # never one of the tracked owner_candidates, so it's absent from
         # this dict — only reachable via the repo (as in production).
         candles_by_id = {"NSE:SOMESTOCK": stock_candles}
-        index_id, resolved = pipe._resolve_index_candles(candles_by_id)
+        index_id, resolved = pipe._resolve_index_candles(candles_by_id, as_of=AS_OF)
         assert index_id == "NSE:NIFTY 50"
         assert resolved == nifty_candles
         # Never the unrelated stock's own candles standing in for the index.
@@ -1736,7 +1881,7 @@ class TestOwnerValidationPipeline:
         pipe = OwnerValidationPipeline(repo, config_dir)
         stock_candles = _candles("NSE:SOMESTOCK", seed=500)
         candles_by_id = {"NSE:SOMESTOCK": stock_candles}
-        _index_id, resolved = pipe._resolve_index_candles(candles_by_id)
+        _index_id, resolved = pipe._resolve_index_candles(candles_by_id, as_of=AS_OF)
         assert resolved == []
 
     def test_scoped_revalidate_reuses_last_full_cycle_concentration(

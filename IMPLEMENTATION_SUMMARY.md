@@ -6,6 +6,208 @@ status updated on approval.
 
 ---
 
+## ID-5E — Point-in-Time Candle Retrieval & Replay-Safety Foundation
+
+**Summary.** Infrastructure/correctness milestone, explicitly NOT a trading
+methodology change. Addresses `list_candles_recent()`'s lack of a
+point-in-time cutoff — a replay limitation carried forward, documented but
+unresolved, since ID-P0.1.
+
+**Problem confirmed real, not theoretical.** `IndicatorEngine.compute_all`
+(SMA/RSI/ADX/MACD/ATR/VOLUME_MA) sorts and uses its `candles` argument
+directly, with `as_of` used only to stamp the result — no filtering of the
+input series at all. The D1 series it receives (`OwnerValidationPipeline`'s
+`candles_by_id`) came from `list_candles_recent(..., limit=500)`, which had
+no cutoff. A historical replay whose database also holds D1 candles dated
+after the replay's own `as_of` (exactly what a real database looks like
+after further ingestion since that historical instant) would feed those
+future rows straight into SMA/RSI/etc. Confirmed via a real pipeline run:
+seeding one future-dated D1 candle with an extreme close changed the
+recorded SMA(20) result to that extreme value.
+
+**Repository/production-caller audit (before any code, per the milestone's
+own audit-first requirement).** `get_candles(instrument_id, timeframe,
+start, end)` already enforces `ts_open<=end` in SQL — MARKET-TIME safe by
+construction whenever a caller passes `end=as_of`, confirmed by direct SQL
+inspection, not rewritten. `candles_for_instruments` (same pattern) has no
+ATHENA-core caller at all — only EMR (TRACK_ISOLATED), audited for boundary
+awareness only, untouched. `earliest_candle_ts` (ID-5D.1) needs no `as_of`:
+it resolves only a LOWER retrieval bound, and the subsequent range read
+that consumes it is already capped by `ctx.as_of` — confirmed safe by
+construction, no change made. `list_candles_recent` had zero cutoff
+capability and 9 production call sites in `src/athena/`, classified:
+
+| Call site | Classification | Action |
+|---|---|---|
+| `OwnerValidationPipeline.run()`'s core D1 `candles_by_id` fetch | EXPLICIT_AS_OF_ANALYTICAL | Fixed |
+| `_index_candles_for_metrics` (gap-stability index fallback) | EXPLICIT_AS_OF_ANALYTICAL | Fixed |
+| `_sector_candles_for_health` (sector-health fallback) | EXPLICIT_AS_OF_ANALYTICAL | Fixed |
+| `_resolve_index_candles` (regime-benchmark fallback, 2 call sites) | EXPLICIT_AS_OF_ANALYTICAL | Fixed |
+| `_vix_from_candles` (India VIX snapshot fallback) | EXPLICIT_AS_OF_ANALYTICAL | Fixed |
+| `intraday_analytics_stage`'s M5/M15 confluence reads (2 call sites) | EXPLICIT_AS_OF_ANALYTICAL | Fixed |
+| `opportunities_service._historical_change_pct` | EXPLICIT_AS_OF_ANALYTICAL | Fixed (Python-filter-after-fetch anti-pattern) |
+| `SqliteCandleHistoryProvider.list_recent_candles` (API dashboard) | LIVE_CURRENT_STATE | Unchanged |
+| `market_history_service._prior_close` / `market_summary_service` sparklines | LIVE_CURRENT_STATE (renders the current live snapshot, not a replay) | Unchanged |
+| `symbol_validate.py` (freshness check against latest ingested date) | LIVE_CURRENT_STATE (genuinely asks "what's the real latest data") | Unchanged |
+| `darvax/adapters.py` | TRACK_ISOLATED | Audited for boundary awareness only, untouched |
+
+**Market-time vs. knowledge-time.** ATHENA's `candles` schema stores
+`ts_open` (market time) but not when a row was first persisted/known. ID-5E
+targets and delivers MARKET-TIME point-in-time safety only — a returned
+candle's market timestamp never exceeds a supplied `as_of`. It does NOT
+deliver knowledge-time/bitemporal replay (reconstructing exactly what
+ATHENA knew at a past instant, including a since-corrected provisional
+value) — that would require persisting an observation/version history this
+schema doesn't have, and is not claimed solved.
+
+**Fix — repository contract.** `SqliteRepository.list_candles_recent(
+instrument_id, timeframe, *, limit=500, as_of: datetime | None = None)`.
+`as_of=None` (the default) runs the exact pre-ID-5E SQL, byte-for-byte —
+zero behavior change for every existing live-current-state caller. When
+`as_of` is given, `ts_open<=?` is added to the WHERE clause BEFORE `ORDER
+BY ts_open DESC LIMIT ?` — never a Python filter applied to the fetched
+rows afterward. This distinction is the entire point: a Python filter-after
+would let future-dated rows already consume the LIMIT budget, potentially
+crowding out genuinely earlier rows a correct query would have returned —
+proven non-vacuously (see below). A naive `as_of` is rejected
+(`ValueError`), matching every other point-in-time API in this codebase.
+Completed-candle semantics (`athena.session.completed_candles`) remain a
+wholly separate, still-required concern — a row can satisfy this
+market-time cutoff and still be a forming bar; nothing in this fix
+duplicates or reimplements that authority.
+
+**Fix — production callers.** Every EXPLICIT_AS_OF_ANALYTICAL call site
+above now passes its own already-in-scope `as_of`/`ctx.as_of`. Confluence's
+own deliberate cross-session-boundary reach (SMA(9)/SMA(5) genuinely
+drawing on yesterday's trailing bars early in the session, per ID-3.1 §5's
+own audited, unchanged methodology note) is completely preserved — only
+genuinely future-dated rows are now excluded, never a prior session's own
+trailing bars. `opportunities_service._historical_change_pct` had the
+textbook fetch-latest-500-then-Python-filter-by-date anti-pattern; fixed by
+resolving a market-close cutoff datetime from its own `target: date`
+parameter (reusing the exact `datetime.combine(date, time(15, 30), tzinfo)`
+convention this same file already uses elsewhere for a date-to-cutoff
+conversion) and passing it as `as_of`.
+
+**Non-vacuous verification.** (1) Repository level: reverted to the
+fetch-then-Python-filter pattern, confirmed the dedicated
+`test_4_future_rows_cannot_consume_limit` test fails (empty result instead
+of the correct C/D/E window) and the naive-`as_of`-rejection test fails
+(no longer raises), restored, re-confirmed all 11 pass. (2) D1 pipeline
+level: reverted the core `candles_by_id` fetch to omit `as_of`, confirmed
+`test_id5e_d1_indicators_are_invariant_to_future_d1_candles` fails with
+SMA(20) reading `999999`, restored, re-confirmed passing. (3) Confluence
+pipeline level: reverted the M5/M15 confluence reads to omit `as_of`,
+confirmed `test_id5e_intraday_signal_set_is_invariant_to_future_intraday_candles`
+fails (`five_min.bullish` flips from a real value to `None`/unavailable
+once 240 future-dated M5/M15 rows are seeded — the test was specifically
+strengthened to seed enough noise to actually saturate the reads' own
+`limit=100`, since a single noise row is already excluded downstream by
+`completed_candles` regardless of retrieval bounding and would have made
+the proof vacuous), restored, re-confirmed passing.
+
+**Query-plan evidence.** `EXPLAIN QUERY PLAN` for the new
+`ts_open<=? ORDER BY ts_open DESC LIMIT ?` query: `SEARCH candles USING
+INDEX idx_candles_range` — the existing `(instrument_id, timeframe,
+ts_open)` index, not a table scan, not a new index.
+
+**Files created.** None.
+
+**Files modified.** `src/athena/data/store/repository.py`
+(`list_candles_recent`'s new `as_of` parameter),
+`src/athena/ops/owner_validation.py` (8 call sites bounded, plus `as_of`
+threaded through `_index_candles_for_metrics`/`_sector_candles_for_health`/
+`_resolve_index_candles`/`_vix_from_candles`/`_resolve_snapshot`'s internal
+call),
+`src/athena/api/v1/services/opportunities_service.py`
+(`_historical_change_pct`'s retrieval bounded instead of Python-filtered),
+`tests/data_layer/test_repository.py` (12 new contract tests),
+`tests/ops/test_owner_validation.py` (2 new pipeline-invariance tests, plus
+2 existing `_resolve_index_candles` unit tests updated for its new
+mandatory `as_of` keyword argument), `docs/ATHENA-TECHNICAL-ARCHITECTURE.md`,
+`docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md` (this entry).
+
+**Tests added.** 24 new (12 repository-level contract tests covering the
+full milestone-specified checklist: no-cutoff-preserves-behavior,
+cutoff-excludes-future, exact-boundary-included, future-rows-cannot-
+consume-limit, ordering-preserved, M5/M15-timeframe-isolation, D1-works,
+cutoff-before-all-data-empty, cutoff-after-all-data-standard,
+naive-`as_of`-rejected, indexed-query-plan; 2 pipeline-level invariance
+tests, both non-vacuously verified). Full suite: **2,903 passed, 1
+skipped** (pre-existing, unrelated), 0 failed. Ruff clean for every file
+this milestone touched (same 7 pre-existing, unrelated SIM117 findings in
+`repository.py` confirmed present before this milestone). Mypy: zero new
+failures — `owner_validation.py` stays at its pre-existing 24 errors,
+`repository.py` stays at its pre-existing 10, `opportunities_service.py`
+(never previously checked in this session) confirmed at its own
+pre-existing 13, unaffected by this milestone's one-line retrieval change.
+
+**Architecture compliance.** No new repository capability beyond one
+optional keyword parameter on an existing method; no ADR touched; no new
+`WorkflowStage`; no RVOL/RS/Gap/ORB/VWAP/confluence/scoring/confidence/
+risk/Decision/TradePlan methodology changed anywhere — every difference a
+historical-`as_of` regression could show is explained entirely by future
+data now being correctly absent, never a formula/weight/threshold change.
+
+**Structural regression.** None — full pre-existing suite passes
+unmodified; `as_of=None` is byte-identical to pre-ID-5E behavior for every
+caller that doesn't pass it.
+
+**Point-in-time replay boundary.** Materially improved for candle
+retrieval (market-time safety now real, not merely intended), but NOT
+fully solved: knowledge-time/bitemporal replay, quote history replay
+(`get_latest_quote` has the identical unbounded-latest gap — the `quotes`
+table is already append-only history, so a future fix needs no schema
+migration, but is explicitly out of THIS milestone's candle-only scope),
+market snapshot replay (`get_latest_snapshot`), and institutional-flow/
+candidate-universe-membership/config-version point-in-time reconstruction
+all remain identified-but-unsolved gaps — explicitly not claimed fixed.
+
+**ID-5B status.** Unchanged, untouched — still pending 2026-08-31.
+
+**EMR/DarvaX isolation.** Confirmed preserved — `candles_for_instruments`
+(EMR's own bulk-read API) and `darvax/adapters.py` audited for boundary
+awareness only, neither imported nor modified.
+
+**Remaining work.** Owner review of this milestone. ID-5B remains
+separately gated on 2026-08-31.
+
+**Commit message (for the owner to use, not run by the AI):**
+
+```
+fix(data): add point-in-time candle retrieval safety (ID-5E)
+
+- Add optional as_of parameter to SqliteRepository.list_candles_recent()
+  -- SQL-level ts_open<=as_of cutoff applied BEFORE ORDER BY/LIMIT, never
+  a Python filter after (which would let future-dated rows steal LIMIT
+  slots from genuinely earlier ones); as_of=None preserves pre-ID-5E
+  behavior byte-for-byte for every existing live-current-state caller
+- Audit every candle retrieval API and its production callers first:
+  get_candles/candles_for_instruments already safe (explicit upper
+  bound), earliest_candle_ts (ID-5D.1) safe by construction (lower bound
+  only), list_candles_recent had zero cutoff and 9 real call sites
+- Thread as_of through every EXPLICIT_AS_OF_ANALYTICAL caller: the core
+  D1 candles_by_id fetch, index/sector/VIX fallback reads, and
+  confluence's M5/M15 reads in owner_validation.py (deliberate
+  cross-session-boundary reach unchanged, only future-dated rows now
+  excluded), plus opportunities_service's identical anti-pattern
+- Leave every LIVE_CURRENT_STATE caller (dashboard presentation reads,
+  freshness checks) and EMR/DarvaX (isolated) untouched
+- Scope is MARKET-TIME safety only -- knowledge-time/bitemporal replay,
+  quote/snapshot/institutional-flow/universe-membership/config-version
+  replay explicitly identified as remaining gaps, not solved here
+- 24 new tests; 2 non-vacuously proven at the real pipeline level (a
+  real SMA(20) became 999999, a real confluence signal flipped to
+  unavailable, both before the fix); full suite (2,903) green, zero new
+  mypy failures
+```
+
+**Milestone status.** Ready for review. ID-5B remains separately gated
+on the next active trading session (2026-08-31); ID-5 overall stays open
+until both close.
+
+---
+
 ## ID-5D.1 — RVOL Current-Window Integrity & Retrieval-Policy Correction
 
 **Summary.** Owner code review of ID-5D's actual implementation accepted

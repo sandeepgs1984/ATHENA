@@ -1367,13 +1367,44 @@ class SqliteRepository:
         timeframe: Timeframe,
         *,
         limit: int = 500,
+        as_of: datetime | None = None,
     ) -> list[Candle]:
-        rows = self._query_all(
-            "SELECT instrument_id, timeframe, ts_open, open, high, low, close, volume, source, "
-            "adjusted FROM candles WHERE instrument_id=? AND timeframe=? "
-            "ORDER BY ts_open DESC LIMIT ?",
-            (instrument_id, timeframe.value, limit),
-        )
+        """The most recent `limit` candles, oldest-first.
+
+        `as_of` (ID-5E, market-time point-in-time safety): when given, only
+        candles with `ts_open<=as_of` are eligible -- applied in SQL BEFORE
+        `ORDER BY ... LIMIT`, never as a Python filter after. Filtering
+        after the fact would let candles dated after `as_of` (present in
+        the database from later ingestion, e.g. during a historical replay
+        of an earlier `as_of`) consume LIMIT slots that a correct query
+        would have given to genuinely earlier rows -- silently starving a
+        replay of real historical data it should have seen. `as_of=None`
+        (the default) preserves the exact pre-ID-5E behavior byte-for-byte
+        for every existing live-current-state caller.
+
+        This bounds MARKET-TIME (`ts_open`) only -- it says nothing about
+        when a row was actually persisted/known to ATHENA (knowledge-time/
+        bitemporal replay), which this schema does not track. Analytical
+        completed-candle semantics (`athena.session.completed_candles`)
+        remain a separate, still-required concern: a row can satisfy this
+        market-time cutoff and still be a forming bar.
+        """
+        if as_of is not None:
+            if as_of.tzinfo is None:
+                raise ValueError("list_candles_recent as_of must be timezone-aware")
+            rows = self._query_all(
+                "SELECT instrument_id, timeframe, ts_open, open, high, low, close, volume, "
+                "source, adjusted FROM candles WHERE instrument_id=? AND timeframe=? "
+                "AND ts_open<=? ORDER BY ts_open DESC LIMIT ?",
+                (instrument_id, timeframe.value, as_of.isoformat(), limit),
+            )
+        else:
+            rows = self._query_all(
+                "SELECT instrument_id, timeframe, ts_open, open, high, low, close, volume, source, "
+                "adjusted FROM candles WHERE instrument_id=? AND timeframe=? "
+                "ORDER BY ts_open DESC LIMIT ?",
+                (instrument_id, timeframe.value, limit),
+            )
         candles = [ser.row_to_candle(r) for r in rows]
         candles.reverse()
         return candles

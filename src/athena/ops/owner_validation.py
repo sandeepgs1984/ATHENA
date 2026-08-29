@@ -130,8 +130,12 @@ class OwnerValidationPipeline:
         unresolved: list[dict[str, object]] = []
         for cand in candidates:
             inst = self._resolve_instrument(cand.symbol)
+            # ID-5E: bounded by as_of -- this run's own daily candle series
+            # (feeds universe eligibility, market health, D1 indicators,
+            # scoring) must not see a D1 row dated after this run's own
+            # `as_of` during a historical replay.
             candles = self._repo.list_candles_recent(
-                inst.instrument_id, Timeframe.D1, limit=500
+                inst.instrument_id, Timeframe.D1, limit=500, as_of=as_of
             )
             # A candidate with neither a catalog row nor a single ingested bar was
             # never resolvable — typically a typo that the exchange does not list.
@@ -182,7 +186,7 @@ class OwnerValidationPipeline:
             lookback_days=health_cfg.liquidity.lookback_days,
             method=health_cfg.liquidity.method,
         )
-        index_candles_for_gap = self._index_candles_for_metrics(candles_by_id)
+        index_candles_for_gap = self._index_candles_for_metrics(candles_by_id, as_of=as_of)
         gap_stability = compute_gap_stability(
             index_candles_for_gap,
             window=health_cfg.gap_stability.window,
@@ -274,7 +278,7 @@ class OwnerValidationPipeline:
         # before this change; only the call sites were missing it.
         sector_health_payload: dict[str, object] = {}
         sector_results: Mapping[str, Any] = {}
-        sector_candles = self._sector_candles_for_health(candles_by_id)
+        sector_candles = self._sector_candles_for_health(candles_by_id, as_of=as_of)
         if sector_candles:
             sector_cfg = load_sector_health_config(self._config_dir)
             sector_results = SectorHealthEngine(sector_cfg).assess_many(
@@ -432,7 +436,7 @@ class OwnerValidationPipeline:
         }
 
     def _index_candles_for_metrics(
-        self, candles_by_id: Mapping[str, Sequence[Candle]]
+        self, candles_by_id: Mapping[str, Sequence[Candle]], *, as_of: datetime
     ) -> list[Candle]:
         candidates: list[str] = []
         try:
@@ -446,13 +450,16 @@ class OwnerValidationPipeline:
         for iid in candidates:
             series = list(candles_by_id.get(iid, ()))
             if not series:
-                series = self._repo.list_candles_recent(iid, Timeframe.D1, limit=60)
+                # ID-5E: this fallback (only reached when the index isn't
+                # already in this cycle's own resolved candles_by_id) must
+                # not see a D1 row dated after this run's own as_of either.
+                series = self._repo.list_candles_recent(iid, Timeframe.D1, limit=60, as_of=as_of)
             if series:
                 return series
         return []
 
     def _sector_candles_for_health(
-        self, candles_by_id: Mapping[str, Sequence[Candle]]
+        self, candles_by_id: Mapping[str, Sequence[Candle]], *, as_of: datetime
     ) -> dict[str, list[Candle]]:
         """Sector name -> its mapped tracked index's candle series (SD-2/DD-12).
 
@@ -477,7 +484,11 @@ class OwnerValidationPipeline:
                 continue
             series = list(candles_by_id.get(instrument_id, ()))
             if not series:
-                series = self._repo.list_candles_recent(instrument_id, Timeframe.D1, limit=60)
+                # ID-5E: same fallback-safety reasoning as
+                # _index_candles_for_metrics above.
+                series = self._repo.list_candles_recent(
+                    instrument_id, Timeframe.D1, limit=60, as_of=as_of
+                )
             if series:
                 result[entry.sector] = series
         return result
@@ -540,7 +551,7 @@ class OwnerValidationPipeline:
         # the configured index's own real candle history, never a snapshot
         # label mismatch or another instrument's own candles (see that
         # method's docstring for the two owner-reported bugs this fixes).
-        index_id, index_candles = self._resolve_index_candles(candles_by_id)
+        index_id, index_candles = self._resolve_index_candles(candles_by_id, as_of=as_of)
         if len(index_candles) >= 2:
             try:
                 regime = RegimeEngine(cfg.regime).assess(
@@ -564,7 +575,8 @@ class OwnerValidationPipeline:
         return None
 
     def _resolve_index_candles(
-        self, candles_by_id: Mapping[str, Sequence[Candle]], *, min_candles: int = 2
+        self, candles_by_id: Mapping[str, Sequence[Candle]], *,
+        as_of: datetime, min_candles: int = 2,
     ) -> tuple[str, list[Candle]]:
         """Real market-benchmark index candles for regime assessment.
 
@@ -613,7 +625,11 @@ class OwnerValidationPipeline:
             seen.add(index_id)
             series = list(candles_by_id.get(index_id, ()))
             if len(series) < min_candles:
-                series = self._repo.list_candles_recent(index_id, Timeframe.D1, limit=500)
+                # ID-5E: same fallback-safety reasoning as
+                # _index_candles_for_metrics/_sector_candles_for_health.
+                series = self._repo.list_candles_recent(
+                    index_id, Timeframe.D1, limit=500, as_of=as_of
+                )
             if len(series) >= min_candles:
                 return index_id, series
         return (candidates[0] if candidates else "NIFTY50"), []
@@ -627,7 +643,7 @@ class OwnerValidationPipeline:
         snap = self._repo.get_latest_snapshot()
         vix = snap.india_vix if snap is not None else None
         if vix is None:
-            vix = self._vix_from_candles(candles_by_id)
+            vix = self._vix_from_candles(candles_by_id, as_of=as_of)
         if snap is None:
             if vix is None:
                 return None
@@ -651,7 +667,7 @@ class OwnerValidationPipeline:
         return snap
 
     def _vix_from_candles(
-        self, candles_by_id: Mapping[str, Sequence[Candle]]
+        self, candles_by_id: Mapping[str, Sequence[Candle]], *, as_of: datetime
     ) -> Decimal | None:
         vix_ids: list[str] = []
         try:
@@ -670,7 +686,9 @@ class OwnerValidationPipeline:
             seen.add(iid)
             series = list(candles_by_id.get(iid, ()))
             if not series:
-                series = self._repo.list_candles_recent(iid, Timeframe.D1, limit=5)
+                # ID-5E: same fallback-safety reasoning as
+                # _index_candles_for_metrics/_resolve_index_candles.
+                series = self._repo.list_candles_recent(iid, Timeframe.D1, limit=5, as_of=as_of)
             if not series:
                 continue
             last = max(series, key=lambda c: c.ts_open)
@@ -816,7 +834,7 @@ class OwnerValidationPipeline:
         decision_engine = DecisionEngine(decision_cfg)
         scanner = DailyMarketScanner(WorkflowEngine(clock=_MonoClock()))
 
-        index_id, index_candles = self._resolve_index_candles(candles_by_id)
+        index_id, index_candles = self._resolve_index_candles(candles_by_id, as_of=as_of)
 
         # SD-3 (ID-P0): Instrument.sector is the sole authoritative stock ->
         # sector relationship (never ADR-011's symbol_group/resolve_universe,
@@ -973,15 +991,31 @@ class OwnerValidationPipeline:
                     if daily_last_close is not None:
                         confluence_cfg = scoring_cfg.confluence
                         daily_bullish = Decimal(daily_last_close) >= daily_sma.values["value"]
+                        # ID-5E: the retrieval cutoff (`as_of=ctx.as_of`
+                        # below) and the analytical completed-candle filter
+                        # (`completed_candles(..., as_of=ctx.as_of)`) are
+                        # two separate concerns -- the retrieval cutoff
+                        # stops a future-dated row from stealing one of the
+                        # 100 LIMIT slots a genuinely earlier row should
+                        # have had (repository boundary); completed_candles
+                        # separately still excludes a still-forming tail
+                        # bar (analytical boundary). Both were already
+                        # correct for LIVE runs (no future rows exist in a
+                        # live database); this closes the gap for a
+                        # historical replay `ctx.as_of`. The deliberate
+                        # cross-session-boundary reach (ID-3.1 §5, see
+                        # above) is unchanged -- only genuinely future-dated
+                        # rows are now excluded, never a prior session's own
+                        # trailing bars.
                         confluence_five_min_cs = completed_candles(
                             self._repo.list_candles_recent(
-                                instrument_id, Timeframe.M5, limit=100
+                                instrument_id, Timeframe.M5, limit=100, as_of=ctx.as_of
                             ),
                             Timeframe.M5, as_of=ctx.as_of,
                         )
                         fifteen_min_cs = completed_candles(
                             self._repo.list_candles_recent(
-                                instrument_id, Timeframe.M15, limit=100
+                                instrument_id, Timeframe.M15, limit=100, as_of=ctx.as_of
                             ),
                             Timeframe.M15, as_of=ctx.as_of,
                         )

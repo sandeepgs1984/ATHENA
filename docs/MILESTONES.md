@@ -31,6 +31,7 @@ never auto-continuing past an owner approval gate.
 | ID-4 | Market → sector → stock `RelativeStrengthContext` — point-in-time comparative performance evidence, not RSI, not a scoring input, not a market→sector→stock gating chain | ✅ Architecture accepted 2026-08-29 — **not fully closed**: a common-cutoff/partial-availability correctness issue found in owner code review (an opening-only constituent could drag the whole comparison down), fixed by ID-4.1 below |
 | ID-4.1 | Corrective: `RelativeStrengthEngine`'s comparison cutoff was computed from any constituent with at least one canonical bar, not only constituents that can actually form a return — on the real snapshot this let opening-only market/sector indexes collapse EVERY stock's own otherwise-valid session return to unavailable. Fix comparable-constituent cutoff semantics only — no public contract change, no scoring/Decision/TradePlan change, no index M5 data repair | ✅ Owner approved 2026-08-29 — `_ConstituentSeries.can_form_return`; real-data re-audit on the production retrieval path: stock_return now 526/526 available (was 0/526 — an engine artifact, now resolved); sector/market/every pairwise comparison remain 0/526 (a genuine, now-isolated index M5 data limitation); full suite green (2,833 passed, 1 pre-existing skip). Recommendation: an index-M5 data-quality prerequisite before the next RS-dependent milestone |
 | ID-5 | Core index M5 data-quality root-cause & remediation (per ID-4.1's recommendation) — data-foundation corrective, NOT a trading-methodology milestone. Four parts: **ID-5A** (settled-session repair, owner-authorized), **ID-5B** (live current-session M5 semantics canary), **ID-5C** (Gap & Session-Open Context, parallel, independent of ID-5B), **ID-5D** (Relative Volume/RVOL Context Foundation, parallel, independent of ID-5B) | ✅ **ID-5A owner-authorized, EXECUTED and CLOSED 2026-08-29** — real `run_settlement_repair()` run for the settled 2026-08-28 gap, 537/537 instruments succeeded, 0 failures; off-grid rows 60,410→0; market benchmark + all 8 sector indexes now 75/75 canonical; RelativeStrength sector/market/pairwise availability restored (204-526/526, matching real sector-mapping coverage); OR30 3/526→526/526 `COMPLETE`. 🔄 **ID-5B not started** — needs an active trading session, target 2026-08-31. ✅ **ID-5C CLOSED / owner-approved 2026-08-29** — `athena.intraday.gap_engine.GapEngine`; new `GapContext` (previous-session-close→current-session-open), independent of ID-5B by construction (D1-only, zero M5); 19 new tests, real-data sanity check 526/527 available on the settled 2026-08-28 session; full suite green (2,853 passed, 1 pre-existing skip). 🔄 **ID-5D architecture/methodology ACCEPTED 2026-08-29 — not fully closed**: owner code review found two correctness/policy issues, fixed by **ID-5D.1** below. **ID-5D.1 Ready for review 2026-08-29** — Issue A (current-session window correctness): the comparison window is now the longest CONTIGUOUS prefix of today's own expected canonical grid from session open, not merely however many canonical bars happen to exist regardless of gaps — a missing slot stops the window, later-reappearing canonical bars can never retroactively extend it (non-vacuously proven, engine-level and against real settled 2026-08-28 data with an injected gap). Issue B (retrieval policy): the hardcoded 120-calendar-day retrieval lookback (which would have silently become an undisclosed rolling-baseline-cap policy once M5 history exceeded it) replaced with `repo.earliest_candle_ts()` — a new single indexed `MIN(ts_open)` repository primitive, confirmed via `EXPLAIN QUERY PLAN` to use a covering index, not a table scan; rolling-cap policy and corporate-action adjustment both explicitly OWNER_DEFERRED, not resolved by this milestone. 10 new tests (5 engine-level current-window tests, 4 repository `earliest_candle_ts` tests, 1 workflow-level retrieval-policy test proving inclusion of a real 238-day-old comparable session) plus the pre-existing 27; real-data replay on the settled 2026-08-28 session at 3 cutoffs: 526/527 available (unchanged), zero point-in-time violations, performance confirmed as 2 indexed queries per instrument (was 1; the added `earliest_candle_ts` seek); mypy: the one ID-5D-introduced `calendar: CalendarEngine | None` narrowing error fixed locally via `cast()`, net mypy errors in `owner_validation.py` reduced from 25→24 (zero new). Full suite green (2,890 passed, 1 pre-existing skip). ID-5 overall remains open until ID-5B completes |
+| ID-5E | Point-in-Time Candle Retrieval & Replay-Safety Foundation — infrastructure/correctness, not a trading methodology. Addresses the `list_candles_recent()`-has-no-`as_of` limitation carried forward since ID-P0.1 | 🔄 Ready for review 2026-08-29 — `SqliteRepository.list_candles_recent(..., as_of=None)`: SQL-level `ts_open<=as_of` cutoff applied BEFORE `ORDER BY ... LIMIT` (never a Python filter after), `as_of=None` byte-identical to pre-ID-5E behavior. Every production caller with an explicit `as_of` now passes it: the core D1 `candles_by_id` fetch, its index/sector/VIX fallback reads, and confluence's M5/M15 reads (cross-session-reach methodology unchanged) in `owner_validation.py`; `opportunities_service._historical_change_pct`'s identical anti-pattern fixed the same way. `get_candles`/`candles_for_instruments` audited, already safe (explicit upper bound); `earliest_candle_ts` (ID-5D.1) audited, needs no `as_of` (lower bound only). MARKET-TIME safety only — knowledge-time/bitemporal replay, quote history, market snapshot, institutional-flow/universe-membership/config-version replay all identified as remaining gaps, not solved. 24 new tests (12 repository contract tests, 2 non-vacuously-proven pipeline invariance tests — a real D1 SMA(20) became `999999` before the fix, a real confluence signal flipped to unavailable before the fix); full suite green (2,903 passed, 1 pre-existing skip); zero new mypy failures |
 | ID-6 | TBD, pending ID-5B's live-session result (2026-08-31) and the owner's resulting live-M5-handling decision | Planned |
 
 **ID-0 headline findings (full detail in the report):** (1) `intraday_candles()`
@@ -435,6 +436,64 @@ passed, 1 pre-existing skip**, 0 failed. Ruff clean (7 pre-existing,
 unrelated SIM117 findings elsewhere in `repository.py`, confirmed
 present in the file before this milestone touched it). ID-5B remains
 untouched and separately gated on 2026-08-31.
+
+**ID-5E summary (full detail in the Milestone Review Summary given to the
+owner in-chat, 2026-08-29):** infrastructure/correctness milestone, NOT a
+trading methodology — addresses the `list_candles_recent()`-has-no-`as_of`
+replay limitation carried forward since ID-P0.1. Audited every candle
+retrieval API and its production callers first: `get_candles`/
+`candles_for_instruments` already carry an explicit upper bound (safe by
+construction); `earliest_candle_ts` (ID-5D.1) only resolves a lower bound
+(safe, since the subsequent range read is still capped by `ctx.as_of`);
+`list_candles_recent` had NO cutoff at all. Found the daily-indicator path
+(`IndicatorEngine.compute_all`) has ZERO downstream protection against a
+future-dated row (unlike M5/M15 confluence, already structurally shielded
+by `completed_candles`'s own `as_of` filter) — confirmed via a real
+pipeline run whose SMA(20) became `999999` the moment one future D1
+candle entered the retrieval. Fixed by adding an optional keyword-only
+`as_of: datetime | None = None` to `list_candles_recent`
+(`as_of=None` preserves the exact pre-ID-5E behavior byte-for-byte); the
+cutoff is applied in SQL `WHERE ts_open<=?` BEFORE `ORDER BY ... LIMIT`,
+never as a Python filter after (the latter would let future rows steal
+LIMIT slots from genuinely earlier rows — proven non-vacuously: a
+before-cutoff Python-filter reverting attempt returned an empty result for
+a cutoff planted deliberately mid-history). Every production caller with
+an explicit analytical `as_of` in scope now passes it: the core D1
+`candles_by_id` fetch and its index/sector/VIX fallback reads in
+`OwnerValidationPipeline.run()`, confluence's own M5/M15 reads in
+`intraday_analytics_stage` (the deliberate cross-session-boundary reach —
+SMA(9)/SMA(5) drawing on yesterday's trailing bars — is completely
+unchanged, only genuinely future-dated rows are now excluded), and
+`opportunities_service._historical_change_pct`'s identical fetch-then-
+Python-filter anti-pattern. Explicitly classified LIVE_CURRENT_STATE
+(unchanged) vs EXPLICIT_AS_OF_ANALYTICAL (fixed) for every caller — dashboard
+presentation reads (`market_history_service.py`, `market_summary_service.py`)
+render the current live snapshot, not a historical replay, so were left
+untouched. Two non-vacuous pipeline-level proofs: real D1 SMA(20) became
+`999999` before the fix, restored after; a real confluence signal (5m
+SMA(9) direction) flipped from a genuine bullish/bearish read to
+`unavailable` once 240 future-dated M5/M15 noise rows crowded the real
+bars out of the retrieval's own `limit=100` window before the fix,
+restored after. 24 new tests (12 repository-level contract tests
+covering the full §32 checklist — cutoff/no-cutoff/exact-boundary/
+future-rows-cannot-consume-limit/ordering/timeframe-isolation/D1/empty-
+before-all-data/cutoff-after-all-data/naive-rejection/query-plan; 2
+pipeline-level invariance tests). Scope is explicitly MARKET-TIME
+(`ts_open`) safety only — this schema does not track when a row was
+actually persisted/known to ATHENA, so knowledge-time/bitemporal replay
+remains unsupported and is not claimed solved; quote history
+(`get_latest_quote`), market snapshot (`get_latest_snapshot`),
+institutional-flow/candidate-universe-membership/config-version replay
+are all identified as remaining gaps, explicitly out of this milestone's
+scope (candle retrieval only), not silently solved or hidden. EMR/DarvaX
+retrieval APIs audited for boundary awareness only, untouched (both
+remain TRACK_ISOLATED). No trading methodology changed anywhere. Full
+suite: **2,903 passed, 1 pre-existing skip**, 0 failed. Ruff clean (same 7
+pre-existing, unrelated `repository.py` SIM117 findings). Mypy: zero new
+failures across all three touched files (`owner_validation.py` stays at
+24, `repository.py` stays at 10 pre-existing/unrelated errors,
+`opportunities_service.py` stays at its own pre-existing 13). ID-5B
+remains untouched and separately gated on 2026-08-31.
 
 ## Explosive Move Radar Research Track (accepted 2026-08-21)
 

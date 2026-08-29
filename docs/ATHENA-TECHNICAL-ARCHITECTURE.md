@@ -1289,6 +1289,14 @@ knows these were found and not simply missed:
     SMA(9)/SMA(5) genuinely reads across a session boundary early in the
     day today; whether that cross-session reach is intentional is an open
     methodology question for the owner, not yet decided either way.
+    **ID-5E (2026-08-29) subsequently bounded this same retrieval by
+    `as_of`** (`list_candles_recent(..., as_of=ctx.as_of)`, see item 17
+    below) — the deliberate cross-session-boundary reach is completely
+    unchanged (still the latest 100 rows, still able to draw on
+    yesterday's trailing bars), only genuinely future-dated rows are now
+    excluded. The open methodology question above (whether the
+    cross-session reach itself is intentional) remains open and
+    unaffected by this fix.
 13. **`RelativeStrengthContext`'s comparative dimensions for the settled
     2026-08-28 session: RESOLVED (2026-08-29, ID-5A); the underlying
     engine correctness was fixed earlier by ID-4.1.** ID-4's real-data
@@ -1369,6 +1377,56 @@ knows these were found and not simply missed:
     began 2026-07-28) — whether a rolling cap should be introduced once
     more history accumulates is an explicit, undecided OWNER_PENDING
     policy question, not resolved by this milestone.
+17. **`list_candles_recent()` had no point-in-time cutoff — fixed by
+    ID-5E (2026-08-29), MARKET-TIME safety only.** Every prior ID
+    milestone since ID-P0.1 documented this as an unresolved replay
+    limitation: `list_candles_recent(instrument_id, timeframe, limit=N)`
+    returned the latest N rows overall, with no way to bound retrieval by
+    a historical `as_of` — a replay at an earlier instant could see
+    candles dated after it (from further real ingestion since then), and
+    naively filtering the result AFTER the fact (rather than in SQL
+    before `ORDER BY ... LIMIT`) would let those future rows consume
+    LIMIT slots a genuinely earlier row should have had, silently
+    starving the replay of real historical data (confirmed both at the
+    repository level and, for the daily indicator path specifically —
+    which had ZERO protection, unlike the M5/M15 confluence path already
+    structurally shielded by `completed_candles`'s own `as_of` filter — by
+    a real pipeline run whose SMA(20) became `999999` once a single
+    future-dated D1 row entered the retrieval). Fixed by adding an
+    optional keyword-only `as_of: datetime | None = None` to
+    `list_candles_recent` (`None` preserves the exact pre-ID-5E behavior
+    byte-for-byte): when given, `ts_open<=as_of` is applied in SQL before
+    `ORDER BY ts_open DESC LIMIT`, never as a Python filter after. Every
+    production caller with an explicit analytical `as_of` in scope now
+    passes it — the core `candles_by_id` D1 fetch in
+    `OwnerValidationPipeline.run()`, its index/sector/VIX fallback reads,
+    and confluence's own M5/M15 reads in `intraday_analytics_stage`
+    (§8/item 8's cross-session-reach methodology unchanged, see item 12
+    above). `get_candles`/`candles_for_instruments` already carried an
+    explicit upper bound and needed no change; `earliest_candle_ts`
+    (ID-5D.1) needs no `as_of` since it only resolves a LOWER retrieval
+    bound, with the subsequent range read still capped by `ctx.as_of`.
+    Presentation-layer dashboard reads (`market_history_service.py`,
+    `market_summary_service.py`) were audited and left unchanged — they
+    render the CURRENT live snapshot, not a historical replay, so no
+    future-dated row can exist in a live database for them to see.
+    `opportunities_service._historical_change_pct` (a "diff today against
+    an explicit prior date" feature) had the same fetch-N-then-Python-
+    filter anti-pattern and was fixed the same way. **Scope: MARKET-TIME
+    (`ts_open`) safety only** — this schema does not track when a row was
+    actually persisted/known to ATHENA, so KNOWLEDGE-TIME/bitemporal
+    replay (reconstructing exactly what ATHENA knew at a past instant,
+    including a since-corrected provisional value) remains unsupported
+    and is not claimed solved. Quote history (`get_latest_quote`, feeding
+    `SessionContext.latest_quote_ts`) has the identical unbounded-latest
+    gap and was audited but explicitly left out of this milestone's scope
+    (candle retrieval only) — a known, undecided remaining gap, not a
+    schema limitation (the `quotes` table is already append-only history,
+    so a future fix needs no migration). `get_latest_snapshot()`
+    (`MarketSnapshot`) and institutional-flow/candidate-universe-
+    membership/config-version point-in-time reconstruction are likewise
+    identified-but-unsolved — full deterministic historical pipeline
+    replay is NOT claimed by ID-5E, only market-time candle safety.
 
 ---
 

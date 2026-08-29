@@ -194,10 +194,17 @@ class OpportunitiesService:
         return ranked
 
     def _historical_change_pct(self, instrument_id: str, target: date) -> Decimal | None:
-        candles = [
-            c for c in self._repo.list_candles_recent(instrument_id, Timeframe.D1, limit=500)
-            if c.ts_open.date() <= target
-        ]
+        # ID-5E: bound the retrieval itself by `target` (market close, same
+        # date-to-cutoff convention as `compared_as_of` above) rather than
+        # fetching the latest 500 rows overall and Python-filtering
+        # afterward -- the old pattern let candles dated after `target`
+        # consume LIMIT slots a genuinely on-or-before-target row should
+        # have had, once D1 history for an instrument exceeds 500 rows.
+        tz = ZoneInfo(load_config(self._config_dir).market.timezone)
+        cutoff = datetime.combine(target, time(15, 30), tzinfo=tz)
+        candles = self._repo.list_candles_recent(
+            instrument_id, Timeframe.D1, limit=500, as_of=cutoff
+        )
         if len(candles) < 2:
             return None
         level, baseline = candles[-1].close, candles[-2].close
