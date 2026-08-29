@@ -163,8 +163,95 @@ docs(data): confirm ID-5 M5 data-quality root cause; propose gap repair
   unchanged, pending the next trading day (2026-08-31)
 ```
 
-**Milestone status.** Awaiting owner review AND explicit authorization to
-execute the proposed repair action.
+---
+
+### ID-5A — Settled 2026-08-28 M5 Repair: EXECUTED (2026-08-29)
+
+**Owner-authorized and executed.** Owner explicitly authorized the
+proposed action above, scoped strictly to the settled 2026-08-28 session
+only. Executed in full:
+
+**1. Backup (mandatory, first).** Fresh `sqlite3.Connection.backup()`
+snapshot of the real `db/athena.db` (read-only source connection — the
+original was never opened for write by the backup step itself) to
+`db/backups/athena-pre-m5-repair-20260828-gap-20260829T155925Z.db`
+(4,273,905,664 bytes). Verified via `SqliteRepository.verify_integrity()`
+on the *backup* file (`integrity_check=ok`, `foreign_key_violations=0`)
+before proceeding. SHA-256
+`561aff8a889d4886a617dd3b102bacc73c9584f4ee963e8eba9b85756f0cb65c`
+recorded in the sidecar `.meta.json` alongside `record_counts()` (2,593,239
+candles pre-repair), schema version 15, and the affected-date row count
+(63,057 M5 rows for 2026-08-28 across all instruments). Disk space
+preflight passed (35.84 GB free). A live-Kite-auth preflight (one minimal
+real call resolving `INFY`) also passed before any write was attempted.
+
+**2. Execution.** `run_settlement_repair(dates=(date(2026,8,28),), instrument_ids=<537>)`
+— the exact same 537-instrument scope as the prior authorized run (market
+benchmark + all 8 mapped sector indexes + 526 equities; `NSE:E2E` excluded,
+consistent with the prior run's own exclusion). Real `KiteProvider` +
+`RetryingMarketDataProvider`, no code changes, no timestamp rounding, no
+resampling, no synthetic candles, no EMR/DarvaX involvement.
+
+**3. Result — complete success, zero failures.** 537/537 requests
+succeeded (0 retries, 0 permanent failures, 0 retry-exhausted failures, 0
+failed records). `rows_deleted_total=63,057`, `rows_inserted_total=39,645`,
+`off_grid_before_total=60,410` → **`off_grid_after_total=0`**.
+
+**4. Coverage after, market benchmark + all 8 sector indexes:** 109→75
+total rows, **1→75 canonical, 108→0 off-grid**, last timestamp now
+`15:25:00` (full session). Equities (`NSE:360ONE`, `NSE:RELIANCE`
+sampled): 122/113→72/72 rows, 8/5→72/72 canonical (72/75 — the same
+genuine, non-fabricated shape every other already-repaired date shows;
+not a defect).
+
+**5. RelativeStrength availability, before → after (526 real active
+candidates, identical production retrieval path):**
+
+| Dimension | Before | After |
+|---|---|---|
+| Stock return | 526/526 | 526/526 (unchanged — already correct after ID-4.1) |
+| Sector return | 0/526 | **204/526** (= exact real sector-mapping coverage) |
+| Market return | 0/526 | **526/526** |
+| Stock vs sector | 0/526 | **204/526** |
+| Stock vs market | 0/526 | **526/526** |
+| Sector vs market | 0/526 | **204/526** |
+
+**6. ORB, before → after:** OR15 was already 526/526 `COMPLETE`
+(unchanged). **OR30: 3/526 `COMPLETE` (523 `INCOMPLETE_DATA`) → 526/526
+`COMPLETE`.** No ORB code touched — this is corrected data, not a
+methodology change.
+
+**7. Regression.** Full suite re-run post-repair: **2,834 passed, 1
+skipped**, byte-identical to pre-repair (the suite runs on fixture data,
+not the real DB, so this confirms zero code-side regression, as expected
+— no ATHENA code was changed). Real DB integrity re-verified post-write:
+`ok=True`, `integrity_check=ok`, `foreign_key_violations=0`; candle count
+2,569,827 (== 2,593,239 − 63,057 deleted + 39,645 inserted, exactly
+consistent).
+
+**8. Confluence.** Not touched, not re-derived — its own frozen SMA(9)/
+SMA(5)/+10 methodology and existing tests are unaffected (no confluence
+test failed in the regression run above).
+
+**9. Artifacts.** `artifacts/ops/m5_repair_20260829_gap/repair_manifest.json`
+(full per-session-per-instrument detail), `id5a_summary.json`
+(before/after shape + audit matrices, as tabulated above).
+
+**10. Rollback path.** `db/backups/athena-pre-m5-repair-20260828-gap-20260829T155925Z.db`
+(pre-repair full snapshot, integrity-verified, checksummed) remains
+available if a rollback is ever needed.
+
+**Remaining (ID-5B, not started — see below).** Track B's live
+provisional-vs-settled OHLCV-content classification remains open, pending
+an active trading session (2026-08-31). ID-5 is NOT fully closed until
+ID-5B completes and the owner receives a clear live-M5-handling
+recommendation.
+
+---
+
+**Milestone status.** ID-5A owner-authorized and executed successfully
+2026-08-29. ID-5 remains open pending ID-5B (live current-session M5
+semantics canary, target 2026-08-31).
 
 ---
 

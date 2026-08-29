@@ -30,8 +30,8 @@ never auto-continuing past an owner approval gate.
 | ID-3.1 | Corrective: (A) session-scoped candle reads (`session_stage`, VWAP, ORB) used a fixed `list_candles_recent(limit=100)`, proven by ID-3's own real-data check to silently drop a session's own opening bars on a high-row-density day; (B) `OpeningRangeEngine` judged range completeness by raw in-window row count, so an off-grid timestamp could substitute for a genuinely missing canonical slot. Fix retrieval semantics + canonical-slot integrity only — no new signal methodology, no scoring/Decision/TradePlan change | ✅ Owner approved 2026-08-29 — bounded `get_candles()` reads (no new repository method) + `OpeningRangeEngine._canonical_slots()`; real-data acceptance check on the production retrieval path: OR15 526/526 COMPLETE, OR30 3/526 COMPLETE (523 honestly INCOMPLETE_DATA — a real, previously-masked finding, not a regression); full suite green (2,806 passed, 1 pre-existing skip) |
 | ID-4 | Market → sector → stock `RelativeStrengthContext` — point-in-time comparative performance evidence, not RSI, not a scoring input, not a market→sector→stock gating chain | ✅ Architecture accepted 2026-08-29 — **not fully closed**: a common-cutoff/partial-availability correctness issue found in owner code review (an opening-only constituent could drag the whole comparison down), fixed by ID-4.1 below |
 | ID-4.1 | Corrective: `RelativeStrengthEngine`'s comparison cutoff was computed from any constituent with at least one canonical bar, not only constituents that can actually form a return — on the real snapshot this let opening-only market/sector indexes collapse EVERY stock's own otherwise-valid session return to unavailable. Fix comparable-constituent cutoff semantics only — no public contract change, no scoring/Decision/TradePlan change, no index M5 data repair | ✅ Owner approved 2026-08-29 — `_ConstituentSeries.can_form_return`; real-data re-audit on the production retrieval path: stock_return now 526/526 available (was 0/526 — an engine artifact, now resolved); sector/market/every pairwise comparison remain 0/526 (a genuine, now-isolated index M5 data limitation); full suite green (2,833 passed, 1 pre-existing skip). Recommendation: an index-M5 data-quality prerequisite before the next RS-dependent milestone |
-| ID-5 | Core index M5 data-quality root-cause & remediation (per ID-4.1's recommendation) — data-foundation corrective, NOT a trading-methodology milestone. Determine why market-benchmark/sector-index M5 canonical coverage collapses after the session-open slot | 🔄 Root cause CONFIRMED 2026-08-29 (audit-only, no code fix needed — see summary below); repair action proposed, awaiting explicit owner authorization to execute a real Kite-credentialed write. Recommendation: ID-5 CONDITIONALLY READY — LIVE CANARY REQUIRED |
-| ID-6 | TBD, pending owner decision on ID-5's proposed repair execution and Track B's live-session result (2026-08-31) | Planned |
+| ID-5 | Core index M5 data-quality root-cause & remediation (per ID-4.1's recommendation) — data-foundation corrective, NOT a trading-methodology milestone. Two gated parts: **ID-5A** (settled-session repair, owner-authorized) and **ID-5B** (live current-session M5 semantics canary) | 🔄 **ID-5A owner-authorized and EXECUTED 2026-08-29** — real `run_settlement_repair()` run for the settled 2026-08-28 gap, 537/537 instruments succeeded, 0 failures; off-grid rows 60,410→0; market benchmark + all 8 sector indexes now 75/75 canonical; RelativeStrength sector/market/pairwise availability restored (204-526/526, matching real sector-mapping coverage); OR30 3/526→526/526 `COMPLETE`; full suite green (2,834 passed, 1 pre-existing skip). **ID-5B not started** — needs an active trading session, target 2026-08-31. ID-5 remains open until ID-5B completes |
+| ID-6 | TBD, pending ID-5B's live-session result (2026-08-31) and the owner's resulting live-M5-handling decision | Planned |
 
 **ID-0 headline findings (full detail in the report):** (1) `intraday_candles()`
 is genuinely live across all six runtime flows and already reaches
@@ -287,6 +287,21 @@ requires live Kite credentials and a real production write, so it was not
 performed unilaterally; awaiting explicit owner authorization. 1 new test
 added (`resolve_settlement_repair_dates` correctly targets the real gap
 date); full suite 2,834 passed, 1 pre-existing skip.
+
+**ID-5A execution summary (owner-authorized 2026-08-29, full detail in
+IMPLEMENTATION_SUMMARY.md's "ID-5A" addendum):** backup taken and
+integrity-verified first (`db/backups/athena-pre-m5-repair-20260828-gap-20260829T155925Z.db`,
+checksummed); live Kite auth preflight passed; `run_settlement_repair()`
+executed for the settled 2026-08-28 session across the exact prior
+537-instrument scope — **537/537 succeeded, 0 failures, 0 retries**;
+60,410 off-grid rows → 0; market benchmark and all 8 mapped sector
+indexes now 75/75 canonical (were 1/75). RelativeStrength re-audit: sector/
+market/every pairwise comparison, previously 0/526, now available for
+204-526/526 (exactly the real sector-mapping coverage — no data left on
+the table). OR30 3/526→526/526 `COMPLETE`. Full suite re-run:
+unchanged, 2,834 passed. Real DB integrity re-verified post-write (`ok`,
+0 FK violations). No ATHENA code touched. ID-5B (live current-session
+semantics) not started — needs 2026-08-31.
 
 ## Explosive Move Radar Research Track (accepted 2026-08-21)
 

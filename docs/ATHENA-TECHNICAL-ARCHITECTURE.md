@@ -1229,65 +1229,62 @@ knows these were found and not simply missed:
     SMA(9)/SMA(5) genuinely reads across a session boundary early in the
     day today; whether that cross-session reach is intentional is an open
     methodology question for the owner, not yet decided either way.
-13. **`RelativeStrengthContext`'s comparative dimensions (sector/market/
-    every pairwise comparison) remain blocked by index M5 canonical
-    coverage; stock's own dimension does not (2026-08-29, corrected
-    ID-4.1).** ID-4's real-data audit found the market benchmark
-    (`NSE:NIFTY 50`) and all 8 sector-mapped indexes
-    (`config/sector_index_mapping.json`) each fetched 109 real M5 rows for
-    the checked session but had only **1/75 canonical M5 slots** (09:15
-    only — the very next real row is off-grid `09:43:55`), materially worse
-    than the equity-side drift item 12 found (which stays clean through 5
-    canonical slots before onset). ID-4's ORIGINAL engine let this
-    opening-only index data drag the GLOBAL `comparison_cutoff_ts` down to
-    `09:15` for every candidate regardless of how much better that
-    candidate's own stock/sector canonical coverage was — collapsing
-    `stock_available` to 0/526 too, an ENGINE artifact, not a data
-    limitation. ID-4.1 fixed this (`_ConstituentSeries.can_form_return` —
-    only constituents that can genuinely form a return may contribute to
-    the cutoff). Re-measured on the identical production retrieval path:
-    **stock_return available for 526/526 real active candidates**
-    (engine effect resolved); **sector_return/market_return/every
-    pairwise comparison remain 0/526** — the genuine, now cleanly isolated
-    data effect: the market benchmark and all 8 mapped sector indexes are
-    still opening-only. Not fixed or worked around here — no
-    nearest-neighbor/resampling/forward-fill/alignment rule was invented,
-    per explicit instruction; recommended next step is an index-M5
-    data-quality/remediation prerequisite before an RS-dependent or
-    comparison-methodology milestone. See the ID-4 and ID-4.1 Milestone
-    Review Summaries for the full evidence.
-14. **Root cause of item 13's index M5 coverage gap: CONFIRMED
-    (2026-08-29, ID-5) — Kite's own settle-lag on not-yet-settled
-    candles, not an ATHENA code defect.** `KiteProvider._historical()`
-    (`src/athena/data/providers/kite_provider.py:406-476`) parses
-    `ts_open` exclusively from the raw Kite historical-response row
+13. **`RelativeStrengthContext`'s comparative dimensions for the settled
+    2026-08-28 session: RESOLVED (2026-08-29, ID-5A); the underlying
+    engine correctness was fixed earlier by ID-4.1.** ID-4's real-data
+    audit found the market benchmark (`NSE:NIFTY 50`) and all 8
+    sector-mapped indexes (`config/sector_index_mapping.json`) had only
+    **1/75 canonical M5 slots** for 2026-08-28, materially worse than the
+    equity-side drift item 12 found (clean through 5 canonical slots
+    before onset). ID-4's ORIGINAL engine let this opening-only index data
+    drag the GLOBAL `comparison_cutoff_ts` down to `09:15` for every
+    candidate — collapsing `stock_available` to 0/526 too, an ENGINE
+    artifact. ID-4.1 fixed this (`_ConstituentSeries.can_form_return`).
+    **ID-5A then closed the DATA side**: the market benchmark and all 8
+    sector indexes were opening-only specifically because 2026-08-28 had
+    never been re-fetched by the settlement-repair mechanism (it was
+    excluded as "today" when that mechanism last ran) — re-running it for
+    this one now-settled date (owner-authorized, 2026-08-29) restored full
+    75/75 canonical coverage. Re-measured on the identical production
+    retrieval path, post-repair: `stock_return` 526/526 (unchanged);
+    `sector_return`/`stock_vs_sector`/`sector_vs_market` 204/526 (exactly
+    the real sector-mapping coverage — no data left unavailable);
+    `market_return`/`stock_vs_market` 526/526. No nearest-neighbor/
+    resampling/forward-fill/alignment rule was ever invented — the fix was
+    re-fetching authoritative settled data, nothing else. **This result is
+    for the settled 2026-08-28 session only** — whether TODAY's
+    still-forming session ever offers this same coverage live, before it
+    settles, is ID-5B's separate, still-open question (item 14). See the
+    ID-4, ID-4.1, and ID-5/ID-5A Milestone Review Summaries for full
+    evidence.
+14. **Root cause of item 13's original index M5 coverage gap: CONFIRMED
+    and the settled-history side REPAIRED (2026-08-29, ID-5/ID-5A) —
+    Kite's own settle-lag on not-yet-settled candles, not an ATHENA code
+    defect; live current-session semantics remain open (ID-5B).**
+    `KiteProvider._historical()` (`src/athena/data/providers/kite_provider.py:406-476`)
+    parses `ts_open` exclusively from the raw Kite historical-response row
     (`ts = _parse_kite_ts(str(row[0]))`, line 441) via a pure ISO-8601
     parser with zero rounding/flooring/substitution — independently
-    re-verified by direct code reading, not assumed. No index-vs-equity
-    branching exists anywhere in the fetch path. This exact root cause was
-    already investigated and mechanically fixed once before: a prior
+    re-verified by direct code reading. No index-vs-equity branching
+    exists anywhere in the fetch path. This exact root cause was already
+    investigated and mechanically fixed once before: a prior
     Owner/Chief-Architect-authorized repair
     (`src/athena/data/live_m5_settlement_repair.py`, core `athena.data`,
-    dated 2026-08-28 — NOT an EMR module, touches only `db/athena.db`,
-    zero `athena.explosive_move`/`athena.darvax` imports) corrected
-    1,051,481 off-grid M5 rows across 537 instruments (market benchmark +
-    all 8 sector indexes + equities included) for 2026-07-28 through
-    2026-08-27 by re-fetching each session once it had genuinely settled.
-    **The one remaining gap is 2026-08-28** — excluded from that run by
-    correct design (`resolve_settlement_repair_dates` never repairs
-    "today," and 2026-08-28 WAS "today" when it ran); it is now a fully
-    settled date. ID-5 independently re-verified via a fresh read-only DB
-    audit that already-repaired dates remain perfectly clean (indexes
-    included) and that 2026-08-28 shows the identical already-diagnosed
-    shape. No ATHENA code was changed — the fix is operational (re-run the
-    existing, already-tested repair for the one gap date), requires live
-    Kite credentials and a real production write, and was proposed but NOT
-    executed pending explicit owner authorization. Separately, and NOT
-    resolved by this: Track B's live provisional-vs-settled OHLCV-content
-    question (`live_m5_provisional_settlement_diagnostic.py` — built,
-    unit-tested, never executed; needs an open trading session, next one
-    2026-08-31) remains open. See the ID-5 Milestone Review Summary for
-    the full evidence.
+    dated 2026-08-28 — NOT an EMR module, zero `athena.explosive_move`/
+    `athena.darvax` imports) corrected 1,051,481 off-grid M5 rows across
+    537 instruments for 2026-07-28 through 2026-08-27. **ID-5A
+    (owner-authorized, 2026-08-29) re-ran the identical, unmodified
+    mechanism for the one remaining gap, 2026-08-28** (excluded from the
+    prior run only because it was "today" then): 537/537 instruments
+    succeeded, 0 failures, 60,410 off-grid rows → 0, backed by a fresh
+    integrity-verified, checksummed backup
+    (`db/backups/athena-pre-m5-repair-20260828-gap-20260829T155925Z.db`).
+    No ATHENA code was changed. **Still open (ID-5B, not started):**
+    Track B's live provisional-vs-settled OHLCV-content question
+    (`live_m5_provisional_settlement_diagnostic.py` — built, unit-tested,
+    never executed; needs an open trading session, next one 2026-08-31).
+    ID-5 is not considered fully closed until ID-5B completes. See the
+    ID-5/ID-5A Milestone Review Summary for full evidence.
 
 ---
 
