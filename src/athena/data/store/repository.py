@@ -513,13 +513,20 @@ class SqliteRepository:
         return ser.payload_to_snapshot(row[0]) if row else None
 
     def get_latest_snapshot_before(self, before: datetime) -> MarketSnapshot | None:
-        """Return the newest persisted snapshot strictly before ``before``."""
-        row = self._query_one(
-            "SELECT payload_json FROM market_snapshots "
-            "WHERE datetime(ts) < datetime(?) ORDER BY datetime(ts) DESC LIMIT 1",
-            (before.isoformat(),),
-        )
-        return ser.payload_to_snapshot(row[0]) if row else None
+        """Return the newest persisted snapshot strictly before ``before``.
+
+        ID-5G.1: uses `_latest_snapshot_at_or_before`'s full-precision
+        Python-side comparison (adjacent fix -- this method shared the
+        exact same `datetime()`-truncation precision bug ID-5G.1 fixed in
+        `get_latest_snapshot_as_of`). Its own STRICT `<` semantics for its
+        two real callers (`market_history_service`'s previous-trading-day
+        snapshot lookup, `config_preview`'s pre-decision snapshot lookup)
+        are completely unchanged -- only the comparison's precision is
+        corrected.
+        """
+        if before.tzinfo is None:
+            raise ValueError("get_latest_snapshot_before before must be timezone-aware")
+        return self._latest_snapshot_at_or_before(before, inclusive=False)
 
     def get_latest_snapshot_as_of(self, as_of: datetime) -> MarketSnapshot | None:
         """Newest persisted snapshot with `ts<=as_of` (ID-5G, market-time
@@ -535,26 +542,53 @@ class SqliteRepository:
         already known at `as_of`) -- so `get_latest_snapshot_before` itself
         is untouched, never repurposed or made inclusive.
 
-        Uses SQLite's `datetime()` wrapping, not raw TEXT comparison,
-        because the file-based provider (`_aware_ts` in
-        `data/providers/file_provider.py`) permits a snapshot `ts` with any
-        UTC offset, unlike candles/quotes which this codebase always
-        serializes in one consistent timezone -- raw TEXT comparison would
-        not reliably reflect true chronological order in that case. This
-        prevents SQLite from using the `ts` primary-key index for this
-        query (confirmed via `EXPLAIN QUERY PLAN`: a full `SCAN`, not a
-        `SEARCH ... USING INDEX`) -- an accepted, understood
-        correctness-over-speed tradeoff, since this table holds one row per
-        validation cycle (not per instrument), never a meaningful scan cost.
+        ID-5G.1: full-precision, offset-safe absolute-time comparison. The
+        original ID-5G implementation wrapped both sides in SQLite's
+        `datetime()` function (chosen because the file-based provider's
+        `_aware_ts` permits a snapshot `ts` with any UTC offset, so raw
+        TEXT comparison could not be assumed chronologically correct) --
+        but `datetime()` TRUNCATES to whole seconds, so two snapshots
+        0.9s and 0.1s into the same second are indistinguishable and can
+        be misordered (confirmed empirically: `datetime('...:00.900+05:30')
+        <= datetime('...:00.100+05:30')` evaluates true in SQLite). A
+        `julianday()` alternative was also measured: offset-safe and
+        millisecond-safe (zero collisions across all 1000 millisecond
+        values in a full sweep), but demonstrably NOT microsecond-safe
+        (two `ts` values 1 microsecond apart evaluated as equal) -- and
+        Python's own `datetime.now()` (the real source of every
+        production `as_of`/snapshot `ts`) carries microsecond resolution,
+        so this residual gap was not acceptable. Fixed instead by
+        `_latest_snapshot_at_or_before`: fetch every persisted row (this
+        table holds one row per validation cycle, market-wide, never
+        per-instrument -- measured at 1,872 rows in the real production
+        database, fetched in ~13ms) and compare using Python's own
+        `datetime` ordering, which has no floating-point precision loss
+        at any sub-second granularity and is correct across mixed UTC
+        offsets by construction (aware-datetime comparison is defined on
+        absolute instants, not on textual representation).
         """
         if as_of.tzinfo is None:
             raise ValueError("get_latest_snapshot_as_of as_of must be timezone-aware")
-        row = self._query_one(
-            "SELECT payload_json FROM market_snapshots "
-            "WHERE datetime(ts) <= datetime(?) ORDER BY datetime(ts) DESC LIMIT 1",
-            (as_of.isoformat(),),
-        )
-        return ser.payload_to_snapshot(row[0]) if row else None
+        return self._latest_snapshot_at_or_before(as_of, inclusive=True)
+
+    def _latest_snapshot_at_or_before(
+        self, cutoff: datetime, *, inclusive: bool
+    ) -> MarketSnapshot | None:
+        """Shared full-precision selection for both snapshot point-in-time
+        methods above -- never "fetch only the global latest, then reject
+        in Python" (which would hide a valid earlier snapshot behind a
+        later, ineligible one); every row is considered, and the true
+        maximum eligible timestamp is selected directly."""
+        rows = self._query_all("SELECT ts, payload_json FROM market_snapshots")
+        best_ts: datetime | None = None
+        best_payload: str | None = None
+        for ts_str, payload in rows:
+            ts = datetime.fromisoformat(ts_str)
+            eligible = ts <= cutoff if inclusive else ts < cutoff
+            if eligible and (best_ts is None or ts > best_ts):
+                best_ts = ts
+                best_payload = payload
+        return ser.payload_to_snapshot(best_payload) if best_payload is not None else None
 
     def list_snapshots_recent(self, *, limit: int = 30) -> list[MarketSnapshot]:
         """Newest-first market snapshots, then returned oldest→newest for sparklines."""

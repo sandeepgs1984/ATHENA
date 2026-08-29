@@ -6,6 +6,227 @@ status updated on approval.
 
 ---
 
+## ID-5G.1 — Full-Precision Offset-Safe MarketSnapshot Point-in-Time Retrieval
+
+**Summary.** Narrow correctness repair on top of ID-5G's accepted
+architecture — no methodology change. Owner code review found ID-5G's
+`datetime()`-wrapped SQL comparison, chosen specifically for offset
+safety, has an undisclosed second defect: `datetime()` TRUNCATES to whole
+seconds, so two snapshots within the same wall-clock second can be
+misordered or wrongly considered equally eligible.
+
+**Owner-found precision bug.** Confirmed empirically: SQLite's
+`datetime('...:00.900+05:30') <= datetime('...:00.100+05:30')` evaluates
+`1` (true) — a snapshot 0.9s into a second is treated as "at or before" a
+cutoff 0.1s into the SAME second, because both truncate to the identical
+whole-second value. `ORDER BY datetime(ts) DESC` on such a tie is
+implementation-defined (empirically found to favor whichever row was
+inserted first, not the true maximum) — not the "true absolute-time
+latest" the contract requires.
+
+**SQLite datetime()/julianday() precision evidence.** `datetime()`:
+confirmed to discard all sub-second information (both `.900` and `.100`
+values round-trip to the identical `HH:MM:SS` string). `julianday()`: a
+candidate alternative — confirmed offset-safe (a cross-offset absolute-
+instant ordering test passed) and confirmed millisecond-safe (a full
+0–999ms sweep produced zero ordering collisions), but confirmed **NOT**
+microsecond-safe (two `ts` values exactly 1 microsecond apart evaluated
+as float-equal via `julianday()`) — and Python's own `datetime.now()`
+(the real source of every production `as_of`/snapshot `ts`) carries
+microsecond resolution, so this residual gap was judged not acceptable
+for a contract explicitly required to respect "full persisted timestamp
+precision."
+
+**Snapshot producer precision audit.** `KiteProvider` (`_parse_kite_ts`,
+via `datetime.fromisoformat`) and `FileProvider` (`_aware_ts`, same)
+neither strip nor guarantee whole-second precision — both preserve
+whatever fractional precision the source string carries. `owner_validation.py`'s
+synthetic `ts=as_of` constructions inherit `as_of`'s own precision, and
+`as_of` is resolved in production via `datetime.now(tz)`
+(`ops/full_validation.py`), which is microsecond-resolution by default.
+Sub-second-precision snapshots are therefore a real, not merely
+theoretical, production possibility.
+
+**Mixed-offset audit.** Re-confirmed and extended: two ISO-8601 strings
+representing the SAME absolute instant under different offsets
+(`09:20:00+05:30` vs `03:50:00+00:00`) parse to identical Python `datetime`
+objects under aware-datetime comparison — genuinely offset-safe, unlike
+raw TEXT comparison.
+
+**Existing snapshot API ordering audit.** `get_latest_snapshot_before`
+(pre-existing, `datetime(ts) < datetime(?)`) has the IDENTICAL precision
+bug — confirmed, not hidden. `get_latest_snapshot()` (raw
+`ORDER BY ts DESC`, no cutoff) is ALSO potentially chronologically wrong
+under mixed offsets (raw TEXT ordering does not necessarily reflect
+absolute-instant ordering across differing offsets) — reported honestly,
+NOT fixed: its real callers are a write-integrity equality check
+(`_persist_enriched_snapshot`, comparing `latest.ts == snap.ts`, which a
+mis-ordering cannot corrupt) and live dashboard presentation reads
+(always effectively "now", where the file-provider's mixed-offset risk
+is largely theoretical) — neither demonstrably needs a fix, per explicit
+scope discipline. `list_snapshots_recent()` — same raw ordering, same
+reasoning, same explicit non-fix.
+
+**Chosen full-precision comparison strategy.** NOT raw TEXT comparison
+(offset-unsafe, per ID-5G's own finding). NOT a new SQL magic-number
+substitution (`datetime()` → `julianday()` alone would still leave a
+known, if narrower, microsecond-level gap). Chosen: fetch every persisted
+row (`market_snapshots` holds one row per validation cycle — measured at
+1,872 rows in the real production database, fetched in ~13ms) and select
+the true maximum eligible timestamp using Python's own aware-`datetime`
+comparison, which has zero floating-point precision loss at any
+sub-second granularity and is correct across mixed UTC offsets by
+construction. Implemented as a shared private helper,
+`_latest_snapshot_at_or_before(cutoff, *, inclusive)`, used by both
+`get_latest_snapshot_as_of` (`inclusive=True`) and `get_latest_snapshot_before`
+(`inclusive=False`) — the accepted INCLUSIVE/STRICT semantic distinction
+from ID-5G is completely preserved; only the underlying comparison's
+precision changed. Never "fetch only the global latest, then reject" —
+every row is genuinely considered, so a valid earlier snapshot can never
+be hidden behind a later, ineligible one.
+
+**get_latest_snapshot_before impact.** Fixed via the same shared helper
+(adjacent fix, not a scope-broadening rewrite) — its own STRICT `<`
+operator is completely unchanged; only the comparison's precision is
+corrected. A naive `before` is now rejected (`ValueError`), matching the
+new method's own convention — previously no explicit guard existed
+(this codebase's aware-datetime discipline meant a naive value would
+never have reached this method's two real callers in production, so the
+addition changes no real caller's behavior — confirmed by the full suite
+staying green).
+
+**get_latest_snapshot impact.** NOT changed — reported as a real,
+theoretical, but out-of-scope finding (see audit above).
+
+**list_snapshots_recent impact.** NOT changed — same reasoning.
+
+**Non-vacuous verification.** (1) Repository level: reverted
+`_latest_snapshot_at_or_before` to the ID-5G `datetime()`-based SQL,
+confirmed 2 of the new tests fail —
+`test_12_same_second_selection_is_deterministic_by_sub_second_value`
+(wrongly selected the first-inserted `.100` value instead of the true
+maximum-eligible `.700`) and the `get_latest_snapshot_before` precision
+test (wrongly returned `None` instead of the eligible `.050` snapshot,
+since both rows tied and the ORDER BY DESC tie-break happened to favor
+neither in a way satisfying `<`) — restored, re-confirmed all pass. (2)
+Pipeline level: reverted the same helper, confirmed
+`test_id5g1_market_health_snapshot_input_is_invariant_to_a_fractional_second_future_snapshot`
+fails with `india_vix` leaking the extreme future value `999` instead of
+the real `15` (insertion order deliberately reversed — future snapshot
+inserted FIRST — since SQLite's own tie-break for equal-after-truncation
+rows was empirically found to favor the first-inserted row, which would
+otherwise have coincidentally masked the bug), restored, re-confirmed
+passing. A caution recorded for future reference: an earlier attempt at
+this same proof, with the eligible snapshot inserted first, passed even
+under the broken `datetime()` implementation purely by tie-break luck —
+demonstrating that SQLite's implementation-defined tie-break behavior can
+silently mask this exact class of bug, and that insertion order must be
+deliberately chosen to expose it.
+
+**Cross-offset proof.** `test_14_cross_offset_absolute_ordering` and
+`test_15_cross_offset_fractional_future_excluded` combine a UTC-offset
+snapshot with sub-second precision against an IST-offset one, confirming
+selection follows absolute-instant ordering in both dimensions
+simultaneously.
+
+**Query/performance evidence.** No SQL filtering at all in the corrected
+implementation — `SELECT ts, payload_json FROM market_snapshots` (a full
+read, confirmed via `EXPLAIN QUERY PLAN` to be `SCAN market_snapshots`,
+consistent with fetching every row by design) followed by an in-memory
+Python comparison. Measured against a real, read-only backup of the
+production database: 1,872 rows fetched in ~13ms — negligible, and this
+method is called at most once per validation cycle (not per instrument).
+
+**Files created.** None.
+
+**Files modified.** `src/athena/data/store/repository.py`
+(`_latest_snapshot_at_or_before`, shared full-precision helper;
+`get_latest_snapshot_before`'s naive-`before` guard),
+`tests/data_layer/test_repository.py` (7 new tests: fractional-future-
+excluded, same-second-selection, exact-fractional-boundary, cross-offset,
+cross-offset-fractional, `get_latest_snapshot_before` precision sharing,
+`get_latest_snapshot_before` naive-rejection; the pre-existing query-plan
+test updated to reflect the new no-WHERE-clause query shape),
+`tests/ops/test_owner_validation.py` (1 new pipeline fractional-future
+invariance test), `docs/ATHENA-TECHNICAL-ARCHITECTURE.md`,
+`docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md` (this entry).
+
+**Tests added.** 8 new (7 repository-level, 1 pipeline-level, both
+categories non-vacuously verified). Full suite: **2,935 passed, 1
+skipped** (pre-existing, unrelated), 0 failed. Ruff clean (same 7
+pre-existing, unrelated `repository.py` SIM117 findings). Mypy: zero new
+failures — `owner_validation.py` stays at 24, `repository.py` stays at
+10.
+
+**Structural scoring regression.** None.
+
+**Gap/RS/RVOL/ORB/VWAP/Trend regression.** None.
+
+**Decision/TradePlan regression.** None.
+
+**Architecture/ADR impact.** None — no new repository method beyond a
+private shared helper; the two public snapshot point-in-time methods'
+own signatures and semantics (INCLUSIVE `<=` / STRICT `<`) are unchanged
+from ID-5G.
+
+**ID-5B status.** Unchanged, untouched — still pending 2026-08-31.
+
+**EMR/DarvaX isolation.** Confirmed preserved — no snapshot-retrieval
+code in either track inspected, imported, or modified.
+
+**Remaining snapshot replay limitations.** `get_latest_snapshot()` and
+`list_snapshots_recent()`'s own potential mixed-offset raw-ordering risk
+remains unaddressed (reported, not fixed — no demonstrated caller need).
+Knowledge-time/bitemporal replay remains unsupported (`ON CONFLICT(ts) DO
+NOTHING` still means a same-timestamp correction is silently dropped —
+unchanged from ID-5G). Institutional-flow/candidate-universe-membership/
+config-version replay remain unresolved.
+
+**Point-in-time replay status after ID-5G.1.** Candles: market-time
+bounded, full precision (ID-5E; candles/quotes were never subject to this
+bug, since their raw-TEXT comparison is offset-safe by the codebase's own
+uniform-IST-serialization convention). Quotes: market-time bounded, full
+precision (ID-5F; same reasoning). Market snapshots: market-time bounded,
+NOW full-precision and offset-safe (ID-5G + ID-5G.1). Institutional
+flows/universe-membership/config-version: unresolved. Knowledge-time/
+bitemporal: unsupported for all three retrieval kinds.
+
+**ID-5G closure recommendation.** ID-5G + ID-5G.1 together are
+recommended for closure, pending this review.
+
+**Commit message (for the owner to use, not run by the AI):**
+
+```
+fix(data): full-precision offset-safe snapshot point-in-time retrieval (ID-5G.1)
+
+- Replace ID-5G's datetime()-wrapped SQL comparison (which TRUNCATES to
+  whole seconds, letting a same-second future snapshot appear eligible)
+  with a Python-side full-precision comparison over every persisted row
+  -- market_snapshots holds one row per validation cycle (measured 1,872
+  rows / ~13ms in the real production database), so a full read costs
+  nothing meaningful
+- Measured julianday() as an alternative: offset-safe and millisecond-
+  safe, but demonstrably NOT microsecond-safe -- rejected, since
+  production as_of/snapshot ts values carry microsecond resolution
+- Apply the same fix to get_latest_snapshot_before (identical
+  pre-existing precision bug, confirmed via audit) via a shared private
+  helper -- its own STRICT '<' semantics for its two real callers are
+  completely unchanged, only the comparison's precision is corrected
+- Report (not fix) the identical mixed-offset raw-ordering risk in
+  get_latest_snapshot()/list_snapshots_recent() -- neither has a caller
+  that demonstrably needs chronological-latest correctness
+- 8 new tests; 2 non-vacuously proven (a same-second selection test and
+  a real pipeline run both leaked the wrong/future value under the
+  reverted datetime()-based implementation); full suite (2,935) green,
+  zero new mypy failures
+```
+
+**Milestone status.** Ready for review. ID-5B remains separately gated
+on the next active trading session (2026-08-31); ID-5 overall stays open
+until both close.
+
+---
+
 ## ID-5G — Point-in-Time MarketSnapshot Retrieval Safety
 
 **Summary.** Final narrow infrastructure/correctness milestone in the ID-5E/

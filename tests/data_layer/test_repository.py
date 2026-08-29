@@ -838,18 +838,98 @@ class TestGetLatestSnapshotAsOf:
         assert repo.get_latest_snapshot_as_of(as_of) == repo.get_latest_snapshot_as_of(as_of)
 
     def test_10_query_plan_evidence(self, repo):
-        """ID-5G §9/§32: `datetime()` wrapping is a deliberate correctness-
-        over-speed tradeoff (the file-based provider permits a non-uniform
-        UTC offset in a persisted snapshot's `ts`) -- documented here as a
-        full SCAN, not silently assumed indexed."""
+        """ID-5G.1: the implementation fetches every row (`SELECT ts,
+        payload_json FROM market_snapshots`, no WHERE clause at all) and
+        selects the true maximum eligible timestamp in Python -- a
+        deliberate correctness-over-speed tradeoff, chosen over both raw
+        TEXT comparison (offset-unsafe) and SQLite's `datetime()`/
+        `julianday()` functions (sub-second-precision-lossy, see §3/§7 of
+        the ID-5G.1 Milestone Review Summary). Documented as a full SCAN,
+        not silently assumed indexed -- this table holds one row per
+        validation cycle (measured at 1,872 rows in the real production
+        database, fetched in ~13ms), never a meaningful cost."""
         repo.add_snapshot(self._snap(datetime(2026, 2, 2, 9, 20, tzinfo=IST)))
         plan = repo.connection.execute(
-            "EXPLAIN QUERY PLAN SELECT payload_json FROM market_snapshots "
-            "WHERE datetime(ts) <= datetime(?) ORDER BY datetime(ts) DESC LIMIT 1",
-            ("2026-02-02T09:30:00+05:30",),
+            "EXPLAIN QUERY PLAN SELECT ts, payload_json FROM market_snapshots"
         ).fetchall()
         plan_text = " ".join(str(row) for row in plan)
-        assert "SCAN market_snapshots" in plan_text  # accepted tradeoff, documented not hidden
+        assert "SCAN market_snapshots" in plan_text
+
+    def test_11_fractional_second_future_snapshot_excluded(self, repo):
+        """ID-5G.1 §9 (the owner-found precision bug's exact regression):
+        S1 at .050s, S2 at .900s (same whole second), as_of at .100s. The
+        old `datetime()`-based comparison truncates to whole seconds and
+        would incorrectly consider S2 eligible (and even select it, since
+        both collapse to the same second). The corrected implementation
+        must select only S1, using full sub-second precision."""
+        repo.add_snapshot(self._snap(
+            datetime(2026, 2, 2, 9, 20, 0, 50_000, tzinfo=IST), "1"))
+        repo.add_snapshot(self._snap(
+            datetime(2026, 2, 2, 9, 20, 0, 900_000, tzinfo=IST), "999999"))
+        got = repo.get_latest_snapshot_as_of(datetime(2026, 2, 2, 9, 20, 0, 100_000, tzinfo=IST))
+        assert got.ts == datetime(2026, 2, 2, 9, 20, 0, 50_000, tzinfo=IST)
+        assert got.indices["NIFTY50"] == Decimal("1")
+
+    def test_12_same_second_selection_is_deterministic_by_sub_second_value(self, repo):
+        """ID-5G.1 §10: three snapshots within the same whole second
+        (.100/.400/.700) with as_of at .800 -- must select .700, not an
+        arbitrary/whole-second-collapsed tie."""
+        repo.add_snapshot(self._snap(datetime(2026, 2, 2, 9, 20, 0, 100_000, tzinfo=IST), "1"))
+        repo.add_snapshot(self._snap(datetime(2026, 2, 2, 9, 20, 0, 400_000, tzinfo=IST), "2"))
+        repo.add_snapshot(self._snap(datetime(2026, 2, 2, 9, 20, 0, 700_000, tzinfo=IST), "3"))
+        got = repo.get_latest_snapshot_as_of(datetime(2026, 2, 2, 9, 20, 0, 800_000, tzinfo=IST))
+        assert got.ts == datetime(2026, 2, 2, 9, 20, 0, 700_000, tzinfo=IST)
+        assert got.indices["NIFTY50"] == Decimal("3")
+
+    def test_13_exact_fractional_boundary_included(self, repo):
+        """ID-5G.1 §11: the accepted inclusive boundary remains correct
+        even at sub-second precision."""
+        repo.add_snapshot(self._snap(datetime(2026, 2, 2, 9, 20, 0, 700_000, tzinfo=IST)))
+        got = repo.get_latest_snapshot_as_of(datetime(2026, 2, 2, 9, 20, 0, 700_000, tzinfo=IST))
+        assert got is not None
+
+    def test_14_cross_offset_absolute_ordering(self, repo):
+        """ID-5G.1 §8: S1=09:30:00+05:30 (=04:00:00 UTC), S2=04:05:00+00:00
+        -- S2 is later in ABSOLUTE time despite differing lexically/by
+        offset. Selection must use absolute-instant ordering, not raw
+        text or a same-offset assumption."""
+        from datetime import timezone as _tz
+        s1 = self._snap(datetime(2026, 2, 2, 9, 30, tzinfo=IST), "1")
+        s2 = self._snap(datetime(2026, 2, 2, 4, 5, tzinfo=_tz.utc), "2")
+        repo.add_snapshot(s1)
+        repo.add_snapshot(s2)
+        as_of = datetime(2026, 2, 2, 4, 10, tzinfo=_tz.utc)  # after both, absolute
+        got = repo.get_latest_snapshot_as_of(as_of)
+        assert got.indices["NIFTY50"] == Decimal("2")  # S2, the true latest
+
+    def test_15_cross_offset_fractional_future_excluded(self, repo):
+        """ID-5G.1 §12: combine mixed UTC offset with sub-second
+        precision -- `eligible` (09:20:00.900 IST = 03:50:00.900 UTC) is
+        before `as_of` (09:21:00.000 IST = 03:51:00.000 UTC); `future`
+        (09:22:00.050 IST, expressed as 03:52:00.050 UTC, extreme value)
+        is genuinely after `as_of` in absolute time and must be excluded,
+        despite the offset difference."""
+        from datetime import timezone as _tz
+        eligible = self._snap(datetime(2026, 2, 2, 9, 20, 0, 900_000, tzinfo=IST), "1")
+        future = self._snap(datetime(2026, 2, 2, 3, 52, 0, 50_000, tzinfo=_tz.utc), "999999")
+        repo.add_snapshot(eligible)
+        repo.add_snapshot(future)
+        as_of = datetime(2026, 2, 2, 3, 51, 0, 0, tzinfo=_tz.utc)  # 09:21:00+05:30
+        got = repo.get_latest_snapshot_as_of(as_of)
+        assert got.indices["NIFTY50"] == Decimal("1")
+
+    def test_get_latest_snapshot_before_shares_the_fractional_second_precision_fix(self, repo):
+        """ID-5G.1 §15: `get_latest_snapshot_before` had the identical
+        `datetime()`-truncation bug -- fixed via the same shared
+        full-precision helper, its own STRICT `<` operator unchanged."""
+        repo.add_snapshot(self._snap(datetime(2026, 2, 2, 9, 20, 0, 50_000, tzinfo=IST), "1"))
+        repo.add_snapshot(self._snap(datetime(2026, 2, 2, 9, 20, 0, 900_000, tzinfo=IST), "999999"))
+        got = repo.get_latest_snapshot_before(datetime(2026, 2, 2, 9, 20, 0, 100_000, tzinfo=IST))
+        assert got.indices["NIFTY50"] == Decimal("1")
+
+    def test_get_latest_snapshot_before_naive_rejected(self, repo):
+        with pytest.raises(ValueError, match="timezone-aware"):
+            repo.get_latest_snapshot_before(datetime(2026, 2, 2, 9, 20))
 
     def test_get_latest_snapshot_before_semantics_are_unchanged(self, repo):
         """ID-5G must not repurpose or weaken get_latest_snapshot_before's

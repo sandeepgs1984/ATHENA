@@ -1907,6 +1907,70 @@ class TestOwnerValidationPipeline:
         assert noisy == clean
         assert noisy.india_vix == Decimal("15")
 
+    def test_id5g1_market_health_snapshot_input_is_invariant_to_a_fractional_second_future_snapshot(
+        self, repo: SqliteRepository, config_dir: Path, monkeypatch
+    ) -> None:
+        """ID-5G.1 §19 (Pipeline Fractional-Future Invariance): the owner-
+        found precision bug's exact regression, replayed through the real
+        pipeline -- a real snapshot at `as_of + 50ms` (eligible) and an
+        extreme-valued one at `as_of + 900ms` (same whole second,
+        genuinely future) must not be conflated by a whole-second-
+        truncating comparison. The extreme snapshot must never leak into
+        `MarketHealthEngine`'s `india_vix` input."""
+        from athena.market_health.engine import MarketHealthEngine
+
+        recorded: list[object] = []
+        real_assess = MarketHealthEngine.assess
+
+        def spy_assess(self, index_symbol, index_candles, snapshot, **kwargs):
+            recorded.append(snapshot)
+            return real_assess(self, index_symbol, index_candles, snapshot, **kwargs)
+
+        monkeypatch.setattr(MarketHealthEngine, "assess", spy_assess)
+
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        iid = "NSE:AAA"
+        repo.upsert_instrument(
+            Instrument(instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE")
+        )
+        repo.upsert_instrument(
+            Instrument(instrument_id="NSE:NIFTY 50", symbol="NIFTY 50", exchange="NSE",
+                       series="INDEX", status="ACTIVE")
+        )
+        repo.add_candles(_candles(iid, seed=100))
+        repo.add_candles(_candles("NSE:NIFTY 50", seed=24000))
+
+        as_of = datetime(2026, 1, 20, 9, 20, 0, 100_000, tzinfo=IST)  # .100s
+        # Future/extreme snapshot inserted FIRST deliberately: SQLite's
+        # ORDER BY tie-break among datetime()-truncated-equal rows favors
+        # whichever was inserted first (empirically confirmed) -- so this
+        # ordering is required for a revert to the old datetime()-based
+        # SQL to actually expose the bug non-vacuously, rather than
+        # accidentally "passing" by tie-break luck.
+        repo.add_snapshot(MarketSnapshot(
+            ts=datetime(2026, 1, 20, 9, 20, 0, 900_000, tzinfo=IST),  # .900s -- same whole second, future
+            indices={"NIFTY 50": Decimal("99999")}, india_vix=Decimal("999"),
+        ))
+        repo.add_snapshot(MarketSnapshot(
+            ts=datetime(2026, 1, 20, 9, 20, 0, 50_000, tzinfo=IST),  # .050s -- eligible
+            indices={"NIFTY 50": Decimal("24000")}, india_vix=Decimal("15"),
+        ))
+
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        ingestion = IngestionResult(
+            as_of=as_of, instruments_upserted=2, candles_fetched=160, candles_written=160,
+            quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+        )
+        pipe.run(RunTrigger.PREMARKET, as_of=as_of, ingestion=ingestion, run_id="run-snapshot-fractional")
+
+        snap = recorded[-1]
+        assert snap is not None
+        # ts is always re-stamped to as_of by _apply_universe_breadth
+        # (pre-existing, unrelated behavior) -- india_vix is the value
+        # that would actually leak from the wrong snapshot.
+        assert snap.india_vix == Decimal("15")
+
     def test_id5g_no_historical_snapshot_preserves_missing_snapshot_fallback(
         self, repo: SqliteRepository, config_dir: Path, monkeypatch
     ) -> None:

@@ -1384,8 +1384,9 @@ knows these were found and not simply missed:
     policy question, not resolved by this milestone.
 17. **`list_candles_recent()`/`get_latest_quote()`/`get_latest_snapshot()`
     had no point-in-time cutoff — fixed by ID-5E (candles, 2026-08-29),
-    ID-5F (quotes, 2026-08-30), and ID-5G (snapshots, 2026-08-30),
-    MARKET-TIME safety only.** Every prior ID
+    ID-5F (quotes, 2026-08-30), and ID-5G/ID-5G.1 (snapshots, corrected
+    to full sub-second/offset precision, 2026-08-30), MARKET-TIME safety
+    only.** Every prior ID
     milestone since ID-P0.1 documented this as an unresolved replay
     limitation: `list_candles_recent(instrument_id, timeframe, limit=N)`
     returned the latest N rows overall, with no way to bound retrieval by
@@ -1454,23 +1455,45 @@ knows these were found and not simply missed:
     need and which remains completely untouched. Chose an INCLUSIVE `<=`
     exact boundary (matching every other ID-5 point-in-time contract, and
     `_resolve_snapshot`'s own synthetic-snapshot construction at exactly
-    `as_of`), and deliberately kept `datetime()`-wrapped SQL — measured via
-    `EXPLAIN QUERY PLAN` to force a full table `SCAN`, not an indexed
-    `SEARCH` — over a faster raw-TEXT comparison, because the file-based
-    provider's `_aware_ts` permits a non-uniform UTC offset in a persisted
-    snapshot's `ts` (unlike candles/quotes, always uniformly serialized);
-    `market_snapshots` holds only one row per validation cycle, so the
-    scan costs nothing meaningful. Proven non-vacuously at both the
-    repository level and the real pipeline level: a spied
-    `MarketHealthEngine`-bound `MarketSnapshot.india_vix` leaked a future
-    snapshot's extreme value before the fix, in both the
-    has-an-earlier-snapshot case and the only-a-future-snapshot case.
-    Institutional-flow/candidate-universe-membership/config-version
-    point-in-time reconstruction remain identified-but-unsolved — full
-    deterministic historical pipeline replay is NOT claimed by ID-5E,
-    ID-5F, or ID-5G; **candle, quote, and market-snapshot market-time
-    retrieval are now all closed**; knowledge-time/bitemporal replay is
-    not, for any of the three.
+    `as_of`). Proven non-vacuously at both the repository level and the
+    real pipeline level: a spied `MarketHealthEngine`-bound
+    `MarketSnapshot.india_vix` leaked a future snapshot's extreme value
+    before the fix, in both the has-an-earlier-snapshot case and the
+    only-a-future-snapshot case. **ID-5G's original `datetime()`-wrapped
+    SQL had an undisclosed second defect, found by owner code review and
+    corrected by ID-5G.1 (2026-08-30): `datetime()` TRUNCATES to whole
+    seconds**, so a snapshot 0.9s into a second was treated as "at or
+    before" a cutoff 0.1s into the SAME second (confirmed empirically:
+    `datetime('...900+05:30') <= datetime('...100+05:30')` evaluates true
+    in SQLite). `julianday()` was measured as a candidate fix — offset-safe
+    and millisecond-safe (a full 0–999ms sweep produced zero ordering
+    collisions) but demonstrably NOT microsecond-safe (two `ts` values 1
+    microsecond apart evaluated as float-equal) — rejected, since a
+    producer-precision audit (`KiteProvider`/`FileProvider`/
+    `owner_validation.py`'s synthetic constructions) confirmed real
+    production `as_of`/snapshot `ts` values carry microsecond resolution
+    via `datetime.now()`. Fixed instead with a Python-side full-precision
+    comparison: fetch every persisted row (measured against a real,
+    read-only backup of the production database: 1,872 rows, ~13ms) and
+    select the true maximum eligible timestamp using Python's own
+    aware-`datetime` ordering, which has zero floating-point precision
+    loss at any sub-second granularity and is correct across mixed UTC
+    offsets by construction — implemented as a shared
+    `_latest_snapshot_at_or_before(cutoff, *, inclusive)` helper used by
+    both `get_latest_snapshot_as_of` and `get_latest_snapshot_before`
+    (whose own STRICT `<` semantics remain completely unchanged; it
+    shared the identical precision bug, fixed as an adjacent repair, not
+    a scope-broadening rewrite). `get_latest_snapshot()`/
+    `list_snapshots_recent()`'s own theoretical mixed-offset raw-ordering
+    risk was reported honestly, not fixed — neither has a caller
+    demonstrably needing chronological-latest correctness. Institutional-
+    flow/candidate-universe-membership/config-version point-in-time
+    reconstruction remain identified-but-unsolved — full deterministic
+    historical pipeline replay is NOT claimed by ID-5E, ID-5F, or
+    ID-5G/ID-5G.1; **candle, quote, and market-snapshot market-time
+    retrieval are now all closed, with full sub-second, offset-safe
+    precision for snapshots specifically**; knowledge-time/bitemporal
+    replay is not solved for any of the three.
 
 ---
 
