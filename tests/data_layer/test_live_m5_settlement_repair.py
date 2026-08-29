@@ -86,6 +86,15 @@ class TestResolveSettlementRepairDates:
     def test_empty_when_nothing_is_available_before_today(self):
         assert resolve_settlement_repair_dates(earliest_available=date(2026, 8, 28), today=date(2026, 8, 28)) == ()
 
+    def test_id5_real_gap_date_2026_08_28_is_the_sole_target(self):
+        """ID-5: the 2026-08-28 settlement repair run's own `today` was
+        2026-08-28 (per its manifest), so that date was excluded by
+        design -- it never settled during that run. As of 2026-08-29 it
+        is a fully closed, settled session and is the sole date this
+        function should now resolve to repair."""
+        dates = resolve_settlement_repair_dates(earliest_available=date(2026, 8, 28), today=date(2026, 8, 29))
+        assert dates == (date(2026, 8, 28),)
+
 
 class TestRepairInstrument:
     def test_drifted_candles_are_replaced_by_the_settled_response_not_accumulated(self, repo):

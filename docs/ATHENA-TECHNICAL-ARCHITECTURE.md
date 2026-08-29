@@ -1256,6 +1256,38 @@ knows these were found and not simply missed:
     data-quality/remediation prerequisite before an RS-dependent or
     comparison-methodology milestone. See the ID-4 and ID-4.1 Milestone
     Review Summaries for the full evidence.
+14. **Root cause of item 13's index M5 coverage gap: CONFIRMED
+    (2026-08-29, ID-5) — Kite's own settle-lag on not-yet-settled
+    candles, not an ATHENA code defect.** `KiteProvider._historical()`
+    (`src/athena/data/providers/kite_provider.py:406-476`) parses
+    `ts_open` exclusively from the raw Kite historical-response row
+    (`ts = _parse_kite_ts(str(row[0]))`, line 441) via a pure ISO-8601
+    parser with zero rounding/flooring/substitution — independently
+    re-verified by direct code reading, not assumed. No index-vs-equity
+    branching exists anywhere in the fetch path. This exact root cause was
+    already investigated and mechanically fixed once before: a prior
+    Owner/Chief-Architect-authorized repair
+    (`src/athena/data/live_m5_settlement_repair.py`, core `athena.data`,
+    dated 2026-08-28 — NOT an EMR module, touches only `db/athena.db`,
+    zero `athena.explosive_move`/`athena.darvax` imports) corrected
+    1,051,481 off-grid M5 rows across 537 instruments (market benchmark +
+    all 8 sector indexes + equities included) for 2026-07-28 through
+    2026-08-27 by re-fetching each session once it had genuinely settled.
+    **The one remaining gap is 2026-08-28** — excluded from that run by
+    correct design (`resolve_settlement_repair_dates` never repairs
+    "today," and 2026-08-28 WAS "today" when it ran); it is now a fully
+    settled date. ID-5 independently re-verified via a fresh read-only DB
+    audit that already-repaired dates remain perfectly clean (indexes
+    included) and that 2026-08-28 shows the identical already-diagnosed
+    shape. No ATHENA code was changed — the fix is operational (re-run the
+    existing, already-tested repair for the one gap date), requires live
+    Kite credentials and a real production write, and was proposed but NOT
+    executed pending explicit owner authorization. Separately, and NOT
+    resolved by this: Track B's live provisional-vs-settled OHLCV-content
+    question (`live_m5_provisional_settlement_diagnostic.py` — built,
+    unit-tested, never executed; needs an open trading session, next one
+    2026-08-31) remains open. See the ID-5 Milestone Review Summary for
+    the full evidence.
 
 ---
 

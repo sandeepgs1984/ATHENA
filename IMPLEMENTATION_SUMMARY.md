@@ -6,6 +6,168 @@ status updated on approval.
 
 ---
 
+## ID-5 — Core Index M5 Data Quality, Root-Cause & Remediation
+
+**Summary.** ID-4.1 confirmed `RelativeStrengthEngine` measures correctly;
+the remaining blocker was isolated to core index M5 canonical-session
+coverage. This audit-first, data-foundation milestone traced ATHENA-core's
+own M5 lifecycle (provider → adapter → ingestion → persistence) for a
+representative equity, the market benchmark, and two mapped sector
+indexes, and found **the root cause was already investigated,
+independently proven, and mechanically fixed once before** — a prior
+Owner/Chief-Architect-authorized investigation and repair
+(`src/athena/data/live_m5_settlement_repair.py`, dated 2026-08-28, ATHENA
+core, not EMR) already corrected 1,051,481 off-grid M5 rows across 537
+instruments (all mapped sector indexes and the market benchmark included)
+for 2026-07-28 through 2026-08-27. **The one gap** is 2026-08-28 itself —
+excluded from that run by explicit, correct design (`resolve_settlement_repair_dates`
+never repairs "today," and 2026-08-28 WAS "today" when that repair ran).
+As of now (2026-08-29), 2026-08-28 is a fully closed, settled session and
+is the sole remaining unrepaired date. No new ATHENA-code defect was
+found — this milestone's own independent re-verification (read-only,
+against a fresh scratch copy) confirms both (a) the already-repaired dates
+(2026-08-25, 2026-08-27) remain perfectly clean for every instrument
+checked, indexes included, and (b) 2026-08-28 shows the exact same,
+already-diagnosed shape as every date the prior repair fixed.
+
+**Root-cause classification: PROVIDER_RETURNS_OFF_GRID_CURRENT_SESSION
+(settle-lag), CONFIRMED.** Independently re-verified: `KiteProvider._historical()`
+(`kite_provider.py:406-476`) parses `ts_open` exclusively from the raw
+Kite historical-response row (`ts = _parse_kite_ts(str(row[0]))`,
+line 441) — no `datetime.now()`, no request-time substitution, anywhere.
+`_parse_kite_ts` is a pure ISO-8601 string parser with zero rounding/
+flooring. The ingestion engine's intraday loop passes provider candles
+through unchanged. `add_candles`'s upsert is keyed on the exact
+`(instrument_id, timeframe, ts_open)` — a later-settled candle at a
+different timestamp never overwrites an earlier off-grid one, it
+accumulates alongside it (exactly what the real DB shows: 109-122 total
+rows for 2026-08-28 vs. 72-75 for a settled day). No index-vs-equity
+branching exists anywhere in the fetch path — equities and indexes share
+byte-identical code; the difference in onset (equities retain ~5 clean
+slots, indexes only 1) is Kite's own upstream per-instrument-type
+settle-lag behavior, not ATHENA code. **Grep-confirmed: zero
+`athena.explosive_move`/`athena.darvax` imports anywhere in the audited
+core files — this is entirely a core `athena.data` investigation,
+independent of EMR's own separate M5 work**, even though EMR's own
+EM-5 milestone was what originally prompted an owner-authorized
+investigation into this same core defect on 2026-08-28.
+
+**What remains genuinely open (not resolved here, not ID-5's job to
+resolve): Track B's live provisional-vs-settled semantic question** — is
+an off-grid row (e.g. `09:43:55`) a mislabeled `09:40` bucket with
+otherwise-identical OHLCV, or does the content itself also change once
+settled? The tooling to answer this
+(`live_m5_provisional_settlement_diagnostic.py`) is built and unit-tested
+but has never executed a live capture — it requires an actively open
+trading session, and today (2026-08-29) is a Saturday; the next trading
+day is 2026-08-31. This question does not block closing the one
+historical gap (2026-07-28..2026-08-27's repair already proved re-fetching
+a *settled* date produces clean, grid-aligned OHLCV, 31 times over, 0
+failures) — it matters for anyone consuming *today's still-forming*
+session data directly, a separate, already-tracked open item (EM-5's own
+"current-day live M5 semantics" blocker), not newly introduced by ID-5.
+
+**No code fix was made.** The provider/adapter/ingestion/persistence code
+is proven innocent — there is nothing mechanical to correct in ATHENA's
+own code. The action that closes the identified gap is **operational**:
+re-run the already-built, already-tested `run_settlement_repair()` for
+2026-08-28 across the same 537-instrument scope (market benchmark + 8
+sector indexes + 528 equities), preceded by a fresh backup, mirroring the
+prior authorized run exactly. **This requires live Kite credentials and a
+real write to `db/athena.db`** — a real, external, hard-to-reverse
+production action. Per the mandatory git/action-safety discipline this
+project follows, that execution was NOT performed unilaterally in this
+milestone; it is proposed, fully scoped, and awaiting explicit owner
+authorization to run.
+
+**Files created.** None.
+
+**Files modified.** `tests/data_layer/test_live_m5_settlement_repair.py`
+(1 new test proving the exact real 2026-08-28 gap date), `docs/ATHENA-TECHNICAL-ARCHITECTURE.md`,
+`docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md` (this entry).
+
+**Tests added.** 1 new (`resolve_settlement_repair_dates(earliest_available=2026-08-28,
+today=2026-08-29) == (2026-08-28,)`) — proves the already-tested tool
+would correctly and solely target the real gap date if invoked now. No
+other new tests: the provider/adapter/ingestion/persistence mechanics this
+milestone audited are already covered by 28 pre-existing tests across
+`test_live_m5_settlement_repair.py` (9) and
+`test_live_m5_provisional_settlement_diagnostic.py` (19), and no new
+ATHENA-code path was introduced to test. Full suite: **2,834 passed, 1
+skipped** (pre-existing, unrelated), 0 failed. Ruff clean. `mypy` clean.
+
+**Real DB evidence (read-only, scratch copy, no repair performed).**
+Market benchmark + 2 sampled sector indexes: 75/75 canonical, 0 off-grid
+on 2026-08-25/2026-08-27 (already repaired); 1/75 canonical, 108 off-grid,
+first off-grid `09:43:55` on 2026-08-28 (the gap). 2 sampled equities:
+72/75 canonical, 0 off-grid on repaired dates; 5-8/75 canonical on
+2026-08-28, with one equity (`NSE:360ONE`) showing sporadic canonical
+recovery as late as 15:10 that day — a genuine, unexplained-by-static-code
+instrument-level variability, reported descriptively, not investigated
+further (out of scope: this is Track B's live-semantics territory).
+
+**Architecture / ADR impact.** None. A mechanical bug fix preserving the
+intended provider-candle contract (which is what closing the gap is) needs
+no ADR — and in fact no ATHENA code changed at all.
+
+**Structural regression.** Unaffected — no ATHENA-core analytical code
+touched. ORB/VWAP/confluence/RelativeStrength/scoring/confidence/risk/
+decision/TradePlan all unchanged, untouched.
+
+**Point-in-time replay boundary.** Unchanged.
+
+**EMR/DarvaX isolation.** Preserved — grep-confirmed zero
+`athena.explosive_move`/`athena.darvax` imports in every file this
+milestone touched or audited (one code *comment* in the pre-existing
+diagnostic module notes a constant is independently verified to *match*
+an EMR constant, specifically so it never has to import it — the comment
+itself documents a non-dependency).
+
+**Risks / technical debt.** The 2026-08-28 gap remains unrepaired pending
+owner authorization. Track B's live semantic question remains open pending
+2026-08-31 (unchanged from before this milestone — not newly discovered
+or newly blocking).
+
+**Recommendation.** Authorize the proposed action: fresh backup of
+`db/athena.db`, then `run_settlement_repair()` for `dates=(date(2026, 8,
+28),)` across the same 537-instrument scope as the prior run (market
+benchmark, all 8 mapped sector indexes, all active equities), using the
+existing `KiteProvider`/`RetryingMarketDataProvider`. After execution,
+recheck RelativeStrengthContext/OR15/OR30/VWAP/SessionContext coverage for
+2026-08-28 (expected: market/sector canonical coverage restored to ~75/75,
+matching every other repaired date) — a separate, quick confirmation
+milestone, not a new investigation.
+
+**Commit message (for the owner to use, not run by the AI):**
+
+```
+docs(data): confirm ID-5 M5 data-quality root cause; propose gap repair
+
+- Independently re-audit ATHENA-core's M5 provider/adapter/ingestion/
+  persistence path; confirm zero timestamp transformation anywhere in
+  ATHENA's own code (KiteProvider, ingestion engine, repository upsert)
+- Root cause CONFIRMED: PROVIDER_RETURNS_OFF_GRID_CURRENT_SESSION
+  (Kite's own settle-lag on not-yet-settled candles) -- already
+  investigated, proven, and repaired once (2026-08-28 authorization,
+  1,051,481 rows / 537 instruments / 31 days, 0 failures) for
+  2026-07-28..2026-08-27
+- Identify the one remaining gap: 2026-08-28 was excluded from that run
+  by design (never repairs "today"); it is now a fully settled date
+- No ATHENA-code defect found, no code fix made; add 1 test proving the
+  existing tool correctly targets the real 2026-08-28 gap if invoked
+- Propose (not execute) the operational fix: backup + re-run the
+  existing, already-tested run_settlement_repair() for 2026-08-28 --
+  requires live Kite credentials + a real production write, awaiting
+  explicit owner authorization
+- Track B's separate live-session OHLCV-semantics question remains open,
+  unchanged, pending the next trading day (2026-08-31)
+```
+
+**Milestone status.** Awaiting owner review AND explicit authorization to
+execute the proposed repair action.
+
+---
+
 ## ID-4.1 — Comparable-Constituent Cutoff & Partial-Availability Correctness
 
 **Summary.** ID-4's architecture was accepted in owner review, but the
@@ -149,9 +311,9 @@ cutoff (ID-4.1)
   next RS-dependent or comparison-methodology milestone
 ```
 
-**Milestone status.** Ready for review. Awaiting owner approval and
-decision on the recommended next step (index M5 data-quality prerequisite
-vs. another path).
+**Milestone status.** Owner-reviewed 2026-08-29. Both accepted. Recommended
+next step (index M5 data-quality prerequisite) taken up in ID-5 (see
+above).
 
 ---
 
