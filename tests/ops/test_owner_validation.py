@@ -620,6 +620,111 @@ class TestOwnerValidationPipeline:
         assert tuple(pre_existing_names) == original_order
         assert "session" in with_session
 
+    def test_id2_intraday_analytics_stage_does_not_perturb_existing_stage_order(
+        self, repo: SqliteRepository, config_dir: Path
+    ) -> None:
+        """ID-2 §8/§9/#21/#22: the new `intraday_analytics` stage explicitly
+        depends on `session` and `indicators` (real dependencies, not an
+        undeclared closure read) — and, since nothing among scoring/
+        confidence/risk/decision depends on IT, those six pre-existing
+        stages (already proven order-stable under ID-1's own `session`
+        addition) must keep their exact relative order here too."""
+        from athena.runtime.workflow import WorkflowStage, build_definition
+
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        iid = "NSE:AAA"
+        repo.upsert_instrument(
+            Instrument(instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE")
+        )
+        repo.add_candles(_candles(iid, seed=100))
+        repo.add_candles(_intraday_candles(iid, AS_OF.date(), seed=100))
+
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        ingestion = IngestionResult(
+            as_of=AS_OF, instruments_upserted=1, candles_fetched=86, candles_written=86,
+            quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+        )
+        detail = pipe.run(
+            RunTrigger.PREMARKET, as_of=AS_OF, ingestion=ingestion, run_id="run-test-intraday-analytics-stage"
+        )
+        assert detail["decision_reports"], "intraday_analytics stage must not break the existing scan"
+
+        noop = lambda ctx: {}  # noqa: E731
+        stages = [
+            WorkflowStage("indicators", noop, produces=("indicators", "vwap", "confluence")),
+            WorkflowStage("regime", noop, produces=("regime", "market_health")),
+            WorkflowStage("scoring", noop, depends_on=("indicators", "regime"), produces=("scoring",)),
+            WorkflowStage("confidence", noop, depends_on=("scoring", "regime"),
+                          produces=("evidence_bundle", "confidence")),
+            WorkflowStage("risk", noop, depends_on=("indicators", "regime"), produces=("risk",)),
+            WorkflowStage("decision", noop, depends_on=("scoring", "confidence", "risk"),
+                          produces=("outcome",)),
+            WorkflowStage("session", noop, produces=("session_context",)),
+        ]
+        original_order = build_definition("pre-id2", stages).execution_order
+        with_intraday = build_definition(
+            "post-id2",
+            [*stages, WorkflowStage(
+                "intraday_analytics", noop, depends_on=("session", "indicators"),
+                produces=("intraday_signal_set",),
+            )],
+        ).execution_order
+        pre_existing_names = [n for n in with_intraday if n != "intraday_analytics"]
+        assert tuple(pre_existing_names) == original_order
+        assert "intraday_analytics" in with_intraday
+
+    def test_id2_intraday_signal_set_reuses_the_exact_same_vwap_and_confluence_scoring_used(
+        self, repo: SqliteRepository, config_dir: Path, monkeypatch
+    ) -> None:
+        """ID-2 §6/§12: "one authoritative calculation" — proven by object
+        identity, not just equal values. `IntradayAnalyticsEngine.assess()`
+        must receive the literal same `vwap`/`confluence` objects
+        `ScoringEngine.score()` received the same cycle, never an
+        independently recomputed pair that could silently diverge."""
+        from athena.intraday.engine import IntradayAnalyticsEngine
+        from athena.scoring.engine import ScoringEngine
+
+        recorded: dict[str, object] = {}
+        real_assess = IntradayAnalyticsEngine.assess
+        real_score = ScoringEngine.score
+
+        def spy_assess(self, *args, **kwargs):
+            recorded["intraday_vwap"] = kwargs.get("vwap")
+            recorded["intraday_confluence"] = kwargs.get("confluence")
+            return real_assess(self, *args, **kwargs)
+
+        def spy_score(self, *args, **kwargs):
+            recorded["scoring_vwap"] = kwargs.get("vwap")
+            recorded["scoring_confluence"] = kwargs.get("confluence")
+            return real_score(self, *args, **kwargs)
+
+        monkeypatch.setattr(IntradayAnalyticsEngine, "assess", spy_assess)
+        monkeypatch.setattr(ScoringEngine, "score", spy_score)
+
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        iid = "NSE:AAA"
+        repo.upsert_instrument(
+            Instrument(instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE")
+        )
+        repo.add_candles(_candles(iid, seed=100))
+        repo.add_candles(_intraday_candles(iid, AS_OF.date(), seed=100))
+        repo.add_candles(
+            _timeframe_candles(iid, AS_OF.date(), Timeframe.M15, 15, n=8, seed=100))
+
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        ingestion = IngestionResult(
+            as_of=AS_OF, instruments_upserted=1, candles_fetched=94, candles_written=94,
+            quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+        )
+        detail = pipe.run(
+            RunTrigger.PREMARKET, as_of=AS_OF, ingestion=ingestion, run_id="run-test-intraday-parity"
+        )
+        assert detail["decision_reports"]
+        assert recorded["intraday_vwap"] is recorded["scoring_vwap"]
+        assert recorded["intraday_confluence"] is recorded["scoring_confluence"]
+
     def test_repeat_validate_with_same_as_of_does_not_orphan_earlier_decision(
         self, repo: SqliteRepository, config_dir: Path
     ) -> None:

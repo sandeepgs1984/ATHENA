@@ -304,7 +304,7 @@ Verified against the code, this framing needs two corrections stated plainly
 rather than repeated — the actual architecture is more interesting than the
 one-line summary, and an implementation document should say so.
 
-### 3.1 The real per-instrument execution graph has 7 stages (was 6; ID-1 added `session`), not 8 or 11
+### 3.1 The real per-instrument execution graph has 8 stages (was 6; ID-1 added `session`, ID-2 added `intraday_analytics`), not 8 or 11
 
 `ATHENA_BRIEFING.md` describes "regime → market health → evidence → indicators
 → score → confidence → risk → decision" — 8 named stages. The actual live
@@ -334,6 +334,19 @@ dependency graph:
    `tests/ops/test_owner_validation.py::test_id1_session_stage_is_produced_without_perturbing_existing_stage_order`,
    which reconstructs both the pre- and post-ID-1 graphs and diffs their
    real `execution_order`).
+8. **`intraday_analytics_stage`** (ID-2, 2026-08-29) —
+   `depends_on=("session", "indicators")`, `produces=("intraday_signal_set",)`.
+   Formalizes the `vwap`/`confluence` values `ind_stage` already produced
+   this cycle into typed evidence (`athena.intraday.IntradaySignalSet`/
+   `IntradayTrendContext`) — computes nothing new, so it cannot diverge
+   from what `ScoringEngine` already saw (proven by object-identity, not
+   just equal values:
+   `tests/ops/test_owner_validation.py::test_id2_intraday_signal_set_reuses_the_exact_same_vwap_and_confluence_scoring_used`).
+   No BUY/SELL/probability field exists on either type. Nothing among
+   `scoring`/`confidence`/`risk`/`decision` depends on it — proven not to
+   perturb the other seven stages' relative order, same technique as
+   `session_stage`'s own proof
+   (`test_id2_intraday_analytics_stage_does_not_perturb_existing_stage_order`).
 
 Sector health and universe are computed **once per run**, not per instrument —
 `universe_engine.build(...)` and `SectorHealthEngine(sector_cfg).assess_many(...)`

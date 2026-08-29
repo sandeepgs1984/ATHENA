@@ -775,6 +775,7 @@ class OwnerValidationPipeline:
         from athena.evidence import EvidenceAggregationEngine, EvidenceSource
         from athena.indicators import IndicatorEngine, IndicatorName, IndicatorStatus
         from athena.indicators import calculations as calc
+        from athena.intraday import IntradayAnalyticsEngine
         from athena.market_health import MarketHealthEngine
         from athena.regime import RegimeEngine
         from athena.risk import RiskEngine
@@ -795,6 +796,7 @@ class OwnerValidationPipeline:
         confidence_engine = ConfidenceEngine(confidence_cfg)
         session_engine = SessionContextEngine()
         session_tzinfo = ZoneInfo(cfg.market.timezone)
+        intraday_analytics_engine = IntradayAnalyticsEngine()
         risk_engine = RiskEngine(risk_cfg)
         evidence_engine = EvidenceAggregationEngine()
         decision_engine = DecisionEngine(decision_cfg)
@@ -1041,6 +1043,26 @@ class OwnerValidationPipeline:
                 )
                 return {"session_context": session_context}
 
+            def intraday_analytics_stage(ctx):
+                # ID-2 foundation only: formalizes the existing "vwap"/
+                # "confluence" outputs `ind_stage` already produced this
+                # cycle (declared dependency: "indicators") into typed
+                # evidence — computes nothing new, so it cannot diverge
+                # from what ScoringEngine already saw. Nothing downstream
+                # (scoring/confidence/risk/decision) declares a dependency
+                # on "intraday_signal_set" yet.
+                signal_set = intraday_analytics_engine.assess(
+                    instrument_id,
+                    as_of=ctx.as_of,
+                    session_date=ctx.get("session_context").session_date,
+                    session_context=ctx.get("session_context"),
+                    vwap=ctx.get("vwap"),
+                    confluence=ctx.get("confluence"),
+                    five_min_sma_period=scoring_cfg.confluence.five_min_sma_period,
+                    fifteen_min_sma_period=scoring_cfg.confluence.fifteen_min_sma_period,
+                )
+                return {"intraday_signal_set": signal_set}
+
             defn = build_definition(
                 f"owner-val-{instrument_id}",
                 [
@@ -1087,6 +1109,20 @@ class OwnerValidationPipeline:
                         "session",
                         session_stage,
                         produces=("session_context",),
+                    ),
+                    # ID-2 foundation stage. Depends on "session" (for
+                    # SessionContext/data-quality) and "indicators" (to
+                    # reuse the existing vwap/confluence outputs, not
+                    # recompute them) — both already resolved by the time
+                    # this runs. Nothing among scoring/confidence/risk/
+                    # decision depends on it, so it cannot perturb their
+                    # existing relative order (see
+                    # test_id2_intraday_analytics_stage_does_not_perturb_existing_stage_order).
+                    WorkflowStage(
+                        "intraday_analytics",
+                        intraday_analytics_stage,
+                        depends_on=("session", "indicators"),
+                        produces=("intraday_signal_set",),
                     ),
                 ],
             )

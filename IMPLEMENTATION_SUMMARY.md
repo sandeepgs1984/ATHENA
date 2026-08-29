@@ -6,6 +6,174 @@ status updated on approval.
 
 ---
 
+## ID-2 — Intraday Analytical Context & Trend Foundation
+
+**Summary.** ID-1 was owner-approved. This milestone builds ATHENA's typed,
+deterministic intraday analytical layer on top of it — still foundation,
+not EntryQualification: `IntradaySignalSet`/`IntradayTrendContext` formalize
+evidence ATHENA already computes (VWAP relation, 5m/15m confluence
+direction) into explainable, immutable artifacts. No BUY/SELL score, no
+trade probability, no new scoring/gate/threshold.
+
+**New `athena.intraday` package** (`models.py`, `engine.py`, `__init__.py`):
+- `IntradaySignalSet` — the analytical evidence container (instrument,
+  session date, `as_of`, `vwap: VwapEvidence`, `trend: IntradayTrendContext`,
+  `data_quality` reused from `athena.session.SessionDataQualityStatus`,
+  mandatory explanation). Structurally proven to carry no BUY/SELL/
+  probability/score field (a dedicated test inspects the dataclass fields
+  directly, not just the docstring's promise).
+- `VwapEvidence`/`VwapRelation` (`ABOVE_VWAP`/`BELOW_VWAP`/`AT_VWAP`/
+  `VWAP_UNAVAILABLE`) — formalizes the existing VWAP `IndicatorResult`'s
+  `deviation_pct` sign. No "near VWAP" band invented — none exists in the
+  current frozen contract, so none was added.
+- `IntradayTrendContext`/`TimeframeTrendEvidence`/`IntradayTrendLabel`
+  (`BULLISH`/`BEARISH`/`NEUTRAL`/`UNKNOWN`) — formalizes the existing 5m/15m
+  confluence-direction booleans (`ScoringEngine`'s own `ConfluenceInputs`).
+  The aggregate label is a zero-new-weights read: unanimous agreement ->
+  BULLISH/BEARISH, disagreement -> NEUTRAL with **both** directions named
+  in the explanation (never hidden behind one number), either side missing
+  -> UNKNOWN. No new indicator computed on intraday bars in this milestone
+  — the smallest non-redundant design given what already exists.
+- Every UNKNOWN/unavailable case cites ID-1's own `SessionContext`/
+  `SessionDataQualityStatus` explanation (e.g. the real `EXPECTED_BAR_MISSING`
+  or `TIMEFRAME_UNAVAILABLE` reason) instead of a generic "insufficient
+  data" message — a genuine synergy from having `session_context` as a real
+  declared dependency, not just passed through unused.
+
+**"One authoritative calculation," proven by object identity.** The new
+`intraday_analytics` `WorkflowStage` (`depends_on=("session", "indicators")`)
+reads the exact same `vwap`/`confluence` objects `ind_stage` already
+produced for `ScoringEngine.score()` this cycle — it does not independently
+recompute either from candles, which would risk a second, possibly-diverging
+"VWAP relation"/"confluence direction" in the system. Proven directly:
+`test_id2_intraday_signal_set_reuses_the_exact_same_vwap_and_confluence_scoring_used`
+monkeypatches both `IntradayAnalyticsEngine.assess` and `ScoringEngine.score`
+to record their `vwap`/`confluence` keyword arguments during a real
+`pipe.run()` call, then asserts `is` (object identity, not just `==`)
+between what each engine received.
+
+**Workflow integration (ADR-003 Amendment 1).** `intraday_analytics`
+declares real dependencies on `"session"` and `"indicators"` (not an
+undeclared closure read of `session_context`) and produces
+`"intraday_signal_set"`. Nothing among `scoring`/`confidence`/`risk`/
+`decision` depends on it — proven by reconstructing both the pre- and
+post-ID-2 stage graphs and diffing their real `execution_order`
+(`test_id2_intraday_analytics_stage_does_not_perturb_existing_stage_order`):
+the other seven stages (six structural + ID-1's `session`) keep their
+exact relative order.
+
+**Regression evidence for existing scoring (unchanged).** The full
+pre-existing suite — including every VWAP/confluence/sector/scoring/
+decision test from before ID-1/ID-2 — passes **unmodified**. As with
+ID-1, `WorkflowEngine`'s all-or-nothing per-instrument failure semantics
+mean this is real regression proof, not a coincidence: had
+`intraday_analytics_stage` thrown for any existing fixture, that
+instrument's `Decision` would have vanished from `decision_reports` and
+the corresponding test would have failed. None did.
+
+**Persistence decision.** Not persisted — `IntradaySignalSet` is a pure
+function of already-canonical inputs (the `vwap`/`confluence` objects
+`ind_stage` already computed, plus `session_context`) — same reasoning as
+`SessionContext` (ID-1) and `RegimeResult`/`MarketHealthResult`.
+
+**Files created.** `src/athena/intraday/__init__.py`,
+`src/athena/intraday/models.py`, `src/athena/intraday/engine.py`,
+`tests/market_intel/test_intraday_analytics.py` (20 tests).
+
+**Files modified.** `src/athena/ops/owner_validation.py` (new
+`intraday_analytics_stage`, `IntradayAnalyticsEngine` construction),
+`tests/ops/test_owner_validation.py` (2 new tests: topological-order proof,
+object-identity parity proof), `docs/ATHENA-TECHNICAL-ARCHITECTURE.md`
+(§3.1 updated: 8 stages, not 7), `docs/MILESTONES.md` (ID-2 added),
+`IMPLEMENTATION_SUMMARY.md` (this entry).
+
+**Tests added.** 22 new (20 `athena.intraday` unit tests + 2
+`owner_validation` integration tests). Full suite: **2,765 passed, 1
+skipped** (pre-existing, unrelated), 0 failed. Ruff clean on every
+new/modified file. `mypy` clean in its configured scope (`src/athena/domain`,
+`src/athena/config`).
+
+**Architecture compliance.** ADR-001/002/005/006/007/009/010/011/012 all
+unaffected. ADR-003 Amendment 1 followed exactly: explicit `depends_on`
+declarations, no undeclared closure dependency, no use of the dormant
+`PipelineContext`/`ContextDelta`/`IntelligenceModule` (the existing
+architecture-boundary guard test still passes against the new package). No
+`KiteProvider`/broker-specific reference anywhere in `athena.intraday`
+(confirmed by direct grep). No order-placement code. Deterministic/
+replayable — every function takes `as_of` explicitly, no `datetime.now()`,
+no randomness. No EMR or DarvaX module imported, read, or referenced
+(both isolation suites pass unmodified).
+
+**ID-3 data-readiness assessment** (owner review input, not a commitment
+to build any of these):
+- **ORB (Opening Range Breakout):** data readiness GOOD — real 5m candles
+  from session open exist, and ID-1's `SessionContext` already knows
+  `session_open_ts` precisely. The open question is purely methodology
+  (range-window duration), not a data gap — needs its own evidence/config
+  decision, per the numeric-threshold governance rule.
+- **VWAP behavior beyond current relation** (breakout/reversal/reclaim
+  entry logic): data readiness GOOD — session VWAP is fully live every
+  cycle. Any new numeric threshold (e.g. a reclaim buffer) needs replay
+  evidence before being treated as methodology, same governance rule.
+- **Gap behavior:** daily `RegimeEngine` already classifies
+  GAP_UP/GAP_DOWN/NO_GAP from real daily candles; intraday continuation/
+  fade behavior has real 5m price-action data available from session open
+  onward. Data readiness GOOD; methodology/thresholds need approval.
+- **RVOL / relative volume:** the **weakest** readiness of the four. A
+  defensible RVOL needs a time-of-day-normalized historical baseline (e.g.
+  "average volume in the 09:15-09:20 bucket over the last N sessions").
+  ID-P0.1's own database exploration this session found real 5m candle
+  history spans only 2026-07-23 → 2026-08-28 (~25 trading days) — real,
+  but thin for a stable per-bucket baseline. This is a genuine data
+  depth constraint, not a code gap. Recommend sequencing RVOL after
+  ORB/VWAP/gap in ID-3+, or explicitly accepting a short-lookback baseline
+  with that limitation stated, pending owner decision.
+
+**Risks / technical debt.** None new. The aggregate `IntradayTrendLabel`'s
+NEUTRAL-on-disagreement rule is a judgment call (documented as such,
+not hidden) — a genuinely defensible zero-new-methodology classification,
+but flagged explicitly in case the owner would rather defer aggregation
+entirely per the milestone's own "DEFERRED is acceptable" option.
+
+**Remaining work.** Owner review of this milestone; then ID-3 scope
+(the first core intraday signal methodology) pending explicit owner
+approval, informed by the data-readiness assessment above — not started
+here.
+
+**Commit message (for the owner to use, not run by the AI):**
+
+```
+feat(intraday): add ID-2 IntradaySignalSet/IntradayTrendContext foundation
+
+- Add athena.intraday package: IntradaySignalSet (analytical evidence
+  container, not a trade signal -- no BUY/SELL/probability field exists,
+  proven structurally by test), VwapEvidence/VwapRelation, and
+  IntradayTrendContext/TimeframeTrendEvidence/IntradayTrendLabel
+- Formalize -- never recompute -- the existing live VWAP relation and
+  5m/15m confluence direction ScoringEngine already consumes; proven by
+  object identity that IntradayAnalyticsEngine and ScoringEngine receive
+  the literal same vwap/confluence objects each cycle, so there is no
+  second, possibly-diverging calculation anywhere in the system
+- Aggregate IntradayTrendLabel is a zero-new-weights unanimous-vs-split
+  read of the two existing confluence booleans; disagreement is reported
+  as NEUTRAL with both directions named, never hidden behind one number
+- Wire a new intraday_analytics WorkflowStage (ADR-003 Amendment 1),
+  depending explicitly on session + indicators -- proven not to perturb
+  the other seven stages' topological order, and proven that scoring/
+  confidence/risk/decision do not depend on it (yet)
+- 22 new tests; full suite (2,765) green; existing VWAP/confluence/
+  scoring/confidence/risk/Decision/TradePlan tests pass unmodified as
+  live regression proof; no threshold, weight, or methodology touched
+- Add an ID-3 data-readiness note: ORB/VWAP-behavior/gap-behavior have
+  good real data support; RVOL is data-depth-constrained (~25 trading
+  days of real 5m history so far) -- flagged for owner sequencing
+```
+
+**Milestone status.** Ready for review. Awaiting owner approval before
+ID-3.
+
+---
+
 ## ID-1 — Intraday Data Semantics & Session Context Foundation
 
 **Summary.** ID-P0.1 was owner-approved. This is the first real
@@ -164,8 +332,9 @@ feat(session): add ID-1 intraday provenance + SessionContext foundation
   live regression proof; no threshold, weight, or methodology touched
 ```
 
-**Milestone status.** Ready for review. Awaiting owner approval before
-ID-2.
+**Milestone status.** Owner approved 2026-08-29. ID-2's scope is not yet
+defined — awaiting owner direction before any further Intraday
+Intelligence implementation work begins.
 
 ---
 

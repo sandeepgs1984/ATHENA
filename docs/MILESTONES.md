@@ -23,8 +23,9 @@ never auto-continuing past an owner approval gate.
 | ID-0 | Runtime audit + architecture freeze — verify current data flow, `PipelineContext` reality, indicator reusability, Sector Health wiring, `TradePlan`/freshness machinery, and provider data availability; propose (not implement) the smallest architecture-compatible intraday extension | ✅ Approved with conditions 2026-08-29 — recommendation GO WITH CONDITIONS accepted; conditions addressed by ID-P0/ID-P0.1 below |
 | ID-P0 | Prerequisite: resolve the ADR-003 dormant-vs-live ambiguity + wire existing Sector Health into live scoring/evidence/decision — the two architectural inconsistencies ID-0 found, cleared before any new intraday stage is added | ✅ Owner approved 2026-08-29 — full suite green (2,717 passed, 1 pre-existing skip) |
 | ID-P0.1 | Measurement-only checkpoint: quantify the real historical decision/composite impact of activating Sector Health, via a deterministic replay against a scratch copy of the real production book — no tuning | ✅ Owner approved 2026-08-29 — measured impact accepted; no threshold recalibration performed |
-| ID-1 | Intraday Data Semantics & Session Context Foundation — explicit intraday provenance, deterministic completed-candle semantics, a `SessionContext` artifact, session-data-quality UNKNOWN semantics. Foundation only: no signals, no scoring/threshold change | 🔄 Ready for review 2026-08-29 — `athena.session` package + one new live `WorkflowStage`; full suite green (2,743 passed, 1 pre-existing skip). Recommendation: ID-1 READY FOR OWNER REVIEW |
-| ID-2 | TBD — first real intraday signal work (ORB/RVOL/etc.), pending owner approval of ID-1's scope | Planned |
+| ID-1 | Intraday Data Semantics & Session Context Foundation — explicit intraday provenance, deterministic completed-candle semantics, a `SessionContext` artifact, session-data-quality UNKNOWN semantics. Foundation only: no signals, no scoring/threshold change | ✅ Owner approved 2026-08-29 — `athena.session` package + one new live `WorkflowStage`; full suite green (2,743 passed, 1 pre-existing skip) |
+| ID-2 | Intraday Analytical Context & Trend Foundation — `IntradaySignalSet`/`IntradayTrendContext` typed evidence formalizing the existing live VWAP relation + 5m/15m confluence direction. Still foundation: no EntryQualification, no new gates, no scoring change | 🔄 Ready for review 2026-08-29 — `athena.intraday` package + one new live `WorkflowStage`; full suite green (2,765 passed, 1 pre-existing skip). Recommendation: ID-2 READY FOR OWNER REVIEW |
+| ID-3 | TBD — first core intraday signal methodology (ORB / VWAP behavior / gap behavior / RVOL candidates); scope not yet defined, awaiting owner direction | Planned |
 
 **ID-0 headline findings (full detail in the report):** (1) `intraday_candles()`
 is genuinely live across all six runtime flows and already reaches
@@ -62,6 +63,32 @@ reconstructable from already-canonical data, same as regime/market health.
 No ADR required — squarely within ADR-003 Amendment 1's already-approved
 canonical pattern. No signal, no gate, no threshold, no EntryQualification
 yet.
+
+**ID-2 summary (full detail in the Milestone Review Summary given to the
+owner in-chat, 2026-08-29):** new `athena.intraday` package
+(`IntradayAnalyticsEngine`, `IntradaySignalSet`, `IntradayTrendContext`,
+`VwapEvidence`/`VwapRelation`, `TimeframeTrendEvidence`/`IntradayTrendLabel`)
+— an analytical evidence container, explicitly not a trade signal (no
+BUY/SELL/probability field exists anywhere on the contract, checked
+structurally by test). Computes nothing new: formalizes the exact
+`vwap`/`confluence` objects `ind_stage` already produced for
+`ScoringEngine` this cycle (proven identical by Python object identity,
+not just equal values), so there is no second, possibly-diverging
+"VWAP relation" in the system. Aggregate `IntradayTrendLabel`
+(BULLISH/BEARISH/NEUTRAL/UNKNOWN) is a zero-new-weights unanimous-vs-split
+read of the existing 5m/15m confluence booleans — disagreement is reported
+as NEUTRAL with both sides visible, never hidden behind a single number.
+Reuses ID-1's `SessionContext`/`SessionDataQualityStatus` for precise
+UNKNOWN explanations (e.g. citing the real `EXPECTED_BAR_MISSING`/
+`TIMEFRAME_UNAVAILABLE` reason) rather than a generic "insufficient data"
+message. Wired as a genuine, live `WorkflowStage`
+(`intraday_analytics`, `depends_on=("session", "indicators")`) — proven
+not to perturb the other seven stages' relative execution order, and
+proven that scoring/confidence/risk/decision do not (yet) depend on it.
+No persistence added — same reconstructable-from-canonical-data reasoning
+as `SessionContext`. No ADR required. No ORB/gap/RVOL/relative-strength/
+EntryQualification implemented — explicitly deferred to future ID-3+
+milestones per the owner's own scope.
 
 ## Explosive Move Radar Research Track (accepted 2026-08-21)
 
