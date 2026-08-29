@@ -774,6 +774,94 @@ class TestGetLatestQuotePointInTime:
         assert "SCAN quotes" not in plan_text
 
 
+class TestGetLatestSnapshotAsOf:
+    """ID-5G: `get_latest_snapshot_as_of(as_of)` -- market-time
+    point-in-time safety for MarketSnapshot, INCLUSIVE at the exact
+    boundary (deliberately distinct from `get_latest_snapshot_before`'s
+    own STRICT `<` semantics, which stays untouched for its own two
+    "prior state" callers). See §30 of the ID-5G milestone spec."""
+
+    def _snap(self, ts: datetime, nifty: str = "25000") -> MarketSnapshot:
+        return MarketSnapshot(ts=ts, indices={"NIFTY50": Decimal(nifty)})
+
+    def test_2_cutoff_selects_latest_eligible_snapshot(self, repo):
+        repo.add_snapshot(self._snap(datetime(2026, 2, 2, 9, 16, tzinfo=IST), "25000"))
+        repo.add_snapshot(self._snap(datetime(2026, 2, 2, 9, 20, tzinfo=IST), "25010"))
+        repo.add_snapshot(self._snap(datetime(2026, 2, 2, 9, 30, tzinfo=IST), "99999"))  # future
+        got = repo.get_latest_snapshot_as_of(datetime(2026, 2, 2, 9, 24, tzinfo=IST))
+        assert got.ts == datetime(2026, 2, 2, 9, 20, tzinfo=IST)
+        assert got.indices["NIFTY50"] == Decimal("25010")
+
+    def test_3_future_snapshot_excluded(self, repo):
+        repo.add_snapshot(self._snap(datetime(2026, 2, 2, 9, 30, tzinfo=IST)))
+        got = repo.get_latest_snapshot_as_of(datetime(2026, 2, 2, 9, 20, tzinfo=IST))
+        assert got is None
+
+    def test_4_future_snapshot_does_not_hide_a_valid_earlier_snapshot(self, repo):
+        """Non-vacuous shape: a later, ineligible snapshot existing in the
+        database must not prevent the correct earlier one from being
+        returned -- proven with an extreme index level on the future
+        snapshot so any leak would be obvious."""
+        repo.add_snapshot(self._snap(datetime(2026, 2, 2, 9, 20, tzinfo=IST), "25010"))
+        repo.add_snapshot(self._snap(datetime(2026, 2, 2, 9, 30, tzinfo=IST), "999999"))
+        got = repo.get_latest_snapshot_as_of(datetime(2026, 2, 2, 9, 25, tzinfo=IST))
+        assert got.ts == datetime(2026, 2, 2, 9, 20, tzinfo=IST)
+        assert got.indices["NIFTY50"] == Decimal("25010")
+
+    def test_5_no_eligible_snapshot_returns_none(self, repo):
+        got = repo.get_latest_snapshot_as_of(datetime(2026, 2, 2, 9, 20, tzinfo=IST))
+        assert got is None
+
+    def test_6_multiple_historical_snapshots_choose_nearest_at_or_before_cutoff(self, repo):
+        repo.add_snapshot(self._snap(datetime(2026, 2, 2, 9, 16, tzinfo=IST), "1"))
+        repo.add_snapshot(self._snap(datetime(2026, 2, 2, 9, 20, tzinfo=IST), "2"))
+        repo.add_snapshot(self._snap(datetime(2026, 2, 2, 9, 24, tzinfo=IST), "3"))
+        repo.add_snapshot(self._snap(datetime(2026, 2, 2, 9, 30, tzinfo=IST), "4"))
+        got = repo.get_latest_snapshot_as_of(datetime(2026, 2, 2, 9, 24, tzinfo=IST))
+        assert got.indices["NIFTY50"] == Decimal("3")
+
+    def test_7_exact_boundary_snapshot_included(self, repo):
+        """ID-5G §3: EXACT_BOUNDARY_INCLUDED, matching every other ID-5E/
+        ID-5F point-in-time contract's inclusive `<=` convention -- a
+        snapshot timestamped exactly at `as_of` is eligible."""
+        repo.add_snapshot(self._snap(datetime(2026, 2, 2, 9, 20, tzinfo=IST)))
+        got = repo.get_latest_snapshot_as_of(datetime(2026, 2, 2, 9, 20, tzinfo=IST))
+        assert got is not None
+
+    def test_8_naive_as_of_rejected(self, repo):
+        with pytest.raises(ValueError, match="timezone-aware"):
+            repo.get_latest_snapshot_as_of(datetime(2026, 2, 2, 9, 20))
+
+    def test_9_deterministic_repeat_call(self, repo):
+        repo.add_snapshot(self._snap(datetime(2026, 2, 2, 9, 20, tzinfo=IST)))
+        as_of = datetime(2026, 2, 2, 9, 25, tzinfo=IST)
+        assert repo.get_latest_snapshot_as_of(as_of) == repo.get_latest_snapshot_as_of(as_of)
+
+    def test_10_query_plan_evidence(self, repo):
+        """ID-5G §9/§32: `datetime()` wrapping is a deliberate correctness-
+        over-speed tradeoff (the file-based provider permits a non-uniform
+        UTC offset in a persisted snapshot's `ts`) -- documented here as a
+        full SCAN, not silently assumed indexed."""
+        repo.add_snapshot(self._snap(datetime(2026, 2, 2, 9, 20, tzinfo=IST)))
+        plan = repo.connection.execute(
+            "EXPLAIN QUERY PLAN SELECT payload_json FROM market_snapshots "
+            "WHERE datetime(ts) <= datetime(?) ORDER BY datetime(ts) DESC LIMIT 1",
+            ("2026-02-02T09:30:00+05:30",),
+        ).fetchall()
+        plan_text = " ".join(str(row) for row in plan)
+        assert "SCAN market_snapshots" in plan_text  # accepted tradeoff, documented not hidden
+
+    def test_get_latest_snapshot_before_semantics_are_unchanged(self, repo):
+        """ID-5G must not repurpose or weaken get_latest_snapshot_before's
+        own STRICT '<' semantics -- its two real callers (previous-session
+        snapshot lookup, pre-decision snapshot lookup) depend on same-
+        instant coincidence being excluded."""
+        exact = datetime(2026, 2, 2, 9, 20, tzinfo=IST)
+        repo.add_snapshot(self._snap(exact))
+        assert repo.get_latest_snapshot_before(exact) is None
+        assert repo.get_latest_snapshot_as_of(exact) is not None
+
+
 class TestCorporateActions:
     def test_roundtrip(self, repo):
         repo.upsert_instrument(_instrument())

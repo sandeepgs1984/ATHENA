@@ -640,7 +640,11 @@ class OwnerValidationPipeline:
         candles_by_id: Mapping[str, Sequence[Candle]],
     ) -> MarketSnapshot | None:
         """Prefer persisted snapshot; fill India VIX from VIX candles when missing."""
-        snap = self._repo.get_latest_snapshot()
+        # ID-5G: bounded by as_of -- this feeds MarketHealthEngine.assess()
+        # (via run()'s own enriched_snap) and RegimeEngine (via
+        # _maybe_regime), both genuinely analytical, so a historical
+        # replay must not receive a snapshot dated after its own as_of.
+        snap = self._repo.get_latest_snapshot_as_of(as_of)
         vix = snap.india_vix if snap is not None else None
         if vix is None:
             vix = self._vix_from_candles(candles_by_id, as_of=as_of)

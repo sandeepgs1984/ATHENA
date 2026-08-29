@@ -521,6 +521,41 @@ class SqliteRepository:
         )
         return ser.payload_to_snapshot(row[0]) if row else None
 
+    def get_latest_snapshot_as_of(self, as_of: datetime) -> MarketSnapshot | None:
+        """Newest persisted snapshot with `ts<=as_of` (ID-5G, market-time
+        point-in-time safety) -- INCLUSIVE at the exact boundary, deliberately
+        distinct from `get_latest_snapshot_before`'s STRICT `<` semantics.
+        The two answer different questions: `..._before` means "the state
+        from strictly before this instant" (its own two callers want the
+        PRIOR session's snapshot / the snapshot before a given decision was
+        made -- same-instant coincidence must be excluded there). This
+        method means "the state effective AT this analytical instant",
+        matching every other ID-5E/ID-5F point-in-time contract's inclusive
+        `<=` convention (a candle/quote/snapshot exactly at `as_of` is
+        already known at `as_of`) -- so `get_latest_snapshot_before` itself
+        is untouched, never repurposed or made inclusive.
+
+        Uses SQLite's `datetime()` wrapping, not raw TEXT comparison,
+        because the file-based provider (`_aware_ts` in
+        `data/providers/file_provider.py`) permits a snapshot `ts` with any
+        UTC offset, unlike candles/quotes which this codebase always
+        serializes in one consistent timezone -- raw TEXT comparison would
+        not reliably reflect true chronological order in that case. This
+        prevents SQLite from using the `ts` primary-key index for this
+        query (confirmed via `EXPLAIN QUERY PLAN`: a full `SCAN`, not a
+        `SEARCH ... USING INDEX`) -- an accepted, understood
+        correctness-over-speed tradeoff, since this table holds one row per
+        validation cycle (not per instrument), never a meaningful scan cost.
+        """
+        if as_of.tzinfo is None:
+            raise ValueError("get_latest_snapshot_as_of as_of must be timezone-aware")
+        row = self._query_one(
+            "SELECT payload_json FROM market_snapshots "
+            "WHERE datetime(ts) <= datetime(?) ORDER BY datetime(ts) DESC LIMIT 1",
+            (as_of.isoformat(),),
+        )
+        return ser.payload_to_snapshot(row[0]) if row else None
+
     def list_snapshots_recent(self, *, limit: int = 30) -> list[MarketSnapshot]:
         """Newest-first market snapshots, then returned oldest→newest for sparklines."""
         if limit < 1:

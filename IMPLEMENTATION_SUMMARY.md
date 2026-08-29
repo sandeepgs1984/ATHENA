@@ -6,6 +6,190 @@ status updated on approval.
 
 ---
 
+## ID-5G — Point-in-Time MarketSnapshot Retrieval Safety
+
+**Summary.** Final narrow infrastructure/correctness milestone in the ID-5E/
+ID-5F/ID-5G replay-safety sequence. Closes the `MarketSnapshot` gap
+identified during ID-5E/ID-5F's own audits: `get_latest_snapshot()`
+(unbounded) fed BOTH `RegimeEngine` (via `_maybe_regime`) and
+`MarketHealthEngine` (via `run()`'s own `enriched_snap`) — genuinely
+analytical consumers, not merely a presentation/write path as initially
+suspected.
+
+**MarketSnapshot schema audit.** `market_snapshots` table:
+`PRIMARY KEY (ts)` alone (no instrument dimension — one row per
+validation cycle, market-wide). `add_snapshot` uses
+`INSERT ... ON CONFLICT(ts) DO NOTHING` — idempotent per exact timestamp;
+a second write attempt at the SAME `ts` is silently dropped, so whichever
+payload was persisted FIRST for a given `ts` is permanent (a real
+knowledge-time limitation, documented below, not solved).
+
+**Historical-retention finding.** CONFIRMED RETAINED — distinct `ts` values
+each get their own row; feasibility gate PASSED, no migration needed.
+
+**Snapshot timestamp semantics.** Traced `MarketSnapshot.ts`'s producers:
+`kite_provider.py` (live, `latest`/`datetime.now(IST)`, always IST),
+`file_provider.py`'s `_read_snapshot` (via `_aware_ts`, which accepts ANY
+timezone offset present in the source JSON — no IST normalization
+enforced), and `owner_validation.py`'s own synthetic constructions
+(`ts=as_of`, always whatever tzinfo the caller's `as_of` carries — IST in
+every production path). The file-provider finding matters directly for
+query design (see below).
+
+**Existing repository API audit.** `get_latest_snapshot()` — unbounded,
+the gap. `get_latest_snapshot_before(before)` — ALREADY EXISTS, uses
+STRICT `<` via `datetime(ts) < datetime(?)`. Traced its two real callers:
+`market_history_service._prior_session_snapshot` (wants the PRIOR trading
+day's snapshot — passes `day_start`, and strict `<` correctly excludes
+anything from today itself) and `ops/config_preview.py` (wants the
+snapshot in effect strictly BEFORE a given decision was made). Both
+callers genuinely need STRICT exclusion of same-instant coincidence —
+`get_latest_snapshot_before` was NOT touched, NOT repurposed, NOT made
+inclusive. `list_snapshots_recent()` — audited, used only by dashboard
+sparklines (LIVE_CURRENT_STATE, presentation-only), left unchanged.
+
+**Exact-boundary decision: EXACT_BOUNDARY_INCLUDED, with evidence (not
+symmetry alone).** A snapshot timestamped exactly at an analytical run's
+own `as_of` is eligible. Justified by: (1) this codebase's own
+`is_candle_completed`/every other ID-5 point-in-time contract uniformly
+uses inclusive `<=` for "known as of this instant"; (2) `_resolve_snapshot`
+itself already constructs a synthetic `MarketSnapshot(ts=as_of, ...)` when
+none is persisted, treating "at as_of" as the natural in-scope instant;
+(3) no existing caller or test anywhere relies on excluding a same-instant
+snapshot from THIS analytical question — the one caller that does need
+strict exclusion (`get_latest_snapshot_before`) is answering a genuinely
+different question ("the state from before this point") and is
+untouched.
+
+**Production caller audit.** `_resolve_snapshot(as_of, candles_by_id)` is
+called from TWO places, BOTH genuinely analytical (not one analytical +
+one presentation, as initially suspected): (1) `_maybe_regime` → feeds
+`RegimeEngine.assess()`; (2) `run()`'s own `base_snap`/`enriched_snap` →
+feeds `MarketHealthEngine.assess()` directly AND is persisted via
+`_persist_enriched_snapshot`. Both bounded. A THIRD, unrelated call
+(`_persist_enriched_snapshot`'s own internal `get_latest_snapshot()` at
+line ~414) is a write-integrity dedup check ("does a row at this exact
+`ts` already exist in the real, current table") — correctly left
+unbounded; it is asking about actual current database state, not an
+analytical replay question. Dashboard presentation callers
+(`advisory_freshness_service.py`, `market_history_service.py`'s ticker
+code, `market_summary_service.py`) audited, confirmed LIVE_CURRENT_STATE,
+left unchanged.
+
+**Repository contract.** New, explicitly-named
+`get_latest_snapshot_as_of(as_of: datetime) -> MarketSnapshot | None` —
+a distinct method rather than an optional-parameter extension of either
+existing method, per the milestone's own guidance (don't force a new
+semantic onto `get_latest_snapshot_before`'s strict contract; don't
+silently repurpose `get_latest_snapshot()` either, since it still has its
+own genuinely-unbounded write-integrity caller). `AND` — inclusive
+`datetime(ts) <= datetime(?)`, `ORDER BY datetime(ts) DESC LIMIT 1`. A
+naive `as_of` is rejected.
+
+**Timezone/serialization audit — `datetime()` wrapping preserved, not
+"optimized" away.** Measured `EXPLAIN QUERY PLAN` for both forms: raw
+`ts<=?` uses `SEARCH ... USING INDEX sqlite_autoindex_market_snapshots_1`
+(indexed); `datetime(ts)<=datetime(?)` produces a full `SCAN
+market_snapshots` (no index use). Chose the SLOWER, `datetime()`-wrapped
+form anyway, because the file-provider audit (above) proved snapshot
+timestamps are not guaranteed uniformly-offset the way candles/quotes
+are — raw TEXT lexicographic comparison would not reliably reflect true
+chronological order for a mixed-offset case. `market_snapshots` holds one
+row per validation cycle (not per instrument), so a full scan carries no
+meaningful cost — correctness was not traded for speed. Query-plan
+evidence captured in a dedicated test, not silently assumed.
+
+**Non-vacuous verification.** (1) Repository level: reverted to
+fetch-then-Python-reject (call `get_latest_snapshot()`, return `None` if
+its `ts>as_of`), confirmed 4 of the 10 new tests fail
+(future-hides-earlier, multiple-historical-selection, exact-boundary,
+naive-rejection), restored, re-confirmed all 10 pass. (2) Pipeline level:
+reverted `_resolve_snapshot`'s call to the unbounded
+`get_latest_snapshot()`, confirmed BOTH new pipeline tests fail — the
+spied `MarketSnapshot.india_vix` leaked the future snapshot's extreme
+`999` value in both the "real earlier snapshot exists" case and the
+"only a future snapshot exists" case — restored, re-confirmed both pass.
+
+**Files created.** None.
+
+**Files modified.** `src/athena/data/store/repository.py`
+(`get_latest_snapshot_as_of`, new), `src/athena/ops/owner_validation.py`
+(`_resolve_snapshot`'s one internal call bounded), `tests/data_layer/test_repository.py`
+(10 new contract tests), `tests/ops/test_owner_validation.py` (2 new
+pipeline-invariance tests), `docs/ATHENA-TECHNICAL-ARCHITECTURE.md`,
+`docs/MILESTONES.md`, `IMPLEMENTATION_SUMMARY.md` (this entry).
+
+**Tests added.** 12 new (10 repository-level, 2 pipeline-level, both
+non-vacuously verified). Full suite: **2,927 passed, 1 skipped**
+(pre-existing, unrelated), 0 failed. Ruff clean (same 7 pre-existing,
+unrelated `repository.py` SIM117 findings). Mypy: zero new failures —
+`owner_validation.py` stays at 24, `repository.py` stays at 10.
+
+**Architecture compliance.** No schema migration, one new narrowly-scoped
+repository method (not a modification of either existing snapshot API),
+no ADR touched, no `WorkflowStage` added. `get_latest_snapshot_before`'s
+own strict semantics completely untouched — proven by a dedicated test
+asserting the two methods disagree at the exact boundary as designed.
+
+**Structural regression.** None — Gap/RelativeStrength/RelativeVolume/
+ORB/VWAP/confluence/scoring/confidence/risk/Decision/TradePlan unaffected
+beyond the intended snapshot-input correction; the only difference any
+historical regression could show is future snapshot data now being
+correctly absent.
+
+**Point-in-time replay status after ID-5G.** Candles: market-time bounded
+(ID-5E). Quotes: market-time bounded (ID-5F). Market snapshots:
+market-time bounded (ID-5G). Institutional flows, candidate-universe
+membership, config version: still unresolved. Knowledge-time/bitemporal
+replay: still unsupported for all three retrieval kinds — and, for
+snapshots specifically, structurally bounded further by `add_snapshot`'s
+own `ON CONFLICT(ts) DO NOTHING` (a same-`ts` correction is silently
+dropped, so only the first-ever payload at a given `ts` can ever be
+replayed).
+
+**ID-5B status.** Unchanged, untouched — still pending 2026-08-31.
+
+**EMR/DarvaX isolation.** Confirmed preserved — no snapshot-retrieval code
+in either track was inspected, imported, or modified.
+
+**Remaining work.** Owner review of this milestone. ID-5B remains
+separately gated on 2026-08-31.
+
+**Commit message (for the owner to use, not run by the AI):**
+
+```
+fix(data): add point-in-time market snapshot retrieval safety (ID-5G)
+
+- Add SqliteRepository.get_latest_snapshot_as_of(as_of) -- INCLUSIVE
+  ts<=as_of cutoff, applied before ORDER BY/LIMIT 1, deliberately kept as
+  a new named method rather than overloading get_latest_snapshot_before's
+  own STRICT '<' semantics (its two real callers need same-instant
+  exclusion) or get_latest_snapshot's own unbounded write-integrity caller
+- Audit found _resolve_snapshot's single get_latest_snapshot() call feeds
+  BOTH RegimeEngine and MarketHealthEngine -- both genuinely analytical,
+  both now bounded by the run's own as_of
+- Keep datetime()-wrapped SQL (a measured full SCAN, not indexed) instead
+  of raw TEXT comparison -- the file-based provider permits a non-uniform
+  UTC offset in a persisted snapshot's ts, so raw comparison would not
+  reliably reflect chronological order; correctness preferred over the
+  (here, meaningless) speed cost on a one-row-per-cycle table
+- 12 new tests; 2 non-vacuously proven at the real pipeline level (a
+  spied MarketSnapshot.india_vix leaked a future snapshot's extreme
+  value before the fix, in both the has-an-earlier-snapshot and
+  only-a-future-snapshot cases); full suite (2,927) green, zero new mypy
+  failures
+- Point-in-time replay status: candles (ID-5E), quotes (ID-5F), and
+  market snapshots (ID-5G) are now all market-time bounded; institutional
+  flows/universe-membership/config-version/knowledge-time replay remain
+  explicitly unresolved
+```
+
+**Milestone status.** Ready for review. ID-5B remains separately gated
+on the next active trading session (2026-08-31); ID-5 overall stays open
+until both close.
+
+---
+
 ## ID-5F — Point-in-Time Quote Retrieval & SessionContext Replay Safety
 
 **Summary.** Narrow infrastructure/correctness milestone, NOT a trading

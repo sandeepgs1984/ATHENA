@@ -1382,9 +1382,10 @@ knows these were found and not simply missed:
     began 2026-07-28) — whether a rolling cap should be introduced once
     more history accumulates is an explicit, undecided OWNER_PENDING
     policy question, not resolved by this milestone.
-17. **`list_candles_recent()`/`get_latest_quote()` had no point-in-time
-    cutoff — fixed by ID-5E (candles, 2026-08-29) and ID-5F (quotes,
-    2026-08-30), MARKET-TIME safety only.** Every prior ID
+17. **`list_candles_recent()`/`get_latest_quote()`/`get_latest_snapshot()`
+    had no point-in-time cutoff — fixed by ID-5E (candles, 2026-08-29),
+    ID-5F (quotes, 2026-08-30), and ID-5G (snapshots, 2026-08-30),
+    MARKET-TIME safety only.** Every prior ID
     milestone since ID-P0.1 documented this as an unresolved replay
     limitation: `list_candles_recent(instrument_id, timeframe, limit=N)`
     returned the latest N rows overall, with no way to bound retrieval by
@@ -1435,16 +1436,41 @@ knows these were found and not simply missed:
     `QUOTE_UNAVAILABLE` freshness methodology is completely unchanged —
     only the source of `latest_quote_ts` is now market-time safe. Proven
     non-vacuously: a real pipeline run's `latest_quote_ts` leaked a future
-    quote's timestamp before the fix, restored after. `get_latest_snapshot()`
-    (`MarketSnapshot`) remains the next identified-but-unsolved gap — ID-5F
-    found a bounded sibling `get_latest_snapshot_before(before)` already
-    exists in the repository but is unused by the analytical caller, a
-    concrete head start for a future narrow milestone, not acted on.
+    quote's timestamp before the fix, restored after. **`get_latest_snapshot()`
+    (`MarketSnapshot`) had the identical gap — CLOSED by ID-5G (2026-08-30).**
+    Snapshot-schema audit confirmed `market_snapshots`' `PRIMARY KEY (ts)`
+    plus `ON CONFLICT(ts) DO NOTHING` retains one row per distinct
+    timestamp (feasibility gate passed), though a same-timestamp
+    correction attempt is silently dropped (a genuine knowledge-time
+    limitation, see below). `_resolve_snapshot`'s single
+    `get_latest_snapshot()` call was found to feed BOTH `RegimeEngine`
+    (via `_maybe_regime`) and `MarketHealthEngine` (via `run()`'s own
+    `enriched_snap`) — both genuinely analytical. Fixed via a NEW,
+    explicitly-named `get_latest_snapshot_as_of(as_of)` — deliberately not
+    an overload of the pre-existing `get_latest_snapshot_before(before)`,
+    whose own STRICT `<` semantics its two real callers (previous-
+    trading-day snapshot lookup in `market_history_service.py`,
+    pre-decision snapshot lookup in `ops/config_preview.py`) genuinely
+    need and which remains completely untouched. Chose an INCLUSIVE `<=`
+    exact boundary (matching every other ID-5 point-in-time contract, and
+    `_resolve_snapshot`'s own synthetic-snapshot construction at exactly
+    `as_of`), and deliberately kept `datetime()`-wrapped SQL — measured via
+    `EXPLAIN QUERY PLAN` to force a full table `SCAN`, not an indexed
+    `SEARCH` — over a faster raw-TEXT comparison, because the file-based
+    provider's `_aware_ts` permits a non-uniform UTC offset in a persisted
+    snapshot's `ts` (unlike candles/quotes, always uniformly serialized);
+    `market_snapshots` holds only one row per validation cycle, so the
+    scan costs nothing meaningful. Proven non-vacuously at both the
+    repository level and the real pipeline level: a spied
+    `MarketHealthEngine`-bound `MarketSnapshot.india_vix` leaked a future
+    snapshot's extreme value before the fix, in both the
+    has-an-earlier-snapshot case and the only-a-future-snapshot case.
     Institutional-flow/candidate-universe-membership/config-version
-    point-in-time reconstruction are likewise identified-but-unsolved —
-    full deterministic historical pipeline replay is NOT claimed by either
-    ID-5E or ID-5F; **candle and quote market-time retrieval are now both
-    closed**, snapshot and knowledge-time/bitemporal replay are not.
+    point-in-time reconstruction remain identified-but-unsolved — full
+    deterministic historical pipeline replay is NOT claimed by ID-5E,
+    ID-5F, or ID-5G; **candle, quote, and market-snapshot market-time
+    retrieval are now all closed**; knowledge-time/bitemporal replay is
+    not, for any of the three.
 
 ---
 

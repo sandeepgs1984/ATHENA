@@ -14,7 +14,7 @@ from athena.data.ingestion.models import IngestionResult
 from athena.data.store.repository import SqliteRepository
 from athena.domain.decision import Decision
 from athena.domain.enums import DecisionType, Direction, RunStatus, RunTrigger, Timeframe
-from athena.domain.market import Candle, Instrument, Quote
+from athena.domain.market import Candle, Instrument, MarketSnapshot, Quote
 from athena.domain.run import RunRecord
 from athena.intraday import GapDirection, RelativeStrengthRelation
 from athena.ops.owner_candidates import SqliteCandidateStore, normalize_candidate_symbol
@@ -1842,6 +1842,117 @@ class TestOwnerValidationPipeline:
         ctx = recorded[-1]
         assert ctx.latest_quote_ts is None
         assert ctx.data_quality is SessionDataQualityStatus.QUOTE_UNAVAILABLE
+
+    def test_id5g_market_health_snapshot_input_is_invariant_to_a_future_snapshot(
+        self, repo: SqliteRepository, config_dir: Path, monkeypatch
+    ) -> None:
+        """ID-5G §14/§17 (Pipeline Invariance / Future-Snapshot Non-Vacuous
+        Proof): the `MarketSnapshot` fed to `MarketHealthEngine.assess()`
+        (via `_resolve_snapshot`'s `enriched_snap`) must be byte-identical
+        whether or not the repository ALSO holds a snapshot dated after
+        this run's own `as_of` (as it would after further real polling
+        since that historical instant). Proven the same way as ID-5E's/
+        ID-5F's own proofs: run the identical historical cycle twice, add
+        a future-dated snapshot with an extreme india_vix between runs,
+        assert the recorded snapshot's `india_vix` is unchanged."""
+        from athena.market_health.engine import MarketHealthEngine
+
+        recorded: list[object] = []
+        real_assess = MarketHealthEngine.assess
+
+        def spy_assess(self, index_symbol, index_candles, snapshot, **kwargs):
+            recorded.append(snapshot)
+            return real_assess(self, index_symbol, index_candles, snapshot, **kwargs)
+
+        monkeypatch.setattr(MarketHealthEngine, "assess", spy_assess)
+
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        iid = "NSE:AAA"
+        repo.upsert_instrument(
+            Instrument(instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE")
+        )
+        repo.upsert_instrument(
+            Instrument(instrument_id="NSE:NIFTY 50", symbol="NIFTY 50", exchange="NSE",
+                       series="INDEX", status="ACTIVE")
+        )
+        repo.add_candles(_candles(iid, seed=100))
+        repo.add_candles(_candles("NSE:NIFTY 50", seed=24000))
+        real_snapshot_ts = datetime(2026, 1, 20, 9, 20, tzinfo=IST)
+        repo.add_snapshot(MarketSnapshot(
+            ts=real_snapshot_ts, indices={"NIFTY 50": Decimal("24000")}, india_vix=Decimal("15"),
+        ))
+
+        as_of = datetime(2026, 1, 20, 9, 25, tzinfo=IST)
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        ingestion = IngestionResult(
+            as_of=as_of, instruments_upserted=2, candles_fetched=160, candles_written=160,
+            quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+        )
+        pipe.run(RunTrigger.PREMARKET, as_of=as_of, ingestion=ingestion, run_id="run-snapshot-clean")
+        clean = recorded[-1]
+        assert clean is not None
+        assert clean.india_vix == Decimal("15")
+
+        # Future snapshot dated after as_of -- already present in the
+        # repository, as real further polling would leave it, before
+        # replaying the SAME historical as_of again.
+        repo.add_snapshot(MarketSnapshot(
+            ts=datetime(2026, 1, 20, 9, 40, tzinfo=IST),
+            indices={"NIFTY 50": Decimal("99999")}, india_vix=Decimal("999"),
+        ))
+        pipe.run(RunTrigger.PREMARKET, as_of=as_of, ingestion=ingestion, run_id="run-snapshot-noisy")
+        noisy = recorded[-1]
+
+        assert noisy == clean
+        assert noisy.india_vix == Decimal("15")
+
+    def test_id5g_no_historical_snapshot_preserves_missing_snapshot_fallback(
+        self, repo: SqliteRepository, config_dir: Path, monkeypatch
+    ) -> None:
+        """ID-5G §19: with zero snapshots at or before `as_of` (only a
+        future one exists), `_resolve_snapshot` must fall through to its
+        existing "no persisted snapshot" behavior -- never the oldest
+        future snapshot."""
+        from athena.market_health.engine import MarketHealthEngine
+
+        recorded: list[object] = []
+        real_assess = MarketHealthEngine.assess
+
+        def spy_assess(self, index_symbol, index_candles, snapshot, **kwargs):
+            recorded.append(snapshot)
+            return real_assess(self, index_symbol, index_candles, snapshot, **kwargs)
+
+        monkeypatch.setattr(MarketHealthEngine, "assess", spy_assess)
+
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        iid = "NSE:AAA"
+        repo.upsert_instrument(
+            Instrument(instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE")
+        )
+        repo.upsert_instrument(
+            Instrument(instrument_id="NSE:NIFTY 50", symbol="NIFTY 50", exchange="NSE",
+                       series="INDEX", status="ACTIVE")
+        )
+        repo.add_candles(_candles(iid, seed=100))
+        repo.add_candles(_candles("NSE:NIFTY 50", seed=24000))
+        repo.add_snapshot(MarketSnapshot(
+            ts=datetime(2026, 1, 20, 9, 40, tzinfo=IST),
+            indices={"NIFTY 50": Decimal("99999")}, india_vix=Decimal("999"),
+        ))
+
+        as_of = datetime(2026, 1, 20, 9, 25, tzinfo=IST)
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        ingestion = IngestionResult(
+            as_of=as_of, instruments_upserted=2, candles_fetched=160, candles_written=160,
+            quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+        )
+        pipe.run(RunTrigger.PREMARKET, as_of=as_of, ingestion=ingestion, run_id="run-snapshot-future-only")
+
+        snap = recorded[-1]
+        assert snap is not None  # _resolve_snapshot's own synthetic-empty fallback, ts=as_of
+        assert snap.india_vix != Decimal("999")
 
     def test_repeat_validate_with_same_as_of_does_not_orphan_earlier_decision(
         self, repo: SqliteRepository, config_dir: Path
