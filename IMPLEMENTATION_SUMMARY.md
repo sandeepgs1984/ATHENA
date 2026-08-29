@@ -6,6 +6,206 @@ status updated on approval.
 
 ---
 
+## ID-3.1 — Canonical Intraday Session Retrieval & ORB Slot Integrity
+
+**Summary.** ID-3's architecture and ORB evidence contract were accepted in
+owner review, but the review found ID-3 was not fully closed: two
+production correctness issues, both surfaced by ID-3's own real-data sanity
+check. (A) The shared `repo.list_candles_recent(instrument_id, timeframe,
+limit=100)` pattern is not a safe "give me this session's candles" contract
+— on a real production day where persisted M5 row density for one session
+exceeds 100, it silently drops the session's own earliest bars. (B)
+`OpeningRangeEngine._formation()` judged range completeness by comparing
+raw in-window row COUNT against expected count, so an off-grid/unexpected
+timestamp could in principle substitute for a genuinely missing canonical
+opening-range slot and still read `COMPLETE`. Fixed both; explicitly did
+NOT touch ID-P0.1's separate, broader point-in-time replay limitation.
+
+**Issue A fix — session-bounded retrieval, no new repository method.**
+`get_candles(instrument_id, timeframe, start, end)` already existed
+(`src/athena/data/store/repository.py`) with exactly the required
+semantics — inclusive `[start, end]`, deterministic `ORDER BY ts_open ASC`,
+served by the existing `(instrument_id, timeframe, ts_open)` primary key /
+`idx_candles_range` index, no row-count ceiling. No new repository API was
+needed. New `athena.session.session_day_start(as_of, tzinfo)` computes the
+lower bound (local midnight of `as_of`'s own calendar date) — bounding by
+calendar day rather than exact session open/close time, so it works even
+when the exact open/close isn't notified yet (e.g. an unconfirmed
+Muhurat); the existing per-engine filters narrow further from there.
+Switched to `get_candles(iid, tf, session_day_start(as_of, tz), as_of)` in
+the three session-scoped consumers: `session_stage` (M5 + M15),
+`ind_stage`'s VWAP fetch (M5), and `intraday_analytics_stage`'s ORB fetch
+(M5) — three independent, identically-shaped bounded reads per instrument
+per cycle, deliberately NOT deduplicated through a shared workflow artifact
+(would require restructuring the already-regression-tested `session`/
+`indicators` independence) in favor of the "smallest clean design" the
+milestone explicitly sanctions; each is a single-digit-millisecond,
+PK-indexed query (confirmed via `EXPLAIN QUERY PLAN`).
+
+**Confluence's 5m/15m fetches deliberately left unchanged.** Audited first,
+per the milestone's explicit instruction not to silently redefine
+methodology: `_intraday_direction()`'s rolling SMA(9)/SMA(5) genuinely
+reads across a session boundary early in the day today (e.g. at 09:20,
+SMA(9) draws on the prior session's trailing bars — `list_candles_recent`
+was never session-bounded for this consumer, and confluence's own
+`period`-vs-`None` contract already tolerates thin same-session history by
+design). Whether that cross-session reach is actually intentional is not
+resolvable from the code alone — reported here as an open methodology
+question for the owner, not silently decided either way. `confluence_five_min_cs`
+now has its own fetch (previously it silently reused VWAP's shared
+`intraday_cs` variable) so VWAP's fix cannot change confluence's behavior —
+proven by parity tests.
+
+**Issue B fix — canonical-slot integrity in `OpeningRangeEngine`.** New
+`OpeningRangeEngine._canonical_slots()` filters the completed-candle
+sequence to exact expected M5 opening timestamps (via the same
+`expected_intraday_opens` authority `bars_expected` already used) ONCE, at
+the top of `assess()`, before formation/relation/breakout ever runs — one
+canonical sequence feeds every downstream computation for both windows, so
+an off-grid/unexpected timestamp can never substitute for a missing
+canonical slot, alter a range's high/low/volume, or trigger a false
+breakout/breakdown, anywhere. `_formation`'s existing count comparison
+(`bars_present >= bars_expected`) needed no structural change once its
+input was pre-filtered to canonical-only — the count becomes correct by
+construction. `INCOMPLETE_DATA`'s explanation now names the missing
+canonical count and earliest missing timestamp explicitly.
+
+**Non-vacuous verification.** Reverted the canonical-slot filter and the
+session-bounded fetches in turn (restored from backup after each), and
+confirmed the new tests actually fail without their respective fix:
+off-grid-substitution masking a missing OR15 slot, an off-grid extreme
+altering range high/low, an off-grid post-range bar triggering a false
+breakout, and the >100-row-session ORB/VWAP integration test all failed
+against the pre-fix code and pass against the fix.
+
+**SessionContext audited, not changed.** `_timeframe_quality`'s existing
+missing-bar detection was ALREADY canonical-slot-based (`missing = [ts for
+ts in due if ts not in present]` checks exact expected timestamps, not raw
+count) — confirmed correct under >100 rows and off-grid extras by two new
+tests, one deliberately engineering a genuinely-missing canonical slot
+alongside 30 off-grid extras (104 total rows) to prove the extras cannot
+mask it. `bar_count`/`latest_completed_bar_ts` are NOT restricted to
+canonical slots (pre-existing, unchanged) and can include/report an
+off-grid row — documented explicitly as an accepted, non-defect
+characteristic; only ORB's own high/low/volume/breakout computation
+required canonical-only exclusion.
+
+**VWAP regression.** `vwap()` (`indicators/calculations.py`) already
+self-filters to `c.ts_open.date() == as_of.date()` internally — it was
+never vulnerable to cross-session contamination even from an unbounded
+fetch. The real vulnerability was truncation-from-below (today's own early
+bars pushed out of a fixed-N window); the session-bounded fetch fixes
+exactly that and changes nothing on a normal (non-dense) day.
+
+**Real-data acceptance check (read-only, descriptive only, production
+retrieval path — no test-only larger limit).** Fresh scratch copy of the
+real production `db/athena.db` (`sqlite3.Connection.backup()` from a
+`mode=ro` source; original never opened for write; scratch copy deleted
+after use). Same `as_of` as ID-3's own check. **OR15: 526/526 COMPLETE**
+(100%, matching ID-3's diagnostic-limit result) — the session-bounded
+fetch fully resolves Issue A for OR15. **OR30: 3/526 COMPLETE, 523/526
+INCOMPLETE_DATA** — a real, honest, and much LOWER number than ID-3's
+imprecise "526/527 COMPLETE" diagnostic-limit read, which was itself
+masked by Issue B's counting bug. Root cause confirmed directly (spot
++ aggregate-classified): the real per-instrument M5 timestamp drift found
+in ID-3 begins, for 522/526 instruments, at the exact 6th canonical 5m
+slot (09:40) — e.g. one real instrument's actual persisted rows are
+`09:15, 09:20, 09:25, 09:30, 09:35, 09:43:55, 09:48:55` — genuinely
+missing the canonical `09:40:00` row, not merely relabelled. OR15 needs
+only the first 3 canonical slots (09:15-09:25), all still clean before
+the drift onset, hence 100%; OR30 needs 6 (09:15-09:40) and the 6th is
+the first one lost to drift for nearly every instrument. This is ORB
+correctly reporting INCOMPLETE_DATA where it used to silently (and
+incorrectly) report COMPLETE — the fix working as intended, not a
+regression. Full classification: 75 canonical M5 slots/session; 526/528
+active candidates had >=1 row that day; raw row counts clustered at
+110-120 (519 instruments) and 120-130 (7); the first off-grid timestamp
+lands in the 25-29-minutes-since-open bucket (i.e. the 09:40 slot) for
+522/526 instruments. No repair attempted; no provider-cause inference
+made beyond what the timestamps themselves show.
+
+**Files created.** None.
+
+**Files modified.** `src/athena/session/engine.py` (`session_day_start`),
+`src/athena/session/__init__.py` (export), `src/athena/intraday/opening_range_engine.py`
+(`_canonical_slots`, `_formation` explanation), `src/athena/ops/owner_validation.py`
+(`session_stage`/`ind_stage`/`intraday_analytics_stage` bounded retrieval;
+confluence fetch split from VWAP fetch), `tests/data_layer/test_repository.py`
+(2 new), `tests/market_intel/test_session_context.py` (5 new),
+`tests/market_intel/test_opening_range.py` (3 new), `tests/ops/test_owner_validation.py`
+(1 new), `docs/ATHENA-TECHNICAL-ARCHITECTURE.md`, `docs/MILESTONES.md`,
+`IMPLEMENTATION_SUMMARY.md` (this entry).
+
+**Tests added.** 11 new (2 repository: high-density-session retention +
+`EXPLAIN QUERY PLAN` index-use proof; 5 session-context: `session_day_start`
+unit tests + 2 high-density/off-grid regression tests; 3 opening-range:
+off-grid-substitution/extreme/false-breakout, each proven non-vacuous; 1
+owner_validation integration: >100-row session ORB/VWAP survival, proven
+non-vacuous). Full suite: **2,806 passed, 1 skipped** (pre-existing,
+unrelated), 0 failed. Ruff clean on every new/modified file. `mypy` clean
+in its configured scope (unaffected — no changes under `src/athena/domain`
+or `src/athena/config`).
+
+**Architecture compliance.** No new `WorkflowStage`, no new repository API,
+no ADR touched. No `KiteProvider`/broker-specific reference anywhere in the
+changed files. No dormant `PipelineContext`/`ContextDelta`/`IntelligenceModule`
+use (guard test still passes). No order-placement code. Deterministic/
+replayable — every function still takes `as_of`/bounds explicitly, no
+`datetime.now()`. No EMR or DarvaX module imported, read, or referenced
+anywhere in the changed files (both isolation suites pass unmodified) — the
+real-data check queried only ATHENA-core's own `candles` table.
+
+**Point-in-time replay boundary.** Unchanged and not claimed solved. This
+milestone only bounds a single-cycle candle fetch to the current session by
+calendar date + `as_of` — it does not address ID-P0.1's broader "latest N
+as of X" historical-replay limitation for the rest of the pipeline.
+
+**Risks / technical debt.** The real OR30 canonical-slot coverage (3/526,
+0.6%) is now honestly visible rather than masked — this is new, load-bearing
+information for the owner about how much the production M5 timestamp-drift
+issue actually affects ORB, not a new defect introduced here. The
+confluence session-boundary question (does 5m/15m confluence intend to read
+across a session boundary early in the day?) remains open, flagged, not
+decided.
+
+**Remaining work.** Owner review of this milestone; then ID-4 (Market ->
+Sector -> Stock `RelativeStrengthContext`, per the owner's own stated next
+step) pending explicit owner approval — not started here.
+
+**Commit message (for the owner to use, not run by the AI):**
+
+```
+fix(intraday): correct session candle retrieval and ORB canonical-slot
+integrity (ID-3.1)
+
+- Bound session-scoped candle reads (session_stage, ind_stage's VWAP
+  fetch, intraday_analytics_stage's ORB fetch) by calendar day + as_of via
+  the existing get_candles(), replacing the fixed list_candles_recent(
+  limit=100) that a real production day's elevated row density proved
+  could silently drop a session's own opening bars -- no new repository
+  method needed
+- Add athena.session.session_day_start(); leave confluence's own 5m/15m
+  fetches unchanged (audited, not silently redefined -- reported as an
+  open cross-session methodology question for the owner)
+- Fix OpeningRangeEngine to filter to canonical expected M5 opening slots
+  once, up front, before formation/relation/breakout -- an off-grid row
+  can no longer substitute for a missing canonical slot, alter range
+  high/low/volume, or trigger a false breakout; non-vacuously proven
+- 11 new tests (repository index-plan + high-density retention, session
+  canonical-slot regression, ORB off-grid-substitution/extreme/breakout,
+  owner_validation >100-row integration); full suite (2,806) green
+- Real-data acceptance check (read-only, production retrieval path, no
+  test-only limit): OR15 526/526 COMPLETE; OR30 3/526 COMPLETE / 523
+  INCOMPLETE_DATA -- the real, previously-masked canonical coverage,
+  traced to a real M5 timestamp-drift onset at the session's 6th 5-minute
+  slot for 522/526 instruments
+```
+
+**Milestone status.** Ready for review. Awaiting owner approval before
+ID-4.
+
+---
+
 ## ID-3 — Opening Range Intelligence / ORB Evidence
 
 **Summary.** ID-2.1 was owner-approved. This is Intraday Intelligence's
@@ -161,8 +361,11 @@ feat(intraday): add ID-3 OpeningRangeEvidence (OR15/OR30) evidence
   intraday row density -- flagged for owner attention, not changed here
 ```
 
-**Milestone status.** Ready for review. Awaiting owner approval before
-ID-4.
+**Milestone status.** Owner-reviewed 2026-08-29. Architecture and ORB
+evidence contract accepted; two corrective issues found (shared
+`limit=100` retrieval, ORB slot-count-vs-canonical-slot completeness) —
+fixed in ID-3.1 (see above). Not closed on its own; closed together with
+ID-3.1.
 
 ---
 

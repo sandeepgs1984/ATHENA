@@ -69,6 +69,28 @@ def latest_completed_candle(
     return max(completed, key=lambda c: c.ts_open)
 
 
+def session_day_start(as_of: datetime, tzinfo: ZoneInfo) -> datetime:
+    """Local midnight of ``as_of``'s own calendar date in ``tzinfo`` (ID-3.1
+    §2/§4) — the lower bound for a session-scoped repository read.
+
+    A fixed "latest N rows" fetch is not a safe way to ask "give me this
+    session's candles": on a day where persisted row density for one session
+    happens to exceed N (real production evidence, ID-3 §16/§23), that fetch
+    silently drops the session's own EARLIEST bars — exactly the rows a
+    session-open-anchored consumer (VWAP, ORB, ``SessionContext`` itself)
+    needs most. Bounding by calendar date instead of by exact session
+    open/close time means this works even when the exact open/close hasn't
+    been notified yet (e.g. an unconfirmed Muhurat) — the existing per-engine
+    filters (``SessionContextEngine``'s own ``today`` filter,
+    ``OpeningRangeEngine``'s own ``session_open_ts`` check) still narrow
+    further from here; this only guarantees nothing from the session's own
+    calendar day is truncated before they get to look at it."""
+    if as_of.tzinfo is None:
+        raise ValueError("session_day_start as_of must be timezone-aware")
+    local_date = as_of.astimezone(tzinfo).date()
+    return datetime(local_date.year, local_date.month, local_date.day, tzinfo=tzinfo)
+
+
 def classify_session_phase(
     ctx: CalendarContext, sessions: SessionsConfig, *, as_of: datetime, tzinfo: ZoneInfo
 ) -> SessionPhase:

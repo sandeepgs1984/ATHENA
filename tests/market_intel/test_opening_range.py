@@ -413,6 +413,75 @@ def test_24_deterministic_replay(engine, calendar, sessions_cfg):
     assert a == b
 
 
+# --------------------------------------------------------------------------- #
+# ID-3.1 — canonical-slot integrity: an off-grid/unexpected timestamp must
+# never substitute for a missing canonical slot, alter range high/low/volume,
+# or trigger a false breakout.
+# --------------------------------------------------------------------------- #
+
+def test_25_off_grid_substitute_cannot_mask_a_genuinely_missing_slot(engine, calendar, sessions_cfg):
+    """Expected OR15 canonical slots: 09:15, 09:20, 09:25. Actual persisted
+    rows: 09:15, 09:16 (off-grid), 09:20 -- 09:25 genuinely missing. A raw
+    row-count comparison (3 present == 3 expected) would wrongly report
+    COMPLETE; the off-grid 09:16 row must not be able to stand in for the
+    missing 09:25 canonical slot. This test fails against the pre-ID-3.1
+    implementation (bars_present counted all in-window rows, not just
+    canonical ones)."""
+    candles = [_m5(9, 15, 100, high=101, low=99), _m5(9, 16, 999, high=1000, low=998),
+               _m5(9, 20, 100, high=101, low=99)]  # 09:25 missing
+    as_of = datetime(2026, 8, 28, 9, 30, tzinfo=IST)
+    result = _assess(engine, calendar, sessions_cfg, as_of=as_of, candles=candles)
+    or15 = result[OpeningRangeWindow.OR15]
+    assert or15.formation.status is OpeningRangeFormationStatus.INCOMPLETE_DATA
+    assert or15.formation.bars_present == 2  # only the 2 canonical bars (09:15, 09:20)
+    assert or15.formation.bars_expected == 3
+    assert or15.relation is OpeningRangeRelation.UNAVAILABLE
+
+
+def test_26_off_grid_extreme_inside_window_cannot_alter_range_high_low_or_volume(
+    engine, calendar, sessions_cfg
+):
+    baseline = [_m5(9, 15, 100, high=101, low=99), _m5(9, 20, 100, high=101, low=99),
+                _m5(9, 25, 100, high=101, low=99)]
+    off_grid_extreme = _m5(9, 17, 500, high=9_999, low=1)
+    as_of = datetime(2026, 8, 28, 9, 30, tzinfo=IST)
+
+    without = _assess(engine, calendar, sessions_cfg, as_of=as_of, candles=baseline)
+    with_extra = _assess(
+        engine, calendar, sessions_cfg, as_of=as_of, candles=[*baseline, off_grid_extreme]
+    )
+    f0, f1 = without[OpeningRangeWindow.OR15].formation, with_extra[OpeningRangeWindow.OR15].formation
+    assert f1.status is OpeningRangeFormationStatus.COMPLETE
+    assert f1.high == f0.high == Decimal("101")
+    assert f1.low == f0.low == Decimal("99")
+    assert f1.volume == f0.volume
+    assert f1.bars_present == f0.bars_present == 3
+
+
+def test_27_off_grid_post_range_bar_cannot_trigger_breakout_genuine_bar_can(
+    engine, calendar, sessions_cfg
+):
+    range_bars = [_m5(9, 15, 100, high=101, low=99), _m5(9, 20, 100, high=101, low=99),
+                  _m5(9, 25, 100, high=101, low=99)]  # OR15 range: high=101, low=99
+    off_grid_post = _m5(9, 31, 500, high=501, low=499)  # not on the 5m grid
+    as_of = datetime(2026, 8, 28, 9, 40, tzinfo=IST)
+
+    only_off_grid = _assess(
+        engine, calendar, sessions_cfg, as_of=as_of, candles=[*range_bars, off_grid_post]
+    )
+    or15_a = only_off_grid[OpeningRangeWindow.OR15]
+    assert or15_a.breakout_event is BreakoutEvent.NOT_OBSERVED
+
+    genuine_post = _m5(9, 35, 105, high=106, low=104)  # canonical, closes above 101
+    with_genuine = _assess(
+        engine, calendar, sessions_cfg, as_of=as_of,
+        candles=[*range_bars, off_grid_post, genuine_post],
+    )
+    or15_b = with_genuine[OpeningRangeWindow.OR15]
+    assert or15_b.breakout_event is BreakoutEvent.UPSIDE_BREAKOUT_EVENT
+    assert or15_b.first_breakout_ts == datetime(2026, 8, 28, 9, 35, tzinfo=IST)
+
+
 def test_naive_as_of_rejected(engine, calendar, sessions_cfg):
     sc = _session(calendar, sessions_cfg, as_of=datetime(2026, 8, 28, 9, 30, tzinfo=IST), candles=[])
     with pytest.raises(ValueError, match="timezone-aware"):

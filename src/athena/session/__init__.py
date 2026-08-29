@@ -10,6 +10,7 @@ from athena.session.engine import (
     completed_candles,
     is_candle_completed,
     latest_completed_candle,
+    session_day_start,
 )
 from athena.session.models import (
     SessionContext,
@@ -28,4 +29,5 @@ __all__ = [
     "completed_candles",
     "is_candle_completed",
     "latest_completed_candle",
+    "session_day_start",
 ]

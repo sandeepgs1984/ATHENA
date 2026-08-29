@@ -782,7 +782,7 @@ class OwnerValidationPipeline:
         from athena.runtime import WorkflowEngine, WorkflowStage, build_definition
         from athena.scanner import DailyMarketScanner, InstrumentPlan, ScanCapture
         from athena.scoring import ConfluenceInputs, ScoringEngine
-        from athena.session import SessionContextEngine, completed_candles
+        from athena.session import SessionContextEngine, completed_candles, session_day_start
 
         scoring_cfg = load_scoring_config(self._config_dir)
         decision_cfg = load_decision_config(self._config_dir)
@@ -883,22 +883,42 @@ class OwnerValidationPipeline:
                 # confluence, or (transitively) IntradaySignalSet. This is
                 # the one authoritative completed-candle filter; nothing
                 # downstream re-derives its own copy of the formula.
-                intraday_cs = completed_candles(
-                    self._repo.list_candles_recent(instrument_id, Timeframe.M5, limit=100),
-                    Timeframe.M5, as_of=ctx.as_of,
+                #
+                # ID-3.1 §2/§5: VWAP is cumulative from session open, so it
+                # needs the FULL current session's 5m bars — a fixed
+                # `limit=100` fetch was proven (ID-3's real-data sanity
+                # check) to silently drop the session's own earliest bars on
+                # a day where persisted row density for one session exceeds
+                # 100. Bounded by calendar day instead (`session_day_start`
+                # -> `as_of`), via the existing PK-indexed `get_candles` —
+                # no arbitrary row-count limit.
+                vwap_raw = self._repo.get_candles(
+                    instrument_id, Timeframe.M5,
+                    session_day_start(ctx.as_of, session_tzinfo), ctx.as_of,
                 )
+                intraday_cs = completed_candles(vwap_raw, Timeframe.M5, as_of=ctx.as_of)
                 vwap_result = (
                     indicator_engine.compute(IndicatorName.VWAP, intraday_cs, as_of=ctx.as_of)
                     if intraday_cs else None
                 )
                 # M-X7: multi-timeframe confluence — daily direction reuses
-                # the SMA(20) already computed above; 5m reuses `intraday_cs`
-                # (the same series VWAP uses); 15m needs its own fetch. Each
-                # intraday direction is a plain rolling-SMA read via
-                # calc.sma() with a short, timeframe-specific period, not
-                # routed through IndicatorEngine — IndicatorsConfig fixes one
-                # period per indicator name, and there's no way to ask it for
-                # a differently-tuned SMA for 15m's much thinner real history
+                # the SMA(20) already computed above. 5m/15m each get their
+                # OWN `list_candles_recent(limit=100)` fetch here (ID-3.1
+                # §5: audited and deliberately NOT switched to the
+                # session-bounded fetch above) — confluence's rolling
+                # SMA(9)/SMA(5) genuinely reads across a session boundary
+                # early in the day today (e.g. at 09:20, SMA(9) draws on
+                # yesterday's trailing bars, per `_intraday_direction`'s
+                # "None only below `period` bars available" contract, never
+                # a session-only one). Whether that cross-session reach is
+                # actually intentional is unresolved from the code alone —
+                # flagged as an open methodology question for the owner
+                # rather than silently redefined either way. Each intraday
+                # direction is a plain rolling-SMA read via calc.sma() with a
+                # short, timeframe-specific period, not routed through
+                # IndicatorEngine — IndicatorsConfig fixes one period per
+                # indicator name, and there's no way to ask it for a
+                # differently-tuned SMA for 15m's much thinner real history
                 # (median 14 bars/session) than the daily series' period=20.
                 confluence_inputs = None
                 daily_sma = indicators.get(IndicatorName.SMA)
@@ -907,6 +927,12 @@ class OwnerValidationPipeline:
                     if daily_last_close is not None:
                         confluence_cfg = scoring_cfg.confluence
                         daily_bullish = Decimal(daily_last_close) >= daily_sma.values["value"]
+                        confluence_five_min_cs = completed_candles(
+                            self._repo.list_candles_recent(
+                                instrument_id, Timeframe.M5, limit=100
+                            ),
+                            Timeframe.M5, as_of=ctx.as_of,
+                        )
                         fifteen_min_cs = completed_candles(
                             self._repo.list_candles_recent(
                                 instrument_id, Timeframe.M15, limit=100
@@ -916,7 +942,7 @@ class OwnerValidationPipeline:
                         confluence_inputs = ConfluenceInputs(
                             daily_bullish=daily_bullish,
                             five_min_bullish=_intraday_direction(
-                                intraday_cs, confluence_cfg.five_min_sma_period),
+                                confluence_five_min_cs, confluence_cfg.five_min_sma_period),
                             fifteen_min_bullish=_intraday_direction(
                                 fifteen_min_cs, confluence_cfg.fifteen_min_sma_period),
                         )
@@ -1036,11 +1062,18 @@ class OwnerValidationPipeline:
                 # own reads (5m/15m candles, latest quote), never touching
                 # ind_stage's closure-local intraday series, so it cannot
                 # perturb existing VWAP/confluence/scoring/decision behavior.
-                five_min_candles = self._repo.list_candles_recent(
-                    instrument_id, Timeframe.M5, limit=100
+                #
+                # ID-3.1 §2/§4: session-scoped, so bounded by calendar day
+                # (`session_day_start` -> `as_of`) rather than a fixed
+                # `limit=100` — the same real-data truncation risk applies
+                # here as to VWAP/ORB (this data feeds SessionContext's own
+                # bar-count/latest-completed-bar/missing-bar provenance).
+                day_start = session_day_start(ctx.as_of, session_tzinfo)
+                five_min_candles = self._repo.get_candles(
+                    instrument_id, Timeframe.M5, day_start, ctx.as_of
                 )
-                fifteen_min_candles = self._repo.list_candles_recent(
-                    instrument_id, Timeframe.M15, limit=100
+                fifteen_min_candles = self._repo.get_candles(
+                    instrument_id, Timeframe.M15, day_start, ctx.as_of
                 )
                 latest_quote = self._repo.get_latest_quote(instrument_id)
                 session_context = session_engine.assess(
@@ -1072,8 +1105,27 @@ class OwnerValidationPipeline:
                 # stage/dependency is justified. Nothing downstream
                 # (scoring/confidence/risk/decision) declares a dependency
                 # on "intraday_signal_set" yet.
-                five_min_raw = self._repo.list_candles_recent(
-                    instrument_id, Timeframe.M5, limit=100
+                #
+                # ID-3.1 §2/§4: session-scoped like VWAP/session_stage, so
+                # bounded by calendar day rather than a fixed `limit=100` —
+                # this is the exact fetch the ID-3 real-data sanity check
+                # proved could silently drop the opening range's own bars.
+                #
+                # ID-3.1 §15: this is the third independent, identically-
+                # shaped (`session_day_start` -> `as_of`, M5) bounded read
+                # per instrument per cycle — session_stage and ind_stage's
+                # VWAP fetch each read the same window. Deliberately NOT
+                # deduplicated through a shared workflow-produced artifact:
+                # doing so would require `session`/`indicators` to gain a
+                # declared dependency on each other (they are currently
+                # independent, order-preserving stages — see their own
+                # comments), risking the existing Kahn-ordering regression
+                # proof for a single-digit-millisecond, PK-indexed query
+                # (verified via EXPLAIN QUERY PLAN in the repository test
+                # suite) that costs far less than the restructuring risk.
+                five_min_raw = self._repo.get_candles(
+                    instrument_id, Timeframe.M5,
+                    session_day_start(ctx.as_of, session_tzinfo), ctx.as_of,
                 )
                 orb_by_window = opening_range_engine.assess(
                     instrument_id,

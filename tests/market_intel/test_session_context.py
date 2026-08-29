@@ -12,6 +12,7 @@ import pytest
 
 from athena.calendar.engine import CalendarEngine
 from athena.config.loader import load_config
+from athena.data.validation.calendar_expectations import expected_intraday_opens
 from athena.domain.enums import Timeframe
 from athena.domain.market import Candle
 from athena.session import (
@@ -20,6 +21,7 @@ from athena.session import (
     SessionPhase,
     is_candle_completed,
     latest_completed_candle,
+    session_day_start,
 )
 from athena.session.models import TimeframeProvenance
 
@@ -332,3 +334,88 @@ def test_closed_phase_after_regular_close(engine, calendar, sessions_cfg):
     sc = _assess(engine, calendar, sessions_cfg, as_of=as_of)
     assert sc.phase is SessionPhase.CLOSED
     assert sc.remaining_seconds == 0
+
+
+# --------------------------------------------------------------------------- #
+# ID-3.1 — session_day_start (session-bounded repository retrieval)
+# --------------------------------------------------------------------------- #
+
+def test_session_day_start_is_local_midnight():
+    as_of = datetime(2026, 8, 28, 14, 37, 22, tzinfo=IST)
+    assert session_day_start(as_of, IST) == datetime(2026, 8, 28, 0, 0, 0, tzinfo=IST)
+
+
+def test_session_day_start_uses_the_target_timezone_not_as_ofs_own():
+    # 2026-08-28 03:30 UTC is 2026-08-28 09:00 IST -- the local calendar date
+    # must come from `tzinfo`, never from whatever offset `as_of` itself carries.
+    as_of = datetime(2026, 8, 28, 3, 30, tzinfo=ZoneInfo("UTC"))
+    assert session_day_start(as_of, IST) == datetime(2026, 8, 28, 0, 0, 0, tzinfo=IST)
+
+
+def test_session_day_start_rejects_naive_as_of():
+    with pytest.raises(ValueError, match="timezone-aware"):
+        session_day_start(datetime(2026, 8, 28, 9, 30), IST)
+
+
+# --------------------------------------------------------------------------- #
+# ID-3.1 §13/§17/§24 — bar counts / latest-completed-bar / missing-bar status
+# survive a high-density session with off-grid extras: correctness comes from
+# canonical calendar expectations, never merely from raw row count.
+# --------------------------------------------------------------------------- #
+
+def test_high_density_session_with_off_grid_extras_still_detects_a_genuinely_missing_bar(
+    engine, calendar, sessions_cfg
+):
+    """A real session has 75 canonical M5 slots (09:15-15:30). Provide 74 of
+    them (09:20 missing) plus 30 off-grid extras -- 104 total rows, MORE than
+    a fixed limit=100 fetch would ever have returned, and more than the 75
+    genuine canonical slots. If completeness were judged by raw row count
+    alone, 104 rows could misleadingly look "plenty" -- it must still report
+    EXPECTED_BAR_MISSING because a real canonical slot (09:20) is genuinely
+    absent."""
+    expected = expected_intraday_opens(calendar, DAY, 5, IST)
+    assert len(expected) == 75  # 09:15-15:30 in 5-minute steps
+    missing_ts = datetime(2026, 8, 28, 9, 20, tzinfo=IST)
+    canonical = [
+        _candle(IID, Timeframe.M5, ts) for ts in expected if ts != missing_ts
+    ]
+    off_grid = [
+        _candle(IID, Timeframe.M5, expected[0] + timedelta(minutes=61 + i))
+        for i in range(30)
+    ]
+    as_of = datetime(2026, 8, 28, 15, 45, tzinfo=IST)  # well after close
+    sc = _assess(engine, calendar, sessions_cfg, as_of=as_of, five=[*canonical, *off_grid])
+    assert len(canonical) + len(off_grid) > 100
+    assert sc.five_min.quality is SessionDataQualityStatus.EXPECTED_BAR_MISSING
+    assert "1/75" in sc.five_min.explanation
+
+
+def test_high_density_session_all_canonical_slots_present_is_sufficient(
+    engine, calendar, sessions_cfg
+):
+    """Same shape as above, but every canonical slot IS present alongside
+    the off-grid extras -- proves the extras don't cause a false negative
+    either; overall status is SUFFICIENT despite 100+ total raw rows."""
+    expected = expected_intraday_opens(calendar, DAY, 5, IST)
+    canonical = [_candle(IID, Timeframe.M5, ts) for ts in expected]
+    # Off-grid extras placed AFTER the session's own last canonical slot
+    # (15:25) -- e.g. a late/duplicate tick past official close, still on
+    # the same calendar date -- so this documents the real (unchanged)
+    # behavior: `latest_completed_bar_ts` is not restricted to canonical
+    # slots and can report an off-grid timestamp when it is genuinely the
+    # latest completed bar of the day.
+    off_grid = [
+        _candle(IID, Timeframe.M5, expected[-1] + timedelta(minutes=1 + i))
+        for i in range(30)
+    ]
+    assert len(canonical) == 75
+    as_of = datetime(2026, 8, 28, 16, 0, tzinfo=IST)
+    sc = _assess(engine, calendar, sessions_cfg, as_of=as_of, five=[*canonical, *off_grid])
+    assert len(canonical) + len(off_grid) > 100
+    assert sc.five_min.quality is SessionDataQualityStatus.SUFFICIENT
+    # Documents existing, unchanged behavior (ID-3.1 does not restrict these
+    # two fields to canonical slots -- only the quality classification
+    # above, which was already canonical-slot-based before ID-3.1): raw bar
+    # count and "latest completed bar" both include the off-grid extras.
+    assert sc.five_min.bar_count == 105
+    assert sc.five_min.latest_completed_bar_ts == off_grid[-1].ts_open

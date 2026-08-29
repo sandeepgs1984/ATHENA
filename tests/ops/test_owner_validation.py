@@ -971,6 +971,66 @@ class TestOwnerValidationPipeline:
         assert signal_set.or15.formation.bars_present == 3
         assert signal_set.or30.formation.status is OpeningRangeFormationStatus.FORMING
 
+    def test_id31_orb_and_vwap_survive_a_high_row_density_session_via_the_real_repo(
+        self, repo: SqliteRepository, config_dir: Path, monkeypatch
+    ) -> None:
+        """ID-3.1 §22/§23 retrieval regression: the exact real production
+        defect ID-3's real-data sanity check found — a fixed
+        `list_candles_recent(limit=100)` read silently drops a session's
+        own opening bars once persisted row density for that session
+        exceeds 100. This test seeds 130 real M5 rows for one session (more
+        than the old fixed limit, and spanning well past `as_of` in
+        timestamp terms, so a fetch with no `as_of` bound would grab
+        chronologically-later rows instead of the session's own opening
+        bars) and asserts OR15 still resolves COMPLETE from its own
+        canonical opening bars and VWAP still receives session data — proof
+        the production path no longer depends on an arbitrary "latest N
+        rows" fetch. This test must fail if `intraday_analytics_stage`/
+        `ind_stage`/`session_stage` ever revert to `list_candles_recent`."""
+        from athena.intraday.engine import IntradayAnalyticsEngine
+        from athena.intraday.models import VwapRelation
+        from athena.intraday.opening_range_models import OpeningRangeFormationStatus
+
+        recorded: dict[str, object] = {}
+        real_assess = IntradayAnalyticsEngine.assess
+
+        def spy_assess(self, *args, **kwargs):
+            result = real_assess(self, *args, **kwargs)
+            recorded["signal_set"] = result
+            return result
+
+        monkeypatch.setattr(IntradayAnalyticsEngine, "assess", spy_assess)
+
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        iid = "NSE:AAA"
+        repo.upsert_instrument(
+            Instrument(instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE")
+        )
+        repo.add_candles(_candles(iid, seed=100))
+        # 130 5m rows for one session (09:15 onward) -- more than the old
+        # fixed limit=100, and the tail extends well past `as_of` (09:30),
+        # so a fetch with no as_of bound (the pre-ID-3.1 `list_candles_recent`
+        # path) would keep the 100 chronologically-LATEST rows and drop the
+        # session's own opening bars entirely.
+        repo.add_candles(_intraday_candles(iid, AS_OF.date(), n=130, seed=100))
+
+        as_of = datetime(2026, 3, 2, 9, 30, tzinfo=IST)  # OR15 window just elapsed
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        ingestion = IngestionResult(
+            as_of=as_of, instruments_upserted=1, candles_fetched=130, candles_written=130,
+            quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+        )
+        detail = pipe.run(
+            RunTrigger.PREMARKET, as_of=as_of, ingestion=ingestion, run_id="run-dense-session"
+        )
+
+        assert detail["decision_reports"]
+        signal_set = recorded["signal_set"]
+        assert signal_set.or15.formation.status is OpeningRangeFormationStatus.COMPLETE
+        assert signal_set.or15.formation.bars_present == 3
+        assert signal_set.vwap.relation is not VwapRelation.VWAP_UNAVAILABLE
+
     def test_repeat_validate_with_same_as_of_does_not_orphan_earlier_decision(
         self, repo: SqliteRepository, config_dir: Path
     ) -> None:

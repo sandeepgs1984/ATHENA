@@ -372,7 +372,15 @@ dependency graph:
    for the window's own bar-count expectations. Genuinely new evidence
    (not a formalization of an existing scoring input, unlike VWAP/confluence)
    but held to the identical rule: no scoring/confidence/risk/decision
-   dependency exists on it.
+   dependency exists on it. **ID-3.1** corrected two production issues found
+   in owner review: the 5m fetch (and VWAP's/`session_stage`'s own) is now
+   bounded by `athena.session.session_day_start(as_of, tz)` through the
+   repository's existing `get_candles()` rather than a fixed
+   `list_candles_recent(limit=100)`, and `OpeningRangeEngine` now filters to
+   exact canonical expected M5 timestamps (`_canonical_slots()`) before any
+   formation/relation/breakout computation, so an off-grid row can never
+   substitute for a missing canonical slot. See
+   [§9 item 12](#9-known-documentationimplementation-gaps).
 
 Sector health and universe are computed **once per run**, not per instrument —
 `universe_engine.build(...)` and `SectorHealthEngine(sector_cfg).assess_many(...)`
@@ -1153,21 +1161,37 @@ knows these were found and not simply missed:
     types are documented as legacy in their own module docstrings rather
     than deleted, pending a future cleanup milestone's dependency
     verification.
-12. **`list_candles_recent(limit=100)` — shared by VWAP/confluence/session/
-    ORB — can exclude a session's own opening bars on a real day with
-    elevated intraday row density.** Found during ID-3's real-data sanity
-    check (2026-08-29, read-only against a scratch copy of `db/athena.db`,
-    never the original): on that snapshot's most recent real trading day,
-    every one of 537 real instruments had 100-130 persisted `5m` rows for
-    that single session alone (versus the canonical ~75), pushing the
-    session's own clean, on-grid opening bars (09:15 onward) out of the
-    shared `limit=100` fetch window before `OpeningRangeEvidence` ever saw
-    them — `OpeningRangeEngine` itself is correct (a diagnostic run with a
-    larger, test-only fetch limit resolved OR15/OR30 to `COMPLETE` for
-    526/527 real instruments checked); the constraint is the shared fetch
-    limit, not the ORB algorithm. Not fixed here — changing a fetch limit
-    shared by four consumers is a real decision, not a one-snapshot tuning
-    call. See `docs/research/ID-3-*` for the full evidence.
+12. **`list_candles_recent(limit=100)` truncation and ORB slot-count-vs-
+    canonical-slot completeness — found by ID-3, resolved by ID-3.1
+    (2026-08-29).** ID-3's real-data sanity check found the shared
+    `limit=100` fetch (VWAP/session/ORB) could exclude a session's own
+    opening bars on a real day with elevated intraday row density (every
+    one of 537 real instruments had 100-130 persisted `5m` rows for one
+    session versus the canonical ~75). ID-3.1 fixed the retrieval itself:
+    `session_stage`, `ind_stage`'s VWAP fetch, and
+    `intraday_analytics_stage`'s ORB fetch now use the repository's
+    existing `get_candles(instrument_id, timeframe, start, end)` bounded
+    by `athena.session.session_day_start(as_of, tz)` — no new repository
+    method, no arbitrary row-count ceiling. Owner code review separately
+    found `OpeningRangeEngine._formation()` judged completeness by raw
+    in-window row COUNT rather than exact canonical timestamp presence, so
+    an off-grid/unexpected row could in principle substitute for a
+    genuinely missing canonical opening-range slot; fixed by
+    `_canonical_slots()`, which filters to exact expected M5 timestamps
+    once, up front, before formation/relation/breakout ever run. A
+    real-data acceptance check on the production retrieval path (no
+    test-only limit) found OR15 resolves `COMPLETE` for 526/526 real
+    candidates; OR30 resolves `COMPLETE` for only 3/526 — the real,
+    previously-masked number (ID-3's own diagnostic read had been inflated
+    by the counting bug) — traced to a real M5 timestamp-drift onset at
+    the session's 6th canonical 5-minute slot (09:40) for 522/526
+    instruments. See `docs/research/ID-3-*` and the ID-3.1 Milestone
+    Review Summary for the full evidence. **Confluence's own 5m/15m
+    fetches were deliberately left on the unbounded `list_candles_recent`
+    path** — audited, not silently changed — because its rolling
+    SMA(9)/SMA(5) genuinely reads across a session boundary early in the
+    day today; whether that cross-session reach is intentional is an open
+    methodology question for the owner, not yet decided either way.
 
 ---
 

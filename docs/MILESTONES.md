@@ -26,8 +26,9 @@ never auto-continuing past an owner approval gate.
 | ID-1 | Intraday Data Semantics & Session Context Foundation — explicit intraday provenance, deterministic completed-candle semantics, a `SessionContext` artifact, session-data-quality UNKNOWN semantics. Foundation only: no signals, no scoring/threshold change | ✅ Owner approved 2026-08-29 — `athena.session` package + one new live `WorkflowStage`; full suite green (2,743 passed, 1 pre-existing skip) |
 | ID-2 | Intraday Analytical Context & Trend Foundation — `IntradaySignalSet`/`IntradayTrendContext` typed evidence formalizing the existing live VWAP relation + 5m/15m confluence direction. Still foundation: no EntryQualification, no new gates, no scoring change | ✅ Architecture accepted 2026-08-29 (contract, single-authoritative-calculation principle, `WorkflowStage` integration, isolation) — **not fully closed**: a completed-candle correctness gap found in owner code review, fixed by ID-2.1 below |
 | ID-2.1 | Corrective: `ind_stage`'s VWAP/confluence inputs did not filter through ID-1's completed-candle rule, so a still-forming 5m/15m bar could silently influence them even though `SessionContext` already knew it wasn't complete. Fix input-time correctness only — no VWAP formula, confluence period, or scoring weight/bonus changed. Also: rename the disagreement trend label `NEUTRAL` → `MIXED` (owner decision) | ✅ Owner approved 2026-08-29 — one authoritative `athena.session.completed_candles()` filter now governs both VWAP and confluence; full suite green (2,768 passed, 1 pre-existing skip) |
-| ID-3 | Opening Range Intelligence — `OpeningRangeEvidence` (OR15/OR30 parallel windows, neither canonical) as new typed evidence in `IntradaySignalSet`. First genuinely new intraday methodology, still evidence-only: no Decision gate, no TradePlan change, no EntryQualification | 🔄 Ready for review 2026-08-29 — `athena.intraday.opening_range_engine.OpeningRangeEngine` + real-data sanity check; full suite green (2,795 passed, 1 pre-existing skip). Recommendation: ID-3 READY FOR OWNER REVIEW |
-| ID-4 | TBD — RelativeStrengthContext (market → sector → stock), per ID-2's original deferral; or ID-3's real-data finding about the shared candle-fetch limit, pending owner direction | Planned |
+| ID-3 | Opening Range Intelligence — `OpeningRangeEvidence` (OR15/OR30 parallel windows, neither canonical) as new typed evidence in `IntradaySignalSet`. First genuinely new intraday methodology, still evidence-only: no Decision gate, no TradePlan change, no EntryQualification | ✅ Architecture + ORB evidence contract accepted 2026-08-29 — **not fully closed**: two production correctness issues found in owner code review (shared `limit=100` candle retrieval; ORB slot-count-vs-canonical-slot completeness), fixed by ID-3.1 below |
+| ID-3.1 | Corrective: (A) session-scoped candle reads (`session_stage`, VWAP, ORB) used a fixed `list_candles_recent(limit=100)`, proven by ID-3's own real-data check to silently drop a session's own opening bars on a high-row-density day; (B) `OpeningRangeEngine` judged range completeness by raw in-window row count, so an off-grid timestamp could substitute for a genuinely missing canonical slot. Fix retrieval semantics + canonical-slot integrity only — no new signal methodology, no scoring/Decision/TradePlan change | ✅ Owner approved 2026-08-29 — bounded `get_candles()` reads (no new repository method) + `OpeningRangeEngine._canonical_slots()`; real-data acceptance check on the production retrieval path: OR15 526/526 COMPLETE, OR30 3/526 COMPLETE (523 honestly INCOMPLETE_DATA — a real, previously-masked finding, not a regression); full suite green (2,806 passed, 1 pre-existing skip) |
+| ID-4 | Market → sector → stock `RelativeStrengthContext`, per the owner's own stated next step after ID-3.1 closes | Planned |
 
 **ID-0 headline findings (full detail in the report):** (1) `intraday_candles()`
 is genuinely live across all six runtime flows and already reaches
@@ -149,6 +150,35 @@ a larger, test-only limit resolved OR15/OR30 to `COMPLETE` for 526/527 real
 instruments, confirming the algorithm itself is correct and the fetch
 limit is the actual constraint. Not changed here — a shared limit
 affecting four consumers is a real decision, not a one-snapshot tuning call.
+
+**ID-3.1 summary (full detail in the Milestone Review Summary given to the
+owner in-chat, 2026-08-29):** owner code review of ID-3 found two production
+correctness issues. (A) The `limit=100` fetch ID-3's own sanity check found
+is not a safe "give me this session" contract — fixed by bounding session-
+scoped reads (`session_stage`, `ind_stage`'s VWAP fetch,
+`intraday_analytics_stage`'s ORB fetch) to `[session_day_start(as_of, tz),
+as_of]` via the repository's existing `get_candles()` (no new repository
+method needed — it already had exactly the required bounded, indexed,
+ascending-order semantics); new `athena.session.session_day_start()`
+computes the bound. Confluence's own 5m/15m fetches were audited and
+deliberately left unchanged (its rolling SMA genuinely reads across a
+session boundary early in the day today — reported as an open methodology
+question, not silently redefined). (B) `OpeningRangeEngine` judged range
+completeness by comparing raw in-window row count against expected count,
+so an off-grid/unexpected timestamp could in principle substitute for a
+genuinely missing canonical opening-range slot — fixed by filtering to
+exact expected M5 slots (via the existing `expected_intraday_opens`
+authority) once, up front, before formation/relation/breakout ever run; the
+existing count comparison becomes correct by construction once its input
+is pre-filtered. Both fixes proven non-vacuously (temporarily reverted,
+confirmed the new tests fail, restored). A real-data acceptance check
+against the production retrieval path (no test-only limit) found OR15
+now resolves `COMPLETE` for 526/526 real candidates, while OR30 resolves
+`COMPLETE` for only 3/526 — a real, previously-masked number (ID-3's own
+"526/527 COMPLETE" diagnostic read was itself inflated by Issue B's
+counting bug), traced to a real M5 timestamp-drift onset at the session's
+6th canonical 5-minute slot (09:40) for 522/526 instruments. Full suite:
+2,806 passed, 1 pre-existing skip.
 
 ## Explosive Move Radar Research Track (accepted 2026-08-21)
 

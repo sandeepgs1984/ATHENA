@@ -3,7 +3,7 @@ FK enforcement, duplicates, integrity, quarantine, corporate actions, ranges."""
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -237,6 +237,42 @@ class TestCandles:
         repo.upsert_instrument(_instrument())
         assert repo.get_candles(INST, Timeframe.D1, datetime(2026, 1, 1, tzinfo=IST),
                                 datetime(2026, 1, 31, tzinfo=IST)) == []
+
+    def test_get_candles_retains_every_row_in_a_high_density_session(self, repo):
+        # ID-3.1 §2/§22: the exact real production defect this milestone
+        # fixes — a fixed `list_candles_recent(limit=100)` read silently
+        # drops a session's own earliest bars once persisted row density
+        # for that session exceeds the limit (ID-3's real-data sanity check
+        # found 100-130 real M5 rows/session). `get_candles`'s explicit
+        # [start, end] bound has no row-count ceiling to breach.
+        repo.upsert_instrument(_instrument())
+        base = datetime(2026, 2, 2, 9, 15, tzinfo=IST)
+        candles = [_m5(base + timedelta(minutes=i)) for i in range(130)]
+        repo.add_candles(candles)
+        got = repo.get_candles(
+            INST, Timeframe.M5, base, base + timedelta(minutes=200)
+        )
+        assert len(got) == 130
+        assert got[0].ts_open == base
+        assert got[-1].ts_open == base + timedelta(minutes=129)
+        assert list(got) == sorted(got, key=lambda c: c.ts_open)
+
+    def test_get_candles_query_plan_uses_index_not_full_table_scan(self, repo):
+        # ID-3.1 §16: this bounded query runs per symbol across the full
+        # owner-candidate universe every cycle — must be an indexed range
+        # search on the existing (instrument_id, timeframe, ts_open) index,
+        # never a full "SCAN candles".
+        repo.upsert_instrument(_instrument())
+        repo.add_candles([_m5(datetime(2026, 2, 2, 9, 15, tzinfo=IST))])
+        plan = repo.connection.execute(
+            "EXPLAIN QUERY PLAN SELECT instrument_id, timeframe, ts_open, open, high, "
+            "low, close, volume, source, adjusted FROM candles WHERE instrument_id=? "
+            "AND timeframe=? AND ts_open>=? AND ts_open<=? ORDER BY ts_open",
+            (INST, Timeframe.M5.value, "2026-02-02T00:00:00+05:30", "2026-02-02T23:59:59+05:30"),
+        ).fetchall()
+        plan_text = " ".join(str(row) for row in plan)
+        assert "SCAN candles" not in plan_text
+        assert "SEARCH candles USING INDEX idx_candles_range" in plan_text
 
 
 def _m5(ts: datetime, close="100") -> Candle:
