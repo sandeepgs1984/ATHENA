@@ -1,41 +1,43 @@
 # ATHENA Explosive Move Radar Handoff
 
-**Snapshot:** 2026-08-27 (EM-1b dataset generated, pending review;
-supersedes the 2026-08-26 snapshot below)
+**Snapshot:** 2026-08-30 (EM-5 scanner contract ACCEPTED, COMPLETE PENDING
+CANARY — blocked on Track B's live Monday 2026-08-31 capture; supersedes
+the 2026-08-27 snapshot below)
 **Governing boundary:** ADR-012
-**Current state:** EM-1r5 is owner-approved (2026-08-26) — **all 9
-candidate checkpoints are accepted** in `config/explosive_move.json`,
-research-ready evidence only (explicitly not predictive value,
-calibration, or scanner fitness). This followed a real incident and
-recovery: the original EM-1r3 production sweep (2026-08-24, ~49 hours)
-was **INVALIDATED** after a post-completion audit found 0 of 385,910
-sessions admitted, root-caused to a confirmed `KiteProvider`
-request-boundary defect (Kite's `to` parameter silently excludes a candle
-whose open time equals it exactly — not a data-availability problem).
-Fixed, tested, re-verified live, and a permanent real-provider-canary
-rule added to CLAUDE.md. The corrected sweep completed 2026-08-26: 92.81%
-admission (358,177/385,910 sessions), 104/104 manifests
-deterministically replay-verified. EM-1r5 then re-ran EM-1a's coverage
-measurement against this real evidence, adopting an owner-designed
-corporate-action contamination rule (calculation-window-crossing, not a
-fixed proximity window) that flagged only 2,001 TOUCH/CLOSE symbol-days
-(~0.51% of population) and zero OPEN_TO_HIGH symbol-days. Six real
-DEMERGER actions remain an explicit, unresolved `IDENTITY_CHANGE_RISK`
-limitation for future feature/model work to check against. Full evidence:
-`artifacts/research/em1r5/reaudit_result.json`.
+**Current state:** EM-0 through EM-4E are all owner-approved (GO), including
+the sealed FINAL_TEST evaluation. EM-5 (the replayable bulk-input live
+scanner, no UI) has its contract `ACCEPTED` by Owner/Chief Architect
+(2026-08-28) and is functionally complete pending exactly one open
+blocker: **current-day live M5 semantics**. Real M5 timestamps still drift
+off-grid after ~09:35-09:40 in the *current* (still-forming) trading
+session specifically — prior-day/settled data is now clean (see the
+ID-track's own ID-5A repair, §7 below, for the mechanism that fixed
+settled-day drift). Track B's live provisional-vs-settled capture/compare/
+classify tooling
+(`src/athena/data/live_m5_provisional_settlement_diagnostic.py`,
+`src/athena/data/em5_track_b_capture_cli.py`) is built and unit-tested but
+has never been executed against a real live session — that execution
+needs an actual open NSE trading session, next available: **Monday
+2026-08-31**. Any full 9-checkpoint EM-5 canary run against an open/current
+session before Track B closes must be marked
+`CANARY_BLOCKED_LIVE_M5_SEMANTICS`, not PASS — this is not CLOSED, not
+FAILED, not FINAL.
 
-**EM-1b (2026-08-26/27):** the owner approved a real-measurement-backed
-chronological partition proposal — TRAIN 2023-08-14→2025-05-31 (440
-sessions), VALIDATION 2025-06-01→2025-09-30 (85), CALIBRATION
-2025-10-01→2025-12-31 (61), FINAL_TEST 2026-01-01→2026-08-21 (157,
-sealed) — frozen in `src/athena/explosive_move/partitions.py` and
-`config/explosive_move.json`'s `_meta.partition_contract`. The
-deterministic production label dataset was then generated
-(`src/athena/data/em1b_label_dataset_generation.py`) and partition-
-assigned: `artifacts/research/em1b/{labels,manifests,dataset_index.json}`.
-See `IMPLEMENTATION_SUMMARY.md`'s top entry for the complete EM-1b Review
-Summary. **EM-1b is self-validated and awaiting Owner/Chief Architect
-Milestone Review Summary approval; EM-1c has not started.**
+**Read `docs/ATHENA-ID-TRACK-HANDOFF.md` §7 before touching anything on
+Monday.** The ID-track's own ID-5B milestone ("Live Current-Session M5
+Semantics Canary") investigates the *exact same* real-world Kite
+provisional-M5 phenomenon, using shared low-level diagnostic primitives
+in `athena.data` — but with a **different instrument canary** (ID-5B: 1
+benchmark index + 2 sector indexes + 2 equities; EM-5 Track B: 9 equities
+across 3 liquidity buckets, `DEFAULT_SYMBOL_LIQUIDITY_BUCKETS` in
+`em5_track_b_capture_cli.py`) and a **separate consuming decision** (EM-5
+decides whether its own live scanner can trust current-session M5 for its
+checkpoint gates; ID-5B decides how ATHENA-core's `session_stage`/VWAP/
+ORB/RelativeStrength/RelativeVolume should treat current-session
+provisional M5 going forward). Both are architecturally isolated (see §8)
+but will each need their own real Kite capture run on Monday — plan the
+capture sequencing so they don't collide on the same request budget or
+misattribute one track's evidence to the other's decision.
 
 ## 1. Current milestone state
 
@@ -48,40 +50,55 @@ Milestone Review Summary approval; EM-1c has not started.**
 | EM-1r3 | Owner-approved 2026-08-21; corrected production sweep COMPLETE 2026-08-26 (92.81% admission, replay-verified) |
 | EM-1r4 | Owner-approved 2026-08-22 |
 | EM-1r5 | Owner-approved 2026-08-26 — all 9 candidate checkpoints accepted (research-ready evidence only) |
-| EM-1b | Partitions approved 2026-08-26; dataset generated 2026-08-27, awaiting Milestone Review Summary approval |
+| EM-1b | Owner-approved 2026-08-27 — dataset generated, chronological partitions assigned |
+| EM-1c prerequisite | Owner-approved 2026-08-27 — real NIFTY 50/INDIA VIX regime evidence acquired and replayed, 743/743 sessions classified, 0 UNKNOWN |
+| EM-1c | Owner-approved 2026-08-27 — unconditional base rates published (TRAIN-only); minimum cohort support frozen (n≥1,000, k≥10) |
+| EM-2 | Owner-approved 2026-08-27 — cutoff-safe 28-field evidence contract (em2-evidence-v1) generated for TRAIN |
+| EM-3 v1 | Owner-approved 2026-08-27 — univariate checkpoint-level TRAIN conditional analysis, 185,004 cells, 14,727 EXPLORATORY_CANDIDATE |
+| EM-4A | Owner-approved 2026-08-27 — deterministic evidence score (frozen vote rules) |
+| EM-4B | Owner-approved 2026-08-27 — 18 pooled logistic baselines fit (TRAIN-only, chronological CV), all converged |
+| EM-4C | Owner-approved (GO) 2026-08-28 — logistic beats deterministic on PR-AUC in 18/18 real combinations on real VALIDATION |
+| EM-4D | Owner-approved (GO) 2026-08-28 — all 162 (family×threshold×checkpoint) cells Platt-calibrated |
+| EM-4E | **Ready for review 2026-08-28** — sealed FINAL_TEST evaluation complete (702,702 rows, 157 sessions); calibrated logistic beats deterministic 18/18, replicating VALIDATION on a third, never-before-touched partition. Awaiting Owner GO/NARROW/NO-GO |
+| EM-5 | **COMPLETE PENDING CANARY** — contract ACCEPTED 2026-08-28. Regime wiring RESOLVED; REL_VOLUME_C historical support REPAIRED (real backfill, 23/23 resolvable prior sessions across all 3 liquidity tiers); current-day live M5 semantics is the one OPEN BLOCKER — Track B needs Monday 2026-08-31's live session |
+| EM-6 | Planned — add EMR research UI only after scanner approval |
+| EM-7 | Planned — isolated shadow validation, OFF-vs-shadow comparison |
+| EM-8 | Planned — research-only / continued shadow / retirement / new integration ADR decision |
 
 EMR remains isolated research. Nothing completed so far changes ATHENA's UI,
 score, confidence, risk, eligibility, Decision, TradePlan, scanner, broker, or
-order behavior.
+order behavior. **Re-verified 2026-08-30** (see §8) alongside the ID-track's
+own point-in-time-safety milestones — zero cross-track code coupling found.
 
-**If you're picking this up because the owner approved EM-1r4 in the
-meantime:** flip its row in `docs/MILESTONES.md`,
-`docs/design/ATHENA-EXPLOSIVE-MOVE-RADAR-ROADMAP.md`, and
-`docs/design/EM-1-RESEARCH-DATA-REMEDIATION-PLAN.md` to Approved, and do
-not start EM-1r5 without a fresh, explicit owner instruction to do so (this
-handoff's own read order and non-goals apply to EM-1r5 just as strictly as
-they did to EM-1r4). If EM-1r4 review turned up a bug, treat it the way
-the real calendar-coverage bug found during this milestone's own
-verification was treated: root-cause on the actual code, fix, add a
-non-vacuous regression test, re-verify against real (copied, never
-original) data, update this handoff and `IMPLEMENTATION_SUMMARY.md`.
+**If you're picking this up because the owner approved EM-4E in the
+meantime:** flip its row in `docs/MILESTONES.md` and
+`docs/design/ATHENA-EXPLOSIVE-MOVE-RADAR-ROADMAP.md` to Approved, and do
+not start EM-6 without a fresh, explicit owner instruction (this handoff's
+read order and non-goals apply to EM-6 just as strictly as they did to
+every prior milestone). EM-5's own canary blocker is independent of the
+EM-4E GO/NO-GO decision — do not conflate the two.
 
 ## 2. Mandatory read order
 
 1. `ATHENA_BRIEFING.md`
-2. The Explosive Move Radar section of `docs/MILESTONES.md`
-3. ATHENA-002 Sections 2 and 19 and their Definition of Done constraints
-4. `docs/adr/ADR-011-canonical-symbol-master-and-universes.md`
-5. `docs/adr/ADR-012-explosive-move-radar-boundary.md`
-6. `docs/design/ATHENA-EXPLOSIVE-MOVE-RADAR-ROADMAP.md`
-7. `docs/research/EM-1A-DATA-COVERAGE-AUDIT.md`
-8. `docs/design/EM-1-RESEARCH-DATA-REMEDIATION-PLAN.md`
-9. `docs/research/EM-1R2-CORPORATE-ACTION-COVERAGE-CONTRACT.md`
-10. `docs/research/EM-1R2-CORPORATE-ACTION-COVERAGE-REPORT.md`
-11. The EM-1r3 entry in `IMPLEMENTATION_SUMMARY.md`
-12. `src/athena/explosive_move/`,
-    `src/athena/data/intraday_reconstruction_ingestion.py`, and their focused
-    tests
+2. The Explosive Move Radar section of `docs/MILESTONES.md` (read the
+   whole section — it is long, and the live status table above is a
+   condensed pointer, not a substitute)
+3. `docs/ATHENA-ID-TRACK-HANDOFF.md` §7-8 (the shared Monday dependency
+   and the isolation-verification finding) — **mandatory even for EMR-only
+   work**, since Monday's live capture touches both tracks
+4. ATHENA-002 Sections 2 and 19 and their Definition of Done constraints
+5. `docs/adr/ADR-011-canonical-symbol-master-and-universes.md`
+6. `docs/adr/ADR-012-explosive-move-radar-boundary.md`
+7. `docs/design/ATHENA-EXPLOSIVE-MOVE-RADAR-ROADMAP.md`
+8. `docs/design/EM-5-LIVE-SCANNER-CONTRACT.md` (§14's fail-fast production
+   canary gate — the one EM-5's `CANARY_BLOCKED_LIVE_M5_SEMANTICS` status
+   refers to)
+9. The EM-4E and EM-5 entries in `IMPLEMENTATION_SUMMARY.md` (top entries —
+   do not read the whole file, it is a permanent, ever-growing log)
+10. `src/athena/explosive_move/`, `src/athena/data/em5_track_b_capture_cli.py`,
+    `src/athena/data/live_m5_provisional_settlement_diagnostic.py`, and
+    their focused tests
 
 Read the live files. Do not infer current state from a prior chat summary.
 
@@ -89,8 +106,8 @@ Read the live files. Do not infer current state from a prior chat summary.
 
 - EMR never contributes to canonical ATHENA scoring, confidence, risk,
   eligibility, Decision, TradePlan, or order behavior.
-- No labels, features, base rates, models, rankings, scanners, or UI may be
-  created before EM-1r5 approves a non-empty checkpoint set.
+- No production recommendation, canonical score input, or UI may be built
+  before EM-5's canary blocker closes and EM-6 is explicitly authorized.
 - Provider and network access belongs to the Data layer. EMR research and
   replay logic consume immutable persisted evidence only.
 - Official NSE corporate-action filings/reports are authoritative for
@@ -100,149 +117,186 @@ Read the live files. Do not infer current state from a prior chat summary.
   not point-in-time historical NSE-universe evidence.
 - Current membership must never be projected backward. Survivorship-sensitive
   conclusions must display the limitation.
-- Kite re-ingestion is the preferred authoritative intraday repair path.
-  Deterministic normalization is allowed only when uniquely attributable.
+- FINAL_TEST is sealed — EM-4E's read was the one-shot evaluation. Do not
+  re-read FINAL_TEST for any reason without fresh, explicit owner
+  authorization.
 - Never interpolate or synthesize OHLCV values. Missing or ambiguous evidence
   remains `UNKNOWN` or is excluded with a provenance reason.
 - Replay, checksums, provenance, reason codes, and deterministic output
   identity are mandatory. Fail closed on uncertainty.
+- Track B's live capture never writes to `db/athena.db` or `db/emr.db` —
+  raw captures are plain JSON files, by design (see
+  `live_m5_provisional_settlement_diagnostic.py`'s own module docstring).
+  Do not "improve" this into a database write without fresh owner
+  authorization — it is a deliberate contamination guard.
+- No timestamp rounding, flooring, ceiling, or nearest-match anywhere in
+  Track B's comparison logic — a provisional row maps to a settled bucket
+  only by exact OHLCV content match.
 - Work on exactly one approved milestone and stop for owner review.
 
 ## 4. Approved evidence baseline
 
-### EM-1r2
+See `IMPLEMENTATION_SUMMARY.md`'s EM-1r2 through EM-4E entries and
+`docs/MILESTONES.md`'s Explosive Move Radar section for the full,
+detailed evidence baseline for every closed milestone (EM-1r2's corporate-
+action coverage, EM-1r3's production capture numbers, EM-1r4's cohort-
+admission/quote-hygiene numbers, EM-1r5's re-audit, EM-1b's partitions,
+EM-1c's base rates, EM-2's evidence contract, EM-3's conditional analysis,
+EM-4A-E's scoring/model/calibration/FINAL_TEST results). This handoff does
+not reproduce those numbers — it is a navigation aid, not a substitute for
+reading the live documents.
 
-- Official NSE interval: 2023-08-11 through 2026-08-21.
-- Retrieval coverage: 37 of 37 complete monthly slices and 7,330 source rows.
-- Survivor cohort: 518 current canonical instruments.
-- Materialized result: 2,009 accepted actions and 5,321 exclusions.
-- Identical replay reproduced manifest and replay identities with zero
-  duplicate inserts.
+## 5. EM-5 authorized scope (current active milestone)
 
-### EM-1r3
+**Objective:** implement and validate a replayable, bulk-input live
+scanner (no UI) over EM-4E's frozen calibrated models, gated by a
+real-provider production canary, before any UI or shadow-validation work
+begins.
 
-- Deterministic fixture: three symbol-sessions, four captured rows, one
-  admitted session, and two admitted authoritative rows.
-- Exclusions: one retrieval failure and one missing-slot session.
-- Repair accounting: two authoritative re-ingestion rows, one identical
-  duplicate collapse, one unrepaired missing slot, and zero interpolated or
-  synthetic rows.
-- Provider-free replay reproduced manifest identity; tampered source evidence
-  was rejected.
-- Validation: 8 focused tests passed; the full repository suite passed 2,145
-  tests; focused Ruff checks and `git diff --check` passed.
-- Repository-wide Ruff remains at the pre-existing baseline of 285 findings
-  across 90 unrelated files.
+Accepted so far (contract ACCEPTED, Owner/Chief Architect, 2026-08-28):
 
-The EM-1r3 numbers prove the reconstruction contract against deterministic
-fixtures. They do not claim production-scale historical coverage.
+- Regime wiring: RESOLVED. Real canonical `RegimeEngine` wired in, proven
+  against real data (518/518 instruments' regime fields known, genuine
+  non-UNKNOWN labels).
+- REL_VOLUME_C historical support: REPAIRED. Real Owner-authorized
+  backfill (537 instruments × 31 days, real backup taken first)
+  eliminated 1,051,481 off-grid M5 candles and lifted REL_VOLUME_C's
+  resolvable prior-session count from 12-14/23 to 23/23 (need ≥20) across
+  all three liquidity tiers sampled. A real production canary at the two
+  checkpoints unaffected by the still-open live-M5 question now genuinely
+  PASSES (100% completeness, real 518-instrument universe).
+- Current-day live M5 semantics: **OPEN BLOCKER.** See §1/§6.
 
-### EM-1r4 (owner-approved 2026-08-22)
+## 6. EM-5's one remaining blocker — Track B
 
-Unlike EM-1r2/EM-1r3, these are real production-scale numbers, not a
-fixture: the service has no provider/network step, so running it against a
-scratch copy of the real database (never the original) was cheap and gave
-genuine evidence rather than a small deterministic sample.
+Track B (`src/athena/data/live_m5_provisional_settlement_diagnostic.py` +
+`src/athena/data/em5_track_b_capture_cli.py`) answers: what does a
+provisional M5 row observed *during* a live session actually represent —
+a mislabeled bucket (timestamp-only drift) or genuinely different OHLCV
+content once settled? Never assumed by convention; answered empirically,
+content-match only.
 
-- Cohort: 518 survivor-cohort instruments (identical to EM-1r2's own
-  cohort -- unchanged since then).
-- Study window actually exercised: 2026-01-01 through 2026-08-21 -- **not**
-  EM-1r2's full 2023-08-11..2026-08-21 interval, because the real
-  `config/calendar/*.json` currently only has holiday/expiry data loaded
-  for 2026. This is a genuine, reported limitation discovered during
-  verification, not a workaround chosen for convenience: any future EM-1r
-  milestone enumerating historical sessions (EM-1r5, EM-1b) will hit the
-  same wall until the calendar config is extended with historical years.
-- Symbol-day admission: 81,326 assessed, 81,326 admitted, 0 excluded (both
-  reasons are zero because no instrument in this ledger has a populated
-  `listed_date`/`delisted_date` yet -- the exclusion contract and its test
-  coverage exist and are proven correct on synthetic fixtures, they simply
-  have nothing to catch in today's real data).
-- Quote-timestamp hygiene: 196,461 quotes assessed for the 518 cohort
-  instruments, 181,847 admitted, 511 rejected as Unix-epoch defaults, 0
-  rejected as outside study bounds, **14,103 rejected as outside session
-  bounds** -- a real, previously unmeasured data-quality finding (7.4%
-  combined rejection rate). Worth investigating separately why this many
-  quotes land outside 09:15-15:30 IST; EM-1r4 excludes them from research,
-  it does not diagnose why they exist upstream.
-- Deterministic replay reproduced an identical `replay_id` and
-  `manifest_id` from the manifest's own frozen inputs (cohort, listing
-  snapshot, and a content-addressed quote-snapshot artifact) -- confirmed
-  to hold even after the live canonical tables were mutated between the
-  original run and the replay (a dedicated regression test proves this,
-  not just an assumption).
-- A real bug found and fixed during this same verification pass: the
-  ingestion service crashed (`CalendarError`) on any quote timestamp
-  landing in a year the calendar engine has no data for -- exactly what
-  happens for the real 1970 epoch-default rows, since no calendar config
-  covers 1970. Fixed by treating "no calendar authority for this date" as
-  a fail-closed exclusion (`TIMESTAMP_OUTSIDE_SESSION_BOUNDS`), never a
-  crash -- proven non-vacuous the same way as every other guard in this
-  track.
-- Validation: 34 new tests (28 pure-contract in
-  `tests/explosive_move/test_em1r4_cohort_admission.py`, 6 real-repository
-  integration in `tests/data_layer/test_em1r4_cohort_admission_ingestion.py`,
-  plus the calendar-coverage regression test added after the bug above),
-  four proven non-vacuous; full repository suite passed 2,216 tests;
-  focused Ruff clean on all new/changed files, repository-wide Ruff at the
-  pre-existing 286-finding baseline (confirmed unrelated to this milestone
-  by re-running with EM-1r4's own files excluded -- still 286); `git diff
-  --check` passed.
+**Monday 2026-08-31 execution plan (already frozen, built, unit-tested,
+never run live):**
 
-## 5. EM-1r4 authorized scope
+1. `run_preflight` — calendar, Kite auth (one real minimal call), disk
+   space. Any failure raises `PreflightError`; do not proceed on partial
+   preflight.
+2. `run_capture_phase` at each of the 9 frozen time checkpoints
+   (`TRACK_B_CHECKPOINT_SCHEDULE`: 09:20, 09:30, 09:45, 10:00, 10:30,
+   11:00, 12:00, 13:00, 14:00) for the 9-symbol liquidity-bucketed sample
+   (`DEFAULT_SYMBOL_LIQUIDITY_BUCKETS`: 3×high/3×medium/3×low). Idempotent
+   and restart-safe — a checkpoint already captured on disk is never
+   re-fetched; a checkpoint whose live window has passed by more than
+   `MAX_CHECKPOINT_OBSERVATION_DELAY_SECONDS` (300s) is recorded
+   `NOT_OBSERVED_LIVE`, never fabricated.
+3. `run_settlement_comparison_phase` — only once the day is genuinely
+   settled (`is_likely_settled`, or an explicit override), re-fetch the
+   same sessions and produce the classification report via exact-content
+   matching.
+4. `classify_diagnosis` — one of `TIMESTAMP_ONLY_PROVISIONAL_DRIFT` /
+   `PROVISIONAL_OHLCV_ALSO_CHANGES` / `MAPPING_AMBIGUOUS`, read off the
+   real comparison, never assumed.
 
-**Objective:** apply the frozen survivor-cohort contract to research admission
-and enforce quote timestamp hygiene without pretending current membership is
-historical membership.
+**Coordinate with the ID-track before capturing.** ID-5B needs its OWN
+5-instrument canary (benchmark + 2 sector indexes + 2 equities) — a
+DIFFERENT sample than Track B's 9 equities. Confirm with whoever is
+running ID-5B whether Monday's session runs one shared capture covering
+both samples, or two independent captures, before spending Kite request
+budget twice on overlapping instruments. See
+`docs/ATHENA-ID-TRACK-HANDOFF.md` §7 for the open question as framed from
+the ID-track's side — it is the same question from this side.
 
-The milestone must satisfy all of these acceptance criteria:
+## 7. EM-5 non-goals (still in force)
 
-- every admitted symbol-day has dated eligibility evidence;
-- current membership is never projected backward;
-- listing or delisting ambiguity is excluded;
-- the cohort name and limitation appear in every manifest and report;
-- Unix-epoch and out-of-study or out-of-session quote timestamps are rejected;
-- sector history remains `UNKNOWN` where no point-in-time authority exists;
-- deterministic replay and immutable provenance remain intact;
-- focused tests, the full suite, and static checks are reported.
+Do not: build the EM-6 UI, feed EMR output into canonical ATHENA scoring/
+confidence/risk/Decision/TradePlan, re-read FINAL_TEST, round/floor/
+ceiling/nearest-match any timestamp anywhere in Track B, synthesize or
+interpolate any OHLCV value, delete or overwrite a current-session row in
+`db/athena.db` (that is the ID-track's `db/athena.db` — EM-5 does not own
+it and must not repair it), or begin EM-6/EM-7/EM-8 without a fresh,
+explicit owner instruction closing EM-5's blocker first.
 
-## 6. EM-1r4 non-goals
+If EM-5's Track B evidence reveals a genuine architectural limitation
+(e.g. content changes so pervasively that no runtime treatment is safe),
+stop and propose an ADR. Do not silently work around it.
 
-Do not acquire point-in-time historical membership, add external data vendors,
-generalize a data-cleaning platform, change the event or feature contracts,
-create labels/features/base rates/models/rankings/scanners/UI, alter canonical
-ATHENA outputs, or begin EM-1r5.
+## 8. Cross-track isolation — verified 2026-08-30
 
-If EM-1r4 cannot fit the frozen boundaries, stop and propose an ADR. Do not
-silently change architecture.
+Re-verified directly against the actual source tree while ID-5E/5F/5G/5G.1
+(candle/quote/snapshot point-in-time retrieval safety) were implemented on
+the ID-track, in the same session as this handoff's update:
 
-## 7. Required milestone closeout
+- `grep`-confirmed zero references to `explosive_move` anywhere in
+  `src/athena/session/`, `src/athena/intraday/`, or the two files ID-5E/
+  5F/5G/5G.1 modified (`src/athena/data/store/repository.py`,
+  `src/athena/ops/owner_validation.py`).
+- `grep`-confirmed EMR's own code (`src/athena/explosive_move/` plus the
+  EM-prefixed scripts under `src/athena/data/`) never calls
+  `list_candles_recent`, `get_latest_quote`, `get_latest_snapshot`,
+  `get_latest_snapshot_as_of`, or `get_latest_snapshot_before` — the exact
+  repository methods ID-5E/5F/5G/5G.1 changed. EMR reads candles via its
+  own methods (`get_candles`, `candles_for_instruments`) and its own
+  dedicated EM-specific ingestion services — zero behavioral exposure to
+  any ID-track repository change.
+- `db/emr.db` and `db/athena.db` are separate files; EMR's own
+  `src/athena/explosive_move/store/` schema is independent of ATHENA-core's
+  candles/quotes/market_snapshots tables.
+- The one apparent shared surface — Track B's diagnostic living in
+  `src/athena/data/` rather than `src/athena/explosive_move/` — is a
+  **shared, neutral, read-only, non-mutating data-layer utility** (writes
+  nothing to either database; captures persist as plain JSON), not a
+  business-logic coupling. It answers one real-world empirical question
+  (Kite's provisional-M5 settle-lag) that happens to matter to both
+  tracks' own separate downstream decisions. This is the one place the two
+  tracks' Monday work actually touches — see §6's coordination note.
+
+**Conclusion: the two tracks are architecturally isolated** (no shared
+business logic, no shared schema, no shared scoring/Decision/TradePlan
+effect) but share one underlying empirical question and one diagnostic
+tool, and will need coordinated (not necessarily combined) real-Kite
+captures on Monday.
+
+## 9. Required milestone closeout
 
 Follow Design -> Implement -> Test -> Self-Validate -> Milestone Review
 Summary -> owner review. Update `docs/MILESTONES.md`, this handoff,
-`IMPLEMENTATION_SUMMARY.md`, the remediation plan, and `ATHENA_BRIEFING.md`
-when the module map materially changes. Then stop and wait for owner approval.
+`IMPLEMENTATION_SUMMARY.md`, the roadmap doc, and `ATHENA_BRIEFING.md`
+when the module map materially changes. Then stop and wait for owner
+approval.
 
-The review summary must report cohort admission counts, timestamp rejection
-counts by reason, listing/delisting ambiguity exclusions, `UNKNOWN` sector
-counts, provenance/manifest evidence, deterministic replay verification,
-focused and full test results, Ruff/static results, known limitations, and one
-consolidated commit message.
+The Track B review summary must report: preflight results, per-checkpoint
+capture status (CAPTURED/ALREADY_CAPTURED/NOT_OBSERVED_LIVE/NOT_YET_DUE),
+settlement-comparison field-by-field OHLCV differences per instrument/
+checkpoint, the classification (`TIMESTAMP_ONLY_PROVISIONAL_DRIFT` /
+`PROVISIONAL_OHLCV_ALSO_CHANGES` / `MAPPING_AMBIGUOUS`), the resulting
+canary-gate status, focused and full test results, and one consolidated
+commit message.
 
-## 8. Worktree discipline
+## 10. Worktree discipline
 
-The worktree may contain owner or prior-agent changes. Inspect it before
-editing, do not revert unrelated work, and do not perform git write actions
-unless the owner explicitly requests them for that instance.
+The worktree may contain owner or prior-agent changes (this session's own
+ID-5* changes are already present and committed/staged — do not revert
+them; they belong to the ID-track, not EMR). Inspect it before editing, do
+not revert unrelated work, and do not perform git write actions unless the
+owner explicitly requests them for that instance.
 
-## 9. Continuation prompt
+## 11. Continuation prompt
 
-> Read `ATHENA_BRIEFING.md` and `docs/ATHENA-EMR-HANDOFF.md` first, then verify
-> the EMR section in `docs/MILESTONES.md` and every frozen contract referenced
-> by the handoff. EM-1r3 is owner-approved. Proceed with EM-1r4 only: cohort
-> admission and quote timestamp hygiene under ADR-012 and the survivor-cohort
-> claim boundary. Do not acquire point-in-time membership, create labels,
-> features, models, scanners, or UI, alter canonical ATHENA outputs, or begin
-> EM-1r5. Follow the milestone workflow, run focused and full validation,
-> update all related EMR docs, stop after the EM-1r4 Milestone Review Summary,
-> and wait for owner approval.
+> Read `ATHENA_BRIEFING.md` and `docs/ATHENA-EMR-HANDOFF.md` first, then
+> verify the EMR section in `docs/MILESTONES.md`, EM-5's exact current
+> status, and `docs/ATHENA-ID-TRACK-HANDOFF.md` §7-8 for the shared-Monday-
+> dependency context. EM-4E is awaiting owner GO/NARROW/NO-GO and EM-5's
+> contract is ACCEPTED but blocked on Track B. If today is a real, live
+> NSE trading day (verify via `date` — do not assume), and the owner has
+> authorized it, execute Track B's live capture
+> (`src/athena/data/em5_track_b_capture_cli.py`): run preflight, capture at
+> all 9 frozen checkpoints for the 9-symbol liquidity sample, and (once the
+> day is settled — likely a later session, not the same day) run the
+> settlement-comparison phase and classify the result. Coordinate with the
+> ID-track's own ID-5B canary before spending Kite request budget — confirm
+> whether captures are shared or separate. Do NOT round/floor/ceiling/
+> nearest-match any timestamp, synthesize any OHLCV value, touch
+> `db/athena.db`, re-read FINAL_TEST, or begin EM-6/7/8. Follow the
+> milestone workflow, update all related EMR docs, stop after the Track B
+> Milestone Review Summary, and wait for owner approval.
