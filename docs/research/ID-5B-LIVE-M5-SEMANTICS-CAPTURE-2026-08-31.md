@@ -3,7 +3,8 @@
 **Date:** 2026-08-31
 **Track:** Intraday Intelligence (ID)
 **Milestone:** ID-5B — Live Current-Session M5 Semantics Canary
-**Status:** Live capture phase complete; settlement comparison pending.
+**Status:** Live capture phase complete; ID-5B.1 classification correction
+owner-approved and closed; settlement comparison pending.
 
 ## Scope
 
@@ -93,11 +94,11 @@ Observed same-day OHLCV changes:
 No already-closed, non-boundary row was found to change across the later
 same-day captures in this inventory.
 
-ID-5B.1 correction: these changed boundary rows are
-`FORMING_AT_CAPTURE`, because their actual `request_ts` values occurred before
-each candle interval's `ts_open + 5m` completion boundary. Their later OHLCV
-changes are useful operational evidence that a boundary/forming candle is not
-stable, but they are **not CASE B settlement evidence**.
+ID-5B.1 correction, owner-approved after review: these changed boundary rows
+are `FORMING_AT_CAPTURE`, because their actual `request_ts` values occurred
+before each candle interval's `ts_open + 5m` completion boundary. Their later
+OHLCV changes are useful operational evidence that a boundary/forming candle
+is not stable, but they are **not CASE B settlement evidence**.
 
 Corrected same-day reinterpretation against the actual raw artifact request
 timestamps:

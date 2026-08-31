@@ -82,9 +82,9 @@ manual-gated with `--force` and was not run.
 shared raw diagnostic primitive remains read-only and reusable. No ADR
 required.
 
-**ID-5B status.** Live capture phase owner-approved. ID-5B.1 ready for
-owner review. ID-5B remains open pending settled-provider comparison and
-final CASE A/B/C/D review. ID-6 not started.
+**ID-5B status.** Live capture phase owner-approved. ID-5B.1
+owner-approved and closed. ID-5B remains open pending settled-provider
+comparison and final CASE A/B/C/D review. ID-6 not started.
 
 **Commit message (for the owner to use, not run by the AI):**
 
@@ -108,7 +108,7 @@ fix(data): correct ID-5B forming-vs-closed classification
   behavior unchanged
 ```
 
-**Milestone status.** Ready for review.
+**Milestone status.** Owner-approved and closed.
 
 ---
 
