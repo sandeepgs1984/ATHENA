@@ -60,7 +60,7 @@ misattribute one track's evidence to the other's decision.
 | EM-4B | Owner-approved 2026-08-27 — 18 pooled logistic baselines fit (TRAIN-only, chronological CV), all converged |
 | EM-4C | Owner-approved (GO) 2026-08-28 — logistic beats deterministic on PR-AUC in 18/18 real combinations on real VALIDATION |
 | EM-4D | Owner-approved (GO) 2026-08-28 — all 162 (family×threshold×checkpoint) cells Platt-calibrated |
-| EM-4E | **Ready for review 2026-08-28** — sealed FINAL_TEST evaluation complete (702,702 rows, 157 sessions); calibrated logistic beats deterministic 18/18, replicating VALIDATION on a third, never-before-touched partition. Awaiting Owner GO/NARROW/NO-GO |
+| EM-4E | Owner-approved / GO 2026-08-28 — sealed FINAL_TEST evaluation complete (702,702 rows, 157 sessions); calibrated logistic beats deterministic 18/18, replicating VALIDATION on a third, never-before-touched partition. FINAL_TEST remains sealed |
 | EM-5 | **COMPLETE PENDING CANARY** — contract ACCEPTED 2026-08-28. Regime wiring RESOLVED; REL_VOLUME_C historical support REPAIRED (real backfill, 23/23 resolvable prior sessions across all 3 liquidity tiers); current-day live M5 semantics is the one OPEN BLOCKER — Monday 2026-08-31 Track B evidence was not captured, so Track B needs the next real live session |
 | EM-6 | Planned — add EMR research UI only after scanner approval |
 | EM-7 | Planned — isolated shadow validation, OFF-vs-shadow comparison |
@@ -71,13 +71,11 @@ score, confidence, risk, eligibility, Decision, TradePlan, scanner, broker, or
 order behavior. **Re-verified 2026-08-30** (see §8) alongside the ID-track's
 own point-in-time-safety milestones — zero cross-track code coupling found.
 
-**If you're picking this up because the owner approved EM-4E in the
-meantime:** flip its row in `docs/MILESTONES.md` and
-`docs/design/ATHENA-EXPLOSIVE-MOVE-RADAR-ROADMAP.md` to Approved, and do
-not start EM-6 without a fresh, explicit owner instruction (this handoff's
-read order and non-goals apply to EM-6 just as strictly as they did to
-every prior milestone). EM-5's own canary blocker is independent of the
-EM-4E GO/NO-GO decision — do not conflate the two.
+EM-4E is owner-approved / GO as of 2026-08-28. Do not re-read, rerun, or
+reanalyze FINAL_TEST without fresh, explicit owner authorization; it remains
+sealed. Do not start EM-6 without a fresh, explicit owner instruction. EM-5's
+own canary blocker is independent of the EM-4E GO decision — do not conflate
+the two.
 
 ## 2. Mandatory read order
 
@@ -215,7 +213,8 @@ checkpoint statuses for Monday are therefore honestly recorded as
 `NOT_OBSERVED_LIVE`; see
 `docs/research/EM-5-TRACK-B-LIVE-M5-CAPTURE-2026-08-31.md`. ID-5B's
 separate five-instrument artifacts must not be substituted for EM-5 Track B's
-nine-equity liquidity-bucket sample.
+nine-equity liquidity-bucket sample. Tuesday readiness checklist:
+`docs/research/EM-5-TRACK-B-TUESDAY-READINESS-2026-09-01.md`.
 
 ## 7. EM-5 non-goals (still in force)
 
@@ -296,8 +295,8 @@ owner explicitly requests them for that instance.
 > Read `ATHENA_BRIEFING.md` and `docs/ATHENA-EMR-HANDOFF.md` first, then
 > verify the EMR section in `docs/MILESTONES.md`, EM-5's exact current
 > status, and `docs/ATHENA-ID-TRACK-HANDOFF.md` §7-8 for the shared-Monday-
-> dependency context. EM-4E is awaiting owner GO/NARROW/NO-GO and EM-5's
-> contract is ACCEPTED but blocked on Track B. If today is a real, live
+> dependency context. EM-4E is owner-approved / GO and EM-5's contract is
+> ACCEPTED but blocked on Track B. If today is a real, live
 > NSE trading day (verify via `date` — do not assume), and the owner has
 > authorized it, execute Track B's live capture
 > (`src/athena/data/em5_track_b_capture_cli.py`): run preflight, capture at

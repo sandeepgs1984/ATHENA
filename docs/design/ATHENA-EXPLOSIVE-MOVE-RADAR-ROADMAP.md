@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | EM-1b dataset generated 2026-08-27, awaiting Milestone Review Summary approval |
+| Status | EM-5 COMPLETE PENDING CANARY; EM-4E owner-approved / GO 2026-08-28 |
 | Governing ADR | ADR-012 (Accepted 2026-08-21) |
 | Started | 2026-08-21 |
 | Current gate | EM-1b self-validated, pending owner review; EM-1c blocked until approved |
