@@ -1,17 +1,19 @@
 # ATHENA Intraday Intelligence (ID-Track) Handoff
 
 **Snapshot:** 2026-08-31 (ID-5E, ID-5F, ID-5G/ID-5G.1 all owner-approved
-and CLOSED; ID-5B live capture phase completed during the 2026-08-31 live
-NSE session, settlement comparison pending)
+and CLOSED; ID-5B live capture phase owner-approved; ID-5B.1 classification
+correction ready for review; settlement comparison pending)
 **Governing boundary:** none dedicated yet — this track extends the
 existing frozen `ATHENA-002-System-Blueprint.md` module map (§6 of
 `ATHENA_BRIEFING.md`), it does not have its own ADR the way EMR (ADR-012)
 or DarvaX (ADR-010) do.
 **Current state:** ID-0 through ID-5G.1 are all owner-approved. ID-5B
 (Live Current-Session M5 Semantics Canary) has completed its live capture
-phase for **Monday 2026-08-31** using the frozen 5-instrument canary, but
-the milestone is **not closed** until the later settled-provider comparison
-produces a reviewed CASE A/B/C/D decision. Evidence note:
+phase for **Monday 2026-08-31** using the frozen 5-instrument canary, and
+the owner approved that live-capture phase. ID-5B.1 then corrected the
+ID-specific CASE classifier so forming-at-capture candle changes cannot
+produce CASE B. ID-5B is **not closed** until the later settled-provider
+comparison produces a reviewed CASE A/B/C/D decision. Evidence note:
 `docs/research/ID-5B-LIVE-M5-SEMANTICS-CAPTURE-2026-08-31.md`.
 
 **Read `docs/ATHENA-EMR-HANDOFF.md` §6/§8 before touching anything on
@@ -38,7 +40,7 @@ Track B capture is running the same morning.
 | ID-4.1 | Owner-approved 2026-08-29 — fixed comparable-constituent cutoff bug (opening-only constituents wrongly capping the cutoff) |
 | ID-5 | **Overall OPEN — the umbrella milestone for core index M5 data-quality; stays open until ID-5B closes.** Data-foundation corrective, not a trading-methodology milestone |
 | ID-5A | Owner-authorized, EXECUTED and CLOSED 2026-08-29 — real settled-session M5 repair for 2026-08-28, 537/537 instruments, 0 failures |
-| ID-5B | **LIVE CAPTURE COMPLETE; SETTLEMENT COMPARISON PENDING** — Live Current-Session M5 Semantics Canary captured 25 raw files on 2026-08-31 for the frozen 5-instrument canary; see `docs/research/ID-5B-LIVE-M5-SEMANTICS-CAPTURE-2026-08-31.md`. Final CASE A/B/C/D remains pending settled refetch/review |
+| ID-5B | **LIVE CAPTURE COMPLETE; ID-5B.1 READY FOR REVIEW; SETTLEMENT COMPARISON PENDING** — Live Current-Session M5 Semantics Canary captured 25 raw files on 2026-08-31 for the frozen 5-instrument canary; owner approved the capture phase. ID-5B.1 corrected classification to partition `FORMING_AT_CAPTURE`, `CLOSED_AT_CAPTURE`, and `OFF_GRID_PROVISIONAL` using actual `request_ts` plus `is_candle_completed`; forming changes no longer count as CASE B. See `docs/research/ID-5B-LIVE-M5-SEMANTICS-CAPTURE-2026-08-31.md`. Final CASE A/B/C/D remains pending settled refetch/review |
 | ID-5C | Owner-approved 2026-08-29 — `GapContext` (previous-session-close→current-session-open), D1-only, independent of ID-5B |
 | ID-5D | Architecture/methodology accepted 2026-08-29 — `RelativeVolumeContext`, not fully closed until ID-5D.1 |
 | ID-5D.1 | Owner-approved 2026-08-29 — current-window contiguity + retrieval-policy (`earliest_candle_ts`) correctness fixes |

@@ -93,11 +93,23 @@ Observed same-day OHLCV changes:
 No already-closed, non-boundary row was found to change across the later
 same-day captures in this inventory.
 
-Interim reading: current-session boundary/forming M5 rows are not stable
-OHLCV evidence. This is expected shape for a forming candle and is useful for
-ID's operational treatment, but it is not yet the final ID-5B CASE decision
-because the milestone's full deliverable requires a later provider-settled
-comparison.
+ID-5B.1 correction: these changed boundary rows are
+`FORMING_AT_CAPTURE`, because their actual `request_ts` values occurred before
+each candle interval's `ts_open + 5m` completion boundary. Their later OHLCV
+changes are useful operational evidence that a boundary/forming candle is not
+stable, but they are **not CASE B settlement evidence**.
+
+Corrected same-day reinterpretation against the actual raw artifact request
+timestamps:
+
+- `FORMING_AT_CAPTURE`: 15 rows, 15 changed later in same-day overlap.
+- `CLOSED_AT_CAPTURE`: 420 rows, 0 changed later in same-day overlap.
+- `OFF_GRID_PROVISIONAL`: 0 rows.
+
+Interim reading: current-session boundary/forming M5 rows are not stable OHLCV
+evidence. Closed-at-capture canonical rows appeared stable in the same-day
+overlap inventory. This is still not the final ID-5B CASE decision because the
+milestone's full deliverable requires a later provider-settled comparison.
 
 ## Current CASE Status
 
@@ -106,15 +118,16 @@ Final CASE A/B/C/D: pending.
 Current evidence is insufficient to close the milestone because:
 
 - no off-grid provider timestamp was observed in the frozen ID-5B canary;
-- same-day overlap proves boundary/forming OHLCV instability, but not the
-  final settled provider representation;
+- same-day overlap proves boundary/forming OHLCV instability, but forming
+  candle changes are explicitly excluded from CASE B;
+- no closed-at-capture row changed in the same-day overlap inventory;
 - the later settled refetch/comparison has not yet been run.
 
-If the settled comparison confirms that the changed boundary rows remain
-different from their first live observations, ID-5B will have direct CASE B
-evidence for forming/current-session content changes. If all settled rows
-match later same-day observations and no off-grid rows exist, the correct
-classification may remain CASE D for the original timestamp-drift question.
+CASE B requires a `CLOSED_AT_CAPTURE` observation whose later settled
+representation materially changes OHLCV. If the settled comparison finds that
+only `FORMING_AT_CAPTURE` rows changed and there is still zero off-grid
+evidence, the correct result for the original provider-settlement question is
+`CASE_D_INSUFFICIENT_EVIDENCE`, not CASE B.
 
 ## Verification
 

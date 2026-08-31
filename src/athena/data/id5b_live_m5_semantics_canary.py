@@ -17,7 +17,7 @@ import argparse
 import json
 import time
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from datetime import time as time_of_day
 from enum import Enum
 from pathlib import Path
@@ -40,6 +40,8 @@ from athena.data.live_m5_provisional_settlement_diagnostic import (
 from athena.data.providers.kite_provider import KiteProvider
 from athena.domain.enums import SessionType, Timeframe
 from athena.domain.interfaces import MarketDataProvider
+from athena.domain.market import Candle
+from athena.session import is_candle_completed
 
 IST = ZoneInfo("Asia/Kolkata")
 
@@ -83,6 +85,12 @@ class CheckpointCaptureStatus(str, Enum):
     NOT_OBSERVED_LIVE = "NOT_OBSERVED_LIVE"
 
 
+class ID5BEvidenceBucket(str, Enum):
+    FORMING_AT_CAPTURE = "FORMING_AT_CAPTURE"
+    CLOSED_AT_CAPTURE = "CLOSED_AT_CAPTURE"
+    OFF_GRID_PROVISIONAL = "OFF_GRID_PROVISIONAL"
+
+
 @dataclass(frozen=True, slots=True)
 class ID5BRequestBudget:
     instrument_count: int = len(ID5B_CANARY_INSTRUMENTS)
@@ -107,6 +115,80 @@ class ID5BPreflightResult:
     resolved_symbol_count: int
     disk_free_gb: float
     provider: MarketDataProvider
+
+
+@dataclass(frozen=True, slots=True)
+class ID5BComparisonEvidence:
+    instrument_id: str
+    checkpoint: str
+    provisional_ts: datetime
+    provisional_interval_close_ts: datetime
+    provisional_request_ts: datetime
+    bucket: ID5BEvidenceBucket
+    provisional_was_on_grid: bool
+    provisional_ohlcv: tuple
+    settled_ts: datetime | None
+    settled_ohlcv: tuple | None
+    ohlcv_exact_match: bool
+    candidate_match_count: int
+    mapping_unique: bool
+    timestamp_offset_seconds: float | None
+
+    @property
+    def eligible_for_settlement_semantics(self) -> bool:
+        return self.bucket in (ID5BEvidenceBucket.CLOSED_AT_CAPTURE, ID5BEvidenceBucket.OFF_GRID_PROVISIONAL)
+
+    def to_dict(self) -> dict:
+        return {
+            "instrument_id": self.instrument_id,
+            "checkpoint": self.checkpoint,
+            "provisional_ts": self.provisional_ts.isoformat(),
+            "provisional_interval_close_ts": self.provisional_interval_close_ts.isoformat(),
+            "provisional_request_ts": self.provisional_request_ts.isoformat(),
+            "bucket": self.bucket.value,
+            "eligible_for_settlement_semantics": self.eligible_for_settlement_semantics,
+            "provisional_was_on_grid": self.provisional_was_on_grid,
+            "provisional_ohlcv": [str(v) for v in self.provisional_ohlcv],
+            "settled_ts": self.settled_ts.isoformat() if self.settled_ts else None,
+            "settled_ohlcv": [str(v) for v in self.settled_ohlcv] if self.settled_ohlcv else None,
+            "ohlcv_exact_match": self.ohlcv_exact_match,
+            "candidate_match_count": self.candidate_match_count,
+            "mapping_unique": self.mapping_unique,
+            "timestamp_offset_seconds": self.timestamp_offset_seconds,
+        }
+
+
+def _evidence_bucket(candle: Candle, *, request_ts: datetime) -> ID5BEvidenceBucket:
+    if not is_candle_completed(candle, as_of=request_ts):
+        return ID5BEvidenceBucket.FORMING_AT_CAPTURE
+    if candle.ts_open.second != 0 or candle.ts_open.microsecond != 0 or candle.ts_open.minute % 5 != 0:
+        return ID5BEvidenceBucket.OFF_GRID_PROVISIONAL
+    return ID5BEvidenceBucket.CLOSED_AT_CAPTURE
+
+
+def build_id5b_comparison_evidence(
+    *, provisional: ProvisionalCapture, settled: ProvisionalCapture
+) -> tuple[ID5BComparisonEvidence, ...]:
+    rows = compare_provisional_to_settled(provisional=provisional, settled=settled)
+    evidence = []
+    for candle, comparison in zip(provisional.candles, rows, strict=True):
+        evidence.append(ID5BComparisonEvidence(
+            instrument_id=comparison.instrument_id,
+            checkpoint=provisional.checkpoint,
+            provisional_ts=comparison.provisional_ts,
+            provisional_interval_close_ts=candle.ts_open + timedelta(minutes=5),
+            provisional_request_ts=provisional.request_ts,
+            bucket=_evidence_bucket(candle, request_ts=provisional.request_ts),
+            provisional_was_on_grid=comparison.provisional_was_on_grid,
+            provisional_ohlcv=comparison.provisional_ohlcv,
+            settled_ts=comparison.settled_ts,
+            settled_ohlcv=comparison.settled_ohlcv,
+            ohlcv_exact_match=comparison.ohlcv_exact_match,
+            candidate_match_count=comparison.candidate_match_count,
+            mapping_unique=comparison.mapping_unique,
+            timestamp_offset_seconds=comparison.timestamp_offset_seconds,
+        ))
+    return tuple(evidence)
 
 
 def calendar_preflight(*, config_dir: Path, session_date: date) -> SessionType:
@@ -279,32 +361,33 @@ def _map_diagnosis_to_case(outcome: DiagnosisOutcome | None) -> ID5BCase:
     return ID5BCase.CASE_D_INSUFFICIENT_EVIDENCE
 
 
-def classify_id5b_case(comparisons: tuple) -> ID5BCase:
+def classify_id5b_case(evidence_rows: tuple[ID5BComparisonEvidence, ...]) -> ID5BCase:
     """ID-5B CASE A/B/C/D classification from exact-content comparisons.
 
     The shared EMR primitive classifies only off-grid provisional drift. ID-5B
-    also cares whether an on-grid current-session/forming row's OHLCV later
-    changes, because ATHENA-core consumers would still see that as unstable
-    current-session M5 content. No timestamp proximity is used here; the inputs
-    are already content-only ``RowComparison`` records.
+    also cares whether a completed current-session row's OHLCV later changes.
+    A forming candle changing later is normal market behavior, so it is
+    reported for operational understanding but never counted as CASE B.
     """
 
-    if not comparisons:
+    if not evidence_rows:
         return ID5BCase.CASE_D_INSUFFICIENT_EVIDENCE
 
-    off_grid = [c for c in comparisons if not c.provisional_was_on_grid]
-    content_changed = [c for c in comparisons if c.candidate_match_count == 0]
-    ambiguous = [c for c in comparisons if c.candidate_match_count > 1]
+    eligible = [row for row in evidence_rows if row.eligible_for_settlement_semantics]
+    off_grid = [row for row in eligible if row.bucket is ID5BEvidenceBucket.OFF_GRID_PROVISIONAL]
+    content_changed = [row for row in eligible if row.candidate_match_count == 0]
+    ambiguous = [row for row in eligible if row.candidate_match_count > 1]
+    timestamp_only = [row for row in off_grid if row.mapping_unique and row.ohlcv_exact_match]
 
-    if ambiguous and (content_changed or any(c.mapping_unique for c in off_grid)):
+    if ambiguous and (content_changed or timestamp_only):
         return ID5BCase.CASE_C_MIXED
     if ambiguous:
         return ID5BCase.CASE_C_MIXED
-    if content_changed and any(c.mapping_unique for c in off_grid):
+    if content_changed and timestamp_only:
         return ID5BCase.CASE_C_MIXED
     if content_changed:
         return ID5BCase.CASE_B_CONTENT_CHANGES
-    if off_grid and all(c.mapping_unique for c in off_grid):
+    if off_grid and len(timestamp_only) == len(off_grid):
         return ID5BCase.CASE_A_TIMESTAMP_ONLY
     return ID5BCase.CASE_D_INSUFFICIENT_EVIDENCE
 
@@ -351,7 +434,7 @@ def run_settlement_comparison_phase(
         comparisons = []
         for provisional in captures:
             if provisional.success:
-                comparisons.extend(compare_provisional_to_settled(provisional=provisional, settled=settled))
+                comparisons.extend(build_id5b_comparison_evidence(provisional=provisional, settled=settled))
         all_comparisons.extend(comparisons)
         evidence[instrument_id] = [comparison.to_dict() for comparison in comparisons]
 

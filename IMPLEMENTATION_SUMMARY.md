@@ -6,6 +6,112 @@ status updated on approval.
 
 ---
 
+## ID-5B.1 — Forming-vs-Closed Evidence Classification Correction
+
+**Summary.** Narrow diagnostic/classification correction on top of the
+owner-approved ID-5B live capture phase. The owner found that the first
+ID-5B classifier treated any exact-content comparison with
+`candidate_match_count == 0` as content-change evidence, regardless of
+whether the provisional candle was still forming when captured. That could
+wrongly turn normal forming-candle evolution into CASE B. Fixed by adding
+an ID-5B-specific comparison-evidence wrapper that preserves each
+provisional capture's actual `request_ts`, computes the candle's
+`ts_open + 5m` interval-close boundary through the existing
+`athena.session.is_candle_completed` authority, and partitions evidence into
+`FORMING_AT_CAPTURE`, `CLOSED_AT_CAPTURE`, and `OFF_GRID_PROVISIONAL`.
+
+**Owner-found classification issue.** A candle with `ts_open=T` is forming
+for `[T, T+5m)` and completed at exactly `T+5m`. A `10:30` candle captured
+at `10:30:01` is forming, so its later OHLCV change is expected market
+behavior and must never by itself produce CASE B. CASE B now requires a
+`CLOSED_AT_CAPTURE` row whose later settled representation has different
+OHLCV by exact-content comparison.
+
+**Shared RowComparison audit.** `RowComparison` retains provisional
+`ts_open`, on-grid/off-grid status, provisional/settled OHLCV, candidate
+match count, unique mapping, and timestamp offset. It does **not** retain
+the provisional capture's actual `request_ts`, so it cannot classify
+forming vs closed. The shared EMR primitive was left untouched; ID-5B adds
+the smallest track-specific wrapper around it.
+
+**CASE semantics after correction.** CASE A requires eligible
+`OFF_GRID_PROVISIONAL` evidence that maps uniquely by exact OHLCV to a
+settled row. CASE B requires `CLOSED_AT_CAPTURE` content-change evidence.
+CASE C requires conflicting eligible closed/provisional evidence such as
+timestamp-only plus content-change or ambiguous closed/provisional mapping;
+forming changes do not create CASE C. CASE D remains legitimate when the
+only changes are forming-at-capture rows, when no off-grid rows exist, or
+when eligible evidence is otherwise insufficient.
+
+**Monday capture reinterpretation.** The 2026-08-31 raw artifacts remain
+unchanged. Read-only reinterpretation using actual artifact `request_ts`
+values found: 15 `FORMING_AT_CAPTURE` rows changed in same-day overlap,
+420 `CLOSED_AT_CAPTURE` rows stayed stable, and 0 `OFF_GRID_PROVISIONAL`
+rows existed. The existing finding "no already-closed, non-boundary row was
+found to change" is preserved and now made explicit as closed-at-capture
+stability evidence. The final ID-5B CASE remains pending settled refetch.
+
+**Files created.** None.
+
+**Files modified.** `src/athena/data/id5b_live_m5_semantics_canary.py`
+(`ID5BEvidenceBucket`, `ID5BComparisonEvidence`,
+`build_id5b_comparison_evidence`, corrected `classify_id5b_case`),
+`tests/data_layer/test_id5b_live_m5_semantics_canary.py`,
+`docs/research/ID-5B-LIVE-M5-SEMANTICS-CAPTURE-2026-08-31.md`,
+`docs/ATHENA-ID-TRACK-HANDOFF.md`, `docs/MILESTONES.md`,
+`IMPLEMENTATION_SUMMARY.md` (this entry).
+
+**Tests added.** Forming-change-is-not-CASE-B non-vacuous regression,
+closed-change-is-CASE-B, exact completion boundary, one-microsecond-before
+boundary, forming-change plus stable-closed rows remains CASE D, forming
+change plus changed closed row becomes CASE B, and off-grid CASE A exact
+content mapping remains intact. Focused ID-5B tests: 11 passed. Shared
+diagnostic regressions included: 45 passed. Full suite: 2,946 passed,
+1 skipped, 0 failed.
+
+**Raw artifact integrity.** The 25 Monday JSON capture files were not
+modified, regenerated, repaired, or deleted. Missed checkpoints remain
+`NOT_OBSERVED_LIVE`.
+
+**Production-code impact.** None. No ingestion, repository candle writes,
+SessionContext production behavior, ORB, RS, RVOL, VWAP, Gap, scoring,
+Decision, or TradePlan behavior changed. Settlement comparison remains
+manual-gated with `--force` and was not run.
+
+**Architecture/ADR impact.** None. No shared EMR/DarvaX code changed; the
+shared raw diagnostic primitive remains read-only and reusable. No ADR
+required.
+
+**ID-5B status.** Live capture phase owner-approved. ID-5B.1 ready for
+owner review. ID-5B remains open pending settled-provider comparison and
+final CASE A/B/C/D review. ID-6 not started.
+
+**Commit message (for the owner to use, not run by the AI):**
+
+```
+fix(data): correct ID-5B forming-vs-closed classification
+
+- Add ID-5B-specific comparison evidence that preserves provisional
+  request_ts and classifies each row as FORMING_AT_CAPTURE,
+  CLOSED_AT_CAPTURE, or OFF_GRID_PROVISIONAL using the existing
+  completed-candle boundary authority
+- Prevent forming candle OHLCV changes from producing CASE B, since a
+  still-forming M5 interval changing before completion is expected market
+  behavior rather than settlement-instability evidence
+- Preserve CASE B for genuine closed-at-capture OHLCV changes and preserve
+  CASE A for off-grid rows that map uniquely by exact OHLCV content
+- Reinterpret the 2026-08-31 live capture without modifying raw artifacts:
+  15 forming rows changed, 420 closed rows stayed stable, and 0 off-grid
+  rows were observed
+- Keep settlement comparison manual-gated and leave production M5,
+  SessionContext, ORB, RS, RVOL, VWAP, scoring, Decision, and TradePlan
+  behavior unchanged
+```
+
+**Milestone status.** Ready for review.
+
+---
+
 ## ID-5G.1 — Full-Precision Offset-Safe MarketSnapshot Point-in-Time Retrieval
 
 **Summary.** Narrow correctness repair on top of ID-5G's accepted
