@@ -1,8 +1,8 @@
 # ATHENA Explosive Move Radar Handoff
 
-**Snapshot:** 2026-08-30 (EM-5 scanner contract ACCEPTED, COMPLETE PENDING
-CANARY — blocked on Track B's live Monday 2026-08-31 capture; supersedes
-the 2026-08-27 snapshot below)
+**Snapshot:** 2026-08-31 (EM-5 scanner contract ACCEPTED, COMPLETE PENDING
+CANARY — Monday Track B live capture was not observed; blocked on the next
+real live-session Track B capture; supersedes the 2026-08-30 snapshot below)
 **Governing boundary:** ADR-012
 **Current state:** EM-0 through EM-4E are all owner-approved (GO), including
 the sealed FINAL_TEST evaluation. EM-5 (the replayable bulk-input live
@@ -15,11 +15,12 @@ ID-track's own ID-5A repair, §7 below, for the mechanism that fixed
 settled-day drift). Track B's live provisional-vs-settled capture/compare/
 classify tooling
 (`src/athena/data/live_m5_provisional_settlement_diagnostic.py`,
-`src/athena/data/em5_track_b_capture_cli.py`) is built and unit-tested but
-has never been executed against a real live session — that execution
-needs an actual open NSE trading session, next available: **Monday
-2026-08-31**. Any full 9-checkpoint EM-5 canary run against an open/current
-session before Track B closes must be marked
+`src/athena/data/em5_track_b_capture_cli.py`) is built and unit-tested.
+Artifact inspection on **Monday 2026-08-31 15:39 IST** found no EM-5 Track B
+live capture files; all nine frozen checkpoints were therefore
+`NOT_OBSERVED_LIVE` for that date. The next execution needs another actual
+open NSE trading session. Any full 9-checkpoint EM-5 canary run against an
+open/current session before Track B closes must be marked
 `CANARY_BLOCKED_LIVE_M5_SEMANTICS`, not PASS — this is not CLOSED, not
 FAILED, not FINAL.
 
@@ -60,7 +61,7 @@ misattribute one track's evidence to the other's decision.
 | EM-4C | Owner-approved (GO) 2026-08-28 — logistic beats deterministic on PR-AUC in 18/18 real combinations on real VALIDATION |
 | EM-4D | Owner-approved (GO) 2026-08-28 — all 162 (family×threshold×checkpoint) cells Platt-calibrated |
 | EM-4E | **Ready for review 2026-08-28** — sealed FINAL_TEST evaluation complete (702,702 rows, 157 sessions); calibrated logistic beats deterministic 18/18, replicating VALIDATION on a third, never-before-touched partition. Awaiting Owner GO/NARROW/NO-GO |
-| EM-5 | **COMPLETE PENDING CANARY** — contract ACCEPTED 2026-08-28. Regime wiring RESOLVED; REL_VOLUME_C historical support REPAIRED (real backfill, 23/23 resolvable prior sessions across all 3 liquidity tiers); current-day live M5 semantics is the one OPEN BLOCKER — Track B needs Monday 2026-08-31's live session |
+| EM-5 | **COMPLETE PENDING CANARY** — contract ACCEPTED 2026-08-28. Regime wiring RESOLVED; REL_VOLUME_C historical support REPAIRED (real backfill, 23/23 resolvable prior sessions across all 3 liquidity tiers); current-day live M5 semantics is the one OPEN BLOCKER — Monday 2026-08-31 Track B evidence was not captured, so Track B needs the next real live session |
 | EM-6 | Planned — add EMR research UI only after scanner approval |
 | EM-7 | Planned — isolated shadow validation, OFF-vs-shadow comparison |
 | EM-8 | Planned — research-only / continued shadow / retirement / new integration ADR decision |
@@ -176,8 +177,8 @@ a mislabeled bucket (timestamp-only drift) or genuinely different OHLCV
 content once settled? Never assumed by convention; answered empirically,
 content-match only.
 
-**Monday 2026-08-31 execution plan (already frozen, built, unit-tested,
-never run live):**
+**Live execution plan (already frozen, built, unit-tested; Monday 2026-08-31
+was missed):**
 
 1. `run_preflight` — calendar, Kite auth (one real minimal call), disk
    space. Any failure raises `PreflightError`; do not proceed on partial
@@ -206,6 +207,15 @@ both samples, or two independent captures, before spending Kite request
 budget twice on overlapping instruments. See
 `docs/ATHENA-ID-TRACK-HANDOFF.md` §7 for the open question as framed from
 the ID-track's side — it is the same question from this side.
+
+**Monday 2026-08-31 status:** no EM-5 Track B live capture artifacts were
+found in `artifacts/`, and all nine frozen checkpoints had elapsed by more
+than 300 seconds when checked at `Mon Aug 31 15:39:33 IST 2026`. The
+checkpoint statuses for Monday are therefore honestly recorded as
+`NOT_OBSERVED_LIVE`; see
+`docs/research/EM-5-TRACK-B-LIVE-M5-CAPTURE-2026-08-31.md`. ID-5B's
+separate five-instrument artifacts must not be substituted for EM-5 Track B's
+nine-equity liquidity-bucket sample.
 
 ## 7. EM-5 non-goals (still in force)
 

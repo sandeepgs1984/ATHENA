@@ -3477,9 +3477,9 @@ data was not read, written, or otherwise touched by any of this work.
 **Risks / technical debt.** None new. The two items from the prior entry
 (`NSE:E2E`, `_ensure_catalog()` negative caching) remain open, unchanged.
 
-**Remaining work.** Execute Track B live at the next market session
-(2026-08-31): run `run_preflight`, then `run_capture_phase` at each
-elapsed checkpoint through the day, then (once settled)
+**Remaining work.** Execute Track B live at the next real NSE live session:
+run `run_preflight`, then `run_capture_phase` at each elapsed checkpoint
+through the day, then (once settled)
 `run_settlement_comparison_phase`, then return `Milestone Review Summary
 -- EM-5 Track B` per the Owner's exact required fields. Milestone status
 unchanged: **EM-5 = COMPLETE PENDING CANARY**. Not CLOSED. `EM-6` blocked.
@@ -3543,6 +3543,17 @@ Full suite: **2,714 passed, 1 skipped, 0 failed** throughout. No files
 changed after the dry run.
 
 **`TRACK_B_OPERATOR_READY = TRUE`.**
+
+**Addendum: Monday 2026-08-31 Track B not observed.** Repository artifact
+inspection at `Mon Aug 31 15:39:33 IST 2026` found no EM-5 Track B live
+capture artifacts. All nine frozen checkpoints were already more than the
+approved 300-second observation window in the past, so Monday is recorded
+as `NOT_OBSERVED_LIVE` for EM-5 Track B rather than reconstructed from
+historical data or substituted with ID-5B's separate 5-instrument evidence.
+No Kite/provider request was made for this addendum. Evidence note:
+`docs/research/EM-5-TRACK-B-LIVE-M5-CAPTURE-2026-08-31.md`. EM-5 remains
+`COMPLETE PENDING CANARY`, blocked on the next real live-session Track B
+capture and its later settled comparison.
 
 ---
 

@@ -225,13 +225,12 @@ Each review summary records objective, completed scope, architecture alignment, 
 
 ## 13. Current handoff
 
-ADR-012 is Accepted. EM-0, EM-1a, and EM-1r1 through EM-1r5 are
-owner-approved. EM-1a's own zero-checkpoint audit is superseded by
-EM-1r5's real re-audit (2026-08-26): all 9 candidate checkpoints accepted
-as research-ready evidence. The dedicated continuation context is
-`docs/ATHENA-EMR-HANDOFF.md`; read it before beginning work. EM-1r4 is
-owner-approved (2026-08-22); it did not broaden its scope into
-point-in-time membership acquisition, labels, features, models, scanners,
-or UI. **EM-1b's chronological partitions are owner-approved and its
-production label dataset is generated and self-validated (2026-08-27),
-awaiting Milestone Review Summary approval; EM-1c has not started.**
+ADR-012 is Accepted. Current status is authoritative in
+`docs/MILESTONES.md` and `docs/ATHENA-EMR-HANDOFF.md`. As of 2026-08-31,
+EM-5 is `COMPLETE PENDING CANARY`: its scanner contract is accepted and the
+remaining open blocker is Track B's current-day live M5 semantics capture.
+The Monday 2026-08-31 Track B evidence was not captured and is recorded as
+`NOT_OBSERVED_LIVE` for all nine frozen checkpoints in
+`docs/research/EM-5-TRACK-B-LIVE-M5-CAPTURE-2026-08-31.md`. EM-6 must not
+start until EM-5's canary blocker closes and the owner explicitly authorizes
+the next milestone.
