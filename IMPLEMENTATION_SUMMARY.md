@@ -6,6 +6,118 @@ status updated on approval.
 
 ---
 
+## EM-5 Track B — Settled-Provider Comparison
+
+**Summary.** Executed the owner-authorized EM-5 Track B settled-provider
+comparison for the frozen Tuesday 2026-09-01 live capture. This was limited to
+the remaining empirical Track B gate: settled refetch, frozen exact-content
+comparison, classification review, and documentation. No EM-6, ID-6, production
+scanner methodology, model, threshold, UI, DarvaX, canonical ATHENA scoring,
+confidence, risk, eligibility, Decision, TradePlan, broker, or order behavior
+work was performed.
+
+**Authoritative state verified.** EM-5 Tuesday live capture phase was
+owner-approved with 81/81 raw Kite files, 0 provider failures, 0
+`NOT_OBSERVED_LIVE`, 1,768 raw candles, and 0 off-grid raw `ts_open` values.
+ID-5B and ID-5 were already owner-approved/CLOSED. EM-6 and ID-6 remained not
+started. FINAL_TEST was not read, rerun, inspected, or used.
+
+**Settlement guard.** The implementation's 21-day settlement-readiness guard
+did not pass on 2026-09-01 for the same-day 2026-09-01 session. The owner
+authorization used the already-defined `force=True` override; no new override
+or weakened evidence standard was added.
+
+**Execution path.** Called the existing
+`src/athena/data/em5_track_b_capture_cli.py::run_settlement_comparison_phase`
+with the frozen manifest
+`artifacts/live/em5_track_b/2026-09-01/em5-track-b-20260901__manifest.json`.
+The settlement provider was `kite`; settlement request timestamp recorded in
+the report was `2026-09-01T20:06:46.140654+05:30`.
+
+**Settlement artifact.** Generated git-ignored artifact
+`artifacts/live/em5_track_b/2026-09-01/em5-track-b-20260901__settlement_comparison.json`
+with SHA-256
+`974531de8703982fcab49d15924b21e986728e0fd4c2759b034af36f6345a0a1`.
+
+**Comparison results.** The report inventory records 1,768 compared
+provisional rows across the nine frozen symbols:
+`NSE:ABBOTINDIA` 197, `NSE:BBTC` 196, `NSE:HONAUT` 196, `NSE:IDEA` 196,
+`NSE:IRCTC` 196, `NSE:JSWDULUX` 196, `NSE:OLAELEC` 198, `NSE:RITES` 196,
+and `NSE:YESBANK` 197. The frozen live capture had 0 off-grid provisional
+rows.
+
+**Classification.** Final Track B classification field is `null`.
+Under the frozen EM-5 Track B contract, the classifier only emits one of
+`TIMESTAMP_ONLY_PROVISIONAL_DRIFT`, `PROVISIONAL_OHLCV_ALSO_CHANGES`, or
+`MAPPING_AMBIGUOUS` when there is eligible off-grid provisional evidence.
+With 0 off-grid rows, the accepted implementation leaves classification
+unset rather than inventing a fourth outcome or importing ID-5B's CASE
+framework.
+
+**Unpersisted fields.** The existing report does not persist settled
+full-session candle counts, per-row settled candles, field-by-field OHLCV
+differences for on-grid provisional rows, or exact/unique/ambiguous/unmatched
+totals over all on-grid rows. No additional provider requests were issued to
+reconstruct unavailable metadata after the fact.
+
+**Engineering recommendation.** Track B remains scientifically inconclusive
+under the frozen three-label classification contract. Do not clear EM-5's
+Track B blocker solely from this result. Owner review should decide whether
+to accept this no-off-grid canary as sufficient operational evidence, authorize
+a narrow contract amendment for no-off-grid observations, or authorize
+additional live evidence collection. EM-5 remains open pending that owner
+decision.
+
+**Artifact integrity.** Tuesday manifest SHA-256 remained
+`b0f46dab7233df61ec4c9e606758f455e03cda064b19cfff7a72ccfa480573c4`. All
+81 raw capture files were byte-identical before and after settlement
+comparison; the aggregate raw hash-list SHA-256 remained
+`0a50585dc741d9e2c8ccbbf8d4d065aba71ad7939a7bfb80e53ff23a23750154`.
+ID-5B artifacts remained unchanged:
+`55d08aaeccccd0249035d6f07e47688e8368289a3374eff132c9a3298be19098` for the
+Monday manifest and
+`23c6d79e4fd03f78aa57b2a68091647e6fb3b6a1ae8567ddc47f756b8351d5c1` for the
+ID-5B settlement report.
+
+**Database/production isolation.** The settlement function writes only the
+separate JSON settlement artifact. `db/emr.db` was absent. `db/athena.db` was
+not part of the tracked diff and no DB-writing Track B command was run; its
+mtime must not be over-interpreted because unrelated local processes may touch
+it.
+
+**Files created.** None in versioned source. One git-ignored settlement
+artifact was generated under `artifacts/live/em5_track_b/2026-09-01/`.
+
+**Files modified.** `docs/research/EM-5-TRACK-B-LIVE-M5-CAPTURE-2026-09-01.md`,
+`docs/ATHENA-EMR-HANDOFF.md`, `docs/MILESTONES.md`,
+`docs/design/ATHENA-EXPLOSIVE-MOVE-RADAR-ROADMAP.md`, `ATHENA_BRIEFING.md`,
+`IMPLEMENTATION_SUMMARY.md` (this entry).
+
+**Tests added.** None; this was execution of the existing Track B settlement
+path plus documentation.
+
+**Remaining work.** Owner/principal-engineer review of the inconclusive Track
+B settlement result. EM-5 is not closed. EM-6, EM-7, EM-8, and ID-6 remain not
+started.
+
+**Commit message (for the owner to use, not run by the AI):**
+
+```
+docs(data): record EM-5 Track B settlement result
+
+- Record the owner-authorized 2026-09-01 EM-5 Track B settled-provider
+  comparison artifact, guard override, and null classification outcome
+- Document that the frozen Track B classifier is inconclusive because the
+  Tuesday canary had zero off-grid provisional rows
+- Preserve EMR, ID, DarvaX, FINAL_TEST, production-code, and artifact
+  isolation while leaving EM-5 open pending owner review
+```
+
+**Milestone status.** Settled comparison complete; inconclusive and ready for
+owner review. EM-5 remains open. EM-6 not started.
+
+---
+
 ## ID-5B — Settled-Provider Comparison and Final CASE Classification
 
 **Summary.** Executed the owner-authorized ID-5B settled-provider

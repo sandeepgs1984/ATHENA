@@ -3,8 +3,9 @@
 **Date:** 2026-09-01
 **Track:** Explosive Move Radar (EMR)
 **Milestone:** EM-5 Track B — live provisional-vs-settled M5 semantics
-**Status:** Live capture phase owner-approved; settled-provider comparison not
-yet owner-authorized.
+**Status:** Live capture phase owner-approved; settled-provider comparison
+complete and inconclusive under the frozen Track B classification contract;
+ready for owner review.
 
 ## Scope
 
@@ -111,14 +112,99 @@ does not mean those checkpoints were missed or reconstructed.
   confidence, risk, Decision, TradePlan, scanner-methodology, broker, or
   order behavior work was performed.
 
+## Settled-Provider Comparison
+
+Owner authorization to run the existing Track B settlement comparison was
+received on 2026-09-01. The existing settlement-readiness guard did not pass
+without override because the session was still 0 days old relative to the local
+date and `MINIMUM_DAYS_BEFORE_LIKELY_SETTLED = 21`. The owner authorization
+therefore used the implementation's already-defined explicit `force=True`
+override. No new override was added.
+
+Execution path:
+
+`src/athena/data/em5_track_b_capture_cli.py::run_settlement_comparison_phase`
+
+Settlement artifact:
+
+`artifacts/live/em5_track_b/2026-09-01/em5-track-b-20260901__settlement_comparison.json`
+
+Settlement artifact SHA-256:
+`974531de8703982fcab49d15924b21e986728e0fd4c2759b034af36f6345a0a1`.
+
+Recorded settlement metadata:
+
+- Provider: `kite`.
+- Settlement request timestamp:
+  `2026-09-01T20:06:46.140654+05:30`.
+- Owner override used: `true`.
+- Minimum-days guard passed without override: `false`.
+- Preflight session type: `NORMAL`.
+- Resolved symbol count: 22.
+- Disk free at settlement preflight: `59.88642501831055` GiB.
+
+Comparison inventory recorded by the existing implementation:
+
+| Instrument | Compared provisional rows |
+|---|---:|
+| `NSE:ABBOTINDIA` | 197 |
+| `NSE:BBTC` | 196 |
+| `NSE:HONAUT` | 196 |
+| `NSE:IDEA` | 196 |
+| `NSE:IRCTC` | 196 |
+| `NSE:JSWDULUX` | 196 |
+| `NSE:OLAELEC` | 198 |
+| `NSE:RITES` | 196 |
+| `NSE:YESBANK` | 197 |
+
+Total comparison rows recorded by the report inventory: 1,768.
+
+Final Track B classification field: `null`.
+
+Reason: Tuesday's live capture had 0 off-grid raw `ts_open` values. The frozen
+Track B classifier classifies only off-grid provisional rows into one of:
+`TIMESTAMP_ONLY_PROVISIONAL_DRIFT`,
+`PROVISIONAL_OHLCV_ALSO_CHANGES`, or `MAPPING_AMBIGUOUS`. With no off-grid
+rows, the existing accepted implementation leaves classification unset rather
+than inventing a fourth outcome or silently mapping ID-5B's CASE framework onto
+EM-5.
+
+Fields not persisted by the existing report:
+
+- settled full-session candle counts;
+- per-row settled candles;
+- field-by-field OHLCV differences for on-grid provisional rows;
+- exact/unique/ambiguous/unmatched totals over all on-grid rows.
+
+Those values were not reconstructed with additional provider requests after the
+run.
+
+## Track B Interpretation
+
+Observation: the frozen Tuesday Track B canary captured all 9 checkpoints and
+all 9 symbols with 81/81 real Kite raw files, 0 provider failures, 1,768 raw
+candles, and 0 off-grid raw `ts_open` values. The settlement report completed
+through the existing implementation but produced no classification because the
+classification contract has no eligible off-grid evidence to evaluate.
+
+Inference: this specific canary does not demonstrate timestamp-only
+provisional drift, provisional OHLCV changes on off-grid rows, or ambiguous
+off-grid mapping. It also does not prove Kite never returns off-grid current-
+session M5 rows.
+
+Engineering recommendation: Track B remains scientifically inconclusive under
+the frozen three-label classification contract. Do not clear EM-5's Track B
+blocker solely from this result. A future owner decision is needed: either
+accept this no-off-grid canary as sufficient operational evidence, authorize a
+narrow contract amendment for no-off-grid observations, or authorize additional
+live evidence collection.
+
 ## Remaining Work
 
-The live capture phase is complete. EM-5 Track B remains open pending the
-settled-provider comparison and classification phase. Do not run that phase
-until the owner explicitly authorizes it. Market close alone must not be
-treated as proof that Kite historical M5 data is settled.
+Owner review of the settled-provider comparison and inconclusive Track B result.
+Do not start EM-6, EM-7, EM-8, or ID-6 from this evidence note.
 
 ## Owner Review
 
-Owner review approved the Tuesday 2026-09-01 live capture phase. This approval
-covers live capture only. EM-5 remains `COMPLETE PENDING SETTLED COMPARISON`.
+Owner review approved the Tuesday 2026-09-01 live capture phase. Settlement
+comparison is complete and ready for owner review, but EM-5 is not closed.
