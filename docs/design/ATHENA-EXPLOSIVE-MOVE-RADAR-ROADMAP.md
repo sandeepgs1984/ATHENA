@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | EM-5 COMPLETE PENDING CANARY; EM-4E owner-approved / GO 2026-08-28 |
+| Status | EM-5 COMPLETE PENDING SETTLED COMPARISON; EM-4E owner-approved / GO 2026-08-28 |
 | Governing ADR | ADR-012 (Accepted 2026-08-21) |
 | Started | 2026-08-21 |
 | Current gate | EM-1b self-validated, pending owner review; EM-1c blocked until approved |
@@ -226,11 +226,16 @@ Each review summary records objective, completed scope, architecture alignment, 
 ## 13. Current handoff
 
 ADR-012 is Accepted. Current status is authoritative in
-`docs/MILESTONES.md` and `docs/ATHENA-EMR-HANDOFF.md`. As of 2026-08-31,
-EM-5 is `COMPLETE PENDING CANARY`: its scanner contract is accepted and the
-remaining open blocker is Track B's current-day live M5 semantics capture.
-The Monday 2026-08-31 Track B evidence was not captured and is recorded as
-`NOT_OBSERVED_LIVE` for all nine frozen checkpoints in
-`docs/research/EM-5-TRACK-B-LIVE-M5-CAPTURE-2026-08-31.md`. EM-6 must not
+`docs/MILESTONES.md` and `docs/ATHENA-EMR-HANDOFF.md`. As of 2026-09-01,
+EM-5 is `COMPLETE PENDING SETTLED COMPARISON`: its scanner contract is
+accepted and the remaining open blocker is Track B's current-day live M5
+semantics classification. The Monday 2026-08-31 Track B evidence was not
+captured and is recorded as `NOT_OBSERVED_LIVE` for all nine frozen
+checkpoints in
+`docs/research/EM-5-TRACK-B-LIVE-M5-CAPTURE-2026-08-31.md`. The Tuesday
+2026-09-01 Track B live capture completed for all nine checkpoints and is
+recorded in
+`docs/research/EM-5-TRACK-B-LIVE-M5-CAPTURE-2026-09-01.md`; settled-provider
+comparison remains manual-gated and not owner-authorized yet. EM-6 must not
 start until EM-5's canary blocker closes and the owner explicitly authorizes
 the next milestone.

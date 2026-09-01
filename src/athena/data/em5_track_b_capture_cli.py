@@ -1,6 +1,6 @@
-"""EM-5 Track B: the Monday (2026-08-31) live capture operator flow (Owner/
-Chief Architect authorization, 2026-08-28 weekend hardening + final
-pre-Monday operator audit). Ties together
+"""EM-5 Track B live capture operator flow (Owner/Chief Architect
+authorization, 2026-08-28 weekend hardening + final pre-live operator audit).
+Ties together
 `live_m5_provisional_settlement_diagnostic.py`'s already-tested pieces
 into one executable-with-minimal-decisions script.
 
@@ -30,13 +30,17 @@ rounding/flooring/nearest-match anywhere in this file or its dependencies.
 
 from __future__ import annotations
 
+import argparse
 import json
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime
 from datetime import time as time_of_day
 from datetime import tzinfo as tzinfo_type
 from enum import Enum
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from athena.data.live_m5_provisional_settlement_diagnostic import (
     TRACK_B_CHECKPOINT_SCHEDULE,
@@ -70,6 +74,9 @@ DEFAULT_SYMBOL_LIQUIDITY_BUCKETS: dict[str, str] = {
 }
 
 DEFAULT_MINIMUM_DISK_FREE_GB = 2.0
+DEFAULT_SESSION_OPEN_TIME = time_of_day(9, 15)
+DEFAULT_TZ = ZoneInfo("Asia/Kolkata")
+DEFAULT_ARTIFACT_ROOT = Path("artifacts/live/em5_track_b")
 
 #: A checkpoint captured no later than this many seconds after its own
 #: instant counts as a genuine live observation. Reused, not reinvented:
@@ -274,19 +281,26 @@ def run_capture_phase(
             status_by_checkpoint[checkpoint] = CheckpointCaptureStatus.ALREADY_CAPTURED.value
             capture_paths.extend(str(p) for p in existing)
             continue
+        existing_by_instrument = {
+            iid: path for iid, path in zip(instrument_ids, existing, strict=True) if path.is_file()
+        }
         if checkpoint_instant > now:
             status_by_checkpoint[checkpoint] = CheckpointCaptureStatus.NOT_YET_DUE.value
+            capture_paths.extend(str(path) for path in existing_by_instrument.values())
             continue
         seconds_late = (now - checkpoint_instant).total_seconds()
         if seconds_late > LATE_CHECKPOINT_GRACE_SECONDS:
             status_by_checkpoint[checkpoint] = CheckpointCaptureStatus.NOT_OBSERVED_LIVE.value
+            capture_paths.extend(str(path) for path in existing_by_instrument.values())
             continue
 
+        missing_instruments = tuple(iid for iid in instrument_ids if iid not in existing_by_instrument)
         captures = capture_provisional_m5(
-            provider=provider, instrument_ids=instrument_ids, session_date=session_date,
+            provider=provider, instrument_ids=missing_instruments, session_date=session_date,
             session_open_time=session_open_time, tzinfo=tzinfo, checkpoint_instant=checkpoint_instant,
             checkpoint=checkpoint, run_id=run_id, now=lambda: now,
         )
+        capture_paths.extend(str(path) for path in existing_by_instrument.values())
         for capture in captures:
             path = _capture_file_path(output_dir, run_id, checkpoint, capture.instrument_id)
             write_capture(capture, path)
@@ -368,3 +382,152 @@ def run_settlement_comparison_phase(
         liquidity_bucket_by_instrument=manifest.liquidity_bucket_by_instrument,
     )
     return populate_classification_report(skeleton, comparisons_by_instrument=comparisons_by_instrument)
+
+
+def _checkpoint_instant(*, session_date: date, checkpoint: str, tzinfo: tzinfo_type) -> datetime:
+    return datetime.combine(session_date, time_of_day.fromisoformat(checkpoint), tzinfo=tzinfo)
+
+
+def _next_wake_seconds(
+    *,
+    now: datetime,
+    session_date: date,
+    tzinfo: tzinfo_type,
+    checkpoints: tuple[str, ...],
+) -> float | None:
+    for checkpoint in checkpoints:
+        instant = _checkpoint_instant(session_date=session_date, checkpoint=checkpoint, tzinfo=tzinfo)
+        if now < instant:
+            return (instant - now).total_seconds()
+    return None
+
+
+def _has_due_checkpoint(
+    *,
+    now: datetime,
+    session_date: date,
+    tzinfo: tzinfo_type,
+    checkpoints: tuple[str, ...],
+) -> bool:
+    return any(
+        _checkpoint_instant(session_date=session_date, checkpoint=checkpoint, tzinfo=tzinfo) <= now
+        for checkpoint in checkpoints
+    )
+
+
+def run_unattended_capture(
+    *,
+    config_dir: Path,
+    session_date: date,
+    output_dir: Path,
+    run_id: str,
+    session_open_time: time_of_day = DEFAULT_SESSION_OPEN_TIME,
+    tzinfo: tzinfo_type = DEFAULT_TZ,
+    symbol_liquidity_buckets: dict[str, str] = DEFAULT_SYMBOL_LIQUIDITY_BUCKETS,
+    checkpoints: tuple[str, ...] = TRACK_B_CHECKPOINT_SCHEDULE,
+    now: Callable[[], datetime] | None = None,
+    sleep: Callable[[float], None] = time.sleep,
+    max_sleep_seconds: float = 60.0,
+    log: Callable[[str], None] = print,
+) -> TrackBRunManifest:
+    """Run the approved Track B capture flow unattended through 14:00.
+
+    This is orchestration only: preflight once, wait efficiently, call the
+    existing capture primitive inside each checkpoint's live window, and stop
+    after the final capture attempt. It never calls settlement.
+    """
+
+    clock = now or (lambda: datetime.now(tz=tzinfo))
+    preflight = run_preflight(
+        config_dir=config_dir,
+        session_date=session_date,
+        instrument_ids=tuple(symbol_liquidity_buckets),
+    )
+    log(
+        "EM-5 Track B preflight passed: "
+        f"session_type={preflight.session_type.value}, "
+        f"resolved_symbols={preflight.resolved_symbol_count}, "
+        f"disk_free_gb={preflight.disk_free_gb:.2f}"
+    )
+
+    final_checkpoint = checkpoints[-1]
+    final_instant = _checkpoint_instant(session_date=session_date, checkpoint=final_checkpoint, tzinfo=tzinfo)
+    final_stop = final_instant
+    manifest: TrackBRunManifest | None = None
+
+    while True:
+        current = clock()
+        if current.tzinfo is None:
+            raise ValueError("run_unattended_capture: clock must return a timezone-aware datetime")
+
+        if not _has_due_checkpoint(now=current, session_date=session_date, tzinfo=tzinfo, checkpoints=checkpoints):
+            wait_seconds = _next_wake_seconds(
+                now=current,
+                session_date=session_date,
+                tzinfo=tzinfo,
+                checkpoints=checkpoints,
+            )
+            if wait_seconds is None:
+                raise PreflightError("unattended capture has no future checkpoint to wait for")
+            nap = min(wait_seconds, max_sleep_seconds)
+            if nap > 0:
+                log(f"waiting {nap:.1f}s for next Track B checkpoint")
+                sleep(nap)
+                continue
+
+        log(f"running Track B capture pass at {current.isoformat()}")
+        manifest = run_capture_phase(
+            provider=preflight.provider,
+            session_date=session_date,
+            session_open_time=session_open_time,
+            tzinfo=tzinfo,
+            output_dir=output_dir,
+            run_id=run_id,
+            now=current,
+            symbol_liquidity_buckets=symbol_liquidity_buckets,
+            checkpoints=checkpoints,
+            disk_free_gb_at_start=preflight.disk_free_gb,
+        )
+        log(f"manifest updated: {output_dir / f'{run_id}__manifest.json'}")
+
+        if current >= final_stop:
+            log("final Track B checkpoint attempted; stopping without settlement")
+            return manifest
+
+        sleep(max_sleep_seconds)
+
+
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run EM-5 Track B capture tooling.")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    unattended = subparsers.add_parser(
+        "unattended",
+        help="Preflight once, capture every frozen checkpoint, then stop without settlement.",
+    )
+    unattended.add_argument("--session-date", required=True, type=date.fromisoformat)
+    unattended.add_argument("--config-dir", default=Path("config"), type=Path)
+    unattended.add_argument("--output-dir", type=Path)
+    unattended.add_argument("--run-id")
+    unattended.add_argument("--max-sleep-seconds", default=60.0, type=float)
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _parse_args(argv)
+    if args.command == "unattended":
+        output_dir = args.output_dir or (DEFAULT_ARTIFACT_ROOT / args.session_date.isoformat())
+        run_id = args.run_id or f"em5-track-b-{args.session_date:%Y%m%d}"
+        run_unattended_capture(
+            config_dir=args.config_dir,
+            session_date=args.session_date,
+            output_dir=output_dir,
+            run_id=run_id,
+            max_sleep_seconds=args.max_sleep_seconds,
+        )
+        return 0
+    raise ValueError(f"unsupported command: {args.command}")
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

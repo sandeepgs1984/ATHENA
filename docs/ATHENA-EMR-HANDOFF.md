@@ -1,8 +1,8 @@
 # ATHENA Explosive Move Radar Handoff
 
-**Snapshot:** 2026-08-31 (EM-5 scanner contract ACCEPTED, COMPLETE PENDING
-CANARY — Monday Track B live capture was not observed; blocked on the next
-real live-session Track B capture; supersedes the 2026-08-30 snapshot below)
+**Snapshot:** 2026-09-01 (EM-5 scanner contract ACCEPTED, COMPLETE PENDING
+SETTLED COMPARISON — Tuesday Track B live capture complete; settled-provider
+comparison not owner-authorized yet; supersedes the 2026-08-31 snapshot below)
 **Governing boundary:** ADR-012
 **Current state:** EM-0 through EM-4E are all owner-approved (GO), including
 the sealed FINAL_TEST evaluation. EM-5 (the replayable bulk-input live
@@ -18,11 +18,16 @@ classify tooling
 `src/athena/data/em5_track_b_capture_cli.py`) is built and unit-tested.
 Artifact inspection on **Monday 2026-08-31 15:39 IST** found no EM-5 Track B
 live capture files; all nine frozen checkpoints were therefore
-`NOT_OBSERVED_LIVE` for that date. The next execution needs another actual
-open NSE trading session. Any full 9-checkpoint EM-5 canary run against an
-open/current session before Track B closes must be marked
-`CANARY_BLOCKED_LIVE_M5_SEMANTICS`, not PASS — this is not CLOSED, not
-FAILED, not FINAL.
+`NOT_OBSERVED_LIVE` for that date. On **Tuesday 2026-09-01**, the
+owner-authorized live capture completed for the frozen 9-symbol sample across
+all 9 checkpoints: 81/81 raw Kite files, 0 provider failures, 0
+`NOT_OBSERVED_LIVE` checkpoints, and 0 off-grid raw `ts_open` values. The
+remaining Track B work is the settled-provider comparison and classification,
+which must not run until explicitly owner-authorized. Market close alone is
+not proof that Kite historical M5 data is settled. Any full 9-checkpoint EM-5
+canary against an open/current session remains
+`CANARY_BLOCKED_LIVE_M5_SEMANTICS`, not PASS, until Track B classification
+closes. This is not CLOSED, not FAILED, not FINAL.
 
 **Read `docs/ATHENA-ID-TRACK-HANDOFF.md` §7 before touching anything on
 Monday.** The ID-track's own ID-5B milestone ("Live Current-Session M5
@@ -61,7 +66,7 @@ misattribute one track's evidence to the other's decision.
 | EM-4C | Owner-approved (GO) 2026-08-28 — logistic beats deterministic on PR-AUC in 18/18 real combinations on real VALIDATION |
 | EM-4D | Owner-approved (GO) 2026-08-28 — all 162 (family×threshold×checkpoint) cells Platt-calibrated |
 | EM-4E | Owner-approved / GO 2026-08-28 — sealed FINAL_TEST evaluation complete (702,702 rows, 157 sessions); calibrated logistic beats deterministic 18/18, replicating VALIDATION on a third, never-before-touched partition. FINAL_TEST remains sealed |
-| EM-5 | **COMPLETE PENDING CANARY** — contract ACCEPTED 2026-08-28. Regime wiring RESOLVED; REL_VOLUME_C historical support REPAIRED (real backfill, 23/23 resolvable prior sessions across all 3 liquidity tiers); current-day live M5 semantics is the one OPEN BLOCKER — Monday 2026-08-31 Track B evidence was not captured, so Track B needs the next real live session |
+| EM-5 | **COMPLETE PENDING SETTLED COMPARISON** — contract ACCEPTED 2026-08-28. Regime wiring RESOLVED; REL_VOLUME_C historical support REPAIRED (real backfill, 23/23 resolvable prior sessions across all 3 liquidity tiers); current-day live M5 semantics remains the one OPEN BLOCKER, but Tuesday 2026-09-01 Track B live capture is complete (81/81 Kite raw files, 0 provider failures, 0 `NOT_OBSERVED_LIVE`, 0 off-grid raw `ts_open`); settled-provider comparison/classification remains pending explicit owner authorization |
 | EM-6 | Planned — add EMR research UI only after scanner approval |
 | EM-7 | Planned — isolated shadow validation, OFF-vs-shadow comparison |
 | EM-8 | Planned — research-only / continued shadow / retirement / new integration ADR decision |
@@ -164,7 +169,8 @@ Accepted so far (contract ACCEPTED, Owner/Chief Architect, 2026-08-28):
   all three liquidity tiers sampled. A real production canary at the two
   checkpoints unaffected by the still-open live-M5 question now genuinely
   PASSES (100% completeness, real 518-instrument universe).
-- Current-day live M5 semantics: **OPEN BLOCKER.** See §1/§6.
+- Current-day live M5 semantics: **OPEN BLOCKER pending settled comparison.**
+  See §1/§6.
 
 ## 6. EM-5's one remaining blocker — Track B
 
@@ -175,8 +181,8 @@ a mislabeled bucket (timestamp-only drift) or genuinely different OHLCV
 content once settled? Never assumed by convention; answered empirically,
 content-match only.
 
-**Live execution plan (already frozen, built, unit-tested; Monday 2026-08-31
-was missed):**
+**Live execution plan (already frozen, built, unit-tested; Tuesday 2026-09-01
+live capture completed):**
 
 1. `run_preflight` — calendar, Kite auth (one real minimal call), disk
    space. Any failure raises `PreflightError`; do not proceed on partial
@@ -213,8 +219,13 @@ checkpoint statuses for Monday are therefore honestly recorded as
 `NOT_OBSERVED_LIVE`; see
 `docs/research/EM-5-TRACK-B-LIVE-M5-CAPTURE-2026-08-31.md`. ID-5B's
 separate five-instrument artifacts must not be substituted for EM-5 Track B's
-nine-equity liquidity-bucket sample. Tuesday readiness checklist:
-`docs/research/EM-5-TRACK-B-TUESDAY-READINESS-2026-09-01.md`.
+nine-equity liquidity-bucket sample.
+
+**Tuesday 2026-09-01 status:** owner-authorized live capture completed via the
+existing unattended runner under `caffeinate`; final raw artifacts live under
+`artifacts/live/em5_track_b/2026-09-01/`, with the evidence note at
+`docs/research/EM-5-TRACK-B-LIVE-M5-CAPTURE-2026-09-01.md`. Settlement was
+not run. Do not run settlement comparison until explicit owner authorization.
 
 ## 7. EM-5 non-goals (still in force)
 

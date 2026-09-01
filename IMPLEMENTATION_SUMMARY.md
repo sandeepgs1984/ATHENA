@@ -6,6 +6,92 @@ status updated on approval.
 
 ---
 
+## EM-5 Track B — Tuesday Live M5 Capture
+
+**Summary.** Executed the owner-authorized EM-5 Track B Tuesday live capture
+for the frozen nine-symbol liquidity sample and all nine frozen checkpoints.
+This was live-capture only: no settled-provider comparison, no classification,
+no EM-6, no ID-5B settlement, and no production behavior change.
+
+**Preflight.** Verified local date/session on Tuesday 2026-09-01 before the
+first checkpoint. The existing unattended runner passed preflight with
+`session_type=NORMAL`, Kite provider access, frozen catalog resolution, and
+`62.06707000732422` GiB free disk at start. The runner was launched under
+macOS `caffeinate` to preserve workstation availability.
+
+**Operational anomaly handled.** Before the real live run, a stale
+`artifacts/live/em5_track_b/2026-09-01/` directory contained fake provider
+placeholder files. It was preserved, not deleted, under
+`artifacts/live/em5_track_b/quarantine/2026-09-01-fake-prelive-artifacts-20260901T0857IST/`,
+then the live run started from a clean directory. The final live directory
+contains only real Kite provider evidence.
+
+**Live capture evidence.** Final artifacts are under
+`artifacts/live/em5_track_b/2026-09-01/`. The manifest is
+`em5-track-b-20260901__manifest.json` with SHA-256
+`b0f46dab7233df61ec4c9e606758f455e03cda064b19cfff7a72ccfa480573c4`.
+Read-only integrity verification found 81 raw capture files in the manifest,
+81 present on disk, 0 missing manifest paths, 0 extra raw files, provider
+`kite` for 81/81 files, 81/81 successful captures, 0 provider/raw errors,
+1,768 raw candles across the files, 0 off-grid raw `ts_open` values, and 0
+`NOT_OBSERVED_LIVE` checkpoints.
+
+**Checkpoint evidence.** Captures landed at `09:20:00.008346`,
+`09:30:03.114684`, `09:45:06.292263`, `10:00:09.272915`,
+`10:30:12.485554`, `11:00:15.781422`, `12:00:36.042947`,
+`13:00:39.294704`, and `14:00:42.692985` IST. Each checkpoint has nine raw
+files, one per frozen symbol. Later manifest passes correctly report earlier
+checkpoints as `ALREADY_CAPTURED`.
+
+**Files created.** `docs/research/EM-5-TRACK-B-LIVE-M5-CAPTURE-2026-09-01.md`.
+
+**Files modified.** `docs/research/EM-5-TRACK-B-TUESDAY-READINESS-2026-09-01.md`,
+`docs/MILESTONES.md`, `docs/ATHENA-EMR-HANDOFF.md`,
+`docs/design/ATHENA-EXPLOSIVE-MOVE-RADAR-ROADMAP.md`, `ATHENA_BRIEFING.md`,
+`IMPLEMENTATION_SUMMARY.md` (this entry).
+
+**Tests added.** None; this was live evidence capture and documentation only.
+
+**Verification.** Read-only artifact verification parsed every final raw JSON
+file and the manifest. Focused tests for the already-existing unattended
+runner had passed before the live run (`38 passed` across Track B/diagnostic
+tests) and the full suite had passed (`2,950 passed, 1 skipped`) before live
+execution.
+
+**Raw artifact integrity.** Raw live files were not rounded, floored,
+ceiled, nearest-matched, resampled, normalized, forward-filled, repaired, or
+synthesized. No current-session database rows were repaired or deleted.
+
+**Architecture/ADR impact.** None. Track B remains a read-only data-layer
+diagnostic utility writing plain JSON artifacts only. EMR remains isolated
+under ADR-012; no DarvaX, canonical ATHENA scoring, confidence, risk,
+Decision, TradePlan, UI, broker, or order behavior changed.
+
+**Remaining work.** EM-5 remains open pending owner-authorized
+settled-provider comparison and final Track B classification. Market close
+must not be treated as proof that Kite historical M5 data is settled.
+
+**Commit message (for the owner to use, not run by the AI):**
+
+```
+docs(data): record EM-5 Track B Tuesday live capture
+
+- Add the 2026-09-01 EM-5 Track B live-capture evidence note with the
+  frozen sample, checkpoint timestamps, manifest checksum, and raw artifact
+  integrity findings
+- Update EMR milestone, handoff, roadmap, readiness, and briefing status to
+  show live capture complete while settled-provider comparison remains
+  manual-gated and not owner-authorized
+- Preserve EMR/ID/DarvaX isolation and document that no settlement,
+  classification, EM-6, ID-5B settlement, database repair, or production
+  behavior change was performed
+```
+
+**Milestone status.** Live capture complete; EM-5 remains open pending
+settled-provider comparison and owner review.
+
+---
+
 ## ID-5B.1 — Forming-vs-Closed Evidence Classification Correction
 
 **Summary.** Narrow diagnostic/classification correction on top of the
@@ -3554,6 +3640,17 @@ No Kite/provider request was made for this addendum. Evidence note:
 `docs/research/EM-5-TRACK-B-LIVE-M5-CAPTURE-2026-08-31.md`. EM-5 remains
 `COMPLETE PENDING CANARY`, blocked on the next real live-session Track B
 capture and its later settled comparison.
+
+**Addendum: Tuesday unattended-capture reliability correction.** Audit found
+the existing Track B functions were restart-safe primitives but did not expose
+a single long-running operator invocation. Added an orchestration-only
+`unattended` command to `em5_track_b_capture_cli.py`: preflight once, wait
+efficiently for each frozen checkpoint, delegate every capture pass to
+`run_capture_phase`, update the existing manifest/artifacts, and stop after
+the 14:00 pass without calling settlement. Also hardened partial-checkpoint
+restart behavior so already-written files are never overwritten and only
+missing files are fetched. Tuesday operator checklist:
+`docs/research/EM-5-TRACK-B-TUESDAY-READINESS-2026-09-01.md`.
 
 ---
 

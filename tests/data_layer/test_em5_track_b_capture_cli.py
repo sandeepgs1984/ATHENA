@@ -1,4 +1,4 @@
-"""EM-5 Track B Monday operator flow (Owner authorization, 2026-08-28).
+"""EM-5 Track B live-session operator flow (Owner authorization, 2026-08-28).
 No live Kite calls in any test -- the provider is a fully injected fake."""
 
 from __future__ import annotations
@@ -14,11 +14,14 @@ import pytest
 
 from athena.data.em5_track_b_capture_cli import (
     DEFAULT_SYMBOL_LIQUIDITY_BUCKETS,
+    PreflightResult,
     calendar_preflight,
     estimate_request_budget,
     is_likely_settled,
+    main,
     run_capture_phase,
     run_settlement_comparison_phase,
+    run_unattended_capture,
 )
 from athena.data.live_m5_provisional_settlement_diagnostic import (
     TRACK_B_CHECKPOINT_SCHEDULE,
@@ -121,6 +124,31 @@ class TestRunCapturePhase:
 
         assert first_capture_path.read_bytes() == original_bytes  # byte-identical, never overwritten
         assert str(first_capture_path) in manifest.capture_file_paths
+
+    def test_partial_checkpoint_restart_captures_only_missing_files(self, tmp_path: Path):
+        provider = _FakeProvider(ts_close_pairs=[(datetime(2026, 8, 31, 9, 20, tzinfo=IST), "100")])
+        now = datetime(2026, 8, 31, 9, 21, tzinfo=IST)
+        run_capture_phase(
+            provider=provider, session_date=SESSION_DATE,
+            session_open_time=datetime(2026, 8, 31, 9, 15).time(), tzinfo=IST, output_dir=tmp_path,
+            run_id="em5-trackb-test", symbol_liquidity_buckets={"NSE:A": "high"}, now=now,
+        )
+        existing_path = tmp_path / "em5-trackb-test__0920__NSE_A.json"
+        original_bytes = existing_path.read_bytes()
+
+        provider_after_restart = _FakeProvider(ts_close_pairs=[(datetime(2026, 8, 31, 9, 20, tzinfo=IST), "999")])
+        manifest = run_capture_phase(
+            provider=provider_after_restart, session_date=SESSION_DATE,
+            session_open_time=datetime(2026, 8, 31, 9, 15).time(), tzinfo=IST, output_dir=tmp_path,
+            run_id="em5-trackb-test", symbol_liquidity_buckets={"NSE:A": "high", "NSE:B": "high"}, now=now,
+        )
+
+        assert existing_path.read_bytes() == original_bytes
+        assert (tmp_path / "em5-trackb-test__0920__NSE_B.json").is_file()
+        assert sorted(Path(path).name for path in manifest.capture_file_paths) == [
+            "em5-trackb-test__0920__NSE_A.json",
+            "em5-trackb-test__0920__NSE_B.json",
+        ]
 
     def test_now_must_be_timezone_aware(self, tmp_path: Path):
         provider = _FakeProvider(ts_close_pairs=[])
@@ -254,3 +282,98 @@ class TestIsLikelySettled:
 
     def test_true_once_the_minimum_days_have_passed(self):
         assert is_likely_settled(session_date=date(2026, 8, 31), today=date(2026, 9, 21)) is True
+
+
+class _Clock:
+    def __init__(self, current: datetime):
+        self.current = current
+        self.sleeps: list[float] = []
+
+    def now(self) -> datetime:
+        return self.current
+
+    def sleep(self, seconds: float) -> None:
+        self.sleeps.append(seconds)
+        from datetime import timedelta
+
+        self.current = self.current + timedelta(seconds=seconds)
+
+
+class TestRunUnattendedCapture:
+    def test_waits_for_each_checkpoint_and_stops_without_settlement(self, tmp_path: Path, monkeypatch):
+        clock = _Clock(datetime(2026, 8, 31, 9, 19, 50, tzinfo=IST))
+        provider = _FakeProvider(ts_close_pairs=[
+            (datetime.combine(SESSION_DATE, datetime.strptime(cp, "%H:%M").time(), tzinfo=IST), "100")
+            for cp in ("09:20", "09:30")
+        ])
+
+        def fake_preflight(**kwargs):
+            from athena.domain.enums import SessionType
+
+            return PreflightResult(
+                session_type=SessionType.NORMAL, resolved_symbol_count=1, unresolved_symbols=(),
+                disk_free_gb=40.0, provider=provider,
+            )
+
+        called_settlement = False
+
+        def fake_settlement(**kwargs):
+            nonlocal called_settlement
+            called_settlement = True
+            return {}
+
+        monkeypatch.setattr("athena.data.em5_track_b_capture_cli.run_preflight", fake_preflight)
+        monkeypatch.setattr("athena.data.em5_track_b_capture_cli.run_settlement_comparison_phase", fake_settlement)
+
+        manifest = run_unattended_capture(
+            config_dir=Path("config"), session_date=SESSION_DATE, output_dir=tmp_path,
+            run_id="em5-trackb-test", symbol_liquidity_buckets={"NSE:TEST": "high"},
+            checkpoints=("09:20", "09:30"), now=clock.now, sleep=clock.sleep,
+            max_sleep_seconds=600.0, log=lambda _msg: None,
+        )
+
+        assert called_settlement is False
+        assert clock.sleeps[:2] == [10.0, 600.0]
+        assert manifest.checkpoints == ("09:20", "09:30")
+        assert (tmp_path / "em5-trackb-test__0920__NSE_TEST.json").is_file()
+        assert (tmp_path / "em5-trackb-test__0930__NSE_TEST.json").is_file()
+
+    def test_preflight_failure_fails_closed_before_capture(self, tmp_path: Path, monkeypatch):
+        def fake_preflight(**kwargs):
+            raise PreflightError("no auth")
+
+        monkeypatch.setattr("athena.data.em5_track_b_capture_cli.run_preflight", fake_preflight)
+        with pytest.raises(PreflightError, match="no auth"):
+            run_unattended_capture(
+                config_dir=Path("config"), session_date=SESSION_DATE, output_dir=tmp_path,
+                run_id="em5-trackb-test", now=lambda: datetime(2026, 8, 31, 9, 20, tzinfo=IST),
+                sleep=lambda _seconds: None,
+            )
+        assert not list(tmp_path.glob("*.json"))
+
+    def test_cli_unattended_uses_default_output_and_run_id(self, tmp_path: Path, monkeypatch):
+        calls = {}
+
+        def fake_unattended(**kwargs):
+            calls.update(kwargs)
+            provider = _FakeProvider(ts_close_pairs=[])
+            return run_capture_phase(
+                provider=provider, session_date=kwargs["session_date"],
+                session_open_time=datetime(2026, 9, 1, 9, 15).time(), tzinfo=IST,
+                output_dir=kwargs["output_dir"], run_id=kwargs["run_id"],
+                now=datetime(2026, 9, 1, 14, 0, tzinfo=IST),
+            )
+
+        monkeypatch.setattr("athena.data.em5_track_b_capture_cli.run_unattended_capture", fake_unattended)
+
+        rc = main([
+            "unattended", "--session-date", "2026-09-01",
+            "--config-dir", str(tmp_path / "config"),
+            "--max-sleep-seconds", "5",
+        ])
+
+        assert rc == 0
+        assert calls["session_date"] == date(2026, 9, 1)
+        assert calls["run_id"] == "em5-track-b-20260901"
+        assert calls["output_dir"] == Path("artifacts/live/em5_track_b/2026-09-01")
+        assert calls["max_sleep_seconds"] == 5
