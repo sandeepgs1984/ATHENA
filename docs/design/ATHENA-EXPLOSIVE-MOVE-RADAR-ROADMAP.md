@@ -2,10 +2,10 @@
 
 | Field | Value |
 |---|---|
-| Status | EM-5 final validation complete; ready for owner final approval; EM-4E owner-approved / GO 2026-08-28 |
+| Status | EM-5 owner-approved / closed 2026-09-01; EM-4E owner-approved / GO 2026-08-28 |
 | Governing ADR | ADR-012 (Accepted 2026-08-21) |
 | Started | 2026-08-21 |
-| Current gate | EM-5 ready for owner final approve/close after Track B.1 acceptance and Section 14 canary PASS |
+| Current gate | EM-6 not started; requires separate owner authorization |
 | Canonical ATHENA impact | None permitted |
 
 ## 1. Purpose
@@ -239,8 +239,8 @@ recorded as
 `NOT_OBSERVED_LIVE` for all nine frozen checkpoints in
 `docs/research/EM-5-TRACK-B-LIVE-M5-CAPTURE-2026-08-31.md`. The Tuesday
 2026-09-01 live capture and settled comparison are recorded in
-`docs/research/EM-5-TRACK-B-LIVE-M5-CAPTURE-2026-09-01.md`. Recommendation:
-clear `CANARY_BLOCKED_LIVE_M5_SEMANTICS` for this frozen canary and mark EM-5
-ready for owner approval/closure. EM-5 remains open until owner approval; EM-6
-must not start until EM-5 closes and the owner explicitly authorizes the next
-milestone.
+`docs/research/EM-5-TRACK-B-LIVE-M5-CAPTURE-2026-09-01.md`. Owner final
+approval on 2026-09-01 accepts the corrected Track B outcome, clears
+`CANARY_BLOCKED_LIVE_M5_SEMANTICS` for this frozen canary, and closes EM-5
+after the unchanged Section 14 production canary PASS. EM-6 must not start
+until the owner explicitly authorizes the next milestone.

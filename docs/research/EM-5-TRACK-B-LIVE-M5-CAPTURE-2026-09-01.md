@@ -7,7 +7,7 @@
 complete; EM-5 Track B.1 zero-off-grid contract-gap correction implemented and
 owner-accepted. Corrected Track B classification:
 `NO_OFF_GRID_PROVISIONAL_OBSERVED`. Final Section 14 canary PASS; EM-5 ready
-for owner final approval.
+owner-approved / closed 2026-09-01.
 
 ## Scope
 
@@ -271,8 +271,8 @@ branches. FINAL_TEST was not read, rerun, inspected, or used.
 
 ## Remaining Work
 
-Owner review of the Track B.1 corrected classification and EM-5 closure
-recommendation. Do not start EM-6, EM-7, EM-8, or ID-6 from this evidence note.
+EM-5 owner approval / closure is recorded as of 2026-09-01. Do not start EM-6,
+EM-7, EM-8, or ID-6 from this evidence note.
 
 ## Owner Review
 
@@ -288,5 +288,5 @@ production canary against `athena_core` / 2026-08-28 via
 all-required-fields-known at every checkpoint, 99% floor PASS, relative
 baseline PASS, frozen artifact hashes PASS, checkpoint-boundary regression
 PASS, freshness PASS, hard eligibility PASS, zero provider/network calls PASS,
-and replay determinism PASS. EM-5 is ready for owner final approval but is not
-closed until owner approval.
+and replay determinism PASS. Owner final approval on 2026-09-01 closes EM-5.
+EM-6 and ID-6 remain not started pending separate owner authorization.

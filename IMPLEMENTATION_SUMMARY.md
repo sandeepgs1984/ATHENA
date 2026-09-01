@@ -6,6 +6,85 @@ status updated on approval.
 
 ---
 
+## EM-5 Final Owner Approval / Closure
+
+**Summary.** Owner/Chief Architect final approval recorded:
+**EM-5 — APPROVED / CLOSED — 2026-09-01**. This closure accepts the full EM-5
+evidence chain: accepted live-scanner contract, canonical regime wiring,
+repaired REL_VOLUME_C historical support, Tuesday Track B live capture, Track B
+settled-provider investigation, Track B.1 zero-off-grid correction, corrected
+`NO_OFF_GRID_PROVISIONAL_OBSERVED` observational outcome, cleared
+`CANARY_BLOCKED_LIVE_M5_SEMANTICS`, unchanged Section 14 canary PASS,
+full-suite/Ruff/diff-check validation, artifact integrity, FINAL_TEST sealing,
+and EMR/ID/DarvaX isolation.
+
+**Accepted interpretation.** The frozen Tuesday 2026-09-01 Track B canary
+observed all required symbols and checkpoints, produced 81/81 successful Kite
+raw captures, contained 1,768 provisional rows, and contained 0 off-grid
+provisional timestamps. Therefore the accepted Track B observational result is
+`NO_OFF_GRID_PROVISIONAL_OBSERVED`. This means only that this complete frozen
+canary did not observe the provisional off-grid phenomenon. It does not mean
+Kite never returns off-grid M5, current-session M5 is universally stable,
+provisional candles always equal later settled representation, or ID-5B's
+independent `CASE_B_CONTENT_CHANGES` result is invalid.
+
+**Settlement and Section 14.** The Track B settled-provider comparison used the
+existing owner-authorized `force=True` override because the 21-day
+settlement-readiness guard had not naturally passed; that artifact remains
+provenance for what Kite returned at the recorded request timestamp only. The
+unchanged Section 14 production canary is accepted as PASS: `athena_core`,
+518 mature instruments, session `2026-08-28`, model `v1`, all nine frozen
+checkpoints, 9,324/9,324 all-required-fields-known at every checkpoint
+(100.0000%), 99% floor PASS, relative baseline PASS, 18 frozen model artifact
+hashes PASS, checkpoint-boundary regression PASS, freshness PASS, hard
+eligibility PASS, zero provider/network requests, deterministic replay PASS.
+
+**Verification accepted.** Full suite: 2,956 passed, 1 skipped, 1 warning. Ruff
+PASS / zero findings on EM-5/Track B.1 modified Python files. `git diff
+--check`: CLEAN.
+
+**Artifact integrity.** Verified without regeneration: Tuesday Track B
+manifest
+`b0f46dab7233df61ec4c9e606758f455e03cda064b19cfff7a72ccfa480573c4`; Tuesday
+Track B raw aggregate hash-list
+`0a50585dc741d9e2c8ccbbf8d4d065aba71ad7939a7bfb80e53ff23a23750154`; Track B
+settlement artifact
+`974531de8703982fcab49d15924b21e986728e0fd4c2759b034af36f6345a0a1`; ID-5B
+Monday manifest
+`55d08aaeccccd0249035d6f07e47688e8368289a3374eff132c9a3298be19098`; ID-5B
+settlement artifact
+`23c6d79e4fd03f78aa57b2a68091647e6fb3b6a1ae8567ddc47f756b8351d5c1`.
+
+**Boundary.** FINAL_TEST remains sealed. No production behavior, canonical
+ATHENA score, confidence, risk, eligibility, Decision, TradePlan, ID
+methodology, DarvaX, UI, broker/order behavior, EM-4 model, coefficient,
+calibration, artifact, ranking, scanner-threshold, or Section 14 methodology
+change is authorized by this approval-recording step.
+
+**Files modified.** `ATHENA_BRIEFING.md`, `IMPLEMENTATION_SUMMARY.md`,
+`docs/ATHENA-EMR-HANDOFF.md`, `docs/MILESTONES.md`,
+`docs/design/ATHENA-EXPLOSIVE-MOVE-RADAR-ROADMAP.md`,
+`docs/research/EM-5-TRACK-B-LIVE-M5-CAPTURE-2026-09-01.md`.
+
+**Remaining work.** EM-6, EM-7, EM-8, and ID-6 remain not started pending
+separate owner authorization.
+
+**Commit message (for the owner to use, not run by the AI):**
+
+```
+docs(emr): record EM-5 owner approval and closure
+
+- Mark EM-5 owner-approved and closed after Track B.1 acceptance and the
+  unchanged Section 14 production canary PASS
+- Preserve the narrow NO_OFF_GRID_PROVISIONAL_OBSERVED interpretation,
+  immutable evidence hashes, and sealed FINAL_TEST boundary
+- Keep EM-6 and ID-6 not started pending separate owner authorization
+```
+
+**Outcome:** EM-5 owner-approved and closed. EM-6 and ID-6 not started.
+
+---
+
 ## EM-5 Final Validation Checkpoint — Ready for Owner Final Approval
 
 **Summary.** Per owner authorization, performed the final EM-5 validation-only
