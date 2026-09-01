@@ -1,8 +1,8 @@
 # EM-5 Track B Tuesday Readiness Checklist
 
 **Target session:** 2026-09-01
-**Status:** Live capture complete; settled-provider comparison pending
-explicit owner authorization.
+**Status:** Live capture phase owner-approved; settled-provider comparison
+pending explicit owner authorization.
 **Scope:** Operational checklist plus unattended orchestration; no methodology
 change.
 
@@ -37,6 +37,9 @@ unattended runner under `caffeinate`. Final evidence is recorded in
 - `NOT_OBSERVED_LIVE` checkpoints: 0.
 - Off-grid `ts_open` values in raw live files: 0.
 - Settlement comparison: not run.
+
+Owner review approved the live capture phase only. EM-5 remains
+`COMPLETE PENDING SETTLED COMPARISON`.
 
 ## Frozen Sample
 

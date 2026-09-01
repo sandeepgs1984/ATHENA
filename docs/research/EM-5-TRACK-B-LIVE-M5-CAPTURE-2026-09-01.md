@@ -3,8 +3,8 @@
 **Date:** 2026-09-01
 **Track:** Explosive Move Radar (EMR)
 **Milestone:** EM-5 Track B — live provisional-vs-settled M5 semantics
-**Status:** Live capture complete; settled-provider comparison not yet
-owner-authorized.
+**Status:** Live capture phase owner-approved; settled-provider comparison not
+yet owner-authorized.
 
 ## Scope
 
@@ -117,3 +117,8 @@ The live capture phase is complete. EM-5 Track B remains open pending the
 settled-provider comparison and classification phase. Do not run that phase
 until the owner explicitly authorizes it. Market close alone must not be
 treated as proof that Kite historical M5 data is settled.
+
+## Owner Review
+
+Owner review approved the Tuesday 2026-09-01 live capture phase. This approval
+covers live capture only. EM-5 remains `COMPLETE PENDING SETTLED COMPARISON`.

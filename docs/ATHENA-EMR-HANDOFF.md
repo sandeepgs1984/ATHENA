@@ -1,8 +1,9 @@
 # ATHENA Explosive Move Radar Handoff
 
 **Snapshot:** 2026-09-01 (EM-5 scanner contract ACCEPTED, COMPLETE PENDING
-SETTLED COMPARISON — Tuesday Track B live capture complete; settled-provider
-comparison not owner-authorized yet; supersedes the 2026-08-31 snapshot below)
+SETTLED COMPARISON — Tuesday Track B live capture phase owner-approved;
+settled-provider comparison not owner-authorized yet; supersedes the
+2026-08-31 snapshot below)
 **Governing boundary:** ADR-012
 **Current state:** EM-0 through EM-4E are all owner-approved (GO), including
 the sealed FINAL_TEST evaluation. EM-5 (the replayable bulk-input live
@@ -20,7 +21,7 @@ Artifact inspection on **Monday 2026-08-31 15:39 IST** found no EM-5 Track B
 live capture files; all nine frozen checkpoints were therefore
 `NOT_OBSERVED_LIVE` for that date. On **Tuesday 2026-09-01**, the
 owner-authorized live capture completed for the frozen 9-symbol sample across
-all 9 checkpoints: 81/81 raw Kite files, 0 provider failures, 0
+all 9 checkpoints and the owner approved that live-capture phase: 81/81 raw Kite files, 0 provider failures, 0
 `NOT_OBSERVED_LIVE` checkpoints, and 0 off-grid raw `ts_open` values. The
 remaining Track B work is the settled-provider comparison and classification,
 which must not run until explicitly owner-authorized. Market close alone is
@@ -66,7 +67,7 @@ misattribute one track's evidence to the other's decision.
 | EM-4C | Owner-approved (GO) 2026-08-28 — logistic beats deterministic on PR-AUC in 18/18 real combinations on real VALIDATION |
 | EM-4D | Owner-approved (GO) 2026-08-28 — all 162 (family×threshold×checkpoint) cells Platt-calibrated |
 | EM-4E | Owner-approved / GO 2026-08-28 — sealed FINAL_TEST evaluation complete (702,702 rows, 157 sessions); calibrated logistic beats deterministic 18/18, replicating VALIDATION on a third, never-before-touched partition. FINAL_TEST remains sealed |
-| EM-5 | **COMPLETE PENDING SETTLED COMPARISON** — contract ACCEPTED 2026-08-28. Regime wiring RESOLVED; REL_VOLUME_C historical support REPAIRED (real backfill, 23/23 resolvable prior sessions across all 3 liquidity tiers); current-day live M5 semantics remains the one OPEN BLOCKER, but Tuesday 2026-09-01 Track B live capture is complete (81/81 Kite raw files, 0 provider failures, 0 `NOT_OBSERVED_LIVE`, 0 off-grid raw `ts_open`); settled-provider comparison/classification remains pending explicit owner authorization |
+| EM-5 | **COMPLETE PENDING SETTLED COMPARISON** — contract ACCEPTED 2026-08-28. Regime wiring RESOLVED; REL_VOLUME_C historical support REPAIRED (real backfill, 23/23 resolvable prior sessions across all 3 liquidity tiers); current-day live M5 semantics remains the one OPEN BLOCKER, but Tuesday 2026-09-01 Track B live capture phase is owner-approved (81/81 Kite raw files, 0 provider failures, 0 `NOT_OBSERVED_LIVE`, 0 off-grid raw `ts_open`); settled-provider comparison/classification remains pending explicit owner authorization |
 | EM-6 | Planned — add EMR research UI only after scanner approval |
 | EM-7 | Planned — isolated shadow validation, OFF-vs-shadow comparison |
 | EM-8 | Planned — research-only / continued shadow / retirement / new integration ADR decision |
@@ -222,7 +223,8 @@ separate five-instrument artifacts must not be substituted for EM-5 Track B's
 nine-equity liquidity-bucket sample.
 
 **Tuesday 2026-09-01 status:** owner-authorized live capture completed via the
-existing unattended runner under `caffeinate`; final raw artifacts live under
+existing unattended runner under `caffeinate` and the owner approved the live
+capture phase; final raw artifacts live under
 `artifacts/live/em5_track_b/2026-09-01/`, with the evidence note at
 `docs/research/EM-5-TRACK-B-LIVE-M5-CAPTURE-2026-09-01.md`. Settlement was
 not run. Do not run settlement comparison until explicit owner authorization.

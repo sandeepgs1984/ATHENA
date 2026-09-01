@@ -87,8 +87,11 @@ docs(data): record EM-5 Track B Tuesday live capture
   behavior change was performed
 ```
 
-**Milestone status.** Live capture complete; EM-5 remains open pending
-settled-provider comparison and owner review.
+**Owner review.** Owner approved the Tuesday 2026-09-01 EM-5 Track B live
+capture phase only. EM-5 remains `COMPLETE PENDING SETTLED COMPARISON`.
+
+**Milestone status.** Live capture owner-approved; EM-5 remains open pending
+settled-provider comparison.
 
 ---
 
