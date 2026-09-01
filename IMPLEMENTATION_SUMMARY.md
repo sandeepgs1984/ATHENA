@@ -6,6 +6,117 @@ status updated on approval.
 
 ---
 
+## ID-5B — Settled-Provider Comparison and Final CASE Classification
+
+**Summary.** Executed the owner-authorized ID-5B settled-provider
+comparison for the Monday 2026-08-31 live M5 semantics canary. This was
+the final comparison/classification step for the already accepted live
+capture and ID-5B.1 correction work. Scope was deliberately limited to the
+frozen five-instrument canary, raw-evidence comparison, documentation, and
+owner-review preparation.
+
+**Authorization boundary.** Authorization applied only to ID-5B settlement
+comparison for `2026-08-31`: `NSE:NIFTY 50`, `NSE:NIFTY BANK`,
+`NSE:NIFTY IT`, `NSE:RELIANCE`, and `NSE:INFY`. No EM-5 settlement,
+EM-6, ID-6, DarvaX, canonical scoring, confidence, risk, eligibility,
+Decision, TradePlan, broker/order, database repair, or production M5
+behavior work was performed.
+
+**Command.** Used the existing ID-5B manual-gated settlement path:
+`PYTHONPATH=src python3 -m athena.data.id5b_live_m5_semantics_canary settlement --session-date 2026-08-31 --force`.
+This reused the approved ID-5B wrapper around the shared raw diagnostic
+primitives because ID-5B needs the actual provisional capture `request_ts`
+to separate `FORMING_AT_CAPTURE`, `CLOSED_AT_CAPTURE`, and
+`OFF_GRID_PROVISIONAL` rows.
+
+**Provider evidence.** The comparison produced
+`artifacts/live/id5b/2026-08-31/id5b-live-m5-20260831__settlement_comparison.json`
+with SHA-256
+`23c6d79e4fd03f78aa57b2a68091647e6fb3b6a1ae8567ddc47f756b8351d5c1`
+and file mtime `2026-09-01T15:44:18+0530`. The existing comparison report
+does not persist full settled response candle counts or a first-class
+settled request timestamp field, so those cannot be reconstructed from
+the artifact without inventing metadata. No extra settled requests were
+made after the approved run.
+
+**Comparison results.** Final classification is
+`CASE_B_CONTENT_CHANGES`, pending owner review. The report contains 723
+comparison rows: 705 `CLOSED_AT_CAPTURE`, 18 `FORMING_AT_CAPTURE`, and 0
+`OFF_GRID_PROVISIONAL`. The 18 forming-at-capture rows changed and remain
+excluded from CASE B evidence. Of the closed-at-capture rows, 704 mapped
+stably by unique exact OHLCV content and 1 closed row had no exact settled
+OHLCV candidate. There were 0 ambiguous mappings and 0 off-grid
+provisional rows.
+
+**Closed-row CASE B evidence.** The sole closed-at-capture content/no-match
+row is `NSE:NIFTY 50`, checkpoint `14:00`, provisional `ts_open`
+`2026-08-31T13:55:00+05:30`, captured at
+`2026-08-31T14:00:01.048233+05:30`, provisional OHLCV
+`24060.1, 24060.1, 24043.2, 24043.75, 0`, with no exact settled
+candidate. This is the only CASE B evidence in the frozen canary.
+
+**Reconciliation.** The Monday canary did not reproduce the earlier
+off-grid provisional root-cause shape; it found 0 off-grid rows. That does
+not prove Kite never returns off-grid historical M5 rows. It only means
+this frozen ID-5B run's final settled comparison produced CASE B through
+one already-closed row with no exact settled OHLCV candidate.
+
+**Recommendation.** Another ID-5B live canary is not scientifically
+necessary for the stated milestone question because the final settled
+comparison produced a concrete CASE B finding inside the frozen canary and
+confirmed 0 off-grid rows in this sample. If the owner approves this final
+classification, ID-5B can close and ID-5 overall can close. ID-6 remains
+not started until explicit owner approval.
+
+**Files created.** None in versioned source. One git-ignored evidence
+artifact was generated:
+`artifacts/live/id5b/2026-08-31/id5b-live-m5-20260831__settlement_comparison.json`.
+
+**Files modified.** `docs/research/ID-5B-LIVE-M5-SEMANTICS-CAPTURE-2026-08-31.md`,
+`docs/ATHENA-ID-TRACK-HANDOFF.md`, `docs/MILESTONES.md`,
+`ATHENA_BRIEFING.md`, `IMPLEMENTATION_SUMMARY.md` (this entry).
+
+**Tests added.** None; this was the owner-authorized execution of the
+already implemented ID-5B comparison path plus documentation.
+
+**Verification.** Raw Monday capture files and the Monday manifest were
+not modified, regenerated, normalized, rounded, resampled, repaired, or
+deleted. The Monday manifest SHA-256 remained
+`55d08aaeccccd0249035d6f07e47688e8368289a3374eff132c9a3298be19098`.
+The EM-5 Tuesday manifest SHA-256 remained
+`b0f46dab7233df61ec4c9e606758f455e03cda064b19cfff7a72ccfa480573c4`.
+The ATHENA database mtime remained older than the settlement report mtime,
+which is consistent with no DB writes by the settlement comparison.
+
+**Architecture/ADR impact.** None. The comparison path is read-only
+against raw artifacts and provider historical data, writes only the
+settlement report artifact, and preserves provider independence,
+deterministic artifact comparison, replayability, EMR isolation, DarvaX
+isolation, and production M5 behavior.
+
+**Remaining work.** Owner/principal-engineer review of the final
+`CASE_B_CONTENT_CHANGES` classification. No next ID milestone may begin
+until the owner explicitly approves ID-5B and ID-5 closure.
+
+**Commit message (for the owner to use, not run by the AI):**
+
+```
+docs(data): record ID-5B settled comparison result
+
+- Add the owner-authorized 2026-08-31 ID-5B settled-provider comparison
+  result with the frozen five-instrument canary, artifact checksum, and
+  final CASE_B_CONTENT_CHANGES classification pending owner review
+- Document that forming-at-capture changes remain excluded from CASE B
+  while one closed-at-capture NIFTY 50 row has no exact settled OHLCV
+  candidate
+- Preserve raw-artifact integrity, EMR isolation, manual settlement gating,
+  and the rule that ID-6 does not start before owner approval
+```
+
+**Milestone status.** Ready for owner review; not owner-approved yet.
+
+---
+
 ## EM-5 Track B — Tuesday Live M5 Capture
 
 **Summary.** Executed the owner-authorized EM-5 Track B Tuesday live capture
