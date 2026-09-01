@@ -40,7 +40,7 @@ the artifact without inventing metadata. No extra settled requests were
 made after the approved run.
 
 **Comparison results.** Final classification is
-`CASE_B_CONTENT_CHANGES`, pending owner review. The report contains 723
+`CASE_B_CONTENT_CHANGES`, owner-approved 2026-09-01. The report contains 723
 comparison rows: 705 `CLOSED_AT_CAPTURE`, 18 `FORMING_AT_CAPTURE`, and 0
 `OFF_GRID_PROVISIONAL`. The 18 forming-at-capture rows changed and remain
 excluded from CASE B evidence. Of the closed-at-capture rows, 704 mapped
@@ -61,12 +61,19 @@ not prove Kite never returns off-grid historical M5 rows. It only means
 this frozen ID-5B run's final settled comparison produced CASE B through
 one already-closed row with no exact settled OHLCV candidate.
 
-**Recommendation.** Another ID-5B live canary is not scientifically
-necessary for the stated milestone question because the final settled
-comparison produced a concrete CASE B finding inside the frozen canary and
-confirmed 0 off-grid rows in this sample. If the owner approves this final
-classification, ID-5B can close and ID-5 overall can close. ID-6 remains
-not started until explicit owner approval.
+**Owner decision.** ID-5B final settled-provider classification
+`CASE_B_CONTENT_CHANGES` was owner-approved on 2026-09-01. ID-5B is CLOSED
+and no additional live canary is required. ID-5 is also owner-approved and
+CLOSED as of 2026-09-01. ID-6 remains not started and requires separate
+owner-authorized scope/design review.
+
+**Engineering interpretation.** Current-session Kite M5 evidence can differ
+from the later settled historical representation even after a candle
+satisfied ATHENA's deterministic completed-candle boundary. This is a narrow
+engineering conclusion, not a universal provider law: the result does not
+mean all current-session M5 candles are unstable, Kite always changes
+completed candles, or Kite always returns off-grid timestamps. In this canary,
+704/705 eligible closed-at-capture observations remained stable.
 
 **Files created.** None in versioned source. One git-ignored evidence
 artifact was generated:
@@ -94,26 +101,26 @@ settlement report artifact, and preserves provider independence,
 deterministic artifact comparison, replayability, EMR isolation, DarvaX
 isolation, and production M5 behavior.
 
-**Remaining work.** Owner/principal-engineer review of the final
-`CASE_B_CONTENT_CHANGES` classification. No next ID milestone may begin
-until the owner explicitly approves ID-5B and ID-5 closure.
+**Remaining work.** ID-6 scope/design review may now be considered, but only
+under separate owner authorization. No ID-6 implementation or design was
+started by this approval-recording step.
 
 **Commit message (for the owner to use, not run by the AI):**
 
 ```
-docs(data): record ID-5B settled comparison result
+docs(data): record ID-5B and ID-5 owner approval
 
-- Add the owner-authorized 2026-08-31 ID-5B settled-provider comparison
-  result with the frozen five-instrument canary, artifact checksum, and
-  final CASE_B_CONTENT_CHANGES classification pending owner review
-- Document that forming-at-capture changes remain excluded from CASE B
-  while one closed-at-capture NIFTY 50 row has no exact settled OHLCV
-  candidate
-- Preserve raw-artifact integrity, EMR isolation, manual settlement gating,
-  and the rule that ID-6 does not start before owner approval
+- Mark ID-5B owner-approved and closed with the accepted
+  CASE_B_CONTENT_CHANGES final settled-provider classification
+- Mark ID-5 owner-approved and closed now that ID-5A through ID-5G.1
+  complete the data-foundation milestone
+- Preserve the narrow engineering interpretation, artifact integrity, EMR
+  isolation, production-code freeze, and the rule that ID-6 requires
+  separate owner authorization
 ```
 
-**Milestone status.** Ready for owner review; not owner-approved yet.
+**Milestone status.** ID-5B owner-approved/CLOSED 2026-09-01. ID-5
+owner-approved/CLOSED 2026-09-01. ID-6 not started.
 
 ---
 

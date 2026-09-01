@@ -3,9 +3,9 @@
 **Date:** 2026-08-31
 **Track:** Intraday Intelligence (ID)
 **Milestone:** ID-5B — Live Current-Session M5 Semantics Canary
-**Status:** Live capture phase complete; ID-5B.1 classification correction
-owner-approved and closed; settled-provider comparison complete and ready for
-owner review.
+**Status:** OWNER APPROVED / CLOSED 2026-09-01. Final settled-provider
+classification accepted as `CASE_B_CONTENT_CHANGES`; ID-5 is also OWNER
+APPROVED / CLOSED 2026-09-01. ID-6 remains not started.
 
 ## Scope
 
@@ -108,10 +108,11 @@ timestamps:
 - `CLOSED_AT_CAPTURE`: 420 rows, 0 changed later in same-day overlap.
 - `OFF_GRID_PROVISIONAL`: 0 rows.
 
-Interim reading: current-session boundary/forming M5 rows are not stable OHLCV
-evidence. Closed-at-capture canonical rows appeared stable in the same-day
-overlap inventory. This is still not the final ID-5B CASE decision because the
-milestone's full deliverable requires a later provider-settled comparison.
+Interim same-day reading before the settled comparison: current-session
+boundary/forming M5 rows were not stable OHLCV evidence. Closed-at-capture
+canonical rows appeared stable in the same-day overlap inventory. The final
+ID-5B CASE decision is recorded below from the later provider-settled
+comparison.
 
 ## Settled-Provider Comparison
 
@@ -186,17 +187,17 @@ Evidence supporting CASE B:
   excluded from CASE B/C evidence by ID-5B.1 and are reported only as expected
   forming-candle evolution.
 
-Recommendation: ID-5B can close after owner review with CASE B as the
-evidence-supported result. Another live canary is not scientifically necessary
-to close ID-5B because the settled comparison found at least one eligible
+Owner decision: ID-5B is OWNER APPROVED / CLOSED 2026-09-01 with CASE B as
+the evidence-supported result. No additional live canary is required for
+closure because the settled comparison found at least one eligible
 closed-at-capture content mismatch. This does not prove a universal provider
-law; it is enough to preserve a conservative engineering stance toward
-current-session M5.
+law; it preserves the narrower engineering conclusion that current-session
+Kite M5 evidence can differ from later settled historical representation even
+after a candle satisfied ATHENA's deterministic completed-candle boundary.
 
-Recommendation for ID-5 overall: if the owner approves this final ID-5B
-classification, ID-5 can close. ID-6 should remain not started until that
-owner approval is recorded and the next milestone scope is explicitly
-authorized.
+Owner decision for ID-5 overall: ID-5 is OWNER APPROVED / CLOSED 2026-09-01.
+ID-6 remains not started; its scope/design may now be considered only under a
+separate owner authorization.
 
 ## Reconciliation With Earlier Root Cause
 
@@ -242,6 +243,5 @@ coverage passed.
 
 ## Remaining Work
 
-Owner review of the settled-provider comparison and CASE B classification.
-Do not begin ID-6 until ID-5B has an owner-approved CASE decision and the
-owner approves the resulting live-M5 treatment.
+ID-6 scope/design review, only after separate owner authorization. Do not begin
+ID-6 from this approval note.

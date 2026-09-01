@@ -1,21 +1,19 @@
 # ATHENA Intraday Intelligence (ID-Track) Handoff
 
-**Snapshot:** 2026-09-01 (ID-5E, ID-5F, ID-5G/ID-5G.1 all owner-approved
-and CLOSED; ID-5B live capture phase owner-approved; ID-5B.1 classification
-correction owner-approved and CLOSED; settled-provider comparison complete
-with CASE B, pending owner review)
+**Snapshot:** 2026-09-01 (ID-5B final settled-provider classification
+owner-approved and CLOSED; ID-5 owner-approved and CLOSED; ID-6 not started)
 **Governing boundary:** none dedicated yet — this track extends the
 existing frozen `ATHENA-002-System-Blueprint.md` module map (§6 of
 `ATHENA_BRIEFING.md`), it does not have its own ADR the way EMR (ADR-012)
 or DarvaX (ADR-010) do.
 **Current state:** ID-0 through ID-5G.1 are all owner-approved. ID-5B
-(Live Current-Session M5 Semantics Canary) has completed its live capture
-phase for **Monday 2026-08-31** using the frozen 5-instrument canary, and
-the owner approved that live-capture phase. ID-5B.1 then corrected the
-ID-specific CASE classifier so forming-at-capture candle changes cannot
-produce CASE B; the owner approved and closed ID-5B.1. ID-5B is **not
-closed** until the settled-provider comparison and CASE B decision receive
-owner review. Evidence note:
+(Live Current-Session M5 Semantics Canary) captured the **Monday
+2026-08-31** frozen 5-instrument canary, ID-5B.1 corrected the
+forming-vs-closed CASE classifier, and the owner approved the final
+settled-provider classification `CASE_B_CONTENT_CHANGES` on 2026-09-01.
+ID-5B is CLOSED and ID-5 is CLOSED. ID-6 remains not started; its design
+may now be considered only under a separate owner authorization. Evidence
+note:
 `docs/research/ID-5B-LIVE-M5-SEMANTICS-CAPTURE-2026-08-31.md`.
 
 **Read `docs/ATHENA-EMR-HANDOFF.md` §6/§8 before touching anything on
@@ -40,9 +38,9 @@ Track B capture is running the same morning.
 | ID-3.1 | Owner-approved 2026-08-29 — fixed shared `list_candles_recent(limit=100)` truncation and ORB slot-count-vs-canonical-slot completeness |
 | ID-4 | Architecture accepted 2026-08-29 — `RelativeStrengthContext`, not fully closed until ID-4.1 |
 | ID-4.1 | Owner-approved 2026-08-29 — fixed comparable-constituent cutoff bug (opening-only constituents wrongly capping the cutoff) |
-| ID-5 | **Overall OPEN — the umbrella milestone for core index M5 data-quality; stays open until ID-5B closes.** Data-foundation corrective, not a trading-methodology milestone |
+| ID-5 | **OWNER APPROVED / CLOSED 2026-09-01** — umbrella milestone for core index M5 data-quality. ID-5A, ID-5B, ID-5C, ID-5D/ID-5D.1, ID-5E, ID-5F, and ID-5G/ID-5G.1 together complete the data-foundation milestone |
 | ID-5A | Owner-authorized, EXECUTED and CLOSED 2026-08-29 — real settled-session M5 repair for 2026-08-28, 537/537 instruments, 0 failures |
-| ID-5B | **SETTLED COMPARISON COMPLETE; CASE B READY FOR OWNER REVIEW** — Live Current-Session M5 Semantics Canary captured 25 raw files on 2026-08-31 for the frozen 5-instrument canary; owner approved the capture phase. ID-5B.1 corrected classification to partition `FORMING_AT_CAPTURE`, `CLOSED_AT_CAPTURE`, and `OFF_GRID_PROVISIONAL` using actual `request_ts` plus `is_candle_completed`; forming changes no longer count as CASE B, and the owner approved that correction. The owner-authorized settled-provider comparison found 18 forming-at-capture rows changed, 704 closed-at-capture rows stable by unique exact OHLCV mapping, 1 closed-at-capture row with no exact settled OHLCV candidate (`NSE:NIFTY 50`, `13:55`, captured at `14:00:01`), 0 off-grid rows, and 0 ambiguous mappings; final classification: `CASE_B_CONTENT_CHANGES`, pending owner review. See `docs/research/ID-5B-LIVE-M5-SEMANTICS-CAPTURE-2026-08-31.md` |
+| ID-5B | **OWNER APPROVED / CLOSED 2026-09-01** — final settled-provider classification accepted as `CASE_B_CONTENT_CHANGES`. Live Current-Session M5 Semantics Canary captured 25 raw files on 2026-08-31 for the frozen 5-instrument canary; owner approved the capture phase. ID-5B.1 corrected classification to partition `FORMING_AT_CAPTURE`, `CLOSED_AT_CAPTURE`, and `OFF_GRID_PROVISIONAL` using actual `request_ts` plus `is_candle_completed`; forming changes no longer count as CASE B/C, and the owner approved that correction. The owner-authorized settled-provider comparison found 18 forming-at-capture rows changed, 704 closed-at-capture rows stable by unique exact OHLCV mapping, 1 eligible closed-at-capture row with no exact settled OHLCV candidate (`NSE:NIFTY 50`, `13:55`, captured at `14:00:01`), 0 off-grid rows, and 0 ambiguous mappings. No additional live canary is required for closure. See `docs/research/ID-5B-LIVE-M5-SEMANTICS-CAPTURE-2026-08-31.md` |
 | ID-5C | Owner-approved 2026-08-29 — `GapContext` (previous-session-close→current-session-open), D1-only, independent of ID-5B |
 | ID-5D | Architecture/methodology accepted 2026-08-29 — `RelativeVolumeContext`, not fully closed until ID-5D.1 |
 | ID-5D.1 | Owner-approved 2026-08-29 — current-window contiguity + retrieval-policy (`earliest_candle_ts`) correctness fixes |
@@ -50,7 +48,7 @@ Track B capture is running the same morning.
 | ID-5F | Owner-approved 2026-08-30 — `get_latest_quote(..., as_of=...)` market-time point-in-time safety for quotes |
 | ID-5G | Architecture accepted 2026-08-30 — `get_latest_snapshot_as_of(as_of)` for MarketSnapshot, not fully closed until ID-5G.1 |
 | ID-5G.1 | Owner-approved 2026-08-30 — full sub-second, offset-safe precision fix for both snapshot point-in-time methods |
-| ID-6 | Not started — scope TBD, pending ID-5B's live-session result and the owner's resulting live-M5-handling decision |
+| ID-6 | Not started — may now be considered for separate owner-authorized scope/design review informed by the accepted ID-5B CASE B evidence |
 
 The full detailed evidence for every closed milestone above is in
 `docs/MILESTONES.md`'s "Intraday Intelligence Track" section (long — this
@@ -145,13 +143,13 @@ pre-existing baseline rather than ignoring it).
 
 ## 6. ID-6 — not yet scoped
 
-ID-6 has no design yet. Its scope is explicitly "TBD, pending ID-5B's
-live-session result and the owner's resulting live-M5-handling decision"
-(`docs/MILESTONES.md`). Do not propose or begin ID-6 design before ID-5B
-closes — its own classification (CASE A/B/C/D, see §7) is a direct input
-to what ID-6 should even be.
+ID-6 has no design yet. Now that ID-5B and ID-5 are owner-approved/CLOSED,
+ID-6 may be considered for a separate owner-authorized scope/design review
+informed by the accepted `CASE_B_CONTENT_CHANGES` evidence. This approval
+record does not authorize ID-6; do not propose, design, or implement it
+without the next explicit owner instruction.
 
-## 7. ID-5B — the one open item
+## 7. ID-5B — closed result
 
 **Objective:** determine what Kite's current-session provisional M5 rows
 actually mean — timestamp-only drift (a mislabeled bucket that settles to
@@ -196,27 +194,24 @@ OR15, OR30, `RelativeStrengthContext`, `RelativeVolumeContext`
 availability/state. This quantifies the real operational impact of
 provider settlement lag; it does not change any of those engines.
 
-**Tooling:** the low-level diagnostic primitives already exist in
-`src/athena/data/live_m5_provisional_settlement_diagnostic.py` (built for
-EMR's own EM-5 Track B investigation of the identical real-world
-phenomenon — see §8). Whoever picks up ID-5B must decide, as an explicit
-Monday-morning design step (do not silently assume either path): (a) reuse
-these primitives directly with ID-5B's own 5-instrument canary and
-checkpoint schedule, producing a separate capture run and a separate
-classification report scoped to ID-5B's own consuming question, or (b)
-build a small ID-5-specific wrapper analogous to
-`em5_track_b_capture_cli.py` but parameterized for the ID-5B canary. Do
-NOT simply consume EM-5's own Track B evidence as a substitute for ID-5B's
-own capture — the instrument samples differ (indexes are in ID-5B's
-canary, not in EM-5's), and the two milestones' owner-approval processes
-are separate even though the underlying mechanism is shared.
+**Tooling used:** ID-5B used the small ID-specific wrapper
+`src/athena/data/id5b_live_m5_semantics_canary.py` around the shared
+read-only primitive
+`src/athena/data/live_m5_provisional_settlement_diagnostic.py`. This
+preserved ID-5B's own frozen 5-instrument canary, manifest/report names,
+request budgets, and CASE A/B/C/D mapping while keeping EM-5 Track B
+evidence separate.
 
-**Deliverable:** one consolidated "ID-5B Live M5 Semantics Review Summary"
-covering the full classification evidence, the CASE A/B/C/D decision, the
-observed live analytical impact, a proposed (not implemented) ATHENA
-runtime treatment IF the evidence supports one, and required follow-up
-tests for that proposal. Do NOT implement the proposed remediation during
-ID-5B itself — that requires a fresh owner review and a new milestone.
+**Closed result:** final owner-approved classification is
+`CASE_B_CONTENT_CHANGES`. The correct engineering conclusion is narrow:
+current-session Kite M5 evidence can differ from the later settled
+historical representation even after a candle satisfied ATHENA's
+deterministic completed-candle boundary. This does not establish that all
+current-session M5 candles are unstable, that Kite always changes
+completed candles, or that Kite always returns off-grid timestamps. In
+this canary, 704/705 eligible closed-at-capture rows remained stable.
+Any production treatment belongs to a separate future milestone; ID-5B
+itself did not implement a runtime workaround.
 
 ## 8. Cross-track isolation with EMR — verified 2026-08-30
 
