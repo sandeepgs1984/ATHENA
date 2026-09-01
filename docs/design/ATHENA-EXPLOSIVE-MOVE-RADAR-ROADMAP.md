@@ -2,10 +2,10 @@
 
 | Field | Value |
 |---|---|
-| Status | EM-5 Track B.1 zero-off-grid correction ready for owner review; EM-4E owner-approved / GO 2026-08-28 |
+| Status | EM-5 final validation complete; ready for owner final approval; EM-4E owner-approved / GO 2026-08-28 |
 | Governing ADR | ADR-012 (Accepted 2026-08-21) |
 | Started | 2026-08-21 |
-| Current gate | EM-5 owner review pending after Track B.1 corrected `NO_OFF_GRID_PROVISIONAL_OBSERVED` classification |
+| Current gate | EM-5 ready for owner final approve/close after Track B.1 acceptance and Section 14 canary PASS |
 | Canonical ATHENA impact | None permitted |
 
 ## 1. Purpose

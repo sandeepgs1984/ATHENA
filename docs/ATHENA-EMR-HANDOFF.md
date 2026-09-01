@@ -2,14 +2,16 @@
 
 **Snapshot:** 2026-09-01 (EM-5 scanner contract ACCEPTED; Tuesday Track B
 live capture phase owner-approved; Track B.1 zero-off-grid contract-gap
-correction implemented; corrected classification
-`NO_OFF_GRID_PROVISIONAL_OBSERVED`; EM-5 owner review pending)
+correction owner-accepted; corrected classification
+`NO_OFF_GRID_PROVISIONAL_OBSERVED`; final Section 14 canary PASS; EM-5
+ready for owner final approval)
 **Governing boundary:** ADR-012
 **Current state:** EM-0 through EM-4E are all owner-approved (GO), including
 the sealed FINAL_TEST evaluation. EM-5 (the replayable bulk-input live
 scanner, no UI) has its contract `ACCEPTED` by Owner/Chief Architect
-(2026-08-28) and is functionally complete pending exactly one open
-blocker: **current-day live M5 semantics**. Real M5 timestamps still drift
+(2026-08-28) and is functionally complete pending owner final approval.
+The prior open blocker, **current-day live M5 semantics**, is cleared for the
+frozen Tuesday 2026-09-01 Track B canary. Real M5 timestamps still drift
 off-grid after ~09:35-09:40 in the *current* (still-forming) trading
 session specifically — prior-day/settled data is now clean (see the
 ID-track's own ID-5A repair, §7 below, for the mechanism that fixed
@@ -32,9 +34,14 @@ canary had none. Track B.1 adds the explicit observational outcome
 `NO_OFF_GRID_PROVISIONAL_OBSERVED` for a complete successful canary with zero
 off-grid provisional rows. Raw-only replay of the immutable Tuesday evidence
 now produces that corrected classification. Recommendation: the specific
-`CANARY_BLOCKED_LIVE_M5_SEMANTICS` blocker can clear for this frozen canary,
-but EM-5 is not closed until owner review. This is not FAILED and does not
-authorize EM-6.
+`CANARY_BLOCKED_LIVE_M5_SEMANTICS` blocker is cleared for this frozen canary.
+Final validation also ran the unchanged Section 14 full nine-checkpoint
+production canary against `athena_core` / 2026-08-28 via
+`run_em5_production_canary()`: PASS across all nine checkpoints, 518/518
+mature instruments, 9,324/9,324 all-required-fields-known at every checkpoint
+(100.0000%), zero provider/network calls, and deterministic replay. EM-5 is
+ready for owner final approval but is not closed until owner review. This is
+not FAILED and does not authorize EM-6.
 
 **Read `docs/ATHENA-ID-TRACK-HANDOFF.md` §7 before touching anything on
 Monday.** The ID-track's own ID-5B milestone ("Live Current-Session M5
@@ -73,7 +80,7 @@ misattribute one track's evidence to the other's decision.
 | EM-4C | Owner-approved (GO) 2026-08-28 — logistic beats deterministic on PR-AUC in 18/18 real combinations on real VALIDATION |
 | EM-4D | Owner-approved (GO) 2026-08-28 — all 162 (family×threshold×checkpoint) cells Platt-calibrated |
 | EM-4E | Owner-approved / GO 2026-08-28 — sealed FINAL_TEST evaluation complete (702,702 rows, 157 sessions); calibrated logistic beats deterministic 18/18, replicating VALIDATION on a third, never-before-touched partition. FINAL_TEST remains sealed |
-| EM-5 | **TRACK B.1 READY FOR OWNER REVIEW — RECOMMEND EM-5 CLOSURE** — contract ACCEPTED 2026-08-28. Regime wiring RESOLVED; REL_VOLUME_C historical support REPAIRED (real backfill, 23/23 resolvable prior sessions across all 3 liquidity tiers). Tuesday 2026-09-01 Track B live capture phase is owner-approved (81/81 Kite raw files, 0 provider failures, 0 `NOT_OBSERVED_LIVE`, 0 off-grid raw `ts_open`). Owner-authorized settled-provider comparison ran through the existing `force=True` override and originally produced `classification=null` because the frozen classifier had no eligible off-grid rows to classify. Track B.1 adds `NO_OFF_GRID_PROVISIONAL_OBSERVED`; raw-only replay classifies Tuesday as that outcome. Recommendation: clear `CANARY_BLOCKED_LIVE_M5_SEMANTICS`; no additional Track B live canary required; EM-5 ready for owner approval/closure. EM-5 remains open until owner approval |
+| EM-5 | **READY FOR OWNER FINAL APPROVAL** — contract ACCEPTED 2026-08-28. Regime wiring RESOLVED; REL_VOLUME_C historical support REPAIRED (real backfill, 23/23 resolvable prior sessions across all 3 liquidity tiers). Tuesday 2026-09-01 Track B live capture phase is owner-approved (81/81 Kite raw files, 0 provider failures, 0 `NOT_OBSERVED_LIVE`, 0 off-grid raw `ts_open`). Owner-authorized settled-provider comparison ran through the existing `force=True` override and originally produced `classification=null` because the frozen classifier had no eligible off-grid rows to classify. Track B.1 is owner-accepted and adds `NO_OFF_GRID_PROVISIONAL_OBSERVED`; raw-only replay classifies Tuesday as that outcome, clearing `CANARY_BLOCKED_LIVE_M5_SEMANTICS` for the frozen canary. Final validation ran the unchanged Section 14 full nine-checkpoint canary against `athena_core` / 2026-08-28: PASS, 100.0000% all-required-fields-known at every checkpoint, zero provider/network calls, deterministic replay. EM-5 remains open until owner final approval |
 | EM-6 | Planned — add EMR research UI only after scanner approval |
 | EM-7 | Planned — isolated shadow validation, OFF-vs-shadow comparison |
 | EM-8 | Planned — research-only / continued shadow / retirement / new integration ADR decision |
@@ -240,7 +247,9 @@ owner-authorized settled comparison produced
 the original pre-B.1 `classification=null` because no off-grid provisional rows
 were available for the frozen Track B classifier. Track B.1 raw-only replay
 classifies the same immutable evidence as
-`NO_OFF_GRID_PROVISIONAL_OBSERVED`. EM-5 remains open pending owner review.
+`NO_OFF_GRID_PROVISIONAL_OBSERVED`. Final validation ran the unchanged Section
+14 full nine-checkpoint canary and passed. EM-5 remains open pending owner
+final approval.
 
 ## 7. EM-5 non-goals (still in force)
 

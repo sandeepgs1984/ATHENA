@@ -5,8 +5,9 @@
 **Milestone:** EM-5 Track B — live provisional-vs-settled M5 semantics
 **Status:** Live capture phase owner-approved; settled-provider comparison
 complete; EM-5 Track B.1 zero-off-grid contract-gap correction implemented and
-ready for owner review. Corrected Track B classification:
-`NO_OFF_GRID_PROVISIONAL_OBSERVED`.
+owner-accepted. Corrected Track B classification:
+`NO_OFF_GRID_PROVISIONAL_OBSERVED`. Final Section 14 canary PASS; EM-5 ready
+for owner final approval.
 
 ## Scope
 
@@ -276,6 +277,16 @@ recommendation. Do not start EM-6, EM-7, EM-8, or ID-6 from this evidence note.
 ## Owner Review
 
 Owner review approved the Tuesday 2026-09-01 live capture phase. Track B.1
-corrected the zero-off-grid state-space gap and reclassified the Tuesday
-evidence as `NO_OFF_GRID_PROVISIONAL_OBSERVED`. EM-5 is not closed until owner
-approval.
+corrected the zero-off-grid state-space gap, owner accepted the correction, and
+the Tuesday evidence is classified as `NO_OFF_GRID_PROVISIONAL_OBSERVED`.
+The specific `CANARY_BLOCKED_LIVE_M5_SEMANTICS` blocker is cleared for this
+frozen canary.
+
+Final EM-5 validation then ran the unchanged Section 14 full nine-checkpoint
+production canary against `athena_core` / 2026-08-28 via
+`run_em5_production_canary()`: PASS, 518/518 mature instruments, 9,324/9,324
+all-required-fields-known at every checkpoint, 99% floor PASS, relative
+baseline PASS, frozen artifact hashes PASS, checkpoint-boundary regression
+PASS, freshness PASS, hard eligibility PASS, zero provider/network calls PASS,
+and replay determinism PASS. EM-5 is ready for owner final approval but is not
+closed until owner approval.

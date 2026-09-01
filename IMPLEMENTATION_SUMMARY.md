@@ -6,6 +6,83 @@ status updated on approval.
 
 ---
 
+## EM-5 Final Validation Checkpoint — Ready for Owner Final Approval
+
+**Summary.** Per owner authorization, performed the final EM-5 validation-only
+checkpoint after Track B.1 owner acceptance. No model, methodology, settlement,
+raw capture, production database, ID, DarvaX, UI, broker, order, or FINAL_TEST
+work was performed.
+
+**State verified.** Track B.1 is owner-accepted. The corrected Tuesday
+2026-09-01 Track B observational classification is
+`NO_OFF_GRID_PROVISIONAL_OBSERVED`, and the specific
+`CANARY_BLOCKED_LIVE_M5_SEMANTICS` blocker is cleared for the frozen Tuesday
+canary. EM-5 remains open only because final owner approve/close has not yet
+been issued. EM-6, EM-7, EM-8, and ID-6 remain not started. FINAL_TEST remains
+sealed.
+
+**Section 14 audit and run.** The accepted EM-5 live-scanner contract §14 and
+`src/athena/explosive_move/live/canary_gate.py` require the unchanged
+fail-fast operational canary before full-universe EM-5 live scanning. Because
+valid already-ingested local inputs were available, the existing
+`run_em5_production_canary()` path was executed against `db/athena.db` using
+the 518-instrument `athena_core` universe, session `2026-08-28`, `config/`,
+model version `v1`, NORMAL session context, and all nine frozen checkpoints.
+The canary made zero provider/network calls and used temp-only EMR ledgers.
+
+**Section 14 result.** PASS. All nine checkpoints produced 518/518 checkpoint
+price coverage, 9,324/9,324 mature candidate rows with all 22 fields known
+(100.0000%) at each checkpoint, above the 99% floor and within the mature
+history relative-baseline bound. Frozen artifact SHA verification passed for
+all 18 promoted artifacts; checkpoint-boundary regression passed for all nine
+checkpoints; freshness passed; hard eligibility structure passed; zero provider
+network calls passed; deterministic replay passed. Failure reasons: none.
+
+**Verification.** Full ATHENA suite: 2,956 passed, 1 skipped, 1 warning in
+81.90s. Ruff validation on the EM-5/Track B.1 modified Python files passed
+with zero findings. `git diff --check` passed.
+
+**Artifact integrity.** Tuesday Track B manifest remained
+`b0f46dab7233df61ec4c9e606758f455e03cda064b19cfff7a72ccfa480573c4`.
+The 81 raw capture file hash-list remained
+`0a50585dc741d9e2c8ccbbf8d4d065aba71ad7939a7bfb80e53ff23a23750154` and
+diffed byte-identical against the saved pre-validation hash list. The
+settlement artifact remained
+`974531de8703982fcab49d15924b21e986728e0fd4c2759b034af36f6345a0a1`.
+ID-5B artifacts remained unchanged:
+`55d08aaeccccd0249035d6f07e47688e8368289a3374eff132c9a3298be19098` for the
+Monday manifest and
+`23c6d79e4fd03f78aa57b2a68091647e6fb3b6a1ae8567ddc47f756b8351d5c1` for the
+ID-5B settlement report.
+
+**Files created.** None.
+
+**Files modified.** `ATHENA_BRIEFING.md`, `IMPLEMENTATION_SUMMARY.md`,
+`docs/ATHENA-EMR-HANDOFF.md`, `docs/MILESTONES.md`,
+`docs/design/ATHENA-EXPLOSIVE-MOVE-RADAR-ROADMAP.md`,
+`docs/research/EM-5-TRACK-B-LIVE-M5-CAPTURE-2026-09-01.md`.
+
+**Remaining work.** Owner final approve/close decision for EM-5. EM-5 is ready
+for owner final approval/closure but is not closed by this checkpoint. EM-6,
+EM-7, EM-8, and ID-6 remain blocked/not started pending explicit owner
+authorization.
+
+**Commit message (for the owner to use, not run by the AI):**
+
+```
+docs(review): record EM-5 final validation readiness
+
+- Record Track B.1 owner acceptance and cleared live-M5 semantics blocker
+- Record the unchanged Section 14 full nine-checkpoint canary PASS
+- Add full-suite, Ruff, diff-check, and artifact-integrity evidence
+- Keep EM-5 open as ready for owner final approval without starting EM-6
+```
+
+**Ready for review:** EM-5 final validation complete; ready for owner
+APPROVE/CLOSE. Not closed automatically.
+
+---
+
 ## EM-5 Track B.1 — Zero-Off-Grid Observational Outcome
 
 **Summary.** Implemented the narrow owner-authorized correction for the EM-5
