@@ -309,7 +309,7 @@ class TestClassificationReportSkeleton:
         assert populated["unique_mapping_rate_overall"] == 1.0
         assert populated["timestamp_offset_seconds_by_checkpoint"]["09:43"] == [pytest.approx(235.0)]
 
-    def test_populate_leaves_classification_none_when_no_off_grid_evidence_exists(self):
+    def test_populate_leaves_classification_none_when_no_off_grid_evidence_is_not_complete(self):
         skeleton = build_classification_report_skeleton(
             run_id="em5-trackb-20260831", session_date=date(2026, 8, 31),
             checkpoints=TRACK_B_CHECKPOINT_SCHEDULE, liquidity_bucket_by_instrument={INST: "high"},
@@ -323,3 +323,22 @@ class TestClassificationReportSkeleton:
         populated = populate_classification_report(skeleton, comparisons_by_instrument={INST: comparisons})
 
         assert populated["classification"] is None
+
+    def test_populate_reports_zero_off_grid_when_caller_proves_complete_live_evidence(self):
+        skeleton = build_classification_report_skeleton(
+            run_id="em5-trackb-20260831", session_date=date(2026, 8, 31),
+            checkpoints=TRACK_B_CHECKPOINT_SCHEDULE, liquidity_bucket_by_instrument={INST: "high"},
+        )
+        provisional = _capture([_candle(datetime(2026, 8, 31, 9, 15, tzinfo=IST))],
+                               datetime(2026, 8, 31, 9, 20, tzinfo=IST))
+        settled = _capture([_candle(datetime(2026, 8, 31, 9, 15, tzinfo=IST))],
+                           datetime(2026, 9, 3, tzinfo=IST))
+        comparisons = compare_provisional_to_settled(provisional=provisional, settled=settled)
+
+        populated = populate_classification_report(
+            skeleton,
+            comparisons_by_instrument={INST: comparisons},
+            zero_off_grid_outcome_allowed=True,
+        )
+
+        assert populated["classification"] == DiagnosisOutcome.NO_OFF_GRID_PROVISIONAL_OBSERVED.value

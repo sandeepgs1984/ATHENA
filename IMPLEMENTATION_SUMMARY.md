@@ -6,6 +6,125 @@ status updated on approval.
 
 ---
 
+## EM-5 Track B.1 — Zero-Off-Grid Observational Outcome
+
+**Summary.** Implemented the narrow owner-authorized correction for the EM-5
+Track B state-space gap exposed by the Tuesday 2026-09-01 settled comparison.
+The original frozen classifier returned `classification=null` because its
+three outcomes all required eligible off-grid provisional evidence. Track B.1
+adds exactly one observational outcome for the valid complete-canary branch
+where no off-grid provisional rows are observed:
+`NO_OFF_GRID_PROVISIONAL_OBSERVED`.
+
+**Scope boundary.** This milestone changed only Track B diagnostic
+classification state space and tests. It did not change EM-4 models, model
+coefficients, Platt calibration, frozen model artifacts, EMR feature
+definitions, ranking, probability language, scanner thresholds, Section 14's
+production canary gate, ATHENA canonical score, confidence, risk, eligibility,
+Decision, TradePlan, UI, DarvaX, broker/order behavior, ID methodology, or
+database writes.
+
+**Implementation.** Added `DiagnosisOutcome.NO_OFF_GRID_PROVISIONAL_OBSERVED`
+to `live_m5_provisional_settlement_diagnostic.py`. The shared report populator
+can emit that outcome only when its caller explicitly proves the zero-off-grid
+branch is allowed. Added `build_live_canary_completeness_report()` and
+`classify_live_capture_zero_off_grid()` in `em5_track_b_capture_cli.py`; these
+read immutable raw capture files only, perform no provider requests, and prove
+required symbols/checkpoints, file presence, success status, duplicate/extra
+pair absence, provisional row count, and off-grid provisional row count.
+
+**Preserved existing outcomes.** When eligible off-grid evidence exists, the
+original three-way Track B classification remains unchanged:
+`TIMESTAMP_ONLY_PROVISIONAL_DRIFT`,
+`PROVISIONAL_OHLCV_ALSO_CHANGES`, and `MAPPING_AMBIGUOUS`.
+The new outcome is not a catch-all unknown state and is not emitted for missing
+checkpoints, missing files, provider failures, duplicate captures, unexpected
+symbols/checkpoints, or any incomplete evidence.
+
+**Tuesday replay.** Replayed the immutable Tuesday evidence without a provider
+request and without regenerating the settlement artifact. Result:
+`NO_OFF_GRID_PROVISIONAL_OBSERVED`. Completeness report: 9 required symbols, 9
+required checkpoints, 81 expected captures, 81 observed captures, 81 successful
+captures, 0 failed captures, 1,768 provisional rows, 0 off-grid provisional
+rows, 0 missing files, 0 missing required pairs, 0 extra pairs, 0 duplicate
+pairs.
+
+**Interpretation.** This means only that the frozen Tuesday Track B canary did
+not observe the provisional off-grid phenomenon. It does not mean Kite never
+returns off-grid M5, all current-session candles equal settled candles, all
+current-session M5 data is trustworthy, or ID-5B's independent CASE B finding
+is invalid. The same-day forced settlement artifact remains provenance for what
+Kite returned at `2026-09-01T20:06:46.140654+05:30`; it is not upgraded into a
+stronger proof of long-term provider settlement.
+
+**Gate recommendation.** The corrected outcome is sufficient to clear the
+specific `CANARY_BLOCKED_LIVE_M5_SEMANTICS` blocker for this frozen canary: a
+complete, successful, predeclared canary observed zero instances of the defect
+it was designed to characterize. No additional Track B live canary is
+scientifically required for this gate. Section 14's production canary
+requirements remain frozen and separate. With regime wiring, REL_VOLUME_C
+support, and Track B now addressed, EM-5 appears ready for owner
+approval/closure, pending owner review.
+
+**Artifact integrity.** The Tuesday EM-5 manifest was restored after a focused
+test exposed the existing default-output CLI test hazard, then the test was
+corrected to use a `tmp_path` default artifact root. Final manifest SHA-256 is
+again the owner-accepted
+`b0f46dab7233df61ec4c9e606758f455e03cda064b19cfff7a72ccfa480573c4`.
+The settlement artifact remained
+`974531de8703982fcab49d15924b21e986728e0fd4c2759b034af36f6345a0a1`. Raw
+capture files were byte-identical before and after B.1 verification.
+
+**Files created.** None.
+
+**Files modified.** `src/athena/data/live_m5_provisional_settlement_diagnostic.py`,
+`src/athena/data/em5_track_b_capture_cli.py`,
+`tests/data_layer/test_live_m5_provisional_settlement_diagnostic.py`,
+`tests/data_layer/test_em5_track_b_capture_cli.py`,
+`docs/research/EM-5-TRACK-B-LIVE-M5-CAPTURE-2026-09-01.md`,
+`docs/ATHENA-EMR-HANDOFF.md`, `docs/MILESTONES.md`,
+`docs/design/ATHENA-EXPLOSIVE-MOVE-RADAR-ROADMAP.md`,
+`docs/design/EM-5-LIVE-SCANNER-CONTRACT.md`, `ATHENA_BRIEFING.md`,
+`IMPLEMENTATION_SUMMARY.md` (this entry).
+
+**Tests added.** Focused regressions for: zero off-grid + complete evidence
+emits the new outcome; zero off-grid + missing checkpoint does not; zero
+off-grid + provider failure does not; existing timestamp-only, OHLCV-changing,
+and ambiguous off-grid labels remain unchanged; deterministic raw replay; real
+Tuesday immutable evidence replays to the new classification without provider
+requests; raw artifacts are not mutated; and the CLI default-output test no
+longer writes into protected live artifacts.
+
+**Verification.** Focused Track B tests passed: 44 passed. `git diff --check`
+clean during implementation verification. No full suite rerun was performed
+because this is a narrow diagnostic correction and the focused suite includes
+the relevant Track B state-space, settlement, and artifact-safety coverage.
+FINAL_TEST was not read, rerun, inspected, or used.
+
+**Remaining work.** Owner/principal-engineer review of Track B.1 and EM-5
+closure recommendation. EM-5 is not closed. EM-6, EM-7, EM-8, and ID-6 remain
+not started.
+
+**Commit message (for the owner to use, not run by the AI):**
+
+```
+fix(data): add EM-5 Track B zero-off-grid outcome
+
+- Add NO_OFF_GRID_PROVISIONAL_OBSERVED for complete successful Track B
+  canaries that observe zero off-grid provisional M5 rows
+- Gate the new outcome behind immutable live-capture completeness so missed
+  checkpoints, provider failures, missing files, or duplicate captures cannot
+  masquerade as a clean zero-off-grid observation
+- Preserve the existing three off-grid classifications and replay Tuesday
+  evidence without provider requests or settlement-artifact regeneration
+- Update EMR status docs to recommend clearing the live-M5 semantics blocker
+  while keeping EM-5 open pending owner approval and EM-6/ID-6 not started
+```
+
+**Milestone status.** Ready for owner review. EM-5 not closed.
+
+---
+
 ## EM-5 Track B — Settled-Provider Comparison
 
 **Summary.** Executed the owner-authorized EM-5 Track B settled-provider

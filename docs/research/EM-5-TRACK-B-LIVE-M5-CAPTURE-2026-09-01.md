@@ -4,8 +4,9 @@
 **Track:** Explosive Move Radar (EMR)
 **Milestone:** EM-5 Track B — live provisional-vs-settled M5 semantics
 **Status:** Live capture phase owner-approved; settled-provider comparison
-complete and inconclusive under the frozen Track B classification contract;
-ready for owner review.
+complete; EM-5 Track B.1 zero-off-grid contract-gap correction implemented and
+ready for owner review. Corrected Track B classification:
+`NO_OFF_GRID_PROVISIONAL_OBSERVED`.
 
 ## Scope
 
@@ -159,7 +160,7 @@ Comparison inventory recorded by the existing implementation:
 
 Total comparison rows recorded by the report inventory: 1,768.
 
-Final Track B classification field: `null`.
+Original frozen Track B classification field before B.1: `null`.
 
 Reason: Tuesday's live capture had 0 off-grid raw `ts_open` values. The frozen
 Track B classifier classifies only off-grid provisional rows into one of:
@@ -179,32 +180,102 @@ Fields not persisted by the existing report:
 Those values were not reconstructed with additional provider requests after the
 run.
 
+## EM-5 Track B.1 Correction
+
+Owner review accepted the original `classification=null` result as a
+state-space completeness gap: the frozen three-label classifier had no outcome
+for a complete canary with zero off-grid provisional rows. Track B.1 adds the
+explicit observational outcome:
+
+`NO_OFF_GRID_PROVISIONAL_OBSERVED`
+
+This outcome may be emitted only when immutable live-capture evidence proves:
+
+- all required symbols were observed;
+- all required checkpoints were observed;
+- all raw captures succeeded;
+- zero eligible off-grid provisional `ts_open` rows were observed.
+
+It preserves the existing three off-grid outcomes unchanged:
+`TIMESTAMP_ONLY_PROVISIONAL_DRIFT`,
+`PROVISIONAL_OHLCV_ALSO_CHANGES`, and `MAPPING_AMBIGUOUS`.
+
+Raw-only replay of the Tuesday evidence after B.1:
+
+- Required symbols: 9.
+- Required checkpoints: 9.
+- Expected capture files: 81.
+- Observed capture files: 81.
+- Successful capture files: 81.
+- Failed capture files: 0.
+- Provisional rows: 1,768.
+- Off-grid provisional rows: 0.
+- Missing files: 0.
+- Missing required symbol/checkpoint pairs: 0.
+- Extra symbol/checkpoint pairs: 0.
+- Duplicate symbol/checkpoint pairs: 0.
+
+Corrected Track B classification:
+`NO_OFF_GRID_PROVISIONAL_OBSERVED`.
+
+No provider request was made for this replay. The existing settlement artifact
+was not regenerated and still records the pre-B.1 `classification=null` result.
+
 ## Track B Interpretation
 
 Observation: the frozen Tuesday Track B canary captured all 9 checkpoints and
 all 9 symbols with 81/81 real Kite raw files, 0 provider failures, 1,768 raw
 candles, and 0 off-grid raw `ts_open` values. The settlement report completed
-through the existing implementation but produced no classification because the
-classification contract has no eligible off-grid evidence to evaluate.
+through the existing implementation. Before B.1, that produced
+`classification=null`; after B.1, the raw-only live evidence classifies as
+`NO_OFF_GRID_PROVISIONAL_OBSERVED`.
 
-Inference: this specific canary does not demonstrate timestamp-only
-provisional drift, provisional OHLCV changes on off-grid rows, or ambiguous
-off-grid mapping. It also does not prove Kite never returns off-grid current-
-session M5 rows.
+Inference: this specific canary did not observe the provisional off-grid
+phenomenon. It does not demonstrate timestamp-only provisional drift,
+provisional OHLCV changes on off-grid rows, or ambiguous off-grid mapping. It
+also does not prove Kite never returns off-grid current-session M5 rows, does
+not invalidate ID-5B's independent CASE B finding, and does not prove all
+current-session M5 data equals settled historical truth.
 
-Engineering recommendation: Track B remains scientifically inconclusive under
-the frozen three-label classification contract. Do not clear EM-5's Track B
-blocker solely from this result. A future owner decision is needed: either
-accept this no-off-grid canary as sufficient operational evidence, authorize a
-narrow contract amendment for no-off-grid observations, or authorize additional
-live evidence collection.
+Engineering recommendation: the corrected B.1 outcome is sufficient to clear
+the specific `CANARY_BLOCKED_LIVE_M5_SEMANTICS` blocker for this frozen canary:
+a complete, successful, predeclared live canary observed zero instances of the
+defect it was designed to characterize. This does not relax Section 14's
+production canary requirements.
+
+## Track B.1 Verification
+
+Focused tests:
+
+`tests/data_layer/test_live_m5_provisional_settlement_diagnostic.py`,
+`tests/data_layer/test_em5_track_b_capture_cli.py`
+
+Result: 44 passed.
+
+`git diff --check`: clean during implementation verification.
+
+Artifact integrity after Track B.1:
+
+- Tuesday manifest SHA-256:
+  `b0f46dab7233df61ec4c9e606758f455e03cda064b19cfff7a72ccfa480573c4`.
+- EM-5 settlement artifact SHA-256:
+  `974531de8703982fcab49d15924b21e986728e0fd4c2759b034af36f6345a0a1`.
+- All 81 raw capture files were byte-identical before and after B.1
+  verification.
+
+The full suite was not rerun because this is a narrow Track B diagnostic
+state-space correction and the focused suite covers the relevant
+classification, completeness, deterministic replay, and artifact-safety
+branches. FINAL_TEST was not read, rerun, inspected, or used.
 
 ## Remaining Work
 
-Owner review of the settled-provider comparison and inconclusive Track B result.
-Do not start EM-6, EM-7, EM-8, or ID-6 from this evidence note.
+Owner review of the Track B.1 corrected classification and EM-5 closure
+recommendation. Do not start EM-6, EM-7, EM-8, or ID-6 from this evidence note.
 
 ## Owner Review
 
-Owner review approved the Tuesday 2026-09-01 live capture phase. Settlement
-comparison is complete and ready for owner review, but EM-5 is not closed.
+Owner review approved the Tuesday 2026-09-01 live capture phase. Track B.1
+corrected the zero-off-grid state-space gap and reclassified the Tuesday
+evidence as `NO_OFF_GRID_PROVISIONAL_OBSERVED`. EM-5 is not closed until owner
+approval.

@@ -25,7 +25,11 @@ timestamp or bucket-floor reasoning. `classify_diagnosis` turns the
 comparison set into one of the Owner's three named outcomes
 (`TIMESTAMP_ONLY_PROVISIONAL_DRIFT` / `PROVISIONAL_OHLCV_ALSO_CHANGES` /
 `MAPPING_AMBIGUOUS`) -- never assumed, always read off what the real
-comparison found.
+comparison found. Track B.1 adds one explicit observational outcome,
+`NO_OFF_GRID_PROVISIONAL_OBSERVED`, for the state where the frozen live
+canary is complete and successful but contains zero eligible off-grid
+provisional rows. That branch is gated by the caller because completeness
+is a manifest/capture-integrity property, not a row-comparison property.
 
 No labels/outcomes touched. No FINAL_TEST access. Read-only against Kite;
 writes nothing to `db/athena.db` (captures are persisted as plain JSON
@@ -257,6 +261,7 @@ class DiagnosisOutcome(str, Enum):
     TIMESTAMP_ONLY_PROVISIONAL_DRIFT = "TIMESTAMP_ONLY_PROVISIONAL_DRIFT"
     PROVISIONAL_OHLCV_ALSO_CHANGES = "PROVISIONAL_OHLCV_ALSO_CHANGES"
     MAPPING_AMBIGUOUS = "MAPPING_AMBIGUOUS"
+    NO_OFF_GRID_PROVISIONAL_OBSERVED = "NO_OFF_GRID_PROVISIONAL_OBSERVED"
 
 
 def classify_diagnosis(comparisons: tuple[RowComparison, ...]) -> DiagnosisOutcome:
@@ -423,13 +428,19 @@ def build_classification_report_skeleton(
 
 
 def populate_classification_report(
-    skeleton: dict, *, comparisons_by_instrument: dict[str, tuple[RowComparison, ...]],
+    skeleton: dict,
+    *,
+    comparisons_by_instrument: dict[str, tuple[RowComparison, ...]],
+    zero_off_grid_outcome_allowed: bool = False,
 ) -> dict:
     """Fills the skeleton from real `RowComparison` data only -- one
     classification per instrument, and one overall classification via the
     Owner's same priority rule (ambiguous > OHLCV-changed > timestamp-only)
     applied across every instrument's off-grid rows combined, so a single
-    ambiguous or changed row anywhere cannot be masked by averaging."""
+    ambiguous or changed row anywhere cannot be masked by averaging. If
+    the caller has separately proven the frozen live canary is complete,
+    the explicit zero-off-grid observational outcome may be emitted when
+    no off-grid provisional rows exist."""
 
     report = dict(skeleton)
     all_comparisons = tuple(c for comps in comparisons_by_instrument.values() for c in comps)
@@ -460,5 +471,6 @@ def populate_classification_report(
 
     if off_grid:
         report["classification"] = classify_diagnosis(all_comparisons).value
+    elif zero_off_grid_outcome_allowed:
+        report["classification"] = DiagnosisOutcome.NO_OFF_GRID_PROVISIONAL_OBSERVED.value
     return report
-    return DiagnosisOutcome.TIMESTAMP_ONLY_PROVISIONAL_DRIFT

@@ -2,10 +2,10 @@
 
 | Field | Value |
 |---|---|
-| Status | EM-5 Track B settled comparison complete, inconclusive; EM-4E owner-approved / GO 2026-08-28 |
+| Status | EM-5 Track B.1 zero-off-grid correction ready for owner review; EM-4E owner-approved / GO 2026-08-28 |
 | Governing ADR | ADR-012 (Accepted 2026-08-21) |
 | Started | 2026-08-21 |
-| Current gate | EM-5 Track B inconclusive settled comparison pending owner review |
+| Current gate | EM-5 owner review pending after Track B.1 corrected `NO_OFF_GRID_PROVISIONAL_OBSERVED` classification |
 | Canonical ATHENA impact | None permitted |
 
 ## 1. Purpose
@@ -227,14 +227,20 @@ Each review summary records objective, completed scope, architecture alignment, 
 
 ADR-012 is Accepted. Current status is authoritative in
 `docs/MILESTONES.md` and `docs/ATHENA-EMR-HANDOFF.md`. As of 2026-09-01,
-EM-5 Track B settled comparison is complete and inconclusive under the frozen
-three-label Track B classification contract: Tuesday 2026-09-01 live capture
-had 0 off-grid raw `ts_open` values, so the accepted classifier left
-`classification=null` rather than inventing a fourth outcome. The Monday
-2026-08-31 Track B evidence was not captured and is recorded as
+EM-5 Track B settled comparison originally exposed a state-space gap in the
+frozen three-label Track B classification contract: Tuesday 2026-09-01 live
+capture had 0 off-grid raw `ts_open` values, so the accepted classifier left
+`classification=null` rather than inventing a fourth outcome. Track B.1 adds
+the explicit observational outcome `NO_OFF_GRID_PROVISIONAL_OBSERVED`, gated on
+complete successful live evidence with zero off-grid provisional rows. Raw-only
+replay of the immutable Tuesday evidence now produces that corrected
+classification. The Monday 2026-08-31 Track B evidence was not captured and is
+recorded as
 `NOT_OBSERVED_LIVE` for all nine frozen checkpoints in
 `docs/research/EM-5-TRACK-B-LIVE-M5-CAPTURE-2026-08-31.md`. The Tuesday
 2026-09-01 live capture and settled comparison are recorded in
-`docs/research/EM-5-TRACK-B-LIVE-M5-CAPTURE-2026-09-01.md`. EM-5 remains open
-pending owner review/decision; EM-6 must not start until EM-5's canary blocker
-closes and the owner explicitly authorizes the next milestone.
+`docs/research/EM-5-TRACK-B-LIVE-M5-CAPTURE-2026-09-01.md`. Recommendation:
+clear `CANARY_BLOCKED_LIVE_M5_SEMANTICS` for this frozen canary and mark EM-5
+ready for owner approval/closure. EM-5 remains open until owner approval; EM-6
+must not start until EM-5 closes and the owner explicitly authorizes the next
+milestone.

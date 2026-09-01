@@ -15,7 +15,9 @@ import pytest
 from athena.data.em5_track_b_capture_cli import (
     DEFAULT_SYMBOL_LIQUIDITY_BUCKETS,
     PreflightResult,
+    build_live_canary_completeness_report,
     calendar_preflight,
+    classify_live_capture_zero_off_grid,
     estimate_request_budget,
     is_likely_settled,
     main,
@@ -25,7 +27,10 @@ from athena.data.em5_track_b_capture_cli import (
 )
 from athena.data.live_m5_provisional_settlement_diagnostic import (
     TRACK_B_CHECKPOINT_SCHEDULE,
+    DiagnosisOutcome,
     PreflightError,
+    ProvisionalCapture,
+    TrackBRunManifest,
 )
 from athena.domain.enums import Timeframe
 from athena.domain.market import Candle
@@ -198,6 +203,81 @@ class TestRunCapturePhase:
 
 
 class TestRunSettlementComparisonPhase:
+    def test_zero_off_grid_complete_evidence_produces_new_observational_outcome(self, tmp_path: Path):
+        capture_provider = _FakeProvider(ts_close_pairs=[
+            (datetime(2026, 8, 31, 9, 20, tzinfo=IST), "100"),
+        ])
+        manifest = run_capture_phase(
+            provider=capture_provider, session_date=SESSION_DATE,
+            session_open_time=datetime(2026, 8, 31, 9, 15).time(), tzinfo=IST, output_dir=tmp_path,
+            run_id="em5-trackb-test", symbol_liquidity_buckets={"NSE:A": "high"},
+            checkpoints=("09:20",), now=datetime(2026, 8, 31, 9, 21, tzinfo=IST),
+        )
+
+        report = run_settlement_comparison_phase(
+            provider=capture_provider, manifest=manifest, tzinfo=IST, today=date(2026, 9, 25),
+        )
+
+        assert report["classification"] == DiagnosisOutcome.NO_OFF_GRID_PROVISIONAL_OBSERVED.value
+        assert report["live_canary_completeness"]["complete"] is True
+        assert report["live_canary_completeness"]["off_grid_provisional_row_count"] == 0
+
+    def test_zero_off_grid_missing_checkpoint_does_not_produce_new_outcome(self, tmp_path: Path):
+        capture_provider = _FakeProvider(ts_close_pairs=[
+            (datetime(2026, 8, 31, 9, 20, tzinfo=IST), "100"),
+        ])
+        run_capture_phase(
+            provider=capture_provider, session_date=SESSION_DATE,
+            session_open_time=datetime(2026, 8, 31, 9, 15).time(), tzinfo=IST, output_dir=tmp_path,
+            run_id="em5-trackb-test", symbol_liquidity_buckets={"NSE:A": "high"},
+            checkpoints=("09:20",), now=datetime(2026, 8, 31, 9, 21, tzinfo=IST),
+        )
+        manifest = TrackBRunManifest(
+            run_id="em5-trackb-test", session_date=SESSION_DATE,
+            checkpoints=("09:20", "09:30"), instrument_ids=("NSE:A",),
+            liquidity_bucket_by_instrument={"NSE:A": "high"},
+            kite_auth_verified_symbol="INFY", disk_free_gb_at_start=40.0,
+            capture_file_paths=(str(tmp_path / "em5-trackb-test__0920__NSE_A.json"),),
+        )
+
+        report = run_settlement_comparison_phase(
+            provider=capture_provider, manifest=manifest, tzinfo=IST, today=date(2026, 9, 25),
+        )
+
+        assert report["classification"] is None
+        assert report["live_canary_completeness"]["complete"] is False
+        assert report["live_canary_completeness"]["missing_pairs"] == [
+            {"instrument_id": "NSE:A", "checkpoint": "09:30"}
+        ]
+
+    def test_zero_off_grid_provider_failure_does_not_produce_new_outcome(self, tmp_path: Path):
+        failed_capture = ProvisionalCapture(
+            run_id="em5-trackb-test", instrument_id="NSE:A", checkpoint="09:20",
+            session_date=SESSION_DATE,
+            requested_start=datetime(2026, 8, 31, 9, 15, tzinfo=IST),
+            requested_end=datetime(2026, 8, 31, 9, 20, tzinfo=IST),
+            request_ts=datetime(2026, 8, 31, 9, 20, tzinfo=IST),
+            provider_name="fake", success=False, error="provider down",
+            retry_count=0, candles=(),
+        )
+        path = tmp_path / "em5-trackb-test__0920__NSE_A.json"
+        path.write_text(json.dumps(failed_capture.to_dict(), indent=2), encoding="utf-8")
+        manifest = TrackBRunManifest(
+            run_id="em5-trackb-test", session_date=SESSION_DATE,
+            checkpoints=("09:20",), instrument_ids=("NSE:A",),
+            liquidity_bucket_by_instrument={"NSE:A": "high"},
+            kite_auth_verified_symbol="INFY", disk_free_gb_at_start=40.0,
+            capture_file_paths=(str(path),),
+        )
+
+        report = run_settlement_comparison_phase(
+            provider=_FakeProvider(ts_close_pairs=[]), manifest=manifest, tzinfo=IST, today=date(2026, 9, 25),
+        )
+
+        assert report["classification"] is None
+        assert report["live_canary_completeness"]["complete"] is False
+        assert report["live_canary_completeness"]["failed_capture_count"] == 1
+
     def test_produces_a_populated_report_from_a_real_capture_and_settled_refetch(self, tmp_path: Path):
         # Provisional: an off-grid row observed near the 09:45 checkpoint.
         capture_provider = _FakeProvider(ts_close_pairs=[
@@ -250,6 +330,50 @@ class TestRunSettlementComparisonPhase:
             provider=capture_provider, manifest=manifest, tzinfo=IST, today=date(2026, 9, 2), force=True,
         )
         assert report is not None
+
+
+class TestLiveZeroOffGridReplay:
+    def test_deterministic_replay_from_immutable_raw_captures(self, tmp_path: Path):
+        capture_provider = _FakeProvider(ts_close_pairs=[
+            (datetime(2026, 8, 31, 9, 20, tzinfo=IST), "100"),
+        ])
+        manifest = run_capture_phase(
+            provider=capture_provider, session_date=SESSION_DATE,
+            session_open_time=datetime(2026, 8, 31, 9, 15).time(), tzinfo=IST, output_dir=tmp_path,
+            run_id="em5-trackb-test", symbol_liquidity_buckets={"NSE:A": "high"},
+            checkpoints=("09:20",), now=datetime(2026, 8, 31, 9, 21, tzinfo=IST),
+        )
+
+        first = build_live_canary_completeness_report(manifest)
+        second = build_live_canary_completeness_report(manifest)
+
+        assert first == second
+        assert classify_live_capture_zero_off_grid(manifest) is DiagnosisOutcome.NO_OFF_GRID_PROVISIONAL_OBSERVED
+
+    def test_tuesday_immutable_evidence_replays_to_zero_off_grid_without_provider_request(self):
+        manifest_path = Path("artifacts/live/em5_track_b/2026-09-01/em5-track-b-20260901__manifest.json")
+        if not manifest_path.is_file():
+            pytest.skip("Tuesday live Track B artifacts are not present in this checkout")
+        manifest = TrackBRunManifest.from_dict(json.loads(manifest_path.read_text(encoding="utf-8")))
+        before = {
+            path: Path(path).read_bytes()
+            for path in manifest.capture_file_paths
+        }
+
+        outcome = classify_live_capture_zero_off_grid(manifest)
+        completeness = build_live_canary_completeness_report(manifest)
+
+        after = {
+            path: Path(path).read_bytes()
+            for path in manifest.capture_file_paths
+        }
+        assert outcome is DiagnosisOutcome.NO_OFF_GRID_PROVISIONAL_OBSERVED
+        assert completeness["complete"] is True
+        assert completeness["expected_capture_count"] == 81
+        assert completeness["capture_file_count"] == 81
+        assert completeness["provisional_row_count"] == 1768
+        assert completeness["off_grid_provisional_row_count"] == 0
+        assert before == after
 
 
 def test_default_symbol_buckets_exclude_the_known_unresolvable_e2e_symbol():
@@ -353,6 +477,8 @@ class TestRunUnattendedCapture:
 
     def test_cli_unattended_uses_default_output_and_run_id(self, tmp_path: Path, monkeypatch):
         calls = {}
+        artifact_root = tmp_path / "artifacts" / "live" / "em5_track_b"
+        monkeypatch.setattr("athena.data.em5_track_b_capture_cli.DEFAULT_ARTIFACT_ROOT", artifact_root)
 
         def fake_unattended(**kwargs):
             calls.update(kwargs)
@@ -375,5 +501,5 @@ class TestRunUnattendedCapture:
         assert rc == 0
         assert calls["session_date"] == date(2026, 9, 1)
         assert calls["run_id"] == "em5-track-b-20260901"
-        assert calls["output_dir"] == Path("artifacts/live/em5_track_b/2026-09-01")
+        assert calls["output_dir"] == artifact_root / "2026-09-01"
         assert calls["max_sleep_seconds"] == 5

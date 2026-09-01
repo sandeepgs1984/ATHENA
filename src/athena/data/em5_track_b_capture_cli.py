@@ -44,6 +44,7 @@ from zoneinfo import ZoneInfo
 
 from athena.data.live_m5_provisional_settlement_diagnostic import (
     TRACK_B_CHECKPOINT_SCHEDULE,
+    DiagnosisOutcome,
     PreflightError,
     ProvisionalCapture,
     TrackBRunManifest,
@@ -335,6 +336,106 @@ def is_likely_settled(
     return (today - session_date).days >= minimum_days
 
 
+def _is_on_grid(ts: datetime) -> bool:
+    return ts.second == 0 and ts.microsecond == 0 and ts.minute % 5 == 0
+
+
+def build_live_canary_completeness_report(manifest: TrackBRunManifest) -> dict:
+    """Read the immutable raw captures and determine whether the live
+    canary is complete enough for the zero-off-grid observational outcome.
+
+    This is intentionally based on the manifest/capture files only. It
+    performs no provider requests and writes no artifacts.
+    """
+
+    required_instruments = set(manifest.instrument_ids)
+    required_checkpoints = set(manifest.checkpoints)
+    captures_by_pair: dict[tuple[str, str], ProvisionalCapture] = {}
+    failures: list[dict[str, str | None]] = []
+    duplicate_pairs: list[dict[str, str]] = []
+    missing_files: list[str] = []
+    provisional_rows = 0
+    off_grid_rows = 0
+
+    for path_str in manifest.capture_file_paths:
+        path = Path(path_str)
+        if not path.is_file():
+            missing_files.append(path_str)
+            continue
+        capture = read_capture(path)
+        pair = (capture.instrument_id, capture.checkpoint)
+        if pair in captures_by_pair:
+            duplicate_pairs.append({"instrument_id": capture.instrument_id, "checkpoint": capture.checkpoint})
+        captures_by_pair[pair] = capture
+        if not capture.success:
+            failures.append({
+                "instrument_id": capture.instrument_id,
+                "checkpoint": capture.checkpoint,
+                "error": capture.error,
+            })
+        provisional_rows += len(capture.candles)
+        off_grid_rows += sum(1 for candle in capture.candles if not _is_on_grid(candle.ts_open))
+
+    observed_instruments = {instrument for instrument, _checkpoint in captures_by_pair}
+    observed_checkpoints = {checkpoint for _instrument, checkpoint in captures_by_pair}
+    missing_pairs = [
+        {"instrument_id": instrument, "checkpoint": checkpoint}
+        for instrument in manifest.instrument_ids
+        for checkpoint in manifest.checkpoints
+        if (instrument, checkpoint) not in captures_by_pair
+    ]
+    extra_pairs = [
+        {"instrument_id": instrument, "checkpoint": checkpoint}
+        for instrument, checkpoint in captures_by_pair
+        if instrument not in required_instruments or checkpoint not in required_checkpoints
+    ]
+
+    reasons = []
+    if missing_files:
+        reasons.append("missing capture file(s)")
+    if missing_pairs:
+        reasons.append("missing required instrument/checkpoint capture(s)")
+    if extra_pairs:
+        reasons.append("unexpected instrument/checkpoint capture(s)")
+    if failures:
+        reasons.append("provider/raw capture failure(s)")
+    if duplicate_pairs:
+        reasons.append("duplicate instrument/checkpoint capture(s)")
+
+    complete = not reasons
+    return {
+        "complete": complete,
+        "reasons": reasons,
+        "required_symbol_count": len(required_instruments),
+        "required_checkpoint_count": len(required_checkpoints),
+        "expected_capture_count": len(required_instruments) * len(required_checkpoints),
+        "capture_file_count": len(manifest.capture_file_paths),
+        "observed_symbol_count": len(observed_instruments),
+        "observed_checkpoint_count": len(observed_checkpoints),
+        "successful_capture_count": len(captures_by_pair) - len(failures),
+        "failed_capture_count": len(failures),
+        "provisional_row_count": provisional_rows,
+        "off_grid_provisional_row_count": off_grid_rows,
+        "missing_files": missing_files,
+        "missing_pairs": missing_pairs,
+        "extra_pairs": extra_pairs,
+        "failed_captures": failures,
+        "duplicate_pairs": duplicate_pairs,
+    }
+
+
+def classify_live_capture_zero_off_grid(manifest: TrackBRunManifest) -> DiagnosisOutcome | None:
+    """Classify the fully observed zero-off-grid branch from immutable live
+    evidence only. Returns None when completeness is not proven or when
+    off-grid rows exist and the existing settled-comparison classifier must
+    handle the three original outcomes."""
+
+    completeness = build_live_canary_completeness_report(manifest)
+    if completeness["complete"] and completeness["off_grid_provisional_row_count"] == 0:
+        return DiagnosisOutcome.NO_OFF_GRID_PROVISIONAL_OBSERVED
+    return None
+
+
 def run_settlement_comparison_phase(
     *, provider: MarketDataProvider, manifest: TrackBRunManifest, tzinfo: tzinfo_type, today: date, force: bool = False,
 ) -> dict:
@@ -355,6 +456,7 @@ def run_settlement_comparison_phase(
     session_start = datetime.combine(manifest.session_date, time_of_day(0, 0), tzinfo=tzinfo)
     session_end = datetime.combine(manifest.session_date, time_of_day(23, 59, 59), tzinfo=tzinfo)
 
+    live_canary_completeness = build_live_canary_completeness_report(manifest)
     provisional_by_instrument: dict[str, list[ProvisionalCapture]] = {}
     for path_str in manifest.capture_file_paths:
         capture = read_capture(Path(path_str))
@@ -381,7 +483,16 @@ def run_settlement_comparison_phase(
         run_id=manifest.run_id, session_date=manifest.session_date, checkpoints=manifest.checkpoints,
         liquidity_bucket_by_instrument=manifest.liquidity_bucket_by_instrument,
     )
-    return populate_classification_report(skeleton, comparisons_by_instrument=comparisons_by_instrument)
+    report = populate_classification_report(
+        skeleton,
+        comparisons_by_instrument=comparisons_by_instrument,
+        zero_off_grid_outcome_allowed=(
+            live_canary_completeness["complete"]
+            and live_canary_completeness["off_grid_provisional_row_count"] == 0
+        ),
+    )
+    report["live_canary_completeness"] = live_canary_completeness
+    return report
 
 
 def _checkpoint_instant(*, session_date: date, checkpoint: str, tzinfo: tzinfo_type) -> datetime:

@@ -13,6 +13,15 @@
 | Governing | ADR-012 (Explosive Move Radar Research Boundary), EM-4 Modeling Contract (frozen artifacts), ADR-010 (DarvaX satellite pattern — architectural precedent reused directly) |
 | Scope | EM-5 only: live scanner engineering/replay. No UI (EM-6), no shadow validation (EM-7), no canonical integration (EM-8) |
 
+**Track B.1 amendment (2026-09-01):** the Track B diagnostic state space now
+includes `NO_OFF_GRID_PROVISIONAL_OBSERVED`, emitted only when the frozen live
+canary is complete and successful and contains zero eligible off-grid
+provisional `ts_open` rows. This is an observational outcome only. It does not
+change the original three off-grid outcomes, Section 14's production canary
+gate, the 99% completeness floor, hard invariants, frozen artifacts, model
+methodology, ranking, thresholds, scanner behavior, or any ATHENA canonical
+decision path.
+
 This document is the required pre-implementation deliverable per the
 Owner's EM-4 GO decision (2026-08-28): "Before implementation, first
 return: EM-5 Live Scanner Contract Proposal... Do not write production
@@ -886,6 +895,13 @@ workstream has required.
 ---
 
 ## Revision history
+
+**2026-09-01, Track B.1 amendment** — Added the explicit
+`NO_OFF_GRID_PROVISIONAL_OBSERVED` diagnostic outcome for the valid
+state-space branch where the frozen live canary is complete and successful
+but observes zero off-grid provisional rows. This prevents a valid negative
+observation from remaining `classification=null` while preserving Section 14
+and the original three off-grid classifications unchanged.
 
 **2026-08-28, revision 1** — five blocking corrections incorporated
 (state thresholds, checkpoint-price direction, artifact immutability,
