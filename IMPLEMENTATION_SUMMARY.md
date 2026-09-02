@@ -6,7 +6,103 @@ status updated on approval.
 
 ---
 
-## ID-6B.1A Session Data Quality & Baseline Representativeness Audit — Ready for Owner Policy Freeze Review
+## ID-6B.1B Quality-Adjusted Policy Baseline & Wider TRADE Audit — Ready for Owner V0 Policy Decision
+
+**Summary.** Applied the owner-ratified Option C quality policy correctly to
+both ID-6B.1's original window and a new, materially wider, deterministically
+selected TRADE-representative window. First audited the intraday trend
+contract at source level (`_aggregate_trend`) and confirmed the existing
+aggregate `BULLISH` label already requires genuine M5+M15 agreement — no
+formula correction was needed to ID-6B.1's own `candidate_policy_match`
+measurement. Defined a research-only `EVALUABLE_FOR_CANDIDATE_POLICY`
+contract (VWAP + M5 trend + M15 trend + RS-or-RVOL, each independently
+available) and a relaxed M5-only variant, then re-analyzed ID-6B.1's own
+existing 370- and 7,144-observation JSONL artifacts directly (no replay
+needed — the harness already records the needed component fields):
+evaluability 100.00% and 99.55% respectively; M15 caused non-evaluability in
+only 2 of 7,144 observations (0.03%).
+
+Surveyed real `decisions` table counts across all 24 available trading dates
+and found TRADE-type decisions exist on 20 consecutive sessions
+(2026-07-31–08-27) but zero on the 4 most recent (2026-08-28 onward) —
+explaining why ID-6B.1's original window captured almost no TRADE. Selected
+the 10 most recent consecutive TRADE-bearing sessions preceding ID-6B.1's own
+window (2026-08-14–08-27) as the deterministic wider window, reported this
+selection rule before any policy-match analysis, then replayed it uncapped
+via ID-6B.1's own unmodified harness: 17,082 observations (matching a
+pre-replay SQL population estimate exactly), 418.469s runtime, 7,134 TRADE
+observations across 9 of 10 sessions (4.8x ID-6B.1's original TRADE count).
+Quality-adjusted re-analysis of this wider window: 99.64% evaluable; M15
+caused non-evaluability in only 4 of 17,082 observations (0.02%) —
+**classified NON-BLOCKING TECHNICAL DEBT**. WATCH vs. TRADE comparison under
+the quality-adjusted policy showed a uniform prevalence shift (TRADE
+consistently a few points higher on every named field: VWAP positive, M5/M15
+bullish, RS/RVOL support, candidate match) with no structural divergence —
+the existing single-shared-methodology decision stands. Checkpoint stability
+showed evaluability flat (~99.6%) across the day with match rate peaking at
+09:45 (27.5%) and declining to 14:30 (17.4%). Flicker re-measured at 39.76%
+(wider window) vs. 46.43% (same-window uncapped) — consistent order of
+magnitude, confirms flicker is real and stable across sample sizes, not
+small-sample noise. Recommendation: **FREEZE V0 POLICY WITH EXPLICIT
+LIMITATION** (checkpoint-level flicker means the policy is point-in-time
+only, never a persistence/confirmation signal). Proposed complete v0 engine
+state semantics (`OUT_OF_SCOPE`/`UNKNOWN`/`NOT_YET`/`QUALIFIED`/`EXPIRED`/
+`DISQUALIFIED_FOR_SESSION`, evidence-finality, confirmation, reason
+categories, WATCH/TRADE handling, missing-evidence behavior) documented as a
+proposal only — no implementation.
+
+**Architecture compliance.** Preserves ADR-013, ATHENA-002, ADR-003, ADR-005,
+ADR-012, and the advisory-only/no-order boundary. No production
+`SessionContext`, `IntradaySignalSet`, `ScoringEngine`, `DecisionEngine`,
+`TradePlan`, provider, workflow, or persistence behavior changed. No Entry
+Qualification engine, ID-6B.2, ID-6C, ID-6D, ID-6E, ID-7, EM-6, EMR, or
+DarvaX behavior touched. `CONFIRMED_BY_POLICY` and
+`DISQUALIFIED_FOR_SESSION` remain deferred/unused.
+
+**Files created.** `src/athena/data/id6b1b_quality_adjusted_policy_baseline.py`,
+`tests/data_layer/test_id6b1b_quality_adjusted_policy_baseline.py`,
+`docs/research/ID-6B.1B-QUALITY-ADJUSTED-POLICY-BASELINE.md`.
+
+**Files modified.** `docs/MILESTONES.md`, `docs/ATHENA-ID-TRACK-HANDOFF.md`,
+`IMPLEMENTATION_SUMMARY.md`.
+
+**Behavior implemented.** Research analysis only. Re-analyzes existing
+ID-6B.1-format JSONL directly (no replay for the same-window comparison) and
+drives one fresh wider-window replay via ID-6B.1's own unmodified
+`run_baseline` (no harness code changed). SQLite `mode=ro` +
+`PRAGMA query_only=ON` throughout. Writes only to `artifacts/research/id6b1b/`
+(gitignored). No DB writes, no provider calls, no raw artifact mutation.
+
+**Verification.** Focused tests: 6 new, all non-vacuous, passed; combined
+with ID-6B.1A's 3, `tests/data_layer/` full package: 428 passed, 0 failed.
+Ruff clean for both new files. `git diff --check` clean. `git status --short`:
+2 new untracked files (plus gitignored artifacts). Determinism: re-ran the
+new analyzer against the frozen wider-window JSONL twice — byte-identical
+output (SHA-256 `af28e7ee9828f67683050b2f55a6ce6670427f5b7770bc256dda1d21c83cbca1`
+both times). No production DB writes.
+
+**Risks / known gaps.** This milestone establishes coherence, availability,
+selectivity, and structural stability only — it makes no outcome/profitability
+claim (explicitly out of scope). Indirect `Decision` provenance (ADR-013)
+remains an open, conservatively-handled question. 2 of the wider window's 10
+sessions (2026-08-19, 2026-08-25) contribute negligible TRADE volume, so
+wider-window TRADE representativeness rests effectively on 8 sessions.
+
+**Suggested improvements.** If the owner freezes the v0 policy, the proposed
+engine semantics (report §18) should become the design basis for a future,
+separately-authorized Entry Qualification engine milestone. An M15 repair
+investigation remains a possible but non-prerequisite future milestone.
+
+**Remaining work.** Owner V0 policy decision. Do not start ID-6B.2, an Entry
+Qualification engine, persistence, workflow integration, an M15 repair
+milestone, ID-7, EM-6, EMR, DarvaX, or UI/production work until explicitly
+authorized.
+
+**Outcome:** Analysis complete; ready for owner V0 policy decision.
+
+---
+
+## ID-6B.1A Session Data Quality & Baseline Representativeness Audit — Owner Approved / Closed
 
 **Summary.** Recorded ID-6B.1 as owner-approved / closed. Root-caused
 `SessionDataQualityStatus.EXPECTED_BAR_MISSING` (270/370, 72.97% of
@@ -103,7 +199,8 @@ the session window before treating TRADE-specific prevalence as stable.
 persistence, workflow integration, an M15 repair milestone, ID-7, EM-6,
 EMR, DarvaX, or UI/production work until explicitly authorized.
 
-**Outcome:** Audit complete; ready for owner policy freeze review.
+**Outcome:** Owner approved / closed. Option C (artifact-owned availability)
+ratified; ID-6B.1B authorized to start.
 
 ---
 

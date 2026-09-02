@@ -5,7 +5,8 @@ owner-approved and CLOSED; ID-5 owner-approved and CLOSED; ID-6 discovery
 architecture owner-approved with condition; ID-6A0 Entry Qualification ADR
 owner-approved and closed; ID-6A owner-approved and closed; ID-6B.0
 owner-approved and closed; ID-6B.1 owner-approved and closed; ID-6B.1A
-session-data-quality audit ready for owner policy freeze review)
+owner-approved and closed, Option C ratified; ID-6B.1B quality-adjusted
+policy baseline ready for owner V0 policy decision)
 **Governing boundary:** accepted `docs/adr/ADR-013-entry-qualification-architecture.md`
 for Entry Qualification; otherwise this track extends the existing frozen
 `ATHENA-002-System-Blueprint.md` module map (§6 of `ATHENA_BRIEFING.md`).
@@ -22,15 +23,28 @@ owner-approved and closed. ID-6B.1 read-only evidence baseline is
 owner-approved and closed — the baseline itself was accepted, but the
 `EXPECTED_BAR_MISSING`=72.97% blocker was escalated to ID-6B.1A rather
 than resolved. ID-6B.1A root-caused it to a chronic, unrepaired M15
-candle off-grid condition (not a `SessionContext` defect — see §6 below)
-and re-ran the baseline uncapped (19x the original sample) to test
-representativeness; ready for owner policy freeze review. No engine,
-persistence, workflow stage, thresholds, UI, or production behavior has
-been implemented by either milestone.
+candle off-grid condition (not a `SessionContext` defect — see §6 below),
+re-ran the baseline uncapped (19x the original sample) to test
+representativeness, and is owner-approved and closed with Option C
+(artifact-owned availability) ratified in place of the blanket quality
+gate. ID-6B.1B applied Option C correctly, audited the trend contract at
+component level (confirming aggregate `BULLISH` already means genuine
+M5+M15 agreement), and re-measured the candidate v0 policy over both the
+original window and a fresh, deterministically-selected, materially wider
+TRADE-representative window (10 sessions, 17,082 observations, 4.8x more
+TRADE observations than the original). M15 was classified **NON-BLOCKING
+TECHNICAL DEBT** (causes non-evaluability in <=0.03% of every sample
+measured). WATCH and TRADE showed no structural divergence under the
+quality-adjusted policy — single shared methodology preserved.
+Recommendation: FREEZE V0 POLICY WITH EXPLICIT LIMITATION (checkpoint-level
+flicker ~40% means point-in-time only, not persistence); ready for owner V0
+policy decision. No engine, persistence, workflow stage, thresholds, UI, or
+production behavior has been implemented by any of these milestones.
 Evidence notes:
 `docs/research/ID-5B-LIVE-M5-SEMANTICS-CAPTURE-2026-08-31.md`,
-`docs/research/ID-6-SCOPE-ARCHITECTURE-DESIGN.md`, and
-`docs/research/ID-6B.1A-SESSION-DATA-QUALITY-AUDIT.md`.
+`docs/research/ID-6-SCOPE-ARCHITECTURE-DESIGN.md`,
+`docs/research/ID-6B.1A-SESSION-DATA-QUALITY-AUDIT.md`, and
+`docs/research/ID-6B.1B-QUALITY-ADJUSTED-POLICY-BASELINE.md`.
 
 **Read `docs/ATHENA-EMR-HANDOFF.md` §6/§8 before touching anything on
 Monday.** EMR's own EM-5 milestone has an *independent* open blocker
@@ -69,7 +83,8 @@ Track B capture is running the same morning.
 | ID-6A | OWNER APPROVED / CLOSED 2026-09-02 — immutable Entry Qualification domain contracts accepted; no engine, persistence, workflow, thresholds, ID-7, EM-6, EMR, DarvaX, or production behavior |
 | ID-6B.0 | OWNER APPROVED / CLOSED 2026-09-02 — methodology/design accepted; illustrative practical-v0 rule not approved; owner decisions frozen for QUALIFIED allowed architecturally, terminal disqualification off in v0, OR contextual, WATCH/TRADE same methodology unless evidence proves otherwise, confirmation methodology unapproved, no additive score |
 | ID-6B.1 | OWNER APPROVED / CLOSED 2026-09-02 — read-only settled historical market-time replay measured 370 candidate-checkpoint observations across 5 recent sessions and 32 instruments; `EXPECTED_BAR_MISSING`=72.97% blocker escalated to ID-6B.1A; no production engine implemented |
-| ID-6B.1A | AUDIT COMPLETE — READY FOR OWNER POLICY FREEZE REVIEW 2026-09-02 — root-caused `EXPECTED_BAR_MISSING` to a chronic, unrepaired M15 off-grid data condition (96.30% of affected observations), confirmed zero M15 dependency in VWAP/RS/RVOL/Gap/OR by source inspection, verified checkpoint-boundary math exact (no harness/production bug), and re-ran the baseline uncapped (7,144 observations, 19x) finding every headline figure broadly stable except TRADE-specific ones (temporally concentrated on ~1 real day); recommends artifact-owned availability (Option C) over the blanket quality gate |
+| ID-6B.1A | OWNER APPROVED / CLOSED 2026-09-02 — root-caused `EXPECTED_BAR_MISSING` to a chronic, unrepaired M15 off-grid data condition (96.30% of affected observations), confirmed zero M15 dependency in VWAP/RS/RVOL/Gap/OR by source inspection, verified checkpoint-boundary math exact (no harness/production bug), and re-ran the baseline uncapped (7,144 observations, 19x) finding every headline figure broadly stable except TRADE-specific ones (temporally concentrated on ~1 real day); Option C (artifact-owned availability) ratified over the blanket quality gate |
+| ID-6B.1B | ANALYSIS COMPLETE — READY FOR OWNER V0 POLICY DECISION 2026-09-02 — confirmed aggregate `BULLISH` trend already requires genuine M5+M15 agreement (source-level audit); applied Option C to the original window (99.55%-100% evaluable) and a fresh, deterministically-selected wider window (10 sessions, 2026-08-14–08-27, 17,082 observations, 4.8x more TRADE observations across 9 sessions, 99.64% evaluable); M15 caused non-evaluability in <=0.03% of every sample — classified NON-BLOCKING TECHNICAL DEBT; WATCH/TRADE showed a uniform prevalence shift with no structural divergence; recommends FREEZE V0 POLICY WITH EXPLICIT LIMITATION (checkpoint flicker ~40% means point-in-time only) |
 
 The full detailed evidence for every closed milestone above is in
 `docs/MILESTONES.md`'s "Intraday Intelligence Track" section (long — this
@@ -191,7 +206,7 @@ read-only evidence baseline. The baseline artifacts live under
 baseline itself was accepted, but its `EXPECTED_BAR_MISSING`=72.97%
 finding was escalated to ID-6B.1A rather than resolved.
 
-**ID-6B.1A is the current review gate**:
+ID-6B.1A is owner-approved and closed:
 `docs/research/ID-6B.1A-SESSION-DATA-QUALITY-AUDIT.md`. Root cause: a
 chronic, systemic M15 candle off-grid condition in `db/athena.db` — only
 a session's own opening M15 bar (`09:15:00`) is reliably on-grid; every
@@ -216,12 +231,55 @@ this window are concentrated on effectively one real trading day.
 Recommendation: GO WITH CONDITIONS — adopt artifact-owned availability
 (Option C) instead of the blanket `SessionDataQuality` gate; document the
 M15 data gap as a future, separately-authorized prerequisite candidate
-(mirroring ID-5A), not fixed here.
+(mirroring ID-5A), not fixed here. The owner ratified Option C and
+authorized ID-6B.1B.
+
+**ID-6B.1B is the current review gate**:
+`docs/research/ID-6B.1B-QUALITY-ADJUSTED-POLICY-BASELINE.md`. First audited
+the intraday trend contract at source level (`_aggregate_trend` in
+`src/athena/intraday/engine.py`) and confirmed the existing aggregate
+`BULLISH` label already requires genuine M5+M15 agreement — ID-6B.1's own
+`candidate_policy_match` measurement needed no formula correction. Defined a
+research-only `EVALUABLE_FOR_CANDIDATE_POLICY` contract (VWAP + M5 trend +
+M15 trend + RS-or-RVOL, each independently available) and re-analyzed
+ID-6B.1's own existing observation files directly (no replay needed):
+100.00% evaluable (370-obs sample) and 99.55% evaluable (7,144-obs sample),
+with M15 causing non-evaluability in only 2 of 7,144 observations (0.03%).
+
+Surveyed real `decisions` table counts across all 24 available trading
+dates and found TRADE decisions exist on 20 consecutive sessions
+(2026-07-31–08-27) but zero on the 4 most recent — explaining why ID-6B.1's
+original window barely captured TRADE. Selected the 10 most recent
+consecutive TRADE-bearing sessions preceding ID-6B.1's own window
+(2026-08-14–08-27) as the deterministic wider window (selection rule
+reported before any policy-match analysis), then replayed it uncapped via
+ID-6B.1's own unmodified harness: 17,082 observations (artifacts under
+`artifacts/research/id6b1b/wider_window/`, gitignored), 418.469s runtime,
+7,134 TRADE observations across 9 of 10 sessions (4.8x ID-6B.1's original
+TRADE count). Quality-adjusted re-analysis: 99.64% evaluable; M15 caused
+non-evaluability in only 4 of 17,082 observations (0.02%) — **classified
+NON-BLOCKING TECHNICAL DEBT**, not a prerequisite for a future Entry
+Qualification engine. WATCH vs. TRADE showed a uniform prevalence shift
+(TRADE a few points higher on every named field) with no structural
+divergence — the existing single-shared-methodology decision stands.
+Checkpoint-level flicker re-measured at 39.76% (wider window), consistent
+in order of magnitude with the same-window figure (46.43%) — confirms
+flicker is real and stable across sample sizes, reinforcing the deferral of
+`CONFIRMED_BY_POLICY`.
+
+Recommendation: **FREEZE V0 POLICY WITH EXPLICIT LIMITATION** — the policy
+is coherent, almost always evaluable, and stable in prevalence, but
+checkpoint-level flicker means it must be treated as a point-in-time signal
+only, never a persistence/confirmation signal. A complete proposed v0
+engine state semantics (`OUT_OF_SCOPE`/`UNKNOWN`/`NOT_YET`/`QUALIFIED`/
+`EXPIRED`/`DISQUALIFIED_FOR_SESSION`, evidence-finality, confirmation,
+reason categories, WATCH/TRADE handling, missing-evidence behavior) is
+documented as a proposal only — no implementation.
 
 Do not implement an engine, persistence, UI, thresholds, IntradayTradePlan,
 an M15 settlement-repair milestone, ID-6B.2, ID-6C, ID-6D, ID-6E, ID-7,
-EM-6, EMR, DarvaX, or order behavior until the owner approves the ID-6B.1A
-policy recommendation and explicitly authorizes the next milestone.
+EM-6, EMR, DarvaX, or order behavior until the owner reviews the ID-6B.1B
+policy-freeze recommendation and explicitly authorizes the next milestone.
 
 ## 7. ID-5B — closed result
 
