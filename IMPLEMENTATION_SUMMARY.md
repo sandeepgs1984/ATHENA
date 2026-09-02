@@ -6,7 +6,154 @@ status updated on approval.
 
 ---
 
-## ID-6D Entry Qualification Workflow Integration & Provenance Resolution — Workflow/Decision/Finality Accepted, Closure Held for ID-6D.1
+## ID-6E Entry Qualification Replay & Shadow Validation — Analysis Complete / Ready for Owner Validation Review
+
+**Summary.** Owner closed ID-6D in full (including ID-6D.1) and authorized
+ID-6E to validate the now fully closed Entry Qualification capability
+across two evidence modes: deterministic historical replay via the real
+engine, and read-only inspection of persisted shadow (production runtime)
+observations. Validation only — no methodology, threshold, workflow,
+ScoringEngine/DecisionEngine/TradePlan, or API/UI change.
+
+Audited existing validation assets first and reused them deliberately: the
+new harness (`src/athena/data/id6e_replay_shadow_validation.py`) imports
+`ReadOnlyStore`/`candidates_at` unmodified from ID-6B.1's own harness
+(per-instrument, ranked, WATCH/TRADE-only, market-time Decision selection
+at or before each checkpoint) and mirrors its exact SessionContext/
+IntradaySignalSet construction sequence using the same production
+engines. What is genuinely new: after building those artifacts, the
+harness fetches the full canonical Decision row and calls the real,
+closed `EntryQualificationEngine.evaluate()` + `resolve_evidence_finality()`
+— the v0 formula is never re-derived, unlike ID-6B.1/1A/1B's own
+research-only `candidate_policy_match` boolean.
+
+Reused ID-6B.1B's own deterministically-selected wider window verbatim (10
+sessions, 2026-08-14 to 2026-08-27) rather than selecting a new one, for
+direct real-engine-vs-research-baseline comparability. Uncapped replay
+produced exactly 17,082 observations — identical population size to
+ID-6B.1B's own count for this window, confirming no candidate was dropped
+or added by routing through the real engine. Ran the full replay twice,
+independently, and confirmed a byte-identical analysis digest
+(`0de3a8e161dcc4a97b980b0f806a6c8d6a75a153d4095dbcfd6218f3b63b2475`) across
+both runs — full determinism, no provider/network calls.
+
+State distribution: 76.17% NOT_YET, 21.70% QUALIFIED, 2.13% UNKNOWN. Every
+headline statistic matches ID-6B.1B's own research-formula figures almost
+exactly: QUALIFIED prevalence 21.70% (vs. ID-6B.1B's 21.70%), TRADE match
+rate 24.17% (vs. 24.17%), WATCH match rate 19.93% (vs. 19.93%), flicker
+(checkpoint-level QUALIFIED-then-later-not) 39.76% (vs. 39.76%) — direct
+confirmation that `EntryQualificationEngine` faithfully reproduces the
+methodology ID-6B.1B validated, with zero tuning performed to force this
+agreement; it was observed, not sought. All frozen invariants hold across
+all 17,082 observations: `DISQUALIFIED_FOR_SESSION` count 0,
+`CONFIRMED_BY_POLICY` count 0, `NOT_EVALUATED` confirmation 100%, 0
+non-v0 methodology versions, 0 harness defects (no missing Decisions, no
+ID-6B.2A input-coherence failures). Evidence-finality: 100%
+`LIVE_M5_PROVISIONAL` — exactly the expected result, since every
+observation is a WATCH/TRADE Decision evaluated during `SessionPhase.REGULAR`
+by sample construction. `NO_DECISIVE_PROVISIONAL_M5_DEPENDENCY` remains
+unreachable, as ID-6D established.
+
+Option C reconfirmed at full production-engine scale: 13,107 of 17,082
+observations (76.7%) carry `EXPECTED_BAR_MISSING` session data quality,
+yet their state distribution (77.38%/20.58%/2.04% NOT_YET/QUALIFIED/
+UNKNOWN) is essentially identical to the unflagged population
+(76.17%/21.70%/2.13%) — the blanket quality flag has no material effect
+on the engine's own evaluability, exactly as designed. M15 reconfirmed
+non-blocking: only 1 of 17,082 observations (0.01%) is UNKNOWN
+specifically due to M15 unavailability. Checkpoint distribution and
+WATCH-vs-TRADE comparison both reproduce ID-6B.1B's own descriptive
+patterns (QUALIFIED prevalence peaking shortly after open, declining
+toward close; TRADE consistently a few points higher than WATCH on every
+metric, with no Decision-type branch in the engine).
+
+The real production `db/athena.db` was audited read-only
+(`mode=ro`+`PRAGMA query_only=ON`) for shadow observations: the
+`entry_qualifications` table **does not exist** in the production
+database — the ID-6C schema migration has not been run against it since
+these milestones were implemented. This is reported honestly as
+`SHADOW_OBSERVATIONS_NOT_YET_AVAILABLE` (a structural precondition, not
+merely a sparse sample) — no synthetic rows were fabricated to satisfy the
+milestone.
+
+Explicit no-profitability conclusion recorded: this milestone makes no
+claim of edge, alpha, win rate, or +1%/+1.5% success — outcome data was
+not even queried, since ID-6B already found essentially no meaningful
+outcome population for this candidate rule, and outcome/target
+methodology remains entirely undefined pending ID-7/ID-8.
+
+**Classification: REPLAY_SOUND_SHADOW_EVIDENCE_INSUFFICIENT.**
+
+**Architecture compliance.** Preserves ADR-013, ATHENA-002, ADR-003,
+ADR-005, ADR-009, ADR-012, and the advisory-only/no-order boundary. The
+frozen v0 methodology (formula, tri-state logic, state precedence, Option
+C, WATCH/TRADE parity, confirmation, evidence-finality resolver,
+persistence identity/idempotency/Decision-binding, and persistence-time
+semantics) are all confirmed byte-for-byte unchanged — verified by the
+full existing ID-6A–ID-6D.1 test suites passing unmodified alongside this
+milestone's own new tests. No `ScoringEngine`/`DecisionEngine`/`TradePlan`/
+`SessionContext`/provider/EMR/DarvaX impact. No API/UI. No outcome/target/
+threshold logic introduced.
+
+**Files created.** `src/athena/data/id6e_replay_shadow_validation.py`,
+`tests/data_layer/test_id6e_replay_shadow_validation.py`,
+`docs/research/ID-6E-ENTRY-QUALIFICATION-REPLAY-SHADOW-VALIDATION.md`.
+
+**Files modified.** `docs/MILESTONES.md`, `docs/ATHENA-ID-TRACK-HANDOFF.md`,
+`IMPLEMENTATION_SUMMARY.md`.
+
+**Behavior implemented.** Two read-only research functions:
+`run_replay` (deterministic historical replay via the real production
+engine, ~42.6 observations/sec, no provider calls, writes only to a new
+gitignored `artifacts/research/id6e/` directory) and `run_shadow_audit`
+(read-only inspection of persisted `entry_qualifications` rows, gracefully
+reports table-missing/empty rather than raising). Neither writes to,
+migrates, or mutates any source database.
+
+**Verification.** Focused tests: 18 new, all non-vacuous — pure-function
+analysis tests (state distribution, reason-code aggregation, transitions,
+qualification duration, Option C validation, M15 impact, invariant checks)
+using synthetic rows, plus temp-DB integration tests proving the harness
+calls the actual `EntryQualificationEngine` (not a reimplementation), binds
+the historical Decision at or before the checkpoint, is deterministic
+across two runs, never mutates the source DB, and makes no provider calls;
+shadow-audit tests covering table-missing, table-empty, and a real
+persisted observation's latency/integrity computation, plus a read-only-
+never-mutates proof. 2 of the most safety-critical (the
+`DISQUALIFIED_FOR_SESSION` invariant check and the flicker-transition
+detector) independently mutation-verified. `tests/data_layer/test_id6e_replay_shadow_validation.py`:
+18 passed. Combined ID-6A–ID-6E Entry Qualification tests: 204 passed.
+Ruff clean. `git diff --check` clean. Full repository suite: **3,149
+passed, 1 pre-existing skip, 0 failed**. Real `db/athena.db` confirmed
+unmodified (file size/mtime unchanged) across both full replay runs and
+the shadow audit.
+
+**Risks / known gaps.** Shadow evidence remains entirely unavailable until
+a future cycle migrates the production schema and begins accumulating
+real WATCH/TRADE observations — no timeline is proposed here. Replay
+population/checkpoint selection reuses ID-6B.1B's own window verbatim, so
+it inherits that window's own representativeness properties (documented
+there) rather than characterizing a fresh sample. UNKNOWN prevalence
+(2.13%) is measurably higher than ID-6B.1B's own coarser "non-evaluable"
+figure (0.36%) — explained in the report (§9/§25) as an expected
+consequence of the real engine's tri-state UNKNOWN being a stricter,
+more precise signal (true undetermined *verdict*) than ID-6B.1B's simpler
+"any input unavailable" availability check, not a discrepancy.
+
+**Suggested improvements.** A future operational task (outside ID-6E's
+research scope) should migrate the production schema against
+`db/athena.db` so ID-6D's already-implemented workflow wiring can begin
+accumulating real shadow observations, enabling a future shadow
+characterization milestone.
+
+**Remaining work.** Owner validation review. Do not start ID-7, EM-6, or
+API/UI until explicitly authorized.
+
+**Outcome:** Analysis complete; ready for owner validation review.
+
+---
+
+## ID-6D Entry Qualification Workflow Integration & Provenance Resolution — Owner Approved / Closed
 
 **Summary.** Owner closed ID-6C in full (including ID-6C.1) and authorized
 ID-6D to wire the already-frozen Entry Qualification chain
@@ -161,14 +308,14 @@ attempted here. ID-6E should design outcome/shadow-validation.
 **Remaining work.** Owner workflow/provenance review. Do not start ID-6E,
 API/UI, ID-7, or EM-6 until explicitly authorized.
 
-**Outcome:** Workflow integration, current-Decision resolution, and
-evidence-finality resolution all owner-accepted. Owner review found
-`persisted_at=ctx.as_of` wrongly conflated evaluation time with write
-time — corrected and closed under ID-6D.1 immediately below.
+**Outcome:** Owner approved / closed. Workflow integration, current-
+Decision resolution, and evidence-finality resolution all accepted; the
+one persistence-time correction was closed under ID-6D.1 immediately
+below.
 
 ---
 
-## ID-6D.1 Entry Qualification Persistence-Time Semantics — Implemented / Ready for Owner ID-6D Closure Review
+## ID-6D.1 Entry Qualification Persistence-Time Semantics — Owner Approved / Closed
 
 **Summary.** Owner review of ID-6D accepted the workflow placement,
 current-Decision resolution, and evidence-finality resolution, but held
@@ -288,10 +435,10 @@ reads — not inside any analytical engine.
 **Suggested improvements.** None beyond what ID-6D already identified for
 ID-6E.
 
-**Remaining work.** Owner ID-6D closure review (now including ID-6D.1).
-Do not start ID-6E, API/UI, ID-7, or EM-6 until explicitly authorized.
+**Remaining work.** None — owner closure review completed.
 
-**Outcome:** Implemented; ready for owner ID-6D closure review.
+**Outcome:** Owner approved / closed. ID-6D (including ID-6D.1) is now
+fully closed; ID-6E authorized to start.
 
 ---
 

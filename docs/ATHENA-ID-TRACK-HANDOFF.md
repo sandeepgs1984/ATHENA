@@ -10,9 +10,10 @@ closed, v0 methodology frozen; ID-6B.2 pure engine owner-approved and
 closed; ID-6B.2A input-coherence hardening owner-approved and closed —
 ID-6B is fully closed; ID-6C persistence and ID-6C.1 canonical
 Decision-binding hardening both owner-approved and closed — ID-6C is
-fully closed; ID-6D workflow/Decision/finality resolution owner-accepted,
-closure held for ID-6D.1; ID-6D.1 persistence-time semantics correction
-implemented, ready for owner ID-6D closure review)
+fully closed; ID-6D workflow/Decision/finality resolution and ID-6D.1
+persistence-time semantics correction are both owner-approved and closed —
+ID-6D is fully closed; ID-6E replay & shadow validation analysis is
+complete, ready for owner validation review)
 **Governing boundary:** accepted `docs/adr/ADR-013-entry-qualification-architecture.md`
 for Entry Qualification; otherwise this track extends the existing frozen
 `ATHENA-002-System-Blueprint.md` module map (§6 of `ATHENA_BRIEFING.md`).
@@ -115,8 +116,9 @@ Track B capture is running the same morning.
 | ID-6B.2A | OWNER APPROVED / CLOSED 2026-09-02 — `_validate_input_coherence`/`_validate_nested_artifact_coherence`, called unconditionally before any branching in `evaluate()`. Requires exact equality (no tolerance) of instrument_id/session_date/as_of between `SessionContext` and `IntradaySignalSet`, plus the same for the two externally-supplied nested artifacts (`relative_strength`, `relative_volume`); `trend` needs no check (structurally guaranteed by `IntradayAnalyticsEngine.assess`'s own construction), `vwap` carries no identity fields. Mismatch raises `ValueError` deterministically, never `UNKNOWN`/`NOT_YET`. `Decision.instrument_id=None` fallback preserved, still coherence-checked. Option C/frozen methodology/WATCH-TRADE parity all regression-tested unchanged. Current/non-superseded Decision selection explicitly deferred to ID-6D, not solved here. 10 new focused tests (3 mutation-verified), 56/56 total. ID-6B (ID-6A through ID-6B.2A) is now fully closed |
 | ID-6C | OWNER APPROVED / CLOSED 2026-09-02 — new `entry_qualifications` table (SCHEMA_VERSION 16→17), FK-bound to `decisions(decision_id)`, extending the existing `SqliteRepository`/`schema.py`/`serialization.py`. Append-only observations; composite primary key `(instrument_id, session_date, as_of, decision_id, methodology_version)` is the idempotency identity. `save_entry_qualification` idempotent on an identical repeat, fails loudly on a genuinely conflicting payload. Read API: `get_entry_qualification`, `latest_entry_qualification_for_decision`, `latest_entry_qualification_for_instrument_session`, `list_entry_qualifications_for_instrument_session` |
 | ID-6C.1 | OWNER APPROVED / CLOSED 2026-09-02 — `_validate_entry_qualification_decision_binding` (`src/athena/data/store/repository.py`), runs on every `save_entry_qualification` call (both insert AND idempotency-check paths). Requires exact equality of `decision_type`/`run_id`/`cycle_id` with the referenced canonical Decision, and `instrument_id` only when `decision.instrument_id is not None` (mirrors `EntryQualificationEngine._resolve_instrument_id`'s own established fallback; confirmed real `DecisionEngine` always sets `instrument_id` for WATCH/TRADE). Missing decision_id → clean `RepositoryError` before any INSERT; schema FK remains as DB-level backstop (test-proven still enforced via bypass). Corrected run_id/cycle_id exclusion rationale: excluded from conflict comparison because binding validation already proved them equal to the Decision, not because they may differ. SCHEMA_VERSION unchanged (17). ID-6C is now fully closed |
-| ID-6D | WORKFLOW/DECISION/FINALITY RESOLUTION OWNER-ACCEPTED; CLOSURE HELD FOR ID-6D.1 2026-09-02 — new `entry_qualification` `WorkflowStage` in `OwnerValidationPipeline` (depends on `decision` + `intraday_analytics`, declared last, order-stability proven). Current Decision = the Decision `dec_stage` just produced this same cycle (closure-captured, not re-queried) — provably freshest, no TTL invented. Engine called unconditionally; persistence scoped to WATCH/TRADE only. New pure `resolve_evidence_finality` (`src/athena/intraday/entry_qualification_provenance.py`) reuses the engine's own public structural/lifecycle eligibility gate (WATCH/TRADE AND `SessionPhase.REGULAR`) — never the tri-state formula — to resolve `LIVE_M5_PROVISIONAL` vs `UNKNOWN_PROVENANCE`; `NO_DECISIVE_PROVISIONAL_M5_DEPENDENCY` proven structurally unreachable (ADR-013's documented Decision-provenance insufficiency), reported honestly. Owner found `persisted_at=ctx.as_of` wrongly conflated evaluation time with write time — see ID-6D.1 |
-| ID-6D.1 | IMPLEMENTED — READY FOR OWNER ID-6D CLOSURE REVIEW 2026-09-02 — added injectable `OwnerValidationPipeline(..., persistence_clock: Callable[[], datetime] | None = None)`, defaulting to `datetime.now(tz=timezone.utc)` (audited first: no existing injectable wall-clock abstraction; found the established `utc_now()`/inline `datetime.now(tz=UTC)` convention plus `SqliteRepository.set_ops_meta`'s own optional-timestamp precedent). Stage now calls `persisted_at=self._persistence_clock()`, never `ctx.as_of`. Proved with genuinely distinct injected values: `as_of` unchanged from `SessionContext`, `persisted_at` correctly distinct and timezone-aware (verified via direct SQL, since the domain object doesn't expose write metadata); idempotent retry preserves the original `persisted_at` across two full pipeline executions with different clock values; latest-query ordering reconfirmed `as_of`-only (proven with `as_of`/`persisted_at` in deliberately opposite order). Pure engine remains structurally clock-free. SCHEMA_VERSION unchanged (17). 4 new focused tests, 1 mutation-verified. Full suite 3,131 passed. No methodology/Decision-selection/finality/schema/API/UI change |
+| ID-6D | OWNER APPROVED / CLOSED 2026-09-02 — new `entry_qualification` `WorkflowStage` in `OwnerValidationPipeline` (depends on `decision` + `intraday_analytics`, declared last, order-stability proven). Current Decision = the Decision `dec_stage` just produced this same cycle (closure-captured, not re-queried) — provably freshest, no TTL invented. Engine called unconditionally; persistence scoped to WATCH/TRADE only. New pure `resolve_evidence_finality` (`src/athena/intraday/entry_qualification_provenance.py`) reuses the engine's own public structural/lifecycle eligibility gate (WATCH/TRADE AND `SessionPhase.REGULAR`) — never the tri-state formula — to resolve `LIVE_M5_PROVISIONAL` vs `UNKNOWN_PROVENANCE`; `NO_DECISIVE_PROVISIONAL_M5_DEPENDENCY` proven structurally unreachable (ADR-013's documented Decision-provenance insufficiency), reported honestly. Owner found `persisted_at=ctx.as_of` wrongly conflated evaluation time with write time — corrected by ID-6D.1. ID-6D (including ID-6D.1) is now fully closed |
+| ID-6D.1 | OWNER APPROVED / CLOSED 2026-09-02 — added injectable `OwnerValidationPipeline(..., persistence_clock: Callable[[], datetime] | None = None)`, defaulting to `datetime.now(tz=timezone.utc)` (audited first: no existing injectable wall-clock abstraction; found the established `utc_now()`/inline `datetime.now(tz=UTC)` convention plus `SqliteRepository.set_ops_meta`'s own optional-timestamp precedent). Stage now calls `persisted_at=self._persistence_clock()`, never `ctx.as_of`. Proved with genuinely distinct injected values: `as_of` unchanged from `SessionContext`, `persisted_at` correctly distinct and timezone-aware (verified via direct SQL, since the domain object doesn't expose write metadata); idempotent retry preserves the original `persisted_at` across two full pipeline executions with different clock values; latest-query ordering reconfirmed `as_of`-only (proven with `as_of`/`persisted_at` in deliberately opposite order). Pure engine remains structurally clock-free. SCHEMA_VERSION unchanged (17). 4 new focused tests, 1 mutation-verified. Full suite 3,131 passed. No methodology/Decision-selection/finality/schema/API/UI change |
+| ID-6E | ANALYSIS COMPLETE — READY FOR OWNER VALIDATION REVIEW 2026-09-02 — validation-only milestone: deterministic historical market-time replay via the real, unmodified `EntryQualificationEngine`/`resolve_evidence_finality`, plus read-only inspection of persisted shadow observations in real `db/athena.db`. New harness `src/athena/data/id6e_replay_shadow_validation.py` reuses ID-6B.1's `ReadOnlyStore`/`candidates_at` and ID-6B.1B's exact 10-session/17,082-observation window; two independent full replay runs produced a byte-identical SHA-256 digest (full determinism, zero provider calls). Every headline statistic matches ID-6B.1B's own research figures almost exactly (QUALIFIED 21.70%, TRADE 24.17%, WATCH 19.93%, flicker 39.76%) with zero tuning — confirming the real engine faithfully implements the frozen v0 methodology. All frozen invariants hold across all 17,082 observations (`DISQUALIFIED_FOR_SESSION`=0, confirmation always `NOT_EVALUATED`, finality 100% `LIVE_M5_PROVISIONAL`), Option C and M15 non-blocking status reconfirmed at full scale. Real `db/athena.db` audited read-only: `entry_qualifications` table does not exist in production — reported honestly as `SHADOW_OBSERVATIONS_NOT_YET_AVAILABLE`, no synthetic rows fabricated. Classification: `REPLAY_SOUND_SHADOW_EVIDENCE_INSUFFICIENT`. No profitability/outcome claim made. 18 new focused tests, 2 mutation-verified. Full suite 3,149 passed, 1 pre-existing skip. No methodology/threshold/workflow/API/UI change |
 
 The full detailed evidence for every closed milestone above is in
 `docs/MILESTONES.md`'s "Intraday Intelligence Track" section (long — this
@@ -200,7 +202,7 @@ reproduce those numbers.
 
 ## 5. Full test suite status
 
-As of the ID-5G.1 close (2026-08-30): **2,935 passed, 1 pre-existing
+As of the ID-6E analysis (2026-09-02): **3,149 passed, 1 pre-existing
 skip**, 0 failed. Ruff clean for every ID-track file (a small number of
 pre-existing, unrelated `repository.py` SIM117 findings remain, confirmed
 present before this track ever touched the file). Zero new mypy failures
@@ -525,9 +527,50 @@ selection/finality-resolver/schema change, no API/UI. Design note:
 `docs/design/ID-6D-ENTRY-QUALIFICATION-WORKFLOW-INTEGRATION.md` (§9/§12
 corrected).
 
+The owner approved the ID-6D.1 persistence-time correction and closed
+ID-6D (including ID-6D.1) in full on 2026-09-02, then authorized ID-6E to
+validate the now fully closed Entry Qualification chain.
+
+ID-6E's analysis is complete:
+`docs/research/ID-6E-ENTRY-QUALIFICATION-REPLAY-SHADOW-VALIDATION.md`.
+Validation only — no methodology, threshold, workflow, or engine change.
+A new harness, `src/athena/data/id6e_replay_shadow_validation.py`, reused
+ID-6B.1's `ReadOnlyStore`/`candidates_at` and ID-6B.1B's own
+deterministically-selected 10-session/17,082-observation window verbatim,
+but — unlike every prior ID-6B research harness — calls the real, closed
+`EntryQualificationEngine.evaluate()` and `resolve_evidence_finality()`
+directly rather than re-deriving the v0 formula. Two independent full
+replay runs produced an exactly matching SHA-256 analysis digest (full
+determinism, zero provider/network calls). Every headline statistic
+matches ID-6B.1B's own research-formula figures almost exactly (QUALIFIED
+21.70%, TRADE match 24.17%, WATCH match 19.93%, checkpoint-level flicker
+39.76%) with zero tuning performed to force the agreement — direct
+confirmation that the production engine faithfully implements the frozen
+methodology. All frozen invariants held across all 17,082 observations
+(`DISQUALIFIED_FOR_SESSION` count 0, confirmation always `NOT_EVALUATED`,
+0 harness defects, 0 coherence failures); Option C and M15's
+non-blocking-technical-debt status were both reconfirmed at full
+production-engine scale. Evidence-finality was 100% `LIVE_M5_PROVISIONAL`,
+exactly as ID-6D's resolver predicts for REGULAR-phase WATCH/TRADE
+evaluation, with the historical-replay-vs-storage-settlement distinction
+(ID-6D.1's own owner-accepted limitation) explicitly restated.
+
+The real production `db/athena.db` was audited read-only
+(`mode=ro`+`PRAGMA query_only=ON`): the `entry_qualifications` table does
+not exist in production yet — the ID-6C schema migration has never been
+run against it. This was reported honestly as
+`SHADOW_OBSERVATIONS_NOT_YET_AVAILABLE`; no synthetic rows were fabricated
+to satisfy the milestone. Classification:
+**`REPLAY_SOUND_SHADOW_EVIDENCE_INSUFFICIENT`**. No profitability, edge,
+win-rate, or target-hit claim was made or tested — outcome data was not
+even queried. 18 new focused tests (9 pure-function, 5 harness
+integration, 4 shadow-audit), 2 mutation-verified. Full repository suite:
+3,149 passed, 1 pre-existing skip, 0 failed. `db/athena.db` confirmed
+unmodified across both replay runs and the shadow audit.
+
 Do not add API/UI, thresholds, IntradayTradePlan, an M15 settlement-repair
-milestone, ID-6E, ID-7, EM-6, EMR, DarvaX, or order behavior until the
-owner reviews the ID-6D.1 persistence-time correction and closes ID-6D.
+milestone, ID-7, EM-6, EMR, DarvaX, or order behavior until the owner
+reviews the ID-6E validation analysis and closes it.
 
 ## 7. ID-5B — closed result
 
