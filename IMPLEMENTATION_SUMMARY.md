@@ -6,7 +6,62 @@ status updated on approval.
 
 ---
 
-## ID-6A Entry Qualification Domain Contracts — Ready for Owner Review
+## ID-6B.0 Entry Qualification Methodology Design — Ready for Owner Review
+
+**Summary.** Recorded ID-6A as owner-approved / closed and completed the
+owner-authorized ID-6B.0 discovery milestone. The new methodology report
+audits the actual Decision, scoring, session, intraday, data-quality,
+workflow, persistence, and historical-data surfaces, then proposes the future
+pure Entry Qualification engine contract without implementing it.
+
+**Architecture compliance.** Preserves ADR-013, ATHENA-002, ADR-003, ADR-005,
+and the ID-5B `CASE_B_CONTENT_CHANGES` policy. No qualification engine,
+persistence, migration, workflow stage, UI, thresholds, provider calls, DB
+writes, EMR, DarvaX, scoring, confidence, risk, DecisionEngine, TradePlan,
+broker, order, ID-6C, ID-6D, ID-6E, or ID-7 behavior changed.
+
+**Files created.**
+`docs/research/ID-6B-ENTRY-QUALIFICATION-METHODOLOGY-DESIGN.md`.
+
+**Files modified.** `docs/MILESTONES.md`,
+`docs/ATHENA-ID-TRACK-HANDOFF.md`, `ATHENA_BRIEFING.md`,
+`IMPLEMENTATION_SUMMARY.md`.
+
+**Behavior implemented.** None. This is documentation/research only. The
+report recommends a conservative owner-approved v0 methodology before any
+engine code: WATCH/TRADE Decisions may enter the funnel, missing evidence is
+not negative evidence, `DISQUALIFIED_FOR_SESSION` should not be used in the
+initial methodology without a genuinely irreversible non-provisional rule, and
+current indirect Decision provenance is insufficient for stable finality
+claims.
+
+**Verification.** Read-only SQLite aggregate analysis over `db/athena.db`
+measured Decision/candle/run/outcome availability without writes. `git diff
+--check` is run as the closeout quality gate; no pytest run is required for
+this docs-only milestone.
+
+**Risks / known gaps.** The production database has many WATCH/TRADE Decisions
+and M5/D1 candles, but `IntradaySignalSet` history is not persisted and
+neutral ID-style forward outcome labels are not available beyond one legacy
+trade outcome. Historical settled-M5 replay can evaluate feasibility and
+base rates, but not true live provisional values. Owner approval is still
+needed for the v0 confirmation/readiness policy before ID-6B engine
+implementation.
+
+**Suggested improvements.** Approve or revise the ID-6B.0 owner decisions,
+then implement ID-6B in small slices: policy value object, pure engine,
+focused tests, replay/distribution harness, and only then the later
+persistence/workflow milestones.
+
+**Remaining work.** Owner methodology review. Do not start ID-6B production
+engine implementation, ID-6C, ID-6D, ID-6E, ID-7, EM-6, EMR, DarvaX, UI,
+provider, DB, or production behavior until explicitly authorized.
+
+**Outcome:** Discovery complete; ready for owner methodology review.
+
+---
+
+## ID-6A Entry Qualification Domain Contracts — Owner Approved / Closed
 
 **Summary.** Implemented the owner-authorized ID-6A domain contract milestone.
 ADR-013 is now owner-approved / accepted, ID-6A0 is owner-approved / closed,
@@ -47,15 +102,15 @@ ID-6C owns persistence/latest-state queries. ID-6D owns workflow wiring.
 No thresholds, confirmation methodology, entry plan, risk/reward, or live
 supervision policy exists yet.
 
-**Suggested improvements.** Review ID-6A contract names and fields before
-authorizing ID-6B, especially whether ID-6B needs richer evidence-finality
-aggregation once it sees actual `Decision`/`IntradaySignalSet` provenance.
+**Suggested improvements.** Carry the accepted ID-6A contract names and fields
+into ID-6B, especially the need for conservative evidence-finality aggregation
+once the engine sees actual `Decision`/`IntradaySignalSet` provenance.
 
-**Remaining work.** Owner contract review. Do not start ID-6B, persistence,
-workflow integration, ID-7, EM-6, EMR, DarvaX, UI, provider, DB, or production
-work until explicitly authorized.
+**Remaining work.** ID-6B methodology review / engine implementation remains
+owner-gated. Do not start persistence, workflow integration, ID-7, EM-6, EMR,
+DarvaX, UI, provider, DB, or production work until explicitly authorized.
 
-**Outcome:** Implemented; ready for owner contract review.
+**Outcome:** Owner-approved / closed 2026-09-02.
 
 ---
 
