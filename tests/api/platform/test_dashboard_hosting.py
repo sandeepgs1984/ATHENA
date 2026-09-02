@@ -303,7 +303,7 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.148.8" in html
+    assert "dashboard.css?v=9.149.0" in html
     assert "dashboard.js?v=9.149.4" in html
     assert "function decisionConfidenceBand" in js
     assert "analysis?.confidence_level" in js
@@ -328,6 +328,67 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert 'id="decisions-revalidate-visible-btn"' in html
     assert 'id="decisions-revalidate-status"' in html
     assert "QUICK_VISIBLE_REVALIDATE_LIMIT = 5" in js
+
+
+def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
+    """PS-P3 renders My Portfolio as an isolated upload/reconciliation tab."""
+
+    html = client.get("/dashboard/").text
+    css_manifest = client.get("/dashboard/dashboard.css").text
+    css = _fetch_full_css(client)
+    my_portfolio_css = (
+        Path(__file__).parents[3]
+        / "src"
+        / "athena"
+        / "api"
+        / "static"
+        / "css"
+        / "05b-my-portfolio.css"
+    ).read_text(encoding="utf-8")
+    js = client.get("/dashboard/dashboard.js").text
+
+    assert 'data-tab="overview"' in html
+    assert 'data-tab="my-portfolio"' in html
+    assert 'data-tab="market"' in html
+    assert 'data-tab="strategies"' in html
+    assert 'data-tab="decisions"' in html
+    assert 'data-tab="operations"' in html
+    assert 'id="tab-my-portfolio"' in html
+    assert 'id="my-portfolio-file"' in html
+    assert 'accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"' in html
+    assert "Required columns: Symbol, Qty, Avg Price" in html
+    assert 'id="my-portfolio-sync" class="btn btn-secondary" type="button" disabled' in html
+    assert "Sync Portfolio — available in next milestone" in html
+    assert "No trades or realized P&amp;L are inferred" in html
+    assert 'id="my-portfolio-preview-duplicates"' in html
+    assert 'id="my-portfolio-holdings-rows"' in html
+    assert 'id="my-portfolio-history-rows"' in html
+
+    assert '@import url("css/05b-my-portfolio.css");' in css_manifest
+    assert ".my-portfolio-table-scroll" in my_portfolio_css
+    assert ".my-portfolio-wide-table th:first-child" in my_portfolio_css
+    assert "position: sticky" in my_portfolio_css
+
+    assert "08b-my-portfolio.js" in DASHBOARD_JS_PARTS
+    assert "function loadMyPortfolioWorkspace()" in js
+    assert "function uploadMyPortfolioFile(file)" in js
+    assert "function confirmMyPortfolioPreview()" in js
+    assert "/api/v1/my-portfolio/imports?filename=" in js
+    assert "/api/v1/my-portfolio/holdings" in js
+    assert "/api/v1/my-portfolio/imports" in js
+    assert "Content-Type\": \"application/octet-stream" in js
+    assert "DUPLICATE_CANONICAL_INSTRUMENT" in js
+    assert "STALE_PREVIEW" in js
+    assert (
+        "Portfolio holdings changed after this preview was generated. "
+        "Please generate a fresh preview before confirming."
+    ) in js
+    assert "Absent from uploaded current-holdings snapshot; no sale inferred." in js
+    assert "myPortfolioConfirm.disabled" in js
+    assert '["overview", "my-portfolio", "market", "strategies", "decisions", "operations"]' in js
+    assert 'tabId === "my-portfolio"' in js
+    assert "loadMyPortfolioWorkspace();" in js
+    assert "function loadPortfolioData()" in js
     assert "QUICK_VISIBLE_REVALIDATE_COOLDOWN_MS = 60000" in js
     assert "function currentVisibleBoardSymbols" in js
     assert "decisionsCarouselContainer.getBoundingClientRect()" in js

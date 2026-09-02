@@ -87,6 +87,7 @@ def test_clean_import_confirm_applies_holdings_and_audit_idempotently(my_portfol
     assert body["already_confirmed"] is False
     assert body["holdings"][0]["instrument_id"] == "NSE:INFY"
     assert body["holdings"][0]["quantity"] == 10
+    assert body["holdings"][0]["investment"] == "15000"
     assert body["reconciliation"][0]["action"] == "ADDED"
 
     second = my_portfolio_client.post(

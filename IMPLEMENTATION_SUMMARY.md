@@ -6,7 +6,96 @@ status updated on approval.
 
 ---
 
-## PS-P2 Import Preview & Holdings Reconciliation — Ready for Owner Review
+## PS-P3 My Portfolio Dashboard + Upload UX — Ready for Owner Review
+
+**Summary.** Implemented the owner-facing My Portfolio dashboard workflow over
+the PS-P2 backend. ATHENA now has a separate My Portfolio tab and route where
+the owner can upload CSV/XLSX holdings, see the selected filename and required
+logical fields, generate a server-owned preview, review mapping/validation
+errors, inspect reconciliation changes, confirm a clean current-holdings
+snapshot, and view canonical holdings plus import history.
+
+**Architecture compliance.** My Portfolio remains isolated under the existing
+portfolio capability. The dashboard calls only PS-P2 My Portfolio APIs and does
+not parse CSV/XLSX client-side. Portfolio Overview / `owner_positions` remains
+separate. No ScoringEngine, DecisionEngine, indicator, market-ingestion,
+Portfolio Sync orchestration, broker integration, P&L inference, transaction
+reconstruction, or order/execution code was added.
+
+**Files created.** `src/athena/api/static/js/08b-my-portfolio.js`,
+`src/athena/api/static/css/05b-my-portfolio.css`,
+`docs/research/PS-P3-MY-PORTFOLIO-DASHBOARD-UX.md`.
+
+**Files modified.** `src/athena/api/static/index.html`,
+`src/athena/api/static/dashboard.css`, `src/athena/api/static/js/03-app-shell.js`,
+`src/athena/api/app.py`, `src/athena/api/v1/dtos/portfolio.py`,
+`src/athena/api/v1/services/my_portfolio_service.py`,
+`tests/api/platform/test_dashboard_hosting.py`,
+`tests/api/platform/test_decision_chart_release_gate.py`,
+`tests/api/v1/test_my_portfolio_import_api.py`, `docs/MILESTONES.md`,
+`ATHENA_BRIEFING.md`, `IMPLEMENTATION_SUMMARY.md`.
+
+**Behavior implemented.** The tab renders factual summary cards for holding
+count, total investment, and latest confirmed import. Upload sends raw file
+bytes to `/api/v1/my-portfolio/imports?filename=...`; preview rows distinguish
+RESOLVED/UNRESOLVED/AMBIGUOUS mapping states, invalid rows, warnings, and
+duplicate canonical-instrument errors. Reconciliation shows ADDED, UPDATED,
+REMOVED, and UNCHANGED with explicit `REMOVED` copy stating no sale is inferred.
+Confirm Portfolio Update is disabled unless the backend preview is clean.
+
+**Freshness / truthfulness.** PS-P3 shows only import-backed freshness:
+portfolio imported at and holdings-as-of when supplied. It does not fabricate
+market-data-through, last-synced, current value, P&L, status, conviction,
+technical setup, supports, targets, next action, or review freshness before
+Portfolio Sync exists. The canonical holdings API now exposes per-holding
+`investment`, so the dashboard's total investment sums server-owned values.
+
+**Failure handling.** File-level parse failures returned as 400 with preview
+data are rendered as reviewable failed previews. Stale-preview confirmation
+failures show the required message: "Portfolio holdings changed after this
+preview was generated. Please generate a fresh preview before confirming." The
+UI provides Upload Again/re-select recovery and never auto-applies a stale
+preview.
+
+**Verification.** Dashboard hosting/release-gate tests: 12 passed. Focused
+PS-P1/PS-P2 My Portfolio contract, schema, parser, DTO, and API regressions
+plus legacy owner portfolio, indicator, scoring, decision, and platform
+regressions: 121 passed. Targeted Ruff on touched Python files: PASS.
+`git diff HEAD --check`: CLEAN.
+
+**Risks / known gaps.** PS-P3 has static dashboard tests but no browser
+screenshot/interaction automation yet. Import history is intentionally minimal.
+Blank/zero-row uploads remain rejected by PS-P2; a future Clear Portfolio
+workflow should be explicit and confirmation-gated. Portfolio Sync orchestration
+and all 20-column analysis fields remain deferred.
+
+**Suggested improvements / PS-P4 recommendation.** Recommended PS-P4 is
+Portfolio Sync Orchestration: analyze confirmed My Portfolio holdings through
+ATHENA's existing provider/data/advisory pipeline and populate the frozen PS-P1
+Portfolio Snapshot contract, without changing methodology.
+
+**Commit message (for the owner to use, not run by the AI):**
+
+```
+feat(portfolio): add My Portfolio dashboard upload UX
+
+- Add a separate My Portfolio dashboard tab, route, CSS concern, and JS concern
+  so imported current holdings stay separate from the existing owner fill ledger
+- Render server-owned import previews, mapping states, validation errors,
+  duplicate rows, reconciliation diffs, stale-preview recovery, and explicit
+  confirmation without client-side CSV/XLSX parsing
+- Show factual current holdings, total investment, latest import metadata, and
+  import history while keeping Sync Portfolio, market values, P&L, and analysis
+  fields deferred per PS-P3
+- Document PS-P3 behavior, acceptance evidence, known gaps, and the PS-P4
+  orchestration recommendation
+```
+
+**Outcome:** PS-P3 ready for Owner/Chief Architect review. PS-P4 not started.
+
+---
+
+## PS-P2 Import Preview & Holdings Reconciliation — Owner Approved
 
 **Summary.** Implemented the My Portfolio backend import/reconciliation
 workflow approved for PS-P2. ATHENA can now accept CSV/XLSX holdings bytes,
@@ -99,7 +188,8 @@ feat(portfolio): implement My Portfolio import reconciliation
   deferred
 ```
 
-**Outcome:** PS-P2 ready for Owner/Chief Architect review. PS-P3 not started.
+**Outcome:** PS-P2 Owner/Chief Architect approved 2026-09-02. PS-P3 completed
+as the next milestone and is ready for review.
 
 ---
 

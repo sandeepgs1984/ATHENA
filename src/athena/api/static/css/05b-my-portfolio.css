@@ -1,0 +1,193 @@
+/* My Portfolio import/reconciliation workspace (PS-P3). */
+.my-portfolio-workstation {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-24);
+    min-width: 0;
+}
+
+.my-portfolio-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-16);
+    flex-wrap: wrap;
+}
+
+.my-portfolio-header h2 {
+    margin: 0 0 var(--space-4);
+}
+
+.my-portfolio-actions,
+.my-portfolio-confirm-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-8);
+    flex-wrap: wrap;
+}
+
+.my-portfolio-upload-btn {
+    cursor: pointer;
+}
+
+.my-portfolio-upload-body {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-16);
+    flex-wrap: wrap;
+}
+
+.my-portfolio-confirm-note {
+    flex: 1 1 100%;
+    margin: 0;
+}
+
+.my-portfolio-file-name {
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: var(--text-0-8);
+    max-width: min(420px, 100%);
+    overflow-wrap: anywhere;
+}
+
+.my-portfolio-alert {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: var(--space-10) var(--space-12);
+    color: var(--text-primary);
+    background: rgba(15, 22, 38, 0.72);
+}
+
+.my-portfolio-alert.good {
+    border-color: rgba(31, 191, 117, 0.45);
+}
+
+.my-portfolio-alert.warning {
+    border-color: rgba(245, 158, 11, 0.55);
+}
+
+.my-portfolio-alert.danger {
+    border-color: rgba(239, 68, 68, 0.55);
+}
+
+.my-portfolio-small-metric {
+    font-size: var(--text-1);
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+}
+
+.my-portfolio-preview {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-16);
+}
+
+.my-portfolio-preview[hidden] {
+    display: none;
+}
+
+.my-portfolio-preview-counts {
+    grid-template-columns: repeat(6, minmax(116px, 1fr));
+}
+
+.my-portfolio-table-scroll {
+    overflow: auto;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    scrollbar-gutter: stable;
+}
+
+.my-portfolio-table {
+    min-width: 760px;
+}
+
+.my-portfolio-wide-table {
+    min-width: 920px;
+}
+
+.my-portfolio-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--bg-sidebar);
+}
+
+.my-portfolio-wide-table th:first-child,
+.my-portfolio-wide-table td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: var(--bg-card);
+}
+
+.my-portfolio-wide-table thead th:first-child {
+    z-index: 3;
+    background: var(--bg-sidebar);
+}
+
+.my-portfolio-status {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-4);
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    padding: 2px 8px;
+    font-size: var(--text-0-75);
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.my-portfolio-status.good {
+    border-color: rgba(31, 191, 117, 0.45);
+    color: var(--success);
+}
+
+.my-portfolio-status.warning {
+    border-color: rgba(245, 158, 11, 0.55);
+    color: var(--warning);
+}
+
+.my-portfolio-status.danger {
+    border-color: rgba(239, 68, 68, 0.55);
+    color: var(--danger);
+}
+
+.my-portfolio-status.neutral {
+    color: var(--text-muted);
+}
+
+.my-portfolio-diff-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-8);
+    margin-bottom: var(--space-12);
+}
+
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+@media (max-width: 920px) {
+    .my-portfolio-preview-counts {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .my-portfolio-upload-body {
+        align-items: stretch;
+    }
+}
+
+@media (max-width: 640px) {
+    .my-portfolio-preview-counts {
+        grid-template-columns: 1fr;
+    }
+}

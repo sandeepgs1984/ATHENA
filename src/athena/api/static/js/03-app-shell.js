@@ -91,7 +91,7 @@
             // Default fallback
             const pathParts = window.location.pathname.split("/");
             const pathTab = pathParts[pathParts.length - 1];
-            if (["overview", "market", "strategies", "decisions", "operations"].includes(pathTab)) {
+            if (["overview", "my-portfolio", "market", "strategies", "decisions", "operations"].includes(pathTab)) {
                 switchTab(pathTab);
             } else {
                 switchTab("overview");
@@ -109,7 +109,7 @@
     function initializeRoute() {
         const pathParts = window.location.pathname.split("/");
         const pathTab = pathParts[pathParts.length - 1];
-        const tab = ["overview", "market", "strategies", "decisions", "operations"].includes(pathTab)
+        const tab = ["overview", "my-portfolio", "market", "strategies", "decisions", "operations"].includes(pathTab)
             ? pathTab
             : "overview";
         const loaded = switchTab(tab);
@@ -178,6 +178,8 @@
     async function loadTabData(tabId) {
         if (tabId === "overview") {
             await loadPortfolioData();
+        } else if (tabId === "my-portfolio") {
+            await loadMyPortfolioWorkspace();
         } else if (tabId === "market") {
             await loadMarketIntelligence();
             await loadMarketTicker();

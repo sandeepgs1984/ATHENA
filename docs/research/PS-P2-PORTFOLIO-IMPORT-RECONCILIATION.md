@@ -1,6 +1,6 @@
 # PS-P2 Portfolio Import Preview & Reconciliation
 
-Status: Ready for Owner/Chief Architect review
+Status: Owner/Chief Architect approved 2026-09-02
 Date: 2026-09-02
 Scope: Backend import preview, symbol resolution, reconciliation, confirmation,
 canonical holdings, and audit history

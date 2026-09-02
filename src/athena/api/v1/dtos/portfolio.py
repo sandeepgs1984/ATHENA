@@ -161,6 +161,7 @@ class MyPortfolioHoldingDTO(BaseModel):
     symbol: str
     quantity: int = Field(gt=0)
     avg_price: Decimal = Field(gt=0)
+    investment: Decimal
     imported_at: datetime
     updated_at: datetime
     source_import_id: str

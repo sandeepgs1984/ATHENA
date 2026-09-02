@@ -300,6 +300,7 @@ class MyPortfolioService:
             symbol=holding.instrument_id.split(":", 1)[1],
             quantity=holding.quantity,
             avg_price=holding.avg_price,
+            investment=holding.avg_price * Decimal(holding.quantity),
             imported_at=holding.imported_at,
             updated_at=holding.updated_at,
             source_import_id=holding.source_import_id,
