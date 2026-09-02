@@ -45,6 +45,19 @@ caller supplies `evidence_finality` explicitly, and the engine only carries
 it through unchanged, orthogonally to `state`, exactly as ADR-013 requires.
 A future ID-6C/ID-6D milestone owns actually resolving that value from real
 provenance data.
+
+ID-6B.2A input-coherence hardening: before any evidence is read, `evaluate()`
+proves `Decision`, `SessionContext`, and `IntradaySignalSet` describe ONE
+coherent point-in-time candidate — same instrument, same session date, same
+evaluation `as_of` (no tolerance; confirmed by source inspection to be the
+real production contract every existing caller already follows) — and
+raises `ValueError` deterministically on any mismatch. A contract violation
+is a programmer/caller error, never a market state, so it is never reported
+as `UNKNOWN`/`NOT_YET`. Current/non-superseded `Decision` selection remains
+a caller/workflow responsibility this engine does not and cannot resolve
+(no repository access) — that is explicitly deferred to ID-6D. See
+`_validate_input_coherence` for the exact contract and why `trend`/`vwap`
+need no separate check.
 """
 
 from __future__ import annotations
@@ -227,6 +240,7 @@ class EntryQualificationEngine:
     ) -> EntryQualification:
         policy = policy if policy is not None else EntryQualificationPolicy()
         instrument_id = _resolve_instrument_id(decision, session_context)
+        _validate_input_coherence(instrument_id, session_context, signal_set)
 
         if decision.decision_type not in _ELIGIBLE_DECISION_TYPES:
             return self._emit(
@@ -369,6 +383,87 @@ def _resolve_instrument_id(decision: Decision, session_context: SessionContext) 
             f"({session_context.instrument_id!r}) for two different instruments"
         )
     return decision.instrument_id
+
+
+def _validate_input_coherence(
+    instrument_id: str, session_context: SessionContext, signal_set: IntradaySignalSet
+) -> None:
+    """Prove the three explicit domain inputs describe ONE coherent
+    point-in-time candidate evaluation, before any evidence is read.
+
+    Decision-vs-SessionContext instrument coherence is already resolved by
+    `_resolve_instrument_id`; this extends that same instrument identity to
+    `IntradaySignalSet`, and additionally requires session-date and `as_of`
+    (evaluation checkpoint) coherence between `SessionContext` and
+    `IntradaySignalSet` — confirmed by source inspection of
+    `IntradayAnalyticsEngine.assess` (which takes `session_context` and a
+    separate `as_of`/`session_date`) and of every real caller (e.g.
+    `id6b1_entry_qualification_baseline.py`, which always constructs both
+    from the identical `as_of`/`session_date` local variables) to be the
+    actual, already-followed production contract. No tolerance is applied
+    anywhere — exact equality only, no invented cutoff.
+
+    `IntradaySignalSet.trend` is NOT separately checked: the one engine
+    that ever constructs an `IntradaySignalSet` (`IntradayAnalyticsEngine.
+    assess`) always builds `trend` from the SAME local `instrument_id`/
+    `session_date`/`as_of` variables used for the top-level `IntradaySignalSet`
+    itself, making a divergence structurally unreachable in current code —
+    not merely unvalidated. `IntradaySignalSet.vwap` (`VwapEvidence`)
+    carries no instrument/session/`as_of` identity fields at all, so there
+    is nothing to check. `relative_strength` and `relative_volume` are, by
+    contrast, built by separate engines and passed into
+    `IntradayAnalyticsEngine.assess` as already-constructed objects —
+    `IntradaySignalSet` itself does not cross-validate them against its own
+    top-level identity, so this is the smallest necessary check for the two
+    v0-consumed evidence families where a genuine mismatch is actually
+    reachable.
+    """
+    if signal_set.instrument_id != instrument_id:
+        raise ValueError(
+            "EntryQualificationEngine received a SessionContext "
+            f"({instrument_id!r}) and IntradaySignalSet "
+            f"({signal_set.instrument_id!r}) for two different instruments"
+        )
+    if signal_set.session_date != session_context.session_date:
+        raise ValueError(
+            "EntryQualificationEngine received a SessionContext "
+            f"({session_context.session_date!r}) and IntradaySignalSet "
+            f"({signal_set.session_date!r}) for two different session dates"
+        )
+    if signal_set.as_of != session_context.as_of:
+        raise ValueError(
+            "EntryQualificationEngine received a SessionContext "
+            f"({session_context.as_of!r}) and IntradaySignalSet "
+            f"({signal_set.as_of!r}) for two different evaluation as_of timestamps"
+        )
+    _validate_nested_artifact_coherence(instrument_id, session_context, signal_set)
+
+
+def _validate_nested_artifact_coherence(
+    instrument_id: str, session_context: SessionContext, signal_set: IntradaySignalSet
+) -> None:
+    for label, artifact in (
+        ("relative_strength", signal_set.relative_strength),
+        ("relative_volume", signal_set.relative_volume),
+    ):
+        if artifact.instrument_id != instrument_id:
+            raise ValueError(
+                "EntryQualificationEngine received an IntradaySignalSet whose "
+                f"{label} evidence ({artifact.instrument_id!r}) belongs to a "
+                f"different instrument than the candidate being evaluated ({instrument_id!r})"
+            )
+        if artifact.session_date != session_context.session_date:
+            raise ValueError(
+                "EntryQualificationEngine received an IntradaySignalSet whose "
+                f"{label} evidence ({artifact.session_date!r}) belongs to a "
+                f"different session date than SessionContext ({session_context.session_date!r})"
+            )
+        if artifact.as_of != session_context.as_of:
+            raise ValueError(
+                "EntryQualificationEngine received an IntradaySignalSet whose "
+                f"{label} evidence ({artifact.as_of!r}) belongs to a "
+                f"different evaluation as_of than SessionContext ({session_context.as_of!r})"
+            )
 
 
 def _structural_evidence_refs(

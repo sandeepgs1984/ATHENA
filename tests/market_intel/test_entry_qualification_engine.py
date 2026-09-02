@@ -183,14 +183,17 @@ def _rs(
     *,
     vs_market: RelativeStrengthRelation = RelativeStrengthRelation.UNKNOWN,
     vs_sector: RelativeStrengthRelation = RelativeStrengthRelation.UNKNOWN,
+    instrument_id: str = IID,
+    session_date: date = DAY,
+    as_of: datetime = AS_OF,
 ) -> RelativeStrengthContext:
     return RelativeStrengthContext(
-        instrument_id=IID,
+        instrument_id=instrument_id,
         sector="IT",
         market_benchmark_id="NSE:NIFTY 50",
         sector_benchmark_id="NSE:NIFTY IT",
-        session_date=DAY,
-        as_of=AS_OF,
+        session_date=session_date,
+        as_of=as_of,
         comparison_start_ts=None,
         comparison_cutoff_ts=None,
         stock_return_pct=None,
@@ -209,11 +212,17 @@ def _rs(
     )
 
 
-def _rvol(relation: RelativeVolumeRelation) -> RelativeVolumeContext:
+def _rvol(
+    relation: RelativeVolumeRelation,
+    *,
+    instrument_id: str = IID,
+    session_date: date = DAY,
+    as_of: datetime = AS_OF,
+) -> RelativeVolumeContext:
     return RelativeVolumeContext(
-        instrument_id=IID,
-        session_date=DAY,
-        as_of=AS_OF,
+        instrument_id=instrument_id,
+        session_date=session_date,
+        as_of=as_of,
         comparison_start_ts=None,
         comparison_cutoff_ts=None,
         current_cumulative_volume=None,
@@ -268,18 +277,23 @@ def _signal_set(
     or30_breakout: bool = False,
     gap: bool = False,
     data_quality: SessionDataQualityStatus = SessionDataQualityStatus.SUFFICIENT,
+    instrument_id: str = IID,
+    session_date: date = DAY,
+    as_of: datetime = AS_OF,
+    relative_strength: RelativeStrengthContext | None = None,
+    relative_volume: RelativeVolumeContext | None = None,
 ) -> IntradaySignalSet:
     return IntradaySignalSet(
-        instrument_id=IID,
-        session_date=DAY,
-        as_of=AS_OF,
+        instrument_id=instrument_id,
+        session_date=session_date,
+        as_of=as_of,
         vwap=_vwap(vwap),
         trend=_trend(trend),
         or15=_dummy_or(OpeningRangeWindow.OR15, breakout=or15_breakout),
         or30=_dummy_or(OpeningRangeWindow.OR30, breakout=or30_breakout),
-        relative_strength=_rs(vs_market=rs_vs_market, vs_sector=rs_vs_sector),
+        relative_strength=relative_strength or _rs(vs_market=rs_vs_market, vs_sector=rs_vs_sector),
         gap=_dummy_gap(has_gap=gap),
-        relative_volume=_rvol(rvol),
+        relative_volume=relative_volume or _rvol(rvol),
         data_quality=data_quality,
         explanation="test signal set",
     )
@@ -601,6 +615,103 @@ def test_mismatched_instrument_ids_raise() -> None:
             decision=_decision(instrument_id="NSE:OTHER"),
             session_context=_session_context(instrument_id=IID),
         )
+
+
+# --------------------------------------------------------------------------- #
+# ID-6B.2A: input-coherence hardening (SessionContext <-> IntradaySignalSet)
+# --------------------------------------------------------------------------- #
+
+
+def test_signal_set_instrument_mismatch_raises() -> None:
+    with pytest.raises(ValueError, match="different instruments"):
+        _evaluate(
+            decision=_decision(instrument_id=IID),
+            session_context=_session_context(instrument_id=IID),
+            signal_set=_signal_set(instrument_id="NSE:BBB"),
+        )
+
+
+def test_signal_set_session_date_mismatch_raises() -> None:
+    with pytest.raises(ValueError, match="different session dates"):
+        _evaluate(
+            session_context=_session_context(),
+            signal_set=_signal_set(session_date=date(2026, 9, 1)),
+        )
+
+
+def test_signal_set_as_of_mismatch_raises() -> None:
+    with pytest.raises(ValueError, match="different evaluation as_of timestamps"):
+        _evaluate(
+            session_context=_session_context(),
+            signal_set=_signal_set(as_of=datetime(2026, 9, 2, 10, 5, tzinfo=IST)),
+        )
+
+
+def test_coherent_inputs_preserve_existing_v0_state_semantics() -> None:
+    """Regression: fully coherent inputs (the common case) must still
+    produce exactly the same QUALIFIED verdict as before coherence
+    hardening was added."""
+    result = _evaluate()
+    assert result.state is EntryQualificationState.QUALIFIED
+
+
+def test_decision_instrument_none_fallback_still_requires_signal_set_coherence() -> None:
+    """Decision.instrument_id=None is a legitimate fallback (existing
+    behavior): the engine falls back to SessionContext's own instrument_id.
+    That fallback must not create a loophole -- IntradaySignalSet must
+    still agree with SessionContext exactly."""
+    valid = _evaluate(
+        decision=_decision(instrument_id=None),
+        session_context=_session_context(instrument_id=IID),
+        signal_set=_signal_set(instrument_id=IID),
+    )
+    assert valid.state is EntryQualificationState.QUALIFIED
+
+    with pytest.raises(ValueError, match="different instruments"):
+        _evaluate(
+            decision=_decision(instrument_id=None),
+            session_context=_session_context(instrument_id=IID),
+            signal_set=_signal_set(instrument_id="NSE:BBB"),
+        )
+
+
+def test_option_c_regression_after_coherence_hardening() -> None:
+    """Coherent inputs + EXPECTED_BAR_MISSING + positive frozen artifacts
+    must still yield QUALIFIED -- coherence hardening must not reopen
+    Option C (owner §8)."""
+    result = _evaluate(
+        session_context=_session_context(data_quality=SessionDataQualityStatus.EXPECTED_BAR_MISSING),
+        signal_set=_signal_set(data_quality=SessionDataQualityStatus.EXPECTED_BAR_MISSING),
+    )
+    assert result.state is EntryQualificationState.QUALIFIED
+
+
+def test_watch_trade_parity_unchanged_after_coherence_hardening() -> None:
+    watch = _evaluate(decision=_decision(decision_type=DecisionType.WATCH, decision_id="d-w2"))
+    trade = _evaluate(decision=_decision(decision_type=DecisionType.TRADE, decision_id="d-t2"))
+    assert watch.state == trade.state is EntryQualificationState.QUALIFIED
+
+
+def test_nested_relative_strength_instrument_mismatch_raises() -> None:
+    mismatched_rs = _rs(vs_market=RelativeStrengthRelation.OUTPERFORMING, instrument_id="NSE:BBB")
+    with pytest.raises(ValueError, match="relative_strength evidence"):
+        _evaluate(signal_set=_signal_set(relative_strength=mismatched_rs))
+
+
+def test_nested_relative_volume_session_date_mismatch_raises() -> None:
+    mismatched_rvol = _rvol(RelativeVolumeRelation.ABOVE_BASELINE, session_date=date(2026, 9, 1))
+    with pytest.raises(ValueError, match="relative_volume evidence"):
+        _evaluate(signal_set=_signal_set(relative_volume=mismatched_rvol))
+
+
+def test_coherence_validation_is_o1_and_reads_no_prior_state() -> None:
+    """Structural proof the new checks did not introduce any repository/
+    history dependency: same signature shape as before (see
+    test_30_no_prior_qualification_state_is_an_engine_input)."""
+    import inspect
+
+    params = inspect.signature(EntryQualificationEngine.evaluate).parameters
+    assert set(params) == {"self", "decision", "session_context", "signal_set", "evidence_finality", "policy"}
 
 
 def test_decision_identity_is_preserved_never_promoted() -> None:

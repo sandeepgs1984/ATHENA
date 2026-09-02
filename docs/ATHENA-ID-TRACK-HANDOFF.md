@@ -6,8 +6,9 @@ architecture owner-approved with condition; ID-6A0 Entry Qualification ADR
 owner-approved and closed; ID-6A owner-approved and closed; ID-6B.0
 owner-approved and closed; ID-6B.1 owner-approved and closed; ID-6B.1A
 owner-approved and closed, Option C ratified; ID-6B.1B owner-approved and
-closed, v0 methodology frozen; ID-6B.2 pure engine implemented, ready for
-owner pure-engine review)
+closed, v0 methodology frozen; ID-6B.2 pure engine methodology/logic
+owner-accepted, closure held for ID-6B.2A; ID-6B.2A input-coherence
+hardening implemented, ready for owner closure review)
 **Governing boundary:** accepted `docs/adr/ADR-013-entry-qualification-architecture.md`
 for Entry Qualification; otherwise this track extends the existing frozen
 `ATHENA-002-System-Blueprint.md` module map (§6 of `ATHENA_BRIEFING.md`).
@@ -50,8 +51,17 @@ closed session → `EXPIRED`, pre-open → `NOT_YET`, regular session →
 evaluate the frozen expression. `DISQUALIFIED_FOR_SESSION` is never
 emitted; confirmation is always `NOT_EVALUATED`; `SessionDataQuality` is
 never a blanket gate (Option C, test-proven); OR15/OR30/Gap/Sector proven
-not to affect state. No persistence, workflow stage, API, or UI has been
-implemented — ID-6C/ID-6D own those, not yet started.
+not to affect state. Owner review of ID-6B.2 accepted the methodology and
+engine logic but held closure for one narrow, safety-critical gap:
+`IntradaySignalSet` was never validated against `SessionContext`'s own
+instrument/session-date/`as_of` identity, so a caller could in principle
+supply evidence for the wrong instrument/checkpoint. ID-6B.2A closed that
+gap with `_validate_input_coherence`/`_validate_nested_artifact_coherence`
+(exact-equality checks, no tolerance, run unconditionally before any
+methodology evaluation) — contract hardening only, the frozen methodology
+itself is byte-for-byte unchanged and regression-tested. No persistence,
+workflow stage, API, or UI has been implemented — ID-6C/ID-6D own those,
+not yet started.
 Evidence notes:
 `docs/research/ID-5B-LIVE-M5-SEMANTICS-CAPTURE-2026-08-31.md`,
 `docs/research/ID-6-SCOPE-ARCHITECTURE-DESIGN.md`,
@@ -97,7 +107,8 @@ Track B capture is running the same morning.
 | ID-6B.1 | OWNER APPROVED / CLOSED 2026-09-02 — read-only settled historical market-time replay measured 370 candidate-checkpoint observations across 5 recent sessions and 32 instruments; `EXPECTED_BAR_MISSING`=72.97% blocker escalated to ID-6B.1A; no production engine implemented |
 | ID-6B.1A | OWNER APPROVED / CLOSED 2026-09-02 — root-caused `EXPECTED_BAR_MISSING` to a chronic, unrepaired M15 off-grid data condition (96.30% of affected observations), confirmed zero M15 dependency in VWAP/RS/RVOL/Gap/OR by source inspection, verified checkpoint-boundary math exact (no harness/production bug), and re-ran the baseline uncapped (7,144 observations, 19x) finding every headline figure broadly stable except TRADE-specific ones (temporally concentrated on ~1 real day); Option C (artifact-owned availability) ratified over the blanket quality gate |
 | ID-6B.1B | OWNER APPROVED / CLOSED 2026-09-02 — confirmed aggregate `BULLISH` trend already requires genuine M5+M15 agreement (source-level audit); applied Option C to the original window (99.55%-100% evaluable) and a fresh, deterministically-selected wider window (10 sessions, 2026-08-14–08-27, 17,082 observations, 4.8x more TRADE observations across 9 sessions, 99.64% evaluable); M15 caused non-evaluability in <=0.03% of every sample — classified NON-BLOCKING TECHNICAL DEBT; WATCH/TRADE showed a uniform prevalence shift with no structural divergence; owner froze v0 methodology exactly as measured (VWAP positive AND aggregate trend BULLISH AND (RS support OR RVOL support)) |
-| ID-6B.2 | IMPLEMENTED — READY FOR OWNER PURE-ENGINE REVIEW 2026-09-02 — `EntryQualificationEngine.evaluate()` (`src/athena/intraday/entry_qualification_engine.py`): deterministic, side-effect-free, O(1), zero repository/provider/DB/wall-clock/workflow dependency; tri-state AND/OR so missing evidence never collapses to bearish; `DISQUALIFIED_FOR_SESSION` never emitted (exhaustive sweep test); confirmation always `NOT_EVALUATED`; `SessionDataQuality`/`EXPECTED_BAR_MISSING` never a blanket gate (Option C, test-proven); OR15/OR30/Gap/Sector proven not to affect state; WATCH/TRADE share one methodology; `evidence_finality` is an explicit orthogonal input, not inferred. 46 new focused tests, 2 mutation-verified. No persistence/workflow/API/UI |
+| ID-6B.2 | METHODOLOGY/ENGINE LOGIC OWNER-ACCEPTED; CLOSURE HELD FOR ID-6B.2A 2026-09-02 — `EntryQualificationEngine.evaluate()` (`src/athena/intraday/entry_qualification_engine.py`): deterministic, side-effect-free, O(1), zero repository/provider/DB/wall-clock/workflow dependency; tri-state AND/OR so missing evidence never collapses to bearish; `DISQUALIFIED_FOR_SESSION` never emitted (exhaustive sweep test); confirmation always `NOT_EVALUATED`; `SessionDataQuality`/`EXPECTED_BAR_MISSING` never a blanket gate (Option C, test-proven); OR15/OR30/Gap/Sector proven not to affect state; WATCH/TRADE share one methodology; `evidence_finality` is an explicit orthogonal input, not inferred. Owner found one safety-critical input-coherence gap on review — see ID-6B.2A |
+| ID-6B.2A | IMPLEMENTED — READY FOR OWNER CLOSURE REVIEW 2026-09-02 — `_validate_input_coherence`/`_validate_nested_artifact_coherence`, called unconditionally before any branching in `evaluate()`. Requires exact equality (no tolerance) of instrument_id/session_date/as_of between `SessionContext` and `IntradaySignalSet`, plus the same for the two externally-supplied nested artifacts (`relative_strength`, `relative_volume`); `trend` needs no check (structurally guaranteed by `IntradayAnalyticsEngine.assess`'s own construction), `vwap` carries no identity fields. Mismatch raises `ValueError` deterministically, never `UNKNOWN`/`NOT_YET`. `Decision.instrument_id=None` fallback preserved, still coherence-checked. Option C/frozen methodology/WATCH-TRADE parity all regression-tested unchanged. Current/non-superseded Decision selection explicitly deferred to ID-6D, not solved here. 10 new focused tests (3 mutation-verified), 56/56 total, full suite 3,074 passed |
 
 The full detailed evidence for every closed milestone above is in
 `docs/MILESTONES.md`'s "Intraday Intelligence Track" section (long — this
@@ -291,7 +302,7 @@ implement the pure engine only, with two corrections to ID-6B.1B's own
 (not a reserved future rule), and v0 confirmation uses the existing ID-6A
 `NOT_EVALUATED` value (not a proposed new one).
 
-**ID-6B.2 is the current review gate**:
+ID-6B.2's methodology and engine logic are owner-accepted:
 `src/athena/intraday/entry_qualification_engine.py`
 (`EntryQualificationEngine`). Deterministic, side-effect-free, O(1) pure
 engine implementing only the frozen v0 expression, via an internal
@@ -322,15 +333,43 @@ with 10 new v0-methodology reason codes.
 all non-vacuous; the two most safety-critical (tri-state FALSE-dominates-
 UNKNOWN, and the Option C non-gate) were independently confirmed by
 deliberately mutating the engine logic, observing the expected test
-failure, and reverting. Full repository suite: 3,064 passed, 1 pre-existing
-skip. No persistence, workflow, API, or UI — the engine remains unused by
-production runtime after this milestone, as expected.
+failure, and reverting.
+
+Owner review of ID-6B.2 found one safety-critical gap and held closure for
+it: the engine validated `Decision` vs. `SessionContext` instrument
+coherence, but never proved the supplied `IntradaySignalSet` belonged to
+the same instrument, session date, and evaluation checkpoint (`as_of`) as
+the `SessionContext` being evaluated. **ID-6B.2A is the current review
+gate**: added `_validate_input_coherence`/`_validate_nested_artifact_coherence`,
+called unconditionally at the top of `evaluate()` before any branching.
+Requires exact equality (no tolerance — source-audited to be the real
+production contract every existing caller already follows) of instrument/
+session-date/`as_of` between `SessionContext` and `IntradaySignalSet`, plus
+the same three checks against the two v0-consumed nested artifacts built by
+separate engines (`relative_strength`, `relative_volume`). `trend` needs no
+separate check (`IntradayAnalyticsEngine.assess` always builds it from the
+same local variables as the top-level `IntradaySignalSet`, source-verified
+to make divergence structurally unreachable); `vwap` carries no identity
+fields. A mismatch raises `ValueError` deterministically — never `UNKNOWN`/
+`NOT_YET`, since a contract violation is a programmer/caller error, not a
+market state. `Decision.instrument_id=None`'s existing fallback is
+preserved and still coherence-checked (no loophole). Current/non-superseded
+`Decision` selection is explicitly documented as a caller/workflow
+responsibility deferred to ID-6D — the pure engine has no repository access
+and cannot resolve it, and ID-6B.2A does not attempt to.
+
+10 new focused tests, all non-vacuous, 3 of the most safety-critical
+(top-level instrument check and both nested-artifact checks) independently
+confirmed by deliberately disabling each check, observing the expected test
+failure, and reverting — combined total 56/56 passing. Full repository
+suite: 3,074 passed, 1 pre-existing skip. No persistence, workflow, API, or
+UI — the engine remains unused by production runtime after this milestone,
+as expected.
 
 Do not implement persistence, workflow wiring, UI, thresholds,
 IntradayTradePlan, an M15 settlement-repair milestone, ID-6C, ID-6D, ID-6E,
 ID-7, EM-6, EMR, DarvaX, or order behavior until the owner reviews the
-ID-6B.2 pure-engine implementation and explicitly authorizes the next
-milestone.
+ID-6B.2A input-coherence hardening and closes ID-6B.2.
 
 ## 7. ID-5B — closed result
 

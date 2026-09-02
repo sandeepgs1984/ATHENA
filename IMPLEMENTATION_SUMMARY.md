@@ -6,105 +6,7 @@ status updated on approval.
 
 ---
 
-## ID-6B.1B Quality-Adjusted Policy Baseline & Wider TRADE Audit — Owner Approved / Closed
-
-**Summary.** Applied the owner-ratified Option C quality policy correctly to
-both ID-6B.1's original window and a new, materially wider, deterministically
-selected TRADE-representative window. First audited the intraday trend
-contract at source level (`_aggregate_trend`) and confirmed the existing
-aggregate `BULLISH` label already requires genuine M5+M15 agreement — no
-formula correction was needed to ID-6B.1's own `candidate_policy_match`
-measurement. Defined a research-only `EVALUABLE_FOR_CANDIDATE_POLICY`
-contract (VWAP + M5 trend + M15 trend + RS-or-RVOL, each independently
-available) and a relaxed M5-only variant, then re-analyzed ID-6B.1's own
-existing 370- and 7,144-observation JSONL artifacts directly (no replay
-needed — the harness already records the needed component fields):
-evaluability 100.00% and 99.55% respectively; M15 caused non-evaluability in
-only 2 of 7,144 observations (0.03%).
-
-Surveyed real `decisions` table counts across all 24 available trading dates
-and found TRADE-type decisions exist on 20 consecutive sessions
-(2026-07-31–08-27) but zero on the 4 most recent (2026-08-28 onward) —
-explaining why ID-6B.1's original window captured almost no TRADE. Selected
-the 10 most recent consecutive TRADE-bearing sessions preceding ID-6B.1's own
-window (2026-08-14–08-27) as the deterministic wider window, reported this
-selection rule before any policy-match analysis, then replayed it uncapped
-via ID-6B.1's own unmodified harness: 17,082 observations (matching a
-pre-replay SQL population estimate exactly), 418.469s runtime, 7,134 TRADE
-observations across 9 of 10 sessions (4.8x ID-6B.1's original TRADE count).
-Quality-adjusted re-analysis of this wider window: 99.64% evaluable; M15
-caused non-evaluability in only 4 of 17,082 observations (0.02%) —
-**classified NON-BLOCKING TECHNICAL DEBT**. WATCH vs. TRADE comparison under
-the quality-adjusted policy showed a uniform prevalence shift (TRADE
-consistently a few points higher on every named field: VWAP positive, M5/M15
-bullish, RS/RVOL support, candidate match) with no structural divergence —
-the existing single-shared-methodology decision stands. Checkpoint stability
-showed evaluability flat (~99.6%) across the day with match rate peaking at
-09:45 (27.5%) and declining to 14:30 (17.4%). Flicker re-measured at 39.76%
-(wider window) vs. 46.43% (same-window uncapped) — consistent order of
-magnitude, confirms flicker is real and stable across sample sizes, not
-small-sample noise. Recommendation: **FREEZE V0 POLICY WITH EXPLICIT
-LIMITATION** (checkpoint-level flicker means the policy is point-in-time
-only, never a persistence/confirmation signal). Proposed complete v0 engine
-state semantics (`OUT_OF_SCOPE`/`UNKNOWN`/`NOT_YET`/`QUALIFIED`/`EXPIRED`/
-`DISQUALIFIED_FOR_SESSION`, evidence-finality, confirmation, reason
-categories, WATCH/TRADE handling, missing-evidence behavior) documented as a
-proposal only — no implementation.
-
-**Architecture compliance.** Preserves ADR-013, ATHENA-002, ADR-003, ADR-005,
-ADR-012, and the advisory-only/no-order boundary. No production
-`SessionContext`, `IntradaySignalSet`, `ScoringEngine`, `DecisionEngine`,
-`TradePlan`, provider, workflow, or persistence behavior changed. No Entry
-Qualification engine, ID-6B.2, ID-6C, ID-6D, ID-6E, ID-7, EM-6, EMR, or
-DarvaX behavior touched. `CONFIRMED_BY_POLICY` and
-`DISQUALIFIED_FOR_SESSION` remain deferred/unused.
-
-**Files created.** `src/athena/data/id6b1b_quality_adjusted_policy_baseline.py`,
-`tests/data_layer/test_id6b1b_quality_adjusted_policy_baseline.py`,
-`docs/research/ID-6B.1B-QUALITY-ADJUSTED-POLICY-BASELINE.md`.
-
-**Files modified.** `docs/MILESTONES.md`, `docs/ATHENA-ID-TRACK-HANDOFF.md`,
-`IMPLEMENTATION_SUMMARY.md`.
-
-**Behavior implemented.** Research analysis only. Re-analyzes existing
-ID-6B.1-format JSONL directly (no replay for the same-window comparison) and
-drives one fresh wider-window replay via ID-6B.1's own unmodified
-`run_baseline` (no harness code changed). SQLite `mode=ro` +
-`PRAGMA query_only=ON` throughout. Writes only to `artifacts/research/id6b1b/`
-(gitignored). No DB writes, no provider calls, no raw artifact mutation.
-
-**Verification.** Focused tests: 6 new, all non-vacuous, passed; combined
-with ID-6B.1A's 3, `tests/data_layer/` full package: 428 passed, 0 failed.
-Ruff clean for both new files. `git diff --check` clean. `git status --short`:
-2 new untracked files (plus gitignored artifacts). Determinism: re-ran the
-new analyzer against the frozen wider-window JSONL twice — byte-identical
-output (SHA-256 `af28e7ee9828f67683050b2f55a6ce6670427f5b7770bc256dda1d21c83cbca1`
-both times). No production DB writes.
-
-**Risks / known gaps.** This milestone establishes coherence, availability,
-selectivity, and structural stability only — it makes no outcome/profitability
-claim (explicitly out of scope). Indirect `Decision` provenance (ADR-013)
-remains an open, conservatively-handled question. 2 of the wider window's 10
-sessions (2026-08-19, 2026-08-25) contribute negligible TRADE volume, so
-wider-window TRADE representativeness rests effectively on 8 sessions.
-
-**Suggested improvements.** If the owner freezes the v0 policy, the proposed
-engine semantics (report §18) should become the design basis for a future,
-separately-authorized Entry Qualification engine milestone. An M15 repair
-investigation remains a possible but non-prerequisite future milestone.
-
-**Remaining work.** Owner V0 policy decision. Do not start ID-6B.2, an Entry
-Qualification engine, persistence, workflow integration, an M15 repair
-milestone, ID-7, EM-6, EMR, DarvaX, or UI/production work until explicitly
-authorized.
-
-**Outcome:** Owner approved / closed. V0 readiness methodology frozen
-(VWAP positive AND aggregate trend BULLISH AND (RS support OR RVOL
-support)); ID-6B.2 authorized to start.
-
----
-
-## ID-6B.2 Entry Qualification Pure Engine — Implemented / Ready for Owner Pure-Engine Review
+## ID-6B.2 Entry Qualification Pure Engine — Methodology Accepted, Closure Held for ID-6B.2A
 
 **Summary.** Implemented the pure, deterministic `EntryQualificationEngine`
 for the v0 candidate-readiness methodology the owner froze in ID-6B.1B, and
@@ -212,9 +114,224 @@ that value through unchanged.
 persistence, workflow integration, API/UI, ID-7, or EM-6 until explicitly
 authorized.
 
-**Outcome:** Implemented; ready for owner pure-engine review.
+**Outcome:** Methodology/engine logic owner-accepted; one safety-critical input-coherence gap found on review (see ID-6B.2A immediately below); owner closure of ID-6B.2 held pending that corrective slice.
 
 ---
+
+## ID-6B.2A Entry Qualification Input Coherence Hardening — Implemented / Ready for Owner Closure Review
+
+**Summary.** Owner review of ID-6B.2 accepted the methodology and engine
+logic but held closure for one narrow, safety-critical gap: the engine
+validated `Decision` vs. `SessionContext` instrument coherence, but never
+proved that the supplied `IntradaySignalSet` belonged to the same
+instrument, session date, and evaluation checkpoint (`as_of`) as the
+`SessionContext` being evaluated — so the engine could, in principle, be
+called with a `SessionContext` for one instrument/checkpoint and an
+`IntradaySignalSet` reconstructed for a different one, evaluating the wrong
+evidence while emitting an `EntryQualification` bound to the right
+instrument. This is contract hardening only, not a methodology change.
+
+Added `_validate_input_coherence` (extends the existing instrument check to
+`IntradaySignalSet`, and adds session-date and `as_of` exact-equality
+checks between `SessionContext` and `IntradaySignalSet`) and
+`_validate_nested_artifact_coherence` (the same three checks against the
+two v0-consumed nested artifacts that are constructed by separate engines
+and passed in as already-built objects: `relative_strength` and
+`relative_volume`). Both run unconditionally at the very top of
+`evaluate()`, before any phase/decision-type branching, so a coherence
+violation is caught for every call regardless of which state the candidate
+would otherwise reach.
+
+Source-audited (not assumed) that exact `as_of` equality between
+`SessionContext` and `IntradaySignalSet` is the real, already-followed
+production contract: `IntradayAnalyticsEngine.assess` takes `session_context`
+and a separate `as_of` parameter with no internal cross-check, and every
+real caller (e.g. `id6b1_entry_qualification_baseline.py`) already
+constructs both from the identical local `as_of`/`session_date` variables.
+No tolerance was added anywhere, per the owner's explicit instruction — exact
+equality only.
+
+`IntradaySignalSet.trend` was deliberately NOT given a separate coherence
+check: source-audited that the one engine which ever constructs an
+`IntradaySignalSet` (`IntradayAnalyticsEngine.assess`) always builds its
+`trend` field from the identical local `instrument_id`/`session_date`/
+`as_of` variables used for the top-level `IntradaySignalSet` itself, making
+a divergence structurally unreachable in current code, not merely
+unvalidated. `IntradaySignalSet.vwap` (`VwapEvidence`) carries no
+instrument/session/`as_of` identity fields at all, so there is nothing to
+check.
+
+A coherence violation raises `ValueError` deterministically, with a message
+naming exactly which two objects/fields conflicted and their values — never
+`UNKNOWN`/`NOT_YET`, since a contract violation is a programmer/caller
+error, not a market state. `Decision.instrument_id=None`'s existing
+fallback-to-`SessionContext.instrument_id` behavior is preserved, and is
+still subject to the new `IntradaySignalSet` coherence check (no loophole).
+
+Current/non-superseded `Decision` selection was explicitly NOT addressed:
+the pure engine has no repository/history access and cannot independently
+know whether a newer `Decision` exists, so this is documented as a
+caller/workflow responsibility deferred to ID-6D, not solved or worked
+around here.
+
+**Architecture compliance.** Preserves ADR-013, ATHENA-002, ADR-003,
+ADR-005, ADR-012, and the advisory-only/no-order boundary. The frozen v0
+readiness expression (VWAP/trend/RS-or-RVOL predicates, tri-state AND/OR,
+reason precedence, WATCH/TRADE parity, `PRE_OPEN`/`CLOSED` lifecycle
+handling, confirmation, evidence-finality passthrough, OR/Gap/Sector
+non-role) is byte-for-byte unchanged — regression-tested. `EntryQualificationPolicy`
+default (`policy: EntryQualificationPolicy | None = None`) unchanged, not
+reopened. No `ScoringEngine`, `DecisionEngine`, `TradePlan`, `SessionContext`,
+intraday methodology, provider, DB schema, persistence, workflow, API/UI,
+M15 repair, EMR, or DarvaX behavior touched. ID-6C, ID-6D, ID-7, and EM-6
+remain not started.
+
+**Files created.** None.
+
+**Files modified.** `src/athena/intraday/entry_qualification_engine.py`
+(added `_validate_input_coherence`/`_validate_nested_artifact_coherence`,
+wired into `evaluate()`; module docstring extended), `tests/market_intel/test_entry_qualification_engine.py`
+(10 new tests; existing 46 fixtures required no changes — they were already
+input-coherent), `docs/MILESTONES.md`, `docs/ATHENA-ID-TRACK-HANDOFF.md`,
+`IMPLEMENTATION_SUMMARY.md`.
+
+**Behavior implemented.** Two new module-level pure functions, O(1), no
+repository/provider/DB/workflow/wall-clock access, no candle iteration, no
+prior-qualification lookup (signature shape unchanged and test-proven). Not
+wired into any production path — same as ID-6B.2.
+
+**Verification.** Focused tests: 10 new (instrument/session-date/as_of
+mismatch for `SessionContext` vs. `IntradaySignalSet`; coherent-input
+regression; `Decision.instrument_id=None` fallback still enforcing
+`IntradaySignalSet` coherence; Option C regression; WATCH/TRADE parity
+regression; nested `relative_strength`/`relative_volume` mismatch;
+signature-shape purity proof) — all non-vacuous, 3 of the most
+safety-critical (top-level instrument check, and both nested-artifact
+checks) independently confirmed by deliberately disabling the check,
+observing the expected test failure, and reverting. Combined with the
+existing 46: `tests/market_intel/test_entry_qualification_engine.py` 56
+passed. `tests/market_intel/` full package: 307 passed. `tests/market_intel/test_entry_qualification_models.py`
+(ID-6A contract tests): 11 passed, unaffected. Ruff clean. `git diff --check`
+clean. Full repository suite: **3,074 passed, 1 pre-existing skip, 0
+failed**. No DB writes, no provider calls, no repository access (confirmed
+by source grep), no schema/workflow/Scoring/Decision/TradePlan/EMR/DarvaX
+changes.
+
+**Risks / known gaps.** Current/non-superseded `Decision` selection remains
+entirely unaddressed by design, deferred to ID-6D. `SessionPhase.CLOSED`'s
+pre-existing conflation of "before pre-open" and "after close" (noted in
+ID-6B.2's own risk section) is unchanged by this slice.
+
+**Suggested improvements.** ID-6D should resolve current/non-superseded
+`Decision` selection when it designs workflow wiring, using real repository
+state this pure engine deliberately cannot access.
+
+**Remaining work.** Owner closure review of ID-6B.2 (now including this
+hardening). Do not start ID-6C, ID-6D, persistence, workflow integration,
+API/UI, ID-7, or EM-6 until explicitly authorized.
+
+**Outcome:** Implemented; ready for owner closure review.
+
+---
+
+## ID-6B.1B Quality-Adjusted Policy Baseline & Wider TRADE Audit — Owner Approved / Closed
+
+**Summary.** Applied the owner-ratified Option C quality policy correctly to
+both ID-6B.1's original window and a new, materially wider, deterministically
+selected TRADE-representative window. First audited the intraday trend
+contract at source level (`_aggregate_trend`) and confirmed the existing
+aggregate `BULLISH` label already requires genuine M5+M15 agreement — no
+formula correction was needed to ID-6B.1's own `candidate_policy_match`
+measurement. Defined a research-only `EVALUABLE_FOR_CANDIDATE_POLICY`
+contract (VWAP + M5 trend + M15 trend + RS-or-RVOL, each independently
+available) and a relaxed M5-only variant, then re-analyzed ID-6B.1's own
+existing 370- and 7,144-observation JSONL artifacts directly (no replay
+needed — the harness already records the needed component fields):
+evaluability 100.00% and 99.55% respectively; M15 caused non-evaluability in
+only 2 of 7,144 observations (0.03%).
+
+Surveyed real `decisions` table counts across all 24 available trading dates
+and found TRADE-type decisions exist on 20 consecutive sessions
+(2026-07-31–08-27) but zero on the 4 most recent (2026-08-28 onward) —
+explaining why ID-6B.1's original window captured almost no TRADE. Selected
+the 10 most recent consecutive TRADE-bearing sessions preceding ID-6B.1's own
+window (2026-08-14–08-27) as the deterministic wider window, reported this
+selection rule before any policy-match analysis, then replayed it uncapped
+via ID-6B.1's own unmodified harness: 17,082 observations (matching a
+pre-replay SQL population estimate exactly), 418.469s runtime, 7,134 TRADE
+observations across 9 of 10 sessions (4.8x ID-6B.1's original TRADE count).
+Quality-adjusted re-analysis of this wider window: 99.64% evaluable; M15
+caused non-evaluability in only 4 of 17,082 observations (0.02%) —
+**classified NON-BLOCKING TECHNICAL DEBT**. WATCH vs. TRADE comparison under
+the quality-adjusted policy showed a uniform prevalence shift (TRADE
+consistently a few points higher on every named field: VWAP positive, M5/M15
+bullish, RS/RVOL support, candidate match) with no structural divergence —
+the existing single-shared-methodology decision stands. Checkpoint stability
+showed evaluability flat (~99.6%) across the day with match rate peaking at
+09:45 (27.5%) and declining to 14:30 (17.4%). Flicker re-measured at 39.76%
+(wider window) vs. 46.43% (same-window uncapped) — consistent order of
+magnitude, confirms flicker is real and stable across sample sizes, not
+small-sample noise. Recommendation: **FREEZE V0 POLICY WITH EXPLICIT
+LIMITATION** (checkpoint-level flicker means the policy is point-in-time
+only, never a persistence/confirmation signal). Proposed complete v0 engine
+state semantics (`OUT_OF_SCOPE`/`UNKNOWN`/`NOT_YET`/`QUALIFIED`/`EXPIRED`/
+`DISQUALIFIED_FOR_SESSION`, evidence-finality, confirmation, reason
+categories, WATCH/TRADE handling, missing-evidence behavior) documented as a
+proposal only — no implementation.
+
+**Architecture compliance.** Preserves ADR-013, ATHENA-002, ADR-003, ADR-005,
+ADR-012, and the advisory-only/no-order boundary. No production
+`SessionContext`, `IntradaySignalSet`, `ScoringEngine`, `DecisionEngine`,
+`TradePlan`, provider, workflow, or persistence behavior changed. No Entry
+Qualification engine, ID-6B.2, ID-6C, ID-6D, ID-6E, ID-7, EM-6, EMR, or
+DarvaX behavior touched. `CONFIRMED_BY_POLICY` and
+`DISQUALIFIED_FOR_SESSION` remain deferred/unused.
+
+**Files created.** `src/athena/data/id6b1b_quality_adjusted_policy_baseline.py`,
+`tests/data_layer/test_id6b1b_quality_adjusted_policy_baseline.py`,
+`docs/research/ID-6B.1B-QUALITY-ADJUSTED-POLICY-BASELINE.md`.
+
+**Files modified.** `docs/MILESTONES.md`, `docs/ATHENA-ID-TRACK-HANDOFF.md`,
+`IMPLEMENTATION_SUMMARY.md`.
+
+**Behavior implemented.** Research analysis only. Re-analyzes existing
+ID-6B.1-format JSONL directly (no replay for the same-window comparison) and
+drives one fresh wider-window replay via ID-6B.1's own unmodified
+`run_baseline` (no harness code changed). SQLite `mode=ro` +
+`PRAGMA query_only=ON` throughout. Writes only to `artifacts/research/id6b1b/`
+(gitignored). No DB writes, no provider calls, no raw artifact mutation.
+
+**Verification.** Focused tests: 6 new, all non-vacuous, passed; combined
+with ID-6B.1A's 3, `tests/data_layer/` full package: 428 passed, 0 failed.
+Ruff clean for both new files. `git diff --check` clean. `git status --short`:
+2 new untracked files (plus gitignored artifacts). Determinism: re-ran the
+new analyzer against the frozen wider-window JSONL twice — byte-identical
+output (SHA-256 `af28e7ee9828f67683050b2f55a6ce6670427f5b7770bc256dda1d21c83cbca1`
+both times). No production DB writes.
+
+**Risks / known gaps.** This milestone establishes coherence, availability,
+selectivity, and structural stability only — it makes no outcome/profitability
+claim (explicitly out of scope). Indirect `Decision` provenance (ADR-013)
+remains an open, conservatively-handled question. 2 of the wider window's 10
+sessions (2026-08-19, 2026-08-25) contribute negligible TRADE volume, so
+wider-window TRADE representativeness rests effectively on 8 sessions.
+
+**Suggested improvements.** If the owner freezes the v0 policy, the proposed
+engine semantics (report §18) should become the design basis for a future,
+separately-authorized Entry Qualification engine milestone. An M15 repair
+investigation remains a possible but non-prerequisite future milestone.
+
+**Remaining work.** Owner V0 policy decision. Do not start ID-6B.2, an Entry
+Qualification engine, persistence, workflow integration, an M15 repair
+milestone, ID-7, EM-6, EMR, DarvaX, or UI/production work until explicitly
+authorized.
+
+**Outcome:** Owner approved / closed. V0 readiness methodology frozen
+(VWAP positive AND aggregate trend BULLISH AND (RS support OR RVOL
+support)); ID-6B.2 authorized to start.
+
+---
+
 
 ## ID-6B.1A Session Data Quality & Baseline Representativeness Audit — Owner Approved / Closed
 
