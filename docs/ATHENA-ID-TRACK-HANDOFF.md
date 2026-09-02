@@ -1,8 +1,8 @@
 # ATHENA Intraday Intelligence (ID-Track) Handoff
 
 **Snapshot:** 2026-09-02 (ID-5B final settled-provider classification
-owner-approved and CLOSED; ID-5 owner-approved and CLOSED; ID-6 discovery /
-scope architecture design ready for owner review)
+owner-approved and CLOSED; ID-5 owner-approved and CLOSED; ID-6 discovery
+direction accepted, architecture hardened and ready for owner review)
 **Governing boundary:** none dedicated yet — this track extends the
 existing frozen `ATHENA-002-System-Blueprint.md` module map (§6 of
 `ATHENA_BRIEFING.md`), it does not have its own ADR the way EMR (ADR-012)
@@ -12,8 +12,9 @@ or DarvaX (ADR-010) do.
 2026-08-31** frozen 5-instrument canary, ID-5B.1 corrected the
 forming-vs-closed CASE classifier, and the owner approved the final
 settled-provider classification `CASE_B_CONTENT_CHANGES` on 2026-09-01.
-ID-5B is CLOSED and ID-5 is CLOSED. ID-6 discovery/design is now ready for
-owner architecture review; no production behavior has been implemented.
+ID-5B is CLOSED and ID-5 is CLOSED. ID-6 discovery direction is accepted, but
+architecture is not yet owner-approved. The hardened design is ready for owner
+review; no production behavior has been implemented.
 Evidence notes:
 `docs/research/ID-5B-LIVE-M5-SEMANTICS-CAPTURE-2026-08-31.md` and
 `docs/research/ID-6-SCOPE-ARCHITECTURE-DESIGN.md`.
@@ -50,7 +51,7 @@ Track B capture is running the same morning.
 | ID-5F | Owner-approved 2026-08-30 — `get_latest_quote(..., as_of=...)` market-time point-in-time safety for quotes |
 | ID-5G | Architecture accepted 2026-08-30 — `get_latest_snapshot_as_of(as_of)` for MarketSnapshot, not fully closed until ID-5G.1 |
 | ID-5G.1 | Owner-approved 2026-08-30 — full sub-second, offset-safe precision fix for both snapshot point-in-time methods |
-| ID-6 | Ready for owner architecture review 2026-09-02 — discovery/design recommends GO WITH CONDITIONS: Entry Qualification is the correct conceptual direction, but implementation should begin with ID-6A domain/state/reliability contracts and explicit live-M5 provisional-evidence policy only |
+| ID-6 | DISCOVERY — ready for owner architecture review 2026-09-02. Direction accepted, architecture not yet approved. Hardened design recommends ID-6A0 Entry Qualification Architecture ADR / ADR amendment first; only after owner approval should ID-6A domain/state/reliability contracts begin |
 
 The full detailed evidence for every closed milestone above is in
 `docs/MILESTONES.md`'s "Intraday Intelligence Track" section (long — this
@@ -145,16 +146,19 @@ pre-existing baseline rather than ignoring it).
 
 ## 6. ID-6 — ready for owner architecture review
 
-ID-6 discovery/design is complete as of 2026-09-02:
+ID-6 discovery/design is complete and hardened as of 2026-09-02:
 `docs/research/ID-6-SCOPE-ARCHITECTURE-DESIGN.md`.
 
-Recommendation: GO WITH CONDITIONS. Entry Qualification is the correct
-conceptual direction, but the next implementation slice should be ID-6A
-domain/state/reliability contracts only. The report recommends treating
-current-session completed M5 as provisional for qualification purposes after
-ID-5B's accepted `CASE_B_CONTENT_CHANGES` result. Do not implement an engine,
-persistence, UI, thresholds, IntradayTradePlan, ID-7, EM-6, EMR, DarvaX, or
-order behavior until the owner approves the architecture.
+Owner review correction: direction accepted, architecture not yet approved.
+Recommendation remains GO WITH CONDITIONS, hardened as follows: ID-6A
+implementation requires ID-6A0, an Entry Qualification Architecture ADR / ADR
+amendment, first. The report recommends treating current-session completed M5
+as provisional for qualification purposes after ID-5B's accepted
+`CASE_B_CONTENT_CHANGES` result; state and reliability are orthogonal; and no
+irreversible ID-6 state may be caused directly or indirectly solely by
+live-M5-provisional evidence. Do not implement an engine, persistence, UI,
+thresholds, IntradayTradePlan, ID-7, EM-6, EMR, DarvaX, or order behavior until
+the owner approves the architecture.
 
 ## 7. ID-5B — closed result
 

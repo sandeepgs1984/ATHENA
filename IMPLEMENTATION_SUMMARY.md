@@ -6,11 +6,13 @@ status updated on approval.
 
 ---
 
-## ID-6 Discovery / Scope & Architecture Freeze — Ready for Owner Review
+## ID-6 Discovery / Scope & Architecture Freeze — Hardened for Owner Review
 
-**Summary.** Completed the owner-authorized ID-6 discovery/design milestone.
-The report recommends GO WITH CONDITIONS: proceed toward Entry Qualification
-as the correct conceptual next layer, but begin implementation with ID-6A
+**Summary.** Completed and hardened the owner-authorized ID-6 discovery/design
+milestone. Owner review accepted the direction but not the architecture yet.
+The hardened report recommends GO WITH CONDITIONS: proceed toward Entry
+Qualification as the correct conceptual next layer only after ID-6A0 Entry
+Qualification Architecture ADR / ADR amendment approval; then begin ID-6A
 domain/state/reliability contracts and an explicit live-M5 provisional-evidence
 policy. No production behavior was implemented.
 
@@ -30,21 +32,23 @@ provider contracts, EMR, DarvaX, UI, broker behavior, or order behavior.
 **Evidence basis.** The design incorporates ID-5B's accepted
 `CASE_B_CONTENT_CHANGES` conclusion: current-session Kite M5 may be
 market-time closed and still not provider-settled final. The proposed policy
-treats current-session completed M5 as provisional for qualification purposes,
-allowing reversible `QUALIFIED_PROVISIONAL` but preventing provisional M5 from
-creating irreversible session disqualification.
+treats current-session completed M5 as provisional for qualification purposes.
+Qualification state and reliability are orthogonal; no irreversible ID-6 state
+may be caused directly or indirectly solely by evidence whose relevant live-M5
+provenance is provider-provisional.
 
-**Recommended slices.** ID-6A domain/state/reliability contract; ID-6B pure
-qualification engine; ID-6C append-only persistence and latest-state query;
-ID-6D workflow integration; ID-6E replay/shadow validation. Each slice requires
-owner approval before the next begins.
+**Recommended slices.** ID-6A0 Entry Qualification Architecture ADR / ADR
+amendment; ID-6A domain/state/reliability contract; ID-6B pure qualification
+engine; ID-6C append-only persistence and latest-state query; ID-6D workflow
+integration; ID-6E replay/shadow validation. Each slice requires owner approval
+before the next begins.
 
 **Verification.** Documentation-only. No pytest run was required; `git diff
 --check` is run as the closeout quality gate. No DB writes and no provider or
 network calls were performed.
 
-**Remaining work.** Owner architecture review. Do not start ID-6A, ID-7,
-EM-6, EMR, DarvaX, UI, or TradePlan work until explicitly authorized.
+**Remaining work.** Owner architecture review. Do not start ID-6A0, ID-6A,
+ID-7, EM-6, EMR, DarvaX, UI, or TradePlan work until explicitly authorized.
 
 **Outcome:** Ready for owner architecture review.
 

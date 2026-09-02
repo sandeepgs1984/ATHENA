@@ -3,7 +3,7 @@
 **Date:** 2026-09-02
 **Track:** Intraday Intelligence (ID)
 **Milestone:** ID-6 - Discovery / scope and architecture freeze
-**Status:** Ready for owner architecture review
+**Status:** Direction accepted; architecture hardening ready for owner review
 **Recommendation:** GO WITH CONDITIONS
 
 This report is documentation-only. It inspects the live repository state and
@@ -26,10 +26,12 @@ define the next layer's contract because ID-0 through ID-5 now provide:
 - owner-approved ID-5B evidence that current-session Kite M5 can be
   market-time closed yet not provider-settled final.
 
-The correct next step is therefore a scoped ID-6A implementation slice:
-domain/state/reliability contracts for Entry Qualification. It should make
-the live-M5 reliability policy explicit before any methodology thresholds are
-tuned or any UI/TradePlan behavior is added.
+The correct next step is therefore a tiny architecture prerequisite before
+ID-6A implementation: an Entry Qualification ADR / ADR amendment that freezes
+the new persisted decision-relevant concept, the new live workflow stage, and
+the boundary between canonical daily Decision and intraday actionability. After
+that ADR is owner-approved, ID-6A should be limited to domain/state/reliability
+contracts.
 
 ## 2. Authoritative Starting State
 
@@ -93,7 +95,7 @@ indicators -> regime -> scoring -> risk -> confidence -> decision
 
 | Input | Producer/type | Stage/cadence | Uses current M5 | CASE B affected | Positive use | Negative use | Irreversible use |
 |---|---|---|---:|---:|---|---|---|
-| Daily Decision | `DecisionEngine` / `Decision` | `decision`; all scan cadences | No direct M5, but score may include VWAP/confluence | Indirect | Yes, as eligibility gate | Yes, for non-candidate states | Yes, for non-candidate/excluded only |
+| Daily Decision | `DecisionEngine` / `Decision` | `decision`; all scan cadences | No direct M5, but score may include VWAP/confluence | Indirect | Yes, as eligibility gate with provenance audit | Reversible unless non-provisional cause is known | Not from live-M5-provisional cause alone |
 | Decision freshness | `Decision.trade_plan.valid_until`, newest decision read models | Derived from persisted decision | No | No | Yes | Yes | Yes when superseded/expired |
 | Session phase | `SessionContextEngine` / `SessionContext.phase` | `session`; all scan cadences | No | No | Yes | Yes | Yes for closed/not-trading |
 | Session data quality | `SessionContext.data_quality` | `session` | M5/M15 provenance | Yes for M5/M15 evidence quality | Yes if sufficient | Yes as unknown/not-ready | Not from provisional M5 alone |
@@ -117,10 +119,9 @@ layer that answers whether an existing daily/structural opportunity is
 actionable now using accepted intraday evidence.
 
 However, ID-6 should not jump directly to tuned thresholds, entries, stops,
-targets, sizing, or live supervision. The next implementation milestone
-should be ID-6A: freeze the domain contract, state machine, reliability
-classification, provenance, and trace shape. The actual qualification engine
-can follow only after owner review of this architecture.
+targets, sizing, or live supervision. The next safe milestone is ID-6A0:
+an Entry Qualification Architecture ADR / ADR amendment. ID-6A production code
+should begin only after that ADR is owner-approved.
 
 ## 6. Alternatives Considered
 
@@ -169,7 +170,8 @@ ID-6 is not:
 
 ## 8. Proposed Domain Contract
 
-Prefer the smallest new domain surface under `src/athena/intraday/`:
+Prefer the smallest new domain surface under `src/athena/intraday/`, but only
+after the Entry Qualification ADR prerequisite is approved:
 
 - `EntryQualificationState`
 - `EntryQualificationReliability`
@@ -200,45 +202,63 @@ Candidate fields:
 
 Do not extend `SessionContext` to carry this. SessionContext describes the
 session and timeframe provenance; EntryQualification is a consumer-level
-judgement. Do not extend `Decision` in ID-6A unless owner specifically wants
-the current daily Decision object to carry intraday state; separate persistence
-keeps canonical DecisionEngine methodology unchanged.
+judgement. Do not extend `Decision` in ID-6A unless a future owner-approved ADR
+explicitly chooses that route; separate persistence keeps canonical
+DecisionEngine methodology unchanged.
 
 ## 9. Proposed State Machine
 
-Recommended states:
+Recommended qualification states should express only what ATHENA currently
+concludes, not how final the evidence is:
 
-- `OUT_OF_SCOPE`: no current eligible daily Decision, session not applicable,
-  or the candidate is superseded by a non-candidate daily Decision.
-- `UNKNOWN`: required inputs are missing, stale, or contradictory enough that
-  no honest qualification state can be emitted.
-- `NOT_YET`: the setup is not currently actionable but may become actionable
-  later in the same session.
-- `QUALIFIED_PROVISIONAL`: actionable-now conditions are met using at least
-  one current-session M5-derived input whose provider finality is provisional.
-- `QUALIFIED_CONFIRMED`: actionable-now conditions are met without relying on
-  unconfirmed current-session M5 inputs, or after an owner-approved
-  confirmation policy has been satisfied.
-- `DISQUALIFIED_FOR_SESSION`: stable, non-provisional facts make the setup
-  invalid for the rest of the session.
-- `EXPIRED`: the session phase or bound daily Decision/TradePlan validity
-  naturally ended the qualification.
+- `OUT_OF_SCOPE`: the instrument is structurally not an ID-6 candidate, for
+  example no eligible daily Decision exists, the session is not applicable, or
+  a stable non-provisional daily/structural condition removes it.
+- `UNKNOWN`: ATHENA cannot honestly determine the qualification answer because
+  required inputs are missing, stale, or contradictory.
+- `NOT_YET`: enough evidence exists to say the setup is not actionable now,
+  while remaining eligible to become actionable later in the same session.
+- `QUALIFIED`: enough evidence exists to say the setup is actionable now,
+  subject to the separate reliability value.
+- `DISQUALIFIED_FOR_SESSION`: an owner-approved terminal condition invalidates
+  the setup for the rest of the session.
+- `EXPIRED`: deterministic lifecycle expiry, such as market/session phase or
+  bound TradePlan/Decision validity ending the observation.
 
-Semantics:
+Recommended reliability values should express the evidence basis separately:
 
-- `NOT_YET` is reversible.
-- `QUALIFIED_PROVISIONAL` is reversible.
-- `QUALIFIED_CONFIRMED` is still reversible if later live evidence degrades.
-- `DISQUALIFIED_FOR_SESSION` is terminal for the session, but only from stable
-  non-provisional facts or explicit owner-approved rules.
-- Stale evidence transitions to `UNKNOWN` or `NOT_YET`, not terminal
-  disqualification.
-- Later completed-M5 reinterpretation can downgrade or upgrade reversible
-  states, with a new observation and reason code.
-- Provisional evidence can create `QUALIFIED_PROVISIONAL`.
-- Provisional evidence cannot create `DISQUALIFIED_FOR_SESSION`.
-- Qualification naturally expires when the session is closed/not applicable or
-  the bound daily Decision/TradePlan is no longer current.
+- `UNKNOWN_RELIABILITY`: the evidence basis cannot be classified honestly.
+- `LIVE_M5_PROVISIONAL`: at least one current-session M5-derived input is
+  involved and provider settlement finality is not known.
+- `CONFIRMED_BY_POLICY`: an owner-approved qualification confirmation policy
+  has been satisfied; this does not mean provider-settled finality.
+- `STABLE_NON_M5`: the conclusion rests only on stable non-current-M5 evidence
+  such as session phase, D1 gap context, or a stable structural daily gate.
+
+State and reliability are orthogonal. `QUALIFIED` can exist with provisional
+evidence. `NOT_YET` can also be based on provisional evidence. `UNKNOWN` may
+carry `UNKNOWN_RELIABILITY`, or a specific reliability value explaining that
+some inputs were inspectable but insufficient. "Confirmed" must mean
+methodology-confirmed by an owner-approved policy, not provider-settled finality
+and not merely multi-signal agreement unless that is the approved policy.
+Provider finality usually cannot be known while an opportunity is still
+intraday-actionable, so ID-6 must not use "confirmed" to imply same-session
+provider settlement.
+
+Precise reversibility semantics:
+
+| State | Reversible same session? | May return to `QUALIFIED`? | Persists after new Decision? | Terminal reason | May provisional evidence enter it? | May provisional evidence exit it? |
+|---|---:|---:|---:|---|---:|---:|
+| `OUT_OF_SCOPE` | Only if caused by reversible/provisional supersession; otherwise no | Only if a later eligible Decision exists | No; new Decision re-evaluates identity | Structural applicability | No, unless marked reversible due to indirect provisionality | Yes |
+| `UNKNOWN` | Yes | Yes | No | Honesty/data insufficiency | Yes | Yes |
+| `NOT_YET` | Yes | Yes | No | Temporary non-actionability | Yes | Yes |
+| `QUALIFIED` | Yes | Already qualified; may degrade and requalify | No | Current actionability | Yes | Yes |
+| `DISQUALIFIED_FOR_SESSION` | No | No | Only as historical observation | Owner-approved terminal methodology | No | No |
+| `EXPIRED` | No for that observation | A later new observation can qualify if lifecycle permits | No | Session/time validity | No | No |
+
+Final invariant: no irreversible ID-6 state may be caused, directly or
+indirectly, solely by evidence whose relevant live-M5 provenance is
+provider-provisional.
 
 ## 10. Daily Decision Relationship
 
@@ -257,11 +277,37 @@ Candidate funnel:
   and other non-candidate states: out of scope unless a future owner-approved
   methodology says otherwise.
 
-A later same-session daily Decision supersedes prior qualifications for the
-same instrument. Existing decision-list scoping can be reused for candidate
-selection, especially FAST revalidation, but ID-6 must dedupe by latest
-decision per instrument and must never revive an earlier WATCH/TRADE after a
-newer non-candidate Decision.
+Recommendation: use option B. `TRADE` and `WATCH` may both enter the
+qualification funnel, but the output must preserve the canonical Decision
+distinction. `EntryQualification.state == QUALIFIED` does not mean
+`DecisionType.TRADE`; it means the bound daily Decision's opportunity is
+intraday-actionable under ID policy. ID-6 must never silently promote WATCH
+into canonical TRADE.
+
+The current live path creates an indirect provisionality loop:
+
+```text
+current-session M5 -> VWAP/confluence -> ScoringEngine -> Decision
+-> EntryQualification eligibility/out-of-scope behavior
+```
+
+`TRADE`, `WATCH`, `NO_TRADE`, and `INSUFFICIENT_DATA` can be produced on
+intraday scan cadences. Current-session M5 can materially influence the score
+through the trend confluence bonus and technical-structure VWAP bonus. The
+persisted Decision report records scoring contributions such as
+`confluence:intraday` and `indicator:VWAP`, so a future ID-6 consumer can audit
+partial provisionality from the report/trace path, but the `Decision` object
+itself has no first-class "partially provisional due to live M5" flag.
+
+A later same-session daily Decision supersedes prior qualifications for
+identity and freshness. But if a newer non-candidate Decision may have been
+caused solely by live-M5-provisional evidence, ID-6 must not convert that into
+irreversible `OUT_OF_SCOPE` or `DISQUALIFIED_FOR_SESSION`. The safe consumer
+semantics are to emit `UNKNOWN`, `NOT_YET`, or a reversible superseded result
+until the Entry Qualification ADR freezes the exact policy. Existing
+decision-list scoping can be reused for candidate selection, especially FAST
+revalidation, but ID-6 must dedupe by latest decision per instrument and must
+never revive an earlier WATCH/TRADE as current after a newer Decision exists.
 
 ## 11. Live-M5 Reliability Policy
 
@@ -276,7 +322,7 @@ newer non-candidate Decision.
 | Relative Strength | Stock/index current M5 | High | Yes | Provisional | Reversible only | Required for confirmed state | `UNKNOWN` |
 | RVOL | Current M5 volume + settled baseline | High for numerator | Yes | Provisional and freshness-aware | Reversible only | Required for confirmed state | `UNKNOWN`/stale |
 | GapContext | Current/previous D1 | Low | Yes | Yes | Reversible unless later methodology says terminal | No live-M5 confirmation | `UNKNOWN` |
-| Daily Decision | Persisted Decision | Low, but indirect score exposure exists | Yes | Eligibility gate | Out-of-scope gate | No | `OUT_OF_SCOPE` |
+| Daily Decision | Persisted Decision | Low direct, but indirect live-M5 score exposure exists | Yes | Eligibility gate with provenance audit | Reversible unless non-provisional cause is known | Decision provenance audit required | `UNKNOWN`/`NOT_YET` when downgrade cause is provisional |
 | Latest quote | Quote history | Not M5-settlement sensitive | Yes | Observational only until methodology approved | Reversible stale/unknown | Freshness policy required | `UNKNOWN` |
 
 This table is proposed policy, not implemented configuration.
@@ -296,17 +342,21 @@ own cutoff/provenance and record freshness honestly.
 
 ## 13. Pipeline Placement
 
-Logical placement: add a future `entry_qualification` `WorkflowStage` after
-`decision` and `intraday_analytics`, with explicit dependencies:
+Logical placement after the ADR prerequisite: add a future
+`entry_qualification` `WorkflowStage` after `decision` and
+`intraday_analytics`, with explicit dependencies:
 
 ```text
 depends_on=("decision", "session", "intraday_analytics")
 ```
 
-If the implementation consumes `relative_strength`, `relative_volume`, or
-`gap_context` directly rather than through `intraday_signal_set`, declare those
-dependencies too. Prefer consuming `intraday_signal_set` to avoid duplicating
-the graph.
+The live `IntradaySignalSet` currently contains VWAP, 5m/15m trend, OR15,
+OR30, `RelativeStrengthContext`, `GapContext`, `RelativeVolumeContext`, and
+session data quality. Therefore the smallest consumer contract can consume
+`intraday_signal_set` for ID evidence. If implementation also needs direct
+access to `gap_context`, `relative_strength`, or `relative_volume` for identity
+or provenance not exposed through `IntradaySignalSet`, it must declare those
+producer stages explicitly. No incidental context reads are allowed.
 
 The stage should run in the existing PREMARKET/REFRESH/FAST/CLOSING/Revalidate
 paths with session-aware outputs:
@@ -324,16 +374,23 @@ if ID-6 remains inside the existing `OwnerValidationPipeline` run.
 
 ## 14. Persistence & Explainability
 
-Persistence is recommended, but in slices:
+Persistence is recommended, but only after the ADR prerequisite and in slices:
 
 1. ID-6A freezes the domain object and trace contract.
 2. ID-6C adds append-only persistence plus latest-state projection if owner
    approves the contract.
 
 Derived-at-read alone is not enough for the intended query "show me currently
-qualified intraday opportunities" because the answer must remain auditable
-against what ATHENA knew at that cycle. ADR-005 requires the qualification
-itself to own its explanation at creation time.
+qualified intraday opportunities" because the emitted qualification result,
+its explanation, and its evidence references must remain auditable. ADR-005
+requires the qualification itself to own its explanation at creation time.
+
+Important invariant: EntryQualification auditability is not full
+knowledge-time market-data replay. Persisting the qualification preserves what
+ATHENA emitted, why it emitted it, and what evidence/provenance it referenced.
+Unless the underlying provisional M5 source values are themselves versioned by
+knowledge time, persistence does not reconstruct every raw market-data value
+ATHENA saw live at that historical instant.
 
 Suggested persistence model:
 
@@ -351,7 +408,7 @@ Suggested persistence model:
 
 ## 15. Replay / Determinism Contract
 
-The engine should be pure: all inputs injected, no provider access, no
+The future engine should be pure: all inputs injected, no provider access, no
 repository access, no wall-clock reads, no randomness, `Decimal` math only, and
 timezone-aware timestamps.
 
@@ -395,14 +452,28 @@ N-by-M market/sector refetch if the stage consumes existing contexts.
 
 ## 18. ADR Impact
 
-No ADR is required for the discovery document itself.
+No ADR is required for the discovery document or this hardening correction.
 
-An ADR is not required if ID-6 stays inside the existing `intraday` package,
-uses `WorkflowStage`, adds an ID-owned domain object/persistence table, and
-does not modify frozen DecisionEngine/scoring/risk/provider contracts.
+ID-6A implementation does require a dedicated ADR / ADR amendment before code.
+This reconciles the report with ID-0: ID-0 explicitly concluded that
+EntryQualification requires an ADR because it introduces a new persisted
+decision-relevant concept, a new live pipeline stage, and a new architectural
+boundary between canonical daily Decision and intraday actionability. ADR-003
+Amendment 1 later resolved the dormant-vs-live pipeline mechanism, but it did
+not approve EntryQualification itself. No later owner-approved document found
+in this audit supersedes ID-0's ADR requirement.
+
+Recommended sequencing: create a tiny prerequisite slice,
+`ID-6A0 — Entry Qualification Architecture ADR`, using the next ADR identifier
+selected from the repository's ADR convention at implementation time. Do not
+invent the final ADR filename in this report beyond identifying the need.
 
 An ADR or separate owner architecture decision would be required if ID-6:
 
+- approves EntryQualification as a persisted decision-relevant concept;
+- approves the new `entry_qualification` live workflow stage;
+- freezes the boundary between canonical daily Decision and intraday
+  actionability;
 - changes the ATHENA-002 module map;
 - adds provider bid/ask/depth or execution-quality interfaces;
 - changes Decision/TradePlan canonical contracts rather than adding a separate
@@ -433,20 +504,24 @@ An ADR or separate owner architecture decision would be required if ID-6:
 - WATCH-vs-TRADE treatment needs owner confirmation because WATCH may be a
   strong intraday candidate but lacks the invariant that a TRADE carries a
   TradePlan.
-- `QUALIFIED_CONFIRMED` requires a confirmation definition. This report
-  recommends the state name and semantics, not a tuned confirmation rule.
+- `CONFIRMED_BY_POLICY` requires a confirmation definition. This report
+  recommends the reliability dimension, not a tuned confirmation rule.
 - Persistence schema should be reviewed before implementation because it
   affects long-term audit and latest-state queries.
 - True execution quality remains unsupported by current `Quote` and
   `MarketDataProvider` contracts.
+- A newer non-candidate daily Decision can itself be partially caused by live
+  M5 scoring inputs; ID-6 must not treat that indirect provisionality as a
+  stable irreversible rejection.
 
 ## 21. Proposed ID-6 Implementation Slices
 
 | Slice | Responsibility | Inputs/outputs | Likely files | Tests | Exit criteria |
 |---|---|---|---|---|---|
-| ID-6A | Domain/state/reliability contract | Proposed `EntryQualification*` types only | `src/athena/intraday/entry_qualification_models.py`, docs | Unit contract tests | Frozen states, reliability, reason-code semantics owner-reviewable |
-| ID-6B | Pure deterministic qualification engine skeleton | Inputs: `Decision`, `SessionContext`, `IntradaySignalSet`; output: `EntryQualification` | `src/athena/intraday/entry_qualification_engine.py` | Unit tests for state transitions and unknown/stale behavior | No thresholds beyond accepted zero-threshold categories; no I/O |
-| ID-6C | Persistence and explainability trace | Append-only observations + latest query | `data/store/schema.py`, repository serialization/repository tests | Repository contract tests, migration tests | Auditable current-state query without mutating `Decision` |
+| ID-6A0 | Entry Qualification Architecture ADR | ADR approving the new persisted decision-relevant concept, live stage, daily-vs-intraday boundary, state/reliability orthogonality, and indirect-M5 invariant | `docs/adr/ADR-013-...md` or next repository-consistent ADR path, plus status docs | Documentation review; `git diff --check` | Owner-approved ADR before production code |
+| ID-6A | Domain/state/reliability contract | Proposed `EntryQualification*` types only | `src/athena/intraday/entry_qualification_models.py`, docs | Unit contract tests | Frozen states, orthogonal reliability, reason-code semantics owner-reviewable |
+| ID-6B | Pure deterministic qualification engine skeleton | Inputs: `Decision`, `SessionContext`, `IntradaySignalSet`; output: `EntryQualification` | `src/athena/intraday/entry_qualification_engine.py` | Unit tests for state transitions, reliability, supersession, and unknown/stale behavior | No thresholds beyond accepted zero-threshold categories; no I/O |
+| ID-6C | Persistence and explainability trace | Append-only observations + latest query | `data/store/schema.py`, repository serialization/repository tests | Repository contract tests, migration tests | Auditable emitted state without claiming full knowledge-time market-data replay |
 | ID-6D | Workflow integration | `entry_qualification` stage after `decision` + `intraday_analytics` | `ops/owner_validation.py` | Stage order, no scoring/decision perturbation, FAST/Revalidate tests | Existing Decision output unchanged; ID output captured separately |
 | ID-6E | Replay/shadow validation plan | Feasibility + live/shadow evidence reports | `docs/research/`, possibly analysis scripts | Deterministic replay checks | Owner-reviewed promotion evidence; limitations labeled |
 
@@ -461,7 +536,10 @@ Conditions:
 - Owner approves EntryQualification as the conceptual ID-6 direction.
 - Owner approves the provisional-live-M5 policy before any production
   qualification engine relies on current-session M5.
-- ID-6 implementation begins with ID-6A contract/state/reliability only.
+- Owner approves ID-6A0, an Entry Qualification Architecture ADR /
+  ADR amendment, before ID-6A production code.
+- ID-6A implementation begins only after the ADR and is limited to
+  contract/state/reliability types.
 - No thresholds, entry plan, stop/target/sizing, UI, EMR, DarvaX, or order
   behavior are introduced in ID-6A.
 
@@ -500,28 +578,32 @@ EMR, DarvaX, or order behavior changed.
 implementation needs an ADR only if it changes provider interfaces, Decision
 contracts, module boundaries, or knowledge-time storage guarantees.
 
-**Risks discovered:** Live M5 finality remains provisional; WATCH-vs-TRADE
-funnel policy and confirmed-qualification methodology need owner decisions.
+**Risks discovered:** Live M5 finality remains provisional; ID-0's ADR
+requirement still applies; state and reliability must stay orthogonal;
+WATCH-vs-TRADE treatment and confirmed-by-policy methodology need owner
+decisions; daily Decision supersession can indirectly carry live-M5
+provisionality through existing VWAP/confluence scoring.
 
 **Technical debt introduced:** None.
 
-**Suggested improvements:** Implement ID-6A first as a small, reviewable
+**Suggested improvements:** Create ID-6A0 as the Entry Qualification
+Architecture ADR first, then implement ID-6A as a small, reviewable
 domain/state/reliability contract before any engine or persistence work.
 
-**Remaining work:** Owner architecture review; then, if approved, ID-6A only.
-Do not start ID-7.
+**Remaining work:** Owner architecture review; then, if approved, ID-6A0
+Architecture ADR only. Do not start ID-6A code or ID-7.
 
 **Commit message:**
 
 ```text
-docs(review): freeze ID-6 entry qualification architecture
+docs(review): harden ID-6 entry qualification architecture
 
 - Add the ID-6 discovery report to define Entry Qualification scope and
   live-M5 provisional semantics after ID-5B CASE B.
-- Record ID-6 as ready for owner architecture review without implementing
-  production behavior.
-- Preserve EMR, DarvaX, scoring, Decision, TradePlan, provider, and order
-  boundaries per ATHENA-002, ADR-003, ADR-005, and ADR-012.
+- Reconcile ID-6 with ID-0's ADR requirement and separate qualification state
+  from evidence reliability.
+- Preserve EMR, DarvaX, scoring, Decision, TradePlan, provider, database, and
+  order boundaries per ATHENA-002, ADR-003, ADR-005, and ADR-012.
 ```
 
 **Ready for review:** Yes.
