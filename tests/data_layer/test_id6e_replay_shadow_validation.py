@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from athena.data.id6e_replay_shadow_validation import (
+    _decision_supersession,
     _invariant_checks,
     _m15_impact,
     _option_c_validation,
@@ -79,13 +80,13 @@ def test_reason_root_causes_aggregates_only_the_requested_state() -> None:
 def test_transitions_detects_qualified_then_later_not_qualified() -> None:
     rows = [
         {"instrument_id": "A", "session_date": "2026-01-01", "decision_type": "WATCH",
-         "checkpoint": "09:30", "state": "QUALIFIED"},
+         "decision_id": "dA", "checkpoint": "09:30", "as_of": "2026-01-01T09:30:00", "state": "QUALIFIED"},
         {"instrument_id": "A", "session_date": "2026-01-01", "decision_type": "WATCH",
-         "checkpoint": "09:45", "state": "NOT_YET"},
+         "decision_id": "dA", "checkpoint": "09:45", "as_of": "2026-01-01T09:45:00", "state": "NOT_YET"},
         {"instrument_id": "B", "session_date": "2026-01-01", "decision_type": "WATCH",
-         "checkpoint": "09:30", "state": "QUALIFIED"},
+         "decision_id": "dB", "checkpoint": "09:30", "as_of": "2026-01-01T09:30:00", "state": "QUALIFIED"},
         {"instrument_id": "B", "session_date": "2026-01-01", "decision_type": "WATCH",
-         "checkpoint": "09:45", "state": "QUALIFIED"},
+         "decision_id": "dB", "checkpoint": "09:45", "as_of": "2026-01-01T09:45:00", "state": "QUALIFIED"},
     ]
     result = _transitions(rows)
     assert result["multi_checkpoint_candidate_groups"] == 2
@@ -96,18 +97,115 @@ def test_transitions_detects_qualified_then_later_not_qualified() -> None:
 def test_qualified_duration_classifies_every_pattern() -> None:
     rows = [
         # never qualified
-        {"instrument_id": "A", "session_date": "d", "decision_type": "WATCH", "checkpoint": "1", "state": "NOT_YET"},
+        {"instrument_id": "A", "session_date": "d", "decision_type": "WATCH", "decision_id": "dA",
+         "checkpoint": "1", "as_of": "2026-01-01T09:30:00", "state": "NOT_YET"},
         # exactly one checkpoint
-        {"instrument_id": "B", "session_date": "d", "decision_type": "WATCH", "checkpoint": "1", "state": "QUALIFIED"},
-        {"instrument_id": "B", "session_date": "d", "decision_type": "WATCH", "checkpoint": "2", "state": "NOT_YET"},
+        {"instrument_id": "B", "session_date": "d", "decision_type": "WATCH", "decision_id": "dB",
+         "checkpoint": "1", "as_of": "2026-01-01T09:30:00", "state": "QUALIFIED"},
+        {"instrument_id": "B", "session_date": "d", "decision_type": "WATCH", "decision_id": "dB",
+         "checkpoint": "2", "as_of": "2026-01-01T09:45:00", "state": "NOT_YET"},
         # every observed checkpoint
-        {"instrument_id": "C", "session_date": "d", "decision_type": "WATCH", "checkpoint": "1", "state": "QUALIFIED"},
-        {"instrument_id": "C", "session_date": "d", "decision_type": "WATCH", "checkpoint": "2", "state": "QUALIFIED"},
+        {"instrument_id": "C", "session_date": "d", "decision_type": "WATCH", "decision_id": "dC",
+         "checkpoint": "1", "as_of": "2026-01-01T09:30:00", "state": "QUALIFIED"},
+        {"instrument_id": "C", "session_date": "d", "decision_type": "WATCH", "decision_id": "dC",
+         "checkpoint": "2", "as_of": "2026-01-01T09:45:00", "state": "QUALIFIED"},
     ]
     result = _qualified_duration(rows)
     assert result["never_qualified"] == 1
     assert result["qualified_at_exactly_one_checkpoint"] == 1
     assert result["qualified_at_every_observed_checkpoint"] == 1
+
+
+def test_transitions_and_duration_split_by_decision_id_not_decision_type() -> None:
+    """ID-6E.1: same instrument/session/type, but two distinct canonical
+    Decision episodes (D1 then D2 supersedes it) must form TWO separate
+    trajectories, never one merged four-checkpoint trajectory."""
+    rows = [
+        {"instrument_id": "AAA", "session_date": "2026-01-01", "decision_type": "WATCH",
+         "decision_id": "D1", "checkpoint": "09:30", "as_of": "2026-01-01T09:30:00", "state": "NOT_YET"},
+        {"instrument_id": "AAA", "session_date": "2026-01-01", "decision_type": "WATCH",
+         "decision_id": "D1", "checkpoint": "09:45", "as_of": "2026-01-01T09:45:00", "state": "QUALIFIED"},
+        {"instrument_id": "AAA", "session_date": "2026-01-01", "decision_type": "WATCH",
+         "decision_id": "D2", "checkpoint": "10:00", "as_of": "2026-01-01T10:00:00", "state": "NOT_YET"},
+        {"instrument_id": "AAA", "session_date": "2026-01-01", "decision_type": "WATCH",
+         "decision_id": "D2", "checkpoint": "11:00", "as_of": "2026-01-01T11:00:00", "state": "QUALIFIED"},
+    ]
+    transitions = _transitions(rows)
+    assert transitions["multi_checkpoint_candidate_groups"] == 2
+    duration = _qualified_duration(rows)
+    assert duration["qualified_at_exactly_one_checkpoint"] == 2
+    assert "qualified_at_every_observed_checkpoint" not in duration
+
+
+def test_decision_change_does_not_count_as_flicker() -> None:
+    """A newer Decision (D2) starting NOT_YET after an older Decision (D1)
+    ended QUALIFIED is not a single canonical Decision going from QUALIFIED
+    to NOT_YET -- it must not be counted as flicker."""
+    rows = [
+        {"instrument_id": "AAA", "session_date": "2026-01-01", "decision_type": "WATCH",
+         "decision_id": "D1", "checkpoint": "09:30", "as_of": "2026-01-01T09:30:00", "state": "QUALIFIED"},
+        {"instrument_id": "AAA", "session_date": "2026-01-01", "decision_type": "WATCH",
+         "decision_id": "D2", "checkpoint": "09:45", "as_of": "2026-01-01T09:45:00", "state": "NOT_YET"},
+    ]
+    result = _transitions(rows)
+    # Each decision_id has only one observation -- neither forms a
+    # multi-checkpoint trajectory, so no flicker is possible.
+    assert result["multi_checkpoint_candidate_groups"] == 0
+    assert result["qualified_then_later_not_qualified_groups"] == 0
+
+
+def test_same_decision_still_flickers() -> None:
+    """A genuine same-Decision QUALIFIED -> NOT_YET transition must still be
+    detected -- the correction must not eliminate real flicker."""
+    rows = [
+        {"instrument_id": "AAA", "session_date": "2026-01-01", "decision_type": "WATCH",
+         "decision_id": "D1", "checkpoint": "09:30", "as_of": "2026-01-01T09:30:00", "state": "QUALIFIED"},
+        {"instrument_id": "AAA", "session_date": "2026-01-01", "decision_type": "WATCH",
+         "decision_id": "D1", "checkpoint": "09:45", "as_of": "2026-01-01T09:45:00", "state": "NOT_YET"},
+    ]
+    result = _transitions(rows)
+    assert result["multi_checkpoint_candidate_groups"] == 1
+    assert result["qualified_then_later_not_qualified_groups"] == 1
+
+
+def test_decision_type_change_is_a_separate_episode_because_of_decision_id() -> None:
+    """A WATCH Decision (D1) superseded by a TRADE Decision (D2) for the same
+    instrument/session must be two episodes because decision_id differs --
+    proving grouping is genuinely Decision-based, not type-based."""
+    rows = [
+        {"instrument_id": "AAA", "session_date": "2026-01-01", "decision_type": "WATCH",
+         "decision_id": "D1", "checkpoint": "09:30", "as_of": "2026-01-01T09:30:00", "state": "QUALIFIED"},
+        {"instrument_id": "AAA", "session_date": "2026-01-01", "decision_type": "WATCH",
+         "decision_id": "D1", "checkpoint": "09:45", "as_of": "2026-01-01T09:45:00", "state": "QUALIFIED"},
+        {"instrument_id": "AAA", "session_date": "2026-01-01", "decision_type": "TRADE",
+         "decision_id": "D2", "checkpoint": "10:00", "as_of": "2026-01-01T10:00:00", "state": "QUALIFIED"},
+        {"instrument_id": "AAA", "session_date": "2026-01-01", "decision_type": "TRADE",
+         "decision_id": "D2", "checkpoint": "11:00", "as_of": "2026-01-01T11:00:00", "state": "QUALIFIED"},
+    ]
+    transitions = _transitions(rows)
+    assert transitions["multi_checkpoint_candidate_groups"] == 2
+    duration = _qualified_duration(rows)
+    assert duration["qualified_at_every_observed_checkpoint"] == 2
+
+
+def test_decision_supersession_reports_multi_decision_groups_and_replacement_patterns() -> None:
+    rows = [
+        # AAA/session: two decisions, WATCH -> TRADE
+        {"instrument_id": "AAA", "session_date": "2026-01-01", "decision_type": "WATCH",
+         "decision_id": "D1", "as_of": "2026-01-01T09:30:00"},
+        {"instrument_id": "AAA", "session_date": "2026-01-01", "decision_type": "TRADE",
+         "decision_id": "D2", "as_of": "2026-01-01T10:00:00"},
+        # BBB/session: single decision throughout
+        {"instrument_id": "BBB", "session_date": "2026-01-01", "decision_type": "WATCH",
+         "decision_id": "D3", "as_of": "2026-01-01T09:30:00"},
+        {"instrument_id": "BBB", "session_date": "2026-01-01", "decision_type": "WATCH",
+         "decision_id": "D3", "as_of": "2026-01-01T09:45:00"},
+    ]
+    result = _decision_supersession(rows)
+    assert result["instrument_session_groups_observed"] == 2
+    assert result["instrument_session_groups_with_multiple_decisions"] == 1
+    assert result["total_distinct_decision_episodes"] == 3
+    assert result["decision_replacement_patterns"] == {"WATCH -> TRADE": 1}
 
 
 def test_option_c_validation_reports_state_distribution_within_flagged_rows() -> None:

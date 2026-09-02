@@ -6,7 +6,7 @@ status updated on approval.
 
 ---
 
-## ID-6E Entry Qualification Replay & Shadow Validation — Analysis Complete / Ready for Owner Validation Review
+## ID-6E Entry Qualification Replay & Shadow Validation — Replay Architecture/Engine/State/Finality/Shadow-Unavailable Classification Accepted; Closure Held for ID-6E.1
 
 **Summary.** Owner closed ID-6D in full (including ID-6D.1) and authorized
 ID-6E to validate the now fully closed Entry Qualification capability
@@ -146,10 +146,134 @@ research scope) should migrate the production schema against
 accumulating real shadow observations, enabling a future shadow
 characterization milestone.
 
-**Remaining work.** Owner validation review. Do not start ID-7, EM-6, or
-API/UI until explicitly authorized.
+**Remaining work.** Owner found a narrow trajectory-identity defect in the
+transition/qualified-duration analysis (grouped by `decision_type` instead
+of canonical `decision_id`) and held closure for it. See ID-6E.1.
 
-**Outcome:** Analysis complete; ready for owner validation review.
+**Outcome:** Replay architecture, engine/state/finality analysis, and
+shadow-unavailable classification accepted. Owner closure held for one
+narrow validation correction.
+
+---
+
+## ID-6E.1 Decision-Episode Trajectory Correction — Implementation Complete / Ready for Owner Validation Closure Review
+
+**Summary.** Owner accepted ID-6E's replay architecture, engine/state/
+finality analysis, and shadow-unavailable classification, but held
+closure for one defect: `_transitions` and `_qualified_duration` in the
+ID-6E harness grouped observations by `(instrument_id, session_date,
+decision_type)` instead of the actual canonical Decision identity
+`(instrument_id, session_date, decision_id)`. A `DecisionType` is not a
+Decision identity — ID-6D binds Entry Qualification to a specific
+canonical Decision, and ID-6C persists every observation keyed to
+`decision_id`, so a newer Decision superseding an older one of the same
+type within one instrument/session is a separate episode, never a
+continuation of the same trajectory. ID-6E.1 authorized a narrow,
+analysis-only correction: no methodology, threshold, engine, workflow,
+repository, schema, API, UI, or production database change; no production
+migration.
+
+Audited first: every replay observation row already carried `decision_id`
+and the semantic `as_of` timestamp — no new field was needed. Corrected
+`_transitions`/`_qualified_duration` to group via a shared
+`_decision_episode_groups` helper keyed on `(instrument_id, session_date,
+decision_id)`, ordered by `as_of` (parsed deterministically) rather than
+the checkpoint display label. Added a new descriptive-only
+`_decision_supersession` audit reporting how often a symbol/session
+changes canonical Decision identity across checkpoints — never used to
+judge whether a Decision change is good or bad.
+
+Audited ID-6B.1B's own `_transitions` (`src/athena/data/id6b1_entry_qualification_baseline.py`)
+and confirmed it shares the identical `decision_type`-based grouping
+defect, predating ID-6E entirely — ID-6B.1B's harness computed a
+research-only `candidate_policy_match` boolean before ID-6C's
+Decision-binding persistence contract existed, so it had no architectural
+reason to treat `decision_id` as trajectory identity. Per the owner's
+explicit instruction, ID-6B.1B's own historical artifacts were **not**
+modified; the semantic difference is documented in the corrected ID-6E
+research report instead.
+
+Reran the full 17,082-observation replay against the real, read-only
+`db/athena.db` twice after the correction: identical observation count,
+identical point-observation statistics (state distribution, WATCH/TRADE
+split, Option C, M15, finality, confirmation, methodology invariants —
+all byte-for-byte unchanged from pre-correction), and an exactly matching
+new deterministic digest across both runs
+(`d18c2cb1c43688804c7aea8430b1d4a1539c48f4b3cab3e2a05fd2bba8a70ef9`,
+legitimately different from the pre-correction digest since the
+trajectory-analysis output itself changed). Corrected findings: of
+14,699 total distinct Decision episodes, 3,210 of 3,401 instrument/session
+groups (94.4%) contain more than one distinct Decision — Decision churn is
+the norm in this population, not the exception. Corrected flicker
+(qualified-then-later-not-qualified within the SAME Decision episode):
+215 of 1,833 multi-checkpoint episodes = **11.73%**, materially lower than
+the superseded 39.76% figure, which conflated an average of several
+Decision episodes per instrument/session group. Corrected qualification
+duration: never qualified 11,382; exactly one checkpoint 2,990; some but
+not all 66; every checkpoint 261 (sums to 14,699, matching the corrected
+episode count exactly).
+
+**Classification unchanged: REPLAY_SOUND_SHADOW_EVIDENCE_INSUFFICIENT.**
+The `entry_qualifications` table remains absent from real `db/athena.db`
+(re-confirmed read-only); no migration was performed in this corrective
+slice.
+
+**Architecture compliance.** Preserves every ID-6A–ID-6D.1 frozen
+boundary; touches only research-analysis code
+(`id6e_replay_shadow_validation.py`) and its own test file. No
+`EntryQualificationEngine`/`EntryQualificationPolicy`/provenance
+resolver/`OwnerValidationPipeline`/`SqliteRepository`/schema/
+`DecisionEngine`/`ScoringEngine`/`TradePlan`/`SessionContext`/
+`IntradayAnalyticsEngine` change. No production DB write or migration. No
+provider/network calls. No EMR/DarvaX impact.
+
+**Files created.** None.
+
+**Files modified.** `src/athena/data/id6e_replay_shadow_validation.py`,
+`tests/data_layer/test_id6e_replay_shadow_validation.py`,
+`docs/research/ID-6E-ENTRY-QUALIFICATION-REPLAY-SHADOW-VALIDATION.md`,
+`docs/MILESTONES.md`, `docs/ATHENA-ID-TRACK-HANDOFF.md`,
+`IMPLEMENTATION_SUMMARY.md`.
+
+**Behavior implemented.** `_decision_episode_groups` (shared grouping
+helper), `_as_of_key` (semantic-timestamp sort key), and
+`_decision_supersession` (new descriptive audit) added to the read-only
+research harness; `_transitions`/`_qualified_duration` corrected to use
+them. No change to `run_replay`'s data collection or to `run_shadow_audit`.
+
+**Verification.** 5 new focused tests: same-type/different-Decision
+trajectory splitting, Decision-change-does-not-count-as-flicker,
+same-Decision-still-flickers, Decision-type-change-is-a-separate-episode,
+and the new `_decision_supersession` audit. 2 of the most safety-critical
+(the Decision-change/flicker-chain test and the trajectory-splitting test)
+independently mutation-verified: reverted `_decision_episode_groups` to
+group by `decision_type`, confirmed both tests failed exactly as expected,
+reverted the mutation, and reconfirmed clean.
+`tests/data_layer/test_id6e_replay_shadow_validation.py`: 23/23 passed
+(18 pre-existing + 5 new). Combined ID-6A–ID-6E Entry Qualification
+suite: 194 passed. Ruff clean. `git diff --check` clean. Full repository
+suite: **3,154 passed, 1 pre-existing skip, 0 failed**. Real `db/athena.db`
+confirmed unmodified (identical checksum before/after both corrected
+replay runs).
+
+**Risks / known gaps.** Same shadow-evidence gap as ID-6E: the production
+schema migration remains a future, separately-authorized operational task.
+The high Decision-churn rate found here (94.4% of instrument/session
+groups have multiple Decision episodes) means most Decision episodes in
+this window are short-lived (1-2 checkpoints) — a structural property of
+this candidate population under the current scoring/decision cadence, not
+a defect, but it does mean the corrected flicker rate (11.73%) describes a
+population weighted toward single-checkpoint episodes; interpret
+accordingly.
+
+**Suggested improvements.** None beyond ID-6E's own suggestion (production
+schema migration to unblock shadow-evidence characterization).
+
+**Remaining work.** Owner validation closure review of ID-6E (including
+ID-6E.1). Do not start ID-7, EM-6, or API/UI, and do not migrate the
+production schema, until explicitly authorized.
+
+**Outcome:** Implemented; ready for owner ID-6E validation closure review.
 
 ---
 

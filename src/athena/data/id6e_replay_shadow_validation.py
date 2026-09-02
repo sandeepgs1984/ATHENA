@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from datetime import time as dtime
 from decimal import Decimal
+from itertools import pairwise
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -342,15 +343,37 @@ def _watch_trade_comparison(rows: list[dict[str, Any]]) -> dict[str, Any]:
     return {dtype: _state_block([r for r in rows if r["decision_type"] == dtype]) for dtype in ("WATCH", "TRADE")}
 
 
-def _transitions(rows: list[dict[str, Any]]) -> dict[str, Any]:
+def _as_of_key(row: dict[str, Any]) -> datetime:
+    """Trajectory ordering key: the semantic evaluation timestamp, never the
+    zero-padded checkpoint label or the (unrelated) persisted_at write time.
+    """
+    return datetime.fromisoformat(row["as_of"])
+
+
+def _decision_episode_groups(
+    rows: list[dict[str, Any]],
+) -> dict[tuple[str, str, str], list[dict[str, Any]]]:
+    """Group observations by canonical Decision episode: the same instrument,
+    the same session, and the SAME `decision_id` (ID-6E.1 correction). A
+    DecisionType is not a Decision identity — ID-6D binds Entry Qualification
+    to a specific canonical Decision, and ID-6C persists every observation
+    keyed to `decision_id`, so a newer Decision superseding an older one
+    within the same instrument/session/type is a separate episode, never a
+    continuation of the same trajectory.
+    """
     groups: dict[tuple[str, str, str], list[dict[str, Any]]] = defaultdict(list)
     for row in rows:
-        groups[(row["instrument_id"], row["session_date"], row["decision_type"])].append(row)
+        groups[(row["instrument_id"], row["session_date"], row["decision_id"])].append(row)
+    return groups
+
+
+def _transitions(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    groups = _decision_episode_groups(rows)
     pattern_counts: Counter[str] = Counter()
     multi_checkpoint_groups = 0
     qualified_then_not = 0
     for group_rows in groups.values():
-        ordered = sorted(group_rows, key=lambda r: r["checkpoint"])
+        ordered = sorted(group_rows, key=_as_of_key)
         if len(ordered) < 2:
             continue
         multi_checkpoint_groups += 1
@@ -373,12 +396,10 @@ def _transitions(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def _qualified_duration(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    groups: dict[tuple[str, str, str], list[dict[str, Any]]] = defaultdict(list)
-    for row in rows:
-        groups[(row["instrument_id"], row["session_date"], row["decision_type"])].append(row)
+    groups = _decision_episode_groups(rows)
     counts: Counter[str] = Counter()
     for group_rows in groups.values():
-        ordered = sorted(group_rows, key=lambda r: r["checkpoint"])
+        ordered = sorted(group_rows, key=_as_of_key)
         n = sum(1 for r in ordered if r["state"] == "QUALIFIED")
         if n == 0:
             counts["never_qualified"] += 1
@@ -389,6 +410,42 @@ def _qualified_duration(rows: list[dict[str, Any]]) -> dict[str, Any]:
         else:
             counts["qualified_at_some_but_not_all_checkpoints"] += 1
     return dict(sorted(counts.items()))
+
+
+def _decision_supersession(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Descriptive-only audit of how often a symbol/session changes canonical
+    Decision identity across replay checkpoints. Never used to judge whether
+    a Decision change is good or bad — purely a population characterization
+    supporting the ID-6E.1 trajectory-identity correction.
+    """
+    groups: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        groups[(row["instrument_id"], row["session_date"])].append(row)
+    multi_decision_groups = 0
+    total_distinct_episodes = 0
+    replacement_patterns: Counter[str] = Counter()
+    for group_rows in groups.values():
+        ordered = sorted(group_rows, key=_as_of_key)
+        decision_type_by_id: dict[str, str] = {}
+        sequence: list[str] = []
+        for row in ordered:
+            decision_id = row["decision_id"]
+            decision_type_by_id.setdefault(decision_id, row["decision_type"])
+            if not sequence or sequence[-1] != decision_id:
+                sequence.append(decision_id)
+        distinct_ids = set(sequence)
+        total_distinct_episodes += len(distinct_ids)
+        if len(distinct_ids) > 1:
+            multi_decision_groups += 1
+        for previous_id, next_id in pairwise(sequence):
+            pattern = f"{decision_type_by_id[previous_id]} -> {decision_type_by_id[next_id]}"
+            replacement_patterns[pattern] += 1
+    return {
+        "instrument_session_groups_observed": len(groups),
+        "instrument_session_groups_with_multiple_decisions": multi_decision_groups,
+        "total_distinct_decision_episodes": total_distinct_episodes,
+        "decision_replacement_patterns": dict(sorted(replacement_patterns.items())),
+    }
 
 
 def _option_c_validation(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -499,6 +556,7 @@ def _summarize(
         "watch_trade_comparison": _watch_trade_comparison(rows),
         "transitions": _transitions(rows),
         "qualified_duration": _qualified_duration(rows),
+        "decision_supersession": _decision_supersession(rows),
         "unknown_root_causes": _reason_root_causes(rows, "UNKNOWN"),
         "not_yet_root_causes": _reason_root_causes(rows, "NOT_YET"),
         "qualified_evidence_composition": _qualified_evidence_composition(rows),

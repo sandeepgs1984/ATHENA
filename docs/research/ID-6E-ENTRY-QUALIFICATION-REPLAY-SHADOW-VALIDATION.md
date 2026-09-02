@@ -1,6 +1,6 @@
 # ID-6E — Entry Qualification Replay & Shadow Validation
 
-**Status:** Analysis complete. Read-only, research-only.
+**Status:** Analysis complete, corrected by ID-6E.1. Read-only, research-only.
 **Depends on:** ID-6A through ID-6D.1 (all owner-approved/closed 2026-09-02
 — methodology frozen, engine implemented, input-coherence hardened,
 persisted, Decision-bound, workflow-wired, provenance-resolved,
@@ -8,18 +8,34 @@ persistence-time-corrected).
 **Does not:** change methodology, tune thresholds, prove profitability,
 test outcomes/targets, add API/UI, or start ID-7/EM-6.
 
+**ID-6E.1 correction notice (2026-09-02):** the original ID-6E transition/
+flicker and qualification-duration analysis grouped trajectories by
+`(instrument_id, session_date, decision_type)`, incorrectly merging
+distinct, superseding canonical Decision episodes of the same type into one
+trajectory. Owner review held closure for this defect; ID-6E.1 corrected
+the grouping to `(instrument_id, session_date, decision_id)` — the genuine
+Decision-episode identity ID-6C/ID-6D already bind Entry Qualification to.
+**§23, §24, §32, §33, §34, and §47 below reflect the corrected figures.**
+The original flicker figure (39.76%) is superseded and retained only as a
+labeled comparison point (§34, §48).
+
 ## 1. Executive summary
 
 Two evidence modes were audited. **Replay** (settled historical market-time
 evaluation via the real, unmodified `EntryQualificationEngine` and
 `resolve_evidence_finality`, over the identical 10-session/17,082-
 observation window ID-6B.1B used): fully sound — deterministic across two
-independent runs, zero harness defects, zero coherence failures, every
-frozen invariant holds, and every headline statistic (QUALIFIED prevalence,
-WATCH/TRADE split, checkpoint pattern, flicker rate) matches ID-6B.1B's own
-research baseline almost exactly, confirming the closed engine reproduces
-the pre-engine research formula's behavior faithfully. **Shadow** (real
-persisted runtime observations in `db/athena.db`): **unavailable** — the
+independent runs (both before and after the ID-6E.1 correction), zero
+harness defects, zero coherence failures, every frozen invariant holds, and
+every point-observation headline statistic (QUALIFIED prevalence, WATCH/
+TRADE split) matches ID-6B.1B's own research baseline almost exactly,
+confirming the closed engine reproduces the pre-engine research formula's
+behavior faithfully. The trajectory-based statistics (flicker rate,
+qualification duration) initially appeared to match ID-6B.1B's own figures
+as well, but ID-6E.1 found this apparent agreement was itself an artifact
+of a shared grouping defect (§48) — the corrected, Decision-episode-pure
+flicker rate is **11.73%**, not 39.76%. **Shadow** (real persisted runtime
+observations in `db/athena.db`): **unavailable** — the
 `entry_qualifications` table does not yet exist in the real production
 database (schema not migrated against it since ID-6C), confirmed via a
 read-only query, not merely an empty table. This is reported honestly, not
@@ -213,33 +229,58 @@ Decision-type branch exists anywhere in `EntryQualificationEngine`
 difference is emergent from the underlying candidate evidence populations
 differing by Decision type, not from methodology logic.
 
-## 23. Transition/flicker analysis
+## 23. Transition/flicker analysis (corrected — ID-6E.1)
 
-Among 3,755 instrument/session/decision_type groups observed at 2+
-checkpoints: **1,493 (39.76%)** show the pattern "QUALIFIED at an earlier
-checkpoint, then not QUALIFIED at a later checkpoint in the same session."
-39 distinct compact state-transition patterns were observed (full pattern
-table in `artifacts/research/id6e/run1/id6e_summary.json`), ranging from
-simple `NOT_YET -> QUALIFIED -> NOT_YET` (534 groups) to more volatile
-multi-flip sequences (e.g. `QUALIFIED -> NOT_YET -> QUALIFIED -> NOT_YET ->
-QUALIFIED -> NOT_YET`, 5 groups). Flicker is not suppressed, and no
-confirmation/hysteresis/debounce logic exists anywhere in the engine
-(unchanged, source-verified) — this is the same point-in-time, non-sticky
-property ID-6B.1B already established, now reconfirmed against the actual
-production engine at near-identical magnitude (39.76% here vs. 39.76%/
-46.43% in ID-6B.1B's own same-window/wider-window figures).
+**Corrected grouping (ID-6E.1):** trajectories are grouped by
+`(instrument_id, session_date, decision_id)` — the actual canonical
+Decision episode — not `(instrument_id, session_date, decision_type)`. A
+`DecisionType` is not a Decision identity: ID-6D binds Entry Qualification
+to a specific canonical Decision, and ID-6C persists every observation
+keyed to `decision_id`, so a newer Decision superseding an older one within
+the same instrument/session/type must be treated as a separate episode, not
+a continuation of the same trajectory. Ordering within each episode uses
+the semantic `as_of` timestamp, not the checkpoint display string.
 
-## 24. Qualification-duration description
+Of 14,699 total distinct Decision episodes in the window, **1,833** were
+observed at 2+ checkpoints before being superseded or the window ending.
+Among those 1,833 multi-checkpoint Decision episodes: **215 (11.73%)** show
+the pattern "QUALIFIED at an earlier checkpoint, then not QUALIFIED at a
+later checkpoint within the SAME canonical Decision." Full pattern table in
+`artifacts/research/id6e/run1_corrected/id6e_summary.json`. Flicker is not
+suppressed, and no confirmation/hysteresis/debounce logic exists anywhere
+in the engine (unchanged, source-verified) — genuine same-Decision flicker
+remains a real, observed property; it is simply measured at the correct
+(Decision-episode) granularity now.
 
-| Pattern | Groups |
+**Superseded figure:** the original ID-6E analysis (pre-ID-6E.1) reported
+1,493/3,755 = 39.76%, grouping by `(instrument_id, session_date,
+decision_type)`. That figure conflated multiple canonical Decision episodes
+of the same type within one instrument/session into a single trajectory —
+see §34/§48 for the full root-cause explanation and the audit of
+ID-6B.1B's own research harness, which shares the same grouping contract.
+
+## 24. Qualification-duration description (corrected — ID-6E.1)
+
+Same corrected `(instrument_id, session_date, decision_id)` grouping as
+§23, computed over all 14,699 distinct Decision episodes:
+
+| Pattern | Decision episodes |
 |---|---:|
-| Never qualified | 2,342 |
-| Qualified at exactly one observed checkpoint | 1,087 |
-| Qualified at some but not all checkpoints | 895 |
-| Qualified at every observed checkpoint | 139 |
+| Never qualified | 11,382 |
+| Qualified at exactly one observed checkpoint | 2,990 |
+| Qualified at some but not all checkpoints | 66 |
+| Qualified at every observed checkpoint | 261 |
 
 Descriptive only. No pattern is labeled "valid" or "false"; no new
-confirmation rule is implied or authorized by this table.
+confirmation rule is implied or authorized by this table. The large
+"qualified at exactly one checkpoint" and "never qualified" counts are
+consistent with §48's finding that most Decision episodes in this window
+span only 1-2 checkpoints before being superseded by a newer Decision —
+see §48 for the descriptive Decision-supersession audit.
+
+**Superseded figure:** the original ID-6E table (pre-ID-6E.1), grouped by
+`(instrument_id, session_date, decision_type)`: never qualified 2,342;
+exactly one checkpoint 1,087; some but not all 895; every checkpoint 139.
 
 ## 25. UNKNOWN root causes
 
@@ -330,46 +371,64 @@ conservatively classified `LIVE_M5_PROVISIONAL` even if that session's M5
 has, in absolute terms, already been through whatever settlement process
 applies to it.
 
-## 32. Determinism/digest
+## 32. Determinism/digest (corrected — ID-6E.1)
 
-Run 1: 17,082 observations, 401.16s, `analysis_sha256 =
-0de3a8e161dcc4a97b980b0f806a6c8d6a75a153d4095dbcfd6218f3b63b2475`.
-Run 2: independently re-executed against the same source database with
-identical parameters — 17,082 observations, 367.839s (timing excluded from
-the digest by design), `analysis_sha256 =
-0de3a8e161dcc4a97b980b0f806a6c8d6a75a153d4095dbcfd6218f3b63b2475`.
-**Exact digest match** — observation count, state distribution,
-per-observation fields (state/reason codes/finality/methodology version),
-transitions, and every other summary field are byte-identical across the
-two independent runs. No provider/network calls in either run.
+**Pre-correction (superseded):** Run 1: 17,082 observations, 401.16s,
+`analysis_sha256 = 0de3a8e161dcc4a97b980b0f806a6c8d6a75a153d4095dbcfd6218f3b63b2475`.
+Run 2: 17,082 observations, 367.839s, identical digest. This digest reflects
+the superseded `decision_type`-based trajectory aggregation (§23/§24) and
+is retained here only for audit continuity.
+
+**Post-correction (current):** the ID-6E.1 grouping fix legitimately
+changes the transition/qualified-duration/decision-supersession sections
+of the summary, so a new digest is expected and was not required to match
+the old one. Run 1 (corrected): 17,082 observations, 330.872s,
+`analysis_sha256 = d18c2cb1c43688804c7aea8430b1d4a1539c48f4b3cab3e2a05fd2bba8a70ef9`.
+Run 2 (corrected): independently re-executed against the same source
+database with identical parameters — 17,082 observations, 314.081s (timing
+excluded from the digest by design), identical
+`analysis_sha256 = d18c2cb1c43688804c7aea8430b1d4a1539c48f4b3cab3e2a05fd2bba8a70ef9`.
+**Exact digest match** across the two corrected runs — observation count,
+state distribution, per-observation fields, corrected transitions/
+qualified-duration/decision-supersession, and every other summary field are
+byte-identical. No provider/network calls in either run. `db/athena.db`
+confirmed unmodified (checksum identical before and after both runs).
 
 ## 33. Replay runtime/performance
 
-401.16s total for 17,082 observations across 396 instruments — approximately
-**42.6 observations/second**. Comparable to ID-6B.1B's own 17,082-
-observation run (418.469s, ~40.8 obs/sec) — the additional per-row
-Decision-row fetch and engine invocation added negligible overhead. No
-O(N²) behavior observed; no repeated full-history reads per observation
-(market/sector index candle series are cached per checkpoint, matching
-ID-6B.1's own caching pattern, unmodified).
+330.872s total for 17,082 observations across 396 instruments (corrected
+run 1) — approximately **51.6 observations/second**; run 2 measured
+314.081s (~54.4 obs/sec). Comparable to the pre-correction runtime (401.16s/
+367.839s) and to ID-6B.1B's own 17,082-observation run (418.469s, ~40.8
+obs/sec) — the ID-6E.1 grouping/ordering correction is O(n) post-processing
+over already-collected rows and did not materially change per-observation
+replay cost. No O(N²) behavior observed; no repeated full-history reads per
+observation (market/sector index candle series are cached per checkpoint,
+matching ID-6B.1's own caching pattern, unmodified).
 
-## 34. Comparison with ID-6B.1B
+## 34. Comparison with ID-6B.1B (corrected — ID-6E.1)
 
-| Metric | ID-6B.1B (research formula) | ID-6E (real engine) |
+| Metric | ID-6B.1B (research formula) | ID-6E (real engine, corrected) |
 |---|---:|---:|
 | Observations | 17,082 | 17,082 |
 | Candidate/QUALIFIED match, population | 21.70% | 21.70% |
 | TRADE match rate | 24.17% | 24.17% |
 | WATCH match rate | 19.93% | 19.93% |
-| Flicker (true-then-later-false) | 39.76% | 39.76% |
+| Flicker — Decision-episode-pure | not measured (see §48) | **11.73%** |
+| Flicker — pre-correction, decision_type-grouped (superseded) | 39.76% | 39.76% |
 | M15-caused non-evaluability | 4 obs (0.02%) | 1 obs (0.01%, UNKNOWN-specific) |
 
-The real-engine replay reproduces ID-6B.1B's research-formula figures to
-within rounding on every headline metric — direct confirmation that
-`EntryQualificationEngine` faithfully implements the same methodology
-ID-6B.1B validated, with no silent drift introduced across ID-6B.2/2A/6C/
-6C.1/6D/6D.1's implementation and hardening work. No engine tuning was
-performed to force this agreement — the match was observed, not sought.
+The real-engine replay reproduces ID-6B.1B's research-formula **point-
+observation** figures (QUALIFIED prevalence, WATCH/TRADE split) to within
+rounding — direct confirmation that `EntryQualificationEngine` faithfully
+implements the same methodology ID-6B.1B validated, with no silent drift
+introduced across ID-6B.2/2A/6C/6C.1/6D/6D.1's implementation and hardening
+work. The trajectory-based flicker figure is **not** directly comparable
+between the two: ID-6B.1B never computed a Decision-episode-pure flicker
+rate (its own harness shares the same `decision_type`-grouping defect ID-6E
+inherited — see §48), so 11.73% has no ID-6B.1B counterpart to match
+against. No engine tuning was performed anywhere in this comparison — every
+match and every difference was observed, not sought.
 
 ## 35. Shadow observation availability
 
@@ -456,11 +515,17 @@ separately-authorized milestone that freezes Entry/Exit semantics first
 
 ## 46. Integrity defects/anomalies
 
-**None found.** 0 harness defects (missing Decisions, input-coherence
-failures) across 17,082 replay observations. All frozen invariants hold
-(§19-20). No non-v0 methodology version observed. No naive/non-timezone-
-aware timestamp anywhere in the replay output (the engine's own `as_of` is
-always tz-aware by domain-object construction, unchanged since ID-6A).
+**None found in the engine/persistence/workflow path.** 0 harness defects
+(missing Decisions, input-coherence failures) across 17,082 replay
+observations. All frozen invariants hold (§19-20). No non-v0 methodology
+version observed. No naive/non-timezone-aware timestamp anywhere in the
+replay output (the engine's own `as_of` is always tz-aware by domain-object
+construction, unchanged since ID-6A). One defect *was* found and corrected,
+but it was in this milestone's own **research-analysis code**, not in any
+production path: the original ID-6E transition/qualified-duration analysis
+grouped trajectories by `decision_type` instead of `decision_id`,
+incorrectly merging distinct canonical Decision episodes. Corrected by
+ID-6E.1 — see §23/§24/§48.
 
 ## 47. Validation classification
 
@@ -474,4 +539,89 @@ schema has not yet been migrated against `db/athena.db`. This is reported
 as a factual precondition for any future shadow characterization, not a
 defect in ID-6D/ID-6D.1's own implementation (which is itself
 schema-correct and fully tested against temp databases throughout ID-6C
-through ID-6D.1).
+through ID-6D.1). The ID-6E.1 trajectory-identity correction (§48) changed
+the measured flicker/qualification-duration figures but did not change
+this classification: it was a research-analysis correction, not a change
+to the replay's point-observation soundness or to the shadow-availability
+finding.
+
+## 48. ID-6E.1 addendum — Decision-episode trajectory-identity correction
+
+**Root defect.** `_transitions` and `_qualified_duration` grouped
+observations by `(instrument_id, session_date, decision_type)`. A
+`DecisionType` (WATCH/TRADE) is not a Decision *identity*. Two separate
+canonical Decisions of the same type for the same instrument/session
+(e.g. a 09:30 WATCH superseded by a 09:45 WATCH) were merged into one
+apparent trajectory, even though ID-6D established Entry Qualification is
+bound to a specific Decision episode, and ID-6C persists every observation
+keyed to `decision_id` precisely so that identity is preserved.
+
+**Decision-id availability.** Audited first: every replay observation row
+already carries `decision_id` (populated from `candidate.decision_id`,
+the same value used to fetch the bound `Decision` and to build the
+`HarnessDefect` record on failure) and `as_of` (the semantic evaluation
+timestamp). No new field was needed — the defect was purely in how the
+existing fields were (not) used for grouping.
+
+**Correction.** `_transitions`/`_qualified_duration` now group by
+`(instrument_id, session_date, decision_id)` via a shared
+`_decision_episode_groups` helper, ordered by `as_of` (parsed via
+`datetime.fromisoformat`) rather than the zero-padded checkpoint label.
+`decision_type` is retained only as descriptive metadata in the new
+Decision-supersession audit below, never as a grouping key.
+
+**Decision-supersession descriptive audit (new).** Across the 17,082-
+observation window: 3,401 distinct instrument/session groups were
+observed; **3,210 of those (94.4%) contained more than one distinct
+`decision_id`** across the 6 replay checkpoints — confirming Decision
+churn within a session is the norm, not the exception, in this candidate
+population. 14,699 total distinct Decision episodes were observed (average
+~4.3 per instrument/session group). Decision-type replacement patterns:
+WATCH→WATCH 5,695, TRADE→TRADE 4,050, WATCH→TRADE 747, TRADE→WATCH 806 —
+descriptive only; no judgment is made about whether a given replacement is
+desirable.
+
+**Corrected trajectory statistics.** Of 14,699 Decision episodes, 1,833
+were observed at 2+ checkpoints (most episodes — 12,866 of 14,699 — are
+single-checkpoint, consistent with the high supersession rate just
+measured). Among those 1,833 multi-checkpoint episodes, corrected flicker
+is **215 (11.73%)** — materially lower than the superseded 39.76%
+(1,493/3,755 under the old grouping). Corrected qualification duration:
+never qualified 11,382; qualified at exactly one checkpoint 2,990;
+qualified at some but not all checkpoints 66; qualified at every observed
+checkpoint 261 (sums to 14,699, matching the corrected episode count
+exactly).
+
+**Why the figures changed.** The old grouping's 3,755
+"instrument/session/decision_type" groups conflated an average of
+several distinct Decision episodes per group whenever a symbol's Decision
+was re-issued within a session (the norm, per the 94.4% figure above). A
+QUALIFIED checkpoint under one Decision followed by a NOT_YET checkpoint
+under a *different, superseding* Decision was counted as flicker even
+though no single canonical Decision ever transitioned from QUALIFIED to
+NOT_YET. The correction eliminates exactly that class of false-positive
+flicker while preserving genuine same-Decision flicker (verified by a
+dedicated non-vacuous test, §51/§28 below).
+
+**ID-6B.1B grouping audit.** ID-6B.1B's own `_transitions` function
+(`src/athena/data/id6b1_entry_qualification_baseline.py`) groups by
+`(instrument_id, session_date, decision_type)` — the identical defect
+pattern, predating ID-6E. This is not a coincidence requiring
+investigation: ID-6B.1B's harness computed a research-only
+`candidate_policy_match` boolean before ID-6C's Decision-binding
+persistence contract existed, so it had no architectural reason to treat
+`decision_id` as the trajectory identity. Per the owner's explicit
+instruction, **ID-6B.1B's own historical artifacts were not modified** —
+its reported 39.76%/46.43% flicker figures remain valid descriptions of
+*that* research-formula grouping contract; they are simply not
+Decision-episode-pure under the frozen Entry Qualification binding
+contract, and are not directly comparable to ID-6E.1's corrected 11.73%
+(§34).
+
+**Point-observation invariants unchanged.** This correction is trajectory
+aggregation only. Re-verified unchanged after the fix: total observations
+(17,082), WATCH/TRADE counts, QUALIFIED/NOT_YET/UNKNOWN counts and rates,
+Option C statistics, M15 statistics, finality distribution, confirmation
+invariants, and methodology-version invariants (§13-20, §28-30 above) —
+all identical to the pre-correction run, confirming the correction touched
+only trajectory-analysis code, never the per-observation replay path.
