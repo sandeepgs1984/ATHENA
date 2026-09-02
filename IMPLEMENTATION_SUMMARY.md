@@ -6,6 +6,50 @@ status updated on approval.
 
 ---
 
+## ID-6 Discovery / Scope & Architecture Freeze — Ready for Owner Review
+
+**Summary.** Completed the owner-authorized ID-6 discovery/design milestone.
+The report recommends GO WITH CONDITIONS: proceed toward Entry Qualification
+as the correct conceptual next layer, but begin implementation with ID-6A
+domain/state/reliability contracts and an explicit live-M5 provisional-evidence
+policy. No production behavior was implemented.
+
+**Architecture compliance.** Preserves ATHENA-002, ADR-003 Amendment 1, and
+ADR-005. ID-6 is designed as a post-Decision, advisory-only intraday
+qualification layer that consumes existing `Decision`, `SessionContext`, and
+`IntradaySignalSet` evidence through the live `WorkflowStage` graph. It does
+not modify scoring, confidence, risk, DecisionEngine thresholds, TradePlan,
+provider contracts, EMR, DarvaX, UI, broker behavior, or order behavior.
+
+**Files created.** `docs/research/ID-6-SCOPE-ARCHITECTURE-DESIGN.md`.
+
+**Files modified.** `docs/MILESTONES.md`,
+`docs/ATHENA-ID-TRACK-HANDOFF.md`, `ATHENA_BRIEFING.md`,
+`IMPLEMENTATION_SUMMARY.md`.
+
+**Evidence basis.** The design incorporates ID-5B's accepted
+`CASE_B_CONTENT_CHANGES` conclusion: current-session Kite M5 may be
+market-time closed and still not provider-settled final. The proposed policy
+treats current-session completed M5 as provisional for qualification purposes,
+allowing reversible `QUALIFIED_PROVISIONAL` but preventing provisional M5 from
+creating irreversible session disqualification.
+
+**Recommended slices.** ID-6A domain/state/reliability contract; ID-6B pure
+qualification engine; ID-6C append-only persistence and latest-state query;
+ID-6D workflow integration; ID-6E replay/shadow validation. Each slice requires
+owner approval before the next begins.
+
+**Verification.** Documentation-only. No pytest run was required; `git diff
+--check` is run as the closeout quality gate. No DB writes and no provider or
+network calls were performed.
+
+**Remaining work.** Owner architecture review. Do not start ID-6A, ID-7,
+EM-6, EMR, DarvaX, UI, or TradePlan work until explicitly authorized.
+
+**Outcome:** Ready for owner architecture review.
+
+---
+
 ## PS-P4 Portfolio Sync Orchestration — Ready for Owner Review After PS-P4.1
 
 **Summary.** Implemented Portfolio Sync as a persisted background workflow over
