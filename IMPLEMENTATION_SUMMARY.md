@@ -6,7 +6,7 @@ status updated on approval.
 
 ---
 
-## ID-6B.1B Quality-Adjusted Policy Baseline & Wider TRADE Audit — Ready for Owner V0 Policy Decision
+## ID-6B.1B Quality-Adjusted Policy Baseline & Wider TRADE Audit — Owner Approved / Closed
 
 **Summary.** Applied the owner-ratified Option C quality policy correctly to
 both ID-6B.1's original window and a new, materially wider, deterministically
@@ -98,7 +98,121 @@ Qualification engine, persistence, workflow integration, an M15 repair
 milestone, ID-7, EM-6, EMR, DarvaX, or UI/production work until explicitly
 authorized.
 
-**Outcome:** Analysis complete; ready for owner V0 policy decision.
+**Outcome:** Owner approved / closed. V0 readiness methodology frozen
+(VWAP positive AND aggregate trend BULLISH AND (RS support OR RVOL
+support)); ID-6B.2 authorized to start.
+
+---
+
+## ID-6B.2 Entry Qualification Pure Engine — Implemented / Ready for Owner Pure-Engine Review
+
+**Summary.** Implemented the pure, deterministic `EntryQualificationEngine`
+for the v0 candidate-readiness methodology the owner froze in ID-6B.1B, and
+only that methodology — no persistence, no workflow wiring, no API/UI
+(ID-6C/ID-6D's scope). Applied two owner corrections to ID-6B.1B's own §18
+proposal before implementing: `EXPIRED` now means "session lifecycle has
+ended" (`SessionPhase.CLOSED`), not "future session-boundary rule reserved,"
+and v0 confirmation emits the existing ID-6A `NOT_EVALUATED` value (not a
+proposed new one).
+
+`EntryQualificationEngine.evaluate()` implements the frozen expression
+(`VWAP positive AND aggregate trend BULLISH AND (RS support OR RVOL
+support)`) using an internal tri-state (`TRUE`/`FALSE`/`UNKNOWN`) helper so
+missing evidence never collapses into a false/bearish reading via Python
+truthiness: AND lets FALSE dominate UNKNOWN, OR lets TRUE dominate UNKNOWN —
+so a genuine RS or RVOL support signal qualifies a candidate even when the
+other branch is unavailable, and a definitively negative VWAP or trend
+reading produces `NOT_YET` even if another leg happens to be unresolved.
+State precedence, evaluated in order: non-WATCH/TRADE decision type or
+`SessionPhase.NOT_A_TRADING_SESSION` → `OUT_OF_SCOPE`; `SessionPhase.CLOSED`
+→ `EXPIRED`; `SessionPhase.PRE_OPEN` → `NOT_YET` (evidence not yet expected,
+no clock constant invented); `SessionPhase.REGULAR` → evaluate the frozen
+expression → `QUALIFIED`/`NOT_YET`/`UNKNOWN`. `DISQUALIFIED_FOR_SESSION` is
+never emitted (proven by an exhaustive phase x leg-combination sweep test).
+Confirmation is always `EntryQualificationConfirmation.NOT_EVALUATED`;
+`CONFIRMED_BY_POLICY` is never emitted. `SessionContext.data_quality`/
+`IntradaySignalSet.data_quality` are never read as a blanket gate (Option C,
+ID-6B.1A/1B) — a test proves `EXPECTED_BAR_MISSING` does not block
+`QUALIFIED` when all three consumed artifacts are independently resolvable.
+OR15/OR30/Gap/Sector Health are proven (by test) not to influence state.
+WATCH and TRADE run through one shared evaluation path with no
+type-specific branching; canonical `decision_type`/`decision_id` are always
+preserved, never mutated or promoted.
+
+Evidence finality (ADR-013's second orthogonal dimension) is accepted as an
+explicit, required `evidence_finality` parameter and echoed straight into
+the output, unconditional on `state` — the engine does not attempt to infer
+provenance from a bare `Decision`, since ID-6B.1B/ADR-013 already
+established that current `Decision` provenance is insufficient for that;
+resolving it from real data remains a future ID-6C/ID-6D concern.
+
+Extended `EntryQualificationReasonCode` (ID-6A) minimally with 10 new
+v0-methodology reason codes (three each for "evidence unavailable",
+"condition not met", and "condition met", plus one aggregate
+`V0_READINESS_POLICY_SATISFIED`) — deliberately naming only the three
+frozen conditions, never an outcome/target/risk concept. Reason codes and
+the deterministic explanation string cite only the condition(s) that
+actually decided the emitted state (e.g. a FALSE VWAP with an UNKNOWN trend
+cites only `VWAP_CONDITION_NOT_MET`, since FALSE dominated regardless of
+the unresolved trend leg).
+
+**Architecture compliance.** Preserves ADR-013, ATHENA-002, ADR-003,
+ADR-005, ADR-012, and the advisory-only/no-order boundary.
+`EntryQualification.QUALIFIED` is not equivalent to `DecisionType.TRADE`;
+no canonical `Decision` mutation or promotion. No `ScoringEngine`,
+`DecisionEngine`, confidence, risk, `TradePlan`, `SessionContext`, trend/
+VWAP/RS/RVOL methodology, provider, M15 repair, EMR, DarvaX, broker, order,
+or UI behavior changed. No persistence (ID-6C), no workflow wiring (ID-6D),
+no API/UI, no ID-7, no EM-6.
+
+**Files created.** `src/athena/intraday/entry_qualification_engine.py`,
+`tests/market_intel/test_entry_qualification_engine.py`.
+
+**Files modified.** `src/athena/intraday/entry_qualification_models.py`
+(10 new `EntryQualificationReasonCode` members, additive only — no existing
+member changed or removed), `src/athena/intraday/__init__.py` (exports),
+`docs/MILESTONES.md`, `docs/ATHENA-ID-TRACK-HANDOFF.md`,
+`IMPLEMENTATION_SUMMARY.md`.
+
+**Behavior implemented.** A pure function-like engine: one public method
+(`evaluate`), no instance state (`vars(engine) == {}`), O(1) per candidate,
+zero I/O. Consumes `Decision`, `SessionContext`, `IntradaySignalSet`,
+`EntryEvidenceFinality`, and an `EntryQualificationPolicy` (methodology
+identity only, no numeric thresholds); produces one `EntryQualification`.
+Not wired into any production workflow, API, or persistence path — it
+remains unused by production runtime after this milestone, as expected.
+
+**Verification.** Focused tests: 46 new, all non-vacuous; 2 of the most
+safety-critical (tri-state FALSE-dominates-UNKNOWN, and the Option C
+non-gate) were independently confirmed by deliberately mutating the engine
+logic, re-running, observing the expected test failure, and reverting.
+`tests/market_intel/` full package: 297 passed. Ruff clean for all 4
+changed/added files. `git diff --check` clean. Full repository suite:
+**3,064 passed, 1 pre-existing skip, 0 failed**. No DB writes, no provider
+calls, no repository access anywhere in the new engine (confirmed by
+source grep).
+
+**Risks / known gaps.** `SessionPhase.CLOSED` conflates "before today's
+pre-open" and "after today's close" in the existing session/models.py
+contract; this engine maps `CLOSED` directly to `EXPIRED` per the owner's
+literal instruction and the existing contract's own semantics, without
+inventing a new open/close-timestamp cutoff to disambiguate the two — in
+practice a WATCH/TRADE `Decision` existing before a session's own pre-open
+is not a realistic scenario (a `Decision` requires prior market data to
+exist), so this is a documented simplification, not an observed defect.
+Evidence-finality provenance resolution remains entirely deferred to a
+future milestone, as instructed.
+
+**Suggested improvements.** ID-6C should design the persistence schema
+next; ID-6D should design workflow wiring and the real provenance-
+resolution logic for `evidence_finality`, since this engine only carries
+that value through unchanged.
+
+**Remaining work.** Owner pure-engine review. Do not start ID-6C, ID-6D,
+persistence, workflow integration, API/UI, ID-7, or EM-6 until explicitly
+authorized.
+
+**Outcome:** Implemented; ready for owner pure-engine review.
 
 ---
 

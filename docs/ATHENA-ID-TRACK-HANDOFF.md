@@ -5,8 +5,9 @@ owner-approved and CLOSED; ID-5 owner-approved and CLOSED; ID-6 discovery
 architecture owner-approved with condition; ID-6A0 Entry Qualification ADR
 owner-approved and closed; ID-6A owner-approved and closed; ID-6B.0
 owner-approved and closed; ID-6B.1 owner-approved and closed; ID-6B.1A
-owner-approved and closed, Option C ratified; ID-6B.1B quality-adjusted
-policy baseline ready for owner V0 policy decision)
+owner-approved and closed, Option C ratified; ID-6B.1B owner-approved and
+closed, v0 methodology frozen; ID-6B.2 pure engine implemented, ready for
+owner pure-engine review)
 **Governing boundary:** accepted `docs/adr/ADR-013-entry-qualification-architecture.md`
 for Entry Qualification; otherwise this track extends the existing frozen
 `ATHENA-002-System-Blueprint.md` module map (§6 of `ATHENA_BRIEFING.md`).
@@ -37,9 +38,20 @@ TECHNICAL DEBT** (causes non-evaluability in <=0.03% of every sample
 measured). WATCH and TRADE showed no structural divergence under the
 quality-adjusted policy — single shared methodology preserved.
 Recommendation: FREEZE V0 POLICY WITH EXPLICIT LIMITATION (checkpoint-level
-flicker ~40% means point-in-time only, not persistence); ready for owner V0
-policy decision. No engine, persistence, workflow stage, thresholds, UI, or
-production behavior has been implemented by any of these milestones.
+flicker ~40% means point-in-time only, not persistence). The owner froze
+the v0 methodology exactly as measured (VWAP positive AND aggregate trend
+BULLISH AND (RS support OR RVOL support)) and ID-6B.1B is owner-approved
+and closed. ID-6B.2 implemented the pure, deterministic
+`EntryQualificationEngine` for that frozen methodology only —
+`src/athena/intraday/entry_qualification_engine.py` — using an internal
+tri-state AND/OR so missing evidence never collapses to bearish; state
+precedence is non-WATCH/TRADE or non-trading-session → `OUT_OF_SCOPE`,
+closed session → `EXPIRED`, pre-open → `NOT_YET`, regular session →
+evaluate the frozen expression. `DISQUALIFIED_FOR_SESSION` is never
+emitted; confirmation is always `NOT_EVALUATED`; `SessionDataQuality` is
+never a blanket gate (Option C, test-proven); OR15/OR30/Gap/Sector proven
+not to affect state. No persistence, workflow stage, API, or UI has been
+implemented — ID-6C/ID-6D own those, not yet started.
 Evidence notes:
 `docs/research/ID-5B-LIVE-M5-SEMANTICS-CAPTURE-2026-08-31.md`,
 `docs/research/ID-6-SCOPE-ARCHITECTURE-DESIGN.md`,
@@ -84,7 +96,8 @@ Track B capture is running the same morning.
 | ID-6B.0 | OWNER APPROVED / CLOSED 2026-09-02 — methodology/design accepted; illustrative practical-v0 rule not approved; owner decisions frozen for QUALIFIED allowed architecturally, terminal disqualification off in v0, OR contextual, WATCH/TRADE same methodology unless evidence proves otherwise, confirmation methodology unapproved, no additive score |
 | ID-6B.1 | OWNER APPROVED / CLOSED 2026-09-02 — read-only settled historical market-time replay measured 370 candidate-checkpoint observations across 5 recent sessions and 32 instruments; `EXPECTED_BAR_MISSING`=72.97% blocker escalated to ID-6B.1A; no production engine implemented |
 | ID-6B.1A | OWNER APPROVED / CLOSED 2026-09-02 — root-caused `EXPECTED_BAR_MISSING` to a chronic, unrepaired M15 off-grid data condition (96.30% of affected observations), confirmed zero M15 dependency in VWAP/RS/RVOL/Gap/OR by source inspection, verified checkpoint-boundary math exact (no harness/production bug), and re-ran the baseline uncapped (7,144 observations, 19x) finding every headline figure broadly stable except TRADE-specific ones (temporally concentrated on ~1 real day); Option C (artifact-owned availability) ratified over the blanket quality gate |
-| ID-6B.1B | ANALYSIS COMPLETE — READY FOR OWNER V0 POLICY DECISION 2026-09-02 — confirmed aggregate `BULLISH` trend already requires genuine M5+M15 agreement (source-level audit); applied Option C to the original window (99.55%-100% evaluable) and a fresh, deterministically-selected wider window (10 sessions, 2026-08-14–08-27, 17,082 observations, 4.8x more TRADE observations across 9 sessions, 99.64% evaluable); M15 caused non-evaluability in <=0.03% of every sample — classified NON-BLOCKING TECHNICAL DEBT; WATCH/TRADE showed a uniform prevalence shift with no structural divergence; recommends FREEZE V0 POLICY WITH EXPLICIT LIMITATION (checkpoint flicker ~40% means point-in-time only) |
+| ID-6B.1B | OWNER APPROVED / CLOSED 2026-09-02 — confirmed aggregate `BULLISH` trend already requires genuine M5+M15 agreement (source-level audit); applied Option C to the original window (99.55%-100% evaluable) and a fresh, deterministically-selected wider window (10 sessions, 2026-08-14–08-27, 17,082 observations, 4.8x more TRADE observations across 9 sessions, 99.64% evaluable); M15 caused non-evaluability in <=0.03% of every sample — classified NON-BLOCKING TECHNICAL DEBT; WATCH/TRADE showed a uniform prevalence shift with no structural divergence; owner froze v0 methodology exactly as measured (VWAP positive AND aggregate trend BULLISH AND (RS support OR RVOL support)) |
+| ID-6B.2 | IMPLEMENTED — READY FOR OWNER PURE-ENGINE REVIEW 2026-09-02 — `EntryQualificationEngine.evaluate()` (`src/athena/intraday/entry_qualification_engine.py`): deterministic, side-effect-free, O(1), zero repository/provider/DB/wall-clock/workflow dependency; tri-state AND/OR so missing evidence never collapses to bearish; `DISQUALIFIED_FOR_SESSION` never emitted (exhaustive sweep test); confirmation always `NOT_EVALUATED`; `SessionDataQuality`/`EXPECTED_BAR_MISSING` never a blanket gate (Option C, test-proven); OR15/OR30/Gap/Sector proven not to affect state; WATCH/TRADE share one methodology; `evidence_finality` is an explicit orthogonal input, not inferred. 46 new focused tests, 2 mutation-verified. No persistence/workflow/API/UI |
 
 The full detailed evidence for every closed milestone above is in
 `docs/MILESTONES.md`'s "Intraday Intelligence Track" section (long — this
@@ -234,7 +247,7 @@ M15 data gap as a future, separately-authorized prerequisite candidate
 (mirroring ID-5A), not fixed here. The owner ratified Option C and
 authorized ID-6B.1B.
 
-**ID-6B.1B is the current review gate**:
+ID-6B.1B is owner-approved and closed:
 `docs/research/ID-6B.1B-QUALITY-ADJUSTED-POLICY-BASELINE.md`. First audited
 the intraday trend contract at source level (`_aggregate_trend` in
 `src/athena/intraday/engine.py`) and confirmed the existing aggregate
@@ -270,16 +283,54 @@ flicker is real and stable across sample sizes, reinforcing the deferral of
 Recommendation: **FREEZE V0 POLICY WITH EXPLICIT LIMITATION** — the policy
 is coherent, almost always evaluable, and stable in prevalence, but
 checkpoint-level flicker means it must be treated as a point-in-time signal
-only, never a persistence/confirmation signal. A complete proposed v0
-engine state semantics (`OUT_OF_SCOPE`/`UNKNOWN`/`NOT_YET`/`QUALIFIED`/
-`EXPIRED`/`DISQUALIFIED_FOR_SESSION`, evidence-finality, confirmation,
-reason categories, WATCH/TRADE handling, missing-evidence behavior) is
-documented as a proposal only — no implementation.
+only, never a persistence/confirmation signal. The owner froze the v0
+methodology exactly as measured — `VWAP positive AND aggregate trend
+BULLISH AND (RS support OR RVOL support)` — and authorized ID-6B.2 to
+implement the pure engine only, with two corrections to ID-6B.1B's own
+§18 engine-semantics proposal: `EXPIRED` means session-lifecycle-ended
+(not a reserved future rule), and v0 confirmation uses the existing ID-6A
+`NOT_EVALUATED` value (not a proposed new one).
 
-Do not implement an engine, persistence, UI, thresholds, IntradayTradePlan,
-an M15 settlement-repair milestone, ID-6B.2, ID-6C, ID-6D, ID-6E, ID-7,
-EM-6, EMR, DarvaX, or order behavior until the owner reviews the ID-6B.1B
-policy-freeze recommendation and explicitly authorizes the next milestone.
+**ID-6B.2 is the current review gate**:
+`src/athena/intraday/entry_qualification_engine.py`
+(`EntryQualificationEngine`). Deterministic, side-effect-free, O(1) pure
+engine implementing only the frozen v0 expression, via an internal
+tri-state (`TRUE`/`FALSE`/`UNKNOWN`) AND/OR helper so missing evidence
+never silently collapses to false through Python truthiness: AND lets
+FALSE dominate UNKNOWN, OR lets TRUE dominate UNKNOWN. State precedence:
+non-WATCH/TRADE decision type or `SessionPhase.NOT_A_TRADING_SESSION` →
+`OUT_OF_SCOPE`; `SessionPhase.CLOSED` → `EXPIRED`; `SessionPhase.PRE_OPEN`
+→ `NOT_YET` (no clock constant invented); `SessionPhase.REGULAR` →
+evaluate the frozen expression → `QUALIFIED`/`NOT_YET`/`UNKNOWN`.
+`DISQUALIFIED_FOR_SESSION` is never emitted (proven by an exhaustive
+phase x leg-combination sweep test). Confirmation is always
+`EntryQualificationConfirmation.NOT_EVALUATED`; `CONFIRMED_BY_POLICY` is
+never emitted. `SessionContext.data_quality`/`IntradaySignalSet.data_quality`
+are never read as a blanket gate (Option C — test-proven that
+`EXPECTED_BAR_MISSING` does not block `QUALIFIED`). OR15/OR30/Gap/Sector
+Health are proven by test not to influence state. WATCH and TRADE share one
+evaluation path, canonical `decision_type`/`decision_id` preserved, never
+mutated/promoted. `evidence_finality` (ADR-013's second orthogonal
+dimension) is an explicit, required caller input, echoed through unchanged
+— the engine does not infer provenance from a bare `Decision` (ID-6B.1B/
+ADR-013 already established current `Decision` provenance is insufficient
+for that); resolving it from real data is deferred to ID-6C/ID-6D.
+`EntryQualificationReasonCode` (ID-6A) was extended minimally, additively,
+with 10 new v0-methodology reason codes.
+
+46 new focused tests (`tests/market_intel/test_entry_qualification_engine.py`),
+all non-vacuous; the two most safety-critical (tri-state FALSE-dominates-
+UNKNOWN, and the Option C non-gate) were independently confirmed by
+deliberately mutating the engine logic, observing the expected test
+failure, and reverting. Full repository suite: 3,064 passed, 1 pre-existing
+skip. No persistence, workflow, API, or UI — the engine remains unused by
+production runtime after this milestone, as expected.
+
+Do not implement persistence, workflow wiring, UI, thresholds,
+IntradayTradePlan, an M15 settlement-repair milestone, ID-6C, ID-6D, ID-6E,
+ID-7, EM-6, EMR, DarvaX, or order behavior until the owner reviews the
+ID-6B.2 pure-engine implementation and explicitly authorizes the next
+milestone.
 
 ## 7. ID-5B — closed result
 

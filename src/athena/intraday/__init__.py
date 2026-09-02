@@ -15,6 +15,11 @@ Decision/TradePlan mutation. See `docs/research/ID-2-*`/`ID-3-*`/
 """
 
 from athena.intraday.engine import IntradayAnalyticsEngine
+from athena.intraday.entry_qualification_engine import (
+    DEFAULT_METHODOLOGY_VERSION,
+    EntryQualificationEngine,
+    EntryQualificationPolicy,
+)
 from athena.intraday.entry_qualification_models import (
     EntryEvidenceFinality,
     EntryQualification,
@@ -49,12 +54,15 @@ from athena.intraday.relative_volume_engine import RelativeVolumeEngine
 from athena.intraday.relative_volume_models import RelativeVolumeContext, RelativeVolumeRelation
 
 __all__ = [
+    "DEFAULT_METHODOLOGY_VERSION",
     "BreakoutEvent",
     "EntryEvidenceFinality",
     "EntryQualification",
     "EntryQualificationConfirmation",
+    "EntryQualificationEngine",
     "EntryQualificationEvidenceKind",
     "EntryQualificationEvidenceRef",
+    "EntryQualificationPolicy",
     "EntryQualificationReasonCode",
     "EntryQualificationState",
     "GapContext",

@@ -64,11 +64,13 @@ class EntryQualificationConfirmation(str, Enum):
 
 @unique
 class EntryQualificationReasonCode(str, Enum):
-    """Structural/lifecycle/data-quality reason vocabulary for ID-6A.
-
-    Methodology-specific reasons such as RVOL/ORB/RS/VWAP failures are
-    deliberately absent; ID-6B+ owns any future methodology rule vocabulary.
-    """
+    """Structural/lifecycle/data-quality reason vocabulary for ID-6A,
+    extended minimally by ID-6B.2 with the v0 methodology's own reason
+    vocabulary now that ID-6B.1B froze that methodology. Each methodology
+    reason names exactly one of the three frozen v0 conditions (VWAP,
+    aggregate trend, RS/RVOL support) — never an outcome/target/risk
+    concept, and never duplicates every upstream artifact (only the
+    condition(s) that actually decided the emitted state)."""
 
     INSUFFICIENT_EVIDENCE = "INSUFFICIENT_EVIDENCE"
     STALE_EVIDENCE = "STALE_EVIDENCE"
@@ -76,6 +78,18 @@ class EntryQualificationReasonCode(str, Enum):
     DECISION_SUPERSEDED = "DECISION_SUPERSEDED"
     SESSION_EXPIRED = "SESSION_EXPIRED"
     STRUCTURALLY_OUT_OF_SCOPE = "STRUCTURALLY_OUT_OF_SCOPE"
+
+    #: ID-6B.2 v0 methodology reason vocabulary (owner-frozen ID-6B.1B).
+    VWAP_EVIDENCE_UNAVAILABLE = "VWAP_EVIDENCE_UNAVAILABLE"
+    TREND_EVIDENCE_UNAVAILABLE = "TREND_EVIDENCE_UNAVAILABLE"
+    SUPPORT_EVIDENCE_UNRESOLVED = "SUPPORT_EVIDENCE_UNRESOLVED"
+    VWAP_CONDITION_NOT_MET = "VWAP_CONDITION_NOT_MET"
+    TREND_CONDITION_NOT_MET = "TREND_CONDITION_NOT_MET"
+    SUPPORT_CONDITION_NOT_MET = "SUPPORT_CONDITION_NOT_MET"
+    VWAP_CONDITION_MET = "VWAP_CONDITION_MET"
+    TREND_CONDITION_MET = "TREND_CONDITION_MET"
+    SUPPORT_CONDITION_MET = "SUPPORT_CONDITION_MET"
+    V0_READINESS_POLICY_SATISFIED = "V0_READINESS_POLICY_SATISFIED"
 
 
 @unique
