@@ -303,8 +303,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.149.0" in html
-    assert "dashboard.js?v=9.149.4" in html
+    assert "dashboard.css?v=9.149.1" in html
+    assert "dashboard.js?v=9.149.5" in html
     assert "function decisionConfidenceBand" in js
     assert "analysis?.confidence_level" in js
     assert "confidence reflects evidence reliability, not expected profit" in js
@@ -357,16 +357,36 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert 'id="my-portfolio-file"' in html
     assert 'accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"' in html
     assert "Required columns: Symbol, Qty, Avg Price" in html
-    assert 'id="my-portfolio-sync" class="btn btn-secondary" type="button" disabled' in html
-    assert "Sync Portfolio — available in next milestone" in html
+    assert 'id="my-portfolio-sync" class="btn" type="button"' in html
+    assert "Sync Portfolio" in html
     assert "No trades or realized P&amp;L are inferred" in html
     assert 'id="my-portfolio-preview-duplicates"' in html
     assert 'id="my-portfolio-holdings-rows"' in html
     assert 'id="my-portfolio-history-rows"' in html
+    for heading in (
+        "Last Price",
+        "Price As Of",
+        "Current Value",
+        "P&amp;L",
+        "Status",
+        "Conviction",
+        "Trend / Setup",
+        "Key Trigger",
+        "Support 1",
+        "Major Support / Exit",
+        "Target 1",
+        "Target 2",
+        "Target 3",
+        "Next Action",
+        "Last Review",
+    ):
+        assert heading in html
 
     assert '@import url("css/05b-my-portfolio.css");' in css_manifest
     assert ".my-portfolio-table-scroll" in my_portfolio_css
     assert ".my-portfolio-wide-table th:first-child" in my_portfolio_css
+    assert ".my-portfolio-wide-table th:nth-child(2)" in my_portfolio_css
+    assert ".my-portfolio-wide-table th:nth-child(3)" in my_portfolio_css
     assert "position: sticky" in my_portfolio_css
 
     assert "08b-my-portfolio.js" in DASHBOARD_JS_PARTS
@@ -376,6 +396,12 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert "/api/v1/my-portfolio/imports?filename=" in js
     assert "/api/v1/my-portfolio/holdings" in js
     assert "/api/v1/my-portfolio/imports" in js
+    assert "/api/v1/my-portfolio/sync" in js
+    assert "/api/v1/my-portfolio/snapshot" in js
+    assert "function startMyPortfolioSync()" in js
+    assert "function pollMyPortfolioSync(syncRunId)" in js
+    assert "function renderMyPortfolioSnapshotRows(rows)" in js
+    assert "Previous completed snapshot remains unchanged" in js
     assert "Content-Type\": \"application/octet-stream" in js
     assert "DUPLICATE_CANONICAL_INSTRUMENT" in js
     assert "STALE_PREVIEW" in js

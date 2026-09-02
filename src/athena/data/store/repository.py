@@ -46,6 +46,7 @@ from athena.portfolio.my_portfolio_contracts import (
     ReconciliationAction,
     ReconciliationChange,
     SymbolMappingState,
+    SyncRunStatus,
     reconcile_current_holdings,
 )
 from athena.symbols.groups import GroupMembership
@@ -1263,6 +1264,238 @@ class SqliteRepository:
         )
         return [self._portfolio_reconciliation_from_row(row) for row in rows]
 
+    def create_portfolio_sync_run(
+        self,
+        *,
+        sync_run_id: str,
+        started_at: datetime,
+        total_holdings: int,
+        analysis_version: str,
+        status: SyncRunStatus = SyncRunStatus.QUEUED,
+        progress: Mapping[str, object] | None = None,
+        provenance: Mapping[str, object] | None = None,
+    ) -> dict[str, object]:
+        """Persist a new Portfolio Sync run record."""
+
+        self._write(
+            "INSERT INTO portfolio_sync_runs ("
+            "sync_run_id, started_at, finished_at, status, total_holdings, "
+            "succeeded_holdings, failed_holdings, market_data_through, "
+            "validation_run_id, analysis_version, progress_json, per_symbol_json, "
+            "error_json, provenance_json"
+            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                sync_run_id,
+                started_at.isoformat(),
+                None,
+                status.value,
+                total_holdings,
+                0,
+                0,
+                None,
+                None,
+                analysis_version,
+                json.dumps(dict(progress or {}), sort_keys=True, default=str),
+                "{}",
+                "{}",
+                json.dumps(dict(provenance or {}), sort_keys=True, default=str),
+            ),
+        )
+        record = self.get_portfolio_sync_run(sync_run_id)
+        if record is None:
+            raise RepositoryError("SYNC_RUN_NOT_FOUND_AFTER_CREATE")
+        return record
+
+    def update_portfolio_sync_run(
+        self,
+        sync_run_id: str,
+        *,
+        status: SyncRunStatus,
+        finished_at: datetime | None = None,
+        succeeded_holdings: int | None = None,
+        failed_holdings: int | None = None,
+        market_data_through: datetime | None = None,
+        validation_run_id: str | None = None,
+        progress: Mapping[str, object] | None = None,
+        per_symbol: Mapping[str, object] | None = None,
+        error: Mapping[str, object] | None = None,
+        provenance: Mapping[str, object] | None = None,
+    ) -> dict[str, object]:
+        """Update a Portfolio Sync run record."""
+
+        updates = ["status=?"]
+        params: list[object] = [status.value]
+        fields = {
+            "finished_at": finished_at.isoformat() if finished_at is not None else None,
+            "succeeded_holdings": succeeded_holdings,
+            "failed_holdings": failed_holdings,
+            "market_data_through": (
+                market_data_through.isoformat() if market_data_through is not None else None
+            ),
+            "validation_run_id": validation_run_id,
+            "progress_json": (
+                json.dumps(dict(progress), sort_keys=True, default=str)
+                if progress is not None
+                else None
+            ),
+            "per_symbol_json": (
+                json.dumps(dict(per_symbol), sort_keys=True, default=str)
+                if per_symbol is not None
+                else None
+            ),
+            "error_json": (
+                json.dumps(dict(error), sort_keys=True, default=str)
+                if error is not None
+                else None
+            ),
+            "provenance_json": (
+                json.dumps(dict(provenance), sort_keys=True, default=str)
+                if provenance is not None
+                else None
+            ),
+        }
+        for column, value in fields.items():
+            if value is None:
+                continue
+            updates.append(f"{column}=?")
+            params.append(value)
+        params.append(sync_run_id)
+        self._write(
+            f"UPDATE portfolio_sync_runs SET {', '.join(updates)} WHERE sync_run_id=?",
+            tuple(params),
+        )
+        record = self.get_portfolio_sync_run(sync_run_id)
+        if record is None:
+            raise RepositoryError("SYNC_RUN_NOT_FOUND")
+        return record
+
+    def get_portfolio_sync_run(self, sync_run_id: str) -> dict[str, object] | None:
+        row = self._query_one(
+            "SELECT sync_run_id, started_at, finished_at, status, total_holdings, "
+            "succeeded_holdings, failed_holdings, market_data_through, validation_run_id, "
+            "analysis_version, progress_json, per_symbol_json, error_json, provenance_json "
+            "FROM portfolio_sync_runs WHERE sync_run_id=?",
+            (sync_run_id,),
+        )
+        return self._portfolio_sync_run_from_row(row) if row else None
+
+    def get_active_portfolio_sync_run(self) -> dict[str, object] | None:
+        row = self._query_one(
+            "SELECT sync_run_id, started_at, finished_at, status, total_holdings, "
+            "succeeded_holdings, failed_holdings, market_data_through, validation_run_id, "
+            "analysis_version, progress_json, per_symbol_json, error_json, provenance_json "
+            "FROM portfolio_sync_runs WHERE status IN (?,?) "
+            "ORDER BY started_at DESC, sync_run_id DESC LIMIT 1",
+            (SyncRunStatus.QUEUED.value, SyncRunStatus.RUNNING.value),
+        )
+        return self._portfolio_sync_run_from_row(row) if row else None
+
+    def list_portfolio_sync_runs(self, *, limit: int = 50) -> list[dict[str, object]]:
+        rows = self._query_all(
+            "SELECT sync_run_id, started_at, finished_at, status, total_holdings, "
+            "succeeded_holdings, failed_holdings, market_data_through, validation_run_id, "
+            "analysis_version, progress_json, per_symbol_json, error_json, provenance_json "
+            "FROM portfolio_sync_runs ORDER BY started_at DESC, sync_run_id DESC LIMIT ?",
+            (limit,),
+        )
+        return [self._portfolio_sync_run_from_row(row) for row in rows]
+
+    def mark_interrupted_portfolio_sync_runs(self, *, interrupted_at: datetime) -> int:
+        """Fail stale QUEUED/RUNNING portfolio syncs from a previous process."""
+
+        payload = json.dumps(
+            {"code": "INTERRUPTED", "message": "Portfolio Sync interrupted before completion"},
+            sort_keys=True,
+        )
+        try:
+            with self._lock:
+                with self._conn:
+                    cur = self._conn.execute(
+                        "UPDATE portfolio_sync_runs SET status=?, finished_at=?, error_json=? "
+                        "WHERE status IN (?,?)",
+                        (
+                            SyncRunStatus.FAILED.value,
+                            interrupted_at.isoformat(),
+                            payload,
+                            SyncRunStatus.QUEUED.value,
+                            SyncRunStatus.RUNNING.value,
+                        ),
+                    )
+                    return cur.rowcount or 0
+        except sqlite3.Error as exc:
+            raise RepositoryError(f"mark interrupted portfolio sync runs failed: {exc}") from exc
+
+    def save_portfolio_analysis_snapshots(
+        self,
+        *,
+        sync_run_id: str,
+        rows: Sequence[Mapping[str, object]],
+    ) -> None:
+        """Persist immutable Portfolio Snapshot rows for one sync run."""
+
+        payload = []
+        for row in rows:
+            payload.append(
+                (
+                    str(row["snapshot_id"]),
+                    sync_run_id,
+                    str(row["instrument_id"]),
+                    str(row["symbol"]),
+                    str(row["analyzed_at"]),
+                    row.get("price_as_of"),
+                    row.get("decision_as_of"),
+                    row.get("market_data_through"),
+                    str(row["analysis_version"]),
+                    json.dumps(row["row"], sort_keys=True, default=str),
+                    json.dumps(row["freshness"], sort_keys=True, default=str),
+                    json.dumps(row["provenance"], sort_keys=True, default=str),
+                    json.dumps(list(row.get("unavailable", [])), sort_keys=True, default=str),
+                    json.dumps(list(row.get("failures", [])), sort_keys=True, default=str),
+                )
+            )
+        try:
+            with self._lock:
+                with self._conn:
+                    self._conn.executemany(
+                        "INSERT INTO portfolio_analysis_snapshots ("
+                        "snapshot_id, sync_run_id, instrument_id, symbol, analyzed_at, "
+                        "price_as_of, decision_as_of, market_data_through, analysis_version, "
+                        "row_json, freshness_json, provenance_json, unavailable_json, failure_json"
+                        ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        payload,
+                    )
+        except sqlite3.Error as exc:
+            raise RepositoryError(f"save portfolio analysis snapshots failed: {exc}") from exc
+
+    def list_portfolio_analysis_snapshots(
+        self,
+        sync_run_id: str,
+    ) -> list[dict[str, object]]:
+        rows = self._query_all(
+            "SELECT snapshot_id, sync_run_id, instrument_id, symbol, analyzed_at, "
+            "price_as_of, decision_as_of, market_data_through, analysis_version, "
+            "row_json, freshness_json, provenance_json, unavailable_json, failure_json "
+            "FROM portfolio_analysis_snapshots WHERE sync_run_id=? "
+            "ORDER BY symbol ASC, snapshot_id ASC",
+            (sync_run_id,),
+        )
+        return [self._portfolio_analysis_snapshot_from_row(row) for row in rows]
+
+    def latest_portfolio_snapshot_sync_run(self) -> dict[str, object] | None:
+        row = self._query_one(
+            "SELECT r.sync_run_id, r.started_at, r.finished_at, r.status, r.total_holdings, "
+            "r.succeeded_holdings, r.failed_holdings, r.market_data_through, "
+            "r.validation_run_id, r.analysis_version, r.progress_json, r.per_symbol_json, "
+            "r.error_json, r.provenance_json "
+            "FROM portfolio_sync_runs r "
+            "WHERE r.status IN (?,?) "
+            "AND EXISTS (SELECT 1 FROM portfolio_analysis_snapshots s "
+            "WHERE s.sync_run_id=r.sync_run_id) "
+            "ORDER BY r.finished_at DESC, r.started_at DESC, r.sync_run_id DESC LIMIT 1",
+            (SyncRunStatus.SUCCESS.value, SyncRunStatus.PARTIAL.value),
+        )
+        return self._portfolio_sync_run_from_row(row) if row else None
+
     def confirm_portfolio_import(
         self,
         *,
@@ -1916,6 +2149,42 @@ class SqliteRepository:
             "before": json.loads(row[5]) if row[5] else None,
             "after": json.loads(row[6]) if row[6] else None,
             "provenance": json.loads(row[7] or "{}"),
+        }
+
+    def _portfolio_sync_run_from_row(self, row: tuple) -> dict[str, object]:
+        return {
+            "sync_run_id": row[0],
+            "started_at": datetime.fromisoformat(row[1]),
+            "finished_at": datetime.fromisoformat(row[2]) if row[2] else None,
+            "status": row[3],
+            "total_holdings": int(row[4]),
+            "succeeded_holdings": int(row[5]),
+            "failed_holdings": int(row[6]),
+            "market_data_through": datetime.fromisoformat(row[7]) if row[7] else None,
+            "validation_run_id": row[8],
+            "analysis_version": row[9],
+            "progress": json.loads(row[10] or "{}"),
+            "per_symbol": json.loads(row[11] or "{}"),
+            "error": json.loads(row[12] or "{}"),
+            "provenance": json.loads(row[13] or "{}"),
+        }
+
+    def _portfolio_analysis_snapshot_from_row(self, row: tuple) -> dict[str, object]:
+        return {
+            "snapshot_id": row[0],
+            "sync_run_id": row[1],
+            "instrument_id": row[2],
+            "symbol": row[3],
+            "analyzed_at": datetime.fromisoformat(row[4]),
+            "price_as_of": datetime.fromisoformat(row[5]) if row[5] else None,
+            "decision_as_of": datetime.fromisoformat(row[6]) if row[6] else None,
+            "market_data_through": datetime.fromisoformat(row[7]) if row[7] else None,
+            "analysis_version": row[8],
+            "row": json.loads(row[9] or "{}"),
+            "freshness": json.loads(row[10] or "{}"),
+            "provenance": json.loads(row[11] or "{}"),
+            "unavailable": tuple(json.loads(row[12] or "[]")),
+            "failures": tuple(json.loads(row[13] or "[]")),
         }
 
     def _change_from_reconciliation(self, row: Mapping[str, object]) -> ReconciliationChange:

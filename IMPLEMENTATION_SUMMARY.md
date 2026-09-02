@@ -6,7 +6,99 @@ status updated on approval.
 
 ---
 
-## PS-P3 My Portfolio Dashboard + Upload UX — Ready for Owner Review
+## PS-P4 Portfolio Sync Orchestration — Ready for Owner Review
+
+**Summary.** Implemented Portfolio Sync as a persisted background workflow over
+confirmed My Portfolio holdings. The owner can now press Sync Portfolio from
+the My Portfolio dashboard, receive a sync run ID quickly, watch persisted
+progress, and load the latest completed Portfolio Snapshot. Sync composes
+canonical holdings with persisted ATHENA D1 candles and latest persisted
+decisions, writes immutable analysis snapshot rows, and renders the frozen
+20-column table.
+
+**Architecture compliance.** PS-P4 stays inside ATHENA's existing `portfolio`
+capability. It does not modify `portfolio_holdings`, quantity, average price,
+import provenance, `owner_positions`, ScoringEngine, DecisionEngine, indicators,
+market-data storage, broker abstractions, or order/execution code. My Portfolio
+does not own a provider path; when API config context exists and D1 data is
+missing, it can call the existing scoped `validate_symbols()` adapter.
+
+**Files created.** `src/athena/portfolio/sync.py`,
+`docs/research/PS-P4-PORTFOLIO-SYNC-ORCHESTRATION.md`.
+
+**Files modified.** `src/athena/data/store/repository.py`,
+`src/athena/api/v1/services/my_portfolio_service.py`,
+`src/athena/api/v1/routers/my_portfolio.py`, `src/athena/api/dependencies.py`,
+`src/athena/api/exceptions.py`, `src/athena/api/errors.py`,
+`src/athena/api/static/index.html`,
+`src/athena/api/static/js/08b-my-portfolio.js`,
+`src/athena/api/static/css/05b-my-portfolio.css`,
+`tests/api/v1/test_my_portfolio_import_api.py`,
+`tests/api/platform/test_dashboard_hosting.py`,
+`tests/api/platform/test_decision_chart_release_gate.py`,
+`docs/MILESTONES.md`, `ATHENA_BRIEFING.md`, `IMPLEMENTATION_SUMMARY.md`.
+
+**Behavior implemented.** `POST /api/v1/my-portfolio/sync` starts a background
+single-flight sync and returns HTTP 202. `GET /sync/{sync_run_id}` returns
+persisted state/progress. `GET /sync` lists sync history. `GET /snapshot`
+returns the latest SUCCESS/PARTIAL snapshot. Snapshot rows include all frozen
+20 business columns; Status, Conviction, Trend/Setup, Key Trigger, Support 1,
+Major Support/Exit, Target 2/3, and Next Action remain null unless already
+supported by persisted approved evidence. Target 1 maps only from an existing
+TradePlan target.
+
+**Server-owned math / freshness.** PS-P4 reuses the PS-P1 math contract for
+investment, current value, P&L, and P&L %. Aggregate current value and P&L are
+null whenever any row lacks price/P&L. `market_data_through` is the minimum
+successful row D1 price timestamp, while each row preserves its own
+`price_as_of`. Dashboard freshness now distinguishes imported, holdings-as-of,
+last-synced, and market-data-through values.
+
+**Partial success / recovery.** A run with mixed successful and failed holdings
+finishes PARTIAL and persists successful rows plus failed-row provenance. An
+all-holding failure finishes FAILED and does not replace the previous good
+snapshot. Stale QUEUED/RUNNING persisted jobs without a live local worker are
+marked FAILED as interrupted on next sync/status/history/snapshot operation.
+
+**Verification.** Focused PS-P4 backend/dashboard slice: 17 passed. Broader
+PS-P1/PS-P2/PS-P3 My Portfolio, dashboard, owner portfolio, indicator, scoring,
+decision, and platform regressions: 138 passed. Full suite: 2,987 passed,
+0 failed, 1 skipped. Targeted Ruff on touched Python files: PASS.
+`git diff HEAD --check`: CLEAN.
+
+**Risks / known gaps.** No browser screenshot/interaction automation was added.
+Cancellation UI is not implemented. Scoped refresh is bounded to the existing
+`validate_symbols()` adapter when config context is available. Portfolio
+interpretation methodology remains intentionally deferred.
+
+**Suggested improvements / PS-P5 recommendation.** Recommended PS-P5 is
+Portfolio Interpretation Methodology if the owner wants ATHENA to deliberately
+define portfolio-facing Status, Conviction, Trend/Setup, Key Trigger, Support,
+Major Support/Exit, Target 2/3, and Next Action.
+
+**Commit message (for the owner to use, not run by the AI):**
+
+```
+feat(portfolio): implement Portfolio Sync orchestration
+
+- Add persisted My Portfolio Sync run and immutable snapshot repository methods
+  so background sync progress and completed 20-column rows are durable
+- Add a narrow Portfolio Sync orchestrator that composes confirmed holdings,
+  persisted D1 candles, and latest persisted decisions without changing
+  scoring, decision, indicator, or portfolio facts
+- Expose sync start/status/history/latest-snapshot APIs and dashboard polling so
+  the owner can run Sync Portfolio and review server-owned valuation results
+- Preserve methodology-sensitive fields as null with provenance while mapping
+  only approved persisted evidence such as TradePlan target 1
+- Document PS-P4 behavior, partial success, freshness, recovery semantics, test
+  coverage, and the PS-P5 methodology recommendation
+```
+
+**Outcome:** PS-P4 ready for Owner/Chief Architect review. PS-P5 not started.
+
+---
+
+## PS-P3 My Portfolio Dashboard + Upload UX — Owner Approved
 
 **Summary.** Implemented the owner-facing My Portfolio dashboard workflow over
 the PS-P2 backend. ATHENA now has a separate My Portfolio tab and route where
@@ -91,7 +183,8 @@ feat(portfolio): add My Portfolio dashboard upload UX
   orchestration recommendation
 ```
 
-**Outcome:** PS-P3 ready for Owner/Chief Architect review. PS-P4 not started.
+**Outcome:** PS-P3 Owner/Chief Architect approved 2026-09-02. PS-P4 completed
+as the next milestone and is ready for review.
 
 ---
 

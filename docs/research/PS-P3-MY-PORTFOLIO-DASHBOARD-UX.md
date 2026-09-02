@@ -1,6 +1,6 @@
 # PS-P3 My Portfolio Dashboard + Upload UX
 
-Status: Ready for Owner/Chief Architect review
+Status: Owner/Chief Architect approved 2026-09-02
 Date: 2026-09-02
 Scope: Owner-facing My Portfolio tab, upload preview UX, reconciliation review,
 confirmation UX, current holdings table, and import history

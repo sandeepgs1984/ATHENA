@@ -6,10 +6,16 @@
     const myPortfolioPreview = document.getElementById("my-portfolio-preview");
     const myPortfolioConfirm = document.getElementById("my-portfolio-confirm");
     const myPortfolioCancelPreview = document.getElementById("my-portfolio-cancel-preview");
+    const myPortfolioSync = document.getElementById("my-portfolio-sync");
     const myPortfolioHoldingCount = document.getElementById("my-portfolio-holding-count");
     const myPortfolioTotalInvestment = document.getElementById("my-portfolio-total-investment");
+    const myPortfolioCurrentValue = document.getElementById("my-portfolio-current-value");
+    const myPortfolioTotalPnl = document.getElementById("my-portfolio-total-pnl");
+    const myPortfolioTotalPnlDetail = document.getElementById("my-portfolio-total-pnl-detail");
     const myPortfolioLatestImport = document.getElementById("my-portfolio-latest-import");
     const myPortfolioLatestImportDetail = document.getElementById("my-portfolio-latest-import-detail");
+    const myPortfolioLastSynced = document.getElementById("my-portfolio-last-synced");
+    const myPortfolioMarketDataThrough = document.getElementById("my-portfolio-market-data-through");
     const myPortfolioPreviewTotal = document.getElementById("my-portfolio-preview-total");
     const myPortfolioPreviewValid = document.getElementById("my-portfolio-preview-valid");
     const myPortfolioPreviewInvalid = document.getElementById("my-portfolio-preview-invalid");
@@ -28,6 +34,10 @@
         loading: false,
         previewing: false,
         confirming: false,
+        syncing: false,
+        syncPollTimer: null,
+        syncRun: null,
+        snapshot: null,
         holdings: [],
         imports: [],
     };
@@ -54,6 +64,12 @@
         const number = Number(value);
         if (!Number.isFinite(number)) return "—";
         return number.toLocaleString("en-IN");
+    }
+
+    function formatMyPortfolioPct(value) {
+        const number = Number(value);
+        if (!Number.isFinite(number)) return "—";
+        return `${number >= 0 ? "+" : ""}${number.toFixed(2)}%`;
     }
 
     function formatMyPortfolioTime(value) {
@@ -103,6 +119,9 @@
     function setMyPortfolioBusy(next = {}) {
         myPortfolioState.previewing = Boolean(next.previewing);
         myPortfolioState.confirming = Boolean(next.confirming);
+        if (Object.prototype.hasOwnProperty.call(next, "syncing")) {
+            myPortfolioState.syncing = Boolean(next.syncing);
+        }
         const busy = myPortfolioState.previewing || myPortfolioState.confirming;
         if (myPortfolioFileInput) myPortfolioFileInput.disabled = busy;
         if (myPortfolioCancelPreview) {
@@ -112,6 +131,11 @@
             myPortfolioConfirm.disabled = busy || !previewCanConfirm(myPortfolioState.preview);
             const label = myPortfolioConfirm.querySelector("span");
             if (label) label.textContent = myPortfolioState.confirming ? "Confirming" : "Confirm Portfolio Update";
+        }
+        if (myPortfolioSync) {
+            myPortfolioSync.disabled = myPortfolioState.syncing;
+            const label = myPortfolioSync.querySelector("span");
+            if (label) label.textContent = myPortfolioState.syncing ? "Syncing Portfolio" : "Sync Portfolio";
         }
     }
 
@@ -123,7 +147,7 @@
         if (!myPortfolioHoldingsRows) return;
         myPortfolioState.loading = true;
         clearMyPortfolioAlert();
-        myPortfolioHoldingsRows.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Loading holdings...</td></tr>';
+        myPortfolioHoldingsRows.innerHTML = '<tr><td colspan="20" class="text-center text-muted">Loading holdings...</td></tr>';
         myPortfolioHistoryRows.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Loading import history...</td></tr>';
         try {
             const [holdingsRes, historyRes] = await Promise.all([
@@ -132,12 +156,19 @@
             ]);
             myPortfolioState.holdings = holdingsRes?.data || [];
             myPortfolioState.imports = historyRes?.data?.imports || [];
+            try {
+                const snapshotRes = await apiRequest("/api/v1/my-portfolio/snapshot", { skipToast: true });
+                myPortfolioState.snapshot = snapshotRes?.data || null;
+            } catch (snapshotErr) {
+                myPortfolioState.snapshot = null;
+            }
             renderMyPortfolioHoldings(myPortfolioState.holdings);
             renderMyPortfolioHistory(myPortfolioState.imports);
             renderMyPortfolioSummary();
         } catch (err) {
             console.error("Failed to load My Portfolio workspace", err);
             showMyPortfolioAlert("Could not load My Portfolio holdings or import history.", "danger");
+            myPortfolioState.snapshot = null;
             renderMyPortfolioHoldings([]);
             renderMyPortfolioHistory([]);
             renderMyPortfolioSummary();
@@ -149,13 +180,26 @@
     function renderMyPortfolioSummary() {
         const holdings = myPortfolioState.holdings || [];
         const imports = myPortfolioState.imports || [];
+        const snapshot = myPortfolioState.snapshot;
+        const summary = snapshot?.summary || null;
         const latestConfirmed = imports.find(item => item.status === "CONFIRMED");
-        const totalInvestment = holdings.reduce((sum, holding) => {
-            const investment = Number(holding.investment);
-            return sum + (Number.isFinite(investment) ? investment : 0);
-        }, 0);
-        myPortfolioHoldingCount.textContent = formatMyPortfolioNumber(holdings.length);
+        const totalInvestment = summary
+            ? summary.total_investment
+            : holdings.reduce((sum, holding) => {
+                const investment = Number(holding.investment);
+                return sum + (Number.isFinite(investment) ? investment : 0);
+            }, 0);
+        myPortfolioHoldingCount.textContent = formatMyPortfolioNumber(summary ? summary.holding_count : holdings.length);
         myPortfolioTotalInvestment.textContent = formatMyPortfolioMoney(totalInvestment);
+        myPortfolioCurrentValue.textContent = summary && summary.total_current_value != null
+            ? formatMyPortfolioMoney(summary.total_current_value)
+            : "₹ —";
+        myPortfolioTotalPnl.textContent = summary && summary.total_pnl != null
+            ? formatMyPortfolioMoney(summary.total_pnl)
+            : "₹ —";
+        myPortfolioTotalPnlDetail.textContent = summary && summary.total_pnl_pct != null
+            ? `${formatMyPortfolioPct(summary.total_pnl_pct)} total return`
+            : "Unavailable until all rows are priced";
         if (latestConfirmed) {
             myPortfolioLatestImport.textContent = formatMyPortfolioTime(latestConfirmed.confirmed_at || latestConfirmed.uploaded_at);
             const asOf = latestConfirmed.holdings_as_of
@@ -166,11 +210,21 @@
             myPortfolioLatestImport.textContent = "—";
             myPortfolioLatestImportDetail.textContent = "No import confirmed yet";
         }
+        myPortfolioLastSynced.textContent = summary?.last_synced_at
+            ? formatMyPortfolioTime(summary.last_synced_at)
+            : "—";
+        myPortfolioMarketDataThrough.textContent = summary?.market_data_through
+            ? `Market data through ${formatMyPortfolioTime(summary.market_data_through)}`
+            : "Market data through —";
     }
 
     function renderMyPortfolioHoldings(holdings) {
+        if (myPortfolioState.snapshot?.rows?.length) {
+            renderMyPortfolioSnapshotRows(myPortfolioState.snapshot.rows);
+            return;
+        }
         if (!holdings.length) {
-            myPortfolioHoldingsRows.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No holdings imported yet. Upload Portfolio to begin.</td></tr>';
+            myPortfolioHoldingsRows.innerHTML = '<tr><td colspan="20" class="text-center text-muted">No holdings imported yet. Upload Portfolio to begin.</td></tr>';
             return;
         }
         myPortfolioHoldingsRows.innerHTML = holdings.map(holding => `
@@ -178,9 +232,50 @@
                 <td class="font-mono"><strong>${escapeMyPortfolioHtml(holding.symbol || bareMyPortfolioSymbol(holding.instrument_id))}</strong></td>
                 <td>${formatMyPortfolioNumber(holding.quantity)}</td>
                 <td class="font-mono">${formatMyPortfolioMoney(holding.avg_price)}</td>
+                <td class="text-muted">—</td>
+                <td class="text-muted">Not synced</td>
                 <td class="font-mono">${formatMyPortfolioMoney(holding.investment)}</td>
-                <td>${formatMyPortfolioTime(holding.imported_at)}</td>
-                <td class="font-mono">${escapeMyPortfolioHtml(holding.source_import_id)}</td>
+                <td class="text-muted">—</td>
+                <td class="text-muted">—</td>
+                <td class="text-muted">—</td>
+                <td class="text-muted">Not available</td>
+                <td class="text-muted">Not available</td>
+                <td class="text-muted">Not available</td>
+                <td class="text-muted">Not available</td>
+                <td class="text-muted">Not available</td>
+                <td class="text-muted">Not available</td>
+                <td class="text-muted">—</td>
+                <td class="text-muted">—</td>
+                <td class="text-muted">—</td>
+                <td class="text-muted">Not available</td>
+                <td class="text-muted">Not synced</td>
+            </tr>
+        `).join("");
+    }
+
+    function renderMyPortfolioSnapshotRows(rows) {
+        myPortfolioHoldingsRows.innerHTML = rows.map(row => `
+            <tr>
+                <td class="font-mono"><strong>${escapeMyPortfolioHtml(row.symbol)}</strong></td>
+                <td>${formatMyPortfolioNumber(row.qty ?? row.quantity)}</td>
+                <td class="font-mono">${formatMyPortfolioMoney(row.avg_price)}</td>
+                <td class="font-mono">${row.last_price == null ? "₹ —" : formatMyPortfolioMoney(row.last_price)}</td>
+                <td>${row.price_as_of ? formatMyPortfolioTime(row.price_as_of) : "Not available"}</td>
+                <td class="font-mono">${formatMyPortfolioMoney(row.investment)}</td>
+                <td class="font-mono">${row.current_value == null ? "₹ —" : formatMyPortfolioMoney(row.current_value)}</td>
+                <td class="font-mono">${row.pnl == null ? "₹ —" : formatMyPortfolioMoney(row.pnl)}</td>
+                <td>${row.pnl_pct == null ? "—" : formatMyPortfolioPct(row.pnl_pct)}</td>
+                <td>${escapeMyPortfolioHtml(row.status || "Not available")}</td>
+                <td>${escapeMyPortfolioHtml(row.conviction || "Not available")}</td>
+                <td>${escapeMyPortfolioHtml(row.trend_or_setup || "Not available")}</td>
+                <td>${escapeMyPortfolioHtml(row.key_trigger || "Not available")}</td>
+                <td class="font-mono">${row.support_1 == null ? "₹ —" : formatMyPortfolioMoney(row.support_1)}</td>
+                <td class="font-mono">${row.major_support_exit == null ? "₹ —" : formatMyPortfolioMoney(row.major_support_exit)}</td>
+                <td class="font-mono">${row.target_1 == null ? "₹ —" : formatMyPortfolioMoney(row.target_1)}</td>
+                <td class="font-mono">${row.target_2 == null ? "₹ —" : formatMyPortfolioMoney(row.target_2)}</td>
+                <td class="font-mono">${row.target_3 == null ? "₹ —" : formatMyPortfolioMoney(row.target_3)}</td>
+                <td>${escapeMyPortfolioHtml(row.next_action || "Not available")}</td>
+                <td>${row.last_review ? formatMyPortfolioTime(row.last_review) : "Not available"}</td>
             </tr>
         `).join("");
     }
@@ -415,6 +510,90 @@
         }
     }
 
+    function syncRunTerminal(status) {
+        return ["SUCCESS", "PARTIAL", "FAILED", "CANCELLED"].includes(String(status || "").toUpperCase());
+    }
+
+    function renderMyPortfolioSyncStatus(run) {
+        if (!run) return;
+        myPortfolioState.syncRun = run;
+        const processed = Number(run.progress?.processed_holdings || 0);
+        const total = Number(run.total_holdings || 0);
+        const status = String(run.status || "QUEUED").toUpperCase();
+        const message = run.progress?.message || `Portfolio Sync ${status}`;
+        const detail = total > 0 ? ` — ${processed} of ${total} analyzed` : "";
+        const tone = status === "SUCCESS"
+            ? "good"
+            : status === "PARTIAL" || status === "QUEUED" || status === "RUNNING"
+                ? "warning"
+                : "danger";
+        showMyPortfolioAlert(`${message}${detail}`, tone);
+        if (myPortfolioUploadState) {
+            myPortfolioUploadState.textContent = `Sync ${run.sync_run_id}: ${status}${detail}`;
+        }
+        setMyPortfolioBusy({ syncing: !syncRunTerminal(status) });
+    }
+
+    async function startMyPortfolioSync() {
+        if (myPortfolioState.syncing) return;
+        setMyPortfolioBusy({ syncing: true });
+        try {
+            const response = await apiRequest("/api/v1/my-portfolio/sync", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ force_ingestion: false }),
+                skipToast: true,
+            });
+            renderMyPortfolioSyncStatus(response.data);
+            pollMyPortfolioSync(response.data.sync_run_id);
+        } catch (err) {
+            console.error("Failed to start My Portfolio Sync", err);
+            showMyPortfolioAlert("Could not start Portfolio Sync. Existing holdings and last good snapshot are unchanged.", "danger");
+            setMyPortfolioBusy({ syncing: false });
+        }
+    }
+
+    async function pollMyPortfolioSync(syncRunId) {
+        if (!syncRunId) return;
+        if (myPortfolioState.syncPollTimer) {
+            clearTimeout(myPortfolioState.syncPollTimer);
+            myPortfolioState.syncPollTimer = null;
+        }
+        try {
+            const response = await apiRequest(
+                `/api/v1/my-portfolio/sync/${encodeURIComponent(syncRunId)}`,
+                { skipToast: true }
+            );
+            const run = response.data;
+            renderMyPortfolioSyncStatus(run);
+            if (syncRunTerminal(run.status)) {
+                setMyPortfolioBusy({ syncing: false });
+                if (run.status === "SUCCESS" || run.status === "PARTIAL") {
+                    const snapshotRes = await apiRequest("/api/v1/my-portfolio/snapshot", { skipToast: true });
+                    myPortfolioState.snapshot = snapshotRes?.data || null;
+                    renderMyPortfolioHoldings(myPortfolioState.holdings);
+                    renderMyPortfolioSummary();
+                    if (run.status === "PARTIAL") {
+                        showMyPortfolioAlert(
+                            `Portfolio Sync partial — ${run.succeeded_holdings} of ${run.total_holdings} holdings analyzed. Failed symbols remain visible in the table.`,
+                            "warning"
+                        );
+                    } else {
+                        showMyPortfolioAlert("Portfolio Sync completed. Snapshot refreshed.", "good");
+                    }
+                } else {
+                    showMyPortfolioAlert("Portfolio Sync failed. Previous completed snapshot remains unchanged.", "danger");
+                }
+                return;
+            }
+            myPortfolioState.syncPollTimer = setTimeout(() => pollMyPortfolioSync(syncRunId), 1500);
+        } catch (err) {
+            console.error("Failed to poll My Portfolio Sync", err);
+            showMyPortfolioAlert("Could not read Portfolio Sync status. Previous completed snapshot remains unchanged.", "danger");
+            setMyPortfolioBusy({ syncing: false });
+        }
+    }
+
     function clearMyPortfolioPreview() {
         myPortfolioState.preview = null;
         myPortfolioState.selectedFile = null;
@@ -434,3 +613,4 @@
     });
     myPortfolioConfirm?.addEventListener("click", confirmMyPortfolioPreview);
     myPortfolioCancelPreview?.addEventListener("click", clearMyPortfolioPreview);
+    myPortfolioSync?.addEventListener("click", startMyPortfolioSync);

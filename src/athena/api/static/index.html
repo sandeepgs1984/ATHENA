@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.149.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.149.1">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -487,9 +487,9 @@
                                     <span>Upload / Update Holdings</span>
                                 </label>
                                 <input id="my-portfolio-file" class="sr-only" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
-                                <button id="my-portfolio-sync" class="btn btn-secondary" type="button" disabled title="Available in next milestone">
+                                <button id="my-portfolio-sync" class="btn" type="button" title="Analyze confirmed holdings through ATHENA's persisted market state">
                                     <i class="fa-solid fa-rotate" aria-hidden="true"></i>
-                                    <span>Sync Portfolio — available in next milestone</span>
+                                    <span>Sync Portfolio</span>
                                 </button>
                             </div>
                         </div>
@@ -513,9 +513,30 @@
                             </div>
                             <div class="card val-card">
                                 <div class="card-body">
+                                    <h3>Current Value</h3>
+                                    <div class="metric-value" id="my-portfolio-current-value">₹ —</div>
+                                    <p class="metric-desc">Available after Sync</p>
+                                </div>
+                            </div>
+                            <div class="card val-card">
+                                <div class="card-body">
+                                    <h3>Total P&amp;L</h3>
+                                    <div class="metric-value" id="my-portfolio-total-pnl">₹ —</div>
+                                    <p class="metric-desc" id="my-portfolio-total-pnl-detail">Unavailable until all rows are priced</p>
+                                </div>
+                            </div>
+                            <div class="card val-card">
+                                <div class="card-body">
                                     <h3>Latest Import</h3>
                                     <div class="metric-value my-portfolio-small-metric" id="my-portfolio-latest-import">—</div>
                                     <p class="metric-desc" id="my-portfolio-latest-import-detail">No import confirmed yet</p>
+                                </div>
+                            </div>
+                            <div class="card val-card">
+                                <div class="card-body">
+                                    <h3>Last Synced</h3>
+                                    <div class="metric-value my-portfolio-small-metric" id="my-portfolio-last-synced">—</div>
+                                    <p class="metric-desc" id="my-portfolio-market-data-through">Market data through —</p>
                                 </div>
                             </div>
                         </div>
@@ -613,13 +634,27 @@
                                                 <th>Symbol</th>
                                                 <th>Qty</th>
                                                 <th>Avg Price</th>
+                                                <th>Last Price</th>
+                                                <th>Price As Of</th>
                                                 <th>Investment</th>
-                                                <th>Imported At</th>
-                                                <th>Source Import</th>
+                                                <th>Current Value</th>
+                                                <th>P&amp;L</th>
+                                                <th>P&amp;L %</th>
+                                                <th>Status</th>
+                                                <th>Conviction</th>
+                                                <th>Trend / Setup</th>
+                                                <th>Key Trigger</th>
+                                                <th>Support 1</th>
+                                                <th>Major Support / Exit</th>
+                                                <th>Target 1</th>
+                                                <th>Target 2</th>
+                                                <th>Target 3</th>
+                                                <th>Next Action</th>
+                                                <th>Last Review</th>
                                             </tr>
                                         </thead>
                                         <tbody id="my-portfolio-holdings-rows">
-                                            <tr><td colspan="6" class="text-center text-muted">Loading holdings…</td></tr>
+                                            <tr><td colspan="20" class="text-center text-muted">Loading holdings…</td></tr>
                                         </tbody>
                                     </table>
                                 </div>
@@ -1947,7 +1982,7 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.149.4"></script>
+    <script src="/dashboard/dashboard.js?v=9.149.5"></script>
 
     <!-- DarvaX satellite tab (ADR-010 Amendment 1) — the ONLY DarvaX reference
          in this file, and the flag guard itself. This asset is served solely by

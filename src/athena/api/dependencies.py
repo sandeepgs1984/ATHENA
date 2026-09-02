@@ -184,7 +184,11 @@ def get_my_portfolio_service(request: Request) -> MyPortfolioService:
         repo = SqliteRepository(path if path else default_db_path())
         repo.initialize()
         request.app.state.sqlite_repo = repo
-    return MyPortfolioService(repo)
+    return MyPortfolioService(
+        repo,
+        config_dir=_resolve_config_dir(),
+        repo_root=_find_repo_root(),
+    )
 
 
 def get_pipeline_run_provider() -> PipelineRunProvider:

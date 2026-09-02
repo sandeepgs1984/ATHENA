@@ -3,24 +3,33 @@
 from __future__ import annotations
 
 import hashlib
+import threading
 from dataclasses import asdict
 from datetime import datetime, timezone
 from decimal import Decimal
+from pathlib import Path
 from uuid import uuid4
 
 from athena.api.exceptions import (
     MyPortfolioImportError,
     MyPortfolioImportNotFoundError,
+    MyPortfolioSyncNotFoundError,
     StalePortfolioPreviewError,
 )
 from athena.api.v1.dtos.portfolio import (
     ImportedHoldingRowDTO,
     MyPortfolioHoldingDTO,
+    PortfolioAnalysisProvenanceDTO,
+    PortfolioFreshnessDTO,
     PortfolioImportConfirmResultDTO,
     PortfolioImportHistoryDTO,
     PortfolioImportPreviewDTO,
     PortfolioImportSummaryDTO,
     PortfolioReconciliationChangeDTO,
+    PortfolioSnapshotDTO,
+    PortfolioSnapshotRowDTO,
+    PortfolioSnapshotSummaryDTO,
+    PortfolioSyncRunDTO,
 )
 from athena.data.store.repository import SqliteRepository
 from athena.errors import RepositoryError
@@ -31,22 +40,37 @@ from athena.portfolio.imports import (
     resolve_preview_rows,
 )
 from athena.portfolio.my_portfolio_contracts import (
+    PORTFOLIO_ANALYSIS_VERSION,
     CanonicalPortfolioHolding,
     ImportStatus,
+    PortfolioSnapshotSummary,
     ReconciliationAction,
     ReconciliationChange,
     SymbolMappingState,
+    SyncRunStatus,
     reconcile_current_holdings,
 )
+from athena.portfolio.sync import PortfolioSyncOrchestrator, utc_now
 
 _CONFIRM_TOKEN = "CONFIRM"
+_SYNC_GUARD = threading.Lock()
+_SYNC_THREAD: threading.Thread | None = None
+_SYNC_THREAD_RUN_ID: str | None = None
 
 
 class MyPortfolioService:
     """Coordinates My Portfolio import preview, confirmation, and audit reads."""
 
-    def __init__(self, repo: SqliteRepository) -> None:
+    def __init__(
+        self,
+        repo: SqliteRepository,
+        *,
+        config_dir: Path | None = None,
+        repo_root: Path | None = None,
+    ) -> None:
         self._repo = repo
+        self._config_dir = config_dir
+        self._repo_root = repo_root
 
     def preview_import(self, *, filename: str, content: bytes) -> PortfolioImportPreviewDTO:
         now = datetime.now(tz=timezone.utc)
@@ -178,6 +202,150 @@ class MyPortfolioService:
             )
             for row in self._repo.list_portfolio_reconciliations(import_id)
         ]
+
+    def start_sync(self, *, force_ingestion: bool = False) -> PortfolioSyncRunDTO:
+        """Start a single-flight background Portfolio Sync run."""
+
+        global _SYNC_THREAD, _SYNC_THREAD_RUN_ID
+        orchestrator = PortfolioSyncOrchestrator(
+            self._repo,
+            validation_runner=self._validation_runner(),
+        )
+        with _SYNC_GUARD:
+            active = self._repo.get_active_portfolio_sync_run()
+            if active is not None:
+                if (
+                    _SYNC_THREAD is not None
+                    and _SYNC_THREAD.is_alive()
+                    and _SYNC_THREAD_RUN_ID == active["sync_run_id"]
+                ):
+                    return self._sync_run_to_dto(active)
+                self._repo.mark_interrupted_portfolio_sync_runs(interrupted_at=utc_now())
+
+            run = orchestrator.create_run()
+            provenance = dict(run.get("provenance") or {})
+            if force_ingestion:
+                provenance["force_ingestion_requested"] = True
+                provenance["force_ingestion_status"] = (
+                    "not_run_from_ps_p4_dashboard_orchestrator; "
+                    "sync consumes persisted ATHENA data only"
+                )
+                run = self._repo.update_portfolio_sync_run(
+                    str(run["sync_run_id"]),
+                    status=SyncRunStatus.QUEUED,
+                    provenance=provenance,
+                )
+            thread = threading.Thread(
+                target=self._run_sync_worker,
+                name="athena-my-portfolio-sync",
+                daemon=True,
+                args=(str(run["sync_run_id"]),),
+            )
+            _SYNC_THREAD = thread
+            _SYNC_THREAD_RUN_ID = str(run["sync_run_id"])
+            thread.start()
+            return self._sync_run_to_dto(run)
+
+    def run_sync_inline(self) -> PortfolioSyncRunDTO:
+        """Deterministic test helper: create and run a sync in the current thread."""
+
+        orchestrator = PortfolioSyncOrchestrator(
+            self._repo,
+            validation_runner=self._validation_runner(),
+        )
+        self._repo.mark_interrupted_portfolio_sync_runs(interrupted_at=utc_now())
+        run = orchestrator.create_run()
+        return self._sync_run_to_dto(orchestrator.run(str(run["sync_run_id"])))
+
+    def get_sync(self, sync_run_id: str) -> PortfolioSyncRunDTO:
+        self._recover_interrupted_sync_if_needed()
+        run = self._repo.get_portfolio_sync_run(sync_run_id)
+        if run is None:
+            raise MyPortfolioSyncNotFoundError(f"portfolio sync not found: {sync_run_id}")
+        return self._sync_run_to_dto(run)
+
+    def sync_history(self, *, limit: int = 50) -> list[PortfolioSyncRunDTO]:
+        self._recover_interrupted_sync_if_needed()
+        return [
+            self._sync_run_to_dto(row)
+            for row in self._repo.list_portfolio_sync_runs(limit=limit)
+        ]
+
+    def latest_snapshot(self) -> PortfolioSnapshotDTO:
+        self._recover_interrupted_sync_if_needed()
+        run = self._repo.latest_portfolio_snapshot_sync_run()
+        if run is None:
+            raise MyPortfolioSyncNotFoundError("no completed My Portfolio snapshot exists")
+        rows = self._repo.list_portfolio_analysis_snapshots(str(run["sync_run_id"]))
+        if not rows:
+            raise MyPortfolioSyncNotFoundError("no completed My Portfolio snapshot exists")
+        row_dtos = [self._snapshot_row_to_dto(row) for row in rows]
+        summary = self._snapshot_summary_to_dto(run, row_dtos)
+        return PortfolioSnapshotDTO(
+            snapshot_id=str(run["sync_run_id"]),
+            generated_at=run["finished_at"] or run["started_at"],
+            summary=summary,
+            rows=row_dtos,
+        )
+
+    def _run_sync_worker(self, sync_run_id: str) -> None:
+        try:
+            PortfolioSyncOrchestrator(
+                self._repo,
+                validation_runner=self._validation_runner(),
+            ).run(sync_run_id)
+        except Exception as exc:
+            self._repo.update_portfolio_sync_run(
+                sync_run_id,
+                status=SyncRunStatus.FAILED,
+                finished_at=utc_now(),
+                error={"code": "SYNC_WORKER_FAILED", "message": str(exc)},
+                progress={
+                    "stage": "failed",
+                    "message": "Portfolio Sync failed before completion",
+                },
+            )
+        finally:
+            self._repo.close_read_connection()
+
+    def _recover_interrupted_sync_if_needed(self) -> None:
+        active = self._repo.get_active_portfolio_sync_run()
+        if active is None:
+            return
+        if (
+            _SYNC_THREAD is not None
+            and _SYNC_THREAD.is_alive()
+            and _SYNC_THREAD_RUN_ID == active["sync_run_id"]
+        ):
+            return
+        self._repo.mark_interrupted_portfolio_sync_runs(interrupted_at=utc_now())
+
+    def _validation_runner(self):
+        if self._config_dir is None:
+            return None
+
+        def run(symbols) -> str | None:
+            from zoneinfo import ZoneInfo
+
+            from athena.calendar.engine import CalendarEngine
+            from athena.calendar.resolve_as_of import resolve_validate_as_of
+            from athena.config.loader import load_config
+            from athena.ops.symbol_validate import validate_symbols
+
+            cfg = load_config(self._config_dir)
+            tz = ZoneInfo(cfg.market.timezone)
+            calendar = CalendarEngine.from_config_dir(self._config_dir, cfg.market)
+            as_of, _mode = resolve_validate_as_of(datetime.now(tz), calendar, tz)
+            result = validate_symbols(
+                self._repo,
+                self._config_dir,
+                symbols=list(symbols),
+                as_of=as_of,
+                repo_root=self._repo_root,
+            )
+            return result.run_id
+
+        return run
 
     def _counts(
         self,
@@ -336,3 +504,110 @@ class MyPortfolioService:
             "source_import_id": holding.source_import_id,
             "source_row_id": holding.source_row_id,
         }
+
+    def _sync_run_to_dto(self, row: dict[str, object]) -> PortfolioSyncRunDTO:
+        return PortfolioSyncRunDTO(
+            sync_run_id=str(row["sync_run_id"]),
+            status=SyncRunStatus(str(row["status"])),
+            started_at=row["started_at"],
+            finished_at=row["finished_at"],
+            total_holdings=int(row["total_holdings"]),
+            succeeded_holdings=int(row["succeeded_holdings"]),
+            failed_holdings=int(row["failed_holdings"]),
+            market_data_through=row["market_data_through"],
+            validation_run_id=row["validation_run_id"],
+            analysis_version=str(row["analysis_version"]),
+            progress=dict(row["progress"]),
+            per_symbol=dict(row["per_symbol"]),
+            error=dict(row["error"]),
+        )
+
+    def _snapshot_row_to_dto(self, row: dict[str, object]) -> PortfolioSnapshotRowDTO:
+        payload = dict(row["row"])
+        freshness = dict(payload.pop("freshness"))
+        provenance = dict(payload.pop("provenance"))
+        return PortfolioSnapshotRowDTO(
+            **payload,
+            freshness=PortfolioFreshnessDTO(**freshness),
+            provenance=PortfolioAnalysisProvenanceDTO(**provenance),
+        )
+
+    def _snapshot_summary_to_dto(
+        self,
+        run: dict[str, object],
+        rows: list[PortfolioSnapshotRowDTO],
+    ) -> PortfolioSnapshotSummaryDTO:
+        imports = self._repo.list_portfolio_imports(limit=200)
+        latest_confirmed = next(
+            (item for item in imports if ImportStatus(str(item["status"])) is ImportStatus.CONFIRMED),
+            None,
+        )
+        summary = PortfolioSnapshotSummary.from_rows(
+            tuple(self._dto_row_to_contract_row(row) for row in rows),
+            imported_at=latest_confirmed["confirmed_at"] if latest_confirmed else None,
+            holdings_as_of=latest_confirmed["holdings_as_of"] if latest_confirmed else None,
+            last_synced_at=run["finished_at"],
+            market_data_through=run["market_data_through"],
+            sync_status=SyncRunStatus(str(run["status"])),
+        )
+        return PortfolioSnapshotSummaryDTO(
+            holding_count=summary.holding_count,
+            total_investment=summary.total_investment,
+            total_current_value=summary.total_current_value,
+            total_pnl=summary.total_pnl,
+            total_pnl_pct=summary.total_pnl_pct,
+            imported_at=summary.imported_at,
+            holdings_as_of=summary.holdings_as_of,
+            last_synced_at=summary.last_synced_at,
+            market_data_through=summary.market_data_through,
+            sync_status=summary.sync_status,
+        )
+
+    def _dto_row_to_contract_row(self, row: PortfolioSnapshotRowDTO):
+        from athena.portfolio.my_portfolio_contracts import (
+            PortfolioAnalysisProvenance,
+            PortfolioFreshness,
+            PortfolioSnapshotRow,
+        )
+
+        return PortfolioSnapshotRow(
+            symbol=row.symbol,
+            quantity=row.quantity,
+            avg_price=row.avg_price,
+            last_price=row.last_price,
+            price_as_of=row.price_as_of,
+            investment=row.investment,
+            current_value=row.current_value,
+            pnl=row.pnl,
+            pnl_pct=row.pnl_pct,
+            status=row.status,
+            conviction=row.conviction,
+            trend_setup=row.trend_setup,
+            key_trigger=row.key_trigger,
+            support_1=row.support_1,
+            major_support_exit=row.major_support_exit,
+            target_1=row.target_1,
+            target_2=row.target_2,
+            target_3=row.target_3,
+            next_action=row.next_action,
+            last_review=row.last_review,
+            freshness=PortfolioFreshness(
+                portfolio_imported_at=row.freshness.portfolio_imported_at,
+                holdings_as_of=row.freshness.holdings_as_of,
+                last_synced_at=row.freshness.last_synced_at,
+                market_data_through=row.freshness.market_data_through,
+                analysis_version=PORTFOLIO_ANALYSIS_VERSION,
+                decision_as_of=row.freshness.decision_as_of,
+                price_as_of=row.freshness.price_as_of,
+            ),
+            provenance=PortfolioAnalysisProvenance(
+                instrument_id=row.provenance.instrument_id,
+                price_source=row.provenance.price_source,
+                candle_ref=row.provenance.candle_ref,
+                decision_id=row.provenance.decision_id,
+                validation_run_id=row.provenance.validation_run_id,
+                analyzed_at=row.provenance.analyzed_at,
+                unavailable_fields=tuple(row.provenance.unavailable_fields),
+                failed_components=tuple(row.provenance.failed_components),
+            ),
+        )

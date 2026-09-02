@@ -17,6 +17,9 @@ from athena.api.v1.dtos.portfolio import (
     PortfolioImportHistoryDTO,
     PortfolioImportPreviewDTO,
     PortfolioReconciliationChangeDTO,
+    PortfolioSnapshotDTO,
+    PortfolioSyncRunDTO,
+    PortfolioSyncStartRequest,
 )
 from athena.api.v1.services.my_portfolio_service import MyPortfolioService
 
@@ -147,9 +150,88 @@ def list_reconciliations(
     request: Request,
     service: MyPortfolioService = Depends(get_my_portfolio_service),  # noqa: B008
     principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.READ)),  # noqa: B008
-) -> AthenaResponse[list[PortfolioReconciliationChangeDTO]]:
+    ) -> AthenaResponse[list[PortfolioReconciliationChangeDTO]]:
     return AthenaResponse(
         status="success",
         data=service.reconciliation_history(import_id),
+        meta=_meta(request),
+    )
+
+
+@router.post(
+    "/sync",
+    response_model=AthenaResponse[PortfolioSyncRunDTO],
+    summary="Start a background My Portfolio Sync run",
+    status_code=status.HTTP_202_ACCEPTED,
+    operation_id="startMyPortfolioSync",
+)
+def start_sync(
+    body: PortfolioSyncStartRequest,
+    request: Request,
+    service: MyPortfolioService = Depends(get_my_portfolio_service),  # noqa: B008
+    principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.EXECUTE)),  # noqa: B008
+) -> AthenaResponse[PortfolioSyncRunDTO]:
+    return AthenaResponse(
+        status="success",
+        data=service.start_sync(force_ingestion=body.force_ingestion),
+        meta=_meta(request),
+    )
+
+
+@router.get(
+    "/sync",
+    response_model=AthenaResponse[list[PortfolioSyncRunDTO]],
+    summary="List My Portfolio Sync history",
+    status_code=status.HTTP_200_OK,
+    operation_id="listMyPortfolioSyncRuns",
+)
+def list_sync_runs(
+    request: Request,
+    limit: int = Query(default=50, ge=1, le=500),
+    service: MyPortfolioService = Depends(get_my_portfolio_service),  # noqa: B008
+    principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.READ)),  # noqa: B008
+) -> AthenaResponse[list[PortfolioSyncRunDTO]]:
+    return AthenaResponse(
+        status="success",
+        data=service.sync_history(limit=limit),
+        meta=_meta(request),
+    )
+
+
+@router.get(
+    "/sync/{sync_run_id}",
+    response_model=AthenaResponse[PortfolioSyncRunDTO],
+    summary="Read My Portfolio Sync status",
+    status_code=status.HTTP_200_OK,
+    operation_id="getMyPortfolioSync",
+)
+def get_sync(
+    sync_run_id: str,
+    request: Request,
+    service: MyPortfolioService = Depends(get_my_portfolio_service),  # noqa: B008
+    principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.READ)),  # noqa: B008
+) -> AthenaResponse[PortfolioSyncRunDTO]:
+    return AthenaResponse(
+        status="success",
+        data=service.get_sync(sync_run_id),
+        meta=_meta(request),
+    )
+
+
+@router.get(
+    "/snapshot",
+    response_model=AthenaResponse[PortfolioSnapshotDTO],
+    summary="Read the latest completed My Portfolio Snapshot",
+    status_code=status.HTTP_200_OK,
+    operation_id="getLatestMyPortfolioSnapshot",
+)
+def latest_snapshot(
+    request: Request,
+    service: MyPortfolioService = Depends(get_my_portfolio_service),  # noqa: B008
+    principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.READ)),  # noqa: B008
+) -> AthenaResponse[PortfolioSnapshotDTO]:
+    return AthenaResponse(
+        status="success",
+        data=service.latest_snapshot(),
         meta=_meta(request),
     )

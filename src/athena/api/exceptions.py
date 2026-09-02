@@ -84,6 +84,10 @@ class MyPortfolioImportNotFoundError(ResourceNotFoundError):
     """My Portfolio import preview not found."""
 
 
+class MyPortfolioSyncNotFoundError(ResourceNotFoundError):
+    """My Portfolio Sync run or snapshot not found."""
+
+
 class StalePortfolioPreviewError(APIResourceError):
     """My Portfolio preview was based on an older holdings state."""
 
