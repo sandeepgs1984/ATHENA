@@ -1,6 +1,6 @@
 # PS-P4 Portfolio Sync Orchestration
 
-Status: Ready for Owner/Chief Architect review
+Status: Ready for Owner/Chief Architect review after PS-P4.1 correction
 Date: 2026-09-02
 Scope: Background My Portfolio Sync runs, persisted analysis snapshots,
 server-owned valuation math, latest-snapshot API, and dashboard sync wiring
@@ -12,9 +12,15 @@ no alternate indicator/scoring/decision engine, no order placement
 PS-P4 implements Portfolio Sync as a persisted background workflow over the
 PS-P1/PS-P2/PS-P3 My Portfolio foundation. Sync reads confirmed
 `portfolio_holdings`, composes them with ATHENA's persisted D1 candles and
-latest persisted decisions, calculates server-owned valuation math, writes
+coherent persisted decisions, calculates server-owned valuation math, writes
 immutable snapshot rows, exposes sync status/results, and upgrades the My
 Portfolio dashboard to a 20-column Portfolio Snapshot table.
+
+PS-P4.1 corrects the review-discovered freshness gap: an existing D1 candle is
+not automatically current. Sync now resolves ATHENA's expected analysis session
+through the same `resolve_validate_as_of(...)` calendar semantics used by
+owner validation, refreshes holdings whose D1 candle is missing or stale for
+that session, and re-reads persisted candle/decision state after refresh.
 
 ## 2. Scope
 
@@ -60,27 +66,45 @@ worker, it is marked FAILED as interrupted before a new run starts.
 ## 7. Market Data Reuse
 
 Each holding reads the latest persisted D1 candle using
-`SqliteRepository.list_candles_recent(..., Timeframe.D1, limit=1)`.
+`SqliteRepository.list_candles_recent(..., Timeframe.D1, limit=1,
+as_of=expected_analysis_as_of)` when API config context can resolve an
+expected session.
 
 `last_price` is the candle close and `price_as_of` is that candle's timestamp.
 Run-level `market_data_through` is the minimum successful row price timestamp,
 so the aggregate never claims to be fresher than its least-fresh priced holding.
+Run provenance also records `expected_analysis_as_of`, making incomplete
+coverage auditable when expected session and actual portfolio data-through
+diverge.
 
 ## 8. Scoped Ingestion Behavior
 
-When the API service has config/repo-root context and a holding has no persisted
-D1 candle, PS-P4 can invoke the existing `validate_symbols()` adapter for the
-missing holdings. My Portfolio does not talk to providers directly and does not
-own a separate ingestion path.
+When the API service has config/repo-root context, PS-P4 resolves the expected
+ATHENA analysis session with `CalendarEngine`, market timezone, and
+`resolve_validate_as_of(...)`. It then uses ATHENA's existing scoped validation
+freshness predicate to build the refresh set:
+
+- missing D1 candle
+- latest D1 session older than the expected ATHENA session
+- all current holdings when `force_ingestion=true`
+
+My Portfolio does not talk to providers directly and does not own a separate
+ingestion path. It invokes the existing scoped `validate_symbols()` adapter for
+only the My Portfolio symbols requiring refresh.
 
 Deterministic direct-service tests instantiate `MyPortfolioService(repo)`
 without config context; those runs consume persisted ATHENA data only.
 
 ## 9. Validation/Decision Reuse
 
-Sync reads latest persisted `Decision` objects by canonical `instrument_id`.
-When a decision exists, provenance records `decision_id` and `validation_run_id`
-from that decision. Sync does not create portfolio-only ephemeral decisions.
+Sync reads latest persisted `Decision` objects by canonical `instrument_id`
+after any scoped refresh completes. Decision-derived evidence is accepted only
+when the decision timestamp and row price timestamp land on the same market
+session date. When a stale/unrelated decision exists, row valuation can still
+succeed, `decision_as_of` and `decision_id` remain visible for audit, but
+`validation_run_id` and `target_1` are not mapped as current evidence.
+
+Sync does not create portfolio-only ephemeral decisions.
 
 ## 10. Analysis Evidence Adapter
 
@@ -88,9 +112,9 @@ from that decision. Sync does not create portfolio-only ephemeral decisions.
 
 - canonical holding facts
 - canonical instrument identity
-- latest persisted D1 candle
-- latest persisted decision
-- TradePlan target 1 when present
+- latest persisted D1 candle bounded to the expected analysis session when known
+- latest persisted decision after any scoped refresh
+- TradePlan target 1 when same-session decision evidence is accepted
 - provenance and unavailable/failure metadata
 
 ## 11. 20-Column Mapping
@@ -131,8 +155,10 @@ If price is unavailable, valuation/P&L fields remain null.
 
 ## 13. Target Mapping
 
-`target_1` is populated only from an existing persisted `TradePlan.targets[0]`.
-If no TradePlan exists, it remains null. `target_2` and `target_3` remain null.
+`target_1` is populated only from an existing persisted `TradePlan.targets[0]`
+when the TradePlan belongs to same-session accepted Decision evidence for the
+row. If no coherent TradePlan exists, it remains null. `target_2` and
+`target_3` remain null.
 
 ## 14. Support Mapping
 
@@ -168,6 +194,12 @@ Rows preserve:
 - market data through
 - analysis version
 
+Run provenance preserves the expected ATHENA analysis session. Current D1 data
+is reused; missing or stale D1 data triggers scoped refresh when config context
+provides `validate_symbols()`. Weekend, holiday, premarket, and post-close
+semantics come from `resolve_validate_as_of(...)`, not a Portfolio-specific age
+threshold.
+
 The dashboard displays Portfolio imported, Holdings as of, Last synced, and
 Market data through as distinct concepts.
 
@@ -179,10 +211,15 @@ Each row records:
 - candle ref
 - price source
 - decision ID when present
-- validation/run ID when present
+- validation/run ID when accepted same-session decision evidence exists
 - analyzed timestamp
 - unavailable fields
 - failed components
+
+Unavailable fields can include `current_price_session` when a row is valued
+from a candle older than the expected analysis session, and
+`decision_evidence` when a persisted Decision exists but is not coherent with
+the row's price session.
 
 ## 18. Snapshot Persistence
 

@@ -6,6 +6,7 @@ import time
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi.testclient import TestClient
@@ -13,14 +14,19 @@ from tests.api.v1.test_core_apis import get_auth_headers
 
 from athena.api.app import create_app
 from athena.api.config import APISettings
+from athena.api.dependencies import get_my_portfolio_service
 from athena.api.security.models import Role
 from athena.api.v1.services.my_portfolio_service import MyPortfolioService
 from athena.data.store.repository import SqliteRepository
 from athena.domain.decision import Decision, TradePlan
 from athena.domain.enums import DecisionType, Direction, Timeframe
 from athena.domain.market import Candle, Instrument
+from athena.portfolio.sync import PortfolioSyncOrchestrator
 
 NOW = datetime(2026, 9, 2, 10, 0, tzinfo=timezone.utc)
+SEP1 = datetime(2026, 9, 1, 10, 0, tzinfo=timezone.utc)
+SEP2 = datetime(2026, 9, 2, 10, 0, tzinfo=timezone.utc)
+FRIDAY = datetime(2026, 7, 17, 15, 30, tzinfo=timezone.utc)
 
 
 def _instrument(instrument_id: str, symbol: str, exchange: str = "NSE") -> Instrument:
@@ -39,6 +45,36 @@ def _candle(instrument_id: str, close: str, ts: datetime = NOW) -> Candle:
         close=price,
         volume=1000,
         source="test-d1",
+    )
+
+
+def _decision(
+    *,
+    decision_id: str = "dec-infy",
+    instrument_id: str = "NSE:INFY",
+    ts: datetime = NOW,
+    target: str = "1700",
+) -> Decision:
+    return Decision(
+        decision_id=decision_id,
+        ts=ts,
+        run_id=f"run-{decision_id}",
+        cycle_id=f"cycle-{decision_id}",
+        decision_type=DecisionType.TRADE,
+        explanation="Persisted test decision",
+        instrument_id=instrument_id,
+        direction=Direction.LONG,
+        trade_plan=TradePlan(
+            entry_low=Decimal("1500"),
+            entry_high=Decimal("1510"),
+            stop_loss=Decimal("1450"),
+            targets=(Decimal(target),),
+            position_size=1,
+            risk_amount=Decimal("50"),
+            risk_reward=Decimal("4"),
+            valid_from=ts,
+            valid_until=datetime(2026, 9, 3, 10, 0, tzinfo=timezone.utc),
+        ),
     )
 
 
@@ -64,6 +100,37 @@ def _preview(client: TestClient, csv_body: bytes, filename: str = "holdings.csv"
     )
     assert response.status_code == 201
     return response.json()["data"]
+
+
+def _confirm_infy_holding(client: TestClient) -> SqliteRepository:
+    headers = get_auth_headers(client, Role.OPERATOR)
+    preview = _preview(client, b"Symbol,Qty,Avg Price\nINFY,10,1500\n")
+    response = client.post(
+        f"/api/v1/my-portfolio/imports/{preview['import_id']}/confirm",
+        headers=headers,
+        json={"import_id": preview["import_id"], "confirmation": "CONFIRM"},
+    )
+    assert response.status_code == 200
+    return client.app.state.sqlite_repo
+
+
+def _run_portfolio_sync(
+    repo: SqliteRepository,
+    *,
+    expected_analysis_as_of: datetime | None = SEP2,
+    validation_runner=None,
+    force_ingestion: bool = False,
+):
+    orchestrator = PortfolioSyncOrchestrator(
+        repo,
+        validation_runner=validation_runner,
+        expected_analysis_as_of=expected_analysis_as_of,
+        market_timezone=ZoneInfo("UTC"),
+        force_ingestion=force_ingestion,
+    )
+    repo.mark_interrupted_portfolio_sync_runs(interrupted_at=NOW)
+    run = orchestrator.create_run()
+    return orchestrator.run(str(run["sync_run_id"]))
 
 
 def test_import_preview_persists_rows_and_does_not_mutate_holdings(my_portfolio_client: TestClient) -> None:
@@ -220,6 +287,141 @@ def test_sync_zero_holdings_finishes_without_snapshot(tmp_path: Path) -> None:
     repo.close()
 
 
+def test_sync_current_d1_reuses_persisted_state_without_refresh(
+    my_portfolio_client: TestClient,
+) -> None:
+    repo = _confirm_infy_holding(my_portfolio_client)
+    repo.add_candles([_candle("NSE:INFY", "1600", SEP2)])
+    calls: list[tuple[str, ...]] = []
+
+    def runner(symbols, as_of):
+        calls.append(tuple(symbols))
+        return "refresh-run"
+
+    run = _run_portfolio_sync(repo, validation_runner=runner)
+
+    assert run["status"] == "SUCCESS"
+    assert calls == []
+    assert run["market_data_through"] == SEP2
+
+
+def test_sync_missing_d1_invokes_scoped_refresh(
+    my_portfolio_client: TestClient,
+) -> None:
+    repo = _confirm_infy_holding(my_portfolio_client)
+    calls: list[tuple[tuple[str, ...], datetime]] = []
+
+    def runner(symbols, as_of):
+        calls.append((tuple(symbols), as_of))
+        repo.add_candles([_candle("NSE:INFY", "1600", SEP2)])
+        return "refresh-run"
+
+    run = _run_portfolio_sync(repo, validation_runner=runner)
+
+    assert run["status"] == "SUCCESS"
+    assert calls == [(("INFY",), SEP2)]
+    assert run["validation_run_id"] == "refresh-run"
+    assert run["market_data_through"] == SEP2
+
+
+def test_sync_stale_d1_invokes_refresh_and_re_reads_newer_state(
+    my_portfolio_client: TestClient,
+) -> None:
+    repo = _confirm_infy_holding(my_portfolio_client)
+    repo.add_candles([_candle("NSE:INFY", "1500", SEP1)])
+
+    def runner(symbols, as_of):
+        assert tuple(symbols) == ("INFY",)
+        assert as_of == SEP2
+        repo.add_candles([_candle("NSE:INFY", "1700", SEP2)])
+        repo.save_decision(_decision(decision_id="dec-post-refresh", ts=SEP2, target="1800"))
+        return "refresh-run"
+
+    run = _run_portfolio_sync(repo, validation_runner=runner)
+    snapshot = MyPortfolioService(repo).latest_snapshot()
+    row = snapshot.rows[0]
+
+    assert run["status"] == "SUCCESS"
+    assert row.last_price == Decimal("1700")
+    assert row.price_as_of == SEP2
+    assert row.current_value == Decimal("17000")
+    assert row.target_1 == Decimal("1800")
+    assert row.provenance.decision_id == "dec-post-refresh"
+    assert row.provenance.validation_run_id == "run-dec-post-refresh"
+    assert snapshot.summary.market_data_through == SEP2
+
+
+def test_sync_weekend_or_holiday_expected_session_does_not_refresh_current_prior_session(
+    my_portfolio_client: TestClient,
+) -> None:
+    repo = _confirm_infy_holding(my_portfolio_client)
+    repo.add_candles([_candle("NSE:INFY", "1600", FRIDAY)])
+    calls: list[tuple[str, ...]] = []
+
+    def runner(symbols, as_of):
+        calls.append(tuple(symbols))
+        return "refresh-run"
+
+    weekend_run = _run_portfolio_sync(
+        repo,
+        expected_analysis_as_of=FRIDAY,
+        validation_runner=runner,
+    )
+    holiday_run = _run_portfolio_sync(
+        repo,
+        expected_analysis_as_of=FRIDAY,
+        validation_runner=runner,
+    )
+
+    assert weekend_run["status"] == "SUCCESS"
+    assert holiday_run["status"] == "SUCCESS"
+    assert calls == []
+
+
+def test_sync_rejects_stale_decision_tradeplan_for_current_price(
+    my_portfolio_client: TestClient,
+) -> None:
+    repo = _confirm_infy_holding(my_portfolio_client)
+    repo.add_candles([_candle("NSE:INFY", "1600", SEP2)])
+    repo.save_decision(_decision(decision_id="dec-stale", ts=SEP1, target="1900"))
+
+    _run_portfolio_sync(repo)
+    row = MyPortfolioService(repo).latest_snapshot().rows[0]
+
+    assert row.last_price == Decimal("1600")
+    assert row.freshness.decision_as_of == SEP1
+    assert row.provenance.decision_id == "dec-stale"
+    assert row.provenance.validation_run_id is None
+    assert row.target_1 is None
+    assert "decision_evidence" in row.provenance.unavailable_fields
+    assert "target_1" in row.provenance.unavailable_fields
+
+
+def test_sync_force_ingestion_refreshes_even_current_d1(
+    my_portfolio_client: TestClient,
+) -> None:
+    repo = _confirm_infy_holding(my_portfolio_client)
+    repo.add_candles([_candle("NSE:INFY", "1600", SEP2)])
+    calls: list[tuple[str, ...]] = []
+
+    def runner(symbols, as_of):
+        calls.append(tuple(symbols))
+        repo.add_candles([_candle("NSE:INFY", "1650", SEP2)])
+        return "forced-refresh-run"
+
+    run = _run_portfolio_sync(
+        repo,
+        validation_runner=runner,
+        force_ingestion=True,
+    )
+    row = MyPortfolioService(repo).latest_snapshot().rows[0]
+
+    assert calls == [("INFY",)]
+    assert run["validation_run_id"] == "forced-refresh-run"
+    assert row.last_price == Decimal("1650")
+    assert row.price_as_of == SEP2
+
+
 def test_sync_builds_server_owned_snapshot_math_and_tradeplan_target(
     my_portfolio_client: TestClient,
 ) -> None:
@@ -351,6 +553,9 @@ def test_sync_api_starts_background_and_exposes_snapshot(
     )
     repo = my_portfolio_client.app.state.sqlite_repo
     repo.add_candles([_candle("NSE:INFY", "1600")])
+    my_portfolio_client.app.dependency_overrides[get_my_portfolio_service] = (
+        lambda: MyPortfolioService(repo)
+    )
 
     start = my_portfolio_client.post(
         "/api/v1/my-portfolio/sync",

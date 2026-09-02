@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from athena.api.exceptions import (
     MyPortfolioImportError,
@@ -31,6 +32,9 @@ from athena.api.v1.dtos.portfolio import (
     PortfolioSnapshotSummaryDTO,
     PortfolioSyncRunDTO,
 )
+from athena.calendar.engine import CalendarEngine
+from athena.calendar.resolve_as_of import resolve_validate_as_of
+from athena.config.loader import load_config
 from athena.data.store.repository import SqliteRepository
 from athena.errors import RepositoryError
 from athena.portfolio.imports import (
@@ -207,52 +211,34 @@ class MyPortfolioService:
         """Start a single-flight background Portfolio Sync run."""
 
         global _SYNC_THREAD, _SYNC_THREAD_RUN_ID
-        orchestrator = PortfolioSyncOrchestrator(
-            self._repo,
-            validation_runner=self._validation_runner(),
-        )
+        orchestrator = self._portfolio_sync_orchestrator(force_ingestion=force_ingestion)
         with _SYNC_GUARD:
             active = self._repo.get_active_portfolio_sync_run()
             if active is not None:
                 if (
                     _SYNC_THREAD is not None
                     and _SYNC_THREAD.is_alive()
-                    and _SYNC_THREAD_RUN_ID == active["sync_run_id"]
+                    and active["sync_run_id"] == _SYNC_THREAD_RUN_ID
                 ):
                     return self._sync_run_to_dto(active)
                 self._repo.mark_interrupted_portfolio_sync_runs(interrupted_at=utc_now())
 
             run = orchestrator.create_run()
-            provenance = dict(run.get("provenance") or {})
-            if force_ingestion:
-                provenance["force_ingestion_requested"] = True
-                provenance["force_ingestion_status"] = (
-                    "not_run_from_ps_p4_dashboard_orchestrator; "
-                    "sync consumes persisted ATHENA data only"
-                )
-                run = self._repo.update_portfolio_sync_run(
-                    str(run["sync_run_id"]),
-                    status=SyncRunStatus.QUEUED,
-                    provenance=provenance,
-                )
             thread = threading.Thread(
                 target=self._run_sync_worker,
                 name="athena-my-portfolio-sync",
                 daemon=True,
-                args=(str(run["sync_run_id"]),),
+                args=(str(run["sync_run_id"]), force_ingestion),
             )
             _SYNC_THREAD = thread
             _SYNC_THREAD_RUN_ID = str(run["sync_run_id"])
             thread.start()
             return self._sync_run_to_dto(run)
 
-    def run_sync_inline(self) -> PortfolioSyncRunDTO:
+    def run_sync_inline(self, *, force_ingestion: bool = False) -> PortfolioSyncRunDTO:
         """Deterministic test helper: create and run a sync in the current thread."""
 
-        orchestrator = PortfolioSyncOrchestrator(
-            self._repo,
-            validation_runner=self._validation_runner(),
-        )
+        orchestrator = self._portfolio_sync_orchestrator(force_ingestion=force_ingestion)
         self._repo.mark_interrupted_portfolio_sync_runs(interrupted_at=utc_now())
         run = orchestrator.create_run()
         return self._sync_run_to_dto(orchestrator.run(str(run["sync_run_id"])))
@@ -288,11 +274,10 @@ class MyPortfolioService:
             rows=row_dtos,
         )
 
-    def _run_sync_worker(self, sync_run_id: str) -> None:
+    def _run_sync_worker(self, sync_run_id: str, force_ingestion: bool) -> None:
         try:
-            PortfolioSyncOrchestrator(
-                self._repo,
-                validation_runner=self._validation_runner(),
+            self._portfolio_sync_orchestrator(
+                force_ingestion=force_ingestion,
             ).run(sync_run_id)
         except Exception as exc:
             self._repo.update_portfolio_sync_run(
@@ -308,6 +293,29 @@ class MyPortfolioService:
         finally:
             self._repo.close_read_connection()
 
+    def _portfolio_sync_orchestrator(
+        self,
+        *,
+        force_ingestion: bool = False,
+    ) -> PortfolioSyncOrchestrator:
+        expected_analysis_as_of, market_timezone = self._expected_analysis_session()
+        return PortfolioSyncOrchestrator(
+            self._repo,
+            validation_runner=self._validation_runner(),
+            expected_analysis_as_of=expected_analysis_as_of,
+            market_timezone=market_timezone,
+            force_ingestion=force_ingestion,
+        )
+
+    def _expected_analysis_session(self) -> tuple[datetime | None, ZoneInfo | None]:
+        if self._config_dir is None:
+            return None, None
+        cfg = load_config(self._config_dir)
+        tz = ZoneInfo(cfg.market.timezone)
+        calendar = CalendarEngine.from_config_dir(self._config_dir, cfg.market)
+        as_of, _mode = resolve_validate_as_of(datetime.now(tz), calendar, tz)
+        return as_of, tz
+
     def _recover_interrupted_sync_if_needed(self) -> None:
         active = self._repo.get_active_portfolio_sync_run()
         if active is None:
@@ -315,7 +323,7 @@ class MyPortfolioService:
         if (
             _SYNC_THREAD is not None
             and _SYNC_THREAD.is_alive()
-            and _SYNC_THREAD_RUN_ID == active["sync_run_id"]
+            and active["sync_run_id"] == _SYNC_THREAD_RUN_ID
         ):
             return
         self._repo.mark_interrupted_portfolio_sync_runs(interrupted_at=utc_now())
@@ -324,18 +332,9 @@ class MyPortfolioService:
         if self._config_dir is None:
             return None
 
-        def run(symbols) -> str | None:
-            from zoneinfo import ZoneInfo
-
-            from athena.calendar.engine import CalendarEngine
-            from athena.calendar.resolve_as_of import resolve_validate_as_of
-            from athena.config.loader import load_config
+        def run(symbols, as_of: datetime) -> str | None:
             from athena.ops.symbol_validate import validate_symbols
 
-            cfg = load_config(self._config_dir)
-            tz = ZoneInfo(cfg.market.timezone)
-            calendar = CalendarEngine.from_config_dir(self._config_dir, cfg.market)
-            as_of, _mode = resolve_validate_as_of(datetime.now(tz), calendar, tz)
             result = validate_symbols(
                 self._repo,
                 self._config_dir,

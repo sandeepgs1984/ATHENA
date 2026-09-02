@@ -6,7 +6,7 @@ status updated on approval.
 
 ---
 
-## PS-P4 Portfolio Sync Orchestration — Ready for Owner Review
+## PS-P4 Portfolio Sync Orchestration — Ready for Owner Review After PS-P4.1
 
 **Summary.** Implemented Portfolio Sync as a persisted background workflow over
 confirmed My Portfolio holdings. The owner can now press Sync Portfolio from
@@ -45,14 +45,27 @@ returns the latest SUCCESS/PARTIAL snapshot. Snapshot rows include all frozen
 20 business columns; Status, Conviction, Trend/Setup, Key Trigger, Support 1,
 Major Support/Exit, Target 2/3, and Next Action remain null unless already
 supported by persisted approved evidence. Target 1 maps only from an existing
-TradePlan target.
+TradePlan target that belongs to accepted same-session Decision evidence.
 
 **Server-owned math / freshness.** PS-P4 reuses the PS-P1 math contract for
 investment, current value, P&L, and P&L %. Aggregate current value and P&L are
-null whenever any row lacks price/P&L. `market_data_through` is the minimum
-successful row D1 price timestamp, while each row preserves its own
-`price_as_of`. Dashboard freshness now distinguishes imported, holdings-as-of,
-last-synced, and market-data-through values.
+null whenever any row lacks price/P&L. PS-P4.1 resolves the expected ATHENA
+analysis session through existing `CalendarEngine` / `resolve_validate_as_of`
+semantics, refreshes missing or stale D1 candles through the existing scoped
+`validate_symbols()` path, and re-reads persisted candle/decision state after
+refresh. `market_data_through` is the minimum successful row D1 price
+timestamp, while run provenance records `expected_analysis_as_of` so expected
+session and actual coverage remain distinct. Dashboard freshness now
+distinguishes imported, holdings-as-of, last-synced, and market-data-through
+values.
+
+**Evidence coherency correction.** Decision and TradePlan evidence is accepted
+only when the persisted Decision timestamp matches the row's D1 price session
+date in market time. Stale/unrelated Decisions preserve `decision_as_of` and
+`decision_id` for audit, but do not supply `validation_run_id` or Target 1;
+`decision_evidence` and `target_1` remain unavailable. `force_ingestion=true`
+now truthfully invokes the same scoped refresh path for all current holdings
+when a validation runner is available.
 
 **Partial success / recovery.** A run with mixed successful and failed holdings
 finishes PARTIAL and persists successful rows plus failed-row provenance. An
@@ -60,11 +73,12 @@ all-holding failure finishes FAILED and does not replace the previous good
 snapshot. Stale QUEUED/RUNNING persisted jobs without a live local worker are
 marked FAILED as interrupted on next sync/status/history/snapshot operation.
 
-**Verification.** Focused PS-P4 backend/dashboard slice: 17 passed. Broader
-PS-P1/PS-P2/PS-P3 My Portfolio, dashboard, owner portfolio, indicator, scoring,
-decision, and platform regressions: 138 passed. Full suite: 2,987 passed,
-0 failed, 1 skipped. Targeted Ruff on touched Python files: PASS.
-`git diff HEAD --check`: CLEAN.
+**Verification.** Focused PS-P4.1 My Portfolio API/sync suite: 16 passed.
+Portfolio/dashboard regression slice: 48 passed. Requested portfolio, owner
+portfolio, indicators, scoring, decision, validation, calendar/session,
+dashboard/platform/OpenAPI regression group: 160 passed. Full suite: 2,993
+passed, 0 failed, 1 skipped. Targeted Ruff on touched Python files: PASS.
+`git diff --check`: CLEAN.
 
 **Risks / known gaps.** No browser screenshot/interaction automation was added.
 Cancellation UI is not implemented. Scoped refresh is bounded to the existing
@@ -84,12 +98,14 @@ feat(portfolio): implement Portfolio Sync orchestration
 - Add persisted My Portfolio Sync run and immutable snapshot repository methods
   so background sync progress and completed 20-column rows are durable
 - Add a narrow Portfolio Sync orchestrator that composes confirmed holdings,
-  persisted D1 candles, and latest persisted decisions without changing
+  persisted D1 candles, and coherent persisted decisions without changing
   scoring, decision, indicator, or portfolio facts
 - Expose sync start/status/history/latest-snapshot APIs and dashboard polling so
   the owner can run Sync Portfolio and review server-owned valuation results
 - Preserve methodology-sensitive fields as null with provenance while mapping
-  only approved persisted evidence such as TradePlan target 1
+  only approved same-session persisted evidence such as TradePlan target 1
+- Resolve expected ATHENA analysis sessions and refresh missing/stale D1 state
+  through existing scoped validation semantics, per PS-P4.1 review
 - Document PS-P4 behavior, partial success, freshness, recovery semantics, test
   coverage, and the PS-P5 methodology recommendation
 ```

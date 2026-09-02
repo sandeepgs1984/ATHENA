@@ -13,10 +13,12 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from decimal import Decimal
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from athena.data.store.repository import SqliteRepository
 from athena.domain.decision import Decision
 from athena.domain.enums import Timeframe
+from athena.ops.symbol_validate import _index_instrument_needs_refresh
 from athena.portfolio.my_portfolio_contracts import (
     PORTFOLIO_ANALYSIS_VERSION,
     CanonicalPortfolioHolding,
@@ -25,6 +27,8 @@ from athena.portfolio.my_portfolio_contracts import (
     PortfolioSnapshotRow,
     SyncRunStatus,
 )
+
+ValidationRunner = Callable[[Sequence[str], datetime], str | None]
 
 
 def utc_now() -> datetime:
@@ -38,10 +42,16 @@ class PortfolioSyncOrchestrator:
         self,
         repo: SqliteRepository,
         *,
-        validation_runner: Callable[[Sequence[str]], str | None] | None = None,
+        validation_runner: ValidationRunner | None = None,
+        expected_analysis_as_of: datetime | None = None,
+        market_timezone: ZoneInfo | None = None,
+        force_ingestion: bool = False,
     ) -> None:
         self._repo = repo
         self._validation_runner = validation_runner
+        self._expected_analysis_as_of = expected_analysis_as_of
+        self._market_timezone = market_timezone or ZoneInfo("UTC")
+        self._force_ingestion = force_ingestion
 
     def create_run(self) -> dict[str, object]:
         active = self._repo.get_active_portfolio_sync_run()
@@ -63,6 +73,12 @@ class PortfolioSyncOrchestrator:
             provenance={
                 "holdings_digest": self._repo.portfolio_holdings_digest(),
                 "source": "portfolio_holdings",
+                "expected_analysis_as_of": (
+                    self._expected_analysis_as_of.isoformat()
+                    if self._expected_analysis_as_of is not None
+                    else None
+                ),
+                "force_ingestion_requested": self._force_ingestion,
             },
         )
 
@@ -97,10 +113,14 @@ class PortfolioSyncOrchestrator:
             },
         )
 
-        refresh_run_id, refresh_error = self._refresh_missing_daily_data(
-            sync_run_id,
-            holdings,
-        )
+        (
+            refresh_run_id,
+            refresh_error,
+            refresh_required_symbols,
+            refreshed_symbols,
+        ) = self._refresh_stale_daily_data(sync_run_id, holdings)
+        # Re-read persisted decisions only after scoped validation has had a
+        # chance to ingest candles and emit same-session decisions.
         decisions = self._latest_decisions_by_instrument()
         snapshot_records: list[dict[str, object]] = []
         per_symbol: dict[str, object] = {}
@@ -119,6 +139,8 @@ class PortfolioSyncOrchestrator:
                 symbol=symbol,
                 decision=decisions.get(holding.instrument_id),
                 analyzed_at=analyzed_at,
+                refresh_required=symbol in refresh_required_symbols,
+                refresh_performed=symbol in refreshed_symbols,
             )
             snapshot_records.append(record)
             row_failures = record["failures"]
@@ -129,6 +151,8 @@ class PortfolioSyncOrchestrator:
                     "instrument_id": holding.instrument_id,
                     "errors": row_failures,
                     "unavailable": record["unavailable"],
+                    "refresh_required": symbol in refresh_required_symbols,
+                    "refresh_performed": symbol in refreshed_symbols,
                 }
             else:
                 succeeded += 1
@@ -136,8 +160,15 @@ class PortfolioSyncOrchestrator:
                     "status": "SUCCESS",
                     "instrument_id": holding.instrument_id,
                     "price_as_of": record.get("price_as_of"),
+                    "expected_analysis_as_of": (
+                        self._expected_analysis_as_of.isoformat()
+                        if self._expected_analysis_as_of is not None
+                        else None
+                    ),
                     "decision_id": record["provenance"].get("decision_id"),
                     "unavailable": record["unavailable"],
+                    "refresh_required": symbol in refresh_required_symbols,
+                    "refresh_performed": symbol in refreshed_symbols,
                 }
             if isinstance(record.get("price_as_of_dt"), datetime):
                 price_as_of_values.append(record["price_as_of_dt"])
@@ -213,6 +244,13 @@ class PortfolioSyncOrchestrator:
             ),
             provenance={
                 **dict(run.get("provenance") or {}),
+                "expected_analysis_as_of": (
+                    self._expected_analysis_as_of.isoformat()
+                    if self._expected_analysis_as_of is not None
+                    else None
+                ),
+                "refresh_required_symbols": list(refresh_required_symbols),
+                "refreshed_symbols": list(refreshed_symbols),
                 **({"refresh_error": refresh_error} if refresh_error else {}),
             },
         )
@@ -226,6 +264,8 @@ class PortfolioSyncOrchestrator:
         symbol: str,
         decision: Decision | None,
         analyzed_at: datetime,
+        refresh_required: bool,
+        refresh_performed: bool,
     ) -> dict[str, object]:
         unavailable: list[str] = []
         failures: list[str] = []
@@ -250,8 +290,15 @@ class PortfolioSyncOrchestrator:
         if price_as_of is not None:
             price_as_of = price_as_of.astimezone(timezone.utc)
 
+        final_price_is_expected_session = self._price_is_expected_session(price_as_of)
+        if price_as_of is not None and not final_price_is_expected_session:
+            unavailable.append("current_price_session")
+
+        decision_is_coherent = self._decision_matches_price_session(decision, price_as_of)
         target_1 = None
-        if decision is not None and decision.trade_plan is not None:
+        if decision is not None and not decision_is_coherent:
+            unavailable.extend(["decision", "target_1", "decision_evidence"])
+        elif decision is not None and decision.trade_plan is not None:
             target_1 = decision.trade_plan.targets[0]
         else:
             unavailable.append("target_1")
@@ -289,7 +336,11 @@ class PortfolioSyncOrchestrator:
                 else None
             ),
             decision_id=decision.decision_id if decision is not None else None,
-            validation_run_id=decision.run_id if decision is not None else None,
+            validation_run_id=(
+                decision.run_id
+                if decision is not None and decision_is_coherent
+                else None
+            ),
             analyzed_at=analyzed_at,
             unavailable_fields=tuple(dict.fromkeys(unavailable)),
             failed_components=tuple(dict.fromkeys(failures)),
@@ -317,46 +368,101 @@ class PortfolioSyncOrchestrator:
             "row": self._row_to_json(row),
             "freshness": self._freshness_to_json(freshness),
             "provenance": self._provenance_to_json(provenance),
+            "expected_analysis_as_of": (
+                self._expected_analysis_as_of.isoformat()
+                if self._expected_analysis_as_of is not None
+                else None
+            ),
+            "refresh_required": refresh_required,
+            "refresh_performed": refresh_performed,
+            "decision_evidence_accepted": decision_is_coherent,
             "unavailable": tuple(dict.fromkeys(unavailable)),
             "failures": tuple(dict.fromkeys(failures)),
         }
 
     def _latest_decisions_by_instrument(self) -> dict[str, Decision]:
-        out: dict[str, Decision] = {}
-        for decision in self._repo.list_decisions(limit=5000):
-            if decision.instrument_id and decision.instrument_id not in out:
-                out[decision.instrument_id] = decision
-        return out
+        return {
+            decision.instrument_id: decision
+            for decision in self._repo.list_latest_decisions_by_instrument()
+            if decision.instrument_id is not None
+        }
 
-    def _refresh_missing_daily_data(
+    def _refresh_stale_daily_data(
         self,
         sync_run_id: str,
         holdings: Sequence[CanonicalPortfolioHolding],
-    ) -> tuple[str | None, str | None]:
-        missing = [
+    ) -> tuple[str | None, str | None, tuple[str, ...], tuple[str, ...]]:
+        refresh_symbols = tuple(
             self._display_symbol(holding.instrument_id)
             for holding in holdings
-            if self._latest_daily_candle(holding.instrument_id) is None
-        ]
-        if not missing or self._validation_runner is None:
-            return None, None
+            if self._holding_needs_refresh(holding)
+        )
+        if not refresh_symbols:
+            return None, None, (), ()
+        if self._validation_runner is None or self._expected_analysis_as_of is None:
+            return None, None, refresh_symbols, ()
         self._repo.update_portfolio_sync_run(
             sync_run_id,
             status=SyncRunStatus.RUNNING,
             progress={
                 "processed_holdings": 0,
                 "stage": "refreshing_market_data",
-                "message": f"Refreshing persisted ATHENA data for {len(missing)} holdings",
-                "symbols": list(missing),
+                "message": f"Refreshing persisted ATHENA data for {len(refresh_symbols)} holdings",
+                "symbols": list(refresh_symbols),
+                "expected_analysis_as_of": self._expected_analysis_as_of.isoformat(),
             },
         )
         try:
-            return self._validation_runner(missing), None
+            return (
+                self._validation_runner(refresh_symbols, self._expected_analysis_as_of),
+                None,
+                refresh_symbols,
+                refresh_symbols,
+            )
         except Exception as exc:
-            return None, str(exc)
+            return None, str(exc), refresh_symbols, ()
+
+    def _holding_needs_refresh(self, holding: CanonicalPortfolioHolding) -> bool:
+        if self._force_ingestion:
+            return True
+        if self._expected_analysis_as_of is None:
+            return self._latest_daily_candle(holding.instrument_id) is None
+        return _index_instrument_needs_refresh(
+            self._repo,
+            holding.instrument_id,
+            self._expected_analysis_as_of,
+            self._market_timezone,
+        )
+
+    def _price_is_expected_session(self, price_as_of: datetime | None) -> bool:
+        if price_as_of is None or self._expected_analysis_as_of is None:
+            return True
+        return (
+            price_as_of.astimezone(self._market_timezone).date()
+            == self._expected_analysis_as_of.astimezone(self._market_timezone).date()
+        )
+
+    def _decision_matches_price_session(
+        self,
+        decision: Decision | None,
+        price_as_of: datetime | None,
+    ) -> bool:
+        if decision is None:
+            return False
+        if price_as_of is None:
+            return False
+        return (
+            decision.ts.astimezone(self._market_timezone).date()
+            == price_as_of.astimezone(self._market_timezone).date()
+        )
 
     def _latest_daily_candle(self, instrument_id: str):
-        candles = self._repo.list_candles_recent(instrument_id, Timeframe.D1, limit=1)
+        candles = self._repo.list_candles_recent(
+            instrument_id,
+            Timeframe.D1,
+            limit=1,
+            as_of=self._expected_analysis_as_of,
+        )
         return candles[0] if candles else None
 
     @staticmethod
