@@ -12,7 +12,8 @@ too large for a single-sitting review is split BEFORE implementation.
 `docs/research/PS-P1-PORTFOLIO-CONTRACT-DESIGN.md`,
 `docs/research/PS-P2-PORTFOLIO-IMPORT-RECONCILIATION.md`,
 `docs/research/PS-P3-MY-PORTFOLIO-DASHBOARD-UX.md`,
-`docs/research/PS-P4-PORTFOLIO-SYNC-ORCHESTRATION.md`
+`docs/research/PS-P4-PORTFOLIO-SYNC-ORCHESTRATION.md`,
+`docs/research/PS-P5A-PORTFOLIO-INTERPRETATION-METHODOLOGY.md`
 
 Adds a My Portfolio dashboard feature/subdomain inside ATHENA's existing
 portfolio capability. The feature owns imported current holdings,
@@ -26,8 +27,9 @@ ScoringEngine/DecisionEngine methodology.
 | PS-P1 | My Portfolio Design, Schema & API Contracts — freeze module boundary, source of truth, isolated persistence, import/reconciliation contracts, Sync Portfolio contract, freshness/provenance/null semantics, and the complete 20-column Portfolio Snapshot API DTO | ✅ Owner/Chief Architect approved 2026-09-02 |
 | PS-P2 | Import Preview & Holdings Reconciliation — CSV/XLSX parse, normalize, validate, resolve symbols, persist preview, show deterministic reconciliation, confirm atomically, update canonical holdings, preserve audit history | ✅ Owner/Chief Architect approved 2026-09-02 |
 | PS-P3 | My Portfolio Dashboard + Upload UX — separate dashboard tab over PS-P2 APIs with server-side upload preview, mapping/error review, reconciliation diff, explicit confirmation, current holdings, and import history | ✅ Owner/Chief Architect approved 2026-09-02 |
-| PS-P4 | Portfolio Sync Orchestration — background sync over confirmed My Portfolio holdings, persisted sync runs, immutable 20-column analysis snapshots, server-owned valuation math, latest snapshot API, dashboard sync polling/rendering, and PS-P4.1 freshness/evidence coherency correction | 🔄 Ready for review 2026-09-02 — backend/dashboard workflow implemented; PS-P4.1 missing/stale D1 refresh, post-refresh re-read, coherent Target 1 evidence, and truthful force refresh implemented; focused regressions passed; no portfolio interpretation methodology invented |
-| PS-P5 | Recommended next: Portfolio Interpretation Methodology for portfolio-specific Status, Conviction, Trend/Setup, Key Trigger, Support, Major Support/Exit, Target 2/3, and Next Action | Not started |
+| PS-P4 | Portfolio Sync Orchestration — background sync over confirmed My Portfolio holdings, persisted sync runs, immutable 20-column analysis snapshots, server-owned valuation math, latest snapshot API, dashboard sync polling/rendering, and PS-P4.1 freshness/evidence coherency correction | ✅ Owner/Chief Architect approved 2026-09-02 — PS-P4 and PS-P4.1 frozen |
+| PS-P5A | Portfolio Interpretation Methodology Discovery & Freeze — inventory actual ATHENA evidence, propose deterministic portfolio Status/Conviction/Trend/Trigger/Support/Exit/Target/Next Action methodology, reason codes, test vectors, and owner decisions before production implementation | 🔄 Ready for review 2026-09-02 — methodology document created; no production interpreter or PS-P5B wiring implemented |
+| PS-P5B | Portfolio Interpretation Implementation — implement only the Owner/Chief Architect-approved PS-P5A subset in the pure interpreter, Portfolio Sync snapshot wiring, dashboard/API rendering, and regression tests | Not started |
 
 ## Intraday Intelligence Track (ID-0 started 2026-08-29)
 

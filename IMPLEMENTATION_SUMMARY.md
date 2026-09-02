@@ -1524,6 +1524,77 @@ ID-6A0 corrected and ready for owner final ADR review.
 
 ---
 
+## PS-P5A Portfolio Interpretation Methodology — Ready for Owner Review
+
+**Summary.** Completed the PS-P5A discovery/freeze deliverable for Portfolio
+Interpretation Methodology. The new methodology document inventories current
+ATHENA evidence, separates direct persisted inputs from tempting but unavailable
+or unapproved evidence, proposes deterministic Status/Conviction/Trend/Trigger/
+Support/Exit/Target/Next Action rules, defines reason codes, and lists explicit
+Owner/Chief Architect decisions required before PS-P5B.
+
+**Architecture compliance.** PS-P5A is documentation-only and preserves the
+frozen PS-P0 through PS-P4.1 architecture. No production interpreter, Portfolio
+Sync wiring, dashboard/API behavior, ScoringEngine, DecisionEngine, indicator,
+validation, provider, persistence schema, `owner_positions`, broker, or order
+behavior was changed. The proposed methodology keeps Portfolio Interpretation
+after evidence collection and never creates a reverse dependency into core
+ATHENA engines.
+
+**Files created.** `docs/research/PS-P5A-PORTFOLIO-INTERPRETATION-METHODOLOGY.md`.
+
+**Files modified.** `docs/MILESTONES.md`, `ATHENA_BRIEFING.md`,
+`IMPLEMENTATION_SUMMARY.md`.
+
+**Evidence inventory.** Source inspection covered `Decision`, `TradePlan`,
+quality gates, scoring/confidence/risk models and engines, indicators, regime,
+market/sector health, intraday signal artifacts, Relative Strength, RVOL,
+Opening Range, EntryQualification persistence, DarvaX satellite signals, and
+PS-P4.1 freshness/coherency provenance. The key finding is that Decisions,
+TradePlans, gates, candles, and EntryQualification observations are retrievable
+today, while full ScoringResult, ConfidenceAssessment, RiskAssessment,
+IndicatorSet, RegimeResult, SectorHealthResult, RelativeStrengthContext,
+RelativeVolumeContext, OpeningRangeEvidence, and IntradaySignalSet are not
+currently first-class retrievable core artifacts for Portfolio Sync.
+
+**Methodology proposal.** Proposed Status vocabulary:
+STRONG/HEALTHY/CAUTION/AT_RISK/UNAVAILABLE. Proposed Next Action vocabulary:
+HOLD/ADD/REDUCE/EXIT/WATCH, with ROTATE deferred. Recommended keeping Support 1
+and Target 2/3 null in PS-P5B unless separate support/target methodology is
+approved. Confirmed PS-P4.1 Target 1 mapping remains valid only from coherent
+TradePlan target 1. Proposed TradePlan stop as Major Support / Exit only for a
+coherent active TradePlan.
+
+**Verification.** Documentation-only milestone. No production code changed.
+`rtk git diff --check`: CLEAN. No regression suite required for behavior because
+no behavior changed.
+
+**Risks / decisions required.** Owner must approve the Status vocabulary and
+precedence, whether Conviction should require a confidence evidence adapter or
+remain null, whether minimal Trend/Setup labels are acceptable, whether Key
+Trigger can map from active TradePlan entry only, whether TradePlan stop can
+populate Major Support / Exit, whether REDUCE should be implemented or deferred,
+and whether ADD must require latest coherent EntryQualification QUALIFIED.
+
+**Commit message (for the owner to use, not run by the AI):**
+
+```text
+docs(portfolio): freeze PS-P5A interpretation methodology proposal
+
+- Add the PS-P5A evidence inventory and portfolio interpretation methodology
+  proposal so Owner/Chief Architect can review rules before implementation
+- Define conservative Status, Conviction, Trend/Setup, Key Trigger, Support,
+  Major Support/Exit, Target, Next Action, reason-code, and test-vector
+  contracts without changing production behavior
+- Mark PS-P4 and PS-P4.1 approved/frozen and split PS-P5 into PS-P5A review
+  and PS-P5B implementation gates
+```
+
+**Outcome:** PS-P5A ready for Owner/Chief Architect methodology review. PS-P5B
+not started.
+
+---
+
 ## PS-P4 Portfolio Sync Orchestration — Ready for Owner Review After PS-P4.1
 
 **Summary.** Implemented Portfolio Sync as a persisted background workflow over
