@@ -3,7 +3,8 @@
 **Date:** 2026-09-02
 **Track:** Intraday Intelligence (ID)
 **Milestone:** ID-6 - Discovery / scope and architecture freeze
-**Status:** Direction accepted; architecture hardening ready for owner review
+**Status:** Architecture owner-approved with condition; ID-6A0 ADR ready for
+owner review
 **Recommendation:** GO WITH CONDITIONS
 
 This report is documentation-only. It inspects the live repository state and
@@ -518,7 +519,7 @@ An ADR or separate owner architecture decision would be required if ID-6:
 
 | Slice | Responsibility | Inputs/outputs | Likely files | Tests | Exit criteria |
 |---|---|---|---|---|---|
-| ID-6A0 | Entry Qualification Architecture ADR | ADR approving the new persisted decision-relevant concept, live stage, daily-vs-intraday boundary, state/reliability orthogonality, and indirect-M5 invariant | `docs/adr/ADR-013-...md` or next repository-consistent ADR path, plus status docs | Documentation review; `git diff --check` | Owner-approved ADR before production code |
+| ID-6A0 | Entry Qualification Architecture ADR | ADR approving the new persisted decision-relevant concept, live stage, daily-vs-intraday boundary, state/reliability orthogonality, and indirect-M5 invariant | `docs/adr/ADR-013-entry-qualification-architecture.md`, plus status docs | Documentation review; `git diff --check` | Owner-approved ADR before production code |
 | ID-6A | Domain/state/reliability contract | Proposed `EntryQualification*` types only | `src/athena/intraday/entry_qualification_models.py`, docs | Unit contract tests | Frozen states, orthogonal reliability, reason-code semantics owner-reviewable |
 | ID-6B | Pure deterministic qualification engine skeleton | Inputs: `Decision`, `SessionContext`, `IntradaySignalSet`; output: `EntryQualification` | `src/athena/intraday/entry_qualification_engine.py` | Unit tests for state transitions, reliability, supersession, and unknown/stale behavior | No thresholds beyond accepted zero-threshold categories; no I/O |
 | ID-6C | Persistence and explainability trace | Append-only observations + latest query | `data/store/schema.py`, repository serialization/repository tests | Repository contract tests, migration tests | Auditable emitted state without claiming full knowledge-time market-data replay |
@@ -574,9 +575,13 @@ handoff, and ID-5B final evidence. Produced this design report.
 ADR-005. No provider, scoring, confidence, risk, DecisionEngine, TradePlan,
 EMR, DarvaX, or order behavior changed.
 
-**ADR compliance:** No ADR required for this discovery milestone. Future
-implementation needs an ADR only if it changes provider interfaces, Decision
-contracts, module boundaries, or knowledge-time storage guarantees.
+**ADR compliance:** No ADR was required merely to perform this discovery
+milestone. EntryQualification implementation does require ID-6A0 because it
+introduces a new persisted decision-relevant concept, a new live workflow
+stage, and a new boundary between canonical daily Decision and intraday
+actionability. Additional ADR review may also be required later for provider
+interfaces, canonical Decision/TradePlan contracts, knowledge-time storage, or
+other governed boundaries.
 
 **Risks discovered:** Live M5 finality remains provisional; ID-0's ADR
 requirement still applies; state and reliability must stay orthogonal;
@@ -586,12 +591,13 @@ provisionality through existing VWAP/confluence scoring.
 
 **Technical debt introduced:** None.
 
-**Suggested improvements:** Create ID-6A0 as the Entry Qualification
-Architecture ADR first, then implement ID-6A as a small, reviewable
-domain/state/reliability contract before any engine or persistence work.
+**Suggested improvements:** Review ID-6A0 as the Entry Qualification
+Architecture ADR, then implement ID-6A as a small, reviewable
+domain/state/reliability contract before any engine or persistence work after
+explicit owner authorization.
 
-**Remaining work:** Owner architecture review; then, if approved, ID-6A0
-Architecture ADR only. Do not start ID-6A code or ID-7.
+**Remaining work:** Owner ADR review for ID-6A0. Do not start ID-6A code or
+ID-7.
 
 **Commit message:**
 

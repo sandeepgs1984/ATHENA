@@ -6,6 +6,51 @@ status updated on approval.
 
 ---
 
+## ID-6A0 Entry Qualification Architecture ADR — Ready for Owner Review
+
+**Summary.** Created the owner-authorized ID-6A0 ADR as a documentation-only
+architecture governance milestone. ID-6 discovery architecture is recorded as
+owner-approved with condition, and the condition is the proposed standalone
+Entry Qualification Architecture ADR before any ID-6A code begins.
+
+**Architecture compliance.** ADR-013 freezes Entry Qualification as a
+distinct, advisory-only, persisted decision-relevant artifact bound to a
+canonical daily `Decision`. It preserves the boundaries of ATHENA-002,
+ADR-003, and ADR-005: no scoring, confidence, risk, `DecisionEngine`,
+`Decision`, `TradePlan`, provider, EMR, DarvaX, broker, order, UI, or
+production behavior changed.
+
+**Files created.** `docs/adr/ADR-013-entry-qualification-architecture.md`.
+
+**Files modified.** `docs/MILESTONES.md`,
+`docs/ATHENA-ID-TRACK-HANDOFF.md`,
+`docs/research/ID-6-SCOPE-ARCHITECTURE-DESIGN.md`,
+`ATHENA_BRIEFING.md`, `IMPLEMENTATION_SUMMARY.md`.
+
+**Behavior implemented.** None. This milestone adds no Python types, schema,
+repositories, migrations, engines, workflow stages, thresholds, provider
+requests, database writes, raw-artifact changes, EMR/DarvaX changes, or order
+behavior.
+
+**Governance frozen.** Daily/Structural `Decision` answers what is worth
+watching or trading; Entry Qualification answers whether the candidate is
+actionable now; Entry/Execution defines price/risk structure later; Live Plan
+Supervision remains a future validity layer. Qualification state and evidence
+reliability are orthogonal, and no irreversible ID-6 state may be caused
+directly or indirectly solely by provider-provisional live M5 evidence.
+
+**Verification.** Documentation-only. ADR numbering and convention inspected:
+ADR-012 was the latest accepted ADR, so ADR-013 is the next repository
+identifier. `git diff --check` is run as the closeout quality gate.
+
+**Remaining work.** Owner ADR review. Do not start ID-6A, ID-6B, ID-7, EM-6,
+EMR, DarvaX, UI, schema, engine, workflow, provider, DB, or production work
+until explicitly authorized.
+
+**Outcome:** Ready for owner ADR review.
+
+---
+
 ## ID-6 Discovery / Scope & Architecture Freeze — Hardened for Owner Review
 
 **Summary.** Completed and hardened the owner-authorized ID-6 discovery/design
@@ -47,10 +92,11 @@ before the next begins.
 --check` is run as the closeout quality gate. No DB writes and no provider or
 network calls were performed.
 
-**Remaining work.** Owner architecture review. Do not start ID-6A0, ID-6A,
-ID-7, EM-6, EMR, DarvaX, UI, or TradePlan work until explicitly authorized.
+**Remaining work.** Owner ADR review for ID-6A0. Do not start ID-6A, ID-7,
+EM-6, EMR, DarvaX, UI, or TradePlan work until explicitly authorized.
 
-**Outcome:** Ready for owner architecture review.
+**Outcome:** ID-6 discovery architecture owner-approved with condition;
+ID-6A0 ready for owner ADR review.
 
 ---
 
