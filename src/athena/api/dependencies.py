@@ -71,6 +71,7 @@ from athena.api.v1.services.health_service import HealthService
 from athena.api.v1.services.market_history_service import MarketHistoryService
 from athena.api.v1.services.market_summary_service import MarketSummaryService
 from athena.api.v1.services.metrics_service import MetricsService
+from athena.api.v1.services.my_portfolio_service import MyPortfolioService
 from athena.api.v1.services.opportunities_service import OpportunitiesService
 from athena.api.v1.services.ops_service import OpsService
 from athena.api.v1.services.pipelines_service import PipelinesService
@@ -172,6 +173,18 @@ def get_candle_history_provider() -> CandleHistoryProvider:
 def get_portfolio_provider() -> PortfolioProvider:
     """Dependency provider for PortfolioProvider."""
     return _portfolio_provider
+
+
+def get_my_portfolio_service(request: Request) -> MyPortfolioService:
+    """Dependency provider for My Portfolio import/reconciliation service."""
+
+    repo = getattr(request.app.state, "sqlite_repo", None)
+    if repo is None:
+        path = getattr(request.app.state, "ops_db_path", None)
+        repo = SqliteRepository(path if path else default_db_path())
+        repo.initialize()
+        request.app.state.sqlite_repo = repo
+    return MyPortfolioService(repo)
 
 
 def get_pipeline_run_provider() -> PipelineRunProvider:

@@ -9,7 +9,8 @@ too large for a single-sitting review is split BEFORE implementation.
 **Source:** Owner assignment dated 2026-09-01 / 2026-09-02
 
 **Reports:** `docs/research/PS-P0-PORTFOLIO-SYNC-DISCOVERY-REPORT.md`,
-`docs/research/PS-P1-PORTFOLIO-CONTRACT-DESIGN.md`
+`docs/research/PS-P1-PORTFOLIO-CONTRACT-DESIGN.md`,
+`docs/research/PS-P2-PORTFOLIO-IMPORT-RECONCILIATION.md`
 
 Adds a My Portfolio dashboard feature/subdomain inside ATHENA's existing
 portfolio capability. The feature owns imported current holdings,
@@ -20,8 +21,9 @@ ScoringEngine/DecisionEngine methodology.
 | Milestone | Objective | Status |
 |---|---|---|
 | PS-P0 | Discovery only — audit existing portfolio, market-data, API, dashboard, symbol, and analytics surfaces before designing My Portfolio | ✅ Owner/Chief Architect approved 2026-09-02 |
-| PS-P1 | My Portfolio Design, Schema & API Contracts — freeze module boundary, source of truth, isolated persistence, import/reconciliation contracts, Sync Portfolio contract, freshness/provenance/null semantics, and the complete 20-column Portfolio Snapshot API DTO | 🔄 Ready for review 2026-09-02 — additive `portfolio_*` schema at ATHENA schema v16, pure contract objects, v1 DTO contracts, focused schema/runtime/API contract tests; no dashboard, sync orchestration, broker integration, or methodology invented |
-| PS-P2 | Recommended next: generic import preview + confirmation plumbing over the frozen contracts | Not started |
+| PS-P1 | My Portfolio Design, Schema & API Contracts — freeze module boundary, source of truth, isolated persistence, import/reconciliation contracts, Sync Portfolio contract, freshness/provenance/null semantics, and the complete 20-column Portfolio Snapshot API DTO | ✅ Owner/Chief Architect approved 2026-09-02 |
+| PS-P2 | Import Preview & Holdings Reconciliation — CSV/XLSX parse, normalize, validate, resolve symbols, persist preview, show deterministic reconciliation, confirm atomically, update canonical holdings, preserve audit history | 🔄 Ready for review 2026-09-02 — backend/API workflow implemented; 121 focused/regression tests passed; no dashboard tab, sync orchestration, broker integration, or methodology invented |
+| PS-P3 | Recommended next: My Portfolio Dashboard + Upload UX over the PS-P2 backend APIs | Not started |
 
 ## Intraday Intelligence Track (ID-0 started 2026-08-29)
 

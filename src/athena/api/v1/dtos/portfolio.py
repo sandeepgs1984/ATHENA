@@ -107,6 +107,7 @@ class ImportedHoldingRowDTO(BaseModel):
     source_metadata: dict[str, object] = Field(default_factory=dict)
     mapping_state: SymbolMappingState
     resolved_instrument_id: str | None = None
+    candidates: list[dict[str, object]] = Field(default_factory=list)
     validation_errors: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
 
@@ -128,6 +129,8 @@ class PortfolioImportPreviewDTO(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     import_id: str
+    filename: str = ""
+    source: str = "upload"
     status: ImportStatus
     total_rows: int = Field(ge=0)
     accepted_rows: int = Field(ge=0)
@@ -135,6 +138,7 @@ class PortfolioImportPreviewDTO(BaseModel):
     unresolved_rows: int = Field(ge=0)
     ambiguous_rows: int = Field(ge=0)
     warnings: list[str] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
     rows: list[ImportedHoldingRowDTO]
     proposed_changes: list[PortfolioReconciliationChangeDTO]
 
@@ -154,6 +158,7 @@ class MyPortfolioHoldingDTO(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     instrument_id: str
+    symbol: str
     quantity: int = Field(gt=0)
     avg_price: Decimal = Field(gt=0)
     imported_at: datetime
@@ -161,6 +166,47 @@ class MyPortfolioHoldingDTO(BaseModel):
     source_import_id: str
     source_row_id: str
     provenance: dict[str, object] = Field(default_factory=dict)
+
+
+class PortfolioImportSummaryDTO(BaseModel):
+    """Audit summary for a My Portfolio import batch."""
+
+    model_config = ConfigDict(frozen=True)
+
+    import_id: str
+    filename: str
+    source: str
+    uploaded_at: datetime
+    holdings_as_of: datetime | None = None
+    parser_version: str
+    status: ImportStatus
+    total_rows: int = Field(ge=0)
+    accepted_rows: int = Field(ge=0)
+    rejected_rows: int = Field(ge=0)
+    unresolved_rows: int = Field(ge=0)
+    ambiguous_rows: int = Field(ge=0)
+    confirmed_at: datetime | None = None
+    provenance: dict[str, object] = Field(default_factory=dict)
+
+
+class PortfolioImportConfirmResultDTO(BaseModel):
+    """Result of confirming a persisted My Portfolio preview."""
+
+    model_config = ConfigDict(frozen=True)
+
+    import_id: str
+    status: ImportStatus
+    already_confirmed: bool
+    holdings: list[MyPortfolioHoldingDTO]
+    reconciliation: list[PortfolioReconciliationChangeDTO]
+
+
+class PortfolioImportHistoryDTO(BaseModel):
+    """Minimal My Portfolio import/reconciliation audit response."""
+
+    model_config = ConfigDict(frozen=True)
+
+    imports: list[PortfolioImportSummaryDTO]
 
 
 class PortfolioFreshnessDTO(BaseModel):

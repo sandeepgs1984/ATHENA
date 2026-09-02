@@ -6,7 +6,104 @@ status updated on approval.
 
 ---
 
-## PS-P1 My Portfolio Contract Design — Ready for Owner Review
+## PS-P2 Import Preview & Holdings Reconciliation — Ready for Owner Review
+
+**Summary.** Implemented the My Portfolio backend import/reconciliation
+workflow approved for PS-P2. ATHENA can now accept CSV/XLSX holdings bytes,
+parse generic Symbol/Qty/Avg Price columns and aliases, normalize and validate
+rows, resolve symbols through existing `symbol_master`/`instruments`
+infrastructure, persist preview rows with a stable import ID, compute
+ADDED/UPDATED/REMOVED/UNCHANGED reconciliation diffs, confirm clean previews
+atomically, update canonical `portfolio_holdings`, and preserve import and
+reconciliation audit history.
+
+**Architecture compliance.** The implementation stays inside ATHENA's existing
+portfolio capability and uses `db/athena.db` / `SqliteRepository`.
+`owner_positions` remains separate and unchanged. No ScoringEngine,
+DecisionEngine, indicator, OwnerValidationPipeline, market ingestion, Sync
+Portfolio analysis, dashboard UX, broker integration, transaction
+reconstruction, realized P&L inference, or order/execution code was added.
+
+**Files created.** `src/athena/portfolio/imports.py`,
+`src/athena/api/v1/services/my_portfolio_service.py`,
+`src/athena/api/v1/routers/my_portfolio.py`,
+`tests/runtime/test_my_portfolio_imports.py`,
+`tests/api/v1/test_my_portfolio_import_api.py`,
+`docs/research/PS-P2-PORTFOLIO-IMPORT-RECONCILIATION.md`.
+
+**Files modified.** `src/athena/data/store/repository.py`,
+`src/athena/api/v1/dtos/portfolio.py`, `src/athena/api/v1/router.py`,
+`src/athena/api/dependencies.py`, `src/athena/api/exceptions.py`,
+`src/athena/api/errors.py`, `docs/MILESTONES.md`, `ATHENA_BRIEFING.md`,
+`IMPLEMENTATION_SUMMARY.md`.
+
+**Behavior implemented.** CSV parsing supports canonical columns and aliases;
+XLSX parsing uses the first non-empty worksheet and does not combine sheets.
+Blank rows are ignored. Invalid Symbol/Qty/Avg Price values are row-level
+errors. Unresolved and ambiguous symbols remain visible and unconfirmable.
+Duplicate uploaded rows resolving to the same canonical instrument are
+validation errors (`DUPLICATE_CANONICAL_INSTRUMENT`), not silently merged.
+Confirmation requires a clean preview.
+
+**Atomicity / idempotency.** Confirmation runs in one SQLite transaction:
+validate import state, check the preview base holdings digest, rebuild uploaded
+holdings from persisted rows, write reconciliation audit entries, mutate
+canonical holdings, and mark the import confirmed. A failure rolls everything
+back. A retry of an already confirmed import returns `already_confirmed=true`
+without duplicating reconciliation rows or mutating holdings again. Stale
+previews fail with `STALE_PREVIEW` / HTTP 409.
+
+**API endpoints.** Added `/api/v1/my-portfolio/imports`,
+`/api/v1/my-portfolio/imports/{import_id}`,
+`/api/v1/my-portfolio/imports/{import_id}/confirm`,
+`/api/v1/my-portfolio/holdings`, and
+`/api/v1/my-portfolio/imports/{import_id}/reconciliations`. Upload preview
+uses raw request bytes plus a `filename` query parameter, avoiding a new
+multipart dependency for PS-P2.
+
+**Verification.** Focused PS-P2/PS-P1 import, contract, schema, DTO, API, and
+platform/OpenAPI suites plus legacy owner portfolio and existing indicator/
+scoring/decision regressions: 121 passed. `git diff HEAD --check`: CLEAN. Ruff
+on new/changed PS-P2 API/parser files: PASS. `repository.py` passes I/E/F/UP/B/
+RUF checks introduced by PS-P2; full-file Ruff still reports pre-existing SIM117
+nested `with` suggestions in older repository blocks, intentionally left
+untouched.
+
+**Risks / known gaps.** XLSX parsing is deliberately generic/minimal and does
+not evaluate formulas. Upload is raw-body plus filename rather than multipart.
+History APIs are minimal. Sync Portfolio orchestration and all
+methodology-sensitive 20-column analysis fields remain deferred.
+
+**Suggested improvements / PS-P3 recommendation.** Recommended PS-P3 is My
+Portfolio Dashboard + Upload UX over the PS-P2 backend APIs, before Sync
+Portfolio orchestration. The owner should be able to inspect failed rows,
+mapping ambiguity, duplicate errors, reconciliation diffs, confirmation, current
+holdings, and audit history in the UI before analysis sync starts depending on
+that source-of-truth workflow.
+
+**Commit message (for the owner to use, not run by the AI):**
+
+```
+feat(portfolio): implement My Portfolio import reconciliation
+
+- Add generic CSV/XLSX holdings parsing with deterministic column aliases,
+  row validation, canonical symbol resolution, and duplicate-instrument errors
+  so uploads produce auditable provider-independent previews
+- Persist My Portfolio import previews and rows, compute deterministic
+  ADDED/UPDATED/REMOVED/UNCHANGED reconciliation diffs, and expose import,
+  holdings, confirmation, and audit APIs under /api/v1/my-portfolio
+- Apply clean previews atomically with stale-preview digest protection and
+  idempotent retry semantics so canonical holdings cannot be partially mutated
+- Document PS-P2 behavior, test coverage, known gaps, and the recommended
+  PS-P3 dashboard/upload UX scope while keeping Sync Portfolio and methodology
+  deferred
+```
+
+**Outcome:** PS-P2 ready for Owner/Chief Architect review. PS-P3 not started.
+
+---
+
+## PS-P1 My Portfolio Contract Design — Owner Approved
 
 **Summary.** Implemented the PS-P1 contract-first milestone for My Portfolio
 after PS-P0 owner approval. The milestone freezes the isolated My Portfolio
@@ -92,7 +189,8 @@ feat(portfolio): freeze My Portfolio PS-P1 contracts
   owner-approved Portfolio Sync decisions
 ```
 
-**Outcome:** PS-P1 ready for Owner/Chief Architect review. PS-P2 not started.
+**Outcome:** PS-P1 owner-approved 2026-09-02. PS-P2 completed next and is now
+ready for Owner/Chief Architect review.
 
 ---
 

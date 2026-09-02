@@ -76,10 +76,21 @@ class PortfolioResetConfirmationError(APIResourceError):
     """Portfolio reset refused because confirmation token was missing or incorrect."""
 
 
+class MyPortfolioImportError(APIResourceError):
+    """My Portfolio import/confirmation request is invalid."""
+
+
+class MyPortfolioImportNotFoundError(ResourceNotFoundError):
+    """My Portfolio import preview not found."""
+
+
+class StalePortfolioPreviewError(APIResourceError):
+    """My Portfolio preview was based on an older holdings state."""
+
+
 class DecisionsResetConfirmationError(APIResourceError):
     """Decisions & Trace reset refused because confirmation token was missing or incorrect."""
 
 
 class DatabaseUnavailableError(APIResourceError):
     """Live SQLite database path is missing or cannot be opened for backup ops."""
-

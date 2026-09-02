@@ -25,6 +25,8 @@ from athena.api.exceptions import (
     ExportArtifactNotFoundError,
     ExportGenerationError,
     ExportSnapshotNotFoundError,
+    MyPortfolioImportError,
+    MyPortfolioImportNotFoundError,
     PerformanceSnapshotNotFoundError,
     PipelineRunNotFoundError,
     PortfolioResetConfirmationError,
@@ -33,6 +35,7 @@ from athena.api.exceptions import (
     ResourceNotFoundError,
     RestoreConfirmationError,
     SchedulerRunNotFoundError,
+    StalePortfolioPreviewError,
     WorkspaceSnapshotNotFoundError,
 )
 from athena.api.platform.problem_details import ProblemDetail
@@ -132,6 +135,14 @@ class AthenaExceptionMapper:
             "portfolio-reset-confirmation-required",
             "Portfolio Reset Confirmation Required",
         ),
+        ExceptionMapping(
+            MyPortfolioImportNotFoundError,
+            404,
+            "portfolio-import-not-found",
+            "Portfolio Import Not Found",
+        ),
+        ExceptionMapping(StalePortfolioPreviewError, 409, "stale-portfolio-preview", "Stale Portfolio Preview"),
+        ExceptionMapping(MyPortfolioImportError, 400, "portfolio-import-error", "Portfolio Import Error"),
         ExceptionMapping(
             DecisionsResetConfirmationError,
             400,

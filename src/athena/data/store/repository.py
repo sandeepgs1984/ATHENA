@@ -7,13 +7,15 @@ transaction safety, WAL mode, and enforced foreign keys.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import threading
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
+from enum import Enum
 from pathlib import Path
 from typing import ClassVar
 
@@ -38,6 +40,14 @@ from athena.domain.market import (
 )
 from athena.domain.run import RunRecord
 from athena.errors import RepositoryError
+from athena.portfolio.my_portfolio_contracts import (
+    CanonicalPortfolioHolding,
+    ImportStatus,
+    ReconciliationAction,
+    ReconciliationChange,
+    SymbolMappingState,
+    reconcile_current_holdings,
+)
 from athena.symbols.groups import GroupMembership
 from athena.symbols.models import Board, SeriesSource, SymbolRecord
 
@@ -1113,6 +1123,262 @@ class SqliteRepository:
         except sqlite3.Error as exc:
             raise RepositoryError(f"delete owner positions failed: {exc}") from exc
 
+    # ------------------------------------------------------------- my portfolio (PS-P2)
+
+    def save_portfolio_import_preview(
+        self,
+        *,
+        import_id: str,
+        filename: str,
+        source: str,
+        uploaded_at: datetime,
+        holdings_as_of: datetime | None,
+        parser_version: str,
+        status: ImportStatus,
+        total_rows: int,
+        accepted_rows: int,
+        rejected_rows: int,
+        unresolved_rows: int,
+        ambiguous_rows: int,
+        provenance: Mapping[str, object],
+        rows: Sequence[Mapping[str, object]],
+    ) -> None:
+        """Persist a My Portfolio import preview and its normalized rows."""
+
+        if not isinstance(status, ImportStatus):
+            raise RepositoryError(f"invalid portfolio import status: {status}")
+        row_values = [
+            (
+                import_id,
+                str(row["source_row_id"]),
+                int(row["source_row_number"]),
+                json.dumps(row.get("original_values", {}), sort_keys=True),
+                str(row.get("normalized_symbol", "")),
+                str(row.get("raw_symbol", "")),
+                row.get("quantity"),
+                None if row.get("avg_price") is None else str(row["avg_price"]),
+                self._enum_value(row.get("mapping_state"), SymbolMappingState),
+                row.get("resolved_instrument_id"),
+                json.dumps(row.get("validation_errors", ()), sort_keys=True),
+                json.dumps(row.get("warnings", ()), sort_keys=True),
+                json.dumps(row.get("metadata", {}), sort_keys=True),
+            )
+            for row in rows
+        ]
+        try:
+            with self._lock:
+                with self._conn:
+                    self._conn.execute(
+                        "INSERT INTO portfolio_imports ("
+                        "import_id, filename, source, uploaded_at, holdings_as_of, parser_version, "
+                        "status, total_rows, accepted_rows, rejected_rows, unresolved_rows, "
+                        "ambiguous_rows, provenance_json"
+                        ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        (
+                            import_id,
+                            filename,
+                            source,
+                            uploaded_at.isoformat(),
+                            holdings_as_of.isoformat() if holdings_as_of else None,
+                            parser_version,
+                            status.value,
+                            total_rows,
+                            accepted_rows,
+                            rejected_rows,
+                            unresolved_rows,
+                            ambiguous_rows,
+                            json.dumps(dict(provenance), sort_keys=True),
+                        ),
+                    )
+                    self._conn.executemany(
+                        "INSERT INTO portfolio_import_rows ("
+                        "import_id, source_row_id, source_row_number, original_values_json, "
+                        "normalized_symbol, raw_symbol, quantity, avg_price, mapping_state, "
+                        "resolved_instrument_id, validation_errors_json, warnings_json, metadata_json"
+                        ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        row_values,
+                    )
+        except sqlite3.Error as exc:
+            raise RepositoryError(f"save portfolio import preview failed: {exc}") from exc
+
+    def get_portfolio_import(self, import_id: str) -> dict[str, object] | None:
+        row = self._query_one(
+            "SELECT import_id, filename, source, uploaded_at, holdings_as_of, parser_version, "
+            "status, total_rows, accepted_rows, rejected_rows, unresolved_rows, ambiguous_rows, "
+            "confirmed_at, provenance_json FROM portfolio_imports WHERE import_id=?",
+            (import_id,),
+        )
+        return self._portfolio_import_from_row(row) if row else None
+
+    def list_portfolio_imports(self, *, limit: int = 50) -> list[dict[str, object]]:
+        rows = self._query_all(
+            "SELECT import_id, filename, source, uploaded_at, holdings_as_of, parser_version, "
+            "status, total_rows, accepted_rows, rejected_rows, unresolved_rows, ambiguous_rows, "
+            "confirmed_at, provenance_json FROM portfolio_imports "
+            "ORDER BY uploaded_at DESC, import_id DESC LIMIT ?",
+            (limit,),
+        )
+        return [self._portfolio_import_from_row(row) for row in rows]
+
+    def list_portfolio_import_rows(self, import_id: str) -> list[dict[str, object]]:
+        rows = self._query_all(
+            "SELECT import_id, source_row_id, source_row_number, original_values_json, "
+            "normalized_symbol, raw_symbol, quantity, avg_price, mapping_state, "
+            "resolved_instrument_id, validation_errors_json, warnings_json, metadata_json "
+            "FROM portfolio_import_rows WHERE import_id=? "
+            "ORDER BY source_row_number ASC, source_row_id ASC",
+            (import_id,),
+        )
+        return [self._portfolio_import_row_from_row(row) for row in rows]
+
+    def list_portfolio_holdings(self) -> list[CanonicalPortfolioHolding]:
+        rows = self._query_all(
+            "SELECT instrument_id, quantity, avg_price, imported_at, updated_at, "
+            "source_import_id, source_row_id, provenance_json "
+            "FROM portfolio_holdings ORDER BY instrument_id"
+        )
+        return [self._portfolio_holding_from_row(row) for row in rows]
+
+    def get_portfolio_holding(self, instrument_id: str) -> CanonicalPortfolioHolding | None:
+        row = self._query_one(
+            "SELECT instrument_id, quantity, avg_price, imported_at, updated_at, "
+            "source_import_id, source_row_id, provenance_json "
+            "FROM portfolio_holdings WHERE instrument_id=?",
+            (instrument_id,),
+        )
+        return self._portfolio_holding_from_row(row) if row else None
+
+    def portfolio_holdings_digest(self) -> str:
+        """Deterministic digest of current canonical My Portfolio holdings."""
+
+        return self._holdings_digest(self.list_portfolio_holdings())
+
+    def list_portfolio_reconciliations(self, import_id: str) -> list[dict[str, object]]:
+        rows = self._query_all(
+            "SELECT reconciliation_id, import_id, reconciled_at, action, instrument_id, "
+            "before_json, after_json, provenance_json "
+            "FROM portfolio_reconciliations WHERE import_id=? "
+            "ORDER BY reconciled_at ASC, instrument_id ASC",
+            (import_id,),
+        )
+        return [self._portfolio_reconciliation_from_row(row) for row in rows]
+
+    def confirm_portfolio_import(
+        self,
+        *,
+        import_id: str,
+        expected_base_digest: str,
+        confirmed_at: datetime,
+    ) -> tuple[bool, tuple[ReconciliationChange, ...]]:
+        """Atomically apply a clean persisted preview to canonical holdings.
+
+        Returns ``(already_confirmed, changes)``. If the current holdings digest
+        no longer matches the preview base, raises ``RepositoryError`` with a
+        stable ``STALE_PREVIEW`` marker for the API layer.
+        """
+
+        try:
+            with self._lock:
+                with self._conn:
+                    import_row = self._conn.execute(
+                        "SELECT import_id, filename, source, uploaded_at, holdings_as_of, parser_version, "
+                        "status, total_rows, accepted_rows, rejected_rows, unresolved_rows, ambiguous_rows, "
+                        "confirmed_at, provenance_json FROM portfolio_imports WHERE import_id=?",
+                        (import_id,),
+                    ).fetchone()
+                    if import_row is None:
+                        raise RepositoryError("IMPORT_NOT_FOUND")
+                    import_record = self._portfolio_import_from_row(import_row)
+                    status = ImportStatus(str(import_record["status"]))
+                    if status is ImportStatus.CONFIRMED:
+                        existing_changes = tuple(
+                            self._change_from_reconciliation(row)
+                            for row in self.list_portfolio_reconciliations(import_id)
+                        )
+                        return True, existing_changes
+                    if status is not ImportStatus.PREVIEWED:
+                        raise RepositoryError("IMPORT_NOT_CONFIRMABLE")
+                    if (
+                        int(import_record["rejected_rows"])
+                        or int(import_record["unresolved_rows"])
+                        or int(import_record["ambiguous_rows"])
+                    ):
+                        raise RepositoryError("IMPORT_HAS_INVALID_ROWS")
+
+                    current = {
+                        holding.instrument_id: holding
+                        for holding in self._list_portfolio_holdings_locked()
+                    }
+                    if self._holdings_digest(current.values()) != expected_base_digest:
+                        raise RepositoryError("STALE_PREVIEW")
+
+                    uploaded = self._uploaded_holdings_for_import_locked(import_id, confirmed_at)
+                    if not uploaded:
+                        raise RepositoryError("IMPORT_HAS_NO_HOLDINGS")
+                    changes = reconcile_current_holdings(current, uploaded)
+                    for index, change in enumerate(changes, start=1):
+                        reconciliation_id = f"{import_id}-rec-{index:04d}"
+                        self._conn.execute(
+                            "INSERT INTO portfolio_reconciliations ("
+                            "reconciliation_id, import_id, reconciled_at, action, instrument_id, "
+                            "before_json, after_json, provenance_json"
+                            ") VALUES (?,?,?,?,?,?,?,?)",
+                            (
+                                reconciliation_id,
+                                import_id,
+                                confirmed_at.isoformat(),
+                                change.action.value,
+                                change.instrument_id,
+                                json.dumps(self._holding_to_json(change.before), sort_keys=True)
+                                if change.before
+                                else None,
+                                json.dumps(self._holding_to_json(change.after), sort_keys=True)
+                                if change.after
+                                else None,
+                                json.dumps({"base_digest": expected_base_digest}, sort_keys=True),
+                            ),
+                        )
+                        if change.action is ReconciliationAction.REMOVED:
+                            self._conn.execute(
+                                "DELETE FROM portfolio_holdings WHERE instrument_id=?",
+                                (change.instrument_id,),
+                            )
+                        elif change.action in (ReconciliationAction.ADDED, ReconciliationAction.UPDATED):
+                            after = change.after
+                            if after is None:
+                                raise RepositoryError("RECONCILIATION_AFTER_MISSING")
+                            self._conn.execute(
+                                "INSERT INTO portfolio_holdings ("
+                                "holding_id, instrument_id, quantity, avg_price, imported_at, updated_at, "
+                                "source_import_id, source_row_id, reconciliation_id, provenance_json"
+                                ") VALUES (?,?,?,?,?,?,?,?,?,?) "
+                                "ON CONFLICT(instrument_id) DO UPDATE SET "
+                                "quantity=excluded.quantity, avg_price=excluded.avg_price, "
+                                "updated_at=excluded.updated_at, source_import_id=excluded.source_import_id, "
+                                "source_row_id=excluded.source_row_id, "
+                                "reconciliation_id=excluded.reconciliation_id, "
+                                "provenance_json=excluded.provenance_json",
+                                (
+                                    f"hold-{after.instrument_id}",
+                                    after.instrument_id,
+                                    after.quantity,
+                                    str(after.avg_price),
+                                    after.imported_at.isoformat(),
+                                    after.updated_at.isoformat(),
+                                    after.source_import_id,
+                                    after.source_row_id,
+                                    reconciliation_id,
+                                    json.dumps(dict(after.provenance), sort_keys=True),
+                                ),
+                            )
+                    self._conn.execute(
+                        "UPDATE portfolio_imports SET status=?, confirmed_at=? WHERE import_id=?",
+                        (ImportStatus.CONFIRMED.value, confirmed_at.isoformat(), import_id),
+                    )
+                    return False, changes
+        except sqlite3.Error as exc:
+            raise RepositoryError(f"confirm portfolio import failed: {exc}") from exc
+
     def delete_decisions_data(self) -> dict[str, int]:
         """Owner-triggered full wipe of the Decisions & Trace domain: decisions,
         their reasoning traces, journal entries, and realized outcomes. Does
@@ -1532,6 +1798,152 @@ class SqliteRepository:
         )
 
     # ------------------------------------------------------------- internals
+
+    def _list_portfolio_holdings_locked(self) -> list[CanonicalPortfolioHolding]:
+        rows = self._conn.execute(
+            "SELECT instrument_id, quantity, avg_price, imported_at, updated_at, "
+            "source_import_id, source_row_id, provenance_json "
+            "FROM portfolio_holdings ORDER BY instrument_id"
+        ).fetchall()
+        return [self._portfolio_holding_from_row(row) for row in rows]
+
+    def _uploaded_holdings_for_import_locked(
+        self,
+        import_id: str,
+        confirmed_at: datetime,
+    ) -> dict[str, CanonicalPortfolioHolding]:
+        rows = self._conn.execute(
+            "SELECT import_id, source_row_id, source_row_number, original_values_json, "
+            "normalized_symbol, raw_symbol, quantity, avg_price, mapping_state, "
+            "resolved_instrument_id, validation_errors_json, warnings_json, metadata_json "
+            "FROM portfolio_import_rows WHERE import_id=? "
+            "ORDER BY source_row_number ASC, source_row_id ASC",
+            (import_id,),
+        ).fetchall()
+        holdings: dict[str, CanonicalPortfolioHolding] = {}
+        for row in rows:
+            item = self._portfolio_import_row_from_row(row)
+            errors = tuple(item["validation_errors"])
+            mapping_state = SymbolMappingState(str(item["mapping_state"]))
+            if errors or mapping_state is not SymbolMappingState.RESOLVED:
+                raise RepositoryError("IMPORT_HAS_INVALID_ROWS")
+            instrument_id = str(item["resolved_instrument_id"])
+            if instrument_id in holdings:
+                raise RepositoryError("DUPLICATE_CANONICAL_INSTRUMENT")
+            holdings[instrument_id] = CanonicalPortfolioHolding(
+                instrument_id=instrument_id,
+                quantity=int(item["quantity"]),
+                avg_price=Decimal(str(item["avg_price"])),
+                imported_at=confirmed_at,
+                updated_at=confirmed_at,
+                source_import_id=import_id,
+                source_row_id=str(item["source_row_id"]),
+                provenance={
+                    "source_row_number": item["source_row_number"],
+                    "raw_symbol": item["raw_symbol"],
+                    "normalized_symbol": item["normalized_symbol"],
+                },
+            )
+        return holdings
+
+    def _holdings_digest(self, holdings: Iterable[CanonicalPortfolioHolding]) -> str:
+        import hashlib
+
+        payload = [
+            {
+                "instrument_id": holding.instrument_id,
+                "quantity": holding.quantity,
+                "avg_price": str(holding.avg_price),
+            }
+            for holding in sorted(holdings, key=lambda item: item.instrument_id)
+        ]
+        return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
+
+    def _portfolio_import_from_row(self, row: tuple) -> dict[str, object]:
+        return {
+            "import_id": row[0],
+            "filename": row[1],
+            "source": row[2],
+            "uploaded_at": datetime.fromisoformat(row[3]),
+            "holdings_as_of": datetime.fromisoformat(row[4]) if row[4] else None,
+            "parser_version": row[5],
+            "status": row[6],
+            "total_rows": int(row[7]),
+            "accepted_rows": int(row[8]),
+            "rejected_rows": int(row[9]),
+            "unresolved_rows": int(row[10]),
+            "ambiguous_rows": int(row[11]),
+            "confirmed_at": datetime.fromisoformat(row[12]) if row[12] else None,
+            "provenance": json.loads(row[13] or "{}"),
+        }
+
+    def _portfolio_import_row_from_row(self, row: tuple) -> dict[str, object]:
+        return {
+            "import_id": row[0],
+            "source_row_id": row[1],
+            "source_row_number": int(row[2]),
+            "original_values": json.loads(row[3] or "{}"),
+            "normalized_symbol": row[4],
+            "raw_symbol": row[5],
+            "quantity": int(row[6]) if row[6] is not None else None,
+            "avg_price": Decimal(str(row[7])) if row[7] is not None else None,
+            "mapping_state": row[8],
+            "resolved_instrument_id": row[9],
+            "validation_errors": tuple(json.loads(row[10] or "[]")),
+            "warnings": tuple(json.loads(row[11] or "[]")),
+            "metadata": json.loads(row[12] or "{}"),
+        }
+
+    def _portfolio_holding_from_row(self, row: tuple) -> CanonicalPortfolioHolding:
+        return CanonicalPortfolioHolding(
+            instrument_id=row[0],
+            quantity=int(row[1]),
+            avg_price=Decimal(str(row[2])),
+            imported_at=datetime.fromisoformat(row[3]),
+            updated_at=datetime.fromisoformat(row[4]),
+            source_import_id=row[5],
+            source_row_id=row[6],
+            provenance=json.loads(row[7] or "{}"),
+        )
+
+    def _portfolio_reconciliation_from_row(self, row: tuple) -> dict[str, object]:
+        return {
+            "reconciliation_id": row[0],
+            "import_id": row[1],
+            "reconciled_at": datetime.fromisoformat(row[2]),
+            "action": row[3],
+            "instrument_id": row[4],
+            "before": json.loads(row[5]) if row[5] else None,
+            "after": json.loads(row[6]) if row[6] else None,
+            "provenance": json.loads(row[7] or "{}"),
+        }
+
+    def _change_from_reconciliation(self, row: Mapping[str, object]) -> ReconciliationChange:
+        return ReconciliationChange(
+            instrument_id=str(row["instrument_id"]),
+            action=ReconciliationAction(str(row["action"])),
+            before=None,
+            after=None,
+        )
+
+    def _holding_to_json(self, holding: CanonicalPortfolioHolding | None) -> dict[str, object] | None:
+        if holding is None:
+            return None
+        return {
+            "instrument_id": holding.instrument_id,
+            "quantity": holding.quantity,
+            "avg_price": str(holding.avg_price),
+            "imported_at": holding.imported_at.isoformat(),
+            "updated_at": holding.updated_at.isoformat(),
+            "source_import_id": holding.source_import_id,
+            "source_row_id": holding.source_row_id,
+            "provenance": dict(holding.provenance),
+        }
+
+    def _enum_value(self, value: object, enum_type: type[Enum]) -> str:
+        if isinstance(value, enum_type):
+            return str(value.value)
+        return str(enum_type(str(value)).value)
 
     def _write(self, sql: str, params: tuple) -> None:
         try:
