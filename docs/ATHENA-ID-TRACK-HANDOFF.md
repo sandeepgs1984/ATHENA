@@ -4,8 +4,8 @@
 owner-approved and CLOSED; ID-5 owner-approved and CLOSED; ID-6 discovery
 architecture owner-approved with condition; ID-6A0 Entry Qualification ADR
 owner-approved and closed; ID-6A owner-approved and closed; ID-6B.0
-owner-approved and closed; ID-6B.1 evidence baseline ready for owner policy
-review)
+owner-approved and closed; ID-6B.1 owner-approved and closed; ID-6B.1A
+session-data-quality audit ready for owner policy freeze review)
 **Governing boundary:** accepted `docs/adr/ADR-013-entry-qualification-architecture.md`
 for Entry Qualification; otherwise this track extends the existing frozen
 `ATHENA-002-System-Blueprint.md` module map (§6 of `ATHENA_BRIEFING.md`).
@@ -18,12 +18,19 @@ ID-5B is CLOSED and ID-5 is CLOSED. ID-6 discovery architecture is
 owner-approved with condition, and ID-6A0 is owner-approved and closed after
 ADR-013 acceptance on 2026-09-02. ID-6A domain/state/finality/confirmation
 contracts are owner-approved and closed. ID-6B.0 methodology discovery is
-owner-approved and closed. ID-6B.1 read-only evidence baseline is ready for
-owner policy review; no engine, persistence, workflow stage, thresholds, UI,
-or production behavior has been implemented.
+owner-approved and closed. ID-6B.1 read-only evidence baseline is
+owner-approved and closed — the baseline itself was accepted, but the
+`EXPECTED_BAR_MISSING`=72.97% blocker was escalated to ID-6B.1A rather
+than resolved. ID-6B.1A root-caused it to a chronic, unrepaired M15
+candle off-grid condition (not a `SessionContext` defect — see §6 below)
+and re-ran the baseline uncapped (19x the original sample) to test
+representativeness; ready for owner policy freeze review. No engine,
+persistence, workflow stage, thresholds, UI, or production behavior has
+been implemented by either milestone.
 Evidence notes:
-`docs/research/ID-5B-LIVE-M5-SEMANTICS-CAPTURE-2026-08-31.md` and
-`docs/research/ID-6-SCOPE-ARCHITECTURE-DESIGN.md`.
+`docs/research/ID-5B-LIVE-M5-SEMANTICS-CAPTURE-2026-08-31.md`,
+`docs/research/ID-6-SCOPE-ARCHITECTURE-DESIGN.md`, and
+`docs/research/ID-6B.1A-SESSION-DATA-QUALITY-AUDIT.md`.
 
 **Read `docs/ATHENA-EMR-HANDOFF.md` §6/§8 before touching anything on
 Monday.** EMR's own EM-5 milestone has an *independent* open blocker
@@ -61,7 +68,8 @@ Track B capture is running the same morning.
 | ID-6A0 | OWNER APPROVED / CLOSED 2026-09-02 — ADR-013 accepted after ID-6A0.1 corrected evidence finality/provenance vs methodology confirmation |
 | ID-6A | OWNER APPROVED / CLOSED 2026-09-02 — immutable Entry Qualification domain contracts accepted; no engine, persistence, workflow, thresholds, ID-7, EM-6, EMR, DarvaX, or production behavior |
 | ID-6B.0 | OWNER APPROVED / CLOSED 2026-09-02 — methodology/design accepted; illustrative practical-v0 rule not approved; owner decisions frozen for QUALIFIED allowed architecturally, terminal disqualification off in v0, OR contextual, WATCH/TRADE same methodology unless evidence proves otherwise, confirmation methodology unapproved, no additive score |
-| ID-6B.1 | EVIDENCE BASELINE COMPLETE — READY FOR OWNER POLICY REVIEW 2026-09-02 — read-only settled historical market-time replay measured 370 candidate-checkpoint observations across 5 recent sessions and 32 instruments; no production engine implemented |
+| ID-6B.1 | OWNER APPROVED / CLOSED 2026-09-02 — read-only settled historical market-time replay measured 370 candidate-checkpoint observations across 5 recent sessions and 32 instruments; `EXPECTED_BAR_MISSING`=72.97% blocker escalated to ID-6B.1A; no production engine implemented |
+| ID-6B.1A | AUDIT COMPLETE — READY FOR OWNER POLICY FREEZE REVIEW 2026-09-02 — root-caused `EXPECTED_BAR_MISSING` to a chronic, unrepaired M15 off-grid data condition (96.30% of affected observations), confirmed zero M15 dependency in VWAP/RS/RVOL/Gap/OR by source inspection, verified checkpoint-boundary math exact (no harness/production bug), and re-ran the baseline uncapped (7,144 observations, 19x) finding every headline figure broadly stable except TRADE-specific ones (temporally concentrated on ~1 real day); recommends artifact-owned availability (Option C) over the blanket quality gate |
 
 The full detailed evidence for every closed milestone above is in
 `docs/MILESTONES.md`'s "Intraday Intelligence Track" section (long — this
@@ -175,14 +183,45 @@ ID-6A implements only the immutable domain/state/finality/confirmation
 contracts under `src/athena/intraday/entry_qualification_models.py` and is
 owner-approved / closed as of 2026-09-02.
 
-ID-6B.1 is the current review gate:
+ID-6B.1 is owner-approved and closed:
 `docs/research/ID-6B.1-ENTRY-QUALIFICATION-EVIDENCE-BASELINE.md` records the
-read-only evidence baseline for future policy freeze. The baseline artifacts
-live under `artifacts/research/id6b1/`; stable analysis SHA-256 is
-`7baf33e01df22d2acae000c44bcb7b0be0f2017d12248432e435eb986619b5fb`. Do not
-implement an engine, persistence, UI, thresholds, IntradayTradePlan, ID-6B.2,
-ID-6C, ID-6D, ID-6E, ID-7, EM-6, EMR, DarvaX, or order behavior until the
-owner approves ID-6B.1 and explicitly authorizes the next milestone.
+read-only evidence baseline. The baseline artifacts live under
+`artifacts/research/id6b1/`; stable analysis SHA-256 is
+`7baf33e01df22d2acae000c44bcb7b0be0f2017d12248432e435eb986619b5fb`. The
+baseline itself was accepted, but its `EXPECTED_BAR_MISSING`=72.97%
+finding was escalated to ID-6B.1A rather than resolved.
+
+**ID-6B.1A is the current review gate**:
+`docs/research/ID-6B.1A-SESSION-DATA-QUALITY-AUDIT.md`. Root cause: a
+chronic, systemic M15 candle off-grid condition in `db/athena.db` — only
+a session's own opening M15 bar (`09:15:00`) is reliably on-grid; every
+subsequent M15 row is off-grid by seconds to tens of minutes (confirmed
+directly against the real database). `live_m5_settlement_repair.py` is
+hardcoded to `Timeframe.M5` — no M15 equivalent exists anywhere in the
+repository, so unlike M5 (repaired for settled dates by ID-5A), M15 has
+never been repaired. This is **not a `SessionContext` code defect** — its
+completion logic correctly reports the missing bars; the underlying M15
+data itself is the gap. Confirmed by direct source inspection that VWAP,
+`RelativeStrengthContext`, `RelativeVolumeContext`, `GapContext`, and
+`OpeningRangeEvidence` have **zero M15 dependency** — only the trend
+label's 15m leg touches M15, under a materially looser contract than
+`SessionContext`'s own blanket gate. Checkpoint-boundary math was
+independently re-verified exact (no off-by-one, no harness bug). A
+19x-larger uncapped replay (7,144 observations, same 5 sessions/6
+checkpoints, artifacts under `artifacts/research/id6b1a/uncapped_baseline/`,
+SHA-256 `bee4626fb0d418db2643bce0d286a6500b080f1bc21e11fd124cfa1fd7014491`)
+found every headline prevalence figure broadly stable except TRADE-
+specific figures, which remain provisional because TRADE decisions in
+this window are concentrated on effectively one real trading day.
+Recommendation: GO WITH CONDITIONS — adopt artifact-owned availability
+(Option C) instead of the blanket `SessionDataQuality` gate; document the
+M15 data gap as a future, separately-authorized prerequisite candidate
+(mirroring ID-5A), not fixed here.
+
+Do not implement an engine, persistence, UI, thresholds, IntradayTradePlan,
+an M15 settlement-repair milestone, ID-6B.2, ID-6C, ID-6D, ID-6E, ID-7,
+EM-6, EMR, DarvaX, or order behavior until the owner approves the ID-6B.1A
+policy recommendation and explicitly authorizes the next milestone.
 
 ## 7. ID-5B — closed result
 

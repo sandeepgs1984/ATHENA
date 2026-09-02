@@ -6,7 +6,108 @@ status updated on approval.
 
 ---
 
-## ID-6B.1 Entry Qualification Evidence Baseline — Ready for Owner Review
+## ID-6B.1A Session Data Quality & Baseline Representativeness Audit — Ready for Owner Policy Freeze Review
+
+**Summary.** Recorded ID-6B.1 as owner-approved / closed. Root-caused
+`SessionDataQualityStatus.EXPECTED_BAR_MISSING` (270/370, 72.97% of
+ID-6B.1's observations) to a chronic, systemic M15 candle off-grid
+condition in `db/athena.db`: only a session's opening M15 bar
+(`09:15:00`) is reliably on-grid (one real instrument/session sampled
+directly via SQL showed 1 on-grid row of 27 total M15 rows); every
+subsequent M15 row is off-grid by seconds to tens of minutes.
+`live_m5_settlement_repair.py` is hardcoded to `Timeframe.M5` — no M15
+equivalent exists anywhere in the repository, so unlike M5 (repaired for
+settled dates by ID-5A), M15 has never been repaired. `SessionContext`'s
+own completion logic is not defective — it correctly reports the missing
+bars; the underlying M15 data itself is the gap. M15 involvement
+accounts for 260/270 (96.30%) of all affected observations.
+
+Confirmed by direct source inspection (not inference) that VWAP,
+RelativeStrengthContext, RelativeVolumeContext, GapContext, and
+OpeningRangeEvidence have zero M15 dependency — only the trend label's
+15m leg touches M15, under a materially looser retrieval contract
+(last-N-bars-by-limit, not the full since-open due-set `SessionContext`
+requires). The blanket `SessionDataQuality` gate therefore answers a
+stricter question than any evidence family the proposed v0 policy
+actually consumes.
+
+Independently re-verified the checkpoint-boundary math (due-bar counts at
+all six ID-6B.1 checkpoints) against hand-calculation — exact match, no
+off-by-one defect in either production `SessionContext` or ID-6B.1's own
+harness retrieval.
+
+Re-ran ID-6B.1's own unmodified harness with the 10-per-type cap removed
+(`per_type=1000`) against the same five sessions/six checkpoints: 7,144
+observations (19x the original sample, 381 distinct instruments),
+runtime 194.591s, deterministic SHA-256
+`bee4626fb0d418db2643bce0d286a6500b080f1bc21e11fd124cfa1fd7014491`. Every
+headline prevalence figure (VWAP/trend/RS/RVOL prevalence, candidate-
+policy-match rate, WATCH match rate, association strengths) moved by only
+a few percentage points — broadly stable. The one exception: TRADE-
+specific figures moved more (match rate 20.00%→28.25%), traced to a real
+population fact measured directly against the `decisions` table: TRADE
+decisions in this five-session window are concentrated on effectively one
+real trading day (2026-08-26, plus one checkpoint on 2026-08-27) — every
+other session/checkpoint combination in the window has zero TRADE
+candidates. Uncapping cannot fix a temporal-concentration limitation;
+TRADE-specific findings are flagged provisional pending a wider window.
+Flicker (true-then-later-false) moved from 37.84% (n=74 groups) to 46.43%
+(n=1,273 groups) — reinforces, not weakens, ID-6B.1's own deferral of
+`CONFIRMED_BY_POLICY`.
+
+**Architecture compliance.** Preserves ADR-013, ATHENA-002, ADR-003,
+ADR-005, ADR-012, and the advisory-only/no-order boundary. No production
+`SessionContext`, `IntradaySignalSet`, `ScoringEngine`, `DecisionEngine`,
+`TradePlan`, provider, workflow, or persistence behavior changed. No
+Entry Qualification engine, ID-6B.2, ID-6C, ID-6D, ID-6E, ID-7, EM-6,
+EMR, or DarvaX behavior touched.
+
+**Files created.** `src/athena/data/id6b1a_session_quality_audit.py`,
+`tests/data_layer/test_id6b1a_session_quality_audit.py`,
+`docs/research/ID-6B.1A-SESSION-DATA-QUALITY-AUDIT.md`.
+
+**Files modified.** `docs/MILESTONES.md`,
+`docs/ATHENA-ID-TRACK-HANDOFF.md`, `IMPLEMENTATION_SUMMARY.md`.
+
+**Behavior implemented.** Research diagnostic only. Reuses ID-6B.1's own
+`ReadOnlyStore` (`mode=ro` + `PRAGMA query_only=ON`), candidate selection,
+and production `SessionContextEngine`, extended to capture per-timeframe
+(`five_min`/`fifteen_min`) provenance detail and an independently
+re-derived due/present/missing timestamp set for cross-verification. Also
+re-ran ID-6B.1's own unmodified harness with a larger `per_type`. Writes
+only to `artifacts/research/id6b1a/` (gitignored). No DB writes, no
+provider calls, no raw artifact mutation.
+
+**Verification.** Focused tests: 3 passed (new diagnostic), plus ID-6B.1's
+own 3 unaffected. Ruff clean for both new files. `git diff --check`
+clean. Determinism: the new diagnostic produced byte-identical summaries
+across two independent runs; the uncapped baseline reused ID-6B.1's own
+existing deterministic-digest mechanism (matched on rerun). Full
+repository suite: 3,010 passed, 1 pre-existing skip, 0 failed.
+
+**Risks / known gaps.** The M15 settlement-repair gap is real and
+unrepaired; its live-session severity is not measured here (this is a
+settled historical replay, not a live canary — a future milestone would
+need its own live evidence, mirroring ID-5B's own discipline). TRADE/
+WATCH methodology parity is not yet confirmed under genuinely diverse
+TRADE conditions. The Option C policy recommendation has not itself been
+applied and re-measured against the sample.
+
+**Suggested improvements.** Owner should ratify the Option C
+artifact-owned-availability quality policy before the v0 readiness rule
+is frozen; consider a separately-authorized M15 settlement-repair
+investigation as a later, independent milestone (mirroring ID-5A); widen
+the session window before treating TRADE-specific prevalence as stable.
+
+**Remaining work.** Owner policy freeze review. Do not start ID-6B.2,
+persistence, workflow integration, an M15 repair milestone, ID-7, EM-6,
+EMR, DarvaX, or UI/production work until explicitly authorized.
+
+**Outcome:** Audit complete; ready for owner policy freeze review.
+
+---
+
+## ID-6B.1 Entry Qualification Evidence Baseline — Owner Approved / Closed
 
 **Summary.** Recorded ID-6B.0 as owner-approved / closed and completed the
 owner-authorized ID-6B.1 read-only evidence baseline. The reusable harness
@@ -56,7 +157,9 @@ ID-6B.2 pure engine implementation.
 workflow integration, ID-7, EM-6, EMR, DarvaX, UI, provider, DB, or production
 work until explicitly authorized.
 
-**Outcome:** Evidence baseline complete; ready for owner policy review.
+**Outcome:** Owner approved / closed 2026-09-02. The `EXPECTED_BAR_MISSING`
+(72.97%) blocker was escalated to ID-6B.1A rather than resolved here — see
+that entry above for root cause and resolution.
 
 ---
 
