@@ -6,7 +6,7 @@ status updated on approval.
 
 ---
 
-## ID-6C Entry Qualification Persistence — Implemented / Ready for Owner Persistence Review
+## ID-6C Entry Qualification Persistence — Architecture Accepted, Closure Held for ID-6C.1
 
 **Summary.** Owner closed ID-6B in full (ID-6A, ID-6B.0, ID-6B.1, ID-6B.1A,
 ID-6B.1B, ID-6B.2, ID-6B.2A) and authorized ID-6C to add durable, auditable
@@ -134,7 +134,142 @@ supersession selection, consuming this persistence layer's read API as-is.
 persistence, workflow integration, API/UI, ID-7, or EM-6 until explicitly
 authorized.
 
-**Outcome:** Implemented; ready for owner persistence review.
+**Outcome:** Persistence architecture accepted; one integrity gap found on
+review (FK proves the referenced Decision exists but not that the
+EntryQualification's Decision-derived fields agree with it) — corrected
+and closed under ID-6C.1 immediately below.
+
+---
+
+## ID-6C.1 Entry Qualification Canonical Decision-Binding Hardening — Implemented / Ready for Owner Persistence Closure Review
+
+**Summary.** Owner review of ID-6C accepted the persistence architecture
+(append-only observations, composite logical identity, deterministic
+serialization, idempotent identical writes, loud conflicting-payload
+rejection, latest/history queries, no workflow wiring, no knowledge-time
+claim) but held closure for one narrow integrity gap: `entry_qualifications.decision_id`
+correctly has a foreign key to `decisions(decision_id)`, but that only
+proves the referenced Decision *exists* — it does not prove the persisted
+`EntryQualification`'s own Decision-derived fields (`instrument_id`,
+`decision_type`, `run_id`, `cycle_id`) actually agree with it. A row could
+in principle claim `decision_id="decision-A"` (belonging to `NSE:AAA`)
+while carrying `instrument_id="NSE:BBB"`, or claim `decision_type=TRADE`
+for a Decision that is actually `WATCH` — corrupting exactly the
+instrument/session read models `latest_entry_qualification_for_instrument_session`
+depends on, and conflating `QUALIFIED` (a readiness state) with
+`DecisionType.TRADE` (a completely different dimension).
+
+Added `_validate_entry_qualification_decision_binding`, which loads the
+canonical Decision by `eq.decision_id` and requires exact equality of
+`decision_type`, `run_id`, `cycle_id`, and — only when
+`decision.instrument_id is not None` — `instrument_id`. The `None` branch
+mirrors `EntryQualificationEngine._resolve_instrument_id`'s own established
+fallback exactly (no new persistence-only semantics invented); confirmed by
+source inspection that the real production `DecisionEngine` always sets
+`instrument_id` for WATCH/TRADE Decisions (`src/athena/decision/engine.py`),
+so that branch is a defensive completeness path for the generic `Decision`
+contract, not an exercised real one. A missing `decision_id` now raises a
+clean, deterministic `RepositoryError` at the repository level *before* any
+INSERT is attempted; the schema's own FK remains in place as a database-level
+backstop, not a replacement — test-proven still enforced by bypassing the
+repository method and inserting directly.
+
+Critically, this validation runs on **every** `save_entry_qualification`
+call — both the insert path and the idempotency-check path — so an
+already-persisted, internally-consistent row can never let a second,
+Decision-inconsistent call hide behind "identical logical identity ⇒
+no-op". This closes a real gap in the original ID-6C design: because
+`_entry_qualification_payload` already excluded `run_id`/`cycle_id` from
+the conflict comparison, a second call with the same `decision_id` but a
+different `run_id` would previously have been treated as an idempotent
+duplicate (returning `False`) rather than the contradictory input it
+actually is.
+
+Corrected the underlying rationale for excluding `run_id`/`cycle_id` from
+`_entry_qualification_payload`'s comparison: not because they may
+legitimately differ across writes to the same logical identity (the
+original, too-weak wording), but because binding validation has *already*
+proven both rows' `run_id`/`cycle_id` agree with the same canonical
+Decision by the time that comparison ever runs — comparing them again
+would be redundant, not permissive. `run_id`/`cycle_id` remain outside the
+composite primary key, since `decision_id` already functionally determines
+them; source analysis found no evidence one `decision_id` can legitimately
+map to multiple `run_id`/`cycle_id` pairs, so no primary-key change was
+warranted.
+
+No schema/DDL change was required — SCHEMA_VERSION remains 17 — since
+repository-level validation, run inside the existing write-locked
+transaction, is sufficient; no duplicated composite-FK machinery was added.
+
+**Architecture compliance.** Preserves ADR-013, ATHENA-002, ADR-003,
+ADR-005, ADR-009, ADR-012, and the advisory-only/no-order boundary. The
+accepted ID-6C persistence architecture (append-only model, logical
+identity, serialization, latest/history query semantics, no workflow
+wiring, no knowledge-time claim) is unchanged — this is an integrity
+correction, not a redesign. Decision supersession remains explicitly
+deferred to ID-6D, unchanged from ID-6B.2A's own frozen boundary — this
+milestone validates internal coherence ("does this qualification
+truthfully belong to the Decision it claims?"), never currency ("should
+this Decision still be the one evaluated now?"). No `EntryQualificationEngine`
+methodology, `ScoringEngine`, `DecisionEngine` behavior, `TradePlan`,
+`SessionContext`, provider, workflow, API/UI, EMR, or DarvaX change.
+
+**Files created.** None.
+
+**Files modified.** `src/athena/data/store/repository.py` (added
+`_validate_entry_qualification_decision_binding`; corrected
+`_entry_qualification_payload`'s docstring rationale; `save_entry_qualification`
+now loads and validates the canonical Decision before both the insert and
+idempotency-check paths), `tests/data_layer/test_entry_qualification_repository.py`
+(replaced 1 stale test whose expectation was now wrong, added 10 new — net
++7, 40 total), `docs/design/ID-6C-ENTRY-QUALIFICATION-PERSISTENCE.md`
+(new §3a documenting the binding invariant; §4 write-semantics corrected),
+`docs/MILESTONES.md`, `docs/ATHENA-ID-TRACK-HANDOFF.md`,
+`IMPLEMENTATION_SUMMARY.md`.
+
+**Behavior implemented.** One new module-level pure-ish function (reads the
+already-open transaction's connection, no new I/O primitive); still O(1)
+per call — one additional indexed lookup by `decision_id` (already the
+table's own PK, via `decisions`' existing primary key) before the existing
+logic. No repository/provider/network access beyond what `save_entry_qualification`
+already had. Not wired into any production path — same as ID-6C.
+
+**Verification.** Focused tests: replaced `test_repeated_save_under_different_run_cycle_is_still_idempotent`
+(its expectation was now wrong) and `test_foreign_key_to_decisions_enforced`
+(superseded by a repository-level check); added `test_run_id_mismatch...`,
+`test_cycle_id_mismatch...`, `test_decision_type_mismatch...`,
+`test_instrument_mismatch...`, `test_valid_binding_persists`,
+`test_missing_decision_raises_repository_error`,
+`test_invalid_duplicate_cannot_hide_behind_idempotency`,
+`test_decision_instrument_id_none_fallback_matches_engine_contract`,
+`test_missing_decision_repository_check_fires_before_any_insert`,
+`test_foreign_key_to_decisions_still_enforced_at_db_level` — 10 new, all
+non-vacuous. 2 of the most safety-critical (the `run_id` binding check
+itself, and — separately — the *ordering* requirement that binding
+validation runs before, not after, the idempotency check) independently
+confirmed by deliberately mutating the implementation, observing the
+expected test failure, and reverting.
+`tests/data_layer/test_entry_qualification_repository.py`: 40 passed.
+`tests/market_intel/test_entry_qualification_models.py` +
+`test_entry_qualification_engine.py`: 67 passed, unaffected. Ruff clean
+(the same 11 pre-existing `SIM117` findings elsewhere in `repository.py`,
+confirmed against HEAD, remain untouched — out of scope). `git diff --check`
+clean. Full repository suite: **3,114 passed, 1 pre-existing skip, 0
+failed**. SCHEMA_VERSION unchanged (17). No production DB writes, no
+provider calls, no workflow changes, no methodology changes, no EMR/DarvaX
+impact.
+
+**Risks / known gaps.** None newly introduced. Decision supersession
+resolution remains entirely deferred to ID-6D, as before.
+
+**Suggested improvements.** None beyond what ID-6C already identified for
+ID-6D.
+
+**Remaining work.** Owner persistence closure review of ID-6C (now
+including ID-6C.1). Do not start ID-6D, persistence, workflow integration,
+API/UI, ID-7, or EM-6 until explicitly authorized.
+
+**Outcome:** Implemented; ready for owner persistence closure review.
 
 ---
 

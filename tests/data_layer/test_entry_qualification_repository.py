@@ -9,6 +9,7 @@ methodology itself.
 from __future__ import annotations
 
 import inspect
+import sqlite3
 from datetime import date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -48,15 +49,22 @@ def repo(tmp_path: Path):
     repository.close()
 
 
-def _decision(decision_id: str = "decision-1") -> Decision:
+def _decision(
+    decision_id: str = "decision-1",
+    *,
+    run_id: str = "run-1",
+    cycle_id: str = "cycle-1",
+    decision_type: DecisionType = DecisionType.WATCH,
+    instrument_id: str | None = IID,
+) -> Decision:
     return Decision(
         decision_id=decision_id,
         ts=AS_OF,
-        run_id="run-1",
-        cycle_id="cycle-1",
-        decision_type=DecisionType.WATCH,
+        run_id=run_id,
+        cycle_id=cycle_id,
+        decision_type=decision_type,
         explanation="test decision",
-        instrument_id=IID,
+        instrument_id=instrument_id,
     )
 
 
@@ -79,6 +87,8 @@ def _eq(
     run_id: str = "run-1",
     cycle_id: str = "cycle-1",
     explanation: str = "QUALIFIED: positive VWAP, bullish M5/M15 trend, and RS/RVOL support.",
+    decision_type_override: DecisionType = DecisionType.WATCH,
+    instrument_id_override: str = IID,
 ) -> EntryQualification:
     if evidence_refs is None:
         evidence_refs = (
@@ -96,13 +106,13 @@ def _eq(
             ),
         )
     return EntryQualification(
-        instrument_id=IID,
+        instrument_id=instrument_id_override,
         session_date=DAY,
         as_of=as_of,
         run_id=run_id,
         cycle_id=cycle_id,
         decision_id=decision_id,
-        decision_type=DecisionType.WATCH,
+        decision_type=decision_type_override,
         state=state,
         evidence_finality=evidence_finality,
         confirmation=confirmation,
@@ -305,19 +315,92 @@ def test_repeated_identical_save_is_idempotent(repo) -> None:
     assert len(history) == 1  # not duplicated
 
 
-def test_repeated_save_under_different_run_cycle_is_still_idempotent(repo) -> None:
-    """run_id/cycle_id differ (a genuinely different pipeline invocation
-    re-evaluating the identical logical candidate) but every
-    methodology-relevant field agrees -- still a no-op, per owner's
-    explicit exclusion of run/cycle identity from the conflict check."""
-    repo.save_decision(_decision())
-    first = _eq(run_id="run-1", cycle_id="cycle-1")
-    second = _eq(run_id="run-2", cycle_id="cycle-2")
-    assert repo.save_entry_qualification(first, persisted_at=AS_OF) is True
-    assert repo.save_entry_qualification(second, persisted_at=AS_OF) is False
-    history = repo.list_entry_qualifications_for_instrument_session(IID, DAY)
-    assert len(history) == 1
-    assert history[0].run_id == "run-1"  # first write's provenance wins, not overwritten
+def test_run_id_mismatch_against_canonical_decision_fails(repo) -> None:
+    """ID-6C.1: run_id is NOT part of the observation primary key (decision_id
+    already functionally determines it), but a persisted EntryQualification
+    must exactly match the referenced canonical Decision's run_id -- a
+    different run_id for the same decision_id is contradictory provenance,
+    never a legitimate 'another run re-evaluated this' case."""
+    repo.save_decision(_decision(run_id="run-1", cycle_id="cycle-1"))
+    with pytest.raises(RepositoryError, match="decision binding mismatch: run_id"):
+        repo.save_entry_qualification(
+            _eq(run_id="run-2", cycle_id="cycle-1"), persisted_at=AS_OF
+        )
+
+
+def test_cycle_id_mismatch_against_canonical_decision_fails(repo) -> None:
+    repo.save_decision(_decision(run_id="run-1", cycle_id="cycle-1"))
+    with pytest.raises(RepositoryError, match="decision binding mismatch: cycle_id"):
+        repo.save_entry_qualification(
+            _eq(run_id="run-1", cycle_id="cycle-2"), persisted_at=AS_OF
+        )
+
+
+def test_decision_type_mismatch_against_canonical_decision_fails(repo) -> None:
+    """QUALIFIED != DecisionType.TRADE -- a persisted row must never claim a
+    different decision_type than the WATCH/TRADE Decision it is bound to,
+    even when its qualification state is QUALIFIED."""
+    repo.save_decision(_decision(decision_type=DecisionType.WATCH))
+    with pytest.raises(RepositoryError, match="decision binding mismatch: decision_type"):
+        repo.save_entry_qualification(
+            _eq(decision_type_override=DecisionType.TRADE), persisted_at=AS_OF
+        )
+
+
+def test_instrument_mismatch_against_canonical_decision_fails(repo) -> None:
+    repo.save_decision(_decision(instrument_id=IID))
+    with pytest.raises(RepositoryError, match="decision binding mismatch: instrument_id"):
+        repo.save_entry_qualification(
+            _eq(instrument_id_override="NSE:BBB"), persisted_at=AS_OF
+        )
+
+
+def test_valid_binding_persists(repo) -> None:
+    repo.save_decision(_decision(instrument_id=IID, decision_type=DecisionType.WATCH,
+                                  run_id="run-1", cycle_id="cycle-1"))
+    eq = _eq(run_id="run-1", cycle_id="cycle-1")
+    assert repo.save_entry_qualification(eq, persisted_at=AS_OF) is True
+
+
+def test_missing_decision_raises_repository_error(repo) -> None:
+    eq = _eq(decision_id="nonexistent-decision")
+    with pytest.raises(RepositoryError, match="references unknown decision_id"):
+        repo.save_entry_qualification(eq, persisted_at=AS_OF)
+
+
+def test_invalid_duplicate_cannot_hide_behind_idempotency(repo) -> None:
+    """Binding validation must run on EVERY call, including a call at an
+    already-persisted logical identity -- an invalid second call must raise,
+    never silently return False."""
+    repo.save_decision(_decision(run_id="run-1", cycle_id="cycle-1"))
+    valid = _eq(run_id="run-1", cycle_id="cycle-1")
+    assert repo.save_entry_qualification(valid, persisted_at=AS_OF) is True
+
+    # Same logical identity (instrument/session/as_of/decision/methodology),
+    # but a run_id that no longer matches the canonical Decision.
+    contradictory = _eq(run_id="run-2", cycle_id="cycle-1")
+    with pytest.raises(RepositoryError, match="decision binding mismatch: run_id"):
+        repo.save_entry_qualification(contradictory, persisted_at=AS_OF)
+
+    # The original, valid row must remain untouched.
+    got = repo.get_entry_qualification(
+        instrument_id=IID, session_date=DAY, as_of=AS_OF,
+        decision_id="decision-1", methodology_version="entry-qualification-v0",
+    )
+    assert got.run_id == "run-1"
+
+
+def test_decision_instrument_id_none_fallback_matches_engine_contract(repo) -> None:
+    """ID-6B.2's own EntryQualificationEngine._resolve_instrument_id falls
+    back (does not compare) when Decision.instrument_id is None; ID-6C.1
+    mirrors that exact established fallback rather than inventing a new
+    persistence-only rule. (The real production DecisionEngine always sets
+    instrument_id for WATCH/TRADE Decisions -- this exercises the generic
+    Decision contract's defensive completeness path, not an observed real
+    one.)"""
+    repo.save_decision(_decision(instrument_id=None, run_id="run-1", cycle_id="cycle-1"))
+    eq = _eq(run_id="run-1", cycle_id="cycle-1")  # eq.instrument_id == IID
+    assert repo.save_entry_qualification(eq, persisted_at=AS_OF) is True
 
 
 def test_conflicting_payload_at_same_logical_identity_fails(repo) -> None:
@@ -438,12 +521,29 @@ def test_existing_tables_unaffected_by_migration(repo) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_foreign_key_to_decisions_enforced(repo) -> None:
-    """No matching decisions row -- a real DB-level required-relationship
-    failure, not a domain-level check."""
+def test_missing_decision_repository_check_fires_before_any_insert(repo) -> None:
+    """save_entry_qualification's own repository-level check (ID-6C.1)
+    catches a missing decision_id and never reaches the INSERT at all."""
     eq = _eq(decision_id="nonexistent-decision")
-    with pytest.raises(RepositoryError, match="integrity violation"):
+    with pytest.raises(RepositoryError, match="references unknown decision_id"):
         repo.save_entry_qualification(eq, persisted_at=AS_OF)
+    assert repo.record_counts()["entry_qualifications"] == 0
+
+
+def test_foreign_key_to_decisions_still_enforced_at_db_level(repo) -> None:
+    """The schema's own FK (decision_id REFERENCES decisions) supplements,
+    not replaces, the repository-level check -- proven by bypassing the
+    repository method entirely and inserting a row directly."""
+    eq = _eq(decision_id="nonexistent-decision")
+    with pytest.raises(sqlite3.IntegrityError), repo.connection:
+        repo.connection.execute(
+            "INSERT INTO entry_qualifications "
+            "(instrument_id, session_date, as_of, decision_id, methodology_version, "
+            "run_id, cycle_id, decision_type, state, evidence_finality, confirmation, "
+            "reason_codes_json, evidence_refs_json, config_snapshot_id, explanation, "
+            "persisted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (*ser.entry_qualification_to_row(eq), AS_OF.isoformat()),
+        )
 
 
 def test_no_provider_or_workflow_dependency() -> None:

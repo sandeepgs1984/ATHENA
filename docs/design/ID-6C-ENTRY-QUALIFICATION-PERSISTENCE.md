@@ -1,6 +1,7 @@
 # ID-6C — Entry Qualification Persistence Design
 
-**Status:** Implemented. Read for the exact contract before touching
+**Status:** Implemented (ID-6C.1 canonical Decision-binding hardening
+included). Read for the exact contract before touching
 `entry_qualifications` or `SqliteRepository`'s ID-6C methods.
 **Depends on:** ID-6A (`EntryQualification` domain contract), ID-6B.2/ID-6B.2A
 (the pure engine — owner-closed, methodology frozen, input-coherence
@@ -34,35 +35,78 @@ The table's composite primary key is:
 ```
 
 This is the natural identity of "one candidate, evaluated at one checkpoint,
-against one canonical Decision, under one methodology version." A
-deterministic engine re-evaluating the identical logical candidate — even
-under a *different* `run_id`/`cycle_id` — must produce the identical
-payload, so `run_id`/`cycle_id` are deliberately **excluded** from both the
-identity key and the conflict comparison; they are stored as informational
-provenance only (whichever write actually landed keeps its own values —
-the first write's provenance wins on a no-op repeat).
+against one canonical Decision, under one methodology version." `run_id`/
+`cycle_id` are **not** part of this key — `decision_id` already
+functionally determines them (a given Decision has exactly one canonical
+`run_id`/`cycle_id`) — but that does **not** mean they may vary freely. See
+§3a.
+
+## 3a. Canonical Decision-binding invariant (ID-6C.1)
+
+A foreign key on `decision_id` alone proves the referenced Decision
+*exists* — it cannot prove the persisted `EntryQualification` truthfully
+*describes* that Decision. Before every `save_entry_qualification` call
+(insert **or** idempotency-check), the repository loads the canonical
+Decision by `eq.decision_id` and requires exact agreement on:
+
+- `eq.decision_type == decision.decision_type` — a persisted row must
+  never claim a different `decision_type` than the WATCH/TRADE Decision it
+  is bound to, even when its qualification `state` is `QUALIFIED`
+  (`QUALIFIED != DecisionType.TRADE` — these are different dimensions).
+- `eq.run_id == decision.run_id`
+- `eq.cycle_id == decision.cycle_id`
+- `eq.instrument_id == decision.instrument_id`, **only when**
+  `decision.instrument_id is not None` — mirroring
+  `EntryQualificationEngine._resolve_instrument_id`'s own established
+  fallback exactly (ID-6B.2A), rather than inventing a new persistence-only
+  rule. In practice the real production `DecisionEngine` always sets
+  `instrument_id` for WATCH/TRADE Decisions
+  (`src/athena/decision/engine.py`), so the `None` branch is a defensive
+  completeness path for the generic `Decision` contract, not an exercised
+  real one.
+
+Any mismatch raises `RepositoryError` naming the specific violated field —
+never `UNKNOWN`/silently accepted; this is a caller/programmer contract
+violation, not a market state. A missing `decision_id` also raises
+`RepositoryError` at the repository level (a clean, deterministic message)
+*before* any INSERT is attempted; the schema's own FK remains in place too,
+as a database-level backstop, not a replacement.
+
+This check does **not** decide whether `decision` is still the
+current/non-superseded Decision for its instrument — that remains the
+caller/workflow's responsibility (ID-6D), unchanged from ID-6B.2A's own
+frozen boundary. It only proves internal coherence: *does this
+qualification truthfully belong to the Decision it claims?*
 
 ## 4. Write semantics
 
 `SqliteRepository.save_entry_qualification(eq, *, persisted_at)`:
 
-1. Look up the existing row (if any) by the logical identity key, inside
-   one write-locked transaction.
-2. **No existing row** → insert; returns `True`.
-3. **Existing row, identical methodology-relevant payload** (`decision_type`,
+1. Load the canonical Decision referenced by `eq.decision_id`; missing →
+   `RepositoryError`.
+2. Validate the Decision-binding invariant (§3a) — on **every** call, not
+   only inserts, so an already-persisted valid row can never let a second,
+   Decision-inconsistent call hide behind "identical identity ⇒ no-op".
+3. Look up the existing row (if any) by the logical identity key.
+4. **No existing row** → insert; returns `True`.
+5. **Existing row, identical methodology-relevant payload** (`decision_type`,
    `state`, `evidence_finality`, `confirmation`, `reason_codes`,
    `evidence_refs`, `config_snapshot_id`, `explanation`) → no-op; returns
-   `False`.
-4. **Existing row, genuinely different payload** → raises `RepositoryError`
+   `False`. `run_id`/`cycle_id` are excluded from this comparison — not
+   because they may legitimately differ, but because step 2 has *already*
+   proven both rows' `run_id`/`cycle_id` agree with the same canonical
+   Decision, making a second comparison redundant.
+6. **Existing row, genuinely different payload** → raises `RepositoryError`
    naming every conflicting field. This is an integrity problem (the
    engine is supposed to be deterministic), never a silent overwrite.
 
-The read-then-write is not a check-then-insert race: both steps run inside
-the same `self._lock` + `with self._conn:` transaction already used
-elsewhere in `SqliteRepository` for multi-step operations (mirrors
-`confirm_portfolio_import`), so it is atomic under this repository's
-existing single-writer-connection architecture — no new locking
-infrastructure was introduced.
+All of this runs inside one `self._lock` + `with self._conn:` transaction
+already used elsewhere in `SqliteRepository` for multi-step operations
+(mirrors `confirm_portfolio_import`), so it is atomic under this
+repository's existing single-writer-connection architecture — no new
+locking infrastructure, no TOCTOU window, no second connection, no
+provider access. A failed binding or conflict check inserts nothing;
+existing valid rows are never touched.
 
 ## 5. Read API
 

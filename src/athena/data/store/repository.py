@@ -69,10 +69,15 @@ class IntegrityReport:
 def _entry_qualification_payload(eq: EntryQualification) -> tuple:
     """The methodology-relevant subset of an EntryQualification used to
     detect a genuine conflict at the same logical (instrument/session/
-    as_of/decision/methodology) identity. Deliberately excludes
-    ``run_id``/``cycle_id`` (informational provenance — two different
-    pipeline runs evaluating the identical logical candidate are expected
-    to, and by the engine's determinism must, agree on everything here)."""
+    as_of/decision/methodology) identity. Excludes ``run_id``/``cycle_id``
+    NOT because they may legitimately differ across writes to the same
+    identity, but because ``save_entry_qualification`` (ID-6C.1) already
+    validates them against the referenced canonical Decision via
+    ``_validate_entry_qualification_decision_binding`` before this
+    comparison ever runs — by the time two rows reach here, both are
+    already independently proven to agree with the same Decision's
+    run_id/cycle_id, so comparing them again would be redundant, not
+    permissive."""
     return (
         eq.decision_type,
         eq.state,
@@ -83,6 +88,54 @@ def _entry_qualification_payload(eq: EntryQualification) -> tuple:
         eq.config_snapshot_id,
         eq.explanation,
     )
+
+
+def _validate_entry_qualification_decision_binding(
+    eq: EntryQualification, decision: Decision
+) -> None:
+    """Prove ``eq`` truthfully describes the canonical ``decision`` it
+    claims to bind to (ID-6C.1) — a foreign key on ``decision_id`` alone
+    only proves the Decision *exists*, not that ``eq``'s Decision-derived
+    fields (``decision_type``, ``run_id``, ``cycle_id``, and, when the
+    Decision specifies one, ``instrument_id``) actually agree with it.
+
+    Mirrors ``EntryQualificationEngine``'s own established contract
+    exactly (`athena.intraday.entry_qualification_engine._resolve_instrument_id`):
+    when ``decision.instrument_id`` is ``None``, the engine falls back to
+    another source instead of comparing — so persistence applies no
+    instrument constraint in that case either, rather than inventing a new
+    rule. In practice, the real production ``DecisionEngine`` always sets
+    ``instrument_id`` for WATCH/TRADE Decisions
+    (`src/athena/decision/engine.py`), so this ``None`` branch is a
+    defensive completeness path for the generic ``Decision`` contract, not
+    an exercised real path.
+
+    Does NOT decide whether ``decision`` is still the current/
+    non-superseded Decision for its instrument — that remains a
+    caller/workflow responsibility (ID-6D), unchanged from ID-6B.2A.
+    """
+    if eq.decision_type != decision.decision_type:
+        raise RepositoryError(
+            "EntryQualification decision binding mismatch: decision_type "
+            f"(EntryQualification={eq.decision_type.value!r}, "
+            f"Decision={decision.decision_type.value!r})"
+        )
+    if eq.run_id != decision.run_id:
+        raise RepositoryError(
+            "EntryQualification decision binding mismatch: run_id "
+            f"(EntryQualification={eq.run_id!r}, Decision={decision.run_id!r})"
+        )
+    if eq.cycle_id != decision.cycle_id:
+        raise RepositoryError(
+            "EntryQualification decision binding mismatch: cycle_id "
+            f"(EntryQualification={eq.cycle_id!r}, Decision={decision.cycle_id!r})"
+        )
+    if decision.instrument_id is not None and eq.instrument_id != decision.instrument_id:
+        raise RepositoryError(
+            "EntryQualification decision binding mismatch: instrument_id "
+            f"(EntryQualification={eq.instrument_id!r}, "
+            f"Decision={decision.instrument_id!r})"
+        )
 
 
 def _row_to_symbol_record(row: tuple) -> SymbolRecord:
@@ -1017,23 +1070,56 @@ class SqliteRepository:
 
         The logical/idempotency identity is (instrument_id, session_date,
         as_of, decision_id, methodology_version) — the table's composite
-        primary key. Returns True if a new row was inserted, False if an
-        identical logical observation already existed (no-op — the
-        deterministic engine reproduced the same payload). Raises
+        primary key. ``run_id``/``cycle_id`` are deliberately NOT part of
+        that key, because ``decision_id`` already functionally determines
+        them — but (ID-6C.1) every call first loads the referenced
+        canonical Decision and requires ``eq`` to agree with it exactly on
+        ``decision_type``, ``run_id``, ``cycle_id``, and (when the Decision
+        itself specifies one) ``instrument_id``. A foreign key on
+        ``decision_id`` alone only proves the Decision exists; it cannot
+        prove the supplied EntryQualification truthfully describes that
+        Decision. See ``_validate_entry_qualification_decision_binding``.
+
+        This binding check runs before EITHER an insert or an idempotency
+        no-op — an already-persisted, internally-consistent row must never
+        let a second, Decision-inconsistent call hide behind "identical
+        identity => no-op".
+
+        After binding validation, returns True if a new row was inserted,
+        False if an identical logical observation already existed (no-op —
+        the deterministic engine reproduced the same payload). Raises
         RepositoryError if the same logical identity already exists with a
         genuinely different payload: a deterministic engine must never
         produce two different payloads for the same logical evaluation, so
-        that is an integrity problem, never silently overwritten.
+        that is an integrity problem, never silently overwritten. Because
+        binding validation has already proven ``run_id``/``cycle_id``
+        agree with the canonical Decision, they remain excluded from this
+        payload comparison too — not because they may legitimately differ,
+        but because they are already proven equal by the time this
+        comparison runs. ``persisted_at`` is write/audit metadata only,
+        never part of identity or comparison.
 
-        ``run_id``/``cycle_id``/``persisted_at`` are informational
-        provenance only, deliberately excluded from both the identity key
-        and the conflict comparison — two different pipeline runs
-        evaluating the identical logical candidate are expected to (and, by
-        the engine's own determinism, must) agree on every
-        methodology-relevant field.
+        This method never resolves whether the referenced Decision is
+        still the current/non-superseded one for its instrument — that
+        remains a caller/workflow responsibility (ID-6D), unchanged from
+        ID-6B.2A's own frozen boundary.
         """
         try:
             with self._lock, self._conn:
+                decision_row = self._conn.execute(
+                    "SELECT decision_id, ts, run_id, cycle_id, decision_type, explanation, "
+                    "instrument_id, direction, score_ref, confidence_ref, risk_ref, "
+                    "gate_results_json, trade_plan_json FROM decisions WHERE decision_id=?",
+                    (eq.decision_id,),
+                ).fetchone()
+                if decision_row is None:
+                    raise RepositoryError(
+                        "EntryQualification references unknown "
+                        f"decision_id={eq.decision_id!r}"
+                    )
+                decision = ser.row_to_decision(decision_row)
+                _validate_entry_qualification_decision_binding(eq, decision)
+
                 row = self._conn.execute(
                     f"SELECT {self._ENTRY_QUALIFICATION_COLUMNS} "
                     "FROM entry_qualifications WHERE instrument_id=? AND "

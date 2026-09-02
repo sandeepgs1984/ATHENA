@@ -8,8 +8,9 @@ owner-approved and closed; ID-6B.1 owner-approved and closed; ID-6B.1A
 owner-approved and closed, Option C ratified; ID-6B.1B owner-approved and
 closed, v0 methodology frozen; ID-6B.2 pure engine owner-approved and
 closed; ID-6B.2A input-coherence hardening owner-approved and closed —
-ID-6B is fully closed; ID-6C persistence implemented, ready for owner
-persistence review)
+ID-6B is fully closed; ID-6C persistence architecture accepted, closure
+held for ID-6C.1; ID-6C.1 canonical Decision-binding hardening
+implemented, ready for owner persistence closure review)
 **Governing boundary:** accepted `docs/adr/ADR-013-entry-qualification-architecture.md`
 for Entry Qualification; otherwise this track extends the existing frozen
 `ATHENA-002-System-Blueprint.md` module map (§6 of `ATHENA_BRIEFING.md`).
@@ -110,7 +111,8 @@ Track B capture is running the same morning.
 | ID-6B.1B | OWNER APPROVED / CLOSED 2026-09-02 — confirmed aggregate `BULLISH` trend already requires genuine M5+M15 agreement (source-level audit); applied Option C to the original window (99.55%-100% evaluable) and a fresh, deterministically-selected wider window (10 sessions, 2026-08-14–08-27, 17,082 observations, 4.8x more TRADE observations across 9 sessions, 99.64% evaluable); M15 caused non-evaluability in <=0.03% of every sample — classified NON-BLOCKING TECHNICAL DEBT; WATCH/TRADE showed a uniform prevalence shift with no structural divergence; owner froze v0 methodology exactly as measured (VWAP positive AND aggregate trend BULLISH AND (RS support OR RVOL support)) |
 | ID-6B.2 | OWNER APPROVED / CLOSED 2026-09-02 — `EntryQualificationEngine.evaluate()` (`src/athena/intraday/entry_qualification_engine.py`): deterministic, side-effect-free, O(1), zero repository/provider/DB/wall-clock/workflow dependency; tri-state AND/OR so missing evidence never collapses to bearish; `DISQUALIFIED_FOR_SESSION` never emitted (exhaustive sweep test); confirmation always `NOT_EVALUATED`; `SessionDataQuality`/`EXPECTED_BAR_MISSING` never a blanket gate (Option C, test-proven); OR15/OR30/Gap/Sector proven not to affect state; WATCH/TRADE share one methodology; `evidence_finality` is an explicit orthogonal input, not inferred |
 | ID-6B.2A | OWNER APPROVED / CLOSED 2026-09-02 — `_validate_input_coherence`/`_validate_nested_artifact_coherence`, called unconditionally before any branching in `evaluate()`. Requires exact equality (no tolerance) of instrument_id/session_date/as_of between `SessionContext` and `IntradaySignalSet`, plus the same for the two externally-supplied nested artifacts (`relative_strength`, `relative_volume`); `trend` needs no check (structurally guaranteed by `IntradayAnalyticsEngine.assess`'s own construction), `vwap` carries no identity fields. Mismatch raises `ValueError` deterministically, never `UNKNOWN`/`NOT_YET`. `Decision.instrument_id=None` fallback preserved, still coherence-checked. Option C/frozen methodology/WATCH-TRADE parity all regression-tested unchanged. Current/non-superseded Decision selection explicitly deferred to ID-6D, not solved here. 10 new focused tests (3 mutation-verified), 56/56 total. ID-6B (ID-6A through ID-6B.2A) is now fully closed |
-| ID-6C | IMPLEMENTED — READY FOR OWNER PERSISTENCE REVIEW 2026-09-02 — new `entry_qualifications` table (SCHEMA_VERSION 16→17), FK-bound to `decisions(decision_id)`, extending the existing `SqliteRepository`/`schema.py`/`serialization.py` (no new persistence framework, no isolated satellite store). Append-only observations; composite primary key `(instrument_id, session_date, as_of, decision_id, methodology_version)` is the idempotency identity (`run_id`/`cycle_id` deliberately excluded). `save_entry_qualification` idempotent on an identical repeat, fails loudly (`RepositoryError`) on a genuinely conflicting payload, atomic under one write-locked transaction. Read API: `get_entry_qualification`, `latest_entry_qualification_for_decision` (does NOT resolve Decision supersession — deferred to ID-6D), `latest_entry_qualification_for_instrument_session`, `list_entry_qualifications_for_instrument_session` (full flicker-history audit). No point-in-time query added (deferred to ID-6E). Design note: `docs/design/ID-6C-ENTRY-QUALIFICATION-PERSISTENCE.md`. 32 new focused tests (2 mutation-verified), full suite 3,106 passed. No workflow wiring, no API/UI, no methodology change |
+| ID-6C | PERSISTENCE ARCHITECTURE ACCEPTED; CLOSURE HELD FOR ID-6C.1 2026-09-02 — new `entry_qualifications` table (SCHEMA_VERSION 16→17), FK-bound to `decisions(decision_id)`, extending the existing `SqliteRepository`/`schema.py`/`serialization.py`. Append-only observations; composite primary key `(instrument_id, session_date, as_of, decision_id, methodology_version)` is the idempotency identity. `save_entry_qualification` idempotent on an identical repeat, fails loudly on a genuinely conflicting payload. Read API: `get_entry_qualification`, `latest_entry_qualification_for_decision`, `latest_entry_qualification_for_instrument_session`, `list_entry_qualifications_for_instrument_session`. Owner found one integrity gap — see ID-6C.1 |
+| ID-6C.1 | IMPLEMENTED — READY FOR OWNER PERSISTENCE CLOSURE REVIEW 2026-09-02 — `_validate_entry_qualification_decision_binding` (`src/athena/data/store/repository.py`), runs on every `save_entry_qualification` call (both insert AND idempotency-check paths). Requires exact equality of `decision_type`/`run_id`/`cycle_id` with the referenced canonical Decision, and `instrument_id` only when `decision.instrument_id is not None` (mirrors `EntryQualificationEngine._resolve_instrument_id`'s own established fallback; confirmed real `DecisionEngine` always sets `instrument_id` for WATCH/TRADE). Missing decision_id → clean `RepositoryError` before any INSERT; schema FK remains as DB-level backstop (test-proven still enforced via bypass). Corrected run_id/cycle_id exclusion rationale: excluded from conflict comparison because binding validation already proved them equal to the Decision, not because they may differ — a same-decision_id-different-run_id write now fails loudly instead of a false idempotent no-op. SCHEMA_VERSION unchanged (17). Replaced 1 stale test, added 10 (net +7, 40 total), 2 mutation-verified including an ordering-specific proof. Full suite 3,114 passed. No methodology/workflow/schema/EMR/DarvaX change |
 
 The full detailed evidence for every closed milestone above is in
 `docs/MILESTONES.md`'s "Intraday Intelligence Track" section (long — this
@@ -370,7 +372,7 @@ logic, state precedence, Option C, WATCH/TRADE parity, confirmation
 semantics, evidence-finality semantics, point-in-time behavior, or
 input-coherence rules.
 
-**ID-6C is the current review gate**: `src/athena/data/store/schema.py`
+ID-6C's persistence architecture is owner-accepted: `src/athena/data/store/schema.py`
 (new `entry_qualifications` table, SCHEMA_VERSION 16→17, FK-bound to
 `decisions(decision_id)`), `serialization.py`, and `repository.py`
 (`SqliteRepository.save_entry_qualification`/`get_entry_qualification`/
@@ -382,34 +384,53 @@ Append-only: `EntryQualification` is point-in-time/non-sticky (ID-6B
 measured ~40% checkpoint flicker), so a later observation for the same
 instrument/session is a new row, never an overwrite. The composite primary
 key `(instrument_id, session_date, as_of, decision_id, methodology_version)`
-is the logical/idempotency identity — `run_id`/`cycle_id` deliberately
-excluded (informational provenance only, since a deterministic engine
-re-evaluating the identical logical candidate under a different pipeline
-run must still agree on every methodology-relevant field). A repeat save of
-an identical logical observation is a no-op; a save at the same identity
-with a genuinely different payload raises `RepositoryError` naming the
-conflicting fields — an integrity problem, never silently overwritten —
-inside one atomic write-locked transaction (mirrors
-`confirm_portfolio_import`'s existing pattern, no new locking
-infrastructure). `latest_entry_qualification_for_decision` retrieves what
-was persisted for a given `decision_id` but does **not** resolve whether
-that Decision is still current/non-superseded — explicitly deferred to
-ID-6D, exactly as ID-6B.2A already froze that boundary. No point-in-time
-(`as_of<=requested`) query was added (no current need justifies it; likely
-ID-6E). Design note: `docs/design/ID-6C-ENTRY-QUALIFICATION-PERSISTENCE.md`.
+is the logical/idempotency identity — `run_id`/`cycle_id` are not part of
+it, since `decision_id` already functionally determines them. No
+point-in-time (`as_of<=requested`) query was added (no current need
+justifies it; likely ID-6E). Design note: `docs/design/ID-6C-ENTRY-QUALIFICATION-PERSISTENCE.md`.
 
-32 new focused tests, all non-vacuous (every state/finality/confirmation
-round-trip, ordered reason-code/evidence-ref fidelity, idempotency,
-conflict detection, append-only history, migration, FK enforcement), 2 of
-the most safety-critical (conflict detection, reason-code ordering)
-independently mutation-verified. Full repository suite: 3,106 passed, 1
-pre-existing skip. No persistence engine, workflow, API, or UI wiring —
-`entry_qualifications` remains empty in the real `db/athena.db`; nothing
-calls `save_entry_qualification` from production yet.
+Owner review found one integrity gap and held closure for it: a foreign
+key on `decision_id` alone only proves the referenced Decision *exists* —
+it never proved the persisted `EntryQualification`'s own Decision-derived
+fields (`instrument_id`, `decision_type`, `run_id`, `cycle_id`) actually
+agreed with it, so a row could in principle claim a different instrument
+or `decision_type` than its bound Decision. **ID-6C.1 is the current
+review gate**: added `_validate_entry_qualification_decision_binding`,
+which loads the canonical Decision by `eq.decision_id` and requires exact
+equality of `decision_type`/`run_id`/`cycle_id`, and `instrument_id` only
+when `decision.instrument_id is not None` — mirroring
+`EntryQualificationEngine._resolve_instrument_id`'s own established
+fallback exactly (source-confirmed: the real production `DecisionEngine`
+always sets `instrument_id` for WATCH/TRADE Decisions, so that branch is a
+defensive completeness path, not an exercised real one). This check runs
+on **every** `save_entry_qualification` call — both insert and
+idempotency-check paths — so an already-persisted valid row can never let
+a second, Decision-inconsistent call hide behind "identical identity ⇒
+no-op" (this was a real gap: since `run_id`/`cycle_id` were already
+excluded from the conflict-payload comparison, a same-`decision_id`-
+different-`run_id` write would previously have returned a false idempotent
+`False`). A missing `decision_id` now raises a clean repository-level
+`RepositoryError` before any INSERT; the schema FK remains as a DB-level
+backstop, test-proven still enforced by bypassing the repository method.
+`run_id`/`cycle_id` remain excluded from the payload conflict comparison —
+corrected rationale: not because they may legitimately differ, but because
+binding validation has already proven them equal to the canonical
+Decision by the time that comparison runs. SCHEMA_VERSION unchanged (17) —
+repository-level validation was sufficient, no DDL change.
+
+Combined 40 focused tests (replaced 1 stale test whose expectation was now
+wrong, added 10 — net +7), all non-vacuous. 2 of the most safety-critical
+(the `run_id` binding check itself, and separately the *ordering*
+requirement that binding validation runs before, not after, the
+idempotency check) independently mutation-verified. Full repository suite:
+3,114 passed, 1 pre-existing skip. No persistence engine, workflow, API, or
+UI wiring — `entry_qualifications` remains empty in the real `db/athena.db`;
+nothing calls `save_entry_qualification` from production yet.
 
 Do not wire workflow, add UI, thresholds, IntradayTradePlan, an M15
 settlement-repair milestone, ID-6D, ID-6E, ID-7, EM-6, EMR, DarvaX, or order
-behavior until the owner reviews the ID-6C persistence implementation and
+behavior until the owner reviews the ID-6C.1 canonical Decision-binding
+hardening and
 explicitly authorizes the next milestone.
 
 ## 7. ID-5B — closed result
