@@ -31,8 +31,8 @@ The correct next step is therefore a tiny architecture prerequisite before
 ID-6A implementation: an Entry Qualification ADR / ADR amendment that freezes
 the new persisted decision-relevant concept, the new live workflow stage, and
 the boundary between canonical daily Decision and intraday actionability. After
-that ADR is owner-approved, ID-6A should be limited to domain/state/reliability
-contracts.
+that ADR is owner-approved, ID-6A should be limited to
+domain/state/finality/confirmation contracts.
 
 ## 2. Authoritative Starting State
 
@@ -189,7 +189,8 @@ Candidate fields:
 - `decision_id`
 - `decision_type`
 - `state`
-- `reliability`
+- `evidence_finality` or equivalent provenance/finality representation
+- `confirmation_status` or equivalent methodology-confirmation representation
 - `evidence_refs`
 - `reason_codes`
 - `blocking_reasons`
@@ -220,31 +221,48 @@ concludes, not how final the evidence is:
 - `NOT_YET`: enough evidence exists to say the setup is not actionable now,
   while remaining eligible to become actionable later in the same session.
 - `QUALIFIED`: enough evidence exists to say the setup is actionable now,
-  subject to the separate reliability value.
+  subject to separate evidence-finality/provenance and confirmation values.
 - `DISQUALIFIED_FOR_SESSION`: an owner-approved terminal condition invalidates
   the setup for the rest of the session.
 - `EXPIRED`: deterministic lifecycle expiry, such as market/session phase or
   bound TradePlan/Decision validity ending the observation.
 
-Recommended reliability values should express the evidence basis separately:
+Evidence finality/provenance should express the evidence basis separately from
+both state and methodology confirmation. The smallest future representation
+must truthfully distinguish unknown/unassessable provenance, dependence on
+provider-provisional live M5, and conclusions whose decisive evidence does not
+depend on provider-provisional live M5. This may become an enum, a small
+immutable value object, evidence-level attributes aggregated into qualification
+provenance, or another minimal typed representation; this discovery report does
+not freeze final Python names.
 
-- `UNKNOWN_RELIABILITY`: the evidence basis cannot be classified honestly.
-- `LIVE_M5_PROVISIONAL`: at least one current-session M5-derived input is
-  involved and provider settlement finality is not known.
-- `CONFIRMED_BY_POLICY`: an owner-approved qualification confirmation policy
-  has been satisfied; this does not mean provider-settled finality.
-- `STABLE_NON_M5`: the conclusion rests only on stable non-current-M5 evidence
-  such as session phase, D1 gap context, or a stable structural daily gate.
+Qualification confirmation should express whether an owner-approved Entry
+Qualification confirmation methodology has been satisfied. It is methodology
+status, not market-data finality. It may become a separate enum/value, a
+boolean only if the accepted methodology is genuinely binary, or a
+methodology-owned status. Confirmation status must never erase evidence
+provisionality.
 
-State and reliability are orthogonal. `QUALIFIED` can exist with provisional
-evidence. `NOT_YET` can also be based on provisional evidence. `UNKNOWN` may
-carry `UNKNOWN_RELIABILITY`, or a specific reliability value explaining that
-some inputs were inspectable but insufficient. "Confirmed" must mean
-methodology-confirmed by an owner-approved policy, not provider-settled finality
-and not merely multi-signal agreement unless that is the approved policy.
-Provider finality usually cannot be known while an opportunity is still
-intraday-actionable, so ID-6 must not use "confirmed" to imply same-session
-provider settlement.
+State, evidence finality/provenance, and confirmation are orthogonal.
+`QUALIFIED` can exist with provider-provisional evidence. `NOT_YET` can also be
+based on provisional evidence. `CONFIRMED_BY_POLICY`, if used later, must mean
+methodology-confirmed by an owner-approved policy, not provider-settled
+finality, not guaranteed correctness, and not merely multi-signal agreement
+unless that is the approved policy. Provider finality usually cannot be known
+while an opportunity is still intraday-actionable, so ID-6 must not use
+"confirmed" to imply same-session provider settlement.
+
+Semantic examples:
+
+- `QUALIFIED` plus confirmation policy satisfied plus live-M5-provisional
+  evidence dependence is valid: actionable by methodology, but not
+  provider-final.
+- `NOT_YET` plus confirmation policy not satisfied plus live-M5-provisional
+  evidence dependence is valid and reversible.
+- `QUALIFIED` plus confirmation policy satisfied plus no decisive
+  provisional-M5 dependency is valid.
+- `DISQUALIFIED_FOR_SESSION` where the decisive reason depends solely on
+  provider-provisional live M5 is invalid.
 
 Precise reversibility semantics:
 
@@ -401,8 +419,8 @@ Suggested persistence model:
 - foreign/provenance references to `decision_id`, `run_id`, `cycle_id`;
 - JSON evidence refs for `session_context`, `intraday_signal_set`, OR windows,
   RS, gap, RVOL, quote/snapshot references where available;
-- explicit `state`, `reliability`, reason codes, unknown/stale inputs, and
-  explanation;
+- explicit `state`, evidence finality/provenance, confirmation status, reason
+  codes, unknown/stale inputs, and explanation;
 - methodology/config version fields;
 - no mutation of `decisions` or `decision_traces` required in the first
   persistence slice.
@@ -425,7 +443,7 @@ session.
 Do not invent thresholds and call the engine complete. Use this sequence:
 
 1. Contract tests for state transitions, unknown/stale behavior, Decision
-   binding, and provisional-vs-confirmed reliability.
+   binding, evidence finality/provenance, and confirmation status.
 2. Historical/replay feasibility using settled M5, explicitly labeled as
    feasibility rather than live-knowledge truth.
 3. Distribution/base-rate measurement of candidate evidence combinations.
@@ -505,8 +523,8 @@ An ADR or separate owner architecture decision would be required if ID-6:
 - WATCH-vs-TRADE treatment needs owner confirmation because WATCH may be a
   strong intraday candidate but lacks the invariant that a TRADE carries a
   TradePlan.
-- `CONFIRMED_BY_POLICY` requires a confirmation definition. This report
-  recommends the reliability dimension, not a tuned confirmation rule.
+- `CONFIRMED_BY_POLICY` requires a confirmation definition. It belongs to a
+  separate confirmation dimension, not evidence finality/provenance.
 - Persistence schema should be reviewed before implementation because it
   affects long-term audit and latest-state queries.
 - True execution quality remains unsupported by current `Quote` and
@@ -519,9 +537,9 @@ An ADR or separate owner architecture decision would be required if ID-6:
 
 | Slice | Responsibility | Inputs/outputs | Likely files | Tests | Exit criteria |
 |---|---|---|---|---|---|
-| ID-6A0 | Entry Qualification Architecture ADR | ADR approving the new persisted decision-relevant concept, live stage, daily-vs-intraday boundary, state/reliability orthogonality, and indirect-M5 invariant | `docs/adr/ADR-013-entry-qualification-architecture.md`, plus status docs | Documentation review; `git diff --check` | Owner-approved ADR before production code |
-| ID-6A | Domain/state/reliability contract | Proposed `EntryQualification*` types only | `src/athena/intraday/entry_qualification_models.py`, docs | Unit contract tests | Frozen states, orthogonal reliability, reason-code semantics owner-reviewable |
-| ID-6B | Pure deterministic qualification engine skeleton | Inputs: `Decision`, `SessionContext`, `IntradaySignalSet`; output: `EntryQualification` | `src/athena/intraday/entry_qualification_engine.py` | Unit tests for state transitions, reliability, supersession, and unknown/stale behavior | No thresholds beyond accepted zero-threshold categories; no I/O |
+| ID-6A0 | Entry Qualification Architecture ADR | ADR approving the new persisted decision-relevant concept, live stage, daily-vs-intraday boundary, state/evidence-finality/confirmation orthogonality, and indirect-M5 invariant | `docs/adr/ADR-013-entry-qualification-architecture.md`, plus status docs | Documentation review; `git diff --check` | Owner-approved ADR before production code |
+| ID-6A | Domain/state/finality/confirmation contract | Proposed `EntryQualification*` types only | `src/athena/intraday/entry_qualification_models.py`, docs | Unit contract tests | Frozen states, orthogonal evidence finality/provenance and confirmation, reason-code semantics owner-reviewable |
+| ID-6B | Pure deterministic qualification engine skeleton | Inputs: `Decision`, `SessionContext`, `IntradaySignalSet`; output: `EntryQualification` | `src/athena/intraday/entry_qualification_engine.py` | Unit tests for state transitions, evidence finality/provenance, confirmation, supersession, and unknown/stale behavior | No thresholds beyond accepted zero-threshold categories; no I/O |
 | ID-6C | Persistence and explainability trace | Append-only observations + latest query | `data/store/schema.py`, repository serialization/repository tests | Repository contract tests, migration tests | Auditable emitted state without claiming full knowledge-time market-data replay |
 | ID-6D | Workflow integration | `entry_qualification` stage after `decision` + `intraday_analytics` | `ops/owner_validation.py` | Stage order, no scoring/decision perturbation, FAST/Revalidate tests | Existing Decision output unchanged; ID output captured separately |
 | ID-6E | Replay/shadow validation plan | Feasibility + live/shadow evidence reports | `docs/research/`, possibly analysis scripts | Deterministic replay checks | Owner-reviewed promotion evidence; limitations labeled |
@@ -540,7 +558,7 @@ Conditions:
 - Owner approves ID-6A0, an Entry Qualification Architecture ADR /
   ADR amendment, before ID-6A production code.
 - ID-6A implementation begins only after the ADR and is limited to
-  contract/state/reliability types.
+  contract/state/finality/confirmation types.
 - No thresholds, entry plan, stop/target/sizing, UI, EMR, DarvaX, or order
   behavior are introduced in ID-6A.
 
@@ -584,7 +602,8 @@ interfaces, canonical Decision/TradePlan contracts, knowledge-time storage, or
 other governed boundaries.
 
 **Risks discovered:** Live M5 finality remains provisional; ID-0's ADR
-requirement still applies; state and reliability must stay orthogonal;
+requirement still applies; state, evidence finality/provenance, and
+confirmation must stay orthogonal;
 WATCH-vs-TRADE treatment and confirmed-by-policy methodology need owner
 decisions; daily Decision supersession can indirectly carry live-M5
 provisionality through existing VWAP/confluence scoring.
@@ -593,8 +612,8 @@ provisionality through existing VWAP/confluence scoring.
 
 **Suggested improvements:** Review ID-6A0 as the Entry Qualification
 Architecture ADR, then implement ID-6A as a small, reviewable
-domain/state/reliability contract before any engine or persistence work after
-explicit owner authorization.
+domain/state/finality/confirmation contract before any engine or persistence
+work after explicit owner authorization.
 
 **Remaining work:** Owner ADR review for ID-6A0. Do not start ID-6A code or
 ID-7.

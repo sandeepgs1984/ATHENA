@@ -50,13 +50,14 @@ behavior. `EntryQualification.QUALIFIED` is not equivalent to
 Entry Qualification will be a persisted decision-relevant artifact bound to a
 canonical `Decision`. Its implementation must preserve provenance sufficient
 to identify the instrument, bound decision, run or cycle, decision type,
-qualification state, evidence reliability, reason codes or evidence
-references, `as_of`, methodology/configuration provenance, and explanation.
-This ADR freezes the conceptual provenance contract only; it does not define a
-physical schema or final field names.
+qualification state, evidence finality/provenance, qualification confirmation
+status, reason codes or evidence references, `as_of`, methodology/configuration
+provenance, and explanation. This ADR freezes the conceptual provenance
+contract only; it does not define a physical schema or final field names.
 
-Qualification state and evidence reliability are orthogonal dimensions. The
-approved state family is:
+Qualification state, evidence finality/provenance, and qualification
+confirmation are three independent dimensions. Qualification state answers what
+ATHENA currently concludes. The approved state family is:
 
 - `OUT_OF_SCOPE`
 - `UNKNOWN`
@@ -65,20 +66,35 @@ approved state family is:
 - `DISQUALIFIED_FOR_SESSION`
 - `EXPIRED`
 
-The approved reliability family is:
+Evidence finality/provenance answers what finality characteristics belong to
+the evidence on which the conclusion depends. The future ID-6A representation
+must truthfully distinguish at least:
 
-- `UNKNOWN_RELIABILITY`
-- `LIVE_M5_PROVISIONAL`
-- `CONFIRMED_BY_POLICY`
-- `STABLE_NON_M5`
+- unknown or unassessable provenance;
+- dependence on provider-provisional live M5 evidence;
+- conclusions whose decisive evidence does not depend on provider-provisional
+  live M5.
 
-State names must not encode reliability. In particular, names such as
-`QUALIFIED_PROVISIONAL` and `QUALIFIED_CONFIRMED` are rejected.
+The evidence finality/provenance representation may eventually be an enum, a
+small immutable value object, evidence-level attributes aggregated into
+qualification provenance, or another minimal typed representation. ADR-013
+does not freeze final Python names.
 
-`CONFIRMED_BY_POLICY` means an owner-approved Entry Qualification methodology
-confirmation contract has been satisfied. It does not mean provider-settled,
-historically final, immutable, bitemporal, or confirmed by multiple signal
-families unless a later owner-approved methodology explicitly says so.
+Qualification confirmation answers whether an owner-approved Entry
+Qualification confirmation methodology has been satisfied. This is methodology
+status, not market-data finality. It may eventually be a separate enum/value,
+a boolean only if the accepted methodology is genuinely binary, or a
+methodology-owned status. Confirmation status must never erase evidence
+provisionality.
+
+`CONFIRMED_BY_POLICY`, if used by a later implementation or methodology, means
+only that an owner-approved Entry Qualification confirmation policy has been
+satisfied. It does not mean provider-settled, historically final, immutable,
+bitemporal, guaranteed correct, or confirmed by multiple signal families unless
+a later owner-approved methodology explicitly says so.
+
+State names must not encode evidence finality or confirmation. In particular,
+names such as `QUALIFIED_PROVISIONAL` and `QUALIFIED_CONFIRMED` are rejected.
 
 Current-session live M5 provisionality must be handled across both direct and
 indirect paths:
@@ -88,9 +104,14 @@ indirect paths:
   `Decision` -> Entry Qualification.
 
 Market-time safety, candle completion, provider finality, qualification
-confirmation, and knowledge-time replay are separate concerns. No irreversible
-ID-6 state may be caused directly or indirectly solely by provider-provisional
-live M5 evidence. ID-6 must not round, resample, repair, synthesize, normalize,
+confirmation, and knowledge-time replay are separate concerns. The corrected
+model must be able to represent provisional exposure through the direct path
+and through the bound canonical `Decision`. If current canonical Decision
+provenance is insufficient to prove whether a decisive downgrade was solely
+caused by provider-provisional live M5, ID-6A/ID-6B must fail conservatively
+rather than falsely asserting stable provenance. No irreversible ID-6 state may
+be caused directly or indirectly solely by provider-provisional live M5
+evidence. ID-6 must not round, resample, repair, synthesize, normalize,
 forward-fill, or nearest-match current-session evidence to hide that
 provisionality.
 
@@ -122,6 +143,23 @@ The state lifecycle semantics are:
 - `EXPIRED`: the qualification result is no longer fresh for the current
   decision/session/cycle, including supersession by a newer canonical decision
   or session boundary expiry.
+
+Valid semantic combinations include:
+
+- state `QUALIFIED`, confirmation policy satisfied, evidence finality includes
+  live-M5-provisional dependence: actionable by methodology, but supporting M5
+  remains not provider-final.
+- state `NOT_YET`, confirmation policy not satisfied, evidence finality
+  includes live-M5-provisional dependence: valid and reversible.
+- state `QUALIFIED`, confirmation policy satisfied, decisive evidence has no
+  provisional-M5 dependency: valid without claiming all market evidence is
+  historically immutable.
+
+Invalid semantic combinations include:
+
+- state `DISQUALIFIED_FOR_SESSION` where the decisive reason depends solely on
+  provider-provisional live M5. The irreversible-state invariant prohibits
+  this.
 
 Future workflow integration must use ATHENA's live `WorkflowStage` mechanism
 with an explicit `entry_qualification` stage. The minimum dependency set is
@@ -160,7 +198,7 @@ Non-goals:
 The owner-gated implementation sequence is:
 
 1. ID-6A0: this ADR.
-2. ID-6A: domain/state/reliability contract.
+2. ID-6A: domain/state/finality/confirmation contract.
 3. ID-6B: pure deterministic qualification engine.
 4. ID-6C: persistence and auditability.
 5. ID-6D: workflow integration.
@@ -182,7 +220,11 @@ Each slice requires owner approval before the next begins.
 4. **Encode reliability inside state names.** Rejected because live-M5
    provisionality and actionability are separate facts; combining them creates
    ambiguous lifecycle behavior.
-5. **Treat live M5 as either final or unusable.** Rejected because ID-5B shows
+5. **Represent evidence finality and methodology confirmation as one enum.**
+   Rejected because a qualification may satisfy confirmation policy while still
+   depending on provider-provisional live M5 evidence; enum precedence would
+   hide one true fact.
+6. **Treat live M5 as either final or unusable.** Rejected because ID-5B shows
    a narrower reality: live M5 is useful evidence but not provider-final
    evidence for irreversible qualification states.
 
@@ -197,6 +239,7 @@ This adds one governance step before ID-6A, but it prevents Entry
 Qualification from silently contaminating canonical Decision, TradePlan, EMR,
 DarvaX, broker, or order behavior.
 
-Physical schema, final DTO fields, thresholds, confirmation policy, WATCH
-trade-plan treatment, and knowledge-time replay storage remain deferred to
-separate owner-gated milestones or ADR review where required.
+Physical schema, final DTO fields, exact enum/value-object names, thresholds,
+confirmation policy, WATCH trade-plan treatment, and knowledge-time replay
+storage remain deferred to separate owner-gated milestones or ADR review where
+required.

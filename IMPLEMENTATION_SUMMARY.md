@@ -6,10 +6,11 @@ status updated on approval.
 
 ---
 
-## ID-6A0 Entry Qualification Architecture ADR — Ready for Owner Review
+## ID-6A0 Entry Qualification Architecture ADR — Corrected for Final Review
 
 **Summary.** Created the owner-authorized ID-6A0 ADR as a documentation-only
-architecture governance milestone. ID-6 discovery architecture is recorded as
+architecture governance milestone, then applied the owner-authorized ID-6A0.1
+reliability-dimension correction. ID-6 discovery architecture is recorded as
 owner-approved with condition, and the condition is the proposed standalone
 Entry Qualification Architecture ADR before any ID-6A code begins.
 
@@ -35,9 +36,10 @@ behavior.
 **Governance frozen.** Daily/Structural `Decision` answers what is worth
 watching or trading; Entry Qualification answers whether the candidate is
 actionable now; Entry/Execution defines price/risk structure later; Live Plan
-Supervision remains a future validity layer. Qualification state and evidence
-reliability are orthogonal, and no irreversible ID-6 state may be caused
-directly or indirectly solely by provider-provisional live M5 evidence.
+Supervision remains a future validity layer. Qualification state, evidence
+finality/provenance, and qualification confirmation are orthogonal, and no
+irreversible ID-6 state may be caused directly or indirectly solely by
+provider-provisional live M5 evidence.
 
 **Verification.** Documentation-only. ADR numbering and convention inspected:
 ADR-012 was the latest accepted ADR, so ADR-013 is the next repository
@@ -47,7 +49,7 @@ identifier. `git diff --check` is run as the closeout quality gate.
 EMR, DarvaX, UI, schema, engine, workflow, provider, DB, or production work
 until explicitly authorized.
 
-**Outcome:** Ready for owner ADR review.
+**Outcome:** ADR corrected and ready for owner final ADR review.
 
 ---
 
@@ -58,8 +60,8 @@ milestone. Owner review accepted the direction but not the architecture yet.
 The hardened report recommends GO WITH CONDITIONS: proceed toward Entry
 Qualification as the correct conceptual next layer only after ID-6A0 Entry
 Qualification Architecture ADR / ADR amendment approval; then begin ID-6A
-domain/state/reliability contracts and an explicit live-M5 provisional-evidence
-policy. No production behavior was implemented.
+domain/state/finality/confirmation contracts and an explicit live-M5
+provisional-evidence policy. No production behavior was implemented.
 
 **Architecture compliance.** Preserves ATHENA-002, ADR-003 Amendment 1, and
 ADR-005. ID-6 is designed as a post-Decision, advisory-only intraday
@@ -78,15 +80,15 @@ provider contracts, EMR, DarvaX, UI, broker behavior, or order behavior.
 `CASE_B_CONTENT_CHANGES` conclusion: current-session Kite M5 may be
 market-time closed and still not provider-settled final. The proposed policy
 treats current-session completed M5 as provisional for qualification purposes.
-Qualification state and reliability are orthogonal; no irreversible ID-6 state
-may be caused directly or indirectly solely by evidence whose relevant live-M5
-provenance is provider-provisional.
+Qualification state, evidence finality/provenance, and confirmation are
+orthogonal; no irreversible ID-6 state may be caused directly or indirectly
+solely by evidence whose relevant live-M5 provenance is provider-provisional.
 
 **Recommended slices.** ID-6A0 Entry Qualification Architecture ADR / ADR
-amendment; ID-6A domain/state/reliability contract; ID-6B pure qualification
-engine; ID-6C append-only persistence and latest-state query; ID-6D workflow
-integration; ID-6E replay/shadow validation. Each slice requires owner approval
-before the next begins.
+amendment; ID-6A domain/state/finality/confirmation contract; ID-6B pure
+qualification engine; ID-6C append-only persistence and latest-state query;
+ID-6D workflow integration; ID-6E replay/shadow validation. Each slice requires
+owner approval before the next begins.
 
 **Verification.** Documentation-only. No pytest run was required; `git diff
 --check` is run as the closeout quality gate. No DB writes and no provider or
@@ -96,7 +98,7 @@ network calls were performed.
 EM-6, EMR, DarvaX, UI, or TradePlan work until explicitly authorized.
 
 **Outcome:** ID-6 discovery architecture owner-approved with condition;
-ID-6A0 ready for owner ADR review.
+ID-6A0 corrected and ready for owner final ADR review.
 
 ---
 
