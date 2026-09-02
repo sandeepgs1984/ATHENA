@@ -801,12 +801,14 @@ class OwnerValidationPipeline:
         from athena.indicators import IndicatorEngine, IndicatorName, IndicatorStatus
         from athena.indicators import calculations as calc
         from athena.intraday import (
+            EntryQualificationEngine,
             GapEngine,
             IntradayAnalyticsEngine,
             OpeningRangeEngine,
             OpeningRangeWindow,
             RelativeStrengthEngine,
             RelativeVolumeEngine,
+            resolve_evidence_finality,
         )
         from athena.market_health import MarketHealthEngine
         from athena.regime import RegimeEngine
@@ -832,6 +834,7 @@ class OwnerValidationPipeline:
         opening_range_engine = OpeningRangeEngine()
         relative_strength_engine = RelativeStrengthEngine()
         relative_volume_engine = RelativeVolumeEngine()
+        entry_qualification_engine = EntryQualificationEngine()
         gap_engine = GapEngine()
         risk_engine = RiskEngine(risk_cfg)
         evidence_engine = EvidenceAggregationEngine()
@@ -1340,6 +1343,60 @@ class OwnerValidationPipeline:
                 )
                 return {"intraday_signal_set": signal_set}
 
+            def entry_qualification_stage(ctx):
+                # ID-6D: wires the owner-closed ID-6A/ID-6B.2/ID-6B.2A/
+                # ID-6C/ID-6C.1 Entry Qualification chain into the canonical
+                # runtime for the first time. No methodology change here —
+                # the frozen v0 expression (VWAP positive AND aggregate
+                # trend BULLISH AND (RS support OR RVOL support)) lives
+                # entirely inside EntryQualificationEngine, untouched.
+                #
+                # "decision" dependency: reads the canonical Decision
+                # dec_stage just captured into `box["cap"]` THIS cycle —
+                # not a repository re-query. Within one synchronous,
+                # single-threaded per-instrument pipeline execution, the
+                # Decision `dec_stage` just produced (and already
+                # persisted) is provably the freshest possible artifact
+                # for this instrument — no staleness/supersession is
+                # structurally reachable, so no TTL/age heuristic or
+                # extra "latest decision" query is needed (see the ID-6D
+                # design note §"Current Decision source of truth").
+                #
+                # "intraday_analytics" dependency: SessionContext and
+                # IntradaySignalSet already share the same as_of/
+                # session_date by construction (both stages read
+                # `ctx.as_of`) — ID-6B.2A's own input-coherence checks
+                # remain a defensive backstop here, never normal control
+                # flow.
+                #
+                # The engine is called unconditionally — it already emits
+                # OUT_OF_SCOPE for non-WATCH/TRADE Decision types itself,
+                # so no special-casing is needed to invoke it safely — but
+                # persistence is scoped to WATCH/TRADE only, per the
+                # owner's explicit instruction not to flood
+                # `entry_qualifications` with structurally irrelevant
+                # observations for Decision types that were never in the
+                # Entry Qualification funnel to begin with.
+                decision = box["cap"].outcome.decision
+                session_context = ctx.get("session_context")
+                signal_set = ctx.get("intraday_signal_set")
+                evidence_finality = resolve_evidence_finality(decision, session_context)
+                eq = entry_qualification_engine.evaluate(
+                    decision=decision,
+                    session_context=session_context,
+                    signal_set=signal_set,
+                    evidence_finality=evidence_finality,
+                )
+                if decision.decision_type in (DecisionType.WATCH, DecisionType.TRADE):
+                    # persisted_at reuses ctx.as_of: this architecture has
+                    # exactly one injected clock per cycle (the caller-
+                    # supplied `as_of`), and CLAUDE.md forbids a fresh
+                    # `datetime.now()` at this layer — see the ID-6D
+                    # design note §"persisted_at semantics" for why no
+                    # second, distinct wall-clock value is introduced here.
+                    self._repo.save_entry_qualification(eq, persisted_at=ctx.as_of)
+                return {"entry_qualification": eq}
+
             defn = build_definition(
                 f"owner-val-{instrument_id}",
                 [
@@ -1428,6 +1485,18 @@ class OwnerValidationPipeline:
                         intraday_analytics_stage,
                         depends_on=("session", "indicators", "relative_strength", "relative_volume"),
                         produces=("intraday_signal_set",),
+                    ),
+                    # ID-6D: the first stage to join the previously-
+                    # independent "decision" and "intraday_analytics"
+                    # branches — Entry Qualification structurally needs
+                    # both. Declared last: nothing else depends on it, so
+                    # it cannot perturb the existing ten stages' relative
+                    # execution order.
+                    WorkflowStage(
+                        "entry_qualification",
+                        entry_qualification_stage,
+                        depends_on=("decision", "intraday_analytics"),
+                        produces=("entry_qualification",),
                     ),
                 ],
             )

@@ -29,6 +29,7 @@ from athena.intraday.entry_qualification_models import (
     EntryQualificationReasonCode,
     EntryQualificationState,
 )
+from athena.intraday.entry_qualification_provenance import resolve_evidence_finality
 from athena.intraday.gap_engine import GapEngine
 from athena.intraday.gap_models import GapContext, GapDirection
 from athena.intraday.models import (
@@ -87,4 +88,5 @@ __all__ = [
     "TimeframeTrendEvidence",
     "VwapEvidence",
     "VwapRelation",
+    "resolve_evidence_finality",
 ]

@@ -2419,3 +2419,173 @@ class TestOwnerValidationPipeline:
 
         qualified = pipe._qualified_from_repo(AS_OF)
         assert [row["symbol"] for row in qualified] == ["AAA", "BBB"]
+
+    def test_id6d_entry_qualification_stage_does_not_perturb_existing_stage_order(
+        self, repo: SqliteRepository, config_dir: Path
+    ) -> None:
+        """ID-6D: the new `entry_qualification` stage explicitly depends on
+        `decision` and `intraday_analytics` (real dependencies) — and,
+        since nothing depends on IT, the ten pre-existing stages (already
+        proven order-stable under ID-1/ID-2/ID-4/ID-5D's own additions)
+        must keep their exact relative order here too."""
+        from athena.runtime.workflow import WorkflowStage, build_definition
+
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        iid = "NSE:AAA"
+        repo.upsert_instrument(
+            Instrument(instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE")
+        )
+        repo.add_candles(_candles(iid, seed=100))
+        repo.add_candles(_intraday_candles(iid, AS_OF.date(), seed=100))
+
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        ingestion = IngestionResult(
+            as_of=AS_OF, instruments_upserted=1, candles_fetched=86, candles_written=86,
+            quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+        )
+        detail = pipe.run(
+            RunTrigger.PREMARKET, as_of=AS_OF, ingestion=ingestion, run_id="run-test-eq-stage-order"
+        )
+        assert detail["decision_reports"], "entry_qualification stage must not break the existing scan"
+
+        noop = lambda ctx: {}  # noqa: E731
+        stages = [
+            WorkflowStage("indicators", noop, produces=("indicators", "vwap", "confluence")),
+            WorkflowStage("regime", noop, produces=("regime", "market_health")),
+            WorkflowStage("scoring", noop, depends_on=("indicators", "regime"), produces=("scoring",)),
+            WorkflowStage("confidence", noop, depends_on=("scoring", "regime"),
+                          produces=("evidence_bundle", "confidence")),
+            WorkflowStage("risk", noop, depends_on=("indicators", "regime"), produces=("risk",)),
+            WorkflowStage("decision", noop, depends_on=("scoring", "confidence", "risk"),
+                          produces=("outcome",)),
+            WorkflowStage("session", noop, produces=("session_context",)),
+            WorkflowStage("relative_strength", noop, depends_on=("session",), produces=("relative_strength",)),
+            WorkflowStage("relative_volume", noop, depends_on=("session",), produces=("relative_volume",)),
+            WorkflowStage(
+                "intraday_analytics", noop,
+                depends_on=("session", "indicators", "relative_strength", "relative_volume"),
+                produces=("intraday_signal_set",),
+            ),
+        ]
+        original_order = build_definition("pre-id6d", stages).execution_order
+        with_eq = build_definition(
+            "post-id6d",
+            [*stages, WorkflowStage(
+                "entry_qualification", noop, depends_on=("decision", "intraday_analytics"),
+                produces=("entry_qualification",),
+            )],
+        ).execution_order
+        pre_existing_names = [n for n in with_eq if n != "entry_qualification"]
+        assert tuple(pre_existing_names) == original_order
+        assert "entry_qualification" in with_eq
+
+    def test_id6d_entry_qualification_persists_bound_to_the_exact_canonical_decision(
+        self, repo: SqliteRepository, config_dir: Path
+    ) -> None:
+        """ID-6D: the persisted EntryQualification must bind to the SAME
+        Decision the cycle just produced -- same decision_id/instrument_id/
+        decision_type/run_id/cycle_id (ID-6C.1's own binding invariant),
+        with as_of matching SessionContext, never wall-clock/scheduler time."""
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        iid = "NSE:AAA"
+        repo.upsert_instrument(
+            Instrument(instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE")
+        )
+        repo.add_candles(_candles(iid, seed=100))
+        repo.add_candles(_intraday_candles(iid, AS_OF.date(), seed=100))
+
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        ingestion = IngestionResult(
+            as_of=AS_OF, instruments_upserted=1, candles_fetched=86, candles_written=86,
+            quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+        )
+        pipe.run(RunTrigger.PREMARKET, as_of=AS_OF, ingestion=ingestion, run_id="run-test-eq-binding")
+
+        decision = repo.get_decision(f"decision-{iid}-{AS_OF.isoformat()}")
+        assert decision is not None, "fixture must produce a real WATCH/TRADE decision"
+        assert decision.decision_type in (DecisionType.WATCH, DecisionType.TRADE)
+
+        eq = repo.latest_entry_qualification_for_decision(decision.decision_id)
+        assert eq is not None
+        assert eq.decision_id == decision.decision_id
+        assert eq.instrument_id == decision.instrument_id
+        assert eq.decision_type == decision.decision_type
+        assert eq.run_id == decision.run_id
+        assert eq.cycle_id == decision.cycle_id
+        assert eq.as_of == AS_OF  # SessionContext's own as_of, not wall-clock
+        assert eq.confirmation.value == "NOT_EVALUATED"
+
+    def test_id6d_rerun_with_same_run_id_is_idempotent_not_duplicated(
+        self, repo: SqliteRepository, config_dir: Path
+    ) -> None:
+        """ID-6D + ID-6C: re-executing the same cycle (same as_of/run_id --
+        a retry) must persist exactly one EntryQualification observation,
+        not two -- save_entry_qualification's own idempotency must hold
+        through two full pipeline executions, not just a direct unit call."""
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        iid = "NSE:AAA"
+        repo.upsert_instrument(
+            Instrument(instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE")
+        )
+        repo.add_candles(_candles(iid, seed=100))
+        repo.add_candles(_intraday_candles(iid, AS_OF.date(), seed=100))
+
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        ingestion = IngestionResult(
+            as_of=AS_OF, instruments_upserted=1, candles_fetched=86, candles_written=86,
+            quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+        )
+        for _ in range(2):
+            detail = pipe.run(
+                RunTrigger.PREMARKET, as_of=AS_OF, ingestion=ingestion, run_id="run-test-eq-idempotent"
+            )
+            assert detail["decision_reports"]
+
+        assert repo.record_counts()["entry_qualifications"] == 1
+        history = repo.list_entry_qualifications_for_instrument_session(iid, AS_OF.date())
+        assert len(history) == 1
+
+    def test_id6d_engine_receives_the_exact_same_session_context_and_signal_set(
+        self, repo: SqliteRepository, config_dir: Path, monkeypatch
+    ) -> None:
+        """ID-6D #10/#19: no duplicate SessionContext/IntradaySignalSet
+        construction -- EntryQualificationEngine.evaluate() must receive
+        the literal same objects `intraday_analytics_stage` already
+        produced this cycle, proven by identity, not equal values."""
+        from athena.intraday.entry_qualification_engine import EntryQualificationEngine
+
+        recorded: dict[str, object] = {}
+        real_evaluate = EntryQualificationEngine.evaluate
+
+        def spy_evaluate(self, *args, **kwargs):
+            recorded["session_context"] = kwargs.get("session_context")
+            recorded["signal_set"] = kwargs.get("signal_set")
+            return real_evaluate(self, *args, **kwargs)
+
+        monkeypatch.setattr(EntryQualificationEngine, "evaluate", spy_evaluate)
+
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        iid = "NSE:AAA"
+        repo.upsert_instrument(
+            Instrument(instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE")
+        )
+        repo.add_candles(_candles(iid, seed=100))
+        repo.add_candles(_intraday_candles(iid, AS_OF.date(), seed=100))
+
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        ingestion = IngestionResult(
+            as_of=AS_OF, instruments_upserted=1, candles_fetched=86, candles_written=86,
+            quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+        )
+        detail = pipe.run(
+            RunTrigger.PREMARKET, as_of=AS_OF, ingestion=ingestion, run_id="run-test-eq-identity"
+        )
+        assert detail["decision_reports"]
+        assert recorded["session_context"] is not None
+        assert recorded["signal_set"] is not None
+        assert recorded["session_context"].as_of == AS_OF
+        assert recorded["signal_set"].as_of == AS_OF

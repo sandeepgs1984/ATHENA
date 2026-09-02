@@ -6,7 +6,167 @@ status updated on approval.
 
 ---
 
-## ID-6C Entry Qualification Persistence — Architecture Accepted, Closure Held for ID-6C.1
+## ID-6D Entry Qualification Workflow Integration & Provenance Resolution — Implemented / Ready for Owner Workflow/Provenance Review
+
+**Summary.** Owner closed ID-6C in full (including ID-6C.1) and authorized
+ID-6D to wire the already-frozen Entry Qualification chain
+(ID-6A/ID-6B.2/ID-6B.2A/ID-6C/ID-6C.1) into ATHENA's canonical runtime for
+the first time, resolving the two boundaries deliberately left open by
+earlier milestones: which canonical Decision is current, and which
+`EntryEvidenceFinality` to supply the pure engine. No new trading
+methodology; no API/UI.
+
+Audited the actual production workflow first
+(`OwnerValidationPipeline._scan_eligible`'s `builder()` in
+`src/athena/ops/owner_validation.py`) rather than assuming an insertion
+point: found `decision` (scoring → confidence/risk → decision) and
+`intraday_analytics` (session → relative_strength/relative_volume/
+indicators → intraday_analytics) were two independent branches of the same
+per-instrument `WorkflowStage` DAG, joined by nothing. Added a new
+`entry_qualification` stage depending on both — the first stage to join
+them — declared last so it cannot perturb the ten pre-existing stages'
+relative execution order (proven against the real Kahn topological sort,
+mirroring the existing ID-1/ID-2/ID-4/ID-5D ordering-stability tests, and
+confirmed by the full existing 44-test `test_owner_validation.py` suite
+passing unmodified).
+
+**Current Decision source of truth**: defined as exactly the Decision
+`dec_stage` just produced and persisted this same synchronous workflow
+cycle — read via the existing `box["cap"].outcome.decision` closure
+capture `dec_stage` already sets, never a fresh repository query.
+`OwnerValidationPipeline` runs one single-threaded workflow per instrument
+sequentially, so this is provably always the freshest possible Decision
+for the instrument; no TTL, age threshold, or extra "latest Decision"
+query was invented. Decision-type eligibility: the engine is called
+**unconditionally** (it already self-handles non-WATCH/TRADE via
+`OUT_OF_SCOPE`), but persistence is scoped to WATCH/TRADE only, per the
+owner's explicit "do not flood persistence with structurally irrelevant
+observations" instruction.
+
+**Evidence-finality resolution** (the milestone's primary design task):
+added a new pure function, `resolve_evidence_finality`
+(`src/athena/intraday/entry_qualification_provenance.py`). Source-audited
+that all four direct readiness families the frozen v0 expression consumes
+(VWAP, aggregate trend's M5 leg, Relative Strength, Relative Volume — plus
+trend's M15 leg) are M5/M15-derived, and that `live_m5_settlement_repair.py`
+itself excludes "today's still-open/most-recent session" from its own
+scope, confirming a `SessionPhase.REGULAR` session's M5 has not yet been
+through settlement repair. The resolver reuses the pure engine's own
+**public structural/lifecycle eligibility gate** — `decision_type` WATCH/
+TRADE AND `SessionPhase.REGULAR` — as the sole signal for "was direct
+M5-sourced evidence decisive," deliberately NOT the inner VWAP/trend/
+RS-or-RVOL tri-state formula, so it never duplicates the readiness
+methodology; this gate was chosen specifically because `evidence_finality`
+is a required *input* to `evaluate()`, so it must be computable *before*
+the engine runs (reason-code introspection would need a wasteful second
+invocation). Result: `LIVE_M5_PROVISIONAL` whenever REGULAR-phase
+evaluation will occur; `UNKNOWN_PROVENANCE` otherwise (deferring to
+indirect canonical-Decision provenance, which ADR-013/ID-6B.0 already
+established cannot currently be positively proven). Consequently
+`NO_DECISIVE_PROVISIONAL_M5_DEPENDENCY` is **structurally unreachable**
+under the current runtime — reported honestly (exhaustively proven
+unreachable across every `DecisionType` x `SessionPhase` combination by a
+dedicated test), not faked; the owner's own instruction anticipated
+exactly this outcome. A known, explicitly documented conservatism
+limitation: `SessionPhase.REGULAR` is relative to the supplied `as_of`,
+not true wall-clock "now," so a historical replay at a past `as_of` would
+also classify as `LIVE_M5_PROVISIONAL` even if that session's M5 has since
+been settled — a deliberately safe over-classification, never an
+under-classification, and no new provenance carrier was invented to
+resolve it more precisely (not a demonstrated need for this milestone).
+M15 provisionality is explicitly out of scope — no ID-5B-equivalent live
+classification exists for it, and none was invented.
+
+`as_of` and `persisted_at` both reuse the single injected `ctx.as_of` clock
+this architecture already provides per cycle — no new clock dependency, no
+`datetime.now()`, consistent with CLAUDE.md's "no hidden clock reads"
+principle; `WorkflowEngine`'s own `clock` parameter is monotonic
+(stage-timing only), not a wall-clock/datetime source, so there was no
+existing distinct value to reuse instead.
+
+A real, repository-backed integration test (temp DB, no production DB
+touched) proves the whole chain end-to-end against actual seeded market
+data: exact Decision binding (decision_id/instrument_id/decision_type/
+run_id/cycle_id all agreeing, satisfying ID-6C.1's own invariant), correct
+`as_of` (from `SessionContext`, not wall-clock), idempotent re-run (one
+persisted row after two identical full-pipeline executions with the same
+`run_id`), and object-identity reuse of `SessionContext`/`IntradaySignalSet`
+(no duplicate construction, proven by a monkeypatch spy mirroring ID-2's
+own precedent test pattern).
+
+**Architecture compliance.** Preserves ADR-013, ATHENA-002, ADR-003,
+ADR-005, ADR-009, ADR-012, and the advisory-only/no-order boundary. The
+frozen v0 methodology (formula, tri-state logic, state precedence, Option
+C, WATCH/TRADE parity, confirmation, evidence-finality passthrough,
+point-in-time semantics, input-coherence rules) and the closed ID-6C
+persistence contract (identity key, idempotency, conflict detection,
+Decision binding) are both byte-for-byte unchanged — verified by the full
+existing ID-6A/ID-6B.2/ID-6B.2A/ID-6C test suites passing unmodified. No
+`ScoringEngine`, `DecisionEngine` behavior/rules, `TradePlan`,
+`SessionContext` methodology, provider, M15 repair, EMR, or DarvaX change.
+No API/UI. No `DecisionEngine` retrofit — Decision provenance resolution
+was explicitly not attempted, per ADR-013's own documented insufficiency.
+
+**Files created.** `src/athena/intraday/entry_qualification_provenance.py`,
+`tests/market_intel/test_entry_qualification_provenance.py`,
+`docs/design/ID-6D-ENTRY-QUALIFICATION-WORKFLOW-INTEGRATION.md`.
+
+**Files modified.** `src/athena/ops/owner_validation.py` (new
+`entry_qualification` `WorkflowStage` + closure, new imports/engine
+instantiation), `src/athena/intraday/__init__.py` (export
+`resolve_evidence_finality`), `tests/ops/test_owner_validation.py` (4 new
+integration tests), `docs/MILESTONES.md`, `docs/ATHENA-ID-TRACK-HANDOFF.md`,
+`IMPLEMENTATION_SUMMARY.md`.
+
+**Behavior implemented.** One new pure function (`resolve_evidence_finality`,
+O(1), no I/O) and one new `WorkflowStage` closure that coordinates only
+(reads already-produced artifacts from `ctx`/`box`, calls the unmodified
+pure engine, calls the unmodified persistence method) — no analytical
+computation added at this layer, matching the workflow engine's own stated
+"coordinates only" principle.
+
+**Verification.** Focused tests: 9 new for the resolver (all non-vacuous,
+including an exhaustive `DecisionType` x `SessionPhase` unreachability
+proof and a purity/determinism proof) — 1 mutation-verified (AND-vs-OR
+logic). 4 new integration tests for the workflow stage (stage-ordering,
+Decision-binding correctness, idempotent re-run, object-identity reuse) —
+1 mutation-verified (disabling the persistence condition, confirmed both
+the binding and idempotency tests correctly fail). `tests/ops/test_owner_validation.py`:
+48 passed (44 existing unmodified + 4 new). `tests/market_intel/test_entry_qualification_provenance.py`:
+9 passed. Combined ID-6A–ID-6D Entry Qualification tests: 116 passed. Ruff
+clean on all new/changed files. `git diff --check` clean. Full repository
+suite: **3,127 passed, 1 pre-existing skip, 0 failed**. No production DB
+writes (all tests use `tmp_path`; `db/athena.db` untouched — confirmed no
+reference to its real path anywhere in new/changed code or tests). No
+provider calls. No schema change (SCHEMA_VERSION unchanged at 17). No
+methodology change.
+
+**Risks / known gaps.** `NO_DECISIVE_PROVISIONAL_M5_DEPENDENCY` remains
+permanently unreachable until a future milestone resolves indirect
+Decision provenance (would require `DecisionEngine`/`DecisionTrace`
+changes explicitly out of scope here). The `SessionPhase.REGULAR`-based
+finality signal is calendar-relative to `as_of`, not wall-clock-verified —
+conservative but not maximally precise for historical replay use.
+`entry_qualification`'s output is not threaded into `ScanCapture`/
+`DailyScanReport` (no reporting/API integration this milestone). No
+production-write gate/feature flag exists — the stage is wired live, not
+gated, since none of the existing repository conventions offered one to
+reuse and inventing one was judged unjustified.
+
+**Suggested improvements.** A future milestone could resolve indirect
+Decision provenance (if a genuine need arises) by threading provenance
+metadata through `ScoringEngine`/`ConfidenceEngine`/`DecisionTrace` — an
+`DecisionEngine`-adjacent change requiring its own ADR review, not
+attempted here. ID-6E should design outcome/shadow-validation.
+
+**Remaining work.** Owner workflow/provenance review. Do not start ID-6E,
+API/UI, ID-7, or EM-6 until explicitly authorized.
+
+**Outcome:** Implemented; ready for owner workflow/provenance review.
+
+---
+
+## ID-6C Entry Qualification Persistence — Owner Approved / Closed
 
 **Summary.** Owner closed ID-6B in full (ID-6A, ID-6B.0, ID-6B.1, ID-6B.1A,
 ID-6B.1B, ID-6B.2, ID-6B.2A) and authorized ID-6C to add durable, auditable
@@ -141,7 +301,7 @@ and closed under ID-6C.1 immediately below.
 
 ---
 
-## ID-6C.1 Entry Qualification Canonical Decision-Binding Hardening — Implemented / Ready for Owner Persistence Closure Review
+## ID-6C.1 Entry Qualification Canonical Decision-Binding Hardening — Owner Approved / Closed
 
 **Summary.** Owner review of ID-6C accepted the persistence architecture
 (append-only observations, composite logical identity, deterministic
@@ -269,7 +429,8 @@ ID-6D.
 including ID-6C.1). Do not start ID-6D, persistence, workflow integration,
 API/UI, ID-7, or EM-6 until explicitly authorized.
 
-**Outcome:** Implemented; ready for owner persistence closure review.
+**Outcome:** Owner approved / closed. ID-6C (including ID-6C.1) is now
+fully closed; ID-6D authorized to start.
 
 ---
 
