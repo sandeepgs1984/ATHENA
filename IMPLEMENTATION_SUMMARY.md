@@ -6,6 +6,60 @@ status updated on approval.
 
 ---
 
+## ID-6B.1 Entry Qualification Evidence Baseline — Ready for Owner Review
+
+**Summary.** Recorded ID-6B.0 as owner-approved / closed and completed the
+owner-authorized ID-6B.1 read-only evidence baseline. The reusable harness
+reconstructed existing ID artifacts for real historical WATCH/TRADE candidates
+across five consecutive recent sessions and six checkpoints, then measured
+availability, distributions, candidate-policy prevalence, associations, and
+state-transition persistence.
+
+**Architecture compliance.** Preserves ADR-013, ATHENA-002, ADR-003, ADR-005,
+ADR-012, and the advisory-only/no-order boundary. No production Entry
+Qualification engine, persistence, migration, workflow stage, API/UI,
+threshold, scoring, DecisionEngine, TradePlan, provider, DB write, EMR,
+DarvaX, ID-6B.2, ID-6C, ID-6D, ID-6E, or ID-7 behavior changed.
+
+**Files created.** `src/athena/data/id6b1_entry_qualification_baseline.py`,
+`tests/data_layer/test_id6b1_entry_qualification_baseline.py`,
+`docs/research/ID-6B.1-ENTRY-QUALIFICATION-EVIDENCE-BASELINE.md`.
+
+**Files modified.** `docs/MILESTONES.md`,
+`docs/ATHENA-ID-TRACK-HANDOFF.md`, `ATHENA_BRIEFING.md`,
+`IMPLEMENTATION_SUMMARY.md`.
+
+**Behavior implemented.** Research harness only. It opens `db/athena.db` with
+SQLite URI `mode=ro`, enables `PRAGMA query_only=ON`, reuses production ID
+engines, and writes structured research artifacts under
+`artifacts/research/id6b1/`. It does not create or emit
+`EntryQualification`.
+
+**Verification.** Focused tests: 3 passed. Ruff clean for the new harness and
+test. Bounded replay completed 370 candidate-checkpoint observations across 5
+sessions and 32 instruments. Deterministic rerun produced identical stable
+analysis SHA-256:
+`7baf33e01df22d2acae000c44bcb7b0be0f2017d12248432e435eb986619b5fb`.
+`git diff --check` is run as the closeout quality gate.
+
+**Risks / known gaps.** The measured candidate policy is selective but
+flickers; `SessionDataQualityStatus.EXPECTED_BAR_MISSING` appears frequently
+in the bounded replay; indirect Decision provenance remains insufficient;
+settled replay is not knowledge-time live reconstruction; outcome optimization
+is still unsupported by realized trade data.
+
+**Suggested improvements.** Owner should approve/revise the proposed v0
+readiness policy and decide SessionDataQuality handling before authorizing
+ID-6B.2 pure engine implementation.
+
+**Remaining work.** Owner policy review. Do not start ID-6B.2, persistence,
+workflow integration, ID-7, EM-6, EMR, DarvaX, UI, provider, DB, or production
+work until explicitly authorized.
+
+**Outcome:** Evidence baseline complete; ready for owner policy review.
+
+---
+
 ## ID-6B.0 Entry Qualification Methodology Design — Ready for Owner Review
 
 **Summary.** Recorded ID-6A as owner-approved / closed and completed the

@@ -4,7 +4,8 @@
 owner-approved and CLOSED; ID-5 owner-approved and CLOSED; ID-6 discovery
 architecture owner-approved with condition; ID-6A0 Entry Qualification ADR
 owner-approved and closed; ID-6A owner-approved and closed; ID-6B.0
-methodology discovery ready for owner review)
+owner-approved and closed; ID-6B.1 evidence baseline ready for owner policy
+review)
 **Governing boundary:** accepted `docs/adr/ADR-013-entry-qualification-architecture.md`
 for Entry Qualification; otherwise this track extends the existing frozen
 `ATHENA-002-System-Blueprint.md` module map (§6 of `ATHENA_BRIEFING.md`).
@@ -17,8 +18,9 @@ ID-5B is CLOSED and ID-5 is CLOSED. ID-6 discovery architecture is
 owner-approved with condition, and ID-6A0 is owner-approved and closed after
 ADR-013 acceptance on 2026-09-02. ID-6A domain/state/finality/confirmation
 contracts are owner-approved and closed. ID-6B.0 methodology discovery is
-ready for owner review; no engine, persistence, workflow stage, thresholds,
-UI, or production behavior has been implemented.
+owner-approved and closed. ID-6B.1 read-only evidence baseline is ready for
+owner policy review; no engine, persistence, workflow stage, thresholds, UI,
+or production behavior has been implemented.
 Evidence notes:
 `docs/research/ID-5B-LIVE-M5-SEMANTICS-CAPTURE-2026-08-31.md` and
 `docs/research/ID-6-SCOPE-ARCHITECTURE-DESIGN.md`.
@@ -58,7 +60,8 @@ Track B capture is running the same morning.
 | ID-6 | DISCOVERY ARCHITECTURE OWNER APPROVED WITH CONDITION 2026-09-02 — corrected architecture accepted, condition satisfied by ID-6A0 approval; ID-6 remains active through its owner-gated slices |
 | ID-6A0 | OWNER APPROVED / CLOSED 2026-09-02 — ADR-013 accepted after ID-6A0.1 corrected evidence finality/provenance vs methodology confirmation |
 | ID-6A | OWNER APPROVED / CLOSED 2026-09-02 — immutable Entry Qualification domain contracts accepted; no engine, persistence, workflow, thresholds, ID-7, EM-6, EMR, DarvaX, or production behavior |
-| ID-6B.0 | DISCOVERY COMPLETE — READY FOR OWNER METHODOLOGY REVIEW 2026-09-02 — Entry Qualification methodology / engine design report created; no production engine implemented |
+| ID-6B.0 | OWNER APPROVED / CLOSED 2026-09-02 — methodology/design accepted; illustrative practical-v0 rule not approved; owner decisions frozen for QUALIFIED allowed architecturally, terminal disqualification off in v0, OR contextual, WATCH/TRADE same methodology unless evidence proves otherwise, confirmation methodology unapproved, no additive score |
+| ID-6B.1 | EVIDENCE BASELINE COMPLETE — READY FOR OWNER POLICY REVIEW 2026-09-02 — read-only settled historical market-time replay measured 370 candidate-checkpoint observations across 5 recent sessions and 32 instruments; no production engine implemented |
 
 The full detailed evidence for every closed milestone above is in
 `docs/MILESTONES.md`'s "Intraday Intelligence Track" section (long — this
@@ -172,12 +175,14 @@ ID-6A implements only the immutable domain/state/finality/confirmation
 contracts under `src/athena/intraday/entry_qualification_models.py` and is
 owner-approved / closed as of 2026-09-02.
 
-ID-6B.0 is the current review gate:
-`docs/research/ID-6B-ENTRY-QUALIFICATION-METHODOLOGY-DESIGN.md` proposes the
-future pure engine contract and v0 methodology choices. Do not implement an
-engine, persistence, UI, thresholds, IntradayTradePlan, ID-6C, ID-6D, ID-6E,
-ID-7, EM-6, EMR, DarvaX, or order behavior until the owner approves ID-6B.0
-and explicitly authorizes the next milestone.
+ID-6B.1 is the current review gate:
+`docs/research/ID-6B.1-ENTRY-QUALIFICATION-EVIDENCE-BASELINE.md` records the
+read-only evidence baseline for future policy freeze. The baseline artifacts
+live under `artifacts/research/id6b1/`; stable analysis SHA-256 is
+`7baf33e01df22d2acae000c44bcb7b0be0f2017d12248432e435eb986619b5fb`. Do not
+implement an engine, persistence, UI, thresholds, IntradayTradePlan, ID-6B.2,
+ID-6C, ID-6D, ID-6E, ID-7, EM-6, EMR, DarvaX, or order behavior until the
+owner approves ID-6B.1 and explicitly authorizes the next milestone.
 
 ## 7. ID-5B — closed result
 
