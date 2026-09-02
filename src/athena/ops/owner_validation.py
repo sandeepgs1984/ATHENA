@@ -11,8 +11,8 @@ avoid circular import chains through ``athena.scanner`` at package import time.
 from __future__ import annotations
 
 import os
-from collections.abc import Mapping, Sequence
-from datetime import datetime, timedelta
+from collections.abc import Callable, Mapping, Sequence
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, cast
@@ -82,6 +82,7 @@ class OwnerValidationPipeline:
         exchange: str = DEFAULT_EXCHANGE,
         enable_scan: bool = True,
         symbols_filter: Sequence[str] | None = None,
+        persistence_clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._repo = repo
         self._config_dir = Path(config_dir)
@@ -92,6 +93,19 @@ class OwnerValidationPipeline:
             tuple(normalize_candidate_symbol(s) for s in symbols_filter)
             if symbols_filter
             else None
+        )
+        # ID-6D.1: the real, timezone-aware wall-clock instant a persisted
+        # EntryQualification observation was actually written -- distinct
+        # from `as_of` (the evaluation/market-time checkpoint). Injectable
+        # for deterministic tests (mirrors this codebase's existing
+        # `utc_now`/`_utc_now` module-level helpers in
+        # `portfolio/sync.py`/`darvax/screening/sweep.py`, made explicitly
+        # injectable here rather than a bare hardcoded call, since
+        # `save_entry_qualification` requires proving `as_of != persisted_at`
+        # under test). Never used by the pure EntryQualificationEngine or
+        # any analytical engine -- only at this orchestration boundary.
+        self._persistence_clock: Callable[[], datetime] = (
+            persistence_clock or (lambda: datetime.now(tz=timezone.utc))
         )
 
     def run(
@@ -1388,13 +1402,15 @@ class OwnerValidationPipeline:
                     evidence_finality=evidence_finality,
                 )
                 if decision.decision_type in (DecisionType.WATCH, DecisionType.TRADE):
-                    # persisted_at reuses ctx.as_of: this architecture has
-                    # exactly one injected clock per cycle (the caller-
-                    # supplied `as_of`), and CLAUDE.md forbids a fresh
-                    # `datetime.now()` at this layer — see the ID-6D
-                    # design note §"persisted_at semantics" for why no
-                    # second, distinct wall-clock value is introduced here.
-                    self._repo.save_entry_qualification(eq, persisted_at=ctx.as_of)
+                    # ID-6D.1: as_of (above, from SessionContext) is the
+                    # evaluation/market-time checkpoint; persisted_at is the
+                    # actual durable-write instant -- intentionally
+                    # independent dimensions, never conflated. Sourced from
+                    # the injected `self._persistence_clock`, never
+                    # `ctx.as_of` and never a bare `datetime.now()` here.
+                    self._repo.save_entry_qualification(
+                        eq, persisted_at=self._persistence_clock()
+                    )
                 return {"entry_qualification": eq}
 
             defn = build_definition(

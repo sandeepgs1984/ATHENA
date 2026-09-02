@@ -2589,3 +2589,101 @@ class TestOwnerValidationPipeline:
         assert recorded["signal_set"] is not None
         assert recorded["session_context"].as_of == AS_OF
         assert recorded["signal_set"].as_of == AS_OF
+
+    def test_id6d1_as_of_and_persisted_at_are_distinct_dimensions(
+        self, repo: SqliteRepository, config_dir: Path
+    ) -> None:
+        """ID-6D.1: EntryQualification.as_of must remain the SessionContext
+        evaluation checkpoint; persisted_at must be the actual injected
+        wall-clock write instant -- proven with genuinely different values,
+        not merely happening to observe equal ones."""
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        iid = "NSE:AAA"
+        repo.upsert_instrument(
+            Instrument(instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE")
+        )
+        repo.add_candles(_candles(iid, seed=100))
+        repo.add_candles(_intraday_candles(iid, AS_OF.date(), seed=100))
+
+        persist_time = AS_OF.astimezone(ZoneInfo("UTC")) + timedelta(seconds=3)
+        pipe = OwnerValidationPipeline(
+            repo, config_dir, persistence_clock=lambda: persist_time
+        )
+        ingestion = IngestionResult(
+            as_of=AS_OF, instruments_upserted=1, candles_fetched=86, candles_written=86,
+            quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+        )
+        pipe.run(RunTrigger.PREMARKET, as_of=AS_OF, ingestion=ingestion, run_id="run-test-eq1d1-distinct")
+
+        decision = repo.get_decision(f"decision-{iid}-{AS_OF.isoformat()}")
+        assert decision is not None
+        eq = repo.latest_entry_qualification_for_decision(decision.decision_id)
+        assert eq is not None
+        assert eq.as_of == AS_OF  # unchanged: evaluation/market-time checkpoint
+
+        row = repo.connection.execute(
+            "SELECT persisted_at FROM entry_qualifications WHERE decision_id=?",
+            (decision.decision_id,),
+        ).fetchone()
+        assert row is not None
+        stored_persisted_at = datetime.fromisoformat(row[0])
+        assert stored_persisted_at == persist_time
+        assert stored_persisted_at != eq.as_of  # genuinely distinct, not coincidentally equal
+        assert stored_persisted_at.tzinfo is not None  # timezone-aware
+
+    def test_id6d1_idempotent_retry_preserves_original_persisted_at(
+        self, repo: SqliteRepository, config_dir: Path
+    ) -> None:
+        """ID-6D.1: a delayed/retried idempotent write must not overwrite
+        the original observation's persisted_at, and must not create a
+        second row -- the second call's persistence-attempt time is
+        discarded, exactly as an idempotent no-op should behave."""
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        iid = "NSE:AAA"
+        repo.upsert_instrument(
+            Instrument(instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE")
+        )
+        repo.add_candles(_candles(iid, seed=100))
+        repo.add_candles(_intraday_candles(iid, AS_OF.date(), seed=100))
+
+        first_persist = AS_OF.astimezone(ZoneInfo("UTC")) + timedelta(seconds=2)
+        second_persist = AS_OF.astimezone(ZoneInfo("UTC")) + timedelta(minutes=10)
+        ingestion = IngestionResult(
+            as_of=AS_OF, instruments_upserted=1, candles_fetched=86, candles_written=86,
+            quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+        )
+
+        pipe_first = OwnerValidationPipeline(
+            repo, config_dir, persistence_clock=lambda: first_persist
+        )
+        pipe_first.run(
+            RunTrigger.PREMARKET, as_of=AS_OF, ingestion=ingestion, run_id="run-test-eq1d1-retry"
+        )
+        pipe_second = OwnerValidationPipeline(
+            repo, config_dir, persistence_clock=lambda: second_persist
+        )
+        pipe_second.run(
+            RunTrigger.PREMARKET, as_of=AS_OF, ingestion=ingestion, run_id="run-test-eq1d1-retry"
+        )
+
+        assert repo.record_counts()["entry_qualifications"] == 1
+        decision = repo.get_decision(f"decision-{iid}-{AS_OF.isoformat()}")
+        row = repo.connection.execute(
+            "SELECT persisted_at FROM entry_qualifications WHERE decision_id=?",
+            (decision.decision_id,),
+        ).fetchone()
+        assert datetime.fromisoformat(row[0]) == first_persist  # not overwritten by the retry
+
+    def test_id6d1_no_pure_engine_clock_dependency_introduced(self) -> None:
+        """Structural proof: EntryQualificationEngine.evaluate()'s signature
+        carries no clock/persisted_at parameter -- the pure engine remains
+        entirely clock-free, unchanged by this correction."""
+        import inspect
+
+        from athena.intraday.entry_qualification_engine import EntryQualificationEngine
+
+        params = inspect.signature(EntryQualificationEngine.evaluate).parameters
+        assert set(params) == {"self", "decision", "session_context", "signal_set",
+                                "evidence_finality", "policy"}

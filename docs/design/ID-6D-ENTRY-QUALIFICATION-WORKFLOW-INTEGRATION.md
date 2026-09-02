@@ -1,6 +1,7 @@
 # ID-6D — Entry Qualification Workflow Integration & Provenance Resolution
 
-**Status:** Implemented. Read for the exact contract before touching the
+**Status:** Implemented (ID-6D.1 persistence-time semantics correction
+included). Read for the exact contract before touching the
 `entry_qualification` stage, `resolve_evidence_finality`, or the workflow
 graph in `owner_validation.py`.
 **Depends on:** ID-6A/ID-6B.2/ID-6B.2A (pure engine, owner-closed, frozen
@@ -101,10 +102,11 @@ thresholds/config plumbing added.
 
 ## 9. Persistence invocation
 
-`self._repo.save_entry_qualification(eq, persisted_at=ctx.as_of)`, called
-only for WATCH/TRADE Decisions (§2). Uses ID-6C/ID-6C.1's repository
-contract exactly, unmodified — no direct SQL, no bypass of Decision-binding
-validation.
+`self._repo.save_entry_qualification(eq, persisted_at=self._persistence_clock())`,
+called only for WATCH/TRADE Decisions (§2). Uses ID-6C/ID-6C.1's
+repository contract exactly, unmodified — no direct SQL, no bypass of
+Decision-binding validation. `persisted_at` is the real injected wall
+clock (see §12, corrected under ID-6D.1) — never `ctx.as_of`.
 
 ## 10. Idempotent runtime behavior
 
@@ -122,22 +124,65 @@ scheduler-tick, or persistence time. `session_context.as_of` is itself
 `ctx.as_of`, the one caller-injected clock value this whole architecture
 already treats as authoritative for the cycle.
 
-## 12. persisted_at semantics
+## 12. persisted_at semantics (corrected — ID-6D.1)
 
-`persisted_at=ctx.as_of` — this architecture provides exactly one injected
-clock per cycle (`ctx.as_of`, supplied by whatever caller invokes
-`OwnerValidationPipeline.run`/`scanner.scan`); no separate wall-clock
-"execution timestamp" distinct from `as_of` exists anywhere in this stage
-graph (`WorkflowEngine`'s own `clock` parameter is a **monotonic** clock
-used only for stage-timing/duration measurement, not a calendar datetime
-source). Reusing `ctx.as_of` avoids introducing a new clock dependency at
-the orchestration boundary and avoids a naive `datetime.now()`, per
-CLAUDE.md's "no hidden clock reads" principle. This means
-`EntryQualification.as_of == persisted_at` in practice today — a
-deliberate, honest simplification given the current single-injected-clock
-architecture, not a design flaw; the schema still models them as distinct
-columns for a future caller (e.g. a live scheduler with its own separate
-wall clock) that legitimately has two different values to supply.
+**`as_of` is evidence/evaluation market time. `persisted_at` is actual
+durable-write time. They are intentionally independent dimensions and
+must never be conflated.** An earlier revision of this document treated
+`persisted_at=ctx.as_of` as an "honest simplification" — that was wrong:
+`as_of`/`persisted_at` legitimately diverge under delayed execution,
+retry, recovery, queued processing, historical replay, or reprocessing,
+and writing evaluation time into a field named `persisted_at` would
+silently discard exactly the write-time information ID-6C's schema
+deliberately kept as a separate column.
+
+**Audit performed before correcting.** Searched for an existing
+injectable wall/calendar clock abstraction (`Clock`, `UtcClock`,
+`SystemClock`) — none exists; `WorkflowEngine`'s own `clock` parameter is
+**monotonic** (`time.monotonic`), used only for stage-timing/duration
+measurement, not a calendar datetime source. Found the established
+codebase convention for orchestration-layer wall-clock reads instead: a
+small module-level `utc_now()`/`_utc_now()` helper
+(`src/athena/portfolio/sync.py`, `src/athena/darvax/screening/sweep.py`)
+or an inline `datetime.now(tz=UTC)` call at write time
+(`src/athena/explosive_move/store/repository.py`). Also found
+`SqliteRepository.set_ops_meta(..., updated_ts: datetime | None = None)`
+— an existing **optional, injectable** timestamp parameter on the core
+repository itself, falling back to a self-generated value only when the
+caller doesn't supply one. `save_entry_qualification`'s own
+`persisted_at: datetime` parameter (mandatory, explicit, already existed
+since ID-6C) was therefore already correctly designed — the defect was
+entirely in the **caller** (`owner_validation.py`'s stage), which passed
+the wrong value.
+
+**Fix:** `OwnerValidationPipeline.__init__` now accepts an injectable
+`persistence_clock: Callable[[], datetime] | None = None`, defaulting to
+`lambda: datetime.now(tz=timezone.utc)` when not supplied — timezone-aware,
+matching every other wall-clock convention in this codebase (UTC, not
+exchange-local; ID-6C's own storage/round-trip conventions are otherwise
+unchanged). The `entry_qualification` stage now calls
+`self._repo.save_entry_qualification(eq, persisted_at=self._persistence_clock())`
+— never `ctx.as_of`, never a bare `datetime.now()` inline. The clock lives
+strictly at the orchestration boundary; `EntryQualificationEngine` and
+every other pure engine remain entirely clock-free (structurally proven —
+`evaluate()`'s signature carries no clock/timestamp parameter).
+
+**Idempotent retry:** unchanged conceptually, now genuinely exercised —
+a second `save_entry_qualification` call at the same logical identity is
+still a no-op (`False`) regardless of what the persistence clock reports
+at that later moment; the **original** `persisted_at` is never
+overwritten (test-proven: two full pipeline executions with the same
+`run_id` but different injected persistence-clock values still leave
+exactly one row, carrying the first call's `persisted_at`).
+
+**Latest-query semantics:** unchanged and reconfirmed — `latest_entry_qualification_for_decision`/
+`latest_entry_qualification_for_instrument_session`/
+`list_entry_qualifications_for_instrument_session` all order by `as_of`
+only, never `persisted_at`; a delayed write for an *earlier* checkpoint
+must never outrank a genuinely *later* checkpoint persisted sooner
+(test-proven with `as_of`/`persisted_at` deliberately given opposite
+relative order, to prove the query isn't secretly keying off
+insertion/write time).
 
 ## 13. Provenance limitation report (mandatory)
 

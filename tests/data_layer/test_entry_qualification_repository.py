@@ -481,6 +481,37 @@ def test_latest_for_instrument_session_returns_most_recent(repo) -> None:
     assert latest.state is EntryQualificationState.UNKNOWN
 
 
+def test_id6d1_latest_query_orders_by_as_of_not_persisted_at(repo) -> None:
+    """ID-6D.1: a delayed write (persisted_at far later than as_of) for an
+    EARLIER checkpoint must never outrank a genuinely later checkpoint
+    persisted sooner -- latest-lookup ordering is market-time (as_of)
+    based, never write-time based. `persisted_at`/`as_of` are deliberately
+    given the OPPOSITE relative order here to prove the query is not
+    secretly keying off insertion/write time."""
+    repo.save_decision(_decision("decision-1"))
+    repo.save_decision(_decision("decision-2"))
+    earlier_as_of, later_as_of = AS_OF, AS_OF.replace(hour=14, minute=30)
+    # The EARLIER checkpoint is persisted LATER (a delayed/retried write);
+    # the LATER checkpoint is persisted EARLIER (processed promptly).
+    delayed_persisted_at = AS_OF.replace(hour=23, minute=0)
+    prompt_persisted_at = AS_OF.replace(hour=14, minute=31)
+    repo.save_entry_qualification(
+        _eq(decision_id="decision-1", as_of=earlier_as_of, state=EntryQualificationState.QUALIFIED),
+        persisted_at=delayed_persisted_at,
+    )
+    repo.save_entry_qualification(
+        _eq(decision_id="decision-2", as_of=later_as_of, state=EntryQualificationState.NOT_YET),
+        persisted_at=prompt_persisted_at,
+    )
+    latest_session = repo.latest_entry_qualification_for_instrument_session(IID, DAY)
+    assert latest_session.as_of == later_as_of
+    assert latest_session.decision_id == "decision-2"
+    assert latest_session.state is EntryQualificationState.NOT_YET
+
+    history = repo.list_entry_qualifications_for_instrument_session(IID, DAY)
+    assert [h.as_of for h in history] == [earlier_as_of, later_as_of]  # as_of ASC, not write order
+
+
 def test_append_only_history_is_never_overwritten(repo) -> None:
     repo.save_decision(_decision())
     checkpoints = [AS_OF, AS_OF.replace(hour=10, minute=15), AS_OF.replace(hour=14, minute=30)]

@@ -6,7 +6,7 @@ status updated on approval.
 
 ---
 
-## ID-6D Entry Qualification Workflow Integration & Provenance Resolution — Implemented / Ready for Owner Workflow/Provenance Review
+## ID-6D Entry Qualification Workflow Integration & Provenance Resolution — Workflow/Decision/Finality Accepted, Closure Held for ID-6D.1
 
 **Summary.** Owner closed ID-6C in full (including ID-6C.1) and authorized
 ID-6D to wire the already-frozen Entry Qualification chain
@@ -77,12 +77,11 @@ resolve it more precisely (not a demonstrated need for this milestone).
 M15 provisionality is explicitly out of scope — no ID-5B-equivalent live
 classification exists for it, and none was invented.
 
-`as_of` and `persisted_at` both reuse the single injected `ctx.as_of` clock
-this architecture already provides per cycle — no new clock dependency, no
-`datetime.now()`, consistent with CLAUDE.md's "no hidden clock reads"
-principle; `WorkflowEngine`'s own `clock` parameter is monotonic
-(stage-timing only), not a wall-clock/datetime source, so there was no
-existing distinct value to reuse instead.
+**Correction (ID-6D.1, below): this milestone's original implementation
+incorrectly set `persisted_at=ctx.as_of` — owner review caught this and
+held closure until it was fixed to use a genuine, independently injected
+wall clock. See the ID-6D.1 entry immediately below for the corrected
+persistence-time semantics.**
 
 A real, repository-backed integration test (temp DB, no production DB
 touched) proves the whole chain end-to-end against actual seeded market
@@ -162,7 +161,137 @@ attempted here. ID-6E should design outcome/shadow-validation.
 **Remaining work.** Owner workflow/provenance review. Do not start ID-6E,
 API/UI, ID-7, or EM-6 until explicitly authorized.
 
-**Outcome:** Implemented; ready for owner workflow/provenance review.
+**Outcome:** Workflow integration, current-Decision resolution, and
+evidence-finality resolution all owner-accepted. Owner review found
+`persisted_at=ctx.as_of` wrongly conflated evaluation time with write
+time — corrected and closed under ID-6D.1 immediately below.
+
+---
+
+## ID-6D.1 Entry Qualification Persistence-Time Semantics — Implemented / Ready for Owner ID-6D Closure Review
+
+**Summary.** Owner review of ID-6D accepted the workflow placement,
+current-Decision resolution, and evidence-finality resolution, but held
+closure for one narrow defect: the stage's original
+`self._repo.save_entry_qualification(eq, persisted_at=ctx.as_of)` call
+conflated two semantically distinct timestamps. `EntryQualification.as_of`
+means the market/evidence checkpoint being evaluated; `persisted_at` (a
+column ID-6C deliberately kept separate) means when ATHENA actually
+committed the observation to durable storage. These coincide in a normal
+synchronous live cycle but diverge under delayed execution, retry,
+recovery, queued processing, historical replay, or reprocessing — writing
+evaluation time into a field named `persisted_at` would silently discard
+real write-time information.
+
+Audited existing clock conventions before changing anything: no
+injectable wall/calendar clock abstraction exists anywhere in the
+repository (`WorkflowEngine`'s own `clock` is monotonic,
+stage-timing-only). Found the established codebase convention for
+orchestration-layer wall-clock reads instead — a small module-level
+`utc_now()`/`_utc_now()` helper (`portfolio/sync.py`,
+`darvax/screening/sweep.py`) or an inline `datetime.now(tz=UTC)` call at
+write time (`explosive_move/store/repository.py`) — and a direct
+same-class precedent, `SqliteRepository.set_ops_meta(..., updated_ts:
+datetime | None = None)`, an existing optional-injectable-timestamp
+parameter on the very repository class `save_entry_qualification`
+belongs to. `save_entry_qualification`'s own `persisted_at: datetime`
+parameter (mandatory, explicit) was already correctly designed since
+ID-6C — the defect was entirely in the caller.
+
+Added an injectable `persistence_clock: Callable[[], datetime] | None =
+None` parameter to `OwnerValidationPipeline.__init__`, defaulting to
+`lambda: datetime.now(tz=timezone.utc)` — timezone-aware UTC, matching
+every other wall-clock convention in this codebase, injectable/overridable
+for deterministic tests. The `entry_qualification` stage now calls
+`self._repo.save_entry_qualification(eq, persisted_at=self._persistence_clock())`
+— never `ctx.as_of`, never a bare inline `datetime.now()`. The clock lives
+strictly at the orchestration boundary; `EntryQualificationEngine` and
+every other pure engine remain entirely clock-free (structurally
+reproven: `evaluate()`'s signature still carries no clock/timestamp
+parameter).
+
+Proved, with genuinely different injected values (not merely happening to
+observe equal ones): `EntryQualification.as_of` still comes from
+`SessionContext.as_of` unchanged; the stored `persisted_at` (verified via
+a direct SQL read, since the domain object intentionally doesn't expose
+write metadata) equals the injected persistence-clock value and differs
+from `as_of`; it is timezone-aware. Proved idempotent-retry correctness:
+two full pipeline executions with the same `run_id` but two different
+injected persistence-clock values still leave exactly one row, carrying
+the **first** call's `persisted_at` — a retry's later write-time attempt
+is discarded, never overwriting the original. Proved (at the repository
+level, with `as_of`/`persisted_at` deliberately given *opposite* relative
+order) that `latest_entry_qualification_for_instrument_session`/
+`list_entry_qualifications_for_instrument_session` order strictly by
+`as_of`, never `persisted_at` — a delayed write for an earlier checkpoint
+never outranks a genuinely later checkpoint persisted sooner.
+
+Evidence-finality resolver, current-Decision selection, methodology, and
+persistence identity/idempotency architecture are all confirmed
+unchanged — no code touched in `entry_qualification_provenance.py`, no
+change to `EntryQualificationEngine`, no change to the ID-6C logical
+identity key or conflict-detection logic. Owner's §13 evidence-finality
+reasoning recorded verbatim in the design note: the coarse outer
+eligibility gate is sufficient for v0 because every predicate capable of
+deciding the REGULAR-phase tri-state result consumes M5-derived evidence,
+so no reason-code introspection is needed; the historical-replay
+conservatism limitation (⁠`SessionPhase.REGULAR` is `as_of`-relative, not
+wall-clock-verified) remains documented, not resolved.
+
+**Architecture compliance.** Preserves ADR-013, ATHENA-002, ADR-003,
+ADR-005, ADR-009, ADR-012, and the advisory-only/no-order boundary. No
+change to workflow topology beyond ID-6D's own accepted `entry_qualification`
+stage placement, no methodology change, no Decision-selection change, no
+finality-resolver change, no schema change (SCHEMA_VERSION unchanged at
+17 — the `persisted_at` column already existed since ID-6C). No
+`ScoringEngine`/`DecisionEngine`/`TradePlan`/`SessionContext` impact. No
+API/UI. No EMR/DarvaX impact.
+
+**Files created.** None.
+
+**Files modified.** `src/athena/ops/owner_validation.py` (injectable
+`persistence_clock` on `OwnerValidationPipeline.__init__`; stage now uses
+it instead of `ctx.as_of`), `tests/ops/test_owner_validation.py` (3 new
+tests), `tests/data_layer/test_entry_qualification_repository.py` (1 new
+test), `docs/design/ID-6D-ENTRY-QUALIFICATION-WORKFLOW-INTEGRATION.md`
+(§9/§12 corrected), `docs/MILESTONES.md`, `docs/ATHENA-ID-TRACK-HANDOFF.md`,
+`IMPLEMENTATION_SUMMARY.md`.
+
+**Behavior implemented.** One new constructor parameter and a one-line
+call-site change; the injected clock is a plain `Callable[[], datetime]`,
+no new class/abstraction. O(1), no I/O beyond the wall-clock read itself
+(unavoidable at this orchestration boundary — never inside a pure
+engine).
+
+**Verification.** Focused tests: 4 new, all non-vacuous — distinct
+`as_of`/`persisted_at` values with a timezone-awareness check, idempotent-
+retry preserving the original `persisted_at`, latest-query ordering by
+`as_of` with `persisted_at` deliberately reversed, and a structural proof
+the pure engine gained no clock parameter. 1 mutation-verified: reverting
+the stage to `persisted_at=ctx.as_of` correctly failed both the
+distinct-timestamp test and the idempotent-retry test; reverted and
+reconfirmed clean. `tests/ops/test_owner_validation.py`: 51 passed (48
+existing + 3 new). `tests/data_layer/test_entry_qualification_repository.py`:
+41 passed (40 existing + 1 new). Combined ID-6A–ID-6D.1 Entry
+Qualification tests: 168 passed. Ruff clean. `git diff --check` clean.
+Full repository suite: **3,131 passed, 1 pre-existing skip, 0 failed**. No
+production DB writes during development (`db/athena.db` untouched,
+confirmed no reference to its real path anywhere in changed code/tests).
+No provider calls. No schema change.
+
+**Risks / known gaps.** None newly introduced. The default persistence
+clock (`datetime.now(tz=timezone.utc)`) is the only wall-clock read in
+this entire Entry Qualification chain, and it lives exactly at the
+orchestration boundary this codebase's own conventions already put such
+reads — not inside any analytical engine.
+
+**Suggested improvements.** None beyond what ID-6D already identified for
+ID-6E.
+
+**Remaining work.** Owner ID-6D closure review (now including ID-6D.1).
+Do not start ID-6E, API/UI, ID-7, or EM-6 until explicitly authorized.
+
+**Outcome:** Implemented; ready for owner ID-6D closure review.
 
 ---
 
