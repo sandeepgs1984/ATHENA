@@ -7,6 +7,13 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from athena.portfolio.my_portfolio_contracts import (
+    ImportStatus,
+    ReconciliationAction,
+    SymbolMappingState,
+    SyncRunStatus,
+)
+
 
 class PositionDTO(BaseModel):
     """Composed DTO representing open or closed trading positions."""
@@ -83,3 +90,188 @@ class ResetPositionsResultDTO(BaseModel):
     deleted_count: int
     backup_path: str | None = None
     portfolio: PortfolioDTO
+
+
+class ImportedHoldingRowDTO(BaseModel):
+    """Normalized provider-independent holdings row after parsing."""
+
+    model_config = ConfigDict(frozen=True)
+
+    source_row_id: str
+    raw_symbol: str
+    normalized_symbol: str
+    quantity: int | None = Field(default=None, gt=0)
+    avg_price: Decimal | None = Field(default=None, gt=0)
+    broker: str | None = None
+    holdings_as_of: datetime | None = None
+    source_metadata: dict[str, object] = Field(default_factory=dict)
+    mapping_state: SymbolMappingState
+    resolved_instrument_id: str | None = None
+    validation_errors: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class PortfolioReconciliationChangeDTO(BaseModel):
+    """Preview/confirmation diff for one canonical instrument."""
+
+    model_config = ConfigDict(frozen=True)
+
+    instrument_id: str
+    action: ReconciliationAction
+    before: dict[str, object] | None = None
+    after: dict[str, object] | None = None
+
+
+class PortfolioImportPreviewDTO(BaseModel):
+    """Import preview returned before canonical holdings mutate."""
+
+    model_config = ConfigDict(frozen=True)
+
+    import_id: str
+    status: ImportStatus
+    total_rows: int = Field(ge=0)
+    accepted_rows: int = Field(ge=0)
+    rejected_rows: int = Field(ge=0)
+    unresolved_rows: int = Field(ge=0)
+    ambiguous_rows: int = Field(ge=0)
+    warnings: list[str] = Field(default_factory=list)
+    rows: list[ImportedHoldingRowDTO]
+    proposed_changes: list[PortfolioReconciliationChangeDTO]
+
+
+class PortfolioImportConfirmRequest(BaseModel):
+    """Confirm a previously previewed import/reconciliation."""
+
+    model_config = ConfigDict(frozen=True)
+
+    import_id: str
+    confirmation: str = Field(description="Must be the exact token CONFIRM")
+
+
+class MyPortfolioHoldingDTO(BaseModel):
+    """Canonical current My Portfolio holding."""
+
+    model_config = ConfigDict(frozen=True)
+
+    instrument_id: str
+    quantity: int = Field(gt=0)
+    avg_price: Decimal = Field(gt=0)
+    imported_at: datetime
+    updated_at: datetime
+    source_import_id: str
+    source_row_id: str
+    provenance: dict[str, object] = Field(default_factory=dict)
+
+
+class PortfolioFreshnessDTO(BaseModel):
+    """Distinct freshness dimensions for My Portfolio analysis."""
+
+    model_config = ConfigDict(frozen=True)
+
+    portfolio_imported_at: datetime | None = None
+    holdings_as_of: datetime | None = None
+    last_synced_at: datetime | None = None
+    market_data_through: datetime | None = None
+    analysis_version: str
+    decision_as_of: datetime | None = None
+    price_as_of: datetime | None = None
+
+
+class PortfolioAnalysisProvenanceDTO(BaseModel):
+    """Persisted artifact references behind a snapshot row."""
+
+    model_config = ConfigDict(frozen=True)
+
+    instrument_id: str
+    price_source: str | None = None
+    candle_ref: str | None = None
+    decision_id: str | None = None
+    validation_run_id: str | None = None
+    analyzed_at: datetime | None = None
+    unavailable_fields: list[str] = Field(default_factory=list)
+    failed_components: list[str] = Field(default_factory=list)
+
+
+class PortfolioSnapshotRowDTO(BaseModel):
+    """Complete 20-column My Portfolio Snapshot row."""
+
+    model_config = ConfigDict(frozen=True, populate_by_name=True)
+
+    symbol: str
+    quantity: int = Field(alias="qty", gt=0)
+    avg_price: Decimal
+    last_price: Decimal | None = None
+    price_as_of: datetime | None = None
+    investment: Decimal
+    current_value: Decimal | None = None
+    pnl: Decimal | None = None
+    pnl_pct: Decimal | None = None
+    status: str | None = None
+    conviction: str | None = None
+    trend_setup: str | None = Field(default=None, alias="trend_or_setup")
+    key_trigger: str | None = None
+    support_1: Decimal | None = None
+    major_support_exit: Decimal | None = None
+    target_1: Decimal | None = None
+    target_2: Decimal | None = None
+    target_3: Decimal | None = None
+    next_action: str | None = None
+    last_review: datetime | None = None
+    freshness: PortfolioFreshnessDTO
+    provenance: PortfolioAnalysisProvenanceDTO
+
+
+class PortfolioSnapshotSummaryDTO(BaseModel):
+    """Server-owned My Portfolio header summary."""
+
+    model_config = ConfigDict(frozen=True)
+
+    holding_count: int = Field(ge=0)
+    total_investment: Decimal
+    total_current_value: Decimal | None = None
+    total_pnl: Decimal | None = None
+    total_pnl_pct: Decimal | None = None
+    imported_at: datetime | None = None
+    holdings_as_of: datetime | None = None
+    last_synced_at: datetime | None = None
+    market_data_through: datetime | None = None
+    sync_status: SyncRunStatus | None = None
+
+
+class PortfolioSnapshotDTO(BaseModel):
+    """Latest completed My Portfolio Snapshot."""
+
+    model_config = ConfigDict(frozen=True)
+
+    snapshot_id: str
+    generated_at: datetime
+    summary: PortfolioSnapshotSummaryDTO
+    rows: list[PortfolioSnapshotRowDTO]
+
+
+class PortfolioSyncStartRequest(BaseModel):
+    """Start a background Portfolio Sync run."""
+
+    model_config = ConfigDict(frozen=True)
+
+    force_ingestion: bool = False
+
+
+class PortfolioSyncRunDTO(BaseModel):
+    """Background Portfolio Sync progress/result contract."""
+
+    model_config = ConfigDict(frozen=True)
+
+    sync_run_id: str
+    status: SyncRunStatus
+    started_at: datetime
+    finished_at: datetime | None = None
+    total_holdings: int = Field(ge=0)
+    succeeded_holdings: int = Field(ge=0)
+    failed_holdings: int = Field(ge=0)
+    market_data_through: datetime | None = None
+    validation_run_id: str | None = None
+    analysis_version: str
+    progress: dict[str, object] = Field(default_factory=dict)
+    per_symbol: dict[str, object] = Field(default_factory=dict)
+    error: dict[str, object] = Field(default_factory=dict)

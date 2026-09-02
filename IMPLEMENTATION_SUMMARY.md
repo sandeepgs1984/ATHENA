@@ -6,6 +6,96 @@ status updated on approval.
 
 ---
 
+## PS-P1 My Portfolio Contract Design — Ready for Owner Review
+
+**Summary.** Implemented the PS-P1 contract-first milestone for My Portfolio
+after PS-P0 owner approval. The milestone freezes the isolated My Portfolio
+boundary inside ATHENA's existing `portfolio` capability, introduces additive
+SQLite persistence contracts for imports/rows/holdings/reconciliations/sync
+runs/analysis snapshots, defines pure runtime contracts for import
+normalization, symbol mapping states, canonical holdings, reconciliation,
+server-owned portfolio math, freshness, provenance, sync states, and the
+complete Portfolio Snapshot row.
+
+**Architecture compliance.** No ScoringEngine, DecisionEngine, indicator,
+OwnerValidationPipeline methodology, market-data store, broker, order, or
+dashboard behavior was changed. `owner_positions` remains the legacy/manual
+fill ledger. My Portfolio tables use the same `db/athena.db` schema surface and
+are isolated under the `portfolio_*` prefix. No ADR is required because the
+change is additive inside ATHENA-002's existing `portfolio` module boundary.
+
+**Files created.** `src/athena/portfolio/my_portfolio_contracts.py`,
+`tests/runtime/test_my_portfolio_contracts.py`,
+`tests/data_layer/test_my_portfolio_schema.py`,
+`tests/api/v1/test_my_portfolio_dtos.py`,
+`docs/research/PS-P1-PORTFOLIO-CONTRACT-DESIGN.md`.
+
+**Files modified.** `src/athena/portfolio/__init__.py`,
+`src/athena/data/store/schema.py`, `src/athena/api/v1/dtos/portfolio.py`,
+`docs/MILESTONES.md`, `ATHENA_BRIEFING.md`, `IMPLEMENTATION_SUMMARY.md`.
+
+**Schema/contracts introduced.** ATHENA schema version bumped to 16 with
+`portfolio_imports`, `portfolio_import_rows`, `portfolio_holdings`,
+`portfolio_reconciliations`, `portfolio_sync_runs`, and
+`portfolio_analysis_snapshots`. `portfolio_holdings` enforces one canonical
+current holding per `instrument_id`. Runtime contracts include
+`ImportedHoldingRow`, `ResolvedImportedHoldingRow`,
+`CanonicalPortfolioHolding`, `ReconciliationChange`, `PortfolioSnapshotRow`,
+`PortfolioSnapshotSummary`, `PortfolioFreshness`,
+`PortfolioAnalysisProvenance`, and enum contracts for import/mapping/
+reconciliation/sync states.
+
+**API contracts frozen.** Added typed v1 DTOs for import preview, import
+confirmation request, current My Portfolio holdings, Sync Portfolio start/run
+state, freshness, provenance, snapshot summary, and the complete 20-column
+Portfolio Snapshot row. Methodology-sensitive fields remain nullable with
+provenance/unavailable-field metadata rather than invented thresholds.
+
+**Tests added.** Focused PS-P1 contract coverage for schema creation,
+`owner_positions` preservation, canonical holding uniqueness, normalized
+import-row validation, symbol mapping states, all four reconciliation actions,
+preview immutability, server-owned portfolio math, 20-column DTO serialization,
+nullable methodology fields, freshness/provenance, sync status states, and
+partial-success DTO shape.
+
+**Verification.** PS-P1 + legacy owner portfolio focused suite:
+24 passed. Existing indicator/scoring/decision methodology regression suite:
+79 passed. Ruff on modified Python files: PASS. `git diff --check`: CLEAN.
+
+**Risks / methodology gaps.** Status, Conviction, Next Action, Target 2,
+Target 3, Support 1, and support/resistance interpretation remain explicitly
+nullable until owner-approved portfolio methodology exists. PS-P1 does not yet
+implement parser aliases, repository write methods, API endpoints, background
+single-flight execution, dashboard UX, or portfolio sync orchestration.
+
+**Suggested improvements / PS-P2 recommendation.** Implement generic CSV import
+preview and confirmation plumbing next: parser alias policy, symbol resolution
+through existing canonical infrastructure, repository methods, transactional
+confirmation, idempotency, and minimal import/confirm/holdings endpoints. Keep
+Sync Portfolio, dashboard UX, and interpretation methodology deferred unless
+separately approved.
+
+**Commit message (for the owner to use, not run by the AI):**
+
+```
+feat(portfolio): freeze My Portfolio PS-P1 contracts
+
+- Add isolated My Portfolio schema tables for imports, rows, holdings,
+  reconciliations, sync runs, and analysis snapshots so PS-P2 can implement
+  persistence without touching owner_positions
+- Define import, symbol-mapping, reconciliation, sync-state, freshness,
+  provenance, server-owned math, and 20-column snapshot contracts while
+  keeping methodology-sensitive fields nullable
+- Add v1 DTO contracts and focused schema/runtime/API tests to protect the
+  PS-P1 behavior before dashboard or sync workflow implementation
+- Document the frozen PS-P1 design and recommended PS-P2 scope per the
+  owner-approved Portfolio Sync decisions
+```
+
+**Outcome:** PS-P1 ready for Owner/Chief Architect review. PS-P2 not started.
+
+---
+
 ## EM-5 Final Owner Approval / Closure
 
 **Summary.** Owner/Chief Architect final approval recorded:

@@ -10,7 +10,7 @@ append-only by discipline (inserts only; duplicates rejected by primary key).
 from __future__ import annotations
 
 #: Bump when the schema changes; enables future explicit migrations.
-SCHEMA_VERSION = 15
+SCHEMA_VERSION = 16
 
 _DDL = (
     "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)",
@@ -290,6 +290,135 @@ _DDL = (
     """,
     "CREATE INDEX IF NOT EXISTS idx_owner_positions_opened ON owner_positions(opened_ts)",
     "CREATE INDEX IF NOT EXISTS idx_owner_positions_symbol ON owner_positions(instrument_id)",
+
+    # ---------------------------------------------------------------- PS-P1
+    # Isolated My Portfolio persistence. These tables model owner-confirmed
+    # current holdings snapshots and derived analysis without mutating the
+    # legacy/manual `owner_positions` ledger or duplicating ATHENA methodology.
+    """
+    CREATE TABLE IF NOT EXISTS portfolio_imports (
+        import_id       TEXT PRIMARY KEY,
+        filename        TEXT NOT NULL,
+        source          TEXT NOT NULL,
+        uploaded_at     TEXT NOT NULL,
+        holdings_as_of  TEXT,
+        parser_version  TEXT NOT NULL,
+        status          TEXT NOT NULL,
+        total_rows      INTEGER NOT NULL,
+        accepted_rows   INTEGER NOT NULL,
+        rejected_rows   INTEGER NOT NULL,
+        unresolved_rows INTEGER NOT NULL,
+        ambiguous_rows  INTEGER NOT NULL,
+        confirmed_at    TEXT,
+        provenance_json TEXT NOT NULL DEFAULT '{}'
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_portfolio_imports_uploaded "
+    "ON portfolio_imports(uploaded_at)",
+
+    """
+    CREATE TABLE IF NOT EXISTS portfolio_import_rows (
+        import_id              TEXT NOT NULL REFERENCES portfolio_imports(import_id),
+        source_row_id          TEXT NOT NULL,
+        source_row_number      INTEGER NOT NULL,
+        original_values_json   TEXT NOT NULL,
+        normalized_symbol      TEXT NOT NULL,
+        raw_symbol             TEXT NOT NULL,
+        quantity               INTEGER,
+        avg_price              TEXT,
+        mapping_state          TEXT NOT NULL,
+        resolved_instrument_id TEXT,
+        validation_errors_json TEXT NOT NULL DEFAULT '[]',
+        warnings_json          TEXT NOT NULL DEFAULT '[]',
+        metadata_json          TEXT NOT NULL DEFAULT '{}',
+        PRIMARY KEY (import_id, source_row_id)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_portfolio_import_rows_state "
+    "ON portfolio_import_rows(import_id, mapping_state)",
+    "CREATE INDEX IF NOT EXISTS idx_portfolio_import_rows_instrument "
+    "ON portfolio_import_rows(resolved_instrument_id)",
+
+    """
+    CREATE TABLE IF NOT EXISTS portfolio_holdings (
+        holding_id        TEXT PRIMARY KEY,
+        instrument_id     TEXT NOT NULL,
+        quantity          INTEGER NOT NULL,
+        avg_price         TEXT NOT NULL,
+        imported_at       TEXT NOT NULL,
+        updated_at        TEXT NOT NULL,
+        source_import_id  TEXT NOT NULL REFERENCES portfolio_imports(import_id),
+        source_row_id     TEXT NOT NULL,
+        reconciliation_id TEXT,
+        provenance_json   TEXT NOT NULL DEFAULT '{}',
+        UNIQUE (instrument_id)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_portfolio_holdings_updated "
+    "ON portfolio_holdings(updated_at)",
+
+    """
+    CREATE TABLE IF NOT EXISTS portfolio_reconciliations (
+        reconciliation_id TEXT PRIMARY KEY,
+        import_id         TEXT NOT NULL REFERENCES portfolio_imports(import_id),
+        reconciled_at     TEXT NOT NULL,
+        action            TEXT NOT NULL,
+        instrument_id     TEXT NOT NULL,
+        before_json       TEXT,
+        after_json        TEXT,
+        provenance_json   TEXT NOT NULL DEFAULT '{}'
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_portfolio_reconciliations_import "
+    "ON portfolio_reconciliations(import_id)",
+    "CREATE INDEX IF NOT EXISTS idx_portfolio_reconciliations_instrument "
+    "ON portfolio_reconciliations(instrument_id, reconciled_at)",
+
+    """
+    CREATE TABLE IF NOT EXISTS portfolio_sync_runs (
+        sync_run_id          TEXT PRIMARY KEY,
+        started_at           TEXT NOT NULL,
+        finished_at          TEXT,
+        status               TEXT NOT NULL,
+        total_holdings       INTEGER NOT NULL,
+        succeeded_holdings   INTEGER NOT NULL,
+        failed_holdings      INTEGER NOT NULL,
+        market_data_through  TEXT,
+        validation_run_id    TEXT,
+        analysis_version     TEXT NOT NULL,
+        progress_json        TEXT NOT NULL DEFAULT '{}',
+        per_symbol_json      TEXT NOT NULL DEFAULT '{}',
+        error_json           TEXT NOT NULL DEFAULT '{}',
+        provenance_json      TEXT NOT NULL DEFAULT '{}'
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_portfolio_sync_runs_started "
+    "ON portfolio_sync_runs(started_at)",
+    "CREATE INDEX IF NOT EXISTS idx_portfolio_sync_runs_status "
+    "ON portfolio_sync_runs(status)",
+
+    """
+    CREATE TABLE IF NOT EXISTS portfolio_analysis_snapshots (
+        snapshot_id          TEXT PRIMARY KEY,
+        sync_run_id          TEXT NOT NULL REFERENCES portfolio_sync_runs(sync_run_id),
+        instrument_id        TEXT NOT NULL,
+        symbol               TEXT NOT NULL,
+        analyzed_at          TEXT NOT NULL,
+        price_as_of          TEXT,
+        decision_as_of       TEXT,
+        market_data_through  TEXT,
+        analysis_version     TEXT NOT NULL,
+        row_json             TEXT NOT NULL,
+        freshness_json       TEXT NOT NULL,
+        provenance_json      TEXT NOT NULL,
+        unavailable_json     TEXT NOT NULL DEFAULT '[]',
+        failure_json         TEXT NOT NULL DEFAULT '[]'
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_portfolio_analysis_snapshots_run "
+    "ON portfolio_analysis_snapshots(sync_run_id)",
+    "CREATE INDEX IF NOT EXISTS idx_portfolio_analysis_snapshots_instrument "
+    "ON portfolio_analysis_snapshots(instrument_id, analyzed_at)",
 
     """
     CREATE TABLE IF NOT EXISTS owner_candidates (
