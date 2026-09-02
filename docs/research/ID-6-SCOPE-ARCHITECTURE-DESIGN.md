@@ -3,8 +3,8 @@
 **Date:** 2026-09-02
 **Track:** Intraday Intelligence (ID)
 **Milestone:** ID-6 - Discovery / scope and architecture freeze
-**Status:** Architecture owner-approved with condition; ID-6A0 ADR ready for
-owner review
+**Status:** Architecture owner-approved with condition; ID-6A0 owner-approved
+and closed; ID-6A implemented and ready for owner contract review
 **Recommendation:** GO WITH CONDITIONS
 
 This report is documentation-only. It inspects the live repository state and
@@ -27,12 +27,10 @@ define the next layer's contract because ID-0 through ID-5 now provide:
 - owner-approved ID-5B evidence that current-session Kite M5 can be
   market-time closed yet not provider-settled final.
 
-The correct next step is therefore a tiny architecture prerequisite before
-ID-6A implementation: an Entry Qualification ADR / ADR amendment that freezes
-the new persisted decision-relevant concept, the new live workflow stage, and
-the boundary between canonical daily Decision and intraday actionability. After
-that ADR is owner-approved, ID-6A should be limited to
-domain/state/finality/confirmation contracts.
+The correct sequence is therefore tiny owner-gated slices. ID-6A0 first froze
+the Entry Qualification architecture in ADR-013. ID-6A then implements only the
+domain/state/finality/confirmation contracts; engine, persistence, workflow,
+threshold, entry plan, UI, and live supervision work remain later milestones.
 
 ## 2. Authoritative Starting State
 
@@ -180,27 +178,23 @@ after the Entry Qualification ADR prerequisite is approved:
 - `EntryQualificationEvidenceRef`
 - `EntryQualification`
 
-Candidate fields:
+ID-6A implementation note: the accepted contract uses the smallest complete
+field set required now:
 
-- `qualification_id`
-- `instrument_id`
-- `session_date`
-- `as_of`
-- `decision_id`
-- `decision_type`
-- `state`
-- `evidence_finality` or equivalent provenance/finality representation
-- `confirmation_status` or equivalent methodology-confirmation representation
-- `evidence_refs`
-- `reason_codes`
-- `blocking_reasons`
-- `stale_inputs`
-- `unknown_inputs`
-- `methodology_version`
-- `config_snapshot_id` or equivalent run config reference when available
-- `run_id`
-- `cycle_id`
-- `explanation`
+- `instrument_id`, `session_date`, `as_of`;
+- `run_id`, `cycle_id`;
+- bound canonical `decision_id` and `decision_type`;
+- `state`;
+- `evidence_finality`;
+- `confirmation`;
+- structural/lifecycle/data-quality `reason_codes`;
+- minimal `evidence_refs`;
+- optional `methodology_version` and `config_snapshot_id`;
+- `explanation`.
+
+`qualification_id`, `blocking_reasons`, `stale_inputs`, `unknown_inputs`, and
+physical persistence identities are deferred until a later owner-gated slice
+proves they are needed.
 
 Do not extend `SessionContext` to carry this. SessionContext describes the
 session and timeframe provenance; EntryQualification is a consumer-level
@@ -537,8 +531,8 @@ An ADR or separate owner architecture decision would be required if ID-6:
 
 | Slice | Responsibility | Inputs/outputs | Likely files | Tests | Exit criteria |
 |---|---|---|---|---|---|
-| ID-6A0 | Entry Qualification Architecture ADR | ADR approving the new persisted decision-relevant concept, live stage, daily-vs-intraday boundary, state/evidence-finality/confirmation orthogonality, and indirect-M5 invariant | `docs/adr/ADR-013-entry-qualification-architecture.md`, plus status docs | Documentation review; `git diff --check` | Owner-approved ADR before production code |
-| ID-6A | Domain/state/finality/confirmation contract | Proposed `EntryQualification*` types only | `src/athena/intraday/entry_qualification_models.py`, docs | Unit contract tests | Frozen states, orthogonal evidence finality/provenance and confirmation, reason-code semantics owner-reviewable |
+| ID-6A0 | Entry Qualification Architecture ADR | ADR approving the new persisted decision-relevant concept, live stage, daily-vs-intraday boundary, state/evidence-finality/confirmation orthogonality, and indirect-M5 invariant | `docs/adr/ADR-013-entry-qualification-architecture.md`, plus status docs | Documentation review; `git diff --check` | Owner-approved / closed 2026-09-02 |
+| ID-6A | Domain/state/finality/confirmation contract | `EntryQualification*` types only | `src/athena/intraday/entry_qualification_models.py`, docs | Unit contract tests | Implemented; ready for owner contract review |
 | ID-6B | Pure deterministic qualification engine skeleton | Inputs: `Decision`, `SessionContext`, `IntradaySignalSet`; output: `EntryQualification` | `src/athena/intraday/entry_qualification_engine.py` | Unit tests for state transitions, evidence finality/provenance, confirmation, supersession, and unknown/stale behavior | No thresholds beyond accepted zero-threshold categories; no I/O |
 | ID-6C | Persistence and explainability trace | Append-only observations + latest query | `data/store/schema.py`, repository serialization/repository tests | Repository contract tests, migration tests | Auditable emitted state without claiming full knowledge-time market-data replay |
 | ID-6D | Workflow integration | `entry_qualification` stage after `decision` + `intraday_analytics` | `ops/owner_validation.py` | Stage order, no scoring/decision perturbation, FAST/Revalidate tests | Existing Decision output unchanged; ID output captured separately |

@@ -2,10 +2,11 @@
 
 | Field | Value |
 |---|---|
-| Status | Proposed |
+| Status | Accepted |
 | Date | 2026-09-02 |
 | Owners | Chief Architect / Project Owner |
 | Scope | Intraday Intelligence ID-6 Entry Qualification architecture |
+| Approval | Owner approved / accepted 2026-09-02 |
 
 ## Context
 

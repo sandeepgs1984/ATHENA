@@ -1,4 +1,4 @@
-"""Intraday Analytics (ID-2/ID-3/ID-4/ID-5C/ID-5D) — typed analytical evidence, NOT trade signals.
+"""Intraday Analytics (ID-2/ID-3/ID-4/ID-5C/ID-5D/ID-6A) — typed evidence and contracts.
 
 Formalizes ATHENA's already-live VWAP/5m-15m-confluence evidence into
 `IntradaySignalSet`/`IntradayTrendContext`, and adds genuinely new
@@ -7,13 +7,23 @@ Formalizes ATHENA's already-live VWAP/5m-15m-confluence evidence into
 `GapContext` (previous-session-close -> current-session-open price
 transition — not an intraday return, not gap-fill/-hold/-rejection/
 -continuation), and `RelativeVolumeContext` (cumulative same-time-of-day
-relative volume — not a surge/spike label, no magnitude threshold). No
-BUY/SELL score, no trade probability, no EntryQualification — see
-`docs/research/ID-2-*`/`ID-3-*`/`ID-4-*`/`ID-5C-*`/`ID-5D-*`
-for the full design rationale.
+relative volume — not a surge/spike label, no magnitude threshold). ID-6A
+adds `EntryQualification` domain contracts only: no engine, no workflow
+wiring, no persistence, no BUY/SELL score, no trade probability, and no
+Decision/TradePlan mutation. See `docs/research/ID-2-*`/`ID-3-*`/
+`ID-4-*`/`ID-5C-*`/`ID-5D-*` and ADR-013 for the full design rationale.
 """
 
 from athena.intraday.engine import IntradayAnalyticsEngine
+from athena.intraday.entry_qualification_models import (
+    EntryEvidenceFinality,
+    EntryQualification,
+    EntryQualificationConfirmation,
+    EntryQualificationEvidenceKind,
+    EntryQualificationEvidenceRef,
+    EntryQualificationReasonCode,
+    EntryQualificationState,
+)
 from athena.intraday.gap_engine import GapEngine
 from athena.intraday.gap_models import GapContext, GapDirection
 from athena.intraday.models import (
@@ -40,6 +50,13 @@ from athena.intraday.relative_volume_models import RelativeVolumeContext, Relati
 
 __all__ = [
     "BreakoutEvent",
+    "EntryEvidenceFinality",
+    "EntryQualification",
+    "EntryQualificationConfirmation",
+    "EntryQualificationEvidenceKind",
+    "EntryQualificationEvidenceRef",
+    "EntryQualificationReasonCode",
+    "EntryQualificationState",
     "GapContext",
     "GapDirection",
     "GapEngine",

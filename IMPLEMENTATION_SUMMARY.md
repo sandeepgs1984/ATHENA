@@ -6,6 +6,59 @@ status updated on approval.
 
 ---
 
+## ID-6A Entry Qualification Domain Contracts — Ready for Owner Review
+
+**Summary.** Implemented the owner-authorized ID-6A domain contract milestone.
+ADR-013 is now owner-approved / accepted, ID-6A0 is owner-approved / closed,
+and ID-6A adds only immutable Entry Qualification contracts for state,
+evidence finality/provenance, methodology confirmation, structural reason
+codes, and minimal evidence references.
+
+**Architecture compliance.** Preserves ADR-013, ATHENA-002, ADR-003, and
+ADR-005. `EntryQualification` is advisory-only, bound to the canonical
+`Decision` it evaluates, and cannot mutate or promote `DecisionType`. The
+contract has no qualification engine, no persistence, no migration, no workflow
+stage, no thresholds, no UI, no provider path, no DB writes, no EMR/DarvaX
+touch, and no order behavior.
+
+**Files created.** `src/athena/intraday/entry_qualification_models.py`,
+`tests/market_intel/test_entry_qualification_models.py`.
+
+**Files modified.** `src/athena/intraday/__init__.py`,
+`docs/adr/ADR-013-entry-qualification-architecture.md`,
+`docs/MILESTONES.md`, `docs/ATHENA-ID-TRACK-HANDOFF.md`,
+`ATHENA_BRIEFING.md`, `IMPLEMENTATION_SUMMARY.md`.
+
+**Behavior implemented.** New frozen dataclass/domain contracts only:
+`EntryQualification`, `EntryQualificationState`, `EntryEvidenceFinality`,
+`EntryQualificationConfirmation`, `EntryQualificationReasonCode`,
+`EntryQualificationEvidenceKind`, and `EntryQualificationEvidenceRef`.
+The contract preserves `UNKNOWN != NOT_YET`, supports `QUALIFIED` with
+provider-provisional live M5 evidence and `CONFIRMED_BY_POLICY`, and keeps
+WATCH/TRADE as canonical Decision types rather than EntryQualification states.
+
+**Verification.** Focused ID-6A contract tests: 11 passed. Adjacent
+intraday/session/decision regression slice: 172 passed. Ruff on touched Python
+files: clean. `git diff --check` is run as the closeout quality gate.
+
+**Risks / known gaps.** ID-6B must still define the pure deterministic engine
+and conservative behavior when canonical Decision provenance is insufficient.
+ID-6C owns persistence/latest-state queries. ID-6D owns workflow wiring.
+No thresholds, confirmation methodology, entry plan, risk/reward, or live
+supervision policy exists yet.
+
+**Suggested improvements.** Review ID-6A contract names and fields before
+authorizing ID-6B, especially whether ID-6B needs richer evidence-finality
+aggregation once it sees actual `Decision`/`IntradaySignalSet` provenance.
+
+**Remaining work.** Owner contract review. Do not start ID-6B, persistence,
+workflow integration, ID-7, EM-6, EMR, DarvaX, UI, provider, DB, or production
+work until explicitly authorized.
+
+**Outcome:** Implemented; ready for owner contract review.
+
+---
+
 ## ID-6A0 Entry Qualification Architecture ADR — Corrected for Final Review
 
 **Summary.** Created the owner-authorized ID-6A0 ADR as a documentation-only

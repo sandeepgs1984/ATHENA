@@ -3,8 +3,9 @@
 **Snapshot:** 2026-09-02 (ID-5B final settled-provider classification
 owner-approved and CLOSED; ID-5 owner-approved and CLOSED; ID-6 discovery
 architecture owner-approved with condition; ID-6A0 Entry Qualification ADR
-corrected and ready for owner final ADR review)
-**Governing boundary:** proposed `docs/adr/ADR-013-entry-qualification-architecture.md`
+owner-approved and closed; ID-6A implemented and ready for owner contract
+review)
+**Governing boundary:** accepted `docs/adr/ADR-013-entry-qualification-architecture.md`
 for Entry Qualification; otherwise this track extends the existing frozen
 `ATHENA-002-System-Blueprint.md` module map (§6 of `ATHENA_BRIEFING.md`).
 **Current state:** ID-0 through ID-5G.1 are all owner-approved. ID-5B
@@ -13,10 +14,11 @@ for Entry Qualification; otherwise this track extends the existing frozen
 forming-vs-closed CASE classifier, and the owner approved the final
 settled-provider classification `CASE_B_CONTENT_CHANGES` on 2026-09-01.
 ID-5B is CLOSED and ID-5 is CLOSED. ID-6 discovery architecture is
-owner-approved with condition: ID-6A0 must be approved before any ID-6A
-implementation. The ID-6A0 Entry Qualification ADR has been corrected by the
-ID-6A0.1 reliability-dimension review and is ready for owner final ADR review;
-no production behavior has been implemented.
+owner-approved with condition, and ID-6A0 is owner-approved and closed after
+ADR-013 acceptance on 2026-09-02. ID-6A domain/state/finality/confirmation
+contracts are implemented and ready for owner contract review; no engine,
+persistence, workflow stage, thresholds, UI, or production behavior has been
+implemented.
 Evidence notes:
 `docs/research/ID-5B-LIVE-M5-SEMANTICS-CAPTURE-2026-08-31.md` and
 `docs/research/ID-6-SCOPE-ARCHITECTURE-DESIGN.md`.
@@ -53,8 +55,9 @@ Track B capture is running the same morning.
 | ID-5F | Owner-approved 2026-08-30 — `get_latest_quote(..., as_of=...)` market-time point-in-time safety for quotes |
 | ID-5G | Architecture accepted 2026-08-30 — `get_latest_snapshot_as_of(as_of)` for MarketSnapshot, not fully closed until ID-5G.1 |
 | ID-5G.1 | Owner-approved 2026-08-30 — full sub-second, offset-safe precision fix for both snapshot point-in-time methods |
-| ID-6 | DISCOVERY ARCHITECTURE OWNER APPROVED WITH CONDITION 2026-09-02 — corrected architecture accepted, conditional on owner approval of ID-6A0 before any ID-6A implementation |
-| ID-6A0 | ADR CORRECTED — READY FOR OWNER FINAL ADR REVIEW 2026-09-02 — standalone Entry Qualification Architecture ADR proposed at `docs/adr/ADR-013-entry-qualification-architecture.md`; ID-6A0.1 corrected evidence finality/provenance vs methodology confirmation; documentation/governance only, no production code |
+| ID-6 | DISCOVERY ARCHITECTURE OWNER APPROVED WITH CONDITION 2026-09-02 — corrected architecture accepted, condition satisfied by ID-6A0 approval; ID-6 remains active through its owner-gated slices |
+| ID-6A0 | OWNER APPROVED / CLOSED 2026-09-02 — ADR-013 accepted after ID-6A0.1 corrected evidence finality/provenance vs methodology confirmation |
+| ID-6A | IMPLEMENTED — READY FOR OWNER CONTRACT REVIEW 2026-09-02 — immutable Entry Qualification domain contracts only; no engine, persistence, workflow, thresholds, ID-6B, ID-7, EM-6, EMR, DarvaX, or production behavior |
 
 The full detailed evidence for every closed milestone above is in
 `docs/MILESTONES.md`'s "Intraday Intelligence Track" section (long — this
@@ -147,26 +150,28 @@ introduced by any ID-track milestone (mypy is not part of this repo's
 session in this track tracked and reported its own delta against the
 pre-existing baseline rather than ignoring it).
 
-## 6. ID-6 / ID-6A0 — current architecture gate
+## 6. ID-6 / ID-6A — current architecture gate
 
 ID-6 discovery/design is complete and hardened as of 2026-09-02:
 `docs/research/ID-6-SCOPE-ARCHITECTURE-DESIGN.md`.
 
 Owner review decision: ID-6 discovery architecture is owner-approved with
-condition. The required condition is ID-6A0, an Entry Qualification
-Architecture ADR, before ID-6A production code. The proposed standalone ADR is
-`docs/adr/ADR-013-entry-qualification-architecture.md` and is corrected by
-ID-6A0.1 for owner final ADR review.
+condition, and the required ID-6A0 condition is now satisfied. ADR-013
+(`docs/adr/ADR-013-entry-qualification-architecture.md`) is owner-approved /
+accepted as of 2026-09-02.
 
 The approved architecture treats current-session completed M5 as provisional
 for qualification purposes after ID-5B's accepted
 `CASE_B_CONTENT_CHANGES` result; state, evidence finality/provenance, and
 qualification confirmation are orthogonal; and no
 irreversible ID-6 state may be caused directly or indirectly solely by
-live-M5-provisional evidence. Do not implement ID-6A contracts, an engine,
-persistence, UI, thresholds, IntradayTradePlan, ID-7, EM-6, EMR, DarvaX, or
-order behavior until the owner approves ID-6A0 and explicitly authorizes the
-next milestone.
+live-M5-provisional evidence.
+
+ID-6A implements only the immutable domain/state/finality/confirmation
+contracts under `src/athena/intraday/entry_qualification_models.py`. Do not
+implement an engine, persistence, UI, thresholds, IntradayTradePlan, ID-6B,
+ID-7, EM-6, EMR, DarvaX, or order behavior until the owner approves ID-6A and
+explicitly authorizes the next milestone.
 
 ## 7. ID-5B — closed result
 
