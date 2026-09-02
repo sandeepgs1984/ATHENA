@@ -10,7 +10,7 @@ append-only by discipline (inserts only; duplicates rejected by primary key).
 from __future__ import annotations
 
 #: Bump when the schema changes; enables future explicit migrations.
-SCHEMA_VERSION = 16
+SCHEMA_VERSION = 17
 
 _DDL = (
     "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)",
@@ -438,6 +438,55 @@ _DDL = (
     )
     """,
     "CREATE INDEX IF NOT EXISTS idx_saved_symbols_added_ts ON saved_symbols(added_ts)",
+
+    # ---------------------------------------------------------------- ID-6C
+    # Durable, auditable persistence for EntryQualification (ID-6A/ID-6B.2)
+    # observations. Persists what the pure engine already concluded; adds no
+    # methodology. Append-only by discipline: an EntryQualification is a
+    # point-in-time, non-sticky observation (ID-6B measured ~40% checkpoint
+    # flicker), so a later observation for the same instrument/session is a
+    # NEW row, never an overwrite of an earlier one.
+    #
+    # The composite primary key is the logical/idempotent observation
+    # identity: instrument + session date + evaluation checkpoint (as_of) +
+    # the bound canonical Decision + methodology version. A deterministic
+    # engine re-evaluating the identical logical candidate (even under a
+    # different run_id/cycle_id) must produce the identical payload, so a
+    # repeat write of the same key is a no-op; a write with the same key but
+    # a genuinely different payload is an integrity problem the repository
+    # rejects loudly (see SqliteRepository.save_entry_qualification).
+    # run_id/cycle_id are informational provenance only, deliberately NOT
+    # part of the identity key.
+    """
+    CREATE TABLE IF NOT EXISTS entry_qualifications (
+        instrument_id       TEXT NOT NULL,
+        session_date        TEXT NOT NULL,
+        as_of                TEXT NOT NULL,
+        decision_id          TEXT NOT NULL REFERENCES decisions(decision_id),
+        methodology_version  TEXT NOT NULL,
+        run_id               TEXT NOT NULL,
+        cycle_id             TEXT NOT NULL,
+        decision_type        TEXT NOT NULL,
+        state                TEXT NOT NULL,
+        evidence_finality    TEXT NOT NULL,
+        confirmation         TEXT NOT NULL,
+        reason_codes_json    TEXT NOT NULL,
+        evidence_refs_json   TEXT NOT NULL,
+        config_snapshot_id   TEXT,
+        explanation          TEXT NOT NULL,
+        persisted_at         TEXT NOT NULL,
+        PRIMARY KEY (instrument_id, session_date, as_of, decision_id, methodology_version)
+    )
+    """,
+    # Supports latest_entry_qualification_for_decision(): decision_id is the
+    # 4th column of the primary key's own composite index, so it is not a
+    # usable leftmost prefix for a decision_id-only lookup — this explicit
+    # index is required. latest_entry_qualification_for_instrument_session()
+    # needs no separate index: the primary key's own implicit index already
+    # begins (instrument_id, session_date, as_of), which is exactly its
+    # WHERE + ORDER BY shape.
+    "CREATE INDEX IF NOT EXISTS idx_entry_qualifications_decision "
+    "ON entry_qualifications(decision_id, as_of DESC)",
 
     """
     CREATE TABLE IF NOT EXISTS ops_meta (

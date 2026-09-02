@@ -41,12 +41,21 @@ from athena.domain.enums import (
 from athena.domain.market import (
     Candle,
     CorporateAction,
-    Instrument,
     InstitutionalFlowSession,
+    Instrument,
     MarketSnapshot,
     Quote,
 )
 from athena.domain.run import RunRecord
+from athena.intraday.entry_qualification_models import (
+    EntryEvidenceFinality,
+    EntryQualification,
+    EntryQualificationConfirmation,
+    EntryQualificationEvidenceKind,
+    EntryQualificationEvidenceRef,
+    EntryQualificationReasonCode,
+    EntryQualificationState,
+)
 
 
 def _opt_date(value: str | None) -> date | None:
@@ -453,4 +462,85 @@ def row_to_owner_position(r: Sequence[Any]) -> Position:
         avg_price=Decimal(r[4]),
         closed_ts=datetime.fromisoformat(r[5]) if r[5] else None,
         meta=meta,
+    )
+
+
+# ----------------------------------------------------------- entry qualifications (ID-6C)
+
+def _evidence_refs_to_json(refs: Sequence[EntryQualificationEvidenceRef]) -> str:
+    return json.dumps(
+        [
+            {
+                "kind": ref.kind.value,
+                "ref_id": ref.ref_id,
+                "as_of": ref.as_of.isoformat() if ref.as_of is not None else None,
+                "explanation": ref.explanation,
+            }
+            for ref in refs
+        ],
+        sort_keys=True,
+    )
+
+
+def _evidence_refs_from_json(payload: str) -> tuple[EntryQualificationEvidenceRef, ...]:
+    return tuple(
+        EntryQualificationEvidenceRef(
+            kind=EntryQualificationEvidenceKind(d["kind"]),
+            ref_id=d["ref_id"],
+            as_of=datetime.fromisoformat(d["as_of"]) if d["as_of"] is not None else None,
+            explanation=d["explanation"],
+        )
+        for d in json.loads(payload)
+    )
+
+
+def _reason_codes_to_json(codes: Sequence[EntryQualificationReasonCode]) -> str:
+    # Order-preserving: json.dumps(sort_keys=True) only sorts keys WITHIN
+    # each object below, never the array itself (there are no objects here,
+    # just a list of strings) -- the engine's deterministic reason-code
+    # order (ID-6B.2 owner requirement) round-trips exactly.
+    return json.dumps([c.value for c in codes])
+
+
+def _reason_codes_from_json(payload: str) -> tuple[EntryQualificationReasonCode, ...]:
+    return tuple(EntryQualificationReasonCode(v) for v in json.loads(payload))
+
+
+def entry_qualification_to_row(eq: EntryQualification) -> tuple:
+    return (
+        eq.instrument_id,
+        eq.session_date.isoformat(),
+        eq.as_of.isoformat(),
+        eq.decision_id,
+        eq.methodology_version,
+        eq.run_id,
+        eq.cycle_id,
+        eq.decision_type.value,
+        eq.state.value,
+        eq.evidence_finality.value,
+        eq.confirmation.value,
+        _reason_codes_to_json(eq.reason_codes),
+        _evidence_refs_to_json(eq.evidence_refs),
+        eq.config_snapshot_id,
+        eq.explanation,
+    )
+
+
+def row_to_entry_qualification(r: Sequence[Any]) -> EntryQualification:
+    return EntryQualification(
+        instrument_id=r[0],
+        session_date=date.fromisoformat(r[1]),
+        as_of=datetime.fromisoformat(r[2]),
+        decision_id=r[3],
+        methodology_version=r[4],
+        run_id=r[5],
+        cycle_id=r[6],
+        decision_type=DecisionType(r[7]),
+        state=EntryQualificationState(r[8]),
+        evidence_finality=EntryEvidenceFinality(r[9]),
+        confirmation=EntryQualificationConfirmation(r[10]),
+        reason_codes=_reason_codes_from_json(r[11]),
+        evidence_refs=_evidence_refs_from_json(r[12]),
+        config_snapshot_id=r[13],
+        explanation=r[14],
     )

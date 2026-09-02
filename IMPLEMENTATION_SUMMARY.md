@@ -6,7 +6,139 @@ status updated on approval.
 
 ---
 
-## ID-6B.2 Entry Qualification Pure Engine — Methodology Accepted, Closure Held for ID-6B.2A
+## ID-6C Entry Qualification Persistence — Implemented / Ready for Owner Persistence Review
+
+**Summary.** Owner closed ID-6B in full (ID-6A, ID-6B.0, ID-6B.1, ID-6B.1A,
+ID-6B.1B, ID-6B.2, ID-6B.2A) and authorized ID-6C to add durable, auditable
+persistence for the `EntryQualification` observations the already-closed
+pure engine concludes. Persistence only — the v0 methodology, tri-state
+logic, state precedence, Option C, WATCH/TRADE parity, confirmation
+semantics, evidence-finality passthrough, point-in-time behavior, and
+input-coherence rules were all frozen by ID-6B and not touched.
+
+Audited existing persistence conventions first (`decisions`/
+`decision_traces`/`trade_outcomes`/`portfolio_analysis_snapshots` tables,
+`SqliteRepository`'s ADR-009 read/write-connection split, `serialization.py`'s
+enum-`.value`/ISO-8601/order-preserving-JSON conventions) before designing
+anything new. Added one new table, `entry_qualifications` (SCHEMA_VERSION
+16→17), extending the existing `SqliteRepository`/`schema.py`/
+`serialization.py` — no new persistence framework, no isolated satellite
+store (unlike DarvaX/EMR, Entry Qualification has no ADR-010/012-style
+isolation boundary; ADR-013 frames it as a core Intraday Intelligence
+concept).
+
+`EntryQualification` is point-in-time and non-sticky (ID-6B measured ~40%
+checkpoint flicker), so persistence models **observations**, never a
+mutable "current state" row — append-only by discipline. The composite
+primary key `(instrument_id, session_date, as_of, decision_id,
+methodology_version)` is the logical/idempotency identity;
+`run_id`/`cycle_id` are deliberately excluded (informational provenance
+only — two different pipeline runs evaluating the identical logical
+candidate must, by the engine's own determinism, agree on every
+methodology-relevant field). `save_entry_qualification` is idempotent (a
+repeat of the identical logical observation is a no-op) and fails loudly
+(`RepositoryError`, naming every conflicting field) if the same identity
+already exists with a genuinely different payload — a deterministic engine
+producing two different payloads for one logical evaluation is an
+integrity problem, never silently overwritten. The read-then-write runs
+inside one write-locked transaction (mirroring `confirm_portfolio_import`'s
+existing multi-step pattern), so it is race-free under this repository's
+existing single-writer architecture without any new locking machinery.
+
+Read API: `get_entry_qualification` (exact logical-identity lookup),
+`latest_entry_qualification_for_decision` (does NOT resolve whether that
+Decision is still current/non-superseded — explicitly deferred to ID-6D,
+per ID-6B.2A's own frozen boundary), `latest_entry_qualification_for_instrument_session`,
+and `list_entry_qualifications_for_instrument_session` (the one audit
+query added beyond a strict future-workflow need — full append-only
+flicker history, oldest first). Ordering is always deterministic and
+`as_of`-based, never insertion/`persisted_at` order. A point-in-time
+(`as_of<=requested`) query was deliberately NOT added — no current ID-6D/
+replay need justifies it yet.
+
+Serialization follows existing convention exactly: enums as `.value`
+strings, timestamps as ISO-8601 tz-aware TEXT, `reason_codes`/
+`evidence_refs` as order-preserving JSON arrays (round-trip proven via
+exact tuple equality, not set equality), `evidence_ref.ref_id=None`
+preserved (live value objects with no persisted identity are never given a
+fabricated one), `config_snapshot_id=None` preserved. `decision_id` is a
+real foreign key to `decisions(decision_id)` — DB-level enforced, matching
+`decision_traces`/`decision_journal`/`trade_outcomes`.
+
+**Architecture compliance.** Preserves ADR-013, ATHENA-002, ADR-003,
+ADR-005, ADR-009 (read-concurrency architecture reused unchanged), ADR-012,
+and the advisory-only/no-order boundary. No `EntryQualificationEngine`
+methodology change, no `ScoringEngine`/`DecisionEngine`/`TradePlan`/
+`SessionContext`/intraday methodology/provider/M15-repair/EMR/DarvaX
+behavior touched. No workflow wiring (ID-6D), no API/UI, no ID-7, no EM-6.
+`entry_qualifications` is empty in the real `db/athena.db` — nothing calls
+`save_entry_qualification` from production yet.
+
+**Files created.** `docs/design/ID-6C-ENTRY-QUALIFICATION-PERSISTENCE.md`,
+`tests/data_layer/test_entry_qualification_repository.py`.
+
+**Files modified.** `src/athena/data/store/schema.py` (new
+`entry_qualifications` table + index, SCHEMA_VERSION 16→17),
+`src/athena/data/store/serialization.py` (`entry_qualification_to_row`/
+`row_to_entry_qualification` and reason-code/evidence-ref JSON helpers),
+`src/athena/data/store/repository.py` (`save_entry_qualification`,
+`get_entry_qualification`, `latest_entry_qualification_for_decision`,
+`latest_entry_qualification_for_instrument_session`,
+`list_entry_qualifications_for_instrument_session`; `record_counts()`
+extended), `docs/MILESTONES.md`, `docs/ATHENA-ID-TRACK-HANDOFF.md`,
+`ATHENA_BRIEFING.md`, `IMPLEMENTATION_SUMMARY.md`.
+
+**Behavior implemented.** Pure persistence, no analytical logic. All new
+repository methods are read/write calls against the existing SQLite file
+through the existing `SqliteRepository` connection/lock architecture — no
+repository access from the engine itself, no provider/network calls, no
+new concurrency primitives (source-grepped: no provider/workflow term
+appears in the new methods' own source).
+
+**Verification.** Focused tests: 32 new, all non-vacuous, covering every
+state (`QUALIFIED`/`NOT_YET`/`UNKNOWN`/`OUT_OF_SCOPE`/`EXPIRED`) and every
+`EntryEvidenceFinality` round-trip, the owner's exact `QUALIFIED` +
+`LIVE_M5_PROVISIONAL` + `NOT_EVALUATED` combination, ordered reason-code
+and evidence-ref fidelity (including `ref_id=None`), timezone-aware
+timestamp preservation, methodology-version/config-snapshot provenance,
+idempotent repeat writes (including under a different `run_id`/`cycle_id`),
+payload-conflict rejection, multiple `as_of`/`decision_id` observations
+coexisting, append-only flicker history ordering, latest-for-decision and
+latest-for-instrument-session correctness, migration creating the new
+table without disturbing existing ones, FK enforcement, absence of
+provider/workflow terms in the new code, non-mutation of the input domain
+object, and serialization determinism. 2 of the most safety-critical
+(payload-conflict detection, and reason-code order preservation)
+independently confirmed by deliberately mutating the implementation,
+observing the expected test failure, and reverting. `tests/data_layer/`
+full package: 460 passed. ID-6A/ID-6B.2/ID-6B.2A regression: 67 passed,
+unaffected. Ruff clean on all 4 new/changed files (the pre-existing 11
+`SIM117` findings elsewhere in `repository.py` predate this milestone —
+confirmed via HEAD baseline — and were left untouched as out of scope).
+`git diff --check` clean. Full repository suite: **3,106 passed, 1
+pre-existing skip, 0 failed**. No production DB writes (all tests use
+`tmp_path`), no provider calls, no workflow changes, no Scoring/Decision/
+TradePlan/EMR/DarvaX impact.
+
+**Risks / known gaps.** Decision supersession resolution remains entirely
+unaddressed by design (ID-6D's job). This persistence layer adds no
+knowledge-time capability — it stores observations only from whenever a
+future caller starts persisting them, not a retroactive reconstruction of
+uncaptured live state.
+
+**Suggested improvements.** ID-6D should design the actual workflow
+invocation, the `evidence_finality`-resolution logic, and Decision-
+supersession selection, consuming this persistence layer's read API as-is.
+
+**Remaining work.** Owner persistence review. Do not start ID-6D,
+persistence, workflow integration, API/UI, ID-7, or EM-6 until explicitly
+authorized.
+
+**Outcome:** Implemented; ready for owner persistence review.
+
+---
+
+## ID-6B.2 Entry Qualification Pure Engine — Owner Approved / Closed
 
 **Summary.** Implemented the pure, deterministic `EntryQualificationEngine`
 for the v0 candidate-readiness methodology the owner froze in ID-6B.1B, and
@@ -114,11 +246,11 @@ that value through unchanged.
 persistence, workflow integration, API/UI, ID-7, or EM-6 until explicitly
 authorized.
 
-**Outcome:** Methodology/engine logic owner-accepted; one safety-critical input-coherence gap found on review (see ID-6B.2A immediately below); owner closure of ID-6B.2 held pending that corrective slice.
+**Outcome:** Owner approved / closed. One safety-critical input-coherence gap found on review, corrected and closed under ID-6B.2A immediately below.
 
 ---
 
-## ID-6B.2A Entry Qualification Input Coherence Hardening — Implemented / Ready for Owner Closure Review
+## ID-6B.2A Entry Qualification Input Coherence Hardening — Owner Approved / Closed
 
 **Summary.** Owner review of ID-6B.2 accepted the methodology and engine
 logic but held closure for one narrow, safety-critical gap: the engine
@@ -230,7 +362,8 @@ state this pure engine deliberately cannot access.
 hardening). Do not start ID-6C, ID-6D, persistence, workflow integration,
 API/UI, ID-7, or EM-6 until explicitly authorized.
 
-**Outcome:** Implemented; ready for owner closure review.
+**Outcome:** Owner approved / closed. ID-6B (ID-6A through ID-6B.2A) is now
+fully closed; ID-6C authorized to start.
 
 ---
 

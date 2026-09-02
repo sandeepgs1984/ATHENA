@@ -40,6 +40,7 @@ from athena.domain.market import (
 )
 from athena.domain.run import RunRecord
 from athena.errors import RepositoryError
+from athena.intraday.entry_qualification_models import EntryQualification
 from athena.portfolio.my_portfolio_contracts import (
     CanonicalPortfolioHolding,
     ImportStatus,
@@ -63,6 +64,25 @@ class IntegrityReport:
     schema_version_ok: bool
     issues: tuple[str, ...] = ()
 
+
+
+def _entry_qualification_payload(eq: EntryQualification) -> tuple:
+    """The methodology-relevant subset of an EntryQualification used to
+    detect a genuine conflict at the same logical (instrument/session/
+    as_of/decision/methodology) identity. Deliberately excludes
+    ``run_id``/``cycle_id`` (informational provenance — two different
+    pipeline runs evaluating the identical logical candidate are expected
+    to, and by the engine's determinism must, agree on everything here)."""
+    return (
+        eq.decision_type,
+        eq.state,
+        eq.evidence_finality,
+        eq.confirmation,
+        eq.reason_codes,
+        eq.evidence_refs,
+        eq.config_snapshot_id,
+        eq.explanation,
+    )
 
 
 def _row_to_symbol_record(row: tuple) -> SymbolRecord:
@@ -221,7 +241,8 @@ class SqliteRepository:
         tables = ("instruments", "candles", "quotes", "market_snapshots",
                   "corporate_actions", "quarantine_records", "runs",
                   "decisions", "decision_traces", "decision_journal",
-                  "owner_positions", "owner_candidates", "saved_symbols", "ops_meta")
+                  "owner_positions", "owner_candidates", "saved_symbols",
+                  "entry_qualifications", "ops_meta")
         try:
             with self._lock:
                 return {
@@ -971,6 +992,149 @@ class SqliteRepository:
             "WHERE rn = 1 ORDER BY instrument_id"
         )
         return [ser.row_to_decision(r) for r in rows]
+
+    # ---------------------------------------------- entry qualifications (ID-6C)
+    #
+    # Durable, auditable persistence for EntryQualification (ID-6A domain
+    # contract, ID-6B.2 pure engine). Persists what the engine already
+    # concluded; introduces no methodology of its own. Append-only:
+    # EntryQualification is a point-in-time, non-sticky observation (ID-6B
+    # measured ~40% checkpoint-level flicker), so a later observation for
+    # the same instrument/session is a NEW row, never an overwrite.
+    #
+    # Not wired into any production path by this milestone (ID-6D's job).
+
+    _ENTRY_QUALIFICATION_COLUMNS = (
+        "instrument_id, session_date, as_of, decision_id, methodology_version, "
+        "run_id, cycle_id, decision_type, state, evidence_finality, confirmation, "
+        "reason_codes_json, evidence_refs_json, config_snapshot_id, explanation"
+    )
+
+    def save_entry_qualification(
+        self, eq: EntryQualification, *, persisted_at: datetime,
+    ) -> bool:
+        """Append-only, idempotent write of one EntryQualification observation.
+
+        The logical/idempotency identity is (instrument_id, session_date,
+        as_of, decision_id, methodology_version) — the table's composite
+        primary key. Returns True if a new row was inserted, False if an
+        identical logical observation already existed (no-op — the
+        deterministic engine reproduced the same payload). Raises
+        RepositoryError if the same logical identity already exists with a
+        genuinely different payload: a deterministic engine must never
+        produce two different payloads for the same logical evaluation, so
+        that is an integrity problem, never silently overwritten.
+
+        ``run_id``/``cycle_id``/``persisted_at`` are informational
+        provenance only, deliberately excluded from both the identity key
+        and the conflict comparison — two different pipeline runs
+        evaluating the identical logical candidate are expected to (and, by
+        the engine's own determinism, must) agree on every
+        methodology-relevant field.
+        """
+        try:
+            with self._lock, self._conn:
+                row = self._conn.execute(
+                    f"SELECT {self._ENTRY_QUALIFICATION_COLUMNS} "
+                    "FROM entry_qualifications WHERE instrument_id=? AND "
+                    "session_date=? AND as_of=? AND decision_id=? AND "
+                    "methodology_version=?",
+                    (
+                        eq.instrument_id, eq.session_date.isoformat(),
+                        eq.as_of.isoformat(), eq.decision_id, eq.methodology_version,
+                    ),
+                ).fetchone()
+                if row is not None:
+                    existing = ser.row_to_entry_qualification(row)
+                    if _entry_qualification_payload(existing) != _entry_qualification_payload(eq):
+                        raise RepositoryError(
+                            "EntryQualification integrity conflict: an observation "
+                            f"already exists for instrument_id={eq.instrument_id!r} "
+                            f"session_date={eq.session_date.isoformat()!r} "
+                            f"as_of={eq.as_of.isoformat()!r} decision_id={eq.decision_id!r} "
+                            f"methodology_version={eq.methodology_version!r} with a "
+                            "different payload"
+                        )
+                    return False
+                self._conn.execute(
+                    "INSERT INTO entry_qualifications "
+                    f"({self._ENTRY_QUALIFICATION_COLUMNS}, persisted_at) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (*ser.entry_qualification_to_row(eq), persisted_at.isoformat()),
+                )
+                return True
+        except RepositoryError:
+            raise
+        except sqlite3.IntegrityError as exc:
+            raise RepositoryError(f"integrity violation: {exc}") from exc
+        except sqlite3.Error as exc:
+            raise RepositoryError(f"save entry qualification failed: {exc}") from exc
+
+    def get_entry_qualification(
+        self,
+        *,
+        instrument_id: str,
+        session_date: date,
+        as_of: datetime,
+        decision_id: str,
+        methodology_version: str,
+    ) -> EntryQualification | None:
+        """Exact logical-identity lookup — the same key `save_entry_qualification`
+        uses for idempotency, exposed for round-trip verification and audit."""
+        row = self._query_one(
+            f"SELECT {self._ENTRY_QUALIFICATION_COLUMNS} FROM entry_qualifications "
+            "WHERE instrument_id=? AND session_date=? AND as_of=? AND decision_id=? "
+            "AND methodology_version=?",
+            (
+                instrument_id, session_date.isoformat(), as_of.isoformat(),
+                decision_id, methodology_version,
+            ),
+        )
+        return ser.row_to_entry_qualification(row) if row else None
+
+    def latest_entry_qualification_for_decision(
+        self, decision_id: str
+    ) -> EntryQualification | None:
+        """Most recent observation bound to one canonical Decision.
+
+        Does NOT resolve whether that Decision is still the current/
+        non-superseded one for its instrument — that selection remains the
+        caller/workflow's responsibility (ID-6B.2A/ID-6D boundary); this
+        only retrieves what was persisted for the given decision_id.
+        """
+        row = self._query_one(
+            f"SELECT {self._ENTRY_QUALIFICATION_COLUMNS} FROM entry_qualifications "
+            "WHERE decision_id=? ORDER BY as_of DESC, methodology_version DESC LIMIT 1",
+            (decision_id,),
+        )
+        return ser.row_to_entry_qualification(row) if row else None
+
+    def latest_entry_qualification_for_instrument_session(
+        self, instrument_id: str, session_date: date
+    ) -> EntryQualification | None:
+        """Most recent observation for one instrument's trading session,
+        across whichever canonical Decision(s) were evaluated that day."""
+        row = self._query_one(
+            f"SELECT {self._ENTRY_QUALIFICATION_COLUMNS} FROM entry_qualifications "
+            "WHERE instrument_id=? AND session_date=? "
+            "ORDER BY as_of DESC, decision_id DESC, methodology_version DESC LIMIT 1",
+            (instrument_id, session_date.isoformat()),
+        )
+        return ser.row_to_entry_qualification(row) if row else None
+
+    def list_entry_qualifications_for_instrument_session(
+        self, instrument_id: str, session_date: date
+    ) -> list[EntryQualification]:
+        """Full append-only observation history for one instrument/session,
+        oldest first — the audit view of a candidate's checkpoint-by-
+        checkpoint flicker across one trading day."""
+        rows = self._query_all(
+            f"SELECT {self._ENTRY_QUALIFICATION_COLUMNS} FROM entry_qualifications "
+            "WHERE instrument_id=? AND session_date=? "
+            "ORDER BY as_of ASC, decision_id ASC, methodology_version ASC",
+            (instrument_id, session_date.isoformat()),
+        )
+        return [ser.row_to_entry_qualification(r) for r in rows]
 
     def save_journal_entry(self, entry: DecisionJournalEntry) -> None:
         self._write(
