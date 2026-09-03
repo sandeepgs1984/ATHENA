@@ -6,6 +6,72 @@ status updated on approval.
 
 ---
 
+## PS-P6C My Portfolio V1 End-to-End Validation — Ready For Review
+
+**Summary.** Completed the final My Portfolio V1 end-to-end production
+validation milestone. Validated first import, no-snapshot/empty states, manual
+Sync, freshness/session behavior, holdings-changed staleness, identical
+re-imports, PARTIAL/FAILED runs, UNKNOWN currentness, import-vs-sync
+concurrency, Decision/TradePlan/EntryQualification coherency, intentional nulls,
+snapshot immutability, API/error behavior, dashboard UX, restart/recovery, and
+representative 20/50/100 holding portfolios.
+
+**Architecture compliance.** Preserved PS-P0 through PS-P6B frozen boundaries.
+No product feature, schema, Sync orchestration, import reconciliation, trading
+methodology, ScoringEngine, DecisionEngine, EntryQualification, TradePlan,
+provider, broker, order-placement, transaction-ledger, or automatic trading
+behavior was added.
+
+**Files created.**
+
+- `docs/research/PS-P6C-MY-PORTFOLIO-V1-END-TO-END-VALIDATION.md`
+
+**Files modified.**
+
+- `tests/api/v1/test_my_portfolio_import_api.py`
+- `docs/MILESTONES.md`
+- `IMPLEMENTATION_SUMMARY.md`
+
+**Tests added.** Added six PS-P6C acceptance tests: confirmed holdings do not
+auto-generate snapshots before manual sync; successful resync restores CURRENT
+after holdings change; legacy snapshots without holdings-digest provenance
+return UNKNOWN without claiming holdings changed and resolve after resync; and
+20/50/100 holding portfolios import, sync, snapshot, and preserve digest state.
+
+**Remaining work.** Owner/Chief Architect review is required to formally
+declare My Portfolio V1 complete and frozen. PS-P7 or V2 work must not begin
+until separately authorized.
+
+**Risks.** No new V1 production blocker was found. The accepted V1 deployment
+constraint remains: import-confirm/Sync concurrency protection is process-local
+and assumes ATHENA's current single-process dashboard runtime.
+
+**Suggested improvements.** Start any future work as a separate Portfolio
+Intelligence V2 roadmap covering richer interpretation, history, comparative
+analytics, or multi-worker operational leases.
+
+**Lessons learned.** The frozen V1 workflow is strongest where state truth is
+server-owned: canonical holdings, sync-run provenance, immutable snapshots, and
+read-time currentness combine cleanly without needing browser-side
+reinterpretation.
+
+**Implementation metrics.** PS-P6C API acceptance tests: `36 passed`. Targeted
+Portfolio Sync V1 validation suite: `70 passed`. Full suite: `3190 passed,
+0 failed, 1 skipped`. Touched-file Ruff passed. Full Ruff remains blocked by
+known unrelated lint debt outside this change set. `rtk mypy` is unavailable in
+the active interpreter (`No module named mypy`).
+
+**Phase outcome.** PS-P6C validation complete and ready for Owner/Chief
+Architect review. Recommendation: declare My Portfolio V1 COMPLETE AND FROZEN.
+
+**Commit hash.** Pending owner commit.
+
+**Branch.** main.
+
+**Review status.** Ready for Owner/Chief Architect review.
+
+---
+
 ## PS-P6B Portfolio Experience Hardening Implementation — Frozen
 
 **Summary.** Implemented PS-P6B production hardening for My Portfolio. Latest

@@ -337,6 +337,25 @@ def test_sync_zero_holdings_finishes_without_snapshot(tmp_path: Path) -> None:
     repo.close()
 
 
+def test_confirmed_holdings_do_not_generate_snapshot_before_manual_sync(
+    my_portfolio_client: TestClient,
+) -> None:
+    _confirm_infy_holding(my_portfolio_client)
+
+    snapshot = my_portfolio_client.get(
+        "/api/v1/my-portfolio/snapshot",
+        headers=get_auth_headers(my_portfolio_client, Role.READONLY, username="snapshot-reader"),
+    )
+    holdings = my_portfolio_client.get(
+        "/api/v1/my-portfolio/holdings",
+        headers=get_auth_headers(my_portfolio_client, Role.READONLY, username="holdings-reader"),
+    )
+
+    assert snapshot.status_code == 404
+    assert holdings.status_code == 200
+    assert holdings.json()["data"][0]["instrument_id"] == "NSE:INFY"
+
+
 def test_sync_current_d1_reuses_persisted_state_without_refresh(
     my_portfolio_client: TestClient,
 ) -> None:
@@ -617,6 +636,52 @@ def test_latest_snapshot_reports_stale_after_holding_quantity_change(
     assert snapshot.rows[0].quantity == 10
 
 
+def test_successful_resync_restores_currentness_after_holdings_change(
+    my_portfolio_client: TestClient,
+) -> None:
+    repo = _confirm_infy_holding(my_portfolio_client)
+    repo.add_candles([_candle("NSE:INFY", "1600", SEP2)])
+    first = MyPortfolioService(repo).run_sync_inline()
+
+    _confirm_holdings(my_portfolio_client, b"Symbol,Qty,Avg Price\nINFY,12,1500\n")
+    stale = MyPortfolioService(repo).latest_snapshot()
+    second = MyPortfolioService(repo).run_sync_inline()
+    current = MyPortfolioService(repo).latest_snapshot()
+
+    assert stale.snapshot_id == first.sync_run_id
+    assert stale.currentness.value == "STALE_HOLDINGS_CHANGED"
+    assert current.snapshot_id == second.sync_run_id
+    assert current.currentness.value == "CURRENT"
+    assert current.snapshot_holdings_digest == current.current_holdings_digest
+    assert current.rows[0].quantity == 12
+    assert stale.rows[0].quantity == 10
+
+
+def test_legacy_snapshot_without_holdings_digest_reports_unknown_until_resync(
+    my_portfolio_client: TestClient,
+) -> None:
+    repo = _confirm_infy_holding(my_portfolio_client)
+    repo.add_candles([_candle("NSE:INFY", "1600", SEP2)])
+    legacy_run = MyPortfolioService(repo).run_sync_inline()
+    repo._conn.execute(  # type: ignore[attr-defined]
+        "UPDATE portfolio_sync_runs SET provenance_json='{}' WHERE sync_run_id=?",
+        (legacy_run.sync_run_id,),
+    )
+    repo._conn.commit()  # type: ignore[attr-defined]
+
+    unknown = MyPortfolioService(repo).latest_snapshot()
+    resync = MyPortfolioService(repo).run_sync_inline()
+    current = MyPortfolioService(repo).latest_snapshot()
+
+    assert unknown.snapshot_id == legacy_run.sync_run_id
+    assert unknown.currentness.value == "UNKNOWN"
+    assert unknown.portfolio_changed_since_sync is False
+    assert unknown.currentness_reason == "SNAPSHOT_HOLDINGS_DIGEST_UNAVAILABLE"
+    assert unknown.rows[0].quantity == 10
+    assert current.snapshot_id == resync.sync_run_id
+    assert current.currentness.value == "CURRENT"
+
+
 def test_latest_snapshot_remains_current_after_semantically_identical_reimport(
     my_portfolio_client: TestClient,
 ) -> None:
@@ -842,6 +907,41 @@ def test_failed_sync_does_not_replace_previous_good_snapshot(
     assert service.latest_snapshot().snapshot_id == good.sync_run_id
     assert len(repo.list_portfolio_analysis_snapshots(good.sync_run_id)) == 1
     assert len(repo.list_portfolio_analysis_snapshots(failed.sync_run_id)) == 1
+
+
+@pytest.mark.parametrize("holding_count", [20, 50, 100])
+def test_representative_portfolio_sizes_sync_without_state_drift(
+    my_portfolio_client: TestClient,
+    holding_count: int,
+) -> None:
+    repo = my_portfolio_client.app.state.sqlite_repo
+    rows = ["Symbol,Qty,Avg Price"]
+    candles = []
+    for index in range(holding_count):
+        symbol = f"P{index:03d}"
+        instrument_id = f"NSE:{symbol}"
+        repo.upsert_instrument(_instrument(instrument_id, symbol))
+        rows.append(f"{symbol},{index + 1},{100 + index}")
+        candles.append(_candle(instrument_id, str(110 + index), SEP2))
+    _confirm_holdings(my_portfolio_client, ("\n".join(rows) + "\n").encode())
+    digest_before = repo.portfolio_holdings_digest()
+    repo.add_candles(candles)
+
+    started = time.perf_counter()
+    run = _run_portfolio_sync(repo)
+    elapsed = time.perf_counter() - started
+    snapshot = MyPortfolioService(repo).latest_snapshot()
+
+    assert elapsed >= 0
+    assert run["status"] == "SUCCESS"
+    assert run["total_holdings"] == holding_count
+    assert run["succeeded_holdings"] == holding_count
+    assert run["failed_holdings"] == 0
+    assert repo.portfolio_holdings_digest() == digest_before
+    assert snapshot.summary.holding_count == holding_count
+    assert len(snapshot.rows) == holding_count
+    assert snapshot.currentness.value == "CURRENT"
+    assert snapshot.snapshot_holdings_digest == digest_before
 
 
 def test_sync_api_starts_background_and_exposes_snapshot(
