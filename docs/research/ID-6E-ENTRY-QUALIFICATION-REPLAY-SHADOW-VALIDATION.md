@@ -892,3 +892,95 @@ data points so far. This is not a defect — it is the expected shape of one
 real trading morning's first two REGULAR cycles. Continued natural
 accumulation (no artificial trigger) is recommended; no numeric threshold
 is proposed for when to re-audit.
+
+## 51. ID-6E shadow closure-gate clarification (2026-09-03, documentation only)
+
+Owner clarification following ID-6E.3. No source code, production DB,
+scheduler, or workflow was touched to produce this section — it documents
+an architectural fact already visible in already-persisted production
+data (the `decision_id` values quoted below), read once, informally,
+outside the ID-6E.3 audit's own bounded cutoff.
+
+**The fact.** Every `decision_id` observed in production embeds that
+cycle's own timestamp — e.g. for `NSE:360ONE` alone on 2026-09-03:
+`decision-NSE:360ONE-2026-09-03T08:15:29...`,
+`...T09:15:16...`, `...T09:30:40...`, `...T09:43:53...`. A brand-new
+canonical Decision is created for every instrument on every synchronous
+production cycle, unconditionally — never reused from a prior cycle. This
+is exactly consistent with ID-6D's own accepted design: "Current Decision
+= the Decision produced this same synchronous cycle."
+
+**Why this differs from historical replay.** Replay selects "the latest
+canonical Decision with `ts <= checkpoint`" from the real `decisions`
+table, with checkpoints spaced 15–75 minutes apart. If no new Decision was
+created between two replay checkpoints (a real historical gap in
+scheduler activity), the same `decision_id` can legitimately be selected
+at both checkpoints — which is almost certainly why ID-6E.1's own
+decision-supersession audit found only 94.4% (not 100%) of instrument/
+session groups had more than one distinct `decision_id`. Production's own
+denser, always-fresh-per-cycle Decision issuance means this coincidence
+essentially cannot recur under the current REFRESH cadence: production
+generally produces `T1→D1→EQ1, T2→D2→EQ2, T3→D3→EQ3`, never
+`T1→D1→EQ1, T2→D1→EQ2, T3→D1→EQ3`.
+
+**Clarified closure gate.** This is an **architectural**, not evidentiary,
+finding, and it revises what "sufficient shadow evidence" means for ID-6E:
+
+1. Production generates a fresh canonical Decision per instrument per
+   cycle — confirmed from real data, not inferred.
+2. Same-Decision multi-checkpoint episodes are therefore not expected
+   during normal synchronous runtime — their absence is architecture, not
+   an evidentiary gap to be waited out.
+3. ID-6E.1's canonical `(instrument_id, session_date, decision_id)`
+   trajectory grouping **remains correct** and is not reinterpreted as a
+   mistake. The corrected historical replay flicker (**11.73%**) remains
+   valid for the historical replay population; the superseded 39.76%
+   figure remains superseded.
+4. Production flicker must **never** be manufactured by grouping across
+   Decision replacements (i.e., regressing to `(instrument_id,
+   session_date, decision_type)`) — that would silently reintroduce the
+   exact defect ID-6E.1 corrected. If cross-Decision longitudinal
+   stability becomes useful later, it needs its own, separately-defined
+   metric (§52) — it is not part of ID-6E.
+5. **Same-Decision multi-checkpoint evidence is no longer a closure
+   requirement for ID-6E** — it may still be reported if naturally
+   present, but its absence must not keep ID-6E open indefinitely.
+6. **TRADE observation remains desirable shadow evidence but is not
+   mandatory for closure.** TRADE production depends on real market
+   conditions and the canonical, unmodified ScoringEngine/DecisionEngine
+   — never to be forced or manufactured. If absent at the time of a final
+   audit, that is recorded honestly as "not yet observed, no contract
+   defect found, not required for closure," never treated as a blocker.
+7. **A second trading session is useful but not mandatory** — no
+   arbitrary one-day/two-day waiting rule applies.
+8. **The remaining closure evidence is breadth of later-session REGULAR
+   checkpoints** — genuine REGULAR observations across several naturally
+   scheduled, independent checkpoints spanning meaningfully different
+   portions of the live session (not just the 09:15 market-open edge and
+   the 09:30 early checkpoint ID-6E.3 characterized), confirmed
+   contract-consistent against all accepted invariants. "Several" is
+   descriptive, not an invented hard numeric threshold. This evidence can
+   accumulate within a single trading day — no calendar-day waiting
+   requirement exists — and a final read-only audit may be requested by
+   the owner once it has.
+
+**Next step (owner-gated, not self-triggered).** Once the owner requests
+a final read-only ID-6E shadow-closure audit, it should determine one of
+**`REPLAY_AND_SHADOW_BEHAVIORALLY_SOUND`** or **`VALIDATION_DEFECT_FOUND`**.
+If evidence remains unexpectedly narrow even after broader later-session
+checkpoints exist, it may still be classified as accumulating — but
+neither the absence of TRADE nor the absence of a same-Decision
+multi-checkpoint episode may be used as the sole reason to withhold
+closure.
+
+## 52. Carry-forward — cross-Decision stability (not ID-6E, not implemented)
+
+A potentially useful future concept, explicitly out of scope here: how
+stable is Entry Qualification for the *same instrument* across
+*successive, distinct* canonical Decisions (as opposed to the
+same-Decision multi-checkpoint flicker ID-6E.1 defined)? This is a
+different metric with different semantics — it would need to respect
+Decision-replacement boundaries deliberately, rather than requiring one
+shared `decision_id`. Not implemented, not designed in detail, not part
+of ID-6E — recorded only so it is not lost, and not smuggled into ID-6E's
+own closure criteria.

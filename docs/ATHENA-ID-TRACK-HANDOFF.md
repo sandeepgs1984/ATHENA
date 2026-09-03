@@ -21,8 +21,14 @@ integrity defects across 654 audited rows. **ID-6E overall remains OPEN**
 — classification `REPLAY_SOUND_SHADOW_EVIDENCE_STILL_ACCUMULATING` —
 owner directive (2026-09-03): allow normal production shadow accumulation
 through the already-running scheduler, no new implementation milestone, no
-artificial evidence-diversity forcing; next read-only review only once
-evidence materially changes, not on a fixed schedule)
+artificial evidence-diversity forcing. **Closure gate clarified
+(2026-09-03, documentation only):** production issues a fresh canonical
+Decision per instrument per cycle (confirmed from real `decision_id`
+values), so same-Decision multi-checkpoint episodes are architecturally
+not expected and are no longer a closure requirement; TRADE observation
+and a second session remain desirable but not mandatory; the sole
+remaining gate is breadth of later-session REGULAR checkpoints beyond the
+09:15/09:30 pair ID-6E.3 already characterized — see §6 below)
 **Governing boundary:** accepted `docs/adr/ADR-013-entry-qualification-architecture.md`
 for Entry Qualification; otherwise this track extends the existing frozen
 `ATHENA-002-System-Blueprint.md` module map (§6 of `ATHENA_BRIEFING.md`).
@@ -780,6 +786,57 @@ Do not add API/UI, thresholds, IntradayTradePlan, an M15 settlement-repair
 milestone, ID-7, EM-6, EMR, DarvaX, or order behavior. Do not implement
 anything further for ID-6E until the owner explicitly requests the next
 read-only shadow review. Do not owner-close ID-6E overall.
+
+**Closure-gate clarification (2026-09-03, documentation only — no source/
+DB/scheduler change).** A read-only architectural check, informal and
+outside ID-6E.3's own bounded audit, found that production issues a
+brand-new canonical Decision for every instrument on every synchronous
+cycle — `decision_id` literally embeds that cycle's own timestamp (e.g.
+`decision-NSE:360ONE-2026-09-03T08:15:29...`,
+`...T09:15:16...`, `...T09:30:40...`, `...T09:43:53...` for the same
+instrument across successive real cycles), never reusing a prior cycle's
+Decision. This exactly matches ID-6D's own accepted design ("Current
+Decision = the Decision produced this same synchronous cycle"). The owner
+used this fact to clarify — never reopen or reinterpret — what remains
+required for ID-6E's overall closure:
+
+1. **Same-Decision multi-checkpoint episodes are architecturally not
+   expected** under the current REFRESH cadence (unlike historical
+   replay's 94.4%-not-100% Decision churn, explained by real gaps between
+   replay checkpoints occasionally leaving no newer Decision to select,
+   never by production reusing one) — **their absence is no longer a
+   closure requirement**, though still reported if naturally present.
+2. ID-6E.1's canonical `(instrument_id, session_date, decision_id)`
+   trajectory grouping **remains correct** and must never be regressed to
+   `(instrument_id, session_date, decision_type)` merely to manufacture a
+   production flicker figure — that would silently reintroduce the exact
+   defect ID-6E.1 corrected. The corrected historical replay flicker
+   (11.73%) remains valid for the historical replay population only.
+3. **TRADE observation and a second trading session both remain
+   desirable but are not mandatory** for closure — market-dependent,
+   never to be forced.
+4. **The revised, sole remaining closure gate**: genuine REGULAR-session
+   shadow observations across *several* naturally scheduled, independent
+   checkpoints spanning meaningfully different portions of the live
+   session (beyond the 09:15 open-edge and 09:30 early checkpoint ID-6E.3
+   already characterized) — descriptive, not an invented numeric
+   threshold, achievable within a single trading day (no calendar-day
+   waiting requirement).
+
+Two carry-forward concepts are recorded, explicitly **not** implemented
+and **not** part of ID-6E: cross-Decision stability (how consistent Entry
+Qualification is for the same instrument across *successive, distinct*
+Decisions — a different metric from same-Decision flicker, needing its
+own future semantic definition, never to be smuggled into ID-6E's own
+closure criteria) and the already-accepted ID-7 actionability-latency
+requirement (§ above — `persisted_at - as_of` ≈ 9.2 minutes, not an ID-6
+defect, but ID-7 must distinguish "qualified for market state at T" from
+"actionable at wall-clock T + processing latency").
+
+Full detail: `docs/research/ID-6E-ENTRY-QUALIFICATION-REPLAY-SHADOW-VALIDATION.md`
+§51-52. Next step is an owner-requested (never self-triggered) final
+read-only audit classifying `REPLAY_AND_SHADOW_BEHAVIORALLY_SOUND` or
+`VALIDATION_DEFECT_FOUND`.
 
 ## 7. ID-5B — closed result
 
