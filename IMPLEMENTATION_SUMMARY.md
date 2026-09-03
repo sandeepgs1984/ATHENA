@@ -6,6 +6,75 @@ status updated on approval.
 
 ---
 
+## ID-7 Intraday Entry / TradePlan Discovery — Discovery Complete, Implementation Not Started
+
+**Summary.** Owner-authorized, discovery-only turn following ID-6's full
+closure, to reconstruct the current TradePlan/entry/risk architecture and
+determine the correct boundary for turning a frozen `EntryQualification`
+result into an actionable intraday trade proposal. No production source,
+test, database, or scheduler was touched — pure source/documentation
+archaeology via four parallel read-only research passes (TradePlan
+architecture, intraday evidence inventory, pipeline latency, ADR/roadmap
+precedent), synthesized into a single discovery document.
+
+**Key findings.** Current `TradePlan` (`src/athena/domain/decision.py:14-
+36`) is a daily-only, ATR-multiple construct — `entry=last_close`,
+`stop=last_close±1.5×ATR(D1)`, `target=last_close±3.0×ATR(D1)`, R:R fixed
+at exactly 2.0 — embedded inside the immutable `Decision` object with no
+independent identity or table, created only for TRADE-type Decisions
+(never WATCH), and consumes **zero** intraday evidence (confirmed NO for
+M5/M15 candles, VWAP, ORB, RelativeStrength, RelativeVolume, GapContext,
+SessionContext, EntryQualification). `EntryQualification` is structurally
+downstream/consumer-only of the already-finalized Decision — it cannot
+feed TradePlan without violating `DecisionEngine`'s signature. Retrofitting
+TradePlan to consume intraday-actionability evidence would require
+breaking Decision immutability, the TRADE-only invariant, or append-only
+persistence — all real architecture violations, not implementation
+inconveniences.
+
+New evidence (derived from a direct, read-only query of `db/athena.db`,
+not new instrumentation): `entry_qualifications` writes for a REFRESH
+cycle cluster in the final ~5-7 seconds of each ~550-560 second cycle —
+meaning the ~9-10 minute latency is spent almost entirely *before* the
+11-stage/528-instrument scan loop, most plausibly in sequential,
+per-instrument, non-batched ingestion (candle/quote fetch), not
+indicator/scoring/decision computation. This is circumstantial (no
+stage-level timing instrumentation exists today to prove it directly).
+
+**Recommendation.** A new, separate intraday actionability artifact bound
+to `(decision_id, entry_qualification identity)`, architecturally
+orthogonal to the existing daily TradePlan (Option B in the discovery
+doc) — mirrors ADR-013's own precedent of building `EntryQualification`
+as an artifact independent of `Decision`. A new ADR is recommended (meets
+ADR-013's own stated ADR-trigger criteria exactly). A 7-part
+ID-7A0→ID-7F sub-milestone sequence is proposed, mirroring ID-6's own
+build-out sequence. 5 owner policy questions are raised (latency-reduction
+scope vs. compensation-only, synchronous-vs-asynchronous evaluation
+timing, whether to ratify ID-9/10/11 roadmap-intent language now, artifact
+naming distinct from "TradePlan", and whether to add stage-level latency
+instrumentation before finalizing architecture) — none answerable from
+source alone.
+
+**Files created.** `docs/research/ID-7-INTRADAY-ENTRY-TRADEPLAN-DISCOVERY.md`.
+
+**Files modified.** `docs/MILESTONES.md`, `docs/ATHENA-ID-TRACK-HANDOFF.md`,
+`ATHENA_BRIEFING.md` — status-line updates only (ID-7 discovery
+complete, implementation not started).
+
+**Tests / validation.** Read-only discovery only; no production source or
+test file changed, no full suite rerun needed. `git diff --check` clean.
+
+**Remaining work.** Owner/Chief Architect review of the discovery
+document, particularly the 5 owner policy questions and the recommended
+Option B architecture. No ID-7A/ID-7A0 work, no ADR drafting, and no
+EntryQualification/DecisionEngine/TradePlan/EMR/DarvaX change until
+explicitly authorized.
+
+**Outcome:** Discovery complete; ready for owner/Chief Architect review.
+ID-7 implementation remains not started.
+
+---
+
 ## ID-6E Final Post-Market Shadow Audit — Owner Approved / Closed (ID-6 Overall Closed)
 
 **Summary.** Owner-authorized, read-only audit performed after the
