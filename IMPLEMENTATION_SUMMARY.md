@@ -6,6 +6,86 @@ status updated on approval.
 
 ---
 
+## PS-P6B Portfolio Experience Hardening Implementation — Ready For Review
+
+**Summary.** Implemented PS-P6B production hardening for My Portfolio. Latest
+snapshot responses now include server-owned currentness metadata derived by
+comparing sync-run holdings provenance with the current canonical holdings
+digest at read time. The dashboard keeps stale snapshots visible, marks them
+clearly stale, and prompts manual Sync instead of blending old analysis with new
+holdings.
+
+**Architecture compliance.** Preserved the frozen Portfolio Sync architecture:
+canonical holdings remain owner-confirmed state, snapshots remain immutable,
+Portfolio Sync remains manual, and PS-P5B interpretation methodology is
+unchanged. No ScoringEngine, DecisionEngine, provider, broker, order-placement,
+transaction-ledger, Clear Portfolio, sorting/filtering, history, or scheduled
+sync behavior was added.
+
+**Files created.**
+
+- `docs/research/PS-P6B-PORTFOLIO-EXPERIENCE-HARDENING-IMPLEMENTATION.md`
+
+**Files modified.**
+
+- `src/athena/portfolio/my_portfolio_contracts.py`
+- `src/athena/api/v1/dtos/portfolio.py`
+- `src/athena/api/v1/services/my_portfolio_service.py`
+- `src/athena/api/exceptions.py`
+- `src/athena/api/errors.py`
+- `src/athena/api/static/index.html`
+- `src/athena/api/static/js/08b-my-portfolio.js`
+- `src/athena/api/static/css/05b-my-portfolio.css`
+- `tests/api/v1/test_my_portfolio_import_api.py`
+- `tests/data_layer/test_my_portfolio_schema.py`
+- `tests/api/platform/test_dashboard_hosting.py`
+- `docs/MILESTONES.md`
+- `IMPLEMENTATION_SUMMARY.md`
+
+**Tests added.** Added digest contract tests for stability and sensitivity;
+latest snapshot currentness tests for current, stale quantity, stale average
+price, added holdings, and removed holdings; `PARTIAL` plus stale/currentness
+regressions; active-sync confirmation guard tests for `QUEUED` and `RUNNING`;
+preview-allowed/confirm-blocked concurrency coverage; terminal-state recovery
+coverage; and dashboard static contract assertions for stale UX, upload limits,
+failed-symbol summaries, and row explanations.
+
+**Remaining work.** Owner/principal-engineer review is required before the next
+Portfolio Sync milestone. Clear Portfolio, table sorting/filtering, richer
+history, scheduled sync, broker integration, transaction ledger, REDUCE/ROTATE,
+and new interpretation methodology remain deferred.
+
+**Risks.** The active-sync confirmation guard is process-local, matching the
+current ATHENA dashboard runtime. A future multi-worker runtime should promote
+this to a database-backed run lease or equivalent transactional mutex.
+
+**Suggested improvements.** If the My Portfolio UI grows, add a dedicated
+snapshot history/detail view before adding richer in-table controls so stale,
+partial, and failed provenance stays inspectable without crowding the main
+portfolio table.
+
+**Lessons learned.** The existing PS-P2/PS-P4 holdings digest design was strong
+enough for production currentness; the missing piece was a centralized read
+model and UX that refused to imply stale analysis was current.
+
+**Implementation metrics.** Targeted verification: `57 passed` for My
+Portfolio API, schema, dashboard-hosting, and PS-P5B interpretation tests.
+Full suite: `3184 passed, 0 failed, 1 skipped`. Touched-file Ruff passed; full
+Ruff remains blocked by broad pre-existing lint debt outside this change set
+(`290 issues in 90 files`). `rtk git diff --check` passed. Repository-scoped
+`rtk mypy` could not run because the active interpreter has no `mypy` module.
+
+**Phase outcome.** PS-P6B implementation complete and ready for review; next
+milestone blocked pending approval.
+
+**Commit hash.** Pending owner commit.
+
+**Branch.** main.
+
+**Review status.** Ready for owner/principal-engineer review.
+
+---
+
 ## PS-P6A Portfolio Experience Hardening Discovery — Ready For Review
 
 **Summary.** Completed PS-P6A discovery/design for My Portfolio operational

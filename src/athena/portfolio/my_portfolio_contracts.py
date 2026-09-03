@@ -54,6 +54,15 @@ class SyncRunStatus(str, Enum):
     CANCELLED = "CANCELLED"
 
 
+class PortfolioSnapshotCurrentness(str, Enum):
+    """Whether a snapshot reflects the current canonical holdings state."""
+
+    CURRENT = "CURRENT"
+    STALE_HOLDINGS_CHANGED = "STALE_HOLDINGS_CHANGED"
+    NO_SNAPSHOT = "NO_SNAPSHOT"
+    UNKNOWN = "UNKNOWN"
+
+
 @dataclass(frozen=True, slots=True)
 class ImportedHoldingRow:
     """Provider-independent normalized row parsed from a holdings file."""

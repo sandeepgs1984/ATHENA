@@ -86,6 +86,85 @@
         return `<span class="my-portfolio-status ${tone}"><i class="fa-solid ${icon}" aria-hidden="true"></i>${escapeMyPortfolioHtml(label)}</span>`;
     }
 
+    function myPortfolioSnapshotIsStale(snapshot = myPortfolioState.snapshot) {
+        return snapshot?.currentness === "STALE_HOLDINGS_CHANGED"
+            || snapshot?.portfolio_changed_since_sync === true;
+    }
+
+    function myPortfolioSyncFailureSummary(run) {
+        const failed = Object.entries(run?.per_symbol || {})
+            .filter(([, item]) => String(item?.status || "").toUpperCase() === "FAILED")
+            .map(([symbol, item]) => {
+                const reason = (item?.errors || item?.unavailable || [])
+                    .map(value => String(value).replaceAll("_", " ").toLowerCase())
+                    .join(", ");
+                return `${symbol}: ${reason || "analysis unavailable"}`;
+            });
+        if (!failed.length) return "";
+        return ` Failed: ${failed.slice(0, 4).join("; ")}${failed.length > 4 ? `; +${failed.length - 4} more` : ""}.`;
+    }
+
+    function myPortfolioReasonSummary(row) {
+        const codes = row?.provenance?.interpretation_reason_codes || [];
+        const labels = {
+            STALE_HOLDINGS_CHANGED: "Holdings changed after this analysis.",
+            STALE_PRICE_SESSION: "Price session is stale.",
+            STALE_DECISION_EVIDENCE: "Decision evidence is stale.",
+            PRICE_UNAVAILABLE: "Valuation is unavailable.",
+            NO_CURRENT_DECISION: "Current Decision evidence is unavailable.",
+            CURRENT_TRADE_PLAN: "Current active TradePlan supports the row.",
+            ALL_DECISION_GATES_PASSED: "Decision gates passed.",
+            ENTRY_QUALIFICATION_READY: "EntryQualification is qualified.",
+            ADD_NOT_CONFIRMED: "ADD is not confirmed by current actionability evidence.",
+            TRADE_PLAN_ENTRY_TRIGGER_ACTIVE: "TradePlan entry-low trigger remains active.",
+            ENTRY_TRIGGER_CONSUMED: "Entry trigger has already been consumed.",
+            TRADE_PLAN_STOP_AVAILABLE: "TradePlan stop is available as Major Support / Exit.",
+            TRADE_PLAN_STOP_BREACHED: "TradePlan stop has been breached.",
+            MAJOR_INVALIDATION_BREACHED: "Major invalidation level has been breached.",
+            NO_TRADE_DECISION_EVIDENCE: "Current Decision evidence is cautionary.",
+            DECISION_GATE_FAILED_DATA: "Data quality gate failed.",
+            DECISION_GATE_FAILED_EVIDENCE: "Evidence gate failed.",
+            DECISION_GATE_FAILED_RISK: "Risk gate failed.",
+            DECISION_GATE_FAILED_CONFIDENCE: "Confidence gate failed.",
+            DECISION_GATE_FAILED_MARKET: "Market gate failed.",
+            SUPPORT_1_METHODOLOGY_UNAVAILABLE: "Support 1 is intentionally unavailable.",
+            NO_APPROVED_SECONDARY_TARGET: "Target 2/3 are intentionally unavailable.",
+            CONFIDENCE_EVIDENCE_UNAVAILABLE: "Conviction evidence is unavailable.",
+            TREND_SETUP_NOT_AVAILABLE: "Trend / Setup evidence is unavailable.",
+        };
+        const messages = codes.map(code => labels[code]).filter(Boolean);
+        const failures = row?.provenance?.failed_components || [];
+        failures.forEach(reason => messages.unshift(`Sync component failed: ${String(reason).replaceAll("_", " ").toLowerCase()}.`));
+        return [...new Set(messages)].slice(0, 4).join(" ");
+    }
+
+    function myPortfolioStatusPill(value, row) {
+        const status = String(value || "UNAVAILABLE").toUpperCase();
+        const map = {
+            STRONG: ["Strong", "good", "fa-circle-check"],
+            HEALTHY: ["Healthy", "good", "fa-circle-check"],
+            CAUTION: ["Caution", "warning", "fa-triangle-exclamation"],
+            AT_RISK: ["At risk", "danger", "fa-circle-exclamation"],
+            UNAVAILABLE: ["Unavailable", "neutral", "fa-circle-info"],
+        };
+        const [label, tone, icon] = map[status] || [status, "neutral", "fa-circle-info"];
+        const reason = myPortfolioReasonSummary(row);
+        return `${myPortfolioStatus(label, tone, icon)}${reason ? `<br><span class="my-portfolio-row-note" title="${escapeMyPortfolioHtml(reason)}">${escapeMyPortfolioHtml(reason)}</span>` : ""}`;
+    }
+
+    function myPortfolioActionPill(value, row) {
+        const action = String(value || "WATCH").toUpperCase();
+        const map = {
+            ADD: ["Add", "good", "fa-circle-plus"],
+            EXIT: ["Exit", "danger", "fa-arrow-right-from-bracket"],
+            WATCH: ["Watch", "warning", "fa-eye"],
+            HOLD: ["Hold", "neutral", "fa-pause"],
+        };
+        const [label, tone, icon] = map[action] || [action, "neutral", "fa-circle-info"];
+        const reason = myPortfolioReasonSummary(row);
+        return `${myPortfolioStatus(label, tone, icon)}${reason ? `<br><span class="my-portfolio-row-note" title="${escapeMyPortfolioHtml(reason)}">Why: ${escapeMyPortfolioHtml(reason)}</span>` : ""}`;
+    }
+
     function showMyPortfolioAlert(message, tone = "neutral") {
         if (!myPortfolioAlert) return;
         myPortfolioAlert.textContent = message;
@@ -216,6 +295,14 @@
         myPortfolioMarketDataThrough.textContent = summary?.market_data_through
             ? `Market data through ${formatMyPortfolioTime(summary.market_data_through)}`
             : "Market data through —";
+        if (myPortfolioSnapshotIsStale(snapshot)) {
+            showMyPortfolioAlert(
+                "Portfolio holdings changed since this analysis. Previous snapshot remains visible; Sync Portfolio to refresh ATHENA analysis.",
+                "warning"
+            );
+        } else if (!snapshot && holdings.length) {
+            showMyPortfolioAlert("Portfolio holdings are imported. Sync Portfolio to generate ATHENA analysis.", "warning");
+        }
     }
 
     function renderMyPortfolioHoldings(holdings) {
@@ -265,7 +352,7 @@
                 <td class="font-mono">${row.current_value == null ? "₹ —" : formatMyPortfolioMoney(row.current_value)}</td>
                 <td class="font-mono">${row.pnl == null ? "₹ —" : formatMyPortfolioMoney(row.pnl)}</td>
                 <td>${row.pnl_pct == null ? "—" : formatMyPortfolioPct(row.pnl_pct)}</td>
-                <td>${escapeMyPortfolioHtml(row.status || "Not available")}</td>
+                <td>${myPortfolioStatusPill(row.status, row)}</td>
                 <td>${escapeMyPortfolioHtml(row.conviction || "Not available")}</td>
                 <td>${escapeMyPortfolioHtml(row.trend_or_setup || "Not available")}</td>
                 <td>${escapeMyPortfolioHtml(row.key_trigger || "Not available")}</td>
@@ -274,7 +361,7 @@
                 <td class="font-mono">${row.target_1 == null ? "₹ —" : formatMyPortfolioMoney(row.target_1)}</td>
                 <td class="font-mono">${row.target_2 == null ? "₹ —" : formatMyPortfolioMoney(row.target_2)}</td>
                 <td class="font-mono">${row.target_3 == null ? "₹ —" : formatMyPortfolioMoney(row.target_3)}</td>
-                <td>${escapeMyPortfolioHtml(row.next_action || "Not available")}</td>
+                <td>${myPortfolioActionPill(row.next_action, row)}</td>
                 <td>${row.last_review ? formatMyPortfolioTime(row.last_review) : "Not available"}</td>
             </tr>
         `).join("");
@@ -490,12 +577,22 @@
             if (myPortfolioPreview) myPortfolioPreview.hidden = true;
             myPortfolioUploadState.textContent = "Choose a holdings file to create a preview.";
             await loadMyPortfolioWorkspace();
-            showMyPortfolioAlert(successMessage, "good");
+            if (myPortfolioSnapshotIsStale()) {
+                showMyPortfolioAlert(`${successMessage} Portfolio analysis is now stale. Sync Portfolio to refresh ATHENA analysis.`, "warning");
+            } else {
+                showMyPortfolioAlert(successMessage, "good");
+            }
         } catch (err) {
             console.error("My Portfolio confirmation failed", err);
             const detail = String(err?.data?.detail || "");
             const type = String(err?.data?.type || "");
-            if (err?.status === 409 || detail.includes("STALE_PREVIEW") || type.includes("stale")) {
+            if (err?.status === 409 && type.includes("portfolio-sync-active")) {
+                showMyPortfolioAlert(
+                    "Portfolio Sync is currently running. Wait for it to finish before confirming holdings changes.",
+                    "warning"
+                );
+                myPortfolioUploadState.textContent = "Preview remains available. Confirm after Portfolio Sync finishes.";
+            } else if (err?.status === 409 || detail.includes("STALE_PREVIEW") || type.includes("stale")) {
                 showMyPortfolioAlert(
                     "Portfolio holdings changed after this preview was generated. Please generate a fresh preview before confirming.",
                     "warning"
@@ -527,7 +624,7 @@
             : status === "PARTIAL" || status === "QUEUED" || status === "RUNNING"
                 ? "warning"
                 : "danger";
-        showMyPortfolioAlert(`${message}${detail}`, tone);
+        showMyPortfolioAlert(`${message}${detail}.${myPortfolioSyncFailureSummary(run)}`, tone);
         if (myPortfolioUploadState) {
             myPortfolioUploadState.textContent = `Sync ${run.sync_run_id}: ${status}${detail}`;
         }
@@ -575,7 +672,7 @@
                     renderMyPortfolioSummary();
                     if (run.status === "PARTIAL") {
                         showMyPortfolioAlert(
-                            `Portfolio Sync partial — ${run.succeeded_holdings} of ${run.total_holdings} holdings analyzed. Failed symbols remain visible in the table.`,
+                            `Portfolio Sync partial — ${run.succeeded_holdings} of ${run.total_holdings} holdings analyzed.${myPortfolioSyncFailureSummary(run)} Failed rows remain visible in the table.`,
                             "warning"
                         );
                     } else {

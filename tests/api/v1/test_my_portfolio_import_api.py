@@ -16,6 +16,7 @@ from athena.api.app import create_app
 from athena.api.config import APISettings
 from athena.api.dependencies import get_my_portfolio_service
 from athena.api.security.models import Role
+from athena.api.v1.services import my_portfolio_service as my_portfolio_service_module
 from athena.api.v1.services.my_portfolio_service import MyPortfolioService
 from athena.data.store.repository import SqliteRepository
 from athena.domain.decision import Decision, TradePlan
@@ -28,6 +29,7 @@ from athena.intraday.entry_qualification_models import (
     EntryQualificationReasonCode,
     EntryQualificationState,
 )
+from athena.portfolio.my_portfolio_contracts import SyncRunStatus
 from athena.portfolio.sync import PortfolioSyncOrchestrator
 
 NOW = datetime(2026, 9, 2, 10, 0, tzinfo=timezone.utc)
@@ -141,6 +143,18 @@ def _preview(client: TestClient, csv_body: bytes, filename: str = "holdings.csv"
 def _confirm_infy_holding(client: TestClient) -> SqliteRepository:
     headers = get_auth_headers(client, Role.OPERATOR)
     preview = _preview(client, b"Symbol,Qty,Avg Price\nINFY,10,1500\n")
+    response = client.post(
+        f"/api/v1/my-portfolio/imports/{preview['import_id']}/confirm",
+        headers=headers,
+        json={"import_id": preview["import_id"], "confirmation": "CONFIRM"},
+    )
+    assert response.status_code == 200
+    return client.app.state.sqlite_repo
+
+
+def _confirm_holdings(client: TestClient, csv_body: bytes) -> SqliteRepository:
+    headers = get_auth_headers(client, Role.OPERATOR)
+    preview = _preview(client, csv_body)
     response = client.post(
         f"/api/v1/my-portfolio/imports/{preview['import_id']}/confirm",
         headers=headers,
@@ -534,6 +548,9 @@ def test_sync_builds_server_owned_snapshot_math_and_tradeplan_target(
     assert "ADD_NOT_CONFIRMED" in row.provenance.interpretation_reason_codes
     assert "status" not in row.provenance.unavailable_fields
     assert "target_2" in row.provenance.unavailable_fields
+    assert snapshot.currentness.value == "CURRENT"
+    assert snapshot.portfolio_changed_since_sync is False
+    assert snapshot.snapshot_holdings_digest == snapshot.current_holdings_digest
 
 
 def test_sync_sets_entry_low_key_trigger_when_trade_plan_entry_is_actionable(
@@ -581,6 +598,91 @@ def test_sync_allows_add_only_from_coherent_entry_qualification(
     assert "ENTRY_QUALIFICATION_READY" in row.provenance.interpretation_reason_codes
 
 
+def test_latest_snapshot_reports_stale_after_holding_quantity_change(
+    my_portfolio_client: TestClient,
+) -> None:
+    repo = _confirm_infy_holding(my_portfolio_client)
+    repo.add_candles([_candle("NSE:INFY", "1600", SEP2)])
+    _run_portfolio_sync(repo)
+
+    stale_digest = MyPortfolioService(repo).latest_snapshot().snapshot_holdings_digest
+    _confirm_holdings(my_portfolio_client, b"Symbol,Qty,Avg Price\nINFY,12,1500\n")
+    snapshot = MyPortfolioService(repo).latest_snapshot()
+
+    assert snapshot.currentness.value == "STALE_HOLDINGS_CHANGED"
+    assert snapshot.portfolio_changed_since_sync is True
+    assert snapshot.currentness_reason == "STALE_HOLDINGS_CHANGED"
+    assert snapshot.snapshot_holdings_digest == stale_digest
+    assert snapshot.current_holdings_digest != snapshot.snapshot_holdings_digest
+    assert snapshot.rows[0].quantity == 10
+
+
+def test_latest_snapshot_remains_current_after_semantically_identical_reimport(
+    my_portfolio_client: TestClient,
+) -> None:
+    repo = _confirm_infy_holding(my_portfolio_client)
+    repo.add_candles([_candle("NSE:INFY", "1600", SEP2)])
+    _run_portfolio_sync(repo)
+
+    _confirm_holdings(my_portfolio_client, b"Symbol,Qty,Avg Price\nINFY,10,1500\n")
+    snapshot = MyPortfolioService(repo).latest_snapshot()
+
+    assert snapshot.currentness.value == "CURRENT"
+    assert snapshot.portfolio_changed_since_sync is False
+    assert snapshot.snapshot_holdings_digest == snapshot.current_holdings_digest
+
+
+def test_latest_snapshot_reports_stale_after_avg_price_change(
+    my_portfolio_client: TestClient,
+) -> None:
+    repo = _confirm_infy_holding(my_portfolio_client)
+    repo.add_candles([_candle("NSE:INFY", "1600", SEP2)])
+    _run_portfolio_sync(repo)
+
+    _confirm_holdings(my_portfolio_client, b"Symbol,Qty,Avg Price\nINFY,10,1510\n")
+    snapshot = MyPortfolioService(repo).latest_snapshot()
+
+    assert snapshot.currentness.value == "STALE_HOLDINGS_CHANGED"
+    assert snapshot.current_holdings_digest != snapshot.snapshot_holdings_digest
+
+
+def test_latest_snapshot_reports_stale_after_holding_added(
+    my_portfolio_client: TestClient,
+) -> None:
+    repo = _confirm_infy_holding(my_portfolio_client)
+    repo.add_candles([_candle("NSE:INFY", "1600", SEP2)])
+    _run_portfolio_sync(repo)
+
+    _confirm_holdings(
+        my_portfolio_client,
+        b"Symbol,Qty,Avg Price\nINFY,10,1500\nTCS,1,3000\n",
+    )
+    snapshot = MyPortfolioService(repo).latest_snapshot()
+
+    assert snapshot.currentness.value == "STALE_HOLDINGS_CHANGED"
+    assert [row.symbol for row in snapshot.rows] == ["INFY"]
+
+
+def test_latest_snapshot_reports_stale_after_holding_removed(
+    my_portfolio_client: TestClient,
+) -> None:
+    repo = _confirm_holdings(
+        my_portfolio_client,
+        b"Symbol,Qty,Avg Price\nINFY,10,1500\nTCS,1,3000\n",
+    )
+    repo.add_candles([
+        _candle("NSE:INFY", "1600", SEP2),
+        _candle("NSE:TCS", "3100", SEP2),
+    ])
+    _run_portfolio_sync(repo)
+
+    _confirm_holdings(my_portfolio_client, b"Symbol,Qty,Avg Price\nINFY,10,1500\n")
+    snapshot = MyPortfolioService(repo).latest_snapshot()
+
+    assert snapshot.currentness.value == "STALE_HOLDINGS_CHANGED"
+    assert {row.symbol for row in snapshot.rows} == {"INFY", "TCS"}
+
+
 def test_sync_partial_persists_successful_rows_and_failure_metadata(
     my_portfolio_client: TestClient,
 ) -> None:
@@ -609,6 +711,112 @@ def test_sync_partial_persists_successful_rows_and_failure_metadata(
     assert failed.status == "UNAVAILABLE"
     assert failed.next_action == "WATCH"
     assert "NO_PERSISTED_D1_CANDLE" in failed.provenance.failed_components
+    assert snapshot.currentness.value == "CURRENT"
+    assert snapshot.summary.sync_status.value == "PARTIAL"
+
+    _confirm_holdings(my_portfolio_client, b"Symbol,Qty,Avg Price\nINFY,12,1500\nTCS,5,3000\n")
+    stale_snapshot = MyPortfolioService(repo).latest_snapshot()
+    assert stale_snapshot.currentness.value == "STALE_HOLDINGS_CHANGED"
+    assert stale_snapshot.summary.sync_status.value == "PARTIAL"
+
+
+class _AliveSyncThread:
+    def is_alive(self) -> bool:
+        return True
+
+
+def _install_active_sync(
+    monkeypatch: pytest.MonkeyPatch,
+    repo: SqliteRepository,
+    *,
+    status: SyncRunStatus,
+) -> str:
+    sync_run_id = f"sync-{status.value.lower()}"
+    repo.create_portfolio_sync_run(
+        sync_run_id=sync_run_id,
+        started_at=NOW,
+        total_holdings=len(repo.list_portfolio_holdings()),
+        analysis_version="my-portfolio-v1",
+        status=status,
+        progress={"stage": status.value.lower()},
+        provenance={"holdings_digest": repo.portfolio_holdings_digest()},
+    )
+    monkeypatch.setattr(my_portfolio_service_module, "_SYNC_THREAD", _AliveSyncThread())
+    monkeypatch.setattr(my_portfolio_service_module, "_SYNC_THREAD_RUN_ID", sync_run_id)
+    return sync_run_id
+
+
+@pytest.mark.parametrize("status", [SyncRunStatus.QUEUED, SyncRunStatus.RUNNING])
+def test_confirm_import_is_blocked_during_active_sync_without_mutating_holdings(
+    my_portfolio_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    status: SyncRunStatus,
+) -> None:
+    repo = _confirm_infy_holding(my_portfolio_client)
+    preview = _preview(my_portfolio_client, b"Symbol,Qty,Avg Price\nINFY,12,1500\n")
+    before = repo.portfolio_holdings_digest()
+    _install_active_sync(monkeypatch, repo, status=status)
+
+    response = my_portfolio_client.post(
+        f"/api/v1/my-portfolio/imports/{preview['import_id']}/confirm",
+        headers=get_auth_headers(my_portfolio_client, Role.OPERATOR),
+        json={"import_id": preview["import_id"], "confirmation": "CONFIRM"},
+    )
+
+    assert response.status_code == 409
+    assert "Portfolio Sync is currently running" in response.json()["detail"]
+    assert repo.portfolio_holdings_digest() == before
+    assert repo.get_portfolio_import(preview["import_id"])["status"] == "PREVIEWED"
+
+
+def test_import_preview_is_allowed_during_active_sync_but_confirmation_is_blocked(
+    my_portfolio_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _confirm_infy_holding(my_portfolio_client)
+    before = repo.portfolio_holdings_digest()
+    _install_active_sync(monkeypatch, repo, status=SyncRunStatus.RUNNING)
+
+    preview = _preview(my_portfolio_client, b"Symbol,Qty,Avg Price\nINFY,12,1500\n")
+    response = my_portfolio_client.post(
+        f"/api/v1/my-portfolio/imports/{preview['import_id']}/confirm",
+        headers=get_auth_headers(my_portfolio_client, Role.OPERATOR),
+        json={"import_id": preview["import_id"], "confirmation": "CONFIRM"},
+    )
+
+    assert preview["status"] == "PREVIEWED"
+    assert response.status_code == 409
+    assert repo.portfolio_holdings_digest() == before
+
+
+@pytest.mark.parametrize(
+    "status",
+    [SyncRunStatus.SUCCESS, SyncRunStatus.PARTIAL, SyncRunStatus.FAILED, SyncRunStatus.CANCELLED],
+)
+def test_confirm_import_is_allowed_after_terminal_sync_states(
+    my_portfolio_client: TestClient,
+    status: SyncRunStatus,
+) -> None:
+    repo = _confirm_infy_holding(my_portfolio_client)
+    repo.create_portfolio_sync_run(
+        sync_run_id=f"sync-{status.value.lower()}",
+        started_at=NOW,
+        total_holdings=1,
+        analysis_version="my-portfolio-v1",
+        status=status,
+        progress={"stage": status.value.lower()},
+        provenance={"holdings_digest": repo.portfolio_holdings_digest()},
+    )
+    preview = _preview(my_portfolio_client, b"Symbol,Qty,Avg Price\nINFY,12,1500\n")
+
+    response = my_portfolio_client.post(
+        f"/api/v1/my-portfolio/imports/{preview['import_id']}/confirm",
+        headers=get_auth_headers(my_portfolio_client, Role.OPERATOR),
+        json={"import_id": preview["import_id"], "confirmation": "CONFIRM"},
+    )
+
+    assert response.status_code == 200
+    assert repo.list_portfolio_holdings()[0].quantity == 12
 
 
 def test_failed_sync_does_not_replace_previous_good_snapshot(

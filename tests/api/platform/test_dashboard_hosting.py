@@ -357,6 +357,7 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert 'id="my-portfolio-file"' in html
     assert 'accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"' in html
     assert "Required columns: Symbol, Qty, Avg Price" in html
+    assert "up to 2 MB and 2,000 rows" in html
     assert 'id="my-portfolio-sync" class="btn" type="button"' in html
     assert "Sync Portfolio" in html
     assert "No trades or realized P&amp;L are inferred" in html
@@ -401,6 +402,20 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert "function startMyPortfolioSync()" in js
     assert "function pollMyPortfolioSync(syncRunId)" in js
     assert "function renderMyPortfolioSnapshotRows(rows)" in js
+    assert "function myPortfolioSnapshotIsStale" in js
+    assert "function myPortfolioReasonSummary(row)" in js
+    assert "function myPortfolioStatusPill(value, row)" in js
+    assert "function myPortfolioActionPill(value, row)" in js
+    assert "Portfolio holdings changed since this analysis" in js
+    assert "Portfolio analysis is now stale" in js
+    assert "Portfolio Sync is currently running. Wait for it to finish" in js
+    assert "Preview remains available. Confirm after Portfolio Sync finishes." in js
+    assert "Portfolio holdings are imported. Sync Portfolio" in js
+    assert "myPortfolioSyncFailureSummary(run)" in js
+    assert "STALE_HOLDINGS_CHANGED" in js
+    assert "TRADE_PLAN_STOP_BREACHED" in js
+    assert "SUPPORT_1_METHODOLOGY_UNAVAILABLE" in js
+    assert ".my-portfolio-row-note" in my_portfolio_css
     assert "Previous completed snapshot remains unchanged" in js
     assert "Content-Type\": \"application/octet-stream" in js
     assert "DUPLICATE_CANONICAL_INSTRUMENT" in js

@@ -15,6 +15,7 @@ from athena.api.exceptions import (
     MyPortfolioImportError,
     MyPortfolioImportNotFoundError,
     MyPortfolioSyncNotFoundError,
+    PortfolioSyncActiveConflictError,
     StalePortfolioPreviewError,
 )
 from athena.api.v1.dtos.portfolio import (
@@ -47,6 +48,7 @@ from athena.portfolio.my_portfolio_contracts import (
     PORTFOLIO_ANALYSIS_VERSION,
     CanonicalPortfolioHolding,
     ImportStatus,
+    PortfolioSnapshotCurrentness,
     PortfolioSnapshotSummary,
     ReconciliationAction,
     ReconciliationChange,
@@ -144,37 +146,45 @@ class MyPortfolioService:
     def confirm_import(self, *, import_id: str, confirmation: str) -> PortfolioImportConfirmResultDTO:
         if confirmation != _CONFIRM_TOKEN:
             raise MyPortfolioImportError("confirmation must be the exact token CONFIRM")
-        record = self._repo.get_portfolio_import(import_id)
-        if record is None:
-            raise MyPortfolioImportNotFoundError(f"portfolio import not found: {import_id}")
-        provenance = dict(record["provenance"])
-        expected_digest = str(provenance.get("base_holdings_digest", ""))
-        if not expected_digest:
-            raise MyPortfolioImportError("import preview is missing base holdings digest")
-        if (
-            ImportStatus(str(record["status"])) is ImportStatus.PREVIEWED
-            and (
-                int(record["rejected_rows"])
-                or int(record["unresolved_rows"])
-                or int(record["ambiguous_rows"])
-            )
-        ):
-            raise MyPortfolioImportError("import preview has invalid, unresolved, ambiguous, or duplicate rows")
+        with _SYNC_GUARD:
+            self._recover_interrupted_sync_if_needed()
+            active = self._repo.get_active_portfolio_sync_run()
+            if active is not None:
+                raise PortfolioSyncActiveConflictError(
+                    "Portfolio Sync is currently running. Wait for it to finish before "
+                    "confirming holdings changes."
+                )
+            record = self._repo.get_portfolio_import(import_id)
+            if record is None:
+                raise MyPortfolioImportNotFoundError(f"portfolio import not found: {import_id}")
+            provenance = dict(record["provenance"])
+            expected_digest = str(provenance.get("base_holdings_digest", ""))
+            if not expected_digest:
+                raise MyPortfolioImportError("import preview is missing base holdings digest")
+            if (
+                ImportStatus(str(record["status"])) is ImportStatus.PREVIEWED
+                and (
+                    int(record["rejected_rows"])
+                    or int(record["unresolved_rows"])
+                    or int(record["ambiguous_rows"])
+                )
+            ):
+                raise MyPortfolioImportError("import preview has invalid, unresolved, ambiguous, or duplicate rows")
 
-        try:
-            already_confirmed, changes = self._repo.confirm_portfolio_import(
-                import_id=import_id,
-                expected_base_digest=expected_digest,
-                confirmed_at=datetime.now(tz=timezone.utc),
-            )
-        except RepositoryError as exc:
-            if "STALE_PREVIEW" in str(exc):
-                raise StalePortfolioPreviewError(
-                    "STALE_PREVIEW: canonical holdings changed after this preview was created"
-                ) from exc
-            if "IMPORT_NOT_FOUND" in str(exc):
-                raise MyPortfolioImportNotFoundError(f"portfolio import not found: {import_id}") from exc
-            raise MyPortfolioImportError(str(exc)) from exc
+            try:
+                already_confirmed, changes = self._repo.confirm_portfolio_import(
+                    import_id=import_id,
+                    expected_base_digest=expected_digest,
+                    confirmed_at=datetime.now(tz=timezone.utc),
+                )
+            except RepositoryError as exc:
+                if "STALE_PREVIEW" in str(exc):
+                    raise StalePortfolioPreviewError(
+                        "STALE_PREVIEW: canonical holdings changed after this preview was created"
+                    ) from exc
+                if "IMPORT_NOT_FOUND" in str(exc):
+                    raise MyPortfolioImportNotFoundError(f"portfolio import not found: {import_id}") from exc
+                raise MyPortfolioImportError(str(exc)) from exc
 
         refreshed = self._repo.get_portfolio_import(import_id)
         status = ImportStatus(str(refreshed["status"])) if refreshed else ImportStatus.CONFIRMED
@@ -267,12 +277,49 @@ class MyPortfolioService:
             raise MyPortfolioSyncNotFoundError("no completed My Portfolio snapshot exists")
         row_dtos = [self._snapshot_row_to_dto(row) for row in rows]
         summary = self._snapshot_summary_to_dto(run, row_dtos)
+        currentness = self._snapshot_currentness(run)
         return PortfolioSnapshotDTO(
             snapshot_id=str(run["sync_run_id"]),
             generated_at=run["finished_at"] or run["started_at"],
+            currentness=currentness["currentness"],
+            portfolio_changed_since_sync=bool(currentness["portfolio_changed_since_sync"]),
+            currentness_reason=str(currentness["currentness_reason"]),
+            snapshot_holdings_digest=currentness["snapshot_holdings_digest"],
+            current_holdings_digest=currentness["current_holdings_digest"],
             summary=summary,
             rows=row_dtos,
         )
+
+    def _snapshot_currentness(
+        self,
+        run: dict[str, object],
+    ) -> dict[str, object]:
+        provenance = dict(run.get("provenance") or {})
+        snapshot_digest = provenance.get("holdings_digest")
+        current_digest = self._repo.portfolio_holdings_digest()
+        if not snapshot_digest:
+            return {
+                "currentness": PortfolioSnapshotCurrentness.UNKNOWN,
+                "portfolio_changed_since_sync": False,
+                "currentness_reason": "SNAPSHOT_HOLDINGS_DIGEST_UNAVAILABLE",
+                "snapshot_holdings_digest": None,
+                "current_holdings_digest": current_digest,
+            }
+        if str(snapshot_digest) == current_digest:
+            return {
+                "currentness": PortfolioSnapshotCurrentness.CURRENT,
+                "portfolio_changed_since_sync": False,
+                "currentness_reason": "SNAPSHOT_MATCHES_CURRENT_HOLDINGS",
+                "snapshot_holdings_digest": str(snapshot_digest),
+                "current_holdings_digest": current_digest,
+            }
+        return {
+            "currentness": PortfolioSnapshotCurrentness.STALE_HOLDINGS_CHANGED,
+            "portfolio_changed_since_sync": True,
+            "currentness_reason": "STALE_HOLDINGS_CHANGED",
+            "snapshot_holdings_digest": str(snapshot_digest),
+            "current_holdings_digest": current_digest,
+        }
 
     def _run_sync_worker(self, sync_run_id: str, force_ingestion: bool) -> None:
         try:

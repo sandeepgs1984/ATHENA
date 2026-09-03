@@ -92,6 +92,10 @@ class StalePortfolioPreviewError(APIResourceError):
     """My Portfolio preview was based on an older holdings state."""
 
 
+class PortfolioSyncActiveConflictError(APIResourceError):
+    """Canonical holdings mutation was refused while Portfolio Sync is active."""
+
+
 class DecisionsResetConfirmationError(APIResourceError):
     """Decisions & Trace reset refused because confirmation token was missing or incorrect."""
 

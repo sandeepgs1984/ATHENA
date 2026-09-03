@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from athena.portfolio.my_portfolio_contracts import (
     ImportStatus,
+    PortfolioSnapshotCurrentness,
     ReconciliationAction,
     SymbolMappingState,
     SyncRunStatus,
@@ -295,6 +296,11 @@ class PortfolioSnapshotDTO(BaseModel):
 
     snapshot_id: str
     generated_at: datetime
+    currentness: PortfolioSnapshotCurrentness = PortfolioSnapshotCurrentness.UNKNOWN
+    portfolio_changed_since_sync: bool = False
+    currentness_reason: str | None = None
+    snapshot_holdings_digest: str | None = None
+    current_holdings_digest: str | None = None
     summary: PortfolioSnapshotSummaryDTO
     rows: list[PortfolioSnapshotRowDTO]
 

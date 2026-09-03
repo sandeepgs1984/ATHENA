@@ -194,6 +194,15 @@
     color: var(--text-muted);
 }
 
+.my-portfolio-row-note {
+    display: inline-block;
+    max-width: 240px;
+    margin-top: var(--space-4);
+    color: var(--text-muted);
+    font-size: var(--text-0-75);
+    line-height: 1.35;
+}
+
 .my-portfolio-diff-summary {
     display: flex;
     flex-wrap: wrap;
