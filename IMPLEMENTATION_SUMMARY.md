@@ -6,7 +6,7 @@ status updated on approval.
 
 ---
 
-## ID-6E.3 Genuine REGULAR-Session Shadow Characterization — Analysis Complete / Shadow Evidence Still Accumulating
+## ID-6E.3 Genuine REGULAR-Session Shadow Characterization — Owner Approved / Closed
 
 **Summary.** Owner closed ID-6E.2 (production schema activation CLOSED,
 runtime persistence canary CLOSED, shadow accumulation ACTIVE) and
@@ -149,15 +149,38 @@ merely to wait — a future read-only re-audit can be performed once
 evidence materially changes (e.g., a Decision episode spans 2+ checkpoints,
 or a TRADE decision is produced).
 
-**Remaining work.** Owner review of the shadow-evidence-still-accumulating
-status. Do not start ID-7, EM-6, or API/UI until explicitly authorized.
-Do not owner-close ID-6E.
+**Remaining work.** None — owner approved and closed. Owner directive:
+allow normal production shadow accumulation through the already-running
+scheduler; no new implementation milestone; do not force evidence
+diversity (0 TRADE observations and 0 multi-checkpoint Decision episodes
+at this cutoff are accepted as genuine, not a defect — historical replay
+also showed very high Decision churn, so their absence alone must never
+become a mandatory engineering prerequisite). The next read-only shadow
+review happens only once evidence materially changes (a later REGULAR
+cycle, a second session, a TRADE observation, or a multi-checkpoint
+Decision episode) — not on a fixed schedule or numeric threshold. Do not
+start ID-7, EM-6, or API/UI until explicitly authorized. Do not
+owner-close ID-6E overall (it remains open pending further shadow
+accumulation) — only ID-6E.3 itself is closed.
 
-**Outcome:** Analysis complete. Genuine REGULAR-session shadow evidence
-now exists (489 rows, 2 checkpoints) and is directionally consistent with
-the replay baseline, with zero integrity defects — but remains
-insufficient for full behavioral characterization pending trajectory
-(multi-checkpoint) and TRADE-type evidence.
+**Carry-forward note for a future ID-7 (not started, not designed here).**
+Production shadow evidence has now repeatedly shown `persisted_at - as_of`
+≈ 9.2 minutes for full-universe cycles (ID-6E.2's PREMARKET cycle and both
+of ID-6E.3's REFRESH cycles). This is **not** an ID-6 correctness defect —
+the `EntryQualification` result remains correctly bound to its market/
+evidence checkpoint `as_of`, exactly as ID-6D.1 designed. However, when
+ID-7 is eventually authorized, it must explicitly distinguish "qualified
+for market state at time T" from "still actionable/executable at
+wall-clock time T + processing latency." Recorded here only as a
+carry-forward architectural requirement — not solved, not designed, not
+implemented inside ID-6.
+
+**Outcome:** Owner approved / closed. Genuine REGULAR-session shadow
+evidence now exists (489 rows, 2 checkpoints) and is directionally
+consistent with the replay baseline, with zero integrity defects — ID-6E
+overall remains open, classification
+`REPLAY_SOUND_SHADOW_EVIDENCE_STILL_ACCUMULATING`, owner directive to wait
+for natural accumulation before any further ID-6E work.
 
 ---
 

@@ -12,16 +12,17 @@ ID-6B is fully closed; ID-6C persistence and ID-6C.1 canonical
 Decision-binding hardening both owner-approved and closed — ID-6C is
 fully closed; ID-6D workflow/Decision/finality resolution and ID-6D.1
 persistence-time semantics correction are both owner-approved and closed —
-ID-6D is fully closed; ID-6E.1 owner-approved and closed — historical
-replay validation classified BEHAVIORALLY SOUND; ID-6E.2 owner-approved
-and closed — production schema activation and runtime persistence canary
-both closed, shadow accumulation active; ID-6E.3 read-only REGULAR-session
-shadow characterization complete — found the first genuine REGULAR-phase
-shadow evidence (489 rows, 2 checkpoints), zero integrity defects across
-654 audited rows, but classified REPLAY_SOUND_SHADOW_EVIDENCE_STILL_ACCUMULATING
-since Decision-episode trajectories and TRADE-type representation remain
-absent; ID-6E's shadow-validation half remains open pending further, more diverse shadow
-accumulation)
+ID-6D is fully closed; ID-6E.1, ID-6E.2, and ID-6E.3 are all owner-approved
+and closed — historical replay validation classified BEHAVIORALLY SOUND;
+production schema activation and runtime persistence canary both closed,
+shadow accumulation active; the first genuine REGULAR-phase shadow
+evidence (489 rows, 2 checkpoints) found and characterized with zero
+integrity defects across 654 audited rows. **ID-6E overall remains OPEN**
+— classification `REPLAY_SOUND_SHADOW_EVIDENCE_STILL_ACCUMULATING` —
+owner directive (2026-09-03): allow normal production shadow accumulation
+through the already-running scheduler, no new implementation milestone, no
+artificial evidence-diversity forcing; next read-only review only once
+evidence materially changes, not on a fixed schedule)
 **Governing boundary:** accepted `docs/adr/ADR-013-entry-qualification-architecture.md`
 for Entry Qualification; otherwise this track extends the existing frozen
 `ATHENA-002-System-Blueprint.md` module map (§6 of `ATHENA_BRIEFING.md`).
@@ -129,7 +130,7 @@ Track B capture is running the same morning.
 | ID-6E | HISTORICAL REPLAY VALIDATION OWNER-ACCEPTED (BEHAVIORALLY SOUND); SHADOW VALIDATION OPEN 2026-09-03 — validation-only milestone: deterministic historical market-time replay via the real, unmodified `EntryQualificationEngine`/`resolve_evidence_finality`, plus read-only inspection of persisted shadow observations in real `db/athena.db`. New harness `src/athena/data/id6e_replay_shadow_validation.py` reuses ID-6B.1's `ReadOnlyStore`/`candidates_at` and ID-6B.1B's exact 10-session/17,082-observation window; two independent full replay runs produced a byte-identical SHA-256 digest (full determinism, zero provider calls). Every point-observation headline statistic matches ID-6B.1B's own research figures almost exactly (QUALIFIED 21.70%, TRADE 24.17%, WATCH 19.93%) with zero tuning. All frozen invariants hold across all 17,082 observations, Option C and M15 non-blocking status reconfirmed at full scale. Owner accepted the historical replay validation as **BEHAVIORALLY SOUND** after ID-6E.1's Decision-episode trajectory correction. Shadow validation remained open only because the production schema was not yet activated — closed by ID-6E.2 |
 | ID-6E.1 | OWNER APPROVED / CLOSED 2026-09-02 — corrected `_transitions`/`_qualified_duration` to group by canonical `(instrument_id, session_date, decision_id)` instead of `(instrument_id, session_date, decision_type)`, ordered by semantic `as_of` instead of the checkpoint label. Added a new descriptive `_decision_supersession` audit: 3,210 of 3,401 instrument/session groups (94.4%) contain more than one distinct Decision episode across the 6 replay checkpoints — Decision churn is the norm in this population. Corrected flicker: 215 of 1,833 multi-checkpoint Decision episodes = **11.73%** (was 39.76% under the old, over-merged grouping) — the prior figure is superseded, root-caused, and documented, not silently left in the narrative. Audited ID-6B.1B's own harness and confirmed it shares the identical `decision_type`-grouping defect, predating ID-6E entirely (research-only contract written before ID-6C's Decision-binding persistence discipline existed) — ID-6B.1B's own artifacts were not modified. All point-observation invariants confirmed byte-for-byte unchanged; new deterministic digest (`d18c2cb1c43688804c7aea8430b1d4a1539c48f4b3cab3e2a05fd2bba8a70ef9`) matches exactly across two independent reruns of the real 17,082-observation replay against `db/athena.db`. 5 new focused tests (2 mutation-verified), 23/23 `test_id6e_replay_shadow_validation.py` passing, combined ID-6A–ID-6E suite 194 passed, full suite 3,154 passed, 1 pre-existing skip. No methodology/engine/workflow/repository/schema/API/UI change |
 | ID-6E.2 | OWNER APPROVED / CLOSED 2026-09-03 — operational-only milestone (no methodology/engine/workflow/schema code change). Preflight against real `db/athena.db` found SCHEMA_VERSION already 17 with `entry_qualifications` present (0 rows) — migration had already occurred via ATHENA's own routine, idempotent `SqliteRepository.initialize()` calls (`_open_repo()`/API startup); no ad-hoc SQL issued anywhere. Integrity-verified, checksummed safety backup taken (`db/backups/athena-pre-id6e2-shadow-canary-20260903T024201Z.db`). Structural verification against a fresh v17 reference schema: 0 drift (28/28 tables, 56/56 indexes, exact `entry_qualifications` column/PK/FK/index match). Idempotency reconfirmed via an explicit second `initialize()` call. The already-running, already-scheduled production server fired its own PREMARKET cycle (08:15:29 IST) on its own schedule — no manual trigger — persisting **165 genuine `EntryQualification` rows** through the normal `OwnerValidationPipeline` runtime path. Full-population integrity audit: 0 defects of any kind across all 165 rows. All rows are `EXPIRED`/`UNKNOWN_PROVENANCE`/WATCH — read-only root-caused to the cycle's 08:15 `as_of` falling before `preopen_start` (09:00), correctly classified `SessionPhase.CLOSED` by the frozen, untouched session engine — verified as correct, by-design behavior, not a defect. Owner approved: production schema activation CLOSED, runtime persistence canary CLOSED, shadow accumulation ACTIVE. Full record: `docs/ops/ID-6E2-ENTRY-QUALIFICATION-PRODUCTION-SCHEMA-ACTIVATION.md`. Full repository suite 3,190 passed, 1 pre-existing skip |
-| ID-6E.3 | ANALYSIS COMPLETE — SHADOW EVIDENCE STILL ACCUMULATING 2026-09-03 — read-only characterization only (no production writes, no scheduler trigger, no config/methodology/runtime change). Fixed a deterministic audit cutoff (`persisted_at<=2026-09-03T04:09:59Z`, 654 rows) so the continuously-accumulating live table couldn't make the report internally inconsistent (grew to 893 rows by report time — not analyzed). Reconstructed canonical `SessionPhase` for all 3 distinct `as_of` values via the frozen, unmodified `classify_session_phase`: 08:15 CLOSED (165 rows, unchanged), 09:15/09:30 **REGULAR** (489 rows — first genuine REGULAR-phase shadow evidence). REGULAR finality invariant holds exactly (489/489 `LIVE_M5_PROVISIONAL`); state distribution NOT_YET 65.44%/UNKNOWN 19.02%/QUALIFIED 15.54%. UNKNOWN concentrated at the literal open (33.7% at 09:15, dropping to 3.0% by 09:30) — VWAP needs a completed M5 bar, a genuine live-market artifact, not a defect. Full-population integrity audit (654 rows): **zero defects of any kind**. Canonical `(instrument_id, session_date, decision_id)` trajectory grouping (never `decision_type`) found **0 multi-checkpoint Decision episodes** (89.5% Decision churn across just 2 checkpoints) — genuine shadow flicker **not yet measurable**, reported as a real gap, not forced. 0 TRADE observations anywhere. Option C not reconstructable from persisted evidence (data_quality not stored) — reported honestly. Root causes (NOT_YET: trend/VWAP dominate; QUALIFIED: 4 structural reason codes) directionally match replay. Persistence latency (~550-559s) consistent across all 3 cycles regardless of type. Checkpoint-matched replay comparison (shadow 09:30 vs. replay 09:30) is closer than a blended aggregate. Classification: **REPLAY_SOUND_SHADOW_EVIDENCE_STILL_ACCUMULATING** — contract correctness strongly supported; trajectory/flicker and TRADE-type characterization not yet supported. No source changed; full repository suite 3,190 passed, 1 pre-existing skip. Recommendation: continue natural accumulation, no artificial trigger, no invented threshold |
+| ID-6E.3 | OWNER APPROVED / CLOSED 2026-09-03 — read-only characterization only (no production writes, no scheduler trigger, no config/methodology/runtime change). Fixed a deterministic audit cutoff (`persisted_at<=2026-09-03T04:09:59Z`, 654 rows) so the continuously-accumulating live table couldn't make the report internally inconsistent (grew to 893 rows by report time — not analyzed). Reconstructed canonical `SessionPhase` for all 3 distinct `as_of` values via the frozen, unmodified `classify_session_phase`: 08:15 CLOSED (165 rows, unchanged), 09:15/09:30 **REGULAR** (489 rows — first genuine REGULAR-phase shadow evidence). REGULAR finality invariant holds exactly (489/489 `LIVE_M5_PROVISIONAL`); state distribution NOT_YET 65.44%/UNKNOWN 19.02%/QUALIFIED 15.54%. UNKNOWN concentrated at the literal open (33.7% at 09:15, dropping to 3.0% by 09:30) — VWAP needs a completed M5 bar, a genuine live-market artifact, not a defect. Full-population integrity audit (654 rows): **zero defects of any kind**. Canonical `(instrument_id, session_date, decision_id)` trajectory grouping (never `decision_type`) found **0 multi-checkpoint Decision episodes** (89.5% Decision churn across just 2 checkpoints) — genuine shadow flicker **not yet measurable**, reported as a real gap, not forced. 0 TRADE observations anywhere. Option C not reconstructable from persisted evidence (data_quality not stored) — reported honestly. Root causes (NOT_YET: trend/VWAP dominate; QUALIFIED: 4 structural reason codes) directionally match replay. Persistence latency (~550-559s) consistent across all 3 cycles regardless of type. Checkpoint-matched replay comparison (shadow 09:30 vs. replay 09:30) is closer than a blended aggregate. Classification: **REPLAY_SOUND_SHADOW_EVIDENCE_STILL_ACCUMULATING** — contract correctness strongly supported; trajectory/flicker and TRADE-type characterization not yet supported. No source changed; full repository suite 3,190 passed, 1 pre-existing skip. Owner approved ID-6E.3 and directed: allow normal production shadow accumulation, no new implementation milestone, no artificial evidence-diversity forcing (0 TRADE / 0 multi-checkpoint episodes accepted as genuine, not a defect); next read-only review only once evidence materially changes. **ID-6E overall remains OPEN** |
 
 The full detailed evidence for every closed milestone above is in
 `docs/MILESTONES.md`'s "Intraday Intelligence Track" section (long — this
@@ -734,10 +735,51 @@ source code was changed; full repository suite 3,190 passed (unchanged),
 `docs/research/ID-6E-ENTRY-QUALIFICATION-REPLAY-SHADOW-VALIDATION.md`
 §50.
 
+The owner approved ID-6E.3 in full on 2026-09-03 and issued a wait-state
+directive: **ID-6E overall remains OPEN**
+(`REPLAY_SOUND_SHADOW_EVIDENCE_STILL_ACCUMULATING`); shadow accumulation
+continues through the already-running production scheduler; **no new
+implementation milestone is authorized**; the current genuine shadow
+limitations (0 TRADE observations, 0 multi-checkpoint Decision episodes,
+1 trading session at the ID-6E.3 cutoff) are explicitly accepted as
+genuine, not a defect, and must never be "solved" by manually triggering
+cycles, changing cadence/thresholds, injecting synthetic Decisions, or any
+other artificial evidence-forcing. Decision churn (89.5% at the ID-6E.3
+cutoff, also high in historical replay) must never become a mandatory
+"multi-checkpoint same-decision_id trajectory must exist" engineering
+prerequisite — the runtime may legitimately reissue a fresh canonical
+Decision every cycle. The next read-only shadow review happens only once
+evidence *materially* changes (a later REGULAR cycle, a second session, a
+TRADE observation, a multi-checkpoint Decision episode, or enough
+independent checkpoints for a meaningful behavioral comparison) — never on
+a fixed schedule, and never by repeatedly auditing after every scheduler
+tick. When that next review happens, it must remain read-only
+(`mode=ro`+`PRAGMA query_only=ON`, a deterministic audit cutoff, zero
+provider calls, zero production mutation) and reuse the exact canonical
+trajectory identity ID-6E.1 established — `(instrument_id, session_date,
+decision_id)` ordered by `as_of`, never `decision_type` — the accepted
+historical canonical flicker (11.73%, for the frozen 17,082-observation
+replay population) remains a reference metric, never a production target,
+and replay/shadow populations must always be kept distinct (population/
+date/cadence/live-provisional differences documented before interpreting
+any deviation).
+
+**Carry-forward architectural note for a future ID-7 (not started, not
+designed here).** Production shadow evidence has now repeatedly shown
+`persisted_at - as_of` ≈ 9.2 minutes for full-universe cycles (ID-6E.2's
+PREMARKET cycle and both of ID-6E.3's REFRESH cycles). This is **not** an
+ID-6 correctness defect — the `EntryQualification` result stays correctly
+bound to its market/evidence checkpoint `as_of`, exactly as ID-6D.1
+designed. When ID-7 is eventually authorized, it must explicitly
+distinguish "qualified for market state at time T" from "still
+actionable/executable at wall-clock time T + processing latency." This is
+recorded here only as a carry-forward requirement — it is not solved,
+designed, or implemented inside ID-6.
+
 Do not add API/UI, thresholds, IntradayTradePlan, an M15 settlement-repair
-milestone, ID-7, EM-6, EMR, DarvaX, or order behavior until the owner
-reviews the ID-6E.3 shadow-evidence-still-accumulating status. Do not
-owner-close ID-6E.
+milestone, ID-7, EM-6, EMR, DarvaX, or order behavior. Do not implement
+anything further for ID-6E until the owner explicitly requests the next
+read-only shadow review. Do not owner-close ID-6E overall.
 
 ## 7. ID-5B — closed result
 
