@@ -1282,3 +1282,125 @@ classification.
 APPROVAL / CLOSURE**. Per owner instruction, this recommendation is not
 self-executed — ID-6E remains open pending Owner/Chief Architect review
 of this section.
+
+## 54. Owner Decision — Final Closure (2026-09-03)
+
+Owner/Chief Architect reviewed §53 and issued a final decision the same
+day. This section is the authoritative closure record; §§1-53 above
+remain unmodified as the historical evidence trail that led to it.
+
+**Decision.**
+
+- **ID-6E — OWNER APPROVED / CLOSED — 2026-09-03.** Final accepted
+  classification: `REPLAY_AND_SHADOW_BEHAVIORALLY_SOUND`, supported by
+  the §53 audit (6,640 bounded rows, 6,220 REGULAR, 28 `as_of`
+  checkpoints, REGULAR finality 6,220/6,220 `LIVE_M5_PROVISIONAL`,
+  confirmation 6,640/6,640 `NOT_EVALUATED`, methodology 6,640/6,640
+  `entry-qualification-v0`, 0 Decision-binding defects, 0 duplicate
+  identities, 0 naive timestamps, 0 malformed JSON, QUALIFIED structural-
+  reason audit 1,104/1,104 correct, determinism digest match
+  `08db567837f2c94488022d2a13f412bfabe785cbdc8b0e2cd12a1e2311fdbaac` ==
+  `08db567837f2c94488022d2a13f412bfabe785cbdc8b0e2cd12a1e2311fdbaac`, no
+  structural contradiction found).
+- **ID-6 — OWNER APPROVED / CLOSED — 2026-09-03 (entire track).** The
+  complete accepted milestone chain: ADR-013/ID-6A0 (architecture) → ID-6A
+  (immutable domain contract) → ID-6B/ID-6B.1A/ID-6B.1B (research + frozen
+  v0 methodology) → ID-6B.2/ID-6B.2A (deterministic pure engine +
+  input-coherence hardening) → ID-6C/ID-6C.1 (append-only persistence +
+  canonical Decision binding) → ID-6D/ID-6D.1 (workflow integration +
+  evaluation-time/persistence-time separation) → ID-6E and its corrective/
+  validation slices (historical replay, production activation/canary,
+  genuine REGULAR shadow characterization, this final full-session
+  production-shadow validation). All now closed.
+
+**Frozen v0 methodology (retained exactly, unchanged by this closure).**
+`VWAP positive AND aggregate intraday trend == BULLISH AND (RS support OR
+RVOL support)`. No weighted score, no extra threshold, no hysteresis, no
+debounce, no stickiness. WATCH and TRADE use the identical methodology;
+OR remains contextual only, never separately gating.
+
+**Frozen state semantics (retained exactly).** `TRUE -> QUALIFIED`,
+`FALSE -> NOT_YET`, `UNKNOWN -> UNKNOWN`, `CLOSED -> EXPIRED`.
+`DISQUALIFIED_FOR_SESSION` and `CONFIRMED_BY_POLICY` remain unused by v0.
+Confirmation remains `NOT_EVALUATED` for current v0 production behavior.
+
+**Frozen finality semantics (retained exactly).** `LIVE_M5_PROVISIONAL`
+remains the accepted finality for eligible WATCH/TRADE during REGULAR —
+never reinterpreted as provider-settled, historically final, immutable,
+bitemporal, or guaranteed correct. ADR-013's independence between
+Qualification State, Evidence Finality, and Qualification Confirmation
+remains frozen.
+
+**Production Decision-lifecycle finding (recorded permanently).** 301
+REGULAR instrument/session groups; 295 (98.01%) show more than one
+`decision_id` — production issues a fresh canonical Decision per
+instrument per cycle, architecturally, not as a defect.
+`PRODUCTION_SAME_DECISION_FLICKER_NOT_MEASURABLE` is **not** an ID-6
+validation gap. Trajectory grouping remains
+`(instrument_id, session_date, decision_id)`, never regressed to
+`decision_type`; the accepted historical replay flicker remains
+215/1,833 = **11.73%**.
+
+**TRADE evidence (recorded correctly, not a blocker).**
+`TRADE_SHADOW_EVIDENCE_NOT_OBSERVED` (WATCH = 6,640, TRADE = 0 across the
+full session) did **not** block ID-6 closure. This does not mean ID-6 has
+validated TRADE-specific production prevalence — the frozen methodology
+is identical for WATCH/TRADE; the observed absence was market/regime/
+Decision-population dependent (the same day's persistent SIDEWAYS regime
+structurally blocks canonical TRADE Decisions via `Direction.NONE`).
+
+**Option C / M15 (retained, not closure defects).**
+`OPTION_C_SHADOW_RECONSTRUCTION_NOT_AVAILABLE` remains — `SessionContext.
+data_quality` is not persisted; the frozen Option C contract (artifact-
+owned availability, no blanket SessionContext data-quality gate) is
+unchanged. M15: 0/525 REGULAR UNKNOWN rows cite
+`TREND_EVIDENCE_UNAVAILABLE` across the full session — consistent with
+the frozen M15 non-blocking interpretation, not broadened beyond the
+observed session.
+
+**ID-7 carry-forward — processing latency (important, preserved
+prominently).** `persisted_at - as_of`: median 562.97s (≈9.38 min), p90
+588.42s, p95 592.52s, max 622.71s, 0 negative timestamps; normal
+checkpoint medians ≈543.9-619.3s across the session. This is **not** an
+ID-6 correctness defect — `EntryQualification` stays correctly bound to
+its market/evidence checkpoint `as_of = T`. Future ID-7 architecture
+**must** explicitly distinguish "qualified for market state at T" from
+"still actionable at wall-clock T + processing latency." Not solved here;
+no maximum-acceptable-latency threshold is invented in this closure.
+
+**Cross-Decision stability (descriptive only, retained as such).** 295
+multi-`as_of` instrument/session groups; 240 (81.4%) show at least one
+state change across distinct Decisions/cycles. Retained only as
+`CROSS_DECISION_STATE_STABILITY` (or equivalent descriptive term) — never
+called flicker, and never converted into hysteresis, debounce,
+confirmation, cooldown, or sticky qualification without separate
+methodology research/authorization.
+
+**No profitability claim.** ID-6 closure means Entry Qualification
+behavior/integration is validated. It does **not** mean QUALIFIED is
+profitable, guarantees any specific move, or that the methodology has
+positive expectancy. No future-return/MFE/MAE/P&L outcome join was ever
+performed in ID-6E. This distinction is preserved explicitly.
+
+**ID-7 status.** **NOT STARTED.** ID-6 closure does not automatically
+authorize ID-7. ID-7's high-level roadmap intent remains Intraday Entry/
+TradePlan design, but no detailed implementation contract is owner-frozen
+yet. A future ID-7 authorization should begin with discovery/design
+reconstruction, not implementation, and must carry forward: (1) the
+daily/structural layer answers WHAT; (2) EntryQualification answers
+WHETHER actionable at evidence time; (3) ID-7 must eventually address
+WHEN/entry/risk structure; (4) qualification is point-in-time and
+non-sticky; (5) `LIVE_M5_PROVISIONAL` remains explicit; (6) processing
+latency is ~9-10 minutes for current full-universe cycles; (7) Decision
+identity normally changes every cycle; (8) current TradePlan is based on
+daily `last_close` + daily ATR; (9) no arbitrary intraday stop/target
+threshold is frozen; (10) T1 +1%/T2 +1.5% remain goals/bands, not
+guarantees; (11) resistance/reward structure must eventually determine
+validity; (12) no outcome/profitability validation has yet been performed
+for EntryQualification. No solutions are designed here.
+
+**EMR/DarvaX isolation.** Unchanged. EM-6 OWNER APPROVED/CLOSED, EM-7 NOT
+STARTED. EntryQualification and any future ID-7 remain uncoupled from
+EMR. DarvaX remains isolated.
+
+**Source/DB/test impact of this closure turn.** None. Documentation only.

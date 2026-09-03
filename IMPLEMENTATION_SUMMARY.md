@@ -6,7 +6,7 @@ status updated on approval.
 
 ---
 
-## ID-6E Final Post-Market Shadow Audit — Complete, Ready for Owner Closure Review
+## ID-6E Final Post-Market Shadow Audit — Owner Approved / Closed (ID-6 Overall Closed)
 
 **Summary.** Owner-authorized, read-only audit performed after the
 2026-09-03 NSE session closed, to characterize the full genuine
@@ -65,13 +65,19 @@ full-suite result — 3,190 passed, 1 pre-existing skip, from ID-6E.3 —
 remains valid since no source changed since then). `git diff --check`
 clean.
 
-**Remaining work.** Owner/Chief Architect review of this final audit. If
-accepted, ID-6E overall may be closed. Do not start ID-7, EM-7, or any
-EntryQualification/DecisionEngine/scheduler/DarvaX change until
-explicitly authorized.
+**Remaining work.** None — owner approved and closed 2026-09-03. Owner/
+Chief Architect reviewed this final audit and closed both ID-6E and ID-6
+overall (the entire ADR-013/ID-6A0 through ID-6E track) the same day.
+Final classification `REPLAY_AND_SHADOW_BEHAVIORALLY_SOUND`. The frozen
+v0 methodology, state semantics, and finality semantics are retained
+unchanged. Do not start ID-7, EM-7, or any EntryQualification/
+DecisionEngine/scheduler/DarvaX change until explicitly authorized — ID-6
+closure does not by itself authorize ID-7.
 
-**Outcome:** Audit complete; ready for owner closure review. ID-6E
-overall remains open pending that review.
+**Outcome:** Owner approved / closed 2026-09-03. ID-6E OWNER APPROVED /
+CLOSED; ID-6 OVERALL OWNER APPROVED / CLOSED. Full closure record:
+`docs/research/ID-6E-ENTRY-QUALIFICATION-REPLAY-SHADOW-VALIDATION.md`
+§54.
 
 ---
 
