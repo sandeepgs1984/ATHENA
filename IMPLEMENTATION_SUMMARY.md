@@ -6,6 +6,161 @@ status updated on approval.
 
 ---
 
+## EM-6A Read-Only EMR Presentation Data Contract — Implementation Complete / Ready for Owner Review
+
+**Summary.** Owner ratified EM-6's discovery-established scope (read-only,
+permanently "Experimental" EMR research presentation, not modeling — see
+`docs/research/EM-6-DISCOVERY-AND-MODELING-CONTRACT.md`) and authorized
+EM-6A: the smallest stable, deterministic, read-only presentation data
+contract a future EM-6B dashboard would need. EM-6B (API mount +
+dashboard) was explicitly not authorized. Backend/query-contract only —
+no HTTP route, no dashboard, no HTML/JS/CSS, no scanner scheduling.
+
+Audited the EM-5 contract's described seam first, per instruction:
+`docs/design/EM-5-LIVE-SCANNER-CONTRACT.md` §8/§17 describe
+`top_candidates(...)`/`top_touch_10_candidates(...)` as functions EM-5
+built for a future EM-6 to call — a repo-wide search found **neither
+function actually implemented anywhere**, only described in the design
+doc's prose. This is therefore the first real implementation of that
+seam, not a wrapper around existing code, built directly against the
+frozen `EmrRepository`/`emr_scan_runs`/`emr_candidates` schema
+(`EMR_SCHEMA_VERSION = 1`, unmodified).
+
+Built an explicit UI-requirement/source matrix against the owner's 12
+named presentation questions before writing any code: 7 of 12 were
+already fully answerable from existing persisted columns with zero new
+code; 5 needed a genuinely new query/function
+(`latest_scan_snapshot`/`top_candidates`/`top_touch_10_candidates`/
+`coverage_summary`/`describe_scan_freshness`) — no redundant wrapper was
+created for anything the schema already answered directly.
+
+**Read-only design decision**: rather than route through `EmrRepository`
+(a read-*write* connection, since it also owns `save_scan_run`/
+`save_candidates`/`initialize`), the new module
+(`src/athena/explosive_move/live/presentation.py`) opens its own SQLite
+connection with `mode=ro`+`PRAGMA query_only=ON` — the exact pattern the
+ID-track's own `id6e_replay_shadow_validation.run_shadow_audit`
+established earlier in this session. This gives a **structural** (SQLite-
+level) write-impossibility guarantee rather than a merely conventional
+one, proven by a test that attempts a `DELETE` through the identical
+connection recipe and confirms `sqlite3.OperationalError`.
+
+**Coherence**: every candidate returned is scoped to one explicit
+`run_id`, always sourced from this module's own latest-completed-scan
+lookup (`status='COMPLETE'` only — a stuck `RUNNING` row, mirroring the
+exact ID-6E.2 incident shape found earlier in this session, is never
+surfaced as "the latest scan") — never from an independent
+`MAX(created_ts)` over candidates directly. Mixing candidates from two
+different scans into one apparent snapshot is structurally unreachable,
+not merely avoided by convention — mutation-verified by temporarily
+removing the `run_id` filter and confirming the expected test failure,
+then reverting; the `status='COMPLETE'` filter was independently
+mutation-verified the same way.
+
+`describe_scan_freshness()` is deliberately pure — no `datetime.now()`
+anywhere in the module (grep- and test-confirmed) — the caller always
+supplies `as_of` explicitly, mirroring the ID-track's own injected-clock
+convention. It reports elapsed age as a fact only; it applies **no**
+FRESH/STALE classification, since no owner-approved staleness threshold
+exists anywhere in the frozen EMR contracts, and none was invented here.
+
+`top_touch_10_candidates()` was verified to mean exactly
+`family="TOUCH", threshold_percent=10` — one of the 18 frozen (family,
+threshold) combinations — never "10% probability," "top 10 stocks," or a
+"10-minute target," via a dedicated test seeding `TOUCH`@10%, `TOUCH`@20%,
+and `CLOSE`@10% candidates and confirming only the first is returned.
+
+Empty states are first-class, well-defined return values, never
+exceptions or fabricated rows: no `db/emr.db` file → `latest_scan_snapshot`
+returns `None` without creating the file; schema initialized but zero
+`COMPLETE` runs → `None`; a run with zero ranked candidates for a
+(family, threshold) → `()`. `coverage_summary()` separates ranked from
+unranked candidates and reports the persisted `feasibility_reason`
+(falling back to `state_reason`, falling back to the literal string
+`"UNKNOWN"` only when genuinely neither exists) — never converting a
+real unknown into a numeric zero.
+
+**Architecture compliance.** Zero methodology/model/schema/scanner
+changes — `run_scan_cycle`, `EmrRepository`'s write methods, and every
+frozen EM-4/EM-5 contract are untouched. No HTTP route, no dashboard file,
+no scanner scheduling added (explicit owner instruction). No canonical
+ATHENA (Scoring/Decision/Risk/TradePlan) or DarvaX import anywhere in the
+new module — grep-confirmed directly, and independently reconfirmed by
+the **pre-existing, unmodified** `tests/explosive_move/test_em5_isolation.py`
+architecture test, which AST-scans every file under `explosive_move/`
+(including the new one) and passed without needing any update. No
+ID-track (`entry_qualifications`, ID-6E reports, `SessionContext`,
+`IntradaySignalSet`) reference anywhere.
+
+**Files created.** `src/athena/explosive_move/live/presentation.py`,
+`tests/explosive_move/test_em6a_presentation.py`,
+`docs/design/EM-6A-READ-ONLY-PRESENTATION-DATA-CONTRACT.md`.
+
+**Files modified.** `docs/MILESTONES.md`, `docs/ATHENA-EMR-HANDOFF.md`,
+`IMPLEMENTATION_SUMMARY.md`.
+
+**Behavior implemented.** Six read-only functions:
+`latest_scan_snapshot`, `top_candidates`, `top_touch_10_candidates`,
+`coverage_summary`, `describe_scan_freshness` (pure), and
+`build_experimental_snapshot` (composes the first three into one
+coherent object). Five frozen, typed dataclasses. No write path of any
+kind.
+
+**Verification.** 24 new focused tests covering all 15 owner-required
+categories (empty database; one/multiple coherent scans; multiple
+checkpoints/session-date scoping; deterministic ranking and limit
+handling; TOUCH-10 exact semantics; missing/unknown coverage; no
+cross-scan mixing; read-only-never-mutates via file mtime/size and a
+direct SQLite write-refusal proof; repeated-query determinism; no
+provider/network calls; no canonical/DarvaX imports; honest degradation
+for a stuck-`RUNNING` scan and a `None` calibrated-probability value). 2
+of the most safety-critical behaviors (COMPLETE-status filtering,
+run_id cross-scan coherence) independently mutation-verified — reverting
+each filter correctly failed its corresponding test, then was reverted
+and reconfirmed clean.
+`tests/explosive_move/test_em6a_presentation.py`: 24/24 passed. Combined
+`tests/explosive_move/` suite: 421 passed (up from 397 pre-existing — the
+pre-existing isolation/no-model-learning architecture tests automatically
+extended to cover the new file, no update needed). Ruff clean. `git diff
+--check` clean. Full repository suite: **3,214 passed, 1 pre-existing
+skip, 0 failed.**
+
+Real-data acceptance check performed once, read-only, against production:
+**`REAL_DATA_ACCEPTANCE_NOT_AVAILABLE`** — `db/emr.db` does not exist in
+the real repository (confirmed via `ls`), consistent with the EM-6
+discovery's own finding that `run_scan_cycle` has no scheduler/cron
+trigger in production. `build_experimental_snapshot('db/emr.db')` was
+called once and confirmed to return the well-defined empty state without
+creating the file; `db/athena.db` reconfirmed unaffected
+(`schema_version=17`, `integrity_check=ok`) immediately after. No scan
+was triggered, per explicit instruction.
+
+**Risks / known gaps.** `db/emr.db` genuinely does not exist in
+production, so this contract has zero real-data shadow evidence beyond
+its own fixture-based tests — expected, not a defect, since no scheduler
+trigger exists and none was authorized to be added here.
+`logit_contributions_json` (per-term evidence explanation) exists in the
+schema but was not exposed in `EmrCandidateView` — not required by the 12
+named presentation questions, addable later without a schema change. No
+cross-checkpoint candidate-history view was built (not required by the
+12 questions; `EmrRepository.list_candidates_for_symbol` already exists
+if a future slice needs it).
+
+**Suggested improvements.** None beyond a future, separately-authorized
+decision on scanner scheduling (explicitly out of scope here) and, if
+EM-6B is authorized, deciding the exact API-mount isolation pattern
+(mirroring `api/darvax_mount.py`'s principle, per the owner's own
+guidance, not necessarily its implementation).
+
+**Remaining work.** Owner review of this EM-6A contract. Do not start
+EM-6B, EM-7, scanner scheduling, ID-7, or any EntryQualification/DarvaX
+change until explicitly authorized.
+
+**Outcome:** Implementation complete; ready for owner review. EM-6B not
+started. EM-6 overall remains open pending EM-6B authorization.
+
+---
+
 ## ID-6E Shadow Closure-Gate Clarification — Documentation Only
 
 **Summary.** Following ID-6E.3, a read-only architectural check (informal,
