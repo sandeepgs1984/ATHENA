@@ -6,7 +6,162 @@ status updated on approval.
 
 ---
 
-## ID-6E.2 Entry Qualification Production Schema Activation & Shadow Canary — Activation Complete / Shadow Accumulation Started
+## ID-6E.3 Genuine REGULAR-Session Shadow Characterization — Analysis Complete / Shadow Evidence Still Accumulating
+
+**Summary.** Owner closed ID-6E.2 (production schema activation CLOSED,
+runtime persistence canary CLOSED, shadow accumulation ACTIVE) and
+authorized ID-6E.3 to inspect the genuine `EntryQualification` observations
+that had accumulated naturally through the already-running production
+scheduler, to determine whether shadow evidence is now sufficient to
+characterize REGULAR-session runtime behavior of the frozen v0 contract.
+Read-only characterization only — no production writes, no scheduler
+trigger, no config change, no methodology/runtime code change.
+
+A deterministic audit cutoff was fixed at the start
+(`persisted_at <= max(persisted_at)` observed at that instant =
+`2026-09-03T04:09:59.748488+00:00`), bounding the analysis to exactly
+**654** rows so a continuously-accumulating live production table could
+not make the report internally inconsistent (production had grown to 893
+rows by report-writing time — noted for context only, not analyzed).
+
+The bounded population spans exactly 3 distinct `as_of` values (one per
+real scheduled cycle: PREMARKET + 2 REFRESH). Each was classified using
+the actual, unmodified `classify_session_phase`
+(`src/athena/session/engine.py`), imported read-only: 08:15:29 → `CLOSED`
+(165 rows, unchanged from ID-6E.2, still 100% `EXPIRED`/`UNKNOWN_PROVENANCE`);
+09:15:16 and 09:30:40 → **`REGULAR`** (489 rows total) — the first genuine
+REGULAR-phase shadow evidence to exist. 0 PRE_OPEN observations.
+
+**REGULAR population (489 rows, all WATCH, all v0):** state distribution
+NOT_YET 320 (65.44%), UNKNOWN 93 (19.02%), QUALIFIED 76 (15.54%). The
+required REGULAR finality invariant holds **exactly**: 489/489
+`LIVE_M5_PROVISIONAL`, 0 violations. 0 `DISQUALIFIED_FOR_SESSION`, 0
+`OUT_OF_SCOPE`/`EXPIRED` inside the REGULAR population. Checkpoint-level
+detail explains the UNKNOWN concentration cleanly: 86/255 (33.7%) UNKNOWN
+at 09:15:16 — essentially the literal instant of market open, when few M5
+candles have completed — dropping to 7/234 (3.0%) just 15 minutes later;
+87 of 93 UNKNOWN rows cite `VWAP_EVIDENCE_UNAVAILABLE` (VWAP needs a
+completed M5 bar) and all 93 cite `SUPPORT_EVIDENCE_UNRESOLVED`. This is a
+genuine, sensible live-market artifact, not a defect, and one replay's own
+earliest checkpoint (09:30, already 15 minutes post-open) never exercised.
+QUALIFIED shows the inverse pattern: 0% at 09:15:16, 32.5% by 09:30:40.
+
+**Full-population integrity audit (all 654 rows):** Decision-binding
+mismatches, orphaned `decision_id`, duplicate logical identity, timezone/
+session-date incoherence, invalid state/finality/confirmation enums,
+malformed JSON, `DISQUALIFIED_FOR_SESSION`, non-`NOT_EVALUATED`
+confirmation, non-v0 methodology version — **all 0**. Every observed
+`(state, finality)` combination is valid under the frozen contract; no
+impossible combination exists. **Zero integrity defects of any kind.**
+
+**Decision-episode trajectories** (canonical `(instrument_id, session_date,
+decision_id)` grouping per ID-6E.1 — never `decision_type`): all 489
+REGULAR episodes are **single-checkpoint** — 0 multi-checkpoint episodes.
+231 of 258 instrument/session groups (89.5%) already show more than one
+distinct `decision_id` across just these first 2 checkpoints — essentially
+every instrument's Decision is re-issued each cycle. **Consequence:
+genuine shadow flicker is not yet measurable** — reported as a real
+evidentiary gap, not approximated or forced with an invented minimum N.
+
+**Root-cause consistency with replay.** NOT_YET dominated by
+`TREND_CONDITION_NOT_MET` (75.3%) and `VWAP_CONDITION_NOT_MET` (42.2%),
+`SUPPORT_CONDITION_NOT_MET` rare (7.5%) — directionally matching replay's
+own NOT_YET finding exactly. QUALIFIED rows all carry the 4 structurally-
+guaranteed reason codes, matching replay; RS-vs-RVOL breakdown is not
+reconstructable from persisted evidence (the engine's reason-code
+vocabulary doesn't separately name them) — reported honestly. Option C is
+not reconstructable either: `entry_qualifications` does not persist
+`SessionContext.data_quality` or any `EXPECTED_BAR_MISSING`-equivalent
+marker. M15: 0 of 93 UNKNOWN rows cite `TREND_EVIDENCE_UNAVAILABLE` —
+consistent with (if not stronger than) replay's non-blocking conclusion.
+
+**Persistence latency by cycle** (genuine, not fabricated): PREMARKET
+median 550.77s; REFRESH #1 median 555.76s; REFRESH #2 median 556.28s — 0
+negative-latency rows in any cycle. The near-identical ~550-559s pattern
+across all three cycles, PREMARKET and REFRESH alike, confirms ID-6E.2's
+own latency observation was not a PREMARKET-specific artifact.
+
+**Replay baseline comparison.** Checkpoint-matched comparison (shadow's
+09:30:40 vs. replay's own 09:30 checkpoint) is far more informative than a
+blended aggregate: QUALIFIED 32.5% (shadow) vs. 22.95% (replay); UNKNOWN
+3.0% vs. 1.08% — closer once population differences (near-open checkpoint
+timing, one real day vs. a 10-session average, live/provisional vs.
+settled historical data) are documented before interpreting, per
+instruction. Flicker cannot be compared at all: shadow has 0
+multi-checkpoint episodes against replay's 11.73% corrected figure — the
+dimension where shadow evidence is most clearly still accumulating, not a
+discrepancy.
+
+**Sufficiency assessment.** Present: REGULAR phase, 2 REGULAR checkpoints,
+QUALIFIED/NOT_YET/UNKNOWN, WATCH. Absent: TRADE (0 observations anywhere),
+multi-checkpoint Decision episodes (0), a second session. Per instruction,
+absence constrains the claim rather than blocking all conclusions:
+operational/contract correctness is strongly supported; behavioral
+characterization of trajectory/flicker/persistence-over-time and
+TRADE-type behavior is not yet supported.
+
+**Classification: `REPLAY_SOUND_SHADOW_EVIDENCE_STILL_ACCUMULATING`.**
+Every observed runtime row remains clean; genuine REGULAR evidence exists
+and is directionally consistent with replay on every comparable dimension,
+but two structurally important dimensions (Decision-episode trajectories/
+flicker, and TRADE-type representation) have zero data points so far —
+the expected shape of one real trading morning's first two REGULAR
+cycles, not a defect.
+
+**Architecture compliance.** Zero methodology/engine/workflow/repository/
+schema/API/UI code changes. `classify_session_phase` was imported and
+called read-only (never modified) purely to reconstruct `SessionPhase` for
+3 known `as_of` values. Zero ad-hoc SQL writes, zero provider/network
+calls, zero scheduler/config changes. Production continued its own
+independent accumulation throughout (654 → 893 rows during the audit),
+untouched by this milestone.
+
+**Files created.** None — this is a one-time characterization snapshot,
+not a repeatable harness; the existing `run_shadow_audit` already supports
+shadow inspection, and no new persistent research helper was required.
+
+**Files modified.** `docs/research/ID-6E-ENTRY-QUALIFICATION-REPLAY-SHADOW-VALIDATION.md`
+(new §50 addendum), `docs/MILESTONES.md`, `docs/ATHENA-ID-TRACK-HANDOFF.md`,
+`IMPLEMENTATION_SUMMARY.md`.
+
+**Behavior implemented.** None.
+
+**Verification.** No new automated tests required (no new source/helper
+code was added — per instruction, a research-only helper is optional, not
+mandatory, and this one-time characterization did not need one). Existing
+Entry Qualification regression suite re-run: 194 passed. Full repository
+suite: **3,190 passed, 1 pre-existing skip, 0 failed** (unchanged from
+ID-6E.2 — no source changed). Ruff clean (no changed source files). `git
+diff --check` clean. Real `db/athena.db` confirmed unmodified throughout
+(read-only `mode=ro`+`PRAGMA query_only=ON` for every query; production's
+own independent growth during the audit is expected, not a mutation by
+this milestone).
+
+**Risks / known gaps.** Shadow evidence remains narrow along two specific
+dimensions: no multi-checkpoint Decision episode exists yet (so flicker is
+unmeasurable), and no TRADE-type observation exists yet. Both are expected
+to resolve naturally as more of the trading day's cycles accumulate and as
+Decisions persist across more checkpoints before being superseded.
+
+**Suggested improvements.** None beyond continued natural accumulation.
+Per instruction, no artificial implementation milestone should be started
+merely to wait — a future read-only re-audit can be performed once
+evidence materially changes (e.g., a Decision episode spans 2+ checkpoints,
+or a TRADE decision is produced).
+
+**Remaining work.** Owner review of the shadow-evidence-still-accumulating
+status. Do not start ID-7, EM-6, or API/UI until explicitly authorized.
+Do not owner-close ID-6E.
+
+**Outcome:** Analysis complete. Genuine REGULAR-session shadow evidence
+now exists (489 rows, 2 checkpoints) and is directionally consistent with
+the replay baseline, with zero integrity defects — but remains
+insufficient for full behavioral characterization pending trajectory
+(multi-checkpoint) and TRADE-type evidence.
+
+---
+
+## ID-6E.2 Entry Qualification Production Schema Activation & Shadow Canary — Owner Approved / Closed
 
 **Summary.** Owner authorized an operational-only milestone to activate the
 already-owner-approved Entry Qualification persistence schema (ID-6C,
@@ -144,11 +299,12 @@ accumulate shadow evidence across further sessions/cycles, eventually
 enabling a future shadow-characterization comparison against the ID-6E
 replay baseline.
 
-**Remaining work.** Owner review of the shadow-accumulation status. Do not
-start ID-7, EM-6, or API/UI until explicitly authorized.
+**Remaining work.** None — owner approved and closed. See ID-6E.3 for the
+subsequent read-only REGULAR-session shadow characterization.
 
-**Outcome:** Activation complete; shadow accumulation started. Production
-schema confirmed active (SCHEMA_VERSION 17, `entry_qualifications`
+**Outcome:** Owner approved / closed. Production schema activation closed;
+production runtime persistence canary closed; shadow accumulation active.
+Production schema confirmed active (SCHEMA_VERSION 17, `entry_qualifications`
 present); first genuine, fully-coherent shadow canary (165 rows) observed
 via the normal runtime path.
 

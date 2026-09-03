@@ -723,3 +723,172 @@ Milestone-level status:
 **ID-6E.2 ACTIVATION COMPLETE — SHADOW ACCUMULATION STARTED.** Overall
 ID-6E classification remains **REPLAY_SOUND_SHADOW_EVIDENCE_INSUFFICIENT**,
 now for evidence-insufficiency rather than evidence-absence (§47).
+
+## 50. ID-6E.3 addendum — Genuine REGULAR-session shadow characterization
+
+Owner-authorized, read-only characterization (2026-09-03). Full detail in
+this section only (no separate ops doc — this is analysis, not an
+operational procedure).
+
+**Audit cutoff.** `persisted_at <= 2026-09-03T04:09:59.748488+00:00`
+(`max(persisted_at)` at audit start) — a bounded, deterministic population
+of **654** rows, chosen so a live, continuously-accumulating production
+table could not make this report internally inconsistent. Production
+continued accumulating during the audit (893 rows by report-writing time)
+— not analyzed, noted for context only.
+
+**Session-phase reconstruction.** The bounded population spans exactly 3
+distinct `as_of` values, one per real scheduled cycle. Each was classified
+using the actual, unmodified `classify_session_phase` (`src/athena/session/engine.py`),
+imported read-only, never re-derived:
+
+| `as_of` (IST) | run_id | cycle_id | SessionPhase | n | states |
+|---|---|---|---|---:|---|
+| 08:15:29.919615 | `run-premarket-20260903T081529` | `2026-09-03-premarket` | CLOSED | 165 | EXPIRED: 165 |
+| 09:15:16.873333 | `run-refresh-20260903T091516-a0dbc231` | `2026-09-03-refresh` | REGULAR | 255 | NOT_YET 169, UNKNOWN 86 |
+| 09:30:40.848473 | `run-refresh-20260903T093040-4be47fed` | `2026-09-03-refresh` | REGULAR | 234 | NOT_YET 151, QUALIFIED 76, UNKNOWN 7 |
+
+One session (2026-09-03) throughout; 0 PRE_OPEN observations (none fell
+between 09:00 and 09:15). The 165 CLOSED/EXPIRED rows from ID-6E.2 are
+unchanged (still 100% EXPIRED/UNKNOWN_PROVENANCE) — confirmed not mutated.
+
+**REGULAR population (the primary ID-6E.3 population): 489 rows**, all
+`decision_type=WATCH` (0 TRADE), all `methodology_version=entry-qualification-v0`.
+State distribution: NOT_YET 320 (65.44%), UNKNOWN 93 (19.02%), QUALIFIED
+76 (15.54%). **REGULAR finality invariant holds exactly: 489/489
+`LIVE_M5_PROVISIONAL`, 0 violations.** `DISQUALIFIED_FOR_SESSION`: 0.
+`OUT_OF_SCOPE`/`EXPIRED` inside the REGULAR population: 0 (as required).
+258 distinct instruments; 489 distinct `decision_id` (i.e. essentially
+every instrument received a newly-issued Decision on each of the 2
+checkpoints — high churn, consistent with historical replay's own finding
+that Decision churn is the norm, not the exception, in this population).
+
+**Full-population integrity audit (all 654 rows, not just REGULAR):**
+Decision-binding mismatches 0; orphaned `decision_id` 0; duplicate logical
+identity 0; `session_date`/`as_of` incoherence 0; naive `as_of` 0; naive
+`persisted_at` 0; invalid state enum 0; invalid finality enum 0; invalid
+confirmation enum 0; malformed `reason_codes_json`/`evidence_refs_json` 0;
+`DISQUALIFIED_FOR_SESSION` 0; non-`NOT_EVALUATED` confirmation 0; non-v0
+methodology version 0. Every observed `(state, finality)` combination is
+valid under the frozen contract: `(EXPIRED, UNKNOWN_PROVENANCE)`,
+`(NOT_YET, LIVE_M5_PROVISIONAL)`, `(UNKNOWN, LIVE_M5_PROVISIONAL)`,
+`(QUALIFIED, LIVE_M5_PROVISIONAL)` — no impossible combination observed.
+**Zero integrity defects of any kind.**
+
+**Decision-episode trajectories (canonical `(instrument_id, session_date,
+decision_id)` grouping, per ID-6E.1 — never `decision_type`).** All 489
+REGULAR Decision episodes are **single-checkpoint** — 0 multi-checkpoint
+episodes exist. Root cause: essentially every instrument's Decision is
+re-issued (new `decision_id`) on each cycle (231 of 258 instrument/session
+groups already show >1 distinct `decision_id` across just these first 2
+REGULAR checkpoints). **Consequence: genuine shadow flicker is not yet
+measurable** — there is no multi-checkpoint episode to compute a
+transition on. This is reported as a real evidentiary gap, not
+approximated or forced: 0 multi-checkpoint episodes, 0 flicker
+observations, evidence limited. Qualification duration (all single-
+checkpoint by construction): never-qualified 413, qualified-at-exactly-
+one-checkpoint 76 (trivially "duration = its one checkpoint").
+
+**Decision churn.** 258 instrument/session groups observed in the REGULAR
+population; 231 (89.5%) already show more than one distinct `decision_id`
+across only 2 checkpoints — directionally consistent with (if not higher
+than) historical replay's own high-churn finding.
+
+**Checkpoint-level detail explains the UNKNOWN concentration.** UNKNOWN
+was 86/255 (33.7%) at 09:15:16 — essentially the literal instant of
+market open, when few M5 candles have completed yet — dropping to 7/234
+(3.0%) just 15 minutes later at 09:30:40. Reason codes confirm this: 87 of
+93 REGULAR UNKNOWN rows cite `VWAP_EVIDENCE_UNAVAILABLE` (VWAP needs a
+completed M5 bar), and all 93 cite `SUPPORT_EVIDENCE_UNRESOLVED`. This is
+a genuine, sensible live-market artifact of evaluating essentially at the
+open — not a defect, and not something replay's own earliest checkpoint
+(09:30, already 15 minutes post-open) ever exercised. QUALIFIED shows the
+inverse pattern: 0/255 (0%) at 09:15:16, rising to 76/234 (32.5%) by
+09:30:40 — the readiness formula simply has no chance to be satisfied in
+the first seconds of a session.
+
+**NOT_YET root causes (REGULAR, 320 observations):** `TREND_CONDITION_NOT_MET`
+241 (75.3%), `VWAP_CONDITION_NOT_MET` 135 (42.2%), `SUPPORT_CONDITION_NOT_MET`
+24 (7.5%) — trend and VWAP dominate, support rarely decisive — directionally
+matching replay's own NOT_YET root-cause finding exactly (§26).
+
+**QUALIFIED evidence composition (REGULAR, 76 observations):** all 76
+carry exactly the structurally-guaranteed 4 reason codes
+(`VWAP_CONDITION_MET`, `TREND_CONDITION_MET`, `SUPPORT_CONDITION_MET`,
+`V0_READINESS_POLICY_SATISFIED`) — matching replay (§27). The engine's own
+reason-code vocabulary does not separately name RS-driven vs. RVOL-driven
+support satisfaction, so an RS-vs-RVOL breakdown is not reconstructable
+from persisted evidence — reported honestly, not inferred.
+
+**Option C shadow reconstruction: not possible from persisted evidence.**
+`entry_qualifications` does not persist `SessionContext.data_quality` (or
+any `EXPECTED_BAR_MISSING`-equivalent marker) — only `reason_codes_json`/
+`evidence_refs_json`, neither of which encodes data-quality provenance.
+This is stated honestly rather than inferred or refetched from the
+provider.
+
+**M15 shadow observations.** 0 of 93 REGULAR UNKNOWN rows cite
+`TREND_EVIDENCE_UNAVAILABLE` — M15 caused zero non-evaluability in this
+shadow sample, consistent with (if not stronger than) replay's own
+"non-blocking technical debt" conclusion. Not investigated further, not
+modified.
+
+**Persistence latency by cycle** (`persisted_at - as_of`, genuine, not
+fabricated): PREMARKET — median 550.77s, p90 552.58s, max 553.12s;
+REFRESH #1 (09:15:16) — median 555.76s, p90 557.65s, max 558.12s; REFRESH
+#2 (09:30:40) — median 556.28s, p90 558.33s, max 558.90s. **0 negative-
+latency rows in any cycle.** The near-identical ~550-559s pattern across
+all three cycles — PREMARKET and both REFRESH cycles alike — confirms
+ID-6E.2's own observation was not a PREMARKET-specific artifact: the
+sequential, full-universe, single-threaded pipeline produces this latency
+shape regardless of cycle type.
+
+**Replay baseline comparison (population differences documented before
+interpreting, per instruction).** Overall REGULAR shadow (489 obs, 2
+near-open checkpoints, one real day) vs. the 17,082-observation replay
+baseline (6 checkpoints spanning 09:30-14:30, 10 historical sessions):
+QUALIFIED 15.54% (shadow) vs. 21.70% (replay); NOT_YET 65.44% vs. 76.17%;
+UNKNOWN 19.02% vs. 2.13%. Checkpoint-matched comparison is far more
+informative: shadow's 09:30:40 checkpoint (QUALIFIED 32.5%, UNKNOWN 3.0%)
+vs. replay's own 09:30 checkpoint (QUALIFIED 22.95%, UNKNOWN 1.08%) — much
+closer, though still directionally higher QUALIFIED and higher UNKNOWN in
+shadow. Plausible, non-defect explanations (not adjudicated between):
+genuine live/provisional-market knowledge-time effects at real-time
+evaluation vs. replay's settled historical data; a single real trading
+day's specific market regime and candidate funnel vs. a 10-session
+average; small-sample (N=489, 1 day) vs. large-sample (N=17,082, 10 days)
+variance. **Flicker cannot be compared at all** — shadow has 0
+multi-checkpoint Decision episodes against replay's 11.73% corrected
+figure; this is the dimension where shadow evidence is most clearly still
+accumulating, not a discrepancy.
+
+**Provider/network status.** Zero calls — every figure above comes from
+already-persisted `entry_qualifications`/`decisions` rows, read via
+`mode=ro`+`PRAGMA query_only=ON`.
+
+**Production DB mutation status.** None. No `initialize()`, no insert/
+update/delete, no manual `save_entry_qualification()` call, no scheduler/
+config change. The production server continued its own independent,
+already-scheduled accumulation throughout (654 → 893 rows during this
+audit) — outside this milestone's control, exactly as expected.
+
+**Sufficiency assessment.** REGULAR phase: present. More than one REGULAR
+`as_of` checkpoint: present (2). QUALIFIED/NOT_YET/UNKNOWN: all present.
+WATCH: present. **TRADE: absent.** **Multi-checkpoint Decision episodes:
+absent (0).** More than one session: absent (still 2026-09-03 only). Per
+instruction, absence of a dimension constrains the claim rather than
+blocking all conclusions: operational/contract correctness is strongly
+supported (zero integrity defects across 654 rows, exact finality
+invariant, directionally sensible root causes); genuine behavioral
+characterization — especially anything touching trajectory/flicker/
+persistence-over-time or TRADE-type behavior — is not yet supported.
+
+**Classification: `REPLAY_SOUND_SHADOW_EVIDENCE_STILL_ACCUMULATING`.**
+Every observed runtime row remains clean; genuine REGULAR evidence now
+exists and is directionally consistent with the replay baseline on every
+comparable dimension, but two structurally important dimensions (Decision-
+episode trajectories/flicker, and TRADE-type representation) have zero
+data points so far. This is not a defect — it is the expected shape of one
+real trading morning's first two REGULAR cycles. Continued natural
+accumulation (no artificial trigger) is recommended; no numeric threshold
+is proposed for when to re-audit.
