@@ -8,17 +8,24 @@ artifact directly supplies them.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict
 from datetime import datetime, timezone
 from decimal import Decimal
+from typing import cast
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from athena.data.store.repository import SqliteRepository
 from athena.domain.decision import Decision
 from athena.domain.enums import Timeframe
+from athena.domain.market import Candle
+from athena.intraday.entry_qualification_models import EntryQualification
 from athena.ops.symbol_validate import _index_instrument_needs_refresh
+from athena.portfolio.interpretation import (
+    PortfolioInterpretationEvidence,
+    PortfolioInterpreter,
+)
 from athena.portfolio.my_portfolio_contracts import (
     PORTFOLIO_ANALYSIS_VERSION,
     CanonicalPortfolioHolding,
@@ -52,6 +59,7 @@ class PortfolioSyncOrchestrator:
         self._expected_analysis_as_of = expected_analysis_as_of
         self._market_timezone = market_timezone or ZoneInfo("UTC")
         self._force_ingestion = force_ingestion
+        self._interpreter = PortfolioInterpreter()
 
     def create_run(self) -> dict[str, object]:
         active = self._repo.get_active_portfolio_sync_run()
@@ -143,6 +151,7 @@ class PortfolioSyncOrchestrator:
                 refresh_performed=symbol in refreshed_symbols,
             )
             snapshot_records.append(record)
+            provenance_record = cast(Mapping[str, object], record["provenance"])
             row_failures = record["failures"]
             if row_failures:
                 failed += 1
@@ -165,14 +174,20 @@ class PortfolioSyncOrchestrator:
                         if self._expected_analysis_as_of is not None
                         else None
                     ),
-                    "decision_id": record["provenance"].get("decision_id"),
+                    "decision_id": provenance_record.get("decision_id"),
+                    "interpretation_version": provenance_record.get(
+                        "interpretation_version",
+                    ),
+                    "interpretation_reason_codes": provenance_record.get(
+                        "interpretation_reason_codes"
+                    ),
                     "unavailable": record["unavailable"],
                     "refresh_required": symbol in refresh_required_symbols,
                     "refresh_performed": symbol in refreshed_symbols,
                 }
             if isinstance(record.get("price_as_of_dt"), datetime):
-                price_as_of_values.append(record["price_as_of_dt"])
-            validation_run_id = record["provenance"].get("validation_run_id")
+                price_as_of_values.append(cast(datetime, record["price_as_of_dt"]))
+            validation_run_id = provenance_record.get("validation_run_id")
             if validation_run_id and latest_validation_run_id is None:
                 latest_validation_run_id = str(validation_run_id)
 
@@ -295,26 +310,58 @@ class PortfolioSyncOrchestrator:
             unavailable.append("current_price_session")
 
         decision_is_coherent = self._decision_matches_price_session(decision, price_as_of)
+        interpretation_as_of = self._interpretation_as_of(price_as_of, analyzed_at)
+        trade_plan_is_active = (
+            final_price_is_expected_session
+            and decision_is_coherent
+            and self._trade_plan_is_active(decision, interpretation_as_of)
+        )
+        entry_qualification = self._latest_coherent_entry_qualification(
+            decision=decision,
+            instrument_id=holding.instrument_id,
+            interpretation_as_of=interpretation_as_of,
+            decision_is_coherent=decision_is_coherent,
+        )
+        interpretation = self._interpreter.interpret(
+            PortfolioInterpretationEvidence(
+                instrument_id=holding.instrument_id,
+                as_of=interpretation_as_of,
+                last_price=last_price,
+                price_is_current=final_price_is_expected_session,
+                decision=decision,
+                decision_is_coherent=decision_is_coherent,
+                trade_plan=(
+                    decision.trade_plan
+                    if decision is not None
+                    and final_price_is_expected_session
+                    and decision_is_coherent
+                    else None
+                ),
+                trade_plan_is_active=trade_plan_is_active,
+                entry_qualification=entry_qualification,
+                entry_qualification_is_coherent=entry_qualification is not None,
+            )
+        )
         target_1 = None
         if decision is not None and not decision_is_coherent:
             unavailable.extend(["decision", "target_1", "decision_evidence"])
-        elif decision is not None and decision.trade_plan is not None:
+        elif decision is not None and decision.trade_plan is not None and trade_plan_is_active:
             target_1 = decision.trade_plan.targets[0]
         else:
             unavailable.append("target_1")
         unavailable.extend(
             [
-                "status",
                 "conviction",
                 "trend_setup",
-                "key_trigger",
                 "support_1",
-                "major_support_exit",
                 "target_2",
                 "target_3",
-                "next_action",
             ]
         )
+        if interpretation.key_trigger is None:
+            unavailable.append("key_trigger")
+        if interpretation.major_support_exit is None:
+            unavailable.append("major_support_exit")
         if decision is None:
             unavailable.append("decision")
 
@@ -344,13 +391,38 @@ class PortfolioSyncOrchestrator:
             analyzed_at=analyzed_at,
             unavailable_fields=tuple(dict.fromkeys(unavailable)),
             failed_components=tuple(dict.fromkeys(failures)),
+            interpretation_version=interpretation.interpretation_version,
+            interpretation_reason_codes=tuple(
+                reason.value for reason in interpretation.reason_codes
+            ),
+            interpretation_evidence=self._interpretation_evidence_to_json(
+                decision=decision,
+                decision_is_coherent=decision_is_coherent,
+                trade_plan_is_active=trade_plan_is_active,
+                entry_qualification=entry_qualification,
+                price_is_current=final_price_is_expected_session,
+                interpretation_as_of=interpretation_as_of,
+            ),
         )
         row = PortfolioSnapshotRow.from_holding(
             symbol=symbol,
             holding=holding,
             last_price=last_price,
             price_as_of=price_as_of,
+            status=interpretation.status.value,
+            conviction=interpretation.conviction,
+            trend_setup=interpretation.trend_setup,
+            key_trigger=(
+                str(interpretation.key_trigger)
+                if interpretation.key_trigger is not None
+                else None
+            ),
+            support_1=interpretation.support_1,
+            major_support_exit=interpretation.major_support_exit,
             target_1=target_1,
+            target_2=interpretation.target_2,
+            target_3=interpretation.target_3,
+            next_action=interpretation.next_action.value,
             last_review=analyzed_at,
             freshness=freshness,
             provenance=provenance,
@@ -456,7 +528,54 @@ class PortfolioSyncOrchestrator:
             == price_as_of.astimezone(self._market_timezone).date()
         )
 
-    def _latest_daily_candle(self, instrument_id: str):
+    def _interpretation_as_of(
+        self,
+        price_as_of: datetime | None,
+        analyzed_at: datetime,
+    ) -> datetime:
+        return self._expected_analysis_as_of or price_as_of or analyzed_at
+
+    def _trade_plan_is_active(
+        self,
+        decision: Decision | None,
+        interpretation_as_of: datetime,
+    ) -> bool:
+        if decision is None or decision.trade_plan is None:
+            return False
+        plan = decision.trade_plan
+        return plan.valid_from <= interpretation_as_of <= plan.valid_until
+
+    def _latest_coherent_entry_qualification(
+        self,
+        *,
+        decision: Decision | None,
+        instrument_id: str,
+        interpretation_as_of: datetime,
+        decision_is_coherent: bool,
+    ) -> EntryQualification | None:
+        if decision is None or not decision_is_coherent:
+            return None
+        eq = self._repo.latest_entry_qualification_for_decision(decision.decision_id)
+        if eq is None:
+            return None
+        session_date = interpretation_as_of.astimezone(self._market_timezone).date()
+        if eq.instrument_id != instrument_id:
+            return None
+        if eq.decision_id != decision.decision_id:
+            return None
+        if eq.run_id != decision.run_id or eq.cycle_id != decision.cycle_id:
+            return None
+        if eq.decision_type is not decision.decision_type:
+            return None
+        if eq.session_date != session_date:
+            return None
+        if eq.as_of.astimezone(self._market_timezone).date() != session_date:
+            return None
+        if eq.as_of > interpretation_as_of:
+            return None
+        return eq
+
+    def _latest_daily_candle(self, instrument_id: str) -> Candle | None:
         candles = self._repo.list_candles_recent(
             instrument_id,
             Timeframe.D1,
@@ -476,6 +595,36 @@ class PortfolioSyncOrchestrator:
         if isinstance(value, datetime):
             return value.isoformat()
         return value
+
+    @classmethod
+    def _interpretation_evidence_to_json(
+        cls,
+        *,
+        decision: Decision | None,
+        decision_is_coherent: bool,
+        trade_plan_is_active: bool,
+        entry_qualification: EntryQualification | None,
+        price_is_current: bool,
+        interpretation_as_of: datetime,
+    ) -> dict[str, object]:
+        return {
+            "interpretation_as_of": interpretation_as_of.isoformat(),
+            "price_is_current": price_is_current,
+            "decision_is_coherent": decision_is_coherent,
+            "trade_plan_accepted": trade_plan_is_active,
+            "entry_qualification_accepted": entry_qualification is not None,
+            "decision_id": decision.decision_id if decision is not None else None,
+            "entry_qualification": (
+                {
+                    "decision_id": entry_qualification.decision_id,
+                    "as_of": entry_qualification.as_of.isoformat(),
+                    "state": entry_qualification.state.value,
+                    "methodology_version": entry_qualification.methodology_version,
+                }
+                if entry_qualification is not None
+                else None
+            ),
+        }
 
     @classmethod
     def _row_to_json(cls, row: PortfolioSnapshotRow) -> dict[str, object]:

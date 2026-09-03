@@ -234,6 +234,9 @@ class PortfolioAnalysisProvenance:
     analyzed_at: datetime | None = None
     unavailable_fields: tuple[str, ...] = ()
     failed_components: tuple[str, ...] = ()
+    interpretation_version: str | None = None
+    interpretation_reason_codes: tuple[str, ...] = ()
+    interpretation_evidence: Mapping[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)

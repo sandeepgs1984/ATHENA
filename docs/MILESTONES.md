@@ -13,7 +13,8 @@ too large for a single-sitting review is split BEFORE implementation.
 `docs/research/PS-P2-PORTFOLIO-IMPORT-RECONCILIATION.md`,
 `docs/research/PS-P3-MY-PORTFOLIO-DASHBOARD-UX.md`,
 `docs/research/PS-P4-PORTFOLIO-SYNC-ORCHESTRATION.md`,
-`docs/research/PS-P5A-PORTFOLIO-INTERPRETATION-METHODOLOGY.md`
+`docs/research/PS-P5A-PORTFOLIO-INTERPRETATION-METHODOLOGY.md`,
+`docs/research/PS-P5B-PORTFOLIO-INTERPRETATION-IMPLEMENTATION.md`
 
 Adds a My Portfolio dashboard feature/subdomain inside ATHENA's existing
 portfolio capability. The feature owns imported current holdings,
@@ -28,8 +29,8 @@ ScoringEngine/DecisionEngine methodology.
 | PS-P2 | Import Preview & Holdings Reconciliation — CSV/XLSX parse, normalize, validate, resolve symbols, persist preview, show deterministic reconciliation, confirm atomically, update canonical holdings, preserve audit history | ✅ Owner/Chief Architect approved 2026-09-02 |
 | PS-P3 | My Portfolio Dashboard + Upload UX — separate dashboard tab over PS-P2 APIs with server-side upload preview, mapping/error review, reconciliation diff, explicit confirmation, current holdings, and import history | ✅ Owner/Chief Architect approved 2026-09-02 |
 | PS-P4 | Portfolio Sync Orchestration — background sync over confirmed My Portfolio holdings, persisted sync runs, immutable 20-column analysis snapshots, server-owned valuation math, latest snapshot API, dashboard sync polling/rendering, and PS-P4.1 freshness/evidence coherency correction | ✅ Owner/Chief Architect approved 2026-09-02 — PS-P4 and PS-P4.1 frozen |
-| PS-P5A | Portfolio Interpretation Methodology Discovery & Freeze — inventory actual ATHENA evidence, propose deterministic portfolio Status/Conviction/Trend/Trigger/Support/Exit/Target/Next Action methodology, reason codes, test vectors, and owner decisions before production implementation | 🔄 Ready for review 2026-09-02 — methodology document created; no production interpreter or PS-P5B wiring implemented |
-| PS-P5B | Portfolio Interpretation Implementation — implement only the Owner/Chief Architect-approved PS-P5A subset in the pure interpreter, Portfolio Sync snapshot wiring, dashboard/API rendering, and regression tests | Not started |
+| PS-P5A | Portfolio Interpretation Methodology Discovery & Freeze — inventory actual ATHENA evidence, propose deterministic portfolio Status/Conviction/Trend/Trigger/Support/Exit/Target/Next Action methodology, reason codes, test vectors, and owner decisions before production implementation | ✅ Owner/Chief Architect approved subset for PS-P5B implementation 2026-09-03 |
+| PS-P5B | Portfolio Interpretation Implementation — implement only the Owner/Chief Architect-approved PS-P5A subset in the pure interpreter, Portfolio Sync snapshot wiring, dashboard/API rendering, and regression tests | 🔄 Implementation complete 2026-09-03 — ready for owner/principal-engineer review; next milestone blocked pending approval |
 
 ## Intraday Intelligence Track (ID-0 started 2026-08-29)
 

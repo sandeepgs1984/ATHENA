@@ -237,6 +237,9 @@ class PortfolioAnalysisProvenanceDTO(BaseModel):
     analyzed_at: datetime | None = None
     unavailable_fields: list[str] = Field(default_factory=list)
     failed_components: list[str] = Field(default_factory=list)
+    interpretation_version: str | None = None
+    interpretation_reason_codes: list[str] = Field(default_factory=list)
+    interpretation_evidence: dict[str, object] = Field(default_factory=dict)
 
 
 class PortfolioSnapshotRowDTO(BaseModel):

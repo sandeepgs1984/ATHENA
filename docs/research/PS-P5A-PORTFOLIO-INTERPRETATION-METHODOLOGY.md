@@ -1,10 +1,38 @@
 # PS-P5A Portfolio Interpretation Methodology
 
-Status: Ready for Owner/Chief Architect methodology review
+Status: Owner/Chief Architect approved subset for PS-P5B implementation
 Date: 2026-09-02
 Scope: Evidence inventory and deterministic methodology proposal only
 Boundary: No production interpreter, no Portfolio Sync wiring, no dashboard
 changes, no ScoringEngine/DecisionEngine/indicator changes, no order placement
+
+## 0. PS-P5B Owner-Approved Subset
+
+The owner approved a narrower PS-P5B implementation subset than several
+proposal options below. The approved subset supersedes the exploratory
+recommendations where they differ:
+
+- Status vocabulary is frozen as `STRONG`, `HEALTHY`, `CAUTION`, `AT_RISK`,
+  `UNAVAILABLE`; raw `DecisionType` must never be aliased directly to Status.
+- Conviction remains null in PS-P5B because no approved retrievable confidence
+  artifact is available to Portfolio Sync.
+- Trend / Setup remains null unless a direct typed approved setup artifact is
+  available; PS-P5B does not derive labels from `DecisionType` or
+  `EntryQualification`.
+- Key Trigger uses only coherent active `TradePlan.entry_low`: below entry low
+  exposes that level, at/above entry low means the trigger is consumed and null.
+- Support 1 remains null; DarvaX, prior lows, moving averages, pivots, ATR, and
+  TradePlan stops are not approved Support 1 sources.
+- Major Support / Exit uses only a coherent active `TradePlan.stop_loss`.
+- Target 1 preserves PS-P4.1 coherency and requires a coherent active
+  TradePlan target; Target 2/3 remain null.
+- Next Action vocabulary is frozen as `HOLD`, `ADD`, `EXIT`, `WATCH`;
+  `REDUCE` and `ROTATE` are deferred.
+- `ADD` requires a current coherent Decision/TradePlan plus latest coherent
+  persisted `EntryQualification == QUALIFIED`; P&L is never an input.
+- `EXIT` requires current price at or below the coherent active TradePlan stop.
+- All interpretation output carries reason/provenance and
+  `portfolio-interpretation-v0`.
 
 ## 1. Executive Summary
 

@@ -6,6 +6,79 @@ status updated on approval.
 
 ---
 
+## PS-P5B Portfolio Interpretation Implementation — Ready For Review
+
+**Summary.** Implemented the owner-approved PS-P5B subset for My Portfolio:
+a pure deterministic Portfolio Interpretation layer plus Portfolio Sync wiring
+that populates approved snapshot fields from accepted persisted evidence only.
+The interpreter emits `portfolio-interpretation-v0`, status/action values,
+TradePlan entry/stop-derived fields, and reason codes while keeping deferred
+methodology fields null.
+
+**Architecture compliance.** Preserved the PS-P0 through PS-P4.1 boundaries.
+Portfolio Sync remains the only writer of My Portfolio snapshot rows and only
+consumes persisted ATHENA evidence. No ScoringEngine, DecisionEngine,
+indicator, provider, broker, owner-position, order-placement, DarvaX, or
+future-phase code was changed. The interpreter is pure, side-effect free, and
+repository/provider independent.
+
+**Files created.**
+
+- `src/athena/portfolio/interpretation.py`
+- `tests/runtime/test_portfolio_interpretation.py`
+- `docs/research/PS-P5B-PORTFOLIO-INTERPRETATION-IMPLEMENTATION.md`
+
+**Files modified.**
+
+- `src/athena/portfolio/sync.py`
+- `src/athena/portfolio/my_portfolio_contracts.py`
+- `src/athena/api/v1/dtos/portfolio.py`
+- `src/athena/api/v1/services/my_portfolio_service.py`
+- `tests/api/v1/test_my_portfolio_import_api.py`
+- `docs/research/PS-P5A-PORTFOLIO-INTERPRETATION-METHODOLOGY.md`
+- `docs/MILESTONES.md`
+
+**Tests added.** Added pure interpreter tests for status/action precedence,
+key-trigger boundaries, inclusive stop-breach EXIT, null methodology fields,
+and P&L independence. Updated sync/API tests for server-owned interpretation
+row values, stale Decision protection, partial-sync failed rows, active
+entry-low trigger exposure, TradePlan stop/target acceptance, and coherent
+EntryQualification-driven ADD.
+
+**Remaining work.** Owner/principal-engineer review is required before the next
+Portfolio Sync milestone. Conviction, Trend / Setup, Support 1, Target 2/3,
+REDUCE, ROTATE, richer evidence adapters, and any future interpretation
+methodology remain explicitly deferred.
+
+**Risks.** Status and Next Action are now populated for rows even when evidence
+is unavailable (`UNAVAILABLE` / `WATCH`); consumers that treated null as the
+only "not interpretable" signal should read provenance reason codes and
+unavailable fields. No database migration was required because provenance is
+stored as JSON.
+
+**Suggested improvements.** Future methodology work should first create typed,
+retrievable evidence artifacts for confidence, trend/setup, support, and target
+ladders rather than parsing prose or backfilling from indicators.
+
+**Lessons learned.** The narrow interpreter boundary kept PS-P5B from leaking
+EntryQualification, TradePlan, or P&L semantics into unrelated core engines.
+
+**Implementation metrics.** Targeted verification: `29 passed` for
+`tests/runtime/test_portfolio_interpretation.py` and
+`tests/api/v1/test_my_portfolio_import_api.py`. Full suite:
+`3167 passed, 0 failed, 1 skipped`.
+
+**Phase outcome.** PS-P5B implementation complete and ready for review; next
+milestone blocked pending approval.
+
+**Commit hash.** Pending owner commit.
+
+**Branch.** main.
+
+**Review status.** Ready for owner/principal-engineer review.
+
+---
+
 ## ID-6E Entry Qualification Replay & Shadow Validation — Replay Architecture/Engine/State/Finality/Shadow-Unavailable Classification Accepted; Closure Held for ID-6E.1
 
 **Summary.** Owner closed ID-6D in full (including ID-6D.1) and authorized

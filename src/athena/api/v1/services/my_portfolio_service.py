@@ -608,5 +608,8 @@ class MyPortfolioService:
                 analyzed_at=row.provenance.analyzed_at,
                 unavailable_fields=tuple(row.provenance.unavailable_fields),
                 failed_components=tuple(row.provenance.failed_components),
+                interpretation_version=row.provenance.interpretation_version,
+                interpretation_reason_codes=tuple(row.provenance.interpretation_reason_codes),
+                interpretation_evidence=dict(row.provenance.interpretation_evidence),
             ),
         )

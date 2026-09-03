@@ -21,6 +21,13 @@ from athena.data.store.repository import SqliteRepository
 from athena.domain.decision import Decision, TradePlan
 from athena.domain.enums import DecisionType, Direction, Timeframe
 from athena.domain.market import Candle, Instrument
+from athena.intraday.entry_qualification_models import (
+    EntryEvidenceFinality,
+    EntryQualification,
+    EntryQualificationConfirmation,
+    EntryQualificationReasonCode,
+    EntryQualificationState,
+)
 from athena.portfolio.sync import PortfolioSyncOrchestrator
 
 NOW = datetime(2026, 9, 2, 10, 0, tzinfo=timezone.utc)
@@ -54,6 +61,9 @@ def _decision(
     instrument_id: str = "NSE:INFY",
     ts: datetime = NOW,
     target: str = "1700",
+    entry_low: str = "1500",
+    entry_high: str = "1510",
+    stop_loss: str = "1450",
 ) -> Decision:
     return Decision(
         decision_id=decision_id,
@@ -65,9 +75,9 @@ def _decision(
         instrument_id=instrument_id,
         direction=Direction.LONG,
         trade_plan=TradePlan(
-            entry_low=Decimal("1500"),
-            entry_high=Decimal("1510"),
-            stop_loss=Decimal("1450"),
+            entry_low=Decimal(entry_low),
+            entry_high=Decimal(entry_high),
+            stop_loss=Decimal(stop_loss),
             targets=(Decimal(target),),
             position_size=1,
             risk_amount=Decimal("50"),
@@ -75,6 +85,32 @@ def _decision(
             valid_from=ts,
             valid_until=datetime(2026, 9, 3, 10, 0, tzinfo=timezone.utc),
         ),
+    )
+
+
+def _entry_qualification(
+    decision: Decision,
+    *,
+    as_of: datetime = SEP2,
+    state: EntryQualificationState = EntryQualificationState.QUALIFIED,
+) -> EntryQualification:
+    assert decision.instrument_id is not None
+    return EntryQualification(
+        instrument_id=decision.instrument_id,
+        session_date=as_of.date(),
+        as_of=as_of,
+        run_id=decision.run_id,
+        cycle_id=decision.cycle_id,
+        decision_id=decision.decision_id,
+        decision_type=decision.decision_type,
+        state=state,
+        evidence_finality=EntryEvidenceFinality.NO_DECISIVE_PROVISIONAL_M5_DEPENDENCY,
+        confirmation=EntryQualificationConfirmation.CONFIRMED_BY_POLICY,
+        reason_codes=(EntryQualificationReasonCode.V0_READINESS_POLICY_SATISFIED,),
+        evidence_refs=(),
+        methodology_version="entry-qualification-v0",
+        config_snapshot_id=None,
+        explanation="Persisted coherent entry qualification.",
     )
 
 
@@ -348,6 +384,8 @@ def test_sync_stale_d1_invokes_refresh_and_re_reads_newer_state(
     assert row.target_1 == Decimal("1800")
     assert row.provenance.decision_id == "dec-post-refresh"
     assert row.provenance.validation_run_id == "run-dec-post-refresh"
+    assert row.status == "STRONG"
+    assert row.next_action == "HOLD"
     assert snapshot.summary.market_data_through == SEP2
 
 
@@ -393,8 +431,13 @@ def test_sync_rejects_stale_decision_tradeplan_for_current_price(
     assert row.provenance.decision_id == "dec-stale"
     assert row.provenance.validation_run_id is None
     assert row.target_1 is None
+    assert row.status == "UNAVAILABLE"
+    assert row.next_action == "WATCH"
+    assert row.key_trigger is None
+    assert row.major_support_exit is None
     assert "decision_evidence" in row.provenance.unavailable_fields
     assert "target_1" in row.provenance.unavailable_fields
+    assert "STALE_DECISION_EVIDENCE" in row.provenance.interpretation_reason_codes
 
 
 def test_sync_force_ingestion_refreshes_even_current_d1(
@@ -474,18 +517,68 @@ def test_sync_builds_server_owned_snapshot_math_and_tradeplan_target(
     assert row.last_price == Decimal("1600")
     assert row.current_value == Decimal("16000")
     assert row.pnl == Decimal("1000")
-    assert row.status is None
+    assert row.status == "STRONG"
     assert row.conviction is None
+    assert row.trend_setup is None
+    assert row.key_trigger is None
     assert row.support_1 is None
-    assert row.major_support_exit is None
+    assert row.major_support_exit == Decimal("1450")
     assert row.target_1 == Decimal("1700")
     assert row.target_2 is None
     assert row.target_3 is None
-    assert row.next_action is None
+    assert row.next_action == "HOLD"
     assert row.provenance.decision_id == "dec-infy"
     assert row.provenance.validation_run_id == "run-infy"
-    assert "status" in row.provenance.unavailable_fields
+    assert row.provenance.interpretation_version == "portfolio-interpretation-v0"
+    assert "CURRENT_TRADE_PLAN" in row.provenance.interpretation_reason_codes
+    assert "ADD_NOT_CONFIRMED" in row.provenance.interpretation_reason_codes
+    assert "status" not in row.provenance.unavailable_fields
     assert "target_2" in row.provenance.unavailable_fields
+
+
+def test_sync_sets_entry_low_key_trigger_when_trade_plan_entry_is_actionable(
+    my_portfolio_client: TestClient,
+) -> None:
+    repo = _confirm_infy_holding(my_portfolio_client)
+    repo.add_candles([_candle("NSE:INFY", "1600", SEP2)])
+    repo.save_decision(
+        _decision(
+            decision_id="dec-trigger",
+            ts=SEP2,
+            entry_low="1650",
+            entry_high="1660",
+            stop_loss="1500",
+            target="1800",
+        )
+    )
+
+    _run_portfolio_sync(repo)
+    row = MyPortfolioService(repo).latest_snapshot().rows[0]
+
+    assert row.status == "STRONG"
+    assert row.next_action == "HOLD"
+    assert row.key_trigger == "1650"
+    assert row.major_support_exit == Decimal("1500")
+    assert row.target_1 == Decimal("1800")
+    assert "TRADE_PLAN_ENTRY_TRIGGER_ACTIVE" in row.provenance.interpretation_reason_codes
+
+
+def test_sync_allows_add_only_from_coherent_entry_qualification(
+    my_portfolio_client: TestClient,
+) -> None:
+    repo = _confirm_infy_holding(my_portfolio_client)
+    repo.add_candles([_candle("NSE:INFY", "1600", SEP2)])
+    decision = _decision(decision_id="dec-add", ts=SEP2)
+    repo.save_decision(decision)
+    repo.save_entry_qualification(_entry_qualification(decision, as_of=SEP2), persisted_at=SEP2)
+
+    _run_portfolio_sync(repo)
+    row = MyPortfolioService(repo).latest_snapshot().rows[0]
+
+    assert row.status == "STRONG"
+    assert row.next_action == "ADD"
+    assert row.provenance.interpretation_evidence["entry_qualification_accepted"] is True
+    assert "ENTRY_QUALIFICATION_READY" in row.provenance.interpretation_reason_codes
 
 
 def test_sync_partial_persists_successful_rows_and_failure_metadata(
@@ -513,6 +606,8 @@ def test_sync_partial_persists_successful_rows_and_failure_metadata(
     failed = next(row for row in snapshot.rows if row.symbol == "TCS")
     assert failed.last_price is None
     assert failed.current_value is None
+    assert failed.status == "UNAVAILABLE"
+    assert failed.next_action == "WATCH"
     assert "NO_PERSISTED_D1_CANDLE" in failed.provenance.failed_components
 
 
