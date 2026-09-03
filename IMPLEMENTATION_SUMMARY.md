@@ -6,7 +6,7 @@ status updated on approval.
 
 ---
 
-## EM-6B.1 Single-Response Clock Coherence Correction — Complete / Ready for Owner Closure Review
+## EM-6B.1 Single-Response Clock Coherence Correction — Owner Approved / Closed
 
 **Summary.** Owner review of the actual EM-6B implementation (not a
 redesign — EM-6A remains closed, EM-6B's architecture otherwise accepted)
@@ -99,16 +99,17 @@ fix with no scope expansion.
 
 **Suggested improvements.** None.
 
-**Remaining work.** Owner closure review of EM-6B (including this
-correction). If accepted, both EM-6B and EM-6 overall may be closed. Do
+**Remaining work.** None -- owner approved and closed 2026-09-03. EM-6B
+and EM-6 overall are both owner-approved / closed on the same date. Do
 not start EM-7, scanner scheduling, ID-7, or any EntryQualification/
 DarvaX change until explicitly authorized.
 
-**Outcome:** Correction complete; ready for owner closure review.
+**Outcome:** Owner approved / closed 2026-09-03. EM-6B and EM-6 overall
+are both closed.
 
 ---
 
-## EM-6B Experimental EMR API & Dashboard — Accepted Pending EM-6B.1 Clock-Coherence Correction
+## EM-6B Experimental EMR API & Dashboard — Owner Approved / Closed
 
 **Summary.** Owner closed EM-6A and authorized EM-6B: the smallest
 production-quality presentation surface for the owner to inspect the
@@ -279,15 +280,17 @@ than an automated frontend test suite.
 validation, not yet authorized) or a future, separately-authorized
 decision on scanner scheduling might eventually need.
 
-**Remaining work.** None from this entry directly — owner review found
-one narrow clock-coherence defect, corrected by EM-6B.1 (see the entry
-above this one, prepended after this correction landed). Do not start
-EM-7, scanner scheduling, ID-7, or any EntryQualification/DarvaX change
-until explicitly authorized.
+**Remaining work.** None — owner approved and closed 2026-09-03. Owner
+review found one narrow clock-coherence defect, corrected by EM-6B.1 (see
+the entry above this one, prepended after this correction landed); with
+that correction in place, EM-6B and EM-6 overall are both owner-approved
+/ closed on the same date. Do not start EM-7, scanner scheduling, ID-7,
+or any EntryQualification/DarvaX change until explicitly authorized.
 
-**Outcome:** Implementation otherwise accepted; one narrow
-`ResponseMeta.as_of` clock-coherence defect found on review, corrected by
-EM-6B.1. EM-6 overall remains open pending EM-6B.1's own closure review.
+**Outcome:** Owner approved / closed 2026-09-03. Implementation accepted;
+the one narrow `ResponseMeta.as_of` clock-coherence defect found on
+review was corrected by EM-6B.1. EM-6 overall is also owner-approved /
+closed as of the same date.
 
 ---
 

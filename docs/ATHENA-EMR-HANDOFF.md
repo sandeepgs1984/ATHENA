@@ -7,12 +7,16 @@ correction owner-accepted; corrected classification
 owner-approved / closed 2026-09-01; **EM-6 discovery owner-approved /
 closed 2026-09-03 — scope formally ratified as read-only, permanently
 "Experimental" EMR research presentation, no modeling work required**;
-**EM-6A owner-approved / closed 2026-09-03 (read-only presentation data
-contract); EM-6B accepted pending a narrow EM-6B.1 clock-coherence
-correction (one request-level clock instant now drives both
-`data.scan_age.as_of` and `meta.as_of`), correction complete 2026-09-03,
-ready for owner closure review; EM-6 overall remains open pending that
-review; EM-7 not started** — see
+**EM-6A, EM-6B, and EM-6B.1 all owner-approved / closed 2026-09-03 —
+EM-6 OVERALL OWNER APPROVED / CLOSED 2026-09-03.** EM-6's final accepted
+scope: read-only presentation/query contract (EM-6A) + isolated API/
+dashboard surface (EM-6B) + a single-response clock-coherence corrective
+(EM-6B.1, ensuring one request-level clock instant drives both
+`data.scan_age.as_of` and `meta.as_of`). Production `db/emr.db` remains
+absent — no scheduler was authorized, and this is not a defect; EM-6
+intentionally exposes only persisted reality. EM-7 not started; no
+scanner scheduling/scheduler integration/canonical ATHENA pipeline
+integration is implied by this closure — see
 `docs/research/EM-6-DISCOVERY-AND-MODELING-CONTRACT.md`,
 `docs/design/EM-6A-READ-ONLY-PRESENTATION-DATA-CONTRACT.md`, and
 `docs/design/EM-6B-EXPERIMENTAL-RADAR-UI-CONTRACT.md`)
@@ -51,11 +55,12 @@ production canary against `athena_core` / 2026-08-28 via
 `run_em5_production_canary()`: PASS across all nine checkpoints, 518/518
 mature instruments, 9,324/9,324 all-required-fields-known at every checkpoint
 (100.0000%), zero provider/network calls, and deterministic replay. EM-5 is
-closed. This does not authorize EM-6 implementation. **2026-09-03 update:**
-the owner authorized EM-6 *discovery/contract-definition only*, which is
-now complete — `docs/research/EM-6-DISCOVERY-AND-MODELING-CONTRACT.md`.
-EM-6 implementation remains unauthorized pending owner review of that
-contract.
+closed. **2026-09-03 update:** EM-6 discovery, then EM-6A, EM-6B, and
+EM-6B.1 were each separately owner-authorized, implemented, and closed in
+sequence the same day — **EM-6 overall is now OWNER APPROVED / CLOSED**.
+See `docs/research/EM-6-DISCOVERY-AND-MODELING-CONTRACT.md` and the
+milestone table below for the full closure record. EM-7 remains not
+started; this closure does not by itself authorize it.
 
 **Read `docs/ATHENA-ID-TRACK-HANDOFF.md` §7 before touching anything on
 Monday.** The ID-track's own ID-5B milestone ("Live Current-Session M5
@@ -95,10 +100,10 @@ misattribute one track's evidence to the other's decision.
 | EM-4D | Owner-approved (GO) 2026-08-28 — all 162 (family×threshold×checkpoint) cells Platt-calibrated |
 | EM-4E | Owner-approved / GO 2026-08-28 — sealed FINAL_TEST evaluation complete (702,702 rows, 157 sessions); calibrated logistic beats deterministic 18/18, replicating VALIDATION on a third, never-before-touched partition. FINAL_TEST remains sealed |
 | EM-5 | **OWNER APPROVED / CLOSED — 2026-09-01** — contract ACCEPTED 2026-08-28. Regime wiring RESOLVED; REL_VOLUME_C historical support REPAIRED (real backfill, 23/23 resolvable prior sessions across all 3 liquidity tiers). Tuesday 2026-09-01 Track B live capture phase is owner-approved (81/81 Kite raw files, 0 provider failures, 0 `NOT_OBSERVED_LIVE`, 0 off-grid raw `ts_open`). Owner-authorized settled-provider comparison ran through the existing `force=True` override and originally produced `classification=null` because the frozen classifier had no eligible off-grid rows to classify. Track B.1 is owner-accepted and adds `NO_OFF_GRID_PROVISIONAL_OBSERVED`; raw-only replay classifies Tuesday as that outcome, clearing `CANARY_BLOCKED_LIVE_M5_SEMANTICS` for the frozen canary. Final validation ran the unchanged Section 14 full nine-checkpoint canary against `athena_core` / 2026-08-28: PASS, 100.0000% all-required-fields-known at every checkpoint, zero provider/network calls, deterministic replay. EM-6 not started |
-| EM-6 | **DISCOVERY OWNER-APPROVED / CLOSED; SCOPE RATIFIED 2026-09-03** — formally ratified as read-only, permanently "Experimental" EMR research presentation, executed in two gated slices (EM-6A, EM-6B, both now implemented). Full contract: `docs/research/EM-6-DISCOVERY-AND-MODELING-CONTRACT.md`. EM-6 overall remains open pending owner review of EM-6B |
+| EM-6 | **OWNER APPROVED / CLOSED 2026-09-03** — final accepted scope: a read-only, permanently "Experimental" EMR research presentation, implemented through EM-6A (presentation/query contract), EM-6B (isolated API + dashboard), and EM-6B.1 (clock-coherence corrective) — all closed. Full contract: `docs/research/EM-6-DISCOVERY-AND-MODELING-CONTRACT.md`. Production `db/emr.db` remains absent (no scheduler authorized; not a defect). EM-7 not started |
 | EM-6A | **OWNER APPROVED / CLOSED 2026-09-03** — read-only presentation data contract (`src/athena/explosive_move/live/presentation.py`): latest-scan lookup, top-N ranked candidates, TOUCH-10 flagship view, missing-coverage summary, pure as_of-explicit freshness facts. Structural (SQLite `mode=ro`) read-only guarantee. 24 tests, 2 mutation-verified. Full contract: `docs/design/EM-6A-READ-ONLY-PRESENTATION-DATA-CONTRACT.md` |
-| EM-6B | **ACCEPTED PENDING EM-6B.1 CLOCK-COHERENCE CORRECTION 2026-09-03** — isolated `GET /api/v1/emr/experimental/touch-10-radar` (only 3 API-layer files import `athena.explosive_move`, AST-scan-verified zero canonical/DarvaX imports) + a collapsed-by-default "Experimental" dashboard panel in the existing Market Intelligence tab. One-response/one-run coherence enforced by a new, additive `build_touch_10_radar_snapshot()` (mutation-verified). No scanner button, no scheduler, no trade-authorizing terminology (grep-verified against a populated response body). Verified live in an isolated scratch server (production server on port 8000 confirmed untouched throughout). Owner review found `ResponseMeta.as_of` was captured by a second, independent clock read in the router — corrected by EM-6B.1 below |
-| EM-6B.1 | **CORRECTION COMPLETE — READY FOR OWNER CLOSURE REVIEW 2026-09-03** — the router now captures exactly one clock read (a new injectable `get_emr_request_clock` dependency, `emr_clock` on `app.state`) and passes it explicitly into the service, reusing the identical value for `ResponseMeta.as_of` — in both the populated-scan and no-scan branches. EM-6A query semantics, the endpoint URL, and the response payload shape are all unchanged. 2 new tests with a deterministic injected clock, both mutation-verified. Full repository suite **3,233 passed, 1 pre-existing skip, 0 failed**. Ruff clean, `git diff --check` clean. No production DB mutation, no scanner/scheduler/provider call. EM-7 not started |
+| EM-6B | **OWNER APPROVED / CLOSED 2026-09-03** — isolated `GET /api/v1/emr/experimental/touch-10-radar` (only 3 API-layer files import `athena.explosive_move`, AST-scan-verified zero canonical/DarvaX imports) + a collapsed-by-default "Experimental" dashboard panel in the existing Market Intelligence tab. One-response/one-run coherence enforced by a new, additive `build_touch_10_radar_snapshot()` (mutation-verified). No scanner button, no scheduler, no trade-authorizing terminology (grep-verified against a populated response body). Verified live in an isolated scratch server (production server on port 8000 confirmed untouched throughout). Accepted capability: read-only, permanently Experimental, research-only, one-response/one-run coherent, persisted-data only, no scanner/scheduler/provider/canonical/EntryQualification/DarvaX coupling |
+| EM-6B.1 | **OWNER APPROVED / CLOSED 2026-09-03** — the router now captures exactly one clock read (a new injectable `get_emr_request_clock` dependency, `emr_clock` on `app.state`) and passes it explicitly into the service, reusing the identical value for `ResponseMeta.as_of` — in both the populated-scan and no-scan branches. EM-6A query semantics, the endpoint URL, and the response payload shape are all unchanged. 2 new tests with a deterministic injected clock, both mutation-verified. Full repository suite **3,233 passed, 1 pre-existing skip, 0 failed**. Ruff clean, `git diff --check` clean. No production DB mutation, no scanner/scheduler/provider call. EM-7 not started |
 | EM-7 | Planned — isolated shadow validation, OFF-vs-shadow comparison |
 | EM-8 | Planned — research-only / continued shadow / retirement / new integration ADR decision |
 

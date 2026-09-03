@@ -1,7 +1,8 @@
 # EM-6B — Experimental EMR API & Dashboard Contract
 
-**Status:** Implementation complete; EM-6B.1 clock-coherence correction
-applied. Ready for owner closure review.
+**Status:** **OWNER APPROVED / CLOSED — 2026-09-03** (including the
+EM-6B.1 clock-coherence correction). EM-6 overall is also owner-approved
+/ closed as of the same date.
 **Depends on:** EM-6A (`OWNER APPROVED / CLOSED`, 2026-09-03).
 **Does not:** modify the EMR scanner/model/research methodology, add
 scanner scheduling, read FINAL_TEST, touch canonical ATHENA/DarvaX/
