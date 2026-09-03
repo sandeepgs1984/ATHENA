@@ -6,7 +6,187 @@ status updated on approval.
 
 ---
 
-## EM-6A Read-Only EMR Presentation Data Contract — Implementation Complete / Ready for Owner Review
+## EM-6B Experimental EMR API & Dashboard — Implementation Complete / Ready for Owner Review
+
+**Summary.** Owner closed EM-6A and authorized EM-6B: the smallest
+production-quality presentation surface for the owner to inspect the
+latest persisted EMR research output — an isolated read-only HTTP
+endpoint plus a permanently "Experimental" dashboard panel. Not a trade
+recommendation, entry, alert, or execution system; not a replacement for
+ATHENA Decisions or EntryQualification.
+
+Audited the existing dashboard/API architecture first: `api/darvax_mount.py`
+(reused its isolation *principle*, not its sub-app mechanism, since EM-6B
+is a single endpoint, not a standalone product surface), the standard
+`api/v1/routers/*.py`/`dtos/*.py`/`services/*.py` convention every other
+v1 feature already uses, `AthenaResponse[T]`/`ResponseMeta` (the single
+response envelope), `RequirePermission(Permission.READ)` (the auth gate
+every v1 GET route already uses), `apiRequest`/`formatDecisionTime`/
+`formatDecisionPrice` (existing fetch and IST-timestamp/₹-price
+formatters, reused verbatim), and the Market Intelligence tab's own
+collapsed-by-default `<details>` "Trading Calendar" panel — the exact
+precedent for a visually-secondary panel, reused directly for the EMR
+panel rather than inventing new UI chrome.
+
+Built an isolated seam: `api/v1/routers/emr.py`, `api/v1/dtos/emr.py`,
+`api/v1/services/emr_presentation_service.py` — the only three files in
+the entire API layer that import from `athena.explosive_move`, and only
+from `athena.explosive_move.live.presentation` (EM-6A). Verified via an
+AST import-scan test (not grep, which would false-positive on the
+modules' own docstrings naming the forbidden modules to document the
+boundary) that none imports Scoring/Decision/Risk/TradePlan/DarvaX/
+canonical `SqliteRepository`/`EntryQualification`/`athena.intraday`.
+
+**Single-response coherence** (the owner's own explicitly flagged risk):
+added one new, purely additive function to `presentation.py` (EM-6A) —
+`build_touch_10_radar_snapshot()` — that resolves exactly one
+`EmrScanSnapshotInfo`, freezes its `run_id`, then derives both the
+TOUCH-10 candidate list and its coverage summary from that same frozen
+identity. No existing EM-6A function was modified. Mutation-verified:
+temporarily hardcoded the coverage lookup to a stale `run_id` and
+confirmed the resulting test failure (the wrong run's candidate count —
+3, not 1 — leaking through), then reverted.
+
+**Request-time clock**: `EmrPresentationService` accepts an injectable
+`clock` (defaulting to `datetime.now(tz=UTC)`, mirroring
+`OwnerValidationPipeline.persistence_clock`'s established pattern),
+captured exactly once per HTTP request and passed unchanged into
+`describe_scan_freshness()` — never a second `datetime.now()` call while
+building one response.
+
+Dashboard panel (`09b-emr-experimental.js`, `06b-emr-experimental.css`,
+naming the existing `08b-my-portfolio.js`-after-`08-portfolio.js`
+precedent) added as a collapsed-by-default `<details>` inside the
+existing Market Intelligence tab: an amber (never green/red-coded)
+"Experimental" badge, disclaimer text, a scan-context strip (session/
+checkpoint/last-scan-time/scan-age — kept in a visually and
+semantically separate region from each candidate's own persisted
+`data_freshness`, per the owner's explicit "do not merge both into one
+freshness badge" instruction), a TOUCH-10 candidate table (Rank/Symbol/
+Model Probability/Evidence Score/State/Data Freshness/Checkpoint Price/
+Evidence Coverage columns — deliberately no Entry/Stop/Target/Quantity/
+Risk-Reward/Action columns), a coverage strip with reason breakdown, and
+a collapsed "Model & scan metadata" sub-panel. No "Run Radar"/"Refresh
+Scanner"/"Scan Now" control exists anywhere — the refresh button only
+re-issues the same read-only `GET`. Null `calibrated_probability` renders
+as `—`, never `0%`; `probability_language` is rendered verbatim
+("model probability" vs. "raw estimate"), never upgraded into a trading-
+success framing.
+
+**Live verification**: the real production server (`athena serve
+--with-cycles`, port 8000, the same long-running ID-6E-track instance)
+was never touched. Instead, an isolated scratch `uvicorn` instance was
+started on port 8100 against a scratch `ATHENA_CONFIG_DIR` and a scratch
+`ATHENA_EMR_DB_PATH` (a locally-seeded fixture database — 3 candidates:
+one fully-ranked with a real calibrated probability, one ranked with a
+`null` probability, one unranked with `STALE_DATA`), using this
+project's own established `ATHENA_SINGLE_USER=true` + empty
+`ATHENA_OWNER_PASSWORD_HASH` local-verification bypass (the same pattern
+already used for DarvaX UI verification). Confirmed visually in the
+browser: badge/disclaimer/scan-meta/table/coverage all rendered
+correctly; the `null` probability candidate showed `—`, not `0%`; the
+`STALE` data-freshness value rendered in a muted color distinct from the
+scan-age field; clicking the refresh button advanced the displayed scan
+age ("5 min ago" → "7 min ago") without collapsing the panel (a real bug
+was actually caught and fixed here — the refresh button lives inside a
+`<summary>` element, and without an explicit `event.preventDefault()`/
+`stopPropagation()` its click would also toggle the `<details>` closed;
+added and reverified). The scratch database was confirmed byte-identical
+(1 scan run, 3 candidates) before and after all interaction. The scratch
+server was stopped after verification; the production server was
+reconfirmed running, unchanged, throughout.
+
+**Architecture compliance.** Zero scanner/model/calibration/schema
+changes. No scanner scheduling added (explicit owner instruction). No
+HTTP route or file touched outside the new isolated seam plus the
+existing Market Intelligence tab's own dispatch mechanism (one guarded
+line added to `03-app-shell.js`'s existing `market`-tab case, matching
+the precedent of the existing `loadTopOpportunities` guarded call on the
+same line). No canonical ATHENA or DarvaX import anywhere in the new
+API-layer files (AST-verified). No ID-track (`entry_qualifications`,
+`SessionContext`, `IntradaySignalSet`) reference anywhere. No FINAL_TEST
+reference anywhere.
+
+**Files created.** `src/athena/api/v1/routers/emr.py`,
+`src/athena/api/v1/dtos/emr.py`,
+`src/athena/api/v1/services/emr_presentation_service.py`,
+`src/athena/api/static/js/09b-emr-experimental.js`,
+`src/athena/api/static/css/06b-emr-experimental.css`,
+`tests/api/v1/test_emr_router.py`,
+`docs/design/EM-6B-EXPERIMENTAL-RADAR-UI-CONTRACT.md`.
+
+**Files modified.** `src/athena/explosive_move/live/presentation.py`
+(one new additive composition function + one new additive db-path
+helper — no existing function changed),
+`src/athena/api/app.py` (`DASHBOARD_JS_PARTS` +1 entry),
+`src/athena/api/dependencies.py` (+1 provider),
+`src/athena/api/v1/router.py` (+1 router registration),
+`src/athena/api/v1/dtos/__init__.py` (+1 re-export block),
+`src/athena/api/static/dashboard.css` (+1 `@import`),
+`src/athena/api/static/js/03-app-shell.js` (+1 guarded call),
+`src/athena/api/static/index.html` (new panel + mandatory version-string
+bump, `9.149.x` → `9.150.0`), `tests/explosive_move/test_em6a_presentation.py`
+(+2 new tests for the EM-6A composition addition), plus two pre-existing
+tests whose hardcoded dashboard version-string assertions needed updating
+to match the version bump (`tests/api/platform/test_dashboard_hosting.py`,
+`tests/api/platform/test_decision_chart_release_gate.py`).
+
+**Behavior implemented.** One new read-only HTTP endpoint (`GET
+/api/v1/emr/experimental/touch-10-radar`), one new presentation-
+composition function (EM-6A-owned), one new dashboard panel. No write
+path of any kind.
+
+**Verification.** 15 new API tests
+(`tests/api/v1/test_emr_router.py`) covering every owner-required
+category: auth required; missing db file; no-`COMPLETE` scan; coherent
+scan with ranked candidates; zero-ranked-candidates within a real scan;
+coverage with reasons; null probability preserved; timezone preservation;
+no cross-scan mixing; read-only-never-mutates across 3 repeated requests;
+no provider/scanner call (source scan); no canonical/DarvaX import (AST
+scan); no trade-authorizing terminology anywhere in a populated response
+body; a corrupt-but-existing database file surfacing as a real >=500
+error, never silently "no candidates"; `session_date` query-param
+scoping. 2 new EM-6A tests (1 mutation-verified: the coverage/candidates
+run_id-coherence guarantee). Combined EM-6A suite: 26/26 passed. Full
+`tests/explosive_move/`: 423 passed, 0 failed, 1 pre-existing skip. Full
+`tests/api/`: 341 passed. Ruff clean across all 12 touched/created Python
+files. `git diff --check` clean. Full repository suite: **3,231 passed, 1
+pre-existing skip, 0 failed.**
+
+Real-data acceptance check performed once, read-only, against real
+`db/emr.db`: **`REAL_DATA_ACCEPTANCE_NOT_AVAILABLE`** — the file remains
+absent in production (confirmed via `ls`, both before and after this
+milestone's work), consistent with EM-6/EM-6A's own finding that
+`run_scan_cycle` has no scheduler trigger in production. Per explicit
+instruction, it was not created for acceptance purposes; the real
+production server (port 8000) was reconfirmed running and unaffected
+throughout.
+
+**Risks / known gaps.** Same as EM-6A: no production shadow evidence
+exists for this endpoint yet. `logit_contributions_json` (per-term
+evidence explanation) remains unexposed — the dashboard currently shows
+"Evidence Score" (deterministic) and "Model Probability" (calibrated) but
+not a per-feature contribution breakdown; addable later without a schema
+change if the owner wants it. No cross-checkpoint history/trend view was
+built (explicitly out of scope per instruction). No JS lint/test tooling
+exists in this repository (vanilla JS, no build step) — verification was
+via direct browser rendering against an isolated scratch server rather
+than an automated frontend test suite.
+
+**Suggested improvements.** None beyond what EM-7 (isolated shadow
+validation, not yet authorized) or a future, separately-authorized
+decision on scanner scheduling might eventually need.
+
+**Remaining work.** Owner review of this EM-6B contract. Do not start
+EM-7, scanner scheduling, ID-7, or any EntryQualification/DarvaX change
+until explicitly authorized.
+
+**Outcome:** Implementation complete; ready for owner review. EM-6
+overall remains open pending this review. EM-7 not started.
+
+---
+
+## EM-6A Read-Only EMR Presentation Data Contract — Owner Approved / Closed
 
 **Summary.** Owner ratified EM-6's discovery-established scope (read-only,
 permanently "Experimental" EMR research presentation, not modeling — see
@@ -152,12 +332,11 @@ EM-6B is authorized, deciding the exact API-mount isolation pattern
 (mirroring `api/darvax_mount.py`'s principle, per the owner's own
 guidance, not necessarily its implementation).
 
-**Remaining work.** Owner review of this EM-6A contract. Do not start
-EM-6B, EM-7, scanner scheduling, ID-7, or any EntryQualification/DarvaX
-change until explicitly authorized.
+**Remaining work.** None — owner approved and closed. See EM-6B (below)
+for the subsequent API/dashboard slice.
 
-**Outcome:** Implementation complete; ready for owner review. EM-6B not
-started. EM-6 overall remains open pending EM-6B authorization.
+**Outcome:** Owner approved / closed. EM-6B authorized and implemented —
+see next entry.
 
 ---
 

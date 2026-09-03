@@ -78,6 +78,13 @@ from athena.api.v1.dtos.decisions import (
     TradePlanDTO,
     TradePlanFreshnessDTO,
 )
+from athena.api.v1.dtos.emr import (
+    EmrCandidateDTO,
+    EmrCoverageDTO,
+    EmrScanAgeDTO,
+    EmrScanContextDTO,
+    EmrTouch10RadarDTO,
+)
 from athena.api.v1.dtos.exports import (
     ExportArtifactDTO,
     ExportOptionsDTO,
@@ -181,6 +188,11 @@ __all__ = [
     "EligibilityDetailDTO",
     "EligibilityRuleDTO",
     "EmptyFilterParams",
+    "EmrCandidateDTO",
+    "EmrCoverageDTO",
+    "EmrScanAgeDTO",
+    "EmrScanContextDTO",
+    "EmrTouch10RadarDTO",
     "ExportArtifactDTO",
     "ExportJobDTO",
     "ExportJobStatus",

@@ -7,11 +7,13 @@ correction owner-accepted; corrected classification
 owner-approved / closed 2026-09-01; **EM-6 discovery owner-approved /
 closed 2026-09-03 — scope formally ratified as read-only, permanently
 "Experimental" EMR research presentation, no modeling work required**;
-**EM-6A (read-only presentation data contract) implementation complete
-2026-09-03, ready for owner review — EM-6B (API mount + dashboard) not
-yet authorized** — see
-`docs/research/EM-6-DISCOVERY-AND-MODELING-CONTRACT.md` and
-`docs/design/EM-6A-READ-ONLY-PRESENTATION-DATA-CONTRACT.md`)
+**EM-6A owner-approved / closed 2026-09-03 (read-only presentation data
+contract); EM-6B implementation complete 2026-09-03 — isolated read-only
+API endpoint + dashboard panel, ready for owner review; EM-6 overall
+remains open pending that review; EM-7 not started** — see
+`docs/research/EM-6-DISCOVERY-AND-MODELING-CONTRACT.md`,
+`docs/design/EM-6A-READ-ONLY-PRESENTATION-DATA-CONTRACT.md`, and
+`docs/design/EM-6B-EXPERIMENTAL-RADAR-UI-CONTRACT.md`)
 **Governing boundary:** ADR-012
 **Current state:** EM-0 through EM-4E are all owner-approved (GO), including
 the sealed FINAL_TEST evaluation. EM-5 (the replayable bulk-input live
@@ -91,8 +93,9 @@ misattribute one track's evidence to the other's decision.
 | EM-4D | Owner-approved (GO) 2026-08-28 — all 162 (family×threshold×checkpoint) cells Platt-calibrated |
 | EM-4E | Owner-approved / GO 2026-08-28 — sealed FINAL_TEST evaluation complete (702,702 rows, 157 sessions); calibrated logistic beats deterministic 18/18, replicating VALIDATION on a third, never-before-touched partition. FINAL_TEST remains sealed |
 | EM-5 | **OWNER APPROVED / CLOSED — 2026-09-01** — contract ACCEPTED 2026-08-28. Regime wiring RESOLVED; REL_VOLUME_C historical support REPAIRED (real backfill, 23/23 resolvable prior sessions across all 3 liquidity tiers). Tuesday 2026-09-01 Track B live capture phase is owner-approved (81/81 Kite raw files, 0 provider failures, 0 `NOT_OBSERVED_LIVE`, 0 off-grid raw `ts_open`). Owner-authorized settled-provider comparison ran through the existing `force=True` override and originally produced `classification=null` because the frozen classifier had no eligible off-grid rows to classify. Track B.1 is owner-accepted and adds `NO_OFF_GRID_PROVISIONAL_OBSERVED`; raw-only replay classifies Tuesday as that outcome, clearing `CANARY_BLOCKED_LIVE_M5_SEMANTICS` for the frozen canary. Final validation ran the unchanged Section 14 full nine-checkpoint canary against `athena_core` / 2026-08-28: PASS, 100.0000% all-required-fields-known at every checkpoint, zero provider/network calls, deterministic replay. EM-6 not started |
-| EM-6 | **DISCOVERY OWNER-APPROVED / CLOSED; SCOPE RATIFIED 2026-09-03** — formally ratified as read-only, permanently "Experimental" EMR research presentation, executed in two gated slices (EM-6A, EM-6B). Full contract: `docs/research/EM-6-DISCOVERY-AND-MODELING-CONTRACT.md`. EM-6A implemented — see below. EM-6 overall remains open pending EM-6B authorization |
-| EM-6A | **IMPLEMENTATION COMPLETE — READY FOR OWNER REVIEW 2026-09-03** — read-only presentation data contract (`src/athena/explosive_move/live/presentation.py`): latest-scan lookup, top-N ranked candidates, TOUCH-10 flagship view, missing-coverage summary, pure as_of-explicit freshness facts. Structural (SQLite `mode=ro`) read-only guarantee, not conventional. 24 new tests, 2 mutation-verified; full EMR suite 421 passed; full repository suite 3,214 passed. Real-data acceptance against production: `REAL_DATA_ACCEPTANCE_NOT_AVAILABLE` (`db/emr.db` does not exist in production — no scheduler trigger, none added). Full contract: `docs/design/EM-6A-READ-ONLY-PRESENTATION-DATA-CONTRACT.md`. EM-6B not started |
+| EM-6 | **DISCOVERY OWNER-APPROVED / CLOSED; SCOPE RATIFIED 2026-09-03** — formally ratified as read-only, permanently "Experimental" EMR research presentation, executed in two gated slices (EM-6A, EM-6B, both now implemented). Full contract: `docs/research/EM-6-DISCOVERY-AND-MODELING-CONTRACT.md`. EM-6 overall remains open pending owner review of EM-6B |
+| EM-6A | **OWNER APPROVED / CLOSED 2026-09-03** — read-only presentation data contract (`src/athena/explosive_move/live/presentation.py`): latest-scan lookup, top-N ranked candidates, TOUCH-10 flagship view, missing-coverage summary, pure as_of-explicit freshness facts. Structural (SQLite `mode=ro`) read-only guarantee. 24 tests, 2 mutation-verified. Full contract: `docs/design/EM-6A-READ-ONLY-PRESENTATION-DATA-CONTRACT.md` |
+| EM-6B | **IMPLEMENTATION COMPLETE — READY FOR OWNER REVIEW 2026-09-03** — isolated `GET /api/v1/emr/experimental/touch-10-radar` (only 3 API-layer files import `athena.explosive_move`, AST-scan-verified zero canonical/DarvaX imports) + a collapsed-by-default "Experimental" dashboard panel in the existing Market Intelligence tab. One-response/one-run coherence enforced by a new, additive `build_touch_10_radar_snapshot()` (mutation-verified). Request-time clock captured once per response. No scanner button, no scheduler, no trade-authorizing terminology (grep-verified against a populated response body). Verified live in an isolated scratch server (production server on port 8000 confirmed untouched throughout). 15 new API tests + 2 new EM-6A composition tests; full repository suite **3,231 passed, 1 pre-existing skip**. Real-data acceptance: still `REAL_DATA_ACCEPTANCE_NOT_AVAILABLE` — `db/emr.db` remains absent in production, not created. Full contract: `docs/design/EM-6B-EXPERIMENTAL-RADAR-UI-CONTRACT.md`. EM-7 not started |
 | EM-7 | Planned — isolated shadow validation, OFF-vs-shadow comparison |
 | EM-8 | Planned — research-only / continued shadow / retirement / new integration ADR decision |
 

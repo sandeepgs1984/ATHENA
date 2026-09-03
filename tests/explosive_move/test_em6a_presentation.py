@@ -393,6 +393,44 @@ def test_describe_scan_freshness_is_pure_and_deterministic(tmp_path: Path) -> No
     assert first.age_seconds == pytest.approx(1795.0)  # 12:00:05 -> 12:30:00
 
 
+# --------------------------------------------------------------------------- #
+# EM-6B addition: build_touch_10_radar_snapshot coherence
+# --------------------------------------------------------------------------- #
+
+
+def test_touch_10_radar_snapshot_coverage_bound_to_same_run_as_candidates(tmp_path: Path) -> None:
+    """coverage must reflect the SAME run_id the touch_10 list came from --
+    seeds a different candidate count per run so a coherence bug (coverage
+    computed from the wrong run) is actually detectable, not coincidentally
+    correct."""
+    repo = _repo(tmp_path)
+    repo.save_scan_run(_scan_run(run_id="run-old", started_ts="2026-08-28T09:00:00+05:30"))
+    repo.save_scan_run(_scan_run(run_id="run-new", started_ts="2026-08-28T14:00:00+05:30"))
+    repo.save_candidates([
+        _candidate(run_id="run-old", instrument_id="NSE:A", rank=1),
+        _candidate(run_id="run-old", instrument_id="NSE:B", rank=2),
+        _candidate(run_id="run-old", instrument_id="NSE:C", rank=None, feasibility="INFEASIBLE",
+                    feasibility_reason="STALE_DATA", state="INACTIVE", state_reason="hard ineligible"),
+    ])
+    repo.save_candidates([_candidate(run_id="run-new", instrument_id="NSE:NEW", rank=1)])
+
+    snapshot = pres.build_touch_10_radar_snapshot(repo.path)
+    assert snapshot.scan.run_id == "run-new"
+    assert [c.instrument_id for c in snapshot.touch_10] == ["NSE:NEW"]
+    assert snapshot.coverage.evaluated_count == 1  # run-new's own count, not run-old's 3
+    assert snapshot.coverage.ranked_count == 1
+    assert snapshot.coverage.unranked_count == 0
+
+
+def test_touch_10_radar_snapshot_empty_state(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    snapshot = pres.build_touch_10_radar_snapshot(repo.path)
+    assert snapshot.scan is None
+    assert snapshot.touch_10 == ()
+    assert snapshot.coverage is None
+    assert snapshot.label == pres.EXPERIMENTAL_LABEL
+
+
 def test_describe_scan_freshness_applies_no_label(tmp_path: Path) -> None:
     """No FRESH/STALE classification is computed -- only facts."""
     repo = _repo(tmp_path)

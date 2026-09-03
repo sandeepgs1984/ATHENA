@@ -66,6 +66,7 @@ from athena.api.v1.services.backtests_service import BacktestsService
 from athena.api.v1.services.candidates_service import CandidatesService
 from athena.api.v1.services.dashboard_service import DashboardService
 from athena.api.v1.services.decisions_service import DecisionsService
+from athena.api.v1.services.emr_presentation_service import EmrPresentationService
 from athena.api.v1.services.exports_service import ExportsService
 from athena.api.v1.services.health_service import HealthService
 from athena.api.v1.services.market_history_service import MarketHistoryService
@@ -82,6 +83,7 @@ from athena.api.v1.services.scheduler_service import SchedulerService
 from athena.api.v1.services.strategies_service import StrategyService
 from athena.api.v1.services.workspace_service import WorkspaceService
 from athena.data.store.repository import SqliteRepository
+from athena.explosive_move.live.presentation import default_emr_db_path
 from athena.export.engine import ExportPresentationEngine
 from athena.ops.owner_candidates import InMemoryCandidateStore, SqliteCandidateStore
 from athena.ops.saved_symbols import InMemorySavedSymbolStore, SqliteSavedSymbolStore
@@ -499,3 +501,18 @@ def get_metadata_provider(request: Request = None) -> MetadataProvider:
     if request is not None and hasattr(request.app.state, "metadata_provider"):
         return request.app.state.metadata_provider
     return _metadata_provider
+
+
+# ---------------------------------------------------------------------------
+# EM-6B: Explosive Move Radar (Experimental) presentation provider
+# ---------------------------------------------------------------------------
+
+
+def get_emr_presentation_service(request: Request) -> EmrPresentationService:
+    """Dependency provider for `EmrPresentationService` (ADR-012 isolated
+    seam). `emr_db_path` on `request.app.state` lets tests point at a
+    fixture database; production falls back to
+    `athena.explosive_move.live.presentation.default_emr_db_path()`
+    (`db/emr.db`, never `db/athena.db`)."""
+    db_path = getattr(request.app.state, "emr_db_path", None) or default_emr_db_path()
+    return EmrPresentationService(db_path)

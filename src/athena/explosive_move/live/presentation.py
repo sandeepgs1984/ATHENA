@@ -48,6 +48,7 @@ ever writes a term like `BUY`/`SELL`/`CONFIRMED TRADE`/`stop`/`target`/
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
@@ -315,3 +316,60 @@ def build_experimental_snapshot(
         return EmrExperimentalSnapshot(label=EXPERIMENTAL_LABEL, scan=None, touch_10=())
     touch_10 = top_touch_10_candidates(db_path, run_id=scan.run_id, limit=touch_10_limit)
     return EmrExperimentalSnapshot(label=EXPERIMENTAL_LABEL, scan=scan, touch_10=touch_10)
+
+
+# --------------------------------------------------------------------------- #
+# EM-6B addition: a single-response composition helper.
+#
+# Added during EM-6B (not EM-4/EM-5), purely additive -- no existing
+# function above was modified, and this performs no new SQL beyond what
+# `latest_scan_snapshot`/`top_touch_10_candidates`/`coverage_summary`
+# already do individually. It exists solely so an HTTP handler can build
+# one coherent response with exactly one latest-scan lookup, never one
+# lookup per field (a second scan could complete between two independent
+# lookups otherwise).
+# --------------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True, slots=True)
+class EmrTouch10RadarSnapshot:
+    """One coherent object for one HTTP response: exactly one scan
+    identity (or none), its TOUCH-10 candidates, and TOUCH-10 coverage --
+    all derived from that single frozen `run_id`."""
+
+    label: str
+    scan: EmrScanSnapshotInfo | None
+    touch_10: tuple[EmrCandidateView, ...]
+    coverage: EmrCoverageView | None
+
+
+def build_touch_10_radar_snapshot(
+    db_path: str | Path, *, session_date: str | None = None, touch_10_limit: int = 10,
+) -> EmrTouch10RadarSnapshot:
+    """Resolve exactly one `EmrScanSnapshotInfo`, then derive both the
+    TOUCH-10 candidate list and its coverage summary from that same
+    frozen `run_id` -- never two independent latest-scan lookups for one
+    response. Empty state (`scan=None, touch_10=(), coverage=None`) when
+    no completed scan exists."""
+    scan = latest_scan_snapshot(db_path, session_date=session_date)
+    if scan is None:
+        return EmrTouch10RadarSnapshot(label=EXPERIMENTAL_LABEL, scan=None, touch_10=(), coverage=None)
+    touch_10 = top_touch_10_candidates(db_path, run_id=scan.run_id, limit=touch_10_limit)
+    coverage = coverage_summary(db_path, run_id=scan.run_id, family="TOUCH", threshold_percent=10)
+    return EmrTouch10RadarSnapshot(label=EXPERIMENTAL_LABEL, scan=scan, touch_10=touch_10, coverage=coverage)
+
+
+def default_emr_db_path() -> Path:
+    """Resolve `db/emr.db`'s path the same way ATHENA-core's own
+    `default_db_path()` resolves `db/athena.db` (env override, else
+    repo-root-relative) -- kept in this EM-6A-owned module so the API
+    layer never has to know the raw path convention itself."""
+    env = os.environ.get("ATHENA_EMR_DB_PATH")
+    if env:
+        return Path(env)
+    root = Path(__file__).resolve().parent
+    for _ in range(8):
+        if (root / "pyproject.toml").is_file():
+            break
+        root = root.parent
+    return root / "db" / "emr.db"

@@ -12,6 +12,7 @@ from athena.api.v1.routers.auth import router as auth_router
 from athena.api.v1.routers.backtests import router as backtests_router
 from athena.api.v1.routers.dashboard import router as dashboard_router
 from athena.api.v1.routers.decisions import router as decisions_router
+from athena.api.v1.routers.emr import router as emr_router
 from athena.api.v1.routers.exports import router as exports_router
 from athena.api.v1.routers.health import router as health_router
 from athena.api.v1.routers.market import router as market_router
@@ -47,3 +48,4 @@ router.include_router(strategies_router)
 router.include_router(backtests_router)
 router.include_router(ops_router)
 router.include_router(saved_symbols_router)
+router.include_router(emr_router)

@@ -183,6 +183,7 @@
         } else if (tabId === "market") {
             await loadMarketIntelligence();
             await loadMarketTicker();
+            if (typeof loadEmrExperimentalRadar === "function") await loadEmrExperimentalRadar();
         } else if (tabId === "strategies") {
             await loadStrategiesWorkspace();
         } else if (tabId === "decisions") {

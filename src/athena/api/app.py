@@ -64,6 +64,7 @@ DASHBOARD_JS_PARTS: tuple[str, ...] = (
     "08-portfolio.js",
     "08b-my-portfolio.js",
     "09-market-intelligence.js",
+    "09b-emr-experimental.js",
     "10-strategies-backtests.js",
     "11-decision-state.js",
     "12-decisions-list.js",

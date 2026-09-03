@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.149.1">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.150.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -1024,6 +1024,25 @@
                             </div>
                         </div>
                     </details>
+
+                    <!-- EM-6B: Explosive Move Radar (Experimental) — isolated,
+                         read-only research panel. Never a trade recommendation;
+                         see ADR-012. Collapsed by default, same as Trading
+                         Calendar above, to stay visually secondary. -->
+                    <details class="card emr-experimental-details">
+                        <summary class="emr-experimental-summary">
+                            <div class="card-title-icon"><i class="fas fa-satellite-dish"></i></div>
+                            <h3>Explosive Move Radar</h3>
+                            <span class="emr-experimental-badge"><i class="fas fa-flask"></i> Experimental</span>
+                            <button type="button" id="emr-radar-refresh-btn" class="inspect-btn" title="Reload persisted radar snapshot">
+                                <i class="fas fa-rotate"></i>
+                            </button>
+                            <i class="fas fa-chevron-down emr-experimental-chevron"></i>
+                        </summary>
+                        <div class="card-body" id="emr-radar-body">
+                            <div class="emr-loading-state">Loading Experimental radar…</div>
+                        </div>
+                    </details>
                 </div>
 
                 <!-- Strategies & Backtests Tab -->
@@ -1982,7 +2001,7 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.149.5"></script>
+    <script src="/dashboard/dashboard.js?v=9.150.0"></script>
 
     <!-- DarvaX satellite tab (ADR-010 Amendment 1) — the ONLY DarvaX reference
          in this file, and the flag guard itself. This asset is served solely by

@@ -1,0 +1,176 @@
+/* EM-6B: Explosive Move Radar (Experimental) panel.
+   Deliberately visually secondary -- a <details> panel, same pattern as
+   the existing "Trading Calendar & Events" secondary panel in the Market
+   Intelligence tab. Never styled to look like a canonical, approved, or
+   actionable surface: no green "buy" styling, no confidence badges. */
+
+.emr-experimental-details {
+    margin-top: var(--space-24);
+}
+
+.emr-experimental-summary {
+    display: flex;
+    align-items: center;
+    gap: var(--space-10);
+    cursor: pointer;
+    list-style: none;
+}
+
+.emr-experimental-summary::-webkit-details-marker {
+    display: none;
+}
+
+.emr-experimental-chevron {
+    margin-left: auto;
+    color: var(--text-muted);
+    transition: transform var(--transition-speed);
+}
+
+.emr-experimental-details[open] .emr-experimental-chevron {
+    transform: rotate(180deg);
+}
+
+/* Deliberately amber/neutral, not green ("go") or red ("stop") -- this
+   is a research label, not a trade signal. */
+.emr-experimental-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-4);
+    padding: var(--space-2) var(--space-8);
+    border-radius: 999px;
+    background: var(--warning-glow);
+    color: var(--warning);
+    font-size: var(--text-0-625);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.emr-disclaimer {
+    font-size: var(--text-0-75);
+    color: var(--text-secondary);
+    margin: var(--space-8) 0 var(--space-16) 0;
+    line-height: 1.5;
+}
+
+.emr-scan-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-16);
+    padding: var(--space-10) var(--space-14);
+    margin-bottom: var(--space-16);
+    border: 1px solid var(--border-color);
+    border-radius: var(--space-8);
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.emr-scan-meta-item {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.emr-scan-meta-label {
+    font-size: var(--text-0-625);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+}
+
+.emr-scan-meta-value {
+    font-size: var(--text-0-9);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+}
+
+.emr-coverage-strip {
+    display: flex;
+    gap: var(--space-16);
+    font-size: var(--text-0-75);
+    color: var(--text-secondary);
+    margin-bottom: var(--space-12);
+}
+
+.emr-coverage-strip strong {
+    color: var(--text-primary);
+}
+
+.emr-coverage-reasons {
+    margin-top: var(--space-6);
+    font-size: var(--text-0-7);
+    color: var(--text-muted);
+}
+
+.emr-candidate-table-wrap {
+    overflow-x: auto;
+}
+
+.emr-candidate-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--text-0-8);
+}
+
+.emr-candidate-table th {
+    text-align: left;
+    padding: var(--space-8) var(--space-10);
+    color: var(--text-muted);
+    font-size: var(--text-0-625);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    border-bottom: 1px solid var(--border-color);
+    white-space: nowrap;
+}
+
+.emr-candidate-table td {
+    padding: var(--space-8) var(--space-10);
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-primary);
+    white-space: nowrap;
+}
+
+.emr-candidate-table td.emr-cell-muted {
+    color: var(--text-muted);
+}
+
+.emr-candidate-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.emr-metadata-details {
+    margin-top: var(--space-12);
+}
+
+.emr-metadata-details summary {
+    font-size: var(--text-0-75);
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+
+.emr-metadata-list {
+    margin-top: var(--space-8);
+    font-size: var(--text-0-72);
+    color: var(--text-muted);
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: var(--space-6) var(--space-16);
+}
+
+.emr-empty-state,
+.emr-error-state {
+    padding: var(--space-16);
+    text-align: center;
+    color: var(--text-muted);
+    font-size: var(--text-0-85);
+}
+
+.emr-error-state {
+    color: var(--danger);
+}
+
+.emr-loading-state {
+    padding: var(--space-16);
+    text-align: center;
+    color: var(--text-muted);
+    font-size: var(--text-0-85);
+}
