@@ -6,6 +6,140 @@ status updated on approval.
 
 ---
 
+## EM-7A.1 Transactional Lifecycle & Idempotency Correction — Complete
+
+**Summary.** Owner-directed resolution of the ADR-014 §15 contradiction
+EM-7A found and reported (see the EM-7A entry immediately below).
+**Owner selected Option 1: make result persistence genuinely atomic.
+`PARTIAL` lifecycle state explicitly rejected.** Scope: one atomic
+result-commit transaction, explicit `FAILED` semantics with
+exception-chaining, three same-`run_id` idempotency cases, `UNIQUE`
+index as defense-in-depth, one hardened lock-integrated entrypoint for a
+future worker, and the required failure-injection/idempotency/
+one-transaction-boundary test suite with mutation-verified proofs. No
+worker, scheduler, config gate, production DB activation, live scan, or
+EM-7B work — unchanged exclusions from EM-7A.
+
+**Implemented.**
+
+1. **Atomic result commit** — `EmrRepository.commit_scan_result(*,
+   run_id, candidates, transitions, run_update)`
+   (`src/athena/explosive_move/store/repository.py`) is the one SQLite
+   transaction (`with conn:`) that verifies the target `run_id` is still
+   `RUNNING`, deletes any existing candidate/transition rows for that
+   `run_id` (delete-then-insert replace-for-run, idempotent-retry safe),
+   inserts the freshly computed result, and updates the run to
+   `COMPLETE` — all together, all-or-nothing. `run_scan_cycle`
+   (`src/athena/explosive_move/live/scanner.py`) now calls it once, in
+   place of the three previously-separate `save_candidates`/
+   `save_transitions`/`save_scan_run` calls.
+2. **Explicit `FAILED` semantics** — `EmrRepository.mark_scan_failed`
+   (its own separate transaction) writes `status='FAILED'` plus bounded
+   `failure_type`/`failure_reason` diagnostics (truncated to 2000 chars —
+   never an unbounded traceback, never secrets/tokens/headers/provider
+   payloads) for every run-level exception `run_scan_cycle` catches after
+   the `RUNNING` row was written. If the `FAILED` write itself also
+   raises, the original scan exception is re-raised as primary (`raise
+   exc from mark_exc`), the secondary failure chained as `__cause__` —
+   never masked.
+3. **Three same-`run_id` idempotency cases** — checked in
+   `run_scan_cycle` before writing a fresh `RUNNING` row and before any
+   provider call: existing `COMPLETE` → reconstructed via
+   `_reconstruct_completed_result` from already-persisted state only,
+   zero recomputation, zero second checkpoint-reference-price call;
+   existing `RUNNING` → rejected via a new `EmrScanAlreadyRunningError`,
+   never guessed stale; existing `FAILED` (or a legacy pre-EM-7A.1
+   `SKIPPED_SESSION_TYPE`) → falls through to a fresh execution attempt
+   under the same deterministic `run_id`.
+4. **`UNIQUE` index as defense-in-depth** — schema v2
+   (`src/athena/explosive_move/store/schema.py`, `EMR_SCHEMA_VERSION`
+   1→2): `idx_emr_candidates_run_identity` /
+   `idx_emr_transitions_run_identity` enforce
+   `UNIQUE(run_id, instrument_id, family, threshold_percent)` — the
+   natural, already-frozen per-run domain identity confirmed from
+   `scanner.py`'s own loop structure. `emr_scan_runs` gains
+   `failure_type`/`failure_reason TEXT` columns. Pre-existing v1
+   databases migrate via `ALTER TABLE ... ADD COLUMN`
+   (`migration_alter_columns()`, applied idempotently in
+   `EmrRepository.initialize()` via `PRAGMA table_info` checks) — no
+   production `db/emr.db` exists yet, so this only matters for
+   test/fixture databases created before this change.
+5. **One hardened entrypoint** — `run_scan_cycle_with_lock(*, lock=None,
+   **kwargs)` acquires the EMR-owned `EmrScanLock`, calls
+   `run_scan_cycle`, and always releases — the entrypoint a future EM-7B
+   worker must use so it "cannot forget locking." `run_scan_cycle` itself
+   stays lock-free (pure replay/test/canary usage unaffected).
+
+**Deliberately unchanged.** `save_candidates`/`save_transitions`/
+`save_scan_run` remain on `EmrRepository`, standalone, in their original
+(non-atomic) form — not removed — because ~80 existing tests
+(`test_em5_store.py`, `test_em6a_presentation.py`,
+`test_emr_router.py`) use them directly as low-level repository unit
+tests or fixture-seeding helpers unrelated to the scanner's own
+atomicity concern; only `scanner.py`'s own call pattern changed. The
+deterministic `run_id` fingerprint formula, the regime contract, the
+`TRACK_B_CHECKPOINT_SCHEDULE` independent-verification pin, and the
+EM-7A isolation-test extensions are all unmodified.
+
+**Files created.**
+`tests/explosive_move/test_em7a1_transactional_lifecycle.py` (14 tests:
+5 failure-injection, 4 idempotency, 2 one-transaction-boundary proofs
+using `set_trace_callback`, 3 lock-integration).
+
+**Files modified.** `src/athena/explosive_move/store/repository.py`
+(`commit_scan_result`, `mark_scan_failed`, `list_transitions_for_run`,
+schema-migration application in `initialize()`), `src/athena/explosive_
+move/store/schema.py` (v2: failure columns, UNIQUE indexes, migration
+helper), `src/athena/explosive_move/live/scanner.py`
+(`EmrScanAlreadyRunningError`, `_reconstruct_completed_result`,
+restructured `run_scan_cycle` body, `run_scan_cycle_with_lock`),
+`tests/explosive_move/test_em5_store.py` (one pre-existing test's
+fixture data made realistic under the new per-run UNIQUE constraint),
+`docs/adr/ADR-014-emr-live-shadow-operation.md` (§1 status, §15/§16
+corrected — original claim and the EM-7A finding preserved, not
+erased), `docs/research/EM-7A-SCANNER-CORRECTNESS-HARDENING.md` (new §9
+recording this resolution and EM-7A's closure), `docs/MILESTONES.md`,
+`docs/ATHENA-EMR-HANDOFF.md` — status updates.
+
+**Tests / validation.** 14 new focused tests, all passing, including two
+required mutation/negative proofs (not merely passing tests written
+under an untested assumption): (1) `commit_scan_result` was temporarily
+reverted to three separate `with conn:` transactions (mirroring the
+pre-EM-7A.1 architecture) — exactly the 4 tests that specifically prove
+atomicity failed as expected (the crucial
+`test_transition_write_failure_after_candidates_rolls_back_everything`,
+`test_complete_update_failure_rolls_back_everything`, and both
+one-transaction-boundary tests), the other 10 were unaffected; reverted,
+`diff` against a pre-mutation backup confirmed byte-identical
+restoration. (2) The `UNIQUE` index was temporarily downgraded to a
+non-unique index — `test_duplicate_candidate_insert_protection_
+mutation_proof` failed ("DID NOT RAISE IntegrityError") as expected;
+reverted, confirmed identical. Full `tests/explosive_move/` +
+`tests/api/v1/test_emr_router.py`: **467 passed** (was 460). Full
+repository suite: **3,279 passed**, 1 skipped (pre-existing, unrelated),
+0 failed. `tests/explosive_move/test_em6a_presentation.py` (EM-6 reader
+compatibility): 26 passed, unaffected. Deterministic-replay test
+(`test_two_independent_runs_against_identical_inputs_produce_
+byte_identical_scores`) still passes unmodified. Ruff clean on every
+touched/created file (one pre-existing E501 in `repository.py`,
+introduced by EM-7A's re-indentation and not yet caught, fixed in this
+milestone). `git diff --check` clean.
+
+**Remaining work.** None for EM-7A itself — every item ADR-014 §30's
+exit contract lists is now satisfied. `emr_scan_runs.status`
+enum/constant formalization was considered and deliberately left as
+plain strings (not required by any EM-7A.1 acceptance criterion, matches
+existing convention). EM-7B (scheduling/invocation) is a separate,
+not-yet-authorized milestone. No `db/emr.db`, no live scan, no config
+gate, no service mount. ID-7P0 and DarvaX were not touched by this
+milestone.
+
+**Outcome:** Complete. EM-7A.1 resolves the one contradiction that kept
+EM-7A from closing; EM-7A is now ready for Owner/Chief Architect closure
+review.
+
+---
+
 ## EM-7A Scanner Correctness Hardening — Partially Implemented, ADR-014 Contradiction Found
 
 **Summary.** Owner-authorized scanner-correctness-only milestone

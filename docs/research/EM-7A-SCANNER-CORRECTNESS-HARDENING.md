@@ -1,16 +1,17 @@
 # EM-7A — Scanner Correctness Hardening
 
-**Status:** EM-7A PARTIALLY IMPLEMENTED — ONE ADR-014 CONTRADICTION
-FOUND, AWAITING OWNER LIFECYCLE DECISION. Concurrency protection, regime
-wiring hardening, and isolation-test hardening are complete and tested.
-Terminal-failure semantics, retry/idempotency, and transactional
-consistency are **not implemented** — the mandatory pre-implementation
-persistence audit found the existing repository architecture can already
-produce a durable, partial business result, directly contradicting
-ADR-014 §15's stated assumption that the current design is atomic. Per
-explicit owner instruction, this was not silently resolved; it is
-reported here for Owner/Chief Architect decision before any lifecycle
-code is written.
+**Status (superseded by EM-7A.1, 2026-09-03 — see §9): EM-7A COMPLETE,
+READY FOR OWNER / CHIEF ARCHITECT CLOSURE REVIEW.** §§1–8 below are the
+original, unmodified EM-7A record: concurrency protection, regime wiring
+hardening, and isolation-test hardening were complete and tested; the
+mandatory pre-implementation persistence audit found the existing
+repository architecture could already produce a durable, partial
+business result, directly contradicting ADR-014 §15's original stated
+assumption that the current design was atomic; per explicit owner
+instruction this was not silently resolved and was reported for
+Owner/Chief Architect decision instead. **EM-7A.1 (§9) is the owner's
+resolution of that contradiction** — persistence is now genuinely atomic,
+closing the one item this document originally left open.
 
 ---
 
@@ -267,3 +268,73 @@ milestone was instructed to pause on. Once the owner selects a
 resolution, the remaining EM-7A scope (terminal failure semantics, retry/
 idempotency, transactional consistency, and their tests) can proceed as
 a small, focused follow-up slice.
+
+## 9. EM-7A.1 resolution and closure (2026-09-03)
+
+**Owner selected Option 1** exactly as recommended in §8: result
+persistence made genuinely atomic; `PARTIAL` lifecycle state rejected.
+Full design/implementation record lives in the EM-7A.1 authorization and
+its implementation; this section closes out the specific items §4 left
+open.
+
+**Terminal `FAILED` status / exception handling** — implemented.
+`run_scan_cycle` (`scanner.py`) now wraps its computation in
+`try`/`except Exception`; every run-level exception after the `RUNNING`
+row is written terminates the run `FAILED` via
+`EmrRepository.mark_scan_failed` (its own separate transaction, bounded
+`failure_type`/`failure_reason` diagnostics — never an unbounded
+traceback or secrets/tokens/headers/provider payloads). If the
+`FAILED`-write itself also raises, the original scan exception is
+re-raised as primary (`raise exc from mark_exc`) with the secondary
+failure chained as `__cause__` — the original failure is never masked.
+
+**Safe retry/idempotency enforcement** — implemented, two layers (ADR-014
+§16, corrected): `EmrRepository.commit_scan_result`'s delete-then-insert
+replace-for-run step (primary mechanism, inside the atomic transaction)
+plus a `UNIQUE(run_id, instrument_id, family, threshold_percent)` index
+on `emr_candidates`/`emr_transitions` (defense-in-depth, schema v2).
+Three same-`run_id` cases are handled explicitly in `run_scan_cycle`,
+checked before any provider call: existing `COMPLETE` → reconstructed
+from persisted state with zero recomputation and zero second
+checkpoint-price call; existing `RUNNING` → rejected
+(`EmrScanAlreadyRunningError`), never guessed stale; existing `FAILED` →
+retried under the same deterministic `run_id`.
+
+**Transactional-consistency change (§2's Option 1)** — implemented.
+`EmrRepository.commit_scan_result` is the one transaction wrapping
+candidates + transitions + the terminal `COMPLETE` write; `scanner.py`
+calls it once, replacing the three previously-separate calls. Verified
+by direct mutation/negative proof (not merely by passing tests written
+under the assumption it works): `commit_scan_result` was temporarily
+split back into three separate `with conn:` blocks (mirroring the
+original, disproven architecture) and re-run against this document's own
+new test suite — the two dedicated one-transaction-boundary tests and
+two of the four failure-injection rollback tests failed exactly as
+expected (candidates survived a transitions-write failure; the observed
+commit count rose from 2 to 4), then the mutation was reverted and
+`git diff`/`diff` against the pre-mutation file confirmed byte-identical
+restoration. The `UNIQUE` index was separately mutation-tested the same
+way (downgraded to a non-unique index; the duplicate-insert protection
+test failed as expected; reverted).
+
+**`emr_scan_runs.status` enum/constant formalization** — still not
+formalized as a Python enum/constant (remains plain strings
+`"RUNNING"`/`"COMPLETE"`/`"FAILED"`/`"SKIPPED_SESSION_TYPE"` throughout,
+matching the codebase's existing convention for this table). Not
+required by any EM-7A.1 acceptance criterion; left for a future
+milestone if it becomes a real pain point, not invented speculatively
+here.
+
+Full test suite (`tests/explosive_move/` + `tests/api/v1/test_emr_router.py`):
+**467 passed** (was 460), 0 skipped in this scope. Full repository suite:
+**3,279 passed**, 1 skipped (pre-existing, unrelated), 0 failed. Ruff
+clean on every touched/created file. `git diff --check` clean.
+
+**EM-7A is now COMPLETE.** All items in ADR-014 §30's exit contract are
+satisfied: exception handling / explicit `FAILED` (§15), idempotent
+candidate/transition persistence under replay (§16), the EMR-owned
+concurrency lock exercised by tests (§17, unchanged from §3a),
+`regime_lookup` coherence (§20, unchanged from §3b), the checkpoint-
+schedule duplication explicitly deferred with a documented reason (§3d,
+unchanged), the isolation-test extension passing (§3c, unchanged), and
+tests proving no ADR-012 violation was introduced.

@@ -14,10 +14,16 @@
 correctness hardening) is separately authorized and reported in
 `docs/research/EM-7A-SCANNER-CORRECTNESS-HARDENING.md` — see that
 document's own findings for one real, source-confirmed contradiction to
-this ADR's §15 atomicity assumption, surfaced during EM-7A's
+this ADR's original §15 atomicity assumption, surfaced during EM-7A's
 implementation and reported for owner review rather than silently
-resolved here. The substantive architecture below is otherwise
-unmodified by that finding.
+resolved there. **EM-7A.1 (2026-09-03) resolved that contradiction** —
+Owner Decision: make result persistence genuinely atomic
+(`EmrRepository.commit_scan_result`), `PARTIAL` lifecycle state
+rejected. §15 and §16 below are corrected accordingly; the correction
+preserves rather than erases the original (now-superseded) claim and the
+EM-7A finding that disproved it — see each section's own "EM-7A.1
+correction" note. The substantive architecture is otherwise unmodified
+by either finding.
 
 ## 2. Context
 
@@ -252,52 +258,117 @@ does not change the identity formula.
 **This is the decision the owner flagged as most important to settle
 here, before EM-7A hardening begins.**
 
-Current architecture (source-confirmed, EM-7 discovery): `run_scan_cycle`
-has zero exception handling; `save_candidates`/`save_transitions` are
-each called **exactly once**, after the *entire* per-instrument,
+**Original assumption (2026-09-03, at ADR acceptance — since disproven,
+kept here for the audit trail, not as current fact):** "Current
+architecture (source-confirmed, EM-7 discovery): `run_scan_cycle` has
+zero exception handling; `save_candidates`/`save_transitions` are each
+called exactly once, after the entire per-instrument,
 per-(family,threshold) evidence/scoring loop completes. This means the
 current design is already structurally atomic at the persistence
 boundary — either the full loop completes and one batch write happens,
-or an exception anywhere aborts the function with **zero** candidate/
-transition rows ever persisted (only the earlier `RUNNING` row exists).
-Missing per-instrument data is already handled separately and correctly
-today (that instrument is silently skipped, not treated as a run
-failure) — this is not a lifecycle problem, and this ADR does not change
-it.
+or an exception anywhere aborts the function with zero candidate/
+transition rows ever persisted."
 
-**Decision: the required run-lifecycle contract is `RUNNING → COMPLETE |
-FAILED` — a two-terminal-outcome model. `PARTIAL` is not required and is
-not frozen by this ADR.** Reasoning: given the current atomic
-single-batch-persist-at-the-end architecture, a "partial" outcome cannot
-actually occur at the persistence layer today — a crash either happens
-before the batch write (nothing persisted → `FAILED`) or after it
-(everything persisted → `COMPLETE`). Introducing a `PARTIAL` status
-without *also* redesigning toward incremental per-instrument persistence
-would create a state the implementation could never actually reach — a
-fictional third option, not a real one. If EM-7A's hardening work
-separately determines that incremental/streaming persistence is
-necessary for other reasons (e.g. very long scan durations), `PARTIAL`
-would become meaningful and should be proposed then, with its own
-evidence — not invented speculatively here.
+**EM-7A finding (2026-09-03) that disproved it:** direct source reading
+of `EmrRepository.save_candidates`/`save_transitions`/`save_scan_run`
+during EM-7A's mandatory pre-implementation audit showed each was its
+own independently-committed SQLite transaction (`with conn:` around each
+call), and `run_scan_cycle` called all three as three separate calls at
+the end of the loop — never inside one transaction. "One batch write" was
+true only in the sense of "back-to-back calls with no other work between
+them," not in the sense of one atomic database transaction. A crash (or
+any exception) between any two of those three calls left a real, durable
+**partial** result — e.g. candidates persisted with zero transitions, or
+a fully-persisted result with the run's own status stuck at `RUNNING`
+forever. This contradicted the assumption above and is reported in full
+in `docs/research/EM-7A-SCANNER-CORRECTNESS-HARDENING.md`. Per explicit
+owner instruction, EM-7A did not silently redesign the lifecycle to
+work around this — it implemented only its unrelated scope (lock,
+regime wiring, isolation hardening) and stopped, reporting the
+contradiction for owner decision.
+
+**EM-7A.1 owner resolution (2026-09-03) — Option 1 selected, `PARTIAL`
+rejected:** rather than introduce a third lifecycle state to describe
+the partial-result possibility the EM-7A finding exposed, the owner
+directed that persistence itself be made genuinely atomic instead.
+`EmrRepository.commit_scan_result(*, run_id, candidates, transitions,
+run_update)` (`src/athena/explosive_move/store/repository.py`) is now
+the single method that writes candidates, transitions, and the terminal
+`COMPLETE` status together inside one SQLite transaction (one `with
+conn:` block) — verifying the target run is still `RUNNING` before
+writing, deleting any existing rows for that `run_id` (idempotent-retry
+safety, §16), inserting the fresh result, and updating the run to
+`COMPLETE`, all-or-nothing. `run_scan_cycle` (`scanner.py`) now calls
+this once, in place of the three previously-separate calls. A failure
+anywhere inside that transaction rolls back in full — zero new candidate
+rows, zero new transition rows, the run's own row still `RUNNING` — and
+the caller then writes a separate, explicit `FAILED` status via
+`mark_scan_failed` (its own, deliberately separate transaction — a
+failure marking the run `FAILED` must never be blocked by, or itself
+block, the result transaction it is reporting on).
+
+**Decision (unchanged by the correction above): the required
+run-lifecycle contract remains `RUNNING → COMPLETE | FAILED` — a
+two-terminal-outcome model. `PARTIAL` is not required and is not frozen
+by this ADR.** The reasoning is now correct rather than merely assumed:
+`commit_scan_result`'s atomicity makes a partial *outcome* structurally
+impossible at the persistence layer (not because the old code happened
+to call three things back-to-back with nothing in between, but because
+the three writes are now one indivisible transaction) — a crash either
+happens before that transaction commits (nothing persisted → `FAILED`)
+or after it (everything persisted → `COMPLETE`). `PARTIAL` remains
+available to propose later, with its own evidence, only if a future
+milestone deliberately moves to incremental/streaming persistence — not
+invented speculatively here.
 
 **Required of EM-7A** (exit contract, §32): `run_scan_cycle` must catch
 exceptions, write an explicit `FAILED` status (with enough detail to
 diagnose what failed) instead of leaving an orphaned `RUNNING` row, and
 `COMPLETE` must continue to mean exactly what it means today
-(successful, fully-persisted batch write).
+(successful, fully-persisted, now genuinely atomic result). **Satisfied
+by EM-7A.1** — see `docs/research/EM-7A-SCANNER-CORRECTNESS-HARDENING.md`
+for the closure record.
 
 ## 16. Retry/idempotency decision
 
-Architectural invariant (frozen here; mechanism deferred to EM-7A):
-**replay or retry of an identical semantic EMR run identity (the same
-deterministic `run_id`) must never create duplicate candidate or
-transition rows.** `save_scan_run()` already satisfies this (upsert on
-`run_id`); `save_candidates()`/`save_transitions()` currently do not
-(plain inserts, no uniqueness constraint — confirmed by the EM-7
-discovery). This ADR does not prescribe `ON CONFLICT` vs. a uniqueness
-constraint vs. delete-then-reinsert — EM-7A determines and implements the
-exact enforcement mechanism. The architectural requirement is the
-outcome (safe retry/replay), not the SQL shape.
+Architectural invariant (frozen here): **replay or retry of an identical
+semantic EMR run identity (the same deterministic `run_id`) must never
+create duplicate candidate or transition rows.** `save_scan_run()`
+already satisfied this (upsert on `run_id`) at ADR acceptance;
+`save_candidates()`/`save_transitions()` did not (plain inserts, no
+uniqueness constraint — confirmed by the EM-7 discovery). This ADR did
+not originally prescribe `ON CONFLICT` vs. a uniqueness constraint vs.
+delete-then-reinsert, leaving the exact enforcement mechanism to EM-7A.
+
+**EM-7A.1 mechanism (implemented, 2026-09-03):** two layers, matching
+the owner's explicit "uniqueness is secondary to atomicity, not the
+primary mechanism" guidance —
+
+1. **Primary — delete-then-insert inside the atomic transaction.**
+   `commit_scan_result` (§15) deletes any existing `emr_candidates`/
+   `emr_transitions` rows for the target `run_id` before inserting the
+   freshly computed result, all inside the same transaction as the
+   `COMPLETE` write. A retried `FAILED` run (§ idempotency cases below)
+   naturally replaces whatever partial state, if any, a prior attempt
+   left — though under the atomic transaction a prior attempt leaves
+   none, this also makes the operation safe if ever invoked twice for
+   the same `run_id` for any other reason.
+2. **Defense-in-depth — a UNIQUE index.** `idx_emr_candidates_run_identity`
+   / `idx_emr_transitions_run_identity` (`schema.py`, schema v2) enforce
+   `UNIQUE(run_id, instrument_id, family, threshold_percent)` — the
+   natural, already-frozen per-run domain identity (one candidate/
+   transition row per instrument per (family, threshold) combo per run).
+   This is never the primary atomicity mechanism; it exists so an
+   accidental duplicate insert is impossible even if a future change
+   ever bypassed `commit_scan_result`'s own delete-then-insert step.
+
+Three same-`run_id` lifecycle cases are handled explicitly by
+`run_scan_cycle` before any provider call (§15, `scanner.py`): an
+existing `COMPLETE` run is reconstructed from already-persisted state
+with zero recomputation and zero second checkpoint-reference-price call;
+an existing `RUNNING` run is conservatively rejected
+(`EmrScanAlreadyRunningError`) rather than guessed stale; an existing
+`FAILED` run is retried under the same deterministic `run_id`.
 
 ## 17. Concurrency/lock decision (Owner Decision 5, ADR-012 boundary)
 
