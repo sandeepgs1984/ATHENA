@@ -134,6 +134,9 @@
             SUPPORT_1_METHODOLOGY_UNAVAILABLE: "Support 1 is intentionally unavailable.",
             NO_APPROVED_SECONDARY_TARGET: "Target 2/3 are intentionally unavailable.",
             CONFIDENCE_EVIDENCE_UNAVAILABLE: "Conviction evidence is unavailable.",
+            CONVICTION_FROM_CONFIDENCE: "Conviction reflects ATHENA Decision confidence/reliability.",
+            CONVICTION_CONFIDENCE_UNAVAILABLE: "Decision confidence evidence is unavailable.",
+            CONVICTION_CONFIDENCE_INCOHERENT: "Decision confidence evidence is not coherent with the accepted Decision.",
             TREND_SETUP_NOT_AVAILABLE: "Trend / Setup evidence is unavailable.",
         };
         const messages = codes.map(code => labels[code]).filter(Boolean);
@@ -167,6 +170,15 @@
         const [label, tone, icon] = map[action] || [action, "neutral", "fa-circle-info"];
         const reason = myPortfolioReasonSummary(row);
         return `${myPortfolioStatus(label, tone, icon)}${reason ? `<br><span class="my-portfolio-row-note" title="${escapeMyPortfolioHtml(reason)}">Why: ${escapeMyPortfolioHtml(reason)}</span>` : ""}`;
+    }
+
+    function myPortfolioConvictionCell(value, row) {
+        const conviction = value ? String(value).toUpperCase() : null;
+        const label = conviction || "—";
+        const detail = conviction
+            ? `Decision confidence: ${conviction}. Conviction reflects ATHENA Decision confidence/reliability, not buy strength.`
+            : myPortfolioReasonSummary(row) || "Decision confidence evidence is unavailable.";
+        return `<span title="${escapeMyPortfolioHtml(detail)}">${escapeMyPortfolioHtml(label)}</span>`;
     }
 
     function showMyPortfolioAlert(message, tone = "neutral") {
@@ -362,7 +374,7 @@
                 <td class="font-mono">${row.pnl == null ? "₹ —" : formatMyPortfolioMoney(row.pnl)}</td>
                 <td>${row.pnl_pct == null ? "—" : formatMyPortfolioPct(row.pnl_pct)}</td>
                 <td>${myPortfolioStatusPill(row.status, row)}</td>
-                <td>${escapeMyPortfolioHtml(row.conviction || "Not available")}</td>
+                <td>${myPortfolioConvictionCell(row.conviction, row)}</td>
                 <td>${escapeMyPortfolioHtml(row.trend_or_setup || "Not available")}</td>
                 <td>${escapeMyPortfolioHtml(row.key_trigger || "Not available")}</td>
                 <td class="font-mono">${row.support_1 == null ? "₹ —" : formatMyPortfolioMoney(row.support_1)}</td>

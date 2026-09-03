@@ -49,6 +49,11 @@ from athena.api.v1.dtos import (
 )
 from athena.api.v1.services.ops_service import default_backup_dir, default_briefings_dir, default_db_path
 from athena.calendar.engine import CalendarEngine
+from athena.confidence.report_lookup import (
+    confidence_level_from_report,
+    decision_report_from_pipeline,
+    pipeline_from_run_detail,
+)
 from athena.config.loader import load_config, load_decision_config, load_external_links_file
 from athena.data.store.backup import create_backup, prune_backups
 from athena.data.store.repository import SqliteRepository
@@ -58,6 +63,7 @@ from athena.domain.enums import Direction, QualityGate, UserAction
 
 _RESET_CONFIRM_TOKEN = "CONFIRM"
 _BACKUP_PREFIX = "athena-pre-decisions-reset-"
+ConfidenceLevelValue = Literal["HIGH", "MEDIUM", "LOW"]
 
 if TYPE_CHECKING:
     from athena.api.v1.dtos import (
@@ -68,9 +74,6 @@ if TYPE_CHECKING:
     )
     from athena.api.v1.providers import DecisionProvider
     from athena.domain.decision import Decision, TraceStage
-
-
-ConfidenceLevel = Literal["HIGH", "MEDIUM", "LOW"]
 
 
 class DecisionsService:
@@ -103,7 +106,7 @@ class DecisionsService:
         # Confidence lives in the persisted decision report, not the
         # Decision aggregate. Cache reports by run while mapping a list so
         # a large board does not perform one provider lookup per row.
-        self._confidence_level_cache: dict[str, ConfidenceLevel | None] | None = None
+        self._confidence_level_cache: dict[str, ConfidenceLevelValue | None] | None = None
 
     def list_decisions(
         self,
@@ -171,21 +174,23 @@ class DecisionsService:
             raise DecisionNotFoundError(f"Decision '{decision_id}' not found")
         return self._map_to_dto(d)
 
-    def _load_confidence_levels(self, decisions: tuple[Decision, ...]) -> dict[str, ConfidenceLevel | None]:
+    def _load_confidence_levels(
+        self,
+        decisions: tuple[Decision, ...],
+    ) -> dict[str, ConfidenceLevelValue | None]:
         pipelines: dict[str, Mapping[str, Any]] = {}
-        levels: dict[str, ConfidenceLevel | None] = {}
+        levels: dict[str, ConfidenceLevelValue | None] = {}
         for decision in decisions:
             pipeline = pipelines.get(decision.run_id)
             if pipeline is None:
                 detail = self._provider.get_run_detail(decision.run_id)
-                raw_pipeline = detail.get("pipeline", detail)
-                pipeline = raw_pipeline if isinstance(raw_pipeline, Mapping) else {}
+                pipeline = pipeline_from_run_detail(detail)
                 pipelines[decision.run_id] = pipeline
             report = self._fetch_report(decision, pipeline=pipeline)
             levels[decision.decision_id] = self._confidence_level_from_report(report)
         return levels
 
-    def _lookup_confidence_level(self, decision: Decision) -> ConfidenceLevel | None:
+    def _lookup_confidence_level(self, decision: Decision) -> ConfidenceLevelValue | None:
         if self._confidence_level_cache is not None:
             return self._confidence_level_cache.get(decision.decision_id)
         return self._confidence_level_from_report(self._fetch_report(decision))
@@ -193,18 +198,9 @@ class DecisionsService:
     @staticmethod
     def _confidence_level_from_report(
         report: Mapping[str, Any],
-    ) -> ConfidenceLevel | None:
-        confidence = report.get("confidence")
-        if not isinstance(confidence, Mapping) or confidence.get("status") != "OK":
-            return None
-        level = confidence.get("level")
-        if level == "HIGH":
-            return "HIGH"
-        if level == "MEDIUM":
-            return "MEDIUM"
-        if level == "LOW":
-            return "LOW"
-        return None
+    ) -> ConfidenceLevelValue | None:
+        level = confidence_level_from_report(report)
+        return level.value if level is not None else None
 
     def _lookup_instrument_name(self, instrument_id: str | None) -> str | None:
         """Real company name from the instruments table — None (never a
@@ -620,14 +616,8 @@ class DecisionsService:
     def _fetch_report(self, decision: Decision, *, pipeline: Mapping[str, Any] | None = None) -> Mapping[str, Any]:
         if pipeline is None:
             detail = self._provider.get_run_detail(decision.run_id)
-            pipeline = detail.get("pipeline", detail)
-            if not isinstance(pipeline, Mapping):
-                pipeline = {}
-        reports = pipeline.get("decision_reports")
-        if not isinstance(reports, Mapping):
-            return {}
-        candidate = reports.get(decision.decision_id)
-        return candidate if isinstance(candidate, Mapping) else {}
+            pipeline = pipeline_from_run_detail(detail)
+        return decision_report_from_pipeline(decision, pipeline=pipeline)
 
     @staticmethod
     def _fingerprint(report: Mapping[str, Any]) -> tuple[Decimal, Decimal, Decimal] | None:

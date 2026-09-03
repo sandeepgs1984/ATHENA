@@ -7,6 +7,7 @@ from decimal import Decimal
 
 import pytest
 
+from athena.confidence.models import ConfidenceLevel
 from athena.domain.decision import Decision, GateResult, TradePlan
 from athena.domain.enums import DecisionType, Direction, QualityGate
 from athena.intraday.entry_qualification_models import (
@@ -98,6 +99,8 @@ def _evidence(
     trade_plan_is_active: bool = True,
     entry_qualification: EntryQualification | None = None,
     entry_qualification_is_coherent: bool = False,
+    confidence_level: ConfidenceLevel | None = None,
+    confidence_is_coherent: bool = False,
 ) -> PortfolioInterpretationEvidence:
     resolved_decision = decision if decision is not None else _decision(plan=_plan())
     return PortfolioInterpretationEvidence(
@@ -111,6 +114,8 @@ def _evidence(
         trade_plan_is_active=trade_plan_is_active,
         entry_qualification=entry_qualification,
         entry_qualification_is_coherent=entry_qualification_is_coherent,
+        confidence_level=confidence_level,
+        confidence_is_coherent=confidence_is_coherent,
     )
 
 
@@ -232,7 +237,76 @@ def test_null_methodology_fields_remain_null_with_reasons() -> None:
     assert result.support_1 is None
     assert result.target_2 is None
     assert result.target_3 is None
-    assert PortfolioInterpretationReason.CONFIDENCE_EVIDENCE_UNAVAILABLE in result.reason_codes
+    assert PortfolioInterpretationReason.CONVICTION_CONFIDENCE_UNAVAILABLE in result.reason_codes
     assert PortfolioInterpretationReason.TREND_SETUP_NOT_AVAILABLE in result.reason_codes
     assert PortfolioInterpretationReason.SUPPORT_1_METHODOLOGY_UNAVAILABLE in result.reason_codes
     assert PortfolioInterpretationReason.NO_APPROVED_SECONDARY_TARGET in result.reason_codes
+
+
+@pytest.mark.parametrize("level", list(ConfidenceLevel))
+def test_conviction_maps_directly_from_coherent_confidence(level: ConfidenceLevel) -> None:
+    result = _interpret(
+        _evidence(confidence_level=level, confidence_is_coherent=True)
+    )
+
+    assert result.interpretation_version == "portfolio-interpretation-v1"
+    assert result.conviction == level.value
+    assert PortfolioInterpretationReason.CONVICTION_FROM_CONFIDENCE in result.reason_codes
+
+
+def test_conviction_does_not_change_status_action_or_trade_plan_fields() -> None:
+    high = _interpret(
+        _evidence(confidence_level=ConfidenceLevel.HIGH, confidence_is_coherent=True)
+    )
+    low = _interpret(
+        _evidence(confidence_level=ConfidenceLevel.LOW, confidence_is_coherent=True)
+    )
+
+    assert high.conviction == "HIGH"
+    assert low.conviction == "LOW"
+    assert high.status is low.status is PortfolioStatus.STRONG
+    assert high.next_action is low.next_action is PortfolioNextAction.HOLD
+    assert high.key_trigger == low.key_trigger
+    assert high.major_support_exit == low.major_support_exit
+    assert high.target_2 == low.target_2 is None
+    assert high.target_3 == low.target_3 is None
+
+
+def test_low_confidence_does_not_block_add() -> None:
+    result = _interpret(
+        _evidence(
+            entry_qualification=_entry_qualification(),
+            entry_qualification_is_coherent=True,
+            confidence_level=ConfidenceLevel.LOW,
+            confidence_is_coherent=True,
+        )
+    )
+
+    assert result.conviction == "LOW"
+    assert result.status is PortfolioStatus.STRONG
+    assert result.next_action is PortfolioNextAction.ADD
+
+
+def test_high_confidence_does_not_suppress_exit() -> None:
+    result = _interpret(
+        _evidence(
+            last_price="1450",
+            confidence_level=ConfidenceLevel.HIGH,
+            confidence_is_coherent=True,
+        )
+    )
+
+    assert result.conviction == "HIGH"
+    assert result.status is PortfolioStatus.AT_RISK
+    assert result.next_action is PortfolioNextAction.EXIT
+
+
+def test_incoherent_confidence_is_null_without_changing_interpretation() -> None:
+    result = _interpret(
+        _evidence(confidence_level=ConfidenceLevel.HIGH, confidence_is_coherent=False)
+    )
+
+    assert result.conviction is None
+    assert result.status is PortfolioStatus.STRONG
+    assert result.next_action is PortfolioNextAction.HOLD
+    assert PortfolioInterpretationReason.CONVICTION_CONFIDENCE_INCOHERENT in result.reason_codes

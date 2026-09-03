@@ -6,6 +6,83 @@ status updated on approval.
 
 ---
 
+## PS-P7B Portfolio Conviction Adapter — Ready For Review
+
+**Summary.** Implemented the narrow Portfolio Intelligence V2 Conviction
+milestone. Conviction now maps directly from coherent persisted ATHENA Decision
+Confidence HIGH/MEDIUM/LOW evidence. It is not a new score, ranking, sizing
+input, buy-strength label, or Portfolio DecisionEngine.
+
+**Architecture compliance.** Preserved PS-P5B Status/Next Action methodology,
+PS-P6B currentness semantics, the existing 20-column snapshot contract, the
+pure interpreter boundary, advisory-only behavior, and all deferred V2 fields.
+No schema, broker, order, DecisionEngine, ScoringEngine, Risk, Confidence
+methodology, Trend / Setup, Support 1, Target 2/3, REDUCE, ROTATE, allocation,
+or history logic was added.
+
+**Files created.**
+
+- `src/athena/confidence/report_lookup.py`
+- `src/athena/portfolio/confidence_adapter.py`
+- `tests/runtime/test_portfolio_confidence_adapter.py`
+- `docs/research/PS-P7B-PORTFOLIO-CONVICTION-ADAPTER-IMPLEMENTATION.md`
+
+**Files modified.**
+
+- `src/athena/api/v1/services/decisions_service.py`
+- `src/athena/portfolio/interpretation.py`
+- `src/athena/portfolio/sync.py`
+- `src/athena/api/static/js/08b-my-portfolio.js`
+- `tests/runtime/test_portfolio_interpretation.py`
+- `tests/api/v1/test_my_portfolio_import_api.py`
+- `docs/research/PS-P7A-PORTFOLIO-INTELLIGENCE-V2-DISCOVERY.md`
+- `docs/MILESTONES.md`
+- `IMPLEMENTATION_SUMMARY.md`
+- `ATHENA_BRIEFING.md`
+
+**Tests added.** Adapter, interpreter, Sync/API, and dashboard contract tests
+for HIGH/MEDIUM/LOW mapping, missing Confidence, stale/incoherent Decision,
+wrong DecisionReport key, malformed legacy payload, ADD independence, EXIT
+independence, and unchanged currentness/status/action behavior.
+
+**Remaining work.** Owner/Chief Architect review and freeze decision. Do not
+begin the next Portfolio Intelligence field automatically.
+
+**Risks.** Older decisions without persisted DecisionReport confidence blocks
+remain null by design. A future first-class ConfidenceAssessment repository
+contract may still be worthwhile if Portfolio needs richer confidence audit
+queries, but PS-P7B did not need a schema change.
+
+**Suggested improvements.** Next milestone should be selected explicitly after
+review. Good candidates are PS-P8A Trend/Setup methodology discovery, Support
+methodology discovery, or snapshot/history analytics discovery.
+
+**Lessons learned.** The existing Decision/dashboard confidence retrieval was
+usable after extracting the shared report-shape helper, but Portfolio still
+needed its own adapter boundary so Sync and the interpreter never parse raw run
+detail JSON.
+
+**Implementation metrics.** Focused PS-P7B/My Portfolio tests: `70 passed, 2
+warnings`. Dashboard contract: `1 passed, 2 warnings`. Combined post-fix
+focused regression: `71 passed, 2 warnings`. Full suite: `3263 passed, 2
+warnings`. Touched-file Ruff: passed. `git diff --check`: passed. Project-wide
+Ruff still reports unrelated historical lint debt outside this milestone.
+Project-wide mypy is blocked by unrelated third-party/stub and pre-existing
+strict typing issues; the new Portfolio and confidence source files pass local
+mypy.
+
+**Phase outcome.** PS-P7B implementation complete and ready for Owner/Chief
+Architect review. PS-P7A approved and frozen 2026-09-03. My Portfolio V1
+remains complete and frozen.
+
+**Commit hash.** Pending owner commit.
+
+**Branch.** main.
+
+**Review status.** Ready for Owner/Chief Architect review.
+
+---
+
 ## EM-6B.1 Single-Response Clock Coherence Correction — Owner Approved / Closed
 
 **Summary.** Owner review of the actual EM-6B implementation (not a

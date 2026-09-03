@@ -22,6 +22,10 @@ from athena.domain.enums import Timeframe
 from athena.domain.market import Candle
 from athena.intraday.entry_qualification_models import EntryQualification
 from athena.ops.symbol_validate import _index_instrument_needs_refresh
+from athena.portfolio.confidence_adapter import (
+    PortfolioConfidenceAdapter,
+    PortfolioConfidenceEvidence,
+)
 from athena.portfolio.interpretation import (
     PortfolioInterpretationEvidence,
     PortfolioInterpreter,
@@ -60,6 +64,7 @@ class PortfolioSyncOrchestrator:
         self._market_timezone = market_timezone or ZoneInfo("UTC")
         self._force_ingestion = force_ingestion
         self._interpreter = PortfolioInterpreter()
+        self._confidence_adapter = PortfolioConfidenceAdapter(repo)
 
     def create_run(self) -> dict[str, object]:
         active = self._repo.get_active_portfolio_sync_run()
@@ -108,7 +113,7 @@ class PortfolioSyncOrchestrator:
                     "message": "No holdings imported yet",
                 },
                 per_symbol={},
-                provenance=dict(run.get("provenance") or {}),
+                provenance=dict(cast(Mapping[str, object], run.get("provenance") or {})),
             )
 
         self._repo.update_portfolio_sync_run(
@@ -211,9 +216,11 @@ class PortfolioSyncOrchestrator:
             record["market_data_through"] = (
                 market_data_through.isoformat() if market_data_through else None
             )
-            row = dict(record["row"])
-            freshness = dict(record["freshness"])
-            row["freshness"]["market_data_through"] = record["market_data_through"]
+            row = dict(cast(Mapping[str, object], record["row"]))
+            freshness = dict(cast(Mapping[str, object], record["freshness"]))
+            row_freshness = dict(cast(Mapping[str, object], row["freshness"]))
+            row_freshness["market_data_through"] = record["market_data_through"]
+            row["freshness"] = row_freshness
             freshness["market_data_through"] = record["market_data_through"]
             record["row"] = row
             record["freshness"] = freshness
@@ -258,7 +265,7 @@ class PortfolioSyncOrchestrator:
                 }
             ),
             provenance={
-                **dict(run.get("provenance") or {}),
+                **dict(cast(Mapping[str, object], run.get("provenance") or {})),
                 "expected_analysis_as_of": (
                     self._expected_analysis_as_of.isoformat()
                     if self._expected_analysis_as_of is not None
@@ -322,6 +329,11 @@ class PortfolioSyncOrchestrator:
             interpretation_as_of=interpretation_as_of,
             decision_is_coherent=decision_is_coherent,
         )
+        confidence_evidence = self._confidence_adapter.resolve(
+            decision=decision,
+            instrument_id=holding.instrument_id,
+            decision_is_coherent=decision_is_coherent,
+        )
         interpretation = self._interpreter.interpret(
             PortfolioInterpretationEvidence(
                 instrument_id=holding.instrument_id,
@@ -340,6 +352,8 @@ class PortfolioSyncOrchestrator:
                 trade_plan_is_active=trade_plan_is_active,
                 entry_qualification=entry_qualification,
                 entry_qualification_is_coherent=entry_qualification is not None,
+                confidence_level=confidence_evidence.level,
+                confidence_is_coherent=confidence_evidence.is_coherent,
             )
         )
         target_1 = None
@@ -349,15 +363,9 @@ class PortfolioSyncOrchestrator:
             target_1 = decision.trade_plan.targets[0]
         else:
             unavailable.append("target_1")
-        unavailable.extend(
-            [
-                "conviction",
-                "trend_setup",
-                "support_1",
-                "target_2",
-                "target_3",
-            ]
-        )
+        if interpretation.conviction is None:
+            unavailable.append("conviction")
+        unavailable.extend(["trend_setup", "support_1", "target_2", "target_3"])
         if interpretation.key_trigger is None:
             unavailable.append("key_trigger")
         if interpretation.major_support_exit is None:
@@ -400,6 +408,7 @@ class PortfolioSyncOrchestrator:
                 decision_is_coherent=decision_is_coherent,
                 trade_plan_is_active=trade_plan_is_active,
                 entry_qualification=entry_qualification,
+                confidence_evidence=confidence_evidence,
                 price_is_current=final_price_is_expected_session,
                 interpretation_as_of=interpretation_as_of,
             ),
@@ -604,6 +613,7 @@ class PortfolioSyncOrchestrator:
         decision_is_coherent: bool,
         trade_plan_is_active: bool,
         entry_qualification: EntryQualification | None,
+        confidence_evidence: PortfolioConfidenceEvidence,
         price_is_current: bool,
         interpretation_as_of: datetime,
     ) -> dict[str, object]:
@@ -614,6 +624,18 @@ class PortfolioSyncOrchestrator:
             "trade_plan_accepted": trade_plan_is_active,
             "entry_qualification_accepted": entry_qualification is not None,
             "decision_id": decision.decision_id if decision is not None else None,
+            "confidence": {
+                "decision_id": confidence_evidence.decision_id,
+                "run_id": confidence_evidence.run_id,
+                "source": confidence_evidence.source,
+                "level": (
+                    confidence_evidence.level.value
+                    if confidence_evidence.level is not None
+                    else None
+                ),
+                "is_coherent": confidence_evidence.is_coherent,
+                "reason": confidence_evidence.reason.value,
+            },
             "entry_qualification": (
                 {
                     "decision_id": entry_qualification.decision_id,

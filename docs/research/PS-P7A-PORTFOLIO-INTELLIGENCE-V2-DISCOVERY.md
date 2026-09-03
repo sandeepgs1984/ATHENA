@@ -1,6 +1,6 @@
 # PS-P7A Portfolio Intelligence V2 Methodology & Evidence Discovery
 
-Status: Discovery complete; ready for Owner/Chief Architect review
+Status: Owner/Chief Architect approved and frozen 2026-09-03
 Date: 2026-09-03
 Scope: Portfolio Intelligence V2 methodology/evidence inventory only
 Boundary: No production code, schema, API, dashboard, Sync, import,

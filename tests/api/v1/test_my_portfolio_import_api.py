@@ -20,8 +20,9 @@ from athena.api.v1.services import my_portfolio_service as my_portfolio_service_
 from athena.api.v1.services.my_portfolio_service import MyPortfolioService
 from athena.data.store.repository import SqliteRepository
 from athena.domain.decision import Decision, TradePlan
-from athena.domain.enums import DecisionType, Direction, Timeframe
+from athena.domain.enums import DecisionType, Direction, RunStatus, RunTrigger, Timeframe
 from athena.domain.market import Candle, Instrument
+from athena.domain.run import RunRecord
 from athena.intraday.entry_qualification_models import (
     EntryEvidenceFinality,
     EntryQualification,
@@ -113,6 +114,50 @@ def _entry_qualification(
         methodology_version="entry-qualification-v0",
         config_snapshot_id=None,
         explanation="Persisted coherent entry qualification.",
+    )
+
+
+def _run_record(run_id: str, *, cycle_id: str = "cycle-test") -> RunRecord:
+    return RunRecord(
+        run_id=run_id,
+        cycle_id=cycle_id,
+        trigger=RunTrigger.REFRESH,
+        started_ts=SEP2,
+        status=RunStatus.COMPLETED,
+        software_version="test",
+        blueprint_version="test",
+        strategy_profile="test",
+        strategy_profile_version="test",
+        indicator_versions={},
+        config_snapshot_id="cfg-test",
+        input_digest="digest",
+        finished_ts=SEP2,
+    )
+
+
+def _save_confidence_report(
+    repo: SqliteRepository,
+    decision: Decision,
+    *,
+    level: str | None,
+    report_decision_id: str | None = None,
+) -> None:
+    confidence: object = (
+        {"status": "OK", "level": level, "overall": 80}
+        if level is not None
+        else {"status": "UNKNOWN"}
+    )
+    repo.save_run(
+        _run_record(decision.run_id, cycle_id=decision.cycle_id),
+        detail={
+            "pipeline": {
+                "decision_reports": {
+                    report_decision_id or decision.decision_id: {
+                        "confidence": confidence,
+                    }
+                }
+            }
+        },
     )
 
 
@@ -562,7 +607,7 @@ def test_sync_builds_server_owned_snapshot_math_and_tradeplan_target(
     assert row.next_action == "HOLD"
     assert row.provenance.decision_id == "dec-infy"
     assert row.provenance.validation_run_id == "run-infy"
-    assert row.provenance.interpretation_version == "portfolio-interpretation-v0"
+    assert row.provenance.interpretation_version == "portfolio-interpretation-v1"
     assert "CURRENT_TRADE_PLAN" in row.provenance.interpretation_reason_codes
     assert "ADD_NOT_CONFIRMED" in row.provenance.interpretation_reason_codes
     assert "status" not in row.provenance.unavailable_fields
@@ -597,6 +642,153 @@ def test_sync_sets_entry_low_key_trigger_when_trade_plan_entry_is_actionable(
     assert row.major_support_exit == Decimal("1500")
     assert row.target_1 == Decimal("1800")
     assert "TRADE_PLAN_ENTRY_TRIGGER_ACTIVE" in row.provenance.interpretation_reason_codes
+
+
+@pytest.mark.parametrize("level", ["HIGH", "MEDIUM", "LOW"])
+def test_sync_populates_conviction_from_coherent_confidence(
+    my_portfolio_client: TestClient,
+    level: str,
+) -> None:
+    repo = _confirm_infy_holding(my_portfolio_client)
+    repo.add_candles([_candle("NSE:INFY", "1600", SEP2)])
+    decision = _decision(decision_id=f"dec-{level.lower()}", ts=SEP2)
+    repo.save_decision(decision)
+    _save_confidence_report(repo, decision, level=level)
+
+    run = _run_portfolio_sync(repo)
+    row = MyPortfolioService(repo).latest_snapshot().rows[0]
+
+    assert run["status"] == "SUCCESS"
+    assert row.conviction == level
+    assert row.status == "STRONG"
+    assert row.next_action == "HOLD"
+    assert row.target_1 == Decimal("1700")
+    assert row.provenance.interpretation_version == "portfolio-interpretation-v1"
+    assert "CONVICTION_FROM_CONFIDENCE" in row.provenance.interpretation_reason_codes
+    assert "conviction" not in row.provenance.unavailable_fields
+    assert row.provenance.interpretation_evidence["confidence"] == {
+        "decision_id": decision.decision_id,
+        "run_id": decision.run_id,
+        "source": "decision_report.confidence",
+        "level": level,
+        "is_coherent": True,
+        "reason": "CONVICTION_FROM_CONFIDENCE",
+    }
+
+
+def test_sync_missing_confidence_keeps_row_usable_and_successful(
+    my_portfolio_client: TestClient,
+) -> None:
+    repo = _confirm_infy_holding(my_portfolio_client)
+    repo.add_candles([_candle("NSE:INFY", "1600", SEP2)])
+    decision = _decision(decision_id="dec-no-confidence", ts=SEP2)
+    repo.save_decision(decision)
+
+    run = _run_portfolio_sync(repo)
+    row = MyPortfolioService(repo).latest_snapshot().rows[0]
+
+    assert run["status"] == "SUCCESS"
+    assert row.conviction is None
+    assert row.status == "STRONG"
+    assert row.next_action == "HOLD"
+    assert row.current_value == Decimal("16000")
+    assert "conviction" in row.provenance.unavailable_fields
+    assert "CONVICTION_CONFIDENCE_UNAVAILABLE" in row.provenance.interpretation_reason_codes
+
+
+def test_sync_rejects_stale_confidence_with_stale_decision(
+    my_portfolio_client: TestClient,
+) -> None:
+    repo = _confirm_infy_holding(my_portfolio_client)
+    repo.add_candles([_candle("NSE:INFY", "1600", SEP2)])
+    decision = _decision(decision_id="dec-stale-confidence", ts=SEP1)
+    repo.save_decision(decision)
+    _save_confidence_report(repo, decision, level="HIGH")
+
+    _run_portfolio_sync(repo)
+    row = MyPortfolioService(repo).latest_snapshot().rows[0]
+
+    assert row.conviction is None
+    assert row.status == "UNAVAILABLE"
+    assert row.next_action == "WATCH"
+    assert row.target_1 is None
+    assert "CONVICTION_CONFIDENCE_INCOHERENT" in row.provenance.interpretation_reason_codes
+
+
+def test_sync_does_not_fallback_to_wrong_decision_report(
+    my_portfolio_client: TestClient,
+) -> None:
+    repo = _confirm_infy_holding(my_portfolio_client)
+    repo.add_candles([_candle("NSE:INFY", "1600", SEP2)])
+    decision = _decision(decision_id="dec-right", ts=SEP2)
+    repo.save_decision(decision)
+    _save_confidence_report(repo, decision, level="HIGH", report_decision_id="dec-wrong")
+
+    run = _run_portfolio_sync(repo)
+    row = MyPortfolioService(repo).latest_snapshot().rows[0]
+
+    assert run["status"] == "SUCCESS"
+    assert row.conviction is None
+    assert row.status == "STRONG"
+    assert "CONVICTION_CONFIDENCE_UNAVAILABLE" in row.provenance.interpretation_reason_codes
+
+
+def test_sync_malformed_confidence_does_not_fail_snapshot(
+    my_portfolio_client: TestClient,
+) -> None:
+    repo = _confirm_infy_holding(my_portfolio_client)
+    repo.add_candles([_candle("NSE:INFY", "1600", SEP2)])
+    decision = _decision(decision_id="dec-malformed", ts=SEP2)
+    repo.save_decision(decision)
+    repo.save_run(
+        _run_record(decision.run_id, cycle_id=decision.cycle_id),
+        detail={"pipeline": {"decision_reports": {decision.decision_id: {"confidence": "legacy"}}}},
+    )
+
+    run = _run_portfolio_sync(repo)
+    row = MyPortfolioService(repo).latest_snapshot().rows[0]
+
+    assert run["status"] == "SUCCESS"
+    assert row.conviction is None
+    assert row.last_price == Decimal("1600")
+    assert row.current_value == Decimal("16000")
+    assert row.status == "STRONG"
+    assert row.next_action == "HOLD"
+
+
+def test_low_confidence_does_not_block_add_in_sync(
+    my_portfolio_client: TestClient,
+) -> None:
+    repo = _confirm_infy_holding(my_portfolio_client)
+    repo.add_candles([_candle("NSE:INFY", "1600", SEP2)])
+    decision = _decision(decision_id="dec-add-low-confidence", ts=SEP2)
+    repo.save_decision(decision)
+    repo.save_entry_qualification(_entry_qualification(decision, as_of=SEP2), persisted_at=SEP2)
+    _save_confidence_report(repo, decision, level="LOW")
+
+    _run_portfolio_sync(repo)
+    row = MyPortfolioService(repo).latest_snapshot().rows[0]
+
+    assert row.conviction == "LOW"
+    assert row.status == "STRONG"
+    assert row.next_action == "ADD"
+
+
+def test_high_confidence_does_not_suppress_exit_in_sync(
+    my_portfolio_client: TestClient,
+) -> None:
+    repo = _confirm_infy_holding(my_portfolio_client)
+    repo.add_candles([_candle("NSE:INFY", "1450", SEP2)])
+    decision = _decision(decision_id="dec-exit-high-confidence", ts=SEP2)
+    repo.save_decision(decision)
+    _save_confidence_report(repo, decision, level="HIGH")
+
+    _run_portfolio_sync(repo)
+    row = MyPortfolioService(repo).latest_snapshot().rows[0]
+
+    assert row.conviction == "HIGH"
+    assert row.status == "AT_RISK"
+    assert row.next_action == "EXIT"
 
 
 def test_sync_allows_add_only_from_coherent_entry_qualification(
