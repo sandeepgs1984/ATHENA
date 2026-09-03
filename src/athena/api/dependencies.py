@@ -7,6 +7,8 @@ Allows clean mocking of services and providers in unit tests.
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import Request
@@ -516,3 +518,12 @@ def get_emr_presentation_service(request: Request) -> EmrPresentationService:
     (`db/emr.db`, never `db/athena.db`)."""
     db_path = getattr(request.app.state, "emr_db_path", None) or default_emr_db_path()
     return EmrPresentationService(db_path)
+
+
+def get_emr_request_clock(request: Request) -> Callable[[], datetime]:
+    """EM-6B.1: the one clock the EMR router calls, exactly once per
+    request, for both `ResponseMeta.as_of` and the service's scan-age
+    computation. `emr_clock` on `request.app.state` lets tests inject a
+    deterministic, distinctive fixed instant; production falls back to
+    the real wall clock."""
+    return getattr(request.app.state, "emr_clock", None) or (lambda: datetime.now(tz=timezone.utc))

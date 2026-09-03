@@ -11,6 +11,7 @@ proofs, which this reuses transitively but does not duplicate.
 from __future__ import annotations
 
 import os
+from datetime import datetime, timezone
 
 from fastapi.testclient import TestClient
 from tests.api.v1.test_core_apis import get_auth_headers
@@ -350,3 +351,83 @@ def test_session_date_query_param_scopes_the_scan(client: TestClient, tmp_path) 
 
     response = client.get(f"{ENDPOINT}?session_date=2026-08-27", headers=headers)
     assert response.json()["data"]["scan"]["run_id"] == "run-yesterday"
+
+
+# --------------------------------------------------------------------------- #
+# EM-6B.1: single-response clock coherence
+#
+# Owner-found defect: the router previously captured its own
+# datetime.now(tz=timezone.utc) for ResponseMeta.as_of, independent of
+# the service's own request_as_of used for scan_age -- two clock reads
+# for one response. Corrected: the router now captures exactly one
+# request_as_of (via an injectable clock dependency, `emr_clock` on
+# app.state) and passes it explicitly into the service, reusing the
+# identical value for ResponseMeta.as_of.
+# --------------------------------------------------------------------------- #
+
+
+def test_scan_age_as_of_matches_response_meta_as_of_for_populated_scan(
+    client: TestClient, tmp_path,
+) -> None:
+    repo = _repo(tmp_path)
+    repo.save_scan_run(_scan_run())
+    repo.save_candidates([_candidate(instrument_id="NSE:INFY", rank=1)])
+    client.app.state.emr_db_path = repo.path
+
+    fixed_instant = datetime(2026, 9, 3, 12, 34, 56, 789123, tzinfo=timezone.utc)
+    call_count = {"n": 0}
+
+    def _fixed_clock():
+        call_count["n"] += 1
+        return fixed_instant
+
+    client.app.state.emr_clock = _fixed_clock
+    headers = get_auth_headers(client, Role.READONLY)
+
+    response = client.get(ENDPOINT, headers=headers)
+    body = response.json()
+
+    # data.scan_age.as_of is a plain string field (EM-6A's own contract);
+    # meta.as_of is a pydantic datetime field FastAPI serializes with a
+    # trailing "Z" instead of "+00:00" -- parse-compare both back to the
+    # same instant rather than asserting byte-identical JSON strings,
+    # which is what "semantically as the exact same timestamp" means.
+    scan_age_as_of = datetime.fromisoformat(body["data"]["scan_age"]["as_of"])
+    meta_as_of = datetime.fromisoformat(body["meta"]["as_of"].replace("Z", "+00:00"))
+    assert scan_age_as_of == fixed_instant
+    assert meta_as_of == fixed_instant
+    assert scan_age_as_of == meta_as_of
+    # Exactly one clock read for this whole request -- not one in the
+    # router and a separate one inside the service.
+    assert call_count["n"] == 1
+
+
+def test_no_scan_response_meta_as_of_uses_the_same_injected_clock(
+    client: TestClient, tmp_path,
+) -> None:
+    """The single-clock invariant must hold in the empty-scan branch too
+    -- no completed scan must not create a different timestamp path.
+    scan_age is correctly None (there is no scan to compute age
+    against), but meta.as_of must still come from the one injected
+    request-level clock."""
+    repo = _repo(tmp_path)  # schema initialized, zero COMPLETE runs
+    client.app.state.emr_db_path = repo.path
+
+    fixed_instant = datetime(2026, 9, 3, 8, 0, 0, 0, tzinfo=timezone.utc)
+    call_count = {"n": 0}
+
+    def _fixed_clock():
+        call_count["n"] += 1
+        return fixed_instant
+
+    client.app.state.emr_clock = _fixed_clock
+    headers = get_auth_headers(client, Role.READONLY)
+
+    response = client.get(ENDPOINT, headers=headers)
+    body = response.json()
+
+    assert body["data"]["scan"] is None
+    assert body["data"]["scan_age"] is None
+    meta_as_of = datetime.fromisoformat(body["meta"]["as_of"].replace("Z", "+00:00"))
+    assert meta_as_of == fixed_instant
+    assert call_count["n"] == 1

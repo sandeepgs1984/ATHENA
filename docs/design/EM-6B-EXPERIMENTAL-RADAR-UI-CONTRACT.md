@@ -1,10 +1,23 @@
 # EM-6B — Experimental EMR API & Dashboard Contract
 
-**Status:** Implementation complete. Ready for owner review.
+**Status:** Implementation complete; EM-6B.1 clock-coherence correction
+applied. Ready for owner closure review.
 **Depends on:** EM-6A (`OWNER APPROVED / CLOSED`, 2026-09-03).
 **Does not:** modify the EMR scanner/model/research methodology, add
 scanner scheduling, read FINAL_TEST, touch canonical ATHENA/DarvaX/
 ID-track code.
+
+**EM-6B.1 correction (2026-09-03):** owner review found the router
+independently called `datetime.now(tz=timezone.utc)` for
+`ResponseMeta.as_of`, separate from the service's own `request_as_of`
+used for scan-age (§8 below, as originally written, described the
+intended single-clock behavior but the router did not actually implement
+it). Corrected: the router now captures exactly one clock read (a new
+injectable `get_emr_request_clock` dependency) and passes it explicitly
+into the service, reusing the identical value for `ResponseMeta.as_of` —
+in both the populated-scan and no-scan branches. See
+`IMPLEMENTATION_SUMMARY.md`'s EM-6B.1 entry for full detail. §8 below now
+reflects the corrected, actually-implemented behavior.
 
 ## 1. Scope
 
@@ -110,16 +123,31 @@ different, stale `run_id` and confirmed the expected test failure
 (`3 != 1` — the wrong run's candidate count leaking through), then
 reverted.
 
-## 8. Request-time clock semantics
+## 8. Request-time clock semantics (corrected — EM-6B.1)
 
-`EmrPresentationService.__init__` accepts an injectable `clock:
-Callable[[], datetime] | None`, defaulting to `datetime.now(tz=UTC)` —
-mirroring this repo's established injected-clock convention
-(`OwnerValidationPipeline.persistence_clock`, `scanner.py`'s own `now`
+The **router** owns the single clock read for the whole request, via a
+new injectable dependency, `get_emr_request_clock` (`app.state.emr_clock`
+override for tests, real `datetime.now(tz=timezone.utc)` in production —
+mirroring this repo's established injected-clock convention:
+`OwnerValidationPipeline.persistence_clock`, `scanner.py`'s own `now`
 parameter). Captured **exactly once** per request
-(`request_as_of = self._clock()`) and passed unchanged into
-`describe_scan_freshness()` — never a second `datetime.now()` call while
-building one response.
+(`request_as_of = clock()`), then passed explicitly into
+`EmrPresentationService.get_touch_10_radar(request_as_of=...)` — which
+uses it directly for `describe_scan_freshness()` rather than calling its
+own constructor-injected `self._clock()` — and reused, unchanged, for
+`ResponseMeta.as_of`. Applies identically in the populated-scan and
+no-scan branches: the router's one clock read happens before the service
+call either way. `EmrPresentationService.__init__`'s own `clock`
+parameter remains only as a fallback for a caller that invokes the
+service directly without supplying `request_as_of` — never exercised by
+the real HTTP path.
+
+**Pre-EM-6B.1 defect (now corrected):** the original implementation had
+the service call its own injected clock internally while the router
+separately called `datetime.now(tz=timezone.utc)` for `ResponseMeta.as_of`
+— two independent clock reads for one response, violating this exact
+invariant. See `IMPLEMENTATION_SUMMARY.md`'s EM-6B.1 entry for the full
+root-cause/fix narrative.
 
 ## 9. No-scan semantics
 

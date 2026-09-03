@@ -6,7 +6,109 @@ status updated on approval.
 
 ---
 
-## EM-6B Experimental EMR API & Dashboard — Implementation Complete / Ready for Owner Review
+## EM-6B.1 Single-Response Clock Coherence Correction — Complete / Ready for Owner Closure Review
+
+**Summary.** Owner review of the actual EM-6B implementation (not a
+redesign — EM-6A remains closed, EM-6B's architecture otherwise accepted)
+found one narrow contract mismatch: the service correctly captured one
+injected clock (`request_as_of = self._clock()`) for EMR scan-age
+computation, but the router independently created a *second* timestamp
+(`datetime.now(tz=timezone.utc)`) for `ResponseMeta.as_of` — one HTTP
+response therefore contained two independently captured request-time
+instants, violating EM-6B's own frozen "capture request-time wall clock
+exactly once" requirement. Not a methodology, scan-coherence, database,
+or UI defect — corrected without touching EM-6A, the endpoint URL,
+scan-selection semantics, candidate/coverage semantics, EMR database
+queries, or any dashboard file.
+
+**Root cause.** `EmrPresentationService.get_touch_10_radar()` (added in
+EM-6B) called its own injected `self._clock()` internally; the router
+(`api/v1/routers/emr.py`) separately called `datetime.now(tz=timezone.utc)`
+inline when building `ResponseMeta`. Two clock reads, microseconds apart,
+for the same request.
+
+**Fix.** The router now owns the single clock read for the whole
+request. Added `get_emr_request_clock` (`api/dependencies.py`) — a new
+dependency provider mirroring the existing `emr_db_path`/`app.state`
+test-injection pattern already established for `get_emr_presentation_service`
+— returning a `Callable[[], datetime]` (real wall clock in production, an
+`app.state.emr_clock` override in tests). The router calls it exactly
+once (`request_as_of = clock()`), passes that value explicitly into
+`service.get_touch_10_radar(session_date=..., request_as_of=request_as_of)`,
+and reuses the identical variable for `ResponseMeta(as_of=request_as_of)`.
+`EmrPresentationService.get_touch_10_radar` now accepts an optional
+`request_as_of: datetime | None` parameter — when supplied (always true
+for the real HTTP path), it is used directly and the service's own
+constructor-injected `self._clock()` fallback is never called; the
+fallback exists only for a hypothetical caller that invokes the service
+directly without going through the router. Applies identically in the
+populated-scan and no-scan (empty-state) branches — the router captures
+its one clock read before calling the service either way, so
+`ResponseMeta.as_of` is never on a different timestamp path when no scan
+exists.
+
+**Tests.** 2 new API tests
+(`tests/api/v1/test_emr_router.py`) using a deterministic injected clock
+(a distinctive fixed microsecond-precision instant) and a call-counter:
+one for a populated scan confirming `data.scan_age.as_of` and
+`meta.as_of` parse back to the exact same instant (compared via
+`datetime.fromisoformat`, not raw string equality — `meta.as_of` is a
+pydantic `datetime` field FastAPI serializes with a trailing `Z`, while
+`scan_age.as_of` is EM-6A's own plain-string field preserving `+00:00`;
+both represent the identical instant, so "semantically the exact same
+timestamp" required a parse-compare, not a byte-compare), and one
+confirming the same invariant holds in the no-scan empty-state branch. Both
+assert the injected clock was called exactly once. Both were
+mutation-verified: temporarily reverted the router to call
+`datetime.now(tz=timezone.utc)` independently again, confirmed both new
+tests failed with the expected instant mismatch, then reverted the
+mutation and reconfirmed clean.
+
+**Architecture compliance.** EM-6A untouched (`latest_scan_snapshot`,
+`top_candidates`, `top_touch_10_candidates`, `coverage_summary`, scan/run
+selection, rank ordering, the read-only SQLite connection — all
+unchanged). Endpoint URL, response payload structure, scan/candidate/
+coverage semantics unchanged. No dashboard file touched. No new
+canonical/DarvaX/ID-track dependency. No scanner/scheduler/provider
+call. No production database write.
+
+**Files created.** None.
+
+**Files modified.** `src/athena/api/v1/routers/emr.py`,
+`src/athena/api/v1/services/emr_presentation_service.py`,
+`src/athena/api/dependencies.py`,
+`tests/api/v1/test_emr_router.py`, `docs/MILESTONES.md`,
+`docs/ATHENA-EMR-HANDOFF.md`, `IMPLEMENTATION_SUMMARY.md`.
+
+**Behavior implemented.** One new dependency provider
+(`get_emr_request_clock`); one new optional parameter on an existing
+service method (`request_as_of`); the router now threads one captured
+instant through both the service call and the response envelope.
+
+**Verification.** Focused: `tests/api/v1/test_emr_router.py` 17/17
+passed (15 original + 2 new, both mutation-verified). EM-6A regression:
+`tests/explosive_move/test_em6a_presentation.py` 26/26 passed
+(untouched). Full EMR/isolation suite: `tests/explosive_move/` 423
+passed, 0 failed, 1 pre-existing skip. Full API suite: `tests/api/` 343
+passed. Full repository suite: **3,233 passed, 1 pre-existing skip, 0
+failed.** Ruff clean across all 4 touched Python files. `git diff
+--check` clean.
+
+**Risks / known gaps.** None introduced. This is a narrow correctness
+fix with no scope expansion.
+
+**Suggested improvements.** None.
+
+**Remaining work.** Owner closure review of EM-6B (including this
+correction). If accepted, both EM-6B and EM-6 overall may be closed. Do
+not start EM-7, scanner scheduling, ID-7, or any EntryQualification/
+DarvaX change until explicitly authorized.
+
+**Outcome:** Correction complete; ready for owner closure review.
+
+---
+
+## EM-6B Experimental EMR API & Dashboard — Accepted Pending EM-6B.1 Clock-Coherence Correction
 
 **Summary.** Owner closed EM-6A and authorized EM-6B: the smallest
 production-quality presentation surface for the owner to inspect the
@@ -177,12 +279,15 @@ than an automated frontend test suite.
 validation, not yet authorized) or a future, separately-authorized
 decision on scanner scheduling might eventually need.
 
-**Remaining work.** Owner review of this EM-6B contract. Do not start
+**Remaining work.** None from this entry directly — owner review found
+one narrow clock-coherence defect, corrected by EM-6B.1 (see the entry
+above this one, prepended after this correction landed). Do not start
 EM-7, scanner scheduling, ID-7, or any EntryQualification/DarvaX change
 until explicitly authorized.
 
-**Outcome:** Implementation complete; ready for owner review. EM-6
-overall remains open pending this review. EM-7 not started.
+**Outcome:** Implementation otherwise accepted; one narrow
+`ResponseMeta.as_of` clock-coherence defect found on review, corrected by
+EM-6B.1. EM-6 overall remains open pending EM-6B.1's own closure review.
 
 ---
 

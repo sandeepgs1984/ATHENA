@@ -10,10 +10,15 @@ and this service never imports anything from ``athena.decision``,
 verified by ``tests/api/v1/test_emr_router.py``'s own isolation checks).
 
 No business logic lives here beyond field mapping and the one-clock-per-
-response discipline (Section 6 of the EM-6B authorization): the caller
-(the router) captures a single ``request_as_of`` and passes it through
-unchanged, so every field in one response is computed relative to the
-same instant.
+response discipline (Section 6 of the EM-6B authorization, corrected by
+EM-6B.1): the caller (the router) captures a single ``request_as_of`` and
+passes it explicitly into :meth:`EmrPresentationService.get_touch_10_radar`,
+which uses that exact instant for scan-age computation and never calls a
+clock of its own when one is supplied -- the router then reuses that same
+value for ``ResponseMeta.as_of``, so every timestamp in one response is
+the same captured instant. The constructor's own ``clock`` remains only
+as a fallback for a caller that invokes this service directly without
+passing ``request_as_of`` (e.g. a standalone unit test).
 """
 
 from __future__ import annotations
@@ -47,8 +52,14 @@ class EmrPresentationService:
         self._db_path = db_path
         self._clock = clock or (lambda: datetime.now(tz=timezone.utc))
 
-    def get_touch_10_radar(self, *, session_date: str | None = None) -> EmrTouch10RadarDTO:
-        request_as_of = self._clock()
+    def get_touch_10_radar(
+        self, *, session_date: str | None = None, request_as_of: datetime | None = None,
+    ) -> EmrTouch10RadarDTO:
+        """`request_as_of` should always be supplied by an HTTP caller (the
+        router captures it once and reuses it for `ResponseMeta.as_of`
+        too) -- the internal clock fallback only fires for a caller that
+        invokes this service directly without one."""
+        request_as_of = request_as_of if request_as_of is not None else self._clock()
         snapshot = emr_presentation.build_touch_10_radar_snapshot(
             self._db_path, session_date=session_date,
         )
