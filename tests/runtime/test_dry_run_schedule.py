@@ -499,3 +499,135 @@ class TestEndToEndIngestCycle:
         assert repo.record_counts()["runs"] == 1
         assert repo.latest_run("REFRESH") is not None
         repo.close()
+
+
+class TestCycleTimingIntegration:
+    """ID-7P0: opt-in, observational-only wall-clock cycle-phase timing."""
+
+    def test_timing_disabled_by_default_no_timing_key_in_detail(self, tmp_path):
+        """Default enable_timing=False must reproduce prior behavior
+        byte-for-byte -- no "timing" key at all, and FakeIngest (which does
+        not accept a `timing=` kwarg) must never receive one."""
+        as_of = datetime(2026, 2, 13, 10, 0, tzinfo=IST)
+        repo = SqliteRepository(tmp_path / "athena.db")
+        repo.initialize()
+        orch = DryRunCycleOrchestrator(
+            FakeIngest(_ingestion(as_of)),  # type: ignore[arg-type]
+            repo,
+            pipeline=RecordingPipeline(),
+            run_id_factory=lambda t, a: "run-no-timing-1",
+        )
+        result = orch.run_cycle(RunTrigger.REFRESH, as_of=as_of)
+        assert result.run.status is RunStatus.COMPLETED
+        detail = repo.get_run_detail("run-no-timing-1")
+        assert "timing" not in detail
+        repo.close()
+
+    def test_timing_enabled_populates_phase_breakdown(self, tmp_path, config_dir):
+        as_of = datetime(2026, 2, 13, 15, 35, tzinfo=IST)
+        provider = _write_provider_tree(tmp_path / "data")
+        base = load_config(config_dir)
+        calendar = CalendarEngine.from_config_dir(config_dir, base.market)
+        vcfg = load_validation_config(config_dir)
+        ingest_cfg = IngestionConfig(
+            provider="file", timeframes=["5m"], lookback_minutes=30, lookback_days=5,
+            include_daily=True, include_quotes=True, validate_gaps=False,
+            skip_existing=True, instrument_ids=["SYN-AAA"],
+        )
+        validator = build_ingest_validator(calendar, vcfg, ingest_cfg, IST)
+        repo = SqliteRepository(tmp_path / "athena.db")
+        repo.initialize()
+        ingest = LiveIngestionEngine(
+            provider, repo, validator, QuarantineRegistry(), ingest_cfg, vcfg, tzinfo=IST,
+        )
+        orch = DryRunCycleOrchestrator(
+            ingest, repo, run_id_factory=lambda t, a: "run-timing-1", enable_timing=True,
+        )
+        result = orch.run_cycle(RunTrigger.REFRESH, as_of=as_of)
+        assert result.run.status is RunStatus.COMPLETED
+        detail = repo.get_run_detail("run-timing-1")
+        timing = detail["timing"]
+        phases = timing["phases_seconds"]
+        assert set(phases.keys()) == {"ingestion_total", "finalization"}
+        assert phases["ingestion_total"] >= 0
+        assert phases["finalization"] >= 0
+        # No pipeline configured on this orchestrator -> no scan_total phase.
+        assert "scan_total" not in phases
+        call_groups = timing["call_groups"]
+        assert "ingestion.daily_candles" in call_groups
+        assert "ingestion.intraday_candles" in call_groups
+        assert "ingestion.quotes" in call_groups
+        repo.close()
+
+    def test_timing_enabled_does_not_change_business_output(self, tmp_path):
+        """Instrumentation must be purely additive: Decision/EntryQualification-
+        equivalent counts here are the ingestion/pipeline counts the
+        orchestrator reports -- identical with timing on vs. off."""
+        as_of = datetime(2026, 2, 13, 10, 0, tzinfo=IST)
+
+        repo_off = SqliteRepository(tmp_path / "off.db")
+        repo_off.initialize()
+        orch_off = DryRunCycleOrchestrator(
+            FakeIngest(_ingestion(as_of)),  # type: ignore[arg-type]
+            repo_off,
+            pipeline=RecordingPipeline(),
+            run_id_factory=lambda t, a: "run-off-1",
+            enable_timing=False,
+        )
+        result_off = orch_off.run_cycle(RunTrigger.REFRESH, as_of=as_of)
+        repo_off.close()
+
+        repo_on = SqliteRepository(tmp_path / "on.db")
+        repo_on.initialize()
+        pipe_on = RecordingPipeline()
+        orch_on = DryRunCycleOrchestrator(
+            _TimingAwareFakeIngest(_ingestion(as_of)),
+            repo_on,
+            pipeline=pipe_on,
+            run_id_factory=lambda t, a: "run-on-1",
+            enable_timing=True,
+        )
+        result_on = orch_on.run_cycle(RunTrigger.REFRESH, as_of=as_of)
+        repo_on.close()
+
+        assert result_off.run.status == result_on.run.status
+        assert result_off.ingestion.candles_written == result_on.ingestion.candles_written
+        assert result_off.ingestion.quotes_written == result_on.ingestion.quotes_written
+        assert result_off.pipeline_detail["ok"] == result_on.pipeline_detail["ok"]
+
+    def test_failed_ingest_still_records_ingestion_total_before_raising(self, tmp_path):
+        as_of = datetime(2026, 2, 13, 10, 0, tzinfo=IST)
+        repo = SqliteRepository(tmp_path / "athena.db")
+        repo.initialize()
+        orch = DryRunCycleOrchestrator(
+            _TimingAwareFakeIngest(fail=DataStaleError("stale quotes")),
+            repo,
+            run_id_factory=lambda t, a: "run-fail-timing-1",
+            enable_timing=True,
+        )
+        with pytest.raises(DataStaleError, match=r"stale quotes"):
+            orch.run_cycle(RunTrigger.REFRESH, as_of=as_of)
+        detail = repo.get_run_detail("run-fail-timing-1")
+        timing = detail["timing"]
+        assert timing["phases_seconds"]["ingestion_total"] >= 0
+        assert "scan_total" not in timing["phases_seconds"]
+        repo.close()
+
+
+class _TimingAwareFakeIngest:
+    """Like FakeIngest, but accepts the optional `timing=` keyword
+    DryRunCycleOrchestrator passes only when enable_timing=True -- proves
+    the orchestrator's phase wrapping works against a real `timing`-aware
+    ingest engine without needing the full FileProvider stack."""
+
+    def __init__(self, result: IngestionResult | None = None, *, fail: Exception | None = None):
+        self._result = result
+        self._fail = fail
+        self.calls = 0
+
+    def run_cycle(self, *, as_of: datetime, timing=None) -> IngestionResult:
+        self.calls += 1
+        if self._fail is not None:
+            raise self._fail
+        assert self._result is not None
+        return self._result

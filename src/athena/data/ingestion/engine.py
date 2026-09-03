@@ -22,6 +22,7 @@ from athena.domain.enums import Timeframe
 from athena.domain.interfaces import InstitutionalFlowProvider, MarketDataProvider
 from athena.domain.market import Candle, Quote
 from athena.errors import DataStaleError, DataValidationError
+from athena.observability.timing import CycleTimingRecorder
 
 
 def _validation_for_ingest(base: ValidationConfig, config: IngestionConfig) -> ValidationConfig:
@@ -66,7 +67,13 @@ class LiveIngestionEngine:
         self._tzinfo = tzinfo
         self._institutional_provider = institutional_provider
 
-    def run_cycle(self, *, as_of: datetime) -> IngestionResult:
+    def run_cycle(
+        self, *, as_of: datetime, timing: CycleTimingRecorder | None = None,
+    ) -> IngestionResult:
+        """`timing` (ID-7P0) is optional, observational-only wall-clock
+        instrumentation -- omitting it (the default) reproduces the exact
+        prior behavior of this method byte-for-byte. Never affects what is
+        fetched, validated, or written."""
         if as_of.tzinfo is None:
             raise ValueError("as_of must be timezone-aware")
 
@@ -109,7 +116,17 @@ class LiveIngestionEngine:
             end_day = as_of.astimezone(self._tzinfo).date()
             start_day = end_day - timedelta(days=self._config.lookback_days - 1)
             for iid in ids:
-                candles = self._provider.daily_candles(iid, start_day, end_day)
+                t0 = timing.clock() if timing is not None else 0.0
+                try:
+                    candles = self._provider.daily_candles(iid, start_day, end_day)
+                except Exception:
+                    if timing is not None:
+                        timing.record_call(
+                            "ingestion.daily_candles", iid, timing.clock() - t0, ok=False,
+                        )
+                    raise
+                if timing is not None:
+                    timing.record_call("ingestion.daily_candles", iid, timing.clock() - t0)
                 candles_fetched += len(candles)
                 if not candles:
                     skipped_empty += 1
@@ -129,7 +146,22 @@ class LiveIngestionEngine:
             end_ts = as_of
             start_ts = as_of - timedelta(minutes=self._config.lookback_minutes)
             for iid in ids:
-                candles = self._provider.intraday_candles(iid, timeframe, start_ts, end_ts)
+                t0 = timing.clock() if timing is not None else 0.0
+                try:
+                    candles = self._provider.intraday_candles(iid, timeframe, start_ts, end_ts)
+                except Exception:
+                    if timing is not None:
+                        timing.record_call(
+                            "ingestion.intraday_candles",
+                            f"{iid}:{timeframe.value}",
+                            timing.clock() - t0,
+                            ok=False,
+                        )
+                    raise
+                if timing is not None:
+                    timing.record_call(
+                        "ingestion.intraday_candles", f"{iid}:{timeframe.value}", timing.clock() - t0,
+                    )
                 candles_fetched += len(candles)
                 if not candles:
                     skipped_empty += 1
@@ -150,7 +182,15 @@ class LiveIngestionEngine:
         if self._config.include_quotes:
             if not ids:
                 raise DataValidationError("include_quotes is true but no instruments selected")
-            quotes = list(self._provider.quotes(ids))
+            t0 = timing.clock() if timing is not None else 0.0
+            try:
+                quotes = list(self._provider.quotes(ids))
+            except Exception:
+                if timing is not None:
+                    timing.record_call("ingestion.quotes", "batch", timing.clock() - t0, ok=False)
+                raise
+            if timing is not None:
+                timing.record_call("ingestion.quotes", "batch", timing.clock() - t0)
             quotes_fetched = len(quotes)
             q_summary = validate_quotes(
                 quotes,

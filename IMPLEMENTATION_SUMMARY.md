@@ -6,7 +6,7 @@ status updated on approval.
 
 ---
 
-## ID-7 Intraday Entry / TradePlan Discovery — Discovery Complete, Implementation Not Started
+## ID-7 Intraday Entry / TradePlan Discovery — Owner Approved / Closed
 
 **Summary.** Owner-authorized, discovery-only turn following ID-6's full
 closure, to reconstruct the current TradePlan/entry/risk architecture and
@@ -64,14 +64,100 @@ complete, implementation not started).
 **Tests / validation.** Read-only discovery only; no production source or
 test file changed, no full suite rerun needed. `git diff --check` clean.
 
-**Remaining work.** Owner/Chief Architect review of the discovery
-document, particularly the 5 owner policy questions and the recommended
-Option B architecture. No ID-7A/ID-7A0 work, no ADR drafting, and no
-EntryQualification/DecisionEngine/TradePlan/EMR/DarvaX change until
-explicitly authorized.
+**Remaining work.** None — owner approved and closed 2026-09-03. Owner
+accepted Option B as the architectural direction, required
+TradePlan-independent naming for the future artifact (exact name deferred
+to ID-7A0), and authorized a narrow latency-attribution instrumentation
+milestone (ID-7P0, see below) before any ADR drafting. No ID-7A/ID-7A0
+work, no ADR drafting, and no EntryQualification/DecisionEngine/
+TradePlan/EMR/DarvaX change until explicitly authorized.
 
-**Outcome:** Discovery complete; ready for owner/Chief Architect review.
-ID-7 implementation remains not started.
+**Outcome:** Owner approved / closed 2026-09-03. Option B accepted as the
+architectural direction; ID-7A0 not started; ID-7P0 authorized next.
+
+---
+
+## ID-7P0 Production Cycle Latency Attribution — Instrumentation Ready, Evidence Accumulation Pending
+
+**Summary.** Narrow, owner-authorized instrumentation-only milestone to
+replace ID-7 discovery's circumstantial latency hypothesis with measured
+evidence, before any ID-7A0 ADR drafting. No EntryQualification/
+DecisionEngine/TradePlan change; no ingestion optimization,
+parallelization, or cadence change; no domain design.
+
+**Implementation.** New pure, dependency-free module
+`src/athena/observability/timing.py` — `CycleTimingRecorder` (phase-level
+wall-clock spans via a context manager, injectable clock) and
+`CallTimings` (per-call durations reduced to median/p90/p95/max/
+slowest-N before ever being exposed; individual samples never persisted
+per-instrument). Deliberately orthogonal to `WorkflowEngine`'s own
+deterministic per-stage `_MonoClock` (`src/athena/ops/owner_validation.py`)
+— that file was not opened by this milestone. Wired into
+`LiveIngestionEngine.run_cycle` (new optional `timing:
+CycleTimingRecorder | None = None` kwarg; per-call attribution for the
+sequential daily-candle loop, sequential intraday-candle loop, and the
+batch quotes call, including on failure) and
+`DryRunCycleOrchestrator.run_cycle` (new optional `enable_timing: bool =
+False` flag; reuses the orchestrator's own already-existing real
+monotonic clock to wrap ingestion and the analytical-scan pipeline call
+into `ingestion_total`/`scan_total` phases, with `finalization` derived
+as the remainder; written additively into `runs.detail_json["timing"]`,
+no schema change). Enabled only at the real scheduled-cycle construction
+site (`src/athena/ops/scheduled_run.py`); the four other
+`DryRunCycleOrchestrator` construction sites are untouched.
+
+**Key finding (available before any measured cycle).** A dedicated audit
+of the real Kite provider (`src/athena/data/providers/kite_transport.py`,
+`config/providers/kite.json`) found a real, always-enforced rate-limit
+pacing floor for `historical`-class requests (daily/intraday candles):
+0.334s minimum interval (≈3 req/s). With 528 instruments × 2 sequential
+loops = 1,056 historical calls per cycle, this floor alone accounts for
+≈352.7 seconds (≈5.88 min) — **≈63% of the ID-6E-observed ~9.38-minute
+average cycle duration** — before any real network/processing time.
+Sequentiality audit confirmed no unused provider-side batching exists for
+candles (Kite's real API is single-instrument for both); quotes is
+genuine provider-native batch, already used as such.
+
+**Files created.** `src/athena/observability/timing.py`,
+`docs/research/ID-7P0-PRODUCTION-CYCLE-LATENCY-ATTRIBUTION.md`.
+
+**Files modified.** `src/athena/data/ingestion/engine.py`,
+`src/athena/scheduling/dry_run.py`, `src/athena/ops/scheduled_run.py`
+(production source); `tests/unit/test_observability.py`,
+`tests/data_layer/test_ingestion.py`,
+`tests/runtime/test_dry_run_schedule.py`, `tests/ops/test_host_ops.py`
+(tests); `docs/MILESTONES.md`, `docs/ATHENA-ID-TRACK-HANDOFF.md`,
+`ATHENA_BRIEFING.md` (status).
+
+**Tests / validation.** 20 new focused tests (14 pure `CycleTimingRecorder`
+unit tests with a deterministic fake clock; 4 `LiveIngestionEngine` tests
+proving omitting `timing` reproduces prior behavior exactly, call groups
+populate correctly, all durations non-negative, and a failed provider
+call still records before re-raising unchanged; 4
+`DryRunCycleOrchestrator` integration tests proving `enable_timing=False`
+never adds a `"timing"` key, `enable_timing=True` populates the expected
+phase/call-group structure, business output is identical with timing
+on/off, and a failed ingest still records `ingestion_total` before
+raising) — all passing. One pre-existing mock-assertion test
+(`tests/ops/test_host_ops.py`) updated to expect the new
+`enable_timing=True` kwarg at the real construction site (not a
+regression — the intentional new production wiring). Full repository
+suite: 3,256 passed, 0 skipped. Ruff clean on every touched/created file
+(one pre-existing, unrelated F401 in `test_dry_run_schedule.py` left
+untouched). `git diff --check` clean.
+
+**Remaining work.** The instrumented code is **not yet active in the
+live production process** — `athena serve --with-cycles` must be
+restarted to load it, which was deliberately not performed (a real
+operational action on a running service, surfaced for explicit owner
+go-ahead rather than taken autonomously). Once active, natural REGULAR
+cycles must accumulate before a latency classification
+(`INGESTION_DOMINANT`/`ANALYTICAL_SCAN_DOMINANT`/`MIXED`/etc.) can be
+made from measured evidence rather than the §6 rate-limit-floor estimate
+alone.
+
+**Outcome:** Instrumentation ready; evidence accumulation pending a
+production restart the owner has not yet authorized.
 
 ---
 
