@@ -17,7 +17,8 @@ too large for a single-sitting review is split BEFORE implementation.
 `docs/research/PS-P5B-PORTFOLIO-INTERPRETATION-IMPLEMENTATION.md`,
 `docs/research/PS-P6A-PORTFOLIO-EXPERIENCE-HARDENING-DISCOVERY.md`,
 `docs/research/PS-P6B-PORTFOLIO-EXPERIENCE-HARDENING-IMPLEMENTATION.md`,
-`docs/research/PS-P6C-MY-PORTFOLIO-V1-END-TO-END-VALIDATION.md`
+`docs/research/PS-P6C-MY-PORTFOLIO-V1-END-TO-END-VALIDATION.md`,
+`docs/research/PS-P7A-PORTFOLIO-INTELLIGENCE-V2-DISCOVERY.md`
 
 Adds a My Portfolio dashboard feature/subdomain inside ATHENA's existing
 portfolio capability. The feature owns imported current holdings,
@@ -36,7 +37,8 @@ ScoringEngine/DecisionEngine methodology.
 | PS-P5B | Portfolio Interpretation Implementation — implement only the Owner/Chief Architect-approved PS-P5A subset in the pure interpreter, Portfolio Sync snapshot wiring, dashboard/API rendering, and regression tests | ✅ Owner/Chief Architect approved 2026-09-03 |
 | PS-P6A | Portfolio Experience Completion & Operational Hardening Discovery — inspect actual My Portfolio import/confirm/holdings/sync/snapshot/dashboard workflow after PS-P5B and identify remaining production-readiness gaps before implementation | ✅ Owner/Chief Architect approved 2026-09-03 |
 | PS-P6B | Portfolio Currentness, Concurrency & Operational Hardening — expose server-owned latest snapshot currentness, preserve stale snapshots visibly, block import confirmation during active sync while allowing preview, and clarify partial/failure/explanation UX | ✅ Owner/Chief Architect approved and frozen 2026-09-03 after UNKNOWN currentness UX correction |
-| PS-P6C | My Portfolio V1 End-to-End Production Validation — validate the complete frozen V1 owner workflow, failure/recovery/currentness/API/dashboard/input/performance scenarios, and recommend final V1 freeze if all criteria pass | 🔄 Validation complete 2026-09-03 — ready for Owner/Chief Architect review; recommendation: My Portfolio V1 complete and frozen |
+| PS-P6C | My Portfolio V1 End-to-End Production Validation — validate the complete frozen V1 owner workflow, failure/recovery/currentness/API/dashboard/input/performance scenarios, and recommend final V1 freeze if all criteria pass | ✅ Owner/Chief Architect approved and frozen 2026-09-03 — My Portfolio V1 COMPLETE AND FROZEN |
+| PS-P7A | Portfolio Intelligence V2 Methodology & Evidence Discovery — inventory existing approved evidence for Conviction, Trend / Setup, Support 1, Target 2/3, REDUCE, ROTATE, portfolio-level intelligence, history, coherency, and versioning before any V2 implementation | 🔄 Discovery complete 2026-09-03 — ready for Owner/Chief Architect review; PS-P7B blocked pending owner decisions |
 
 ## Intraday Intelligence Track (ID-0 started 2026-08-29)
 

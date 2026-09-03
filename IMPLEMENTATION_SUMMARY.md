@@ -871,7 +871,67 @@ via the normal runtime path.
 
 ---
 
-## PS-P6C My Portfolio V1 End-to-End Validation — Ready For Review
+## PS-P7A Portfolio Intelligence V2 Discovery — Ready For Review
+
+**Summary.** Completed discovery-only PS-P7A after My Portfolio V1 freeze.
+Inventoried existing approved evidence for the five frozen V1 null columns
+(Conviction, Trend / Setup, Support 1, Target 2, Target 3), REDUCE, ROTATE,
+portfolio-level intelligence, historical analytics, analytics reuse, coherency,
+backward compatibility, currentness compatibility, and methodology versioning.
+
+**Architecture compliance.** No production code, schema, API, dashboard, Sync,
+import, Portfolio Interpretation, ScoringEngine, DecisionEngine,
+EntryQualification, TradePlan, provider, broker, transaction, lot, realized P&L,
+or automatic-trading behavior was changed. PS-P0 through PS-P6C remain frozen.
+
+**Files created.**
+
+- `docs/research/PS-P7A-PORTFOLIO-INTELLIGENCE-V2-DISCOVERY.md`
+
+**Files modified.**
+
+- `docs/research/PS-P6C-MY-PORTFOLIO-V1-END-TO-END-VALIDATION.md`
+- `docs/MILESTONES.md`
+- `IMPLEMENTATION_SUMMARY.md`
+- `ATHENA_BRIEFING.md`
+
+**Tests added.** None. PS-P7A is discovery/documentation only.
+
+**Remaining work.** Owner/Chief Architect decisions are required before PS-P7B.
+Recommended smallest PS-P7B scope is a narrow Portfolio Conviction adapter that
+directly reuses coherent Decision Confidence semantics, if the owner accepts
+the current run-detail retrieval path or authorizes a first-class confidence
+persistence adapter.
+
+**Risks.** Filling Trend / Setup, Support 1, Target 2/3, REDUCE, or ROTATE
+without a methodology milestone would create a second, implicit Portfolio
+DecisionEngine. DarvaX remains experimental/satellite and must not silently
+become core Portfolio evidence.
+
+**Suggested improvements.** Treat Conviction as the only near-term adapter
+candidate. Keep Trend/Support/REDUCE/ROTATE as explicit methodology work, and
+consider snapshot history as read-only analytics after the first V2 field is
+approved.
+
+**Lessons learned.** ATHENA has substantial typed evidence, but "typed" is not
+the same as "approved Portfolio meaning." V2 should expose evidence only when
+the source, retrieval, coherency, and owner-facing semantics are all frozen.
+
+**Implementation metrics.** Documentation-only milestone. `rtk git diff
+--check` passed. No tests were required because no production code changed.
+
+**Phase outcome.** PS-P7A discovery complete and ready for Owner/Chief
+Architect review. PS-P7B is blocked pending owner decisions.
+
+**Commit hash.** Pending owner commit.
+
+**Branch.** main.
+
+**Review status.** Ready for Owner/Chief Architect review.
+
+---
+
+## PS-P6C My Portfolio V1 End-to-End Validation — Frozen
 
 **Summary.** Completed the final My Portfolio V1 end-to-end production
 validation milestone. Validated first import, no-snapshot/empty states, manual
@@ -903,9 +963,8 @@ after holdings change; legacy snapshots without holdings-digest provenance
 return UNKNOWN without claiming holdings changed and resolve after resync; and
 20/50/100 holding portfolios import, sync, snapshot, and preserve digest state.
 
-**Remaining work.** Owner/Chief Architect review is required to formally
-declare My Portfolio V1 complete and frozen. PS-P7 or V2 work must not begin
-until separately authorized.
+**Remaining work.** My Portfolio V1 is complete and frozen. PS-P7 or V2 work
+requires separate authorization.
 
 **Risks.** No new V1 production blocker was found. The accepted V1 deployment
 constraint remains: import-confirm/Sync concurrency protection is process-local
@@ -926,14 +985,14 @@ Portfolio Sync V1 validation suite: `70 passed`. Full suite: `3190 passed,
 known unrelated lint debt outside this change set. `rtk mypy` is unavailable in
 the active interpreter (`No module named mypy`).
 
-**Phase outcome.** PS-P6C validation complete and ready for Owner/Chief
-Architect review. Recommendation: declare My Portfolio V1 COMPLETE AND FROZEN.
+**Phase outcome.** Owner/Chief Architect approved PS-P6C on 2026-09-03. My
+Portfolio V1 is COMPLETE AND FROZEN.
 
 **Commit hash.** Pending owner commit.
 
 **Branch.** main.
 
-**Review status.** Ready for Owner/Chief Architect review.
+**Review status.** Owner/Chief Architect approved and frozen 2026-09-03.
 
 ---
 
