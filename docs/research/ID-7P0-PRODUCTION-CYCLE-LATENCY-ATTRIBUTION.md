@@ -54,12 +54,37 @@ Wired in two places:
   (`self._clock`, already `time.monotonic` by default — no new clock was
   introduced) to wrap the ingestion call in an `ingestion_total` phase and
   the pipeline (`OwnerValidationPipeline.run`, the whole 11-stage/
-  528-instrument analytical scan) call in a `scan_total` phase. A
-  `finalization` phase is derived as `total_cycle_duration -
-  ingestion_total - scan_total` — safe because the two wrapped phases are
-  sequential and non-overlapping within the same `try` block, so this
-  arithmetic double-counts nothing and is exhaustive of everything else in
-  the method (RunRecord construction, `save_run` calls).
+  528-instrument analytical scan) call in a `scan_total` phase. A residual
+  phase, `orchestration_overhead_pre_final_persist`, is derived as
+  `duration - ingestion_total - scan_total`, where `duration` is the
+  pre-existing `self._clock() - t0` measurement this class already took
+  (§2.1) — safe because the two wrapped phases are sequential and
+  non-overlapping within the same `try` block, so this arithmetic
+  double-counts nothing. **Important boundary correction (ID-7P0.1):**
+  `duration` is captured *before* the final COMPLETED/FAILED `RunRecord`
+  is persisted (`self._repo.save_run(final, detail=detail)` runs strictly
+  after). The residual therefore covers the initial RUNNING `save_run`,
+  `RunRecord`/`detail` construction, and error handling that precede the
+  final write — it does **not** include the final `save_run` call itself.
+  This is deliberate: adding a second write, or reordering the existing
+  write, purely to make the residual "complete" would make the
+  instrumentation change the operational behavior it is trying to
+  measure, which the owner's own instruction explicitly rejects. The name
+  reflects this bounded scope rather than a generic "finalization".
+
+### 2.1. Why `duration_seconds` itself is unaffected
+
+`DryRunCycleResult.duration_seconds` and `detail["duration_seconds"]` are
+**pre-existing fields**, unchanged by this milestone in meaning or value —
+they already excluded the final `save_run` call before ID-7P0 existed (the
+`duration = max(0.0, self._clock() - t0)` line in
+`src/athena/scheduling/dry_run.py` predates this milestone). Their only
+production/code consumer found by a repo-wide audit is a read-only CLI
+diagnostic print (`src/athena/cli.py:458`, `print(f"duration_s :
+{result.duration_seconds:.3f}")`) — display-only, with no semantic
+dependency on the exact boundary. ID-7P0 does not rename, redefine, or
+otherwise touch this field; it only adds new, separately-named diagnostic
+phases that are explicit about their own boundary.
 
 Output is additive-only: `detail["timing"]` is a new optional key inside
 the existing `runs.detail_json` JSON blob (`SqliteRepository.save_run`,
@@ -136,32 +161,69 @@ error is raised immediately, uncaught/unretried. HTTP timeout is 30.0s
 
 ## 6. A concrete, quantitative partial explanation (available before any measured evidence)
 
-Universe size is 528 instruments (confirmed via `owner_candidates` in the
-ID-6E/ID-7 discovery work). Both the daily and intraday candle loops are
-classified under the `historical` endpoint class, so **every one of the
-528 × 2 = 1,056 sequential candle-fetch calls in a normal cycle is subject
-to the enforced 0.334s minimum interval alone** — independent of actual
-network/processing time per call:
+**Corrected (ID-7P0.1) — grounded in verified production configuration and
+real persisted evidence, not an assumed instrument count or timeframe
+count.** The original version of this section assumed 528 instruments and
+one intraday timeframe without checking the real, currently-configured
+values — exactly the kind of guess the owner's ID-7P0.1 review correctly
+flagged. Both are now verified directly:
+
+- **Timeframes**: `config/ingestion.json` (the file `load_ingestion_config`
+  reads for the real Kite-backed scheduled path) sets `"timeframes":
+  ["5m", "15m"]` and `"include_daily": true` — **two** intraday timeframes,
+  not one, plus the daily candle fetch: **3** sequential historical-class
+  calls per instrument per cycle, not 2.
+- **Instrument count**: the real scheduled path does not use
+  `config/ingestion.json`'s own (empty) `instrument_ids` list — `athena
+  serve --with-cycles` → `_execute_run_due` → `HostDueRunner` builds its
+  ingest engine via `_build_ingest_engine(..., scope_to_candidates=True)`
+  (`src/athena/cli.py:618-622`), which overrides `instrument_ids` to the
+  resolved `owner_candidates` set plus a small number of always-included
+  index/VIX instruments (`cli.py:130-213`) — **not** the full Kite
+  instrument catalog (~10,000+ rows) and **not** exactly 528 either.
+- **Real, measured instrument count**: read directly from the live
+  `db/athena.db` (read-only, `mode=ro`), five real 2026-09-03 REFRESH
+  cycles all show `quotes_fetched=536` (four of them) or `525` (one, a
+  cycle with fewer resolved candidates that particular run) with
+  `datasets_skipped_empty=0` and `datasets_validated=1609` (or `1576`) —
+  i.e. `(1609 - 1 quotes) / 3 timeframes = 536` instruments exactly, and
+  `(1576 - 1) / 3 = 525` exactly, for the two observed counts. **536** is
+  used below as the representative figure (the more common of the two
+  observed counts across the cycles checked).
+
+Both the daily and both intraday candle loops are classified under the
+`historical` endpoint class (`kite_transport.py`'s `endpoint_class()`), so
+every one of these calls is subject to the enforced 0.334s minimum
+interval alone — independent of actual network/processing time per call:
 
 ```
-1,056 calls × 0.334 s/call ≈ 352.7 seconds ≈ 5.88 minutes
+536 instruments × 3 historical calls/instrument = 1,608 calls
+1,608 calls × 0.334 s/call ≈ 537.1 seconds ≈ 8.95 minutes
+
+quotes: 536 ids, quote_batch_size=500 -> 2 batch requests
+2 requests × 1.0 s/request (quote_min_interval_seconds) ≈ 2.0 seconds
+
+total pacing floor ≈ 539.1 seconds ≈ 8.98 minutes
 ```
 
 This is a **rate-limiter-enforced floor**, not a measurement — it exists
 purely because `_pace()` will not let two `historical`-class requests fire
 closer together than 0.334s, regardless of how fast the network or the
-provider itself responds. Against the ID-6E-observed ~9.38-minute average
-cycle duration, this floor alone accounts for **≈63%** of the total —
-*before* adding any real network round-trip time, JSON parsing, or
-validation/normalization work per call. This substantially raises
-confidence, even ahead of any natural-cycle measurement, that ingestion
-(specifically the historical-candle-fetch pacing, not necessarily network
-slowness) is the dominant latency driver — consistent with, and now
-partially explaining, ID-7 discovery's circumstantial EQ-write-clustering
-finding. **This is not yet a final classification** (§8) — it is strong
-prior evidence pending the real per-cycle `ingestion_total` vs.
+provider itself responds. Against the ID-6E-observed ~9.38-minute (562.97s)
+average cycle duration, this floor alone accounts for **≈95.8%** of the
+total (539.1s / 562.97s) — *before* adding any real network round-trip
+time, JSON parsing, or validation/normalization work per call, and using
+only the pacing minimum, not the actual observed per-call latency. This
+substantially raises confidence, even ahead of any natural-cycle
+measurement, that ingestion (specifically the historical-candle-fetch
+pacing itself, not necessarily network slowness on top of it) is the
+dominant latency driver — consistent with, and now much more precisely
+explaining, ID-7 discovery's circumstantial EQ-write-clustering finding.
+**This remains strong prior evidence, not a measured latency
+classification** (§8) — the real per-cycle `ingestion_total` vs.
 `scan_total` split the new instrumentation will produce on the next
-natural cycle.
+natural cycle is still required before `INGESTION_DOMINANT` may be
+declared as a finding rather than a prior.
 
 ## 7. Business-output equivalence (tested, not merely asserted)
 
@@ -206,13 +268,21 @@ follow-up report once natural cycle evidence exists, per instruction.
 ## 11. Remaining uncertainty
 
 - No natural REGULAR cycle has exercised the new instrumentation.
-- §6's rate-limiter floor explains a large share (≈63%) of the observed
+- §6's rate-limiter floor explains a large share (≈95.8%) of the observed
   average but not all of it — the remainder (real network RTT, JSON
   parsing, validation, normalization, DB writes) is unmeasured until a
-  real cycle runs with `ingestion_total`/`call_groups` populated.
+  real cycle runs with `ingestion_total`/`call_groups` populated. Given
+  how large this share already is, the analytical scan (`scan_total`) is
+  expected to be a small fraction of the cycle — but this remains a prior
+  expectation, not yet a measurement.
 - Analytical-scan sub-phase attribution (indicator/scoring/decision/EQ)
   remains unavailable by design (§3) — only whole-scan `scan_total` will
   be measured.
+- The `orchestration_overhead_pre_final_persist` residual (§2)
+  deliberately excludes the final `RunRecord` persistence call — its true
+  magnitude is expected to be small relative to ingestion, but it is not
+  the full "everything after ingestion+scan" quantity a reader might
+  assume from its earlier name.
 - The production process must be restarted to load this code (§12) —
   this document does not do that.
 
@@ -226,6 +296,59 @@ explicit owner go-ahead before being performed.
 
 ## 13. Production/provider impact of this milestone itself
 
-None. No provider call was made by this milestone (all findings in §4-6
-came from static source/config inspection, not a live request). No
-production database was written to. No workflow cycle was triggered.
+None. No provider call was made by this milestone. §6's instrument/
+timeframe counts were confirmed via a **read-only** query
+(`mode=ro`+`PRAGMA query_only=ON`) of the real, already-persisted
+`db/athena.db` — reading existing rows, not writing any. No production
+database was written to. No workflow cycle was triggered.
+
+## 14. Correction record (ID-7P0.1, 2026-09-03)
+
+Owner/Chief Architect review of the original ID-7P0 instrumentation found
+one narrow measurement-contract inaccuracy, corrected here without
+touching business behavior:
+
+1. **Boundary mislabeling.** The original `finalization` phase was
+   documented as accounting for "everything else in the method (RunRecord
+   construction, `save_run` calls)" — plural, implying both the initial
+   RUNNING write and the final COMPLETED/FAILED write. In fact `duration`
+   (and everything derived from it) is captured strictly *before* the
+   final `save_run` call, so the residual only ever covered the first
+   write. Corrected by renaming the phase to
+   `orchestration_overhead_pre_final_persist` and stating its exact,
+   bounded scope explicitly (§2).
+2. **No fix by adding a write.** Per explicit instruction, this was not
+   "fixed" by adding a second write, reordering the existing write, or
+   otherwise changing `RunRecord`/`save_run` behavior purely to make the
+   residual complete — that would make the observer change the very
+   operation being measured. `duration_seconds` (pre-existing,
+   §2.1) is unchanged; only the new diagnostic's own naming/documentation
+   was corrected.
+3. **Unverified call-count assumption.** The original §6 assumed 528
+   instruments and a single intraday timeframe without checking the real
+   production `config/ingestion.json` (which configures **two** intraday
+   timeframes, `5m` and `15m`) or the real scheduled-path instrument
+   scoping (`cli.py`'s `scope_to_candidates=True`, not the static config's
+   own empty `instrument_ids`). Corrected using the real, verified
+   configuration plus a direct read-only query of actual persisted
+   2026-09-03 cycle data (536 instruments, 1,608 historical calls per
+   cycle, confirmed exactly against `datasets_validated`/`quotes_fetched`
+   with `datasets_skipped_empty=0`) — revising the pacing-floor estimate
+   from ≈352.7s/≈63% to ≈539.1s/≈95.8% of the ID-6E-observed average.
+
+Tests added: 3 new focused tests in
+`tests/runtime/test_dry_run_schedule.py` proving (a) with a deterministic
+injected clock, `ingestion_total + scan_total +
+orchestration_overhead_pre_final_persist` equals the measured
+pre-final-persist `duration_seconds` exactly; (b) `save_run` is called
+exactly twice (RUNNING, then terminal status) whether timing is enabled
+or not — no extra write was introduced; (c) the final `save_run` call
+happening after `detail["timing"]` is fully constructed means nothing
+inside that final call can retroactively change any previously-recorded
+timing figure. Full repository suite: 3,259 passed (was 3,256), 0
+skipped. Ruff clean on all touched files. `git diff --check` clean.
+
+No production source outside `src/athena/scheduling/dry_run.py` (the
+docstring/comment correction) required changing for this correction — the
+instrumentation architecture itself (§2's remaining, unchanged claims)
+was already accepted.

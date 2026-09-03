@@ -77,7 +77,86 @@ architectural direction; ID-7A0 not started; ID-7P0 authorized next.
 
 ---
 
-## ID-7P0 Production Cycle Latency Attribution — Instrumentation Ready, Evidence Accumulation Pending
+## ID-7P0.1 Timing-Boundary Accuracy Correction — Correction Complete, Ready for Owner Restart Authorization
+
+**Summary.** Owner/Chief Architect review of ID-7P0 (below) conditionally
+approved the instrumentation architecture but found one narrow
+measurement-contract inaccuracy, corrected the same day. Not a business
+behavior change — no EntryQualification/DecisionEngine/TradePlan touched,
+no ingestion optimization, no live restart performed.
+
+**Root cause.** `DryRunCycleOrchestrator.run_cycle` measures `duration =
+self._clock() - t0` *before* persisting the final COMPLETED/FAILED
+`RunRecord` (`self._repo.save_run(final, detail=detail)` runs after —
+this ordering predates ID-7P0 and was not changed by it). ID-7P0's own
+derived residual phase, originally named `finalization`, was documented as
+covering "everything else in the method (RunRecord construction, `save_run`
+calls)" — plural, implying both the initial RUNNING write and the final
+terminal-status write. It only ever covered the first.
+
+**Fix.** Renamed the residual to `orchestration_overhead_pre_final_persist`
+(`src/athena/scheduling/dry_run.py`) with an explicit comment/doc stating
+its exact bounded scope: everything before the final persist, never the
+final persist itself. **Not fixed by adding a second write, reordering
+the existing write, or otherwise changing `RunRecord`/repository
+behavior** — the owner's instruction explicitly rejected that approach as
+letting the observer change the operation being measured. Pre-existing
+`DryRunCycleResult.duration_seconds`/`detail["duration_seconds"]` fields
+were audited (only consumer: a read-only CLI diagnostic print,
+`cli.py:458`) and left completely unchanged in meaning and value.
+
+**Call-count correction (found during the same review pass).** ID-7P0's
+original §6 pacing-floor estimate assumed 528 instruments and a single
+intraday timeframe without checking the real, currently-configured
+values. Verified instead: production `config/ingestion.json` actually
+configures `timeframes: ["5m", "15m"]` (two intraday timeframes, not
+one) — 3 sequential historical-class calls per instrument per cycle, not
+2. The real scheduled path also does not use that file's own empty
+`instrument_ids` — `cli.py`'s `_build_ingest_engine(...,
+scope_to_candidates=True)` overrides it to the resolved `owner_candidates`
+set plus a few index/VIX instruments. A read-only query
+(`mode=ro`+`PRAGMA query_only=ON`) of real 2026-09-03 `db/athena.db`
+REFRESH-cycle rows confirmed exactly 536 instruments × 3 = 1,608
+historical calls per cycle (matching `datasets_validated`/`quotes_fetched`
+with `datasets_skipped_empty=0` precisely — not estimated). Revised
+pacing floor: 1,608 × 0.334s ≈ 537.1s, plus ≈2s of quote-batch pacing ≈
+**539.1s ≈ 8.98 min ≈ 95.8%** of the ID-6E-observed ~9.38-minute average
+(previously an unverified ≈63%).
+
+**Files created.** None.
+
+**Files modified.** `src/athena/scheduling/dry_run.py` (rename + comment
+correction only — no other source file touched);
+`tests/runtime/test_dry_run_schedule.py` (renamed assertions + 3 new
+tests); `docs/research/ID-7P0-PRODUCTION-CYCLE-LATENCY-ATTRIBUTION.md`
+(§2/§6/§11 corrected, new §14 correction record); `docs/MILESTONES.md`,
+`docs/ATHENA-ID-TRACK-HANDOFF.md`, `ATHENA_BRIEFING.md` (status/figures
+corrected).
+
+**Tests / validation.** 3 new focused tests:
+`test_residual_exactly_accounts_for_pre_final_persist_duration`
+(deterministic injected clock proves `ingestion_total + scan_total +
+orchestration_overhead_pre_final_persist == duration_seconds` exactly,
+not approximately); `test_timing_never_adds_an_extra_repository_save`
+(proves `save_run` is called exactly twice — RUNNING then terminal —
+identically whether timing is enabled or not); `test_final_persist_call_
+itself_is_excluded_from_the_residual` (proves the final `save_run` call
+happens after `detail["timing"]` is already fully constructed, so nothing
+inside that call can retroactively affect any persisted timing figure).
+All passing. Full repository suite: 3,259 passed (was 3,256), 0 skipped.
+Ruff clean on all touched files (one pre-existing, unrelated F401 in
+`test_dry_run_schedule.py` left untouched). `git diff --check` clean.
+
+**Remaining work.** None from this correction itself. Per the owner's own
+closing note, the live `athena serve --with-cycles` restart is now
+expected to be authorized immediately following this correction — not
+performed by this milestone; ID-7A0 remains not started.
+
+**Outcome:** Correction complete; ready for owner restart authorization.
+
+---
+
+## ID-7P0 Production Cycle Latency Attribution — Instrumentation Ready, Evidence Accumulation Pending (corrected by ID-7P0.1, see entry above)
 
 **Summary.** Narrow, owner-authorized instrumentation-only milestone to
 replace ID-7 discovery's circumstantial latency hypothesis with measured

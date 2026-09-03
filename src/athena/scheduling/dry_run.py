@@ -206,14 +206,21 @@ class DryRunCycleOrchestrator:
         if error_detail:
             detail["error"] = error_detail
         if timing is not None:
-            # Derived, not independently measured: the two wrapped phases
-            # above are sequential and non-overlapping within this same
-            # try block, so total - ingestion_total - scan_total exactly
-            # accounts for everything else in this method (RunRecord
-            # construction, save_run calls) with no double-counting.
+            # ID-7P0.1: `duration` above is captured BEFORE the final
+            # `save_run` call below -- so this residual is derived,
+            # non-overlapping, and exhaustive of everything else in this
+            # method UP TO THAT POINT (the initial RUNNING `save_run`,
+            # RunRecord/detail construction, error handling) but does NOT
+            # include the final COMPLETED/FAILED `save_run` call itself.
+            # Named accordingly rather than as a generic "finalization" --
+            # deliberately not measured directly, to avoid adding a second
+            # write or any other change to existing RunRecord persistence
+            # behavior purely for instrumentation.
             ingestion_total = timing.phases.get("ingestion_total", 0.0)
             scan_total = timing.phases.get("scan_total", 0.0)
-            timing.phases["finalization"] = max(0.0, duration - ingestion_total - scan_total)
+            timing.phases["orchestration_overhead_pre_final_persist"] = max(
+                0.0, duration - ingestion_total - scan_total
+            )
             detail["timing"] = timing.as_dict()
         self._repo.save_run(final, detail=detail)
 
