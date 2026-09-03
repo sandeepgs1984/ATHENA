@@ -14,7 +14,8 @@ too large for a single-sitting review is split BEFORE implementation.
 `docs/research/PS-P3-MY-PORTFOLIO-DASHBOARD-UX.md`,
 `docs/research/PS-P4-PORTFOLIO-SYNC-ORCHESTRATION.md`,
 `docs/research/PS-P5A-PORTFOLIO-INTERPRETATION-METHODOLOGY.md`,
-`docs/research/PS-P5B-PORTFOLIO-INTERPRETATION-IMPLEMENTATION.md`
+`docs/research/PS-P5B-PORTFOLIO-INTERPRETATION-IMPLEMENTATION.md`,
+`docs/research/PS-P6A-PORTFOLIO-EXPERIENCE-HARDENING-DISCOVERY.md`
 
 Adds a My Portfolio dashboard feature/subdomain inside ATHENA's existing
 portfolio capability. The feature owns imported current holdings,
@@ -31,6 +32,7 @@ ScoringEngine/DecisionEngine methodology.
 | PS-P4 | Portfolio Sync Orchestration — background sync over confirmed My Portfolio holdings, persisted sync runs, immutable 20-column analysis snapshots, server-owned valuation math, latest snapshot API, dashboard sync polling/rendering, and PS-P4.1 freshness/evidence coherency correction | ✅ Owner/Chief Architect approved 2026-09-02 — PS-P4 and PS-P4.1 frozen |
 | PS-P5A | Portfolio Interpretation Methodology Discovery & Freeze — inventory actual ATHENA evidence, propose deterministic portfolio Status/Conviction/Trend/Trigger/Support/Exit/Target/Next Action methodology, reason codes, test vectors, and owner decisions before production implementation | ✅ Owner/Chief Architect approved subset for PS-P5B implementation 2026-09-03 |
 | PS-P5B | Portfolio Interpretation Implementation — implement only the Owner/Chief Architect-approved PS-P5A subset in the pure interpreter, Portfolio Sync snapshot wiring, dashboard/API rendering, and regression tests | 🔄 Implementation complete 2026-09-03 — ready for owner/principal-engineer review; next milestone blocked pending approval |
+| PS-P6A | Portfolio Experience Completion & Operational Hardening Discovery — inspect actual My Portfolio import/confirm/holdings/sync/snapshot/dashboard workflow after PS-P5B and identify remaining production-readiness gaps before implementation | 🔄 Discovery complete 2026-09-03 — ready for owner/principal-engineer review; no production changes |
 
 ## Intraday Intelligence Track (ID-0 started 2026-08-29)
 

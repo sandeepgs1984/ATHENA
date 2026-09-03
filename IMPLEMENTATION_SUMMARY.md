@@ -6,6 +6,63 @@ status updated on approval.
 
 ---
 
+## PS-P6A Portfolio Experience Hardening Discovery — Ready For Review
+
+**Summary.** Completed PS-P6A discovery/design for My Portfolio operational
+hardening after PS-P5B. Inspected the real import, confirmation, canonical
+holdings, sync, snapshot, API, DTO, dashboard, parser, schema, and repository
+surfaces. No production behavior, schema, API, dashboard, methodology, broker,
+provider, or trading-rule changes were made.
+
+**Architecture compliance.** Preserved all frozen Portfolio Sync boundaries:
+canonical holdings remain owner-imported current holdings; Sync remains manual;
+PS-P4.1 freshness/coherency and PS-P5B interpretation rules are unchanged;
+REDUCE/ROTATE/Conviction/Trend/Support 1/Target 2/3 remain deferred; no
+ScoringEngine or DecisionEngine behavior changed.
+
+**Files created.**
+
+- `docs/research/PS-P6A-PORTFOLIO-EXPERIENCE-HARDENING-DISCOVERY.md`
+
+**Files modified.**
+
+- `docs/MILESTONES.md`
+- `IMPLEMENTATION_SUMMARY.md`
+
+**Tests added.** None. PS-P6A is discovery-only.
+
+**Remaining work.** Owner/principal-engineer review is required before PS-P6B.
+The proposed PS-P6B implementation scope is limited to holdings-digest
+currentness, stale-analysis UX, import/sync concurrency policy, partial/failure
+details, and minimal interpretation explanation.
+
+**Risks.** Main P0 finding: latest snapshot can silently represent old holdings
+after a later confirmed import, and an in-flight sync can finish for holdings
+state A after holdings state B is confirmed. Existing holdings digests already
+make this detectable, but no read path or dashboard state currently exposes it.
+
+**Suggested improvements.** Promote the existing deterministic holdings digest
+into first-class currentness metadata and render a stale-analysis banner before
+adding lower-priority table sorting, history, or richer analytics.
+
+**Lessons learned.** The existing PS-P2 digest mechanism is strong enough to
+serve PS-P6B; the gap is product/read-model integration rather than a new
+portfolio model.
+
+**Implementation metrics.** Documentation-only milestone. `rtk git diff --check`
+passed.
+
+**Phase outcome.** PS-P6A discovery complete and ready for review; PS-P6B
+blocked pending owner decisions.
+
+**Commit hash.** Pending owner commit.
+
+**Branch.** main.
+
+**Review status.** Ready for owner/principal-engineer review.
+
+---
+
 ## PS-P5B Portfolio Interpretation Implementation — Ready For Review
 
 **Summary.** Implemented the owner-approved PS-P5B subset for My Portfolio:
