@@ -6,6 +6,154 @@ status updated on approval.
 
 ---
 
+## ID-6E.2 Entry Qualification Production Schema Activation & Shadow Canary — Activation Complete / Shadow Accumulation Started
+
+**Summary.** Owner authorized an operational-only milestone to activate the
+already-owner-approved Entry Qualification persistence schema (ID-6C,
+SCHEMA_VERSION 17) in real `db/athena.db` and verify the already-wired
+ID-6D `OwnerValidationPipeline` stage could accumulate genuine shadow
+observations during normal runtime. No methodology, engine, workflow,
+repository, or schema code change was in scope; genuine defects, if found,
+were to be reported, not silently fixed.
+
+Preflight (first read-only query against production) found SCHEMA_VERSION
+already at 17 with `entry_qualifications` present, holding 0 rows. Root
+cause: `_open_repo()` (`src/athena/cli.py:66-70`) and the FastAPI
+dependency (`src/athena/api/dependencies.py:129,185`) both call
+`SqliteRepository.initialize()` unconditionally on every repo open, and
+`initialize()` is idempotent/additive-only — the already-running
+`athena serve --with-cycles` process (or an API request it served) had
+already run this canonical path since this session's own earlier ID-6E
+audit (which found the table absent). No ad-hoc migration SQL was needed,
+issued, or invented anywhere in this milestone.
+
+Since migration had already occurred, a genuine "pre-migration" backup was
+no longer retroactively possible (and reverting the additive schema change
+to fabricate one would itself have been an unnecessary, destructive
+regression). Instead, a full integrity-verified, checksummed safety
+snapshot was taken immediately — before the next scheduled cycle — using
+the same manual `sqlite3.Connection.backup()` + atomic-replace +
+checksummed-sidecar pattern the real ID-5A production write established
+(never the gated `create_backup()` helper, whose `verify_integrity().ok`
+precondition would have refused this specific pre-canary state).
+Structural verification against a freshly-initialized v17 reference schema
+found zero drift: 28/28 tables, 56/56 indexes, and the `entry_qualifications`
+table's exact 16-column layout, composite PK, FK, and single explicit
+index all matched `schema.py`'s DDL precisely. Migration idempotency was
+explicitly reconfirmed via a second, separately-opened `initialize()` call:
+record counts, table set, and index set all unchanged; `verify_integrity()`
+clean before and after.
+
+The shadow canary itself used the normal runtime path throughout — no
+manual SQL insert, no direct `save_entry_qualification()` call, no
+fabricated market data or synthetic Decisions. The already-running,
+already-scheduled production server fired its own PREMARKET cycle
+(`config/scheduling.json`: `premarket.run_at = "08:15"`) at 08:15:29 IST
+on its own schedule, entirely without triggering action from this
+milestone; this milestone only observed it, read-only, via periodic
+polling. The cycle took several minutes of genuine wall-clock time (real,
+rate-limited Kite-backed ingestion/scoring/decision chain across ~528
+owner candidates) before the `entry_qualification` stage began persisting,
+ultimately writing **165 genuine `EntryQualification` rows** — one per
+eligible WATCH candidate.
+
+A full-population (not sampled) read-only integrity audit of all 165 rows
+found zero defects of any kind: 0 Decision-binding mismatches
+(instrument_id/decision_type/run_id/cycle_id vs. the bound Decision), 0
+orphaned `decision_id`, 0 `session_date`/`as_of` incoherence, 0 naive
+(non-timezone-aware) timestamps, 0 unexpected reason codes, 0 non-v0
+methodology versions, 0 `DISQUALIFIED_FOR_SESSION`, 0 non-`NOT_EVALUATED`
+confirmations, 0 duplicate logical identities. All 165 rows share
+`state=EXPIRED`, `evidence_finality=UNKNOWN_PROVENANCE`,
+`decision_type=WATCH` — read-only audited (no frozen code touched) and
+confirmed as correct, by-design behavior, not a defect: the cycle's
+`as_of` (08:15:29 IST) precedes `config/market.nse.json`'s
+`sessions.preopen_start` (09:00), so `classify_session_phase`
+(`src/athena/session/engine.py:150-171`) correctly returns
+`SessionPhase.CLOSED` for this `as_of` — which the frozen engine's state
+precedence (ID-6B.2) maps to `EXPIRED`, and the frozen resolver (ID-6D)
+maps to `UNKNOWN_PROVENANCE`. ATHENA's "PREMARKET" operational cadence
+label and NSE's own session-phase "PRE_OPEN" window are distinct concepts;
+08:15 IST falls in neither NSE's PRE_OPEN (09:00-09:15) nor REGULAR
+(09:15-15:30) window.
+
+Genuine, non-fabricated persistence latency was observed for the first
+time in production: `persisted_at - as_of` across all 165 rows measured
+median 550.77s, p90 552.58s, p95 552.82s, max 553.12s, 0 negative-latency
+rows — the real wall-clock duration of the sequential, per-instrument
+PREMARKET cycle between `as_of` capture (at cycle start) and each
+instrument's own `entry_qualification` stage actually executing. No
+pass/fail threshold was invented.
+
+**Classification.** Runtime persistence is now proven operational against
+production for the first time, but the single CLOSED-phase moment observed
+does not yet support behavioral shadow characterization (no REGULAR-phase,
+QUALIFIED/NOT_YET/UNKNOWN, or TRADE-type observation exists yet — no
+arbitrary sample-size threshold was invented to force a stronger claim).
+
+**Architecture compliance.** Zero methodology/engine/workflow/repository/
+schema/API/UI code changes. `EntryQualificationEngine`,
+`EntryQualificationPolicy`, `entry_qualification_provenance.py`, ID-6C
+repository semantics, ID-6C.1 Decision-binding validation, ID-6D workflow
+placement, current-Decision selection, persistence-clock semantics, and
+the ID-6E/6E.1 replay harness methodology are all untouched and frozen.
+Zero ad-hoc SQL. Zero provider/network calls beyond the production
+server's own already-scheduled, already-running cycle. Zero
+ScoringEngine/DecisionEngine/TradePlan/EMR/DarvaX impact.
+
+**Files created.** `docs/ops/ID-6E2-ENTRY-QUALIFICATION-PRODUCTION-SCHEMA-ACTIVATION.md`.
+`db/backups/athena-pre-id6e2-shadow-canary-20260903T024201Z.db` (+
+`.meta.json` sidecar) — gitignored, not committed.
+
+**Files modified.** `docs/MILESTONES.md`, `docs/ATHENA-ID-TRACK-HANDOFF.md`,
+`IMPLEMENTATION_SUMMARY.md`,
+`docs/research/ID-6E-ENTRY-QUALIFICATION-REPLAY-SHADOW-VALIDATION.md`
+(shadow sections §35-43/§47 updated, new §49 addendum). No source code
+files modified — this milestone used only existing, already-tested
+repository/backup/schema mechanisms.
+
+**Behavior implemented.** None — purely operational (preflight, backup,
+structural verification, idempotency re-check, read-only observation of
+the already-scheduled production cycle, read-only integrity audit).
+
+**Verification.** No new automated tests required — per the owner's own
+instruction, no artificial test-only code was added for a pure operational
+procedure using existing, already-tested migration/backup tooling.
+Existing Entry Qualification + repository + backup/restore regression
+suites re-run (all against temp DBs, zero production DB writes from
+tests): 297 passed. Full repository suite: **3,190 passed, 1 pre-existing
+skip, 0 failed.** Ruff clean (no new/changed source files). `git diff
+--check` clean. `git status --short` clean (backup files correctly
+gitignored, confirmed via `git check-ignore`). Real `db/athena.db`
+integrity re-verified post-canary: `integrity_check=ok`,
+`foreign_key_violations=0`, `schema_version=17` (unchanged); size and
+checksum legitimately changed from genuine cycle writes, confirmed via
+schema-diff + integrity + FK checks rather than checksum alone, per the
+owner's own checksum-semantics guidance.
+
+**Risks / known gaps.** Shadow evidence remains behaviorally narrow (one
+CLOSED-phase moment, 165 WATCH-only/EXPIRED-only rows) — a further
+REGULAR-phase (post-09:15) cycle is needed before shadow evidence can
+support any behavioral comparison against the ID-6E replay findings. No
+timeline is proposed; normal scheduled cycles (REFRESH, subsequent
+PREMARKET) will continue accumulating shadow evidence without further
+action from this milestone.
+
+**Suggested improvements.** None beyond normal operation continuing to
+accumulate shadow evidence across further sessions/cycles, eventually
+enabling a future shadow-characterization comparison against the ID-6E
+replay baseline.
+
+**Remaining work.** Owner review of the shadow-accumulation status. Do not
+start ID-7, EM-6, or API/UI until explicitly authorized.
+
+**Outcome:** Activation complete; shadow accumulation started. Production
+schema confirmed active (SCHEMA_VERSION 17, `entry_qualifications`
+present); first genuine, fully-coherent shadow canary (165 rows) observed
+via the normal runtime path.
+
+---
+
 ## PS-P6C My Portfolio V1 End-to-End Validation — Ready For Review
 
 **Summary.** Completed the final My Portfolio V1 end-to-end production
@@ -284,7 +432,7 @@ milestone blocked pending approval.
 
 ---
 
-## ID-6E Entry Qualification Replay & Shadow Validation — Replay Architecture/Engine/State/Finality/Shadow-Unavailable Classification Accepted; Closure Held for ID-6E.1
+## ID-6E Entry Qualification Replay & Shadow Validation — Historical Replay Validation Owner-Accepted (Behaviorally Sound); Shadow Validation Open
 
 **Summary.** Owner closed ID-6D in full (including ID-6D.1) and authorized
 ID-6E to validate the now fully closed Entry Qualification capability
@@ -424,17 +572,17 @@ research scope) should migrate the production schema against
 accumulating real shadow observations, enabling a future shadow
 characterization milestone.
 
-**Remaining work.** Owner found a narrow trajectory-identity defect in the
-transition/qualified-duration analysis (grouped by `decision_type` instead
-of canonical `decision_id`) and held closure for it. See ID-6E.1.
+**Remaining work.** Shadow validation remained open pending production
+schema activation. See ID-6E.2 for the operational activation and first
+genuine shadow canary.
 
-**Outcome:** Replay architecture, engine/state/finality analysis, and
-shadow-unavailable classification accepted. Owner closure held for one
-narrow validation correction.
+**Outcome:** Owner accepted the historical replay validation, classified
+**BEHAVIORALLY SOUND**, after ID-6E.1's Decision-episode trajectory
+correction. Shadow validation opened by ID-6E.2.
 
 ---
 
-## ID-6E.1 Decision-Episode Trajectory Correction — Implementation Complete / Ready for Owner Validation Closure Review
+## ID-6E.1 Decision-Episode Trajectory Correction — Owner Approved / Closed
 
 **Summary.** Owner accepted ID-6E's replay architecture, engine/state/
 finality analysis, and shadow-unavailable classification, but held
@@ -547,11 +695,11 @@ accordingly.
 **Suggested improvements.** None beyond ID-6E's own suggestion (production
 schema migration to unblock shadow-evidence characterization).
 
-**Remaining work.** Owner validation closure review of ID-6E (including
-ID-6E.1). Do not start ID-7, EM-6, or API/UI, and do not migrate the
-production schema, until explicitly authorized.
+**Remaining work.** None — owner validation closure review completed.
 
-**Outcome:** Implemented; ready for owner ID-6E validation closure review.
+**Outcome:** Owner approved / closed. Historical replay validation
+classified BEHAVIORALLY SOUND; shadow validation remained open pending
+production schema activation (ID-6E.2 authorized).
 
 ---
 

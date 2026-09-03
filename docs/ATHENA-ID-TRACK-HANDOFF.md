@@ -12,10 +12,13 @@ ID-6B is fully closed; ID-6C persistence and ID-6C.1 canonical
 Decision-binding hardening both owner-approved and closed — ID-6C is
 fully closed; ID-6D workflow/Decision/finality resolution and ID-6D.1
 persistence-time semantics correction are both owner-approved and closed —
-ID-6D is fully closed; ID-6E replay architecture/engine/state/finality/
-shadow-unavailable classification accepted, closure held for ID-6E.1
-Decision-episode trajectory-identity correction; ID-6E.1 implemented,
-ready for owner ID-6E validation closure review)
+ID-6D is fully closed; ID-6E.1 owner-approved and closed — historical
+replay validation classified BEHAVIORALLY SOUND; ID-6E.2 production
+schema activation & shadow canary complete — real `db/athena.db` schema
+confirmed active and a first genuine 165-row shadow canary observed via
+the normal runtime path, though still behaviorally narrow; ID-6E's
+shadow-validation half remains open pending further, more diverse shadow
+accumulation)
 **Governing boundary:** accepted `docs/adr/ADR-013-entry-qualification-architecture.md`
 for Entry Qualification; otherwise this track extends the existing frozen
 `ATHENA-002-System-Blueprint.md` module map (§6 of `ATHENA_BRIEFING.md`).
@@ -120,8 +123,9 @@ Track B capture is running the same morning.
 | ID-6C.1 | OWNER APPROVED / CLOSED 2026-09-02 — `_validate_entry_qualification_decision_binding` (`src/athena/data/store/repository.py`), runs on every `save_entry_qualification` call (both insert AND idempotency-check paths). Requires exact equality of `decision_type`/`run_id`/`cycle_id` with the referenced canonical Decision, and `instrument_id` only when `decision.instrument_id is not None` (mirrors `EntryQualificationEngine._resolve_instrument_id`'s own established fallback; confirmed real `DecisionEngine` always sets `instrument_id` for WATCH/TRADE). Missing decision_id → clean `RepositoryError` before any INSERT; schema FK remains as DB-level backstop (test-proven still enforced via bypass). Corrected run_id/cycle_id exclusion rationale: excluded from conflict comparison because binding validation already proved them equal to the Decision, not because they may differ. SCHEMA_VERSION unchanged (17). ID-6C is now fully closed |
 | ID-6D | OWNER APPROVED / CLOSED 2026-09-02 — new `entry_qualification` `WorkflowStage` in `OwnerValidationPipeline` (depends on `decision` + `intraday_analytics`, declared last, order-stability proven). Current Decision = the Decision `dec_stage` just produced this same cycle (closure-captured, not re-queried) — provably freshest, no TTL invented. Engine called unconditionally; persistence scoped to WATCH/TRADE only. New pure `resolve_evidence_finality` (`src/athena/intraday/entry_qualification_provenance.py`) reuses the engine's own public structural/lifecycle eligibility gate (WATCH/TRADE AND `SessionPhase.REGULAR`) — never the tri-state formula — to resolve `LIVE_M5_PROVISIONAL` vs `UNKNOWN_PROVENANCE`; `NO_DECISIVE_PROVISIONAL_M5_DEPENDENCY` proven structurally unreachable (ADR-013's documented Decision-provenance insufficiency), reported honestly. Owner found `persisted_at=ctx.as_of` wrongly conflated evaluation time with write time — corrected by ID-6D.1. ID-6D (including ID-6D.1) is now fully closed |
 | ID-6D.1 | OWNER APPROVED / CLOSED 2026-09-02 — added injectable `OwnerValidationPipeline(..., persistence_clock: Callable[[], datetime] | None = None)`, defaulting to `datetime.now(tz=timezone.utc)` (audited first: no existing injectable wall-clock abstraction; found the established `utc_now()`/inline `datetime.now(tz=UTC)` convention plus `SqliteRepository.set_ops_meta`'s own optional-timestamp precedent). Stage now calls `persisted_at=self._persistence_clock()`, never `ctx.as_of`. Proved with genuinely distinct injected values: `as_of` unchanged from `SessionContext`, `persisted_at` correctly distinct and timezone-aware (verified via direct SQL, since the domain object doesn't expose write metadata); idempotent retry preserves the original `persisted_at` across two full pipeline executions with different clock values; latest-query ordering reconfirmed `as_of`-only (proven with `as_of`/`persisted_at` in deliberately opposite order). Pure engine remains structurally clock-free. SCHEMA_VERSION unchanged (17). 4 new focused tests, 1 mutation-verified. Full suite 3,131 passed. No methodology/Decision-selection/finality/schema/API/UI change |
-| ID-6E | REPLAY ARCHITECTURE/ENGINE/STATE/FINALITY/SHADOW-UNAVAILABLE CLASSIFICATION ACCEPTED; CLOSURE HELD FOR ID-6E.1 2026-09-02 — validation-only milestone: deterministic historical market-time replay via the real, unmodified `EntryQualificationEngine`/`resolve_evidence_finality`, plus read-only inspection of persisted shadow observations in real `db/athena.db`. New harness `src/athena/data/id6e_replay_shadow_validation.py` reuses ID-6B.1's `ReadOnlyStore`/`candidates_at` and ID-6B.1B's exact 10-session/17,082-observation window; two independent full replay runs produced a byte-identical SHA-256 digest (full determinism, zero provider calls). Every point-observation headline statistic matches ID-6B.1B's own research figures almost exactly (QUALIFIED 21.70%, TRADE 24.17%, WATCH 19.93%) with zero tuning — confirming the real engine faithfully implements the frozen v0 methodology. All frozen invariants hold across all 17,082 observations (`DISQUALIFIED_FOR_SESSION`=0, confirmation always `NOT_EVALUATED`, finality 100% `LIVE_M5_PROVISIONAL`), Option C and M15 non-blocking status reconfirmed at full scale. Real `db/athena.db` audited read-only: `entry_qualifications` table does not exist in production — reported honestly as `SHADOW_OBSERVATIONS_NOT_YET_AVAILABLE`, no synthetic rows fabricated. Classification: `REPLAY_SOUND_SHADOW_EVIDENCE_INSUFFICIENT`, owner-accepted. No profitability/outcome claim made. Owner found the transition/qualified-duration trajectory grouping incorrectly used `decision_type` instead of canonical `decision_id`, inflating flicker to 39.76% by merging distinct superseding Decision episodes — held closure for ID-6E.1 |
-| ID-6E.1 | IMPLEMENTATION COMPLETE — READY FOR OWNER VALIDATION CLOSURE REVIEW 2026-09-02 — corrected `_transitions`/`_qualified_duration` to group by canonical `(instrument_id, session_date, decision_id)` instead of `(instrument_id, session_date, decision_type)`, ordered by semantic `as_of` instead of the checkpoint label. Added a new descriptive `_decision_supersession` audit: 3,210 of 3,401 instrument/session groups (94.4%) contain more than one distinct Decision episode across the 6 replay checkpoints — Decision churn is the norm in this population. Corrected flicker: 215 of 1,833 multi-checkpoint Decision episodes = **11.73%** (was 39.76% under the old, over-merged grouping) — the prior figure is superseded, root-caused, and documented, not silently left in the narrative. Audited ID-6B.1B's own harness and confirmed it shares the identical `decision_type`-grouping defect, predating ID-6E entirely (research-only contract written before ID-6C's Decision-binding persistence discipline existed) — ID-6B.1B's own artifacts were not modified. All point-observation invariants (state distribution, WATCH/TRADE split, Option C, M15, finality, confirmation, methodology version) confirmed byte-for-byte unchanged; new deterministic digest (`d18c2cb1c43688804c7aea8430b1d4a1539c48f4b3cab3e2a05fd2bba8a70ef9`) matches exactly across two independent reruns of the real 17,082-observation replay against `db/athena.db`. Shadow classification unchanged (`SHADOW_OBSERVATIONS_NOT_YET_AVAILABLE` / `REPLAY_SOUND_SHADOW_EVIDENCE_INSUFFICIENT`); no production migration performed. 5 new focused tests (2 mutation-verified), 23/23 `test_id6e_replay_shadow_validation.py` passing, combined ID-6A–ID-6E suite 194 passed, full suite 3,154 passed, 1 pre-existing skip. No methodology/engine/workflow/repository/schema/API/UI change |
+| ID-6E | HISTORICAL REPLAY VALIDATION OWNER-ACCEPTED (BEHAVIORALLY SOUND); SHADOW VALIDATION OPEN 2026-09-03 — validation-only milestone: deterministic historical market-time replay via the real, unmodified `EntryQualificationEngine`/`resolve_evidence_finality`, plus read-only inspection of persisted shadow observations in real `db/athena.db`. New harness `src/athena/data/id6e_replay_shadow_validation.py` reuses ID-6B.1's `ReadOnlyStore`/`candidates_at` and ID-6B.1B's exact 10-session/17,082-observation window; two independent full replay runs produced a byte-identical SHA-256 digest (full determinism, zero provider calls). Every point-observation headline statistic matches ID-6B.1B's own research figures almost exactly (QUALIFIED 21.70%, TRADE 24.17%, WATCH 19.93%) with zero tuning. All frozen invariants hold across all 17,082 observations, Option C and M15 non-blocking status reconfirmed at full scale. Owner accepted the historical replay validation as **BEHAVIORALLY SOUND** after ID-6E.1's Decision-episode trajectory correction. Shadow validation remained open only because the production schema was not yet activated — closed by ID-6E.2 |
+| ID-6E.1 | OWNER APPROVED / CLOSED 2026-09-02 — corrected `_transitions`/`_qualified_duration` to group by canonical `(instrument_id, session_date, decision_id)` instead of `(instrument_id, session_date, decision_type)`, ordered by semantic `as_of` instead of the checkpoint label. Added a new descriptive `_decision_supersession` audit: 3,210 of 3,401 instrument/session groups (94.4%) contain more than one distinct Decision episode across the 6 replay checkpoints — Decision churn is the norm in this population. Corrected flicker: 215 of 1,833 multi-checkpoint Decision episodes = **11.73%** (was 39.76% under the old, over-merged grouping) — the prior figure is superseded, root-caused, and documented, not silently left in the narrative. Audited ID-6B.1B's own harness and confirmed it shares the identical `decision_type`-grouping defect, predating ID-6E entirely (research-only contract written before ID-6C's Decision-binding persistence discipline existed) — ID-6B.1B's own artifacts were not modified. All point-observation invariants confirmed byte-for-byte unchanged; new deterministic digest (`d18c2cb1c43688804c7aea8430b1d4a1539c48f4b3cab3e2a05fd2bba8a70ef9`) matches exactly across two independent reruns of the real 17,082-observation replay against `db/athena.db`. 5 new focused tests (2 mutation-verified), 23/23 `test_id6e_replay_shadow_validation.py` passing, combined ID-6A–ID-6E suite 194 passed, full suite 3,154 passed, 1 pre-existing skip. No methodology/engine/workflow/repository/schema/API/UI change |
+| ID-6E.2 | ACTIVATION COMPLETE — SHADOW ACCUMULATION STARTED 2026-09-03 — operational-only milestone (no methodology/engine/workflow/schema code change). Preflight against real `db/athena.db` found SCHEMA_VERSION already 17 with `entry_qualifications` present (0 rows) — migration had already occurred via ATHENA's own routine, idempotent `SqliteRepository.initialize()` calls (`_open_repo()`/API startup); no ad-hoc SQL issued anywhere. Integrity-verified, checksummed safety backup taken (`db/backups/athena-pre-id6e2-shadow-canary-20260903T024201Z.db`). Structural verification against a fresh v17 reference schema: 0 drift (28/28 tables, 56/56 indexes, exact `entry_qualifications` column/PK/FK/index match). Idempotency reconfirmed via an explicit second `initialize()` call. The already-running, already-scheduled production server fired its own PREMARKET cycle (08:15:29 IST) on its own schedule — no manual trigger — persisting **165 genuine `EntryQualification` rows** through the normal `OwnerValidationPipeline` runtime path. Full-population integrity audit: 0 defects of any kind across all 165 rows. All rows are `EXPIRED`/`UNKNOWN_PROVENANCE`/WATCH — read-only root-caused to the cycle's 08:15 `as_of` falling before `preopen_start` (09:00), correctly classified `SessionPhase.CLOSED` by the frozen, untouched session engine — verified as correct, by-design behavior, not a defect. Genuine persistence latency observed for the first time: median 550.77s, max 553.12s, 0 negative. Evidence proves runtime persistence operational; not yet sufficient for behavioral shadow characterization (single CLOSED-phase moment). Full record: `docs/ops/ID-6E2-ENTRY-QUALIFICATION-PRODUCTION-SCHEMA-ACTIVATION.md`. No new production code; full repository suite 3,190 passed, 1 pre-existing skip |
 
 The full detailed evidence for every closed milestone above is in
 `docs/MILESTONES.md`'s "Intraday Intelligence Track" section (long — this
@@ -205,7 +209,7 @@ reproduce those numbers.
 
 ## 5. Full test suite status
 
-As of the ID-6E.1 correction (2026-09-02): **3,154 passed, 1 pre-existing
+As of ID-6E.2 (2026-09-03): **3,190 passed, 1 pre-existing
 skip**, 0 failed. Ruff clean for every ID-track file (a small number of
 pre-existing, unrelated `repository.py` SIM117 findings remain, confirmed
 present before this track ever touched the file). Zero new mypy failures
@@ -599,18 +603,62 @@ confirmation, methodology version) were reconfirmed byte-for-byte
 unchanged, and a new deterministic digest
 (`d18c2cb1c43688804c7aea8430b1d4a1539c48f4b3cab3e2a05fd2bba8a70ef9`)
 matched exactly across two independent reruns of the full 17,082-
-observation replay against real `db/athena.db`. Shadow classification is
-unchanged; no production migration was performed. 5 new focused tests
+observation replay against real `db/athena.db`. 5 new focused tests
 (2 mutation-verified — reverting the grouping to `decision_type` correctly
 failed the new Decision-identity tests, then was reverted), 23/23
 `test_id6e_replay_shadow_validation.py` passing, combined ID-6A–ID-6E
 Entry Qualification suite 194 passed. Full repository suite: 3,154
 passed, 1 pre-existing skip, 0 failed. `db/athena.db` confirmed unmodified
-(identical checksum) across all replay runs and the shadow audit.
+(identical checksum) across all replay runs and the shadow audit. The
+owner approved ID-6E.1 and accepted the historical replay validation as
+**BEHAVIORALLY SOUND**.
+
+**ID-6E.2 (2026-09-03) then opened and progressed shadow validation.**
+Owner-authorized, operational-only: preflight against real `db/athena.db`
+found SCHEMA_VERSION already 17 with `entry_qualifications` present (0
+rows) — migration had already occurred via ATHENA's own routine, idempotent
+`SqliteRepository.initialize()` calls at `_open_repo()`/API startup (the
+already-running `athena serve --with-cycles` process had already exercised
+this canonical, additive-only path); no ad-hoc migration SQL was issued.
+An integrity-verified, checksummed safety backup was taken immediately
+(`db/backups/athena-pre-id6e2-shadow-canary-20260903T024201Z.db`).
+Structural verification against a freshly-initialized v17 reference schema
+found zero drift (28/28 tables, 56/56 indexes, exact `entry_qualifications`
+column/PK/FK/index match); migration idempotency was explicitly
+reconfirmed via a second `initialize()` call (record counts, table set,
+index set all unchanged).
+
+The shadow canary used the normal runtime path throughout: no manual SQL,
+no direct `save_entry_qualification()` call, no fabricated data. The
+already-running, already-scheduled production server fired its own
+PREMARKET cycle (08:15:29 IST) entirely on its own schedule; this milestone
+only observed it read-only, polling until the `entry_qualification` stage
+persisted **165 genuine rows** — one per eligible WATCH candidate. A
+full-population (not sampled) integrity audit found zero defects across
+all 165 rows (Decision-binding, timezone/session-date coherence, reason
+codes, methodology version, confirmation, duplicate identity — all clean).
+Every row shares `state=EXPIRED`/`evidence_finality=UNKNOWN_PROVENANCE`/
+`decision_type=WATCH` — read-only root-caused (no frozen code touched) to
+the cycle's 08:15 `as_of` falling before `config/market.nse.json`'s
+`preopen_start` (09:00), so `classify_session_phase` correctly returns
+`SessionPhase.CLOSED` for this `as_of`, which the frozen engine/resolver
+correctly map to `EXPIRED`/`UNKNOWN_PROVENANCE` — verified as intentional,
+by-design behavior, not a defect. Genuine persistence latency was measured
+for the first time in production: median 550.77s, p90 552.58s, max
+553.12s, 0 negative-latency rows.
+
+**Classification impact.** Runtime persistence is now proven operational
+against production; the single CLOSED-phase moment observed does not yet
+support behavioral shadow characterization (no REGULAR-phase, QUALIFIED/
+NOT_YET/UNKNOWN, or TRADE observation exists yet) — no arbitrary
+sample-size threshold was invented to claim otherwise. No new production
+code was added; full repository suite 3,190 passed, 1 pre-existing skip,
+0 failed. Full record:
+`docs/ops/ID-6E2-ENTRY-QUALIFICATION-PRODUCTION-SCHEMA-ACTIVATION.md`.
 
 Do not add API/UI, thresholds, IntradayTradePlan, an M15 settlement-repair
 milestone, ID-7, EM-6, EMR, DarvaX, or order behavior until the owner
-reviews the ID-6E (including ID-6E.1) validation analysis and closes it.
+reviews the ID-6E.2 shadow-accumulation status.
 
 ## 7. ID-5B — closed result
 

@@ -430,67 +430,106 @@ inherited — see §48), so 11.73% has no ID-6B.1B counterpart to match
 against. No engine tuning was performed anywhere in this comparison — every
 match and every difference was observed, not sought.
 
-## 35. Shadow observation availability
+## 35. Shadow observation availability (updated — ID-6E.2)
 
-**Unavailable.** A direct, read-only query (`SELECT 1 FROM sqlite_master
-WHERE type='table' AND name='entry_qualifications'`) against the real
-`db/athena.db` confirms the table **does not exist** in the production
-database — the ID-6C schema migration (`SqliteRepository.initialize()`)
-has not been run against it since these milestones were implemented.
-Status: **`SHADOW_OBSERVATIONS_NOT_YET_AVAILABLE`**.
+**Available as of 2026-09-03 (ID-6E.2).** At the time this report was first
+written, a direct read-only query confirmed the `entry_qualifications`
+table did not exist in production, and status was reported
+`SHADOW_OBSERVATIONS_NOT_YET_AVAILABLE`. ID-6E.2 (owner-authorized
+operational activation) found the schema had, by the time of its own
+preflight, already reached SCHEMA_VERSION 17 with the table present (via
+ATHENA's own routine, idempotent `repo.initialize()` calls — no ad-hoc
+migration was issued), and observed the live, already-scheduled production
+server's own PREMARKET cycle (08:15:29 IST, 2026-09-03) persist **165**
+genuine `EntryQualification` rows through the normal
+`OwnerValidationPipeline` -> `entry_qualification` stage ->
+`save_entry_qualification()` runtime path — no manual insert, no direct
+`save_entry_qualification()` call, no fabricated data. Full detail:
+`docs/ops/ID-6E2-ENTRY-QUALIFICATION-PRODUCTION-SCHEMA-ACTIVATION.md`.
 
 ## 36. Shadow source/read-only posture
 
 `run_shadow_audit` uses the identical `mode=ro` + `PRAGMA query_only=ON`
 posture as the replay harness. It was executed against the real
-`db/athena.db` exactly once, confirmed the table-missing result, and made
-no writes — verified by comparing the file's modification time before and
-after (unchanged), and independently test-proven against temp databases
-(§49).
+`db/athena.db` twice: once (ID-6E) confirming the table-missing result,
+and once (ID-6E.2) against the now-populated table — both read-only, both
+verified to make no writes. Integrity logic was additionally test-proven
+against synthetic temp-DB data (§49).
 
-## 37. Shadow observation count/sessions/instruments
+## 37. Shadow observation count/sessions/instruments (updated — ID-6E.2)
 
-0 / not applicable / not applicable — no rows exist to characterize.
+**165 observations, 1 distinct session (2026-09-03), 165 distinct
+instruments** — one row per eligible WATCH candidate in that single
+PREMARKET cycle. All from a single `as_of` (08:15:29.919615+05:30);
+`run_shadow_audit`'s `earliest_persisted_at`/`latest_persisted_at` span
+08:24:37.844185 to 08:24:43.035112 IST — the ~5.2-second wall-clock spread
+of persisting 165 rows sequentially within the cycle.
 
-## 38. Shadow state distribution
+## 38. Shadow state distribution (updated — ID-6E.2)
 
-Not applicable — no observations exist.
+100% `EXPIRED` (165/165). Root-caused (read-only, no frozen code touched)
+to genuine, correct, by-design behavior: the cycle's `as_of` (08:15:29 IST)
+falls before `config/market.nse.json`'s `sessions.preopen_start` (09:00),
+so `classify_session_phase` (`src/athena/session/engine.py:150-171`)
+correctly returns `SessionPhase.CLOSED` for this `as_of` — which the
+frozen engine's state precedence (ID-6B.2) maps to `EXPIRED`. This is not
+a defect; ATHENA's "PREMARKET" operational cadence label and NSE's own
+session-phase "PRE_OPEN" window are distinct concepts, and 08:15 IST falls
+in neither NSE's PRE_OPEN (09:00-09:15) nor REGULAR (09:15-15:30) window.
 
-## 39. Shadow finality distribution
+## 39. Shadow finality distribution (updated — ID-6E.2)
 
-Not applicable — no observations exist.
+100% `UNKNOWN_PROVENANCE` (165/165) — exactly the expected `resolve_evidence_finality`
+result for a non-REGULAR-phase evaluation (§38), consistent with ID-6D's
+own frozen resolver contract.
 
-## 40. Shadow integrity audit
+## 40. Shadow integrity audit (updated — ID-6E.2)
 
-Not applicable — no observations exist to audit. `run_shadow_audit`'s
-integrity-check logic (duplicate logical identity, `DISQUALIFIED_FOR_SESSION`
-absence, non-`NOT_EVALUATED` confirmation, naive `persisted_at`) was
-proven correct against synthetic temp-DB data instead (§49) — the logic
-itself is validated even though no real data currently exercises it.
+Full-population (not sampled) read-only audit of all 165 rows:
+Decision-binding mismatches (instrument_id/decision_type/run_id/cycle_id
+vs. the bound Decision) — **0**; orphaned `decision_id` — **0**;
+`session_date` incoherent with `as_of`'s local calendar date — **0**;
+naive (non-timezone-aware) `as_of` — **0**; naive `persisted_at` — **0**;
+unexpected `reason_codes` for `state` — **0**; non-`entry-qualification-v0`
+methodology version — **0**; `DISQUALIFIED_FOR_SESSION` — **0**;
+non-`NOT_EVALUATED` confirmation — **0**; duplicate logical identity —
+**0**. Every invariant this integrity audit checks holds cleanly against
+genuine production data for the first time.
 
-## 41. Persistence-latency distribution
+## 41. Persistence-latency distribution (updated — ID-6E.2)
 
-Not applicable — no real persisted observations exist. The `persistence_latency_seconds`
-computation (median/p90/p95/max/negative-count) was proven correct against
-a synthetic temp-DB observation with a known, non-zero `persisted_at -
-as_of` delta (§49) — no pass/fail threshold was invented; none is proposed
-here either, since real data does not yet exist to characterize a
-production distribution.
+Genuine, non-fabricated latency across all 165 rows: median 550.77s, p90
+552.58s, p95 552.82s, max 553.12s, **0 negative-latency rows**. This
+reflects the real wall-clock duration between the cycle's `as_of` capture
+(at cycle start) and each instrument's own `entry_qualification` stage
+actually executing, sequentially, later in the same PREMARKET cycle — the
+first genuine evidence of the `as_of`/`persisted_at` separation ID-6D.1
+built. No pass/fail threshold is asserted, per instruction.
 
 ## 42. Shadow transition/flicker analysis
 
-Not applicable — no real observations exist to reconstruct trajectories
-from.
+Not applicable — all 165 observations share a single `as_of` (one
+checkpoint), so there is no multi-checkpoint trajectory to reconstruct yet.
+This requires observations spanning multiple `as_of` values for the same
+instrument/session/decision_id, which will only exist once further cycles
+(REFRESH, or a future PREMARKET) run.
 
-## 43. Replay-vs-shadow comparison
+## 43. Replay-vs-shadow comparison (updated — ID-6E.2)
 
-Not applicable — shadow evidence does not exist, so no comparison is
-possible. This is stated as a gap, not glossed over: the replay findings
-(§14-34) describe engine behavior under research-comparable historical
-conditions; they say nothing about actual production runtime cadence,
-candidate funnel composition, or persistence latency, none of which can be
-observed until the schema is migrated against `db/athena.db` and at least
-one real cycle runs.
+Only partially possible now. Comparable dimensions: WATCH/TRADE split —
+shadow is 100% WATCH (165/165) vs. replay's 74.5%/25.5% WATCH/TRADE split;
+not directly comparable, since the shadow sample is a single CLOSED-phase
+moment (no TRADE decisions were eligible/produced at that hour) while
+replay spans full REGULAR-phase sessions. State prevalence — shadow is
+100% EXPIRED (a CLOSED-phase artifact); replay's population excludes
+CLOSED-phase observations by construction (§9/§18), so there is no
+directly overlapping state distribution to compare yet. Finality — shadow
+is 100% `UNKNOWN_PROVENANCE` vs. replay's 100% `LIVE_M5_PROVISIONAL` —
+this is expected and consistent: replay only samples REGULAR-phase
+WATCH/TRADE observations, while the one real shadow cycle observed so far
+ran before market open. A meaningful behavioral comparison (state/finality
+distribution during REGULAR phase) requires shadow evidence from a cycle
+that runs during NSE market hours — not yet observed.
 
 ## 44. Outcome-data availability count only
 
@@ -527,15 +566,24 @@ grouped trajectories by `decision_type` instead of `decision_id`,
 incorrectly merging distinct canonical Decision episodes. Corrected by
 ID-6E.1 — see §23/§24/§48.
 
-## 47. Validation classification
+## 47. Validation classification (updated — ID-6E.2)
 
 ## **REPLAY_SOUND_SHADOW_EVIDENCE_INSUFFICIENT**
 
 Deterministic replay is sound (§32); runtime/workflow invariants are
 clean everywhere they are observable through the replay path (§19-20,
-§46); but genuine shadow (persisted runtime) observations are absent —
-not merely sparse, but structurally unavailable because the production
-schema has not yet been migrated against `db/athena.db`. This is reported
+§46), and now also clean against genuine production data (§40). Shadow
+evidence is no longer *unavailable* — 165 genuine, fully-coherent
+observations exist as of ID-6E.2 (2026-09-03) — but it remains
+*insufficient* for behavioral characterization: every observation shares
+one `as_of`, one state (`EXPIRED`), one finality (`UNKNOWN_PROVENANCE`),
+and one decision type (`WATCH`), a CLOSED-session artifact of the single
+observed cycle running before NSE's own pre-open window. No REGULAR-phase,
+QUALIFIED/NOT_YET/UNKNOWN, or TRADE-type shadow observation exists yet.
+The classification therefore remains unchanged, for a different reason
+than before: previously because shadow evidence was structurally absent;
+now because the evidence that exists cannot yet support a behavioral
+comparison against the replay findings. This is reported
 as a factual precondition for any future shadow characterization, not a
 defect in ID-6D/ID-6D.1's own implementation (which is itself
 schema-correct and fully tested against temp databases throughout ID-6C
@@ -625,3 +673,53 @@ Option C statistics, M15 statistics, finality distribution, confirmation
 invariants, and methodology-version invariants (§13-20, §28-30 above) —
 all identical to the pre-correction run, confirming the correction touched
 only trajectory-analysis code, never the per-observation replay path.
+
+## 49. ID-6E.2 addendum — Production schema activation & first genuine shadow canary
+
+Owner-authorized operational activation (2026-09-03). Full detail:
+`docs/ops/ID-6E2-ENTRY-QUALIFICATION-PRODUCTION-SCHEMA-ACTIVATION.md`.
+
+**Migration.** Preflight against real `db/athena.db` found SCHEMA_VERSION
+already at 17 with `entry_qualifications` present (0 rows) — the migration
+had already occurred via ATHENA's own routine, idempotent
+`SqliteRepository.initialize()` calls (`_open_repo()`/API startup), which
+this milestone's own explicit second `initialize()` call reconfirmed as a
+structural no-op. No ad-hoc SQL was written anywhere. A full,
+integrity-verified, checksummed safety backup was taken before any further
+production activity (`db/backups/athena-pre-id6e2-shadow-canary-20260903T024201Z.db`,
+SHA-256 `42c1ecb267d6652389ed59b05cefb690e66d827b4bf572faa3aac1773ff8beaa`).
+Structural verification against a fresh v17 reference schema found zero
+drift (28/28 tables, 56/56 indexes, exact `entry_qualifications` column/PK/FK/index
+match).
+
+**Shadow canary.** The already-running, already-scheduled production
+server (`athena serve --with-cycles`) fired its own PREMARKET cycle at
+08:15:29 IST on its own schedule — no triggering action from this
+milestone — and persisted **165** genuine `EntryQualification` rows
+through the normal `OwnerValidationPipeline` runtime path. Full-population
+(not sampled) integrity audit: 0 Decision-binding mismatches, 0 orphaned
+`decision_id`, 0 timezone/session-date incoherence, 0 unexpected reason
+codes, 0 invariant violations of any kind across all 165 rows.
+
+**Why all 165 rows are `EXPIRED`/`UNKNOWN_PROVENANCE`.** Read-only audited
+(no frozen code touched): the cycle's `as_of` (08:15:29 IST) precedes
+`config/market.nse.json`'s `sessions.preopen_start` (09:00), so
+`classify_session_phase` correctly returns `SessionPhase.CLOSED` — which
+the frozen engine maps to `EXPIRED`/`UNKNOWN_PROVENANCE`. Verified
+by-design, not a defect: ATHENA's "PREMARKET" operational label and NSE's
+own session-phase PRE_OPEN window are distinct concepts.
+
+**Genuine persistence latency observed for the first time in production:**
+median 550.77s, p90 552.58s, p95 552.82s, max 553.12s, 0 negative-latency
+rows — the real wall-clock gap between `as_of` capture and each
+instrument's sequential `entry_qualification` stage execution later in the
+same cycle.
+
+**Classification impact.** Shadow evidence is no longer *unavailable* (as
+it was when this report was first written), but the single CLOSED-phase
+cycle observed so far does not yet support behavioral characterization (no
+REGULAR-phase, QUALIFIED/NOT_YET/UNKNOWN, or TRADE observation exists).
+Milestone-level status:
+**ID-6E.2 ACTIVATION COMPLETE — SHADOW ACCUMULATION STARTED.** Overall
+ID-6E classification remains **REPLAY_SOUND_SHADOW_EVIDENCE_INSUFFICIENT**,
+now for evidence-insufficiency rather than evidence-absence (§47).
