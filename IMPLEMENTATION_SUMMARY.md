@@ -6,6 +6,75 @@ status updated on approval.
 
 ---
 
+## ID-6E Final Post-Market Shadow Audit — Complete, Ready for Owner Closure Review
+
+**Summary.** Owner-authorized, read-only audit performed after the
+2026-09-03 NSE session closed, to characterize the full genuine
+production `EntryQualification` shadow evidence naturally accumulated
+across the entire completed trading day and determine whether ID-6E now
+has enough evidence for owner closure. A bounded, deterministic cutoff
+(`persisted_at <= 2026-09-03T10:24:33.966703+00:00`) captured **6,640
+rows across 28 distinct `as_of` checkpoints** (1 PREMARKET, 26 REFRESH,
+1 CLOSING) — the entire session, versus ID-6E.3's earlier 654-row/3-
+checkpoint slice. No production code, database, scheduler, or
+methodology was touched; a throwaway, uncommitted read-only script
+(`mode=ro` + `PRAGMA query_only=ON`) performed the audit, matching the
+ID-6E.2/ID-6E.3 precedent.
+
+**Findings.** `SessionPhase` (via the frozen `classify_session_phase`):
+CLOSED 420, REGULAR 6,220. REGULAR finality invariant holds exactly
+(6,220/6,220 `LIVE_M5_PROVISIONAL`); confirmation invariant holds exactly
+(6,640/6,640 `NOT_EVALUATED`); methodology invariant holds exactly
+(6,640/6,640 `entry-qualification-v0`). Decision-binding audit against
+the real `decisions` table: **0 defects of any kind** across all 6,640
+rows. 0 duplicate identities, 0 naive timestamps, 0 malformed JSON.
+REGULAR state distribution: NOT_YET 73.82%, QUALIFIED 17.75%, UNKNOWN
+8.44% — UNKNOWN concentrated at the 09:15 open (33.73%) then settling
+into a 2.99-15.08% band for the rest of the day, never returning to the
+open-edge extreme, answering ID-6E.3's own open question about
+later-session UNKNOWN behavior. Decision churn: 295/301 (98.01%)
+instrument/session groups show more than one distinct `decision_id`
+across the day; canonical same-Decision episodes remain 0
+multi-checkpoint even across 28 checkpoints, confirming (with far
+stronger evidence than ID-6E.3) that this is architectural, not an
+evidentiary gap. TRADE remained absent the entire session
+(`TRADE_SHADOW_EVIDENCE_NOT_OBSERVED` — the same day's persistent
+SIDEWAYS regime structurally blocks canonical TRADE Decisions; a market
+fact, not an Entry Qualification defect). Persistence latency stable at
+~9-10 minutes across every normal cycle, 0 negative-latency rows. Two
+independent full audit runs against the identical bounded population
+produced a byte-identical SHA-256 digest. Before/after
+`PRAGMA integrity_check`/`foreign_key_check`/schema-version/row-count
+snapshots were identical — zero milestone mutation.
+
+**Classification.** `REPLAY_AND_SHADOW_BEHAVIORALLY_SOUND`. Recommends
+**ID-6E OWNER APPROVAL / CLOSURE** — not self-executed. Full detail:
+`docs/research/ID-6E-ENTRY-QUALIFICATION-REPLAY-SHADOW-VALIDATION.md`
+§53.
+
+**Files created.** None (throwaway audit script, not committed).
+
+**Files modified.** `docs/research/ID-6E-ENTRY-QUALIFICATION-REPLAY-SHADOW-VALIDATION.md`
+(new §53), `docs/MILESTONES.md`, `docs/ATHENA-ID-TRACK-HANDOFF.md`,
+`ATHENA_BRIEFING.md` — status/classification updates only.
+
+**Tests / validation.** Read-only audit only; no production source or
+test file changed, so the full suite was not rerun (consistent with
+repository policy for a docs/analysis-only change; the last known-good
+full-suite result — 3,190 passed, 1 pre-existing skip, from ID-6E.3 —
+remains valid since no source changed since then). `git diff --check`
+clean.
+
+**Remaining work.** Owner/Chief Architect review of this final audit. If
+accepted, ID-6E overall may be closed. Do not start ID-7, EM-7, or any
+EntryQualification/DecisionEngine/scheduler/DarvaX change until
+explicitly authorized.
+
+**Outcome:** Audit complete; ready for owner closure review. ID-6E
+overall remains open pending that review.
+
+---
+
 ## EM-6B.1 Single-Response Clock Coherence Correction — Owner Approved / Closed
 
 **Summary.** Owner review of the actual EM-6B implementation (not a
