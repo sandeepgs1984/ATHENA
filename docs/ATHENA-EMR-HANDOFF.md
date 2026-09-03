@@ -1,10 +1,14 @@
 # ATHENA Explosive Move Radar Handoff
 
-**Snapshot:** 2026-09-01 (EM-5 scanner contract ACCEPTED; Tuesday Track B
+**Snapshot:** 2026-09-03 (EM-5 scanner contract ACCEPTED; Tuesday Track B
 live capture phase owner-approved; Track B.1 zero-off-grid contract-gap
 correction owner-accepted; corrected classification
 `NO_OFF_GRID_PROVISIONAL_OBSERVED`; final Section 14 canary PASS; EM-5
-owner-approved / closed)
+owner-approved / closed 2026-09-01; **EM-6 discovery authorized and
+complete 2026-09-03 — read-only research/UI scope confirmed from
+repository evidence, no modeling work required, implementation not
+started, awaiting owner contract review** — see
+`docs/research/EM-6-DISCOVERY-AND-MODELING-CONTRACT.md`)
 **Governing boundary:** ADR-012
 **Current state:** EM-0 through EM-4E are all owner-approved (GO), including
 the sealed FINAL_TEST evaluation. EM-5 (the replayable bulk-input live
@@ -40,7 +44,11 @@ production canary against `athena_core` / 2026-08-28 via
 `run_em5_production_canary()`: PASS across all nine checkpoints, 518/518
 mature instruments, 9,324/9,324 all-required-fields-known at every checkpoint
 (100.0000%), zero provider/network calls, and deterministic replay. EM-5 is
-closed. This does not authorize EM-6.
+closed. This does not authorize EM-6 implementation. **2026-09-03 update:**
+the owner authorized EM-6 *discovery/contract-definition only*, which is
+now complete — `docs/research/EM-6-DISCOVERY-AND-MODELING-CONTRACT.md`.
+EM-6 implementation remains unauthorized pending owner review of that
+contract.
 
 **Read `docs/ATHENA-ID-TRACK-HANDOFF.md` §7 before touching anything on
 Monday.** The ID-track's own ID-5B milestone ("Live Current-Session M5
@@ -80,7 +88,7 @@ misattribute one track's evidence to the other's decision.
 | EM-4D | Owner-approved (GO) 2026-08-28 — all 162 (family×threshold×checkpoint) cells Platt-calibrated |
 | EM-4E | Owner-approved / GO 2026-08-28 — sealed FINAL_TEST evaluation complete (702,702 rows, 157 sessions); calibrated logistic beats deterministic 18/18, replicating VALIDATION on a third, never-before-touched partition. FINAL_TEST remains sealed |
 | EM-5 | **OWNER APPROVED / CLOSED — 2026-09-01** — contract ACCEPTED 2026-08-28. Regime wiring RESOLVED; REL_VOLUME_C historical support REPAIRED (real backfill, 23/23 resolvable prior sessions across all 3 liquidity tiers). Tuesday 2026-09-01 Track B live capture phase is owner-approved (81/81 Kite raw files, 0 provider failures, 0 `NOT_OBSERVED_LIVE`, 0 off-grid raw `ts_open`). Owner-authorized settled-provider comparison ran through the existing `force=True` override and originally produced `classification=null` because the frozen classifier had no eligible off-grid rows to classify. Track B.1 is owner-accepted and adds `NO_OFF_GRID_PROVISIONAL_OBSERVED`; raw-only replay classifies Tuesday as that outcome, clearing `CANARY_BLOCKED_LIVE_M5_SEMANTICS` for the frozen canary. Final validation ran the unchanged Section 14 full nine-checkpoint canary against `athena_core` / 2026-08-28: PASS, 100.0000% all-required-fields-known at every checkpoint, zero provider/network calls, deterministic replay. EM-6 not started |
-| EM-6 | Planned — add EMR research UI only after scanner approval |
+| EM-6 | **DISCOVERY COMPLETE — READY FOR OWNER CONTRACT REVIEW 2026-09-03** — source-grounded discovery (implementation not started) found EM-6 is not a modeling milestone (fitting/calibration/sealed-holdout are already closed by EM-4B/4D/4E); the only existing spec anywhere is roadmap intent for a read-only, permanently "Experimental"-labelled EMR research UI. Recommended shape: read-only presentation, proposed as two gated sub-milestones (EM-6A query layer, EM-6B dashboard), neither implemented. Full contract: `docs/research/EM-6-DISCOVERY-AND-MODELING-CONTRACT.md` |
 | EM-7 | Planned — isolated shadow validation, OFF-vs-shadow comparison |
 | EM-8 | Planned — research-only / continued shadow / retirement / new integration ADR decision |
 
@@ -297,6 +305,16 @@ business logic, no shared schema, no shared scoring/Decision/TradePlan
 effect) but share one underlying empirical question and one diagnostic
 tool, and will need coordinated (not necessarily combined) real-Kite
 captures on Monday.
+
+**2026-09-03 status note (informational only — the ID-track's own docs
+remain authoritative and were not touched by this note):** the ID-track
+is currently at ID-6E, `REPLAY_SOUND_SHADOW_EVIDENCE_STILL_ACCUMULATING`
+— production Entry Qualification shadow observations are accumulating
+passively through the ID-track's own already-running scheduler, and ID-7
+has **not** started. This EM-6 discovery confirmed (§28 of
+`docs/research/EM-6-DISCOVERY-AND-MODELING-CONTRACT.md`) that ID-6E's
+state has zero bearing on EM-6 methodology — the isolation established
+above continues to hold unchanged.
 
 ## 9. Required milestone closeout
 
