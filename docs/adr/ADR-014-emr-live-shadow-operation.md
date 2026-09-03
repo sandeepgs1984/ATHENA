@@ -22,8 +22,16 @@ Owner Decision: make result persistence genuinely atomic
 rejected. §15 and §16 below are corrected accordingly; the correction
 preserves rather than erases the original (now-superseded) claim and the
 EM-7A finding that disproved it — see each section's own "EM-7A.1
-correction" note. The substantive architecture is otherwise unmodified
-by either finding.
+correction" note. **Owner/Chief Architect source review of the EM-7A.1
+implementation then found one further, narrower mismatch: session
+non-scannability was still persisted as a fourth run status
+(`SKIPPED_SESSION_TYPE`), contradicting this ADR's accepted
+two-terminal-outcome lifecycle. EM-7A.2 (2026-09-03) resolved it** —
+session-scannability is now a pre-execution eligibility check, never a
+persisted lifecycle state; the `RUNNING → COMPLETE | FAILED` decision
+itself is unchanged. See §15's own "EM-7A.2 correction" note. The
+substantive architecture is otherwise unmodified by any of these three
+findings.
 
 ## 2. Context
 
@@ -328,6 +336,32 @@ diagnose what failed) instead of leaving an orphaned `RUNNING` row, and
 (successful, fully-persisted, now genuinely atomic result). **Satisfied
 by EM-7A.1** — see `docs/research/EM-7A-SCANNER-CORRECTNESS-HARDENING.md`
 for the closure record.
+
+**EM-7A.2 correction (2026-09-03) — session non-scannability is a
+pre-execution eligibility outcome, not a persisted lifecycle state.**
+Owner/Chief Architect source review of the EM-7A.1 implementation found
+`run_scan_cycle` still persisted a fourth status,
+`SKIPPED_SESSION_TYPE`, whenever `session_is_scannable(...)` was
+`False` — writing `RUNNING`, then immediately overwriting it with
+`SKIPPED_SESSION_TYPE`. This contradicted the two-terminal-outcome model
+this section freezes: a non-scannable session means the scan was never
+eligible to start, not that a `RUNNING` scan executed and terminated in
+a fourth state. **The lifecycle decision above is unchanged by this
+correction** — `RUNNING → COMPLETE | FAILED` remains exactly as decided;
+what changed is where the eligibility check runs relative to the
+`RUNNING` write. Session-scannability is now checked as a true
+preflight — after the existing-run-identity dispatch (so it can never
+override an already-`COMPLETE` result, reinterpret an already-`RUNNING`
+row, or mutate an existing `FAILED` row) but before any `RUNNING` write,
+any provider call, or any computation. A non-scannable session returns
+an in-memory-only `"SKIPPED_SESSION_TYPE"` outcome to the caller and
+persists nothing. New scanner executions can therefore persist only
+`RUNNING`, `COMPLETE`, or `FAILED`. A database created before EM-7A.2
+may still contain legacy persisted `SKIPPED_SESSION_TYPE` rows (kept as
+historical fact, not erased); the existing-run dispatch treats one
+identically to `FAILED` for same-`run_id` lookup — read compatibility
+only, never written again. Full record:
+`docs/research/EM-7A-SCANNER-CORRECTNESS-HARDENING.md` §10.
 
 ## 16. Retry/idempotency decision
 

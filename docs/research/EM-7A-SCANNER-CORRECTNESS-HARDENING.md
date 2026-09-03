@@ -1,17 +1,23 @@
 # EM-7A — Scanner Correctness Hardening
 
-**Status (superseded by EM-7A.1, 2026-09-03 — see §9): EM-7A COMPLETE,
-READY FOR OWNER / CHIEF ARCHITECT CLOSURE REVIEW.** §§1–8 below are the
-original, unmodified EM-7A record: concurrency protection, regime wiring
-hardening, and isolation-test hardening were complete and tested; the
-mandatory pre-implementation persistence audit found the existing
-repository architecture could already produce a durable, partial
-business result, directly contradicting ADR-014 §15's original stated
-assumption that the current design was atomic; per explicit owner
-instruction this was not silently resolved and was reported for
-Owner/Chief Architect decision instead. **EM-7A.1 (§9) is the owner's
-resolution of that contradiction** — persistence is now genuinely atomic,
-closing the one item this document originally left open.
+**Status (superseded by EM-7A.1, then EM-7A.2, both 2026-09-03 — see §9
+and §10): EM-7A READY FOR OWNER / CHIEF ARCHITECT CLOSURE REVIEW; not
+yet owner-approved.** §§1–8 below are the original, unmodified EM-7A
+record: concurrency protection, regime wiring hardening, and
+isolation-test hardening were complete and tested; the mandatory
+pre-implementation persistence audit found the existing repository
+architecture could already produce a durable, partial business result,
+directly contradicting ADR-014 §15's original stated assumption that the
+current design was atomic; per explicit owner instruction this was not
+silently resolved and was reported for Owner/Chief Architect decision
+instead. **EM-7A.1 (§9) is the owner's resolution of that
+contradiction** — persistence is now genuinely atomic. Owner/Chief
+Architect source review of the EM-7A.1 implementation then found one
+further, narrower mismatch (session non-scannability persisted as a
+fourth lifecycle status, contradicting ADR-014's accepted two-terminal-
+outcome model) and held EM-7A closure on it; **EM-7A.2 (§10) is the
+owner's resolution** — session eligibility is now a pre-execution check,
+never a persisted lifecycle state.
 
 ---
 
@@ -338,3 +344,49 @@ concurrency lock exercised by tests (§17, unchanged from §3a),
 schedule duplication explicitly deferred with a documented reason (§3d,
 unchanged), the isolation-test extension passing (§3c, unchanged), and
 tests proving no ADR-012 violation was introduced.
+
+**Correction (EM-7A.2, 2026-09-03):** Owner/Chief Architect source review
+of this implementation found the claim above premature by one narrow
+item — see §10. The `"RUNNING"`/`"COMPLETE"`/`"FAILED"`/
+`"SKIPPED_SESSION_TYPE"` status-domain statement two paragraphs above is
+also corrected there; it described the persisted domain at EM-7A.1 time
+and is superseded, not deleted.
+
+## 10. EM-7A.2 correction — session non-scannability is pre-execution eligibility, not a lifecycle state (2026-09-03)
+
+**Owner finding.** ADR-014 §15 freezes the run lifecycle as a
+two-terminal-outcome model, `RUNNING → COMPLETE | FAILED`. EM-7A.1's
+`run_scan_cycle` was source-reviewed and found to still persist a fourth
+status, `SKIPPED_SESSION_TYPE`, when `session_is_scannable(...)` is
+`False` — first writing `RUNNING`, then immediately overwriting it with
+`SKIPPED_SESSION_TYPE`. This contradicted the accepted two-terminal-
+outcome model: a non-scannable session means the scan was never eligible
+to start, not that a `RUNNING` scan executed and terminated in a fourth
+state.
+
+**Resolution.** The session-scannability check now runs as a true
+preflight — after the existing-run-identity dispatch (COMPLETE/RUNNING/
+FAILED-or-legacy-SKIPPED, §15/§16 above, unchanged) but *before* any
+`RUNNING` row is written, before any provider call, and before any
+computation. A non-scannable session returns
+`ScanCycleResult(run_id, "SKIPPED_SESSION_TYPE", 0, 0, 0, 0, 0)` directly
+— an in-memory-only outcome, never persisted to `emr_scan_runs`. New
+scanner executions can now persist only `RUNNING`, `COMPLETE`, or
+`FAILED`. A database created before EM-7A.2 may still contain legacy
+`SKIPPED_SESSION_TYPE` rows; the existing-run dispatch treats one
+identically to `FAILED` (falls through to the eligibility check, which
+decides whether a fresh execution is appropriate) — read/lookup
+compatibility only, never written again.
+
+Preserved unchanged: the COMPLETE short-circuit (authoritative
+regardless of the caller's current session type), the RUNNING rejection
+(never reinterpreted as skipped because of the caller's current session
+type), the FAILED retry semantics (a non-scannable retry attempt returns
+the skip outcome without touching the existing FAILED row), all of
+EM-7A.1's atomicity/idempotency/lock/regime/isolation invariants, and the
+frozen deterministic methodology. No persistence redesign, no new table,
+no new lifecycle enum, no widened schema.
+
+Full detail, tests, and validation counts: see the EM-7A.2 Milestone
+Review Summary (`docs/MILESTONES.md` / commit history) and
+`tests/explosive_move/test_em7a2_pre_execution_eligibility.py`.

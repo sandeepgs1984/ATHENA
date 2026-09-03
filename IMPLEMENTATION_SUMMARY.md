@@ -6,6 +6,103 @@ status updated on approval.
 
 ---
 
+## EM-7A.2 Pre-Execution Session Eligibility Correction — Complete
+
+**Summary.** Owner/Chief Architect source review of the EM-7A.1
+implementation (see entry immediately below) **accepted the
+transactional-lifecycle work as correct** but held EM-7A closure for one
+narrow contract mismatch: `run_scan_cycle` still persisted a fourth run
+status, `SKIPPED_SESSION_TYPE`, whenever the calendar-supplied session
+type was non-scannable — writing `RUNNING` first, then immediately
+overwriting it with `SKIPPED_SESSION_TYPE`. This contradicted ADR-014's
+accepted two-terminal-outcome lifecycle (`RUNNING → COMPLETE | FAILED`):
+a non-scannable session means the scan was never eligible to start, not
+that a `RUNNING` scan executed and terminated in a fourth state. **Owner
+decision:** session-scannability is a pre-execution eligibility
+question, not a persisted lifecycle state; the guard must run before
+`RUNNING` is established.
+
+**Implemented.** `run_scan_cycle`
+(`src/athena/explosive_move/live/scanner.py`) reordered: the
+`session_is_scannable(...)` check now runs immediately after the
+existing-run-identity dispatch (COMPLETE reconstruct / RUNNING reject /
+FAILED-or-legacy-SKIPPED fall-through — all three unchanged from
+EM-7A.1) and strictly before any `RUNNING` row is written, any
+checkpoint-price collector call, or any evidence/scoring computation. A
+non-scannable session now returns
+`ScanCycleResult(run_id, "SKIPPED_SESSION_TYPE", 0, 0, 0, 0, 0)` directly
+— an in-memory-only outcome (smallest change compatible with existing
+callers/types) — and persists nothing. New scanner executions can
+therefore write only `RUNNING`, `COMPLETE`, or `FAILED` to
+`emr_scan_runs`.
+
+**Idempotency semantics preserved exactly, verified per case.** An
+already-`COMPLETE` run remains authoritative regardless of the current
+session type (never re-invokes the collector). An already-`RUNNING` row
+still raises `EmrScanAlreadyRunningError` regardless of the current
+session type (never reinterpreted as skipped). An already-`FAILED` row
+is never mutated by a non-scannable retry attempt — the call returns the
+skip outcome and leaves the `FAILED` row exactly as it was. A database
+predating EM-7A.2 may still contain legacy persisted
+`SKIPPED_SESSION_TYPE` rows; the existing-run dispatch treats one
+identically to `FAILED` for same-`run_id` lookup — a subsequent
+scannable call proceeds to a fresh `RUNNING` execution and can reach
+`COMPLETE` — read-compatibility only, never written again by this
+function.
+
+**Deliberately unchanged.** No persistence redesign, no new database
+table, no new Python enum/constant for `emr_scan_runs.status` (remains
+plain strings, matching existing convention — tests instead assert the
+allowed status *domain* directly against the live schema). All of
+EM-7A.1's invariants: `commit_scan_result`'s atomic transaction,
+`mark_scan_failed`, bounded failure diagnostics, the `UNIQUE` indexes,
+`run_scan_cycle_with_lock`, mandatory `regime_lookup`, the checkpoint
+independent-verification pin, and the isolation-test hardening.
+
+**Files created.**
+`tests/explosive_move/test_em7a2_pre_execution_eligibility.py` (6 tests).
+
+**Files modified.** `src/athena/explosive_move/live/scanner.py`
+(`run_scan_cycle` reordered), `docs/adr/ADR-014-emr-live-shadow-operation.md`
+(§1 status, §15 "EM-7A.2 correction" note — preserves the EM-7A.1 record
+unmodified), `docs/research/EM-7A-SCANNER-CORRECTNESS-HARDENING.md`
+(status banner, new §10), `docs/MILESTONES.md`, `docs/ATHENA-EMR-HANDOFF.md`
+— status updates.
+
+**Tests / validation.** 6 new focused tests, all passing: fresh
+non-scannable (skip outcome, zero collector calls, zero persisted rows
+of any status); existing-COMPLETE + non-scannable input (COMPLETE
+reconstructed, unaffected); existing-RUNNING + non-scannable input
+(still rejected); existing-FAILED + non-scannable input (skip outcome,
+FAILED row left untouched); legacy `SKIPPED_SESSION_TYPE` row + a
+scannable retry (falls through to a fresh execution, reaches COMPLETE);
+a persistence-domain regression querying `emr_scan_runs` directly to
+prove only `RUNNING`/`COMPLETE`/`FAILED` are ever written by new
+executions. Required mutation/negative proof: the reordering was
+temporarily reverted (RUNNING written first, eligibility checked after,
+`SKIPPED_SESSION_TYPE` persisted again) — exactly the 3 tests that
+specifically prove this correction failed as expected (fresh-skip-
+persists-nothing, FAILED-not-mutated, persistence-domain-regression),
+the other 3 were unaffected; reverted, `diff` against a pre-mutation
+backup confirmed byte-identical restoration. Full
+`tests/explosive_move/` + `tests/api/v1/test_emr_router.py`: **473
+passed** (was 467). Full repository suite: **3,285 passed**, 1 skipped
+(pre-existing, unrelated), 0 failed. `test_em6a_presentation.py` (EM-6
+reader compatibility): 26 passed, unaffected. Ruff clean. `git diff
+--check` clean.
+
+**Remaining work.** None identified for EM-7A itself. EM-7B
+(scheduling/invocation) remains a separate, not-yet-authorized
+milestone. No `db/emr.db`, no live scan, no config gate, no service
+mount. ID-7P0 and DarvaX were not touched by this milestone.
+
+**Outcome:** Complete. This was the one narrow mismatch Owner/Chief
+Architect review found in the EM-7A.1 implementation; no other
+architectural blocker was identified. EM-7A is ready for owner closure
+review; owner approval itself is not recorded here until given.
+
+---
+
 ## EM-7A.1 Transactional Lifecycle & Idempotency Correction — Complete
 
 **Summary.** Owner-directed resolution of the ADR-014 §15 contradiction

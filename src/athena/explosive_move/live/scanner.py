@@ -202,11 +202,17 @@ def run_scan_cycle(
     })
     run_id = f"em5-scan-{run_id_fingerprint}"
 
-    # EM-7A.1 Sections 8-10: same deterministic run_id, three distinct
-    # existing-lifecycle cases -- checked BEFORE writing a fresh RUNNING
-    # row and BEFORE any provider call, so an already-COMPLETE run never
-    # re-invokes the checkpoint-quote collector, and an already-RUNNING
-    # row never gets a second, ambiguous concurrent execution.
+    # EM-7A.1 Sections 8-10 / EM-7A.2 Section 3: same deterministic
+    # run_id, three distinct existing-lifecycle cases -- checked BEFORE
+    # evaluating session eligibility, BEFORE writing a fresh RUNNING row,
+    # and BEFORE any provider call. Checking these first means an
+    # already-COMPLETE run is always authoritative for this run_id
+    # (never re-invokes the checkpoint-quote collector, regardless of
+    # what session type the caller supplies now), an already-RUNNING row
+    # is never reinterpreted as skipped just because the caller now
+    # supplies a non-scannable session type, and an existing FAILED (or
+    # legacy pre-EM-7A.2 SKIPPED_SESSION_TYPE, see below) row is left
+    # untouched unless the session is genuinely scannable.
     existing = emr_repo.get_scan_run(run_id)
     if existing is not None:
         if existing["status"] == "COMPLETE":
@@ -216,8 +222,29 @@ def run_scan_cycle(
                 f"EMR scan run_id {run_id!r} is already RUNNING -- refusing a second, "
                 "ambiguous concurrent execution for the same deterministic identity"
             )
-        # else: FAILED (or a legacy pre-EM-7A.1 SKIPPED_SESSION_TYPE) --
-        # fall through to a fresh execution attempt under the same run_id.
+        # else: FAILED, or a legacy pre-EM-7A.2 persisted
+        # SKIPPED_SESSION_TYPE row (EM-7A.2 no longer writes this status
+        # to the database -- see below -- but a database created before
+        # EM-7A.2 may still contain one; treated identically to FAILED
+        # here, purely for backward-compatible same-run_id lookup, never
+        # written again by this function) -- fall through to the
+        # eligibility check, which decides whether a fresh execution
+        # attempt under the same run_id is appropriate.
+
+    # EM-7A.2: session-scannability is a PRE-EXECUTION eligibility
+    # question -- "this scan was never eligible to start" -- not a
+    # scan-run lifecycle outcome. A non-scannable session must never be
+    # represented as a RUNNING scan that executed and terminated in a
+    # fourth persisted state. Checked here, after the existing-run
+    # dispatch above (so it can never override an already-COMPLETE
+    # result, reinterpret an already-RUNNING row, or mutate an existing
+    # FAILED row) and before any RUNNING write, provider call, or
+    # computation -- a true preflight rejection. The in-memory
+    # `ScanCycleResult.status == "SKIPPED_SESSION_TYPE"` outcome is
+    # retained (smallest change compatible with existing callers/types);
+    # only its persistence to `emr_scan_runs` is removed.
+    if not session_is_scannable(calendar_context_session_type):
+        return ScanCycleResult(run_id, "SKIPPED_SESSION_TYPE", 0, 0, 0, 0, 0)
 
     emr_repo.save_scan_run({
         "run_id": run_id, "session_date": config.session_date.isoformat(), "checkpoint": config.checkpoint,
@@ -225,15 +252,6 @@ def run_scan_cycle(
     })
 
     try:
-        if not session_is_scannable(calendar_context_session_type):
-            emr_repo.save_scan_run({
-                "run_id": run_id, "session_date": config.session_date.isoformat(), "checkpoint": config.checkpoint,
-                "frozen_model_version": config.model_version, "status": "SKIPPED_SESSION_TYPE",
-                "started_ts": started_ts.isoformat(), "finished_ts": (now or datetime.now)().isoformat(),
-                "eligible_count": 0, "ineligible_count": 0,
-            })
-            return ScanCycleResult(run_id, "SKIPPED_SESSION_TYPE", 0, 0, 0, 0, 0)
-
         universe_ids = tuple(market_port.resolved_universe(config.universe))
 
         db_read_start = time.monotonic()
