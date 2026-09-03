@@ -6,6 +6,82 @@ status updated on approval.
 
 ---
 
+## EM-7 Discovery — Discovery Complete, Implementation Not Started
+
+**Summary.** Owner-authorized, discovery-only turn (EMR track resumed
+while ID-7P0 passively accumulates natural evidence, untouched by this
+milestone). Reconstructed EM-7's actual scope purely from repository
+evidence — never inferred from its number or from conversation memory —
+and audited the full EMR source pipeline to find the real gap after
+EM-6.
+
+**Key findings.** EM-7 has no owner-ratified implementation contract
+anywhere — only ADR-012 §10 and the EMR roadmap doc describe it, both
+identically: run the already-frozen EM-4E/EM-5 pipeline live in a
+non-affecting "shadow" mode, measuring both statistical health
+(precision, lift, calibration, MFE, MAE, misses, false positives, regime
+drift, data failures, latency) and canonical-system performance impact
+(EMR-disabled vs. EMR-shadow-mode comparison). The actual gap after EM-6
+is entirely operational: `run_scan_cycle` (EM-5's live scanner) has
+**zero non-test invocation sites anywhere in the repository** — no CLI
+command, no scheduler, no cron entry exists at all, which is exactly why
+`db/emr.db` remains absent (confirmed still true today via filesystem
+check). The scanner also has 3 real correctness gaps making it unsafe to
+run unattended: no exception handling / no `FAILED`/`PARTIAL` run status
+(a crash leaves an orphaned `RUNNING` row forever, since only `RUNNING`,
+`SKIPPED_SESSION_TYPE`, and `COMPLETE` exist as literal statuses
+anywhere in the domain model); non-idempotent candidate/transition
+persistence (replaying an identical deterministic `run_id` duplicates
+every row — `emr_candidates`/`emr_transitions` have no uniqueness
+constraint); no concurrency lock. Data acquisition is already solved
+cleanly: `EmrMarketDataPort`/`SqliteEmrMarketDataAdapter` already read
+exclusively from already-ingested `db/athena.db` candles via a narrow
+read-only Protocol, deliberately mirroring DarvaX's own ADR-010
+read-port pattern — an operational EMR scanner would not duplicate
+ATHENA's own provider traffic.
+
+**Recommendation.** A new, isolated, config-gated EMR scheduled worker
+(Option A) — its own invocation mechanism, own lock, own DB, reusing the
+already-existing read-only market-data port, enable/disable gate
+mirroring DarvaX's `config.enabled` pattern — sequenced behind first
+fixing the scanner-correctness gaps. Rejected an alternative of
+attaching EMR's scan to ATHENA's own canonical scheduled cycle (would
+inject the scanner's current reliability gaps directly into canonical
+cycle execution, and would make ADR-012 §10's own EMR-disabled-vs-shadow
+comparison structurally unmeasurable). A new ADR (or ADR-012 amendment)
+is recommended, not drafted. A 6-part EM-7A0→EM-7E sub-milestone
+sequence is proposed. 5 owner policy questions are raised (checkpoint
+cadence, universe scope, whether scanner-hardening is its own gated
+milestone, config-gate design, and worker-isolation pattern) — none
+answerable from source alone.
+
+**Documentation discrepancy found and flagged.** `ATHENA_BRIEFING.md`'s
+EMR repo-map row was found stale — still read "no UI... production
+recommendation" even though EM-6 (the UI milestone) closed the same day
+those words were last committed; corrected as part of this milestone's
+documentation update.
+
+**Files created.** `docs/research/EM-7-DISCOVERY.md`.
+
+**Files modified.** `docs/MILESTONES.md`, `docs/ATHENA-EMR-HANDOFF.md`,
+`ATHENA_BRIEFING.md` — status-line updates and the stale-EMR-row
+correction above.
+
+**Tests / validation.** Read-only discovery only; no production source
+or test file changed, no full suite rerun needed. `git diff --check`
+clean.
+
+**Remaining work.** Owner/Chief Architect review of the discovery
+document, particularly the 5 owner policy questions and the recommended
+Option A architecture. No EM-7A0 work, no ADR drafting, no `db/emr.db`
+creation, no scan execution, no scheduling, and no EM-8 start until
+explicitly authorized. ID-7P0 was not touched by this milestone.
+
+**Outcome:** Discovery complete; ready for owner/Chief Architect review.
+EM-7 implementation remains not started.
+
+---
+
 ## ID-7 Intraday Entry / TradePlan Discovery — Owner Approved / Closed
 
 **Summary.** Owner-authorized, discovery-only turn following ID-6's full

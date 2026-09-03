@@ -14,9 +14,16 @@ dashboard surface (EM-6B) + a single-response clock-coherence corrective
 (EM-6B.1, ensuring one request-level clock instant drives both
 `data.scan_age.as_of` and `meta.as_of`). Production `db/emr.db` remains
 absent — no scheduler was authorized, and this is not a defect; EM-6
-intentionally exposes only persisted reality. EM-7 not started; no
-scanner scheduling/scheduler integration/canonical ATHENA pipeline
-integration is implied by this closure — see
+intentionally exposes only persisted reality. **EM-7 discovery complete
+2026-09-03** (implementation not started): the actual gap after EM-6 is
+entirely operational — zero live-invocation mechanism exists for
+`run_scan_cycle` anywhere (no CLI, no scheduler, no cron), and the
+scanner itself has 3 real correctness gaps (no `FAILED`/`PARTIAL` run
+status, non-idempotent persistence, no concurrency lock) that must be
+fixed before unattended operation; recommends an isolated, config-gated
+EMR scheduled worker (Option A) — see `docs/research/EM-7-DISCOVERY.md`.
+No scanner scheduling/scheduler integration/canonical ATHENA pipeline
+integration is implied or started by this discovery — see also
 `docs/research/EM-6-DISCOVERY-AND-MODELING-CONTRACT.md`,
 `docs/design/EM-6A-READ-ONLY-PRESENTATION-DATA-CONTRACT.md`, and
 `docs/design/EM-6B-EXPERIMENTAL-RADAR-UI-CONTRACT.md`)
@@ -59,8 +66,10 @@ closed. **2026-09-03 update:** EM-6 discovery, then EM-6A, EM-6B, and
 EM-6B.1 were each separately owner-authorized, implemented, and closed in
 sequence the same day — **EM-6 overall is now OWNER APPROVED / CLOSED**.
 See `docs/research/EM-6-DISCOVERY-AND-MODELING-CONTRACT.md` and the
-milestone table below for the full closure record. EM-7 remains not
-started; this closure does not by itself authorize it.
+milestone table below for the full closure record. **EM-7 discovery
+complete 2026-09-03** (see the top-of-file snapshot and
+`docs/research/EM-7-DISCOVERY.md`); implementation remains not started
+and was not authorized by EM-6's closure.
 
 **Read `docs/ATHENA-ID-TRACK-HANDOFF.md` §7 before touching anything on
 Monday.** The ID-track's own ID-5B milestone ("Live Current-Session M5
@@ -104,8 +113,8 @@ misattribute one track's evidence to the other's decision.
 | EM-6A | **OWNER APPROVED / CLOSED 2026-09-03** — read-only presentation data contract (`src/athena/explosive_move/live/presentation.py`): latest-scan lookup, top-N ranked candidates, TOUCH-10 flagship view, missing-coverage summary, pure as_of-explicit freshness facts. Structural (SQLite `mode=ro`) read-only guarantee. 24 tests, 2 mutation-verified. Full contract: `docs/design/EM-6A-READ-ONLY-PRESENTATION-DATA-CONTRACT.md` |
 | EM-6B | **OWNER APPROVED / CLOSED 2026-09-03** — isolated `GET /api/v1/emr/experimental/touch-10-radar` (only 3 API-layer files import `athena.explosive_move`, AST-scan-verified zero canonical/DarvaX imports) + a collapsed-by-default "Experimental" dashboard panel in the existing Market Intelligence tab. One-response/one-run coherence enforced by a new, additive `build_touch_10_radar_snapshot()` (mutation-verified). No scanner button, no scheduler, no trade-authorizing terminology (grep-verified against a populated response body). Verified live in an isolated scratch server (production server on port 8000 confirmed untouched throughout). Accepted capability: read-only, permanently Experimental, research-only, one-response/one-run coherent, persisted-data only, no scanner/scheduler/provider/canonical/EntryQualification/DarvaX coupling |
 | EM-6B.1 | **OWNER APPROVED / CLOSED 2026-09-03** — the router now captures exactly one clock read (a new injectable `get_emr_request_clock` dependency, `emr_clock` on `app.state`) and passes it explicitly into the service, reusing the identical value for `ResponseMeta.as_of` — in both the populated-scan and no-scan branches. EM-6A query semantics, the endpoint URL, and the response payload shape are all unchanged. 2 new tests with a deterministic injected clock, both mutation-verified. Full repository suite **3,233 passed, 1 pre-existing skip, 0 failed**. Ruff clean, `git diff --check` clean. No production DB mutation, no scanner/scheduler/provider call. EM-7 not started |
-| EM-7 | Planned — isolated shadow validation, OFF-vs-shadow comparison |
-| EM-8 | Planned — research-only / continued shadow / retirement / new integration ADR decision |
+| EM-7 | 🔄 DISCOVERY COMPLETE — IMPLEMENTATION NOT STARTED 2026-09-03 — isolated shadow validation, OFF-vs-shadow comparison (ADR-012 §10). Discovery found the actual gap after EM-6 is entirely operational (zero live-invocation mechanism exists for `run_scan_cycle`), plus 3 real scanner-correctness gaps (no `FAILED`/`PARTIAL` status, non-idempotent persistence, no concurrency lock) blocking unattended operation. Recommends an isolated, config-gated EMR scheduled worker (Option A) and an EM-7A0→EM-7E sub-milestone sequence; a new ADR/ADR-012 amendment recommended. 5 owner questions raised. Full detail: `docs/research/EM-7-DISCOVERY.md`. No ADR drafted, no EM-7A0 started |
+| EM-8 | Planned — not started; no contract beyond the four-way decision menu (research-only / continued shadow / retirement / new integration ADR), per EM-7 discovery §32 |
 
 EMR remains isolated research. Nothing completed so far changes ATHENA's UI,
 score, confidence, risk, eligibility, Decision, TradePlan, scanner, broker, or
