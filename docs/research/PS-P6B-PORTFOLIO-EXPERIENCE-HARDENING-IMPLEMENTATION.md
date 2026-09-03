@@ -1,6 +1,6 @@
 # PS-P6B Portfolio Experience Hardening Implementation
 
-Status: Implementation complete; ready for Owner/Principal-Engineer review
+Status: Frozen after Owner/Chief Architect final review correction
 Date: 2026-09-03
 Scope: Portfolio currentness, concurrency, and operational UX hardening only
 Boundary: No trading methodology, ScoringEngine, DecisionEngine, broker,
@@ -47,7 +47,10 @@ remains the sync-run analysis result.
 `MyPortfolioService.latest_snapshot()` owns this calculation centrally. It
 returns `CURRENT` when the stored sync-run digest equals the current holdings
 digest, `STALE_HOLDINGS_CHANGED` when they differ, and `UNKNOWN` when an older
-run lacks digest provenance. No browser-side digest computation was added.
+run lacks digest provenance. The dashboard handles all three states explicitly:
+`CURRENT` renders normally, `STALE_HOLDINGS_CHANGED` warns that holdings changed,
+and `UNKNOWN` warns that currentness could not be verified without claiming a
+holdings change. No browser-side digest computation was added.
 
 ## 4. Digest Verification
 
@@ -98,7 +101,9 @@ Added or extended coverage for:
 - confirmation is allowed after terminal sync states;
 - failed sync preserves the previous good latest snapshot;
 - dashboard static contract for stale UX, upload limits, row explanations, and
-  failure summaries.
+  failure summaries;
+- dashboard static contract for UNKNOWN currentness warning semantics, including
+  no verified-current or holdings-changed implication for UNKNOWN snapshots.
 
 ## 8. Verification
 
@@ -128,5 +133,6 @@ portfolio methodology.
 
 ## 10. Milestone Outcome
 
-PS-P6B implementation is complete and ready for owner/principal-engineer
-review. The next Portfolio Sync milestone remains blocked pending approval.
+PS-P6B implementation is frozen after the Owner/Chief Architect final review
+correction. The next Portfolio Sync milestone remains blocked pending explicit
+approval.

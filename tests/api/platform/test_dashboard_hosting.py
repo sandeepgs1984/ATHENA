@@ -403,10 +403,25 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert "function pollMyPortfolioSync(syncRunId)" in js
     assert "function renderMyPortfolioSnapshotRows(rows)" in js
     assert "function myPortfolioSnapshotIsStale" in js
+    assert "function myPortfolioSnapshotCurrentnessIsUnknown" in js
     assert "function myPortfolioReasonSummary(row)" in js
     assert "function myPortfolioStatusPill(value, row)" in js
     assert "function myPortfolioActionPill(value, row)" in js
+    assert 'snapshot?.currentness === "STALE_HOLDINGS_CHANGED"' in js
+    assert "snapshot?.portfolio_changed_since_sync === true" in js
+    assert 'snapshot?.currentness === "UNKNOWN"' in js
+    assert 'snapshot?.currentness === "CURRENT"' not in js
+    assert re.search(
+        r"if \(myPortfolioSnapshotIsStale\(snapshot\)\) \{.*?"
+        r"Portfolio holdings changed since this analysis.*?"
+        r"\} else if \(myPortfolioSnapshotCurrentnessIsUnknown\(snapshot\)\) \{.*?"
+        r"Portfolio analysis currentness could not be verified",
+        js,
+        flags=re.DOTALL,
+    )
     assert "Portfolio holdings changed since this analysis" in js
+    assert "Portfolio analysis currentness could not be verified" in js
+    assert "Sync Portfolio to generate a current verified snapshot" in js
     assert "Portfolio analysis is now stale" in js
     assert "Portfolio Sync is currently running. Wait for it to finish" in js
     assert "Preview remains available. Confirm after Portfolio Sync finishes." in js

@@ -91,6 +91,10 @@
             || snapshot?.portfolio_changed_since_sync === true;
     }
 
+    function myPortfolioSnapshotCurrentnessIsUnknown(snapshot = myPortfolioState.snapshot) {
+        return snapshot?.currentness === "UNKNOWN";
+    }
+
     function myPortfolioSyncFailureSummary(run) {
         const failed = Object.entries(run?.per_symbol || {})
             .filter(([, item]) => String(item?.status || "").toUpperCase() === "FAILED")
@@ -298,6 +302,11 @@
         if (myPortfolioSnapshotIsStale(snapshot)) {
             showMyPortfolioAlert(
                 "Portfolio holdings changed since this analysis. Previous snapshot remains visible; Sync Portfolio to refresh ATHENA analysis.",
+                "warning"
+            );
+        } else if (myPortfolioSnapshotCurrentnessIsUnknown(snapshot)) {
+            showMyPortfolioAlert(
+                "Portfolio analysis currentness could not be verified. Sync Portfolio to generate a current verified snapshot.",
                 "warning"
             );
         } else if (!snapshot && holdings.length) {

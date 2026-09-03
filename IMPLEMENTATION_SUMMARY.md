@@ -6,7 +6,7 @@ status updated on approval.
 
 ---
 
-## PS-P6B Portfolio Experience Hardening Implementation — Ready For Review
+## PS-P6B Portfolio Experience Hardening Implementation — Frozen
 
 **Summary.** Implemented PS-P6B production hardening for My Portfolio. Latest
 snapshot responses now include server-owned currentness metadata derived by
@@ -48,7 +48,8 @@ price, added holdings, and removed holdings; `PARTIAL` plus stale/currentness
 regressions; active-sync confirmation guard tests for `QUEUED` and `RUNNING`;
 preview-allowed/confirm-blocked concurrency coverage; terminal-state recovery
 coverage; and dashboard static contract assertions for stale UX, upload limits,
-failed-symbol summaries, and row explanations.
+failed-symbol summaries, row explanations, and UNKNOWN currentness warning
+semantics.
 
 **Remaining work.** Owner/principal-engineer review is required before the next
 Portfolio Sync milestone. Clear Portfolio, table sorting/filtering, richer
@@ -66,7 +67,7 @@ portfolio table.
 
 **Lessons learned.** The existing PS-P2/PS-P4 holdings digest design was strong
 enough for production currentness; the missing piece was a centralized read
-model and UX that refused to imply stale analysis was current.
+model and UX that refused to imply stale or unverified analysis was current.
 
 **Implementation metrics.** Targeted verification: `57 passed` for My
 Portfolio API, schema, dashboard-hosting, and PS-P5B interpretation tests.
@@ -75,14 +76,15 @@ Ruff remains blocked by broad pre-existing lint debt outside this change set
 (`290 issues in 90 files`). `rtk git diff --check` passed. Repository-scoped
 `rtk mypy` could not run because the active interpreter has no `mypy` module.
 
-**Phase outcome.** PS-P6B implementation complete and ready for review; next
-milestone blocked pending approval.
+**Phase outcome.** PS-P6B implementation frozen after the Owner/Chief Architect
+UNKNOWN currentness UX correction; next milestone blocked pending explicit
+approval.
 
 **Commit hash.** Pending owner commit.
 
 **Branch.** main.
 
-**Review status.** Ready for owner/principal-engineer review.
+**Review status.** Owner/Chief Architect approved and frozen 2026-09-03.
 
 ---
 
