@@ -77,7 +77,7 @@ architectural direction; ID-7A0 not started; ID-7P0 authorized next.
 
 ---
 
-## ID-7P0.1 Timing-Boundary Accuracy Correction — Correction Complete, Ready for Owner Restart Authorization
+## ID-7P0.1 Timing-Boundary Accuracy Correction — Owner Approved / Closed
 
 **Summary.** Owner/Chief Architect review of ID-7P0 (below) conditionally
 approved the instrumentation architecture but found one narrow
@@ -147,16 +147,22 @@ All passing. Full repository suite: 3,259 passed (was 3,256), 0 skipped.
 Ruff clean on all touched files (one pre-existing, unrelated F401 in
 `test_dry_run_schedule.py` left untouched). `git diff --check` clean.
 
-**Remaining work.** None from this correction itself. Per the owner's own
-closing note, the live `athena serve --with-cycles` restart is now
-expected to be authorized immediately following this correction — not
-performed by this milestone; ID-7A0 remains not started.
+**Remaining work.** None — owner approved and closed 2026-09-03. The
+`athena serve --with-cycles` production restart this correction unblocked
+has since been completed (safety-verified, no artificial cycle/provider
+traffic/Decision/EntryQualification rows created by the restart itself);
+natural evidence accumulation is now active. ID-7A0 remains not started,
+blocked on ID-7P0's own owner closure after the latency attribution
+report.
 
-**Outcome:** Correction complete; ready for owner restart authorization.
+**Outcome:** Owner approved / closed 2026-09-03. Production restart
+completed and safety-verified; ID-7P0 instrumentation is live; natural
+REGULAR-session evidence accumulation is active, expected next on
+2026-09-04.
 
 ---
 
-## ID-7P0 Production Cycle Latency Attribution — Instrumentation Ready, Evidence Accumulation Pending (corrected by ID-7P0.1, see entry above)
+## ID-7P0 Production Cycle Latency Attribution — Instrumentation Live, Natural Evidence Accumulation Active (corrected by ID-7P0.1, see entry above)
 
 **Summary.** Narrow, owner-authorized instrumentation-only milestone to
 replace ID-7 discovery's circumstantial latency hypothesis with measured
@@ -225,18 +231,18 @@ suite: 3,256 passed, 0 skipped. Ruff clean on every touched/created file
 (one pre-existing, unrelated F401 in `test_dry_run_schedule.py` left
 untouched). `git diff --check` clean.
 
-**Remaining work.** The instrumented code is **not yet active in the
-live production process** — `athena serve --with-cycles` must be
-restarted to load it, which was deliberately not performed (a real
-operational action on a running service, surfaced for explicit owner
-go-ahead rather than taken autonomously). Once active, natural REGULAR
-cycles must accumulate before a latency classification
+**Remaining work.** None from this entry directly — see the ID-7P0.1
+entry above for the timing-boundary correction, and the subsequent
+owner-authorized production restart (safety-verified: no active cycle
+interrupted, zero artificial runs/provider calls/Decisions/
+EntryQualification rows created). Natural REGULAR cycles must now
+accumulate before a latency classification
 (`INGESTION_DOMINANT`/`ANALYTICAL_SCAN_DOMINANT`/`MIXED`/etc.) can be
 made from measured evidence rather than the §6 rate-limit-floor estimate
-alone.
+alone — expected next on 2026-09-04.
 
-**Outcome:** Instrumentation ready; evidence accumulation pending a
-production restart the owner has not yet authorized.
+**Outcome:** Instrumentation is live in production; natural evidence
+accumulation is active, waiting for owner resume instruction.
 
 ---
 

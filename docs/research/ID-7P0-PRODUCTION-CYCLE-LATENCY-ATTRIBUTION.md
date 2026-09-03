@@ -1,11 +1,16 @@
 # ID-7P0 — Production Cycle Latency Attribution
 
-**Status:** `ID-7P0 INSTRUMENTATION READY — EVIDENCE ACCUMULATION PENDING`.
-Instrumentation implemented, tested, and Ruff-clean; wired into the real
-scheduled-cycle code path (`src/athena/ops/scheduled_run.py`). **Not yet
-active in the running production process** — the live `athena serve
---with-cycles` server holds the old code in memory and must be restarted
-to load it. No natural REGULAR-cycle evidence exists yet.
+**Status:** `ID-7P0 INSTRUMENTATION LIVE — NATURAL EVIDENCE ACCUMULATION
+ACTIVE`. Instrumentation implemented, tested, Ruff-clean, timing-boundary
+corrected (ID-7P0.1, owner-approved/closed), and — following an
+owner-authorized, safety-verified production restart on 2026-09-03 (no
+active cycle interrupted; zero artificial runs/provider calls/Decisions/
+EntryQualification rows created by the restart itself; PID 17344 → 93626)
+— now **live** in the running `athena serve --with-cycles` process.
+Natural REGULAR-cycle evidence accumulation is active; the next expected
+evidence session is 2026-09-04. Owner has instructed a wait state: no
+further ID-7 action until explicitly resumed for a read-only evidence
+audit.
 
 ## 1. Why this milestone exists
 
