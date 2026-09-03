@@ -6,7 +6,72 @@ status updated on approval.
 
 ---
 
-## EM-7 Discovery — Discovery Complete, Implementation Not Started
+## EM-7A0 Live Shadow Operational Architecture ADR — Proposed, Ready for Owner Review
+
+**Summary.** Owner-authorized ADR/design-only milestone following EM-7
+discovery's owner approval. Owner ratified 5 architecture decisions
+(checkpoint cadence, universe scope, harden-before-scheduling sequencing,
+config enable gate, worker isolation) and required a new ADR formalizing
+the operational architecture needed to run the already-frozen EMR
+pipeline as an isolated live shadow. No implementation of any kind — no
+scanner hardening, no worker/scheduler code, no config file, no
+`db/emr.db`, no scan execution, no provider call.
+
+**Decision.** New `docs/adr/ADR-014-emr-live-shadow-operation.md`
+(Status: Proposed), referencing but not modifying ADR-012. Formalizes:
+an isolated, config-gated EMR scheduled worker owned entirely by
+`athena.explosive_move` (no dependency on canonical
+`athena.ops`/`athena.scheduling` — may mirror `CycleWorker`'s shape,
+never import it); checkpoint policy = the existing, EM-5-validated
+9-checkpoint `CANDIDATE_CHECKPOINTS_IST`
+(`explosive_move/contracts.py`), with the duplicate copy in
+`data/live_m5_provisional_settlement_diagnostic.py` identified for
+future consolidation, not fixed here; universe policy = the existing
+mature-history filter (`select_mature_history_instruments`,
+`live/canary_gate.py`) over `athena_core`, the same 518-instrument
+population Section 14's production canary validated — explicitly not
+the unfiltered full ADR-011 universe; data acquisition unchanged
+(read-only `EmrMarketDataPort`, one authorized checkpoint-quote seam);
+disabled/shadow mode semantics; an EMR-owned concurrency lock (never
+reusing `CycleRunnerLock` or a DarvaX lock); a config `enabled` gate
+mirroring DarvaX's exact pattern (semantics only, no file created);
+EM-7A/B/C/D/E exit contracts; the EM-8 boundary.
+
+**Key resolved sub-decisions.** (1) **Regime lookup** — resolved from
+source, not a new decision: `regime_source.py`'s own docstring records a
+pre-existing 2026-08-28 Owner/Chief Architect ruling requiring
+`build_canonical_regime_lookup` after the Section 14 canary found
+`run_scan_cycle`'s default (`lambda _d: None`) held regime completeness
+at a hard 0%; the already-accepted canary already wires this function
+explicitly — the ADR requires the future worker to do the same, no new
+owner question raised. (2) **Run lifecycle** — the owner's own flagged
+priority question: decided `RUNNING → COMPLETE | FAILED`, explicitly
+**not** `PARTIAL`, because `run_scan_cycle`'s current architecture
+persists candidates/transitions in one atomic batch after the full
+per-instrument loop completes — a genuine partial-persistence state
+cannot occur today without a separate, larger redesign toward
+incremental persistence, which this ADR does not propose.
+
+**Files created.** `docs/adr/ADR-014-emr-live-shadow-operation.md`.
+
+**Files modified.** `docs/MILESTONES.md`, `docs/ATHENA-EMR-HANDOFF.md` —
+status updates only. `ATHENA_BRIEFING.md` unchanged this turn (no new
+stale claim found beyond what EM-7 discovery already corrected).
+
+**Tests / validation.** ADR/design-only; no production source or test
+file changed, no full suite rerun needed. `git diff --check` clean.
+
+**Remaining work.** Owner/Chief Architect acceptance review of ADR-014.
+No EM-7A implementation, no worker/scheduler code, no config file, no
+`db/emr.db`, no scan, until the ADR is accepted and EM-7A is separately
+authorized. ID-7P0 and DarvaX were not touched by this milestone.
+
+**Outcome:** ADR proposed; ready for owner/Chief Architect review. EM-7A
+implementation remains not started.
+
+---
+
+## EM-7 Discovery — Owner Approved / Closed
 
 **Summary.** Owner-authorized, discovery-only turn (EMR track resumed
 while ID-7P0 passively accumulates natural evidence, untouched by this
@@ -71,14 +136,14 @@ correction above.
 or test file changed, no full suite rerun needed. `git diff --check`
 clean.
 
-**Remaining work.** Owner/Chief Architect review of the discovery
-document, particularly the 5 owner policy questions and the recommended
-Option A architecture. No EM-7A0 work, no ADR drafting, no `db/emr.db`
-creation, no scan execution, no scheduling, and no EM-8 start until
-explicitly authorized. ID-7P0 was not touched by this milestone.
+**Remaining work.** None — owner approved and closed 2026-09-03. Owner
+ratified all 5 policy questions and authorized EM-7A0 (see entry above).
+No `db/emr.db` creation, no scan execution, no scheduling, and no EM-8
+start until explicitly authorized. ID-7P0 was not touched by this
+milestone.
 
-**Outcome:** Discovery complete; ready for owner/Chief Architect review.
-EM-7 implementation remains not started.
+**Outcome:** Owner approved / closed 2026-09-03. All 5 owner policy
+questions resolved; EM-7A0 (ADR drafting) authorized next.
 
 ---
 
