@@ -22,12 +22,21 @@ scanner itself has 3 real correctness gaps (no `FAILED`/`PARTIAL` run
 status, non-idempotent persistence, no concurrency lock) that must be
 fixed before unattended operation. **EM-7A0 (2026-09-03): owner ratified
 5 architecture decisions and authorized an ADR** —
-`docs/adr/ADR-014-emr-live-shadow-operation.md` (Proposed, not yet
-accepted) formalizes an isolated, config-gated EMR scheduled worker,
-resolves the regime-lookup question from an already-existing 2026-08-28
-owner ruling, and decides the run-lifecycle contract
-(`RUNNING → COMPLETE | FAILED`, no `PARTIAL`). Implementation not
-started. See `docs/research/EM-7-DISCOVERY.md` and ADR-014.
+`docs/adr/ADR-014-emr-live-shadow-operation.md` (**Accepted 2026-09-03**)
+formalizes an isolated, config-gated EMR scheduled worker, resolves the
+regime-lookup question from an already-existing 2026-08-28 owner ruling,
+and decides the run-lifecycle contract (`RUNNING → COMPLETE | FAILED`,
+no `PARTIAL`), assuming an atomic persistence architecture. **EM-7A
+(2026-09-03): scanner correctness hardening started, partially
+complete.** The mandatory pre-implementation persistence audit found a
+real contradiction to that atomicity assumption — `save_candidates`/
+`save_transitions`/the terminal `COMPLETE` write are three separate
+SQLite transactions, not one, so a failure between any two can leave a
+durable partial result. Reported for owner decision rather than silently
+resolved (`docs/research/EM-7A-SCANNER-CORRECTNESS-HARDENING.md`).
+Independently completed: an EMR-owned concurrency lock, mandatory
+regime-lookup wiring, and extended isolation-test coverage. See
+`docs/research/EM-7-DISCOVERY.md`, ADR-014, and the EM-7A report.
 No scanner scheduling/scheduler integration/canonical ATHENA pipeline
 integration is implied or started by this discovery — see also
 `docs/research/EM-6-DISCOVERY-AND-MODELING-CONTRACT.md`,
@@ -119,7 +128,7 @@ misattribute one track's evidence to the other's decision.
 | EM-6A | **OWNER APPROVED / CLOSED 2026-09-03** — read-only presentation data contract (`src/athena/explosive_move/live/presentation.py`): latest-scan lookup, top-N ranked candidates, TOUCH-10 flagship view, missing-coverage summary, pure as_of-explicit freshness facts. Structural (SQLite `mode=ro`) read-only guarantee. 24 tests, 2 mutation-verified. Full contract: `docs/design/EM-6A-READ-ONLY-PRESENTATION-DATA-CONTRACT.md` |
 | EM-6B | **OWNER APPROVED / CLOSED 2026-09-03** — isolated `GET /api/v1/emr/experimental/touch-10-radar` (only 3 API-layer files import `athena.explosive_move`, AST-scan-verified zero canonical/DarvaX imports) + a collapsed-by-default "Experimental" dashboard panel in the existing Market Intelligence tab. One-response/one-run coherence enforced by a new, additive `build_touch_10_radar_snapshot()` (mutation-verified). No scanner button, no scheduler, no trade-authorizing terminology (grep-verified against a populated response body). Verified live in an isolated scratch server (production server on port 8000 confirmed untouched throughout). Accepted capability: read-only, permanently Experimental, research-only, one-response/one-run coherent, persisted-data only, no scanner/scheduler/provider/canonical/EntryQualification/DarvaX coupling |
 | EM-6B.1 | **OWNER APPROVED / CLOSED 2026-09-03** — the router now captures exactly one clock read (a new injectable `get_emr_request_clock` dependency, `emr_clock` on `app.state`) and passes it explicitly into the service, reusing the identical value for `ResponseMeta.as_of` — in both the populated-scan and no-scan branches. EM-6A query semantics, the endpoint URL, and the response payload shape are all unchanged. 2 new tests with a deterministic injected clock, both mutation-verified. Full repository suite **3,233 passed, 1 pre-existing skip, 0 failed**. Ruff clean, `git diff --check` clean. No production DB mutation, no scanner/scheduler/provider call. EM-7 not started |
-| EM-7 | 🔄 DISCOVERY OWNER APPROVED/CLOSED; EM-7A0 ADR PROPOSED — READY FOR OWNER REVIEW 2026-09-03 — isolated shadow validation, OFF-vs-shadow comparison (ADR-012 §10). Discovery found the actual gap after EM-6 is entirely operational (zero live-invocation mechanism exists for `run_scan_cycle`), plus 3 real scanner-correctness gaps (no `FAILED`/`PARTIAL` status, non-idempotent persistence, no concurrency lock) blocking unattended operation. Owner ratified 5 architecture decisions (checkpoint cadence = existing 9-checkpoint schedule, universe = existing mature-history filter, harden-before-scheduling, DarvaX-style config gate, worker owned entirely by `athena.explosive_move` with no canonical `ops`/`scheduling` dependency) and authorized `docs/adr/ADR-014-emr-live-shadow-operation.md` (Proposed). Regime-lookup question resolved from source (pre-existing 2026-08-28 owner ruling). Run-lifecycle decided: `RUNNING → COMPLETE \| FAILED`, no `PARTIAL`. EM-7A/B/C/D/E exit contracts defined. Full detail: `docs/research/EM-7-DISCOVERY.md`, ADR-014. No implementation, no `db/emr.db`, no scan, no scheduling, ADR not self-accepted |
+| EM-7 | 🔄 EM-7A0 (ADR-014) ACCEPTED 2026-09-03; EM-7A SCANNER HARDENING PARTIALLY IMPLEMENTED — ADR-014 CONTRADICTION FOUND, AWAITING OWNER LIFECYCLE DECISION — isolated shadow validation, OFF-vs-shadow comparison (ADR-012 §10). Discovery found the actual gap after EM-6 is entirely operational, plus 3 real scanner-correctness gaps blocking unattended operation. Owner ratified 5 architecture decisions and accepted `docs/adr/ADR-014-emr-live-shadow-operation.md`. EM-7A's mandatory pre-implementation persistence audit found `save_candidates`/`save_transitions`/the terminal `COMPLETE` write are three separate, non-transactionally-linked SQLite transactions — contradicting ADR-014 §15's atomicity assumption; a failure between any two can leave a durable partial result (e.g. persisted candidates with no transitions, orphaned `RUNNING` status). Reported per explicit owner instruction rather than silently resolved — lifecycle/retry/idempotency/transactional-consistency work paused pending owner decision (`docs/research/EM-7A-SCANNER-CORRECTNESS-HARDENING.md` recommends wrapping all three writes in one shared transaction). Independently completed and tested: EMR-owned `flock` concurrency lock (`explosive_move/live/scan_lock.py`, no canonical `ops`/`scheduling` dependency); `regime_lookup` hardened to a required parameter (no silent all-UNKNOWN fallback); isolation-test coverage extended (`scoring`/`confidence`/`intraday`/`darvax`/`ops`/`scheduling` + a live-runtime `SqliteRepository` boundary test). Checkpoint-constant consolidation deliberately deferred (the "duplicate" is an intentional independent-verification pin, per its own docstring). 3 mutation/negative proofs confirmed then reverted. Full repository suite 3,272 passed, 0 skipped; Ruff clean; `git diff --check` clean. No `db/emr.db`, no scan, no scheduling, no EM-7B. Full detail: `docs/research/EM-7-DISCOVERY.md`, ADR-014, `docs/research/EM-7A-SCANNER-CORRECTNESS-HARDENING.md` |
 | EM-8 | Planned — not started; no contract beyond the four-way decision menu (research-only / continued shadow / retirement / new integration ADR), per EM-7 discovery §32 |
 
 EMR remains isolated research. Nothing completed so far changes ATHENA's UI,

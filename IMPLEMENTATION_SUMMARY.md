@@ -6,7 +6,92 @@ status updated on approval.
 
 ---
 
-## EM-7A0 Live Shadow Operational Architecture ADR — Proposed, Ready for Owner Review
+## EM-7A Scanner Correctness Hardening — Partially Implemented, ADR-014 Contradiction Found
+
+**Summary.** Owner-authorized scanner-correctness-only milestone
+following ADR-014's acceptance. Scope: terminal failure semantics, safe
+retry/idempotency, scanner concurrency protection, mandatory regime
+wiring correctness, isolation-test hardening, checkpoint-constant
+consolidation where safe. No worker, scheduler, config gate, production
+DB activation, live scan, or shadow-mode runtime — those remain EM-7B/C/D
+territory.
+
+**Mandatory pre-implementation persistence audit — a real ADR-014
+contradiction found.** Read `run_scan_cycle`, `EmrRepository`, and the
+EMR schema in full before any edit. Found: `save_candidates()`,
+`save_transitions()`, and the terminal `save_scan_run(..., status=
+"COMPLETE")` call are **three separate, independently-committed SQLite
+transactions**, not one atomic batch as ADR-014 §15 assumed. A failure
+between any two of them (e.g. candidates persist, then
+`save_transitions` raises) leaves a real, durable partial result —
+candidate rows exist with no corresponding transitions, under a run
+still stuck at `RUNNING`. **Per explicit owner instruction, this was not
+silently resolved or worked around — it is reported for Owner/Chief
+Architect decision** in
+`docs/research/EM-7A-SCANNER-CORRECTNESS-HARDENING.md`, which recommends
+(but does not implement) wrapping all three writes in one shared
+transaction as the smallest fix preserving ADR-014's `RUNNING → COMPLETE
+| FAILED` (no `PARTIAL`) decision exactly as written.
+
+**Implemented (independent of the contradiction).** (1) A new
+EMR-owned, `flock`-based concurrency lock
+(`src/athena/explosive_move/live/scan_lock.py`, `EmrScanLock`) —
+structurally mirrors `CycleWorker`'s proven pattern without importing it,
+preserving ADR-012's directional isolation; a primitive only, no
+worker/scheduler exists yet. (2) `run_scan_cycle`'s `regime_lookup`
+parameter is now required (no default, no silent
+`lambda _d: None` fallback) — the exact defect a prior production canary
+already found and an Owner ruling on 2026-08-28 already required fixed,
+now made structurally impossible to reintroduce by omission; tests that
+deliberately want UNKNOWN regime remain free to pass a stub explicitly.
+(3) `tests/explosive_move/test_em5_isolation.py` extended to cover
+`scoring`/`confidence`/`intraday`/`darvax`/`ops`/`scheduling` (previously
+unchecked in the `explosive_move → canonical` direction) plus a new
+live-runtime `SqliteRepository` boundary test. (4) Checkpoint-constant
+consolidation audited and **deliberately deferred** —
+`TRACK_B_CHECKPOINT_SCHEDULE`'s duplication of
+`CANDIDATE_CHECKPOINTS_IST` is an intentional independent-verification
+pin per its own docstring, not an accidental duplicate; forcing a merge
+would remove a documented safety property.
+
+**Not implemented, gated by the contradiction.** Terminal `FAILED`
+status/exception handling, retry/idempotency enforcement, any
+transactional-consistency change, `emr_scan_runs.status`
+enum/constant formalization.
+
+**Files created.** `src/athena/explosive_move/live/scan_lock.py`,
+`tests/explosive_move/test_em7a_scan_lock.py`,
+`docs/research/EM-7A-SCANNER-CORRECTNESS-HARDENING.md`.
+
+**Files modified.** `src/athena/explosive_move/live/scanner.py`
+(regime_lookup hardening), `tests/explosive_move/test_em5_isolation.py`
+(extended forbidden-import coverage + new SqliteRepository boundary
+tests), `tests/explosive_move/test_em5_scanner.py` (6 call sites updated
++ 1 new test), `docs/adr/ADR-014-emr-live-shadow-operation.md` (Status →
+Accepted, body unmodified), `docs/MILESTONES.md`,
+`docs/ATHENA-EMR-HANDOFF.md` — status updates.
+
+**Tests / validation.** 11 new focused tests (10 lock tests, 1 scanner
+test) + 2 extended isolation tests, all passing. 3 mutation/negative
+proofs (lock bypass, silent regime fallback, forbidden canonical import)
+confirmed to fail the relevant tests, then reverted — `git diff` on
+affected files shows only the intended permanent changes. Full
+`tests/explosive_move/` + `test_emr_router.py`: 460 passed (was 449).
+Full repository suite: **3,272 passed** (was 3,259), 0 skipped. Ruff
+clean on every touched/created file. `git diff --check` clean.
+
+**Remaining work.** Owner/Chief Architect decision on the ADR-014
+contradiction (§2 of the EM-7A report) before terminal failure
+semantics, retry/idempotency, and transactional consistency can be
+implemented. No EM-7B work, no `db/emr.db`, no scan, no scheduling. ID-7P0
+and DarvaX were not touched by this milestone.
+
+**Outcome:** Partially implemented; one real ADR-014 contradiction found
+and reported, not silently resolved. Awaiting owner lifecycle decision.
+
+---
+
+## EM-7A0 Live Shadow Operational Architecture ADR — Accepted
 
 **Summary.** Owner-authorized ADR/design-only milestone following EM-7
 discovery's owner approval. Owner ratified 5 architecture decisions
@@ -61,13 +146,11 @@ stale claim found beyond what EM-7 discovery already corrected).
 **Tests / validation.** ADR/design-only; no production source or test
 file changed, no full suite rerun needed. `git diff --check` clean.
 
-**Remaining work.** Owner/Chief Architect acceptance review of ADR-014.
-No EM-7A implementation, no worker/scheduler code, no config file, no
-`db/emr.db`, no scan, until the ADR is accepted and EM-7A is separately
-authorized. ID-7P0 and DarvaX were not touched by this milestone.
+**Remaining work.** None — accepted 2026-09-03. EM-7A (scanner
+correctness hardening) authorized and started the same day — see entry
+above.
 
-**Outcome:** ADR proposed; ready for owner/Chief Architect review. EM-7A
-implementation remains not started.
+**Outcome:** Accepted 2026-09-03. EM-7A authorized next.
 
 ---
 

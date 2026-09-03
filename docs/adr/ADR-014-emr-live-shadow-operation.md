@@ -2,16 +2,22 @@
 
 | Field | Value |
 |---|---|
-| Status | Proposed |
+| Status | Accepted |
 | Date | 2026-09-03 |
+| Accepted | 2026-09-03 |
 | Deciders | sandeep (owner) |
 | Scope | Explosive Move Radar (EMR) live shadow operation (EM-7) |
 
 ## 1. Status
 
-**Proposed.** Drafted under owner authorization (EM-7A0, 2026-09-03) for
-Owner/Chief Architect review. Not yet accepted. Implementation is not
-authorized by this document — see §4 (Scope/non-scope).
+**Accepted 2026-09-03** by Owner/Chief Architect. EM-7A (scanner
+correctness hardening) is separately authorized and reported in
+`docs/research/EM-7A-SCANNER-CORRECTNESS-HARDENING.md` — see that
+document's own findings for one real, source-confirmed contradiction to
+this ADR's §15 atomicity assumption, surfaced during EM-7A's
+implementation and reported for owner review rather than silently
+resolved here. The substantive architecture below is otherwise
+unmodified by that finding.
 
 ## 2. Context
 

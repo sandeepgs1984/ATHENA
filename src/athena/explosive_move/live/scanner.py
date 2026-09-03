@@ -145,21 +145,29 @@ def run_scan_cycle(
     emr_repo: EmrRepository,
     calendar_context_session_type: SessionType,
     collect_checkpoint_prices: Callable[..., tuple[dict, tuple[str, ...], int]],
-    regime_lookup: Callable[[date], dict | None] | None = None,
+    regime_lookup: Callable[[date], dict | None],
     now: Callable[[], datetime] | None = None,
 ) -> ScanCycleResult:
     """One full scan cycle. `collect_checkpoint_prices` matches
     `checkpoint_reference_price.collect_checkpoint_reference_prices`'s
     signature (injectable for tests/replay); production callers pass
-    that function directly. `regime_lookup` is optional -- EM-5 v1 has
-    no live-updated regime feed (EM-1c's `regime_by_session.json` is a
-    git-ignored, periodically-refreshed research artifact, not an
-    operational daily feed), so regime fields are honestly UNKNOWN
-    unless a caller wires one in."""
+    that function directly.
+
+    `regime_lookup` is a REQUIRED keyword argument (EM-7A, ADR-014
+    Section 20) -- there is deliberately no default and no silent
+    fallback. The already-accepted Section 14 production canary already
+    wires the real `regime_source.build_canonical_regime_lookup`; any
+    future live/operational caller MUST do the same, or regime features
+    silently collapse to all-UNKNOWN (the exact defect a prior production
+    canary run found and an Owner/Chief Architect ruling on 2026-08-28
+    already required be fixed at every live call site). Tests/replay that
+    deliberately want UNKNOWN regime remain free to pass
+    `lambda _d: None` explicitly -- that stays a valid, honest choice; it
+    is the *silent, unrequested* default this signature removes, not the
+    UNKNOWN outcome itself."""
 
     started_monotonic = time.monotonic()
     started_ts = (now or datetime.now)()
-    regime_lookup = regime_lookup or (lambda _d: None)
 
     run_id_fingerprint = _fingerprint({
         "session_date": config.session_date.isoformat(), "checkpoint": config.checkpoint,

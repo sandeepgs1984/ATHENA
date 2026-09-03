@@ -33,6 +33,14 @@ CHECKPOINT_INSTANT = datetime(2026, 8, 28, 10, 0, tzinfo=IST)
 UNIVERSE_NAME = "em5-test-universe"
 INSTRUMENTS = ("NSE:AAA", "NSE:BBB")
 
+#: EM-7A (ADR-014 Section 20): `regime_lookup` is now a required keyword
+#: argument on `run_scan_cycle` -- these tests deliberately want UNKNOWN
+#: regime (they exercise scanning mechanics, not regime wiring), so they
+#: pass this stub explicitly rather than relying on a removed silent
+#: default. `test_em6a_regime_wiring.py`-style coverage for the real
+#: `build_canonical_regime_lookup` path lives in `test_em5_regime_source.py`.
+_STUB_REGIME_LOOKUP = lambda _session_date: None  # noqa: E731
+
 
 def _instrument(iid: str, symbol: str) -> Instrument:
     return Instrument(instrument_id=iid, symbol=symbol, exchange="NSE", series="EQ",
@@ -112,7 +120,7 @@ def test_full_scan_cycle_persists_a_candidate_per_instrument_per_combo(scan_setu
     result = run_scan_cycle(
         config=_config(), market_port=market_port, emr_repo=emr_repo,
         calendar_context_session_type=SessionType.NORMAL, collect_checkpoint_prices=_fake_collector,
-        now=lambda: CHECKPOINT_INSTANT,
+        regime_lookup=_STUB_REGIME_LOOKUP, now=lambda: CHECKPOINT_INSTANT,
     )
     assert result.status == "COMPLETE"
     assert result.eligible_count == 2
@@ -137,7 +145,7 @@ def test_scan_cycle_creates_transitions_from_inactive_on_first_checkpoint(scan_s
     result = run_scan_cycle(
         config=_config(), market_port=market_port, emr_repo=emr_repo,
         calendar_context_session_type=SessionType.NORMAL, collect_checkpoint_prices=_fake_collector,
-        now=lambda: CHECKPOINT_INSTANT,
+        regime_lookup=_STUB_REGIME_LOOKUP, now=lambda: CHECKPOINT_INSTANT,
     )
     transitions = emr_repo.list_transitions(
         instrument_id=INSTRUMENTS[0], family="TOUCH", threshold_percent=10, session_date=SESSION_DATE.isoformat(),
@@ -152,7 +160,7 @@ def test_skipped_session_type_persists_no_candidates(scan_setup):
     result = run_scan_cycle(
         config=_config(), market_port=market_port, emr_repo=emr_repo,
         calendar_context_session_type=SessionType.MUHURAT, collect_checkpoint_prices=_fake_collector,
-        now=lambda: CHECKPOINT_INSTANT,
+        regime_lookup=_STUB_REGIME_LOOKUP, now=lambda: CHECKPOINT_INSTANT,
     )
     assert result.status == "SKIPPED_SESSION_TYPE"
     assert result.candidates_persisted == 0
@@ -169,7 +177,7 @@ def test_two_independent_runs_against_identical_inputs_produce_byte_identical_sc
         result = run_scan_cycle(
             config=_config(families_thresholds=(("TOUCH", 10),)), market_port=market_port, emr_repo=emr_repo,
             calendar_context_session_type=SessionType.NORMAL, collect_checkpoint_prices=_fake_collector,
-            now=lambda: CHECKPOINT_INSTANT,
+            regime_lookup=_STUB_REGIME_LOOKUP, now=lambda: CHECKPOINT_INSTANT,
         )
         rows = emr_repo.list_candidates(run_id=result.run_id)
         results.append(sorted(rows, key=lambda r: r["instrument_id"]))
@@ -203,7 +211,8 @@ def test_empty_universe_completes_cleanly_with_zero_candidates(tmp_path):
             max_checkpoint_price_delay_seconds=300.0,
         ),
         market_port=market_port, emr_repo=emr_repo, calendar_context_session_type=SessionType.NORMAL,
-        collect_checkpoint_prices=_fake_collector, now=lambda: CHECKPOINT_INSTANT,
+        collect_checkpoint_prices=_fake_collector, regime_lookup=_STUB_REGIME_LOOKUP,
+        now=lambda: CHECKPOINT_INSTANT,
     )
 
     assert result.status == "COMPLETE"
@@ -241,7 +250,8 @@ def test_an_instrument_with_zero_todays_candles_is_ineligible_but_produces_no_ca
             max_checkpoint_price_delay_seconds=300.0, families_thresholds=(("TOUCH", 10),),
         ),
         market_port=market_port, emr_repo=emr_repo, calendar_context_session_type=SessionType.NORMAL,
-        collect_checkpoint_prices=_fake_collector, now=lambda: CHECKPOINT_INSTANT,
+        collect_checkpoint_prices=_fake_collector, regime_lookup=_STUB_REGIME_LOOKUP,
+        now=lambda: CHECKPOINT_INSTANT,
     )
 
     assert result.eligible_count == len(INSTRUMENTS)
@@ -250,3 +260,18 @@ def test_an_instrument_with_zero_todays_candles_is_ineligible_but_produces_no_ca
     assert {r["instrument_id"] for r in rows} == set(INSTRUMENTS)  # ...but no explaining row exists for it
     athena_repo.close()
     emr_repo.close()
+
+
+def test_omitting_regime_lookup_fails_loudly_rather_than_silently_defaulting(scan_setup):
+    """EM-7A (ADR-014 Section 20): `regime_lookup` has no default and no
+    silent fallback -- a caller that forgets to wire it gets an immediate
+    TypeError, never a quietly-all-UNKNOWN scan (the exact defect a prior
+    production canary run found and an Owner ruling on 2026-08-28 already
+    required be fixed at every live call site)."""
+    market_port, emr_repo = scan_setup
+    with pytest.raises(TypeError, match="regime_lookup"):
+        run_scan_cycle(
+            config=_config(), market_port=market_port, emr_repo=emr_repo,
+            calendar_context_session_type=SessionType.NORMAL, collect_checkpoint_prices=_fake_collector,
+            now=lambda: CHECKPOINT_INSTANT,
+        )  # type: ignore[call-arg]
