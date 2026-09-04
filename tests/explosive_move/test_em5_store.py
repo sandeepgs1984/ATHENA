@@ -144,10 +144,16 @@ def _transition(**overrides):
 
 
 def test_save_and_list_transitions_round_trips(tmp_path):
+    """Two transitions for the same symbol/family/threshold, from two
+    different checkpoints/runs within the session -- EM-7A.1's per-run
+    uniqueness (run_id, instrument_id, family, threshold_percent) reflects
+    the real scanner's own behavior (at most one transition per identity
+    per run), so a realistic round-trip needs two distinct run_ids, not
+    one run producing two sequence numbers."""
     repo = _repo(tmp_path)
     repo.save_transitions([
-        _transition(sequence_number=1, from_state="INACTIVE", to_state="WATCH"),
-        _transition(sequence_number=2, from_state="WATCH", to_state="CONFIRMED"),
+        _transition(run_id="run-1", sequence_number=1, from_state="INACTIVE", to_state="WATCH"),
+        _transition(run_id="run-2", sequence_number=2, from_state="WATCH", to_state="CONFIRMED"),
     ])
     rows = repo.list_transitions(
         instrument_id="NSE:INFY", family="TOUCH", threshold_percent=10, session_date="2026-08-28",

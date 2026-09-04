@@ -25,6 +25,7 @@ from athena.data.validation import QuarantineRegistry, validate_quotes
 from athena.domain.enums import Timeframe
 from athena.domain.market import MarketSnapshot, Quote
 from athena.errors import ConfigError, DataStaleError
+from athena.observability.timing import CycleTimingRecorder
 
 IST = ZoneInfo("Asia/Kolkata")
 AS_OF = datetime(2026, 2, 13, 15, 35, tzinfo=IST)
@@ -264,3 +265,72 @@ class TestConfig:
         )
         types = {r.validation_type.value for r in summary.reports}
         assert "GAP" not in types
+
+
+class _FailingDailyCandlesProvider:
+    """Delegates to a real FileProvider for everything except
+    `daily_candles`, which raises for one chosen instrument -- used only to
+    prove ID-7P0 timing instrumentation records a failed call's duration
+    before the original exception still propagates unchanged."""
+
+    def __init__(self, inner: FileProvider, *, fail_for: str) -> None:
+        self._inner = inner
+        self._fail_for = fail_for
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+    def daily_candles(self, instrument_id, start, end):
+        if instrument_id == self._fail_for:
+            raise RuntimeError("synthetic provider failure")
+        return self._inner.daily_candles(instrument_id, start, end)
+
+
+class TestCycleTiming:
+    """ID-7P0: optional, observational-only wall-clock instrumentation."""
+
+    def test_omitting_timing_is_identical_to_prior_behavior(self, tmp_path, config_dir):
+        provider = _write_provider_tree(tmp_path / "data")
+        engine, _repo = _engine(tmp_path, config_dir, provider)
+        without_kw = engine.run_cycle(as_of=AS_OF)
+        result = engine.run_cycle(as_of=AS_OF, timing=None)
+        assert result.candles_fetched == without_kw.candles_fetched
+        assert result.quotes_fetched == without_kw.quotes_fetched
+
+    def test_timing_recorder_captures_ingestion_call_groups(self, tmp_path, config_dir):
+        provider = _write_provider_tree(tmp_path / "data")
+        engine, _repo = _engine(tmp_path, config_dir, provider)
+        timing = CycleTimingRecorder()
+        result = engine.run_cycle(as_of=AS_OF, timing=timing)
+        payload = timing.as_dict()["call_groups"]
+        assert "ingestion.daily_candles" in payload
+        assert "ingestion.intraday_candles" in payload
+        assert "ingestion.quotes" in payload
+        assert payload["ingestion.daily_candles"]["count"] == 1
+        assert payload["ingestion.daily_candles"]["ok_count"] == 1
+        assert payload["ingestion.quotes"]["count"] == 1
+        # Instrumentation must never change what was actually fetched/written.
+        assert result.candles_written >= 3
+        assert result.quotes_written == 1
+
+    def test_all_recorded_durations_are_non_negative(self, tmp_path, config_dir):
+        provider = _write_provider_tree(tmp_path / "data")
+        engine, _repo = _engine(tmp_path, config_dir, provider)
+        timing = CycleTimingRecorder()
+        engine.run_cycle(as_of=AS_OF, timing=timing)
+        for group in timing.as_dict()["call_groups"].values():
+            assert group["min_seconds"] >= 0
+            assert group["max_seconds"] >= 0
+
+    def test_failed_provider_call_records_duration_then_still_raises(self, tmp_path, config_dir):
+        provider = _write_provider_tree(tmp_path / "data")
+        failing = _FailingDailyCandlesProvider(provider, fail_for="SYN-AAA")
+        engine, _repo = _engine(tmp_path, config_dir, failing)
+        timing = CycleTimingRecorder()
+        with pytest.raises(RuntimeError, match="synthetic provider failure"):
+            engine.run_cycle(as_of=AS_OF, timing=timing)
+        summary = timing.as_dict()["call_groups"]["ingestion.daily_candles"]
+        assert summary["count"] == 1
+        assert summary["ok_count"] == 0
+        assert summary["failed_count"] == 1
+        assert summary["min_seconds"] >= 0

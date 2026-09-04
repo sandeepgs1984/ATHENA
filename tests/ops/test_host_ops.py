@@ -200,6 +200,9 @@ def test_host_due_runner_due_tick_builds_ingest_engine_exactly_once():
     factory.assert_called_once()
     orch_cls.assert_called_once_with(
         built_engine, repo, pipeline=None, strategy_profile="p", config_snapshot_id="cfg-host-ops",
+        # ID-7P0: opt-in, observational-only cycle-phase timing enabled on
+        # the real scheduled path.
+        enable_timing=True,
     )
 
 

@@ -164,6 +164,12 @@ class HostDueRunner:
             pipeline=self._pipeline,
             strategy_profile=self._strategy_profile,
             config_snapshot_id="cfg-host-ops",
+            # ID-7P0: opt-in, observational-only cycle-phase timing (never
+            # affects Decision/EntryQualification/business behavior) on the
+            # real scheduled PREMARKET/REFRESH/CLOSING path, to attribute
+            # the ~9-10 minute cycle duration between ingestion and the
+            # analytical scan with measured evidence.
+            enable_timing=True,
         )
 
         try:

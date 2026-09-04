@@ -1,6 +1,6 @@
 # PS-P7B Portfolio Conviction Adapter Implementation
 
-Status: Implementation complete; ready for Owner/Chief Architect review
+Status: Owner/Chief Architect approved and frozen 2026-09-03
 Date: 2026-09-03
 Scope: Portfolio Conviction only
 Boundary: No Status, Next Action, Trend / Setup, Support 1, Target 2/3,

@@ -9,6 +9,19 @@ Version history:
 * **1** (EM-5) -- version table, ``emr_scan_runs`` (one row per scan
   cycle), ``emr_candidates`` (one row per scored/ranked observation),
   ``emr_transitions`` (the state machine's immutable event log).
+* **2** (EM-7A.1) -- ``emr_scan_runs`` gains bounded ``failure_type``/
+  ``failure_reason`` columns (terminal ``FAILED`` diagnostics -- never an
+  unbounded traceback, never secrets/tokens/headers/provider payloads).
+  ``emr_candidates``/``emr_transitions`` each gain a UNIQUE index on
+  ``(run_id, instrument_id, family, threshold_percent)`` -- the natural,
+  already-frozen domain identity (one candidate/transition per instrument
+  per (family, threshold) combo per run; a run visits each combo exactly
+  once). This is defense-in-depth alongside, never instead of, the
+  atomic ``commit_scan_result`` transaction (``EmrRepository``): the
+  transaction is what makes a result durable-or-nothing; this index is
+  what makes an accidental duplicate insert impossible even if a future
+  change ever bypassed the transaction's own delete-then-insert
+  replace-for-run step.
 
 Every persisted candidate records enough to explain itself and to be
 replayed without a live call: the frozen model/calibration versions it
@@ -21,7 +34,7 @@ conflated), and its own evidence-completeness/feasibility/state.
 from __future__ import annotations
 
 #: Bumped independently of ATHENA's SCHEMA_VERSION. They never interact.
-EMR_SCHEMA_VERSION = 1
+EMR_SCHEMA_VERSION = 2
 
 _DDL: tuple[str, ...] = (
     "CREATE TABLE IF NOT EXISTS emr_schema_version (version INTEGER NOT NULL)",
@@ -42,7 +55,9 @@ _DDL: tuple[str, ...] = (
         total_duration_ms                REAL,
         quote_request_count             INTEGER,
         db_read_latency_ms               REAL,
-        detail_json                     TEXT
+        detail_json                     TEXT,
+        failure_type                    TEXT,
+        failure_reason                  TEXT
     )
     """,
     "CREATE INDEX IF NOT EXISTS idx_emr_scan_runs_session_checkpoint ON emr_scan_runs(session_date, checkpoint)",
@@ -83,6 +98,12 @@ _DDL: tuple[str, ...] = (
     "CREATE INDEX IF NOT EXISTS idx_emr_candidates_run ON emr_candidates(run_id)",
     "CREATE INDEX IF NOT EXISTS idx_emr_candidates_instrument "
     "ON emr_candidates(instrument_id, family, threshold_percent)",
+    # EM-7A.1: the natural, already-frozen per-run domain identity -- one
+    # candidate/transition row per instrument per (family, threshold)
+    # combo per run. Defense-in-depth alongside, never instead of,
+    # commit_scan_result's own atomic delete-then-insert transaction.
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_emr_candidates_run_identity "
+    "ON emr_candidates(run_id, instrument_id, family, threshold_percent)",
     """
     CREATE TABLE IF NOT EXISTS emr_transitions (
         id                  INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -101,8 +122,30 @@ _DDL: tuple[str, ...] = (
     """,
     "CREATE INDEX IF NOT EXISTS idx_emr_transitions_instrument "
     "ON emr_transitions(instrument_id, family, threshold_percent, session_date)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_emr_transitions_run_identity "
+    "ON emr_transitions(run_id, instrument_id, family, threshold_percent)",
+)
+
+#: EM-7A.1 (schema v2): columns added to a pre-existing v1 `emr_scan_runs`
+#: table via `ALTER TABLE ... ADD COLUMN` -- `CREATE TABLE IF NOT EXISTS`
+#: alone cannot add columns to an already-existing table. No-op (column
+#: already present) on any database created fresh under v2's own DDL
+#: above. Never touches ATHENA's own canonical schema/database.
+_V2_ALTER_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("emr_scan_runs", "failure_type TEXT"),
+    ("emr_scan_runs", "failure_reason TEXT"),
 )
 
 
 def ddl_statements() -> tuple[str, ...]:
     return _DDL
+
+
+def migration_alter_columns() -> tuple[tuple[str, str], ...]:
+    """`(table_name, "column_name TYPE")` pairs that must exist on an
+    already-initialized database whose table predates this column being
+    added to `ddl_statements()`'s own `CREATE TABLE` -- `EmrRepository.
+    initialize()` applies each via `ALTER TABLE ... ADD COLUMN` only when
+    `PRAGMA table_info` shows it missing. A no-op against any database
+    created fresh under the current DDL, which already has these columns."""
+    return _V2_ALTER_COLUMNS

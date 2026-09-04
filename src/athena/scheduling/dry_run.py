@@ -22,6 +22,7 @@ from athena.data.store.repository import SqliteRepository
 from athena.domain.enums import RunStatus, RunTrigger
 from athena.domain.run import RunRecord
 from athena.errors import AthenaError
+from athena.observability.timing import CycleTimingRecorder
 
 
 class DryRunPipeline(Protocol):
@@ -83,6 +84,7 @@ class DryRunCycleOrchestrator:
         config_snapshot_id: str = "cfg-live",
         clock: Callable[[], float] = _time.monotonic,
         run_id_factory: Callable[[RunTrigger, datetime], str] | None = None,
+        enable_timing: bool = False,
     ) -> None:
         self._ingest = ingest_engine
         self._repo = repo
@@ -93,6 +95,13 @@ class DryRunCycleOrchestrator:
         self._clock = clock
         self._run_id_factory = run_id_factory or _default_run_id
         self._cycle_counter = 0
+        # ID-7P0: opt-in, observational-only wall-clock cycle-phase timing
+        # (ingestion vs. analytical scan vs. finalization). Default False
+        # reproduces this class's exact prior behavior -- `self._ingest`
+        # is only ever called with the extra `timing=` keyword when this
+        # is True, so any test double/caller that hasn't opted in is
+        # completely unaffected. Never read by business logic.
+        self._enable_timing = enable_timing
 
     def run_cycle(self, trigger: RunTrigger, *, as_of: datetime) -> DryRunCycleResult:
         if as_of.tzinfo is None:
@@ -109,6 +118,7 @@ class DryRunCycleOrchestrator:
         cycle_id = f"{as_of.date().isoformat()}-{trigger.value.lower()}-{self._cycle_counter:04d}"
         started = as_of
         t0 = self._clock()
+        timing = CycleTimingRecorder(clock=self._clock) if self._enable_timing else None
 
         running = RunRecord(
             run_id=run_id,
@@ -132,13 +142,25 @@ class DryRunCycleOrchestrator:
         failure: BaseException | None = None
 
         try:
-            ingestion = self._ingest.run_cycle(as_of=as_of)
+            if timing is not None:
+                with timing.phase("ingestion_total"):
+                    ingestion = self._ingest.run_cycle(as_of=as_of, timing=timing)
+            else:
+                ingestion = self._ingest.run_cycle(as_of=as_of)
             if self._pipeline is not None:
-                pipeline_detail = dict(
-                    self._pipeline.run(
-                        trigger, as_of=as_of, ingestion=ingestion, run_id=run_id
+                if timing is not None:
+                    with timing.phase("scan_total"):
+                        pipeline_detail = dict(
+                            self._pipeline.run(
+                                trigger, as_of=as_of, ingestion=ingestion, run_id=run_id
+                            )
+                        )
+                else:
+                    pipeline_detail = dict(
+                        self._pipeline.run(
+                            trigger, as_of=as_of, ingestion=ingestion, run_id=run_id
+                        )
                     )
-                )
                 pipeline_detail.setdefault("mode", "paper_pipeline")
         except AthenaError as exc:
             status = RunStatus.FAILED
@@ -183,6 +205,23 @@ class DryRunCycleOrchestrator:
         }
         if error_detail:
             detail["error"] = error_detail
+        if timing is not None:
+            # ID-7P0.1: `duration` above is captured BEFORE the final
+            # `save_run` call below -- so this residual is derived,
+            # non-overlapping, and exhaustive of everything else in this
+            # method UP TO THAT POINT (the initial RUNNING `save_run`,
+            # RunRecord/detail construction, error handling) but does NOT
+            # include the final COMPLETED/FAILED `save_run` call itself.
+            # Named accordingly rather than as a generic "finalization" --
+            # deliberately not measured directly, to avoid adding a second
+            # write or any other change to existing RunRecord persistence
+            # behavior purely for instrumentation.
+            ingestion_total = timing.phases.get("ingestion_total", 0.0)
+            scan_total = timing.phases.get("scan_total", 0.0)
+            timing.phases["orchestration_overhead_pre_final_persist"] = max(
+                0.0, duration - ingestion_total - scan_total
+            )
+            detail["timing"] = timing.as_dict()
         self._repo.save_run(final, detail=detail)
 
         result = DryRunCycleResult(

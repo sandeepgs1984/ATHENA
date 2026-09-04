@@ -984,3 +984,423 @@ Decision-replacement boundaries deliberately, rather than requiring one
 shared `decision_id`. Not implemented, not designed in detail, not part
 of ID-6E — recorded only so it is not lost, and not smuggled into ID-6E's
 own closure criteria.
+
+## 53. ID-6E FINAL POST-MARKET SHADOW AUDIT (2026-09-03, full completed session)
+
+Owner-authorized, read-only, one-off audit performed after the 2026-09-03
+NSE session closed — the "final read-only ID-6E shadow-closure audit" §51
+anticipated. No committed helper was added; per that section's own "not
+self-triggered... owner requests" framing and the ID-6E.2/ID-6E.3
+precedent (both ad-hoc, uncommitted analysis scripts), this audit used a
+throwaway read-only script, discarded after producing this section — not
+part of the source tree, never imported by production or tests.
+
+**Audit cutoff (frozen once, at audit start).** `persisted_at <=
+2026-09-03T10:24:33.966703+00:00` (`2026-09-03T15:54:33.966703+05:30`
+IST) — `max(persisted_at)` at that instant. Audit start:
+`2026-09-03T11:24:29.453335+00:00`. Bounded population: **6,640 rows**
+(vs. ID-6E.3's 654 — this audit captures the *entire* completed trading
+day, not just its first two REGULAR cycles). Current total at
+report-writing time: **6,640** — identical, confirming production added
+no further rows during this audit's short runtime (the 15:45 CLOSING
+cycle had already run and persisted before the cutoff was captured).
+
+**Read-only/mutation controls.** `sqlite3.connect("file:db/athena.db?mode=ro", uri=True)` +
+`PRAGMA query_only=ON` — identical posture to ID-6E.2/ID-6E.3. No
+`repository.initialize()`, no write connection, no workflow/provider
+call. `PRAGMA user_version` (schema version), `PRAGMA integrity_check`,
+`PRAGMA foreign_key_check`, and `entry_qualifications` row count were
+captured before and after the audit: **identical in every field**
+(schema version 0, integrity `ok`, 0 FK violations, 6,640 rows, both
+times) — zero milestone mutation.
+
+**Session-date / cycle / checkpoint coverage.** One session date
+(`2026-09-03`) across **28 distinct `as_of` checkpoints** and **29 real
+scheduler runs** (`run_ids`): 1 PREMARKET (08:15:29), 26 REFRESH cycles
+(09:15:16 through 15:25:26), and 1 CLOSING cycle (15:45:06) — the first
+CLOSING-cycle evidence ID-6E has ever characterized. One of the 26
+REFRESH `as_of` values (11:32:41) is a genuine 1-row cycle, 28 seconds
+after the regular 11:32:13 cycle, with near-zero (2.8s) persistence
+latency — a real, distinctly-`run_id`'d, single-instrument cycle (not a
+duplicate of 11:32:13, not a defect: correct binding, correct finality,
+correct confirmation, correct methodology). Recorded descriptively; not
+investigated further since it violates no invariant.
+
+**Canonical `SessionPhase` distribution** (via the real, unmodified
+`classify_session_phase`, `src/athena/session/engine.py:150`): `CLOSED`
+420 (the 165-row PREMARKET cycle + the 255-row CLOSING cycle, both
+correctly classified as after-hours), `REGULAR` **6,220**. Zero
+`PRE_OPEN`, zero `NOT_A_TRADING_SESSION` — expected, since every
+REFRESH cycle ran inside market hours.
+
+**Checkpoint-by-checkpoint population** (all 28; REGULAR unless noted
+`CLOSED`): row counts range 216–279 per normal REFRESH cycle (the
+11:32:41 singleton and the two CLOSED cycles aside); every checkpoint is
+100% `WATCH` (0 `TRADE` anywhere in the bounded population —
+`TRADE_SHADOW_EVIDENCE_NOT_OBSERVED`, continuing the assessment on the
+genuine WATCH population per owner instruction). Full per-checkpoint
+state table (REGULAR only; CLOSED cycles are 100% EXPIRED and omitted
+for brevity):
+
+| as_of (IST) | N | NOT_YET | QUALIFIED | UNKNOWN | UNKNOWN % |
+|---|---:|---:|---:|---:|---:|
+| 09:15:16 | 255 | 169 | 0 | 86 | 33.73 |
+| 09:30:40 | 234 | 151 | 76 | 7 | 2.99 |
+| 09:43:53 | 239 | 145 | 84 | 10 | 4.18 |
+| 09:59:11 | 252 | 129 | 85 | 38 | 15.08 |
+| 10:14:40 | 266 | 179 | 56 | 31 | 11.65 |
+| 10:30:11 | 273 | 220 | 42 | 11 | 4.03 |
+| 10:45:43 | 266 | 206 | 46 | 14 | 5.26 |
+| 11:01:17 | 260 | 203 | 41 | 16 | 6.15 |
+| 11:16:46 | 270 | 229 | 28 | 13 | 4.81 |
+| 11:32:13 | 250 | 158 | 62 | 30 | 12.00 |
+| 11:32:41 | 1 | 0 | 1 | 0 | 0.00 |
+| 11:48:39 | 263 | 180 | 63 | 20 | 7.60 |
+| 12:04:05 | 279 | 226 | 42 | 11 | 3.94 |
+| 12:19:08 | 276 | 228 | 35 | 13 | 4.71 |
+| 12:34:35 | 217 | 175 | 28 | 14 | 6.45 |
+| 12:49:46 | 216 | 170 | 32 | 14 | 6.48 |
+| 13:05:18 | 259 | 200 | 40 | 19 | 7.34 |
+| 13:20:49 | 265 | 201 | 45 | 19 | 7.17 |
+| 13:36:29 | 247 | 172 | 47 | 28 | 11.34 |
+| 13:52:05 | 223 | 174 | 34 | 15 | 6.73 |
+| 14:07:41 | 223 | 188 | 20 | 15 | 6.73 |
+| 14:23:22 | 222 | 162 | 39 | 21 | 9.46 |
+| 14:39:12 | 224 | 185 | 26 | 13 | 5.80 |
+| 14:54:55 | 263 | 195 | 47 | 21 | 7.98 |
+| 15:09:57 | 222 | 165 | 42 | 15 | 6.76 |
+| 15:25:26 | 255 | 181 | 43 | 31 | 12.16 |
+
+**UNKNOWN behavior across the full session.** UNKNOWN is heavily
+concentrated at the literal market-open cycle (33.73% at 09:15:16, as
+ID-6E.3 already found), falls sharply within the first hour, and then
+**oscillates in a 2.99–15.08% band for the rest of the session** — never
+returning to the 09:15 extreme, never trending toward zero, never
+growing pathologically. This is the first evidence answering ID-6E.3's
+own open question ("does later-session UNKNOWN stay explainable, or does
+it persist/worsen?"): it stays explainable and bounded. Reason-code
+composition (REGULAR UNKNOWN, 525 obs): `SUPPORT_EVIDENCE_UNRESOLVED`
+525/525 (100%), `VWAP_EVIDENCE_UNAVAILABLE` 110/525 (20.95%) — the same
+two codes ID-6E.3 found, now confirmed stable across the full session
+rather than just its opening minutes.
+
+**WATCH/TRADE distribution.** 100% WATCH (6,640/6,640). TRADE remains
+`TRADE_SHADOW_EVIDENCE_NOT_OBSERVED` for the entire completed session —
+consistent with the production Market Intelligence read this same day
+showing a persistent SIDEWAYS regime (`Direction.NONE`, which
+structurally blocks canonical `TRADE` Decisions — see the separate
+in-chat explanation given the same day). This is a market/Decision-
+pipeline fact, not an Entry Qualification defect, and — per §28/owner
+instruction — is not treated as a closure blocker.
+
+**REGULAR state distribution (N=6,220):** NOT_YET 4,591 (73.82%),
+QUALIFIED 1,104 (17.75%), UNKNOWN 525 (8.44%). `DISQUALIFIED_FOR_SESSION`
+0, `OUT_OF_SCOPE`/`EXPIRED` inside REGULAR: 0 (as required). 301 distinct
+instruments; 6,220 distinct `decision_id` values.
+
+**REGULAR finality invariant — holds exactly.** 6,220/6,220 WATCH/TRADE
+rows evaluated during canonical REGULAR carry `evidence_finality =
+LIVE_M5_PROVISIONAL`. **0 violations.**
+
+**Confirmation invariant — holds exactly.** All 6,640 bounded rows (not
+just REGULAR) carry `confirmation = NOT_EVALUATED`. `CONFIRMED_BY_POLICY`
+count: 0.
+
+**Methodology invariant — holds exactly.** All 6,640 bounded rows carry
+`methodology_version = entry-qualification-v0`. 0 rows on any other
+version.
+
+**Decision-binding audit (all 6,640 rows against the real `decisions`
+table).** Missing `decision_id`: 0. `decision_type` mismatch (EQ vs.
+Decision): 0. `run_id` mismatch: 0. `cycle_id` mismatch: 0. Instrument
+mismatch (where the canonical Decision's `instrument_id` is non-null):
+0. **Total binding defects: 0.**
+
+**Duplicate/logical-identity audit.** 0 duplicate `(instrument_id,
+session_date, as_of, decision_id, methodology_version)` identities across
+all 6,640 rows (consistent with the schema's own composite primary key).
+0 naive (timezone-unaware) `as_of` values. 0 naive `persisted_at` values.
+0 malformed `reason_codes_json`/`evidence_refs_json` payloads.
+
+**Decision lifecycle / churn (REGULAR, by instrument/session).** 301
+instrument/session groups; **295 (98.01%)** already show more than one
+distinct `decision_id` across the day's REGULAR cycles — higher than
+ID-6E.3's first-two-checkpoint 89.5% figure, as expected with far more
+cycles observed, and directionally consistent with both replay's own
+high-churn finding and the §51 architectural explanation (a fresh
+canonical Decision is issued per instrument per cycle, unconditionally).
+Decision replacement itself is not treated as an Entry Qualification
+defect, per instruction.
+
+**Canonical same-Decision episode analysis
+(`(instrument_id, session_date, decision_id)`, ID-6E.1 semantics —
+unchanged).** 6,220 total episodes; **6,220 single-checkpoint, 0
+multi-checkpoint** — even across a full 28-checkpoint session.
+**`PRODUCTION_SAME_DECISION_FLICKER_NOT_MEASURABLE`** — confirming, with
+much stronger evidence than ID-6E.3's 2-checkpoint sample, the §51
+architectural conclusion: production's per-cycle fresh-Decision issuance
+makes same-`decision_id` multi-checkpoint episodes structurally
+near-impossible under current scheduling, not merely rare. This remains,
+per §51 item 5, explicitly **not a closure blocker**.
+
+**Optional cross-Decision state-stability view** (descriptive only, named
+per §14/§52's own naming requirement — never called "flicker," never
+superseding ID-6E.1's canonical flicker figure). Of the 295
+instrument/session groups with ≥2 REGULAR `as_of` observations, **240
+(81.4%)** show at least one qualification-state change somewhere across
+the day's cycles when compacted to a run-length-encoded sequence (e.g.
+`NOT_YET -> QUALIFIED -> NOT_YET`); the remaining groups stayed in a
+single state (overwhelmingly `NOT_YET`) all day. This is reported purely
+as a population characterization of cross-cycle behavior — no
+stickiness policy or new methodology is derived from it here, per
+instruction.
+
+**UNKNOWN / NOT_YET / QUALIFIED reason analysis (REGULAR, full
+session).**
+- UNKNOWN (525 obs): `SUPPORT_EVIDENCE_UNRESOLVED` 525 (100%),
+  `VWAP_EVIDENCE_UNAVAILABLE` 110 (20.95%).
+- NOT_YET (4,591 obs): `TREND_CONDITION_NOT_MET` 3,669 (79.92%),
+  `VWAP_CONDITION_NOT_MET` 3,238 (70.53%), `SUPPORT_CONDITION_NOT_MET`
+  493 (10.74%) — trend and VWAP dominate, support rarely decisive,
+  matching replay's own root-cause finding (§26) and ID-6E.3's directional
+  read, now confirmed over a full session rather than 2 cycles.
+- QUALIFIED (1,104 obs): **all 1,104** carry exactly the 4
+  structurally-guaranteed reason codes (`VWAP_CONDITION_MET`,
+  `TREND_CONDITION_MET`, `SUPPORT_CONDITION_MET`,
+  `V0_READINESS_POLICY_SATISFIED`) — 0 rows missing an expected
+  structural reason.
+
+**Option C status.** `OPTION_C_SHADOW_RECONSTRUCTION_NOT_AVAILABLE` —
+unchanged from ID-6E.3; `entry_qualifications` still does not persist
+`SessionContext.data_quality`, and none was refetched or reconstructed.
+
+**M15 non-blocking check.** 0 of 525 REGULAR UNKNOWN rows cite
+`TREND_EVIDENCE_UNAVAILABLE` — unchanged from ID-6E.3, now confirmed
+across the full session: M15 availability caused zero non-evaluability
+all day.
+
+**Latency analysis (`persisted_at - as_of`, all 6,640 bounded rows).**
+Overall: min 2.77s, median 562.97s (~9.4 min), p90 588.42s, p95 592.52s,
+max 622.71s, **0 negative-latency rows**. Per-checkpoint medians range
+543.9s–619.3s (~9.1–10.3 min) across all 26 normal REFRESH/PREMARKET/
+CLOSING cycles — the same ~550–560s shape ID-6E.2/ID-6E.3 already found,
+now confirmed **stable across an entire trading day**, not just its
+opening cycles. The single outlier is the 11:32:41 singleton cycle
+(median 2.8s, n=1, discussed above) — a real, distinctly-scoped small
+cycle, not a defect in the normal full-universe pipeline's latency
+shape. Carried forward explicitly as an **ID-7 design constraint**
+(unchanged from ID-6E.2/ID-6E.3): qualified for market state at `T` ≠
+necessarily actionable at wall-clock `T + ~9-10 min`. Not solved here.
+
+**Replay comparison (checkpoint-aware, honest about alignment).** Using
+the frozen replay baseline (§21, §23): only checkpoints whose shadow
+`as_of` fell within roughly a minute of the named replay checkpoint are
+treated as aligned, consistent with ID-6E.3's own 09:30↔09:30:40 (40s
+offset) precedent — no heuristic nearest-time join is applied beyond
+that magnitude.
+
+| Replay checkpoint | Replay QUALIFIED/NOT_YET/UNKNOWN | Nearest shadow `as_of` (offset) | Shadow QUALIFIED/NOT_YET/UNKNOWN | Aligned? |
+|---|---|---|---|---|
+| 09:30 | 22.95 / 75.97 / 1.08 | 09:30:40 (+40s) | 32.48 / 64.53 / 2.99 | Yes |
+| 10:00 | 24.47 / 73.78 / 1.74 | 09:59:11 (−49s) | 33.73 / 51.19 / 15.08 | Yes |
+| 11:00 | 18.39 / 79.33 / 2.27 | 11:01:17 (+1m17s) | 15.77 / 78.08 / 6.15 | Yes (borderline) |
+| 13:00 | 20.20 / 76.47 / 3.33 | 13:05:18 (+5m18s) | 15.44 / 77.22 / 7.34 | **No** — reported for context only |
+| 14:30 | 17.34 / 80.40 / 2.25 | 14:23:22 (−6m38s) | 17.57 / 72.97 / 9.46 | **No** — reported for context only |
+
+At the two closely-aligned early-session checkpoints, shadow QUALIFIED
+runs directionally higher than replay (as ID-6E.3 also found at 09:30);
+11:00 is closer in QUALIFIED/NOT_YET but shadow UNKNOWN still runs
+higher throughout. **Flicker still cannot be compared** — shadow retains
+0 multi-checkpoint same-Decision episodes against replay's 11.73%
+figure, now confirmed as an architectural fact (§51) rather than a
+sampling gap.
+
+**Structural contradiction audit.** No impossible state observed (every
+`(state, finality)` combination — `(EXPIRED, UNKNOWN_PROVENANCE)`,
+`(NOT_YET, LIVE_M5_PROVISIONAL)`, `(UNKNOWN, LIVE_M5_PROVISIONAL)`,
+`(QUALIFIED, LIVE_M5_PROVISIONAL)` — remains valid under the frozen
+contract); no wrong finality; 0 broken Decision bindings; UNKNOWN
+persistence is explained by stable, sensible reason codes rather than
+being unexplained; no invalid reason combination; no nondeterministic
+identity (0 duplicates); no timestamp defects (0 naive timestamps, 0
+negative latencies). **No structural contradiction found anywhere in the
+bounded 6,640-row population.**
+
+**Determinism.** The full audit computation was run twice against the
+identical `audit_cutoff_utc` and bounded population.
+`digest_run1 = 08db567837f2c94488022d2a13f412bfabe785cbdc8b0e2cd12a1e2311fdbaac`,
+`digest_run2 = 08db567837f2c94488022d2a13f412bfabe785cbdc8b0e2cd12a1e2311fdbaac`
+— **match**. (Wall-clock-only metadata — `audit_start_utc`,
+report-time row count, and the post-audit integrity snapshot — was
+excluded from the hashed payload, as it is expected to vary run-to-run
+even against an identical bounded population.)
+
+**Production mutation proof.** Schema version, integrity-check result,
+FK-violation count, and `entry_qualifications` row count were identical
+before and after the audit (0, `ok`, 0, 6,640). No row was written by
+this milestone; no workflow run was created; no provider was called; no
+scheduler configuration was touched. Production had already finished its
+own independent 15:45 CLOSING cycle before this audit's cutoff was
+captured — that accumulation happened entirely outside this milestone's
+control, exactly as expected of a post-market audit.
+
+**No profitability/outcome join.** None performed — no join to future
+returns, target hits, MFE, MAE, P&L, or TradePlan outcomes anywhere in
+this audit.
+
+**Evidence still absent.** TRADE-type shadow observations (0 for the
+entire session — market/regime-dependent, not required for closure).
+Same-Decision multi-checkpoint episodes (0 — now understood as
+architectural, not an evidentiary gap, per §51). A second trading
+session (still 1 session date — useful but, per §51 item 7, not
+required).
+
+**Known limitations.** One trading day's regime (persistent SIDEWAYS,
+`Direction.NONE`) explains the total TRADE absence but means this audit
+cannot characterize Entry Qualification behavior alongside a live TRADE
+population; that remains for whichever future session first produces
+one. The 13:00/14:30 replay comparison points are contextual only (>5
+minute offset), not a validated match. Cross-Decision state-stability
+(§ above) is new descriptive surface, not yet given a name/owner beyond
+this section — consistent with §52's "not implemented, not designed in
+detail" carve-out.
+
+**Final classification: `REPLAY_AND_SHADOW_BEHAVIORALLY_SOUND`.**
+Every one of the required conditions holds over a materially larger,
+full-session bounded population than any prior ID-6E audit: correct
+finality (6,220/6,220), correct confirmation (6,640/6,640), correct
+methodology (6,640/6,640), zero binding defects, zero duplicate/naive-
+timestamp/malformed-JSON defects, coherent state/reason combinations
+throughout, later-session UNKNOWN behavior confirmed explainable and
+bounded (never pathological), no structural replay contradiction,
+deterministic audit (digest match), and zero milestone mutation. Per §28/
+owner instruction, TRADE absence, same-Decision-episode absence, and
+single-session coverage are **not** treated as reasons to withhold this
+classification.
+
+**ID-6E closure recommendation.** This audit recommends **ID-6E OWNER
+APPROVAL / CLOSURE**. Per owner instruction, this recommendation is not
+self-executed — ID-6E remains open pending Owner/Chief Architect review
+of this section.
+
+## 54. Owner Decision — Final Closure (2026-09-03)
+
+Owner/Chief Architect reviewed §53 and issued a final decision the same
+day. This section is the authoritative closure record; §§1-53 above
+remain unmodified as the historical evidence trail that led to it.
+
+**Decision.**
+
+- **ID-6E — OWNER APPROVED / CLOSED — 2026-09-03.** Final accepted
+  classification: `REPLAY_AND_SHADOW_BEHAVIORALLY_SOUND`, supported by
+  the §53 audit (6,640 bounded rows, 6,220 REGULAR, 28 `as_of`
+  checkpoints, REGULAR finality 6,220/6,220 `LIVE_M5_PROVISIONAL`,
+  confirmation 6,640/6,640 `NOT_EVALUATED`, methodology 6,640/6,640
+  `entry-qualification-v0`, 0 Decision-binding defects, 0 duplicate
+  identities, 0 naive timestamps, 0 malformed JSON, QUALIFIED structural-
+  reason audit 1,104/1,104 correct, determinism digest match
+  `08db567837f2c94488022d2a13f412bfabe785cbdc8b0e2cd12a1e2311fdbaac` ==
+  `08db567837f2c94488022d2a13f412bfabe785cbdc8b0e2cd12a1e2311fdbaac`, no
+  structural contradiction found).
+- **ID-6 — OWNER APPROVED / CLOSED — 2026-09-03 (entire track).** The
+  complete accepted milestone chain: ADR-013/ID-6A0 (architecture) → ID-6A
+  (immutable domain contract) → ID-6B/ID-6B.1A/ID-6B.1B (research + frozen
+  v0 methodology) → ID-6B.2/ID-6B.2A (deterministic pure engine +
+  input-coherence hardening) → ID-6C/ID-6C.1 (append-only persistence +
+  canonical Decision binding) → ID-6D/ID-6D.1 (workflow integration +
+  evaluation-time/persistence-time separation) → ID-6E and its corrective/
+  validation slices (historical replay, production activation/canary,
+  genuine REGULAR shadow characterization, this final full-session
+  production-shadow validation). All now closed.
+
+**Frozen v0 methodology (retained exactly, unchanged by this closure).**
+`VWAP positive AND aggregate intraday trend == BULLISH AND (RS support OR
+RVOL support)`. No weighted score, no extra threshold, no hysteresis, no
+debounce, no stickiness. WATCH and TRADE use the identical methodology;
+OR remains contextual only, never separately gating.
+
+**Frozen state semantics (retained exactly).** `TRUE -> QUALIFIED`,
+`FALSE -> NOT_YET`, `UNKNOWN -> UNKNOWN`, `CLOSED -> EXPIRED`.
+`DISQUALIFIED_FOR_SESSION` and `CONFIRMED_BY_POLICY` remain unused by v0.
+Confirmation remains `NOT_EVALUATED` for current v0 production behavior.
+
+**Frozen finality semantics (retained exactly).** `LIVE_M5_PROVISIONAL`
+remains the accepted finality for eligible WATCH/TRADE during REGULAR —
+never reinterpreted as provider-settled, historically final, immutable,
+bitemporal, or guaranteed correct. ADR-013's independence between
+Qualification State, Evidence Finality, and Qualification Confirmation
+remains frozen.
+
+**Production Decision-lifecycle finding (recorded permanently).** 301
+REGULAR instrument/session groups; 295 (98.01%) show more than one
+`decision_id` — production issues a fresh canonical Decision per
+instrument per cycle, architecturally, not as a defect.
+`PRODUCTION_SAME_DECISION_FLICKER_NOT_MEASURABLE` is **not** an ID-6
+validation gap. Trajectory grouping remains
+`(instrument_id, session_date, decision_id)`, never regressed to
+`decision_type`; the accepted historical replay flicker remains
+215/1,833 = **11.73%**.
+
+**TRADE evidence (recorded correctly, not a blocker).**
+`TRADE_SHADOW_EVIDENCE_NOT_OBSERVED` (WATCH = 6,640, TRADE = 0 across the
+full session) did **not** block ID-6 closure. This does not mean ID-6 has
+validated TRADE-specific production prevalence — the frozen methodology
+is identical for WATCH/TRADE; the observed absence was market/regime/
+Decision-population dependent (the same day's persistent SIDEWAYS regime
+structurally blocks canonical TRADE Decisions via `Direction.NONE`).
+
+**Option C / M15 (retained, not closure defects).**
+`OPTION_C_SHADOW_RECONSTRUCTION_NOT_AVAILABLE` remains — `SessionContext.
+data_quality` is not persisted; the frozen Option C contract (artifact-
+owned availability, no blanket SessionContext data-quality gate) is
+unchanged. M15: 0/525 REGULAR UNKNOWN rows cite
+`TREND_EVIDENCE_UNAVAILABLE` across the full session — consistent with
+the frozen M15 non-blocking interpretation, not broadened beyond the
+observed session.
+
+**ID-7 carry-forward — processing latency (important, preserved
+prominently).** `persisted_at - as_of`: median 562.97s (≈9.38 min), p90
+588.42s, p95 592.52s, max 622.71s, 0 negative timestamps; normal
+checkpoint medians ≈543.9-619.3s across the session. This is **not** an
+ID-6 correctness defect — `EntryQualification` stays correctly bound to
+its market/evidence checkpoint `as_of = T`. Future ID-7 architecture
+**must** explicitly distinguish "qualified for market state at T" from
+"still actionable at wall-clock T + processing latency." Not solved here;
+no maximum-acceptable-latency threshold is invented in this closure.
+
+**Cross-Decision stability (descriptive only, retained as such).** 295
+multi-`as_of` instrument/session groups; 240 (81.4%) show at least one
+state change across distinct Decisions/cycles. Retained only as
+`CROSS_DECISION_STATE_STABILITY` (or equivalent descriptive term) — never
+called flicker, and never converted into hysteresis, debounce,
+confirmation, cooldown, or sticky qualification without separate
+methodology research/authorization.
+
+**No profitability claim.** ID-6 closure means Entry Qualification
+behavior/integration is validated. It does **not** mean QUALIFIED is
+profitable, guarantees any specific move, or that the methodology has
+positive expectancy. No future-return/MFE/MAE/P&L outcome join was ever
+performed in ID-6E. This distinction is preserved explicitly.
+
+**ID-7 status.** **NOT STARTED.** ID-6 closure does not automatically
+authorize ID-7. ID-7's high-level roadmap intent remains Intraday Entry/
+TradePlan design, but no detailed implementation contract is owner-frozen
+yet. A future ID-7 authorization should begin with discovery/design
+reconstruction, not implementation, and must carry forward: (1) the
+daily/structural layer answers WHAT; (2) EntryQualification answers
+WHETHER actionable at evidence time; (3) ID-7 must eventually address
+WHEN/entry/risk structure; (4) qualification is point-in-time and
+non-sticky; (5) `LIVE_M5_PROVISIONAL` remains explicit; (6) processing
+latency is ~9-10 minutes for current full-universe cycles; (7) Decision
+identity normally changes every cycle; (8) current TradePlan is based on
+daily `last_close` + daily ATR; (9) no arbitrary intraday stop/target
+threshold is frozen; (10) T1 +1%/T2 +1.5% remain goals/bands, not
+guarantees; (11) resistance/reward structure must eventually determine
+validity; (12) no outcome/profitability validation has yet been performed
+for EntryQualification. No solutions are designed here.
+
+**EMR/DarvaX isolation.** Unchanged. EM-6 OWNER APPROVED/CLOSED, EM-7 NOT
+STARTED. EntryQualification and any future ID-7 remain uncoupled from
+EMR. DarvaX remains isolated.
+
+**Source/DB/test impact of this closure turn.** None. Documentation only.

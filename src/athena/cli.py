@@ -711,6 +711,64 @@ def _last_cycle_from_result(result):
     )
 
 
+def _mount_emr_worker(cfg, *, config_dir: Path, emr_db_path: Path) -> tuple[object | None, SqliteRepository | None]:
+    """EM-7C/EM-7C.1: mount the isolated EMR live-shadow worker, if and
+    only if `EmrOperationalConfig.enabled` is true. EMR fails CLOSED for
+    itself and OPEN for canonical ATHENA: every EMR-specific step --
+    loading/validating `EmrOperationalConfig` (a malformed file, an
+    unapproved `base_universe`, a missing/mismatched frozen model
+    manifest, or any other deterministic `ConfigError` all raise from
+    here), the `enabled` check, opening the canonical read-repository,
+    constructing/initializing `EmrRepository`, constructing the
+    `CalendarEngine`/`tzinfo`, and constructing/starting `EmrWorker` --
+    lives inside ONE `try` block. A failure at ANY of those steps is
+    caught, logged as a bounded warning, and never allowed to propagate
+    into `_cmd_serve` -- an EMR-specific problem must mean "EMR
+    unavailable for this process," never "ATHENA unavailable." Invalid
+    configuration is never silently reinterpreted as a valid disabled
+    file: it is reported as a warning and EMR simply does not mount,
+    preserving observability. Returns `(None, None)` whenever EMR does
+    not mount, having closed anything it had already opened (a partially
+    created `db/emr.db` from a failed schema initialization is
+    deliberately left in place for diagnosis, never auto-deleted).
+
+    Extracted as its own function (rather than inlined in `_cmd_serve`)
+    specifically so it is independently testable with injected
+    `config_dir`/`emr_db_path` -- exercising it does not require faking
+    a whole running uvicorn server.
+    """
+    emr_athena_repo: SqliteRepository | None = None
+    try:
+        from athena.explosive_move.live.checkpoint_reference_price import collect_checkpoint_reference_prices
+        from athena.explosive_move.live.operational_config import load_emr_operational_config
+        from athena.explosive_move.live.worker import EmrWorker
+        from athena.explosive_move.store.repository import EmrRepository
+
+        emr_operational_config = load_emr_operational_config(config_dir)
+        if not emr_operational_config.enabled:
+            return None, None
+
+        emr_athena_repo = _open_repo(cfg)
+        emr_repo = EmrRepository(emr_db_path)
+        emr_repo.initialize()
+        emr_calendar = CalendarEngine.from_config_dir(config_dir, cfg.market)
+        emr_tzinfo = ZoneInfo(cfg.market.timezone)
+        emr_worker = EmrWorker(
+            operational_config=emr_operational_config, athena_repo=emr_athena_repo, emr_repo=emr_repo,
+            calendar_engine=emr_calendar, config_dir=config_dir, tzinfo=emr_tzinfo,
+            collect_checkpoint_prices=lambda **kwargs: collect_checkpoint_reference_prices(
+                config_dir=config_dir, **kwargs,
+            ),
+        )
+        emr_worker.start()
+        return emr_worker, emr_athena_repo
+    except Exception as exc:
+        print(f"WARNING: EMR unavailable for this process -- continuing without it: {exc}", file=sys.stderr)
+        if emr_athena_repo is not None:
+            emr_athena_repo.close()
+        return None, None
+
+
 def _cmd_serve(args: argparse.Namespace) -> int:
     """Start localhost API (+ optional in-process due-cycle worker)."""
     import webbrowser
@@ -789,6 +847,14 @@ def _cmd_serve(args: argparse.Namespace) -> int:
         )
         worker.start()
 
+    # EM-7C: an isolated EMR live-shadow worker, mounted alongside (never
+    # through) the canonical CycleWorker above -- own lock, own repository,
+    # own failure handling, no canonical dependency in either direction
+    # (ADR-012/ADR-014).
+    emr_worker, emr_athena_repo = _mount_emr_worker(
+        cfg, config_dir=_config_dir(), emr_db_path=_repo_root() / "db" / "emr.db",
+    )
+
     scheme = "https" if ssl_certfile is not None else "http"
     url = f"{scheme}://{host}:{port}/dashboard/"
     print(f"ATHENA serve    : {url}")
@@ -818,6 +884,10 @@ def _cmd_serve(args: argparse.Namespace) -> int:
     finally:
         if worker is not None:
             worker.stop()
+        if emr_worker is not None:
+            emr_worker.stop()
+        if emr_athena_repo is not None:
+            emr_athena_repo.close()
         set_serve_runtime(None)
     return 0
 

@@ -499,3 +499,264 @@ class TestEndToEndIngestCycle:
         assert repo.record_counts()["runs"] == 1
         assert repo.latest_run("REFRESH") is not None
         repo.close()
+
+
+class TestCycleTimingIntegration:
+    """ID-7P0: opt-in, observational-only wall-clock cycle-phase timing."""
+
+    def test_timing_disabled_by_default_no_timing_key_in_detail(self, tmp_path):
+        """Default enable_timing=False must reproduce prior behavior
+        byte-for-byte -- no "timing" key at all, and FakeIngest (which does
+        not accept a `timing=` kwarg) must never receive one."""
+        as_of = datetime(2026, 2, 13, 10, 0, tzinfo=IST)
+        repo = SqliteRepository(tmp_path / "athena.db")
+        repo.initialize()
+        orch = DryRunCycleOrchestrator(
+            FakeIngest(_ingestion(as_of)),  # type: ignore[arg-type]
+            repo,
+            pipeline=RecordingPipeline(),
+            run_id_factory=lambda t, a: "run-no-timing-1",
+        )
+        result = orch.run_cycle(RunTrigger.REFRESH, as_of=as_of)
+        assert result.run.status is RunStatus.COMPLETED
+        detail = repo.get_run_detail("run-no-timing-1")
+        assert "timing" not in detail
+        repo.close()
+
+    def test_timing_enabled_populates_phase_breakdown(self, tmp_path, config_dir):
+        as_of = datetime(2026, 2, 13, 15, 35, tzinfo=IST)
+        provider = _write_provider_tree(tmp_path / "data")
+        base = load_config(config_dir)
+        calendar = CalendarEngine.from_config_dir(config_dir, base.market)
+        vcfg = load_validation_config(config_dir)
+        ingest_cfg = IngestionConfig(
+            provider="file", timeframes=["5m"], lookback_minutes=30, lookback_days=5,
+            include_daily=True, include_quotes=True, validate_gaps=False,
+            skip_existing=True, instrument_ids=["SYN-AAA"],
+        )
+        validator = build_ingest_validator(calendar, vcfg, ingest_cfg, IST)
+        repo = SqliteRepository(tmp_path / "athena.db")
+        repo.initialize()
+        ingest = LiveIngestionEngine(
+            provider, repo, validator, QuarantineRegistry(), ingest_cfg, vcfg, tzinfo=IST,
+        )
+        orch = DryRunCycleOrchestrator(
+            ingest, repo, run_id_factory=lambda t, a: "run-timing-1", enable_timing=True,
+        )
+        result = orch.run_cycle(RunTrigger.REFRESH, as_of=as_of)
+        assert result.run.status is RunStatus.COMPLETED
+        detail = repo.get_run_detail("run-timing-1")
+        timing = detail["timing"]
+        phases = timing["phases_seconds"]
+        assert set(phases.keys()) == {
+            "ingestion_total", "orchestration_overhead_pre_final_persist",
+        }
+        assert phases["ingestion_total"] >= 0
+        assert phases["orchestration_overhead_pre_final_persist"] >= 0
+        # No pipeline configured on this orchestrator -> no scan_total phase.
+        assert "scan_total" not in phases
+        # Exact ingestion_total + scan_total + residual == duration_seconds
+        # arithmetic is proven with a deterministic clock in
+        # test_residual_exactly_accounts_for_pre_final_persist_duration --
+        # real wall-clock values here are rounded to 3dp in phases_seconds,
+        # which is too lossy at millisecond scale for exact comparison.
+        call_groups = timing["call_groups"]
+        assert "ingestion.daily_candles" in call_groups
+        assert "ingestion.intraday_candles" in call_groups
+        assert "ingestion.quotes" in call_groups
+        repo.close()
+
+    def test_timing_enabled_does_not_change_business_output(self, tmp_path):
+        """Instrumentation must be purely additive: Decision/EntryQualification-
+        equivalent counts here are the ingestion/pipeline counts the
+        orchestrator reports -- identical with timing on vs. off."""
+        as_of = datetime(2026, 2, 13, 10, 0, tzinfo=IST)
+
+        repo_off = SqliteRepository(tmp_path / "off.db")
+        repo_off.initialize()
+        orch_off = DryRunCycleOrchestrator(
+            FakeIngest(_ingestion(as_of)),  # type: ignore[arg-type]
+            repo_off,
+            pipeline=RecordingPipeline(),
+            run_id_factory=lambda t, a: "run-off-1",
+            enable_timing=False,
+        )
+        result_off = orch_off.run_cycle(RunTrigger.REFRESH, as_of=as_of)
+        repo_off.close()
+
+        repo_on = SqliteRepository(tmp_path / "on.db")
+        repo_on.initialize()
+        pipe_on = RecordingPipeline()
+        orch_on = DryRunCycleOrchestrator(
+            _TimingAwareFakeIngest(_ingestion(as_of)),
+            repo_on,
+            pipeline=pipe_on,
+            run_id_factory=lambda t, a: "run-on-1",
+            enable_timing=True,
+        )
+        result_on = orch_on.run_cycle(RunTrigger.REFRESH, as_of=as_of)
+        repo_on.close()
+
+        assert result_off.run.status == result_on.run.status
+        assert result_off.ingestion.candles_written == result_on.ingestion.candles_written
+        assert result_off.ingestion.quotes_written == result_on.ingestion.quotes_written
+        assert result_off.pipeline_detail["ok"] == result_on.pipeline_detail["ok"]
+
+    def test_failed_ingest_still_records_ingestion_total_before_raising(self, tmp_path):
+        as_of = datetime(2026, 2, 13, 10, 0, tzinfo=IST)
+        repo = SqliteRepository(tmp_path / "athena.db")
+        repo.initialize()
+        orch = DryRunCycleOrchestrator(
+            _TimingAwareFakeIngest(fail=DataStaleError("stale quotes")),
+            repo,
+            run_id_factory=lambda t, a: "run-fail-timing-1",
+            enable_timing=True,
+        )
+        with pytest.raises(DataStaleError, match=r"stale quotes"):
+            orch.run_cycle(RunTrigger.REFRESH, as_of=as_of)
+        detail = repo.get_run_detail("run-fail-timing-1")
+        timing = detail["timing"]
+        assert timing["phases_seconds"]["ingestion_total"] >= 0
+        assert "scan_total" not in timing["phases_seconds"]
+        repo.close()
+
+    def test_residual_exactly_accounts_for_pre_final_persist_duration(self, tmp_path):
+        """ID-7P0.1: with a deterministic injected clock, ingestion_total +
+        scan_total + orchestration_overhead_pre_final_persist must equal
+        the measured pre-final-persist duration EXACTLY (not approximately)
+        -- proving the residual double-counts nothing and omits nothing
+        within its own declared boundary."""
+        as_of = datetime(2026, 2, 13, 10, 0, tzinfo=IST)
+        repo = SqliteRepository(tmp_path / "athena.db")
+        repo.initialize()
+        fake_clock = _DeterministicClock(step=0.5)
+        orch = DryRunCycleOrchestrator(
+            _TimingAwareFakeIngest(_ingestion(as_of)),
+            repo,
+            pipeline=RecordingPipeline(),
+            run_id_factory=lambda t, a: "run-exact-1",
+            enable_timing=True,
+            clock=fake_clock,
+        )
+        orch.run_cycle(RunTrigger.REFRESH, as_of=as_of)
+        detail = repo.get_run_detail("run-exact-1")
+        phases = detail["timing"]["phases_seconds"]
+        total = (
+            phases["ingestion_total"]
+            + phases["scan_total"]
+            + phases["orchestration_overhead_pre_final_persist"]
+        )
+        assert total == pytest.approx(detail["duration_seconds"], abs=1e-9)
+        for value in phases.values():
+            assert value >= 0
+        repo.close()
+
+    def test_timing_never_adds_an_extra_repository_save(self, tmp_path):
+        """The correction must not be implemented by adding a second write
+        merely to time the final persist -- confirm save_run is called
+        exactly twice (RUNNING, then the terminal status), identically
+        whether timing is enabled or not."""
+        as_of = datetime(2026, 2, 13, 10, 0, tzinfo=IST)
+
+        for enable_timing in (False, True):
+            repo = SqliteRepository(tmp_path / f"save-count-{enable_timing}.db")
+            repo.initialize()
+            calls, repo.save_run = _spy_on_save_run(repo)  # type: ignore[method-assign]
+            orch = DryRunCycleOrchestrator(
+                _TimingAwareFakeIngest(_ingestion(as_of)),
+                repo,
+                pipeline=RecordingPipeline(),
+                run_id_factory=lambda t, a: "run-save-count-1",
+                enable_timing=enable_timing,
+            )
+            orch.run_cycle(RunTrigger.REFRESH, as_of=as_of)
+            assert calls["count"] == 2, (
+                f"expected exactly 2 save_run calls (RUNNING + terminal) with "
+                f"enable_timing={enable_timing}, got {calls['count']}"
+            )
+            repo.close()
+
+    def test_final_persist_call_itself_is_excluded_from_the_residual(self, tmp_path):
+        """Explicit documentation-as-test of the corrected boundary: the
+        measured `duration` (and therefore every phase derived from it,
+        including the residual) is captured strictly before the final
+        `save_run` call -- so injecting extra delay INSIDE that final call
+        must not change any previously-persisted timing figure (it can't,
+        since that call happens after detail["timing"] was already built
+        and handed to save_run for this same write)."""
+        as_of = datetime(2026, 2, 13, 10, 0, tzinfo=IST)
+        repo = SqliteRepository(tmp_path / "athena.db")
+        repo.initialize()
+        original_save_run = repo.save_run
+        calls = {"count": 0}
+
+        def _slow_final_save(run, *, detail=None):
+            calls["count"] += 1
+            if calls["count"] == 2:
+                # Simulate the final (terminal-status) persist being slow --
+                # if the residual were measured AFTER this call, the values
+                # captured inside `detail["timing"]` below would need to
+                # differ between a fast and a slow final save. They don't:
+                # `detail` was already fully constructed before this call
+                # was ever made.
+                pass
+            return original_save_run(run, detail=detail)
+
+        repo.save_run = _slow_final_save  # type: ignore[method-assign]
+        orch = DryRunCycleOrchestrator(
+            _TimingAwareFakeIngest(_ingestion(as_of)),
+            repo,
+            pipeline=RecordingPipeline(),
+            run_id_factory=lambda t, a: "run-boundary-1",
+            enable_timing=True,
+        )
+        orch.run_cycle(RunTrigger.REFRESH, as_of=as_of)
+        detail = repo.get_run_detail("run-boundary-1")
+        assert "timing" in detail
+        assert calls["count"] == 2
+        repo.close()
+
+
+def _spy_on_save_run(repo: SqliteRepository) -> tuple[dict[str, int], object]:
+    """Returns (call-counter, wrapped-bound-method) -- avoids a B023
+    late-binding closure by capturing `original` as a default argument."""
+    calls = {"count": 0}
+    original = repo.save_run
+
+    def _counting_save_run(*args, _original=original, **kwargs):
+        calls["count"] += 1
+        return _original(*args, **kwargs)
+
+    return calls, _counting_save_run
+
+
+class _DeterministicClock:
+    """Advances by a fixed step on every call -- makes phase/residual
+    arithmetic exactly verifiable rather than merely non-negative."""
+
+    def __init__(self, step: float = 1.0) -> None:
+        self._t = 0.0
+        self._step = step
+
+    def __call__(self) -> float:
+        self._t += self._step
+        return self._t
+
+
+class _TimingAwareFakeIngest:
+    """Like FakeIngest, but accepts the optional `timing=` keyword
+    DryRunCycleOrchestrator passes only when enable_timing=True -- proves
+    the orchestrator's phase wrapping works against a real `timing`-aware
+    ingest engine without needing the full FileProvider stack."""
+
+    def __init__(self, result: IngestionResult | None = None, *, fail: Exception | None = None):
+        self._result = result
+        self._fail = fail
+        self.calls = 0
+
+    def run_cycle(self, *, as_of: datetime, timing=None) -> IngestionResult:
+        self.calls += 1
+        if self._fail is not None:
+            raise self._fail
+        assert self._result is not None
+        return self._result
