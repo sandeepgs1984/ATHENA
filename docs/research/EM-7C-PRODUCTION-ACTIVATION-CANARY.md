@@ -1,12 +1,20 @@
 # EM-7C — Controlled Production Activation & Genuine Scheduled Canary
 
-**Status: EM-7C PRODUCTION CANARY COMPLETE — READY FOR OWNER / CHIEF ARCHITECT
-REVIEW.** Owner authorized 2026-09-04, same day as EM-7B/EM-7B.1's closure.
-First controlled production activation of the isolated EMR live-shadow path.
-The genuine scheduled canary completed (`COMPLETE`, atomic, safe) with an
-honest zero-eligible result — not a defect, explained below (§7) — caused by
-canonical M5 ingestion not yet having landed today's first bar at the exact
-checkpoint instant. This is reported prominently, not glossed over.
+**Status (superseded by EM-7C.1, 2026-09-04 — see §21): EM-7C READY FOR
+OWNER / CHIEF ARCHITECT CLOSURE REVIEW; not yet owner-approved.** §§1–20
+below are the original, unmodified EM-7C activation/canary record — owner
+authorized 2026-09-04, same day as EM-7B/EM-7B.1's closure. The genuine
+scheduled canary completed (`COMPLETE`, atomic, safe) with an honest
+zero-eligible result — not a defect, explained in §7 — caused by canonical
+M5 ingestion not yet having landed today's first bar at the exact checkpoint
+instant. Owner/Chief Architect source review then accepted this canary
+evidence as genuine but held EM-7C closure for one narrow source-level
+isolation defect in `_mount_emr_worker`: config loading sat outside the
+protective `try` block, so an EMR-specific configuration failure could have
+propagated into and crashed canonical `_cmd_serve`. **EM-7C.1 (§21) is the
+owner's resolution** — the entire EMR mount sequence, config loading
+included, now lives inside one `try` block; EMR fails closed for itself,
+open for canonical ATHENA.
 
 ---
 
@@ -164,15 +172,24 @@ discussion (explicitly out of scope for EM-7C to act on).
 | `quote_capture_duration_ms` | 301,460.68 ms (≈301.46s) |
 | Frozen bound (`MAX_CHECKPOINT_OBSERVATION_DELAY_SECONDS`) | 300.0s |
 
-The collector polled for ~301.5s (one poll cycle past the 300s bound before
-its own loop-exit check fired) attempting to observe a post-checkpoint trade
-for the full universe, then returned. This is the collector's own frozen,
-unmodified behavior (`checkpoint_reference_price.py`, untouched by this
-milestone) — no bound was changed or retuned for this canary. Real Kite
-`/quote` traffic occurred and completed successfully at the transport level
-(no exceptions propagated); whether any instrument's `last_price` ever
-qualified as `FIRST_OBSERVED_POST_CHECKPOINT_TRADE` is moot for this run
-since zero candidates were ever assembled (§7) to consume it.
+**Wording correction (EM-7C.1):** 301.46s is mathematically NOT "within
+300 seconds" — the original draft's "within the frozen bound" phrasing was
+imprecise and is corrected here. The collector's own *wall-clock loop
+duration* (301.46s) may legitimately exceed its own *admissible observation
+delay bound* (300.0s), because the polling loop checks the deadline only at
+polling boundaries — it does not pre-empt mid-poll. Concretely: the loop's
+own bound check fires after crossing 300.0s, so the measured wall-clock
+duration includes one final poll-cycle's worth of overhead past the
+deadline. This is the collector's own frozen, unmodified behavior
+(`checkpoint_reference_price.py`, untouched by this milestone) — no bound
+was changed or retuned for this canary, and none of the traffic that
+occurred represents an *accepted observation* exceeding the bound: **zero
+candidates were ever assembled this run (§7)**, so there is no accepted
+`FIRST_OBSERVED_POST_CHECKPOINT_TRADE` observation to report a delay for at
+all — the question "did any accepted observation exceed 300 seconds" has
+no data points to answer it either way this run. Real Kite `/quote` traffic
+occurred and completed successfully at the transport level (no exceptions
+propagated) across all 136 requests.
 
 ## 9. Data freshness
 
@@ -303,3 +320,103 @@ does the isolated frozen pipeline operate correctly and safely in
 production? **Yes** — atomically, safely, with zero canonical regression,
 and with one genuine, honestly-reported zero-eligible outcome whose cause
 is fully understood and unrelated to any EM-7A/B/C code defect.
+
+## 21. EM-7C.1 — production mount fail-closed isolation (2026-09-04)
+
+**Source-confirmed defect.** `_mount_emr_worker`'s original shape (§2 above,
+preserved as historical record, not rewritten) called
+`load_emr_operational_config(config_dir)` and evaluated the `enabled` flag
+*before* the protective `try` block that wrapped everything else. Any
+exception from that config load — malformed JSON, an unapproved
+`base_universe`, a missing or version-mismatched frozen model manifest, an
+unreadable file, or any other deterministic `ConfigError` — would propagate
+straight out of `_mount_emr_worker` into `_cmd_serve`, which has no
+surrounding `try`/`except` of its own around that call. An EMR-specific
+configuration problem could therefore have crashed canonical `_cmd_serve`
+startup entirely — violating ADR-014's failure-isolation contract ("EMR
+unavailable" must never mean "ATHENA unavailable").
+
+**Resolution.** The entire EMR mount sequence — config loading and
+validation, the `enabled` check, opening the canonical read-repository,
+`EmrRepository` construction/initialization, `CalendarEngine`/`tzinfo`
+construction, and `EmrWorker` construction/start — now lives inside one
+`try` block. A failure at any of those steps is caught, printed as one
+bounded warning line (`WARNING: EMR unavailable for this process --
+continuing without it: <exc>`), and never allowed to reach `_cmd_serve`.
+Invalid configuration is never silently reinterpreted as a valid disabled
+file — it surfaces as the same warning, with EMR simply not mounting.
+
+**Resource cleanup preserved.** If the canonical read-repository was
+already opened before a later step fails, it is closed in the `except`
+branch (unchanged from EM-7C). A `db/emr.db` file partially created by a
+failed schema initialization is deliberately left in place for diagnosis —
+never auto-deleted.
+
+**Required tests (`tests/unit/test_em7c_service_mount.py`, new
+`TestFailClosedForEmrFailOpenForCanonical` class, 7 tests):** malformed
+JSON, an unapproved `base_universe`, a missing frozen model manifest, a
+manifest/version mismatch, an `EmrRepository.initialize()` failure
+(proving both canonical survival and that the canonical repo is closed,
+not leaked), an `EmrWorker` construction/start failure (proving a
+later-stage failure is caught too, and that a partially-initialized
+`db/emr.db` is preserved rather than deleted), and one service-level proof
+that `_mount_emr_worker` always returns a plain `(worker, repo)` tuple —
+never raises — for every failure mode above, which is the exact contract
+`_cmd_serve`'s subsequent lines depend on to keep running.
+
+**Required mutation/negative proof.** The config load was temporarily
+moved back outside the `try` block (reproducing the original defect
+exactly). Result: exactly the 5 tests that specifically prove
+config-loading isolation failed as expected (raw `ConfigError`/
+`json.JSONDecodeError` propagated uncaught); the other 8 tests (later-stage
+failure isolation, which doesn't depend on where the config load sits)
+were unaffected. Reverted; `diff` against a pre-mutation backup confirmed
+byte-identical restoration.
+
+**Incidental finding, fixed alongside.** Running the full EMR test suite
+after EM-7C's real production activation surfaced a latent test-isolation
+gap, unrelated to the mount-boundary defect above:
+`tests/explosive_move/test_em7b_worker.py`'s `_run` helper (and two direct
+`run_once` calls in `TestRestartBehavior`) defaulted `lock=None`, which
+`run_scan_cycle_with_lock` resolves to
+`EmrScanLock(default_emr_scan_lock_path())` — the *real* production lock
+file. Once EM-7C's real `EmrWorker` began genuinely acquiring that same
+file for its own natural ticks, tests using the default intermittently
+observed `LOCK_BUSY` instead of `INVOKED` whenever a real tick happened to
+be in flight at the same moment — a real, demonstrated collision, not a
+flake. Fixed by giving the test module its own isolated
+`_TEST_LOCK_PATH` (a dedicated temp directory, never the shared default)
+and threading it through every call site that previously relied on the
+default. Confirmed by re-running the full suite twice consecutively with
+zero failures.
+
+**Existing production config/state preserved.** `enabled=true,
+base_universe=athena_core, model_version=v1, max_staleness_minutes=30.0,
+poll_interval_seconds=30.0` — unchanged. `db/emr.db` (1 `COMPLETE` scan
+run from the original 09:20 canary) — unchanged, not reset, not deleted.
+No new canary was triggered for this correction, per explicit instruction
+— the existing 09:20 evidence remains the accepted canary.
+
+**Deployment.** The fixed `cli.py` changes the *code path* future
+`athena serve` invocations will run, but does not change any *currently
+loaded* runtime behavior of the already-running production process (the
+defect only matters at `_cmd_serve` startup time, and the process is not
+currently failing). No production restart was performed solely to deploy
+this correction — the live service continues running the version it
+started with; the corrected mount boundary takes effect at the next
+normal deployment/restart, whenever the owner chooses one. `db/emr.db` and
+the live worker were not touched.
+
+**Preserved unchanged.** The 09:20 canary's zero-eligible finding (§7),
+the frozen 300-second observation-delay bound (§8, wording corrected
+above — not retuned), `run_once`/`EmrWorker` scheduling semantics,
+latest-due-only catch-up, FAILED no-auto-retry, `run_scan_cycle_with_lock`,
+`EmrScanLock`, `RUNNING → COMPLETE | FAILED`, `commit_scan_result`'s
+atomicity, mandatory `regime_lookup`, and the mature-history universe
+policy — none touched.
+
+**Validation.** Focused: 13/13 `test_em7c_service_mount.py` tests passing.
+`tests/explosive_move/` + `tests/api/v1/test_emr_router.py` +
+`test_em7c_service_mount.py`: **527 passed**, 1 pre-existing unrelated
+skip. Full repository suite: **3,339 passed** (was 3,332), 1 skipped, 0
+failed. Ruff clean. `git diff --check` clean.

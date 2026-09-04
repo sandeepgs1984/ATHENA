@@ -211,3 +211,164 @@ class TestNoDuplicateHistoricalIngestion:
         )
         assert captured["athena_repo"] is athena_repo
         athena_repo.close()
+
+
+class TestFailClosedForEmrFailOpenForCanonical:
+    """EM-7C.1: every EMR-specific mount/setup step -- config loading and
+    validation included -- must be isolated from `_cmd_serve`. An
+    EMR-specific failure means "EMR unavailable for this process," never
+    "ATHENA unavailable." Malformed/invalid configuration must never be
+    silently reinterpreted as a valid disabled file -- it must surface as
+    a bounded warning with EMR simply not mounting."""
+
+    def test_malformed_json_never_propagates_and_mounts_nothing(self, config_dir, tmp_path, capsys):
+        (config_dir / "emr" / "operational.json").write_text("{not valid json", encoding="utf-8")
+        cfg = load_config(config_dir)
+        emr_db_path = tmp_path / "emr" / "emr.db"
+
+        worker, athena_repo = _mount_emr_worker(cfg, config_dir=config_dir, emr_db_path=emr_db_path)
+
+        assert worker is None
+        assert athena_repo is None
+        assert not emr_db_path.exists()
+        err = capsys.readouterr().err
+        assert "WARNING: EMR unavailable for this process" in err
+        assert len(err) < 2000, "the warning must be bounded, never an unbounded traceback dump"
+
+    def test_unapproved_base_universe_never_propagates_and_mounts_nothing(self, config_dir, tmp_path, capsys):
+        _seed_frozen_model_manifest(config_dir)
+        _write_operational_config(config_dir, enabled=True, base_universe="some-other-universe")
+        cfg = load_config(config_dir)
+        emr_db_path = tmp_path / "emr" / "emr.db"
+
+        worker, athena_repo = _mount_emr_worker(cfg, config_dir=config_dir, emr_db_path=emr_db_path)
+
+        assert worker is None
+        assert athena_repo is None
+        assert not emr_db_path.exists()
+        assert "WARNING: EMR unavailable for this process" in capsys.readouterr().err
+
+    def test_missing_frozen_model_manifest_never_propagates_and_mounts_nothing(self, config_dir, tmp_path, capsys):
+        # Deliberately do NOT seed a frozen-model manifest.
+        _write_operational_config(config_dir, enabled=True)
+        cfg = load_config(config_dir)
+        emr_db_path = tmp_path / "emr" / "emr.db"
+
+        worker, athena_repo = _mount_emr_worker(cfg, config_dir=config_dir, emr_db_path=emr_db_path)
+
+        assert worker is None
+        assert athena_repo is None
+        assert not emr_db_path.exists()
+        assert "WARNING: EMR unavailable for this process" in capsys.readouterr().err
+
+    def test_manifest_version_mismatch_never_propagates_and_mounts_nothing(self, config_dir, tmp_path, capsys):
+        manifest_dir = config_dir / "emr" / "frozen_models" / "v1"
+        manifest_dir.mkdir(parents=True, exist_ok=True)
+        (manifest_dir / "FROZEN_MODEL_MANIFEST.json").write_text(
+            json.dumps({"version": "v0-corrupted"}), encoding="utf-8",
+        )
+        _write_operational_config(config_dir, enabled=True)
+        cfg = load_config(config_dir)
+        emr_db_path = tmp_path / "emr" / "emr.db"
+
+        worker, athena_repo = _mount_emr_worker(cfg, config_dir=config_dir, emr_db_path=emr_db_path)
+
+        assert worker is None
+        assert athena_repo is None
+        assert "WARNING: EMR unavailable for this process" in capsys.readouterr().err
+
+    def test_emr_repository_initialize_failure_survives_and_cleans_up(self, config_dir, tmp_path, monkeypatch, capsys):
+        """Injects a failure from EmrRepository.initialize() specifically
+        -- proves canonical survival AND that the already-opened
+        canonical read-repository is closed, not leaked."""
+        _seed_frozen_model_manifest(config_dir)
+        _write_operational_config(config_dir, enabled=True)
+        cfg = load_config(config_dir)
+        emr_db_path = tmp_path / "emr" / "emr.db"
+
+        import athena.cli as cli_module
+
+        closed = {"count": 0}
+        real_open_repo = cli_module._open_repo
+
+        def _spy_open_repo(*a, **k):
+            repo = real_open_repo(*a, **k)
+            real_close = repo.close
+
+            def _spy_close():
+                closed["count"] += 1
+                real_close()
+
+            repo.close = _spy_close
+            return repo
+
+        monkeypatch.setattr(cli_module, "_open_repo", _spy_open_repo)
+
+        import athena.explosive_move.store.repository as emr_repo_module
+
+        def _raising_initialize(self):
+            raise RuntimeError("synthetic EmrRepository.initialize() failure")
+
+        monkeypatch.setattr(emr_repo_module.EmrRepository, "initialize", _raising_initialize)
+
+        worker, athena_repo = _mount_emr_worker(cfg, config_dir=config_dir, emr_db_path=emr_db_path)
+
+        assert worker is None
+        assert athena_repo is None
+        assert closed["count"] == 1, "the canonical read-repository opened before the failure must be closed"
+        assert "WARNING: EMR unavailable for this process" in capsys.readouterr().err
+
+    def test_worker_start_failure_survives_and_cleans_up(self, config_dir, tmp_path, monkeypatch, capsys):
+        """A failure AFTER EmrRepository.initialize() succeeds (e.g. in
+        EmrWorker construction/start itself) must also be caught, proving
+        the protective boundary covers the whole mount sequence, not just
+        its first step."""
+        _seed_frozen_model_manifest(config_dir)
+        _write_operational_config(config_dir, enabled=True)
+        cfg = load_config(config_dir)
+        emr_db_path = tmp_path / "emr" / "emr.db"
+
+        def _raising_worker(**_kwargs):
+            raise RuntimeError("synthetic EmrWorker construction failure")
+
+        monkeypatch.setattr("athena.explosive_move.live.worker.EmrWorker", _raising_worker)
+
+        worker, athena_repo = _mount_emr_worker(cfg, config_dir=config_dir, emr_db_path=emr_db_path)
+
+        assert worker is None
+        assert athena_repo is None, "the canonical read-repository must still be closed on a later-stage failure"
+        assert emr_db_path.exists(), (
+            "a partially initialized db/emr.db from a failure AFTER schema init succeeded "
+            "is legitimate diagnostic evidence -- never auto-deleted"
+        )
+        assert "WARNING: EMR unavailable for this process" in capsys.readouterr().err
+
+    def test_canonical_bootstrap_path_is_reached_regardless_of_mount_outcome(self, config_dir, tmp_path):
+        """Service-level proof (without starting a real uvicorn server):
+        _mount_emr_worker itself never raises for any of the failure
+        modes above, and always returns a plain (worker, repo) tuple --
+        the exact contract _cmd_serve's own subsequent lines (building
+        the dashboard URL, printing status, calling uvicorn.run) depend
+        on. Since _cmd_serve has no try/except around its call to
+        _mount_emr_worker (by design -- the isolation lives inside the
+        mount function itself, not as a second outer safety net), the
+        mount function returning cleanly IS the proof that control
+        reaches _cmd_serve's normal runtime setup afterward. A full
+        uvicorn-server integration test would only re-prove this same
+        fact at far higher cost and flakiness (real sockets, real
+        threads) -- not attempted, per the authorization's own
+        instruction not to introduce a large _cmd_serve refactor merely
+        for testing."""
+        (config_dir / "emr" / "operational.json").write_text("{not valid json", encoding="utf-8")
+        cfg = load_config(config_dir)
+        emr_db_path = tmp_path / "emr" / "emr.db"
+
+        result = _mount_emr_worker(cfg, config_dir=config_dir, emr_db_path=emr_db_path)
+
+        assert isinstance(result, tuple)
+        assert len(result) == 2
+        worker, athena_repo = result
+        # The exact shape _cmd_serve destructures and later passes to its
+        # own finally-block cleanup (`if emr_worker is not None: ...`).
+        assert worker is None
+        assert athena_repo is None

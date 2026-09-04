@@ -6,6 +6,119 @@ status updated on approval.
 
 ---
 
+## EM-7C.1 Production Mount Fail-Closed Isolation — Complete
+
+**Summary.** Owner/Chief Architect source review of EM-7C (entry
+immediately below) accepted the genuine 09:20 canary evidence as real
+and useful but held closure for one narrow source-level isolation
+defect: `_mount_emr_worker`'s original shape called
+`load_emr_operational_config(config_dir)` and evaluated `enabled`
+*before* the protective `try` block wrapping everything else. Any
+exception from that config load (malformed JSON, an unapproved
+`base_universe`, a missing/mismatched frozen model manifest, or any
+other deterministic `ConfigError`) could propagate straight out of
+`_mount_emr_worker` into `_cmd_serve`, which has no surrounding
+`try`/`except` of its own — an EMR-specific configuration problem could
+have crashed canonical ATHENA startup entirely, violating ADR-014's
+failure-isolation contract.
+
+**Resolution.** The entire EMR mount sequence — config loading and
+validation, the `enabled` check, opening the canonical read-repository,
+`EmrRepository` construction/initialization, `CalendarEngine`/`tzinfo`
+construction, and `EmrWorker` construction/start — now lives inside one
+`try` block. EMR fails **closed for itself, open for canonical
+ATHENA**: a failure at any step is caught, printed as one bounded
+warning, and never reaches `_cmd_serve`. Invalid configuration is never
+silently reinterpreted as a valid disabled file — it surfaces as the
+same warning, with EMR simply not mounting. Resource cleanup unchanged:
+an already-opened canonical repository is closed on failure; a
+partially-initialized `db/emr.db` from a failed schema init is
+deliberately preserved for diagnosis, never auto-deleted.
+
+**Implemented.** `src/athena/cli.py`'s `_mount_emr_worker` restructured
+per the above (docstring rewritten to state the fail-closed/fail-open
+contract explicitly). 7 new tests
+(`tests/unit/test_em7c_service_mount.py`, new
+`TestFailClosedForEmrFailOpenForCanonical` class): malformed JSON, an
+unapproved `base_universe`, a missing frozen model manifest, a
+manifest/version mismatch, an `EmrRepository.initialize()` failure
+(proving canonical-repo cleanup), an `EmrWorker` construction/start
+failure (proving a later-stage failure is caught too and evidence is
+preserved), and a service-level proof that `_mount_emr_worker` always
+returns a plain `(worker, repo)` tuple, never raises, for every failure
+mode above.
+
+**Incidental finding, fixed alongside.** Running the full EMR suite
+after EM-7C's real production activation surfaced a latent,
+unrelated test-isolation gap: `test_em7b_worker.py`'s `_run` helper (and
+two direct `run_once` calls) defaulted `lock=None`, resolving to the
+*real* production `EmrScanLock` path. Once EM-7C's real worker began
+genuinely competing for that same file on its own natural ticks, tests
+using the default intermittently observed `LOCK_BUSY` instead of
+`INVOKED` — a real, demonstrated collision (not a flake), fixed by
+giving the test module its own isolated lock path.
+
+**Required mutation/negative proof.** The config load was temporarily
+moved back outside the `try` block (reproducing the original defect).
+Result: exactly the 5 tests specifically proving config-loading
+isolation failed as expected (raw `ConfigError`/`JSONDecodeError`
+propagated uncaught); the other 8 tests (later-stage failure isolation)
+were unaffected. Reverted; `diff` against a pre-mutation backup
+confirmed byte-identical restoration.
+
+**Deliberately unchanged.** The 09:20 canary's zero-eligible finding
+and its documented root cause, the frozen 300-second observation-delay
+bound (its wording in the EM-7C report corrected for precision — see
+below — never its value), `run_once`/`EmrWorker` scheduling semantics,
+latest-due-only catch-up, FAILED no-auto-retry, `run_scan_cycle_with_lock`,
+`EmrScanLock`, the `RUNNING → COMPLETE | FAILED` lifecycle,
+`commit_scan_result`'s atomicity, mandatory `regime_lookup`, and the
+mature-history universe policy. No new canary was triggered — the
+existing 09:20 evidence remains the accepted one. Production
+`enabled=true`/`base_universe`/`model_version`/`max_staleness_minutes`/
+`poll_interval_seconds` and `db/emr.db`'s existing single `COMPLETE` row
+all unchanged.
+
+**Documentation correction.** `docs/research/EM-7C-PRODUCTION-ACTIVATION-CANARY.md`
+§8's "within the frozen bound" phrasing was imprecise — 301.46s is not
+"within" 300.0s. Corrected to explain the collector's wall-clock loop
+duration can legitimately exceed its own deadline (the loop checks the
+bound only at polling boundaries, not pre-emptively mid-poll), and to
+state explicitly that zero candidates were assembled this run, so there
+is no *accepted* reference-price observation to report a delay for
+either way. The frozen constant itself was not touched.
+
+**Deployment.** No production restart was performed solely to deploy
+this correction. The already-running production process is not
+currently failing (the defect only matters at `_cmd_serve` startup
+time); the corrected mount boundary takes effect at the next normal
+deployment/restart. `db/emr.db` and the live worker were not touched.
+
+**Files modified.** `src/athena/cli.py` (`_mount_emr_worker`
+restructured), `tests/unit/test_em7c_service_mount.py` (7 new tests),
+`tests/explosive_move/test_em7b_worker.py` (isolated test lock path),
+`docs/research/EM-7C-PRODUCTION-ACTIVATION-CANARY.md` (new §21, wording
+correction in §8, original record preserved unmodified above it), plus
+`docs/MILESTONES.md`, `docs/ATHENA-EMR-HANDOFF.md` — status updates.
+
+**Tests / validation.** 7 new focused tests plus a required
+mutation/negative proof, all passing/confirmed. Focused:
+13/13 `test_em7c_service_mount.py`. Full `tests/explosive_move/` +
+`tests/api/v1/test_emr_router.py` + `test_em7c_service_mount.py`:
+**527 passed**, 1 pre-existing unrelated skip. Full repository suite:
+**3,339 passed** (was 3,332), 1 skipped, 0 failed. Ruff clean on every
+touched file. `git diff --check` clean.
+
+**Remaining work.** None identified. EM-7D remains a separate,
+not-yet-authorized milestone. ID-7P0 and DarvaX were not touched.
+
+**Outcome:** Complete. This was the one narrow issue Owner/Chief
+Architect review found in EM-7C; EM-7C is now ready for owner closure
+review. Not marked owner-approved here — that determination belongs to
+the owner.
+
+---
+
 ## EM-7C Controlled Production Activation & Genuine Scheduled Canary — Complete
 
 **Summary.** Owner/Chief Architect closed EM-7B.1 and EM-7B themselves

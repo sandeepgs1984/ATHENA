@@ -17,6 +17,7 @@ actually filters" proof, since that needs a real immature instrument.
 
 from __future__ import annotations
 
+import tempfile
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -48,6 +49,17 @@ from athena.explosive_move.store.repository import EmrRepository
 IST = ZoneInfo("Asia/Kolkata")
 _MARKET = load_config(CONFIG_DIR).market
 _CALENDAR = CalendarEngine.from_config_dir(CONFIG_DIR, _MARKET)
+
+#: EM-7C.1: `_run`'s own isolated lock path -- deliberately NEVER
+#: `default_emr_scan_lock_path()` (`artifacts/locks/emr-scan.lock`).
+#: Since EM-7C's real production activation, the real EmrWorker genuinely
+#: holds that exact file periodically for its own natural ticks; a test
+#: relying on the default would non-deterministically collide with it
+#: (observed directly: real `LOCK_BUSY` failures once production EMR
+#: activated). One shared temp path for this whole module is safe --
+#: tests run sequentially, each acquire/release cycle completes before
+#: the next test's tick.
+_TEST_LOCK_PATH = Path(tempfile.mkdtemp(prefix="em7b-test-lock-")) / "emr-scan.lock"
 
 
 def _config(**overrides) -> EmrOperationalConfig:
@@ -88,7 +100,8 @@ def _run(athena_repo, emr_repo, *, now, operational_config=None, collect_checkpo
     return run_once(
         now=now, operational_config=operational_config or _config(), athena_repo=athena_repo, emr_repo=emr_repo,
         calendar_engine=_CALENDAR, config_dir=CONFIG_DIR, tzinfo=IST,
-        collect_checkpoint_prices=collect_checkpoint_prices, lock=lock,
+        collect_checkpoint_prices=collect_checkpoint_prices,
+        lock=lock or EmrScanLock(_TEST_LOCK_PATH),
     )
 
 
@@ -257,7 +270,7 @@ class TestRestartBehavior:
         replay = run_once(
             now=_at("09:20", offset_minutes=1), operational_config=_config(), athena_repo=athena_repo,
             emr_repo=emr_repo_second, calendar_engine=restarted_calendar, config_dir=CONFIG_DIR, tzinfo=IST,
-            collect_checkpoint_prices=collector,
+            collect_checkpoint_prices=collector, lock=EmrScanLock(_TEST_LOCK_PATH),
         )
         assert replay.action == "ALREADY_REPRESENTED"
         assert collector.calls == 1, "restart must not re-invoke the provider for an already-COMPLETE checkpoint"
@@ -266,7 +279,7 @@ class TestRestartBehavior:
         next_tick = run_once(
             now=_at("09:30"), operational_config=_config(), athena_repo=athena_repo, emr_repo=emr_repo_second,
             calendar_engine=restarted_calendar, config_dir=CONFIG_DIR, tzinfo=IST,
-            collect_checkpoint_prices=collector,
+            collect_checkpoint_prices=collector, lock=EmrScanLock(_TEST_LOCK_PATH),
         )
         assert next_tick.action == "INVOKED"
         assert next_tick.checkpoint == "09:30"
