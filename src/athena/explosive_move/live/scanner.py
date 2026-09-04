@@ -149,6 +149,22 @@ def _fingerprint(payload: dict) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def compute_run_id(*, session_date: date, checkpoint: str, universe: str, model_version: str) -> str:
+    """EM-7B: the exact deterministic `run_id` formula `run_scan_cycle`
+    computes internally, extracted as a public, reusable function so a
+    caller (the EM-7B worker) can look up `emr_repo.get_scan_run(...)`
+    for a not-yet-attempted checkpoint without duplicating the formula
+    (which would risk silent drift from this module's own definition).
+    Purely additive -- `run_scan_cycle` itself now calls this instead of
+    inlining the same four lines; the produced value is byte-identical to
+    before, verified by the existing deterministic-run-id tests."""
+    fingerprint = _fingerprint({
+        "session_date": session_date.isoformat(), "checkpoint": checkpoint,
+        "universe": universe, "model_version": model_version,
+    })
+    return f"em5-scan-{fingerprint}"
+
+
 def _reconstruct_completed_result(emr_repo: EmrRepository, existing: dict, run_id: str) -> ScanCycleResult:
     """EM-7A.1 Case A: an already-`COMPLETE` run for this exact
     deterministic identity is authoritative. Reconstructed entirely from
@@ -196,11 +212,10 @@ def run_scan_cycle(
     started_monotonic = time.monotonic()
     started_ts = (now or datetime.now)()
 
-    run_id_fingerprint = _fingerprint({
-        "session_date": config.session_date.isoformat(), "checkpoint": config.checkpoint,
-        "universe": config.universe, "model_version": config.model_version,
-    })
-    run_id = f"em5-scan-{run_id_fingerprint}"
+    run_id = compute_run_id(
+        session_date=config.session_date, checkpoint=config.checkpoint,
+        universe=config.universe, model_version=config.model_version,
+    )
 
     # EM-7A.1 Sections 8-10 / EM-7A.2 Section 3: same deterministic
     # run_id, three distinct existing-lifecycle cases -- checked BEFORE

@@ -6,6 +6,141 @@ status updated on approval.
 
 ---
 
+## EM-7B Isolated Scheduling & Invocation — Implementation Complete
+
+**Summary.** Owner/Chief Architect closed EM-7A.2 and EM-7A themselves
+2026-09-03 ("EM-7A.2 OWNER APPROVED / CLOSED", "EM-7A OWNER APPROVED /
+CLOSED") and same day authorized EM-7B: implement ONLY the isolated
+EMR operational scheduling/invocation layer ADR-014 froze — make EMR
+fully fixture-testable as an unattended scheduled worker without
+activating production EMR in any way. EM-7C (production DB activation)
+explicitly not authorized.
+
+**Two design decisions audited before deciding, not assumed.**
+(1) *Checkpoint-due/catch-up policy* — owner called this "the most
+important EM-7B design decision," with an explicit instruction to STOP
+and ask if ambiguous. A source search of ADR-014, the EM-5 design
+contract, `docs/research/EM-7-DISCOVERY.md`, and the EM-5 Track B
+live-capture record for "catch-up"/"missed"/"every checkpoint"/
+"independently captured"/"burst" found zero matches — no evidence
+requires an ongoing worker to independently capture every checkpoint or
+back-fill missed ones after a restart (Track B's own one-time all-9
+capture validated settlement semantics for one date, not an ongoing
+contract). No contradiction found, so the owner's own explicitly stated
+preference (latest-due-checkpoint-only, no burst back-fill) is
+implemented directly. (2) *Universe-policy wiring* — ADR-014 §11
+unambiguously requires the mature-history-filtered subset as the
+scanned population, but `run_scan_cycle`'s frozen `ScanCycleConfig.universe`
+is a plain name resolved internally with no parameter for an explicit
+instrument-id list, and the read-only `EmrMarketDataPort` has no write
+method to materialize a new universe (correctly, by ADR-012 isolation).
+Resolved without touching the frozen scanner contract: a worker-owned
+`_MatureHistoryMarketDataPort` wrapper implements the same
+`EmrMarketDataPort` Protocol and intercepts `resolved_universe()` for
+one worker-chosen label, returning the already-computed
+`select_mature_history_instruments()` output (the same function
+`canary_gate.py`'s own already-approved canary already uses for this
+exact purpose) — `run_scan_cycle` itself never changes.
+
+**Implemented.**
+
+1. **`EmrOperationalConfig`** (`src/athena/explosive_move/live/operational_config.py`)
+   — pydantic, strict, mirrors DarvaX's config-gate *pattern* only
+   (independent `_Strict` base, no DarvaX import). Shipped
+   `config/emr/operational.json` has `enabled: false`. Missing file
+   loads as an explicit disabled default; malformed/unknown-key file
+   fails loudly. Fields are operational-only (enabled, base_universe,
+   model_version-as-selector, staleness/delay tolerances, poll
+   cadence) — no feature/model/calibration/threshold parameter.
+2. **`run_once`** (`src/athena/explosive_move/live/worker.py`) — a
+   pure, synchronous, fully injectable single tick (no thread, no
+   sleep, no internal `datetime.now()`). Derives session eligibility
+   from the read-only `CalendarEngine` before any RUNNING write;
+   derives the single latest-due checkpoint from
+   `CANDIDATE_CHECKPOINTS_IST`; looks up existing persisted state via
+   the newly-public `compute_run_id`; skips (no invocation) once a
+   checkpoint is COMPLETE or FAILED (retry-storm prevention for
+   FAILED); otherwise constructs the mature-history-wrapped market
+   port, the real canonical regime lookup, and calls
+   `run_scan_cycle_with_lock` — never the raw, lock-free entrypoint.
+   Never raises: every exception is caught and reported as part of the
+   returned `EmrWorkerTickOutcome`.
+3. **`EmrWorker`** — a thin daemon-thread wrapper around repeated
+   `run_once` calls, structurally mirroring
+   `athena.ops.serve_runtime.CycleWorker` (daemon thread,
+   `threading.Event`-gated interval loop, try/except-wrapped tick)
+   WITHOUT importing it — the same small duplicated-shape trade-off
+   `EmrScanLock` already made against `CycleRunnerLock`. `start()` is
+   itself gated on `operational_config.enabled`: a disabled worker
+   never creates a background thread at all.
+4. **`compute_run_id`** (`scanner.py`) — the existing inline
+   fingerprint-formula lines extracted into a small, public, reusable
+   function; `run_scan_cycle` now calls it internally instead of
+   inlining the same four lines. Byte-identical output, verified by
+   every existing deterministic-run-id test (including EM-7A.1/
+   EM-7A.2's own independent formula pins) continuing to pass
+   unmodified. Lets the worker look up persisted state for a
+   not-yet-attempted checkpoint without duplicating the formula.
+
+**Deliberately unchanged.** Every EM-7A/EM-7A.1/EM-7A.2 contract
+(`run_scan_cycle`, `run_scan_cycle_with_lock`, `EmrScanLock`,
+`commit_scan_result`, `mark_scan_failed`, the `RUNNING -> COMPLETE |
+FAILED` lifecycle, the in-memory-only `SKIPPED_SESSION_TYPE`
+eligibility outcome, mandatory `regime_lookup`, schema v2). No EM-7C
+(no production `db/emr.db`, no live scan). No worker mounted into
+`athena serve`/any production entrypoint. No manual-run CLI, no HTTP
+mutation endpoint. No model/feature/calibration/threshold/ranking/
+MFE-MAE/FINAL_TEST change. No EM-6 presentation change.
+
+**Files created.**
+`config/emr/operational.json`,
+`src/athena/explosive_move/live/operational_config.py`,
+`src/athena/explosive_move/live/worker.py`,
+`tests/explosive_move/test_em7b_operational_config.py` (8 tests),
+`tests/explosive_move/test_em7b_worker.py` (29 tests),
+`docs/research/EM-7B-ISOLATED-SCHEDULING-INVOCATION.md`.
+
+**Files modified.** `src/athena/explosive_move/live/scanner.py`
+(`compute_run_id` extraction), `tests/explosive_move/test_em5_isolation.py`
+(extended the `SqliteRepository`-in-`live/`-boundary test to approve
+`worker.py` as a second read-only importer, same grep-based read-only
+proof applied to both), `docs/adr/ADR-014-emr-live-shadow-operation.md`
+(unmodified by this milestone — no ADR-014 correction was needed), plus
+`docs/MILESTONES.md`, `docs/ATHENA-EMR-HANDOFF.md` — status updates.
+
+**Tests / validation.** 37 new focused tests, all passing, including 3
+required mutation/negative proofs: (1) the mature-history filter
+temporarily bypassed (`mature_ids` set to the unfiltered
+`base_universe_ids`) — exactly the 2 tests specifically proving universe
+narrowing failed as expected, all others unaffected; reverted, `diff`
+against a pre-mutation backup confirmed byte-identical restoration.
+(2) The FAILED-terminal check temporarily narrowed to COMPLETE-only —
+exactly the 1 test specifically proving no-auto-retry failed as
+expected (the worker re-invoked the provider for an already-FAILED
+checkpoint); reverted, confirmed identical. (3) A forbidden canonical
+import (`athena.ops`) temporarily added to `worker.py` — the isolation
+test caught it as expected; reverted, confirmed identical. Also proven
+behaviorally (not by mutation): the lock entrypoint (externally holding
+the same `EmrScanLock` path correctly produces `LOCK_BUSY` — would
+wrongly succeed if `run_once` called the raw, lock-free scanner
+entrypoint) and regime wiring (a spy confirms the real
+`build_canonical_regime_lookup` is constructed and passed on every
+tick). Full `tests/explosive_move/` + `tests/api/v1/test_emr_router.py`:
+**502 passed** (was 473). Full repository suite: **3,314 passed**, 1
+skipped (pre-existing, unrelated), 0 failed. Ruff clean on every
+touched/created file. `git diff --check` clean.
+
+**Remaining work.** EM-7C (production DB activation) is a separate,
+not-yet-authorized milestone. No `db/emr.db`, no live scan, no
+scheduling gate enabled in production, no service mount. ID-7P0 and
+DarvaX were not touched by this milestone.
+
+**Outcome:** Implementation complete, ready for Owner/Chief Architect
+review. Not marked owner-approved here — that determination belongs to
+the owner.
+
+---
+
 ## EM-7A.2 Pre-Execution Session Eligibility Correction — Complete
 
 **Summary.** Owner/Chief Architect source review of the EM-7A.1
