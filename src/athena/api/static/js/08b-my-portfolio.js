@@ -137,7 +137,12 @@
             CONVICTION_FROM_CONFIDENCE: "Conviction reflects ATHENA Decision confidence/reliability.",
             CONVICTION_CONFIDENCE_UNAVAILABLE: "Decision confidence evidence is unavailable.",
             CONVICTION_CONFIDENCE_INCOHERENT: "Decision confidence evidence is not coherent with the accepted Decision.",
-            TREND_SETUP_NOT_AVAILABLE: "Trend / Setup evidence is unavailable.",
+            TREND_UP_FROM_D1_SMA_STRUCTURE: "D1 trend: SMA20 above SMA50 with price at/above SMA50.",
+            TREND_DOWN_FROM_D1_SMA_STRUCTURE: "D1 trend: SMA20 below SMA50 with price at/below SMA50.",
+            TREND_MIXED_FROM_D1_SMA_STRUCTURE: "D1 trend: price and SMA20/SMA50 structure are not directionally aligned.",
+            TREND_D1_EVIDENCE_UNAVAILABLE: "D1 trend evidence is unavailable.",
+            TREND_D1_EVIDENCE_INCOHERENT: "D1 trend evidence is not coherent with the accepted Portfolio session.",
+            SETUP_METHODOLOGY_DEFERRED: "Setup methodology is intentionally deferred.",
         };
         const messages = codes.map(code => labels[code]).filter(Boolean);
         const failures = row?.provenance?.failed_components || [];
@@ -179,6 +184,12 @@
             ? `Decision confidence: ${conviction}. Conviction reflects ATHENA Decision confidence/reliability, not buy strength.`
             : myPortfolioReasonSummary(row) || "Decision confidence evidence is unavailable.";
         return `<span title="${escapeMyPortfolioHtml(detail)}">${escapeMyPortfolioHtml(label)}</span>`;
+    }
+
+    function myPortfolioTrendCell(value, row) {
+        const trend = value ? String(value).toUpperCase() : null;
+        const detail = myPortfolioReasonSummary(row) || "D1 trend evidence is unavailable.";
+        return `<span title="${escapeMyPortfolioHtml(detail)}">${escapeMyPortfolioHtml(trend || "—")}</span>`;
     }
 
     function showMyPortfolioAlert(message, tone = "neutral") {
@@ -375,7 +386,7 @@
                 <td>${row.pnl_pct == null ? "—" : formatMyPortfolioPct(row.pnl_pct)}</td>
                 <td>${myPortfolioStatusPill(row.status, row)}</td>
                 <td>${myPortfolioConvictionCell(row.conviction, row)}</td>
-                <td>${escapeMyPortfolioHtml(row.trend_or_setup || "Not available")}</td>
+                <td>${myPortfolioTrendCell(row.trend_or_setup, row)}</td>
                 <td>${escapeMyPortfolioHtml(row.key_trigger || "Not available")}</td>
                 <td class="font-mono">${row.support_1 == null ? "₹ —" : formatMyPortfolioMoney(row.support_1)}</td>
                 <td class="font-mono">${row.major_support_exit == null ? "₹ —" : formatMyPortfolioMoney(row.major_support_exit)}</td>

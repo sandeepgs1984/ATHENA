@@ -25,6 +25,7 @@ from athena.portfolio.interpretation import (
     PortfolioNextAction,
     PortfolioStatus,
 )
+from athena.portfolio.trend_adapter import PortfolioTrend, PortfolioTrendReason
 
 AS_OF = datetime(2026, 9, 2, 10, 0, tzinfo=timezone.utc)
 
@@ -101,6 +102,9 @@ def _evidence(
     entry_qualification_is_coherent: bool = False,
     confidence_level: ConfidenceLevel | None = None,
     confidence_is_coherent: bool = False,
+    trend: PortfolioTrend | None = None,
+    trend_is_coherent: bool = False,
+    trend_reason: PortfolioTrendReason | None = None,
 ) -> PortfolioInterpretationEvidence:
     resolved_decision = decision if decision is not None else _decision(plan=_plan())
     return PortfolioInterpretationEvidence(
@@ -116,6 +120,9 @@ def _evidence(
         entry_qualification_is_coherent=entry_qualification_is_coherent,
         confidence_level=confidence_level,
         confidence_is_coherent=confidence_is_coherent,
+        trend=trend,
+        trend_is_coherent=trend_is_coherent,
+        trend_reason=trend_reason,
     )
 
 
@@ -238,7 +245,8 @@ def test_null_methodology_fields_remain_null_with_reasons() -> None:
     assert result.target_2 is None
     assert result.target_3 is None
     assert PortfolioInterpretationReason.CONVICTION_CONFIDENCE_UNAVAILABLE in result.reason_codes
-    assert PortfolioInterpretationReason.TREND_SETUP_NOT_AVAILABLE in result.reason_codes
+    assert PortfolioInterpretationReason.SETUP_METHODOLOGY_DEFERRED in result.reason_codes
+    assert PortfolioInterpretationReason.TREND_D1_EVIDENCE_UNAVAILABLE in result.reason_codes
     assert PortfolioInterpretationReason.SUPPORT_1_METHODOLOGY_UNAVAILABLE in result.reason_codes
     assert PortfolioInterpretationReason.NO_APPROVED_SECONDARY_TARGET in result.reason_codes
 
@@ -249,9 +257,89 @@ def test_conviction_maps_directly_from_coherent_confidence(level: ConfidenceLeve
         _evidence(confidence_level=level, confidence_is_coherent=True)
     )
 
-    assert result.interpretation_version == "portfolio-interpretation-v1"
+    assert result.interpretation_version == PORTFOLIO_INTERPRETATION_VERSION
     assert result.conviction == level.value
     assert PortfolioInterpretationReason.CONVICTION_FROM_CONFIDENCE in result.reason_codes
+
+
+@pytest.mark.parametrize(
+    ("trend", "reason", "expected_reason"),
+    [
+        (
+            PortfolioTrend.UPTREND,
+            PortfolioTrendReason.UP_FROM_D1_SMA_STRUCTURE,
+            PortfolioInterpretationReason.TREND_UP_FROM_D1_SMA_STRUCTURE,
+        ),
+        (
+            PortfolioTrend.DOWNTREND,
+            PortfolioTrendReason.DOWN_FROM_D1_SMA_STRUCTURE,
+            PortfolioInterpretationReason.TREND_DOWN_FROM_D1_SMA_STRUCTURE,
+        ),
+        (
+            PortfolioTrend.MIXED,
+            PortfolioTrendReason.MIXED_FROM_D1_SMA_STRUCTURE,
+            PortfolioInterpretationReason.TREND_MIXED_FROM_D1_SMA_STRUCTURE,
+        ),
+    ],
+)
+def test_trend_maps_directly_without_changing_status_action_or_plan_fields(
+    trend: PortfolioTrend,
+    reason: PortfolioTrendReason,
+    expected_reason: PortfolioInterpretationReason,
+) -> None:
+    result = _interpret(
+        _evidence(trend=trend, trend_is_coherent=True, trend_reason=reason)
+    )
+
+    assert result.trend_setup == trend.value
+    assert result.status is PortfolioStatus.STRONG
+    assert result.next_action is PortfolioNextAction.HOLD
+    assert result.key_trigger is None
+    assert result.major_support_exit == Decimal("1450")
+    assert result.target_2 is None
+    assert result.target_3 is None
+    assert expected_reason in result.reason_codes
+    assert PortfolioInterpretationReason.SETUP_METHODOLOGY_DEFERRED in result.reason_codes
+
+
+def test_incoherent_trend_is_null_without_changing_interpretation() -> None:
+    result = _interpret(
+        _evidence(
+            trend=None,
+            trend_is_coherent=False,
+            trend_reason=PortfolioTrendReason.D1_EVIDENCE_INCOHERENT,
+        )
+    )
+
+    assert result.trend_setup is None
+    assert result.status is PortfolioStatus.STRONG
+    assert result.next_action is PortfolioNextAction.HOLD
+    assert PortfolioInterpretationReason.TREND_D1_EVIDENCE_INCOHERENT in result.reason_codes
+
+
+def test_trend_does_not_block_add_or_suppress_exit() -> None:
+    add = _interpret(
+        _evidence(
+            entry_qualification=_entry_qualification(),
+            entry_qualification_is_coherent=True,
+            trend=PortfolioTrend.DOWNTREND,
+            trend_is_coherent=True,
+            trend_reason=PortfolioTrendReason.DOWN_FROM_D1_SMA_STRUCTURE,
+        )
+    )
+    exit_result = _interpret(
+        _evidence(
+            last_price="1450",
+            trend=PortfolioTrend.UPTREND,
+            trend_is_coherent=True,
+            trend_reason=PortfolioTrendReason.UP_FROM_D1_SMA_STRUCTURE,
+        )
+    )
+
+    assert add.trend_setup == "DOWNTREND"
+    assert add.next_action is PortfolioNextAction.ADD
+    assert exit_result.trend_setup == "UPTREND"
+    assert exit_result.next_action is PortfolioNextAction.EXIT
 
 
 def test_conviction_does_not_change_status_action_or_trade_plan_fields() -> None:

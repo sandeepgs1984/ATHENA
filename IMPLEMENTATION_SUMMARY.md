@@ -6,6 +6,106 @@ status updated on approval.
 
 ---
 
+## PS-P8C Portfolio D1 Trend Adapter Implementation — Complete
+
+**Summary.** Implemented the owner-approved PS-P8B Candidate B D1 Trend
+methodology. My Portfolio now classifies each holding's own coherent D1 candles
+as `UPTREND`, `DOWNTREND`, `MIXED`, or null using the frozen SMA20/SMA50 rule
+and records compact Trend provenance in immutable Portfolio snapshots. New
+snapshot interpretations are versioned `portfolio-interpretation-v2`.
+Final Owner/Chief Architect review found one local hardening gap in direct
+`classify_candles()` calls; PS-P8C now filters future-session D1 candles inside
+the adapter boundary before sufficiency checks and classification.
+
+**Architecture compliance.** Preserves the frozen Portfolio architecture:
+Trend is resolved by a dedicated adapter, passed to the pure interpreter as
+typed evidence, and stored through the existing `trend_setup`/`trend_or_setup`
+surface. No new schema, table, DTO field, route, provider dependency,
+ScoringEngine change, DecisionEngine change, Risk change, Confidence change,
+broker behavior, order behavior, historical backfill, Support methodology,
+Target 2/3 methodology, REDUCE, ROTATE, allocation, ranking, or history feature
+was added. Setup remains deferred with `SETUP_METHODOLOGY_DEFERRED`.
+
+**Files created.**
+
+- `src/athena/portfolio/trend_adapter.py`
+- `tests/runtime/test_portfolio_trend_adapter.py`
+- `docs/research/PS-P8C-PORTFOLIO-D1-TREND-ADAPTER-IMPLEMENTATION.md`
+
+**Files modified.**
+
+- `src/athena/portfolio/__init__.py`
+- `src/athena/portfolio/interpretation.py`
+- `src/athena/portfolio/sync.py`
+- `src/athena/api/v1/services/my_portfolio_service.py`
+- `src/athena/api/static/js/08b-my-portfolio.js`
+- `tests/runtime/test_portfolio_interpretation.py`
+- `tests/api/v1/test_my_portfolio_import_api.py`
+- `tests/api/platform/test_dashboard_hosting.py`
+- `docs/research/PS-P8B-PORTFOLIO-D1-TREND-METHODOLOGY-FREEZE.md`
+- `docs/MILESTONES.md`
+- `IMPLEMENTATION_SUMMARY.md`
+- `ATHENA_BRIEFING.md`
+
+**Public APIs added.** No new API route or DTO field. Existing
+`trend_setup`/`trend_or_setup` may now contain `UPTREND`, `DOWNTREND`,
+`MIXED`, or null for new `portfolio-interpretation-v2` snapshots.
+
+**Tests added.** Added adapter, interpreter, sync/API, currentness-regression,
+and dashboard contract coverage for boundary equality, 49/50 candle behavior,
+future exclusion, exact-session coherency, wrong instrument/timeframe
+incoherency, direct future-evidence exclusion before sufficiency counting,
+latest-50 usable-candle determinism, ADD/EXIT independence, Conviction
+independence, existing schema reuse, Setup deferral, and Portfolio UI tooltip
+labels.
+
+**Test results.** Direct Trend adapter unit tests after final-review correction:
+`11 passed`. Focused PS-P8C/My Portfolio slice: `88 passed`. Focused
+PS-P8C/My Portfolio plus file-backed smoke slice: `91 passed`. Full
+repository suite: `3380 passed, 0 failed, 1 skipped`. File-backed daily smoke
+script: PASS. Touched-file Ruff: clean. `git diff --check`: clean. Core
+Portfolio mypy (`trend_adapter.py`, `interpretation.py`, `sync.py`): clean.
+`uv run mypy` was not used because sandboxed `uv` cache access is blocked;
+direct `.venv/bin/mypy` was used instead. Strict mypy over
+`my_portfolio_service.py` still reports pre-existing service DTO typing debt
+outside PS-P8C.
+
+**Coverage summary.** New coverage exercises the adapter directly, the pure
+interpreter contract, sync snapshot persistence/provenance, currentness
+regressions, and dashboard contract text. Existing PS-P6B and PS-P7B tests
+continue to cover stale-snapshot/currentness and Conviction independence.
+
+**Risks discovered.** Strict exact-session coherency means Trend remains null
+whenever the latest 50-candle D1 evidence does not exactly match the accepted
+Portfolio price and expected analysis sessions. This is intentional per PS-P8B
+and prevents stale/prior-session fallback from masquerading as current Trend.
+
+**Technical debt introduced.** None. Existing debt remains: Setup, Support 1,
+Target 2/3, REDUCE, ROTATE, allocation, ranking, and history still require
+separate methodology milestones before implementation.
+
+**Suggested improvements.** Next work should be owner-selected after review.
+Do not start Setup from PS-P8C; it needs its own discovery/freeze milestone.
+
+**Remaining work.** Owner/Chief Architect review of PS-P8C.
+
+**Implementation metrics.** Production source files created: 1. Production
+source files modified: 5. Test files created: 1. Test files modified: 3.
+Documentation files created: 1. Documentation files modified: 3.
+
+**Phase outcome.** PS-P8C implementation complete and ready for Owner/Chief
+Architect review. PS-P8B is owner-approved and frozen. My Portfolio V1 remains
+complete and frozen; Portfolio Intelligence V2 now includes Conviction and D1
+Trend only.
+
+**Commit hash.** Pending owner commit.
+
+**Branch.** feature/portfolio-sync.
+
+**Review status.** Ready for Owner/Chief Architect review.
+
+---
+
 ## PS-P8B Portfolio D1 Trend Methodology Freeze — Complete
 
 **Summary.** Owner/Chief Architect approved and froze PS-P8A on 2026-09-04,
@@ -68,15 +168,15 @@ Portfolio Trend until the methodology and replay evidence are approved.
 **Implementation metrics.** Documentation-only. Production source files changed:
 0. Tests added: 0.
 
-**Phase outcome.** PS-P8B methodology complete and ready for Owner/Chief
-Architect review. PS-P8A is owner-approved and frozen. PS-P7B remains frozen.
-My Portfolio V1 remains complete and frozen.
+**Phase outcome.** PS-P8B methodology owner-approved and frozen 2026-09-04.
+PS-P8A is owner-approved and frozen. PS-P7B remains frozen. My Portfolio V1
+remains complete and frozen.
 
 **Commit hash.** Pending owner commit.
 
 **Branch.** feature/portfolio-sync.
 
-**Review status.** Ready for Owner/Chief Architect review.
+**Review status.** Owner/Chief Architect approved and frozen.
 
 ---
 

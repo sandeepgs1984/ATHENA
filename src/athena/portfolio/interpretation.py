@@ -19,8 +19,9 @@ from athena.intraday.entry_qualification_models import (
     EntryQualification,
     EntryQualificationState,
 )
+from athena.portfolio.trend_adapter import PortfolioTrend, PortfolioTrendReason
 
-PORTFOLIO_INTERPRETATION_VERSION = "portfolio-interpretation-v1"
+PORTFOLIO_INTERPRETATION_VERSION = "portfolio-interpretation-v2"
 
 
 @unique
@@ -74,7 +75,12 @@ class PortfolioInterpretationReason(str, Enum):
     CONVICTION_FROM_CONFIDENCE = "CONVICTION_FROM_CONFIDENCE"
     CONVICTION_CONFIDENCE_UNAVAILABLE = "CONVICTION_CONFIDENCE_UNAVAILABLE"
     CONVICTION_CONFIDENCE_INCOHERENT = "CONVICTION_CONFIDENCE_INCOHERENT"
-    TREND_SETUP_NOT_AVAILABLE = "TREND_SETUP_NOT_AVAILABLE"
+    TREND_UP_FROM_D1_SMA_STRUCTURE = "TREND_UP_FROM_D1_SMA_STRUCTURE"
+    TREND_DOWN_FROM_D1_SMA_STRUCTURE = "TREND_DOWN_FROM_D1_SMA_STRUCTURE"
+    TREND_MIXED_FROM_D1_SMA_STRUCTURE = "TREND_MIXED_FROM_D1_SMA_STRUCTURE"
+    TREND_D1_EVIDENCE_UNAVAILABLE = "TREND_D1_EVIDENCE_UNAVAILABLE"
+    TREND_D1_EVIDENCE_INCOHERENT = "TREND_D1_EVIDENCE_INCOHERENT"
+    SETUP_METHODOLOGY_DEFERRED = "SETUP_METHODOLOGY_DEFERRED"
     CONTEXT_CAUTION = "CONTEXT_CAUTION"
     NO_STRONGER_ACTION_SUPPORTED = "NO_STRONGER_ACTION_SUPPORTED"
 
@@ -93,6 +99,9 @@ class PortfolioInterpretationEvidence:
     entry_qualification_is_coherent: bool = False
     confidence_level: ConfidenceLevel | None = None
     confidence_is_coherent: bool = False
+    trend: PortfolioTrend | None = None
+    trend_is_coherent: bool = False
+    trend_reason: PortfolioTrendReason | None = None
 
     def __post_init__(self) -> None:
         if not self.instrument_id:
@@ -124,11 +133,12 @@ class PortfolioInterpreter:
         evidence: PortfolioInterpretationEvidence,
     ) -> PortfolioInterpretationResult:
         reasons: list[PortfolioInterpretationReason] = [
-            PortfolioInterpretationReason.TREND_SETUP_NOT_AVAILABLE,
+            PortfolioInterpretationReason.SETUP_METHODOLOGY_DEFERRED,
             PortfolioInterpretationReason.SUPPORT_1_METHODOLOGY_UNAVAILABLE,
             PortfolioInterpretationReason.NO_APPROVED_SECONDARY_TARGET,
         ]
         conviction = self._conviction(evidence, reasons)
+        trend_setup = self._trend_setup(evidence, reasons)
 
         if evidence.trade_plan is not None and not evidence.trade_plan_is_active:
             reasons.append(PortfolioInterpretationReason.TRADE_PLAN_EXPIRED)
@@ -148,7 +158,7 @@ class PortfolioInterpreter:
             major_support_exit=major_support_exit,
             next_action=next_action,
             conviction=conviction,
-            trend_setup=None,
+            trend_setup=trend_setup,
             support_1=None,
             target_2=None,
             target_3=None,
@@ -176,6 +186,21 @@ class PortfolioInterpreter:
             reasons.append(PortfolioInterpretationReason.CONVICTION_CONFIDENCE_INCOHERENT)
         else:
             reasons.append(PortfolioInterpretationReason.CONVICTION_CONFIDENCE_UNAVAILABLE)
+        return None
+
+    @staticmethod
+    def _trend_setup(
+        evidence: PortfolioInterpretationEvidence,
+        reasons: list[PortfolioInterpretationReason],
+    ) -> str | None:
+        if evidence.trend is not None and evidence.trend_is_coherent:
+            if evidence.trend_reason is not None:
+                reasons.append(PortfolioInterpretationReason(evidence.trend_reason.value))
+            return evidence.trend.value
+        if evidence.trend_reason is PortfolioTrendReason.D1_EVIDENCE_INCOHERENT:
+            reasons.append(PortfolioInterpretationReason.TREND_D1_EVIDENCE_INCOHERENT)
+        else:
+            reasons.append(PortfolioInterpretationReason.TREND_D1_EVIDENCE_UNAVAILABLE)
         return None
 
     def _status(

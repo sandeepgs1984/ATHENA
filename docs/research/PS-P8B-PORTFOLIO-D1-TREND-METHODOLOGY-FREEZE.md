@@ -3,7 +3,7 @@
 **Date:** 2026-09-04
 **Branch:** `feature/portfolio-sync`
 **Milestone:** PS-P8B - methodology/research only
-**Status:** Ready for Owner / Chief Architect review
+**Status:** Owner / Chief Architect approved and frozen
 
 ---
 
@@ -13,21 +13,21 @@ PS-P8B narrows PS-P8A's Trend / Setup question into one defensible question:
 can ATHENA classify a holding's D1 Trend using only existing approved D1
 evidence and without inventing thresholds?
 
-Verdict: yes, if the owner accepts a narrow D1 SMA-structure methodology
-adapted from ATHENA's already-approved Regime trend rule. The recommended
-Trend taxonomy is:
+Verdict: approved. ATHENA will classify a holding's D1 Trend by adapting
+ATHENA's already-approved Regime SMA20/SMA50 trend rule to the holding's own
+D1 candles. The frozen Portfolio Trend taxonomy is:
 
 - `UPTREND`
-- `SIDEWAYS`
+- `MIXED`
 - `DOWNTREND`
 - `null` for unavailable or incoherent evidence
 
-`SIDEWAYS` is feasible only with a precise meaning: mixed D1 SMA structure from
+`MIXED` has one precise meaning: mixed D1 SMA structure from
 the same 20/50 SMA rule, not range, consolidation, or "not uptrend."
 
-Setup remains deferred. No production code changed. `portfolio-interpretation-v1`
-remains unchanged until a future implementation milestone is explicitly
-approved.
+Setup remains deferred. PS-P8C is authorized to implement only the D1 Trend
+adapter under `portfolio-interpretation-v2`; no Setup implementation, new table,
+or historical backfill is authorized.
 
 ## 2. Frozen PS-P8A Owner Decisions
 
@@ -43,7 +43,7 @@ Frozen refinements:
   relative volume must not determine D1 Trend.
 - DecisionType, TradePlan, stop breach, and Conviction must remain independent
   from Trend.
-- No production Portfolio Trend / Setup implementation is authorized yet.
+- PS-P8B is approved/frozen and PS-P8C is authorized to implement only D1 Trend.
 
 ## 3. Exact D1 Evidence Inventory
 
@@ -77,8 +77,8 @@ Frozen refinements:
 
 ## 5. Existing Semantic Trend Artifacts
 
-ATHENA has one authoritative semantic trend state: `RegimeLabel.BULL_TREND`,
-`SIDEWAYS`, `BEAR_TREND`, and `TREND_UNKNOWN` from `RegimeEngine._trend`.
+ATHENA has one authoritative market/index semantic trend state from
+`RegimeEngine._trend`: bull, bear, mixed/third-branch, and unknown labels.
 
 It is not directly usable as a Portfolio holding trend because production
 Regime is resolved from configured market index candles. It describes market
@@ -93,7 +93,7 @@ D1 Trend.
 
 It consumes:
 
-- Regime trend label points (`BULL_TREND` 80, `SIDEWAYS` 50, `BEAR_TREND` 20);
+- Regime trend label points (bull 80, mixed 50, bear 20);
 - D1 ADX bonus through a 15 -> 25 ramp;
 - optional M5/M15 confluence bonus against daily direction.
 
@@ -121,10 +121,10 @@ mapped directly to Portfolio D1 Trend.
 Regime trend is categorical, D1-based, deterministic, approved, and already
 consumed by ScoringEngine and DecisionEngine. Its formula is:
 
-- `BULL_TREND` when SMA20 > SMA50 and last close >= SMA50;
-- `BEAR_TREND` when SMA20 < SMA50 and last close <= SMA50;
-- `SIDEWAYS` otherwise;
-- `TREND_UNKNOWN` when fewer than 50 candles are available.
+- bull when SMA20 > SMA50 and last close >= SMA50;
+- bear when SMA20 < SMA50 and last close <= SMA50;
+- mixed otherwise;
+- unknown when fewer than 50 candles are available.
 
 Production usage is market/index-level. Therefore it cannot directly populate a
 holding row. However, its exact formula can be adapted to an individual
@@ -146,7 +146,7 @@ Frozen PS-P8B boundary:
 DecisionType must not classify Trend:
 
 - `TRADE` does not imply `UPTREND`.
-- `WATCH` does not imply `SIDEWAYS`.
+- `WATCH` does not imply `MIXED`.
 - `NO_TRADE` does not imply `DOWNTREND`.
 
 TradePlan is also independent. A holding can have a D1 Trend without an active
@@ -176,10 +176,10 @@ PS-P8B does not freeze:
 No existing approved ATHENA artifact carries those exact Portfolio Setup
 semantics. Recommended classification: `SETUP_METHODOLOGY_DEFERRED`.
 
-## 13. UNKNOWN vs Null Recommendation
+## 13. UNKNOWN vs Null Freeze
 
-Recommendation: do not expose `UNKNOWN` as an owner-facing Trend value in the
-first production implementation.
+Do not expose `UNKNOWN` as an owner-facing Trend value in the first production
+implementation.
 
 Use:
 
@@ -189,15 +189,15 @@ Use:
 This matches the frozen Portfolio nullable-field convention and avoids
 duplicating `null` with an `UNKNOWN` display value.
 
-## 14. SIDEWAYS Feasibility
+## 14. MIXED Freeze
 
-`SIDEWAYS` is feasible only under the Regime-derived SMA20/SMA50 mixed-state
+`MIXED` is feasible only under the Regime-derived SMA20/SMA50 mixed-state
 meaning. It is positively identified by the existing rule's third branch, not
 by "not uptrend" alone.
 
-Approved meaning should be:
+Approved meaning:
 
-`SIDEWAYS` = D1 SMA20/SMA50/close relationship is mixed: neither the bullish
+`MIXED` = D1 SMA20/SMA50/close relationship is mixed: neither the bullish
 condition nor the bearish condition holds.
 
 It must not mean:
@@ -209,34 +209,33 @@ It must not mean:
 - no trade;
 - weak conviction.
 
-If the owner wants "sideways" to mean range/consolidation, defer it and use
-only `UPTREND`, `DOWNTREND`, and `null`.
+`SIDEWAYS` is not approved as a Portfolio Trend label.
 
 ## 15. Candidate Methodologies
 
 | Candidate | Evidence | Thresholds | Null behavior | Advantages | Semantic risks | Replay expectation |
 |---|---|---|---|---|---|---|
 | A - reuse existing semantic artifact | Current Regime trend | Regime 20/50 SMA rule | `TREND_UNKNOWN` -> null | Already approved, categorical | Market/index, not instrument | Not valid for holdings |
-| B - adapt Regime trend formula to instrument D1 | Holding D1 closes, SMA20, SMA50 | Regime fast=20, slow=50 | fewer than 50 D1 candles -> null | D1-only, deterministic, no new thresholds | SIDEWAYS label must be narrowly defined | Stable enough for owner review |
+| B - adapt Regime trend formula to instrument D1 | Holding D1 closes, SMA20, SMA50 | Regime fast=20, slow=50 | fewer than 50 D1 candles -> null | D1-only, deterministic, no new thresholds | MIXED label must be narrowly defined | Approved |
 | C - keep Trend null | none | none | all rows null | Maximum conservatism | Leaves existing column empty | No behavior change |
 
-## 16. Recommended Methodology
+## 16. Frozen Methodology
 
-Recommend Candidate B for owner approval:
+Candidate B is approved:
 
 `UPTREND` when instrument D1 SMA20 > D1 SMA50 and latest D1 close >= D1 SMA50.
 
 `DOWNTREND` when instrument D1 SMA20 < D1 SMA50 and latest D1 close <= D1 SMA50.
 
-`SIDEWAYS` when at least 50 D1 candles exist and neither condition holds.
+`MIXED` when at least 50 D1 candles exist and neither condition holds.
 
 `null` when required D1 evidence is unavailable or incoherent.
 
-This is not yet implemented. It should be frozen by owner review before PS-P8C.
+This is the only Trend methodology authorized for PS-P8C.
 
 ## 17. Exact Evidence Precedence
 
-Recommended precedence:
+Frozen precedence:
 
 1. Instrument identity must be canonical and match the Portfolio holding.
 2. D1 candle history must be available through the snapshot `as_of`.
@@ -244,22 +243,21 @@ Recommended precedence:
 4. Compute SMA20 and SMA50 over D1 closes only.
 5. If SMA20 > SMA50 and close >= SMA50 -> `UPTREND`.
 6. Else if SMA20 < SMA50 and close <= SMA50 -> `DOWNTREND`.
-7. Else -> `SIDEWAYS`.
-8. Any incoherency or future evidence -> `null`.
+7. Else -> `MIXED`.
+8. Any incoherency, unavailable evidence, or future evidence -> `null`.
 
 ## 18. Reason Codes
 
-Recommended reason-code vocabulary:
+Frozen reason-code vocabulary:
 
 - `TREND_UP_FROM_D1_SMA_STRUCTURE`
 - `TREND_DOWN_FROM_D1_SMA_STRUCTURE`
-- `TREND_SIDEWAYS_FROM_D1_SMA_STRUCTURE`
+- `TREND_MIXED_FROM_D1_SMA_STRUCTURE`
 - `TREND_D1_EVIDENCE_UNAVAILABLE`
 - `TREND_D1_EVIDENCE_INCOHERENT`
 - `SETUP_METHODOLOGY_DEFERRED`
 
-Names should be finalized in PS-P8C to match the enum style in
-`PortfolioInterpretationReason`.
+No `UNKNOWN` or `SIDEWAYS` reason code is approved for Portfolio Trend.
 
 ## 19. Coherency Contract
 
@@ -267,14 +265,17 @@ Required identity:
 
 - same `instrument_id` as the holding;
 - `timeframe = D1`;
-- latest candle `ts_open <= interpretation_as_of`;
-- no candle after the Portfolio Sync snapshot's expected analysis session;
+- latest trend candle session must equal the accepted Portfolio price session;
+- latest trend candle session must equal the expected analysis session when one
+  is supplied;
+- no previous-session fallback is allowed for Trend classification;
 - at least 50 ordered D1 candles;
-- indicator calculation `as_of` equals interpretation `as_of`;
+- SMA calculation uses only candles through the exact accepted session;
 - methodology version recorded in row provenance;
 - reason codes recorded in row provenance.
 
-Current price must not be combined with stale future-looking Trend evidence.
+Current price must not be combined with stale, prior-session, or future-looking
+Trend evidence.
 
 ## 20. Replay Dataset
 
@@ -291,7 +292,7 @@ success set.
 
 ## 21. Replay Contract
 
-Future PS-P8C replay should report:
+PS-P8C replay/validation should report:
 
 - deterministic repeat equality for the same input snapshot;
 - no future leakage (`ts_open <= as_of`);
@@ -316,7 +317,7 @@ Latest classification on 2026-09-04:
 |---|---:|
 | `UPTREND` | 11 |
 | `DOWNTREND` | 7 |
-| `SIDEWAYS` | 2 |
+| `MIXED` | 2 |
 | `null` | 0 |
 
 Latest 30-session transition sketch across current holdings:
@@ -325,15 +326,15 @@ Latest 30-session transition sketch across current holdings:
 |---|---:|
 | `UPTREND -> UPTREND` | 323 |
 | `DOWNTREND -> DOWNTREND` | 135 |
-| `SIDEWAYS -> SIDEWAYS` | 75 |
-| `SIDEWAYS -> UPTREND` | 14 |
-| `UPTREND -> SIDEWAYS` | 13 |
-| `SIDEWAYS -> DOWNTREND` | 10 |
-| `DOWNTREND -> SIDEWAYS` | 9 |
+| `MIXED -> MIXED` | 75 |
+| `MIXED -> UPTREND` | 14 |
+| `UPTREND -> MIXED` | 13 |
+| `MIXED -> DOWNTREND` | 10 |
+| `DOWNTREND -> MIXED` | 9 |
 | `DOWNTREND -> UPTREND` | 1 |
 
 Full current-holding D1 rows with at least 50 candles: 12,295.
-Distribution: 5,728 `UPTREND`, 2,288 `SIDEWAYS`, 4,279 `DOWNTREND`.
+Distribution: 5,728 `UPTREND`, 2,288 `MIXED`, 4,279 `DOWNTREND`.
 
 These are evidence observations, not acceptance thresholds.
 
@@ -347,11 +348,11 @@ Latest current-holding examples:
 | `NSE:KSHINTL` | `UPTREND` | `TRADE` | 1077.05 | 987.37 | 914.18 |
 | `NSE:TDPOWERSYS` | `DOWNTREND` | `NO_TRADE` | 737.35 | 1107.30 | 1130.19 |
 | `NSE:GESHIP` | `DOWNTREND` | `WATCH` | 1368.80 | 1315.88 | 1369.23 |
-| `NSE:RRKABEL` | `SIDEWAYS` | `TRADE` | 2452.00 | 2799.95 | 2584.57 |
-| `NSE:TEJASNET` | `SIDEWAYS` | `WATCH` | 613.75 | 532.33 | 538.38 |
+| `NSE:RRKABEL` | `MIXED` | `TRADE` | 2452.00 | 2799.95 | 2584.57 |
+| `NSE:TEJASNET` | `MIXED` | `WATCH` | 613.75 | 532.33 | 538.38 |
 
 The examples demonstrate Decision independence: `TRADE` appears with both
-`UPTREND` and `SIDEWAYS`, while `DOWNTREND` appears with `WATCH` and `NO_TRADE`.
+`UPTREND` and `MIXED`, while `DOWNTREND` appears with `WATCH` and `NO_TRADE`.
 
 ## 24. Persistence Recommendation
 
@@ -388,27 +389,28 @@ snapshots remain immutable and should not be backfilled.
 
 ## 27. Owner Decisions Required
 
-| Decision | Recommendation |
+| Decision | Frozen owner decision |
 |---|---|
 | Is trustworthy D1 Trend possible from existing evidence? | Yes, via Candidate B |
-| Which candidate should be frozen? | Candidate B |
+| Which candidate is frozen? | Candidate B |
 | Is `UPTREND` approved? | Yes, under SMA20 > SMA50 and close >= SMA50 |
 | Is `DOWNTREND` approved? | Yes, under SMA20 < SMA50 and close <= SMA50 |
-| Is `SIDEWAYS` approved? | Yes only as mixed SMA20/SMA50 D1 structure; otherwise defer |
+| Is `MIXED` approved? | Yes, only as mixed SMA20/SMA50 D1 structure |
+| Is `SIDEWAYS` approved? | No |
 | Should missing/unclassified Trend be null rather than `UNKNOWN`? | Yes |
 | Evidence precedence? | Use the precedence in section 17 |
-| Reason codes? | Approve section 18 vocabulary, with final enum names in PS-P8C |
+| Reason codes? | Section 18 vocabulary approved |
 | Is D1-only ownership frozen? | Yes |
 | Are intraday/RS/Decision/TradePlan direct classifiers excluded? | Yes |
 | Did replay show obvious unacceptable flip-flopping? | No threshold invented; transition matrix looks inspectable and mostly persistent |
-| Is more research required before implementation? | Only owner review of examples/semantics |
-| Should future implementation use `portfolio-interpretation-v2`? | Yes |
-| Should implementation be PS-P8C? | Yes, if PS-P8B is approved |
+| Is more research required before implementation? | No |
+| Should implementation use `portfolio-interpretation-v2`? | Yes |
+| Should implementation be PS-P8C? | Yes |
 | Does Setup remain separate? | Yes |
 
 ## 28. Recommended Next Milestone
 
-Recommended next milestone after owner approval:
+Authorized next milestone:
 
 **PS-P8C - Portfolio D1 Trend Adapter Implementation**
 
@@ -419,9 +421,9 @@ Scope should be limited to:
 - populate only the Trend dimension in the existing `Trend / Setup` column;
 - keep Setup unavailable with `SETUP_METHODOLOGY_DEFERRED`;
 - bump interpretation version to `portfolio-interpretation-v2`;
-- add deterministic tests and replay fixtures.
+- add deterministic unit, interpreter, sync, currentness, and dashboard tests.
 
-Do not begin PS-P8C until Owner / Chief Architect approval.
+Do not implement Setup in PS-P8C.
 
 ## 29. Files Changed
 
@@ -443,6 +445,6 @@ No production code changed.
 docs(portfolio): freeze D1 Trend methodology for review
 
 - Mark PS-P8A owner-approved and frozen per the 2026-09-04 review.
-- Add PS-P8B D1 Trend methodology freeze using only approved D1 evidence and existing Regime SMA thresholds.
-- Defer Setup and production implementation until Owner/Chief Architect approval of the PS-P8B methodology.
+- Freeze PS-P8B Candidate B with UPTREND/DOWNTREND/MIXED/null taxonomy.
+- Defer Setup while authorizing PS-P8C to implement D1 Trend only.
 ```

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -56,6 +56,25 @@ def _candle(instrument_id: str, close: str, ts: datetime = NOW) -> Candle:
         volume=1000,
         source="test-d1",
     )
+
+
+def _trend_candles(
+    instrument_id: str,
+    first_30: str,
+    next_19: str,
+    last: str,
+    *,
+    end: datetime = SEP2,
+) -> list[Candle]:
+    closes = [first_30] * 30 + [next_19] * 19 + [last]
+    return [
+        _candle(
+            instrument_id,
+            str(close),
+            end - timedelta(days=49 - index),
+        )
+        for index, close in enumerate(closes)
+    ]
 
 
 def _decision(
@@ -607,10 +626,13 @@ def test_sync_builds_server_owned_snapshot_math_and_tradeplan_target(
     assert row.next_action == "HOLD"
     assert row.provenance.decision_id == "dec-infy"
     assert row.provenance.validation_run_id == "run-infy"
-    assert row.provenance.interpretation_version == "portfolio-interpretation-v1"
+    assert row.provenance.interpretation_version == "portfolio-interpretation-v2"
     assert "CURRENT_TRADE_PLAN" in row.provenance.interpretation_reason_codes
     assert "ADD_NOT_CONFIRMED" in row.provenance.interpretation_reason_codes
+    assert "TREND_D1_EVIDENCE_UNAVAILABLE" in row.provenance.interpretation_reason_codes
+    assert "SETUP_METHODOLOGY_DEFERRED" in row.provenance.interpretation_reason_codes
     assert "status" not in row.provenance.unavailable_fields
+    assert "trend_setup" in row.provenance.unavailable_fields
     assert "target_2" in row.provenance.unavailable_fields
     assert snapshot.currentness.value == "CURRENT"
     assert snapshot.portfolio_changed_since_sync is False
@@ -663,7 +685,7 @@ def test_sync_populates_conviction_from_coherent_confidence(
     assert row.status == "STRONG"
     assert row.next_action == "HOLD"
     assert row.target_1 == Decimal("1700")
-    assert row.provenance.interpretation_version == "portfolio-interpretation-v1"
+    assert row.provenance.interpretation_version == "portfolio-interpretation-v2"
     assert "CONVICTION_FROM_CONFIDENCE" in row.provenance.interpretation_reason_codes
     assert "conviction" not in row.provenance.unavailable_fields
     assert row.provenance.interpretation_evidence["confidence"] == {
@@ -674,6 +696,63 @@ def test_sync_populates_conviction_from_coherent_confidence(
         "is_coherent": True,
         "reason": "CONVICTION_FROM_CONFIDENCE",
     }
+
+
+def test_sync_populates_d1_trend_without_new_schema_or_setup(
+    my_portfolio_client: TestClient,
+) -> None:
+    repo = _confirm_infy_holding(my_portfolio_client)
+    repo.add_candles(_trend_candles("NSE:INFY", "1400", "1600", "1600"))
+    decision = _decision(decision_id="dec-trend", ts=SEP2, target="1700")
+    repo.save_decision(decision)
+
+    run = _run_portfolio_sync(repo)
+    row = MyPortfolioService(repo).latest_snapshot().rows[0]
+
+    assert run["status"] == "SUCCESS"
+    assert row.last_price == Decimal("1600")
+    assert row.trend_setup == "UPTREND"
+    assert row.status == "STRONG"
+    assert row.next_action == "HOLD"
+    assert "trend_setup" not in row.provenance.unavailable_fields
+    assert "support_1" in row.provenance.unavailable_fields
+    assert "target_2" in row.provenance.unavailable_fields
+    assert "SETUP_METHODOLOGY_DEFERRED" in row.provenance.interpretation_reason_codes
+    assert "TREND_UP_FROM_D1_SMA_STRUCTURE" in row.provenance.interpretation_reason_codes
+    assert row.provenance.interpretation_evidence["trend"] == {
+        "label": "UPTREND",
+        "reason": "TREND_UP_FROM_D1_SMA_STRUCTURE",
+        "d1_session": SEP2.isoformat(),
+        "fast_period": 20,
+        "slow_period": 50,
+        "fast_sma": "1600",
+        "slow_sma": "1480",
+        "close": "1600",
+        "candles_used": 50,
+        "is_coherent": True,
+    }
+
+
+def test_sync_nulls_trend_when_d1_session_does_not_equal_expected_session(
+    my_portfolio_client: TestClient,
+) -> None:
+    repo = _confirm_infy_holding(my_portfolio_client)
+    repo.add_candles(_trend_candles("NSE:INFY", "1400", "1600", "1600", end=SEP1))
+    repo.save_decision(_decision(decision_id="dec-prev-session", ts=SEP1))
+
+    run = _run_portfolio_sync(repo)
+    row = MyPortfolioService(repo).latest_snapshot().rows[0]
+
+    assert run["status"] == "SUCCESS"
+    assert row.price_as_of == SEP1
+    assert row.trend_setup is None
+    assert row.status == "UNAVAILABLE"
+    assert row.next_action == "WATCH"
+    assert "trend_setup" in row.provenance.unavailable_fields
+    assert "TREND_D1_EVIDENCE_INCOHERENT" in row.provenance.interpretation_reason_codes
+    assert row.provenance.interpretation_evidence["trend"]["reason"] == (
+        "TREND_D1_EVIDENCE_INCOHERENT"
+    )
 
 
 def test_sync_missing_confidence_keeps_row_usable_and_successful(
@@ -760,7 +839,7 @@ def test_low_confidence_does_not_block_add_in_sync(
     my_portfolio_client: TestClient,
 ) -> None:
     repo = _confirm_infy_holding(my_portfolio_client)
-    repo.add_candles([_candle("NSE:INFY", "1600", SEP2)])
+    repo.add_candles(_trend_candles("NSE:INFY", "1700", "1450", "1700"))
     decision = _decision(decision_id="dec-add-low-confidence", ts=SEP2)
     repo.save_decision(decision)
     repo.save_entry_qualification(_entry_qualification(decision, as_of=SEP2), persisted_at=SEP2)
@@ -770,6 +849,7 @@ def test_low_confidence_does_not_block_add_in_sync(
     row = MyPortfolioService(repo).latest_snapshot().rows[0]
 
     assert row.conviction == "LOW"
+    assert row.trend_setup == "MIXED"
     assert row.status == "STRONG"
     assert row.next_action == "ADD"
 
@@ -778,7 +858,7 @@ def test_high_confidence_does_not_suppress_exit_in_sync(
     my_portfolio_client: TestClient,
 ) -> None:
     repo = _confirm_infy_holding(my_portfolio_client)
-    repo.add_candles([_candle("NSE:INFY", "1450", SEP2)])
+    repo.add_candles(_trend_candles("NSE:INFY", "1200", "1500", "1450"))
     decision = _decision(decision_id="dec-exit-high-confidence", ts=SEP2)
     repo.save_decision(decision)
     _save_confidence_report(repo, decision, level="HIGH")
@@ -787,6 +867,7 @@ def test_high_confidence_does_not_suppress_exit_in_sync(
     row = MyPortfolioService(repo).latest_snapshot().rows[0]
 
     assert row.conviction == "HIGH"
+    assert row.trend_setup == "UPTREND"
     assert row.status == "AT_RISK"
     assert row.next_action == "EXIT"
 

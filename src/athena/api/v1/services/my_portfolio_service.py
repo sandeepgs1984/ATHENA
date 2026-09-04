@@ -351,6 +351,7 @@ class MyPortfolioService:
             validation_runner=self._validation_runner(),
             expected_analysis_as_of=expected_analysis_as_of,
             market_timezone=market_timezone,
+            config_dir=self._config_dir or Path("config"),
             force_ingestion=force_ingestion,
         )
 

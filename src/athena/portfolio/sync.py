@@ -12,6 +12,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict
 from datetime import datetime, timezone
 from decimal import Decimal
+from pathlib import Path
 from typing import cast
 from uuid import uuid4
 from zoneinfo import ZoneInfo
@@ -38,6 +39,7 @@ from athena.portfolio.my_portfolio_contracts import (
     PortfolioSnapshotRow,
     SyncRunStatus,
 )
+from athena.portfolio.trend_adapter import PortfolioTrendAdapter, PortfolioTrendEvidence
 
 ValidationRunner = Callable[[Sequence[str], datetime], str | None]
 
@@ -56,6 +58,7 @@ class PortfolioSyncOrchestrator:
         validation_runner: ValidationRunner | None = None,
         expected_analysis_as_of: datetime | None = None,
         market_timezone: ZoneInfo | None = None,
+        config_dir: Path | str = "config",
         force_ingestion: bool = False,
     ) -> None:
         self._repo = repo
@@ -65,6 +68,7 @@ class PortfolioSyncOrchestrator:
         self._force_ingestion = force_ingestion
         self._interpreter = PortfolioInterpreter()
         self._confidence_adapter = PortfolioConfidenceAdapter(repo)
+        self._trend_adapter = PortfolioTrendAdapter(repo, config_dir=config_dir)
 
     def create_run(self) -> dict[str, object]:
         active = self._repo.get_active_portfolio_sync_run()
@@ -334,6 +338,12 @@ class PortfolioSyncOrchestrator:
             instrument_id=holding.instrument_id,
             decision_is_coherent=decision_is_coherent,
         )
+        trend_evidence = self._trend_adapter.resolve(
+            instrument_id=holding.instrument_id,
+            accepted_price_as_of=price_as_of,
+            expected_analysis_as_of=self._expected_analysis_as_of,
+            market_timezone=self._market_timezone,
+        )
         interpretation = self._interpreter.interpret(
             PortfolioInterpretationEvidence(
                 instrument_id=holding.instrument_id,
@@ -354,6 +364,9 @@ class PortfolioSyncOrchestrator:
                 entry_qualification_is_coherent=entry_qualification is not None,
                 confidence_level=confidence_evidence.level,
                 confidence_is_coherent=confidence_evidence.is_coherent,
+                trend=trend_evidence.trend,
+                trend_is_coherent=trend_evidence.is_coherent,
+                trend_reason=trend_evidence.reason,
             )
         )
         target_1 = None
@@ -365,7 +378,9 @@ class PortfolioSyncOrchestrator:
             unavailable.append("target_1")
         if interpretation.conviction is None:
             unavailable.append("conviction")
-        unavailable.extend(["trend_setup", "support_1", "target_2", "target_3"])
+        unavailable.extend(["support_1", "target_2", "target_3"])
+        if interpretation.trend_setup is None:
+            unavailable.append("trend_setup")
         if interpretation.key_trigger is None:
             unavailable.append("key_trigger")
         if interpretation.major_support_exit is None:
@@ -409,6 +424,7 @@ class PortfolioSyncOrchestrator:
                 trade_plan_is_active=trade_plan_is_active,
                 entry_qualification=entry_qualification,
                 confidence_evidence=confidence_evidence,
+                trend_evidence=trend_evidence,
                 price_is_current=final_price_is_expected_session,
                 interpretation_as_of=interpretation_as_of,
             ),
@@ -614,6 +630,7 @@ class PortfolioSyncOrchestrator:
         trade_plan_is_active: bool,
         entry_qualification: EntryQualification | None,
         confidence_evidence: PortfolioConfidenceEvidence,
+        trend_evidence: PortfolioTrendEvidence,
         price_is_current: bool,
         interpretation_as_of: datetime,
     ) -> dict[str, object]:
@@ -646,6 +663,38 @@ class PortfolioSyncOrchestrator:
                 if entry_qualification is not None
                 else None
             ),
+            "trend": {
+                "label": (
+                    trend_evidence.trend.value
+                    if trend_evidence.trend is not None
+                    else None
+                ),
+                "reason": trend_evidence.reason.value,
+                "d1_session": (
+                    trend_evidence.d1_session.isoformat()
+                    if trend_evidence.d1_session is not None
+                    else None
+                ),
+                "fast_period": trend_evidence.fast_period,
+                "slow_period": trend_evidence.slow_period,
+                "fast_sma": (
+                    str(trend_evidence.fast_sma)
+                    if trend_evidence.fast_sma is not None
+                    else None
+                ),
+                "slow_sma": (
+                    str(trend_evidence.slow_sma)
+                    if trend_evidence.slow_sma is not None
+                    else None
+                ),
+                "close": (
+                    str(trend_evidence.close)
+                    if trend_evidence.close is not None
+                    else None
+                ),
+                "candles_used": trend_evidence.candles_used,
+                "is_coherent": trend_evidence.is_coherent,
+            },
         }
 
     @classmethod

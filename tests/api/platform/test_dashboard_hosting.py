@@ -407,6 +407,23 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert "function myPortfolioReasonSummary(row)" in js
     assert "function myPortfolioStatusPill(value, row)" in js
     assert "function myPortfolioActionPill(value, row)" in js
+    assert "function myPortfolioTrendCell(value, row)" in js
+    assert "TREND_UP_FROM_D1_SMA_STRUCTURE" in js
+    assert "TREND_DOWN_FROM_D1_SMA_STRUCTURE" in js
+    assert "TREND_MIXED_FROM_D1_SMA_STRUCTURE" in js
+    assert "TREND_D1_EVIDENCE_UNAVAILABLE" in js
+    assert "TREND_D1_EVIDENCE_INCOHERENT" in js
+    assert "SETUP_METHODOLOGY_DEFERRED" in js
+    my_portfolio_js = (
+        Path(__file__).parents[3]
+        / "src"
+        / "athena"
+        / "api"
+        / "static"
+        / "js"
+        / "08b-my-portfolio.js"
+    ).read_text(encoding="utf-8")
+    assert "SIDEWAYS" not in my_portfolio_js
     assert 'snapshot?.currentness === "STALE_HOLDINGS_CHANGED"' in js
     assert "snapshot?.portfolio_changed_since_sync === true" in js
     assert 'snapshot?.currentness === "UNKNOWN"' in js
