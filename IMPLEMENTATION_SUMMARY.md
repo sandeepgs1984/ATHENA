@@ -6,6 +6,75 @@ status updated on approval.
 
 ---
 
+## PS-P8A Portfolio Trend / Setup Methodology Discovery — Complete
+
+**Summary.** Completed discovery-only PS-P8A after PS-P7B was owner-approved
+and frozen. The milestone audited whether ATHENA can honestly populate the
+existing My Portfolio `Trend / Setup` column from current evidence. Finding:
+not yet as a production field. ATHENA has strong related evidence, but no
+owner-approved portfolio-holding-level trend/setup taxonomy, precedence rules,
+coherency contract, or replay gate exists today.
+
+**Architecture compliance.** No production code changed. The discovery preserves
+the frozen `portfolio-interpretation-v1` behavior: `PortfolioInterpreter`
+continues to emit `trend_setup=None` with `TREND_SETUP_NOT_AVAILABLE`. DarvaX
+remains isolated per ADR-010 and is classified as inspiration only, not an
+approved Portfolio input. EntryQualification remains an intraday actionability
+artifact, not a holding setup label. No ADR or schema change was introduced.
+
+**Files created.**
+
+- `docs/research/PS-P8A-PORTFOLIO-TREND-SETUP-METHODOLOGY-DISCOVERY.md`
+
+**Files modified.**
+
+- `docs/MILESTONES.md`
+- `IMPLEMENTATION_SUMMARY.md`
+- `ATHENA_BRIEFING.md`
+
+**Public APIs added.** None.
+
+**Tests added.** None. PS-P8A is discovery/documentation only.
+
+**Test results.** Not run; no executable code changed. Documentation validation
+performed with `git diff --check`, `git status --short src/athena`, and
+conflict-marker search across touched documents.
+
+**Coverage summary.** Not applicable to this documentation-only milestone.
+
+**Risks discovered.** D1 indicators/scoring, intraday trend, relative strength,
+EntryQualification, Decision, TradePlan, and DarvaX all sound related to
+"Trend / Setup", but each currently answers a narrower question. Directly
+mapping any one artifact into the Portfolio column would overstate evidence and
+create methodology drift.
+
+**Technical debt introduced.** None. Existing debt remains: the `Trend / Setup`
+column exists in the My Portfolio contract/UI but has no approved population
+methodology.
+
+**Suggested improvements.** PS-P8B should freeze a D1-first taxonomy, evidence
+eligibility, precedence, null/stale/incoherent policy, reason codes, version
+bump, and replay validation fixtures before any implementation milestone.
+
+**Remaining work.** Owner/Chief Architect review of PS-P8A. If accepted, begin
+PS-P8B methodology freeze only; do not implement Trend / Setup directly from
+PS-P8A.
+
+**Implementation metrics.** Documentation-only. Production source files changed:
+0. Tests added: 0.
+
+**Phase outcome.** PS-P8A discovery complete and ready for Owner/Chief
+Architect review. My Portfolio V1 remains complete and frozen; PS-P7A and
+PS-P7B remain frozen; Trend / Setup remains unavailable in production.
+
+**Commit hash.** Pending owner commit.
+
+**Branch.** feature/portfolio-sync.
+
+**Review status.** Ready for Owner/Chief Architect review.
+
+---
+
 ## EM-7C.1 Production Mount Fail-Closed Isolation — Complete
 
 **Summary.** Owner/Chief Architect source review of EM-7C (entry
