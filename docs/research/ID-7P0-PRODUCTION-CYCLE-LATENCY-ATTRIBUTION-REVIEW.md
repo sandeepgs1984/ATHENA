@@ -281,13 +281,39 @@ quote call only.
 
 ## 17. Retries / failures / backoff
 
-**Zero** retries, zero failures, zero 429s, zero timeouts observed across
-all 33,789 provider calls in the 21-cycle primary sample (§11). The
-measured ~9.4-minute latency is **normal-path structural**, not caused by
-exceptional retry/failure behavior. (The source-confirmed prior — 429
-backoff 1s/2s/4s, max 3 retries, 30s provider timeout — was not exercised
-at all in this sample; nothing here contradicts or confirms those specific
-values beyond "they were never triggered.")
+> **Corrected 2026-09-04 per ID-7P0.2 owner review (see §38).** The
+> original wording below overstated what this instrumentation actually
+> proves. `CallTimings` records only `ok_count`/`failed_count` per call
+> sample (`src/athena/observability/timing.py`) — it does not persist a
+> retry counter, so an internal 429-retry-then-succeed sequence inside
+> `kite_transport.py`'s own backoff loop is invisible to it (it would
+> appear as one slower `ok=True` sample, not as a distinguishable retry).
+> "Zero retries" is therefore **not directly proven** by this data.
+
+**Corrected statement:** zero *failed* provider calls were recorded across
+all 33,789 measured provider-call samples in the 21-cycle primary sample
+(§11) — that failure count *is* directly measured and is exact. No retry
+count is persisted, so internal retry occurrence cannot be directly
+established from this instrumentation alone. No material retry/backoff
+signature is visible in the aggregate timing distribution (call medians
+≈0.338s against a ≈0.334s pacing interval, tight cross-cycle stability,
+§22) — i.e., nothing in the shape of the data suggests hidden retry/backoff
+time is inflating the measured durations, but this is a distributional
+inference, not a direct retry-count measurement. (The source-confirmed
+prior — 429 backoff 1s/2s/4s, max 3 retries, 30s provider timeout — was
+not exercised at all in this sample by any measure available; nothing
+here contradicts or confirms those specific values beyond "no failed call
+or gross timing anomaly attributable to them was observed.")
+
+**This correction does not weaken the pacing conclusion.** Pacing
+dominance rests on the historical-duration/pacing-floor ratio (≈1.019),
+the tight cross-cycle distribution, and the ≈0.338s call median against
+the ≈0.334s enforced interval (§13/§14/§22) — all of which are directly
+measured, independent of whether internal retries occurred. Even without
+a retry count: pacing dominance = measured/proven; zero provider-call
+failures = measured; zero internal retries = not directly measured;
+material retry/backoff contribution to the ≈2% pacing-floor excess = not
+supported by the timing evidence, but not directly disproven either.
 
 ## 18. Analytical scan cost
 
@@ -400,9 +426,12 @@ unable to separate several.
 > calls per cycle (536 instruments × 3 calls: 1 daily + 2 intraday
 > timeframes)**, with measured elapsed historical-ingestion time
 > exceeding the deterministic `(N−1)×0.334s` pacing floor by only ~2%
-> (median ratio 1.019) and zero retries/failures observed across 33,789
-> provider calls. Analytical scan contributes approximately **1.6–2.0%**,
-> and pre-final orchestration contributes approximately **0%**.
+> (median ratio 1.019) and zero *failed* provider calls observed across
+> 33,789 measured samples — internal retry occurrence is not directly
+> measurable by this instrumentation and is not claimed either way
+> (corrected 2026-09-04, §17/§38). Analytical scan contributes
+> approximately **1.6–2.0%**, and pre-final orchestration contributes
+> approximately **0%**.
 
 ## 26. ID-7 architectural consequence
 
@@ -430,6 +459,12 @@ actionability artifact would need to represent the same ~9-minute
 characteristic, whatever architecture it ultimately uses.
 
 ## 27. Recommendation classification
+
+> **Owner status, added 2026-09-04 per ID-7P0.2 (see §38): NON-BINDING.**
+> This classification is an ID-7P0 *research recommendation* only. It is
+> **not** an Owner-frozen ID-7 architecture decision. ID-7P0 measured WHY
+> the latency exists; it did not determine HOW FRESH ID-7 evidence must
+> be — that is a separate question ID-7A0 must resolve on its own terms.
 
 **A — LATENCY COMPENSATION ONLY**, with an explicit caveat.
 
@@ -566,3 +601,292 @@ design decision on target entry-timescale requirements — the swing factor
 for §27's caveat. Optionally, a future natural cross-day replication check
 once 2026-09-03-equivalent timing-instrumented REFRESH evidence exists for
 a comparison day. Not started here.
+
+---
+
+## 38. ID-7P0.2 — Owner Review Correction / Run-Anomaly Triage
+
+**Added 2026-09-04, after Owner/Chief Architect review accepted §§1–37's
+root-cause attribution (INGESTION_DOMINANT / HISTORICAL_CANDLE_PACING,
+≈95.7% pacing-floor explanatory power) but held final ID-7P0 closure for
+one corrective slice: the three FAILED REFRESH runs and the orphaned
+RUNNING run already flagged in §36 required investigation, and §17/§25's
+retry-count wording required correction (applied above). This section is
+read-only run-anomaly triage — it does not recompute or revise the
+accepted latency attribution.**
+
+Audit cutoff for this correction: **2026-09-04T10:49:36Z / 2026-09-04
+16:19:36+05:30**. All queries against `db/athena.db` used
+`file:...?mode=ro` + `PRAGMA query_only=ON`. No writes to any database. No
+provider/network calls. No workflow/cycle triggered. No service restart
+performed by this audit.
+
+### 38.1 The three FAILED REFRESH runs (2026-09-04)
+
+| run_id | started_ts (IST) | config_snapshot_id | duration_s | error |
+|---|---|---|---|---|
+| `run-refresh-20260904T113548-76f203a6` | 11:35:48 | `cfg-host-ops` | 58.48 | `kite network failure on /instruments/historical/2127617/day: _ssl.c:1064: The handshake operation timed out` |
+| `run-refresh-20260904T135218-24f16775` | 13:52:18 | `cfg-full-validation` | 136.56 | `kite network failure on /instruments/historical/3365633/day: [Errno 54] Connection reset by peer` |
+| `run-refresh-20260904T142333-a4303465` | 14:23:33 | `cfg-host-ops` | 26.61 | `TimeoutError: [Errno 60] Operation timed out` |
+
+All three failed inside `ingestion.daily_candles` (the D1 historical-candle
+loop in `LiveIngestionEngine.run_cycle`), each on exactly **one** failed
+call within an otherwise-successful batch (the two `cfg-host-ops` runs
+show `failed_count: 1` against 25–85 total calls in their `timing`
+payload; the `cfg-full-validation` run's detail_json carries no `timing`
+key at all — consistent with `full_validation.py` constructing its own
+`DryRunCycleOrchestrator` without `enable_timing=True`, a scope
+difference from `HostDueRunner`'s orchestrator, not a defect).
+
+**Root-cause classification: three independent, ordinary transient
+network/transport errors** (SSL handshake timeout, TCP connection reset,
+generic socket timeout) during real Kite historical-candle calls — three
+different specific error signatures, not the same bug, but the same
+*class* of failure (transient provider/network connectivity), consistent
+with an expected small failure rate at this call volume (≈1,600+
+sequential historical calls per cycle × dozens of cycles/day). No shared
+single cause. `DryRunCycleOrchestrator.run_cycle`'s own `except Exception`
+(`dry_run.py:170-174`) caught each one correctly, wrote a terminal
+`FAILED` row with full diagnostic `error`/`timing` detail, then re-raised
+(by design, `dry_run.py:233-234`) so the caller also logs/alerts on it —
+exactly the intended fail-fast behavior, working as designed.
+
+**Business-output impact: zero.** `decisions`, `entry_qualifications`, and
+`institutional_flows` were queried directly for all three `run_id`s — zero
+rows in any table for any of them. All three failed during ingestion,
+before the analytical scan stage ever started; no partial or incoherent
+Decision/EntryQualification data exists for any of them.
+
+**Next subsequent successful REFRESH run** after each: 11:59:46 (after
+11:35:48, gap 24m — the only outsized gap among the `cfg-host-ops`
+failures, explained by the orphan/restart sequence below occurring
+between them is *not* the case here — this gap is standalone and not
+otherwise explained by this audit; the two mechanisms are independent
+and this audit does not attribute a cause beyond "next scheduled REFRESH
+after a mid-cycle failure resumes on the normal ~15-minute cadence, with
+observed gaps of 24m, 15m41s, and 15m16s respectively — all within
+normal `overdue_grace_minutes` tolerance"), 14:07:59 (after 13:52:18, gap
+15m41s), 14:38:49 (after 14:23:33, gap 15m16s).
+
+### 38.2 The orphaned RUNNING run — full investigation
+
+`run-refresh-20260904T134809-1ed424c6`: `started_ts=2026-09-04T13:48:09.134692+05:30`,
+`finished_ts=NULL`, `status=RUNNING`, `config_snapshot_id=cfg-host-ops`,
+`detail_json={"phase": "started"}` (20 bytes) — still exactly this state
+at the audit cutoff, ~2.5 hours after it started.
+
+**Root cause, evidenced directly from the live production log
+(`artifacts/logs/athena-serve-em7c-restart.log`, the current process's own
+live stdout/stderr — confirmed via `lsof -p <pid>`, mtime 2026-09-04
+15:51, contiguous from process start; a second, larger log file,
+`artifacts/logs/athena-serve.log`, was initially miscorrelated to this
+incident by a research subagent but is conclusively stale — its own mtime
+is 2026-09-03 20:11:41 and its tail shows a clean shutdown from that day,
+predating today's session entirely, so nothing in it was used for this
+finding):**
+
+1. `DryRunCycleOrchestrator.run_cycle` (`src/athena/scheduling/dry_run.py:106-235`)
+   writes the initial `RUNNING`/`{"phase": "started"}` row
+   (line 136) **before** entering its own protective `try:` block
+   (lines 144-174, which catches both `AthenaError` and bare `Exception`
+   and always proceeds to the terminal `save_run` at line 225). The
+   orphan's persisted state is *exactly* this pre-try-block write and
+   nothing more — proving the code reached line 136 and never reached
+   line 225 for this specific invocation.
+2. The live log shows **zero** traceback for this specific run anywhere
+   (cross-checked: exactly 27 "Cycle worker tick failed" tracebacks exist
+   in the log for all of today, and every one of them is fully accounted
+   for by the 24 same-day FAST `DataValidationError` failures plus the 3
+   REFRESH failures in §38.1 above — no 28th, unexplained traceback
+   exists). This rules out an ordinary caught-then-re-raised exception as
+   the explanation.
+3. The log instead shows a direct, human-driven sequence, in order:
+   `"POST /api/v1/market/validate-all HTTP/1.1" 409 Conflict` (the
+   dashboard's "Validate All" control was invoked while a cycle was still
+   recognized as in-flight and correctly rejected) → `"POST
+   /api/v1/ops/restart HTTP/1.1" 202 Accepted` (the dashboard's restart
+   control was invoked) → `Started server process [52554]` (a **second**
+   "Started server process" banner for the **same PID** — proving an
+   in-place `os.execv`-based restart occurred, per `trigger_restart`'s own
+   documented mechanism: `src/athena/ops/serve_runtime.py:244-270`,
+   "`os.execv` replaces this process's image in place (same PID): every
+   thread ... ends immediately, every file descriptor not marked
+   close-on-exec (including the cycle-runner flock) closes with it") →
+   a fresh login → `"POST /api/v1/market/validate-all HTTP/1.1" 202
+   Accepted"` this time (the lock was now free).
+4. This directly explains the orphan: `os.execv` bypasses Python's own
+   exception/`finally` machinery entirely — it does not run
+   `dry_run.py`'s terminal `save_run` call, so no FAILED/COMPLETED row
+   was ever written for the run that was in flight at the moment of
+   restart. This is process-lifecycle abandonment, not a workflow-level
+   failure determination.
+
+**Answering the owner's specific questions directly:**
+- *Was the process restarted/killed during this run?* **Yes** — confirmed
+  via two same-PID "Started server process [52554]" banners in the live,
+  correctly-dated log, immediately preceded by an owner-facing
+  `POST /api/v1/ops/restart` call.
+- *Did an exception escape without terminal run-state persistence?* No
+  Python exception was ever raised for this specific run (no traceback
+  exists for it) — the absence of a terminal write is explained by the
+  restart bypassing exception/`finally` handling entirely, not by an
+  exception escaping normal handling.
+- *Did another cycle supersede it?* Yes, but not via the normal 15-minute
+  schedule — via the owner-triggered "Validate All" full-validation path
+  (`src/athena/ops/full_validation.py`), which calls
+  `orchestrator.run_cycle(RunTrigger.REFRESH, ...)` **unconditionally**,
+  bypassing `due_triggers()`/`is_refresh_due` entirely (confirmed both by
+  source and directly by the DB: the very next REFRESH row,
+  `run-refresh-20260904T135218-24f16775`, carries
+  `config_snapshot_id='cfg-full-validation'` — the only such row on
+  2026-09-04, distinct from every other REFRESH row's `cfg-host-ops`).
+  This — not any scheduling-gate defect — is the full explanation for the
+  249-second gap (versus the normal ~925–940s cadence): the 13:52:18 run
+  did not come from the interval-gated path at all.
+- *Did lock behavior allow later cycles?* Yes, exactly as designed — the
+  restart closed the file descriptor holding `CycleRunnerLock`'s flock
+  (`artifacts/locks/cycle-runner.lock`), which is precisely why the
+  pre-restart "Validate All" attempt got `409 Conflict` and the
+  post-restart one got `202 Accepted`. The lock behaved correctly in both
+  cases.
+- *Was it abandoned because of process lifecycle rather than workflow
+  failure?* Yes, precisely.
+- *Is RUNNING merely stale persistence, or was execution genuinely
+  stuck?* At the moment of the restart, a cycle was genuinely still
+  recognized as in-flight (proven by the `409 Conflict`). What is **not**
+  determinable from available evidence is *why* the original ingestion
+  call had not completed by then — no timeout fired, no error was logged,
+  and no direct evidence pins down the exact stuck call. The codebase's
+  own `trigger_restart()` docstring already anticipates this general class
+  of failure ("a Python thread blocked in a slow/hung network call cannot
+  be force-killed in isolation"), which is consistent with, but does not
+  by itself prove, that this specific instance was such a hang. The
+  now-current persisted state (RUNNING forever) is stale persistence
+  *resulting from* that restart, not a claim that the original execution
+  is still ongoing.
+
+### 38.3 Current impact of the orphan (verified from source + live DB)
+
+- **Locks:** none. `CycleRunnerLock` is a per-process `fcntl.flock` file
+  lock, released in `_safe_tick`'s `finally` on every normal path and
+  closed automatically by the OS on process exit/`execv` — it is never
+  derived from or gated by any `runs` table row. Confirmed no
+  "Cycle tick skipped — another runner holds the lock" log line exists
+  anywhere in today's live log — the lock has not been contended once
+  since the restart.
+- **Future REFRESH cycles:** none currently. `HostDueRunner.run()` reads
+  `last_refresh_ts` from `repository.latest_run("REFRESH").started_ts`
+  (`src/athena/data/store/repository.py:876-899`, `ORDER BY started_ts
+  DESC` — **no status filter**). Immediately after the orphan was
+  written, it *was* briefly the "latest" REFRESH row (a ~4-minute window,
+  13:48:09–13:52:18) — but every REFRESH attempt since (23 more, per
+  §38.1's data and the original n=21/n=3-failed/n=1-running inventory)
+  has a later `started_ts`, so `latest_run("REFRESH")` now returns
+  `run-refresh-20260904T152522-16f0c02b` (15:25:22, COMPLETED). The
+  orphan is fully superseded and exerts zero influence on current due-cycle
+  gating.
+- **Decision selection / EntryQualification:** none. Both are persisted
+  and read from the `decisions`/`entry_qualifications` tables directly,
+  keyed by their own `run_id`/`decision_id` — neither consults
+  `latest_run()`/`runs.status` to select "current" evidence. The orphan
+  has zero rows in either table (§38.1's business-output-impact check
+  applies identically here — verified directly).
+- **Dashboard/API status:** transient only, already self-resolved, and
+  was never misleading. `AthenaCycleStatusService.get_status`
+  (`src/athena/api/v1/services/athena_cycle_status_service.py:34-127`)
+  computes `success` as "the most recent **COMPLETED** run" (explicitly
+  status-filtered, unaffected by the orphan) and anchors its `OVERDUE`
+  threshold to that `success_at` timestamp, not to the orphan's
+  `started_ts`. During the ~4-minute window where the orphan was
+  `latest`, the dashboard would have shown `status="CURRENT"`,
+  `headline="ATHENA cycle running"` — a **true** statement at that exact
+  moment (a cycle genuinely was in flight), with the last successful
+  cycle still correctly shown beneath it. Had no successor ever appeared,
+  the same logic would have degraded to `status="OVERDUE"` once
+  `success_at + interval + grace` elapsed (≈13:52:35) — never an
+  indefinite false "running" claim. Currently (dozens of completed cycles
+  later) the dashboard reflects normal `CURRENT` status with no trace of
+  the incident.
+- **ID-7P0 timing-sample selection (§4/§5 of this review):** none. The
+  orphan carries no `timing` payload (`detail_json` is 20 bytes,
+  `{"phase": "started"}` only) and was never a candidate for the n=21
+  COMPLETED primary sample. The one `cfg-full-validation` row (§38.1,
+  FAILED) is likewise excluded from the n=21 sample by construction
+  (FAILED, not COMPLETED) — the accepted §§1–37 attribution is
+  unaffected and required no recomputation.
+
+### 38.4 FAST failure — bounded triage
+
+**Classification: `KNOWN_SEPARATE_DEFECT`.** All 25 FAST failures on
+2026-09-03 and all 25 on 2026-09-04 (50/50, 100%) carry the **identical**
+error: `ingestion.instrument_ids unknown to provider: ['NSE:E2E',
+'NSE:HFCL']` — a deterministic, static universe/symbol-mapping problem (two
+symbols in the FAST tier's instrument list that the Kite provider does not
+recognize), fully diagnosed from the persisted error string alone, causally
+unrelated to REFRESH ingestion pacing, to the three network-transport
+REFRESH failures, or to the orphaned run. Not investigated further; not
+fixed here, per the milestone's explicit scope limit.
+
+### 38.5 PREMARKET failure — independence verified
+
+The single 2026-09-04 PREMARKET failure (`run-premarket-20260904T081548`,
+08:15:48 IST) carries error `kite HTTP 403 ... "Incorrect api_key or
+access_token" ... "error_type":"TokenException"` — an auth/token issue,
+categorically different from every REFRESH anomaly (network-transport
+errors and a restart-caused orphan), occurring nearly an hour before the
+trading day's first REFRESH cycle (09:15:01), with no other PREMARKET
+attempts that day. Confirmed independent. No auth redesign, no fix
+performed.
+
+### 38.6 ID-7A0 gate classification
+
+**`NO_ID7A0_BLOCKER`**
+
+Reasoning: the orphan is confirmed harmless historical residue — zero
+business-output impact, zero current lock/scheduling impact, a
+self-resolving and never-misleading transient dashboard state, and zero
+effect on the already-accepted latency attribution. Its cause (an
+owner-triggered restart, whose own documented purpose is precisely to
+recover from a stuck cycle) is a known, already-mitigated operational
+path, not a silent or undetected failure — the system correctly surfaced
+the stuck condition via `409 Conflict` before the owner acted. The three
+FAILED REFRESH runs are ordinary, independently-caused transient
+network errors, correctly handled by the existing fail-fast design
+(terminal row written, error captured, exception re-raised for
+upstream visibility) — not a defect. FAST's failure is a fully
+diagnosed, unrelated, pre-existing universe-configuration issue.
+PREMARKET's failure is an independent, one-off auth issue.
+
+None of this constitutes a runtime-correctness defect that would make it
+*unsafe* to **begin** ID-7A0 architecture/design work — ID-7A0 at this
+stage is a design exercise (target entry-timescale decision), not a
+deployment of new production code; it does not depend on, and is not
+threatened by, this rare and already-recoverable operational
+characteristic of the ingestion path.
+
+**Flagged for owner awareness, not as a blocker (its own separately
+authorized slice per the milestone's own instruction, item 12):** *why*
+the original 13:48:09 ingestion call had not completed by the time of the
+restart remains genuinely unproven from available evidence — no timeout
+fired, no exception was logged, and this review found no bounding
+watchdog/timeout mechanism around a REFRESH cycle's overall duration
+(only per-HTTP-call timeouts inside `kite_transport.py`). If this
+recurs, a bounded per-cycle watchdog (distinct from a fix to any specific
+call) would be a reasonable candidate for such a slice — recommendation
+only, not designed or implemented here.
+
+### 38.7 EMR / DarvaX preservation (this correction)
+
+No `db/emr.db` or `db/darvax.db` reads, writes, config changes, restarts,
+or scan triggers were performed as part of this correction. All queries
+in §38 were scoped to `db/athena.db` (canonical) only, in read-only mode.
+
+### 38.8 Files changed (this correction)
+
+- This document (`docs/research/ID-7P0-PRODUCTION-CYCLE-LATENCY-ATTRIBUTION-REVIEW.md`):
+  §17 and §25 corrected in place (retry-count wording), §27 annotated
+  (non-binding status), this §38 appended. No section renumbered, no
+  prior finding erased.
+- No source files changed. No other documents changed by this
+  correction (tracking-doc updates, if any, are recorded separately in
+  the milestone's return report).

@@ -6,6 +6,114 @@ status updated on approval.
 
 ---
 
+## ID-7P0.2 Production Run Anomaly Triage & Attribution Correction — Complete
+
+**Summary.** Owner/Chief Architect accepted ID-7P0's root-cause attribution
+(`INGESTION_DOMINANT`/`HISTORICAL_CANDLE_PACING`, ≈95.7% pacing-floor
+explanatory power) but held final closure for one corrective slice: the
+original report's §36 had flagged, but not investigated, 3 `FAILED`
+REFRESH runs and 1 orphaned `RUNNING` REFRESH run from the 2026-09-04
+audit day, and §17/§25's "zero retries" wording overstated what the
+timing instrumentation actually measures. This milestone is read-only
+anomaly triage — it does not recompute the accepted attribution.
+
+**Evidence.** All queries against `db/athena.db` used `file:...?mode=ro` +
+`PRAGMA query_only=ON`. No writes to any database, no provider calls, no
+workflow/cycle trigger, no service restart performed by this milestone.
+
+**Findings.**
+1. The 3 FAILED REFRESH runs (11:35:48, 13:52:18, 14:23:33 IST) are three
+   independent, ordinary transient network/transport errors (SSL
+   handshake timeout, TCP connection reset, socket timeout) during
+   `ingestion.daily_candles` historical-candle calls — different specific
+   errors, same class (transient provider connectivity), not a shared
+   single cause. Zero `decisions`/`entry_qualifications` rows exist for
+   any of them (verified directly) — all three failed during ingestion,
+   before the analytical scan stage. The existing fail-fast design
+   (`DryRunCycleOrchestrator.run_cycle`) correctly wrote a terminal
+   `FAILED` row with full diagnostic detail for each, then re-raised by
+   design — working as intended, not a defect.
+2. The orphaned `RUNNING` row (`run-refresh-20260904T134809-1ed424c6`,
+   started 13:48:09, never reached a terminal state) is root-caused
+   directly from the current process's own live production log
+   (`artifacts/logs/athena-serve-em7c-restart.log`, confirmed via `lsof`
+   to be this process's actual stdout/stderr target, contiguous since
+   process start) — a `409 Conflict` on a dashboard "Validate All"
+   attempt (a cycle was still recognized in-flight), followed by an
+   owner-triggered `POST /api/v1/ops/restart` (`202 Accepted`) and a
+   second same-PID "Started server process" banner, proving an in-place
+   `os.execv` restart per `trigger_restart()`'s own documented mechanism
+   — which bypasses Python's exception/`finally` handling entirely,
+   explaining why no terminal row was ever written. (A research subagent
+   initially miscorrelated a separate, larger log file to this incident;
+   that file's own mtime — 2026-09-03 20:11 — proved it predates today's
+   session, and the finding above is instead built entirely from the
+   correctly-dated live log plus direct DB evidence.) The very next
+   REFRESH row (`run-refresh-20260904T135218-24f16775`, only 249s later)
+   is independently, directly proven — via its own distinct
+   `config_snapshot_id='cfg-full-validation'`, the only such value among
+   all of 2026-09-04's REFRESH rows — to have come from the
+   owner-triggered, interval-ungated "Validate All" full-validation path
+   (`src/athena/ops/full_validation.py`), not the normal 15-minute-gated
+   schedule, fully explaining the short gap without any scheduling-gate
+   defect.
+3. Current impact of the orphan: zero. It is fully superseded in
+   `latest_run("REFRESH")` by 23+ later rows (no status filter, but
+   ordered by `started_ts DESC` — the orphan is no longer latest); zero
+   lock impact (`CycleRunnerLock` released cleanly, proven by zero "lock
+   busy" log lines since); zero Decision/EntryQualification impact (both
+   keyed off their own tables, never off `runs.status`); the dashboard's
+   `AthenaCycleStatusService` briefly and correctly (never misleadingly)
+   showed "cycle running" during the ~4-minute window before
+   self-resolving, and would have degraded to `OVERDUE` (not an
+   indefinite false "running" claim) had no successor ever appeared.
+4. FAST's 25/25-both-days failures classified `KNOWN_SEPARATE_DEFECT` —
+   identical, deterministic "unknown instrument" error
+   (`ingestion.instrument_ids unknown to provider: ['NSE:E2E',
+   'NSE:HFCL']`), unrelated to REFRESH. Not fixed here (out of scope).
+5. PREMARKET's single 2026-09-04 failure confirmed independent (Kite 403
+   `TokenException`, before any REFRESH cycle that day, no auth redesign
+   performed).
+6. §17/§25 corrected: `CallTimings` (`src/athena/observability/timing.py`)
+   persists only `ok_count`/`failed_count`, never a retry count — "zero
+   retries" was not directly provable. Corrected to "zero measured failed
+   provider calls across 33,789 samples; internal retries not directly
+   measurable by this instrumentation." The pacing conclusion is
+   unaffected — it rests on the historical-duration/pacing-floor ratio,
+   cross-cycle stability, and call-median-vs-interval comparison, all
+   independently measured.
+7. §27's Recommendation A ("latency compensation only") re-recorded as
+   explicitly **non-binding** — an ID-7P0 research recommendation, not an
+   Owner-frozen ID-7 architecture decision; ID-7A0 must independently
+   determine its own required evidence freshness.
+
+**ID-7A0 gate classification: `NO_ID7A0_BLOCKER`.** None of the above is
+a runtime-correctness defect that makes it unsafe to *begin* ID-7A0
+architecture/design work. Flagged for owner awareness only, not as a
+blocker (its own future authorized slice, if pursued): *why* the original
+ingestion call had not completed by the time of the restart remains
+genuinely unproven (no timeout fired, no exception logged, no bounding
+per-cycle watchdog exists beyond per-HTTP-call timeouts in
+`kite_transport.py`).
+
+**Files changed.**
+`docs/research/ID-7P0-PRODUCTION-CYCLE-LATENCY-ATTRIBUTION-REVIEW.md`
+(§17 and §25 corrected in place, §27 annotated non-binding, §38 appended
+— no prior finding erased or renumbered), `docs/MILESTONES.md`,
+`ATHENA_BRIEFING.md` (§4 and §6). No source files changed.
+
+**Tests/validation.** Documentation-only change; `git diff --check`
+clean; no source touched, no test suite run (not required for a
+docs-only milestone per the milestone's own instruction).
+
+**Remaining work.** Owner/Chief Architect final ID-7P0 closure review.
+ID-7A0 not started; still blocked pending that closure.
+
+**Outcome:** ID-7P0.2 complete. ID-7P0 ready for Owner / Chief Architect
+final closure review — not yet marked owner-approved/closed.
+
+---
+
 ## ID-7P0 Final Production Cycle Latency Attribution — Complete
 
 **Summary.** Owner authorized a final, read-only production
