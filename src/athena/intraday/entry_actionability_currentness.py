@@ -1,0 +1,169 @@
+"""Entry Actionability read-time currentness (ID-7A; ADR-015/ID-7A0.1's
+dimension B, frozen further by ID-7B.2/ID-7B.2.1).
+
+`is_currently_usable(...)` is a pure, deterministic, injectable-clock
+function — never a repository query, provider call, or hidden global
+clock read (ID-7A authorization item 19). It answers a strictly
+read-time question ("is this historical artifact still usable right
+now?") that is architecturally independent of, and never mutates, the
+persisted `EntryActionabilityState` (dimension A, `entry_actionability_models.py`)
+— a persisted `ACTIONABLE` row remains `ACTIONABLE` forever; only this
+function's own return value changes as `now` advances. No currentness
+label is ever written back into the domain object or any table column.
+
+Frozen rule (ID-7B.2 §14, corrected by ID-7B.2.1 §29):
+
+    persisted state == ACTIONABLE
+    AND bound Decision/EntryQualification identity is still the exact
+        current one (full composite-key equality — never decision_id
+        alone, per ID-7A authorization item 20)
+    AND now - evidence_as_of <= CURRENTNESS_MAX_EVIDENCE_AGE_SECONDS
+        (10 minutes / 2 completed M5 intervals)
+    AND current session phase == REGULAR
+
+The exact-identity comparison is deliberately structured so that mixing
+`A1` (bound to `D1`/`EQ1`) with a caller-supplied "latest" `D2`/`EQ2`
+identity is either impossible or fully explicit (ID-7A authorization
+item 20) — callers must supply the *current* EQ identity themselves
+(via, e.g., a `latest_entry_qualification_for_instrument_session`
+repository call made outside this pure function); this module never
+resolves it.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import date, datetime
+from enum import Enum, unique
+
+from athena.intraday.entry_actionability_models import (
+    CURRENTNESS_MAX_EVIDENCE_AGE_SECONDS,
+    EntryActionability,
+    EntryActionabilityState,
+)
+from athena.session.models import SessionPhase
+
+
+@dataclass(frozen=True, slots=True)
+class EntryQualificationIdentity:
+    """The exact composite identity of one `EntryQualification`
+    observation — the same 5-column key the real
+    `entry_qualifications` table's primary key uses. Passed explicitly
+    by the caller as "the current one" for comparison; never resolved
+    by this module."""
+
+    instrument_id: str
+    session_date: date
+    as_of: datetime
+    decision_id: str
+    methodology_version: str
+
+
+def bound_entry_qualification_identity(
+    entry_actionability: EntryActionability,
+) -> EntryQualificationIdentity:
+    """The exact upstream `EntryQualification` identity `entry_actionability`
+    itself is bound to (its own copied-verbatim EQ key) — for comparison
+    against a caller-supplied *current* identity via `is_currently_usable`."""
+    return EntryQualificationIdentity(
+        instrument_id=entry_actionability.instrument_id,
+        session_date=entry_actionability.session_date,
+        as_of=entry_actionability.entry_qualification_as_of,
+        decision_id=entry_actionability.decision_id,
+        methodology_version=entry_actionability.entry_qualification_methodology_version,
+    )
+
+
+@unique
+class EntryActionabilityCurrentness(str, Enum):
+    """Derived, read-time-only classification (dimension B). Never
+    persisted — see this module's own docstring. Naming is illustrative
+    per ADR-015/ID-7A0.1; a future ID-7A/ID-7E consumer may rename these
+    without touching the persisted `EntryActionabilityState` vocabulary,
+    since the two are architecturally independent."""
+
+    #: Persisted state != ACTIONABLE — the question "is it currently
+    #: usable" does not apply; there was never an actionable verdict.
+    METHODOLOGY_NOT_ACTIONABLE = "METHODOLOGY_NOT_ACTIONABLE"
+    #: All four conditions hold right now.
+    CURRENT = "CURRENT"
+    #: Bound EQ identity no longer matches the current one for this
+    #: instrument/session — a newer Decision/EQ pair has since appeared.
+    SUPERSEDED = "SUPERSEDED"
+    #: now - evidence_as_of exceeds CURRENTNESS_MAX_EVIDENCE_AGE_SECONDS.
+    STALE = "STALE"
+    #: Current session phase is not REGULAR right now.
+    SESSION_CLOSED = "SESSION_CLOSED"
+
+
+@dataclass(frozen=True, slots=True)
+class CurrentnessResult:
+    """The read-time verdict plus a human-readable, non-persisted
+    explanation (never an `EntryActionabilityReasonCode` — that
+    vocabulary describes persisted methodology only)."""
+
+    status: EntryActionabilityCurrentness
+    explanation: str
+
+
+def is_currently_usable(
+    entry_actionability: EntryActionability,
+    *,
+    current_entry_qualification_identity: EntryQualificationIdentity,
+    current_session_phase: SessionPhase,
+    now: datetime,
+) -> CurrentnessResult:
+    """Pure, deterministic, injected-clock currentness evaluation.
+
+    Performs no repository query, no provider call, and no hidden
+    ``datetime.now()``/global-clock read — every input the rule needs
+    (the current EQ identity, the current session phase, and ``now``)
+    must be supplied explicitly by the caller. Never mutates or
+    re-derives ``entry_actionability`` itself.
+    """
+    if now.tzinfo is None:
+        raise ValueError("is_currently_usable now must be timezone-aware")
+
+    if entry_actionability.state is not EntryActionabilityState.ACTIONABLE:
+        return CurrentnessResult(
+            status=EntryActionabilityCurrentness.METHODOLOGY_NOT_ACTIONABLE,
+            explanation=(
+                f"persisted state is {entry_actionability.state.value}, not ACTIONABLE — "
+                "currentness is not applicable"
+            ),
+        )
+
+    bound_identity = bound_entry_qualification_identity(entry_actionability)
+    if bound_identity != current_entry_qualification_identity:
+        return CurrentnessResult(
+            status=EntryActionabilityCurrentness.SUPERSEDED,
+            explanation=(
+                "bound EntryQualification identity no longer matches the current "
+                f"one for this instrument/session (bound={bound_identity!r}, "
+                f"current={current_entry_qualification_identity!r})"
+            ),
+        )
+
+    # ACTIONABLE requires evidence_as_of (enforced by
+    # EntryActionability.__post_init__), so this is never None here.
+    assert entry_actionability.evidence_as_of is not None
+    age_seconds = (now - entry_actionability.evidence_as_of).total_seconds()
+    if age_seconds > CURRENTNESS_MAX_EVIDENCE_AGE_SECONDS:
+        return CurrentnessResult(
+            status=EntryActionabilityCurrentness.STALE,
+            explanation=(
+                f"now - evidence_as_of = {age_seconds:.1f}s exceeds the frozen "
+                f"{CURRENTNESS_MAX_EVIDENCE_AGE_SECONDS:.1f}s currentness band"
+            ),
+        )
+
+    if current_session_phase is not SessionPhase.REGULAR:
+        return CurrentnessResult(
+            status=EntryActionabilityCurrentness.SESSION_CLOSED,
+            explanation=f"current session phase is {current_session_phase.value}, not REGULAR",
+        )
+
+    return CurrentnessResult(
+        status=EntryActionabilityCurrentness.CURRENT,
+        explanation="persisted ACTIONABLE, exact EQ identity current, within freshness band, REGULAR session",
+    )

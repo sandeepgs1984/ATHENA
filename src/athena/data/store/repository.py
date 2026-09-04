@@ -40,6 +40,7 @@ from athena.domain.market import (
 )
 from athena.domain.run import RunRecord
 from athena.errors import RepositoryError
+from athena.intraday.entry_actionability_models import EntryActionability
 from athena.intraday.entry_qualification_models import EntryQualification
 from athena.portfolio.my_portfolio_contracts import (
     CanonicalPortfolioHolding,
@@ -135,6 +136,95 @@ def _validate_entry_qualification_decision_binding(
             "EntryQualification decision binding mismatch: instrument_id "
             f"(EntryQualification={eq.instrument_id!r}, "
             f"Decision={decision.instrument_id!r})"
+        )
+
+
+def _entry_actionability_payload(ea: EntryActionability) -> tuple:
+    """The methodology-relevant subset of an EntryActionability used to
+    detect a genuine conflict at the same logical identity (mirrors
+    ``_entry_qualification_payload``'s own rationale exactly). Excludes
+    ``run_id``/``cycle_id`` for the identical reason (already proven
+    against the canonical Decision by
+    ``_validate_entry_actionability_decision_binding`` before this
+    comparison ever runs), and additionally excludes ``evaluated_at`` —
+    that field is documented on ``EntryActionability`` itself as
+    diagnostic wall-clock-only, never identity, never a substitute for
+    ``evidence_as_of``; a deterministic re-evaluation that reaches the
+    identical methodology conclusion at a different wall-clock instant is
+    still the same logical observation, not a conflict."""
+    return (
+        ea.decision_type,
+        ea.direction,
+        ea.entry_qualification_state,
+        ea.state,
+        ea.reason_codes,
+        ea.evidence_finality,
+        ea.evidence_as_of,
+        ea.entry_reference,
+        ea.entry_location_context,
+        ea.operative_invalidation,
+        ea.reward,
+        ea.opening_range_context,
+        ea.explanation,
+    )
+
+
+def _validate_entry_actionability_decision_binding(
+    ea: EntryActionability, decision: Decision
+) -> None:
+    """Prove ``ea`` truthfully describes the canonical ``decision`` it
+    claims to bind to — mirrors
+    ``_validate_entry_qualification_decision_binding`` exactly (ID-7A
+    reuses EQ's own established persistence pattern rather than
+    inventing a new one). A foreign key on ``decision_id`` alone only
+    proves the Decision exists, not that ``ea``'s Decision-derived fields
+    actually agree with it.
+    """
+    if ea.decision_type != decision.decision_type:
+        raise RepositoryError(
+            "EntryActionability decision binding mismatch: decision_type "
+            f"(EntryActionability={ea.decision_type.value!r}, "
+            f"Decision={decision.decision_type.value!r})"
+        )
+    if ea.run_id != decision.run_id:
+        raise RepositoryError(
+            "EntryActionability decision binding mismatch: run_id "
+            f"(EntryActionability={ea.run_id!r}, Decision={decision.run_id!r})"
+        )
+    if ea.cycle_id != decision.cycle_id:
+        raise RepositoryError(
+            "EntryActionability decision binding mismatch: cycle_id "
+            f"(EntryActionability={ea.cycle_id!r}, Decision={decision.cycle_id!r})"
+        )
+    if decision.instrument_id is not None and ea.instrument_id != decision.instrument_id:
+        raise RepositoryError(
+            "EntryActionability decision binding mismatch: instrument_id "
+            f"(EntryActionability={ea.instrument_id!r}, "
+            f"Decision={decision.instrument_id!r})"
+        )
+
+
+def _validate_entry_actionability_eq_binding(
+    ea: EntryActionability, eq: EntryQualification
+) -> None:
+    """Prove ``ea`` truthfully describes the exact upstream
+    ``EntryQualification`` observation it claims to bind to. The full EQ
+    composite identity (``instrument_id, session_date,
+    entry_qualification_as_of, decision_id,
+    entry_qualification_methodology_version``) has already been used to
+    look ``eq`` up by the time this runs (a lookup miss is reported
+    separately, before this is called) — this additionally proves the
+    denormalized fields ``ea`` carries about that EQ observation
+    (``entry_qualification_state``) actually agree with it, exactly
+    mirroring the Decision-binding check's own rationale: a single-column
+    reference only proves existence, never truthful description.
+    """
+    if ea.entry_qualification_state != eq.state:
+        raise RepositoryError(
+            "EntryActionability EntryQualification binding mismatch: "
+            f"entry_qualification_state (EntryActionability="
+            f"{ea.entry_qualification_state.value!r}, EntryQualification="
+            f"{eq.state.value!r})"
         )
 
 
@@ -295,7 +385,7 @@ class SqliteRepository:
                   "corporate_actions", "quarantine_records", "runs",
                   "decisions", "decision_traces", "decision_journal",
                   "owner_positions", "owner_candidates", "saved_symbols",
-                  "entry_qualifications", "ops_meta")
+                  "entry_qualifications", "entry_actionabilities", "ops_meta")
         try:
             with self._lock:
                 return {
@@ -1221,6 +1311,247 @@ class SqliteRepository:
             (instrument_id, session_date.isoformat()),
         )
         return [ser.row_to_entry_qualification(r) for r in rows]
+
+    # ------------------------------------------------------- entry actionabilities (ID-7A)
+    #
+    # Durable, auditable persistence for EntryActionability (ADR-015,
+    # ID-7A0/ID-7A0.1, V0 methodology frozen by ID-7B/ID-7B.1/ID-7B.2/
+    # ID-7B.2.1). Persists what the (not-yet-built, ID-7C) evaluator will
+    # conclude; introduces no methodology of its own. Append-only,
+    # mirroring save_entry_qualification's own contract exactly: a later
+    # observation for the same instrument/session is a NEW row, never an
+    # overwrite. Read-time currentness (dimension B,
+    # entry_actionability_currentness.is_currently_usable) is never
+    # computed or stored by this class — only dimension A (persisted
+    # methodology state) is persisted here.
+    #
+    # Not wired into any production path by this milestone (ID-7E's job).
+    # No evaluator exists yet (ID-7C's job) — these methods only store and
+    # retrieve whatever EntryActionability object a caller constructs.
+
+    _ENTRY_ACTIONABILITY_COLUMNS = (
+        "instrument_id, session_date, entry_qualification_as_of, decision_id, "
+        "entry_qualification_methodology_version, entry_actionability_as_of, "
+        "entry_actionability_methodology_version, run_id, cycle_id, decision_type, "
+        "direction, entry_qualification_state, state, reason_codes_json, "
+        "evidence_finality, evidence_as_of, entry_reference_json, "
+        "entry_location_context_json, operative_invalidation_json, reward_json, "
+        "opening_range_context_json, evaluated_at, explanation"
+    )
+
+    def save_entry_actionability(
+        self, ea: EntryActionability, *, persisted_at: datetime,
+    ) -> bool:
+        """Append-only, idempotent write of one EntryActionability observation.
+
+        The logical/idempotency identity is EntryActionability's own full
+        composite key — the upstream EntryQualification's entire identity
+        copied verbatim plus this artifact's own
+        ``entry_actionability_as_of``/``entry_actionability_methodology_version``
+        (the table's composite primary key; see ``schema.py``). Before
+        either an insert or an idempotency no-op, this method proves two
+        independent bindings, mirroring ``save_entry_qualification``'s own
+        two-stage validation pattern:
+
+        1. The referenced canonical ``Decision`` exists and ``ea`` agrees
+           with it on ``decision_type``/``run_id``/``cycle_id``/
+           ``instrument_id`` (``_validate_entry_actionability_decision_binding``).
+        2. The referenced exact upstream ``EntryQualification`` observation
+           (looked up by ``ea``'s own copied EQ identity) exists and
+           ``ea``'s denormalized ``entry_qualification_state`` agrees with
+           it (``_validate_entry_actionability_eq_binding``).
+
+        Returns True if a new row was inserted, False if an identical
+        logical observation already existed (no-op). Raises
+        RepositoryError if the same logical identity already exists with a
+        genuinely different payload — a deterministic evaluator must never
+        produce two different payloads for the same logical evaluation.
+        ``persisted_at`` is write/audit metadata only, never part of
+        identity or comparison.
+
+        This method never resolves whether the referenced Decision/EQ pair
+        is still the current one for its instrument, and never computes
+        read-time currentness — both remain a caller/workflow
+        responsibility (ID-7E), unchanged from EQ's own established
+        ID-6B.2A/ID-6D boundary.
+        """
+        try:
+            with self._lock, self._conn:
+                decision_row = self._conn.execute(
+                    "SELECT decision_id, ts, run_id, cycle_id, decision_type, explanation, "
+                    "instrument_id, direction, score_ref, confidence_ref, risk_ref, "
+                    "gate_results_json, trade_plan_json FROM decisions WHERE decision_id=?",
+                    (ea.decision_id,),
+                ).fetchone()
+                if decision_row is None:
+                    raise RepositoryError(
+                        "EntryActionability references unknown "
+                        f"decision_id={ea.decision_id!r}"
+                    )
+                decision = ser.row_to_decision(decision_row)
+                _validate_entry_actionability_decision_binding(ea, decision)
+
+                eq_row = self._conn.execute(
+                    f"SELECT {self._ENTRY_QUALIFICATION_COLUMNS} "
+                    "FROM entry_qualifications WHERE instrument_id=? AND "
+                    "session_date=? AND as_of=? AND decision_id=? AND "
+                    "methodology_version=?",
+                    (
+                        ea.instrument_id, ea.session_date.isoformat(),
+                        ea.entry_qualification_as_of.isoformat(), ea.decision_id,
+                        ea.entry_qualification_methodology_version,
+                    ),
+                ).fetchone()
+                if eq_row is None:
+                    raise RepositoryError(
+                        "EntryActionability references unknown EntryQualification "
+                        f"identity (instrument_id={ea.instrument_id!r}, "
+                        f"session_date={ea.session_date.isoformat()!r}, "
+                        f"entry_qualification_as_of={ea.entry_qualification_as_of.isoformat()!r}, "
+                        f"decision_id={ea.decision_id!r}, "
+                        "entry_qualification_methodology_version="
+                        f"{ea.entry_qualification_methodology_version!r})"
+                    )
+                eq = ser.row_to_entry_qualification(eq_row)
+                _validate_entry_actionability_eq_binding(ea, eq)
+
+                row = self._conn.execute(
+                    f"SELECT {self._ENTRY_ACTIONABILITY_COLUMNS} "
+                    "FROM entry_actionabilities WHERE instrument_id=? AND "
+                    "session_date=? AND entry_qualification_as_of=? AND decision_id=? "
+                    "AND entry_qualification_methodology_version=? AND "
+                    "entry_actionability_as_of=? AND entry_actionability_methodology_version=?",
+                    (
+                        ea.instrument_id, ea.session_date.isoformat(),
+                        ea.entry_qualification_as_of.isoformat(), ea.decision_id,
+                        ea.entry_qualification_methodology_version,
+                        ea.entry_actionability_as_of.isoformat(),
+                        ea.entry_actionability_methodology_version,
+                    ),
+                ).fetchone()
+                if row is not None:
+                    existing = ser.row_to_entry_actionability(row)
+                    if _entry_actionability_payload(existing) != _entry_actionability_payload(ea):
+                        raise RepositoryError(
+                            "EntryActionability integrity conflict: an observation "
+                            f"already exists for instrument_id={ea.instrument_id!r} "
+                            f"session_date={ea.session_date.isoformat()!r} "
+                            "entry_qualification_as_of="
+                            f"{ea.entry_qualification_as_of.isoformat()!r} "
+                            f"decision_id={ea.decision_id!r} "
+                            "entry_qualification_methodology_version="
+                            f"{ea.entry_qualification_methodology_version!r} "
+                            "entry_actionability_as_of="
+                            f"{ea.entry_actionability_as_of.isoformat()!r} "
+                            "entry_actionability_methodology_version="
+                            f"{ea.entry_actionability_methodology_version!r} with a "
+                            "different payload"
+                        )
+                    return False
+                self._conn.execute(
+                    "INSERT INTO entry_actionabilities "
+                    f"({self._ENTRY_ACTIONABILITY_COLUMNS}, persisted_at) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (*ser.entry_actionability_to_row(ea), persisted_at.isoformat()),
+                )
+                return True
+        except RepositoryError:
+            raise
+        except sqlite3.IntegrityError as exc:
+            raise RepositoryError(f"integrity violation: {exc}") from exc
+        except sqlite3.Error as exc:
+            raise RepositoryError(f"save entry actionability failed: {exc}") from exc
+
+    def get_entry_actionability(
+        self,
+        *,
+        instrument_id: str,
+        session_date: date,
+        entry_qualification_as_of: datetime,
+        decision_id: str,
+        entry_qualification_methodology_version: str,
+        entry_actionability_as_of: datetime,
+        entry_actionability_methodology_version: str,
+    ) -> EntryActionability | None:
+        """Exact logical-identity lookup — the same key
+        ``save_entry_actionability`` uses for idempotency, exposed for
+        round-trip verification and audit."""
+        row = self._query_one(
+            f"SELECT {self._ENTRY_ACTIONABILITY_COLUMNS} FROM entry_actionabilities "
+            "WHERE instrument_id=? AND session_date=? AND entry_qualification_as_of=? "
+            "AND decision_id=? AND entry_qualification_methodology_version=? AND "
+            "entry_actionability_as_of=? AND entry_actionability_methodology_version=?",
+            (
+                instrument_id, session_date.isoformat(),
+                entry_qualification_as_of.isoformat(), decision_id,
+                entry_qualification_methodology_version,
+                entry_actionability_as_of.isoformat(),
+                entry_actionability_methodology_version,
+            ),
+        )
+        return ser.row_to_entry_actionability(row) if row else None
+
+    def latest_entry_actionability_for_entry_qualification(
+        self,
+        *,
+        instrument_id: str,
+        session_date: date,
+        entry_qualification_as_of: datetime,
+        decision_id: str,
+        entry_qualification_methodology_version: str,
+    ) -> EntryActionability | None:
+        """Most recent (latest ``entry_actionability_as_of``) observation
+        bound to one *exact* upstream EntryQualification identity — never
+        matched by ``decision_id`` alone (ID-7A authorization item 20).
+        Does NOT resolve whether that EQ observation, or its bound
+        Decision, is still the current one for its instrument — that
+        selection remains the caller/workflow's responsibility (ID-7E).
+        """
+        row = self._query_one(
+            f"SELECT {self._ENTRY_ACTIONABILITY_COLUMNS} FROM entry_actionabilities "
+            "WHERE instrument_id=? AND session_date=? AND entry_qualification_as_of=? "
+            "AND decision_id=? AND entry_qualification_methodology_version=? "
+            "ORDER BY entry_actionability_as_of DESC, "
+            "entry_actionability_methodology_version DESC LIMIT 1",
+            (
+                instrument_id, session_date.isoformat(),
+                entry_qualification_as_of.isoformat(), decision_id,
+                entry_qualification_methodology_version,
+            ),
+        )
+        return ser.row_to_entry_actionability(row) if row else None
+
+    def latest_entry_actionability_for_instrument_session(
+        self, instrument_id: str, session_date: date
+    ) -> EntryActionability | None:
+        """Most recent historical observation for one instrument's trading
+        session, across whichever EntryQualification/Decision pair(s) were
+        evaluated that day. This is a latest-*historical* query, never a
+        currently-usable one — a caller wanting a currentness verdict must
+        separately evaluate ``entry_actionability_currentness.is_currently_usable``
+        against whatever this returns."""
+        row = self._query_one(
+            f"SELECT {self._ENTRY_ACTIONABILITY_COLUMNS} FROM entry_actionabilities "
+            "WHERE instrument_id=? AND session_date=? "
+            "ORDER BY entry_actionability_as_of DESC, decision_id DESC, "
+            "entry_actionability_methodology_version DESC LIMIT 1",
+            (instrument_id, session_date.isoformat()),
+        )
+        return ser.row_to_entry_actionability(row) if row else None
+
+    def list_entry_actionabilities_for_instrument_session(
+        self, instrument_id: str, session_date: date
+    ) -> list[EntryActionability]:
+        """Full append-only observation history for one instrument/session,
+        oldest first."""
+        rows = self._query_all(
+            f"SELECT {self._ENTRY_ACTIONABILITY_COLUMNS} FROM entry_actionabilities "
+            "WHERE instrument_id=? AND session_date=? "
+            "ORDER BY entry_actionability_as_of ASC, decision_id ASC, "
+            "entry_actionability_methodology_version ASC",
+            (instrument_id, session_date.isoformat()),
+        )
+        return [ser.row_to_entry_actionability(r) for r in rows]
 
     def save_journal_entry(self, entry: DecisionJournalEntry) -> None:
         self._write(

@@ -6,6 +6,258 @@ status updated on approval.
 
 ---
 
+## ID-7A Entry Actionability Domain Model + Persistence Contract — Implementation Complete
+
+**Summary.** Owner/Chief Architect approved and closed ID-7B, ID-7B.1,
+ID-7B.2, and ID-7B.2.1 (all 2026-09-04, same day) — the V0
+entry/invalidation/reward methodology for `EntryActionability` is now
+fully frozen, correcting the three narrow contract-synthesis errors
+ID-7B.2.1 found. Same day, the owner authorized moving from methodology
+into implementation: ID-7A, the domain model + persistence contract for
+`EntryActionability` — explicitly **not** the V0 evaluator
+(`EntryActionabilityEngine`, ID-7C) and **not** workflow wiring (ID-7E).
+This milestone source-audits `entry_qualification_models.py`/
+`schema.py`/`repository.py`/`serialization.py` first, then follows their
+exact established conventions to encode the frozen ID-7B.2.1 §14 V0
+contract in code without reintroducing any of the distinctions ID-7A0
+through ID-7B.2.1 spent multiple milestones correcting.
+
+**Domain model** (`src/athena/intraday/entry_actionability_models.py`,
+new). `EntryActionabilityState`: exactly `UNKNOWN`/`NOT_ACTIONABLE`/
+`ACTIONABLE` — no `EXPIRED`/`STALE`/`CURRENT`/`SUPERSEDED` (ADR-015/
+ID-7A0.1's own correction preserved). `EntryActionabilityReasonCode`:
+exactly `UPSTREAM_DECISION_NOT_TRADE`/`UPSTREAM_EQ_NOT_QUALIFIED`/
+`INSUFFICIENT_EVIDENCE`/`INVALIDATION_UNAVAILABLE` — no
+`ENTRY_TOO_EXTENDED` (extension gate not adopted) or
+`SESSION_NOT_ACTIONABLE` (redundant with `UPSTREAM_EQ_NOT_QUALIFIED`,
+per ID-7B.2.1). Identity is the full upstream `EntryQualification`
+composite key copied verbatim (`instrument_id, session_date,
+entry_qualification_as_of, decision_id,
+entry_qualification_methodology_version`) plus this artifact's own
+`entry_actionability_as_of`/`entry_actionability_methodology_version` —
+no surrogate id, mirroring `EntryQualification`'s own established
+pattern. `DEFAULT_METHODOLOGY_VERSION = "entry-actionability-v0"` is
+minted here (ID-7B.2.1 deferred this exact decision to ID-7A). Value
+objects implement the frozen V0 contract exactly: `EntryReference`
+(single point, `QUALIFYING_M5_CLOSE` basis only — never VWAP, never a
+zone); `EntryLocationContext` (VWAP + `deviation_pct`, informational
+only, `EXTENSION_GATE_NOT_SUPPORTED`); `OperativeInvalidation`
+(`VWAP_LOSS` only, always paired against the M5-close entry — never
+VWAP-anchor, which would recreate the exact degenerate pairing
+ID-7B.2.1 corrected out of the contract); `OpeningRangeContextReference`
+(always-optional, `OR15_BOUNDARY` only, never gating, never a fallback
+substituted for VWAP-loss); `RewardReference` (T1/T2 goal-band prices +
+informational-only RR, `GOAL_BANDS_ONLY`/`RR_INFORMATIONAL_ONLY`). Frozen
+Python constants (not config, per the ID-7A authorization and the
+existing `MAX_CHECKPOINT_OBSERVATION_DELAY_SECONDS` precedent):
+`T1_GOAL_BAND_PCT=0.01`, `T2_GOAL_BAND_PCT=0.015`,
+`CURRENTNESS_MAX_EVIDENCE_AGE_SECONDS=600.0`. `Direction` (`LONG`/
+`SHORT`/`NONE`) is reused unchanged — the domain model stays fully
+bidirectional even though V0's own empirical validation status is
+`LONG_VALIDATED_SHORT_UNVALIDATED` (a methodology-evidence fact, not a
+representation constraint). `EntryEvidenceFinality` is reused directly
+from `entry_qualification_models` (no duplicate enum). Value objects are
+present if and only if `state == ACTIONABLE`; `opening_range_context` is
+independently optional in every state. `EntryActionability.__post_init__`
+enforces mandatory-field presence, tz-aware timestamps, no duplicate
+reason codes, a mandatory `explanation` (ADR-005), the
+ACTIONABLE-value-object coupling, and a direction-aware
+`_validate_risk_geometry()` structural guard that rejects zero or
+wrong-side risk distance for the declared direction — a structural
+invariant, not a calibrated minimum-distance threshold (none was
+calibrated).
+
+**Read-time currentness** (`src/athena/intraday/entry_actionability_currentness.py`,
+new, deliberately a separate module from the domain model — ADR-015/
+ID-7A0.1's dimension B must never become table columns).
+`EntryQualificationIdentity` + `bound_entry_qualification_identity(...)`
+extract the exact upstream EQ identity an `EntryActionability` is bound
+to. `EntryActionabilityCurrentness` (`METHODOLOGY_NOT_ACTIONABLE`/
+`CURRENT`/`SUPERSEDED`/`STALE`/`SESSION_CLOSED`) and `CurrentnessResult`
+are a wholly separate, never-persisted vocabulary from
+`EntryActionabilityReasonCode`. `is_currently_usable(...)` is a pure,
+deterministic function with an injected `now` (no hidden clock, no
+repository query, no provider call): checks persisted state is
+`ACTIONABLE`, then exact full-composite-EQ-identity equality (never
+`decision_id` alone — a caller-supplied "latest" identity must be
+supplied explicitly), then the frozen strict `now − evidence_as_of >
+600.0s → STALE` predicate (exactly 600.0s remains `CURRENT`), then a
+`REGULAR`-session requirement. Never mutates or is confused with the
+persisted `EntryActionabilityState` — a historical `ACTIONABLE` row
+reads `ACTIONABLE` forever regardless of what this function returns.
+
+**Schema** (`src/athena/data/store/schema.py`, `SCHEMA_VERSION` 17→18).
+New `entry_actionabilities` table: 23 columns, full 7-column composite
+`PRIMARY KEY` (the entire identity above), single-column FK on
+`decision_id → decisions(decision_id)` only (proves existence, not
+truthful binding — mirrors `entry_qualifications`' own established
+pattern; truthful binding is validated at the repository layer), value
+objects stored as nested-JSON columns (`entry_reference_json`,
+`entry_location_context_json`, `operative_invalidation_json`,
+`reward_json`, `opening_range_context_json`) mirroring the existing
+`trade_plan_json` precedent rather than fully flattened fields. Two
+supporting indexes: `idx_entry_actionabilities_decision` (mirrors
+`idx_entry_qualifications_decision`, needed because `decision_id` is not
+a usable leftmost prefix of the primary key's own implicit index) and
+`idx_entry_actionabilities_instrument_session` (needed because, unlike
+`entry_qualifications` — whose primary key already leads with
+`instrument_id, session_date, as_of` — this table's primary key leads
+with `entry_qualification_as_of`, not its own
+`entry_actionability_as_of`, so instrument/session history ordered by
+this artifact's own evaluation instant needs an explicit index).
+
+**Serialization** (`src/athena/data/store/serialization.py`).
+`entry_actionability_to_row`/`row_to_entry_actionability` (23-column
+round-trip, Decimal-as-TEXT/tz-aware-ISO8601 throughout, matching every
+existing convention) plus JSON helpers for all five value objects.
+
+**Repository** (`src/athena/data/store/repository.py`).
+`save_entry_actionability(ea, *, persisted_at)`: append-only, idempotent
+(no-op on an identical payload at the same identity, `RepositoryError` on
+a genuinely different payload at the same identity), with **two**
+independent binding validations before either an insert or a no-op —
+`_validate_entry_actionability_decision_binding` (mirrors
+`_validate_entry_qualification_decision_binding` exactly: proves the
+referenced canonical `Decision` exists and `ea` agrees with it on
+`decision_type`/`run_id`/`cycle_id`/`instrument_id`) and the new
+`_validate_entry_actionability_eq_binding` (proves the referenced exact
+upstream `EntryQualification` observation — looked up by `ea`'s own
+copied 5-column EQ identity — genuinely exists and `ea`'s denormalized
+`entry_qualification_state` agrees with it; a single-column reference
+alone only proves existence, never truthful description). The
+idempotency payload comparison (`_entry_actionability_payload`)
+deliberately excludes `evaluated_at` — documented on the domain object
+itself as diagnostic wall-clock-only, never identity — so a deterministic
+re-evaluation reaching the identical methodology conclusion at a
+different wall-clock instant is still treated as the same observation,
+never a conflict. `get_entry_actionability(...)` (exact 7-key lookup),
+`latest_entry_actionability_for_entry_qualification(...)` (latest bound
+to one *exact* upstream EQ identity, never `decision_id` alone — ID-7A
+authorization item 20), `latest_entry_actionability_for_instrument_session(...)`
+(latest-**historical**, explicitly not latest-currently-usable — a
+caller wanting a currentness verdict must separately call
+`is_currently_usable`), `list_entry_actionabilities_for_instrument_session(...)`
+(full oldest-first append-only history).
+
+**Public APIs added.** `EntryActionability`, `EntryActionabilityState`,
+`EntryActionabilityReasonCode`, `EntryReference(Basis)`,
+`EntryLocationContext`, `OperativeInvalidation`/`InvalidationBasis`,
+`OpeningRangeContextReference`/`OpeningRangeContextBasis`,
+`RewardReference`/`RewardBasis`, `DEFAULT_METHODOLOGY_VERSION`
+(re-exported from `athena.intraday` as
+`ENTRY_ACTIONABILITY_DEFAULT_METHODOLOGY_VERSION` to avoid a bare-name
+collision with `EntryQualificationEngine`'s own existing
+`DEFAULT_METHODOLOGY_VERSION` export), `T1_GOAL_BAND_PCT`,
+`T2_GOAL_BAND_PCT`, `CURRENTNESS_MAX_EVIDENCE_AGE_SECONDS`,
+`EntryQualificationIdentity`, `bound_entry_qualification_identity`,
+`EntryActionabilityCurrentness`, `CurrentnessResult`,
+`is_currently_usable`; five new `SqliteRepository` methods (listed
+above).
+
+**Files created.** `src/athena/intraday/entry_actionability_models.py`,
+`src/athena/intraday/entry_actionability_currentness.py`,
+`tests/market_intel/test_entry_actionability_models.py`,
+`tests/market_intel/test_entry_actionability_currentness.py`,
+`tests/data_layer/test_entry_actionability_repository.py`.
+
+**Files modified.** `src/athena/intraday/__init__.py` (new exports),
+`src/athena/data/store/schema.py` (`SCHEMA_VERSION` 17→18, new table +
+2 indexes), `src/athena/data/store/serialization.py` (new
+to_row/from_row + 5 value-object JSON helpers), `src/athena/data/store/repository.py`
+(2 new binding-validation helpers, 1 new payload-comparison helper, 5
+new public methods, `record_counts()`'s table list extended),
+`docs/MILESTONES.md`, `ATHENA_BRIEFING.md`,
+`docs/ATHENA-ID-TRACK-HANDOFF.md`, this file.
+
+**Tests/validation.** 75 new tests across the 3 new files: exact
+state/reason-code vocabularies, no-D1-ATR/no-extension-gate source-scan
+proof, methodology-version namespacing, frozen-constant values, full
+upstream-identity presence and never-decision-id-alone equality, no
+surrogate id, tz-naive rejection, duplicate-reason-code rejection,
+ACTIONABLE⟷value-object coupling (both directions), direction-aware
+risk-geometry boundary/wrong-side/zero-risk rejection (both LONG and
+SHORT), `NONE`-direction rejection, immutability/value-equality,
+`is_currently_usable`'s 5 outcomes including the exact 600.0s boundary
+(599s/600.0s/600.001s) and full-identity (never decision-id-alone)
+comparison, round-trip fidelity (incl. all 5 nested JSON value objects,
+Decimal/timezone round-trips, reason-code order preservation), both
+binding validations' every failure mode, idempotency, conflict
+detection, the `evaluated_at`-excluded-from-conflict-comparison design
+decision, append-only/latest-lookup semantics (never decision-id-alone),
+schema migration (17→18, table creation, existing-table non-interference,
+composite PK + FK enforcement at the DB level), and a source-scan proof
+of zero evaluator/workflow/provider dependency in the new repository
+methods. Full suite: **3455 passed, 1 pre-existing unrelated skip, 0
+failures** (`PYTHONPATH=src python3 -m pytest tests/`).
+
+**Coverage summary.** All new domain validation branches, both
+currentness code paths (methodology-not-actionable short-circuit and the
+full 4-condition chain), all 5 repository methods, and both binding
+validations are exercised by name-matched tests.
+
+**Architecture compliance.** No architecture change; ADR-015 followed
+exactly as ID-7B.2.1 corrected it. No ADR proposal required.
+
+**ADR compliance.** ADR-015 (Accepted) fully implemented for dimensions A
+(persisted state) and C (evidence finality passthrough); dimension B
+(read-time currentness) implemented as a separate, never-persisted pure
+function per ID-7A0.1's own correction.
+
+**Risks discovered.** None new. The pre-existing, ID-6-owned upstream gap
+(EQ's frozen v0 formula is long-biased) is unchanged and out of ID-7A's
+scope.
+
+**Technical debt introduced.** None. No placeholder/TODO code; every
+field implements only what the frozen V0 contract specifies.
+
+**Suggested improvements.** None proposed — implementation scope was
+fully specified by the frozen contract and the ID-7A authorization.
+
+**Explicitly absent (verified by source scan, per the ID-7A
+authorization's own required proofs).** No `EntryActionabilityEngine` or
+any evaluator logic (ID-7C); no workflow/`WorkflowStage`/API/UI wiring
+(ID-7E); no replay/shadow harness (ID-7F); no production
+`entry_actionabilities` rows; no provider/network calls; no D1-ATR field
+anywhere; no extension-gate field or reason code anywhere. `git diff
+--cached --stat` confirms the change set is scoped to exactly the files
+listed above — zero touches to `WorkflowStage`, `Decision`/ID-6,
+ingestion, EMR, or DarvaX.
+
+**Remaining work.** Owner/Chief Architect review of this implementation.
+ID-7C (the V0 evaluator), ID-7D, ID-7E (workflow wiring), and ID-7F
+(replay/shadow) all remain not started, not authorized — each needs its
+own separate owner authorization, mirroring ADR-013's ID-6A0→ID-6E gated
+sequence.
+
+**Commit message.**
+```
+feat(intraday): add EntryActionability domain model and persistence (ID-7A)
+
+- Add EntryActionability immutable domain object implementing the frozen
+  ID-7B.2.1 V0 contract (3-state/4-reason vocabularies, full upstream EQ
+  identity copied verbatim, direction-aware risk-geometry guard) — per
+  ADR-015 and ID-7A's own authorization
+- Add entry_actionability_currentness.is_currently_usable as a separate,
+  pure, never-persisted read-time predicate — preserves ADR-015/
+  ID-7A0.1's dimension-A/dimension-B separation
+- Bump SCHEMA_VERSION 17->18: new entry_actionabilities table (nested-JSON
+  value-object columns, full composite PK, FK on decision_id) plus two
+  supporting indexes
+- Add save/get/latest/list repository methods with dual binding
+  validation (canonical Decision + exact upstream EntryQualification) and
+  idempotent append-only writes, mirroring entry_qualifications' own
+  established persistence pattern
+- Add 75 tests across 3 new files covering domain validation, currentness
+  boundaries, and persistence round-trip/idempotency/conflict semantics
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+```
+
+**Outcome:** ID-7A implementation complete — ready for Owner / Chief
+Architect review. Not marked Owner-approved. ID-7C not authorized.
+
+---
+
 ## ID-7B Entry / Risk Methodology Discovery & Freeze — Partially Frozen
 
 **Summary.** Owner/Chief Architect accepted ADR-015 and closed both

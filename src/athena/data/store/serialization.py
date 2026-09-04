@@ -47,6 +47,20 @@ from athena.domain.market import (
     Quote,
 )
 from athena.domain.run import RunRecord
+from athena.intraday.entry_actionability_models import (
+    EntryActionability,
+    EntryActionabilityReasonCode,
+    EntryActionabilityState,
+    EntryLocationContext,
+    EntryReference,
+    EntryReferenceBasis,
+    InvalidationBasis,
+    OpeningRangeContextBasis,
+    OpeningRangeContextReference,
+    OperativeInvalidation,
+    RewardBasis,
+    RewardReference,
+)
 from athena.intraday.entry_qualification_models import (
     EntryEvidenceFinality,
     EntryQualification,
@@ -543,4 +557,176 @@ def row_to_entry_qualification(r: Sequence[Any]) -> EntryQualification:
         evidence_refs=_evidence_refs_from_json(r[12]),
         config_snapshot_id=r[13],
         explanation=r[14],
+    )
+
+
+# ----------------------------------------------------------- entry actionabilities (ID-7A)
+
+def _entry_actionability_reason_codes_to_json(
+    codes: Sequence[EntryActionabilityReasonCode],
+) -> str:
+    # Order-preserving, mirroring _reason_codes_to_json's own rationale.
+    return json.dumps([c.value for c in codes])
+
+
+def _entry_actionability_reason_codes_from_json(
+    payload: str,
+) -> tuple[EntryActionabilityReasonCode, ...]:
+    return tuple(EntryActionabilityReasonCode(v) for v in json.loads(payload))
+
+
+def _entry_reference_to_json(ref: EntryReference | None) -> str | None:
+    if ref is None:
+        return None
+    return json.dumps(
+        {"price": str(ref.price), "basis": ref.basis.value}, sort_keys=True
+    )
+
+
+def _entry_reference_from_json(payload: str | None) -> EntryReference | None:
+    if not payload:
+        return None
+    d = json.loads(payload)
+    return EntryReference(price=Decimal(d["price"]), basis=EntryReferenceBasis(d["basis"]))
+
+
+def _entry_location_context_to_json(ctx: EntryLocationContext | None) -> str | None:
+    if ctx is None:
+        return None
+    return json.dumps(
+        {"vwap": str(ctx.vwap), "vwap_deviation_pct": str(ctx.vwap_deviation_pct)},
+        sort_keys=True,
+    )
+
+
+def _entry_location_context_from_json(payload: str | None) -> EntryLocationContext | None:
+    if not payload:
+        return None
+    d = json.loads(payload)
+    return EntryLocationContext(
+        vwap=Decimal(d["vwap"]), vwap_deviation_pct=Decimal(d["vwap_deviation_pct"])
+    )
+
+
+def _operative_invalidation_to_json(inv: OperativeInvalidation | None) -> str | None:
+    if inv is None:
+        return None
+    return json.dumps({"level": str(inv.level), "basis": inv.basis.value}, sort_keys=True)
+
+
+def _operative_invalidation_from_json(payload: str | None) -> OperativeInvalidation | None:
+    if not payload:
+        return None
+    d = json.loads(payload)
+    return OperativeInvalidation(level=Decimal(d["level"]), basis=InvalidationBasis(d["basis"]))
+
+
+def _opening_range_context_to_json(
+    ctx: OpeningRangeContextReference | None,
+) -> str | None:
+    if ctx is None:
+        return None
+    return json.dumps({"level": str(ctx.level), "basis": ctx.basis.value}, sort_keys=True)
+
+
+def _opening_range_context_from_json(
+    payload: str | None,
+) -> OpeningRangeContextReference | None:
+    if not payload:
+        return None
+    d = json.loads(payload)
+    return OpeningRangeContextReference(
+        level=Decimal(d["level"]), basis=OpeningRangeContextBasis(d["basis"])
+    )
+
+
+def _reward_to_json(reward: RewardReference | None) -> str | None:
+    if reward is None:
+        return None
+    return json.dumps(
+        {
+            "t1_price": str(reward.t1_price),
+            "t2_price": str(reward.t2_price),
+            "basis": reward.basis.value,
+            "reward_risk_to_t1": (
+                str(reward.reward_risk_to_t1) if reward.reward_risk_to_t1 is not None else None
+            ),
+            "reward_risk_to_t2": (
+                str(reward.reward_risk_to_t2) if reward.reward_risk_to_t2 is not None else None
+            ),
+        },
+        sort_keys=True,
+    )
+
+
+def _reward_from_json(payload: str | None) -> RewardReference | None:
+    if not payload:
+        return None
+    d = json.loads(payload)
+    return RewardReference(
+        t1_price=Decimal(d["t1_price"]),
+        t2_price=Decimal(d["t2_price"]),
+        basis=RewardBasis(d["basis"]),
+        reward_risk_to_t1=(
+            Decimal(d["reward_risk_to_t1"]) if d["reward_risk_to_t1"] is not None else None
+        ),
+        reward_risk_to_t2=(
+            Decimal(d["reward_risk_to_t2"]) if d["reward_risk_to_t2"] is not None else None
+        ),
+    )
+
+
+def entry_actionability_to_row(ea: EntryActionability) -> tuple:
+    return (
+        ea.instrument_id,
+        ea.session_date.isoformat(),
+        ea.entry_qualification_as_of.isoformat(),
+        ea.decision_id,
+        ea.entry_qualification_methodology_version,
+        ea.entry_actionability_as_of.isoformat(),
+        ea.entry_actionability_methodology_version,
+        ea.run_id,
+        ea.cycle_id,
+        ea.decision_type.value,
+        ea.direction.value,
+        ea.entry_qualification_state.value,
+        ea.state.value,
+        _entry_actionability_reason_codes_to_json(ea.reason_codes),
+        ea.evidence_finality.value,
+        ea.evidence_as_of.isoformat() if ea.evidence_as_of is not None else None,
+        _entry_reference_to_json(ea.entry_reference),
+        _entry_location_context_to_json(ea.entry_location_context),
+        _operative_invalidation_to_json(ea.operative_invalidation),
+        _reward_to_json(ea.reward),
+        _opening_range_context_to_json(ea.opening_range_context),
+        ea.evaluated_at.isoformat(),
+        ea.explanation,
+    )
+
+
+def row_to_entry_actionability(r: Sequence[Any]) -> EntryActionability:
+    return EntryActionability(
+        instrument_id=r[0],
+        session_date=date.fromisoformat(r[1]),
+        entry_qualification_as_of=datetime.fromisoformat(r[2]),
+        decision_id=r[3],
+        entry_qualification_methodology_version=r[4],
+        entry_actionability_as_of=datetime.fromisoformat(r[5]),
+        entry_actionability_methodology_version=r[6],
+        run_id=r[7],
+        cycle_id=r[8],
+        decision_type=DecisionType(r[9]),
+        direction=Direction(r[10]),
+        entry_qualification_state=EntryQualificationState(r[11]),
+        state=EntryActionabilityState(r[12]),
+        reason_codes=_entry_actionability_reason_codes_from_json(r[13]),
+        evidence_finality=EntryEvidenceFinality(r[14]),
+        evidence_as_of=datetime.fromisoformat(r[15]) if r[15] else None,
+        entry_reference=_entry_reference_from_json(r[16]),
+        entry_location_context=_entry_location_context_from_json(r[17]),
+        operative_invalidation=_operative_invalidation_from_json(r[18]),
+        reward=_reward_from_json(r[19]),
+        opening_range_context=_opening_range_context_from_json(r[20]),
+        evaluated_at=datetime.fromisoformat(r[21]),
+        explanation=r[22],
     )

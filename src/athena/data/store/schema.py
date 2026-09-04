@@ -10,7 +10,7 @@ append-only by discipline (inserts only; duplicates rejected by primary key).
 from __future__ import annotations
 
 #: Bump when the schema changes; enables future explicit migrations.
-SCHEMA_VERSION = 17
+SCHEMA_VERSION = 18
 
 _DDL = (
     "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)",
@@ -487,6 +487,87 @@ _DDL = (
     # WHERE + ORDER BY shape.
     "CREATE INDEX IF NOT EXISTS idx_entry_qualifications_decision "
     "ON entry_qualifications(decision_id, as_of DESC)",
+
+    # ---------------------------------------------------------------- ID-7A
+    # Durable, auditable persistence for EntryActionability (ADR-015,
+    # ID-7A0/ID-7A0.1, methodology frozen by ID-7B/ID-7B.1/ID-7B.2/
+    # ID-7B.2.1) observations. Same append-only discipline as
+    # entry_qualifications above: a persisted row is immutable evaluation-
+    # time truth (dimension A) and is never updated in place; read-time
+    # currentness (dimension B, `is_currently_usable`) is deliberately NOT
+    # represented by any column here.
+    #
+    # Identity is EntryActionability's own full composite key: the
+    # upstream EntryQualification's entire identity, copied verbatim
+    # (instrument_id, session_date, entry_qualification_as_of, decision_id,
+    # entry_qualification_methodology_version — never reduced to
+    # decision_id alone), plus this artifact's own
+    # entry_actionability_as_of/entry_actionability_methodology_version.
+    # There is no surrogate id. run_id/cycle_id are informational
+    # provenance only, deliberately NOT part of the identity key, mirroring
+    # entry_qualifications. The single-column FK on decision_id alone only
+    # proves the canonical Decision exists — it does not prove the full
+    # upstream EQ identity is truthful; that binding is validated at the
+    # repository layer (see SqliteRepository.save_entry_actionability),
+    # exactly mirroring _validate_entry_qualification_decision_binding.
+    #
+    # Value-object columns (entry_reference/entry_location_context/
+    # operative_invalidation/reward) are nested-JSON blobs, one column
+    # each, per the existing trade_plan_json precedent — not flattened
+    # fields. They are populated iff state == ACTIONABLE; NULL otherwise.
+    # opening_range_context_json is always-independently-optional context
+    # and may be NULL even when state == ACTIONABLE.
+    """
+    CREATE TABLE IF NOT EXISTS entry_actionabilities (
+        instrument_id                            TEXT NOT NULL,
+        session_date                             TEXT NOT NULL,
+        entry_qualification_as_of                TEXT NOT NULL,
+        decision_id                               TEXT NOT NULL REFERENCES decisions(decision_id),
+        entry_qualification_methodology_version   TEXT NOT NULL,
+        entry_actionability_as_of                 TEXT NOT NULL,
+        entry_actionability_methodology_version   TEXT NOT NULL,
+        run_id                                    TEXT NOT NULL,
+        cycle_id                                  TEXT NOT NULL,
+        decision_type                             TEXT NOT NULL,
+        direction                                 TEXT NOT NULL,
+        entry_qualification_state                 TEXT NOT NULL,
+        state                                      TEXT NOT NULL,
+        reason_codes_json                         TEXT NOT NULL,
+        evidence_finality                         TEXT NOT NULL,
+        evidence_as_of                            TEXT,
+        entry_reference_json                      TEXT,
+        entry_location_context_json               TEXT,
+        operative_invalidation_json                TEXT,
+        reward_json                                TEXT,
+        opening_range_context_json                 TEXT,
+        evaluated_at                               TEXT NOT NULL,
+        explanation                                TEXT NOT NULL,
+        persisted_at                               TEXT NOT NULL,
+        PRIMARY KEY (
+            instrument_id, session_date, entry_qualification_as_of,
+            decision_id, entry_qualification_methodology_version,
+            entry_actionability_as_of, entry_actionability_methodology_version
+        )
+    )
+    """,
+    # Supports latest_entry_actionability_for_entry_qualification(): the
+    # primary key's own leading columns already cover an exact-EQ-identity
+    # lookup ordered by entry_actionability_as_of (its first five columns
+    # are exactly that identity), so no separate index is needed for that
+    # case. decision_id is not a usable leftmost prefix of the primary
+    # key's implicit index for a decision_id-only "latest for this
+    # Decision" query, mirroring idx_entry_qualifications_decision above.
+    "CREATE INDEX IF NOT EXISTS idx_entry_actionabilities_decision "
+    "ON entry_actionabilities(decision_id, entry_actionability_as_of DESC)",
+    # Supports latest_entry_actionability_for_instrument_session() and
+    # list_entry_actionabilities_for_instrument_session(): unlike
+    # entry_qualifications (whose primary key already begins
+    # (instrument_id, session_date, as_of)), this table's primary key
+    # leads with entry_qualification_as_of, not entry_actionability_as_of,
+    # so an explicit index is required for instrument/session history
+    # ordered by this artifact's own evaluation instant.
+    "CREATE INDEX IF NOT EXISTS idx_entry_actionabilities_instrument_session "
+    "ON entry_actionabilities(instrument_id, session_date, entry_actionability_as_of DESC)",
 
     """
     CREATE TABLE IF NOT EXISTS ops_meta (
