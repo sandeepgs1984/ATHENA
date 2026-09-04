@@ -6,6 +6,359 @@ status updated on approval.
 
 ---
 
+## ID-7B Entry / Risk Methodology Discovery & Freeze — Partially Frozen
+
+**Summary.** Owner/Chief Architect accepted ADR-015 and closed both
+ID-7A0.1 and ID-7A0 (2026-09-04), then authorized ID-7B: methodology
+discovery for `EntryActionability`'s entry/invalidation/reward evidence
+and freshness policy, given an exact `TRADE` Decision + `QUALIFIED`
+EntryQualification. Methodology-only milestone — zero domain model,
+schema, workflow stage, or engine code.
+
+**Decisive finding.** Read-only query against `db/athena.db` found
+**zero** real `(Decision.decision_type=TRADE,
+EntryQualification.state=QUALIFIED)` episodes in production. All 96,985
+`TRADE` decisions predate `entry_qualifications` persistence (which began
+2026-09-03, per ID-6E.2); all 11,986 persisted EQ rows are bound to
+`WATCH` decisions only. This methodology is therefore designed from real
+general-population market evidence and a purpose-built empirical
+analysis, not from real `(TRADE, QUALIFIED)` history — and this
+constraint is why the milestone classifies as partially, not fully,
+frozen.
+
+**New empirical freshness analysis.** 138,454 real REGULAR-session M5
+candle-pair samples (60 instruments, full available history) measured
+price movement and VWAP-side persistence across a ≈10-minute gap (the
+closest whole-candle proxy for one canonical cycle's ≈9.3-minute median
+duration): median absolute price move 0.093% (≈3.86% of the instrument's
+own typical daily range), p90 0.351% (≈13.72%), p95 0.503% (≈19.26%);
+whether price is above/below session VWAP persists unchanged 88.32% of
+the time across the same gap. Typical case: not materially stale. Real
+tail (p90–p95): meaningful drift that an inert methodology would be
+exposed to.
+
+**Canonical-cycle freshness classification: `CONDITIONAL_ON_EVIDENCE_AGE`.**
+Option 1 (canonical-cycle synchronous, ADR-015's selected architecture)
+remains sufficient, on the explicit condition that the extension/chase
+gate (§9 of the methodology doc) and the evidence-age term of
+`is_currently_usable` (§14) are real, load-bearing gates — which this
+methodology now makes them. **No ADR-015 revision required or proposed.**
+
+**ID-7P0 Recommendation-A reassessment: `A_CONDITIONALLY_ACCEPTED`**
+(distinct from ID-7A0's own `A_CANNOT_BE_DECIDED_UNTIL_ID7B`, which
+deferred the question — this answers it). Accepted on condition that
+latency compensation is active (real gates), not a passive label.
+
+**Structurally frozen.**
+1. Upstream eligibility unchanged (`Decision=TRADE` + exact bound
+   `EQ=QUALIFIED`); WATCH still produces `NOT_ACTIONABLE` + reason.
+2. Directionality: ID-7B's own methodology is fully LONG/SHORT symmetric
+   — but a genuine, ID-6-owned upstream gap is surfaced (not fixed):
+   EQ's frozen v0 formula requires VWAP ABOVE + trend BULLISH
+   unconditionally, with no symmetric SHORT path, so
+   `EntryActionability` will rarely if ever be reached for a genuine
+   SHORT opportunity today.
+3. Entry representation: **trigger + allowable zone** (not a single
+   fixed price like `TradePlan`'s `entry_low=entry_high=last_close`) —
+   primary anchor is VWAP `deviation_pct` (already computed, zero new
+   code), D1-ATR-normalized distance as a supplementary candidate.
+4. Entry-location & extension/chase merged into one gate: if extension
+   from the anchor exceeds a (deferred) threshold, `NOT_ACTIONABLE`
+   (`ENTRY_TOO_EXTENDED`) even when EQ remains `QUALIFIED`.
+5. Invalidation hierarchy, 5 tiers: VWAP-loss (primary) → recent
+   completed M5 structural extremum (secondary, scanned from existing
+   candles, not a generic S/R engine) → Opening Range boundary,
+   **level only** (tertiary, `formation.status==COMPLETE` only, never
+   `breakout_event`/`returned_inside_range` semantics — respecting
+   PS-P9B's own explicit caution that raw OR events are unreliable,
+   62.8% return-inside rate, no owner-approved OR15/OR30 precedence) →
+   D1 ATR fallback → `UNKNOWN` if none computable.
+6. Reward/target: **`GOAL_BANDS_ONLY`** (T1≈+1%/T2≈+1.5%, not
+   guaranteed/resistance-validated). Support/resistance dependency
+   classification: **`V0_DOES_NOT_REQUIRE_GENERIC_SR`**.
+7. Reward/risk: computed and exposed informationally, does **not** gate
+   `ACTIONABLE` in V0 — not automatically inherited as `RR=2.0` from
+   `TradePlan`, since zero empirical basis exists to freeze a minimum.
+8. `is_currently_usable` ingredients frozen: methodology state
+   `ACTIONABLE` AND exact-EQ-still-current (full composite-key equality
+   against `latest_entry_qualification_for_instrument_session`, not
+   latest-Decision-id alone) AND evidence age AND session `REGULAR`.
+   Provisional (`LIVE_M5_PROVISIONAL`) evidence explicitly **can** be
+   currently usable — not assumed unusable, per ID-6's own precedent.
+9. `UNKNOWN` vs `NOT_ACTIONABLE` distinction, reason-code taxonomy
+   (semantic categories), and gate ordering all frozen.
+10. VWAP's three distinct roles (qualification / entry-location /
+    invalidation) explicitly distinguished — not double-counted.
+11. RS/RVOL magnitude and `GapContext`: deliberately **not** used as
+    gates in V0 (no evidence support; avoiding an "arbitrary extra vote
+    system" per the authorization's own instruction) — recorded as
+    context only.
+12. No score/weighted confidence, no ML/fitting — deterministic gates
+    only, consistent with ID-6's own approach.
+
+**Deferred, not invented.** Extension/chase numeric cutoff, entry-zone
+width, local-extremum lookback window, and any minimum reward/risk —
+all explicitly deferred pending real `(TRADE, QUALIFIED)` evidence
+accumulation or explicit owner risk-tolerance input. The empirical
+freshness distribution above is recorded as the authoritative future
+calibration basis. No already-frozen ATHENA constant was available to
+substitute (`TradePlan`'s own `atr_stop_multiple`/`atr_target_multiple`
+are daily-granularity constants, not reused without justification).
+Methodology-version string not minted — naming convention frozen, but
+minting a version would misrepresent this milestone's own partial-freeze
+status.
+
+**Files created.**
+`docs/research/ID-7B-ENTRY-RISK-METHODOLOGY.md`.
+
+**Files modified.** `docs/adr/ADR-015-intraday-actionability-architecture.md`
+(Status → Accepted), `docs/MILESTONES.md`, `ATHENA_BRIEFING.md`,
+`docs/ATHENA-ID-TRACK-HANDOFF.md`, this file.
+
+**Tests/validation.** Read-only research milestone; every DB query used
+`mode=ro`/`PRAGMA query_only=ON`; zero provider calls; zero source/
+schema/workflow/engine code; `git diff --check` clean.
+
+**Remaining work.** All numeric thresholds identified in this document
+remain open pending either natural `(TRADE, QUALIFIED)` evidence
+accumulation (mirroring ID-6E's own precedent) or explicit owner
+risk-tolerance input. ID-7A (domain/schema), ID-7C (engine), ID-7D
+(persistence), ID-7E (workflow wiring), and ID-7F (replay/shadow) remain
+not started, not authorized.
+
+**Outcome:** ID-7B methodology partially frozen — evidence required for
+numeric thresholds. Not yet marked Owner-approved.
+
+---
+
+## ID-7A0.1 Lifecycle / Currentness & WATCH-Scope Clarification — Complete
+
+**Summary.** Owner/Chief Architect source review accepted ID-7A0's core
+architecture direction but held ADR-015 acceptance for two narrow
+semantic corrections. Documentation-only milestone; no source code,
+schema, or workflow stage; core architecture (separate artifact, exact
+EQ-identity binding, no surrogate id, canonical-cycle-synchronous
+evaluation, no EMR-style worker, etc.) explicitly not reopened.
+
+**Correction 1 — lifecycle/currentness conflation.** The original
+ADR-015 proposed a 4th persisted methodology state, `EXPIRED` ("was
+ACTIONABLE earlier, no longer current"). This conflates two different
+questions: what did the methodology conclude at evaluation time (a
+point-in-time fact), versus is that historical conclusion still usable
+now (a read-time judgment relative to *when it's asked*). An immutable,
+append-only row cannot express the second as a persisted mutation of the
+first without either mutating the old row (forbidden) or writing a new
+row bound to the *old* identity asserting "that one is now stale" (not
+meaningfully different from mutation). Audited whether Option 1
+(canonical-cycle synchronous, the selected architecture) could ever
+generate such a row: it cannot — each cycle's stage only ever binds to
+that cycle's own freshly-produced Decision/EQ, never revisiting an older
+EQ identity — so a persisted `EXPIRED` would have no writer under the
+architecture actually selected.
+
+**Resolution — three separate, frozen dimensions:**
+- **(A) Methodology state** (persisted, immutable, point-in-time): 3
+  values — `UNKNOWN`, `NOT_ACTIONABLE`, `ACTIONABLE`.
+- **(B) Evidence freshness/currentness** (never persisted; a read-time
+  derived value from a conceptual `is_currently_usable(...)` query):
+  requires methodology state `ACTIONABLE`, the bound `decision_id` still
+  matching `list_latest_decisions_by_instrument()`'s current row, an
+  evidence-age test (`now − evidence_as_of`) against a threshold
+  explicitly deferred to ID-7B, and session/market constraints. Returns
+  an illustrative, non-persisted classification (e.g.
+  `CURRENT`/`STALE`/`SUPERSEDED`/`SESSION_CLOSED` — exact set left to
+  ID-7A).
+- **(C) Evidence finality/provisionality**: inherited from the bound
+  EQ's own `evidence_finality`, independent of (A) and (B).
+
+Confirmed by direct source read
+(`src/athena/intraday/entry_qualification_engine.py:283-285`) that EQ's
+own `EntryQualificationState.EXPIRED` remains coherent and requires no
+change — it is written fresh, every cycle, from that cycle's own session
+context ("the trading session has closed"), never a comparison to an
+older row: dimension (A) one layer down, not (B). Historical truth is
+now explicitly frozen as immutable: a row persisted `ACTIONABLE` at 10:00
+stays `ACTIONABLE` under replay/audit at 15:00, regardless of whether it
+is `is_currently_usable` at 15:00 — both statements hold simultaneously,
+required for coherent audit/replay/trajectory/backtesting. A future
+Option 2 evaluator (still not authorized) could produce an *additional*
+row (a later `entry_actionability_as_of` bound to the same EQ identity)
+without ever mutating or stale-marking the earlier one — this
+extensibility is retained but was not used to justify persisting
+`EXPIRED` under the currently selected Option 1.
+
+**Correction 2 — WATCH/TRADE reasoning defect.** The original ADR
+reasoned WATCH+TRADE scope was a "forced consequence" of binding through
+EQ's own composite identity. That framing was too strong: identity
+binding only establishes `EntryActionability` cannot exist *without* a
+bound EQ row; EQ's own persisted scope (WATCH+TRADE) is the *available
+upstream domain*, not an automatic mandate on evaluation scope.
+
+**Resolution.** Tested directly against ADR-013's WHAT/WHETHER/WHEN
+taxonomy and `Decision`'s actual structural semantics
+(`Decision.__post_init__` requires zero failed gates, a direction, and a
+`trade_plan` for `TRADE`; `WATCH` clears no such bar).
+`Decision=WATCH, EntryQualification=QUALIFIED` is a reachable, coherent
+state (EQ's `QUALIFIED` is purely intraday-momentum evidence, orthogonal
+to whatever structural gate kept the Decision at `WATCH`). But surfacing
+`EntryActionability`'s specifically execution-shaped WHEN/entry/risk
+evidence (a proposed entry zone, invalidation, reward zone) for a
+structurally un-authorized (`WATCH`) opportunity would function as
+ATHENA implicitly recommending entry despite the Decision remaining
+`WATCH` — a real violation of the advisory-only boundary and the
+WHAT/WHETHER/WHEN separation this ADR exists to preserve. **Decision:
+`EntryActionability` evaluation is scoped to `decision_type == TRADE`
+only.** The identity model is unchanged (still generalizes across any
+bound EQ row); only the stage's own evaluation scope narrows. A
+`WATCH`-bound EQ still produces a row — `NOT_ACTIONABLE`, with an
+explicit "bound Decision is not TRADE-type" reason code — never silently
+omitted, consistent with the existing upstream-not-ready policy (Option
+C).
+
+**Files changed.**
+`docs/adr/ADR-015-intraday-actionability-architecture.md` (surgical
+corrections to the Decision, Alternatives, and Consequences sections —
+no rewrite; Status remains **Proposed**, not marked Accepted),
+`docs/research/ID-7A0-INTRADAY-ACTIONABILITY-ARCHITECTURE.md` (§6, §7,
+§8, §12, §16 updated), `docs/MILESTONES.md`, `ATHENA_BRIEFING.md`,
+`docs/ATHENA-ID-TRACK-HANDOFF.md`, this file. No source files.
+
+**Tests/validation.** Documentation-only; `git diff --check` clean; zero
+source/schema/workflow/API/UI changes.
+
+**Remaining work.** Owner/Chief Architect acceptance review of the
+corrected ADR-015. All 15 previously-accepted ID-7A0 decisions (separate
+artifact, TradePlan untouched, exact EQ-identity binding, decision_id
+carried explicitly, immutable/append-only, no surrogate id, directionality
+preserved, advisory-only, nested value-object direction, zero provider
+calls, canonical-cycle-synchronous primary mode, same WorkflowStage DAG,
+no EMR-style satellite worker, market-time-only replay, ID-9/10/11
+separation, all methodology numerics deferred,
+`A_CANNOT_BE_DECIDED_UNTIL_ID7B`) remain unchanged and were not reopened.
+ID-7A/ID-7B/ID-7C/ID-7D/ID-7E/ID-7F remain not started, not authorized.
+
+**Outcome:** ~~ID-7A0.1 complete — ADR-015 ready for Owner / Chief
+Architect acceptance review.~~ **Update 2026-09-04 (same day): ADR-015
+OWNER ACCEPTED; ID-7A0.1 and ID-7A0 both OWNER APPROVED / CLOSED. ID-7B
+(methodology discovery) authorized and completed same day — see the new
+top entry above.**
+
+---
+
+## ID-7A0 Intraday Actionability Architecture — Ready for Owner Review
+
+**Summary.** Owner/Chief Architect approved and closed both ID-7P0.2 and
+ID-7P0 (2026-09-04) and authorized ID-7A0: architecture/ADR-only work to
+freeze the layer-3 (ADR-013's taxonomy) boundary for a new intraday
+actionability artifact — WHEN/entry/risk, distinct from Decision's
+WHAT and EntryQualification's WHETHER. Zero production code, schema,
+workflow stage, API, or UI implemented; zero entry/stop/target numeric
+methodology invented.
+
+**Source audit.** Conducted read-only across `Decision`/`TradePlan`
+(`domain/decision.py`), `EntryQualification` model/schema
+(`intraday/entry_qualification_models.py`, `data/store/schema.py`),
+ID-6D's workflow integration and `persistence_clock` pattern
+(`ops/owner_validation.py`), the repository's latest-row query family
+(`data/store/repository.py`), the `WorkflowStage`/`WorkflowEngine`
+mechanism (`runtime/workflow.py`), point-in-time candle/quote reads and
+the market-time-vs-bitemporal limitation (stated explicitly in three
+places in source plus ADR-013), existing intraday evidence artifacts
+(`RelativeStrengthContext`/`RelativeVolumeContext`/`OpeningRangeEvidence`/
+`GapContext`), confirmed no generalized support/resistance engine exists
+outside isolated DarvaX, and read ADR-013/ADR-014 for precedent and
+cross-track isolation. Two prior assumptions were corrected during audit:
+`TradePlan` has `entry_low`/`entry_high` (a range), not a single `entry`
+field; `Decision` has no `session_date` field (only `EntryQualification`
+does).
+
+**Key design decisions.**
+1. **Artifact name: `EntryActionability`** — extends EntryQualification's
+   own naming family, avoids collision with the frozen, Decision-embedded
+   `TradePlan`, avoids order/execution-implying language.
+2. **Identity:** the entire upstream `EntryQualification` composite key
+   copied verbatim (`instrument_id, session_date,
+   entry_qualification_as_of, decision_id,
+   entry_qualification_methodology_version`) plus its own
+   `entry_actionability_as_of` and `entry_actionability_methodology_version`
+   — no surrogate id (EQ itself has none; inventing one without
+   architectural need was explicitly out of scope). `decision_id` carried
+   explicitly, mirroring EQ's own established denormalization precedent.
+3. **WATCH/TRADE scope** is a forced consequence of binding through EQ's
+   own scope (EQ persists for WATCH and TRADE only), not an independent
+   choice.
+4. **State model:** 4 states (`UNKNOWN, NOT_ACTIONABLE, ACTIONABLE,
+   EXPIRED`) — deliberately distinct in purpose from EQ's own 6. Upstream
+   EQ not-ready (`UNKNOWN`/`NOT_YET`/`EXPIRED`) still produces a
+   `NOT_ACTIONABLE` row with an explicit preserved reason code (Option C
+   — never silent omission, never an unexplained bare state).
+5. **Directionality preserved**, not assumed long-only — proven from
+   `TradePlan._build_plan`'s own existing LONG/SHORT sign-flip.
+6. **Three timestamps** (`evidence_as_of`, `evaluated_at`, `persisted_at`)
+   — mirrors the ID-6D `persistence_clock` precedent exactly, distinct
+   dimension for freshness age vs. computation time vs. write time.
+7. **Evaluation mode: Option 1 (canonical-cycle synchronous) selected** —
+   a new `entry_actionability` `WorkflowStage` inside the existing
+   per-instrument DAG. Zero new infrastructure, zero new provider calls,
+   strongest possible Decision/EQ identity determinism (same
+   `WorkflowExecution`, no race). Options 2 (async-after-ingestion — no
+   freshness gain given the exact-identity-binding requirement, adds a
+   race/idempotency surface), 3 (event-driven — no event bus exists in
+   ATHENA today, would require new infrastructure out of scope), 4
+   (on-demand/API-time — breaks reproducibility, provider-call
+   temptation), and 5 (hybrid — unneeded complexity) were evaluated and
+   explicitly not chosen now. The identity model's separate
+   `entry_actionability_as_of` dimension deliberately allows a future
+   stricter-freshness mode without schema redesign.
+8. **Recommendation-A reassessment: `A_CANNOT_BE_DECIDED_UNTIL_ID7B`** —
+   ID-7P0 measured *why* the ≈9-10 minute cycle latency exists, not *how
+   fresh* ID-7's own entry/risk evidence must be; that is a methodology
+   question ID-7B must answer, not one this architecture milestone can
+   resolve on its own.
+9. Entry/stop/target deferred as **shape only** (nested immutable value
+   objects, mirroring `TradePlan`'s own nesting pattern) — no numeric
+   methodology (buffer %, ATR multiplier, minimum RR, VWAP distance,
+   spread limit, time-stop, etc.) invented. T1/T2 (~+1%/~+1.5%) remain
+   goal bands, not engine formulas.
+10. No support/resistance engine invented — none exists outside isolated
+    DarvaX (confirmed via repo-wide search); recorded as an open
+    ID-7B/ID-8 methodology/data dependency.
+11. ID-9 (sizing)/ID-10 (live plan supervision)/ID-11 (execution quality)
+    boundaries explicitly preserved — no absorption.
+12. Persistence/query direction mirrors EQ's own append-only,
+    query-convention-"latest" philosophy exactly — no destructive
+    updates, no schema created by this milestone.
+13. Replay limitation (market-time point-in-time only, no
+    bitemporal/knowledge-time replay) carried forward unresolved, exactly
+    as ADR-013 already documents for `EntryQualification`.
+
+**Files created.**
+`docs/adr/ADR-015-intraday-actionability-architecture.md` (**Status:
+Proposed** — not Accepted),
+`docs/research/ID-7A0-INTRADAY-ACTIONABILITY-ARCHITECTURE.md`.
+
+**Files modified.** `docs/MILESTONES.md`, `ATHENA_BRIEFING.md` (§4 ADR
+list and §4/§6 ID-track rows), `docs/ATHENA-ID-TRACK-HANDOFF.md`, this
+file.
+
+**Tests/validation.** Documentation/architecture-only milestone; zero
+source files changed; `git diff --check` clean.
+
+**Remaining work.** ID-7A (domain model/schema), ID-7B (entry/risk
+methodology), ID-7C (engine), ID-7D (persistence), ID-7E (workflow
+wiring), and ID-7F (replay/shadow validation) each require their own
+separate owner authorization, mirroring ADR-013's own ID-6A0→ID-6E gated
+sequence. None started, none authorized by this milestone.
+
+**Outcome:** ~~ID-7A0 architecture complete — ready for Owner / Chief
+Architect review. ADR-015 not yet marked Accepted; ID-7A not started.~~
+**Update 2026-09-04 (same day): Owner/Chief Architect accepted the core
+architecture direction but held ADR-015 acceptance for two narrow
+semantic corrections — see the new ID-7A0.1 top entry above. Core
+architecture unchanged; ADR-015 still Proposed, not Accepted.**
+
+---
+
 ## ID-7P0.2 Production Run Anomaly Triage & Attribution Correction — Complete
 
 **Summary.** Owner/Chief Architect accepted ID-7P0's root-cause attribution
@@ -106,11 +459,16 @@ per-cycle watchdog exists beyond per-HTTP-call timeouts in
 clean; no source touched, no test suite run (not required for a
 docs-only milestone per the milestone's own instruction).
 
-**Remaining work.** Owner/Chief Architect final ID-7P0 closure review.
-ID-7A0 not started; still blocked pending that closure.
+**Remaining work.** ~~Owner/Chief Architect final ID-7P0 closure review.
+ID-7A0 not started; still blocked pending that closure.~~ **Update
+2026-09-04 (same day): Owner/Chief Architect approved and closed both
+ID-7P0.2 and ID-7P0. ID-7A0 (architecture/ADR only) authorized same day —
+see the new top entry above.**
 
-**Outcome:** ID-7P0.2 complete. ID-7P0 ready for Owner / Chief Architect
-final closure review — not yet marked owner-approved/closed.
+**Outcome:** ~~ID-7P0.2 complete. ID-7P0 ready for Owner / Chief Architect
+final closure review — not yet marked owner-approved/closed.~~ **ID-7P0.2
+OWNER APPROVED / CLOSED — 2026-09-04. ID-7P0 OWNER APPROVED / CLOSED —
+2026-09-04.**
 
 ---
 
