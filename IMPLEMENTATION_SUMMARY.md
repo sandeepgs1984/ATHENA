@@ -6,6 +6,80 @@ status updated on approval.
 
 ---
 
+## PS-P8B Portfolio D1 Trend Methodology Freeze — Complete
+
+**Summary.** Owner/Chief Architect approved and froze PS-P8A on 2026-09-04,
+then narrowed the next step to D1 Trend only. PS-P8B audited existing D1
+evidence, thresholds, semantic artifacts, scoring components, Regime trend,
+Decision/TradePlan/Conviction independence, Setup deferral, null semantics,
+coherency, persistence, and replay requirements. Verdict: a trustworthy D1
+Trend methodology is possible if the owner accepts adapting the already-approved
+Regime SMA20/SMA50 trend rule to each holding's own D1 candles.
+
+**Architecture compliance.** No production code changed. `PortfolioInterpreter`
+and `PortfolioSyncOrchestrator` still emit `trend_setup=None` under
+`portfolio-interpretation-v1`. PS-P8B excludes M5/M15, VWAP,
+EntryQualification, intraday RS/RVOL, DecisionType, TradePlan, stop breach,
+Conviction, DarvaX, and EMR as direct D1 Trend classifiers. Setup remains
+deferred. No schema, API, dashboard, scoring, indicator, or decision-engine
+change was made.
+
+**Files created.**
+
+- `docs/research/PS-P8B-PORTFOLIO-D1-TREND-METHODOLOGY-FREEZE.md`
+
+**Files modified.**
+
+- `docs/MILESTONES.md`
+- `IMPLEMENTATION_SUMMARY.md`
+- `ATHENA_BRIEFING.md`
+
+**Public APIs added.** None.
+
+**Tests added.** None. PS-P8B is methodology/documentation only.
+
+**Test results.** Not run; no executable code changed. Read-only SQL replay
+sketch over `db/athena.db` measured the recommended Candidate B on current
+holdings: latest labels as of 2026-09-04 were 11 `UPTREND`, 7 `DOWNTREND`,
+2 `SIDEWAYS`, 0 null. Latest 30-session transition sketch: 323
+`UPTREND -> UPTREND`, 135 `DOWNTREND -> DOWNTREND`, 75
+`SIDEWAYS -> SIDEWAYS`, with smaller transition counts documented in the report.
+
+**Coverage summary.** Not applicable to this documentation-only milestone.
+
+**Risks discovered.** `SIDEWAYS` is only safe if the owner accepts the narrow
+Regime-derived meaning "mixed D1 SMA20/SMA50/close structure." It must not mean
+range, consolidation, low-volatility base, or no-trade. EMA(21) exists in config
+but is not part of the current owner-validation indicator set and should not be
+used for the first Trend implementation.
+
+**Technical debt introduced.** None. Existing debt remains: the My Portfolio
+`Trend / Setup` column is still intentionally empty until a future implementation
+milestone is approved.
+
+**Suggested improvements.** If PS-P8B is approved, PS-P8C should implement only
+the D1 Trend adapter, keep Setup unavailable with an explicit reason, store final
+nullable Trend and reason codes in immutable Portfolio snapshots, and bump to
+`portfolio-interpretation-v2`.
+
+**Remaining work.** Owner/Chief Architect review of PS-P8B. Do not implement
+Portfolio Trend until the methodology and replay evidence are approved.
+
+**Implementation metrics.** Documentation-only. Production source files changed:
+0. Tests added: 0.
+
+**Phase outcome.** PS-P8B methodology complete and ready for Owner/Chief
+Architect review. PS-P8A is owner-approved and frozen. PS-P7B remains frozen.
+My Portfolio V1 remains complete and frozen.
+
+**Commit hash.** Pending owner commit.
+
+**Branch.** feature/portfolio-sync.
+
+**Review status.** Ready for Owner/Chief Architect review.
+
+---
+
 ## PS-P8A Portfolio Trend / Setup Methodology Discovery — Complete
 
 **Summary.** Completed discovery-only PS-P8A after PS-P7B was owner-approved
@@ -63,15 +137,15 @@ PS-P8A.
 **Implementation metrics.** Documentation-only. Production source files changed:
 0. Tests added: 0.
 
-**Phase outcome.** PS-P8A discovery complete and ready for Owner/Chief
-Architect review. My Portfolio V1 remains complete and frozen; PS-P7A and
-PS-P7B remain frozen; Trend / Setup remains unavailable in production.
+**Phase outcome.** PS-P8A Owner/Chief Architect approved and frozen 2026-09-04.
+My Portfolio V1 remains complete and frozen; PS-P7A and PS-P7B remain frozen;
+Trend / Setup remains unavailable in production.
 
-**Commit hash.** Pending owner commit.
+**Commit hash.** Frozen by owner after commit.
 
 **Branch.** feature/portfolio-sync.
 
-**Review status.** Ready for Owner/Chief Architect review.
+**Review status.** Owner/Chief Architect approved and frozen.
 
 ---
 

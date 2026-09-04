@@ -20,7 +20,8 @@ too large for a single-sitting review is split BEFORE implementation.
 `docs/research/PS-P6C-MY-PORTFOLIO-V1-END-TO-END-VALIDATION.md`,
 `docs/research/PS-P7A-PORTFOLIO-INTELLIGENCE-V2-DISCOVERY.md`,
 `docs/research/PS-P7B-PORTFOLIO-CONVICTION-ADAPTER-IMPLEMENTATION.md`,
-`docs/research/PS-P8A-PORTFOLIO-TREND-SETUP-METHODOLOGY-DISCOVERY.md`
+`docs/research/PS-P8A-PORTFOLIO-TREND-SETUP-METHODOLOGY-DISCOVERY.md`,
+`docs/research/PS-P8B-PORTFOLIO-D1-TREND-METHODOLOGY-FREEZE.md`
 
 Adds a My Portfolio dashboard feature/subdomain inside ATHENA's existing
 portfolio capability. The feature owns imported current holdings,
@@ -42,7 +43,8 @@ ScoringEngine/DecisionEngine methodology.
 | PS-P6C | My Portfolio V1 End-to-End Production Validation — validate the complete frozen V1 owner workflow, failure/recovery/currentness/API/dashboard/input/performance scenarios, and recommend final V1 freeze if all criteria pass | ✅ Owner/Chief Architect approved and frozen 2026-09-03 — My Portfolio V1 COMPLETE AND FROZEN |
 | PS-P7A | Portfolio Intelligence V2 Methodology & Evidence Discovery — inventory existing approved evidence for Conviction, Trend / Setup, Support 1, Target 2/3, REDUCE, ROTATE, portfolio-level intelligence, history, coherency, and versioning before any V2 implementation | ✅ Owner/Chief Architect approved and frozen 2026-09-03 |
 | PS-P7B | Portfolio Conviction Adapter — populate only the existing Conviction field from coherent persisted Decision Confidence HIGH/MEDIUM/LOW, version new output as portfolio-interpretation-v1, and preserve V1 Status/Action/currentness semantics | ✅ Owner/Chief Architect approved and frozen 2026-09-03 |
-| PS-P8A | Portfolio Trend / Setup Methodology Discovery — audit D1, intraday, Decision, EntryQualification, relative-strength, DarvaX, persistence, freshness, coherency, taxonomy, versioning, and replay requirements before any Trend / Setup implementation | 🔄 Discovery complete 2026-09-04 — ready for Owner/Chief Architect review; no implementation authorized |
+| PS-P8A | Portfolio Trend / Setup Methodology Discovery — audit D1, intraday, Decision, EntryQualification, relative-strength, DarvaX, persistence, freshness, coherency, taxonomy, versioning, and replay requirements before any Trend / Setup implementation | ✅ Owner/Chief Architect approved and frozen 2026-09-04 |
+| PS-P8B | Portfolio D1 Trend Methodology Freeze & Replay Contract — freeze Trend as a D1-only dimension, audit existing approved thresholds/semantics, compare candidate methods, define replay/coherency/null/version contracts, and keep Setup deferred before any implementation | 🔄 Methodology complete 2026-09-04 — ready for Owner/Chief Architect review; no implementation authorized |
 
 ## Intraday Intelligence Track (ID-0 started 2026-08-29)
 
