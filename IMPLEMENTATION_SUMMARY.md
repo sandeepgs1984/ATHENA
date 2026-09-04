@@ -6,6 +6,204 @@ status updated on approval.
 
 ---
 
+## ID-7A.1 Entry Actionability Domain Invariant Hardening — Complete
+
+**Summary.** Owner/Chief Architect source review of ID-7A accepted the
+core implementation, the domain model/schema-v18/repository direction,
+and ADR-015 compliance, but held final closure for one class of gap:
+repository-level Decision/EQ binding validation proves the fields copied
+into an `EntryActionability` match the real upstream records, but never
+proved those fields form a LEGAL `EntryActionability` verdict. Concretely,
+prior to this milestone, code could construct — and the repository would
+happily persist — an `ACTIONABLE` verdict bound to a `WATCH` Decision, or
+bound to a non-`QUALIFIED` EntryQualification, or carrying a "blocking"
+reason code alongside `ACTIONABLE`; a `NOT_ACTIONABLE`/`UNKNOWN` reason
+code from the wrong semantic family; an untruthful upstream reason (e.g.
+`UPSTREAM_DECISION_NOT_TRADE` while `decision_type` was actually `TRADE`);
+or a temporally backwards artifact (`entry_actionability_as_of` before
+`entry_qualification_as_of`, or `evidence_as_of` after
+`entry_actionability_as_of`). Separately, `is_currently_usable` computed
+`now - evidence_as_of` without first checking `now >= evidence_as_of`, so
+a caller supplying a `now` earlier than the evidence checkpoint got a
+negative age that never exceeded the staleness threshold — silently
+misclassifying temporally impossible future evidence as `CURRENT`. This
+milestone is a small corrective slice closing exactly those gaps:
+domain-integrity enforcement only, never evaluator methodology. It does
+not decide which state the future ID-7C evaluator should produce; it
+only rejects an impossible state already supplied. No redesign, no
+schema-shape change, no `EntryActionabilityEngine`, no ID-7B methodology
+reopened.
+
+**Domain-integrity corrections** (`src/athena/intraday/entry_actionability_models.py`).
+`EntryActionability.__post_init__` now enforces: (1) `ACTIONABLE`
+requires `decision_type == TRADE` and `entry_qualification_state ==
+QUALIFIED` — an artifact violating either is not constructible; (2)
+`ACTIONABLE` requires `reason_codes == ()` — every persisted reason code
+represents a blocker, and `ACTIONABLE` is by definition not blocked; (3)
+two new frozensets, `UPSTREAM_ELIGIBILITY_REASON_CODES` (`{UPSTREAM_
+DECISION_NOT_TRADE, UPSTREAM_EQ_NOT_QUALIFIED}`) and
+`EVIDENCE_SUFFICIENCY_REASON_CODES` (`{INSUFFICIENT_EVIDENCE,
+INVALIDATION_UNAVAILABLE}`), constrain `NOT_ACTIONABLE`'s reason codes to
+the former family and `UNKNOWN`'s to the latter — no new reason codes, no
+evaluator-precedence rule invented (multiple reasons within the same
+family remain representable, since a future evaluator may legitimately
+report more than one); (4) upstream reason truthfulness — a
+`NOT_ACTIONABLE` verdict claiming `UPSTREAM_DECISION_NOT_TRADE` must
+genuinely have `decision_type != TRADE`, and one claiming
+`UPSTREAM_EQ_NOT_QUALIFIED` must genuinely have `entry_qualification_state
+!= QUALIFIED` — the domain validates truthfulness of already-supplied
+fields, it does not implement gate-ordering (if multiple upstream gates
+are simultaneously false, the domain does not decide which the evaluator
+"should" have reported first); (5) point-in-time causal ordering —
+`entry_actionability_as_of` must not precede `entry_qualification_as_of`
+(equality is explicitly allowed, matching Option 1's usual synchronous
+coincidence; a strictly later value is also valid, supporting a future
+same-EQ re-evaluation), and `evidence_as_of`, when present, must not be
+later than `entry_actionability_as_of` (again, equality is valid).
+Direction preservation (`LONG`/`SHORT` required for `ACTIONABLE`, bound
+by the existing `_validate_risk_geometry`) is unchanged — `LONG_
+VALIDATED_SHORT_UNVALIDATED` remains a methodology-evidence fact, not a
+domain-representation constraint. `RewardReference.__post_init__` now
+additionally rejects a negative `reward_risk_to_t1`/`reward_risk_to_t2`
+— structural safety only, no rounding/tolerance/minimum-RR policy added
+(that remains ID-7C's, if ever calibrated).
+
+**Currentness future-evidence fix** (`src/athena/intraday/entry_actionability_currentness.py`).
+`is_currently_usable` now checks `now < entry_actionability.evidence_as_of`
+immediately after the existing tz-awareness check (before any state-based
+branching, so it applies uniformly regardless of persisted state) and
+raises `ValueError` — a temporally impossible read context is an invalid
+invocation, not a new currentness label; no `FUTURE`/similar member was
+added to `EntryActionabilityCurrentness`. The existing exact-600.0s
+boundary semantics are unchanged and reconfirmed by regression test.
+`EntryQualificationIdentity` gained a `__post_init__` validating
+non-empty `instrument_id`/`decision_id`/`methodology_version` and a
+tz-aware `as_of` — a malformed caller-supplied "current" identity now
+fails loudly here rather than silently producing a spurious `SUPERSEDED`
+verdict via an equality mismatch against a garbage value.
+
+**Repository hardening** (`src/athena/data/store/repository.py`).
+`save_entry_actionability` now validates `persisted_at.tzinfo is not
+None` and raises `RepositoryError` before any Decision/EQ lookup or
+insert — a naive `persisted_at` is rejected with zero rows written,
+mirroring the domain layer's own tz-awareness discipline. No other
+repository method signature, query, or semantic changed.
+
+**Files created.** None.
+
+**Files modified.** `src/athena/intraday/entry_actionability_models.py`,
+`src/athena/intraday/entry_actionability_currentness.py`,
+`src/athena/data/store/repository.py` (+5 lines),
+`src/athena/intraday/__init__.py` (2 new frozenset exports),
+`tests/market_intel/test_entry_actionability_models.py`,
+`tests/market_intel/test_entry_actionability_currentness.py`,
+`tests/data_layer/test_entry_actionability_repository.py`,
+`docs/MILESTONES.md`, `ATHENA_BRIEFING.md`,
+`docs/ATHENA-ID-TRACK-HANDOFF.md`, this file. Zero changes to
+`src/athena/data/store/schema.py` — `SCHEMA_VERSION` remains 18, no
+migration required for this correction.
+
+**Public APIs added.** `UPSTREAM_ELIGIBILITY_REASON_CODES`,
+`EVIDENCE_SUFFICIENCY_REASON_CODES` (both re-exported from
+`athena.intraday`). No new classes, no new repository methods, no new
+enum members.
+
+**Tests/validation.** 29 new tests added to the 3 existing ID-7A test
+files (75 → 104 in that focused set): `ACTIONABLE` rejects
+`WATCH`/non-`QUALIFIED`/any blocking reason code (parametrized across all
+4 reason codes); `NOT_ACTIONABLE`/`UNKNOWN` reject the wrong reason
+family; untruthful `UPSTREAM_DECISION_NOT_TRADE`/`UPSTREAM_EQ_NOT_
+QUALIFIED` rejected, truthful ones accepted; multiple same-family reasons
+representable; a valid `TRADE`+`QUALIFIED`+`ACTIONABLE` with zero reasons;
+`entry_actionability_as_of` before `entry_qualification_as_of` rejected,
+equality and a later re-evaluation both valid; `evidence_as_of` after
+`entry_actionability_as_of` rejected, equality valid; negative RR
+rejected on both fields; `now == evidence_as_of` valid, `now <
+evidence_as_of` rejected (proven both for an ordinary near-miss and for a
+`now` far enough in the past that it would otherwise read as `STALE`,
+confirming the check runs before any state-based branching); the exact
+600.0s boundary reconfirmed unaffected by the new check;
+`EntryQualificationIdentity` rejects naive `as_of`/empty `instrument_id`/
+`decision_id`/`methodology_version`, full-composite-supersession behavior
+unchanged; a naive `persisted_at` rejected with zero rows written, a
+tz-aware one continues to work; and an explicit proof that a real `WATCH`
+Decision plus a real, matching `QUALIFIED` EntryQualification — both of
+which would pass repository binding validation — still cannot be wrapped
+in an illegal `ACTIONABLE` artifact, because domain construction itself
+fails before `save_entry_actionability` is ever called. All 12
+pre-existing tests whose fixtures supplied now-illegal combinations
+(e.g. a `NOT_ACTIONABLE` verdict with an evidence-family reason code, or
+an `ACTIONABLE`-shaped mismatch test that the domain now rejects before
+the repository binding check can run) were corrected to use domain-legal
+fixtures that still exercise their original intent — most decision/EQ
+binding-mismatch tests now construct a domain-legal `NOT_ACTIONABLE`
+verdict whose truthful upstream claim (e.g. `decision_type=WATCH`)
+disagrees with a *different*, separately-persisted real record, isolating
+the repository-layer check from the domain-layer one. Full suite:
+**3484 passed, 1 pre-existing unrelated skip, 0 failures**
+(`PYTHONPATH=src python3 -m pytest tests/`).
+
+**Coverage summary.** Every new `__post_init__` branch (upstream
+truthfulness × both reason families × both temporal orderings), the
+currentness future-evidence branch, `EntryQualificationIdentity`'s
+validation, and the repository's `persisted_at` check are exercised by
+name-matched tests.
+
+**Architecture compliance.** No architecture change; ADR-015 unchanged.
+This milestone operates entirely within the frozen ID-7A/ID-7B.2.1
+contract, tightening domain-construction enforcement of it.
+
+**ADR compliance.** Unchanged from ID-7A — dimensions A/B/C remain
+exactly as ADR-015/ID-7A0.1 froze them; this milestone only makes
+dimension A's own internal consistency (state × upstream truthfulness ×
+reason family × temporal ordering) enforceable at construction time.
+
+**Risks discovered.** None new. The corrections close gaps a future
+ID-7C evaluator or ID-7F replay harness could otherwise have silently
+exploited (constructing a technically-binding-valid but semantically
+impossible artifact); no such caller exists yet.
+
+**Technical debt introduced.** None.
+
+**Suggested improvements.** None proposed — scope was fully specified by
+the owner's review.
+
+**Remaining work.** Owner/Chief Architect closure review of ID-7A
+(inclusive of this hardening). ID-7C (the V0 evaluator), ID-7D, ID-7E
+(workflow wiring), and ID-7F (replay/shadow) all remain not started, not
+authorized.
+
+**Commit message.**
+```
+fix(intraday): harden EntryActionability domain/currentness invariants (ID-7A.1)
+
+- Reject ACTIONABLE verdicts with an untruthful upstream state
+  (decision_type != TRADE or entry_qualification_state != QUALIFIED) or
+  any non-empty reason_codes — repository binding proved copied fields
+  match real records, never that they formed a legal verdict
+- Constrain NOT_ACTIONABLE/UNKNOWN reason codes to their correct semantic
+  family (new UPSTREAM_ELIGIBILITY_REASON_CODES/
+  EVIDENCE_SUFFICIENCY_REASON_CODES frozensets) and validate upstream
+  reason truthfulness without inventing evaluator gate-ordering
+- Add point-in-time causal-ordering invariants (entry_actionability_as_of
+  >= entry_qualification_as_of; evidence_as_of <= entry_actionability_as_of)
+  per ADR-015's frozen EQ-evidence-to-EA-assertion chain
+- Fix is_currently_usable to reject now < evidence_as_of as an invalid
+  temporal invocation instead of silently computing a negative age and
+  misclassifying future evidence as CURRENT
+- Validate EntryQualificationIdentity structurally and require
+  persisted_at to be timezone-aware in save_entry_actionability
+- Add 29 tests proving the above and that repository binding validation
+  never substitutes for domain-construction legality
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+```
+
+**Outcome:** ID-7A.1 complete — ID-7A ready for Owner / Chief Architect
+closure review. Not marked Owner-approved. ID-7C not authorized.
+
+---
+
 ## ID-7A Entry Actionability Domain Model + Persistence Contract — Implementation Complete
 
 **Summary.** Owner/Chief Architect approved and closed ID-7B, ID-7B.1,

@@ -58,6 +58,17 @@ class EntryQualificationIdentity:
     decision_id: str
     methodology_version: str
 
+    def __post_init__(self) -> None:
+        """ID-7A.1: structural validation matching the persisted EQ
+        identity's own conventions — a caller-supplied "current" identity
+        that is itself malformed must fail loudly here, never silently
+        produce a SUPERSEDED verdict via a spurious equality mismatch."""
+        for name in ("instrument_id", "decision_id", "methodology_version"):
+            if not getattr(self, name):
+                raise ValueError(f"EntryQualificationIdentity.{name} is mandatory")
+        if self.as_of.tzinfo is None:
+            raise ValueError("EntryQualificationIdentity.as_of must be timezone-aware")
+
 
 def bound_entry_qualification_identity(
     entry_actionability: EntryActionability,
@@ -123,6 +134,22 @@ def is_currently_usable(
     """
     if now.tzinfo is None:
         raise ValueError("is_currently_usable now must be timezone-aware")
+
+    # ID-7A.1: a caller asking currentness with `now` earlier than the
+    # artifact's own evidence checkpoint has supplied a temporally
+    # impossible read context — computing `now - evidence_as_of` would
+    # yield a negative age that never exceeds the staleness threshold,
+    # silently misclassifying future evidence as CURRENT. Reject the
+    # invocation outright rather than inventing a new currentness label.
+    if (
+        entry_actionability.evidence_as_of is not None
+        and now < entry_actionability.evidence_as_of
+    ):
+        raise ValueError(
+            f"is_currently_usable now ({now.isoformat()}) precedes "
+            f"evidence_as_of ({entry_actionability.evidence_as_of.isoformat()}) — "
+            "temporally impossible read context"
+        )
 
     if entry_actionability.state is not EntryActionabilityState.ACTIONABLE:
         return CurrentnessResult(

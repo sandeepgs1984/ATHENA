@@ -77,6 +77,8 @@ def _ea(
     direction: Direction = Direction.LONG,
     state: EntryActionabilityState = EntryActionabilityState.ACTIONABLE,
     reason_codes: tuple[EntryActionabilityReasonCode, ...] = (),
+    decision_type: DecisionType = DecisionType.TRADE,
+    entry_qualification_state: EntryQualificationState = EntryQualificationState.QUALIFIED,
     evidence_as_of: datetime | None = EA_AS_OF,
     entry_reference: EntryReference | None = None,
     entry_location_context: EntryLocationContext | None = None,
@@ -107,9 +109,9 @@ def _ea(
         entry_qualification_methodology_version=EQ_DEFAULT_METHODOLOGY_VERSION,
         entry_actionability_as_of=entry_actionability_as_of,
         entry_actionability_methodology_version=ENTRY_ACTIONABILITY_DEFAULT_METHODOLOGY_VERSION,
-        decision_type=DecisionType.TRADE,
+        decision_type=decision_type,
         direction=direction,
-        entry_qualification_state=EntryQualificationState.QUALIFIED,
+        entry_qualification_state=entry_qualification_state,
         run_id="run-1",
         cycle_id="cycle-1",
         state=state,
@@ -340,7 +342,8 @@ def test_not_actionable_forbids_all_value_objects() -> None:
     with pytest.raises(ValueError, match="must be None when state=NOT_ACTIONABLE"):
         _ea(
             state=EntryActionabilityState.NOT_ACTIONABLE,
-            reason_codes=(EntryActionabilityReasonCode.INSUFFICIENT_EVIDENCE,),
+            entry_qualification_state=EntryQualificationState.NOT_YET,
+            reason_codes=(EntryActionabilityReasonCode.UPSTREAM_EQ_NOT_QUALIFIED,),
             entry_reference=_entry_reference(),
         )
 
@@ -367,6 +370,7 @@ def test_unknown_forbids_value_objects() -> None:
 def test_not_actionable_with_reason_and_no_value_objects_is_valid() -> None:
     ea = _ea(
         state=EntryActionabilityState.NOT_ACTIONABLE,
+        entry_qualification_state=EntryQualificationState.NOT_YET,
         reason_codes=(EntryActionabilityReasonCode.UPSTREAM_EQ_NOT_QUALIFIED,),
     )
     assert ea.entry_reference is None
@@ -473,3 +477,177 @@ def test_immutable_and_equal_by_value() -> None:
 def test_evidence_finality_reuses_eq_type_no_duplicate_enum() -> None:
     ea = _ea()
     assert isinstance(ea.evidence_finality, EntryEvidenceFinality)
+
+
+# --------------------------------------------------------------------------- #
+# ID-7A.1: domain-integrity hardening — impossible-artifact rejection
+# --------------------------------------------------------------------------- #
+
+
+def test_actionable_rejects_watch_decision_type() -> None:
+    with pytest.raises(ValueError, match="ACTIONABLE requires decision_type == TRADE"):
+        _ea(state=EntryActionabilityState.ACTIONABLE, decision_type=DecisionType.WATCH)
+
+
+def test_actionable_rejects_non_qualified_eq_state() -> None:
+    with pytest.raises(
+        ValueError, match="ACTIONABLE requires entry_qualification_state == QUALIFIED"
+    ):
+        _ea(
+            state=EntryActionabilityState.ACTIONABLE,
+            entry_qualification_state=EntryQualificationState.NOT_YET,
+        )
+
+
+def test_actionable_rejects_any_blocking_reason_code() -> None:
+    for code in EntryActionabilityReasonCode:
+        with pytest.raises(ValueError, match="ACTIONABLE requires reason_codes to be empty"):
+            _ea(state=EntryActionabilityState.ACTIONABLE, reason_codes=(code,))
+
+
+def test_not_actionable_rejects_evidence_family_reason() -> None:
+    with pytest.raises(
+        ValueError, match="NOT_ACTIONABLE reason_codes must be upstream-eligibility reasons"
+    ):
+        _ea(
+            state=EntryActionabilityState.NOT_ACTIONABLE,
+            entry_qualification_state=EntryQualificationState.NOT_YET,
+            reason_codes=(EntryActionabilityReasonCode.INSUFFICIENT_EVIDENCE,),
+        )
+
+
+def test_unknown_rejects_upstream_family_reason() -> None:
+    with pytest.raises(
+        ValueError, match="UNKNOWN reason_codes must be evidence-sufficiency reasons"
+    ):
+        _ea(
+            state=EntryActionabilityState.UNKNOWN,
+            reason_codes=(EntryActionabilityReasonCode.UPSTREAM_DECISION_NOT_TRADE,),
+        )
+
+
+def test_upstream_decision_not_trade_requires_non_trade_decision_type() -> None:
+    """A NOT_ACTIONABLE verdict claiming UPSTREAM_DECISION_NOT_TRADE while
+    decision_type is actually TRADE is untruthful and must be rejected —
+    domain-integrity, independent of any repository binding check."""
+    with pytest.raises(
+        ValueError,
+        match="UPSTREAM_DECISION_NOT_TRADE reason_code requires decision_type",
+    ):
+        _ea(
+            state=EntryActionabilityState.NOT_ACTIONABLE,
+            decision_type=DecisionType.TRADE,
+            reason_codes=(EntryActionabilityReasonCode.UPSTREAM_DECISION_NOT_TRADE,),
+        )
+
+
+def test_upstream_eq_not_qualified_requires_non_qualified_eq_state() -> None:
+    with pytest.raises(
+        ValueError,
+        match="UPSTREAM_EQ_NOT_QUALIFIED reason_code requires entry_qualification_state",
+    ):
+        _ea(
+            state=EntryActionabilityState.NOT_ACTIONABLE,
+            entry_qualification_state=EntryQualificationState.QUALIFIED,
+            reason_codes=(EntryActionabilityReasonCode.UPSTREAM_EQ_NOT_QUALIFIED,),
+        )
+
+
+def test_not_actionable_upstream_decision_not_trade_valid_when_truthful() -> None:
+    ea = _ea(
+        state=EntryActionabilityState.NOT_ACTIONABLE,
+        decision_type=DecisionType.WATCH,
+        reason_codes=(EntryActionabilityReasonCode.UPSTREAM_DECISION_NOT_TRADE,),
+    )
+    assert ea.decision_type is DecisionType.WATCH
+
+
+def test_not_actionable_multiple_upstream_reasons_in_same_family_allowed() -> None:
+    """Multiple reasons within the same semantic family remain
+    representable — the domain model does not invent an evaluator
+    precedence/exclusivity rule."""
+    ea = _ea(
+        state=EntryActionabilityState.NOT_ACTIONABLE,
+        decision_type=DecisionType.WATCH,
+        entry_qualification_state=EntryQualificationState.NOT_YET,
+        reason_codes=(
+            EntryActionabilityReasonCode.UPSTREAM_DECISION_NOT_TRADE,
+            EntryActionabilityReasonCode.UPSTREAM_EQ_NOT_QUALIFIED,
+        ),
+    )
+    assert len(ea.reason_codes) == 2
+
+
+def test_trade_qualified_actionable_with_no_reasons_is_valid() -> None:
+    ea = _ea(
+        state=EntryActionabilityState.ACTIONABLE,
+        decision_type=DecisionType.TRADE,
+        entry_qualification_state=EntryQualificationState.QUALIFIED,
+    )
+    assert ea.state is EntryActionabilityState.ACTIONABLE
+    assert ea.reason_codes == ()
+
+
+# --------------------------------------------------------------------------- #
+# ID-7A.1: point-in-time causal-ordering invariants
+# --------------------------------------------------------------------------- #
+
+
+def test_entry_actionability_as_of_before_entry_qualification_as_of_rejected() -> None:
+    with pytest.raises(ValueError, match="must not precede entry_qualification_as_of"):
+        _ea(entry_actionability_as_of=EQ_AS_OF.replace(minute=0))
+
+
+def test_entry_actionability_as_of_equal_to_entry_qualification_as_of_is_valid() -> None:
+    ea = _ea(
+        entry_qualification_as_of=EQ_AS_OF,
+        entry_actionability_as_of=EQ_AS_OF,
+        evidence_as_of=EQ_AS_OF,
+    )
+    assert ea.entry_actionability_as_of == ea.entry_qualification_as_of
+
+
+def test_future_same_eq_reevaluation_is_valid() -> None:
+    """entry_actionability_as_of strictly LATER than
+    entry_qualification_as_of is valid — a future re-evaluation of the
+    same, still-current EQ observation (ADR-015's own extensibility)."""
+    later = EA_AS_OF.replace(hour=11)
+    ea = _ea(entry_qualification_as_of=EQ_AS_OF, entry_actionability_as_of=later, evidence_as_of=later)
+    assert ea.entry_actionability_as_of > ea.entry_qualification_as_of
+
+
+def test_evidence_as_of_after_entry_actionability_as_of_rejected() -> None:
+    with pytest.raises(ValueError, match="must not be later than entry_actionability_as_of"):
+        _ea(
+            entry_actionability_as_of=EA_AS_OF,
+            evidence_as_of=EA_AS_OF.replace(minute=59),
+        )
+
+
+def test_evidence_as_of_equal_to_entry_actionability_as_of_is_valid() -> None:
+    ea = _ea(entry_actionability_as_of=EA_AS_OF, evidence_as_of=EA_AS_OF)
+    assert ea.evidence_as_of == ea.entry_actionability_as_of
+
+
+# --------------------------------------------------------------------------- #
+# ID-7A.1: reward/RR structural safety
+# --------------------------------------------------------------------------- #
+
+
+def test_reward_negative_rr_rejected() -> None:
+    with pytest.raises(ValueError, match="reward_risk_to_t1 must not be negative"):
+        RewardReference(
+            t1_price=Decimal("101.00"),
+            t2_price=Decimal("101.50"),
+            basis=RewardBasis.GOAL_BANDS_ONLY,
+            reward_risk_to_t1=Decimal("-0.1"),
+            reward_risk_to_t2=Decimal("0.5"),
+        )
+    with pytest.raises(ValueError, match="reward_risk_to_t2 must not be negative"):
+        RewardReference(
+            t1_price=Decimal("101.00"),
+            t2_price=Decimal("101.50"),
+            basis=RewardBasis.GOAL_BANDS_ONLY,
+            reward_risk_to_t1=Decimal("0.5"),
+            reward_risk_to_t2=Decimal("-0.1"),
+        )

@@ -221,10 +221,11 @@ def test_actionable_round_trips_exactly_with_all_value_objects(repo) -> None:
 
 
 def test_not_actionable_round_trips_with_no_value_objects(repo) -> None:
-    _seed(repo)
+    _seed(repo, decision_type=DecisionType.WATCH)
     ea = _ea(
+        decision_type=DecisionType.WATCH,
         state=EntryActionabilityState.NOT_ACTIONABLE,
-        reason_codes=(EntryActionabilityReasonCode.INVALIDATION_UNAVAILABLE,),
+        reason_codes=(EntryActionabilityReasonCode.UPSTREAM_DECISION_NOT_TRADE,),
         evidence_as_of=None,
     )
     repo.save_entry_actionability(ea, persisted_at=EA_AS_OF)
@@ -244,7 +245,7 @@ def test_reason_codes_order_is_preserved(repo) -> None:
         EntryActionabilityReasonCode.INVALIDATION_UNAVAILABLE,
         EntryActionabilityReasonCode.INSUFFICIENT_EVIDENCE,
     )
-    ea = _ea(state=EntryActionabilityState.NOT_ACTIONABLE, reason_codes=ordered)
+    ea = _ea(state=EntryActionabilityState.UNKNOWN, reason_codes=ordered)
     repo.save_entry_actionability(ea, persisted_at=EA_AS_OF)
     got = repo.get_entry_actionability(
         instrument_id=IID, session_date=DAY, entry_qualification_as_of=EQ_AS_OF,
@@ -323,10 +324,22 @@ def test_missing_decision_raises_repository_error(repo) -> None:
 
 
 def test_decision_type_mismatch_fails(repo) -> None:
+    """``ea`` itself is domain-legal (a truthful NOT_ACTIONABLE + WATCH
+    verdict), but the real persisted canonical Decision is TRADE — proves
+    the repository binding check catches a mismatch domain construction
+    alone cannot see."""
     repo.save_decision(_decision(decision_type=DecisionType.TRADE))
     repo.save_entry_qualification(_eq(), persisted_at=EQ_AS_OF)
     with pytest.raises(RepositoryError, match="decision binding mismatch: decision_type"):
-        repo.save_entry_actionability(_ea(decision_type=DecisionType.WATCH), persisted_at=EA_AS_OF)
+        repo.save_entry_actionability(
+            _ea(
+                decision_type=DecisionType.WATCH,
+                state=EntryActionabilityState.NOT_ACTIONABLE,
+                reason_codes=(EntryActionabilityReasonCode.UPSTREAM_DECISION_NOT_TRADE,),
+                evidence_as_of=None,
+            ),
+            persisted_at=EA_AS_OF,
+        )
 
 
 def test_run_id_mismatch_against_canonical_decision_fails(repo) -> None:
@@ -359,10 +372,17 @@ def test_missing_upstream_eq_identity_raises_repository_error(repo) -> None:
 def test_eq_state_mismatch_against_real_persisted_eq_fails(repo) -> None:
     """`ea.entry_qualification_state` must agree with the real, persisted
     EntryQualification row it claims to bind to — a single-column
-    reference alone does not prove that."""
+    reference alone does not prove that. `ea` itself is domain-legal (a
+    truthful NOT_ACTIONABLE + non-QUALIFIED verdict); only the real
+    persisted EQ (QUALIFIED) disagrees."""
     repo.save_decision(_decision())
     repo.save_entry_qualification(_eq(state=EntryQualificationState.QUALIFIED), persisted_at=EQ_AS_OF)
-    contradictory = _ea(entry_qualification_state=EntryQualificationState.NOT_YET)
+    contradictory = _ea(
+        entry_qualification_state=EntryQualificationState.NOT_YET,
+        state=EntryActionabilityState.NOT_ACTIONABLE,
+        reason_codes=(EntryActionabilityReasonCode.UPSTREAM_EQ_NOT_QUALIFIED,),
+        evidence_as_of=None,
+    )
     with pytest.raises(RepositoryError, match="EntryQualification binding mismatch"):
         repo.save_entry_actionability(contradictory, persisted_at=EA_AS_OF)
 
@@ -418,7 +438,7 @@ def test_two_different_entry_actionability_as_of_observations_both_persist(repo)
     repo.save_entry_actionability(
         _ea(
             entry_actionability_as_of=later,
-            state=EntryActionabilityState.NOT_ACTIONABLE,
+            state=EntryActionabilityState.UNKNOWN,
             reason_codes=(EntryActionabilityReasonCode.INVALIDATION_UNAVAILABLE,),
             evidence_as_of=None,
         ),
@@ -454,7 +474,7 @@ def test_latest_for_entry_qualification_returns_most_recent_ea_as_of(repo) -> No
     repo.save_entry_actionability(_ea(entry_actionability_as_of=earlier), persisted_at=earlier)
     repo.save_entry_actionability(
         _ea(
-            entry_actionability_as_of=later, state=EntryActionabilityState.NOT_ACTIONABLE,
+            entry_actionability_as_of=later, state=EntryActionabilityState.UNKNOWN,
             reason_codes=(EntryActionabilityReasonCode.INVALIDATION_UNAVAILABLE,), evidence_as_of=None,
         ),
         persisted_at=later,
@@ -464,7 +484,7 @@ def test_latest_for_entry_qualification_returns_most_recent_ea_as_of(repo) -> No
         decision_id="decision-1", entry_qualification_methodology_version=EQ_DEFAULT_METHODOLOGY_VERSION,
     )
     assert latest.entry_actionability_as_of == later
-    assert latest.state is EntryActionabilityState.NOT_ACTIONABLE
+    assert latest.state is EntryActionabilityState.UNKNOWN
 
 
 def test_latest_for_instrument_session_returns_most_recent(repo) -> None:
@@ -473,14 +493,14 @@ def test_latest_for_instrument_session_returns_most_recent(repo) -> None:
     repo.save_entry_actionability(_ea(entry_actionability_as_of=earlier), persisted_at=earlier)
     repo.save_entry_actionability(
         _ea(
-            entry_actionability_as_of=later, state=EntryActionabilityState.NOT_ACTIONABLE,
+            entry_actionability_as_of=later, state=EntryActionabilityState.UNKNOWN,
             reason_codes=(EntryActionabilityReasonCode.INVALIDATION_UNAVAILABLE,), evidence_as_of=None,
         ),
         persisted_at=later,
     )
     latest = repo.latest_entry_actionability_for_instrument_session(IID, DAY)
     assert latest.entry_actionability_as_of == later
-    assert latest.state is EntryActionabilityState.NOT_ACTIONABLE
+    assert latest.state is EntryActionabilityState.UNKNOWN
 
 
 def test_latest_lookup_is_never_confused_with_decision_id_alone(repo) -> None:
@@ -497,7 +517,7 @@ def test_latest_lookup_is_never_confused_with_decision_id_alone(repo) -> None:
         _ea(entry_qualification_as_of=EQ_AS_OF, entry_actionability_as_of=EA_AS_OF),
         persisted_at=EA_AS_OF,
     )
-    later_ea_as_of = EA_AS_OF.replace(minute=1)
+    later_ea_as_of = EA_AS_OF.replace(minute=59)
     repo.save_entry_actionability(
         _ea(entry_qualification_as_of=later_eq_as_of, entry_actionability_as_of=later_ea_as_of),
         persisted_at=later_ea_as_of,
@@ -522,14 +542,14 @@ def test_append_only_history_is_never_overwritten(repo) -> None:
 
 def test_historical_actionable_row_state_unaffected_by_a_later_write(repo) -> None:
     """Append-only immutability: an ACTIONABLE row persisted earlier keeps
-    reading ACTIONABLE even after a later, unrelated NOT_ACTIONABLE row is
+    reading ACTIONABLE even after a later, unrelated UNKNOWN row is
     persisted for the same instrument/session."""
     _seed(repo)
     repo.save_entry_actionability(_ea(entry_actionability_as_of=EA_AS_OF), persisted_at=EA_AS_OF)
     later = EA_AS_OF.replace(minute=59)
     repo.save_entry_actionability(
         _ea(
-            entry_actionability_as_of=later, state=EntryActionabilityState.NOT_ACTIONABLE,
+            entry_actionability_as_of=later, state=EntryActionabilityState.UNKNOWN,
             reason_codes=(EntryActionabilityReasonCode.INVALIDATION_UNAVAILABLE,), evidence_as_of=None,
         ),
         persisted_at=later,
@@ -649,4 +669,47 @@ def test_missing_decision_check_fires_before_any_insert(repo) -> None:
     ea = _ea(decision_id="nonexistent-decision")
     with pytest.raises(RepositoryError, match="references unknown decision_id"):
         repo.save_entry_actionability(ea, persisted_at=EA_AS_OF)
+    assert repo.record_counts()["entry_actionabilities"] == 0
+
+
+# --------------------------------------------------------------------------- #
+# 30-31: ID-7A.1 persisted_at timezone-awareness (repository input hygiene)
+# --------------------------------------------------------------------------- #
+
+
+def test_naive_persisted_at_rejected_zero_row_written(repo) -> None:
+    _seed(repo)
+    ea = _ea()
+    with pytest.raises(RepositoryError, match="persisted_at must be timezone-aware"):
+        repo.save_entry_actionability(ea, persisted_at=datetime(2026, 9, 4, 9, 50))
+    assert repo.record_counts()["entry_actionabilities"] == 0
+    assert repo.get_entry_actionability(
+        instrument_id=IID, session_date=DAY, entry_qualification_as_of=EQ_AS_OF,
+        decision_id="decision-1", entry_qualification_methodology_version=EQ_DEFAULT_METHODOLOGY_VERSION,
+        entry_actionability_as_of=EA_AS_OF, entry_actionability_methodology_version=EA_DEFAULT_METHODOLOGY_VERSION,
+    ) is None
+
+
+def test_timezone_aware_persisted_at_continues_to_work(repo) -> None:
+    _seed(repo)
+    ea = _ea()
+    assert repo.save_entry_actionability(ea, persisted_at=EA_AS_OF) is True
+    assert repo.record_counts()["entry_actionabilities"] == 1
+
+
+# --------------------------------------------------------------------------- #
+# 32: repository binding does not substitute for domain legality
+# --------------------------------------------------------------------------- #
+
+
+def test_domain_legality_checked_before_persistence_even_with_valid_binding(repo) -> None:
+    """A real WATCH Decision and a real, matching QUALIFIED
+    EntryQualification both exist — both binding validations would pass
+    if construction ever reached them. Wrapping them in an ACTIONABLE
+    verdict is still illegal, and the domain object itself must refuse
+    construction before save_entry_actionability is ever called; no row
+    is ever written."""
+    _seed(repo, decision_type=DecisionType.WATCH)
+    with pytest.raises(ValueError, match="ACTIONABLE requires decision_type == TRADE"):
+        _ea(state=EntryActionabilityState.ACTIONABLE, decision_type=DecisionType.WATCH)
     assert repo.record_counts()["entry_actionabilities"] == 0

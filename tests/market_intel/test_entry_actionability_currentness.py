@@ -89,11 +89,11 @@ def _not_actionable_ea() -> EntryActionability:
         entry_actionability_methodology_version=ENTRY_ACTIONABILITY_DEFAULT_METHODOLOGY_VERSION,
         decision_type=DecisionType.TRADE,
         direction=Direction.LONG,
-        entry_qualification_state=EntryQualificationState.QUALIFIED,
+        entry_qualification_state=EntryQualificationState.NOT_YET,
         run_id="run-1",
         cycle_id="cycle-1",
         state=EntryActionabilityState.NOT_ACTIONABLE,
-        reason_codes=(EntryActionabilityReasonCode.INVALIDATION_UNAVAILABLE,),
+        reason_codes=(EntryActionabilityReasonCode.UPSTREAM_EQ_NOT_QUALIFIED,),
         evidence_finality=EntryEvidenceFinality.NO_DECISIVE_PROVISIONAL_M5_DEPENDENCY,
         evidence_as_of=None,
         entry_reference=None,
@@ -273,3 +273,149 @@ def test_historical_actionable_row_stays_actionable_regardless_of_currentness() 
     )
     assert result.status is EntryActionabilityCurrentness.STALE
     assert ea.state is EntryActionabilityState.ACTIONABLE  # unchanged
+
+
+# --------------------------------------------------------------------------- #
+# ID-7A.1: future-evidence temporal-input rejection
+# --------------------------------------------------------------------------- #
+
+
+def test_now_equal_to_evidence_as_of_is_valid_current() -> None:
+    ea = _actionable_ea()
+    result = is_currently_usable(
+        ea,
+        current_entry_qualification_identity=_current_identity(ea),
+        current_session_phase=SessionPhase.REGULAR,
+        now=ea.evidence_as_of,
+    )
+    assert result.status is EntryActionabilityCurrentness.CURRENT
+
+
+def test_now_before_evidence_as_of_is_rejected_as_invalid_temporal_input() -> None:
+    """A caller-supplied `now` earlier than the artifact's own evidence
+    checkpoint is a temporally impossible read context — must raise, never
+    silently compute a negative age and return CURRENT."""
+    ea = _actionable_ea()
+    earlier_now = EVIDENCE_AS_OF - timedelta(seconds=1)
+    with pytest.raises(ValueError, match="precedes evidence_as_of"):
+        is_currently_usable(
+            ea,
+            current_entry_qualification_identity=_current_identity(ea),
+            current_session_phase=SessionPhase.REGULAR,
+            now=earlier_now,
+        )
+
+
+def test_now_far_before_evidence_as_of_never_classified_current() -> None:
+    ea = _actionable_ea()
+    with pytest.raises(ValueError, match="precedes evidence_as_of"):
+        is_currently_usable(
+            ea,
+            current_entry_qualification_identity=_current_identity(ea),
+            current_session_phase=SessionPhase.REGULAR,
+            now=EVIDENCE_AS_OF - timedelta(hours=1),
+        )
+
+
+def test_future_evidence_rejection_applies_even_when_not_actionable() -> None:
+    """The temporal-impossibility check is a general input-validation
+    concern, not specific to ACTIONABLE — it fires whenever evidence_as_of
+    is present, regardless of state, before any state-based branching."""
+    ea = _actionable_ea()
+    stale_but_still_future_relative_now = ea.evidence_as_of - timedelta(seconds=1)
+    with pytest.raises(ValueError, match="precedes evidence_as_of"):
+        is_currently_usable(
+            ea,
+            current_entry_qualification_identity=_current_identity(ea),
+            current_session_phase=SessionPhase.CLOSED,
+            now=stale_but_still_future_relative_now,
+        )
+
+
+def test_exact_600s_boundary_still_holds_with_the_new_check_in_place() -> None:
+    """Regression guard: the future-evidence check must not shift the
+    existing, already-frozen 600.0s boundary semantics."""
+    ea = _actionable_ea()
+    at_boundary = EVIDENCE_AS_OF + timedelta(seconds=CURRENTNESS_MAX_EVIDENCE_AGE_SECONDS)
+    just_past = EVIDENCE_AS_OF + timedelta(seconds=CURRENTNESS_MAX_EVIDENCE_AGE_SECONDS + 0.001)
+    current = is_currently_usable(
+        ea,
+        current_entry_qualification_identity=_current_identity(ea),
+        current_session_phase=SessionPhase.REGULAR,
+        now=at_boundary,
+    )
+    stale = is_currently_usable(
+        ea,
+        current_entry_qualification_identity=_current_identity(ea),
+        current_session_phase=SessionPhase.REGULAR,
+        now=just_past,
+    )
+    assert current.status is EntryActionabilityCurrentness.CURRENT
+    assert stale.status is EntryActionabilityCurrentness.STALE
+
+
+# --------------------------------------------------------------------------- #
+# ID-7A.1: EntryQualificationIdentity structural validation
+# --------------------------------------------------------------------------- #
+
+
+def test_identity_naive_as_of_rejected() -> None:
+    with pytest.raises(ValueError, match="as_of must be timezone-aware"):
+        EntryQualificationIdentity(
+            instrument_id="NSE:TEST",
+            session_date=DAY,
+            as_of=datetime(2026, 9, 4, 9, 45),
+            decision_id="decision-1",
+            methodology_version=EQ_DEFAULT_METHODOLOGY_VERSION,
+        )
+
+
+def test_identity_empty_instrument_id_rejected() -> None:
+    with pytest.raises(ValueError, match="instrument_id is mandatory"):
+        EntryQualificationIdentity(
+            instrument_id="",
+            session_date=DAY,
+            as_of=EQ_AS_OF,
+            decision_id="decision-1",
+            methodology_version=EQ_DEFAULT_METHODOLOGY_VERSION,
+        )
+
+
+def test_identity_empty_decision_id_rejected() -> None:
+    with pytest.raises(ValueError, match="decision_id is mandatory"):
+        EntryQualificationIdentity(
+            instrument_id="NSE:TEST",
+            session_date=DAY,
+            as_of=EQ_AS_OF,
+            decision_id="",
+            methodology_version=EQ_DEFAULT_METHODOLOGY_VERSION,
+        )
+
+
+def test_identity_empty_methodology_version_rejected() -> None:
+    with pytest.raises(ValueError, match="methodology_version is mandatory"):
+        EntryQualificationIdentity(
+            instrument_id="NSE:TEST",
+            session_date=DAY,
+            as_of=EQ_AS_OF,
+            decision_id="decision-1",
+            methodology_version="",
+        )
+
+
+def test_full_composite_supersession_behavior_unchanged() -> None:
+    """Identity validation is additive input hygiene only — it must not
+    change the exact full-composite-equality supersession semantics
+    already frozen and tested elsewhere in this file."""
+    ea = _actionable_ea()
+    valid_but_different_identity = EntryQualificationIdentity(
+        instrument_id="NSE:TEST", session_date=DAY, as_of=EQ_AS_OF.replace(minute=46),
+        decision_id="decision-1", methodology_version=EQ_DEFAULT_METHODOLOGY_VERSION,
+    )
+    result = is_currently_usable(
+        ea,
+        current_entry_qualification_identity=valid_but_different_identity,
+        current_session_phase=SessionPhase.REGULAR,
+        now=EVIDENCE_AS_OF,
+    )
+    assert result.status is EntryActionabilityCurrentness.SUPERSEDED

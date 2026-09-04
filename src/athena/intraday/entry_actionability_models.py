@@ -46,6 +46,24 @@ V0 methodology frozen by ID-7B.2/ID-7B.2.1 (`docs/research/ID-7B2-ENTRY-RISK-CAL
   reused from `Decision`) — V0's own empirical validation status is
   `LONG_VALIDATED_SHORT_UNVALIDATED` (a methodology-evidence fact, not a
   domain-representation constraint); nothing here hard-codes LONG-only.
+
+ID-7A.1 domain-integrity hardening (owner source-review correction):
+repository-level Decision/EQ binding validation proves the copied fields
+match the real upstream records, but never proved those fields form a
+LEGAL EntryActionability verdict. `__post_init__` now additionally
+rejects: an ACTIONABLE verdict whose upstream (`decision_type`,
+`entry_qualification_state`) is not truthfully TRADE+QUALIFIED, an
+ACTIONABLE verdict carrying any blocking `reason_codes`, a
+`NOT_ACTIONABLE`/`UNKNOWN` reason code drawn from the wrong semantic
+family (`UPSTREAM_ELIGIBILITY_REASON_CODES` vs.
+`EVIDENCE_SUFFICIENCY_REASON_CODES`), an untruthful upstream reason code
+(e.g. `UPSTREAM_DECISION_NOT_TRADE` while `decision_type == TRADE`), and
+a point-in-time causal-ordering violation
+(`entry_actionability_as_of < entry_qualification_as_of`, or
+`evidence_as_of > entry_actionability_as_of`). This is domain-integrity
+enforcement only — it rejects an impossible supplied combination; it
+does not decide which legal combination the future ID-7C evaluator
+should produce, and it does not implement any upstream-gate ordering.
 """
 
 from __future__ import annotations
@@ -118,6 +136,31 @@ class EntryActionabilityReasonCode(str, Enum):
     UPSTREAM_EQ_NOT_QUALIFIED = "UPSTREAM_EQ_NOT_QUALIFIED"
     INSUFFICIENT_EVIDENCE = "INSUFFICIENT_EVIDENCE"
     INVALIDATION_UNAVAILABLE = "INVALIDATION_UNAVAILABLE"
+
+
+#: ID-7A.1: the semantic reason-code family a persisted `NOT_ACTIONABLE`
+#: verdict may draw from — upstream eligibility failures. A future
+#: evaluator (ID-7C) decides which of these to report and in what
+#: combination; the domain model only rejects a reason code from the
+#: wrong family or an untruthful one (see `EntryActionability.__post_init__`).
+UPSTREAM_ELIGIBILITY_REASON_CODES = frozenset(
+    {
+        EntryActionabilityReasonCode.UPSTREAM_DECISION_NOT_TRADE,
+        EntryActionabilityReasonCode.UPSTREAM_EQ_NOT_QUALIFIED,
+    }
+)
+
+#: ID-7A.1: the semantic reason-code family a persisted `UNKNOWN` verdict
+#: may draw from — required methodology evidence could not be resolved.
+#: Never truthfulness-checked against other fields (that is an evaluator-
+#: time judgment about upstream evidence this object does not carry) —
+#: only family membership is enforced.
+EVIDENCE_SUFFICIENCY_REASON_CODES = frozenset(
+    {
+        EntryActionabilityReasonCode.INSUFFICIENT_EVIDENCE,
+        EntryActionabilityReasonCode.INVALIDATION_UNAVAILABLE,
+    }
+)
 
 
 @unique
@@ -238,6 +281,10 @@ class RewardReference:
     def __post_init__(self) -> None:
         if self.t1_price <= 0 or self.t2_price <= 0:
             raise ValueError("RewardReference prices must be positive")
+        if self.reward_risk_to_t1 is not None and self.reward_risk_to_t1 < 0:
+            raise ValueError("RewardReference.reward_risk_to_t1 must not be negative")
+        if self.reward_risk_to_t2 is not None and self.reward_risk_to_t2 < 0:
+            raise ValueError("RewardReference.reward_risk_to_t2 must not be negative")
 
 
 @dataclass(frozen=True, slots=True)
@@ -327,14 +374,54 @@ class EntryActionability:
                 raise ValueError(f"EntryActionability.{name} must be timezone-aware")
         if self.evidence_as_of is not None and self.evidence_as_of.tzinfo is None:
             raise ValueError("EntryActionability.evidence_as_of must be timezone-aware")
+
+        # ID-7A.1: point-in-time causal ordering (ADR-015's frozen chain:
+        # EQ evidence/checkpoint -> EntryActionability assertion). Equality
+        # is explicitly allowed (Option 1 normally makes the checkpoints
+        # coincide); a LATER entry_actionability_as_of than
+        # entry_qualification_as_of is also valid (a future same-EQ
+        # re-evaluation) — only going backwards in market time is rejected.
+        if self.entry_actionability_as_of < self.entry_qualification_as_of:
+            raise ValueError(
+                "EntryActionability.entry_actionability_as_of "
+                f"({self.entry_actionability_as_of.isoformat()}) must not precede "
+                f"entry_qualification_as_of ({self.entry_qualification_as_of.isoformat()})"
+            )
+        if (
+            self.evidence_as_of is not None
+            and self.evidence_as_of > self.entry_actionability_as_of
+        ):
+            raise ValueError(
+                "EntryActionability.evidence_as_of "
+                f"({self.evidence_as_of.isoformat()}) must not be later than "
+                f"entry_actionability_as_of ({self.entry_actionability_as_of.isoformat()})"
+            )
+
         if len(set(self.reason_codes)) != len(self.reason_codes):
             raise ValueError("EntryActionability.reason_codes must not contain duplicates")
         if not self.explanation:
             raise ValueError("EntryActionability.explanation is mandatory (ADR-005)")
 
         if self.state is EntryActionabilityState.ACTIONABLE:
-            if not self.reason_codes:
-                pass  # ACTIONABLE may legitimately have zero blocking reasons.
+            # ID-7A.1: domain-integrity gate — an ACTIONABLE verdict is only
+            # a legal artifact when it truthfully rests on a TRADE Decision
+            # bound to a QUALIFIED EntryQualification. This does not decide
+            # WHICH state the future ID-7C evaluator should produce; it
+            # only rejects an impossible one already supplied.
+            if self.decision_type is not DecisionType.TRADE:
+                raise ValueError(
+                    f"ACTIONABLE requires decision_type == TRADE, got {self.decision_type.value}"
+                )
+            if self.entry_qualification_state is not EntryQualificationState.QUALIFIED:
+                raise ValueError(
+                    "ACTIONABLE requires entry_qualification_state == QUALIFIED, got "
+                    f"{self.entry_qualification_state.value}"
+                )
+            if self.reason_codes:
+                raise ValueError(
+                    "ACTIONABLE requires reason_codes to be empty — every persisted "
+                    "reason code represents a blocker, and ACTIONABLE is not blocked"
+                )
             if self.evidence_as_of is None:
                 raise ValueError("ACTIONABLE requires evidence_as_of")
             if (
@@ -348,20 +435,60 @@ class EntryActionability:
                     "operative_invalidation, and reward"
                 )
             self._validate_risk_geometry()
-        else:
+        elif self.state is EntryActionabilityState.NOT_ACTIONABLE:
             if not self.reason_codes:
                 raise ValueError(
-                    f"EntryActionability.reason_codes is mandatory when state={self.state.value}"
+                    "EntryActionability.reason_codes is mandatory when state=NOT_ACTIONABLE"
+                )
+            foreign = set(self.reason_codes) - UPSTREAM_ELIGIBILITY_REASON_CODES
+            if foreign:
+                raise ValueError(
+                    "NOT_ACTIONABLE reason_codes must be upstream-eligibility reasons "
+                    f"only ({sorted(c.value for c in UPSTREAM_ELIGIBILITY_REASON_CODES)}), "
+                    f"got {sorted(c.value for c in foreign)}"
                 )
             if (
-                self.entry_reference is not None
-                or self.entry_location_context is not None
-                or self.operative_invalidation is not None
-                or self.reward is not None
+                EntryActionabilityReasonCode.UPSTREAM_DECISION_NOT_TRADE in self.reason_codes
+                and self.decision_type is DecisionType.TRADE
             ):
                 raise ValueError(
-                    f"EntryActionability value objects must be None when state={self.state.value}"
+                    "UPSTREAM_DECISION_NOT_TRADE reason_code requires decision_type != "
+                    "TRADE, but decision_type is TRADE"
                 )
+            if (
+                EntryActionabilityReasonCode.UPSTREAM_EQ_NOT_QUALIFIED in self.reason_codes
+                and self.entry_qualification_state is EntryQualificationState.QUALIFIED
+            ):
+                raise ValueError(
+                    "UPSTREAM_EQ_NOT_QUALIFIED reason_code requires "
+                    "entry_qualification_state != QUALIFIED, but it is QUALIFIED"
+                )
+            self._require_no_value_objects()
+        else:
+            assert self.state is EntryActionabilityState.UNKNOWN
+            if not self.reason_codes:
+                raise ValueError(
+                    "EntryActionability.reason_codes is mandatory when state=UNKNOWN"
+                )
+            foreign = set(self.reason_codes) - EVIDENCE_SUFFICIENCY_REASON_CODES
+            if foreign:
+                raise ValueError(
+                    "UNKNOWN reason_codes must be evidence-sufficiency reasons only "
+                    f"({sorted(c.value for c in EVIDENCE_SUFFICIENCY_REASON_CODES)}), "
+                    f"got {sorted(c.value for c in foreign)}"
+                )
+            self._require_no_value_objects()
+
+    def _require_no_value_objects(self) -> None:
+        if (
+            self.entry_reference is not None
+            or self.entry_location_context is not None
+            or self.operative_invalidation is not None
+            or self.reward is not None
+        ):
+            raise ValueError(
+                f"EntryActionability value objects must be None when state={self.state.value}"
+            )
 
     def _validate_risk_geometry(self) -> None:
         """Structural (never calibrated) risk-geometry invariant, per

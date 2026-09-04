@@ -24,8 +24,10 @@ from athena.intraday.entry_actionability_currentness import (
 )
 from athena.intraday.entry_actionability_models import (
     CURRENTNESS_MAX_EVIDENCE_AGE_SECONDS,
+    EVIDENCE_SUFFICIENCY_REASON_CODES,
     T1_GOAL_BAND_PCT,
     T2_GOAL_BAND_PCT,
+    UPSTREAM_ELIGIBILITY_REASON_CODES,
     EntryActionability,
     EntryActionabilityReasonCode,
     EntryActionabilityState,
@@ -85,8 +87,10 @@ __all__ = [
     "CURRENTNESS_MAX_EVIDENCE_AGE_SECONDS",
     "DEFAULT_METHODOLOGY_VERSION",
     "ENTRY_ACTIONABILITY_DEFAULT_METHODOLOGY_VERSION",
+    "EVIDENCE_SUFFICIENCY_REASON_CODES",
     "T1_GOAL_BAND_PCT",
     "T2_GOAL_BAND_PCT",
+    "UPSTREAM_ELIGIBILITY_REASON_CODES",
     "BreakoutEvent",
     "CurrentnessResult",
     "EntryActionability",

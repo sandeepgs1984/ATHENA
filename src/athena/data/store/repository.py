@@ -1375,6 +1375,11 @@ class SqliteRepository:
         responsibility (ID-7E), unchanged from EQ's own established
         ID-6B.2A/ID-6D boundary.
         """
+        if persisted_at.tzinfo is None:
+            raise RepositoryError(
+                "EntryActionability persisted_at must be timezone-aware "
+                f"(got naive {persisted_at.isoformat()!r})"
+            )
         try:
             with self._lock, self._conn:
                 decision_row = self._conn.execute(
