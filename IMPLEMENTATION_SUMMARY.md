@@ -126,8 +126,348 @@ risk-tolerance input. ID-7A (domain/schema), ID-7C (engine), ID-7D
 (persistence), ID-7E (workflow wiring), and ID-7F (replay/shadow) remain
 not started, not authorized.
 
-**Outcome:** ID-7B methodology partially frozen — evidence required for
-numeric thresholds. Not yet marked Owner-approved.
+**Outcome:** ~~ID-7B methodology partially frozen — evidence required for
+numeric thresholds. Not yet marked Owner-approved.~~ **Update
+2026-09-04 (same day): Owner/Chief Architect reviewed and accepted this
+partial result as-is — top-level status remains
+`METHODOLOGY_PARTIALLY_FROZEN_EVIDENCE_REQUIRED`, ADR-015 remains
+Accepted, no revision required. ID-7B.1 (retrospective reconstruction
+research) authorized and completed same day — see the new top entry
+above.**
+
+---
+
+## ID-7B.1 Retrospective TRADE+EQ Reconstruction — Target Cohort Sufficient
+
+**Summary.** Owner/Chief Architect accepted ID-7B's partial methodology
+result as-is and authorized ID-7B.1: research-only investigation into
+whether a historically valid, market-time-bounded replay of the frozen
+EQ v0 engine against real historical `TRADE` decisions could produce a
+research cohort large enough to remove ID-7B's central evidence
+blocker (zero real historical `(TRADE, QUALIFIED)` episodes), without
+touching production. Read-only throughout — `mode=ro`/
+`PRAGMA query_only=ON`, zero DB writes, zero `src/` modification, zero
+provider calls.
+
+**Method.** Reused (never modified) the inner reconstruction logic
+already inside the existing, ID-6E owner-approved replay harness
+(`src/athena/data/id6e_replay_shadow_validation.py`'s `run_replay()`) —
+`SessionContextEngine` → `IndicatorEngine` (VWAP) → `ConfluenceInputs`
+(trend) → `OpeningRangeEngine` → `RelativeStrengthEngine` (real NIFTY
+50 + sector-index M5 candles) → `GapEngine` → `RelativeVolumeEngine` →
+`IntradayAnalyticsEngine.assess` → `resolve_evidence_finality` → the
+real, unmodified `EntryQualificationEngine.evaluate()` — but driven by
+each real historical `TRADE` decision's own `ts` as the evaluation
+checkpoint, instead of the harness's own fixed wall-clock checkpoint
+grid. A 300-decision feasibility sample succeeded 100% before scaling
+to the full population.
+
+**Results.**
+1. **Reconstruction**: 96,985 real `TRADE` decisions (2026-07-31 to
+   2026-08-27, 20 distinct session dates) collapse to **6,624 episodes**
+   under a zero-invented-parameter boundary rule (consecutive
+   same-instrument/session `TRADE` decisions, broken only by an
+   intervening non-`TRADE` decision or a session-date change —
+   independently re-derived twice, both agree exactly, with an internal
+   sum-of-lengths check confirming all 96,985 rows accounted for).
+   Reconstructing the episode-first-checkpoint for all 6,624:
+   **100% success, zero failures, zero exceptions**, in 62.5s.
+2. **Target cohort**: **783 `TRADE + REPLAYED_QUALIFIED` episodes**
+   (11.82% of the episode cohort) — the real research population for
+   this milestone's descriptive analysis.
+3. **Sharper SHORT-asymmetry finding than ID-7B's own**: zero `SHORT`
+   decisions exist anywhere in `db/athena.db`, of any `decision_type` —
+   not merely rare or EQ-rejected; there is no SHORT population to test
+   at all. Root cause pushed at least one layer upstream of ID-6
+   (Decision/scoring/strategy layer) — not investigated further, not
+   fixed here.
+4. **Target-cohort evidence availability** (real, not the earlier
+   general-population proxy): VWAP/M5/M15/RS/RVOL/D1-ATR/Gap all 100%
+   (783/783); OR15 `COMPLETE` 99.36%, OR30 `COMPLETE` 91.19% — both
+   higher than PS-P9B's general-population figures, consistent with
+   `QUALIFIED` checkpoints skewing later in the session.
+5. **Freshness reassessed on real target-cohort data** — VWAP-side
+   persistence 90.53%/87.11%/83.36% at +5m/+10m/+15m, closely
+   cross-validating ID-7B's own 88.32% general-population estimate;
+   trend persistence 81.73%/72.98%/63.55% — a new finding that trend
+   degrades meaningfully faster than VWAP-side, refining (not
+   overturning) `CONDITIONAL_ON_EVIDENCE_AGE`.
+6. **Entry-anchor and extension distributions** computed for VWAP,
+   qualifying-M5-close, and OR15 (a "recent M5 structural breakout"
+   candidate was explicitly not evaluated — no predeclared lookback
+   authority exists, none invented).
+7. **Invalidation candidates evaluated independently** (no precedence
+   chosen): VWAP-loss (66.98% stop-hit rate, 40.3min median
+   time-to-hit), OR15 boundary (63.76% stop-hit, only 9.2min median —
+   fast/noisy, consistent with PS-P9B's own caution about raw OR
+   events), D1-ATR 1× fallback (1.76% stop-hit, descriptive only, not a
+   proposed multiplier).
+8. **Genuine new methodological finding**: entry-anchor/invalidation-
+   candidate pairs drawn from the *same* reference level (VWAP-anchor +
+   VWAP-loss; OR15-anchor + OR15-boundary) are structurally degenerate
+   (zero risk distance by construction) — a real constraint future
+   engine design must respect.
+9. **Outcome labels** (same-trading-session horizon, frozen before
+   calculation, no ML/fitting, no horizon search): T1 (+1%) hit rate
+   23.88%, T2 (+1.5%) hit rate 14.81%, MFE median 0.43%, MAE median
+   −0.47%.
+10. RS and RVOL magnitude show a real, non-fitted descriptive gradient
+    in T1 hit rate (RS Q1 16.33% → Q4 33.16%; RVOL Q1 24.49% → Q4
+    31.12%); Gap shows no clear pattern.
+11. `cfg-full-validation` (owner-triggered "Validate All") shows a
+    materially lower qualified rate (2.76%) than the scheduled cycle
+    (20.14%) — flagged, not investigated (no methodology/blueprint
+    drift exists across trigger paths, confirmed by config audit).
+
+**Classifications.** Reconstruction: **`TARGET_COHORT_RECONSTRUCTED_SUFFICIENT`**.
+Methodology status after this milestone: **`READY_FOR_ID7B2_CALIBRATION`**
+— the evidence blocker is removed; a future calibration milestone can
+now responsibly fit specific numeric thresholds against this real
+cohort. Only 20 distinct session dates constrain how robust any future
+chronological discovery/validation split can be — flagged as a real
+limitation for that future milestone, not a blocker here. Zero
+threshold-fitting or p-hacking performed in this milestone itself.
+
+**Files created.**
+`docs/research/ID-7B1-RETROSPECTIVE-TRADE-EQ-RECONSTRUCTION.md`.
+
+**Files modified.** `docs/MILESTONES.md`, `ATHENA_BRIEFING.md`,
+`docs/ATHENA-ID-TRACK-HANDOFF.md`, this file. Zero source files;
+research scripts and the intermediate results cache live outside the
+tracked repository tree.
+
+**Tests/validation.** Read-only research milestone; every DB query used
+`mode=ro`/`PRAGMA query_only=ON` with an active write-rejection
+assertion verified; `git diff --check` and `git status --short` both
+clean throughout.
+
+**Remaining work.** ID-6 SHORT-asymmetry root cause (upstream of ID-6,
+out of this track's scope) not investigated. A comparison population
+(non-`QUALIFIED` `TRADE` episodes) was not computed, so outcome figures
+cannot yet be read as "QUALIFIED outperforms non-QUALIFIED." ID-7A
+(domain/schema), ID-7B.2 (calibration, not authorized), ID-7C (engine),
+ID-7D (persistence), ID-7E (workflow wiring), and ID-7F (replay/shadow)
+all remain not started, not authorized.
+
+**Outcome:** ~~Retrospective reconstruction complete — target cohort
+sufficient, ready for Owner / Chief Architect review. Not yet marked
+Owner-approved.~~ **Update 2026-09-04 (same day): Owner/Chief Architect
+reviewed and accepted both classifications (`TARGET_COHORT_RECONSTRUCTED_SUFFICIENT`,
+`READY_FOR_ID7B2_CALIBRATION`); ADR-015 remains Accepted. ID-7B.2
+(calibration/validation) authorized and completed same day — see the
+new top entry above.**
+
+---
+
+## ID-7B.2 Entry / Risk Calibration & Chronological Validation — V0 Calibrated
+
+**Summary.** Owner/Chief Architect accepted ID-7B.1's reconstruction and
+authorized ID-7B.2: convert ID-7B/ID-7B.1's partially-frozen methodology
+into the smallest deterministic, empirically defensible V0, via a
+predeclared chronological session-grouped discovery/validation split.
+No profitability maximization, no large parameter search, no
+actionability score, no implementation. Read-only throughout.
+
+**Fold structure (frozen before any outcome was inspected).** 20
+distinct `TRADE` session dates, sorted chronologically: first 14 (70%)
+= DISCOVERY, last 6 (30%) = VALIDATION. No episode split across folds.
+Every calibrated threshold below was derived from DISCOVERY only and
+evaluated exactly once on VALIDATION.
+
+**Key results.**
+1. Rebuilt the 6,624-episode cohort fresh (a third independent
+   derivation, exact match to ID-7B.1), this time capturing all 4
+   replay states, not only `QUALIFIED` (783 `QUALIFIED`, 4,407
+   `NOT_YET`, 1,106 `EXPIRED`, 328 `UNKNOWN`).
+2. **New comparison-population evidence** (ID-7B.1's central missing
+   piece): `TRADE+REPLAYED_QUALIFIED` episodes materially outperform
+   `ALL_NON_QUALIFIED` episodes on both folds — T1 hit rate
+   26.02%/20.34% (discovery/validation) vs 8.37%/4.83%, roughly a 3-4×
+   separation that *strengthens*, not shrinks, out of sample. `EXPIRED`
+   has zero computable outcomes by construction (checkpoint before
+   session open or after close), not a data gap.
+3. **Extension/chase gate: `EXTENSION_GATE_NOT_SUPPORTED`.** Discovery-
+   fold evidence shows the opposite of ID-7B's assumed direction — more
+   VWAP-deviation extension associates with *better* T1/T2 rates and a
+   *lower* VWAP-loss stop rate. No exclusion threshold adopted — this
+   corrects, not merely extends, ID-7B's own proposal.
+4. **Invalidation validated**: VWAP-loss = primary (66.6%/60.0%
+   stop-hit rate, stable ~26-39min median time-to-hit, 88%+
+   stop-before-target both folds). OR15-boundary = validated secondary
+   (`COMPLETE`-only, 18.07%/15.46% stop-hit) — this **corrects an
+   ID-7B.1 artifact**: its own reported 63.76% OR15 stop-hit rate paired
+   the OR15 anchor with OR15-boundary invalidation, a forbidden
+   degenerate (zero-distance) pairing; properly paired, OR15-boundary is
+   a much slower, more structural reference than that figure implied.
+   D1-ATR fallback → `NO_VALIDATED_FALLBACK` (confirmed too loose on
+   both folds).
+5. **Freshness/currentness calibrated: +10m (2 completed M5 intervals)
+   frozen** — matches ID-7P0's own measured ~9.3-minute canonical-cycle
+   duration almost exactly; VWAP-side/trend persistence (87%/73%
+   discovery, 83%/72% validation) stay reasonably stable cross-fold;
+   +15m rejected (trend persistence collapses to 58.5% on validation).
+6. **RR: `RR_INFORMATIONAL_ONLY`** — a clean discovery-fold pattern did
+   not survive validation (non-monotonic, order scrambled).
+7. **RS/RVOL/Gap: all `CONTEXT_ONLY`** — ID-7B.1's own combined-
+   population gradients did not hold once properly split by fold
+   (direction differed by fold for RVOL; RS showed no stable monotonic
+   pattern; Gap showed none either fold).
+8. **Robustness**: 2 of 6 validation-fold sessions (2026-08-24,
+   2026-08-25) dominate that fold's shortfall relative to discovery-
+   level hit rates — flagged honestly, not hidden. Top-5 instruments
+   account for only 5.49% of the `QUALIFIED` population (no
+   concentration risk). Time-of-day decline is real but mechanically
+   confounded by shrinking forward window near session close.
+9. **Classifications**: canonical-cycle `OPTION1_ACCEPTABLE_WITH_STRICT_CURRENTNESS`;
+   ID-7P0 Recommendation-A `A_ACCEPTED_ONLY_WITH_CURRENTNESS_GUARD`;
+   direction `LONG_VALIDATED_SHORT_UNVALIDATED` (zero SHORT decisions
+   exist anywhere in the database, unchanged); support/resistance
+   `V0_DOES_NOT_REQUIRE_GENERIC_SR`.
+10. **Final V0 contract frozen** (upstream eligibility gate + evidence-
+    sufficiency check + no extension gate + VWAP-loss primary /
+    OR15-boundary secondary invalidation + T1/T2 goal-band reward with
+    informational RR + validated +10m currentness gate); methodology
+    version minted (`entry-actionability-v0-2026-09-04`, illustrative
+    naming — ID-7A's own repository-consistent convention remains
+    authoritative for the final string).
+
+**Calibration top-level classification: `V0_METHODOLOGY_CALIBRATED_AND_VALIDATED`.**
+Every required dimension reached a definitive, chronologically-validated
+conclusion, including dimensions whose honest conclusion is "not
+supported" or "context only" — a complete calibration outcome, not an
+incomplete one.
+
+**A data-integrity note on this milestone's own process**: a first-draft
+narrative summary produced during this milestone contained several
+numbers (in its comparison-population section) that did not match its
+own underlying computed JSON data. Every figure in the final research
+document and this entry was independently re-derived from, and
+cross-checked for internal arithmetic consistency against, the raw
+computed JSON — not copied from that draft narrative.
+
+**Files created.**
+`docs/research/ID-7B2-ENTRY-RISK-CALIBRATION-VALIDATION.md`.
+
+**Files modified.** `docs/research/ID-7B-ENTRY-RISK-METHODOLOGY.md`
+(§37 appended, §§1-36 preserved unmodified), `docs/MILESTONES.md`,
+`ATHENA_BRIEFING.md`, `docs/ATHENA-ID-TRACK-HANDOFF.md`, this file. Zero
+source files; research scripts and caches live outside the tracked
+repository tree.
+
+**Tests/validation.** Read-only throughout (`mode=ro`/
+`PRAGMA query_only=ON`, write-rejection assertion verified); every
+computation ran as a synchronous foreground step (no detached/
+background processes this time); `git diff --check` and
+`git status --short` both clean.
+
+**Remaining work.** SHORT-side validation remains blocked by a hard
+data boundary (zero SHORT decisions exist). ID-7A (domain/schema), ID-7C
+(engine), ID-7D (persistence), ID-7E (workflow wiring), and ID-7F
+(replay/shadow) all remain not started, not authorized.
+
+**Outcome:** ~~V0 methodology calibrated and validated — ready for Owner /
+Chief Architect review. Not yet marked Owner-approved.~~ **Update
+2026-09-04 (same day): Owner/Chief Architect accepted the calibration
+evidence and `V0_METHODOLOGY_CALIBRATED_AND_VALIDATED` classification,
+but held the final V0 contract freeze for three narrow consistency
+corrections to §14's own synthesis. ID-7B.2.1 authorized and completed
+same day — see the new top entry above.**
+
+---
+
+## ID-7B.2.1 V0 Contract Consistency Correction — Ready for Freeze Review
+
+**Summary.** Owner/Chief Architect source review accepted every ID-7B.2
+calibration result and classification but found the frozen V0 contract
+(§14) did not faithfully represent what its own §8 invariant and §§6-10
+evidence actually validated. This milestone corrects three narrow
+inconsistencies in §14's synthesis only — no recalibration, no new
+fold, no new threshold search, zero calibration evidence reopened.
+Documentation-only.
+
+**Correction 1 — degenerate pairing recreated in §14.** ID-7B.2 §8
+freezes "entry anchor and invalidation reference must be independent
+price levels" and explicitly forbids `VWAP-anchor + VWAP-loss`. The
+original §14 nonetheless wrote `ENTRY LOCATION: anchor = session VWAP`
+immediately followed by `INVALIDATION: primary = VWAP-loss` — recreating
+that exact forbidden pairing in the contract's own words, even though
+§8's own data table was computed for the non-degenerate `M5-close entry
+→ VWAP-loss` pairing. **Corrected**: the entry trigger is now stated
+explicitly as the completed M5-close checkpoint price (never VWAP); VWAP
+is relabeled as entry-location *context* only (feeds the extension
+analysis from §7, never reused as an invalidation reference against
+itself).
+
+**Correction 2 — D1 ATR removed from mandatory evidence; OR15's role
+clarified.** The original §14 required VWAP + D1 ATR + M5-close price
+for evidence sufficiency, despite the final V0 not using D1 ATR for
+anything (extension gate not adopted, ATR fallback not validated, RR
+uses the VWAP-loss risk distance). **Corrected**: mandatory evidence is
+VWAP + M5-close price only. OR15-boundary is reframed as an
+always-computed, purely contextual secondary reference — never a
+fallback substituted when VWAP-loss is unavailable (no such substitution
+was calibrated) — with a deterministic rule now stated explicitly:
+VWAP-loss alone drives risk-distance/RR; OR15-boundary is exposed
+alongside it, never instead of it.
+
+**Correction 3 — freshness clock source.** The original text wrote
+"evidence age ≤ 10 minutes from `entry_actionability_as_of`," collapsing
+ADR-015/ID-7A0.1's own frozen distinction between `evidence_as_of`
+(market-time of the decisive evidence) and `entry_actionability_as_of`
+(the assertion checkpoint). **Corrected**: the frozen predicate is
+`now − evidence_as_of ≤ 10 minutes`, with an explicit note that the two
+timestamps coincide today only as a consequence of the selected Option 1
+(canonical-cycle synchronous) evaluation mode, not by definition —
+preserving ADR-015's distinction for any future evaluation mode.
+
+**Additional documentation-hygiene corrections** (same pass, no new
+analysis): removed a redundant `SESSION_NOT_ACTIONABLE` persisted reason
+code (session ineligibility at evaluation time is already fully carried
+by `UPSTREAM_EQ_NOT_QUALIFIED`, since upstream EQ cannot be `QUALIFIED`
+outside `REGULAR`); split the persisted-state mapping and read-time
+currentness predicate into two explicit, non-conflated blocks, with a
+worked example proving a persisted `ACTIONABLE` row is never rewritten
+by a later staleness/session-closed read; resolved a methodology-version
+self-contradiction (a value cannot be both "minted" and "illustrative,
+subject to later convention" — the V0 *content* is frozen, the
+persisted version *string* is deferred to ID-7A, which owns repository
+versioning authority this research milestone does not); removed an
+unsupported presumption about the two weak validation sessions'
+non-`QUALIFIED` population (now stated as genuinely unmeasured).
+
+**Preserved unchanged**: the chronological 14-discovery/6-validation
+split, `REPLAYED_QUALIFIED` materially outperforming
+`ALL_NON_QUALIFIED` on both folds, `EXTENSION_GATE_NOT_SUPPORTED`, the
+degenerate-pair invariant itself, VWAP-loss/OR15-boundary validation,
+`NO_VALIDATED_FALLBACK`, `RR_INFORMATIONAL_ONLY`,
+`RS_CONTEXT_ONLY`/`RVOL_CONTEXT_ONLY`/`GAP_CONTEXT_ONLY`, the +10m
+freshness band's numeric result, `OPTION1_ACCEPTABLE_WITH_STRICT_CURRENTNESS`,
+`A_ACCEPTED_ONLY_WITH_CURRENTNESS_GUARD`,
+`LONG_VALIDATED_SHORT_UNVALIDATED`, `V0_DOES_NOT_REQUIRE_GENERIC_SR`,
+and `V0_METHODOLOGY_CALIBRATED_AND_VALIDATED` itself.
+
+**Files created.** None.
+
+**Files modified.**
+`docs/research/ID-7B2-ENTRY-RISK-CALIBRATION-VALIDATION.md` (§9, §14,
+§15, §16, §17, §18, §27 corrected in place; §29 appended documenting the
+correction), `docs/research/ID-7B-ENTRY-RISK-METHODOLOGY.md` (§37
+updated to match the corrected contract), `docs/MILESTONES.md`,
+`ATHENA_BRIEFING.md`, `docs/ATHENA-ID-TRACK-HANDOFF.md`, this file. Zero
+source/config/schema/test files.
+
+**Tests/validation.** Documentation-only; `git diff --check` and
+`git status --short` both clean; zero `src/`/`config/`/schema/test
+changes.
+
+**Remaining work.** Owner/Chief Architect final freeze review of the
+corrected V0 contract. ID-7A (domain/schema), ID-7C (engine), ID-7D
+(persistence), ID-7E (workflow wiring), and ID-7F (replay/shadow) all
+remain not started, not authorized. ID-7B itself remains not yet
+Owner-approved/closed.
+
+**Outcome:** V0 contract corrected — ready for Owner / Chief Architect
+freeze review. Not yet marked Owner-approved.
 
 ---
 

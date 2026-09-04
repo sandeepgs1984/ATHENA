@@ -1,9 +1,17 @@
 # ID-7B — Entry / Risk Methodology Discovery & Freeze
 
-**Status: METHODOLOGY PARTIALLY FROZEN — EVIDENCE REQUIRED for numeric
-thresholds. Structural methodology (gates, hierarchy, representation
-shapes, freshness dimensions) frozen with source/evidence grounding.
-Zero production code, schema, workflow stage, or engine implemented.**
+**Status: superseded by ID-7B.1 (retrospective reconstruction) and
+ID-7B.2 (calibration/validation) — see §37 below for the final,
+chronologically-validated V0 methodology. This document's original
+sections (1-36) are preserved unmodified as the historical record of
+this milestone's own partial-freeze reasoning; §37 does not rewrite
+them.**
+
+**Original status (as of this milestone, superseded below): METHODOLOGY
+PARTIALLY FROZEN — EVIDENCE REQUIRED for numeric thresholds. Structural
+methodology (gates, hierarchy, representation shapes, freshness
+dimensions) frozen with source/evidence grounding. Zero production
+code, schema, workflow stage, or engine implemented.**
 
 ## 1. Purpose
 
@@ -636,3 +644,82 @@ extension seam is acknowledged, as already frozen by ADR-015.
   `(TRADE, QUALIFIED)` history exists (§22, §23) — currently deferred,
   not rejected outright.
 - Methodology version minting (§31) — deferred until the above resolve.
+
+---
+
+## 37. ID-7B.2 — Calibration & Chronological Validation (2026-09-04)
+
+**This section summarizes the outcome of ID-7B.1 (retrospective
+reconstruction, `docs/research/ID-7B1-RETROSPECTIVE-TRADE-EQ-RECONSTRUCTION.md`)
+and ID-7B.2 (calibration/validation,
+`docs/research/ID-7B2-ENTRY-RISK-CALIBRATION-VALIDATION.md`), both
+completed after this document's original §§1-36 were written. It does
+not rewrite or delete anything above — §§1-36 remain the historical
+record of this milestone's own partial-freeze reasoning. Where ID-7B.2
+reached a different conclusion than this document's original deferral
+(most notably: the extension/chase-risk direction), that correction is
+stated explicitly below, not silently substituted above.**
+
+ID-7B.1 found a real, sizeable retrospective research cohort was
+possible (96,985 historical `TRADE` decisions → 6,624 episodes → 783
+`TRADE+REPLAYED_QUALIFIED` target episodes), removing this document's
+central evidence blocker. ID-7B.2 then calibrated and chronologically
+validated (14 discovery / 6 validation sessions, frozen before any
+threshold was inspected) the deferred dimensions from §13/§36 above:
+
+- **Extension/chase gate**: this document (§9 above) proposed VWAP
+  deviation or ATR-normalized distance as a chase-risk gate, direction
+  unstated. **ID-7B.2 found the opposite of the assumed direction** —
+  more extension associates with *better*, not worse, outcomes on the
+  discovery fold — and classified `EXTENSION_GATE_NOT_SUPPORTED`. **No
+  extension exclusion gate is part of the final V0** — this corrects,
+  not merely extends, this document's own §9.
+- **Invalidation hierarchy** (§10 above proposed 5 tiers): ID-7B.2
+  validated exactly two, both independently paired against the
+  completed-M5-close entry reference (never against a VWAP or OR15
+  *anchor*, which §8's own degenerate-pair invariant forbids):
+  **VWAP-loss is the sole operative reference** driving risk-distance/RR;
+  **OR15-boundary (`COMPLETE`-only) is an always-computed, purely
+  contextual secondary** exposed alongside it, never substituted in as a
+  fallback (ID-7B.2.1 corrected an earlier draft of the ID-7B.2 contract
+  that had reintroduced the VWAP-anchor+VWAP-loss degeneracy this
+  document's own §8 forbids — see
+  `ID-7B2-ENTRY-RISK-CALIBRATION-VALIDATION.md` §29). The recent-
+  completed-M5-extremum tier remains unevaluated (no predeclared lookback
+  authority, unchanged). The D1-ATR fallback tier is **not adopted** —
+  validated as `NO_VALIDATED_FALLBACK` (too loose on either fold) and,
+  per ID-7B.2.1, removed from V0's mandatory evidence entirely (nothing
+  in the final contract consumes it).
+- **Reward/risk** (§12 above deferred a minimum-RR gate): ID-7B.2 tested
+  it and found the discovery-fold pattern did not survive validation —
+  **`RR_INFORMATIONAL_ONLY`**, confirmed.
+- **Freshness/currentness** (§14 above deferred the exact age
+  threshold): ID-7B.2 calibrated and validated **+10m (2 completed M5
+  intervals)** as the frozen evidence-age band — matching ID-7P0's own
+  measured canonical-cycle duration almost exactly, and keeping both
+  VWAP-side and trend persistence reasonably stable across both folds.
+- **RS/RVOL/Gap** (§22/§23 above): tested for cross-fold stability:
+  none held a stable, monotonic pattern on both folds —
+  `RS_CONTEXT_ONLY`, `RVOL_CONTEXT_ONLY`, `GAP_CONTEXT_ONLY` confirmed.
+- **Comparison population** (not computed in this document at all):
+  ID-7B.2 established, for the first time, that `TRADE+REPLAYED_QUALIFIED`
+  episodes materially outperform all non-`QUALIFIED` `TRADE` episodes
+  (roughly 3-4× the T1/T2 hit rate), and this separation holds — and
+  strengthens in relative terms — on the held-out validation fold. This
+  is the first real evidence that the frozen ID-6 methodology actually
+  selects a better population before any ID-7 gate is added.
+- **SHORT side**: unchanged — `LONG_VALIDATED_SHORT_UNVALIDATED`, zero
+  `SHORT` decisions exist anywhere in the database.
+
+**Final calibration classification: `V0_METHODOLOGY_CALIBRATED_AND_VALIDATED`.**
+The complete, frozen V0 contract is recorded in
+`docs/research/ID-7B2-ENTRY-RISK-CALIBRATION-VALIDATION.md` §14, as
+corrected by that document's own §29 (ID-7B.2.1, same day): the entry
+trigger is the completed M5-close checkpoint price (not VWAP), VWAP is
+entry-location context only, D1 ATR is removed from mandatory evidence,
+and the freshness predicate is stated against `evidence_as_of` (which
+coincides with `entry_actionability_as_of` under the selected Option 1
+mode, not by definition) — the calibration evidence and classifications
+themselves were not reopened. This document's own status line at the
+top is superseded accordingly — see that file for the authoritative
+current methodology.
