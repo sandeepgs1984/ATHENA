@@ -6,6 +6,121 @@ status updated on approval.
 
 ---
 
+## ID-7P0 Final Production Cycle Latency Attribution — Complete
+
+**Summary.** Owner authorized a final, read-only production
+latency-attribution audit 2026-09-04, after the regular NSE session
+closed, to answer one question with measured evidence: what actually
+explains ATHENA's observed ~9–10 minute production cycle latency?
+Read-only throughout — no instrumentation change, no workflow/cycle
+trigger, no provider/network call, no database write.
+
+**Evidence.** Primary sample: n=21 genuine `REFRESH`/`COMPLETED` cycles
+from 2026-09-04 (09:15–15:25 IST), every one carrying a `timing`
+payload, zero timing-integrity defects, 536 instruments on every cycle
+with zero variance. 2026-09-03's completed `REFRESH` cycles carry no
+timing payload at all (the ID-7P0 restart landed later that day) —
+cross-day replication was therefore unavailable; not required for
+closure since today's sample proved sufficient on its own.
+
+**Findings.**
+
+1. **Cycle-total distribution:** median 560.60s (≈9.34 min), p90
+   566.87s, p95 566.90s, max 570.18s — reproduces the earlier ID-6E
+   ~9.4-minute observation (median 562.97s) almost exactly, with
+   noticeably *less* tail variance (today's full spread ≈14s vs.
+   ID-6E's ≈60s).
+2. **Top-level classification: `INGESTION_DOMINANT`.** `ingestion_total`
+   accounts for 98.0–98.4% of cycle time on every one of the 21 cycles.
+   `scan_total` ≈1.6–2.0%; `orchestration_overhead_pre_final_persist`
+   ≈0% (confirmed still excludes the terminal `save_run` call, per
+   ID-7P0.1's own frozen semantics, unmodified).
+3. **Ingestion subclassification: `HISTORICAL_CANDLE_PACING`.** Measured
+   1,608 sequential historical calls/cycle (536 instruments × 3 calls: 1
+   daily + 2 intraday timeframes — `config/ingestion.json`'s real
+   `timeframes: ["5m","15m"]`). The deterministic `(N−1)×0.334s` pacing
+   floor (536.74s) explains ≈95.7% of the median cycle on its own;
+   measured historical-ingestion time exceeds that floor by only ≈2%
+   (ratio 1.019 median) — genuine network/provider time beyond the
+   enforced pacing interval is small. Per-call medians (0.338s for both
+   daily and intraday groups) sit within 0.004s of the 0.334s pacing
+   interval itself.
+4. **Zero retries/failures:** 0 failed calls across 33,789 total
+   provider calls in the sample (11,256 daily + 22,512 intraday + 21
+   quote batches) — the latency is normal-path structural, not caused by
+   exceptional retry/backoff behavior.
+5. **Daily vs. intraday split:** 33.2% daily / 66.8% intraday, explained
+   entirely by call count (536 vs. 1,072 — the 1-vs-2-timeframes ratio),
+   not by any per-call cost difference (both groups' median call
+   duration is 0.338s).
+6. **Quote fetch:** one batched call per cycle, median 1.148s, ≈0.2% of
+   cycle total — immaterial, measured directly (not assumed).
+7. **DB persistence:** not directly instrumented; bounded only as part
+   of a mixed residual (ingestion_total minus the three measured call
+   groups, median 2.49s) together with candle validation/quarantine
+   review — labeled explicitly as inference, not a direct measurement.
+
+**Root-cause statement.** The ~9–10 minute ATHENA production cycle
+latency is primarily caused by historical-candle-call pacing,
+accounting for ≈96% of measured cycle time. The dominant subcomponent
+is the enforced ~0.334s minimum interval across 1,608 sequential
+historical candle calls per cycle. Analytical scan contributes ≈1.6–2.0%;
+pre-final orchestration contributes ≈0%.
+
+**ID-7 architectural consequence (stated, not designed).**
+Canonical-cycle-derived evidence carries a structural ~9.3–9.5 minute
+freshness latency. A future ID-7 intraday actionability artifact relying
+solely on canonical cycle completion time could not honestly claim
+fresher evidence than that. Whether this materially matters depends on
+ID-7A0's own not-yet-decided target entry timescale.
+EntryQualification's already-frozen point-in-time/non-sticky/
+`LIVE_M5_PROVISIONAL` semantics already anticipate representing
+staleness honestly rather than assuming freshness.
+
+**Recommendation classification: A — latency compensation only**, with
+an explicit caveat that this could change if ID-7A0 later determines
+intraday entry timing needs materially sub-9-minute freshness — that
+determination is the owner's own to make, not settled by this
+measurement. Future actionability evaluation mode recommended
+(recommendation only, not implemented, no ADR touched): event-driven or
+asynchronous-after-ingestion over canonical-cycle-synchronous, if
+fresher-than-cycle evidence is ultimately required.
+
+**Instrumentation retention recommendation:** remain permanently, as
+low-cost observability — no code change made or needed.
+
+**Business-output safety confirmed, not assumed:** `git log` since
+2026-09-03 across `scoring`/`decision`/`confidence`/`risk`/`intraday`
+shows only one unrelated Portfolio-track commit (reads persisted
+Confidence, touches no methodology); canonical `schema_version` = 17,
+unchanged; `timing.py`/`dry_run.py` unmodified since ID-7P0/ID-7P0.1;
+EMR/DarvaX not queried, not touched (`db/emr.db`/`db/darvax.db` were not
+even opened by this audit).
+
+**Files created.**
+`docs/research/ID-7P0-PRODUCTION-CYCLE-LATENCY-ATTRIBUTION-REVIEW.md`.
+No source code changed.
+
+**Files modified.** `docs/MILESTONES.md`, `ATHENA_BRIEFING.md` — status
+updates recording this review's completion and that **ID-7A0 remains
+BLOCKED PENDING OWNER / CHIEF ARCHITECT REVIEW OF ID-7P0 ATTRIBUTION.**
+
+**Tests / validation.** Documentation-only change. `git diff --check`
+clean. No test suite run (not required for a docs-only milestone, per
+explicit instruction not to run one merely to create activity).
+
+**Remaining work.** Owner/Chief Architect review of this attribution.
+Cross-day replication remains a future option once a second day's
+timing-instrumented `REFRESH` evidence exists, not a blocker. ID-7A0's
+own target-entry-timescale decision remains the swing factor for
+whether classification A still holds once that decision is made.
+
+**Outcome:** Complete. This is a read-only, evidence-only milestone — no
+methodology, ingestion architecture, or ID-7 direction was changed or
+frozen. Not marked owner-approved here; ID-7A0 explicitly not started.
+
+---
+
 ## PS-P9B Portfolio Opening-Range Setup Methodology Replay — Ready for Owner Review
 
 **Summary.** PS-P9A was Owner/Chief Architect approved and frozen on
