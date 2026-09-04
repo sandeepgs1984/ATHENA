@@ -97,17 +97,24 @@ def test_meta_keys_are_dropped_before_validation(tmp_path):
     assert config.enabled is True
 
 
-def test_real_repo_config_ships_disabled():
+def test_real_repo_config_resolves_to_approved_frozen_sources():
     """The actual config/emr/operational.json checked into the repo must
-    ship disabled -- this is the file production would read if EMR were
-    ever mounted, so its shipped default is a real safety property, not
-    just this test suite's own fixture default. Loading the real repo
-    config also exercises the frozen-source validation against the real
-    config/emr/frozen_models/v1/ manifest -- a passing load here is
-    itself proof the shipped file resolves correctly."""
+    always resolve to an already-frozen, already-approved base_universe
+    and model_version -- this is the file production reads, so a passing
+    load here is proof the real file is safe regardless of its current
+    `enabled` value.
+
+    `enabled` itself is no longer asserted here: EM-7B/EM-7B.1 shipped it
+    `false` (never activated) as a real safety property at the time; EM-7C
+    (2026-09-04) performed the first controlled, owner-authorized
+    production activation and set it `true` -- exactly the same
+    committed-true-after-real-activation pattern `config/darvax.json` set
+    (commit 0987d41, "enable darvax in config") once DarvaX was genuinely
+    turned on. A stale `enabled is False` assertion here would just be
+    asserting a fact this repository's own history has legitimately moved
+    past, not a real regression."""
     repo_root = Path(__file__).resolve().parents[2]
     config = load_emr_operational_config(repo_root / "config")
-    assert config.enabled is False
     assert config.base_universe == ADR_014_APPROVED_BASE_UNIVERSE
     assert config.model_version == "v1"
 

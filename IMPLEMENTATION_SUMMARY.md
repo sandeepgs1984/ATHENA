@@ -6,6 +6,129 @@ status updated on approval.
 
 ---
 
+## EM-7C Controlled Production Activation & Genuine Scheduled Canary — Complete
+
+**Summary.** Owner/Chief Architect closed EM-7B.1 and EM-7B themselves
+2026-09-04 ("EM-7B OWNER APPROVED / CLOSED") and authorized EM-7C same
+day: the FIRST controlled production activation of the isolated EMR
+live-shadow path. Purpose was explicitly NOT to collect statistically
+meaningful shadow data — it was to prove the already-reviewed EM-7A/EM-7B
+architecture activates safely in the real ATHENA runtime, creates the
+isolated production database intentionally, executes one genuine
+scheduled checkpoint, persists a coherent result, remains observable
+through EM-6, and causes zero canonical regression.
+
+**Read-only pre-activation audit.** Recorded a deterministic cutoff
+(`2026-09-04T03:11:37Z` / `08:41:37 IST`), the real production process
+(PID 93626, healthy, running since 2026-09-03 ~20:15 IST, cycles
+enabled), canonical schema version (17), `db/emr.db` absence,
+`config/emr/operational.json`'s `enabled: false`, and ID-7P0's
+instrumentation present/wired (not touched).
+
+**Implemented.** `_mount_emr_worker(cfg, *, config_dir, emr_db_path)`
+(new, `src/athena/cli.py`) — extracted as a standalone, independently
+testable function (not inlined) so its behavior can be verified without
+faking a whole running uvicorn server. Called from `_cmd_serve`
+immediately after the existing `CycleWorker` block, stopped in the same
+`finally:`. Reads `EmrOperationalConfig` first; if disabled, returns
+`(None, None)` with zero further EMR work (no `EmrRepository`
+construction, no `db/emr.db` creation, no thread, no provider call) —
+proven by 2 tests plus a required mutation/negative proof (temporarily
+bypassing the enabled-gate correctly started a real `EmrWorker` where
+none should have; reverted immediately, confirmed no lingering process).
+If enabled, constructs an independent `SqliteRepository` (canonical,
+read-only usage only), `EmrRepository` (own DB), `CalendarEngine`, and
+`EmrWorker`, wrapped in its own `try/except` so a construction failure
+can never prevent canonical startup — proven by a forced-failure test.
+Wires the real, ADR-014-authorized `collect_checkpoint_reference_prices`
+collector (proven by a spy test) and the canonical `SqliteRepository`
+directly (proven to be the real, read-only-adapter-wrapped repository,
+never a second provider client).
+
+**Restart procedure.** Used the official `./athena-serve` wrapper script
+(computes `PYTHONPATH` via a properly-quoted `$(cd ... && pwd)/src`)
+instead of a hand-built command — deliberately avoiding the exact
+PYTHONPATH-truncation mistake the earlier ID-7P0 restart made. Verified
+idle (no triggers due) before stopping; `SIGTERM` to the real PID
+(obtained via `ps`, not the stale, unreliable `artifacts/locks/athena-serve.pid`);
+exited cleanly in 2s; relaunched with the identical flags; health
+confirmed within 5s, no startup traceback; canonical cycle worker
+resumed with the same interval; ID-7P0's `timing.py` confirmed
+unmodified; DarvaX's `db/darvax.db` size/mtime unchanged.
+
+**Config activated.** `enabled: true`, `base_universe: athena_core`,
+`model_version: v1`, `max_staleness_minutes: 30.0`,
+`poll_interval_seconds: 30.0` — the already-reviewed EM-7B.1 values,
+unchanged. Config-safety evidence recorded against real production data
+(2026-09-04): `athena_core` resolves to 518 instruments, all 518 mature
+(0 excluded) — matching the Section 14 canary's own historically
+validated population.
+
+**The genuine scheduled canary.** Reached exclusively through
+`EmrWorker → run_once → run_scan_cycle_with_lock → run_scan_cycle` at
+the 09:20 IST checkpoint (worker tick landed 20.8s after the checkpoint
+instant). `run_id` independently re-derived via `compute_run_id` and
+confirmed to match exactly. Result: `COMPLETE`, atomically persisted,
+with an **honest zero-eligible outcome** — 0 candidates, 0 transitions.
+Root-caused (not assumed): a direct read-only query of `db/athena.db`
+found zero M5 candles for any instrument for 2026-09-04, both
+immediately after the canary and ~7 minutes later — canonical
+ingestion's own scheduling (`config/scheduling.json`: a one-time 08:15
+premarket trigger, a dynamically-cadenced refresh, and a 150-symbol/
+10-minute fast tier) had not yet landed the day's first 5-minute bar for
+the full 518-instrument universe by 09:20:20 IST. This is a genuine
+cross-system timing characteristic between EMR's fixed checkpoint
+schedule and canonical ingestion's own independent cadence — not an
+EM-7A/EM-7B/EM-7C code defect. The scanner correctly made zero
+historical-candle provider calls of its own (read-only via
+`SqliteEmrMarketDataAdapter`, structurally isolated) and persisted the
+honest result rather than fabricating or falling back to anything. Real
+Kite `/quote` traffic did occur correctly: 136 batched requests over
+~301.5s, within the frozen `MAX_CHECKPOINT_OBSERVATION_DELAY_SECONDS`
+bound (not retuned). Regime-lookup wiring is structurally confirmed
+unchanged (worker.py always constructs it), but this specific run never
+reached the code path that calls it, since zero instruments ever entered
+the per-symbol evidence-assembly loop — reported precisely, not
+overclaimed.
+
+**Isolation verified.** Canonical `schema_version` unchanged (17), no
+`emr_*` table in `db/athena.db`, canonical cycle worker and dashboard
+healthy throughout, DarvaX untouched, ID-7P0 unmodified (resumed
+incidentally with the same process restart). `presentation.
+latest_scan_snapshot('db/emr.db')` correctly represents the COMPLETE
+scan even with zero candidates.
+
+**Files created.** `docs/research/EM-7C-PRODUCTION-ACTIVATION-CANARY.md`,
+`tests/unit/test_em7c_service_mount.py` (6 tests).
+
+**Files modified.** `src/athena/cli.py` (`_mount_emr_worker` extracted
+and wired into `_cmd_serve`'s start/stop lifecycle),
+`config/emr/operational.json` (`enabled: true` — production state, left
+as-is per the authorization's own preferred post-success state), plus
+`docs/MILESTONES.md`, `docs/ATHENA-EMR-HANDOFF.md` — status updates.
+
+**Tests / validation.** 6 new focused tests, all passing, including a
+required mutation/negative proof (reverted, confirmed byte-identical, no
+lingering process). Full repository suite: **3,332 passed** (was 3,326),
+1 skipped (pre-existing, unrelated), 0 failed. Ruff clean on every
+touched file. `git diff --check` clean.
+
+**Remaining work.** EM-7D (statistical shadow-validation analysis) is a
+separate, not-yet-authorized milestone — natural evidence accumulation
+is now active (worker continues ticking on the frozen schedule) but no
+analysis has begun, no threshold/methodology/checkpoint-schedule/
+universe-policy change was made, and no manual retry of the zero-eligible
+checkpoint was performed. ID-7P0 and DarvaX were not touched beyond
+passive confirmation of their preservation.
+
+**Outcome:** Complete. The isolated frozen EM-7A/EM-7B pipeline activates
+safely in production, executes correctly end-to-end, and causes zero
+canonical regression — confirmed by one genuine, honestly-reported
+canary. Not marked owner-approved here — that determination belongs to
+the owner.
+
+---
+
 ## EM-7B.1 Frozen Runtime-Tolerance Authority Correction — Complete
 
 **Summary.** Owner/Chief Architect source review of EM-7B (entry

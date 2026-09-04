@@ -711,6 +711,54 @@ def _last_cycle_from_result(result):
     )
 
 
+def _mount_emr_worker(cfg, *, config_dir: Path, emr_db_path: Path) -> tuple[object | None, SqliteRepository | None]:
+    """EM-7C: mount the isolated EMR live-shadow worker, if and only if
+    `EmrOperationalConfig.enabled` is true. Reading that config is the
+    ONLY EMR work done when disabled (the shipped default) -- no
+    `EmrRepository` construction, no `db/emr.db` creation, no thread, no
+    provider call. A failure constructing/starting the worker is caught
+    and logged here so it can never prevent the canonical service (the
+    caller, `_cmd_serve`) from starting; returns `(None, None)` in that
+    case, having closed anything it had already opened.
+
+    Extracted as its own function (rather than inlined in `_cmd_serve`)
+    specifically so it is independently testable with injected
+    `config_dir`/`emr_db_path` -- exercising it does not require faking
+    a whole running uvicorn server.
+    """
+    from athena.explosive_move.live.operational_config import load_emr_operational_config
+
+    emr_operational_config = load_emr_operational_config(config_dir)
+    if not emr_operational_config.enabled:
+        return None, None
+
+    emr_athena_repo: SqliteRepository | None = None
+    try:
+        from athena.explosive_move.live.checkpoint_reference_price import collect_checkpoint_reference_prices
+        from athena.explosive_move.live.worker import EmrWorker
+        from athena.explosive_move.store.repository import EmrRepository
+
+        emr_athena_repo = _open_repo(cfg)
+        emr_repo = EmrRepository(emr_db_path)
+        emr_repo.initialize()
+        emr_calendar = CalendarEngine.from_config_dir(config_dir, cfg.market)
+        emr_tzinfo = ZoneInfo(cfg.market.timezone)
+        emr_worker = EmrWorker(
+            operational_config=emr_operational_config, athena_repo=emr_athena_repo, emr_repo=emr_repo,
+            calendar_engine=emr_calendar, config_dir=config_dir, tzinfo=emr_tzinfo,
+            collect_checkpoint_prices=lambda **kwargs: collect_checkpoint_reference_prices(
+                config_dir=config_dir, **kwargs,
+            ),
+        )
+        emr_worker.start()
+        return emr_worker, emr_athena_repo
+    except Exception as exc:
+        print(f"WARNING: EMR worker failed to start -- continuing without it: {exc}", file=sys.stderr)
+        if emr_athena_repo is not None:
+            emr_athena_repo.close()
+        return None, None
+
+
 def _cmd_serve(args: argparse.Namespace) -> int:
     """Start localhost API (+ optional in-process due-cycle worker)."""
     import webbrowser
@@ -789,6 +837,14 @@ def _cmd_serve(args: argparse.Namespace) -> int:
         )
         worker.start()
 
+    # EM-7C: an isolated EMR live-shadow worker, mounted alongside (never
+    # through) the canonical CycleWorker above -- own lock, own repository,
+    # own failure handling, no canonical dependency in either direction
+    # (ADR-012/ADR-014).
+    emr_worker, emr_athena_repo = _mount_emr_worker(
+        cfg, config_dir=_config_dir(), emr_db_path=_repo_root() / "db" / "emr.db",
+    )
+
     scheme = "https" if ssl_certfile is not None else "http"
     url = f"{scheme}://{host}:{port}/dashboard/"
     print(f"ATHENA serve    : {url}")
@@ -818,6 +874,10 @@ def _cmd_serve(args: argparse.Namespace) -> int:
     finally:
         if worker is not None:
             worker.stop()
+        if emr_worker is not None:
+            emr_worker.stop()
+        if emr_athena_repo is not None:
+            emr_athena_repo.close()
         set_serve_runtime(None)
     return 0
 

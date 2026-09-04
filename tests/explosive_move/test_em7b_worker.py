@@ -479,12 +479,33 @@ class TestScannerToleranceAuthority:
 
 
 class TestProductionSafety:
-    def test_production_emr_db_does_not_exist(self):
+    def test_production_emr_db_if_present_is_a_legitimately_valid_schema(self):
+        """Historical note: prior to EM-7C (2026-09-04), this test
+        asserted db/emr.db did not exist at all -- EM-7B's own scope
+        never created it; production activation was explicitly out of
+        scope. EM-7C then performed the first controlled,
+        owner-authorized production activation, so db/emr.db now
+        legitimately exists -- mirroring config/darvax.json's own
+        committed-`enabled: true`-after-real-activation history (commit
+        0987d41). This test's remaining job, now: if the file exists, it
+        must be a genuinely valid, current-schema EMR database -- never a
+        corrupted file or a stale schema left over from some other
+        process. If it does not exist (e.g. a fresh checkout that has
+        never activated EMR), that is equally valid and this test is a
+        no-op."""
+        import sqlite3
+
         repo_root = Path(__file__).resolve().parents[2]
-        assert not (repo_root / "db" / "emr.db").exists(), (
-            "EM-7B must never create the production EMR database -- if this fails, "
-            "something in this milestone (or an unrelated process) activated it"
-        )
+        emr_db_path = repo_root / "db" / "emr.db"
+        if not emr_db_path.exists():
+            return
+        conn = sqlite3.connect(f"file:{emr_db_path}?mode=ro", uri=True)
+        try:
+            conn.execute("PRAGMA query_only=ON")
+            version = conn.execute("SELECT version FROM emr_schema_version").fetchone()[0]
+            assert version == 2
+        finally:
+            conn.close()
 
     def test_instruments_seeded_with_full_maturity_are_all_mature(self, worker_setup):
         """Sanity check on the shared EM-5 fixture this whole file reuses:
