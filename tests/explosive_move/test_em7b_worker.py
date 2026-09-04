@@ -448,6 +448,36 @@ class TestRegimeWiring:
         assert isinstance(calls[0]["market_port"], SqliteEmrMarketDataAdapter)
 
 
+class TestScannerToleranceAuthority:
+    """EM-7B.1: max_checkpoint_price_delay_seconds must always equal the
+    frozen checkpoint_reference_price.MAX_CHECKPOINT_OBSERVATION_DELAY_SECONDS
+    bound -- proven by spying on the actual ScanCycleConfig the worker
+    constructs, not merely by the field being absent from config."""
+
+    def test_worker_uses_the_frozen_checkpoint_price_delay_bound(self, worker_setup, monkeypatch):
+        from athena.explosive_move.live.checkpoint_reference_price import (
+            MAX_CHECKPOINT_OBSERVATION_DELAY_SECONDS,
+        )
+
+        athena_repo, emr_repo = worker_setup
+        captured: list = []
+        import athena.explosive_move.live.worker as worker_module
+
+        real_run_with_lock = worker_module.run_scan_cycle_with_lock
+
+        def spy(*, config, **kwargs):
+            captured.append(config)
+            return real_run_with_lock(config=config, **kwargs)
+
+        monkeypatch.setattr(worker_module, "run_scan_cycle_with_lock", spy)
+
+        outcome = _run(athena_repo, emr_repo, now=_at("09:20"))
+
+        assert outcome.action == "INVOKED"
+        assert len(captured) == 1
+        assert captured[0].max_checkpoint_price_delay_seconds == MAX_CHECKPOINT_OBSERVATION_DELAY_SECONDS
+
+
 class TestProductionSafety:
     def test_production_emr_db_does_not_exist(self):
         repo_root = Path(__file__).resolve().parents[2]

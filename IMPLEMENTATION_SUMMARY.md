@@ -6,6 +6,109 @@ status updated on approval.
 
 ---
 
+## EM-7B.1 Frozen Runtime-Tolerance Authority Correction — Complete
+
+**Summary.** Owner/Chief Architect source review of EM-7B (entry
+immediately below) provisionally accepted the implementation but held
+closure for one narrow configuration-authority issue:
+`max_checkpoint_price_delay_seconds` was an independently
+operator-tunable field in `config/emr/operational.json`, set to `300.0`.
+Audit found this value exactly equals `checkpoint_reference_price.
+MAX_CHECKPOINT_OBSERVATION_DELAY_SECONDS` — a value that module's own
+docstring calls a "**Frozen bound**... EM-5 must not dynamically retune
+this." Having an owner-approved, must-not-retune bound sit in an
+operator-editable JSON file was itself the defect, independent of
+whether the shipped number happened to be correct.
+
+**Audit performed (Classification, not assumed).**
+`max_staleness_minutes = 30.0` matches `canary_gate.
+run_em5_production_canary`'s own already-accepted default parameter
+exactly, and `eligibility.py`'s own docstring explicitly documents it as
+"an operational tuning knob, not evidence" — Classification A (already
+frozen/authoritative elsewhere), legitimately configurable.
+`max_checkpoint_price_delay_seconds = 300.0` matches
+`MAX_CHECKPOINT_OBSERVATION_DELAY_SECONDS` exactly — Classification A
+too, but the frozen bound's own authority is a Python constant with an
+explicit "do not retune" instruction, not something any config file
+should carry at all; the accepted canary itself never threads this as a
+live concept, hardcoding `max_checkpoint_price_delay_seconds=0.0` inline
+for its own zero-provider-call replay context — confirming `300.0`'s
+real authority is the frozen constant, not canary precedent.
+
+**Implemented.**
+
+1. **`max_checkpoint_price_delay_seconds` removed** from
+   `EmrOperationalConfig` and `config/emr/operational.json` entirely. An
+   operator supplying it now fails exactly like any other unknown-key
+   typo (the existing `extra="forbid"` strictness does this for free).
+   `worker.py` imports `MAX_CHECKPOINT_OBSERVATION_DELAY_SECONDS` from
+   `checkpoint_reference_price.py` directly and passes it into
+   `ScanCycleConfig` unconditionally — no config path can reach it.
+2. **`max_staleness_minutes` kept**, with its shipped default now
+   regression-tested against `run_em5_production_canary`'s own real
+   signature default via `inspect.signature` (not a hardcoded duplicate
+   that could silently drift from the accepted value).
+3. **`base_universe`/`model_version` validated at the config-*file*
+   boundary.** `load_emr_operational_config` now rejects any
+   `base_universe` other than ADR-014 §11's own frozen `athena_core`,
+   and any `model_version` whose `config/emr/frozen_models/<version>/
+   FROZEN_MODEL_MANIFEST.json` does not exist or whose own recorded
+   `"version"` disagrees with its directory name. Confirmed the real
+   repo's `v1` manifest records `"version": "v1"`, matching the accepted
+   Section 14 canary's own artifact set. Direct `EmrOperationalConfig(...)`
+   construction stays unconstrained — the authority boundary is the
+   config-file-loading function an operator can actually reach by
+   editing JSON, not the general-purpose dataclass's own constructor,
+   which this module's own test suite relies on for fixture isolation.
+   No new config framework: two explicit, minimal checks, not a generic
+   validation engine.
+
+**Deliberately unchanged.** Every EM-7B invariant (worker isolation,
+`enabled=false` inert startup, `run_once`/`EmrWorker` architecture,
+latest-due-only catch-up, frozen checkpoint policy, mature-history
+universe wiring, canonical regime lookup, `run_scan_cycle_with_lock`, no
+FAILED auto-retry, persisted-state restart behavior, no production
+mount). No ADR-014 change — it already correctly named `athena_core`
+(§11) and never claimed authority over the checkpoint-price delay
+tolerance; this was purely an EM-7B implementation-level defect.
+
+**Files modified.** `src/athena/explosive_move/live/operational_config.py`
+(field removed, `ADR_014_APPROVED_BASE_UNIVERSE` constant,
+`_validate_resolves_to_frozen_sources`), `src/athena/explosive_move/live/worker.py`
+(imports and uses the frozen constant directly),
+`config/emr/operational.json` (field removed),
+`tests/explosive_move/test_em7b_operational_config.py` (2 existing
+fixtures updated to seed a frozen-model manifest; 11 new tests: runtime-
+tolerance authority, base-universe authority, model-version authority —
+19 tests total, up from 8), `tests/explosive_move/test_em7b_worker.py`
+(1 new spy test proving the actual runtime `ScanCycleConfig` carries the
+frozen bound — 22 tests total, up from 21), plus `docs/MILESTONES.md`,
+`docs/ATHENA-EMR-HANDOFF.md`, `docs/research/EM-7B-ISOLATED-SCHEDULING-INVOCATION.md`
+(new §14, EM-7B's original record preserved unmodified above it).
+
+**Tests / validation.** 12 new/updated tests, all passing, including a
+required mutation/negative proof: `_validate_resolves_to_frozen_sources`'s
+call site temporarily disabled — exactly the 3 tests specifically
+proving base-universe/model-version authority failed as expected
+("DID NOT RAISE ConfigError"), all 16 other config tests unaffected;
+reverted, `diff` against a pre-mutation backup confirmed byte-identical
+restoration. Full `tests/explosive_move/` + `tests/api/v1/test_emr_router.py`:
+**514 passed** (was 502). Full repository suite: **3,326 passed** (was
+3,314), 1 skipped (pre-existing, unrelated), 0 failed. Ruff clean on
+every touched file. `git diff --check` clean.
+
+**Remaining work.** None identified. EM-7C remains a separate,
+not-yet-authorized milestone. No `db/emr.db`, no live scan, no
+scheduling gate enabled, no service mount. ID-7P0 and DarvaX were not
+touched by this milestone.
+
+**Outcome:** Complete. This was the one narrow issue Owner/Chief
+Architect review found in EM-7B; EM-7B is now ready for owner closure
+review. Not marked owner-approved here — that determination belongs to
+the owner.
+
+---
+
 ## EM-7B Isolated Scheduling & Invocation — Implementation Complete
 
 **Summary.** Owner/Chief Architect closed EM-7A.2 and EM-7A themselves

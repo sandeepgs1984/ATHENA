@@ -80,6 +80,7 @@ from athena.domain.enums import Timeframe
 from athena.domain.market import Candle, Instrument
 from athena.explosive_move.contracts import CANDIDATE_CHECKPOINTS_IST
 from athena.explosive_move.live.canary_gate import select_mature_history_instruments
+from athena.explosive_move.live.checkpoint_reference_price import MAX_CHECKPOINT_OBSERVATION_DELAY_SECONDS
 from athena.explosive_move.live.eligibility import session_is_scannable
 from athena.explosive_move.live.market_data_port import EmrMarketDataPort, SqliteEmrMarketDataAdapter
 from athena.explosive_move.live.operational_config import EmrOperationalConfig
@@ -285,7 +286,11 @@ def run_once(
         checkpoint_instant=checkpoint_instant, session_open_time=context.open_time,
         model_version=operational_config.model_version, config_dir=config_dir,
         max_staleness_minutes=operational_config.max_staleness_minutes,
-        max_checkpoint_price_delay_seconds=operational_config.max_checkpoint_price_delay_seconds,
+        # EM-7B.1: this is a frozen, owner-approved bound
+        # ("EM-5 must not dynamically retune this" -- checkpoint_reference_price.py's
+        # own docstring), never an operational config field -- sourced
+        # directly from the frozen constant so no config edit can change it.
+        max_checkpoint_price_delay_seconds=MAX_CHECKPOINT_OBSERVATION_DELAY_SECONDS,
     )
 
     try:

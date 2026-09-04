@@ -1,10 +1,20 @@
 # EM-7B — Isolated EMR Scheduling & Invocation
 
-**Status: EM-7B IMPLEMENTATION COMPLETE — READY FOR OWNER / CHIEF ARCHITECT
-REVIEW.** Owner authorized 2026-09-03, same day as EM-7A/EM-7A.1/EM-7A.2's
-closure. Implements the isolated EMR operational scheduling/invocation layer
-frozen by ADR-014 — makes EMR fully fixture-testable as an unattended
-scheduled worker, without activating production EMR in any way.
+**Status (superseded by EM-7B.1, 2026-09-04 — see §14): EM-7B READY FOR
+OWNER / CHIEF ARCHITECT CLOSURE REVIEW; not yet owner-approved.** §§1–13
+below are the original, unmodified EM-7B implementation record — owner
+authorized 2026-09-03, same day as EM-7A/EM-7A.1/EM-7A.2's closure,
+implementing the isolated EMR operational scheduling/invocation layer
+frozen by ADR-014. Owner/Chief Architect source review then provisionally
+accepted this implementation but held closure on one narrow
+configuration-authority issue: `max_checkpoint_price_delay_seconds` was
+an independently operator-tunable field even though the value it carried
+was, in fact, a frozen, owner-approved bound elsewhere in the codebase.
+**EM-7B.1 (§14) is the owner's resolution** — the frozen bound is now
+sourced directly from its real authority, unreachable from any config
+edit; `base_universe`/`model_version` remain configurable selectors but
+are now validated against already-frozen sources at the config-file
+boundary.
 
 ---
 
@@ -247,3 +257,83 @@ change. No EM-6 presentation change. ID-7P0 and DarvaX untouched.
 - [x] Fully isolated from canonical `ops`/`scheduling`/DarvaX — isolation
       test extended and mutation-proof confirmed.
 - [x] No production activation of any kind.
+
+## 14. EM-7B.1 — frozen runtime-tolerance authority correction (2026-09-04)
+
+**Owner finding.** Source review found `EmrOperationalConfig` carried
+`max_checkpoint_price_delay_seconds` (shipped `300.0`) as an independently
+operator-tunable JSON field, threaded straight into
+`ScanCycleConfig.max_checkpoint_price_delay_seconds`. Audit (not assumed)
+of every place this tolerance is used in the repository:
+
+| Value | Where found | Classification |
+|---|---|---|
+| `max_staleness_minutes = 30.0` | `canary_gate.run_em5_production_canary`'s own accepted default parameter | **A — already frozen/authoritative elsewhere.** `eligibility.py`'s own docstring additionally documents this as "an operational tuning knob, not evidence" — legitimately configurable, matching the accepted default. |
+| `max_checkpoint_price_delay_seconds = 300.0` | Exactly equals `checkpoint_reference_price.MAX_CHECKPOINT_OBSERVATION_DELAY_SECONDS`, whose own docstring reads: **"Frozen bound: `MAX_CHECKPOINT_OBSERVATION_DELAY_SECONDS = 300` — deliberately above the diagnostic's observed maximum real latency (188s)... EM-5 must not dynamically retune this."** | **A — already frozen/authoritative elsewhere**, but sitting in an operator-editable JSON field regardless of the number's own correctness was itself the defect — a config edit could silently retune an explicitly must-not-retune bound. The accepted canary itself never threads this tolerance as a live-delay concept at all: it hardcodes `max_checkpoint_price_delay_seconds=0.0` inline (uncomfigurable, not a parameter), appropriate only to its own zero-provider-call historical-replay context, not to a genuinely live worker — confirming this tolerance is not something the canary's own precedent would ever have EM-7B copy as `300.0`; `300.0`'s real authority is the frozen constant, not the canary. |
+
+**Resolution.** `max_checkpoint_price_delay_seconds` removed entirely
+from `EmrOperationalConfig`/`config/emr/operational.json` — an operator
+supplying it now fails exactly like any other unknown-key typo.
+`worker.py` imports `MAX_CHECKPOINT_OBSERVATION_DELAY_SECONDS` directly
+from `checkpoint_reference_price.py` and passes it into `ScanCycleConfig`
+unconditionally; no config path can reach it. Proven by a spy test
+capturing the actual `ScanCycleConfig` the worker constructs.
+`max_staleness_minutes` is kept as a genuinely operational field (its own
+frozen-elsewhere classification is "legitimately tunable," not "must not
+retune") — its shipped default is now regression-tested against
+`run_em5_production_canary`'s own real signature default via
+`inspect.signature`, not a hardcoded duplicate that could silently drift.
+
+**`base_universe`/`model_version` — kept as selectors, now validated.**
+Per owner's own framing, these remain configurable but must resolve to an
+already-approved source. `load_emr_operational_config` (the boundary an
+operator actually reaches by editing JSON — never
+`EmrOperationalConfig(...)`'s own constructor, which this module's test
+suite uses extensively for fixture isolation) now:
+
+- Rejects any `base_universe` other than `athena_core` — ADR-014 §11's
+  own frozen initial-shadow base universe, "the same base universe
+  Section 14's canary used" (confirmed by direct quote from the ADR, not
+  re-derived).
+- Rejects any `model_version` whose `config/emr/frozen_models/<version>/FROZEN_MODEL_MANIFEST.json`
+  does not exist, or whose manifest's own recorded `"version"` disagrees
+  with the directory name — confirmed the real repo's `v1` manifest
+  records `"version": "v1"`, matching the accepted Section 14 canary's
+  own artifact set exactly.
+
+No new config framework — two explicit, minimal checks (an exact-match
+comparison and a manifest-existence-plus-agreement check), not a generic
+validation engine.
+
+**Preserved unchanged (verified, not merely asserted).** Every item in
+§13's closure checklist above continues to hold: worker isolation,
+`enabled=false` inert startup, `run_once`/`EmrWorker` architecture,
+latest-due-only catch-up, `CANDIDATE_CHECKPOINTS_IST`, mature-history
+universe policy, canonical regime lookup, `run_scan_cycle_with_lock`, no
+FAILED auto-retry, persisted-state restart behavior, no production
+mount, no `db/emr.db`, no real provider call, ADR-012 isolation.
+
+**Required mutation/negative proof.** `_validate_resolves_to_frozen_sources`'s
+call site temporarily commented out — exactly the 3 tests specifically
+proving `base_universe`/`model_version` authority
+(`test_unapproved_base_universe_is_rejected`,
+`test_never_promoted_model_version_is_rejected`,
+`test_manifest_version_mismatch_is_rejected`) failed as expected
+("DID NOT RAISE ConfigError"); all 16 other config tests unaffected.
+Reverted, `diff` against a pre-mutation backup confirmed byte-identical
+restoration.
+
+**Tests.** 12 new/updated tests across `test_em7b_operational_config.py`
+(runtime-tolerance authority, base-universe authority, model-version
+authority — 19 tests total in that file, up from 8) and one new spy test
+in `test_em7b_worker.py` proving the actual `ScanCycleConfig` constructed
+at runtime carries the frozen bound (22 tests total in that file, up from
+21). `tests/explosive_move/` + `tests/api/v1/test_emr_router.py`: **514
+passed** (was 502), 1 pre-existing unrelated skip. Full repository suite:
+**3,326 passed** (was 3,314), 1 skipped, 0 failed. Ruff clean. `git diff
+--check` clean.
+
+**No ADR-014 change was required** — the ADR already correctly named
+`athena_core` (§11) and never asserted any authority over
+`max_checkpoint_price_delay_seconds`; this was purely an EM-7B
+implementation-level defect, not an ADR-level one.

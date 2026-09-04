@@ -1,9 +1,8 @@
 {
-  "_note": "EM-7B: EMR live-shadow worker operational configuration -- ownership boundary mirrors DarvaX's own config-gate PATTERN only (config/darvax.json), never its code. Contains operational concerns only (enabled gate, database/universe/checkpoint policy references, staleness/delay tolerances, poll cadence) -- never frozen feature/model/calibration/threshold semantics, which live under config/emr/frozen_models/. Shipped default is disabled: this file existing does not activate anything.",
+  "_note": "EM-7B: EMR live-shadow worker operational configuration -- ownership boundary mirrors DarvaX's own config-gate PATTERN only (config/darvax.json), never its code. Contains operational concerns only (enabled gate, universe/model selectors validated against already-frozen sources, staleness tolerance, poll cadence) -- never frozen feature/model/calibration/threshold semantics (config/emr/frozen_models/) nor other frozen runtime bounds (e.g. the checkpoint-price observation delay, which is a frozen Python constant in checkpoint_reference_price.py, deliberately NOT a field here -- see EM-7B.1's authority correction in operational_config.py). Shipped default is disabled: this file existing does not activate anything.",
   "enabled": false,
   "base_universe": "athena_core",
   "model_version": "v1",
   "max_staleness_minutes": 30.0,
-  "max_checkpoint_price_delay_seconds": 300.0,
   "poll_interval_seconds": 30.0
 }
