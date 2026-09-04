@@ -6,7 +6,75 @@ status updated on approval.
 
 ---
 
-## PS-P9A Portfolio Setup Methodology Discovery — Ready for Owner Review
+## PS-P9B Portfolio Opening-Range Setup Methodology Replay — Ready for Owner Review
+
+**Summary.** PS-P9A was Owner/Chief Architect approved and frozen on
+2026-09-04 with Setup semantics and evidence roles frozen. PS-P9B then audited
+the actual `OpeningRangeEngine` contract and ran a read-only replay over
+persisted ATHENA M5 candles and latest per-instrument Decisions. Verdict: OR
+evidence is deterministic and real, but raw OR events are not yet safe as a
+production Portfolio Setup label because directionality, OR15/OR30 precedence,
+returned-inside behavior, and post-close lifecycle are not frozen.
+
+**Architecture compliance.** Documentation/research-only milestone. No
+production Portfolio interpretation, sync, API, dashboard, schema, Decision,
+Scoring, EntryQualification, Opening Range, broker, or order behavior changed.
+Production remains `portfolio-interpretation-v2`; Setup remains null/deferred.
+
+**Files created.**
+
+- `docs/research/PS-P9B-PORTFOLIO-OPENING-RANGE-SETUP-METHODOLOGY-REPLAY.md`
+
+**Files modified.**
+
+- `docs/research/PS-P9A-PORTFOLIO-SETUP-METHODOLOGY-DISCOVERY.md`
+- `docs/MILESTONES.md`
+- `IMPLEMENTATION_SUMMARY.md`
+- `ATHENA_BRIEFING.md`
+
+**Public APIs added.** None.
+
+**Tests added.** None. PS-P9B added no production or checked-in research code.
+
+**Test results.** Read-only replay: 35,232 instrument-checkpoint observations,
+398 instruments, 6,065 instrument-session groups, 0 future-leakage defects.
+`git diff --check`: clean.
+
+**Coverage summary.** Not applicable to documentation-only methodology/replay.
+
+**Risks discovered.** Raw OR events are common and unstable enough to need
+explicit owner semantics: 15,342 observations had any OR event, 9,639 had
+returned-inside behavior in at least one window, 524 observations had one OR
+window upside and the other downside, and 222 same-session groups observed both
+upside and downside at some point.
+
+**Technical debt introduced.** None. Existing deferred Portfolio Intelligence
+work remains: production Setup, Support 1, Target 2/3, REDUCE, ROTATE,
+allocation, ranking, and history.
+
+**Suggested improvements.** Keep production Setup deferred. If the owner wants
+to continue, run PS-P9C as a narrow methodology freeze on directionality,
+OR15/OR30 precedence, returned-inside behavior, and post-close/weekend
+lifecycle before any implementation.
+
+**Remaining work.** Owner/Chief Architect review of PS-P9B. No Setup
+implementation is authorized.
+
+**Implementation metrics.** Documentation-only. Production source files
+changed for PS-P9B: 0. Tests added: 0.
+
+**Phase outcome.** PS-P9B methodology/replay complete and ready for Owner/Chief
+Architect review. Production Setup remains deferred.
+
+**Commit hash.** Pending owner commit.
+
+**Branch.** feature/portfolio-sync.
+
+**Review status.** Ready for Owner/Chief Architect review.
+
+---
+
+## PS-P9A Portfolio Setup Methodology Discovery — Frozen
 
 **Summary.** PS-P8C was marked Owner/Chief Architect approved and frozen on
 2026-09-04. PS-P9A then audited whether ATHENA can safely populate a Portfolio
@@ -57,20 +125,19 @@ milestone before any Setup implementation. Start with the smallest possible
 taxonomy: `BREAKOUT`/null, centered on Opening Range evidence plus contextual
 EntryQualification/VWAP/intraday-trend/RS/RVOL inputs.
 
-**Remaining work.** Owner/Chief Architect review of PS-P9A and explicit
-approval before PS-P9B.
+**Remaining work.** None for PS-P9A; milestone is frozen.
 
 **Implementation metrics.** Documentation-only. Production source files
 changed for PS-P9A: 0. Tests added: 0.
 
-**Phase outcome.** PS-P9A discovery complete and ready for Owner/Chief
-Architect review. No Setup implementation is authorized.
+**Phase outcome.** PS-P9A Owner/Chief Architect approved and frozen
+2026-09-04. No Setup implementation is authorized.
 
 **Commit hash.** Pending owner commit.
 
 **Branch.** feature/portfolio-sync.
 
-**Review status.** Ready for Owner/Chief Architect review.
+**Review status.** Owner/Chief Architect approved and frozen 2026-09-04.
 
 ---
 
