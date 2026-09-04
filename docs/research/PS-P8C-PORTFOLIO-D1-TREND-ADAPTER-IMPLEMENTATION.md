@@ -3,7 +3,7 @@
 **Date:** 2026-09-04
 **Branch:** `feature/portfolio-sync`
 **Milestone:** PS-P8C - implementation only
-**Status:** Ready for Owner / Chief Architect final review after correction
+**Status:** Owner / Chief Architect approved and frozen 2026-09-04
 
 ---
 
@@ -216,9 +216,11 @@ Setup remains unavailable by design.
 
 ## 14. Milestone Outcome
 
-PS-P8C is complete and ready for Owner / Chief Architect review. Stop here and
-do not start Setup, Support, Target, REDUCE, ROTATE, allocation, ranking, or
-history work without a new owner-approved milestone.
+PS-P8C is Owner / Chief Architect approved and frozen as of 2026-09-04 after
+the final future-evidence hardening correction. Portfolio Intelligence V2 now
+includes Conviction and D1 Trend only. Setup, Support, Target, REDUCE, ROTATE,
+allocation, ranking, and history remain deferred until separate owner-approved
+milestones.
 
 ## 15. Suggested Commit Message
 

@@ -6,6 +6,74 @@ status updated on approval.
 
 ---
 
+## PS-P9A Portfolio Setup Methodology Discovery — Ready for Owner Review
+
+**Summary.** PS-P8C was marked Owner/Chief Architect approved and frozen on
+2026-09-04. PS-P9A then audited whether ATHENA can safely populate a Portfolio
+Setup field from existing approved evidence without confusing Setup with D1
+Trend, Decision, Status, Next Action, Conviction, P&L, TradePlan levels,
+DarvaX, EMR, or research-only artifacts. Verdict: no safe production Setup
+methodology exists yet. Opening Range breakout evidence is the strongest
+candidate for a future `BREAKOUT` label, but it needs methodology freeze,
+adapter design, and replay/human-review evidence before implementation.
+
+**Architecture compliance.** Documentation-only milestone. No production code,
+schema, API, dashboard, scoring, decision, risk, broker, order, persistence, or
+Portfolio interpretation behavior changed for PS-P9A. Production remains on
+`portfolio-interpretation-v2`; Setup remains null/deferred.
+
+**Files created.**
+
+- `docs/research/PS-P9A-PORTFOLIO-SETUP-METHODOLOGY-DISCOVERY.md`
+
+**Files modified.**
+
+- `docs/MILESTONES.md`
+- `IMPLEMENTATION_SUMMARY.md`
+- `ATHENA_BRIEFING.md`
+- `docs/research/PS-P8C-PORTFOLIO-D1-TREND-ADAPTER-IMPLEMENTATION.md`
+
+**Public APIs added.** None.
+
+**Tests added.** None. PS-P9A is discovery/documentation only.
+
+**Test results.** `git diff --check`: clean. No executable tests are required
+for this docs-only milestone.
+
+**Coverage summary.** Not applicable to documentation-only discovery.
+
+**Risks discovered.** Mapping EntryQualification `QUALIFIED` directly to
+`BREAKOUT`, deriving `PULLBACK`/`RETEST` from TradePlan bands, treating D1 Trend
+`MIXED` as consolidation, or promoting DarvaX/EMR research states would all
+create unapproved semantics. Setup is more transient than Trend and needs
+explicit lifecycle, freshness, missing/stale, and replay contracts.
+
+**Technical debt introduced.** None. Existing deferred Portfolio Intelligence
+work remains: Setup, Support 1, Target 2/3, REDUCE, ROTATE, allocation,
+ranking, and history.
+
+**Suggested improvements.** Run PS-P9B as a methodology design/replay-contract
+milestone before any Setup implementation. Start with the smallest possible
+taxonomy: `BREAKOUT`/null, centered on Opening Range evidence plus contextual
+EntryQualification/VWAP/intraday-trend/RS/RVOL inputs.
+
+**Remaining work.** Owner/Chief Architect review of PS-P9A and explicit
+approval before PS-P9B.
+
+**Implementation metrics.** Documentation-only. Production source files
+changed for PS-P9A: 0. Tests added: 0.
+
+**Phase outcome.** PS-P9A discovery complete and ready for Owner/Chief
+Architect review. No Setup implementation is authorized.
+
+**Commit hash.** Pending owner commit.
+
+**Branch.** feature/portfolio-sync.
+
+**Review status.** Ready for Owner/Chief Architect review.
+
+---
+
 ## PS-P8C Portfolio D1 Trend Adapter Implementation — Complete
 
 **Summary.** Implemented the owner-approved PS-P8B Candidate B D1 Trend
@@ -87,14 +155,14 @@ separate methodology milestones before implementation.
 **Suggested improvements.** Next work should be owner-selected after review.
 Do not start Setup from PS-P8C; it needs its own discovery/freeze milestone.
 
-**Remaining work.** Owner/Chief Architect review of PS-P8C.
+**Remaining work.** None for PS-P8C; milestone is frozen.
 
 **Implementation metrics.** Production source files created: 1. Production
 source files modified: 5. Test files created: 1. Test files modified: 3.
 Documentation files created: 1. Documentation files modified: 3.
 
-**Phase outcome.** PS-P8C implementation complete and ready for Owner/Chief
-Architect review. PS-P8B is owner-approved and frozen. My Portfolio V1 remains
+**Phase outcome.** PS-P8C Owner/Chief Architect approved and frozen
+2026-09-04. PS-P8B is owner-approved and frozen. My Portfolio V1 remains
 complete and frozen; Portfolio Intelligence V2 now includes Conviction and D1
 Trend only.
 
@@ -102,7 +170,7 @@ Trend only.
 
 **Branch.** feature/portfolio-sync.
 
-**Review status.** Ready for Owner/Chief Architect review.
+**Review status.** Owner/Chief Architect approved and frozen 2026-09-04.
 
 ---
 
