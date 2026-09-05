@@ -6,6 +6,133 @@ status updated on approval.
 
 ---
 
+## ID-7F0 Entry Actionability Replay / Shadow Validation Discovery + Contract Freeze — Discovery Complete
+
+**Summary.** Owner/Chief Architect closed ID-7E.1 and ID-7E overall
+2026-09-05 (canonical EntryActionability workflow integration frozen)
+and, in the same message, authorized a read-only discovery milestone to
+design — without implementing — how the now-complete V0 chain
+(ID-7A–ID-7E) should be proven correct under deterministic historical
+replay and future canonical-cycle shadow observation.
+
+**Architecture compliance.** Read-only discovery only — zero code,
+schema, repository, or workflow changes; zero replay executed; zero
+production shadow observed; zero deploy/restart/Validate-All performed;
+zero methodology change; zero threshold tuning. EMR/DarvaX untouched
+(isolation-reference only, no coupling).
+
+**Files created.**
+`docs/research/ID-7F0-ENTRY-ACTIONABILITY-REPLAY-SHADOW-VALIDATION-CONTRACT.md`
+(the full 46-section contract-freeze report).
+
+**Files modified (documentation only).** `docs/MILESTONES.md`,
+`docs/ATHENA-ID-TRACK-HANDOFF.md`, `ATHENA_BRIEFING.md` — recording
+ID-7E.1/ID-7E Owner-approved/closed and the ID-7F0 discovery outcome.
+This entry in `IMPLEMENTATION_SUMMARY.md`.
+
+**Public APIs added.** None.
+
+**Tests added.** None (discovery only). A handful of ad-hoc, read-only,
+uncommitted SQL queries were run directly against the real `db/athena.db`
+(via a temporary Python one-liner, never saved to the repository) solely
+to establish real population/schema facts (§6 of the report) — zero
+writes, confirmed via `PRAGMA query_only=ON`. Existing full suite
+unaffected (last measured at ID-7E.1: 3604 passed, 1 pre-existing
+unrelated skip, 0 failures) — re-verified unaffected by `git diff --check`/
+`git status --short` after this milestone's documentation-only changes.
+
+**Key findings.**
+- **ID-6E precedent audited in full** (`src/athena/data/
+  id6e_replay_shadow_validation.py`, 703 lines): `run_replay`'s pattern
+  (fixed historical checkpoint grid, read-only `ReadOnlyStore`, exact-
+  Decision-by-id loading, bounded reconstruction via the same canonical
+  helpers production uses, the real unmodified engine, disposable
+  JSONL/JSON output) is directly reusable, near-verbatim, for a future
+  ID-7F replay mode. `run_shadow_audit`'s pattern (integrity/distribution
+  audit of already-persisted rows) is narrower than what "shadow" needs
+  to mean for ID-7F — it never independently reconstructs and compares
+  against production rows. This gap is reported honestly, not assumed
+  already closed by ID-6E.
+- **Replay unit/population frozen**: one exact `EntryQualification`
+  identity bound to its exact `Decision` at one checkpoint (never
+  instrument/date alone); population = every persisted WATCH/TRADE EQ
+  row, including negative/`UNKNOWN` verdicts, never `ACTIONABLE`-only.
+- **Zero new repository API needed**: `get_decision`/
+  `get_entry_qualification` already provide exact-identity lookups.
+- **PIT reconstruction rules, `evaluated_at`/`persisted_at` semantics,
+  the 20-field shadow-equivalence set, currentness exclusion, the
+  determinism contract, and a 7-category failure-classification
+  taxonomy** were all frozen with direct source justification (see the
+  report for the full derivation).
+- **Real-data finding (read-only, zero code committed):** the live
+  `db/athena.db` reports `schema_version=17` — ID-7A's schema-v18
+  migration has never been applied to it, and `entry_actionabilities`
+  does not exist there. Separately, zero TRADE decisions have occurred
+  in the real system since 2026-08-27 (before EQ persistence began), so
+  zero real `(TRADE, EntryQualification)` pairs exist anywhere in the
+  live database today — WATCH (11,986 rows, 100% WATCH-type) is the
+  only population currently available for replay/shadow. SHORT remains
+  at zero real Decisions (100% of 96,985 TRADE decisions are LONG).
+- **Classification: B — `SMALL_ID7F_ADAPTER_REQUIRED`.** ID-6E's
+  `run_replay` shape is reusable near-verbatim; the reconstruction-vs-
+  production-row comparator is a small, fully source-grounded new
+  adapter, not a new architecture. Its exact future function-level
+  contract (`run_replay`/`run_shadow_equivalence`/`run_shadow_audit`)
+  and test plan were frozen, none implemented.
+- **Production activation boundary confirmed**: schema migration + a
+  normal `athena-serve` restart are both required and neither performed
+  here (mirrors EM-7C's own documented precedent).
+- **Sample-sufficiency/natural-shadow policy**: reuses ID-6E's own
+  accepted canary → one full session → owner-review pattern (no
+  invented minimum N), and explicitly does not treat the current
+  zero-TRADE-population finding as a closure blocker, mirroring ID-6E's
+  own "TRADE observation not mandatory for closure" precedent.
+- **Profitability/outcome-analysis explicitly deferred** to a separate,
+  later, separately-authorized sub-milestone — not folded into ID-7F's
+  initial scope.
+
+**Risks discovered.** Population scarcity (TRADE-bound rows are
+currently entirely absent from real data — any near-term replay/shadow
+will be WATCH-dominated) and the deployment gap (schema v18 never
+migrated against the live database; ID-7E code never executed against
+it) are both real, current, honestly-reported limitations, not defects.
+SHORT population remains unchanged at zero.
+
+**Technical debt introduced.** None (no code changed).
+
+**Suggested improvements.** None beyond the recommended next step below.
+
+**Remaining work.** Owner/Chief Architect review and acceptance of the
+validation contract; if accepted, author the small ID-7F adapter
+described in the report's §43, starting with replay mode only (no
+deployment/schema-migration prerequisite) before shadow-equivalence
+mode (which requires the schema migration + service restart described
+in §36).
+
+**Commit message.**
+```
+docs(intraday): freeze Entry Actionability replay/shadow validation contract (ID-7F0)
+
+- Recorded ID-7E.1/ID-7E Owner-approved/closed 2026-09-05 (canonical
+  EntryActionability workflow integration frozen) across all 4 tracking
+  docs.
+- Added docs/research/ID-7F0-ENTRY-ACTIONABILITY-REPLAY-SHADOW-VALIDATION-CONTRACT.md:
+  audits the ID-6E replay/shadow precedent in full, freezes the replay
+  unit/population/PIT-reconstruction rules/shadow-equivalence field set/
+  determinism contract/failure taxonomy for a future ID-7F, classifies
+  existing-infrastructure reuse as a small adapter (Outcome B), and
+  reports a real-data finding (read-only, zero writes) that the live
+  database has neither the ID-7A schema-v18 migration nor any real
+  TRADE-bound EntryQualification rows yet.
+- Zero code/schema/repository/workflow changes; discovery/contract-
+  freeze only per the milestone's own authorization.
+```
+
+**Ready for review.** Yes — ID-7F0 discovery is source-grounded and
+complete; awaiting Owner/Chief Architect validation-contract decision.
+
+---
+
 ## ID-7E.1 Entry Actionability Production Invocation-Scope Hardening — Complete
 
 **Summary.** Owner/Chief Architect source review accepted ID-7E's core
@@ -126,6 +253,12 @@ fix(intraday): scope EntryActionability invocation to WATCH/TRADE only (ID-7E.1)
 
 **Ready for review.** Yes — ID-7E.1 is implemented and self-validated;
 awaiting Owner/Chief Architect final closure of ID-7E overall.
+
+**Update (2026-09-05).** Owner/Chief Architect approved: ID-7E.1 OWNER
+APPROVED / CLOSED, ID-7E OVERALL OWNER APPROVED / CLOSED — canonical
+EntryActionability workflow integration frozen. ID-7F0 (replay/shadow
+validation discovery + contract freeze) authorized and completed the
+same day — see the entry above.
 
 ---
 
