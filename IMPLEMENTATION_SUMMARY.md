@@ -6,6 +6,76 @@ status updated on approval.
 
 ---
 
+## PS-P9C Opening-Range Setup Lifecycle Freeze — Ready for Owner Review
+
+**Summary.** PS-P9B was Owner/Chief Architect approved and frozen on
+2026-09-04 with production Setup still null under `portfolio-interpretation-v2`.
+PS-P9C replayed the minimal Opening Range Setup candidates over the same
+persisted ATHENA evidence population. Verdict: recommend freezing Candidate L1
+for owner review — `BREAKOUT` only when OR15 and OR30 both show active upside
+breakout with no returned-inside behavior, `BREAKDOWN` only when both show
+active downside breakdown with no returned-inside behavior, otherwise null with
+provenance.
+
+**Architecture compliance.** Documentation/research-only milestone. No
+production Portfolio interpreter, Portfolio Sync, DTO, dashboard, schema,
+OpeningRangeEngine, EntryQualification, DecisionEngine, ScoringEngine, broker,
+or order behavior changed. Production Setup remains null and interpretation
+version remains `portfolio-interpretation-v2`.
+
+**Files created.**
+
+- `docs/research/PS-P9C-PORTFOLIO-OPENING-RANGE-SETUP-LIFECYCLE-FREEZE.md`
+
+**Files modified.**
+
+- `docs/research/PS-P9B-PORTFOLIO-OPENING-RANGE-SETUP-METHODOLOGY-REPLAY.md`
+- `docs/MILESTONES.md`
+- `IMPLEMENTATION_SUMMARY.md`
+- `ATHENA_BRIEFING.md`
+
+**Public APIs added.** None.
+
+**Tests added.** None. PS-P9C added no production or checked-in research code.
+
+**Test results.** Read-only replay: 35,232 observations, 398 instruments, 6,065
+instrument-session groups. Candidate L1 produced 1,019 `BREAKOUT`, 1,716
+`BREAKDOWN`, and 32,497 null observations; zero future-leakage defects and zero
+direct `BREAKOUT -> BREAKDOWN` / `BREAKDOWN -> BREAKOUT` transitions in the
+checkpoint grid. `git diff --check`: clean.
+
+**Coverage summary.** Not applicable to documentation-only methodology/replay.
+
+**Risks discovered.** L1 is intentionally suppressive: 2,213 OR15-only
+observations are null, 9,065 observations are null due to returned-inside
+behavior, and 524 observations are null due to OR15/OR30 opposite-direction
+conflict. This is the cost of keeping v3 semantics simple and stable.
+
+**Technical debt introduced.** None. Existing deferred Portfolio Intelligence
+work remains: production Setup implementation, Support 1, Target 2/3, REDUCE,
+ROTATE, allocation, ranking, and history.
+
+**Suggested improvements.** If the owner approves PS-P9C, authorize PS-P9D to
+implement only L1 Opening Range Setup under `portfolio-interpretation-v3`.
+Otherwise keep Setup deferred and move to another Portfolio V2 capability.
+
+**Remaining work.** Owner/Chief Architect review of PS-P9C. No Setup
+implementation is authorized.
+
+**Implementation metrics.** Documentation-only. Production source files
+changed for PS-P9C: 0. Tests added: 0.
+
+**Phase outcome.** PS-P9C methodology/replay complete and ready for Owner/Chief
+Architect review. Production Setup remains deferred.
+
+**Commit hash.** Pending owner commit.
+
+**Branch.** feature/portfolio-sync.
+
+**Review status.** Ready for Owner/Chief Architect review.
+
+---
+
 ## EM-7D0 Evidence Readiness / First Production Shadow Audit — Complete
 
 **Summary.** Owner/Chief Architect closed EM-7C and EM-7C.1 (natural
@@ -3234,7 +3304,7 @@ frozen. Not marked owner-approved here; ID-7A0 explicitly not started.
 
 ---
 
-## PS-P9B Portfolio Opening-Range Setup Methodology Replay — Ready for Owner Review
+## PS-P9B Portfolio Opening-Range Setup Methodology Replay — Frozen
 
 **Summary.** PS-P9A was Owner/Chief Architect approved and frozen on
 2026-09-04 with Setup semantics and evidence roles frozen. PS-P9B then audited
@@ -3285,20 +3355,20 @@ to continue, run PS-P9C as a narrow methodology freeze on directionality,
 OR15/OR30 precedence, returned-inside behavior, and post-close/weekend
 lifecycle before any implementation.
 
-**Remaining work.** Owner/Chief Architect review of PS-P9B. No Setup
-implementation is authorized.
+**Remaining work.** None for PS-P9B; milestone is frozen. No Setup
+implementation was authorized by PS-P9B.
 
 **Implementation metrics.** Documentation-only. Production source files
 changed for PS-P9B: 0. Tests added: 0.
 
-**Phase outcome.** PS-P9B methodology/replay complete and ready for Owner/Chief
-Architect review. Production Setup remains deferred.
+**Phase outcome.** PS-P9B Owner/Chief Architect approved and frozen
+2026-09-04. Production Setup remains deferred.
 
 **Commit hash.** Pending owner commit.
 
 **Branch.** feature/portfolio-sync.
 
-**Review status.** Ready for Owner/Chief Architect review.
+**Review status.** Owner/Chief Architect approved and frozen 2026-09-04.
 
 ---
 
