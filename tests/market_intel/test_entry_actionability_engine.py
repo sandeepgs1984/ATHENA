@@ -127,6 +127,9 @@ def _or15(
     status: OpeningRangeFormationStatus = OpeningRangeFormationStatus.COMPLETE,
     low: Decimal | None = Decimal("97.00"),
     high: Decimal | None = Decimal("101.50"),
+    instrument_id: str = IID,
+    session_date: date = DAY,
+    as_of: datetime = EQ_AS_OF,
 ) -> OpeningRangeEvidence:
     formation = OpeningRangeFormation(
         window=OpeningRangeWindow.OR15,
@@ -139,7 +142,7 @@ def _or15(
         status=status, explanation="OR15 test formation",
     )
     return OpeningRangeEvidence(
-        instrument_id=IID, session_date=DAY, as_of=EQ_AS_OF, formation=formation,
+        instrument_id=instrument_id, session_date=session_date, as_of=as_of, formation=formation,
         relation=OpeningRangeRelation.INSIDE_RANGE, breakout_event=BreakoutEvent.NOT_OBSERVED,
         first_breakout_ts=None, bars_since_breakout=None,
         max_extension_from_range_pct=None, current_extension_pct=None,
@@ -147,17 +150,30 @@ def _or15(
     )
 
 
+_UNSET = object()
+
+
 def _evidence(
     *,
     completed_m5_close: Candle | None = None,
     session_vwap: Decimal | None = Decimal("99.00"),
+    session_vwap_as_of=_UNSET,
     opening_range_15: OpeningRangeEvidence | None = None,
 ) -> EntryActionabilityMarketEvidence:
+    """By default, ``session_vwap_as_of`` auto-derives to exactly the
+    supplied (or default) candle's own completion instant — the coherent
+    V0 checkpoint every "happy path" fixture in this file shares. Pass an
+    explicit ``session_vwap_as_of`` to deliberately test provenance
+    mismatches."""
     if completed_m5_close is None:
         completed_m5_close = _candle()
+    if session_vwap_as_of is _UNSET:
+        session_vwap_as_of = (
+            completed_m5_close.ts_open + timedelta(minutes=5) if session_vwap is not None else None
+        )
     return EntryActionabilityMarketEvidence(
         completed_m5_close=completed_m5_close, session_vwap=session_vwap,
-        opening_range_15=opening_range_15,
+        session_vwap_as_of=session_vwap_as_of, opening_range_15=opening_range_15,
     )
 
 
@@ -213,12 +229,120 @@ def test_trade_non_qualified_eq_reports_eq_gate_only(eq_state) -> None:
     assert result.reason_codes == (EntryActionabilityReasonCode.UPSTREAM_EQ_NOT_QUALIFIED,)
 
 
+# --------------------------------------------------------------------------- #
+# ID-7C.2: upstream short-circuit / evidence-validation order regression
+# matrix — layer-3 evidence must be irrelevant to an upstream-ineligible
+# candidate's historical methodology verdict, so it must never even be
+# inspected for one.
+# --------------------------------------------------------------------------- #
+
+
+def test_binding_mismatch_still_raises_before_any_upstream_verdict() -> None:
+    """Exact Decision/EQ identity mismatch remains an unconditional
+    contract error, checked before upstream gates are even computed —
+    regardless of what the Decision/EQ states would otherwise be."""
+    with pytest.raises(ValueError, match="not an exact bound pair"):
+        _evaluate(
+            _decision(decision_id="decision-1", decision_type=DecisionType.WATCH),
+            _eq(decision_id="decision-2"),
+            _evidence(),
+        )
+
+
+def test_watch_with_wrong_instrument_m5_is_not_actionable_no_valueerror() -> None:
+    wrong_instrument_candle = _candle(instrument_id="NSE:OTHER")
+    result = _evaluate(
+        _decision(decision_type=DecisionType.WATCH),
+        _eq(decision_type=DecisionType.WATCH),
+        _evidence(completed_m5_close=wrong_instrument_candle),
+    )
+    assert result.state is EntryActionabilityState.NOT_ACTIONABLE
+    assert result.reason_codes == (EntryActionabilityReasonCode.UPSTREAM_DECISION_NOT_TRADE,)
+
+
+def test_non_qualified_eq_with_future_m5_is_not_actionable_no_valueerror() -> None:
+    forming_candle = _candle(ts_open=EQ_AS_OF - timedelta(minutes=1))
+    result = _evaluate(
+        _decision(), _eq(state=EntryQualificationState.NOT_YET),
+        _evidence(completed_m5_close=forming_candle),
+    )
+    assert result.state is EntryActionabilityState.NOT_ACTIONABLE
+    assert result.reason_codes == (EntryActionabilityReasonCode.UPSTREAM_EQ_NOT_QUALIFIED,)
+
+
+def test_watch_with_future_checkpoint_relative_vwap_is_not_actionable_no_valueerror() -> None:
+    future_vwap_evidence = EntryActionabilityMarketEvidence(
+        completed_m5_close=None, session_vwap=Decimal("99"),
+        session_vwap_as_of=EQ_AS_OF + timedelta(minutes=1), opening_range_15=None,
+    )
+    result = _evaluate(
+        _decision(decision_type=DecisionType.WATCH),
+        _eq(decision_type=DecisionType.WATCH),
+        future_vwap_evidence,
+    )
+    assert result.state is EntryActionabilityState.NOT_ACTIONABLE
+    assert result.reason_codes == (EntryActionabilityReasonCode.UPSTREAM_DECISION_NOT_TRADE,)
+
+
+def test_non_qualified_eq_with_future_or15_is_not_actionable_no_valueerror() -> None:
+    future_or15 = _or15(as_of=EQ_AS_OF + timedelta(minutes=1))
+    result = _evaluate(
+        _decision(), _eq(state=EntryQualificationState.NOT_YET),
+        _evidence(opening_range_15=future_or15),
+    )
+    assert result.state is EntryActionabilityState.NOT_ACTIONABLE
+    assert result.reason_codes == (EntryActionabilityReasonCode.UPSTREAM_EQ_NOT_QUALIFIED,)
+
+
+def test_watch_with_cross_instrument_or15_is_not_actionable_no_valueerror() -> None:
+    other_instrument_or15 = _or15(instrument_id="NSE:OTHER")
+    result = _evaluate(
+        _decision(decision_type=DecisionType.WATCH),
+        _eq(decision_type=DecisionType.WATCH),
+        _evidence(opening_range_15=other_instrument_or15),
+    )
+    assert result.state is EntryActionabilityState.NOT_ACTIONABLE
+    assert result.reason_codes == (EntryActionabilityReasonCode.UPSTREAM_DECISION_NOT_TRADE,)
+
+
+def test_eligible_path_still_raises_on_wrong_instrument_m5() -> None:
+    wrong_instrument_candle = _candle(instrument_id="NSE:OTHER")
+    with pytest.raises(ValueError, match="resolved candidate instrument"):
+        _evaluate(_decision(), _eq(), _evidence(completed_m5_close=wrong_instrument_candle))
+
+
+def test_eligible_path_still_raises_on_future_m5() -> None:
+    forming_candle = _candle(ts_open=EQ_AS_OF - timedelta(minutes=1))
+    with pytest.raises(ValueError, match="has not actually completed"):
+        _evaluate(_decision(), _eq(), _evidence(completed_m5_close=forming_candle))
+
+
+def test_eligible_path_still_raises_on_future_vwap() -> None:
+    future_vwap_evidence = EntryActionabilityMarketEvidence(
+        completed_m5_close=None, session_vwap=Decimal("99"),
+        session_vwap_as_of=EQ_AS_OF + timedelta(minutes=1), opening_range_15=None,
+    )
+    with pytest.raises(ValueError, match="later than the.*checkpoint"):
+        _evaluate(_decision(), _eq(), future_vwap_evidence)
+
+
+def test_eligible_path_still_raises_on_incoherent_or15() -> None:
+    other_instrument_or15 = _or15(instrument_id="NSE:OTHER")
+    with pytest.raises(ValueError, match="resolved candidate instrument"):
+        _evaluate(_decision(), _eq(), _evidence(opening_range_15=other_instrument_or15))
+    future_or15 = _or15(as_of=EQ_AS_OF + timedelta(minutes=1))
+    with pytest.raises(ValueError, match="later than the checkpoint"):
+        _evaluate(_decision(), _eq(), _evidence(opening_range_15=future_or15))
+
+
 def test_trade_qualified_reaches_layer_3() -> None:
     """The only combination that reaches layer-3 evidence handling — proven
     by the fact evidence absence now produces UNKNOWN, not NOT_ACTIONABLE."""
     result = _evaluate(
         _decision(), _eq(),
-        EntryActionabilityMarketEvidence(completed_m5_close=None, session_vwap=None, opening_range_15=None),
+        EntryActionabilityMarketEvidence(
+            completed_m5_close=None, session_vwap=None, session_vwap_as_of=None, opening_range_15=None,
+        ),
     )
     assert result.state is EntryActionabilityState.UNKNOWN
 
@@ -241,7 +365,10 @@ def test_not_actionable_carries_no_value_objects_or_evidence_as_of() -> None:
 def test_missing_m5_candle_is_unknown_insufficient_evidence() -> None:
     result = _evaluate(
         _decision(), _eq(),
-        EntryActionabilityMarketEvidence(completed_m5_close=None, session_vwap=Decimal("99"), opening_range_15=None),
+        EntryActionabilityMarketEvidence(
+            completed_m5_close=None, session_vwap=Decimal("99"), session_vwap_as_of=EQ_AS_OF,
+            opening_range_15=None,
+        ),
     )
     assert result.state is EntryActionabilityState.UNKNOWN
     assert result.reason_codes == (EntryActionabilityReasonCode.INSUFFICIENT_EVIDENCE,)
@@ -259,7 +386,8 @@ def test_invalid_vwap_rejected_by_market_evidence_construction() -> None:
     context's own construction time, before the engine ever runs."""
     with pytest.raises(ValueError, match="session_vwap must be positive"):
         EntryActionabilityMarketEvidence(
-            completed_m5_close=_candle(), session_vwap=Decimal("0"), opening_range_15=None,
+            completed_m5_close=_candle(), session_vwap=Decimal("0"), session_vwap_as_of=EQ_AS_OF,
+            opening_range_15=None,
         )
 
 
@@ -269,6 +397,95 @@ def test_future_evidence_timestamp_is_a_contract_error() -> None:
     forming_candle = _candle(ts_open=EQ_AS_OF - timedelta(minutes=1))
     with pytest.raises(ValueError, match="has not actually completed"):
         _evaluate(_decision(), _eq(), _evidence(completed_m5_close=forming_candle))
+
+
+# --------------------------------------------------------------------------- #
+# ID-7C.1: VWAP market-time provenance matrix (item 10)
+# --------------------------------------------------------------------------- #
+
+
+def test_vwap_price_present_as_of_absent_is_malformed_input() -> None:
+    with pytest.raises(ValueError, match="must both be present or both be None"):
+        EntryActionabilityMarketEvidence(
+            completed_m5_close=_candle(), session_vwap=Decimal("99"), session_vwap_as_of=None,
+            opening_range_15=None,
+        )
+
+
+def test_vwap_absent_as_of_present_is_malformed_input() -> None:
+    with pytest.raises(ValueError, match="must both be present or both be None"):
+        EntryActionabilityMarketEvidence(
+            completed_m5_close=_candle(), session_vwap=None, session_vwap_as_of=EQ_AS_OF,
+            opening_range_15=None,
+        )
+
+
+def test_naive_vwap_as_of_rejected() -> None:
+    with pytest.raises(ValueError, match="session_vwap_as_of must be timezone-aware"):
+        EntryActionabilityMarketEvidence(
+            completed_m5_close=_candle(), session_vwap=Decimal("99"),
+            session_vwap_as_of=datetime(2026, 9, 4, 9, 50), opening_range_15=None,
+        )
+
+
+def test_vwap_as_of_later_than_m5_completion_rejected() -> None:
+    """M5 completes at EQ_AS_OF (ts_open=EQ_AS_OF-5min); VWAP as_of 2
+    minutes later than that is a stale-M5/fresher-VWAP mismatch — still
+    <= the checkpoint, so this proves the PIT-coherence check fires
+    independently of the future-relative-to-checkpoint check."""
+    with pytest.raises(ValueError, match="must equal completed_m5_close's own completion instant"):
+        EntryActionabilityMarketEvidence(
+            completed_m5_close=_candle(ts_open=EQ_AS_OF - timedelta(minutes=10)),
+            session_vwap=Decimal("99"), session_vwap_as_of=EQ_AS_OF - timedelta(minutes=3),
+            opening_range_15=None,
+        )
+
+
+def test_vwap_as_of_earlier_than_m5_completion_rejected() -> None:
+    with pytest.raises(ValueError, match="must equal completed_m5_close's own completion instant"):
+        EntryActionabilityMarketEvidence(
+            completed_m5_close=_candle(ts_open=EQ_AS_OF - timedelta(minutes=5)),
+            session_vwap=Decimal("99"), session_vwap_as_of=EQ_AS_OF - timedelta(minutes=1),
+            opening_range_15=None,
+        )
+
+
+def test_vwap_as_of_equal_to_m5_completion_is_valid() -> None:
+    ev = EntryActionabilityMarketEvidence(
+        completed_m5_close=_candle(ts_open=EQ_AS_OF - timedelta(minutes=5)),
+        session_vwap=Decimal("99"), session_vwap_as_of=EQ_AS_OF, opening_range_15=None,
+    )
+    result = _evaluate(_decision(), _eq(), ev)
+    assert result.state is EntryActionabilityState.ACTIONABLE
+    assert result.evidence_as_of == EQ_AS_OF
+
+
+def test_vwap_as_of_later_than_checkpoint_rejected_when_no_m5_supplied() -> None:
+    """No M5 candle is supplied (so the PIT-coherence check cannot itself
+    fire), isolating the general future-relative-to-checkpoint check."""
+    future_vwap_as_of = EQ_AS_OF + timedelta(minutes=1)
+    ev = EntryActionabilityMarketEvidence(
+        completed_m5_close=None, session_vwap=Decimal("99"), session_vwap_as_of=future_vwap_as_of,
+        opening_range_15=None,
+    )
+    with pytest.raises(ValueError, match="later than the.*checkpoint"):
+        _evaluate(_decision(), _eq(), ev)
+
+
+def test_no_future_or_stale_vwap_can_produce_actionable() -> None:
+    """Composite proof: every mismatched-provenance case above either
+    raises at construction or at evaluation -- none of them can ever
+    reach ACTIONABLE."""
+    mismatched_pairs = [
+        (EQ_AS_OF - timedelta(minutes=10), EQ_AS_OF - timedelta(minutes=3)),  # stale M5, fresher VWAP
+        (EQ_AS_OF - timedelta(minutes=5), EQ_AS_OF - timedelta(minutes=1)),  # VWAP earlier than M5
+    ]
+    for m5_ts_open, vwap_as_of in mismatched_pairs:
+        with pytest.raises(ValueError):
+            EntryActionabilityMarketEvidence(
+                completed_m5_close=_candle(ts_open=m5_ts_open), session_vwap=Decimal("99"),
+                session_vwap_as_of=vwap_as_of, opening_range_15=None,
+            )
 
 
 def test_zero_risk_geometry_is_unknown_invalidation_unavailable() -> None:
@@ -377,6 +594,54 @@ def test_evidence_as_of_never_later_than_entry_actionability_as_of() -> None:
     EntryActionability.__post_init__'s own PIT ordering check naturally."""
     result = _evaluate(_decision(), _eq(), _evidence())
     assert result.evidence_as_of <= result.entry_actionability_as_of
+
+
+# --------------------------------------------------------------------------- #
+# ID-7C.1: OR15 binding/PIT coherence matrix (item 17)
+# --------------------------------------------------------------------------- #
+
+
+def test_or15_other_instrument_raises() -> None:
+    other_instrument_or15 = _or15(instrument_id="NSE:OTHER")
+    with pytest.raises(ValueError, match="resolved candidate instrument"):
+        _evaluate(_decision(), _eq(), _evidence(opening_range_15=other_instrument_or15))
+
+
+def test_or15_other_session_raises() -> None:
+    other_session_or15 = _or15(session_date=date(2026, 9, 3))
+    with pytest.raises(ValueError, match="EntryQualification's session"):
+        _evaluate(_decision(), _eq(), _evidence(opening_range_15=other_session_or15))
+
+
+def test_or15_future_as_of_raises() -> None:
+    future_or15 = _or15(as_of=EQ_AS_OF + timedelta(minutes=1))
+    with pytest.raises(ValueError, match="later than the checkpoint"):
+        _evaluate(_decision(), _eq(), _evidence(opening_range_15=future_or15))
+
+
+def test_or15_coherent_complete_attaches_context() -> None:
+    result = _evaluate(_decision(), _eq(), _evidence(opening_range_15=_or15()))
+    assert result.opening_range_context is not None
+
+
+def test_or15_coherent_non_complete_attaches_no_context() -> None:
+    result = _evaluate(
+        _decision(), _eq(),
+        _evidence(opening_range_15=_or15(status=OpeningRangeFormationStatus.FORMING)),
+    )
+    assert result.opening_range_context is None
+
+
+def test_or15_coherent_absent_attaches_no_context() -> None:
+    result = _evaluate(_decision(), _eq(), _evidence(opening_range_15=None))
+    assert result.opening_range_context is None
+
+
+def test_or15_coherence_check_leaves_invalidation_and_rr_unchanged() -> None:
+    with_coherent_or15 = _evaluate(_decision(), _eq(), _evidence(opening_range_15=_or15()))
+    without_or15 = _evaluate(_decision(), _eq(), _evidence(opening_range_15=None))
+    assert with_coherent_or15.operative_invalidation == without_or15.operative_invalidation
+    assert with_coherent_or15.reward == without_or15.reward
 
 
 # --------------------------------------------------------------------------- #
@@ -579,10 +844,32 @@ def test_default_methodology_version_is_the_frozen_constant() -> None:
     assert result.entry_actionability_methodology_version == "entry-actionability-v0"
 
 
-def test_explicit_policy_methodology_version_honored() -> None:
-    policy = EntryActionabilityPolicy(methodology_version="entry-actionability-v0-experimental")
+def test_policy_has_no_methodology_version_field() -> None:
+    """ID-7C.1: methodology identity can no longer be caller-relabeled —
+    the field was removed entirely, not merely defaulted."""
+    with pytest.raises(TypeError):
+        EntryActionabilityPolicy(methodology_version="entry-actionability-v0-experimental")
+
+
+def test_policy_with_only_config_snapshot_id_does_not_change_methodology_version() -> None:
+    policy = EntryActionabilityPolicy(config_snapshot_id="cfg-1")
     result = _evaluate(_decision(), _eq(), _evidence(), policy=policy)
-    assert result.entry_actionability_methodology_version == "entry-actionability-v0-experimental"
+    assert result.entry_actionability_methodology_version == EA_DEFAULT_METHODOLOGY_VERSION
+
+
+def test_identical_v0_behavior_cannot_emit_a_different_methodology_identity() -> None:
+    """Proves the spoofing gap is closed structurally: there is no input
+    path through which identical V0 evaluation logic can produce an
+    artifact claiming a different methodology_version."""
+    default_result = _evaluate(_decision(), _eq(), _evidence())
+    with_metadata_result = _evaluate(
+        _decision(), _eq(), _evidence(), policy=EntryActionabilityPolicy(config_snapshot_id="cfg-1")
+    )
+    assert (
+        default_result.entry_actionability_methodology_version
+        == with_metadata_result.entry_actionability_methodology_version
+        == EA_DEFAULT_METHODOLOGY_VERSION
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -633,7 +920,8 @@ def test_non_m5_candle_rejected_by_market_evidence_construction() -> None:
     wrong_timeframe_candle = _candle(timeframe=Timeframe.M15)
     with pytest.raises(ValueError, match="must be an M5 candle"):
         EntryActionabilityMarketEvidence(
-            completed_m5_close=wrong_timeframe_candle, session_vwap=Decimal("99"), opening_range_15=None,
+            completed_m5_close=wrong_timeframe_candle, session_vwap=Decimal("99"),
+            session_vwap_as_of=EQ_AS_OF, opening_range_15=None,
         )
 
 
@@ -643,7 +931,8 @@ def test_non_or15_window_rejected_by_market_evidence_construction() -> None:
     )
     with pytest.raises(ValueError, match="must be an OR15 window"):
         EntryActionabilityMarketEvidence(
-            completed_m5_close=_candle(), session_vwap=Decimal("99"), opening_range_15=or30_like,
+            completed_m5_close=_candle(), session_vwap=Decimal("99"), session_vwap_as_of=EQ_AS_OF,
+            opening_range_15=or30_like,
         )
 
 
@@ -670,7 +959,9 @@ def test_every_engine_output_passes_domain_construction_naturally() -> None:
         _evaluate(_decision(), _eq(state=EntryQualificationState.NOT_YET), _evidence()),
         _evaluate(
             _decision(), _eq(),
-            EntryActionabilityMarketEvidence(completed_m5_close=None, session_vwap=None, opening_range_15=None),
+            EntryActionabilityMarketEvidence(
+                completed_m5_close=None, session_vwap=None, session_vwap_as_of=None, opening_range_15=None,
+            ),
         ),
         _evaluate(
             _decision(direction=Direction.LONG), _eq(),

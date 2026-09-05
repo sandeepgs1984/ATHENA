@@ -6,6 +6,348 @@ status updated on approval.
 
 ---
 
+## ID-7C.2 Entry Actionability Upstream Short-Circuit / Evidence-Validation Order Correction — Complete
+
+**Summary.** Owner/Chief Architect source review of ID-7C.1 accepted the
+implementation (VWAP provenance, OR15 coherence, methodology-identity
+freeze) but held final ID-7C closure for one narrow evaluation-order
+defect: `evaluate()` validated candidate/checkpoint-relative layer-3
+evidence before computing the upstream Decision/EQ gate reasons,
+contradicting the frozen WHAT/WHETHER/WHEN gate order (a Decision that
+is not `TRADE`, or an EQ that is not `QUALIFIED`, must make layer-3
+evidence irrelevant to the resulting historical methodology verdict —
+that evidence must never even be inspected, let alone raise). This is a
+very small correction — no methodology change, no schema/repository
+change, no workflow wiring, no evidence-object model change.
+
+**Defect.** The evaluator's order was effectively: validate exact
+Decision/EQ binding → validate the supplied M5 candle relative to the
+candidate/checkpoint → validate VWAP `as_of` relative to the checkpoint
+→ validate OR15 relative to the candidate/session/checkpoint → *then*
+compute the Decision gate and EQ gate. Concretely, a `WATCH` Decision
+(or a non-`QUALIFIED` EQ) paired with, say, an OR15 artifact belonging
+to a different instrument would raise `ValueError` from
+`_validate_or15_coherence` before the evaluator ever reached the
+upstream-gate check that should have produced `NOT_ACTIONABLE` +
+`UPSTREAM_DECISION_NOT_TRADE` (or `UPSTREAM_EQ_NOT_QUALIFIED`) instead.
+The same was true of a future/uncompleted M5 candle and of
+checkpoint-relative VWAP provenance.
+
+**Fix** (`src/athena/intraday/entry_actionability_engine.py`,
+`EntryActionabilityEngine.evaluate`). Exact Decision/EQ *binding*
+validation (`_validate_binding`) still runs unconditionally first — a
+mismatched Decision/EQ pair (wrong `decision_id`, disagreeing
+`decision_type`/`run_id`/`cycle_id`/`instrument_id`) can never produce a
+trustworthy verdict of any kind, eligible or not, so this remains an
+unconditional contract error regardless of what the Decision/EQ states
+would otherwise be. Immediately after that — and before any
+candidate/checkpoint-relative evidence check — the upstream gate
+reasons are now computed (`decision_type != TRADE` →
+`UPSTREAM_DECISION_NOT_TRADE`; exact-bound EQ `state != QUALIFIED` →
+`UPSTREAM_EQ_NOT_QUALIFIED`) and the `NOT_ACTIONABLE` early return
+fires if either is present. Only once both upstream conditions pass
+(`decision_type == TRADE` and exact EQ `state == QUALIFIED`) does the
+evaluator proceed to `_validate_candle_coherence`, the
+VWAP-future-relative-to-checkpoint check, and
+`_validate_or15_coherence` — followed by layer-3 evidence sufficiency
+and risk geometry, exactly as ID-7C.1 left them. The net effect: an
+upstream-ineligible candidate's `market_evidence` is never inspected at
+all beyond what `EntryActionabilityMarketEvidence.__post_init__`
+already validated at its own construction time (which is unchanged and
+still runs regardless, since those are the evidence object's own
+self-contained structural invariants, not candidate/checkpoint-relative
+ones). The module's own evaluation-structure docstring was updated to
+state this ordering boundary explicitly, so it is auditable when ID-7E
+eventually composes a real per-cycle caller.
+
+**Files created.** None.
+
+**Files modified.**
+`src/athena/intraday/entry_actionability_engine.py` (module docstring
+updated with the explicit evaluation-order boundary; `evaluate()`'s
+upstream-gate computation and early return moved to run immediately
+after `_validate_binding`, before `_validate_candle_coherence`/the
+VWAP-future check/`_validate_or15_coherence`; no field, no signature, no
+helper-function behavior changed — only call order),
+`tests/market_intel/test_entry_actionability_engine.py` (10 new tests).
+Zero changes to `src/athena/data/store/schema.py`,
+`src/athena/data/store/repository.py`, or
+`src/athena/intraday/__init__.py`.
+
+**Public APIs added.** None. `evaluate()`'s signature
+(`decision, entry_qualification, market_evidence, evaluated_at,
+policy=None`) is unchanged; `EntryActionabilityMarketEvidence`/
+`EntryActionabilityPolicy` field lists are unchanged.
+
+**Tests/validation.** 10 new tests
+(`tests/market_intel/test_entry_actionability_engine.py`): a
+binding-mismatch-still-raises-before-any-upstream-verdict regression
+proof; `WATCH` + wrong-instrument M5 → `NOT_ACTIONABLE` (no
+`ValueError`); `TRADE` + non-`QUALIFIED` EQ + future/uncompleted M5 →
+`NOT_ACTIONABLE` (no `ValueError`); `WATCH` + a future
+checkpoint-relative VWAP with no M5 candle supplied →
+`NOT_ACTIONABLE` (no `ValueError`); `TRADE` + non-`QUALIFIED` EQ +
+future OR15 → `NOT_ACTIONABLE` (no `ValueError`); `WATCH` +
+cross-instrument OR15 → `NOT_ACTIONABLE` (no `ValueError`); and four
+mirrored eligible-path proofs (`TRADE` + `QUALIFIED` with the identical
+wrong-instrument-M5/future-M5/future-VWAP/incoherent-OR15 evidence)
+confirming each still raises `ValueError` exactly as ID-7C.1 left it.
+All 75 previously-existing engine tests continue to pass unweakened.
+Full suite: **3588 passed, 1 pre-existing unrelated skip, 0 failures**
+(`PYTHONPATH=src python3 -m pytest tests/`).
+
+**Coverage summary.** Both the ineligible-path short-circuit (for each
+of the three candidate/checkpoint-relative check kinds: M5, VWAP, OR15)
+and the eligible-path strictness-preserved counterpart are each
+exercised by a name-matched test.
+
+**Architecture compliance.** No architecture change; ADR-015 and the
+frozen V0 methodology are unchanged. This milestone corrects the
+evaluator's own internal call order to match the already-frozen
+WHAT/WHETHER/WHEN gate sequence — it does not change what that sequence
+means.
+
+**ADR compliance.** Unchanged.
+
+**Risks discovered.** None new — this was a genuine, narrow ordering
+defect the owner's source review caught; no evidence it produced an
+incorrect production result (no production caller exists yet).
+
+**Technical debt introduced.** None.
+
+**Suggested improvements.** None proposed — scope was fully specified by
+the owner's review.
+
+**Remaining work.** Owner/Chief Architect final closure review of ID-7C
+(inclusive of ID-7C.1 and ID-7C.2). ID-7D, ID-7E (workflow wiring), and
+ID-7F (replay/shadow) all remain not started, not authorized.
+
+**Commit message.**
+```
+fix(intraday): short-circuit upstream gates before layer-3 evidence checks (ID-7C.2)
+
+- Move EntryActionabilityEngine.evaluate()'s upstream Decision/EQ gate
+  computation and NOT_ACTIONABLE early return to run immediately after
+  exact Decision/EQ binding validation, before any candidate/checkpoint-
+  relative layer-3 evidence check (candle coherence, VWAP-vs-checkpoint,
+  OR15 coherence)
+- Restores the frozen WHAT/WHETHER/WHEN gate order: an upstream-
+  ineligible candidate's layer-3 evidence must be irrelevant to its
+  historical methodology verdict, so it must never be inspected for one
+- No change to methodology, evidence-object model, evaluator signature,
+  schema, or repository — evaluation order only
+- Add 10 tests proving ineligible-path evidence errors no longer raise
+  and eligible-path strictness is fully unchanged
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+```
+
+**Outcome:** ID-7C.2 complete — ID-7C ready for final Owner / Chief
+Architect closure. Not marked Owner-approved. ID-7D/ID-7E/ID-7F not
+authorized.
+
+---
+
+## ID-7C.1 Entry Actionability V0 Evidence Provenance + Methodology Identity Hardening — Complete
+
+**Summary.** Owner/Chief Architect source review of ID-7C accepted the
+core evaluator and its V0 methodology behavior, but held final closure
+for three narrow gaps: the raw VWAP price carried no market-time
+provenance; a supplied OR15 artifact was checked only for window
+identity, never for genuinely describing the same candidate/checkpoint;
+and the methodology-version policy field let identical V0 behavior
+claim an arbitrary caller-relabeled identity. This is a small, final
+hardening slice — no redesign, no reopened methodology, no schema/
+repository/workflow change.
+
+**Gap 1 — VWAP had no point-in-time provenance.**
+`EntryActionabilityMarketEvidence` previously carried `session_vwap:
+Decimal | None` with no timestamp at all, so nothing proved the VWAP
+price was computed from the same evidence boundary as the M5 entry
+reference — the engine derived `evidence_as_of` solely from the
+candle, silently assuming (never proving) VWAP shared that same
+checkpoint. Fixed by adding `session_vwap_as_of: datetime | None` with
+three new invariants in `EntryActionabilityMarketEvidence.__post_init__`:
+(1) frozen pairing — `session_vwap` and `session_vwap_as_of` must both
+be present or both be `None` (a price with no provenance, or
+provenance with no price, is malformed input); (2) `session_vwap_as_of`
+must be timezone-aware when present; (3) whenever `completed_m5_close`
+is also supplied, `session_vwap_as_of` must equal that candle's own
+completion instant (`ts_open + 5min`) exactly — ID-7B.2.1 §14's own
+frozen semantics ("the last completed M5 bar used for the checkpoint's
+VWAP / entry evidence") made explicit and enforced, rather than
+implicitly assumed. A fourth check lives in `evaluate()` itself (needs
+the resolved checkpoint, unavailable at the narrow context's own
+construction time): `session_vwap_as_of` must not be later than
+`entry_actionability_as_of`, checked even when no M5 candle is supplied
+at all. All four are genuine contract errors (`ValueError`) — a
+malformed/incoherent supplied pair, never a methodology outcome.
+Ordinary missing VWAP (`None`/`None`) remains legitimate `UNKNOWN`/
+`INSUFFICIENT_EVIDENCE`, unchanged. `evidence_as_of` is still derived
+from the candle's own completion instant, now with a comment
+documenting that construction-time validation already proved it equals
+`session_vwap_as_of` too, whenever both are present.
+
+**Gap 2 — OR15 context was not binding/PIT validated.** The engine
+previously verified only `opening_range_15.formation.window ==
+OpeningRangeWindow.OR15` — a caller could supply OR15 evidence
+belonging to a different instrument, a different session, or a future
+checkpoint, and the engine would happily attach its boundary as
+truthful context on the resulting artifact (OR15 is non-gating, but
+persisted context must still be truthful). Fixed by a new
+`_validate_or15_coherence` helper, called from `evaluate()` right after
+the existing candle-coherence check, whenever `opening_range_15` is
+supplied: requires `or15.instrument_id == instrument_id`,
+`or15.session_date == entry_qualification.session_date`, and
+`or15.as_of <= entry_actionability_as_of` — any violation raises
+`ValueError`. Before adding a fourth check for `formation.range_end >
+checkpoint` (as the authorization suggested auditing), `opening_range_
+engine.py`'s own status-assignment logic was read directly: `elif as_of
+< range_end: status = FORMING` — meaning `status == COMPLETE` is only
+ever assigned when `as_of >= range_end`, i.e. the engine itself already
+guarantees `range_end <= or15.as_of` whenever `COMPLETE`. Combined with
+the new `or15.as_of <= checkpoint` check, `range_end <= checkpoint`
+follows transitively; a fourth, duplicate check was correctly not
+added, and the audit finding is documented directly in
+`_validate_or15_coherence`'s own docstring. OR15's non-gating,
+non-fallback, non-RR-impact behavior for every other status
+(`FORMING`/`INCOMPLETE_DATA`/`NOT_AVAILABLE`/`NOT_APPLICABLE`/missing)
+is unchanged.
+
+**Gap 3 — V0 methodology identity could be spoofed.**
+`EntryActionabilityPolicy.methodology_version` previously defaulted to
+`DEFAULT_METHODOLOGY_VERSION` but accepted any caller-supplied string,
+which the engine then emitted verbatim into
+`entry_actionability_methodology_version` while running the identical
+frozen V0 algorithm underneath — an existing test explicitly proved
+this behavior, letting an artifact claim a methodology lineage it never
+actually executed. Since `EntryActionabilityEngine` is specifically the
+V0 evaluator, and no genuine V0 runtime need for an override exists,
+the field was removed entirely (Option A of the two options the
+authorization offered, its own stated preference absent a real need for
+symmetry with `EntryQualificationPolicy`). `_emit` now always sets
+`entry_actionability_methodology_version=DEFAULT_METHODOLOGY_VERSION`,
+imported directly — no input path can override it. `policy` remains an
+accepted parameter on `evaluate()` carrying only
+`config_snapshot_id` (inert audit metadata, explicitly documented as
+NOT propagated into `EntryActionability`, which has no corresponding
+field) — `_emit` no longer threads `policy` through at all, since
+nothing inside it reads that value anymore. A future genuine V1
+methodology requires a new evaluator implementation or explicit
+version-aware dispatch, never merely a different identity string over
+this same V0 code — no methodology registry was introduced.
+
+**Files created.** None.
+
+**Files modified.**
+`src/athena/intraday/entry_actionability_engine.py` (module docstring
+updated; `EntryActionabilityMarketEvidence` gained `session_vwap_as_of`
+plus 3 new `__post_init__` invariants; `EntryActionabilityPolicy` lost
+`methodology_version`; `evaluate()` gained the VWAP-future-check and the
+new `_validate_or15_coherence` call, and no longer threads `policy`
+into `_emit`; new `_validate_or15_coherence` helper),
+`tests/market_intel/test_entry_actionability_engine.py` (all existing
+fixtures updated to supply coherent `session_vwap_as_of`; the
+`_or15()`/`_evidence()` test helpers gained coherence-override
+parameters; the methodology-version-override test replaced with three
+tests proving the removal; 17 net new tests). Zero changes to
+`src/athena/data/store/schema.py`, `src/athena/data/store/repository.py`,
+or `src/athena/intraday/__init__.py` — `SCHEMA_VERSION` remains 18, and
+the already-exported `EntryActionabilityEngine`/
+`EntryActionabilityMarketEvidence`/`EntryActionabilityPolicy` symbols
+need no new export (their shapes changed, not their names).
+
+**Public APIs added.** None new. `EntryActionabilityMarketEvidence`
+gained one field (`session_vwap_as_of`); `EntryActionabilityPolicy` lost
+one field (`methodology_version`) — both are shape changes to existing
+public types, not new public surface.
+
+**Tests/validation.** 17 net new tests (some replacing removed ones).
+VWAP provenance matrix: price-present/as_of-absent and
+absent/as_of-present both rejected as malformed pairing; naive
+`session_vwap_as_of` rejected; `session_vwap_as_of` later than M5
+completion rejected; earlier than M5 completion rejected; exactly equal
+to M5 completion valid (reaches `ACTIONABLE`); `session_vwap_as_of`
+later than the checkpoint rejected even with no M5 candle supplied at
+all (isolating the evaluation-time check from the construction-time
+one); a composite proof that no future-or-stale VWAP pairing can ever
+reach `ACTIONABLE`. OR15 coherence matrix: other-instrument,
+other-session, and future-`as_of` OR15 all rejected; coherent
+`COMPLETE`/non-`COMPLETE`/absent OR15 all still produce the correct
+context presence/absence; operative invalidation and reward proven
+unchanged by OR15 coherence validation succeeding. Methodology-identity
+tests: `EntryActionabilityPolicy(methodology_version=...)` now raises
+`TypeError` (the field does not exist); a policy carrying only
+`config_snapshot_id` does not change the emitted methodology version;
+default and metadata-only-policy evaluations are proven to emit the
+identical frozen methodology version. All 60 previously-existing engine
+tests continue to pass, unweakened, against the updated fixtures. Full
+suite: **3578 passed, 1 pre-existing unrelated skip, 0 failures**
+(`PYTHONPATH=src python3 -m pytest tests/`).
+
+**Coverage summary.** Every new `__post_init__` invariant (pairing,
+tz-awareness, PIT equality), both new `evaluate()`-time checks (VWAP
+future-check, OR15 coherence's three sub-checks), and the
+methodology-version removal are each exercised by a name-matched test.
+
+**Architecture compliance.** No architecture change; ADR-015 and the
+frozen V0 methodology are unchanged. This milestone only makes already-
+frozen semantics (one coherent evidence checkpoint; truthful contextual
+evidence; one true methodology identity) enforceable where the core
+evaluator had not yet enforced them.
+
+**ADR compliance.** Unchanged. No new dimension, no new persisted
+state/reason, no currentness change.
+
+**Risks discovered.** None new. All three gaps were narrow enforcement
+gaps in already-intended semantics, not newly discovered methodology
+questions.
+
+**Technical debt introduced.** None. The removed `methodology_version`
+field carried no real runtime need; its removal is a simplification,
+not new debt.
+
+**Suggested improvements.** None proposed — scope was fully specified
+by the owner's review.
+
+**Remaining work.** Owner/Chief Architect final closure review of
+ID-7C (inclusive of ID-7C.1). ID-7D, ID-7E (workflow wiring — will need
+to compose a real per-cycle `session_vwap_as_of` and a coherent OR15
+artifact alongside the existing Decision/EQ/candle composition), and
+ID-7F (replay/shadow) all remain not started, not authorized.
+
+**Commit message.**
+```
+fix(intraday): harden EntryActionability evidence provenance + identity (ID-7C.1)
+
+- Add session_vwap_as_of to EntryActionabilityMarketEvidence with frozen
+  pairing, timezone-awareness, and exact-equality-with-M5-completion
+  invariants, proving the M5 entry reference and VWAP evidence share one
+  coherent V0 evidence checkpoint instead of two independently
+  stale-or-future readings
+- Add an evaluate()-time check rejecting VWAP evidence timestamped after
+  the checkpoint even when no M5 candle is supplied
+- Add _validate_or15_coherence requiring a supplied OR15 artifact to
+  genuinely describe the same instrument/session/at-or-before-checkpoint
+  candidate before being consumed or attached as context; audited
+  OpeningRangeEngine's own COMPLETE-status invariant to avoid a
+  redundant range_end check
+- Remove EntryActionabilityPolicy.methodology_version entirely so
+  identical V0 behavior can no longer emit a caller-relabeled
+  methodology identity; the emitted version is now always the frozen
+  DEFAULT_METHODOLOGY_VERSION
+- Add 17 net new tests proving all three corrections and their
+  independence from each other and from prior ID-7C/ID-7A behavior
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+```
+
+**Outcome:** ID-7C.1 complete — ID-7C ready for final Owner / Chief
+Architect closure. Not marked Owner-approved. ID-7D/ID-7E/ID-7F not
+authorized.
+
+---
+
 ## ID-7C Entry Actionability V0 Deterministic Evaluator — Implementation Complete
 
 **Summary.** Owner/Chief Architect closed ID-7A.2, ID-7A.1, and ID-7A

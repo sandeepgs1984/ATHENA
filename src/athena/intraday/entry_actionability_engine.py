@@ -26,12 +26,31 @@ never a separately invented `SESSION_NOT_ACTIONABLE` reason (ID-7B.2.1
 already rejected that code).
 
 Frozen evaluation structure (ID-7A.2's own domain-level invariant,
-mirrored here at the point that actually produces it):
+mirrored here at the point that actually produces it; the exact
+evaluation ORDER below was itself corrected by ID-7C.2 — see that
+section's own note):
 
     UPSTREAM ELIGIBILITY (Decision == TRADE AND exact EQ == QUALIFIED)
         -> then LAYER-3 EVIDENCE SUFFICIENCY (completed M5 close + VWAP)
             -> then RISK GEOMETRY (VWAP-loss vs. M5-close, direction-aware)
                 -> ACTIONABLE
+
+Evaluation-order boundary (ID-7C.2 — auditable for ID-7E): exact
+Decision/EQ *binding* validation (`_validate_binding`) is global — it
+runs unconditionally first, since a mismatched pair can never produce a
+trustworthy verdict of any kind, eligible or not. Upstream methodology
+gates are then computed and short-circuit IMMEDIATELY after that, before
+any candidate/checkpoint-relative layer-3 evidence check. Only once
+Decision == TRADE and the exact EQ == QUALIFIED does the evaluator begin
+validating `market_evidence` against the resolved candidate/checkpoint
+(candle instrument+completion, VWAP-provenance-vs-checkpoint, OR15
+instrument/session/checkpoint coherence) — an upstream-ineligible
+candidate's layer-3 evidence is never even inspected, so a malformed or
+incoherent-but-otherwise-structurally-valid `market_evidence` object
+(e.g. an OR15 artifact belonging to a different instrument) can never
+raise a `ValueError` for a `NOT_ACTIONABLE` result; it can only ever
+raise once that evidence is actually relevant to a TRADE+QUALIFIED
+candidate.
 
 Mandatory V0 layer-3 evidence is deliberately minimal (ID-7B2.1 §14): a
 completed M5 checkpoint candle and the session VWAP price. No D1 ATR, no
@@ -56,18 +75,35 @@ milestone may introduce a genuine re-evaluation caller without any domain
 or engine change required to support it.
 
 Contract-error vs. methodology-UNKNOWN boundary (ID-7C authorization item
-37): a Decision/EQ identity mismatch, a malformed input object, or
-evidence timestamped after the checkpoint is a programmer/caller
-contract violation — this engine raises `ValueError` deterministically,
-exactly like `EntryQualificationEngine`'s own `_validate_input_coherence`.
-Genuinely missing or geometrically invalid market evidence is a real
-methodology outcome (`UNKNOWN`), never converted into a raised exception.
+37, finalized by ID-7C.1): a Decision/EQ identity mismatch, a malformed
+input object, a naive mandatory timestamp, or evidence timestamped after
+the checkpoint is a programmer/caller contract violation — this engine
+raises `ValueError` deterministically, exactly like
+`EntryQualificationEngine`'s own `_validate_input_coherence`. Genuinely
+missing or geometrically invalid market evidence is a real methodology
+outcome (`UNKNOWN`), never converted into a raised exception.
+
+ID-7C.1 (owner source-review correction) closed three narrow gaps the
+core evaluator's own frozen V0 behavior did not need reopened: (1) the
+raw VWAP price had no market-time provenance, so nothing proved it was
+computed from the same evidence checkpoint as the M5 entry reference —
+`EntryActionabilityMarketEvidence` gained `session_vwap_as_of`, frozen
+pairing with `session_vwap`, and an exact-equality check against the
+candle's own completion instant whenever both are supplied; (2) a
+supplied `opening_range_15` was checked only for OR15-window identity,
+never for actually describing the same instrument/session/checkpoint —
+`_validate_or15_coherence` now proves that before the engine ever
+consumes or attaches it; (3) `EntryActionabilityPolicy` used to accept
+an arbitrary caller-supplied `methodology_version`, letting identical V0
+behavior claim a different, uncalibrated methodology identity — the
+field was removed entirely; this engine's emitted methodology version is
+now always the frozen `DEFAULT_METHODOLOGY_VERSION`, unconditionally.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from athena.domain.decision import Decision
@@ -125,19 +161,39 @@ class EntryActionabilityMarketEvidence:
     error.
 
     ``session_vwap`` is the raw session VWAP price
-    (`indicators.calculations.vwap`'s own first return value) as of the
-    same checkpoint. ``None`` means "VWAP could not be computed this
-    cycle" — also legitimate (`INSUFFICIENT_EVIDENCE`).
+    (`indicators.calculations.vwap`'s own first return value). ``None``
+    means "VWAP could not be computed this cycle" — legitimate missing
+    market evidence (`INSUFFICIENT_EVIDENCE`), never a contract error. A
+    non-``None`` value must be strictly positive — a non-positive VWAP is
+    a malformed, impossible market-evidence value (`ValueError`), never
+    methodology `UNKNOWN` (ID-7C.1 authorization item 9's own explicit
+    distinction: ``None`` = legitimate absence -> `UNKNOWN`; non-positive
+    = impossible value -> contract error).
+
+    ``session_vwap_as_of`` (ID-7C.1) is ``session_vwap``'s own market-time
+    provenance — the checkpoint the VWAP price was actually computed
+    through. Frozen pairing: present iff ``session_vwap`` is present (a
+    price with no provenance, or provenance with no price, is malformed
+    input). When ``completed_m5_close`` is also supplied, V0's own frozen
+    PIT semantics (ID-7B.2.1 §14: "the last completed M5 bar used for the
+    checkpoint's VWAP / entry evidence") require it to equal that candle's
+    own completion instant exactly — proving the M5 entry reference and
+    the VWAP invalidation/location evidence share ONE coherent evidence
+    checkpoint, not two independently-stale-or-future readings.
 
     ``opening_range_15`` is the full canonical `OpeningRangeEvidence`
     (OR15 window only) — always-optional, purely contextual (ID-7B.2.1
     §14): its absence, or a non-`COMPLETE` formation, never forces
     `UNKNOWN` and is never substituted for the operative VWAP-loss
-    invalidation.
+    invalidation. Its own instrument/session/point-in-time coherence
+    against the candidate being evaluated is validated at `evaluate()`
+    time (ID-7C.1), not here, since that requires the resolved Decision/
+    EQ identity and checkpoint this narrow context does not itself carry.
     """
 
     completed_m5_close: Candle | None
     session_vwap: Decimal | None
+    session_vwap_as_of: datetime | None
     opening_range_15: OpeningRangeEvidence | None
 
     def __post_init__(self) -> None:
@@ -151,6 +207,25 @@ class EntryActionabilityMarketEvidence:
             )
         if self.session_vwap is not None and self.session_vwap <= 0:
             raise ValueError("EntryActionabilityMarketEvidence.session_vwap must be positive")
+        if (self.session_vwap is None) != (self.session_vwap_as_of is None):
+            raise ValueError(
+                "EntryActionabilityMarketEvidence.session_vwap and session_vwap_as_of "
+                "must both be present or both be None — a price with no provenance, or "
+                "provenance with no price, is malformed input"
+            )
+        if self.session_vwap_as_of is not None and self.session_vwap_as_of.tzinfo is None:
+            raise ValueError(
+                "EntryActionabilityMarketEvidence.session_vwap_as_of must be timezone-aware"
+            )
+        if self.completed_m5_close is not None and self.session_vwap_as_of is not None:
+            m5_completion = self.completed_m5_close.ts_open + _M5_BAR_DURATION
+            if self.session_vwap_as_of != m5_completion:
+                raise ValueError(
+                    "EntryActionabilityMarketEvidence.session_vwap_as_of "
+                    f"({self.session_vwap_as_of.isoformat()}) must equal completed_m5_close's "
+                    f"own completion instant ({m5_completion.isoformat()}) — V0 requires the M5 "
+                    "entry reference and VWAP evidence to share one coherent evidence checkpoint"
+                )
         if (
             self.opening_range_15 is not None
             and self.opening_range_15.formation.window is not OpeningRangeWindow.OR15
@@ -163,20 +238,32 @@ class EntryActionabilityMarketEvidence:
 
 @dataclass(frozen=True, slots=True)
 class EntryActionabilityPolicy:
-    """Immutable identity of the methodology to apply — mirrors
-    `EntryQualificationPolicy`'s exact pattern (ID-6B.2). Carries no
-    numeric thresholds of its own beyond the frozen module-level
-    constants this engine already imports; the default methodology
-    version must remain the frozen constant unless a caller has a
-    genuine, deliberate reason to evaluate under a different (still
-    already-existing) methodology version."""
+    """Audit-metadata-only companion to `evaluate()` (ID-7C.1).
 
-    methodology_version: str = DEFAULT_METHODOLOGY_VERSION
+    Deliberately carries NO methodology-version field. This class is
+    specifically the V0 deterministic evaluator — its methodology
+    identity is `DEFAULT_METHODOLOGY_VERSION`
+    (`"entry-actionability-v0"`), always, unconditionally; earlier code
+    let a caller supply an arbitrary `methodology_version` string while
+    the engine ran the identical frozen V0 algorithm underneath, which
+    would have let an artifact claim a methodology lineage it did not
+    actually execute (a methodology identity must identify methodology
+    *behavior*, not caller labeling). A genuine future methodology
+    version requires a new evaluator implementation or explicit
+    version-aware dispatch — never merely a different identity string
+    over this same V0 code (ID-7C.1 authorization item 20; no
+    methodology registry is introduced here).
+
+    `config_snapshot_id` is retained as optional audit metadata only,
+    mirroring `EntryQualificationPolicy`'s own field for symmetry — but
+    unlike EQ's `EntryQualification.config_snapshot_id`, `EntryActionability`
+    has no corresponding field at all, so this value is NOT propagated
+    into the emitted artifact and cannot change V0 behavior in any way.
+    """
+
     config_snapshot_id: str | None = None
 
     def __post_init__(self) -> None:
-        if not self.methodology_version:
-            raise ValueError("EntryActionabilityPolicy.methodology_version is mandatory")
         if self.config_snapshot_id is not None and not self.config_snapshot_id:
             raise ValueError("EntryActionabilityPolicy.config_snapshot_id cannot be empty")
 
@@ -198,18 +285,31 @@ class EntryActionabilityEngine:
         evaluated_at: datetime,
         policy: EntryActionabilityPolicy | None = None,
     ) -> EntryActionability:
-        policy = policy if policy is not None else EntryActionabilityPolicy()
+        """``policy`` accepts only inert audit metadata
+        (`EntryActionabilityPolicy.config_snapshot_id`) — see that class's
+        own docstring (ID-7C.1). It is never read here: the emitted
+        artifact's methodology version is always the frozen
+        `DEFAULT_METHODOLOGY_VERSION`, never a caller-relabeled string."""
         if evaluated_at.tzinfo is None:
             raise ValueError("EntryActionabilityEngine.evaluate evaluated_at must be timezone-aware")
 
         instrument_id = _validate_binding(decision, entry_qualification)
         entry_actionability_as_of = entry_qualification.as_of  # Option 1: same checkpoint as EQ.
 
-        if market_evidence.completed_m5_close is not None:
-            _validate_candle_coherence(
-                market_evidence.completed_m5_close, instrument_id, entry_actionability_as_of
-            )
-
+        # ID-7C.2: upstream methodology gates are computed and short-circuit
+        # IMMEDIATELY after exact Decision/EQ binding validation — before
+        # any candidate/checkpoint-relative layer-3 evidence check
+        # (candle coherence, VWAP-provenance-vs-checkpoint, OR15
+        # coherence). Layer-3 evidence is irrelevant to an upstream-
+        # ineligible candidate's historical methodology verdict, so it
+        # must never be inspected for one — an OR15 artifact belonging to
+        # another instrument, or a candle that has not yet completed, must
+        # not raise a ValueError for a WATCH Decision or a non-QUALIFIED
+        # EQ; the correct result is simply NOT_ACTIONABLE. Only exact
+        # Decision/EQ identity mismatches remain unconditional contract
+        # errors (checked above, by `_validate_binding`), since a
+        # mismatched binding can never be trusted to produce ANY verdict,
+        # eligible or not.
         reasons: list[EntryActionabilityReasonCode] = []
         if decision.decision_type is not DecisionType.TRADE:
             reasons.append(EntryActionabilityReasonCode.UPSTREAM_DECISION_NOT_TRADE)
@@ -219,7 +319,7 @@ class EntryActionabilityEngine:
         if reasons:
             return self._emit(
                 decision, entry_qualification, instrument_id, entry_actionability_as_of,
-                evaluated_at, policy,
+                evaluated_at,
                 state=EntryActionabilityState.NOT_ACTIONABLE,
                 reason_codes=tuple(reasons),
                 evidence_as_of=None,
@@ -229,15 +329,39 @@ class EntryActionabilityEngine:
             )
 
         # Upstream eligibility satisfied: Decision == TRADE, exact EQ ==
-        # QUALIFIED. Layer-3 evidence sufficiency may now be evaluated —
-        # never before this point (ID-7A.2's own frozen invariant).
+        # QUALIFIED. Candidate/checkpoint-relative layer-3 evidence
+        # validation — and layer-3 evidence sufficiency itself — may now
+        # run, never before this point (ID-7A.2's own frozen invariant,
+        # sharpened by ID-7C.2 to also cover evidence *validation*, not
+        # just evidence *consumption*).
+        if market_evidence.completed_m5_close is not None:
+            _validate_candle_coherence(
+                market_evidence.completed_m5_close, instrument_id, entry_actionability_as_of
+            )
+        if (
+            market_evidence.session_vwap_as_of is not None
+            and market_evidence.session_vwap_as_of > entry_actionability_as_of
+        ):
+            raise ValueError(
+                "EntryActionabilityEngine received session_vwap_as_of "
+                f"({market_evidence.session_vwap_as_of.isoformat()}) later than the "
+                f"checkpoint ({entry_actionability_as_of.isoformat()}) — future VWAP "
+                "evidence relative to the checkpoint is a contract error, not a "
+                "methodology outcome"
+            )
+        if market_evidence.opening_range_15 is not None:
+            _validate_or15_coherence(
+                market_evidence.opening_range_15, instrument_id,
+                entry_qualification.session_date, entry_actionability_as_of,
+            )
+
         candle = market_evidence.completed_m5_close
         vwap = market_evidence.session_vwap
         if candle is None or vwap is None:
             missing = _describe_missing_evidence(candle, vwap)
             return self._emit(
                 decision, entry_qualification, instrument_id, entry_actionability_as_of,
-                evaluated_at, policy,
+                evaluated_at,
                 state=EntryActionabilityState.UNKNOWN,
                 reason_codes=(EntryActionabilityReasonCode.INSUFFICIENT_EVIDENCE,),
                 evidence_as_of=None,
@@ -250,6 +374,11 @@ class EntryActionabilityEngine:
             )
 
         entry_price = candle.close
+        # ID-7C.1: EntryActionabilityMarketEvidence.__post_init__ already
+        # proved session_vwap_as_of == candle.ts_open + _M5_BAR_DURATION
+        # whenever both are supplied (which they are, past this point) —
+        # this is the single proven common evidence boundary for both the
+        # M5 entry reference and the VWAP location/invalidation evidence.
         evidence_as_of = candle.ts_open + _M5_BAR_DURATION
         entry_reference = EntryReference(
             price=entry_price, basis=EntryReferenceBasis.QUALIFYING_M5_CLOSE
@@ -262,7 +391,7 @@ class EntryActionabilityEngine:
         if not _geometry_valid(decision.direction, entry_price, vwap):
             return self._emit(
                 decision, entry_qualification, instrument_id, entry_actionability_as_of,
-                evaluated_at, policy,
+                evaluated_at,
                 state=EntryActionabilityState.UNKNOWN,
                 reason_codes=(EntryActionabilityReasonCode.INVALIDATION_UNAVAILABLE,),
                 evidence_as_of=evidence_as_of,
@@ -283,7 +412,7 @@ class EntryActionabilityEngine:
 
         return self._emit(
             decision, entry_qualification, instrument_id, entry_actionability_as_of,
-            evaluated_at, policy,
+            evaluated_at,
             state=EntryActionabilityState.ACTIONABLE,
             reason_codes=(),
             evidence_as_of=evidence_as_of,
@@ -306,7 +435,6 @@ class EntryActionabilityEngine:
         instrument_id: str,
         entry_actionability_as_of: datetime,
         evaluated_at: datetime,
-        policy: EntryActionabilityPolicy,
         *,
         state: EntryActionabilityState,
         reason_codes: tuple[EntryActionabilityReasonCode, ...],
@@ -325,7 +453,7 @@ class EntryActionabilityEngine:
             decision_id=entry_qualification.decision_id,
             entry_qualification_methodology_version=entry_qualification.methodology_version,
             entry_actionability_as_of=entry_actionability_as_of,
-            entry_actionability_methodology_version=policy.methodology_version,
+            entry_actionability_methodology_version=DEFAULT_METHODOLOGY_VERSION,
             decision_type=decision.decision_type,
             direction=decision.direction,
             entry_qualification_state=entry_qualification.state,
@@ -403,6 +531,47 @@ def _validate_candle_coherence(candle: Candle, instrument_id: str, checkpoint: d
             "EntryActionabilityEngine received a completed_m5_close candle "
             f"(ts_open={candle.ts_open.isoformat()}) that has not actually completed as of "
             f"the checkpoint ({checkpoint.isoformat()}) — future evidence relative to the "
+            "checkpoint is a contract error, not a methodology outcome"
+        )
+
+
+def _validate_or15_coherence(
+    or15: OpeningRangeEvidence, instrument_id: str, session_date: date, checkpoint: datetime
+) -> None:
+    """OR15 is non-gating, but a supplied artifact must still be truthful
+    about which candidate/checkpoint it describes before this engine
+    consumes (or attaches) it (ID-7C.1 gap 2). A cross-instrument,
+    cross-session, or future OR15 artifact is a contract error, never
+    silently ignored merely because OR15 itself is optional — "optional"
+    means absence/non-`COMPLETE` is allowed, not that incoherent supplied
+    evidence is.
+
+    `formation.range_end > checkpoint` is deliberately NOT re-checked
+    here: `OpeningRangeEngine` itself only ever sets
+    `status = COMPLETE` when its own `as_of >= range_end`
+    (audited at source — `opening_range_engine.py`'s own status-assignment
+    branch), so `status == COMPLETE` already guarantees `range_end <=
+    or15.as_of`; combined with the `or15.as_of <= checkpoint` check below,
+    `range_end <= checkpoint` follows transitively without a duplicate
+    check.
+    """
+    if or15.instrument_id != instrument_id:
+        raise ValueError(
+            "EntryActionabilityEngine received an opening_range_15 for "
+            f"{or15.instrument_id!r}, but the resolved candidate instrument is "
+            f"{instrument_id!r}"
+        )
+    if or15.session_date != session_date:
+        raise ValueError(
+            "EntryActionabilityEngine received an opening_range_15 for session "
+            f"{or15.session_date!r}, but the bound EntryQualification's session is "
+            f"{session_date!r}"
+        )
+    if or15.as_of > checkpoint:
+        raise ValueError(
+            f"EntryActionabilityEngine received an opening_range_15 as_of "
+            f"({or15.as_of.isoformat()}) later than the checkpoint "
+            f"({checkpoint.isoformat()}) — future OR15 evidence relative to the "
             "checkpoint is a contract error, not a methodology outcome"
         )
 
