@@ -6,6 +6,139 @@ status updated on approval.
 
 ---
 
+## ID-7F1 Entry Actionability Historical Replay Adapter + Deterministic Validation — Complete
+
+**Summary.** Owner/Chief Architect closed ID-7F0 2026-09-05 (validation
+contract frozen, Classification B — `SMALL_ID7F_ADAPTER_REQUIRED` —
+accepted) and, in the same message, authorized ID-7F1: implement only
+Mode A from the frozen contract (historical market-time-bounded replay)
+and run it against the real historical WATCH/TRADE `EntryQualification`
+population in strict read-only mode.
+
+**Architecture compliance.** No methodology change (the frozen, real
+`EntryActionabilityEngine` is called unmodified). No schema/repository/
+workflow change. No provider/network calls. No currentness concept
+anywhere in the new module. No Mode B (production shadow equivalence)
+implementation — explicitly deferred. Decision/ID-6/EMR/DarvaX
+untouched.
+
+**Files created.**
+[src/athena/data/id7f1_entry_actionability_replay.py](src/athena/data/id7f1_entry_actionability_replay.py)
+(the adapter — `run_replay`, `eq_identity`, `partition_duplicates`,
+`_validate_binding`, and their supporting analysis functions);
+[tests/data_layer/test_id7f1_entry_actionability_replay.py](tests/data_layer/test_id7f1_entry_actionability_replay.py)
+(33 tests);
+[docs/research/ID-7F1-ENTRY-ACTIONABILITY-HISTORICAL-REPLAY-VALIDATION.md](docs/research/ID-7F1-ENTRY-ACTIONABILITY-HISTORICAL-REPLAY-VALIDATION.md)
+(the full 71-section report, including the real replay run's results).
+
+**Files modified.** `docs/MILESTONES.md`, `docs/ATHENA-ID-TRACK-HANDOFF.md`,
+`ATHENA_BRIEFING.md` — record ID-7F0 Owner-approved/closed and ID-7F1
+complete/ready for review; Mode B/schema-migration/deploy remain not
+authorized. This entry in `IMPLEMENTATION_SUMMARY.md`.
+
+**Public APIs added.** None (a new isolated research module, not a
+public package API).
+
+**Tests added.** 33, all in
+`tests/data_layer/test_id7f1_entry_actionability_replay.py`: pure-function
+tests for `eq_identity`/`partition_duplicates` (duplicate detection),
+`_validate_binding` (every mismatched field, missing Decision, `None`-
+instrument tolerance), `_population_inventory`/`_evidence_availability`/
+`_empirical_availability`/`_watch_invariant_check`, and source-scan
+proofs of zero provider/currentness/persistence-write references; harness
+integration tests against real disposable temp SQLite databases (never
+`db/athena.db`) seeded via the actual `OwnerValidationPipeline` — a real
+WATCH reconstruction, a real forced TRADE+QUALIFIED→`ACTIONABLE` and
+TRADE+non-QUALIFIED→`NOT_ACTIONABLE` reconstruction (both via the same
+`DecisionEngine.decide`/`EntryQualificationEngine.evaluate` monkeypatch-
+force pattern the ID-7E test suite itself established, since the real
+live database has zero examples of either population), cross-run
+determinism (SHA-256 summary equality), schema-version-unchanged,
+source-DB-mtime-unchanged, and order-independence.
+
+**Test results.** Full suite: **3637 passed, 1 pre-existing unrelated
+skip, 0 failures** (up from 3604 at ID-7E.1 closure — exactly +33, all
+new).
+
+**Coverage summary.** Every code path the adapter can reach (binding
+validation, PIT reconstruction, determinism checking, duplicate
+detection, population/evidence aggregation) is exercised by a focused
+test; the real replay run additionally exercised the complete real
+historical WATCH population (11,986 rows) end-to-end.
+
+**Real replay run (authorized, performed).** Executed directly against
+the real `db/athena.db` in strict read-only mode (`mode=ro` +
+`PRAGMA query_only=ON`) — zero sampling, complete population, 20.37s
+runtime. Results: **11,986/11,986 rows reconstructed successfully, 0
+defects of any kind (binding, PIT-evidence, persistence/duplicate,
+replay-equivalence), determinism holds across all 11,986 independent
+double-reconstructions, `schema_version` unchanged at 17 → 17**
+(confirming zero mutation). Population: 100% WATCH (11,986), 0 TRADE —
+unchanged from ID-7F0's own snapshot; 100% of real WATCH rows carry
+`Direction.NONE` (a new finding — no directional signal exists in the
+only real population at all). 100% of WATCH observations correctly
+resolve to `NOT_ACTIONABLE`/`UPSTREAM_DECISION_NOT_TRADE` (zero
+invariant violations); `UPSTREAM_EQ_NOT_QUALIFIED` additionally present
+on exactly the 10,073 non-QUALIFIED rows, confirming the engine's own
+"both upstream reasons together" behavior against real production data
+for the first time. M5/VWAP/OR15 evidence available 93.55% of the
+time — legitimate, descriptive, never gating for WATCH. Full artifacts
+(git-ignored) at `artifacts/research/id7f1/`.
+
+**Architecture compliance.** See above — zero code/schema/repository/
+workflow/methodology change beyond the new isolated module itself; zero
+provider calls; zero currentness; zero production writes (confirmed
+both by source review and by the real run's own schema-version-unchanged
+proof).
+
+**ADR compliance.** ID-7F0's own frozen contract (Mode A only, exact
+identity/binding, PIT reconstruction rules, determinism contract,
+failure taxonomy, currentness exclusion) implemented exactly as
+designed.
+
+**Risks discovered.** None new. TRADE-bound population remains entirely
+absent from real data (reconfirmed, not newly discovered); SHORT
+remains unvalidated; schema v18 remains unmigrated against the live
+database — all pre-existing, honestly-reported limitations from ID-7F0,
+not defects introduced or left unaddressed here.
+
+**Technical debt introduced.** None.
+
+**Suggested improvements.** None beyond the recommended next step below.
+
+**Remaining work.** Implement `run_shadow_equivalence` (Mode B, dormant
+until real production rows exist) and/or perform the schema v18
+migration + `athena-serve` restart (operational, not a code milestone) —
+both explicitly out of ID-7F1's own scope, recommendation only.
+
+**Commit message.**
+```
+feat(intraday): add Entry Actionability historical replay adapter (ID-7F1)
+
+- Added src/athena/data/id7f1_entry_actionability_replay.py: Mode-A-only
+  historical replay of the real, unmodified EntryActionabilityEngine
+  over every persisted WATCH/TRADE EntryQualification row, reusing
+  ID-6B.1's ReadOnlyStore (mode=ro/query_only=ON) and every canonical
+  PIT/composition helper ID-7E's own production stage already uses.
+  Every observation is independently reconstructed and evaluated twice
+  and compared for exact equality (whole-pipeline determinism proof).
+  Never writes to the canonical DB or entry_actionabilities.
+- 33 new tests (pure-function + real-disposable-DB integration).
+  Full suite 3637 passed / 1 pre-existing unrelated skip / 0 failures.
+- Ran the complete replay against the real db/athena.db in strict
+  read-only mode: 11,986/11,986 rows reconstructed, 0 defects,
+  determinism holds on all 11,986, schema_version unchanged 17->17.
+  Population still 100% WATCH / 0 TRADE, matching ID-7F0's own finding.
+- Recorded ID-7F0's Owner approval (Classification B accepted) across
+  all 4 tracking docs.
+```
+
+**Ready for review.** Yes — ID-7F1 is implemented, self-validated, and
+has been run against the real historical population; awaiting
+Owner/Chief Architect historical-replay closure.
+
+---
+
 ## ID-7F0 Entry Actionability Replay / Shadow Validation Discovery + Contract Freeze — Discovery Complete
 
 **Summary.** Owner/Chief Architect closed ID-7E.1 and ID-7E overall
@@ -130,6 +263,12 @@ docs(intraday): freeze Entry Actionability replay/shadow validation contract (ID
 
 **Ready for review.** Yes — ID-7F0 discovery is source-grounded and
 complete; awaiting Owner/Chief Architect validation-contract decision.
+
+**Update (2026-09-05).** Owner/Chief Architect approved: ID-7F0 OWNER
+APPROVED / CLOSED — validation contract frozen, Classification B
+(`SMALL_ID7F_ADAPTER_REQUIRED`) accepted. ID-7F1 (Mode A historical
+replay only) authorized and completed the same day — see the entry
+above.
 
 ---
 
