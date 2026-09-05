@@ -6,6 +6,242 @@ status updated on approval.
 
 ---
 
+## EM-7D0 Evidence Readiness / First Production Shadow Audit — Complete
+
+**Summary.** Owner/Chief Architect closed EM-7C and EM-7C.1 (natural
+EMR production shadow accumulation active) and authorized this
+read-only audit to determine whether the naturally accumulated EMR
+production evidence in `db/emr.db` is sufficiently complete and
+trustworthy to begin EM-7D statistical methodology validation — not to
+begin that validation itself. Performed while ID-7F2 remains
+intentionally paused at the production-activation boundary; this
+milestone does not touch ID-7F2 in any way.
+
+**Architecture compliance.** Read-only audit only — zero EMR
+methodology/threshold/checkpoint/universe/provider change; zero
+scanner code executed; zero artificial or backdated scans; zero
+restart. `config/emr/operational.json` and the frozen
+`MAX_CHECKPOINT_OBSERVATION_DELAY_SECONDS` constant were read, never
+modified. ID-7F2/DarvaX untouched.
+
+**Files created.**
+[docs/research/EM-7D0-EVIDENCE-READINESS-FIRST-PRODUCTION-SHADOW-AUDIT.md](docs/research/EM-7D0-EVIDENCE-READINESS-FIRST-PRODUCTION-SHADOW-AUDIT.md).
+
+**Files modified.** `docs/MILESTONES.md`, `docs/ATHENA-EMR-HANDOFF.md`,
+`ATHENA_BRIEFING.md` — record EM-7C/EM-7C.1 Owner-approved/closed and
+the EM-7D0 audit findings/classification. This entry in
+`IMPLEMENTATION_SUMMARY.md`. **No `src/`/`tests/` file was created or
+modified this milestone.**
+
+**Public APIs added.** None.
+
+**Tests added.** None (read-only analysis only, no code introduced).
+
+**Key findings.**
+- **100% checkpoint coverage**: all 9 frozen checkpoints present for
+  the complete natural 2026-09-04 session; zero missing.
+- **Zero persistence/atomicity defects**: 9/9 runs `COMPLETE`, 0 stale
+  `RUNNING`, 0 `FAILED`, 0 duplicate run identities, 0 orphan
+  candidates/transitions, 0 duplicate candidate/transition identities.
+- **Current-session M5 availability recovered by 09:30** (the very
+  next checkpoint after the already-accepted 09:20 canary) and held
+  through 11:00, then showed one further, genuinely distinct 0-eligible
+  episode at **12:00** — a *new* finding, not previously characterized.
+  Unlike 09:20 (near-zero evidence-generation/inference duration, zero
+  candidate rows), 12:00 fully scored all 517 tracked instruments (real
+  logits, real regime-feature values, non-NULL checkpoint prices)
+  uniformly flagged `STALE_DATA` by the M5-staleness eligibility gate
+  specifically — correlated with a real canonical `REFRESH` cycle that
+  FAILED at 11:35:48 and did not `COMPLETE` again until 11:59:46 (a
+  ~24+ minute gap landing across the checkpoint), consistent with
+  ID-7P0's own already-measured REFRESH cycle latency — a cross-system
+  ingestion-timing characteristic, not an EM-7 code defect.
+- **Regime lookup confirmed exercised with real, checkpoint-specific
+  data** — a sampled `logit_contributions_json` shows genuine
+  non-trivial one-hot regime-trend/volatility/gap terms, not
+  placeholders.
+- **Full real state-machine population observed** (all 8 states, every
+  reachable transition pair); genuine `TOUCH-10` `TARGET_REACHED`
+  evidence exists (6 observations) alongside broader `TARGET_REACHED`
+  evidence across `OPEN_TO_HIGH`/`TOUCH` at multiple thresholds.
+- **No profitability/outcome analysis performed** — evidence inventory
+  only.
+- **Classification: B — `OPERATIONALLY_SOUND_BUT_NOT_YET_STATISTICALLY_READY`.**
+  Production integrity is sound and every architectural subsystem
+  exercised real logic on real data, but only one calendar session
+  exists (zero cross-session variation observed yet). No arbitrary
+  minimum session count was invented.
+
+**Test results.** Not applicable — no code changed; no test suite run
+required (per the milestone's own scope).
+
+**Coverage summary.** Not applicable — no code change.
+
+**Architecture compliance.** No code/config/methodology change of any
+kind this milestone.
+
+**ADR compliance.** Not applicable — no ADR-governed contract touched.
+
+**Risks discovered.** None new. The 12:00 M5-staleness episode is a
+real, understood, cross-system timing characteristic (correlated with
+a known REFRESH-cycle gap), not a persistence, integrity, or EMR code
+defect.
+
+**Technical debt introduced.** None.
+
+**Suggested improvements.** None beyond the recommended next step below.
+
+**Remaining work.** Continue natural EMR production accumulation
+unchanged through additional real trading sessions (already active, no
+action needed); once a small number of additional complete sessions
+exist spanning real day-to-day variation, authorize a follow-up
+readiness audit or proceed to defining the EM-7D statistical-validation
+contract itself — sample sufficiency to be judged against real
+cross-session evidence then, never an invented fixed number.
+
+**Commit message.**
+```
+docs(explosive-move): audit EMR production evidence readiness (EM-7D0)
+
+- Recorded EM-7C/EM-7C.1 Owner-approved/closed 2026-09-05 (natural EMR
+  production shadow accumulation active) across the relevant EMR
+  tracking docs.
+- Added docs/research/EM-7D0-EVIDENCE-READINESS-FIRST-PRODUCTION-SHADOW-AUDIT.md:
+  read-only audit of the complete natural 2026-09-04 EMR session
+  (db/emr.db) -- 100% checkpoint coverage, zero persistence/atomicity
+  defects, a new distinct 0-eligible M5-staleness episode at 12:00
+  (correlated with a real canonical REFRESH cycle failure/gap, not an
+  EMR defect), confirmed real regime-lookup exercise, a full real
+  state-machine population, and genuine TOUCH-10 TARGET_REACHED
+  evidence. Classified B (OPERATIONALLY_SOUND_BUT_NOT_YET_STATISTICALLY_READY)
+  -- no invented minimum session count.
+- Zero code/config/methodology change; zero scanner code executed;
+  natural accumulation continues unchanged; ID-7F2/DarvaX untouched.
+```
+
+**Ready for review.** Yes — EM-7D0 is complete and self-validated;
+awaiting Owner/Chief Architect evidence-readiness review.
+
+---
+
+## ID-7F2 Entry Actionability Production Activation + First Canonical Canary — Pre-Activation Preparation Complete
+
+**Summary.** Owner/Chief Architect closed ID-7F1.1 and ID-7F1 overall
+2026-09-05 (historical Mode-A replay validation frozen: 11,986/11,986
+real observations reconstructed, `replay_acceptance: true`) and, in the
+same message, authorized ID-7F2: safely migrate the canonical database
+from schema v17 to the already-implemented/tested schema v18, activate
+the already-closed ID-7E canonical `EntryActionability` stage through
+the normal production runtime path, and observe the first genuine
+canonical-cycle canary. **No live-process action was taken this
+turn — the owner explicitly instructed "Proceed with NO live-process
+action today"** after the auto-mode safety classifier correctly blocked
+an attempted restart.
+
+**Architecture compliance.** No methodology/threshold/schema-design
+change. No new code. No backfill. No Mode-B shadow equivalence
+implementation. EMR/DarvaX/ID-7F1/Decision/ID-6 untouched.
+
+**Files created.**
+[docs/research/ID-7F2-ENTRY-ACTIONABILITY-PRODUCTION-ACTIVATION-CANARY.md](docs/research/ID-7F2-ENTRY-ACTIONABILITY-PRODUCTION-ACTIVATION-CANARY.md)
+— the full preparation record and the exact owner-operated
+stop/restart/verification procedure (steps A–G).
+
+**Files modified.** `docs/MILESTONES.md`, `docs/ATHENA-ID-TRACK-HANDOFF.md`,
+`ATHENA_BRIEFING.md` — record ID-7F1.1/ID-7F1 Owner-approved/closed and
+ID-7F2's pre-activation-complete/deferred state. This entry in
+`IMPLEMENTATION_SUMMARY.md`. **No `src/`/`tests/` file was created or
+modified this milestone.**
+
+**Public APIs added.** None.
+
+**Tests added.** None (operational preparation only). 644 pre-activation
+focused tests (`tests/data_layer/` + `tests/ops/test_owner_validation.py`)
+were re-run to confirm no regression before considering activation — all
+passed; no new tests were needed since no code changed.
+
+**Operational actions performed (all read-only or additive/reversible,
+zero live-process action):**
+- **Pre-activation safety check:** confirmed `db/athena.db` still
+  `schema_version=17`, WAL journal mode, no `RUNNING` cycle (last:
+  `run-closing-20260904T154545`, `COMPLETED`), git HEAD at the last
+  committed ID-7F1.1 work, live `athena-serve --with-cycles` process
+  identified (PID 2453) — all via a read-only (`mode=ro`/`query_only=ON`)
+  connection, a second connection independent of the live service's own.
+- **Migration-source audit:** `git show`/`git diff` on the ID-7A/
+  ID-7A.1/ID-7A.2 commits confirmed schema v17→v18 introduces *only*
+  the already owner-approved `entry_actionabilities` table + 2 indexes
+  (82 insertions in the ID-7A commit; zero `schema.py` diff in either
+  hardening commit) — no unrelated migration bundled. Confirmed the
+  migration mechanism is the existing idempotent
+  `SqliteRepository.initialize()`, invoked unconditionally by
+  `_open_repo()` on every `athena-serve` startup — no ad-hoc SQL
+  migration is needed or was run.
+- **Pre-migration backup:** created via the same safe pattern ID-6E.2
+  established (read-only source connection + SQLite's own online
+  backup API, atomic rename) — `db/backups/athena-pre-id7f2-schema-v18-activation-20260905T064233Z.db`,
+  5,166,485,504 bytes, `integrity_check: ok`, 0 FK violations,
+  `schema_version: 17`, full per-table record counts captured for
+  post-migration comparison. Retained untouched; not restored.
+- **Live-process restart attempted and correctly blocked** by the
+  auto-mode safety classifier — reported to the owner rather than
+  worked around; no permission exception requested.
+- **Calendar check:** confirmed via the real `CalendarEngine` that
+  2026-09-05 is `SessionType.WEEKEND` — no scheduled cycle would fire
+  today regardless of activation timing.
+
+**Test results.** 644 passed (pre-activation focused subset); full
+suite unaffected (last measured 3,644 passed, 1 pre-existing unrelated
+skip, 0 failures, at ID-7F1.1 closure — no code changed since).
+
+**Coverage summary.** Not applicable — no code change.
+
+**Architecture compliance.** No code/schema/workflow/methodology
+change of any kind this milestone.
+
+**ADR compliance.** Not applicable.
+
+**Risks discovered.** None new. The one operational gap (schema v18
+never migrated against the live database) remains open by deliberate
+owner decision, not by omission — the exact procedure to close it is
+fully documented and awaiting owner execution.
+
+**Technical debt introduced.** None.
+
+**Suggested improvements.** None.
+
+**Remaining work.** Owner executes steps A–B (stop/restart) at the next
+NSE trading-day window; this session then performs steps C–G
+(read-only verification) and waits for the first natural in-scope
+canonical-cycle canary per the frozen ID-7F2 acceptance contract — never
+manufactured, never forced via manual Validate-All.
+
+**Commit message.**
+```
+docs(intraday): complete ID-7F2 pre-activation preparation, defer restart
+
+- Recorded ID-7F1.1/ID-7F1 Owner-approved/closed 2026-09-05 (historical
+  Mode-A replay validation frozen) across all 4 tracking docs.
+- Added docs/research/ID-7F2-ENTRY-ACTIONABILITY-PRODUCTION-ACTIVATION-CANARY.md:
+  pre-activation safety check, schema v17->v18 migration-source audit
+  (confirms only the already-approved entry_actionabilities table is
+  introduced), a verified pre-migration backup
+  (db/backups/athena-pre-id7f2-schema-v18-activation-20260905T064233Z.db),
+  644 pre-activation focused tests, and the exact minimal owner-operated
+  stop/restart/verification procedure (steps A-G) for the next NSE
+  trading day.
+- No code/schema/methodology change; no live-process action taken this
+  turn (an attempted restart was correctly blocked by the auto-mode
+  safety classifier and deferred to explicit owner execution).
+```
+
+**Ready for review.** Partial — pre-activation preparation is complete
+and self-validated; production activation itself awaits an
+owner-operated restart at the next trading-day window, after which this
+session resumes at the post-activation verification step.
+
+---
+
 ## ID-7F1.1 Entry Actionability Replay Harness Accounting + Failure-Observability Hardening — Complete
 
 **Summary.** Owner/Chief Architect source review accepted ID-7F1's real
@@ -134,124 +370,6 @@ Owner/Chief Architect final closure of ID-7F1 overall.
 APPROVED / CLOSED, ID-7F1 OVERALL OWNER APPROVED / CLOSED — historical
 Mode-A replay validation frozen. ID-7F2 (production activation + first
 canonical canary) authorized same day — see the entry above.
-
----
-
-## ID-7F2 Entry Actionability Production Activation + First Canonical Canary — Pre-Activation Preparation Complete
-
-**Summary.** Owner/Chief Architect closed ID-7F1.1 and ID-7F1 overall
-2026-09-05 (historical Mode-A replay validation frozen: 11,986/11,986
-real observations reconstructed, `replay_acceptance: true`) and, in the
-same message, authorized ID-7F2: safely migrate the canonical database
-from schema v17 to the already-implemented/tested schema v18, activate
-the already-closed ID-7E canonical `EntryActionability` stage through
-the normal production runtime path, and observe the first genuine
-canonical-cycle canary. **No live-process action was taken this
-turn — the owner explicitly instructed "Proceed with NO live-process
-action today"** after the auto-mode safety classifier correctly blocked
-an attempted restart.
-
-**Architecture compliance.** No methodology/threshold/schema-design
-change. No new code. No backfill. No Mode-B shadow equivalence
-implementation. EMR/DarvaX/ID-7F1/Decision/ID-6 untouched.
-
-**Files created.**
-[docs/research/ID-7F2-ENTRY-ACTIONABILITY-PRODUCTION-ACTIVATION-CANARY.md](docs/research/ID-7F2-ENTRY-ACTIONABILITY-PRODUCTION-ACTIVATION-CANARY.md)
-— the full preparation record and the exact owner-operated
-stop/restart/verification procedure (steps A–G).
-
-**Files modified.** `docs/MILESTONES.md`, `docs/ATHENA-ID-TRACK-HANDOFF.md`,
-`ATHENA_BRIEFING.md` — record ID-7F1.1/ID-7F1 Owner-approved/closed and
-ID-7F2's pre-activation-complete/deferred state. This entry in
-`IMPLEMENTATION_SUMMARY.md`. **No `src/`/`tests/` file was created or
-modified this milestone.**
-
-**Public APIs added.** None.
-
-**Tests added.** None (operational preparation only). 644 pre-activation
-focused tests (`tests/data_layer/` + `tests/ops/test_owner_validation.py`)
-were re-run to confirm no regression before considering activation — all
-passed; no new tests were needed since no code changed.
-
-**Operational actions performed (all read-only or additive/reversible,
-zero live-process action):**
-- **Pre-activation safety check:** confirmed `db/athena.db` still
-  `schema_version=17`, WAL journal mode, no `RUNNING` cycle (last:
-  `run-closing-20260904T154545`, `COMPLETED`), git HEAD at the last
-  committed ID-7F1.1 work, live `athena-serve --with-cycles` process
-  identified (PID 2453) — all via a read-only (`mode=ro`/`query_only=ON`)
-  connection, a second connection independent of the live service's own.
-- **Migration-source audit:** `git show`/`git diff` on the ID-7A/
-  ID-7A.1/ID-7A.2 commits confirmed schema v17→v18 introduces *only*
-  the already owner-approved `entry_actionabilities` table + 2 indexes
-  (82 insertions in the ID-7A commit; zero `schema.py` diff in either
-  hardening commit) — no unrelated migration bundled. Confirmed the
-  migration mechanism is the existing idempotent
-  `SqliteRepository.initialize()`, invoked unconditionally by
-  `_open_repo()` on every `athena-serve` startup — no ad-hoc SQL
-  migration is needed or was run.
-- **Pre-migration backup:** created via the same safe pattern ID-6E.2
-  established (read-only source connection + SQLite's own online
-  backup API, atomic rename) — `db/backups/athena-pre-id7f2-schema-v18-activation-20260905T064233Z.db`,
-  5,166,485,504 bytes, `integrity_check: ok`, 0 FK violations,
-  `schema_version: 17`, full per-table record counts captured for
-  post-migration comparison. Retained untouched; not restored.
-- **Live-process restart attempted and correctly blocked** by the
-  auto-mode safety classifier — reported to the owner rather than
-  worked around; no permission exception requested.
-- **Calendar check:** confirmed via the real `CalendarEngine` that
-  2026-09-05 is `SessionType.WEEKEND` — no scheduled cycle would fire
-  today regardless of activation timing.
-
-**Test results.** 644 passed (pre-activation focused subset); full
-suite unaffected (last measured 3,644 passed, 1 pre-existing unrelated
-skip, 0 failures, at ID-7F1.1 closure — no code changed since).
-
-**Coverage summary.** Not applicable — no code change.
-
-**Architecture compliance.** No code/schema/workflow/methodology
-change of any kind this milestone.
-
-**ADR compliance.** Not applicable.
-
-**Risks discovered.** None new. The one operational gap (schema v18
-never migrated against the live database) remains open by deliberate
-owner decision, not by omission — the exact procedure to close it is
-fully documented and awaiting owner execution.
-
-**Technical debt introduced.** None.
-
-**Suggested improvements.** None.
-
-**Remaining work.** Owner executes steps A–B (stop/restart) at the next
-NSE trading-day window; this session then performs steps C–G
-(read-only verification) and waits for the first natural in-scope
-canonical-cycle canary per the frozen ID-7F2 acceptance contract — never
-manufactured, never forced via manual Validate-All.
-
-**Commit message.**
-```
-docs(intraday): complete ID-7F2 pre-activation preparation, defer restart
-
-- Recorded ID-7F1.1/ID-7F1 Owner-approved/closed 2026-09-05 (historical
-  Mode-A replay validation frozen) across all 4 tracking docs.
-- Added docs/research/ID-7F2-ENTRY-ACTIONABILITY-PRODUCTION-ACTIVATION-CANARY.md:
-  pre-activation safety check, schema v17->v18 migration-source audit
-  (confirms only the already-approved entry_actionabilities table is
-  introduced), a verified pre-migration backup
-  (db/backups/athena-pre-id7f2-schema-v18-activation-20260905T064233Z.db),
-  644 pre-activation focused tests, and the exact minimal owner-operated
-  stop/restart/verification procedure (steps A-G) for the next NSE
-  trading day.
-- No code/schema/methodology change; no live-process action taken this
-  turn (an attempted restart was correctly blocked by the auto-mode
-  safety classifier and deferred to explicit owner execution).
-```
-
-**Ready for review.** Partial — pre-activation preparation is complete
-and self-validated; production activation itself awaits an
-owner-operated restart at the next trading-day window, after which this
-session resumes at the post-activation verification step.
 
 ---
 
