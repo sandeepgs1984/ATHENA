@@ -666,12 +666,29 @@ ID-7E has produced real persisted rows — access to, at minimum: the exact
 bound `Decision`, the exact bound `EntryQualification`, the persisted
 `EntryActionability` itself (state, reason codes, all four V0 value
 objects when `ACTIONABLE`), `evidence_as_of`/`entry_actionability_as_of`/
-`evaluated_at`/`persisted_at`, and the methodology version string —
-**all of which the existing ID-7A schema/repository contract already
-persists and exposes** via `list_entry_actionabilities_for_instrument_session`/
-`get_entry_actionability`. No new field, no new query, no outcome/
-profitability claim is implicated by this observation — it is a
-readiness note only, not a design.
+`evaluated_at`, and the methodology version string — **all of which the
+existing ID-7A schema/repository contract already persists and exposes**
+via `list_entry_actionabilities_for_instrument_session`/
+`get_entry_actionability`.
+
+**Correction (2026-09-05, ID-7E authorization, owner-flagged):** the
+paragraph above originally also named `persisted_at` among the fields
+"already exposed." That overstates the real ID-7A behavior — `persisted_at`
+IS durably stored (an explicit column on the `entry_actionabilities`
+table, written by `save_entry_actionability`), but it is write/audit
+metadata only: `repository.py`'s own `_ENTRY_ACTIONABILITY_COLUMNS`
+SELECT list (reused by `get_entry_actionability`,
+`latest_entry_actionability_for_entry_qualification`,
+`latest_entry_actionability_for_instrument_session`, and
+`list_entry_actionabilities_for_instrument_session`) does not include
+it, and it is not a field on the `EntryActionability` domain object
+`row_to_entry_actionability` deserializes — so none of the normal
+repository read paths return it today. If ID-7F later needs
+`persisted_at` as exposed replay/audit metadata (as opposed to the
+market-time timestamps already returned), that is a genuine future
+decision for ID-7F to make explicitly, not something ID-7A/ID-7E already
+provide. ID-7E does not change repository/domain/schema behavior to
+address this — documentation correction only.
 
 ---
 

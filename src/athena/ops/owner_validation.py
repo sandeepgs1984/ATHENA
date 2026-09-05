@@ -815,6 +815,8 @@ class OwnerValidationPipeline:
         from athena.indicators import IndicatorEngine, IndicatorName, IndicatorStatus
         from athena.indicators import calculations as calc
         from athena.intraday import (
+            EntryActionabilityEngine,
+            EntryActionabilityMarketEvidence,
             EntryQualificationEngine,
             GapEngine,
             IntradayAnalyticsEngine,
@@ -830,7 +832,12 @@ class OwnerValidationPipeline:
         from athena.runtime import WorkflowEngine, WorkflowStage, build_definition
         from athena.scanner import DailyMarketScanner, InstrumentPlan, ScanCapture
         from athena.scoring import ConfluenceInputs, ScoringEngine
-        from athena.session import SessionContextEngine, completed_candles, session_day_start
+        from athena.session import (
+            SessionContextEngine,
+            completed_candles,
+            latest_completed_candle,
+            session_day_start,
+        )
 
         scoring_cfg = load_scoring_config(self._config_dir)
         decision_cfg = load_decision_config(self._config_dir)
@@ -849,6 +856,7 @@ class OwnerValidationPipeline:
         relative_strength_engine = RelativeStrengthEngine()
         relative_volume_engine = RelativeVolumeEngine()
         entry_qualification_engine = EntryQualificationEngine()
+        entry_actionability_engine = EntryActionabilityEngine()
         gap_engine = GapEngine()
         risk_engine = RiskEngine(risk_cfg)
         evidence_engine = EvidenceAggregationEngine()
@@ -986,6 +994,22 @@ class OwnerValidationPipeline:
                     indicator_engine.compute(IndicatorName.VWAP, intraday_cs, as_of=ctx.as_of)
                     if intraday_cs else None
                 )
+                # ID-7E: the exact completed M5 checkpoint candle VWAP was
+                # just computed from — published here (never re-fetched)
+                # so a later stage can compose EntryActionabilityMarketEvidence
+                # from the SAME bounded candle set, never a second
+                # independent repository read. `latest_completed_candle`
+                # applied to `vwap_raw` is exactly the caller-side
+                # selection ID-7C's own module docstring names as the
+                # expected convention (`athena.session.engine.
+                # latest_completed_candle`), and is `None` iff `intraday_cs`
+                # is empty (both derive from the identical completed-candle
+                # filter over the identical `vwap_raw` series) — so its
+                # presence/absence is always exactly paired with whether
+                # `vwap_result` above is non-``None``.
+                latest_completed_m5 = latest_completed_candle(
+                    vwap_raw, Timeframe.M5, as_of=ctx.as_of
+                )
                 # M-X7: multi-timeframe confluence — daily direction reuses
                 # the SMA(20) already computed above. 5m/15m each get their
                 # OWN `list_candles_recent(limit=100)` fetch here (ID-3.1
@@ -1051,6 +1075,7 @@ class OwnerValidationPipeline:
                     "indicators": indicators,
                     "vwap": vwap_result,
                     "confluence": confluence_inputs,
+                    "latest_completed_m5": latest_completed_m5,
                 }
 
             def reg_stage(ctx):
@@ -1413,12 +1438,106 @@ class OwnerValidationPipeline:
                     )
                 return {"entry_qualification": eq}
 
+            def entry_actionability_stage(ctx):
+                # ID-7E: wires the owner-closed ID-7A/ID-7B/ID-7B.1/ID-7B.2/
+                # ID-7B.2.1/ID-7C/ID-7C.1/ID-7C.2 Entry Actionability chain
+                # into the canonical runtime for the first time. No
+                # methodology change here -- the frozen V0 evaluator
+                # (upstream eligibility -> layer-3 evidence sufficiency ->
+                # risk geometry -> ACTIONABLE) lives entirely inside
+                # EntryActionabilityEngine, untouched.
+                #
+                # "decision": the same same-cycle Decision object
+                # entry_qualification_stage already reuses -- never a
+                # repository re-query (see that stage's own comment for
+                # why no staleness/supersession is structurally reachable
+                # here).
+                #
+                # "entry_qualification": the exact EntryQualification
+                # entry_qualification_stage produced THIS cycle from that
+                # SAME Decision -- read from WorkflowContext, never
+                # reconstructed or re-queried ("latest EQ" resolution is a
+                # read-time/ID-7E-out-of-scope concern, per ADR-015/ID-7A2).
+                #
+                # completed_m5_close / session_vwap / session_vwap_as_of:
+                # composed from ind_stage's own already-published
+                # "latest_completed_m5" candle and "vwap" IndicatorResult --
+                # the SAME bounded completed-M5 series VWAP was computed
+                # from, never a second independent repository read.
+                # session_vwap_as_of is derived from the selected candle's
+                # own completion instant (ts_open + 5m), never from
+                # ctx.as_of/IndicatorResult.ts/evaluated_at/persisted_at --
+                # ID-7C.1's frozen PIT-provenance invariant requires this
+                # exact derivation, not a proxy timestamp.
+                #
+                # opening_range_15: reuses the already-computed, already-
+                # coherent OR15 artifact off IntradaySignalSet -- never a
+                # second OpeningRangeEngine call, never provider access.
+                # IntradaySignalSet.or15 is never None in production (a
+                # non-COMPLETE formation is a legitimate value, not an
+                # absent one), so it is always passed through -- the
+                # engine itself treats a non-COMPLETE artifact as
+                # non-gating context, never a contract error.
+                decision = box["cap"].outcome.decision
+                entry_qualification = ctx.get("entry_qualification")
+                completed_m5_close = ctx.get("latest_completed_m5")
+                vwap_result = ctx.get("vwap")
+                session_vwap = (
+                    vwap_result.values["vwap"]
+                    if vwap_result is not None and vwap_result.status is IndicatorStatus.OK
+                    else None
+                )
+                session_vwap_as_of = (
+                    completed_m5_close.ts_open + timedelta(minutes=5)
+                    if session_vwap is not None
+                    else None
+                )
+                market_evidence = EntryActionabilityMarketEvidence(
+                    completed_m5_close=completed_m5_close,
+                    session_vwap=session_vwap,
+                    session_vwap_as_of=session_vwap_as_of,
+                    opening_range_15=ctx.get("intraday_signal_set").or15,
+                )
+                # ID-7E #16: one captured wall-clock instant reused for both
+                # the engine's evaluated_at diagnostic timestamp and the
+                # repository's persisted_at write metadata -- both measure
+                # "when was this historical verdict produced/durably
+                # written", and nothing in the architecture requires them
+                # to differ. Sourced from the same injected
+                # self._persistence_clock() entry_qualification_stage
+                # already uses -- never ctx.as_of, never a bare
+                # datetime.now() here.
+                clock_instant = self._persistence_clock()
+                ea = entry_actionability_engine.evaluate(
+                    decision=decision,
+                    entry_qualification=entry_qualification,
+                    market_evidence=market_evidence,
+                    evaluated_at=clock_instant,
+                )
+                if decision.decision_type in (DecisionType.WATCH, DecisionType.TRADE):
+                    # ID-7E #19/#20: EntryActionability's persistence
+                    # binding requires the referenced upstream
+                    # EntryQualification to itself be a persisted row
+                    # (save_entry_actionability looks it up by its full
+                    # copied identity) -- entry_qualification_stage
+                    # persists ONLY for WATCH/TRADE, so persistence here
+                    # must be scoped identically or a genuine EQ-binding
+                    # RepositoryError would result for every other
+                    # Decision type. This also preserves ADR-015's frozen
+                    # WATCH contract: a WATCH-bound EQ still yields a
+                    # persisted NOT_ACTIONABLE row (UPSTREAM_DECISION_NOT_TRADE),
+                    # never silently omitted.
+                    self._repo.save_entry_actionability(
+                        ea, persisted_at=clock_instant
+                    )
+                return {"entry_actionability": ea}
+
             defn = build_definition(
                 f"owner-val-{instrument_id}",
                 [
                     WorkflowStage(
                         "indicators", ind_stage,
-                        produces=("indicators", "vwap", "confluence"),
+                        produces=("indicators", "vwap", "confluence", "latest_completed_m5"),
                     ),
                     WorkflowStage(
                         "regime",
@@ -1513,6 +1632,29 @@ class OwnerValidationPipeline:
                         entry_qualification_stage,
                         depends_on=("decision", "intraday_analytics"),
                         produces=("entry_qualification",),
+                    ),
+                    # ID-7E: depends only on "entry_qualification" -- that
+                    # stage's own depends_on=("decision","intraday_analytics")
+                    # already transitively guarantees "indicators" (for
+                    # "latest_completed_m5"/"vwap") and "intraday_analytics"
+                    # (for "intraday_signal_set") have themselves COMPLETED
+                    # whenever "entry_qualification" completes: WorkflowEngine
+                    # propagates failure/skip through its failed_or_skipped
+                    # accumulator transitively along the whole DAG, not just
+                    # one level, so "entry_qualification" could never reach
+                    # COMPLETED status if any of its own upstream stages had
+                    # failed or been skipped. This is a genuine, provable
+                    # data-dependency guarantee (see
+                    # test_id7e_entry_actionability_transitive_dependency_is_
+                    # structurally_guaranteed), not merely reliance on
+                    # declaration/topological-insertion order. Declared last:
+                    # nothing else depends on it, so it cannot perturb the
+                    # existing eleven stages' relative execution order.
+                    WorkflowStage(
+                        "entry_actionability",
+                        entry_actionability_stage,
+                        depends_on=("entry_qualification",),
+                        produces=("entry_actionability",),
                     ),
                 ],
             )

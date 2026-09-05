@@ -458,12 +458,23 @@ read-time query convention only, exactly mirroring the successful ID-6
 persistence philosophy this ADR deliberately reuses.
 
 **Must be revisited:** ID-7A (domain model/schema), ID-7B (methodology),
-ID-7C (engine), ID-7D (persistence), ID-7E (workflow wiring), and ID-7F
-(replay/shadow validation) each require their own separate owner
-authorization, mirroring ADR-013's own ID-6A0→ID-6E gated sequence. None
-is authorized by this ADR. If ID-7B's methodology later needs structural
+ID-7C (engine), ID-7E (workflow wiring), and ID-7F (replay/shadow
+validation) each require their own separate owner authorization,
+mirroring ADR-013's own ID-6A0→ID-6E gated sequence. None is authorized
+by this ADR. If ID-7B's methodology later needs structural
 support/resistance levels beyond `OpeningRangeEvidence`, that is a
 methodology/data dependency to record at that time, not to build now.
+
+**Correction (2026-09-05, ID-7D discovery, Owner-accepted):** this list
+originally also named a separate "ID-7D (persistence)" milestone. The
+real ID-7A authorization later bundled domain model AND persistence into
+one milestone (schema v18, the `entry_actionabilities` table, the full
+append-only repository contract) — ID-7D's entire originally-planned
+scope was absorbed into ID-7A as actually executed, and no separate
+ID-7D implementation milestone exists. See
+`docs/research/ID-7D-NEXT-LAYER-DISCOVERY-CONTRACT-RECONCILIATION.md`
+for the full reconciliation. This note corrects the stale reference in
+place rather than rewriting the ADR's original history.
 ID-9 (sizing), ID-10 (live plan supervision), and ID-11 (execution
 quality) remain explicitly out of scope — `EntryActionability` may expose
 risk-distance evidence those later layers consume, but performs no

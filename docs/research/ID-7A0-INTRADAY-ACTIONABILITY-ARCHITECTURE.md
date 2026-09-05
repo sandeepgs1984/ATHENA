@@ -19,8 +19,12 @@ architecture boundary only — identity, lifecycle, state model,
 freshness/finality semantics, timestamp model, evaluation mode,
 persistence direction, replay semantics, and downstream boundaries. It
 does not design entry/stop/target numeric methodology (ID-7B), does not
-create a schema (ID-7D), does not wire a workflow stage (ID-7E), and does
-not implement replay/shadow validation (ID-7F).
+create a schema (later done under ID-7A itself — the persistence
+milestone this line originally labeled "ID-7D" was absorbed into ID-7A's
+actual scope and no separate ID-7D implementation milestone exists; see
+`docs/research/ID-7D-NEXT-LAYER-DISCOVERY-CONTRACT-RECONCILIATION.md`,
+Owner-accepted 2026-09-05), does not wire a workflow stage (ID-7E), and
+does not implement replay/shadow validation (ID-7F).
 
 ## 2. Source audit
 

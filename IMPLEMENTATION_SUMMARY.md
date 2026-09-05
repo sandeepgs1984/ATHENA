@@ -126,6 +126,180 @@ docs(intraday): reconcile ID-7D naming via read-only discovery, classify Outcome
 complete; awaiting Owner/Chief Architect scope decision on the A/B/C
 classification and on authorizing ID-7E.
 
+**Update (2026-09-05).** Owner/Chief Architect approved: Classification A
+accepted, ID-7D's separate implementation retired as historically
+superseded by ID-7A. ID-7E (canonical workflow integration) authorized
+and completed the same day — see the entry above. The stale "ID-7D
+(persistence)" references this report identified in ADR-015 and the
+ID-7A0 research report were corrected in place (short annotations, not
+rewrites), and this report's own §20 overstatement about `persisted_at`
+exposure was corrected (stored but not returned by any current
+repository read method).
+
+---
+
+## ID-7E Entry Actionability Canonical Workflow Integration — Complete
+
+**Summary.** Owner/Chief Architect closed ID-7D discovery (2026-09-05,
+Classification A: ID-7D's originally-planned persistence scope was
+absorbed into ID-7A; no separate ID-7D implementation exists) and, in
+the same message, authorized ID-7E: wire the already-frozen
+`EntryActionabilityEngine` (ID-7C) into the canonical per-instrument
+workflow `OwnerValidationPipeline._scan_eligible` already uses for
+`Decision`/`EntryQualification` — composition and persistence only, no
+methodology change.
+
+**Architecture compliance.** No methodology change (the frozen V0
+evaluator is invoked, never modified). No schema change (`SCHEMA_VERSION`
+stays 18; zero diff to `schema.py`). No new repository API (the existing
+`save_entry_actionability` is sufficient, exactly as ID-7D's discovery
+predicted). No currentness in the write path (`is_currently_usable` is
+never called from `owner_validation.py` — proven by source-scan test).
+Zero provider/network calls from the new stage (proven by source-scan
+test). Decision/ID-6 methodology, EMR, and DarvaX are untouched
+(confirmed by targeted diff/grep). Failure isolation is inherited
+unchanged from the existing `WorkflowEngine`/`DailyMarketScanner`
+contract — no new isolation mechanism was invented.
+
+**Files created.** None.
+
+**Files modified.**
+- [src/athena/ops/owner_validation.py](src/athena/ops/owner_validation.py)
+  — `ind_stage` now additionally publishes `latest_completed_m5` (the
+  exact completed M5 candle VWAP was computed from, selected via
+  `session.latest_completed_candle` over the same bounded `vwap_raw`
+  series already fetched — never a second repository read); a new
+  `entry_actionability_stage` composes `EntryActionabilityMarketEvidence`
+  from that candle, the existing `vwap` `IndicatorResult`, and
+  `IntradaySignalSet.or15`, derives `session_vwap_as_of` from the
+  selected candle's own completion instant, invokes
+  `EntryActionabilityEngine.evaluate(..., policy=None)` with the exact
+  same-cycle `Decision` (`box["cap"].outcome.decision`) and the exact
+  `EntryQualification` `entry_qualification_stage` produced this cycle
+  (`ctx.get("entry_qualification")`), persists via
+  `save_entry_actionability` scoped to `decision_type in (WATCH, TRADE)`
+  (mirroring `entry_qualification_stage`'s own persistence gate — required,
+  since EQ persistence is itself WATCH/TRADE-only and EntryActionability's
+  binding validation needs the referenced EQ to be a persisted row), and
+  publishes the result under a new `entry_actionability` `WorkflowStage`
+  (`depends_on=("entry_qualification",)`, declared last in the DAG so it
+  cannot perturb the existing eleven stages' relative order).
+- [tests/ops/test_owner_validation.py](tests/ops/test_owner_validation.py)
+  — 11 new tests (see below).
+- `docs/MILESTONES.md`, `docs/ATHENA-ID-TRACK-HANDOFF.md`,
+  `ATHENA_BRIEFING.md` — record ID-7D Owner-approved/closed (Classification
+  A) and ID-7E complete/ready for review; ID-7F remains not started.
+- `docs/adr/ADR-015-intraday-actionability-architecture.md`,
+  `docs/research/ID-7A0-INTRADAY-ACTIONABILITY-ARCHITECTURE.md` — the two
+  stale "ID-7D (persistence)"/"schema (ID-7D)" references ID-7D's
+  discovery identified are corrected in place with a short annotation
+  (original history preserved, not rewritten).
+- `docs/research/ID-7D-NEXT-LAYER-DISCOVERY-CONTRACT-RECONCILIATION.md`
+  — §20's overstatement that `persisted_at` is exposed by existing
+  repository read methods is corrected (it is stored but excluded from
+  every current "get"/"latest"/"list" SELECT and from the
+  `EntryActionability` domain object).
+
+**Public APIs added.** None (`entry_actionability_stage` and the new
+`latest_completed_m5` context key are internal to
+`OwnerValidationPipeline._scan_eligible`, not a public module API).
+
+**Tests added.** 11, all in `tests/ops/test_owner_validation.py`:
+DAG/order-preservation proof (mirrors ID-6D's own); a dedicated
+transitive-dependency structural proof (a deliberately-failing
+`indicators` stage proves `intraday_analytics`/`entry_qualification`/
+`entry_actionability` all correctly SKIP via `WorkflowEngine`'s own
+failure-propagation, confirming `depends_on=("entry_qualification",)`
+alone is sufficient); exact Decision/EQ binding-identity proof; the
+frozen WATCH→`NOT_ACTIONABLE`/`UPSTREAM_DECISION_NOT_TRADE` contract; a
+full real pipeline run (with `DecisionEngine.decide`/
+`EntryQualificationEngine.evaluate` monkeypatched only to force the
+TRADE/QUALIFIED upstream verdicts real scoring/confidence/risk config
+would make statistically rare to hit incidentally — mirroring the ID-6D
+test file's own established spy/force pattern, not distorting canonical
+workflow identities) reaching genuine `ACTIONABLE` with exact
+entry/VWAP/invalidation/reward/evidence-provenance values verified, not
+merely state; `UNKNOWN`/`INSUFFICIENT_EVIDENCE` (no completed M5 at
+all); `UNKNOWN`/`INVALIDATION_UNAVAILABLE` (falling session, invalid
+LONG geometry); a genuine incoherent-composition contract error
+(mismatched `EntryQualification.session_date`) proven to fail only that
+one instrument's `entry_actionability` stage — the already-persisted
+Decision/EQ from earlier, independent stages survive untouched, and a
+healthy sibling instrument in the same scan is completely unaffected;
+idempotent re-run (no duplicate row); and source-scan proofs of zero
+currentness-concept/provider-network references and zero
+`EntryActionabilityPolicy` construction.
+
+**Test results.** Full suite: **3599 passed, 1 pre-existing unrelated
+skip, 0 failures** (up from 3588 at ID-7C.2 closure — exactly +11, all
+new). `tests/ops/test_owner_validation.py` alone: 62 passed (was 51).
+
+**Coverage summary.** Every ID-7C engine input's real production
+composition path is now exercised end-to-end through the canonical
+workflow at least once (ACTIONABLE, both UNKNOWN branches, NOT_ACTIONABLE,
+and the contract-error path) — not merely at the pure-engine unit level
+(already covered by ID-7C/ID-7C.1/ID-7C.2's own 85 tests).
+
+**Architecture compliance.** See above — no methodology/schema/repository-
+API change, no currentness in the write path, no provider calls, no
+Decision/ID-6/EMR/DarvaX touch, no API/UI change, no production restart or
+replay performed.
+
+**ADR compliance.** ADR-015's frozen 3-state model, TRADE-only evaluation
+scope (with WATCH still persisting NOT_ACTIONABLE), append-only
+persistence, and Option 1 (canonical-cycle synchronous) evaluation mode
+are all implemented exactly as designed — zero deviation.
+
+**Risks discovered.** None new. The one presentational/composition gap
+ID-7D's discovery identified (VWAP provenance + completed-M5 candle not
+previously published to `WorkflowContext`) is now closed by this
+milestone's own `ind_stage` change.
+
+**Technical debt introduced.** None.
+
+**Suggested improvements.** None — ID-7F (replay/shadow validation) is
+the natural next milestone once separately authorized; no other
+improvement was identified during this implementation.
+
+**Remaining work.** ID-7F (replay/shadow validation) — not started, not
+authorized. No other ID-7E-scoped work remains.
+
+**Commit message.**
+```
+feat(intraday): wire EntryActionability into the canonical workflow (ID-7E)
+
+- Added a new `entry_actionability` WorkflowStage to
+  OwnerValidationPipeline._scan_eligible's per-instrument DAG
+  (depends_on=("entry_qualification",) only — proven sufficient by a
+  dedicated transitive-dependency structural test, not mere insertion
+  order), composing the already-frozen EntryActionabilityEngine's
+  inputs entirely from what the cycle's own workflow already computed:
+  the same-cycle Decision, the exact EntryQualification produced this
+  cycle, a newly-published `latest_completed_m5` candle (reusing
+  ind_stage's own already-fetched bounded VWAP candle series — never a
+  second repository read), the existing VWAP IndicatorResult, and
+  IntradaySignalSet.or15.
+- session_vwap_as_of is derived from the selected candle's own
+  completion instant, never ctx.as_of/evaluated_at/persisted_at,
+  structurally satisfying ID-7C.1's exact VWAP-provenance invariant.
+- Persistence (save_entry_actionability) is scoped to WATCH/TRADE,
+  mirroring EntryQualification's own persistence gate — required
+  because EntryActionability's binding validation needs the referenced
+  EntryQualification to itself be a persisted row.
+- Recorded ID-7D's Owner approval (Classification A: persistence scope
+  absorbed into ID-7A, no separate ID-7D implementation) across all 4
+  tracking docs, corrected the two stale "ID-7D (persistence)"
+  references in ADR-015 and the ID-7A0 research report, and corrected
+  the ID-7D discovery report's own persisted_at overstatement.
+- 11 new tests; full suite 3599 passed / 1 pre-existing unrelated skip
+  / 0 failures. No schema/repository/methodology change; no currentness
+  in the write path; no provider calls; no Decision/ID-6/EMR/DarvaX
+  touch.
+```
+
+**Ready for review.** Yes — ID-7E is implemented and self-validated;
+awaiting Owner/Chief Architect review and closure.
+
 ---
 
 ## ID-7C.2 Entry Actionability Upstream Short-Circuit / Evidence-Validation Order Correction — Complete
