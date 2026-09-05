@@ -6,6 +6,261 @@ status updated on approval.
 
 ---
 
+## ID-7C Entry Actionability V0 Deterministic Evaluator — Implementation Complete
+
+**Summary.** Owner/Chief Architect closed ID-7A.2, ID-7A.1, and ID-7A
+overall (2026-09-05): the `EntryActionability` domain model, schema v18,
+and repository contract are frozen; ADR-015 remains Accepted; the ID-7B
+V0 methodology remains frozen. ID-7C was authorized same day: implement
+the pure deterministic evaluator that converts one exact canonical
+`Decision` + one exact bound `EntryQualification` + already-computed
+layer-3 market evidence into exactly one immutable `EntryActionability`.
+This is the first milestone where the frozen architecture becomes
+executable methodology — deliberately kept as a single, isolated
+concern: no persistence, no "latest" Decision/EQ resolution, no
+currentness evaluation, no `WorkflowStage` wiring, no provider/network
+call, no new methodology, no recalibration.
+
+**Engine** (`src/athena/intraday/entry_actionability_engine.py`, new).
+`EntryActionabilityEngine.evaluate(*, decision, entry_qualification,
+market_evidence, evaluated_at, policy=None) -> EntryActionability` — the
+only public method, mirroring `EntryQualificationEngine`'s own
+established pure/deterministic/O(1)/side-effect-free contract (ID-6B.2)
+exactly: no repository access, no provider/network call, no hidden
+clock read, no history scan, no lookup of any prior
+`EntryActionability`.
+
+**Binding validation.** `_validate_binding(decision, eq)` proves the two
+inputs describe ONE exact, coherent candidate before any methodology
+evaluation — `eq.decision_id == decision.decision_id`,
+`decision_type`/`run_id`/`cycle_id` agreement, and instrument_id
+agreement with the same `None`-fallback convention
+`EntryQualificationEngine._resolve_instrument_id` already established.
+This mirrors the repository's own
+`_validate_entry_actionability_decision_binding`/
+`_validate_entry_actionability_eq_binding` (ID-7A), applied here at
+evaluation time instead of persistence time. Any mismatch is a
+programmer/input-contract error and raises `ValueError` — never
+silently repaired, never reported as a methodology `UNKNOWN`.
+
+**Evaluation checkpoint.** `entry_actionability_as_of =
+entry_qualification.as_of` unconditionally — Option 1's canonical-cycle
+synchronous evaluation, the same checkpoint the bound EQ was itself
+evaluated at. This deliberately does not exercise ADR-015's future
+same-EQ re-evaluation capability (still structurally valid in the
+domain model per ID-7A.1's own PIT-ordering invariant, `entry_
+actionability_as_of >= entry_qualification_as_of` with strict-later
+also legal) — V0's methodology has no use for it; a future milestone
+could introduce a genuine re-evaluation caller without any domain or
+engine change.
+
+**Upstream gates** (checked together, before any layer-3 evidence is
+read — ID-7A.2's own frozen invariant that upstream eligibility is a
+precondition for the evidence-sufficiency layer): `decision.decision_type
+is not TRADE` → `UPSTREAM_DECISION_NOT_TRADE`; the exact bound EQ's
+`state is not QUALIFIED` → `UPSTREAM_EQ_NOT_QUALIFIED`. When both fail,
+both codes are reported together, in that order — a deterministic
+policy chosen because it mirrors `EntryQualificationEngine`'s own
+already-established convention of reporting every simultaneously-true
+failing condition (its `NOT_YET`/`UNKNOWN` branches already do exactly
+this for VWAP/trend/support), not a first-failure-only rule invented
+for this milestone. No layer-3 evidence is read to reach either
+`NOT_ACTIONABLE` reason.
+
+**Layer-3 evidence — the new narrow `EntryActionabilityMarketEvidence`
+input context.** Audited `IntradaySignalSet`/`VwapEvidence` (ID-2)
+before designing this: `VwapEvidence` was formalized to carry only the
+categorical `relation` + `deviation_pct` ScoringEngine already consumed
+— never the raw VWAP price. Since V0's `EntryLocationContext`/
+`OperativeInvalidation` value objects need the raw price, and no
+existing typed evidence container carries it, this milestone defines
+its own narrow, ID-7C-owned context (`completed_m5_close: Candle | None`,
+`session_vwap: Decimal | None`, `opening_range_15: OpeningRangeEvidence
+| None`) — reusing the canonical `Candle`/`OpeningRangeEvidence` domain
+types directly rather than inventing a parallel market-data domain, per
+the ID-7C authorization's own "smallest representation after source
+audit" instruction. Missing `completed_m5_close` or `session_vwap` →
+`UNKNOWN`/`INSUFFICIENT_EVIDENCE` (a legitimate real-world case, not a
+contract error).
+
+**Entry reference, VWAP deviation, evidence_as_of.** Entry price = the
+supplied candle's own `close` (never VWAP, never a zone/tolerance).
+`evidence_as_of` = the candle's own completion instant (`ts_open +
+5min`, a small local constant mirroring `session.engine`'s own private
+`_TIMEFRAME_MINUTES[M5]=5`, per that module's own stated rationale for
+duplicating a 1-entry unit fact rather than reaching into private
+state) — audited via `session.engine.is_candle_completed`, reused
+directly to prove the supplied candle has genuinely completed as of the
+checkpoint; a candle that has not raises `ValueError` (future evidence
+relative to the checkpoint is a contract error, not a methodology
+outcome). VWAP deviation = `(entry_price - vwap) / vwap * Decimal(100)`
+— audited and matched exactly against `indicators.calculations.vwap`'s
+own real formula (signed, percentage-scaled, unrounded) rather than
+invented independently.
+
+**Risk geometry and INVALIDATION_UNAVAILABLE mapping.** The domain's own
+`_validate_risk_geometry` rule (LONG: invalidation strictly below entry;
+SHORT: strictly above) is pre-checked by a small mirrored helper
+(`_geometry_valid`) *before* attempting domain construction. A
+geometrically invalid checkpoint (zero distance or wrong-side) maps
+deterministically to `UNKNOWN`/`INVALIDATION_UNAVAILABLE` — with
+`evidence_as_of` still populated, since real evidence was genuinely
+available; only the invalidation geometry failed — rather than letting
+a domain-constructor `ValueError` escape as an unexpected programming
+error. `Decision.__post_init__` already guarantees `direction` is
+`LONG` or `SHORT` whenever `decision_type == TRADE` (the only branch
+that reaches this code), so `Direction.NONE` is structurally
+unreachable here.
+
+**Reward/RR.** T1/T2 = `entry_price * (1 ± T1_GOAL_BAND_PCT/
+T2_GOAL_BAND_PCT)` (direction-aware, exact Decimal, no rounding/
+tick-size policy — none was frozen). RR = reward-distance / risk-distance
+for each of T1/T2, informational only — proven never to gate
+`ACTIONABLE` even at a very small RR.
+
+**OR15 contextual handling.** Attached only when
+`formation.status == OpeningRangeFormationStatus.COMPLETE`; the
+directionally coherent structural boundary is the range low for LONG
+and the range high for SHORT — a price level only, never a
+breakout-event or DarvaX-style label. Always independently optional:
+absence (any non-`COMPLETE` status, or no OR15 evidence at all) never
+forces `UNKNOWN` and never changes the operative invalidation or reward
+(proven identical with and without OR15 supplied).
+
+**Evidence finality and SHORT.** `evidence_finality` is echoed from the
+bound EQ exactly, in every branch (`NOT_ACTIONABLE`/`UNKNOWN`/
+`ACTIONABLE`) — proven not to gate `ACTIONABLE` on its own (a
+`LIVE_M5_PROVISIONAL` EQ still reaches `ACTIONABLE` when M5/VWAP/
+geometry are otherwise satisfied, matching ID-7B's own finding).
+SHORT is evaluated via direction-symmetric formulas — structurally
+supported — but every test and this document explicitly distinguish
+that from empirical validation; `LONG_VALIDATED_SHORT_UNVALIDATED`
+(ID-7B.2) is unchanged and not contradicted by this milestone.
+
+**Public APIs added.** `EntryActionabilityEngine`,
+`EntryActionabilityMarketEvidence`, `EntryActionabilityPolicy`
+(re-exported from `athena.intraday`).
+
+**Files created.** `src/athena/intraday/entry_actionability_engine.py`,
+`tests/market_intel/test_entry_actionability_engine.py`.
+
+**Files modified.** `src/athena/intraday/__init__.py` (+8 lines: 3 new
+exports), `docs/MILESTONES.md`, `ATHENA_BRIEFING.md`,
+`docs/ATHENA-ID-TRACK-HANDOFF.md`, this file. Zero changes to
+`src/athena/data/store/schema.py` or
+`src/athena/data/store/repository.py` — `SCHEMA_VERSION` remains 18;
+this milestone deliberately performs no repository composition (ID-7E
+will eventually compose current-Decision + current-EQ + historical
+EntryActionability + session phase + `now` + this evaluator).
+
+**Tests/validation.** 58 new tests
+(`tests/market_intel/test_entry_actionability_engine.py`): full
+upstream-gate matrix (both-fail/decision-only/EQ-only across all 5
+non-`QUALIFIED` `EntryQualificationState` members, using the actual
+enum vocabulary); layer-3 evidence-failure matrix (missing M5 candle,
+missing VWAP, invalid VWAP rejected at
+`EntryActionabilityMarketEvidence` construction time, future-evidence
+contract error, zero-risk geometry, wrong-side LONG geometry, wrong-side
+SHORT geometry); valid LONG and structural-SHORT ACTIONABLE cases;
+entry-reference/VWAP-deviation-formula/evidence_as_of exactness
+(including a not-rounded proof and a PIT-ordering sanity check against
+the domain's own invariant); full OR15 matrix (COMPLETE-LONG boundary,
+COMPLETE-SHORT boundary, every non-`COMPLETE` status, missing OR15,
+absence-never-forces-`UNKNOWN`, never-changes-invalidation-or-reward);
+exact-Decimal T1/T2/risk-distance/RR-for-both-targets tests; an
+RR-never-gates proof at a very small RR; evidence-finality-echoed-
+regardless-of-state and provisional-still-`ACTIONABLE` proofs;
+determinism (identical inputs at two different `evaluated_at` values
+produce field-for-field identical output aside from that one
+diagnostic field, and identical inputs at the same `evaluated_at`
+produce full equality); exact upstream identity/audit-field propagation
+(instrument_id, session_date, EQ as_of/methodology_version/state,
+decision_type, direction, run_id, cycle_id, entry_actionability_as_of ==
+EQ.as_of); default-vs-explicit methodology version; all 5 binding-
+mismatch contract-error cases (decision_id, decision_type, run_id,
+cycle_id, instrument_id) plus the `None`-instrument-id fallback;
+candle-instrument mismatch, non-M5-candle, and non-OR15-window rejection
+at market-evidence-context construction; naive-`evaluated_at` rejection;
+a domain-construction-passes-naturally proof spanning every reachable
+branch (`NOT_ACTIONABLE`/`UNKNOWN`/`ACTIONABLE`); and two source-scan
+proofs (scoped to the engine class's own source, not its docstring)
+that zero currentness/session-gate/persistence/latest-lookup/provider
+logic exists inside the engine. Full suite: **3561 passed, 1
+pre-existing unrelated skip, 0 failures**
+(`PYTHONPATH=src python3 -m pytest tests/`).
+
+**Coverage summary.** Every reachable engine branch
+(`NOT_ACTIONABLE`-both-reasons, `NOT_ACTIONABLE`-decision-only,
+`NOT_ACTIONABLE`-EQ-only-across-all-5-states, `UNKNOWN`-missing-M5,
+`UNKNOWN`-missing-VWAP, `UNKNOWN`-zero-risk, `UNKNOWN`-wrong-side-LONG,
+`UNKNOWN`-wrong-side-SHORT, `ACTIONABLE`-LONG, `ACTIONABLE`-SHORT) and
+every `_geometry_valid`/`_reward_reference`/`_opening_range_context`
+helper branch is exercised by a name-matched test.
+
+**Architecture compliance.** No architecture change; ADR-015 followed
+exactly. This milestone is the first to make the frozen contract
+executable, deliberately isolated from persistence, currentness, and
+workflow composition — exactly the four-concerns separation the ID-7C
+authorization itself called out as important.
+
+**ADR compliance.** ADR-015's Option 1 (canonical-cycle synchronous)
+selected evaluation mode is implemented exactly (`entry_actionability_as_of
+== entry_qualification.as_of`). Dimension C (evidence finality) is
+propagated unchanged, never gating. Dimension B (currentness) is
+entirely absent from this engine, per ADR-015/ID-7A0.1's own separation.
+
+**Risks discovered.** None new. The engine's own risk-geometry
+pre-check duplicates (in spirit) the domain's own `_validate_risk_geometry`
+rule — an intentional, documented duplication (the alternative, catching
+and reinterpreting a domain `ValueError`, would blur the contract-error/
+methodology-UNKNOWN boundary the ID-7C authorization explicitly required
+kept sharp) rather than an oversight.
+
+**Technical debt introduced.** None. `EntryActionabilityMarketEvidence`
+is a genuinely new type, but a narrow one scoped exactly to V0's own
+mandatory evidence set — not a placeholder or a speculative abstraction
+for evidence V0 does not consume.
+
+**Suggested improvements.** None proposed — scope was fully specified by
+the ID-7C authorization.
+
+**Remaining work.** Owner/Chief Architect review of this implementation.
+ID-7D, ID-7E (workflow wiring — will need to compose a real `Decision`/
+`EntryQualification`/`EntryActionabilityMarketEvidence` from the
+canonical per-cycle pipeline and call this engine), and ID-7F
+(replay/shadow) all remain not started, not authorized.
+
+**Commit message.**
+```
+feat(intraday): add EntryActionability V0 deterministic evaluator (ID-7C)
+
+- Add EntryActionabilityEngine.evaluate(), a pure/deterministic engine
+  mirroring EntryQualificationEngine's own established contract, that
+  converts one exact Decision + one exact bound EntryQualification +
+  layer-3 market evidence into one immutable EntryActionability
+- Add EntryActionabilityMarketEvidence, a narrow evaluation-input
+  context (completed M5 candle, raw session VWAP price, optional OR15
+  evidence) since no existing typed evidence container carries the raw
+  VWAP price V0's value objects need
+- Implement the frozen V0 methodology exactly: upstream TRADE+QUALIFIED
+  gates checked before any layer-3 evidence read (both-failure reports
+  both reason codes); completed-M5-close entry; signed unrounded VWAP
+  deviation; pre-checked risk geometry mapping deterministically to
+  UNKNOWN/INVALIDATION_UNAVAILABLE rather than an escaping domain error;
+  exact-Decimal T1/T2 goal bands with informational-only RR; always-
+  optional non-gating OR15 context; evidence_finality echoed unchanged
+- Add 58 tests covering the full upstream/evidence/OR15/reward matrices,
+  determinism, exact identity propagation, and contract-error boundaries
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+```
+
+**Outcome:** ID-7C implementation complete — ready for Owner / Chief
+Architect review. Not marked Owner-approved. ID-7D/ID-7E/ID-7F not
+authorized.
+
+---
+
 ## ID-7A.2 Entry Actionability Final State + Currentness Contract Hardening — Complete
 
 **Summary.** Owner/Chief Architect source review of ID-7A.1 accepted its

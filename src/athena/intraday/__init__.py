@@ -22,6 +22,11 @@ from athena.intraday.entry_actionability_currentness import (
     bound_entry_qualification_identity,
     is_currently_usable,
 )
+from athena.intraday.entry_actionability_engine import (
+    EntryActionabilityEngine,
+    EntryActionabilityMarketEvidence,
+    EntryActionabilityPolicy,
+)
 from athena.intraday.entry_actionability_models import (
     CURRENTNESS_MAX_EVIDENCE_AGE_SECONDS,
     EVIDENCE_SUFFICIENCY_REASON_CODES,
@@ -95,6 +100,9 @@ __all__ = [
     "CurrentnessResult",
     "EntryActionability",
     "EntryActionabilityCurrentness",
+    "EntryActionabilityEngine",
+    "EntryActionabilityMarketEvidence",
+    "EntryActionabilityPolicy",
     "EntryActionabilityReasonCode",
     "EntryActionabilityState",
     "EntryEvidenceFinality",
