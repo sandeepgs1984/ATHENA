@@ -303,8 +303,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.155.0" in html
-    assert "dashboard.js?v=9.155.0" in html
+    assert "dashboard.css?v=9.156.0" in html
+    assert "dashboard.js?v=9.156.0" in html
     assert "function decisionConfidenceBand" in js
     assert "analysis?.confidence_level" in js
     assert "confidence reflects evidence reliability, not expected profit" in js
@@ -404,11 +404,14 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert ".my-portfolio-wide-table th:nth-child(3)" in my_portfolio_css
     assert "position: sticky" in my_portfolio_css
     assert ".my-portfolio-confirm-actions[hidden]" in my_portfolio_css
-    assert "min-width: 2290px" in my_portfolio_css
+    assert "min-width: 2050px" in my_portfolio_css
+    assert "min-width: 2290px" not in my_portfolio_css
     assert "min-width: 3820px" not in my_portfolio_css
     assert "table-layout: fixed" in my_portfolio_css
-    assert "left: 180px" in my_portfolio_css
-    assert "left: 290px" in my_portfolio_css
+    assert "left: 170px" in my_portfolio_css
+    assert "left: 260px" in my_portfolio_css
+    assert "left: 180px" not in my_portfolio_css
+    assert "left: 290px" not in my_portfolio_css
     assert "background: var(--bg-sidebar)" in my_portfolio_css
     assert "box-shadow: 1px 0 0 var(--border-color)" in my_portfolio_css
     assert ".my-portfolio-col-symbol" in my_portfolio_css
@@ -428,6 +431,22 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert ".my-portfolio-detail-grid" in my_portfolio_css
     assert ".my-portfolio-detail-notice" in my_portfolio_css
     assert ".my-portfolio-detail-modal-container" in css
+
+    # MY-PORTFOLIO-POST-V1-UI-POLISH: tighter cell padding scoped to this
+    # table only (never the shared .data-table default), and mandatory
+    # scroll-snap so the horizontal scroll can only rest on a clean column
+    # boundary — root-cause fix for the Owner-reported clipped-fragment
+    # artifact (verified: a lone stray character was the tail of the real
+    # Daily Review summary text, only partially exposed past the sticky
+    # columns at an unconstrained scroll offset).
+    assert "padding: var(--space-10) var(--space-12);" in my_portfolio_css
+    assert ".my-portfolio-holdings-scroll" in my_portfolio_css
+    assert "scroll-snap-type: x mandatory;" in my_portfolio_css
+    assert "scroll-padding-left: 410px;" in my_portfolio_css
+    assert "scroll-snap-align: start;" in my_portfolio_css
+    assert "scroll-snap-stop: always;" in my_portfolio_css
+    assert 'my-portfolio-holdings-scroll' in html
+    assert 'my-portfolio-table-scroll my-portfolio-holdings-scroll' in html
 
     assert "08b-my-portfolio.js" in DASHBOARD_JS_PARTS
     assert "function loadMyPortfolioWorkspace()" in js
@@ -449,7 +468,7 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert "Plan Stop" in js
     assert "Plan T1" in js
     assert "Major Support" not in js
-    assert "No active plan levels" in js
+    assert "No plan levels" in js
     assert "No active TradePlan level currently available." in js
     assert (
         "Structural Support 1 and Target 2/3 are unavailable in Portfolio v0 "
@@ -2607,7 +2626,7 @@ def test_my_portfolio_ux_closure_composition_contract(client: TestClient) -> Non
     assert "Plan Stop" in levels_body
     assert "row?.target_1" in levels_body
     assert "Plan T1" in levels_body
-    assert "No active plan levels" in levels_body
+    assert "No plan levels" in levels_body
     assert "support_1" not in levels_body.lower()
     assert "target_2" not in levels_body.lower()
     assert "target_3" not in levels_body.lower()

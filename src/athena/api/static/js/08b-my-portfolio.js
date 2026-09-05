@@ -351,7 +351,7 @@
             lines.push(`Plan T1 ${formatMyPortfolioMoney(row.target_1)}`);
         }
         if (!lines.length) {
-            return `<span class="my-portfolio-muted-dash">No active plan levels</span>`;
+            return `<span class="my-portfolio-muted-dash">No plan levels</span>`;
         }
         return `<span class="my-portfolio-levels">${lines.map(escapeMyPortfolioHtml).join("<br>")}</span>`;
     }
