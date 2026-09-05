@@ -6,135 +6,126 @@ status updated on approval.
 
 ---
 
-## ID-7D Entry Actionability Next-Layer Discovery + Contract Reconciliation — Discovery Complete
+## ID-7E.1 Entry Actionability Production Invocation-Scope Hardening — Complete
 
-**Summary.** Owner/Chief Architect closed ID-7C.2, ID-7C.1, and ID-7C
-overall 2026-09-05 (V0 deterministic evaluator frozen) and, in the same
-message, authorized a read-only discovery milestone to resolve a
-documentation/sequencing ambiguity: an older description called "ID-7D"
-the persistence milestone, but persistence was actually completed and
-Owner-closed under ID-7A. This milestone determined, from the real
-current architecture rather than the stale plan, whether ID-7D still
-names a real missing layer between the frozen ID-7C evaluator and a
-future ID-7E workflow-wiring milestone.
+**Summary.** Owner/Chief Architect source review accepted ID-7E's core
+workflow integration (same-cycle Decision/EQ binding, completed-M5/VWAP
+PIT composition, WATCH/TRADE persistence, schema-v18/repository reuse)
+but held final closure for one narrow production-scope defect:
+`EntryActionabilityEngine.evaluate()` was invoked for EVERY Decision
+type, with persistence merely gated to WATCH/TRADE afterward — broader
+than the frozen production scope ADR-015/ID-7A/ID-7B established (TRADE
+= actionability-methodology population, WATCH = intentional historical
+`NOT_ACTIONABLE` population, every other Decision type = an
+architectural scope exclusion, never a methodology verdict about them).
+ID-7E.1, authorized the same day, is this narrow correction.
 
-**Architecture compliance.** Read-only discovery only — no code, schema,
-repository, or workflow change; zero production `EntryActionability`
-rows; zero provider calls; zero methodology change; `SCHEMA_VERSION`
-unchanged at 18. Decision/ID-6, ingestion, EMR, and DarvaX untouched
-(confirmed via targeted diff/grep). ADR-015 remains Accepted, unmodified.
+**Architecture compliance.** No methodology change (the frozen V0
+evaluator's own logic is untouched — only the caller's decision to
+invoke it changed). No schema/repository change. No DAG/workflow
+redesign (stage name, `depends_on`, `produces` all unchanged — a
+body-only correction). `EntryQualification`/ID-6 unchanged — still
+evaluated in-memory for every Decision type per ID-6D's own existing
+contract; only ID-7's own narrower funnel gates.
 
-**Files created.** `docs/research/ID-7D-NEXT-LAYER-DISCOVERY-CONTRACT-RECONCILIATION.md`
-(the full 22-section discovery report).
+**Files created.** None.
 
-**Files modified (documentation only).** `docs/MILESTONES.md`,
-`docs/ATHENA-ID-TRACK-HANDOFF.md`, `ATHENA_BRIEFING.md` — recording
-ID-7C.2/ID-7C.1/ID-7C Owner-approved/closed and the ID-7D discovery
-outcome. This entry in `IMPLEMENTATION_SUMMARY.md`.
+**Files modified.**
+- [src/athena/ops/owner_validation.py](src/athena/ops/owner_validation.py)
+  — `entry_actionability_stage` gained an early scope gate
+  (`if decision.decision_type not in (DecisionType.WATCH, DecisionType.TRADE):
+  return {"entry_actionability": None}`) immediately after resolving the
+  same-cycle Decision, strictly before `ctx.get("entry_qualification")`/
+  `latest_completed_m5`/`vwap`/`or15` are ever read or composed into
+  `EntryActionabilityMarketEvidence` — an out-of-scope Decision can
+  therefore never reach engine invocation, evidence composition, or
+  persistence, regardless of how incoherent its associated
+  `EntryQualification`/evidence would otherwise be. The subsequent
+  `if decision.decision_type in (WATCH, TRADE): save_entry_actionability(...)`
+  condition was simplified to an unconditional call (reaching that line
+  already proves WATCH/TRADE scope).
+- [tests/ops/test_owner_validation.py](tests/ops/test_owner_validation.py)
+  — 5 new tests (see below).
+- `docs/MILESTONES.md`, `docs/ATHENA-ID-TRACK-HANDOFF.md`,
+  `ATHENA_BRIEFING.md` — record ID-7E core accepted, ID-7E.1 complete/
+  ready for review, ID-7E still pending final closure, ID-7F not
+  started.
 
 **Public APIs added.** None.
 
-**Tests added.** None (discovery only; no code changed). Existing full
-suite unaffected (last measured at ID-7C.2: 3588 passed, 1 pre-existing
-unrelated skip, 0 failures) — re-verified unaffected by `git diff --check`/
-`git status --short` after this milestone's documentation-only changes.
+**Tests added.** 5, all in `tests/ops/test_owner_validation.py`: a
+genuine out-of-scope (`NO_TRADE`) Decision proven, via direct call-count
+spies on both `EntryActionabilityEngine.evaluate` and
+`SqliteRepository.save_entry_actionability` (not merely an absent DB
+row, which a caught exception could also produce), to invoke neither;
+the same out-of-scope Decision paired with a deliberately session-date-
+incoherent `EntryQualification` proven to complete the scan cleanly
+(proving the gate precedes composition entirely, not merely avoids one
+failure mode); a strengthened WATCH proof (call-count spy + exact
+persisted-identity match); a new TRADE+real-non-QUALIFIED-EQ persistence
+proof (using this fixture's own real, unforced v0 EQ methodology
+result, not a forced one — proving scope gating is by Decision-funnel
+membership, never by actionability eligibility); and a DAG-unchanged
+structural proof (stage/dependency/produces literal counts). All prior
+ID-7E tests (DAG order, transitive dependency, binding identity, WATCH,
+ACTIONABLE, both UNKNOWN branches, contract-error isolation, idempotency,
+currentness/provider/policy absence) remain green, unchanged.
 
-**Key findings.**
-- **Historical reconciliation:** the original pre-ID-7A0 sub-milestone
-  plan (`docs/research/ID-7-INTRADAY-ENTRY-TRADEPLAN-DISCOVERY.md` §35)
-  separated "ID-7A — domain contract only, no persistence" from
-  "ID-7D — persistence." The real ID-7A authorization later bundled
-  domain + persistence into one milestone, fully absorbing ID-7D's
-  original scope. Stale "ID-7D (persistence)" phrasing confirmed still
-  present at `docs/adr/ADR-015-intraday-actionability-architecture.md:461`
-  and `docs/research/ID-7A0-INTRADAY-ACTIONABILITY-ARCHITECTURE.md:22`
-  (flagged for future correction; not edited this milestone, to preserve
-  historical auditability of documents that were accurate when written).
-- **Producer map:** traced every `EntryActionabilityEngine.evaluate()`
-  input to its real current producer via `src/athena/runtime/workflow.py`
-  and `OwnerValidationPipeline._scan_eligible`
-  (`src/athena/ops/owner_validation.py`). Same-cycle `Decision` and
-  `EntryQualification`, and a coherent OR15 artifact, are already
-  structurally available with zero adaptation — mirroring the
-  `entry_qualification_stage` precedent exactly. The raw VWAP price is
-  already published to `WorkflowContext` (`ctx["vwap"]`), but its exact
-  completion-instant provenance (`session_vwap_as_of`) and the completed
-  M5 candle itself are not yet published — classified as a small,
-  single-call-site presentation/composition gap, not a domain-methodology
-  gap (the correct candle/data already exists in the live pipeline).
-- **Repository sufficiency:** `PERSISTENCE_CONTRACT_ALREADY_SUFFICIENT`
-  — the existing `save_entry_actionability` method is sufficient for a
-  future write path, mirroring EQ's own single-write-call production
-  precedent; no new repository method is needed.
-- **Currentness boundary:** confirmed, from the real architecture (not
-  merely ADR-015's stated intent), that currentness composition
-  structurally cannot live inside the write-time workflow (no "latest"
-  repository query, no real wall clock, no `SessionPhase` resolution
-  exist in the write path today) — it remains a future read-time
-  consumer's exclusive responsibility.
-- **Failure semantics:** already correctly covered by
-  `WorkflowEngine`/`DailyMarketScanner`'s existing per-stage/
-  per-instrument isolation; no new failure policy needed.
-- **Classification: Outcome A — ID-7D IS UNNECESSARY / HISTORICALLY
-  SUPERSEDED.** Supported by the historical-naming reconciliation plus
-  the direct EQ/ID-6D precedent (composition logic was inlined directly
-  into the one new `entry_qualification_stage`, never spun into its own
-  milestone) and by the one real gap found being exactly analogous in
-  size/shape to that stage's own inline `resolve_evidence_finality` call.
-  Outcome B (a narrow composition-contract milestone) was considered and
-  rejected on those concrete grounds; Outcome C was not selected (no
-  evidence found for any other missing layer).
+**Test results.** Full suite: **3604 passed, 1 pre-existing unrelated
+skip, 0 failures** (up from 3599 at ID-7E — exactly +5, all new).
+`tests/ops/test_owner_validation.py` alone: 67 passed (was 62).
 
-**Risks discovered.** None new. The one real integration task identified
-(deriving and publishing `session_vwap_as_of` + the completed M5 candle
-into `WorkflowContext`) is explicitly deferred to a future ID-7E
-implementation, not a blocker to authorizing ID-7E's design.
+**Coverage summary.** Every Decision-type-scope branch (WATCH, TRADE,
+and a genuine out-of-scope type) is now exercised end-to-end through the
+canonical workflow, including the out-of-scope path paired with
+poisoned upstream evidence.
 
-**Technical debt introduced.** None (no code changed).
+**Architecture compliance.** No methodology/schema/repository-API/DAG
+change; no currentness in the write path; no provider calls; no
+Decision/ID-6/EMR/DarvaX/Portfolio Setup touch; no new API/UI/
+configuration.
 
-**Suggested improvements.** Once the owner confirms Outcome A, correct
-the two stale "ID-7D (persistence)" references identified above
-(`ADR-015:461`, `ID-7A0-INTRADAY-ACTIONABILITY-ARCHITECTURE.md:22`) to
-point at this discovery report; no change needed to
-`ID-7-INTRADAY-ENTRY-TRADEPLAN-DISCOVERY.md` §35 (an accurate historical
-record of what was proposed before ID-7A's actual scope was decided).
+**ADR compliance.** ADR-015's frozen production scope (TRADE = the
+actionability-methodology population; WATCH = the intentional
+historical `NOT_ACTIONABLE` population; every other Decision type
+outside the funnel) is now implemented exactly, closing the one gap
+between the frozen design and ID-7E's initial invocation breadth.
 
-**Remaining work.** Owner/Chief Architect scope decision on the A/B/C
-classification; if Outcome A is confirmed, authorize ID-7E (workflow
-wiring) as the next milestone — not yet authorized.
+**Risks discovered.** None new.
+
+**Technical debt introduced.** None.
+
+**Suggested improvements.** None.
+
+**Remaining work.** ID-7F (replay/shadow validation) — not started, not
+authorized. Final Owner/Chief Architect closure of ID-7E overall (via
+ID-7E.1) is the only remaining gate before ID-7F can be considered.
 
 **Commit message.**
 ```
-docs(intraday): reconcile ID-7D naming via read-only discovery, classify Outcome A
+fix(intraday): scope EntryActionability invocation to WATCH/TRADE only (ID-7E.1)
 
-- Recorded ID-7C.2/ID-7C.1/ID-7C Owner-approved/closed 2026-09-05 (V0
-  deterministic evaluator frozen) across all 4 tracking docs.
-- Added docs/research/ID-7D-NEXT-LAYER-DISCOVERY-CONTRACT-RECONCILIATION.md:
-  traces the ID-7 milestone history showing ID-7D's original
-  "persistence" scope was absorbed into ID-7A, maps every ID-7C
-  evaluator input to its real WorkflowContext producer, verifies the
-  existing ID-7A repository contract is already sufficient, confirms
-  currentness composition belongs outside the write-time workflow, and
-  classifies ID-7D as Outcome A (unnecessary / historically superseded)
-  — recommending ID-7D retirement and ID-7E as the next milestone,
-  pending owner scope decision.
-- Zero code/schema/repository/workflow changes; discovery-only per the
-  milestone's own authorization.
+- Added an early scope gate to entry_actionability_stage, checked
+  immediately after resolving the same-cycle Decision and strictly
+  before any EQ/M5/VWAP/OR15 evidence is read or composed: Decision
+  types outside (WATCH, TRADE) now return {"entry_actionability": None}
+  without ever invoking EntryActionabilityEngine.evaluate() or
+  save_entry_actionability(), matching ADR-015/ID-7A/ID-7B's frozen
+  production scope exactly (previously the engine ran for every
+  Decision type, with persistence merely gated afterward).
+- Simplified the WATCH/TRADE persistence condition to unconditional,
+  since reaching that line now already proves scope.
+- 5 new tests proving (a) out-of-scope Decisions never reach the engine
+  or repository (call-count spies, not just an absent row), (b) an
+  out-of-scope Decision paired with a deliberately incoherent EQ still
+  completes cleanly, (c) WATCH and (d) TRADE+non-QUALIFIED remain
+  evaluated and persisted exactly as before, and (e) the DAG itself is
+  unchanged. Full suite 3604 passed / 1 pre-existing unrelated skip / 0
+  failures. No schema/repository/methodology/DAG change.
 ```
 
-**Ready for review.** Yes — ID-7D discovery is source-grounded and
-complete; awaiting Owner/Chief Architect scope decision on the A/B/C
-classification and on authorizing ID-7E.
-
-**Update (2026-09-05).** Owner/Chief Architect approved: Classification A
-accepted, ID-7D's separate implementation retired as historically
-superseded by ID-7A. ID-7E (canonical workflow integration) authorized
-and completed the same day — see the entry above. The stale "ID-7D
-(persistence)" references this report identified in ADR-015 and the
-ID-7A0 research report were corrected in place (short annotations, not
-rewrites), and this report's own §20 overstatement about `persisted_at`
-exposure was corrected (stored but not returned by any current
-repository read method).
+**Ready for review.** Yes — ID-7E.1 is implemented and self-validated;
+awaiting Owner/Chief Architect final closure of ID-7E overall.
 
 ---
 
@@ -299,6 +290,144 @@ feat(intraday): wire EntryActionability into the canonical workflow (ID-7E)
 
 **Ready for review.** Yes — ID-7E is implemented and self-validated;
 awaiting Owner/Chief Architect review and closure.
+
+**Update (2026-09-05).** Owner/Chief Architect source review accepted
+core workflow integration, same-cycle Decision/EQ binding, completed-M5/
+VWAP PIT composition, WATCH/TRADE persistence, and schema-v18/repository
+reuse; final closure was held for one narrow production-invocation-scope
+defect, resolved same day by ID-7E.1 — see the entry above.
+
+---
+
+## ID-7D Entry Actionability Next-Layer Discovery + Contract Reconciliation — Discovery Complete
+
+**Summary.** Owner/Chief Architect closed ID-7C.2, ID-7C.1, and ID-7C
+overall 2026-09-05 (V0 deterministic evaluator frozen) and, in the same
+message, authorized a read-only discovery milestone to resolve a
+documentation/sequencing ambiguity: an older description called "ID-7D"
+the persistence milestone, but persistence was actually completed and
+Owner-closed under ID-7A. This milestone determined, from the real
+current architecture rather than the stale plan, whether ID-7D still
+names a real missing layer between the frozen ID-7C evaluator and a
+future ID-7E workflow-wiring milestone.
+
+**Architecture compliance.** Read-only discovery only — no code, schema,
+repository, or workflow change; zero production `EntryActionability`
+rows; zero provider calls; zero methodology change; `SCHEMA_VERSION`
+unchanged at 18. Decision/ID-6, ingestion, EMR, and DarvaX untouched
+(confirmed via targeted diff/grep). ADR-015 remains Accepted, unmodified.
+
+**Files created.** `docs/research/ID-7D-NEXT-LAYER-DISCOVERY-CONTRACT-RECONCILIATION.md`
+(the full 22-section discovery report).
+
+**Files modified (documentation only).** `docs/MILESTONES.md`,
+`docs/ATHENA-ID-TRACK-HANDOFF.md`, `ATHENA_BRIEFING.md` — recording
+ID-7C.2/ID-7C.1/ID-7C Owner-approved/closed and the ID-7D discovery
+outcome. This entry in `IMPLEMENTATION_SUMMARY.md`.
+
+**Public APIs added.** None.
+
+**Tests added.** None (discovery only; no code changed). Existing full
+suite unaffected (last measured at ID-7C.2: 3588 passed, 1 pre-existing
+unrelated skip, 0 failures) — re-verified unaffected by `git diff --check`/
+`git status --short` after this milestone's documentation-only changes.
+
+**Key findings.**
+- **Historical reconciliation:** the original pre-ID-7A0 sub-milestone
+  plan (`docs/research/ID-7-INTRADAY-ENTRY-TRADEPLAN-DISCOVERY.md` §35)
+  separated "ID-7A — domain contract only, no persistence" from
+  "ID-7D — persistence." The real ID-7A authorization later bundled
+  domain + persistence into one milestone, fully absorbing ID-7D's
+  original scope. Stale "ID-7D (persistence)" phrasing confirmed still
+  present at `docs/adr/ADR-015-intraday-actionability-architecture.md:461`
+  and `docs/research/ID-7A0-INTRADAY-ACTIONABILITY-ARCHITECTURE.md:22`
+  (flagged for future correction; not edited this milestone, to preserve
+  historical auditability of documents that were accurate when written).
+- **Producer map:** traced every `EntryActionabilityEngine.evaluate()`
+  input to its real current producer via `src/athena/runtime/workflow.py`
+  and `OwnerValidationPipeline._scan_eligible`
+  (`src/athena/ops/owner_validation.py`). Same-cycle `Decision` and
+  `EntryQualification`, and a coherent OR15 artifact, are already
+  structurally available with zero adaptation — mirroring the
+  `entry_qualification_stage` precedent exactly. The raw VWAP price is
+  already published to `WorkflowContext` (`ctx["vwap"]`), but its exact
+  completion-instant provenance (`session_vwap_as_of`) and the completed
+  M5 candle itself are not yet published — classified as a small,
+  single-call-site presentation/composition gap, not a domain-methodology
+  gap (the correct candle/data already exists in the live pipeline).
+- **Repository sufficiency:** `PERSISTENCE_CONTRACT_ALREADY_SUFFICIENT`
+  — the existing `save_entry_actionability` method is sufficient for a
+  future write path, mirroring EQ's own single-write-call production
+  precedent; no new repository method is needed.
+- **Currentness boundary:** confirmed, from the real architecture (not
+  merely ADR-015's stated intent), that currentness composition
+  structurally cannot live inside the write-time workflow (no "latest"
+  repository query, no real wall clock, no `SessionPhase` resolution
+  exist in the write path today) — it remains a future read-time
+  consumer's exclusive responsibility.
+- **Failure semantics:** already correctly covered by
+  `WorkflowEngine`/`DailyMarketScanner`'s existing per-stage/
+  per-instrument isolation; no new failure policy needed.
+- **Classification: Outcome A — ID-7D IS UNNECESSARY / HISTORICALLY
+  SUPERSEDED.** Supported by the historical-naming reconciliation plus
+  the direct EQ/ID-6D precedent (composition logic was inlined directly
+  into the one new `entry_qualification_stage`, never spun into its own
+  milestone) and by the one real gap found being exactly analogous in
+  size/shape to that stage's own inline `resolve_evidence_finality` call.
+  Outcome B (a narrow composition-contract milestone) was considered and
+  rejected on those concrete grounds; Outcome C was not selected (no
+  evidence found for any other missing layer).
+
+**Risks discovered.** None new. The one real integration task identified
+(deriving and publishing `session_vwap_as_of` + the completed M5 candle
+into `WorkflowContext`) is explicitly deferred to a future ID-7E
+implementation, not a blocker to authorizing ID-7E's design.
+
+**Technical debt introduced.** None (no code changed).
+
+**Suggested improvements.** Once the owner confirms Outcome A, correct
+the two stale "ID-7D (persistence)" references identified above
+(`ADR-015:461`, `ID-7A0-INTRADAY-ACTIONABILITY-ARCHITECTURE.md:22`) to
+point at this discovery report; no change needed to
+`ID-7-INTRADAY-ENTRY-TRADEPLAN-DISCOVERY.md` §35 (an accurate historical
+record of what was proposed before ID-7A's actual scope was decided).
+
+**Remaining work.** Owner/Chief Architect scope decision on the A/B/C
+classification; if Outcome A is confirmed, authorize ID-7E (workflow
+wiring) as the next milestone — not yet authorized.
+
+**Commit message.**
+```
+docs(intraday): reconcile ID-7D naming via read-only discovery, classify Outcome A
+
+- Recorded ID-7C.2/ID-7C.1/ID-7C Owner-approved/closed 2026-09-05 (V0
+  deterministic evaluator frozen) across all 4 tracking docs.
+- Added docs/research/ID-7D-NEXT-LAYER-DISCOVERY-CONTRACT-RECONCILIATION.md:
+  traces the ID-7 milestone history showing ID-7D's original
+  "persistence" scope was absorbed into ID-7A, maps every ID-7C
+  evaluator input to its real WorkflowContext producer, verifies the
+  existing ID-7A repository contract is already sufficient, confirms
+  currentness composition belongs outside the write-time workflow, and
+  classifies ID-7D as Outcome A (unnecessary / historically superseded)
+  — recommending ID-7D retirement and ID-7E as the next milestone,
+  pending owner scope decision.
+- Zero code/schema/repository/workflow changes; discovery-only per the
+  milestone's own authorization.
+```
+
+**Ready for review.** Yes — ID-7D discovery is source-grounded and
+complete; awaiting Owner/Chief Architect scope decision on the A/B/C
+classification and on authorizing ID-7E.
+
+**Update (2026-09-05).** Owner/Chief Architect approved: Classification A
+accepted, ID-7D's separate implementation retired as historically
+superseded by ID-7A. ID-7E (canonical workflow integration) authorized
+and completed the same day — see the entry above. The stale "ID-7D
+(persistence)" references this report identified in ADR-015 and the
+ID-7A0 research report were corrected in place (short annotations, not
+rewrites), and this report's own §20 overstatement about `persisted_at`
+exposure was corrected (stored but not returned by any current
+repository read method).
 
 ---
 

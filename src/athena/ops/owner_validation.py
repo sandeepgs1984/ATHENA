@@ -1453,6 +1453,23 @@ class OwnerValidationPipeline:
                 # why no staleness/supersession is structurally reachable
                 # here).
                 #
+                # ID-7E.1: production invocation is scoped to exactly the
+                # Decision funnel EntryQualification itself already
+                # persists for (WATCH/TRADE, ADR-015/ID-7A/ID-7B) -- an
+                # architectural SCOPE EXCLUSION for every other Decision
+                # type, never a methodology verdict about them. Checked
+                # immediately after resolving the same-cycle Decision and
+                # BEFORE reading/composing any market evidence, so an
+                # unrelated Decision type can never even reach (let alone
+                # fail on) ID-7 evidence composition. `entry_qualification`
+                # itself is still evaluated in-memory for every Decision
+                # type unconditionally, per ID-6D's own unchanged
+                # contract -- only ID-7's OWN narrower funnel gates here;
+                # ID-6 is not touched to mirror it.
+                decision = box["cap"].outcome.decision
+                if decision.decision_type not in (DecisionType.WATCH, DecisionType.TRADE):
+                    return {"entry_actionability": None}
+
                 # "entry_qualification": the exact EntryQualification
                 # entry_qualification_stage produced THIS cycle from that
                 # SAME Decision -- read from WorkflowContext, never
@@ -1478,7 +1495,6 @@ class OwnerValidationPipeline:
                 # absent one), so it is always passed through -- the
                 # engine itself treats a non-COMPLETE artifact as
                 # non-gating context, never a contract error.
-                decision = box["cap"].outcome.decision
                 entry_qualification = ctx.get("entry_qualification")
                 completed_m5_close = ctx.get("latest_completed_m5")
                 vwap_result = ctx.get("vwap")
@@ -1514,22 +1530,21 @@ class OwnerValidationPipeline:
                     market_evidence=market_evidence,
                     evaluated_at=clock_instant,
                 )
-                if decision.decision_type in (DecisionType.WATCH, DecisionType.TRADE):
-                    # ID-7E #19/#20: EntryActionability's persistence
-                    # binding requires the referenced upstream
-                    # EntryQualification to itself be a persisted row
-                    # (save_entry_actionability looks it up by its full
-                    # copied identity) -- entry_qualification_stage
-                    # persists ONLY for WATCH/TRADE, so persistence here
-                    # must be scoped identically or a genuine EQ-binding
-                    # RepositoryError would result for every other
-                    # Decision type. This also preserves ADR-015's frozen
-                    # WATCH contract: a WATCH-bound EQ still yields a
-                    # persisted NOT_ACTIONABLE row (UPSTREAM_DECISION_NOT_TRADE),
-                    # never silently omitted.
-                    self._repo.save_entry_actionability(
-                        ea, persisted_at=clock_instant
-                    )
+                # ID-7E.1 #9: unconditional -- reaching this line already
+                # proves decision.decision_type is WATCH or TRADE (the
+                # early scope gate above returned for every other type),
+                # so a second WATCH/TRADE condition here would be
+                # redundant. This also preserves ADR-015's frozen WATCH
+                # contract: a WATCH-bound EQ still yields a persisted
+                # NOT_ACTIONABLE row (UPSTREAM_DECISION_NOT_TRADE), never
+                # silently omitted. EntryActionability's persistence
+                # binding requires the referenced upstream
+                # EntryQualification to itself be a persisted row
+                # (save_entry_actionability looks it up by its full
+                # copied identity) -- entry_qualification_stage persists
+                # ONLY for WATCH/TRADE, exactly the same funnel this
+                # stage's own early scope gate now enforces.
+                self._repo.save_entry_actionability(ea, persisted_at=clock_instant)
                 return {"entry_actionability": ea}
 
             defn = build_definition(

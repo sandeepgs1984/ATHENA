@@ -3316,3 +3316,298 @@ class TestOwnerValidationPipeline:
 
         source = inspect.getsource(ov)
         assert "EntryActionabilityPolicy" not in source
+
+    # ---------------------------------------------------------- ID-7E.1
+
+    def test_id7e1_out_of_scope_decision_engine_not_invoked(
+        self, repo: SqliteRepository, config_dir: Path, monkeypatch
+    ) -> None:
+        """ID-7E.1 #10: for a genuine out-of-scope Decision type (NO_TRADE
+        -- outside the WATCH/TRADE funnel EntryQualification itself
+        already scopes persistence to), the wired stage must never even
+        invoke EntryActionabilityEngine.evaluate() or
+        SqliteRepository.save_entry_actionability() -- a scope exclusion,
+        not merely an absent DB row (which a raised/caught exception
+        could also produce)."""
+        import dataclasses
+
+        from athena.decision.engine import DecisionEngine
+        from athena.domain.enums import DecisionType as DT
+        from athena.intraday import EntryActionabilityEngine
+
+        real_decide = DecisionEngine.decide
+
+        def forced_no_trade(self, *args, **kwargs):
+            outcome = real_decide(self, *args, **kwargs)
+            forced_decision = dataclasses.replace(
+                outcome.decision, decision_type=DT.NO_TRADE, trade_plan=None, gate_results=()
+            )
+            return dataclasses.replace(outcome, decision=forced_decision)
+
+        monkeypatch.setattr(DecisionEngine, "decide", forced_no_trade)
+
+        evaluate_calls: list[object] = []
+        real_evaluate = EntryActionabilityEngine.evaluate
+
+        def spy_evaluate(self, *args, **kwargs):
+            evaluate_calls.append((args, kwargs))
+            return real_evaluate(self, *args, **kwargs)
+
+        monkeypatch.setattr(EntryActionabilityEngine, "evaluate", spy_evaluate)
+
+        save_calls: list[object] = []
+        real_save = SqliteRepository.save_entry_actionability
+
+        def spy_save(self, *args, **kwargs):
+            save_calls.append((args, kwargs))
+            return real_save(self, *args, **kwargs)
+
+        monkeypatch.setattr(SqliteRepository, "save_entry_actionability", spy_save)
+
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        iid = "NSE:AAA"
+        repo.upsert_instrument(
+            Instrument(instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE")
+        )
+        repo.add_candles(_candles(iid, seed=100))
+        repo.add_candles(_intraday_candles(iid, AS_OF.date(), seed=100))
+
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        ingestion = IngestionResult(
+            as_of=AS_OF, instruments_upserted=1, candles_fetched=86, candles_written=86,
+            quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+        )
+        detail = pipe.run(
+            RunTrigger.PREMARKET, as_of=AS_OF, ingestion=ingestion, run_id="run-test-ea1-outofscope"
+        )
+        assert detail["scan_statistics"]["successful"] == 1
+        assert detail["scan_statistics"]["failed"] == 0
+
+        decision = repo.get_decision(f"decision-{iid}-{AS_OF.isoformat()}")
+        assert decision is not None
+        assert decision.decision_type is DT.NO_TRADE
+
+        assert evaluate_calls == [], "EntryActionabilityEngine.evaluate must not be invoked for NO_TRADE"
+        assert save_calls == [], "save_entry_actionability must not be invoked for NO_TRADE"
+        assert repo.list_entry_actionabilities_for_instrument_session(iid, AS_OF.date()) == []
+
+    def test_id7e1_out_of_scope_invalid_evidence_cannot_fail_stage(
+        self, repo: SqliteRepository, config_dir: Path, monkeypatch
+    ) -> None:
+        """ID-7E.1 #11: an out-of-scope Decision (NO_TRADE) paired with an
+        EntryQualification deliberately poisoned to be incoherent (a
+        session_date that would fail EntryActionabilityEngine's own
+        _validate_or15_coherence check, had the engine ever been reached)
+        must still complete the scan successfully with no
+        EntryActionability row -- proving the early scope gate precedes
+        ANY market-evidence composition/evaluation, not merely that it
+        happens to avoid one particular failure mode."""
+        import dataclasses
+
+        from athena.decision.engine import DecisionEngine
+        from athena.domain.enums import DecisionType as DT
+        from athena.intraday import EntryQualificationEngine
+
+        real_decide = DecisionEngine.decide
+
+        def forced_no_trade(self, *args, **kwargs):
+            outcome = real_decide(self, *args, **kwargs)
+            forced_decision = dataclasses.replace(
+                outcome.decision, decision_type=DT.NO_TRADE, trade_plan=None, gate_results=()
+            )
+            return dataclasses.replace(outcome, decision=forced_decision)
+
+        monkeypatch.setattr(DecisionEngine, "decide", forced_no_trade)
+
+        real_eq_evaluate = EntryQualificationEngine.evaluate
+
+        def forced_poisoned_eq(self, *args, **kwargs):
+            eq = real_eq_evaluate(self, *args, **kwargs)
+            # Would raise inside EntryActionabilityEngine._validate_or15_coherence
+            # if the stage ever reached engine invocation for this candidate.
+            return dataclasses.replace(eq, session_date=eq.session_date - timedelta(days=1))
+
+        monkeypatch.setattr(EntryQualificationEngine, "evaluate", forced_poisoned_eq)
+
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        iid = "NSE:AAA"
+        repo.upsert_instrument(
+            Instrument(instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE")
+        )
+        repo.add_candles(_candles(iid, seed=100))
+        repo.add_candles(_intraday_candles(iid, AS_OF.date(), seed=100))
+
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        ingestion = IngestionResult(
+            as_of=AS_OF, instruments_upserted=1, candles_fetched=86, candles_written=86,
+            quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+        )
+        detail = pipe.run(
+            RunTrigger.PREMARKET, as_of=AS_OF, ingestion=ingestion, run_id="run-test-ea1-poisoned"
+        )
+        assert detail["scan_statistics"]["successful"] == 1
+        assert detail["scan_statistics"]["failed"] == 0
+        assert detail["decision_reports"], "the stage must complete, not fail, for this out-of-scope Decision"
+        assert repo.list_entry_actionabilities_for_instrument_session(iid, AS_OF.date()) == []
+
+    def test_id7e1_watch_still_evaluated_and_persisted(
+        self, repo: SqliteRepository, config_dir: Path, monkeypatch
+    ) -> None:
+        """ID-7E.1 #12/#13: strengthens
+        test_id7e_watch_decision_persists_not_actionable_row with a direct
+        call-count proof that the engine IS reached for WATCH (the scope
+        gate excludes other Decision types, never WATCH itself), and that
+        the persisted artifact's identity exactly matches the bound
+        Decision/EQ."""
+        import dataclasses
+
+        from athena.decision.engine import DecisionEngine
+        from athena.domain.enums import DecisionType as DT
+        from athena.intraday import EntryActionabilityEngine
+
+        real_decide = DecisionEngine.decide
+
+        def forced_watch(self, *args, **kwargs):
+            outcome = real_decide(self, *args, **kwargs)
+            if outcome.decision.decision_type is DT.TRADE:
+                forced = dataclasses.replace(
+                    outcome.decision, decision_type=DT.WATCH, trade_plan=None, gate_results=()
+                )
+                outcome = dataclasses.replace(outcome, decision=forced)
+            return outcome
+
+        monkeypatch.setattr(DecisionEngine, "decide", forced_watch)
+
+        evaluate_calls: list[object] = []
+        real_evaluate = EntryActionabilityEngine.evaluate
+
+        def spy_evaluate(self, *args, **kwargs):
+            evaluate_calls.append(kwargs)
+            return real_evaluate(self, *args, **kwargs)
+
+        monkeypatch.setattr(EntryActionabilityEngine, "evaluate", spy_evaluate)
+
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        iid = "NSE:AAA"
+        repo.upsert_instrument(
+            Instrument(instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE")
+        )
+        repo.add_candles(_candles(iid, seed=100))
+        repo.add_candles(_intraday_candles(iid, AS_OF.date(), seed=100))
+
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        ingestion = IngestionResult(
+            as_of=AS_OF, instruments_upserted=1, candles_fetched=86, candles_written=86,
+            quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+        )
+        pipe.run(RunTrigger.PREMARKET, as_of=AS_OF, ingestion=ingestion, run_id="run-test-ea1-watch")
+
+        decision = repo.get_decision(f"decision-{iid}-{AS_OF.isoformat()}")
+        assert decision is not None
+        assert decision.decision_type is DT.WATCH
+
+        assert len(evaluate_calls) == 1, "the engine must be reached for WATCH"
+        assert evaluate_calls[0]["decision"].decision_id == decision.decision_id
+
+        from athena.intraday import EntryActionabilityReasonCode, EntryActionabilityState
+
+        history = repo.list_entry_actionabilities_for_instrument_session(iid, AS_OF.date())
+        assert len(history) == 1
+        ea = history[0]
+        assert ea.state is EntryActionabilityState.NOT_ACTIONABLE
+        assert EntryActionabilityReasonCode.UPSTREAM_DECISION_NOT_TRADE in ea.reason_codes
+        assert ea.decision_id == decision.decision_id
+        assert ea.decision_type is DT.WATCH
+
+    def test_id7e1_trade_non_qualified_still_persisted(
+        self, repo: SqliteRepository, config_dir: Path, monkeypatch
+    ) -> None:
+        """ID-7E.1 #13: a real TRADE Decision whose bound EntryQualification
+        is NOT QUALIFIED (the real, unforced v0 EQ methodology result for
+        this fixture's flat/non-momentum candles) must still persist
+        NOT_ACTIONABLE/UPSTREAM_EQ_NOT_QUALIFIED -- proving scope gating
+        is by Decision-funnel membership (WATCH/TRADE), never by
+        actionability eligibility (TRADE+QUALIFIED only)."""
+        import dataclasses
+
+        from athena.decision.engine import DecisionEngine
+        from athena.domain.enums import DecisionType as DT
+        from athena.domain.enums import Direction as Dir
+        from athena.domain.decision import TradePlan
+        from athena.intraday import EntryQualificationState
+
+        real_decide = DecisionEngine.decide
+
+        def forced_trade(self, *args, **kwargs):
+            outcome = real_decide(self, *args, **kwargs)
+            forced_decision = dataclasses.replace(
+                outcome.decision,
+                decision_type=DT.TRADE,
+                direction=Dir.LONG,
+                gate_results=(),
+                trade_plan=TradePlan(
+                    entry_low=Decimal("100"), entry_high=Decimal("103"),
+                    stop_loss=Decimal("95"), targets=(Decimal("110"),),
+                    position_size=1, risk_amount=Decimal("500"),
+                    risk_reward=Decimal("2"),
+                    valid_from=AS_OF, valid_until=AS_OF + timedelta(days=1),
+                ),
+            )
+            return dataclasses.replace(outcome, decision=forced_decision)
+
+        monkeypatch.setattr(DecisionEngine, "decide", forced_trade)
+        # EntryQualificationEngine.evaluate is deliberately NOT monkeypatched
+        # here -- this test relies on this fixture's own real, unforced v0
+        # EQ methodology result, which test_id7e_trade_qualified_full_
+        # pipeline_yields_actionable's own docstring already establishes is
+        # not QUALIFIED by default (that test has to force it to QUALIFIED).
+
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        iid = "NSE:AAA"
+        repo.upsert_instrument(
+            Instrument(instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE")
+        )
+        repo.add_candles(_candles(iid, seed=100))
+        repo.add_candles(_intraday_candles(iid, AS_OF.date(), seed=100))
+
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        ingestion = IngestionResult(
+            as_of=AS_OF, instruments_upserted=1, candles_fetched=86, candles_written=86,
+            quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+        )
+        pipe.run(RunTrigger.PREMARKET, as_of=AS_OF, ingestion=ingestion, run_id="run-test-ea1-trade-nq")
+
+        decision = repo.get_decision(f"decision-{iid}-{AS_OF.isoformat()}")
+        assert decision is not None
+        assert decision.decision_type is DT.TRADE
+
+        eq = repo.latest_entry_qualification_for_decision(decision.decision_id)
+        assert eq is not None
+        assert eq.state is not EntryQualificationState.QUALIFIED
+
+        from athena.intraday import EntryActionabilityReasonCode, EntryActionabilityState
+
+        history = repo.list_entry_actionabilities_for_instrument_session(iid, AS_OF.date())
+        assert len(history) == 1
+        ea = history[0]
+        assert ea.state is EntryActionabilityState.NOT_ACTIONABLE
+        assert EntryActionabilityReasonCode.UPSTREAM_EQ_NOT_QUALIFIED in ea.reason_codes
+        assert ea.decision_type is DT.TRADE
+
+    def test_id7e1_no_dag_change(self) -> None:
+        """ID-7E.1 #15: structural proof that the stage name, dependency
+        set, and produced-key set are all completely unchanged from
+        ID-7E -- this milestone is a body-only correction inside
+        entry_actionability_stage, never a DAG redesign."""
+        import inspect
+
+        import athena.ops.owner_validation as ov
+
+        source = inspect.getsource(ov)
+        assert source.count('"entry_actionability"') == 4, "stage/key name literal count changed"
+        assert 'depends_on=("entry_qualification",)' in source
+        assert 'produces=("entry_actionability",)' in source
