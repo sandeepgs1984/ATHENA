@@ -130,6 +130,129 @@ fix(intraday): harden Entry Actionability replay harness accounting (ID-7F1.1)
 re-verified against the real historical population; awaiting
 Owner/Chief Architect final closure of ID-7F1 overall.
 
+**Update (2026-09-05).** Owner/Chief Architect approved: ID-7F1.1 OWNER
+APPROVED / CLOSED, ID-7F1 OVERALL OWNER APPROVED / CLOSED — historical
+Mode-A replay validation frozen. ID-7F2 (production activation + first
+canonical canary) authorized same day — see the entry above.
+
+---
+
+## ID-7F2 Entry Actionability Production Activation + First Canonical Canary — Pre-Activation Preparation Complete
+
+**Summary.** Owner/Chief Architect closed ID-7F1.1 and ID-7F1 overall
+2026-09-05 (historical Mode-A replay validation frozen: 11,986/11,986
+real observations reconstructed, `replay_acceptance: true`) and, in the
+same message, authorized ID-7F2: safely migrate the canonical database
+from schema v17 to the already-implemented/tested schema v18, activate
+the already-closed ID-7E canonical `EntryActionability` stage through
+the normal production runtime path, and observe the first genuine
+canonical-cycle canary. **No live-process action was taken this
+turn — the owner explicitly instructed "Proceed with NO live-process
+action today"** after the auto-mode safety classifier correctly blocked
+an attempted restart.
+
+**Architecture compliance.** No methodology/threshold/schema-design
+change. No new code. No backfill. No Mode-B shadow equivalence
+implementation. EMR/DarvaX/ID-7F1/Decision/ID-6 untouched.
+
+**Files created.**
+[docs/research/ID-7F2-ENTRY-ACTIONABILITY-PRODUCTION-ACTIVATION-CANARY.md](docs/research/ID-7F2-ENTRY-ACTIONABILITY-PRODUCTION-ACTIVATION-CANARY.md)
+— the full preparation record and the exact owner-operated
+stop/restart/verification procedure (steps A–G).
+
+**Files modified.** `docs/MILESTONES.md`, `docs/ATHENA-ID-TRACK-HANDOFF.md`,
+`ATHENA_BRIEFING.md` — record ID-7F1.1/ID-7F1 Owner-approved/closed and
+ID-7F2's pre-activation-complete/deferred state. This entry in
+`IMPLEMENTATION_SUMMARY.md`. **No `src/`/`tests/` file was created or
+modified this milestone.**
+
+**Public APIs added.** None.
+
+**Tests added.** None (operational preparation only). 644 pre-activation
+focused tests (`tests/data_layer/` + `tests/ops/test_owner_validation.py`)
+were re-run to confirm no regression before considering activation — all
+passed; no new tests were needed since no code changed.
+
+**Operational actions performed (all read-only or additive/reversible,
+zero live-process action):**
+- **Pre-activation safety check:** confirmed `db/athena.db` still
+  `schema_version=17`, WAL journal mode, no `RUNNING` cycle (last:
+  `run-closing-20260904T154545`, `COMPLETED`), git HEAD at the last
+  committed ID-7F1.1 work, live `athena-serve --with-cycles` process
+  identified (PID 2453) — all via a read-only (`mode=ro`/`query_only=ON`)
+  connection, a second connection independent of the live service's own.
+- **Migration-source audit:** `git show`/`git diff` on the ID-7A/
+  ID-7A.1/ID-7A.2 commits confirmed schema v17→v18 introduces *only*
+  the already owner-approved `entry_actionabilities` table + 2 indexes
+  (82 insertions in the ID-7A commit; zero `schema.py` diff in either
+  hardening commit) — no unrelated migration bundled. Confirmed the
+  migration mechanism is the existing idempotent
+  `SqliteRepository.initialize()`, invoked unconditionally by
+  `_open_repo()` on every `athena-serve` startup — no ad-hoc SQL
+  migration is needed or was run.
+- **Pre-migration backup:** created via the same safe pattern ID-6E.2
+  established (read-only source connection + SQLite's own online
+  backup API, atomic rename) — `db/backups/athena-pre-id7f2-schema-v18-activation-20260905T064233Z.db`,
+  5,166,485,504 bytes, `integrity_check: ok`, 0 FK violations,
+  `schema_version: 17`, full per-table record counts captured for
+  post-migration comparison. Retained untouched; not restored.
+- **Live-process restart attempted and correctly blocked** by the
+  auto-mode safety classifier — reported to the owner rather than
+  worked around; no permission exception requested.
+- **Calendar check:** confirmed via the real `CalendarEngine` that
+  2026-09-05 is `SessionType.WEEKEND` — no scheduled cycle would fire
+  today regardless of activation timing.
+
+**Test results.** 644 passed (pre-activation focused subset); full
+suite unaffected (last measured 3,644 passed, 1 pre-existing unrelated
+skip, 0 failures, at ID-7F1.1 closure — no code changed since).
+
+**Coverage summary.** Not applicable — no code change.
+
+**Architecture compliance.** No code/schema/workflow/methodology
+change of any kind this milestone.
+
+**ADR compliance.** Not applicable.
+
+**Risks discovered.** None new. The one operational gap (schema v18
+never migrated against the live database) remains open by deliberate
+owner decision, not by omission — the exact procedure to close it is
+fully documented and awaiting owner execution.
+
+**Technical debt introduced.** None.
+
+**Suggested improvements.** None.
+
+**Remaining work.** Owner executes steps A–B (stop/restart) at the next
+NSE trading-day window; this session then performs steps C–G
+(read-only verification) and waits for the first natural in-scope
+canonical-cycle canary per the frozen ID-7F2 acceptance contract — never
+manufactured, never forced via manual Validate-All.
+
+**Commit message.**
+```
+docs(intraday): complete ID-7F2 pre-activation preparation, defer restart
+
+- Recorded ID-7F1.1/ID-7F1 Owner-approved/closed 2026-09-05 (historical
+  Mode-A replay validation frozen) across all 4 tracking docs.
+- Added docs/research/ID-7F2-ENTRY-ACTIONABILITY-PRODUCTION-ACTIVATION-CANARY.md:
+  pre-activation safety check, schema v17->v18 migration-source audit
+  (confirms only the already-approved entry_actionabilities table is
+  introduced), a verified pre-migration backup
+  (db/backups/athena-pre-id7f2-schema-v18-activation-20260905T064233Z.db),
+  644 pre-activation focused tests, and the exact minimal owner-operated
+  stop/restart/verification procedure (steps A-G) for the next NSE
+  trading day.
+- No code/schema/methodology change; no live-process action taken this
+  turn (an attempted restart was correctly blocked by the auto-mode
+  safety classifier and deferred to explicit owner execution).
+```
+
+**Ready for review.** Partial — pre-activation preparation is complete
+and self-validated; production activation itself awaits an
+owner-operated restart at the next trading-day window, after which this
+session resumes at the post-activation verification step.
+
 ---
 
 ## ID-7F1 Entry Actionability Historical Replay Adapter + Deterministic Validation — Complete
