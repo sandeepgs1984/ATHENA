@@ -29,7 +29,8 @@ too large for a single-sitting review is split BEFORE implementation.
 `docs/research/PS-P9D-PORTFOLIO-OPENING-RANGE-SETUP-ADAPTER-IMPLEMENTATION.md`,
 `docs/research/PS-P9D1-MY-PORTFOLIO-UX-CORRECTION.md`,
 `docs/research/PS-P10A-DAILY-CHART-PORTFOLIO-REVIEW-DISCOVERY.md`,
-`docs/research/PS-P10B-DAILY-CHART-EVIDENCE-FOUNDATION.md`
+`docs/research/PS-P10B-DAILY-CHART-EVIDENCE-FOUNDATION.md`,
+`docs/research/PS-P10B1-SUPERTREND-COMPATIBILITY-REPLAY.md`
 
 Adds a My Portfolio dashboard feature/subdomain inside ATHENA's existing
 portfolio capability. The feature owns imported current holdings,
@@ -60,7 +61,7 @@ ScoringEngine/DecisionEngine methodology.
 | PS-P9D | Portfolio Opening Range Setup Adapter Implementation — implement only frozen L1 using persisted canonical M5, OpeningRangeEngine, typed Setup evidence, interpretation-v3, and existing Trend / Setup presentation while preserving Status/Action/Conviction/TradePlan independence | ✅ Owner/Chief Architect approved and frozen 2026-09-05 |
 | PS-P9D.1 | My Portfolio Dashboard UX Correction — fix owner-observed table overlap, stale asset cache, upload/confirm state, inline reason noise, legacy v2 display, and dense timestamp/money readability without changing PS-P9D methodology or contracts | 🔄 Implementation complete 2026-09-05 — ready for Owner/Chief Architect review |
 | PS-P10A | Daily Chart Portfolio Review Intelligence Discovery — plan Excel-like My Portfolio review fields generated from Kite/persisted D1 candles, SuperTrend/RSI/volume/swing evidence, and owner-approved chart methodology without daily chart uploads | ✅ Owner/Chief Architect approved and frozen 2026-09-05 |
-| PS-P10B | Daily Chart Evidence Foundation — add deterministic/versioned D1 evidence primitives for SuperTrend 10,3, RSI14, D1 volume measurements, ATH/rolling-high relationships, and typed structural-level candidates without populating Review Status, support/exit, targets, guidance, snapshot, sync, API, or dashboard fields | 🔄 Implementation complete 2026-09-05 — ready for Owner/Chief Architect review; PS-P10C not authorized |
+| PS-P10B | Daily Chart Evidence Foundation — add deterministic/versioned D1 evidence primitives for SuperTrend 10,3, RSI14, D1 volume measurements, ATH/rolling-high relationships, and typed structural-level candidates without populating Review Status, support/exit, targets, guidance, snapshot, sync, API, or dashboard fields | 🔄 Conditionally approved 2026-09-05; PS-P10B.1 SuperTrend compatibility validation complete and ready for Owner/Chief Architect freeze review; PS-P10C not authorized |
 
 ## Intraday Intelligence Track (ID-0 started 2026-08-29)
 

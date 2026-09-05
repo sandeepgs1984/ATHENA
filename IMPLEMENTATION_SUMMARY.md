@@ -8,6 +8,16 @@ status updated on approval.
 
 ## PS-P10B Daily Chart Evidence Foundation — Ready for Owner Review
 
+**Update (2026-09-05).** Owner/Chief Architect conditionally approved PS-P10B,
+accepted the architecture and evidence-only scope, and required one narrow
+validation slice before freeze. PS-P10B.1 completed the SuperTrend 10,3
+compatibility/replay audit across 7 representative owner holdings, 5,134
+historical point-in-time sessions, and 119 observed SuperTrend flips. Direction
+matched all four available owner screenshot references; no material divergence
+was found. Recommendation: freeze `supertrend-10-3-athena-v0` as canonical
+PS-P10 evidence while continuing not to claim TradingView equivalence. PS-P10C
+remains not authorized.
+
 **Summary.** Implemented the PS-P10B evidence-only foundation for future Daily
 Chart Portfolio Review intelligence. Added typed, deterministic D1 evidence for
 SuperTrend 10,3, RSI14, Volume MA measurements, ATH/rolling-high relationships,
@@ -27,6 +37,7 @@ change, broker/order behavior, or methodology redefinition.
 - `src/athena/portfolio/daily_chart_evidence.py`
 - `tests/runtime/test_portfolio_daily_chart_evidence.py`
 - `docs/research/PS-P10B-DAILY-CHART-EVIDENCE-FOUNDATION.md`
+- `docs/research/PS-P10B1-SUPERTREND-COMPATIBILITY-REPLAY.md`
 
 **Files modified.**
 
