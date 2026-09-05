@@ -6,7 +6,7 @@ status updated on approval.
 
 ---
 
-## PS-P9D Opening-Range Setup Adapter Implementation — Ready for Owner Review
+## PS-P9D Opening-Range Setup Adapter Implementation — Owner Approved and Frozen
 
 **Summary.** Implemented the Owner/Chief Architect-approved PS-P9C L1 Opening
 Range Setup methodology for My Portfolio. The new adapter consumes persisted
@@ -68,21 +68,20 @@ remains Support 1, Target 2/3, REDUCE, ROTATE, allocation, ranking, and history.
 observation pass to characterize Setup label frequency on real Portfolio
 holdings without changing thresholds or methodology.
 
-**Remaining work.** Owner/Chief Architect review of PS-P9D. Do not auto-start
-the next milestone.
+**Remaining work.** Wait for Owner direction for the next Portfolio milestone.
+Do not auto-start PS-P10 or another Portfolio Intelligence methodology.
 
 **Implementation metrics.** Production source files created: 1. Production
 source files modified: 3. Tests created/updated: 4. Documentation files
 created/updated: 4.
 
-**Phase outcome.** PS-P9D implementation complete and ready for Owner/Chief
-Architect review.
+**Phase outcome.** PS-P9D Owner/Chief Architect approved and frozen 2026-09-05.
 
 **Commit hash.** Pending owner commit.
 
 **Branch.** feature/portfolio-sync.
 
-**Review status.** Ready for Owner/Chief Architect review.
+**Review status.** Owner/Chief Architect approved and frozen 2026-09-05.
 
 ---
 

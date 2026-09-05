@@ -3,7 +3,7 @@
 **Date:** 2026-09-05
 **Branch:** `feature/portfolio-sync`
 **Milestone:** PS-P9D - implementation
-**Status:** Implementation complete; ready for Owner / Chief Architect review
+**Status:** Owner / Chief Architect approved and frozen 2026-09-05
 
 ---
 
@@ -200,12 +200,12 @@ or methodology.
 
 ## 33. Remaining Work
 
-Owner / Chief Architect review and approval of PS-P9D. Do not start the next
-milestone automatically.
+Wait for Owner direction for the next Portfolio milestone. Do not start PS-P10
+or another Portfolio Intelligence methodology automatically.
 
 ## 34. Phase Outcome
 
-PS-P9D implementation is complete and ready for review.
+PS-P9D is Owner / Chief Architect approved and frozen 2026-09-05.
 
 ## 35. Suggested Commit Message
 
