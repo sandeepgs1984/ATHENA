@@ -24,6 +24,7 @@ from athena.intraday import (
     ENTRY_ACTIONABILITY_DEFAULT_METHODOLOGY_VERSION,
     T1_GOAL_BAND_PCT,
     T2_GOAL_BAND_PCT,
+    UPSTREAM_ELIGIBILITY_REASON_CODES,
     EntryActionability,
     EntryActionabilityReasonCode,
     EntryActionabilityState,
@@ -651,3 +652,125 @@ def test_reward_negative_rr_rejected() -> None:
             reward_risk_to_t1=Decimal("0.5"),
             reward_risk_to_t2=Decimal("-0.1"),
         )
+
+
+# --------------------------------------------------------------------------- #
+# ID-7A.2: UNKNOWN upstream-eligibility invariant
+# --------------------------------------------------------------------------- #
+
+
+def test_unknown_rejects_watch_decision_type() -> None:
+    with pytest.raises(ValueError, match="UNKNOWN requires decision_type == TRADE"):
+        _ea(
+            state=EntryActionabilityState.UNKNOWN,
+            decision_type=DecisionType.WATCH,
+            reason_codes=(EntryActionabilityReasonCode.INSUFFICIENT_EVIDENCE,),
+        )
+
+
+def test_unknown_rejects_watch_decision_type_with_invalidation_unavailable() -> None:
+    with pytest.raises(ValueError, match="UNKNOWN requires decision_type == TRADE"):
+        _ea(
+            state=EntryActionabilityState.UNKNOWN,
+            decision_type=DecisionType.WATCH,
+            reason_codes=(EntryActionabilityReasonCode.INVALIDATION_UNAVAILABLE,),
+        )
+
+
+def test_unknown_rejects_not_yet_eq_state() -> None:
+    with pytest.raises(
+        ValueError, match="UNKNOWN requires entry_qualification_state == QUALIFIED"
+    ):
+        _ea(
+            state=EntryActionabilityState.UNKNOWN,
+            decision_type=DecisionType.TRADE,
+            entry_qualification_state=EntryQualificationState.NOT_YET,
+            reason_codes=(EntryActionabilityReasonCode.INSUFFICIENT_EVIDENCE,),
+        )
+
+
+@pytest.mark.parametrize(
+    "eq_state",
+    [
+        EntryQualificationState.OUT_OF_SCOPE,
+        EntryQualificationState.UNKNOWN,
+        EntryQualificationState.NOT_YET,
+        EntryQualificationState.DISQUALIFIED_FOR_SESSION,
+        EntryQualificationState.EXPIRED,
+    ],
+)
+def test_unknown_rejects_every_non_qualified_eq_state(eq_state) -> None:
+    with pytest.raises(
+        ValueError, match="UNKNOWN requires entry_qualification_state == QUALIFIED"
+    ):
+        _ea(
+            state=EntryActionabilityState.UNKNOWN,
+            decision_type=DecisionType.TRADE,
+            entry_qualification_state=eq_state,
+            reason_codes=(EntryActionabilityReasonCode.INSUFFICIENT_EVIDENCE,),
+        )
+
+
+def test_unknown_decision_type_checked_before_reason_family() -> None:
+    """The upstream-eligibility gate fires even when the reason family
+    would otherwise be legal (INSUFFICIENT_EVIDENCE is a valid UNKNOWN
+    reason) — upstream eligibility is a precondition for reaching the
+    evidence-sufficiency layer at all."""
+    with pytest.raises(ValueError, match="UNKNOWN requires decision_type == TRADE"):
+        _ea(
+            state=EntryActionabilityState.UNKNOWN,
+            decision_type=DecisionType.WATCH,
+            entry_qualification_state=EntryQualificationState.QUALIFIED,
+            reason_codes=(EntryActionabilityReasonCode.INSUFFICIENT_EVIDENCE,),
+        )
+
+
+def test_trade_qualified_unknown_insufficient_evidence_is_legal() -> None:
+    ea = _ea(
+        state=EntryActionabilityState.UNKNOWN,
+        decision_type=DecisionType.TRADE,
+        entry_qualification_state=EntryQualificationState.QUALIFIED,
+        reason_codes=(EntryActionabilityReasonCode.INSUFFICIENT_EVIDENCE,),
+    )
+    assert ea.state is EntryActionabilityState.UNKNOWN
+    assert ea.reason_codes == (EntryActionabilityReasonCode.INSUFFICIENT_EVIDENCE,)
+    assert ea.entry_reference is None
+
+
+def test_trade_qualified_unknown_invalidation_unavailable_is_legal() -> None:
+    ea = _ea(
+        state=EntryActionabilityState.UNKNOWN,
+        decision_type=DecisionType.TRADE,
+        entry_qualification_state=EntryQualificationState.QUALIFIED,
+        reason_codes=(EntryActionabilityReasonCode.INVALIDATION_UNAVAILABLE,),
+    )
+    assert ea.state is EntryActionabilityState.UNKNOWN
+    assert ea.reason_codes == (EntryActionabilityReasonCode.INVALIDATION_UNAVAILABLE,)
+    assert ea.entry_location_context is None
+    assert ea.operative_invalidation is None
+    assert ea.reward is None
+
+
+def test_not_actionable_semantics_still_upstream_only_after_id7a2() -> None:
+    """ID-7A.2 touches UNKNOWN only — NOT_ACTIONABLE's own upstream-only
+    reason vocabulary and family are unchanged."""
+    assert UPSTREAM_ELIGIBILITY_REASON_CODES == {
+        EntryActionabilityReasonCode.UPSTREAM_DECISION_NOT_TRADE,
+        EntryActionabilityReasonCode.UPSTREAM_EQ_NOT_QUALIFIED,
+    }
+    ea = _ea(
+        state=EntryActionabilityState.NOT_ACTIONABLE,
+        decision_type=DecisionType.WATCH,
+        reason_codes=(EntryActionabilityReasonCode.UPSTREAM_DECISION_NOT_TRADE,),
+    )
+    assert ea.state is EntryActionabilityState.NOT_ACTIONABLE
+
+
+def test_reason_code_vocabulary_unchanged_after_id7a2() -> None:
+    """No new reason code was introduced by this milestone."""
+    assert {r.value for r in EntryActionabilityReasonCode} == {
+        "UPSTREAM_DECISION_NOT_TRADE",
+        "UPSTREAM_EQ_NOT_QUALIFIED",
+        "INSUFFICIENT_EVIDENCE",
+        "INVALIDATION_UNAVAILABLE",
+    }

@@ -114,6 +114,7 @@ def test_methodology_not_actionable_short_circuits_before_identity_or_age() -> N
     ea = _not_actionable_ea()
     result = is_currently_usable(
         ea,
+        current_decision_id="decision-1",
         current_entry_qualification_identity=EntryQualificationIdentity(
             instrument_id="NSE:OTHER", session_date=DAY, as_of=EQ_AS_OF,
             decision_id="other", methodology_version="other-v0",
@@ -128,6 +129,7 @@ def test_current_when_all_four_conditions_hold() -> None:
     ea = _actionable_ea()
     result = is_currently_usable(
         ea,
+        current_decision_id="decision-1",
         current_entry_qualification_identity=_current_identity(ea),
         current_session_phase=SessionPhase.REGULAR,
         now=EVIDENCE_AS_OF,
@@ -143,6 +145,7 @@ def test_superseded_when_bound_eq_identity_no_longer_current() -> None:
     )
     result = is_currently_usable(
         ea,
+        current_decision_id="decision-1",
         current_entry_qualification_identity=stale_identity,
         current_session_phase=SessionPhase.REGULAR,
         now=EVIDENCE_AS_OF,
@@ -161,6 +164,7 @@ def test_superseded_comparison_uses_full_composite_identity_not_decision_id_alon
     )
     result = is_currently_usable(
         ea,
+        current_decision_id="decision-1",
         current_entry_qualification_identity=same_decision_different_methodology,
         current_session_phase=SessionPhase.REGULAR,
         now=EVIDENCE_AS_OF,
@@ -173,6 +177,7 @@ def test_stale_when_evidence_age_exceeds_threshold() -> None:
     now = EVIDENCE_AS_OF + timedelta(seconds=CURRENTNESS_MAX_EVIDENCE_AGE_SECONDS + 1)
     result = is_currently_usable(
         ea,
+        current_decision_id="decision-1",
         current_entry_qualification_identity=_current_identity(ea),
         current_session_phase=SessionPhase.REGULAR,
         now=now,
@@ -185,6 +190,7 @@ def test_exact_boundary_at_599_seconds_is_still_current() -> None:
     now = EVIDENCE_AS_OF + timedelta(seconds=CURRENTNESS_MAX_EVIDENCE_AGE_SECONDS - 1)
     result = is_currently_usable(
         ea,
+        current_decision_id="decision-1",
         current_entry_qualification_identity=_current_identity(ea),
         current_session_phase=SessionPhase.REGULAR,
         now=now,
@@ -199,6 +205,7 @@ def test_exact_boundary_at_600_seconds_is_still_current_strict_inequality() -> N
     now = EVIDENCE_AS_OF + timedelta(seconds=CURRENTNESS_MAX_EVIDENCE_AGE_SECONDS)
     result = is_currently_usable(
         ea,
+        current_decision_id="decision-1",
         current_entry_qualification_identity=_current_identity(ea),
         current_session_phase=SessionPhase.REGULAR,
         now=now,
@@ -211,6 +218,7 @@ def test_just_past_boundary_is_stale() -> None:
     now = EVIDENCE_AS_OF + timedelta(seconds=CURRENTNESS_MAX_EVIDENCE_AGE_SECONDS + 0.001)
     result = is_currently_usable(
         ea,
+        current_decision_id="decision-1",
         current_entry_qualification_identity=_current_identity(ea),
         current_session_phase=SessionPhase.REGULAR,
         now=now,
@@ -222,6 +230,7 @@ def test_session_closed_when_phase_not_regular() -> None:
     ea = _actionable_ea()
     result = is_currently_usable(
         ea,
+        current_decision_id="decision-1",
         current_entry_qualification_identity=_current_identity(ea),
         current_session_phase=SessionPhase.CLOSED,
         now=EVIDENCE_AS_OF,
@@ -234,6 +243,7 @@ def test_now_must_be_timezone_aware() -> None:
     with pytest.raises(ValueError, match="now must be timezone-aware"):
         is_currently_usable(
             ea,
+            current_decision_id="decision-1",
             current_entry_qualification_identity=_current_identity(ea),
             current_session_phase=SessionPhase.REGULAR,
             now=datetime(2026, 9, 4, 10, 0),
@@ -249,6 +259,7 @@ def test_is_currently_usable_never_mutates_or_persists_a_currentness_field() -> 
     snapshot_state = ea.state
     is_currently_usable(
         ea,
+        current_decision_id="decision-1",
         current_entry_qualification_identity=_current_identity(ea),
         current_session_phase=SessionPhase.CLOSED,  # would be SESSION_CLOSED
         now=EVIDENCE_AS_OF,
@@ -267,6 +278,7 @@ def test_historical_actionable_row_stays_actionable_regardless_of_currentness() 
     later_now = EVIDENCE_AS_OF + timedelta(hours=5)
     result = is_currently_usable(
         ea,
+        current_decision_id="decision-1",
         current_entry_qualification_identity=_current_identity(ea),
         current_session_phase=SessionPhase.CLOSED,
         now=later_now,
@@ -284,6 +296,7 @@ def test_now_equal_to_evidence_as_of_is_valid_current() -> None:
     ea = _actionable_ea()
     result = is_currently_usable(
         ea,
+        current_decision_id="decision-1",
         current_entry_qualification_identity=_current_identity(ea),
         current_session_phase=SessionPhase.REGULAR,
         now=ea.evidence_as_of,
@@ -300,6 +313,7 @@ def test_now_before_evidence_as_of_is_rejected_as_invalid_temporal_input() -> No
     with pytest.raises(ValueError, match="precedes evidence_as_of"):
         is_currently_usable(
             ea,
+            current_decision_id="decision-1",
             current_entry_qualification_identity=_current_identity(ea),
             current_session_phase=SessionPhase.REGULAR,
             now=earlier_now,
@@ -311,6 +325,7 @@ def test_now_far_before_evidence_as_of_never_classified_current() -> None:
     with pytest.raises(ValueError, match="precedes evidence_as_of"):
         is_currently_usable(
             ea,
+            current_decision_id="decision-1",
             current_entry_qualification_identity=_current_identity(ea),
             current_session_phase=SessionPhase.REGULAR,
             now=EVIDENCE_AS_OF - timedelta(hours=1),
@@ -326,6 +341,7 @@ def test_future_evidence_rejection_applies_even_when_not_actionable() -> None:
     with pytest.raises(ValueError, match="precedes evidence_as_of"):
         is_currently_usable(
             ea,
+            current_decision_id="decision-1",
             current_entry_qualification_identity=_current_identity(ea),
             current_session_phase=SessionPhase.CLOSED,
             now=stale_but_still_future_relative_now,
@@ -340,12 +356,14 @@ def test_exact_600s_boundary_still_holds_with_the_new_check_in_place() -> None:
     just_past = EVIDENCE_AS_OF + timedelta(seconds=CURRENTNESS_MAX_EVIDENCE_AGE_SECONDS + 0.001)
     current = is_currently_usable(
         ea,
+        current_decision_id="decision-1",
         current_entry_qualification_identity=_current_identity(ea),
         current_session_phase=SessionPhase.REGULAR,
         now=at_boundary,
     )
     stale = is_currently_usable(
         ea,
+        current_decision_id="decision-1",
         current_entry_qualification_identity=_current_identity(ea),
         current_session_phase=SessionPhase.REGULAR,
         now=just_past,
@@ -414,8 +432,109 @@ def test_full_composite_supersession_behavior_unchanged() -> None:
     )
     result = is_currently_usable(
         ea,
+        current_decision_id="decision-1",
         current_entry_qualification_identity=valid_but_different_identity,
         current_session_phase=SessionPhase.REGULAR,
         now=EVIDENCE_AS_OF,
     )
     assert result.status is EntryActionabilityCurrentness.SUPERSEDED
+
+
+# --------------------------------------------------------------------------- #
+# ID-7A.2: explicit current-Decision identity — the Decision->EQ lag gap
+# --------------------------------------------------------------------------- #
+
+
+def test_decision_mismatch_with_same_eq_is_superseded() -> None:
+    """The transient-lag scenario this milestone exists for: A1 is bound
+    to D1/EQ1, a newer Decision D2 has since been persisted, but the
+    caller's "latest EQ" resolution still returns EQ1 (bound to D1) —
+    EQ-identity agreement alone must not classify A1 as current."""
+    ea = _actionable_ea()
+    result = is_currently_usable(
+        ea,
+        current_decision_id="decision-2",  # D2 is now current, not D1
+        current_entry_qualification_identity=_current_identity(ea),  # still EQ1/D1
+        current_session_phase=SessionPhase.REGULAR,
+        now=EVIDENCE_AS_OF,
+    )
+    assert result.status is EntryActionabilityCurrentness.SUPERSEDED
+    assert "Decision" in result.explanation
+
+
+def test_eq_mismatch_with_same_decision_is_superseded() -> None:
+    """Proves the two identity checks are genuinely independent: current
+    Decision agrees, but the exact current EQ identity does not."""
+    ea = _actionable_ea()
+    different_eq_identity = EntryQualificationIdentity(
+        instrument_id="NSE:TEST", session_date=DAY, as_of=EQ_AS_OF.replace(minute=46),
+        decision_id="decision-1", methodology_version=EQ_DEFAULT_METHODOLOGY_VERSION,
+    )
+    result = is_currently_usable(
+        ea,
+        current_decision_id="decision-1",  # still current
+        current_entry_qualification_identity=different_eq_identity,
+        current_session_phase=SessionPhase.REGULAR,
+        now=EVIDENCE_AS_OF,
+    )
+    assert result.status is EntryActionabilityCurrentness.SUPERSEDED
+
+
+def test_both_identities_match_is_current() -> None:
+    ea = _actionable_ea()
+    result = is_currently_usable(
+        ea,
+        current_decision_id="decision-1",
+        current_entry_qualification_identity=_current_identity(ea),
+        current_session_phase=SessionPhase.REGULAR,
+        now=EVIDENCE_AS_OF,
+    )
+    assert result.status is EntryActionabilityCurrentness.CURRENT
+
+
+def test_empty_current_decision_id_rejected() -> None:
+    ea = _actionable_ea()
+    with pytest.raises(ValueError, match="current_decision_id is mandatory"):
+        is_currently_usable(
+            ea,
+            current_decision_id="",
+            current_entry_qualification_identity=_current_identity(ea),
+            current_session_phase=SessionPhase.REGULAR,
+            now=EVIDENCE_AS_OF,
+        )
+
+
+def test_historical_actionable_unchanged_under_decision_supersession() -> None:
+    """Decision supersession must not mutate the persisted verdict — the
+    row remains ACTIONABLE forever; only the derived currentness result
+    becomes SUPERSEDED."""
+    ea = _actionable_ea()
+    result = is_currently_usable(
+        ea,
+        current_decision_id="decision-2",
+        current_entry_qualification_identity=_current_identity(ea),
+        current_session_phase=SessionPhase.REGULAR,
+        now=EVIDENCE_AS_OF,
+    )
+    assert result.status is EntryActionabilityCurrentness.SUPERSEDED
+    assert ea.state is EntryActionabilityState.ACTIONABLE  # unchanged
+
+
+def test_decision_check_runs_before_eq_check() -> None:
+    """Validation-order proof (item 11): a Decision mismatch is reported
+    even when the EQ identity would ALSO mismatch — Decision is checked
+    first, per the frozen deterministic order."""
+    ea = _actionable_ea()
+    both_mismatched_eq_identity = EntryQualificationIdentity(
+        instrument_id="NSE:TEST", session_date=DAY, as_of=EQ_AS_OF.replace(minute=59),
+        decision_id="decision-2", methodology_version=EQ_DEFAULT_METHODOLOGY_VERSION,
+    )
+    result = is_currently_usable(
+        ea,
+        current_decision_id="decision-2",
+        current_entry_qualification_identity=both_mismatched_eq_identity,
+        current_session_phase=SessionPhase.REGULAR,
+        now=EVIDENCE_AS_OF,
+    )
+    assert result.status is EntryActionabilityCurrentness.SUPERSEDED
+    assert "Decision" in result.explanation

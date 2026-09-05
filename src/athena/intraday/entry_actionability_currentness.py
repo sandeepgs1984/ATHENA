@@ -11,23 +11,39 @@ persisted `EntryActionabilityState` (dimension A, `entry_actionability_models.py
 function's own return value changes as `now` advances. No currentness
 label is ever written back into the domain object or any table column.
 
-Frozen rule (ID-7B.2 §14, corrected by ID-7B.2.1 §29):
+Frozen rule (ID-7B.2 §14, corrected by ID-7B.2.1 §29; ID-7A.2 made the
+current-Decision half of this rule an explicit, independent check rather
+than one inferred merely from EQ-identity agreement):
 
     persisted state == ACTIONABLE
-    AND bound Decision/EntryQualification identity is still the exact
-        current one (full composite-key equality — never decision_id
-        alone, per ID-7A authorization item 20)
+    AND entry_actionability.decision_id == current_decision_id
+    AND bound EntryQualification identity is still the exact current
+        one (full composite-key equality — never decision_id alone,
+        per ID-7A authorization item 20)
     AND now - evidence_as_of <= CURRENTNESS_MAX_EVIDENCE_AGE_SECONDS
         (10 minutes / 2 completed M5 intervals)
     AND current session phase == REGULAR
 
-The exact-identity comparison is deliberately structured so that mixing
-`A1` (bound to `D1`/`EQ1`) with a caller-supplied "latest" `D2`/`EQ2`
-identity is either impossible or fully explicit (ID-7A authorization
-item 20) — callers must supply the *current* EQ identity themselves
-(via, e.g., a `latest_entry_qualification_for_instrument_session`
-repository call made outside this pure function); this module never
-resolves it.
+Both identity checks are mandatory and independent (ID-7A.2): a real
+canonical-cycle transition can persist a new Decision `D2` before a
+fresh `EntryQualification` for it has been produced, so a caller
+resolving "latest EQ" during that transient window may still receive
+`EQ1` bound to the now-superseded `D1`. Comparing EQ identity alone
+would then incorrectly classify an artifact bound to `D1`/`EQ1` as
+current merely because `EQ1` still reads back as "the latest EQ" —
+`current_decision_id` closes that gap by requiring the artifact's own
+`decision_id` to independently agree with whatever Decision the caller
+asserts is current right now.
+
+The exact-identity comparisons are deliberately structured so that
+mixing `A1` (bound to `D1`/`EQ1`) with a caller-supplied "latest"
+`D2`/`EQ2` identity is either impossible or fully explicit (ID-7A
+authorization item 20) — callers must supply both the *current*
+Decision id and the *current* EQ identity themselves (via, e.g., a
+`latest_entry_qualification_for_instrument_session` repository call and
+whatever resolves the current canonical Decision, both made outside
+this pure function); this module never resolves either itself, and
+never queries a repository or provider.
 """
 
 from __future__ import annotations
@@ -120,6 +136,7 @@ class CurrentnessResult:
 def is_currently_usable(
     entry_actionability: EntryActionability,
     *,
+    current_decision_id: str,
     current_entry_qualification_identity: EntryQualificationIdentity,
     current_session_phase: SessionPhase,
     now: datetime,
@@ -128,10 +145,25 @@ def is_currently_usable(
 
     Performs no repository query, no provider call, and no hidden
     ``datetime.now()``/global-clock read — every input the rule needs
-    (the current EQ identity, the current session phase, and ``now``)
-    must be supplied explicitly by the caller. Never mutates or
-    re-derives ``entry_actionability`` itself.
+    (the current canonical Decision id, the current EQ identity, the
+    current session phase, and ``now``) must be supplied explicitly by
+    the caller. Never mutates or re-derives ``entry_actionability``
+    itself.
+
+    ``current_decision_id`` and ``current_entry_qualification_identity``
+    are validated and compared independently (ID-7A.2) — EQ-identity
+    agreement alone does not prove the artifact's Decision is still
+    current, since a canonical-cycle transition can persist a new
+    Decision before a fresh EQ for it exists (see this module's own
+    docstring for the concrete lag scenario).
+
+    Validation order (deterministic): input shape/timestamp validation,
+    then the temporal-impossibility check, then persisted-state
+    applicability, then current-Decision identity, then current-EQ
+    identity, then evidence freshness, then session usability.
     """
+    if not current_decision_id:
+        raise ValueError("is_currently_usable current_decision_id is mandatory")
     if now.tzinfo is None:
         raise ValueError("is_currently_usable now must be timezone-aware")
 
@@ -157,6 +189,19 @@ def is_currently_usable(
             explanation=(
                 f"persisted state is {entry_actionability.state.value}, not ACTIONABLE — "
                 "currentness is not applicable"
+            ),
+        )
+
+    # ID-7A.2: current-Decision identity is checked independently of, and
+    # before, current-EQ identity — never inferred merely from EQ
+    # agreement (see module docstring's Decision->EQ lag scenario).
+    if entry_actionability.decision_id != current_decision_id:
+        return CurrentnessResult(
+            status=EntryActionabilityCurrentness.SUPERSEDED,
+            explanation=(
+                "bound Decision no longer matches the current one for this "
+                f"instrument (bound_decision_id={entry_actionability.decision_id!r}, "
+                f"current_decision_id={current_decision_id!r})"
             ),
         )
 
@@ -192,5 +237,8 @@ def is_currently_usable(
 
     return CurrentnessResult(
         status=EntryActionabilityCurrentness.CURRENT,
-        explanation="persisted ACTIONABLE, exact EQ identity current, within freshness band, REGULAR session",
+        explanation=(
+            "persisted ACTIONABLE, current Decision and exact EQ identity both "
+            "current, within freshness band, REGULAR session"
+        ),
     )

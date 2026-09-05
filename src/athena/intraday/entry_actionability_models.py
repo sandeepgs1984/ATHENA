@@ -64,6 +64,17 @@ a point-in-time causal-ordering violation
 enforcement only — it rejects an impossible supplied combination; it
 does not decide which legal combination the future ID-7C evaluator
 should produce, and it does not implement any upstream-gate ordering.
+
+ID-7A.2 (owner source-review correction, second slice): ID-7A.1's own
+UNKNOWN branch restricted reason codes to the evidence-sufficiency
+family but did not itself require the frozen V0 evaluation structure's
+own precondition for reaching that family at all — UPSTREAM ELIGIBILITY
+(`decision_type == TRADE` AND exact EQ `== QUALIFIED`) THEN LAYER-3
+EVIDENCE SUFFICIENCY. `UNKNOWN` now additionally requires
+`decision_type == TRADE` and `entry_qualification_state == QUALIFIED`;
+an upstream-ineligible artifact's only legal persisted state is
+`NOT_ACTIONABLE`. Domain legality only — ID-7C still decides which
+evidence-sufficiency reason a genuinely-UNKNOWN verdict reports.
 """
 
 from __future__ import annotations
@@ -466,6 +477,25 @@ class EntryActionability:
             self._require_no_value_objects()
         else:
             assert self.state is EntryActionabilityState.UNKNOWN
+            # ID-7A.2: UNKNOWN means "upstream opportunity was eligible,
+            # but required layer-3 evidence/invalidation could not be
+            # resolved" — the frozen V0 evaluation structure is UPSTREAM
+            # ELIGIBILITY (Decision == TRADE AND exact EQ == QUALIFIED)
+            # then LAYER-3 EVIDENCE SUFFICIENCY. If upstream eligibility
+            # itself failed, the legal persisted state is NOT_ACTIONABLE,
+            # never UNKNOWN. This is domain legality (an impossible
+            # supplied state), not evaluator gate ordering — ID-7C still
+            # decides whether a genuinely-UNKNOWN verdict reports
+            # INSUFFICIENT_EVIDENCE or INVALIDATION_UNAVAILABLE.
+            if self.decision_type is not DecisionType.TRADE:
+                raise ValueError(
+                    f"UNKNOWN requires decision_type == TRADE, got {self.decision_type.value}"
+                )
+            if self.entry_qualification_state is not EntryQualificationState.QUALIFIED:
+                raise ValueError(
+                    "UNKNOWN requires entry_qualification_state == QUALIFIED, got "
+                    f"{self.entry_qualification_state.value}"
+                )
             if not self.reason_codes:
                 raise ValueError(
                     "EntryActionability.reason_codes is mandatory when state=UNKNOWN"

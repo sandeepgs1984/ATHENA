@@ -6,6 +6,190 @@ status updated on approval.
 
 ---
 
+## ID-7A.2 Entry Actionability Final State + Currentness Contract Hardening — Complete
+
+**Summary.** Owner/Chief Architect source review of ID-7A.1 accepted its
+corrections, and re-accepted ID-7A's core architecture and schema-v18
+direction (must remain unchanged), but held final ID-7A closure for two
+narrow contract gaps this milestone closes — the final intended ID-7A
+hardening slice. No redesign, no schema change, no `EntryActionabilityEngine`,
+no workflow, no ID-7B methodology reopened.
+
+**Gap 1 — UNKNOWN still allowed an upstream-ineligible artifact.** The
+frozen V0 evaluation structure is UPSTREAM ELIGIBILITY (`decision_type ==
+TRADE` AND exact bound EQ `== QUALIFIED`) THEN LAYER-3 EVIDENCE
+SUFFICIENCY. ID-7A.1 restricted `UNKNOWN`'s reason codes to the
+evidence-sufficiency family (`INSUFFICIENT_EVIDENCE`/
+`INVALIDATION_UNAVAILABLE`) but never itself required upstream
+eligibility — `decision_type=WATCH` + `state=UNKNOWN` +
+`INSUFFICIENT_EVIDENCE`, or `decision_type=TRADE` + a non-`QUALIFIED` EQ
+state + either evidence reason, was constructible. If upstream
+eligibility itself failed, the only legal persisted state is
+`NOT_ACTIONABLE`, never `UNKNOWN` — this is domain legality (an
+impossible supplied state), not evaluator gate ordering; ID-7C still
+decides whether a genuinely-`UNKNOWN` verdict reports
+`INSUFFICIENT_EVIDENCE` or `INVALIDATION_UNAVAILABLE`.
+
+**Fix.** `EntryActionability.__post_init__`'s `UNKNOWN` branch
+(`src/athena/intraday/entry_actionability_models.py`) now checks
+`decision_type is DecisionType.TRADE` and `entry_qualification_state is
+EntryQualificationState.QUALIFIED` *before* the reason-family
+restriction (eligibility is a precondition for evidence-sufficiency, so
+it is checked first). `NOT_ACTIONABLE`'s own upstream-only reason
+vocabulary and family (`UPSTREAM_ELIGIBILITY_REASON_CODES`) are
+untouched; no new reason code was introduced.
+
+**Gap 2 — currentness inferred current-Decision agreement from EQ
+agreement alone.** `is_currently_usable` validated only the bound EQ
+identity, implicitly assuming that if the EQ identity still matched
+"the current one," the Decision must also still be current. A real
+canonical-cycle transition can persist a new Decision `D2` *before* a
+fresh `EntryQualification` for it has been produced; during that
+transient window, a caller resolving "the latest EQ" for the instrument
+may still receive `EQ1` (bound to the now-superseded `D1`). The prior
+implementation would then read `A1` (bound to `D1`/`EQ1`) as CURRENT
+merely because `EQ1` still equals the caller-supplied "current" EQ
+identity — even though `D2`, not `D1`, is now the actual current
+Decision. ADR-015/ID-7A0.1's own frozen requirement is that BOTH the
+current Decision and the exact current EQ identity must match; EQ
+agreement alone does not prove Decision agreement.
+
+**Fix.** `is_currently_usable`
+(`src/athena/intraday/entry_actionability_currentness.py`) gained a new
+mandatory keyword-only parameter, `current_decision_id: str` (rejects
+empty with `ValueError`), compared against
+`entry_actionability.decision_id` **independently of, and before**, the
+existing EQ-identity comparison. The function's validation order is now
+deterministic: input-shape/timestamp validation (including the new
+empty-`current_decision_id` check) → the ID-7A.1 temporal-impossibility
+check (`now < evidence_as_of`) → persisted-state applicability
+(`METHODOLOGY_NOT_ACTIONABLE`) → current-Decision mismatch → current-EQ
+mismatch → evidence-age (`STALE`) → session-phase (`SESSION_CLOSED`) →
+`CURRENT`. Either identity mismatch yields the same derived
+`SUPERSEDED` classification — no new persisted state or
+`EntryActionabilityCurrentness` member was added — with the
+`CurrentnessResult.explanation` naming which dimension (Decision or EQ)
+disagreed. The +10-minute freshness clock and `REGULAR`-session
+requirement are unchanged; no Decision-age/freshness concept was
+introduced — this correction is identity-only, per the owner's explicit
+scope constraint.
+
+**Call-site audit.** `grep -rn "is_currently_usable(" src/ tests/`
+found exactly 19 call sites, all inside
+`tests/market_intel/test_entry_actionability_currentness.py` — no
+production, service, or workflow caller exists yet (consistent with
+ID-7E workflow wiring not having started). All 19 were updated to pass
+`current_decision_id="decision-1"`, matching each fixture's real
+`decision_id`. No unexpected caller was found, so no scope-expansion
+stop was required.
+
+**Files created.** None.
+
+**Files modified.**
+`src/athena/intraday/entry_actionability_models.py` (+30 lines: the
+`UNKNOWN` upstream-eligibility checks, plus a module-docstring
+addendum), `src/athena/intraday/entry_actionability_currentness.py`
+(+78/-15 lines: the new parameter, its validation, the reordered
+Decision-then-EQ checks, and docstring updates),
+`tests/market_intel/test_entry_actionability_models.py` (+123 lines: 13
+new tests),
+`tests/market_intel/test_entry_actionability_currentness.py` (+119
+lines: 6 new tests, plus `current_decision_id="decision-1"` added to
+all 19 pre-existing call sites), `docs/MILESTONES.md`,
+`ATHENA_BRIEFING.md`, `docs/ATHENA-ID-TRACK-HANDOFF.md`, this file.
+Zero changes to `src/athena/data/store/schema.py`,
+`src/athena/data/store/repository.py`, or
+`src/athena/intraday/__init__.py` — `SCHEMA_VERSION` remains 18, and no
+new actionability repository currentness query was added (ID-7E will
+eventually compose current-Decision + current-EQ + historical
+EntryActionability + session phase + `now`; ID-7A.2 deliberately does
+not add that composition for convenience).
+
+**Public APIs added.** None new — `is_currently_usable`'s existing
+public signature gained one new mandatory parameter
+(`current_decision_id`); this is a breaking signature change for the
+function itself, but since the call-site audit found zero non-test
+callers, nothing outside this milestone's own test file needed updating
+beyond what this milestone already updated.
+
+**Tests/validation.** 19 new tests. Models file (13): `UNKNOWN` rejects
+`WATCH` decision_type with either evidence reason;
+`UNKNOWN` rejects every non-`QUALIFIED` `EntryQualificationState` member
+(parametrized over all 5: `OUT_OF_SCOPE`/`UNKNOWN`/`NOT_YET`/
+`DISQUALIFIED_FOR_SESSION`/`EXPIRED`); eligibility-checked-before-
+reason-family ordering proof; both `TRADE`+`QUALIFIED`+`UNKNOWN` positive
+cases (`INSUFFICIENT_EVIDENCE` and `INVALIDATION_UNAVAILABLE`) legal;
+`NOT_ACTIONABLE` semantics and the 4-code reason vocabulary explicitly
+proven unchanged. Currentness file (6): Decision-mismatch-with-same-EQ
+→ `SUPERSEDED`; EQ-mismatch-with-same-Decision → `SUPERSEDED` (proving
+the two checks are genuinely independent); both-identities-match →
+`CURRENT`; empty `current_decision_id` rejected; a historical
+`ACTIONABLE` row's persisted `state` proven unchanged under Decision
+supersession; and a validation-order proof that a simultaneous
+Decision+EQ mismatch reports the Decision mismatch first. Full suite:
+**3503 passed, 1 pre-existing unrelated skip, 0 failures**
+(`PYTHONPATH=src python3 -m pytest tests/`).
+
+**Coverage summary.** Both new upstream-eligibility branches (decision_type
+and entry_qualification_state, independently), both new currentness
+identity-mismatch branches, and the empty-input-rejection branch are all
+exercised by name-matched tests.
+
+**Architecture compliance.** No architecture change; ADR-015 unchanged.
+This milestone tightens domain-construction and currentness-evaluation
+enforcement of the already-frozen contract, per the owner's own
+two-gap specification.
+
+**ADR compliance.** Unchanged from ID-7A/ID-7A.1 — dimensions A/B/C
+remain exactly as ADR-015/ID-7A0.1 froze them; ID-7A.2 makes dimension
+A's UNKNOWN branch internally consistent with the frozen evaluation
+structure, and makes dimension B's currentness check faithfully
+implement ADR-015's "current Decision AND current EQ" requirement
+instead of inferring the former from the latter.
+
+**Risks discovered.** None new. The Decision→EQ lag scenario this
+milestone corrects for was a real gap the owner's source review
+identified in the pure function's contract — no evidence any exploit
+of it has occurred in practice (no production caller exists yet), but
+the correction closes it before ID-7E can introduce one.
+
+**Technical debt introduced.** None.
+
+**Suggested improvements.** None proposed — scope was fully specified
+by the owner's review.
+
+**Remaining work.** Owner/Chief Architect final closure review of ID-7A
+(inclusive of both ID-7A.1 and ID-7A.2). ID-7C (the V0 evaluator),
+ID-7D, ID-7E (workflow wiring, which will need to compose
+`current_decision_id` from the canonical repository), and ID-7F
+(replay/shadow) all remain not started, not authorized.
+
+**Commit message.**
+```
+fix(intraday): close UNKNOWN eligibility and currentness Decision gaps (ID-7A.2)
+
+- Require UNKNOWN to also satisfy upstream eligibility (decision_type ==
+  TRADE AND entry_qualification_state == QUALIFIED), matching the frozen
+  V0 evaluation structure (upstream eligibility precedes layer-3 evidence
+  sufficiency) — an ineligible artifact's only legal state is
+  NOT_ACTIONABLE
+- Add a mandatory current_decision_id parameter to is_currently_usable,
+  checked independently of and before the existing EQ-identity check, so
+  a Decision->EQ pipeline-lag transient can no longer misclassify a
+  superseded Decision's artifact as CURRENT via EQ-identity agreement
+  alone
+- Update all 19 existing call sites (test-only; call-site audit found no
+  production/service caller yet) to supply current_decision_id
+- Add 19 tests proving both corrections and their independence
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+```
+
+**Outcome:** ID-7A.2 complete — ID-7A ready for final Owner / Chief
+Architect closure. Not marked Owner-approved. ID-7C not authorized.
+
+---
+
 ## ID-7A.1 Entry Actionability Domain Invariant Hardening — Complete
 
 **Summary.** Owner/Chief Architect source review of ID-7A accepted the
