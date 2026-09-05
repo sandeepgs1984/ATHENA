@@ -246,11 +246,14 @@ class PortfolioAnalysisProvenance:
     interpretation_version: str | None = None
     interpretation_reason_codes: tuple[str, ...] = ()
     interpretation_evidence: Mapping[str, object] = field(default_factory=dict)
+    daily_review_version: str | None = None
+    daily_review_reason_codes: tuple[str, ...] = ()
+    daily_review_evidence: Mapping[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
 class PortfolioSnapshotRow:
-    """Complete 20-column server-side Portfolio Snapshot row."""
+    """Complete server-side Portfolio Snapshot row."""
 
     symbol: str
     quantity: int
@@ -271,6 +274,7 @@ class PortfolioSnapshotRow:
     target_2: Decimal | None
     target_3: Decimal | None
     next_action: str | None
+    daily_review: Mapping[str, object] | None
     last_review: datetime | None
     freshness: PortfolioFreshness
     provenance: PortfolioAnalysisProvenance
@@ -295,6 +299,7 @@ class PortfolioSnapshotRow:
         target_2: Decimal | None = None,
         target_3: Decimal | None = None,
         next_action: str | None = None,
+        daily_review: Mapping[str, object] | None = None,
         last_review: datetime | None = None,
     ) -> PortfolioSnapshotRow:
         math = calculate_portfolio_row_math(
@@ -322,6 +327,7 @@ class PortfolioSnapshotRow:
             target_2=target_2,
             target_3=target_3,
             next_action=next_action,
+            daily_review=daily_review,
             last_review=last_review,
             freshness=freshness,
             provenance=provenance,

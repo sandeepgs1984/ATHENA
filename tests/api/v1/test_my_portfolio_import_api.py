@@ -77,6 +77,35 @@ def _trend_candles(
     ]
 
 
+def _daily_review_candles(
+    instrument_id: str,
+    *,
+    end: datetime = SEP2,
+    start_close: int = 100,
+    new_high: bool = False,
+) -> list[Candle]:
+    candles: list[Candle] = []
+    for index in range(40):
+        close = Decimal(start_close + index)
+        high = close + Decimal("1")
+        if index == 39 and new_high:
+            high = close + Decimal("5")
+        candles.append(
+            Candle(
+                instrument_id=instrument_id,
+                timeframe=Timeframe.D1,
+                ts_open=end - timedelta(days=39 - index),
+                open=close,
+                high=high,
+                low=close - Decimal("1"),
+                close=close,
+                volume=1000 + index * 10,
+                source="test-d1",
+            )
+        )
+    return candles
+
+
 def _m5_candle(ts: datetime, close: str, *, high: str = "100", low: str = "95") -> Candle:
     price = Decimal(close)
     return Candle(
@@ -650,7 +679,7 @@ def test_sync_builds_server_owned_snapshot_math_and_tradeplan_target(
     assert row.next_action == "HOLD"
     assert row.provenance.decision_id == "dec-infy"
     assert row.provenance.validation_run_id == "run-infy"
-    assert row.provenance.interpretation_version == "portfolio-interpretation-v3"
+    assert row.provenance.interpretation_version == "portfolio-interpretation-v4"
     assert "CURRENT_TRADE_PLAN" in row.provenance.interpretation_reason_codes
     assert "ADD_NOT_CONFIRMED" in row.provenance.interpretation_reason_codes
     assert "TREND_D1_EVIDENCE_UNAVAILABLE" in row.provenance.interpretation_reason_codes
@@ -658,9 +687,52 @@ def test_sync_builds_server_owned_snapshot_math_and_tradeplan_target(
     assert "status" not in row.provenance.unavailable_fields
     assert "trend_setup" in row.provenance.unavailable_fields
     assert "target_2" in row.provenance.unavailable_fields
+    assert row.daily_review is not None
+    assert row.daily_review.review_status is None
+    assert row.daily_review.methodology_version == "portfolio-daily-review-v0"
+    assert "daily_review" in row.provenance.unavailable_fields
     assert snapshot.currentness.value == "CURRENT"
     assert snapshot.portfolio_changed_since_sync is False
     assert snapshot.snapshot_holdings_digest == snapshot.current_holdings_digest
+
+
+def test_sync_populates_daily_review_without_reusing_portfolio_status_or_actions(
+    my_portfolio_client: TestClient,
+) -> None:
+    repo = _confirm_infy_holding(my_portfolio_client)
+    candles = _daily_review_candles("NSE:INFY", end=SEP2, new_high=True)
+    repo.add_candles(
+        [
+            *candles,
+            _candle("NSE:INFY", "1", SEP2 + timedelta(days=1)),
+        ]
+    )
+
+    run = _run_portfolio_sync(repo)
+    row = MyPortfolioService(repo).latest_snapshot().rows[0]
+
+    assert run["status"] == "SUCCESS"
+    assert row.price_as_of == SEP2
+    assert row.status == "UNAVAILABLE"
+    assert row.next_action == "WATCH"
+    assert row.key_trigger is None
+    assert row.support_1 is None
+    assert row.major_support_exit is None
+    assert row.target_1 is None
+    assert row.target_2 is None
+    assert row.target_3 is None
+    assert row.daily_review is not None
+    assert row.daily_review.review_status == "HOLD_STRONG"
+    assert row.daily_review.methodology_version == "portfolio-daily-review-v0"
+    assert row.daily_review.supertrend_direction == "BULLISH"
+    assert row.daily_review.evidence_as_of == SEP2
+    assert row.daily_review.latest_high_exceeds_prior_available_high is True
+    assert "NEW_AVAILABLE_HISTORY_HIGH" in row.daily_review.reason_codes
+    assert "SUPPORT_METHOD_DEFERRED" in row.daily_review.reason_codes
+    assert "TARGET_METHOD_DEFERRED" in row.daily_review.reason_codes
+    assert row.provenance.daily_review_version == "portfolio-daily-review-v0"
+    assert "daily_review" not in row.provenance.unavailable_fields
+    assert "decision" in row.provenance.unavailable_fields
 
 
 def test_sync_sets_entry_low_key_trigger_when_trade_plan_entry_is_actionable(
@@ -709,7 +781,7 @@ def test_sync_populates_conviction_from_coherent_confidence(
     assert row.status == "STRONG"
     assert row.next_action == "HOLD"
     assert row.target_1 == Decimal("1700")
-    assert row.provenance.interpretation_version == "portfolio-interpretation-v3"
+    assert row.provenance.interpretation_version == "portfolio-interpretation-v4"
     assert "CONVICTION_FROM_CONFIDENCE" in row.provenance.interpretation_reason_codes
     assert "conviction" not in row.provenance.unavailable_fields
     assert row.provenance.interpretation_evidence["confidence"] == {

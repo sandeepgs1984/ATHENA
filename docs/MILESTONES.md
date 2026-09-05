@@ -32,7 +32,8 @@ too large for a single-sitting review is split BEFORE implementation.
 `docs/research/PS-P10B-DAILY-CHART-EVIDENCE-FOUNDATION.md`,
 `docs/research/PS-P10B1-SUPERTREND-COMPATIBILITY-REPLAY.md`,
 `docs/research/PS-P10C-DAILY-CHART-PORTFOLIO-REVIEW-METHODOLOGY-FREEZE.md`,
-`docs/research/PS-P10C1-STRUCTURAL-LEVELS-TARGETS-CLOSURE.md`
+`docs/research/PS-P10C1-STRUCTURAL-LEVELS-TARGETS-CLOSURE.md`,
+`docs/research/PS-P10D-DAILY-CHART-PORTFOLIO-REVIEW-IMPLEMENTATION.md`
 
 Adds a My Portfolio dashboard feature/subdomain inside ATHENA's existing
 portfolio capability. The feature owns imported current holdings,
@@ -65,7 +66,8 @@ ScoringEngine/DecisionEngine methodology.
 | PS-P10A | Daily Chart Portfolio Review Intelligence Discovery — plan Excel-like My Portfolio review fields generated from Kite/persisted D1 candles, SuperTrend/RSI/volume/swing evidence, and owner-approved chart methodology without daily chart uploads | ✅ Owner/Chief Architect approved and frozen 2026-09-05 |
 | PS-P10B | Daily Chart Evidence Foundation — add deterministic/versioned D1 evidence primitives for SuperTrend 10,3, RSI14, D1 volume measurements, ATH/rolling-high relationships, and typed structural-level candidates without populating Review Status, support/exit, targets, guidance, snapshot, sync, API, or dashboard fields | ✅ Owner/Chief Architect approved and frozen 2026-09-05; PS-P10B.1 validation approved/closed; PS-P10C not started/not authorized |
 | PS-P10C | Daily Chart Portfolio Review Methodology Freeze — replay and freeze the deterministic evidence-to-review methodology for Excel-like Daily Chart Review intelligence without production Portfolio population, schema/API/dashboard changes, interpretation-version bump, or PS-P10D implementation | ✅ Core methodology Owner/Chief Architect approved 2026-09-05; final structural-level closure handled by PS-P10C.1 before PS-P10D |
-| PS-P10C.1 | Structural Levels / Targets Closure — evaluate bounded D1 swing, role-reversal, support/invalidation, target, structural Review Trigger, and EXIT_RISK candidates, then decide GO/NO-GO for v0 before PS-P10D | 🔄 Methodology/replay complete 2026-09-05 — NO-GO recommended for structural levels/targets/EXIT_RISK in v0; ready for Owner/Chief Architect review; PS-P10D not authorized |
+| PS-P10C.1 | Structural Levels / Targets Closure — evaluate bounded D1 swing, role-reversal, support/invalidation, target, structural Review Trigger, and EXIT_RISK candidates, then decide GO/NO-GO for v0 before PS-P10D | ✅ Owner/Chief Architect approved and closed 2026-09-05 — NO-GO frozen for structural levels/targets/EXIT_RISK in v0 |
+| PS-P10D | Daily Chart Portfolio Review Production Implementation — populate the separate Daily Review layer from frozen SuperTrend 10,3, RSI14, volume/VMA, available-history-high context, deterministic guidance, reason codes, and provenance while keeping structural levels/targets/null deferrals and existing Portfolio semantics independent | 🔄 Implementation complete 2026-09-05 — ready for Owner/Chief Architect review; PS-P10E not authorized |
 
 ## Intraday Intelligence Track (ID-0 started 2026-08-29)
 

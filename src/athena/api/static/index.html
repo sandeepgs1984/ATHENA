@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.153.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.154.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -642,6 +642,8 @@
                                             <col class="my-portfolio-col-pill">
                                             <col class="my-portfolio-col-conviction">
                                             <col class="my-portfolio-col-trend">
+                                            <col class="my-portfolio-col-daily-status">
+                                            <col class="my-portfolio-col-daily-guidance">
                                             <col class="my-portfolio-col-trigger">
                                             <col class="my-portfolio-col-money">
                                             <col class="my-portfolio-col-money-wide">
@@ -665,6 +667,8 @@
                                                 <th>Status</th>
                                                 <th>Conviction</th>
                                                 <th>Trend / Setup</th>
+                                                <th>Daily Review</th>
+                                                <th>Daily Guidance</th>
                                                 <th>Key Trigger</th>
                                                 <th>Support 1</th>
                                                 <th>Major Support / Exit</th>
@@ -676,7 +680,7 @@
                                             </tr>
                                         </thead>
                                         <tbody id="my-portfolio-holdings-rows">
-                                            <tr><td colspan="20" class="text-center text-muted">Loading holdings…</td></tr>
+                                            <tr><td colspan="22" class="text-center text-muted">Loading holdings…</td></tr>
                                         </tbody>
                                     </table>
                                 </div>
@@ -2023,7 +2027,7 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.153.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.154.0"></script>
 
     <!-- DarvaX satellite tab (ADR-010 Amendment 1) — the ONLY DarvaX reference
          in this file, and the flag guard itself. This asset is served solely by

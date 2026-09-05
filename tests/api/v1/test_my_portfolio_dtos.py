@@ -8,6 +8,7 @@ from decimal import Decimal
 from athena.api.v1.dtos.portfolio import (
     ImportedHoldingRowDTO,
     PortfolioAnalysisProvenanceDTO,
+    PortfolioDailyReviewDTO,
     PortfolioFreshnessDTO,
     PortfolioImportPreviewDTO,
     PortfolioSnapshotDTO,
@@ -100,12 +101,29 @@ def test_snapshot_row_dto_serializes_all_20_columns_and_nullable_fields() -> Non
         target_2=None,
         target_3=None,
         next_action=None,
+        daily_review=PortfolioDailyReviewDTO(
+            review_status="HOLD",
+            methodology_version="portfolio-daily-review-v0",
+            as_of=NOW,
+            evidence_as_of=NOW,
+            reason_codes=["BULLISH_TRAILING_STRUCTURE_INTACT"],
+            guidance="Hold while SuperTrend trailing structure remains intact; targets deferred.",
+            supertrend_direction="BULLISH",
+            supertrend_value=Decimal("1420"),
+            supertrend_version="supertrend-10-3-athena-v0",
+            rsi14=Decimal("65"),
+            volume=1000,
+            volume_ma20=Decimal("900"),
+            trailing_structure_level=Decimal("1420"),
+        ),
         last_review=NOW,
         freshness=_freshness(),
         provenance=PortfolioAnalysisProvenanceDTO(
             instrument_id="NSE:INFY",
             decision_id="dec-1",
             unavailable_fields=["status", "target_2", "target_3"],
+            daily_review_version="portfolio-daily-review-v0",
+            daily_review_reason_codes=["BULLISH_TRAILING_STRUCTURE_INTACT"],
         ),
     )
 
@@ -131,11 +149,14 @@ def test_snapshot_row_dto_serializes_all_20_columns_and_nullable_fields() -> Non
         "target_2",
         "target_3",
         "next_action",
+        "daily_review",
         "last_review",
     ):
         assert field in serialized
     assert serialized["status"] is None
     assert serialized["target_2"] is None
+    assert serialized["daily_review"]["review_status"] == "HOLD"
+    assert serialized["provenance"]["daily_review_version"] == "portfolio-daily-review-v0"
 
 
 def test_snapshot_summary_and_sync_status_contract_support_partial_success() -> None:

@@ -22,6 +22,7 @@ from athena.api.v1.dtos.portfolio import (
     ImportedHoldingRowDTO,
     MyPortfolioHoldingDTO,
     PortfolioAnalysisProvenanceDTO,
+    PortfolioDailyReviewDTO,
     PortfolioFreshnessDTO,
     PortfolioImportConfirmResultDTO,
     PortfolioImportHistoryDTO,
@@ -573,8 +574,14 @@ class MyPortfolioService:
         payload = dict(row["row"])
         freshness = dict(payload.pop("freshness"))
         provenance = dict(payload.pop("provenance"))
+        daily_review = payload.pop("daily_review", None)
         return PortfolioSnapshotRowDTO(
             **payload,
+            daily_review=(
+                PortfolioDailyReviewDTO(**dict(daily_review))
+                if isinstance(daily_review, dict)
+                else None
+            ),
             freshness=PortfolioFreshnessDTO(**freshness),
             provenance=PortfolioAnalysisProvenanceDTO(**provenance),
         )
@@ -637,6 +644,11 @@ class MyPortfolioService:
             target_2=row.target_2,
             target_3=row.target_3,
             next_action=row.next_action,
+            daily_review=(
+                row.daily_review.model_dump(mode="json")
+                if row.daily_review is not None
+                else None
+            ),
             last_review=row.last_review,
             freshness=PortfolioFreshness(
                 portfolio_imported_at=row.freshness.portfolio_imported_at,
@@ -658,6 +670,9 @@ class MyPortfolioService:
                 failed_components=tuple(row.provenance.failed_components),
                 interpretation_version=row.provenance.interpretation_version,
                 interpretation_reason_codes=tuple(row.provenance.interpretation_reason_codes),
+                daily_review_version=row.provenance.daily_review_version,
+                daily_review_reason_codes=tuple(row.provenance.daily_review_reason_codes),
+                daily_review_evidence=row.provenance.daily_review_evidence,
                 interpretation_evidence=dict(row.provenance.interpretation_evidence),
             ),
         )

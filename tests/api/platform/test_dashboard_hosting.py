@@ -303,8 +303,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.153.0" in html
-    assert "dashboard.js?v=9.153.0" in html
+    assert "dashboard.css?v=9.154.0" in html
+    assert "dashboard.js?v=9.154.0" in html
     assert "function decisionConfidenceBand" in js
     assert "analysis?.confidence_level" in js
     assert "confidence reflects evidence reliability, not expected profit" in js
@@ -375,6 +375,8 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
         "Status",
         "Conviction",
         "Trend / Setup",
+        "Daily Review",
+        "Daily Guidance",
         "Key Trigger",
         "Support 1",
         "Major Support / Exit",
@@ -393,13 +395,15 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert ".my-portfolio-wide-table th:nth-child(3)" in my_portfolio_css
     assert "position: sticky" in my_portfolio_css
     assert ".my-portfolio-confirm-actions[hidden]" in my_portfolio_css
-    assert "min-width: 3380px" in my_portfolio_css
+    assert "min-width: 3820px" in my_portfolio_css
     assert "table-layout: fixed" in my_portfolio_css
     assert "left: 180px" in my_portfolio_css
     assert "left: 290px" in my_portfolio_css
     assert "background: var(--bg-sidebar)" in my_portfolio_css
     assert "box-shadow: 1px 0 0 var(--border-color)" in my_portfolio_css
     assert ".my-portfolio-col-symbol" in my_portfolio_css
+    assert ".my-portfolio-col-daily-status" in my_portfolio_css
+    assert ".my-portfolio-col-daily-guidance" in my_portfolio_css
     assert ".my-portfolio-col-trigger" in my_portfolio_css
     assert ".my-portfolio-wide-table td {\n    overflow: visible;" in my_portfolio_css
     assert ".my-portfolio-nowrap" in my_portfolio_css
@@ -408,6 +412,9 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert "08b-my-portfolio.js" in DASHBOARD_JS_PARTS
     assert "function loadMyPortfolioWorkspace()" in js
     assert "function uploadMyPortfolioFile(file)" in js
+    assert "function myPortfolioDailyReviewStatusCell(review)" in js
+    assert "function myPortfolioDailyGuidanceCell(review)" in js
+    assert "Support, invalidation, targets, EXIT_RISK, and numeric Review Conviction are deferred for v0." in js
     assert "function confirmMyPortfolioPreview()" in js
     assert "/api/v1/my-portfolio/imports?filename=" in js
     assert "/api/v1/my-portfolio/holdings" in js
@@ -436,7 +443,7 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert "SETUP_RETURNED_INSIDE_RANGE" in js
     assert "Legacy v2 snapshot: Setup was not available before PS-P9D" in js
     assert "Portfolio analysis is from a legacy interpretation version" in js
-    assert "Sync Portfolio to regenerate v3 Trend / Setup evidence" in js
+    assert "Sync Portfolio to regenerate current Trend, Setup, and Daily Review evidence" in js
     assert "Latest accepted market session through" in js
     assert "myPortfolioConfirmActions.hidden = !myPortfolioState.preview" in js
     assert 'myPortfolioCell(formatMyPortfolioTime(row.price_as_of), "my-portfolio-nowrap")' in js

@@ -22,7 +22,7 @@ from athena.intraday.entry_qualification_models import (
 from athena.portfolio.setup_adapter import PortfolioSetup, PortfolioSetupReason
 from athena.portfolio.trend_adapter import PortfolioTrend, PortfolioTrendReason
 
-PORTFOLIO_INTERPRETATION_VERSION = "portfolio-interpretation-v3"
+PORTFOLIO_INTERPRETATION_VERSION = "portfolio-interpretation-v4"
 
 
 @unique

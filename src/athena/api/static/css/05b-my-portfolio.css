@@ -107,7 +107,7 @@
 }
 
 .my-portfolio-wide-table {
-    min-width: 3380px;
+    min-width: 3820px;
     table-layout: fixed;
 }
 
@@ -147,6 +147,14 @@
 
 .my-portfolio-col-trend {
     width: 210px;
+}
+
+.my-portfolio-col-daily-status {
+    width: 180px;
+}
+
+.my-portfolio-col-daily-guidance {
+    width: 260px;
 }
 
 .my-portfolio-col-trigger {
@@ -278,6 +286,12 @@
     line-height: 1.35;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+.my-portfolio-guidance {
+    display: block;
+    line-height: 1.35;
+    max-width: 240px;
 }
 
 .my-portfolio-nowrap {

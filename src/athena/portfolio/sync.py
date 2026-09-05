@@ -27,6 +27,14 @@ from athena.portfolio.confidence_adapter import (
     PortfolioConfidenceAdapter,
     PortfolioConfidenceEvidence,
 )
+from athena.portfolio.daily_chart_evidence import (
+    DailyChartEvidenceEngine,
+)
+from athena.portfolio.daily_review import (
+    PortfolioDailyReviewAdapter,
+    PortfolioDailyReviewContext,
+    PortfolioDailyReviewResult,
+)
 from athena.portfolio.interpretation import (
     PortfolioInterpretationEvidence,
     PortfolioInterpreter,
@@ -38,6 +46,7 @@ from athena.portfolio.my_portfolio_contracts import (
     PortfolioFreshness,
     PortfolioSnapshotRow,
     SyncRunStatus,
+    calculate_portfolio_row_math,
 )
 from athena.portfolio.setup_adapter import (
     PortfolioSetupAdapter,
@@ -75,6 +84,8 @@ class PortfolioSyncOrchestrator:
         self._confidence_adapter = PortfolioConfidenceAdapter(repo)
         self._trend_adapter = PortfolioTrendAdapter(repo, config_dir=config_dir)
         self._setup_adapter = PortfolioSetupAdapter(repo, config_dir=config_dir)
+        self._daily_evidence_engine = DailyChartEvidenceEngine()
+        self._daily_review_adapter = PortfolioDailyReviewAdapter()
 
     def create_run(self) -> dict[str, object]:
         active = self._repo.get_active_portfolio_sync_run()
@@ -384,6 +395,11 @@ class PortfolioSyncOrchestrator:
                 setup_reason=setup_evidence.reason,
             )
         )
+        daily_review = self._daily_review(
+            holding=holding,
+            accepted_price_as_of=price_as_of,
+            last_price=last_price,
+        )
         target_1 = None
         if decision is not None and not decision_is_coherent:
             unavailable.extend(["decision", "target_1", "decision_evidence"])
@@ -402,6 +418,8 @@ class PortfolioSyncOrchestrator:
             unavailable.append("major_support_exit")
         if decision is None:
             unavailable.append("decision")
+        if daily_review.review_status is None:
+            unavailable.append("daily_review")
 
         freshness = PortfolioFreshness(
             portfolio_imported_at=holding.imported_at,
@@ -433,6 +451,11 @@ class PortfolioSyncOrchestrator:
             interpretation_reason_codes=tuple(
                 reason.value for reason in interpretation.reason_codes
             ),
+            daily_review_version=daily_review.methodology_version,
+            daily_review_reason_codes=tuple(
+                reason.value for reason in daily_review.reason_codes
+            ),
+            daily_review_evidence=self._daily_review_to_json(daily_review),
             interpretation_evidence=self._interpretation_evidence_to_json(
                 decision=decision,
                 decision_is_coherent=decision_is_coherent,
@@ -464,6 +487,7 @@ class PortfolioSyncOrchestrator:
             target_2=interpretation.target_2,
             target_3=interpretation.target_3,
             next_action=interpretation.next_action.value,
+            daily_review=self._daily_review_to_json(daily_review),
             last_review=analyzed_at,
             freshness=freshness,
             provenance=provenance,
@@ -625,6 +649,72 @@ class PortfolioSyncOrchestrator:
         )
         return candles[0] if candles else None
 
+    def _daily_candles(self, instrument_id: str) -> tuple[Candle, ...]:
+        return tuple(
+            self._repo.list_candles_recent(
+                instrument_id,
+                Timeframe.D1,
+                limit=5000,
+                as_of=self._expected_analysis_as_of,
+            )
+        )
+
+    def _daily_review(
+        self,
+        *,
+        holding: CanonicalPortfolioHolding,
+        accepted_price_as_of: datetime | None,
+        last_price: Decimal | None,
+    ) -> PortfolioDailyReviewResult:
+        candles = self._daily_candles(holding.instrument_id)
+        supertrend = self._daily_evidence_engine.supertrend_10_3(
+            instrument_id=holding.instrument_id,
+            candles=candles,
+            accepted_price_as_of=accepted_price_as_of,
+            expected_analysis_as_of=self._expected_analysis_as_of,
+            market_timezone=self._market_timezone,
+        )
+        rsi = self._daily_evidence_engine.rsi14(
+            instrument_id=holding.instrument_id,
+            candles=candles,
+            accepted_price_as_of=accepted_price_as_of,
+            expected_analysis_as_of=self._expected_analysis_as_of,
+            market_timezone=self._market_timezone,
+        )
+        volume = self._daily_evidence_engine.volume_review(
+            instrument_id=holding.instrument_id,
+            candles=candles,
+            accepted_price_as_of=accepted_price_as_of,
+            expected_analysis_as_of=self._expected_analysis_as_of,
+            market_timezone=self._market_timezone,
+        )
+        history_high = self._daily_evidence_engine.ath_rolling_high(
+            instrument_id=holding.instrument_id,
+            candles=candles,
+            accepted_price_as_of=accepted_price_as_of,
+            expected_analysis_as_of=self._expected_analysis_as_of,
+            market_timezone=self._market_timezone,
+            rolling_sessions=50,
+        )
+        math = calculate_portfolio_row_math(
+            quantity=holding.quantity,
+            avg_price=holding.avg_price,
+            last_price=last_price,
+        )
+        return self._daily_review_adapter.resolve(
+            supertrend=supertrend,
+            rsi=rsi,
+            volume=volume,
+            history_high=history_high,
+            position=PortfolioDailyReviewContext(
+                quantity=holding.quantity,
+                avg_price=holding.avg_price,
+                current_price=last_price,
+                pnl=math.pnl,
+                pnl_pct=math.pnl_pct,
+            ),
+        )
+
     @staticmethod
     def _display_symbol(instrument_id: str) -> str:
         return instrument_id.split(":", 1)[1] if ":" in instrument_id else instrument_id
@@ -758,6 +848,57 @@ class PortfolioSyncOrchestrator:
             "first_event_ts": (
                 window.first_event_ts.isoformat()
                 if window.first_event_ts is not None
+                else None
+            ),
+        }
+
+    @staticmethod
+    def _daily_review_to_json(review: PortfolioDailyReviewResult) -> dict[str, object]:
+        return {
+            "review_status": (
+                review.review_status.value if review.review_status is not None else None
+            ),
+            "methodology_version": review.methodology_version,
+            "as_of": review.as_of.isoformat() if review.as_of is not None else None,
+            "evidence_as_of": (
+                review.evidence_as_of.isoformat()
+                if review.evidence_as_of is not None
+                else None
+            ),
+            "reason_codes": [reason.value for reason in review.reason_codes],
+            "guidance": review.guidance,
+            "availability_reason": (
+                review.availability_reason.value
+                if review.availability_reason is not None
+                else None
+            ),
+            "supertrend_direction": (
+                review.supertrend_direction.value
+                if review.supertrend_direction is not None
+                else None
+            ),
+            "supertrend_value": (
+                str(review.supertrend_value)
+                if review.supertrend_value is not None
+                else None
+            ),
+            "supertrend_version": review.supertrend_version,
+            "rsi14": str(review.rsi14) if review.rsi14 is not None else None,
+            "volume": review.volume,
+            "volume_ma20": (
+                str(review.volume_ma20) if review.volume_ma20 is not None else None
+            ),
+            "available_history_high": (
+                str(review.available_history_high)
+                if review.available_history_high is not None
+                else None
+            ),
+            "latest_high_exceeds_prior_available_high": (
+                review.latest_high_exceeds_prior_available_high
+            ),
+            "trailing_structure_level": (
+                str(review.trailing_structure_level)
+                if review.trailing_structure_level is not None
                 else None
             ),
         }

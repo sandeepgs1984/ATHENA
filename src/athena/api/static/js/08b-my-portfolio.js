@@ -223,7 +223,7 @@
         const version = row?.provenance?.interpretation_version || "";
         const display = raw && raw.includes("/")
             ? raw
-            : raw && version !== "portfolio-interpretation-v3"
+            : raw && !["portfolio-interpretation-v3", "portfolio-interpretation-v4"].includes(version)
                 ? `${raw} / legacy`
                 : raw || "-";
         const detailCodes = (row?.provenance?.interpretation_reason_codes || [])
@@ -232,6 +232,43 @@
             ? myPortfolioReasonSummary({ provenance: { interpretation_reason_codes: detailCodes } })
             : "D1 Trend / Opening Range Setup evidence.";
         return `<span class="my-portfolio-nowrap" title="${escapeMyPortfolioHtml(detail)}">${escapeMyPortfolioHtml(display)}</span>`;
+    }
+
+    function myPortfolioDailyReviewDetail(review) {
+        if (!review) return "Daily Review evidence is unavailable on this snapshot.";
+        const parts = [];
+        if (review.supertrend_direction) {
+            parts.push(`SuperTrend ${review.supertrend_direction}${review.supertrend_value ? ` @ ${formatMyPortfolioMoney(review.supertrend_value)}` : ""}`);
+        }
+        if (review.rsi14 != null) parts.push(`RSI14 ${formatMyPortfolioNumber(review.rsi14)}`);
+        if (review.volume != null && review.volume_ma20 != null) {
+            parts.push(`Volume ${formatMyPortfolioNumber(review.volume)} vs VMA20 ${formatMyPortfolioNumber(review.volume_ma20)}`);
+        }
+        if (review.latest_high_exceeds_prior_available_high === true) {
+            parts.push("latest D1 high exceeded prior available-history high");
+        }
+        const limitations = "Support, invalidation, targets, EXIT_RISK, and numeric Review Conviction are deferred for v0.";
+        return [...parts, limitations].join(". ");
+    }
+
+    function myPortfolioDailyReviewStatusCell(review) {
+        const status = String(review?.review_status || "").toUpperCase();
+        const map = {
+            HOLD_STRONG: ["Hold Strong", "good", "fa-circle-check"],
+            HOLD: ["Hold", "neutral", "fa-pause"],
+            REVIEW_HOLD_TIGHT: ["Review / Hold Tight", "warning", "fa-triangle-exclamation"],
+        };
+        if (!status || !map[status]) {
+            return `<span title="${escapeMyPortfolioHtml(myPortfolioDailyReviewDetail(review))}">${myPortfolioStatus("Unavailable", "neutral", "fa-circle-info")}</span>`;
+        }
+        const [label, tone, icon] = map[status];
+        return `<span title="${escapeMyPortfolioHtml(myPortfolioDailyReviewDetail(review))}">${myPortfolioStatus(label, tone, icon)}</span>`;
+    }
+
+    function myPortfolioDailyGuidanceCell(review) {
+        const guidance = review?.guidance || "Daily Review unavailable.";
+        const detail = myPortfolioDailyReviewDetail(review);
+        return `<span class="my-portfolio-guidance" title="${escapeMyPortfolioHtml(detail)}">${escapeMyPortfolioHtml(guidance)}</span>`;
     }
 
     function showMyPortfolioAlert(message, tone = "neutral") {
@@ -298,7 +335,7 @@
         if (!myPortfolioHoldingsRows) return;
         myPortfolioState.loading = true;
         clearMyPortfolioAlert();
-        myPortfolioHoldingsRows.innerHTML = '<tr><td colspan="20" class="text-center text-muted">Loading holdings...</td></tr>';
+        myPortfolioHoldingsRows.innerHTML = '<tr><td colspan="22" class="text-center text-muted">Loading holdings...</td></tr>';
         myPortfolioHistoryRows.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Loading import history...</td></tr>';
         try {
             const [holdingsRes, historyRes] = await Promise.all([
@@ -337,7 +374,7 @@
         const hasLegacyAnalysis = Boolean(
             snapshot?.rows?.some(row =>
                 row?.provenance?.interpretation_version
-                && row.provenance.interpretation_version !== "portfolio-interpretation-v3"
+                && !["portfolio-interpretation-v3", "portfolio-interpretation-v4"].includes(row.provenance.interpretation_version)
             )
         );
         const totalInvestment = summary
@@ -375,7 +412,7 @@
             : "Latest accepted market session unavailable";
         if (hasLegacyAnalysis) {
             showMyPortfolioAlert(
-                "Portfolio analysis is from a legacy interpretation version. Sync Portfolio to regenerate v3 Trend / Setup evidence.",
+                "Portfolio analysis is from a legacy interpretation version. Sync Portfolio to regenerate current Trend, Setup, and Daily Review evidence.",
                 "warning"
             );
         } else if (myPortfolioSnapshotIsStale(snapshot)) {
@@ -399,7 +436,7 @@
             return;
         }
         if (!holdings.length) {
-            myPortfolioHoldingsRows.innerHTML = '<tr><td colspan="20" class="text-center text-muted">No holdings imported yet. Upload Portfolio to begin.</td></tr>';
+            myPortfolioHoldingsRows.innerHTML = '<tr><td colspan="22" class="text-center text-muted">No holdings imported yet. Upload Portfolio to begin.</td></tr>';
             return;
         }
         myPortfolioHoldingsRows.innerHTML = holdings.map(holding => `
@@ -410,6 +447,8 @@
                 <td>${myPortfolioDash()}</td>
                 <td class="text-muted">Not synced</td>
                 <td class="font-mono">${myPortfolioMoneyCell(holding.investment)}</td>
+                <td>${myPortfolioDash()}</td>
+                <td>${myPortfolioDash()}</td>
                 <td>${myPortfolioDash()}</td>
                 <td>${myPortfolioDash()}</td>
                 <td>${myPortfolioDash()}</td>
@@ -443,6 +482,8 @@
                 <td>${myPortfolioStatusPill(row.status, row)}</td>
                 <td>${myPortfolioConvictionCell(row.conviction, row)}</td>
                 <td>${myPortfolioTrendCell(row.trend_or_setup, row)}</td>
+                <td>${myPortfolioDailyReviewStatusCell(row.daily_review)}</td>
+                <td>${myPortfolioDailyGuidanceCell(row.daily_review)}</td>
                 <td title="${escapeMyPortfolioHtml(row.key_trigger || "Not available")}">${escapeMyPortfolioHtml(row.key_trigger || "Not available")}</td>
                 <td class="font-mono">${row.support_1 == null ? myPortfolioDash() : myPortfolioMoneyCell(row.support_1)}</td>
                 <td class="font-mono">${row.major_support_exit == null ? myPortfolioDash() : myPortfolioMoneyCell(row.major_support_exit)}</td>

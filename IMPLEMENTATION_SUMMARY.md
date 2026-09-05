@@ -6,6 +6,109 @@ status updated on approval.
 
 ---
 
+## PS-P10D Daily Chart Portfolio Review Implementation — Ready for Owner Review
+
+**Correction update (2026-09-05).** Applied Owner/Chief Architect narrow
+correction: removed unfrozen RSI 70/40 context thresholds, kept RSI14 raw-only,
+and made SuperTrend the only status-blocking evidence. Unavailable RSI, volume,
+or high-context evidence no longer nulls a valid SuperTrend-driven Daily
+Review. High evidence remains promotion-only for `HOLD_STRONG`.
+
+**Summary.** Implemented the owner-authorized PS-P10D production Daily Chart
+Portfolio Review layer. New Portfolio snapshots now carry a separate
+`portfolio-daily-review-v0` payload with Review Status, deterministic Review
+Guidance, reason codes, SuperTrend 10,3 evidence, RSI14 context, volume/VMA
+context, available-history-high context, and as-of/session provenance.
+
+**Architecture compliance.** Preserved the frozen boundaries. Daily Review is
+separate from Portfolio Status, Conviction, D1 Trend, Opening Range Setup,
+DecisionEngine, ScoringEngine, EntryQualification, TradePlan, ADD, EXIT, and
+Key Trigger. P&L is guidance context only and never determines Review Status.
+No support/target/EXIT_RISK/numeric Review Conviction methodology was added.
+
+**Files created.**
+
+- `src/athena/portfolio/daily_review.py`
+- `tests/runtime/test_portfolio_daily_review.py`
+- `docs/research/PS-P10D-DAILY-CHART-PORTFOLIO-REVIEW-IMPLEMENTATION.md`
+
+**Files modified.**
+
+- `src/athena/portfolio/__init__.py`
+- `src/athena/portfolio/interpretation.py`
+- `src/athena/portfolio/my_portfolio_contracts.py`
+- `src/athena/portfolio/sync.py`
+- `src/athena/api/v1/dtos/portfolio.py`
+- `src/athena/api/v1/services/my_portfolio_service.py`
+- `src/athena/api/static/index.html`
+- `src/athena/api/static/css/05b-my-portfolio.css`
+- `src/athena/api/static/js/08b-my-portfolio.js`
+- `tests/api/v1/test_my_portfolio_dtos.py`
+- `tests/api/v1/test_my_portfolio_import_api.py`
+- `tests/api/platform/test_dashboard_hosting.py`
+- `tests/api/platform/test_decision_chart_release_gate.py`
+- `docs/MILESTONES.md`
+- `IMPLEMENTATION_SUMMARY.md`
+- `ATHENA_BRIEFING.md`
+
+**Public APIs added.** Package exports for `PortfolioDailyReviewAdapter`,
+`PortfolioDailyReviewContext`, `PortfolioDailyReviewResult`,
+`PortfolioDailyReviewStatus`, `PortfolioDailyReviewReason`, and
+`PORTFOLIO_DAILY_REVIEW_VERSION`. API rows gain nullable `daily_review` and
+Daily Review provenance fields inside the existing snapshot JSON contract.
+
+**Tests added.** Runtime tests cover `HOLD_STRONG`, `HOLD`,
+`REVIEW_HOLD_TIGHT`, stale/session-mismatch null, insufficient evidence null,
+P&L non-overrides, RSI non-overrides, and volume context-only behavior. API and
+sync tests cover snapshot persistence, serialization, future-D1 exclusion,
+provenance, deferred structural fields, and dashboard rendering.
+
+**Test results.** `python3 -m py_compile` on changed Python files: clean.
+`node --check src/athena/api/static/js/08b-my-portfolio.js`: clean. Focused
+pytest slice: 80 passed. Ruff on changed Python/test files: clean. Mypy on the
+new Daily Review evidence/adapter export set: clean. Direct broad mypy over
+`my_portfolio_service.py` still reports pre-existing object-typing issues
+documented elsewhere in the repo; no new Daily Review module mypy issue was
+found. Full suite: 3,675 passed, 0 failed, 1 skipped.
+
+**Coverage summary.** Covers Daily Review label selection, null/availability
+precedence, typed evidence serialization, immutable snapshot persistence,
+legacy snapshot compatibility, dashboard columns/tooltips, Sync integration,
+and independence from existing Portfolio interpretation semantics.
+
+**Risks discovered.** PS-P10D intentionally improves ATHENA-vs-Excel parity
+only for the frozen v0 review layer. Support 1, Major Structural Support /
+Invalidation, Target 1/2/3, structural Review Trigger, `EXIT_RISK`, and numeric
+Review Conviction remain null/deferred by owner decision.
+
+**Technical debt introduced.** None. Daily Review evidence is stored in existing
+JSON snapshot/provenance surfaces; no schema migration was required.
+
+**Suggested improvements.** PS-P10E or later can revisit structural support,
+invalidation, targets, and numeric review conviction only after explicit owner
+authorization and a separate methodology milestone.
+
+**Remaining work.** Wait for Owner/Chief Architect review. Do not start
+PS-P10E automatically.
+
+**Implementation metrics.** Production source files created: 1. Production
+source/static files modified: 9. Tests created/modified: 5. Documentation files
+created/updated: 4.
+
+**Phase outcome.** PS-P10D implementation correction complete 2026-09-05 and
+ready for Owner/Chief Architect review. Bounded Excel-vs-ATHENA acceptance
+comparison: ACCEPT across CHENNPETRO, AZAD, JINDWORLD, RAINBOW, RATNAVEER, and
+HBLENGINE, with AZAD/RATNAVEER explicitly treated as reference symbols because
+they are not current canonical holdings.
+
+**Commit hash.** Pending owner commit.
+
+**Branch.** feature/portfolio-sync.
+
+**Review status.** Ready for Owner/Chief Architect review.
+
+---
+
 ## PS-P10C.1 Structural Levels / Targets Closure — Ready for Owner Review
 
 **Summary.** Completed the final bounded PS-P10C.1 methodology closure for

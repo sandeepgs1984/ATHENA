@@ -241,10 +241,36 @@ class PortfolioAnalysisProvenanceDTO(BaseModel):
     interpretation_version: str | None = None
     interpretation_reason_codes: list[str] = Field(default_factory=list)
     interpretation_evidence: dict[str, object] = Field(default_factory=dict)
+    daily_review_version: str | None = None
+    daily_review_reason_codes: list[str] = Field(default_factory=list)
+    daily_review_evidence: dict[str, object] = Field(default_factory=dict)
+
+
+class PortfolioDailyReviewDTO(BaseModel):
+    """Daily Chart Portfolio Review output for one holding."""
+
+    model_config = ConfigDict(frozen=True)
+
+    review_status: str | None = None
+    methodology_version: str
+    as_of: datetime | None = None
+    evidence_as_of: datetime | None = None
+    reason_codes: list[str] = Field(default_factory=list)
+    guidance: str | None = None
+    availability_reason: str | None = None
+    supertrend_direction: str | None = None
+    supertrend_value: Decimal | None = None
+    supertrend_version: str
+    rsi14: Decimal | None = None
+    volume: int | None = None
+    volume_ma20: Decimal | None = None
+    available_history_high: Decimal | None = None
+    latest_high_exceeds_prior_available_high: bool | None = None
+    trailing_structure_level: Decimal | None = None
 
 
 class PortfolioSnapshotRowDTO(BaseModel):
-    """Complete 20-column My Portfolio Snapshot row."""
+    """Complete My Portfolio Snapshot row with Daily Review extension."""
 
     model_config = ConfigDict(frozen=True, populate_by_name=True)
 
@@ -267,6 +293,7 @@ class PortfolioSnapshotRowDTO(BaseModel):
     target_2: Decimal | None = None
     target_3: Decimal | None = None
     next_action: str | None = None
+    daily_review: PortfolioDailyReviewDTO | None = None
     last_review: datetime | None = None
     freshness: PortfolioFreshnessDTO
     provenance: PortfolioAnalysisProvenanceDTO
