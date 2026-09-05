@@ -122,6 +122,13 @@ docs(explosive-move): audit EMR production evidence readiness (EM-7D0)
 **Ready for review.** Yes — EM-7D0 is complete and self-validated;
 awaiting Owner/Chief Architect evidence-readiness review.
 
+**Update (2026-09-05).** Owner/Chief Architect approved: EM-7D0 OWNER
+APPROVED / CLOSED — Classification B
+(`OPERATIONALLY_SOUND_BUT_NOT_YET_STATISTICALLY_READY`) accepted. EM-7D
+statistical methodology validation remains NOT STARTED, NOT AUTHORIZED;
+natural EMR production accumulation continues unchanged and active;
+ID-7F2 and DarvaX remain isolated.
+
 ---
 
 ## ID-7F2 Entry Actionability Production Activation + First Canonical Canary — Pre-Activation Preparation Complete
