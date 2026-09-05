@@ -6,6 +6,74 @@ status updated on approval.
 
 ---
 
+## PS-P10A Daily Chart Portfolio Review Intelligence Discovery — Ready for Owner Review
+
+**Summary.** Completed discovery for replacing the owner's earlier Portfolio
+Trading Snapshot workflow with deterministic My Portfolio daily-chart review
+intelligence generated from Kite/canonical D1 evidence, not daily chart
+screenshot uploads. The report explains why the old sheet feels more useful
+today: it had a chart-review interpretation layer for status, support,
+triggers, targets, and review guidance that ATHENA has intentionally not frozen
+yet.
+
+**Architecture compliance.** Documentation-only discovery. No production
+Portfolio source change, no schema/API/DTO change, no dashboard behavior change,
+no interpretation-version change, no indicator implementation, no SuperTrend
+implementation, no support/resistance implementation, no target implementation,
+and no `uv.lock` change.
+
+**Files created.**
+
+- `docs/research/PS-P10A-DAILY-CHART-PORTFOLIO-REVIEW-DISCOVERY.md`
+
+**Files modified.**
+
+- `docs/MILESTONES.md`
+- `IMPLEMENTATION_SUMMARY.md`
+- `ATHENA_BRIEFING.md`
+
+**Public APIs added.** None.
+
+**Tests added.** None. Discovery only.
+
+**Test results.** `rtk proxy git diff --check`: clean.
+
+**Coverage summary.** The discovery covers the 20-field Spreadsheet-vs-ATHENA
+parity matrix, representative owner cases, existing evidence inventory, missing
+evidence inventory, SuperTrend questions, structural-level questions,
+ATH/breakout questions, target questions, review-guidance proposal,
+provenance/coherency proposal, replay contract, required owner decisions, and
+recommended PS-P10B evidence-only scope.
+
+**Risks discovered.** SuperTrend 10,3 is a strong candidate because it was part
+of the owner's previous chart-review workflow, but ATHENA currently rejects
+unversioned SuperTrend configuration and has no implementation. Support,
+resistance, targets, numeric review conviction, and old-sheet status taxonomy
+also require owner-approved methodology before any Portfolio snapshot field is
+populated.
+
+**Technical debt introduced.** None.
+
+**Suggested improvements.** Authorize PS-P10B only after Owner/Chief Architect
+review of the PS-P10A discovery decisions. Keep PS-P10B evidence-only.
+
+**Remaining work.** Wait for Owner/Chief Architect review. Do not start PS-P10B
+or implement SuperTrend/support/resistance/targets automatically.
+
+**Implementation metrics.** Documentation files created: 1. Documentation files
+modified: 3. Production source files modified: 0.
+
+**Phase outcome.** PS-P10A discovery complete 2026-09-05 and ready for
+Owner/Chief Architect review.
+
+**Commit hash.** Pending owner commit.
+
+**Branch.** feature/portfolio-sync.
+
+**Review status.** Ready for Owner/Chief Architect review.
+
+---
+
 ## PS-P9D.1 My Portfolio Dashboard UX Correction — Ready for Owner Review
 
 **Summary.** Corrected owner-observed My Portfolio dashboard issues from the
