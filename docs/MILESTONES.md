@@ -26,7 +26,8 @@ too large for a single-sitting review is split BEFORE implementation.
 `docs/research/PS-P9A-PORTFOLIO-SETUP-METHODOLOGY-DISCOVERY.md`,
 `docs/research/PS-P9B-PORTFOLIO-OPENING-RANGE-SETUP-METHODOLOGY-REPLAY.md`,
 `docs/research/PS-P9C-PORTFOLIO-OPENING-RANGE-SETUP-LIFECYCLE-FREEZE.md`,
-`docs/research/PS-P9D-PORTFOLIO-OPENING-RANGE-SETUP-ADAPTER-IMPLEMENTATION.md`
+`docs/research/PS-P9D-PORTFOLIO-OPENING-RANGE-SETUP-ADAPTER-IMPLEMENTATION.md`,
+`docs/research/PS-P9D1-MY-PORTFOLIO-UX-CORRECTION.md`
 
 Adds a My Portfolio dashboard feature/subdomain inside ATHENA's existing
 portfolio capability. The feature owns imported current holdings,
@@ -55,6 +56,7 @@ ScoringEngine/DecisionEngine methodology.
 | PS-P9B | Portfolio Opening-Range Setup Methodology Design & Replay — determine whether approved OR15/OR30 evidence can become a stable owner-facing Setup semantic with directionality, lifecycle, session validity, conflict handling, and replay safety defined without new thresholds | ✅ Owner/Chief Architect approved and frozen 2026-09-04 |
 | PS-P9C | Opening-Range Setup Lifecycle & Precedence Freeze — replay the minimal directional OR15+OR30 agreement rule, compare OR15-first deferral risk, freeze or defer Setup lifecycle/precedence/null semantics before any implementation | ✅ Owner/Chief Architect approved and frozen 2026-09-05 |
 | PS-P9D | Portfolio Opening Range Setup Adapter Implementation — implement only frozen L1 using persisted canonical M5, OpeningRangeEngine, typed Setup evidence, interpretation-v3, and existing Trend / Setup presentation while preserving Status/Action/Conviction/TradePlan independence | ✅ Owner/Chief Architect approved and frozen 2026-09-05 |
+| PS-P9D.1 | My Portfolio Dashboard UX Correction — fix owner-observed table overlap, stale asset cache, upload/confirm state, inline reason noise, legacy v2 display, and dense timestamp/money readability without changing PS-P9D methodology or contracts | 🔄 Implementation complete 2026-09-05 — ready for Owner/Chief Architect review |
 
 ## Intraday Intelligence Track (ID-0 started 2026-08-29)
 

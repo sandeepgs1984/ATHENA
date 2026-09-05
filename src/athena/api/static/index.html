@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.150.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.153.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -551,7 +551,7 @@
                             </div>
                             <div class="card-body my-portfolio-upload-body">
                                 <div id="my-portfolio-upload-state" class="metric-desc">Choose a holdings file to create a preview.</div>
-                                <div class="my-portfolio-confirm-actions">
+                                <div id="my-portfolio-confirm-actions" class="my-portfolio-confirm-actions" hidden>
                                     <button id="my-portfolio-cancel-preview" class="btn btn-secondary" type="button" disabled>Cancel</button>
                                     <button id="my-portfolio-confirm" class="btn" type="button" disabled>
                                         <i class="fa-solid fa-check" aria-hidden="true"></i>
@@ -629,6 +629,28 @@
                             <div class="card-body">
                                 <div class="my-portfolio-table-scroll">
                                     <table class="data-table my-portfolio-table my-portfolio-wide-table">
+                                        <colgroup>
+                                            <col class="my-portfolio-col-symbol">
+                                            <col class="my-portfolio-col-qty">
+                                            <col class="my-portfolio-col-avg-price">
+                                            <col class="my-portfolio-col-money">
+                                            <col class="my-portfolio-col-time">
+                                            <col class="my-portfolio-col-money-wide">
+                                            <col class="my-portfolio-col-money-wide">
+                                            <col class="my-portfolio-col-money">
+                                            <col class="my-portfolio-col-pct">
+                                            <col class="my-portfolio-col-pill">
+                                            <col class="my-portfolio-col-conviction">
+                                            <col class="my-portfolio-col-trend">
+                                            <col class="my-portfolio-col-trigger">
+                                            <col class="my-portfolio-col-money">
+                                            <col class="my-portfolio-col-money-wide">
+                                            <col class="my-portfolio-col-money">
+                                            <col class="my-portfolio-col-money">
+                                            <col class="my-portfolio-col-money">
+                                            <col class="my-portfolio-col-action">
+                                            <col class="my-portfolio-col-time">
+                                        </colgroup>
                                         <thead>
                                             <tr>
                                                 <th>Symbol</th>
@@ -2001,7 +2023,7 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.150.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.153.0"></script>
 
     <!-- DarvaX satellite tab (ADR-010 Amendment 1) — the ONLY DarvaX reference
          in this file, and the flag guard itself. This asset is served solely by

@@ -303,8 +303,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.150.0" in html
-    assert "dashboard.js?v=9.150.0" in html
+    assert "dashboard.css?v=9.153.0" in html
+    assert "dashboard.js?v=9.153.0" in html
     assert "function decisionConfidenceBand" in js
     assert "analysis?.confidence_level" in js
     assert "confidence reflects evidence reliability, not expected profit" in js
@@ -361,6 +361,9 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert 'id="my-portfolio-sync" class="btn" type="button"' in html
     assert "Sync Portfolio" in html
     assert "No trades or realized P&amp;L are inferred" in html
+    assert 'id="my-portfolio-confirm-actions" class="my-portfolio-confirm-actions" hidden' in html
+    assert '<col class="my-portfolio-col-symbol">' in html
+    assert '<col class="my-portfolio-col-action">' in html
     assert 'id="my-portfolio-preview-duplicates"' in html
     assert 'id="my-portfolio-holdings-rows"' in html
     assert 'id="my-portfolio-history-rows"' in html
@@ -389,6 +392,18 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert ".my-portfolio-wide-table th:nth-child(2)" in my_portfolio_css
     assert ".my-portfolio-wide-table th:nth-child(3)" in my_portfolio_css
     assert "position: sticky" in my_portfolio_css
+    assert ".my-portfolio-confirm-actions[hidden]" in my_portfolio_css
+    assert "min-width: 3380px" in my_portfolio_css
+    assert "table-layout: fixed" in my_portfolio_css
+    assert "left: 180px" in my_portfolio_css
+    assert "left: 290px" in my_portfolio_css
+    assert "background: var(--bg-sidebar)" in my_portfolio_css
+    assert "box-shadow: 1px 0 0 var(--border-color)" in my_portfolio_css
+    assert ".my-portfolio-col-symbol" in my_portfolio_css
+    assert ".my-portfolio-col-trigger" in my_portfolio_css
+    assert ".my-portfolio-wide-table td {\n    overflow: visible;" in my_portfolio_css
+    assert ".my-portfolio-nowrap" in my_portfolio_css
+    assert ".my-portfolio-muted-dash" in my_portfolio_css
 
     assert "08b-my-portfolio.js" in DASHBOARD_JS_PARTS
     assert "function loadMyPortfolioWorkspace()" in js
@@ -408,6 +423,7 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert "function myPortfolioStatusPill(value, row)" in js
     assert "function myPortfolioActionPill(value, row)" in js
     assert "function myPortfolioTrendCell(value, row)" in js
+    assert "function myPortfolioFieldReason(row, prefixes)" in js
     assert "TREND_UP_FROM_D1_SMA_STRUCTURE" in js
     assert "TREND_DOWN_FROM_D1_SMA_STRUCTURE" in js
     assert "TREND_MIXED_FROM_D1_SMA_STRUCTURE" in js
@@ -418,6 +434,17 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert "SETUP_BREAKDOWN_FROM_OPENING_RANGE_AGREEMENT" in js
     assert "SETUP_OR_WINDOWS_CONFLICT" in js
     assert "SETUP_RETURNED_INSIDE_RANGE" in js
+    assert "Legacy v2 snapshot: Setup was not available before PS-P9D" in js
+    assert "Portfolio analysis is from a legacy interpretation version" in js
+    assert "Sync Portfolio to regenerate v3 Trend / Setup evidence" in js
+    assert "Latest accepted market session through" in js
+    assert "myPortfolioConfirmActions.hidden = !myPortfolioState.preview" in js
+    assert 'myPortfolioCell(formatMyPortfolioTime(row.price_as_of), "my-portfolio-nowrap")' in js
+    assert "myPortfolioMoneyCell(row.current_value)" in js
+    assert "myPortfolioDash()" in js
+    assert "${raw} / legacy" in js
+    assert 'myPortfolioUploadState.textContent = `Sync ${run.sync_run_id}' not in js
+    assert "Why: ${escapeMyPortfolioHtml(reason)}" not in js
     my_portfolio_js = (
         Path(__file__).parents[3]
         / "src"
@@ -433,7 +460,9 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert 'snapshot?.currentness === "UNKNOWN"' in js
     assert 'snapshot?.currentness === "CURRENT"' not in js
     assert re.search(
-        r"if \(myPortfolioSnapshotIsStale\(snapshot\)\) \{.*?"
+        r"if \(hasLegacyAnalysis\) \{.*?"
+        r"Portfolio analysis is from a legacy interpretation version.*?"
+        r"\} else if \(myPortfolioSnapshotIsStale\(snapshot\)\) \{.*?"
         r"Portfolio holdings changed since this analysis.*?"
         r"\} else if \(myPortfolioSnapshotCurrentnessIsUnknown\(snapshot\)\) \{.*?"
         r"Portfolio analysis currentness could not be verified",

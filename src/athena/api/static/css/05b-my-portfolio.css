@@ -26,6 +26,10 @@
     flex-wrap: wrap;
 }
 
+.my-portfolio-confirm-actions[hidden] {
+    display: none;
+}
+
 .my-portfolio-upload-btn {
     cursor: pointer;
 }
@@ -103,7 +107,63 @@
 }
 
 .my-portfolio-wide-table {
-    min-width: 2100px;
+    min-width: 3380px;
+    table-layout: fixed;
+}
+
+.my-portfolio-col-symbol {
+    width: 180px;
+}
+
+.my-portfolio-col-qty {
+    width: 110px;
+}
+
+.my-portfolio-col-avg-price {
+    width: 160px;
+}
+
+.my-portfolio-col-money {
+    width: 170px;
+}
+
+.my-portfolio-col-money-wide {
+    width: 190px;
+}
+
+.my-portfolio-col-time {
+    width: 210px;
+}
+
+.my-portfolio-col-pct,
+.my-portfolio-col-conviction {
+    width: 130px;
+}
+
+.my-portfolio-col-pill,
+.my-portfolio-col-action {
+    width: 170px;
+}
+
+.my-portfolio-col-trend {
+    width: 210px;
+}
+
+.my-portfolio-col-trigger {
+    width: 220px;
+}
+
+.my-portfolio-wide-table th,
+.my-portfolio-wide-table td {
+    vertical-align: middle;
+}
+
+.my-portfolio-wide-table th {
+    white-space: normal;
+}
+
+.my-portfolio-wide-table td {
+    overflow: visible;
 }
 
 .my-portfolio-table thead th {
@@ -117,49 +177,64 @@
 .my-portfolio-wide-table td:first-child {
     position: sticky;
     left: 0;
-    z-index: 1;
-    background: var(--bg-card);
+    z-index: 4;
+    background: var(--bg-sidebar);
+    box-shadow: 1px 0 0 var(--border-color);
 }
 
 .my-portfolio-wide-table th:nth-child(2),
 .my-portfolio-wide-table td:nth-child(2) {
     position: sticky;
-    left: 140px;
-    z-index: 1;
-    background: var(--bg-card);
+    left: 180px;
+    z-index: 4;
+    background: var(--bg-sidebar);
+    box-shadow: 1px 0 0 var(--border-color);
 }
 
 .my-portfolio-wide-table th:nth-child(3),
 .my-portfolio-wide-table td:nth-child(3) {
     position: sticky;
-    left: 220px;
-    z-index: 1;
-    background: var(--bg-card);
+    left: 290px;
+    z-index: 4;
+    background: var(--bg-sidebar);
+    box-shadow: 1px 0 0 var(--border-color);
 }
 
 .my-portfolio-wide-table th:first-child,
 .my-portfolio-wide-table td:first-child {
-    min-width: 140px;
+    min-width: 180px;
+    width: 180px;
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .my-portfolio-wide-table th:nth-child(2),
 .my-portfolio-wide-table td:nth-child(2) {
-    min-width: 80px;
+    min-width: 110px;
+    width: 110px;
+    max-width: 110px;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .my-portfolio-wide-table th:nth-child(3),
 .my-portfolio-wide-table td:nth-child(3) {
-    min-width: 130px;
+    min-width: 160px;
+    width: 160px;
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .my-portfolio-wide-table thead th:first-child {
-    z-index: 3;
+    z-index: 5;
     background: var(--bg-sidebar);
 }
 
 .my-portfolio-wide-table thead th:nth-child(2),
 .my-portfolio-wide-table thead th:nth-child(3) {
-    z-index: 3;
+    z-index: 5;
     background: var(--bg-sidebar);
 }
 
@@ -196,11 +271,22 @@
 
 .my-portfolio-row-note {
     display: inline-block;
-    max-width: 240px;
+    max-width: 170px;
     margin-top: var(--space-4);
     color: var(--text-muted);
     font-size: var(--text-0-75);
     line-height: 1.35;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.my-portfolio-nowrap {
+    white-space: nowrap;
+}
+
+.my-portfolio-muted-dash {
+    color: var(--text-muted);
+    white-space: nowrap;
 }
 
 .my-portfolio-diff-summary {

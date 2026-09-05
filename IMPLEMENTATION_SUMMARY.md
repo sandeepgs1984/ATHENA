@@ -6,6 +6,77 @@ status updated on approval.
 
 ---
 
+## PS-P9D.1 My Portfolio Dashboard UX Correction — Ready for Owner Review
+
+**Summary.** Corrected owner-observed My Portfolio dashboard issues from the
+post-PS-P9D screenshots: overlapping/bleeding 20-column holdings rows,
+over-compressed headers/values, visible confirmation controls with no active
+preview, Sync status leaking into upload state, noisy inline reason prose,
+legacy `portfolio-interpretation-v2` Trend-only display, cramped timestamps,
+and cluttered unavailable money cells.
+
+**Architecture compliance.** Presentation-only correction. No schema migration,
+no API shape change, no PortfolioSetupAdapter or OpeningRangeEngine change, no
+Portfolio methodology change, no Decision/EntryQualification/Scoring/TradePlan
+change, and no broker/order behavior.
+
+**Files created.**
+
+- `docs/research/PS-P9D1-MY-PORTFOLIO-UX-CORRECTION.md`
+
+**Files modified.**
+
+- `src/athena/api/static/index.html`
+- `src/athena/api/static/css/05b-my-portfolio.css`
+- `src/athena/api/static/js/08b-my-portfolio.js`
+- `tests/api/platform/test_dashboard_hosting.py`
+- `docs/MILESTONES.md`
+- `IMPLEMENTATION_SUMMARY.md`
+
+**Public APIs added.** None.
+
+**Tests added.** Dashboard static contract assertions for the bumped asset
+version, hidden confirm-action controls, readable fixed-width My Portfolio table
+with explicit column geometry, opaque sticky cells, visible non-sticky values,
+compact table helpers, legacy-v2 snapshot warning/display, and Sync/upload
+state separation.
+
+**Test results.** `node --check src/athena/api/static/js/08b-my-portfolio.js`
+passed. `rtk pytest tests/api/platform/test_dashboard_hosting.py`: 7 passed.
+`rtk uv run ruff check tests/api/platform/test_dashboard_hosting.py`: all
+checks passed. `rtk git diff --check`: clean.
+
+**Coverage summary.** Covers the owner-visible My Portfolio tab contract and
+prevents regression of the screenshot issues without invoking provider data or
+changing Portfolio interpretation outputs.
+
+**Risks discovered.** Existing historical v2 snapshots remain immutable, so the
+UI must clearly label them as legacy until the owner runs Sync Portfolio and a
+new `portfolio-interpretation-v3` snapshot is generated.
+
+**Technical debt introduced.** None.
+
+**Suggested improvements.** After owner review, live-browser visual QA at the
+owner's normal viewport can further tune column widths if the real 20-holding
+portfolio has unusually long labels.
+
+**Remaining work.** Wait for Owner/Chief Architect review. Do not start PS-P10
+or another Portfolio Intelligence methodology automatically.
+
+**Implementation metrics.** Production static files modified: 3. Test files
+modified: 1. Documentation files created/updated: 3.
+
+**Phase outcome.** PS-P9D.1 implementation complete 2026-09-05 and ready for
+Owner/Chief Architect review.
+
+**Commit hash.** Pending owner commit.
+
+**Branch.** feature/portfolio-sync.
+
+**Review status.** Ready for Owner/Chief Architect review.
+
+---
+
 ## PS-P9D Opening-Range Setup Adapter Implementation — Owner Approved and Frozen
 
 **Summary.** Implemented the Owner/Chief Architect-approved PS-P9C L1 Opening

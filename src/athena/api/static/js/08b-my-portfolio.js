@@ -3,6 +3,7 @@
     const myPortfolioAlert = document.getElementById("my-portfolio-alert");
     const myPortfolioSelectedFile = document.getElementById("my-portfolio-selected-file");
     const myPortfolioUploadState = document.getElementById("my-portfolio-upload-state");
+    const myPortfolioConfirmActions = document.getElementById("my-portfolio-confirm-actions");
     const myPortfolioPreview = document.getElementById("my-portfolio-preview");
     const myPortfolioConfirm = document.getElementById("my-portfolio-confirm");
     const myPortfolioCancelPreview = document.getElementById("my-portfolio-cancel-preview");
@@ -53,7 +54,7 @@
 
     function formatMyPortfolioMoney(value) {
         const amount = Number(value);
-        if (!Number.isFinite(amount)) return "₹ —";
+        if (!Number.isFinite(amount)) return "—";
         return `₹ ${amount.toLocaleString("en-IN", {
             minimumFractionDigits: 2,
             maximumFractionDigits: 2,
@@ -74,7 +75,7 @@
 
     function formatMyPortfolioTime(value) {
         if (!value) return "—";
-        return formatDecisionTime(value);
+        return String(formatDecisionTime(value)).replace(/([ap]m)IST$/i, "$1 IST");
     }
 
     function bareMyPortfolioSymbol(instrumentId) {
@@ -84,6 +85,19 @@
 
     function myPortfolioStatus(label, tone = "neutral", icon = "fa-circle-info") {
         return `<span class="my-portfolio-status ${tone}"><i class="fa-solid ${icon}" aria-hidden="true"></i>${escapeMyPortfolioHtml(label)}</span>`;
+    }
+
+    function myPortfolioCell(value, className = "") {
+        const attr = className ? ` class="${escapeMyPortfolioHtml(className)}"` : "";
+        return `<span${attr}>${escapeMyPortfolioHtml(value)}</span>`;
+    }
+
+    function myPortfolioMoneyCell(value) {
+        return myPortfolioCell(formatMyPortfolioMoney(value), "my-portfolio-nowrap");
+    }
+
+    function myPortfolioDash() {
+        return '<span class="my-portfolio-muted-dash">-</span>';
     }
 
     function myPortfolioSnapshotIsStale(snapshot = myPortfolioState.snapshot) {
@@ -142,7 +156,7 @@
             TREND_MIXED_FROM_D1_SMA_STRUCTURE: "D1 trend: price and SMA20/SMA50 structure are not directionally aligned.",
             TREND_D1_EVIDENCE_UNAVAILABLE: "D1 trend evidence is unavailable.",
             TREND_D1_EVIDENCE_INCOHERENT: "D1 trend evidence is not coherent with the accepted Portfolio session.",
-            SETUP_METHODOLOGY_DEFERRED: "Setup methodology is intentionally deferred.",
+            SETUP_METHODOLOGY_DEFERRED: "Legacy v2 snapshot: Setup was not available before PS-P9D. Sync Portfolio to generate v3 Setup evidence.",
             SETUP_BREAKOUT_FROM_OPENING_RANGE_AGREEMENT: "Setup: OR15 and OR30 both show an upside breakout.",
             SETUP_BREAKDOWN_FROM_OPENING_RANGE_AGREEMENT: "Setup: OR15 and OR30 both show a downside breakdown.",
             SETUP_EVIDENCE_INCOHERENT: "Setup evidence is not coherent with the accepted Portfolio session.",
@@ -157,7 +171,12 @@
         const messages = codes.map(code => labels[code]).filter(Boolean);
         const failures = row?.provenance?.failed_components || [];
         failures.forEach(reason => messages.unshift(`Sync component failed: ${String(reason).replaceAll("_", " ").toLowerCase()}.`));
-        return [...new Set(messages)].slice(0, 4).join(" ");
+        return [...new Set(messages)].join(" ");
+    }
+
+    function myPortfolioFieldReason(row, prefixes) {
+        const codes = row?.provenance?.interpretation_reason_codes || [];
+        return codes.find(code => prefixes.some(prefix => String(code).startsWith(prefix)));
     }
 
     function myPortfolioStatusPill(value, row) {
@@ -171,7 +190,8 @@
         };
         const [label, tone, icon] = map[status] || [status, "neutral", "fa-circle-info"];
         const reason = myPortfolioReasonSummary(row);
-        return `${myPortfolioStatus(label, tone, icon)}${reason ? `<br><span class="my-portfolio-row-note" title="${escapeMyPortfolioHtml(reason)}">${escapeMyPortfolioHtml(reason)}</span>` : ""}`;
+        const title = reason ? ` title="${escapeMyPortfolioHtml(reason)}"` : "";
+        return `<span${title}>${myPortfolioStatus(label, tone, icon)}</span>`;
     }
 
     function myPortfolioActionPill(value, row) {
@@ -184,22 +204,34 @@
         };
         const [label, tone, icon] = map[action] || [action, "neutral", "fa-circle-info"];
         const reason = myPortfolioReasonSummary(row);
-        return `${myPortfolioStatus(label, tone, icon)}${reason ? `<br><span class="my-portfolio-row-note" title="${escapeMyPortfolioHtml(reason)}">Why: ${escapeMyPortfolioHtml(reason)}</span>` : ""}`;
+        const title = reason ? ` title="${escapeMyPortfolioHtml(reason)}"` : "";
+        return `<span${title}>${myPortfolioStatus(label, tone, icon)}</span>`;
     }
 
     function myPortfolioConvictionCell(value, row) {
         const conviction = value ? String(value).toUpperCase() : null;
-        const label = conviction || "—";
+        const label = conviction || "-";
+        const reasonCode = myPortfolioFieldReason(row, ["CONVICTION_", "CONFIDENCE_"]);
         const detail = conviction
             ? `Decision confidence: ${conviction}. Conviction reflects ATHENA Decision confidence/reliability, not buy strength.`
-            : myPortfolioReasonSummary(row) || "Decision confidence evidence is unavailable.";
-        return `<span title="${escapeMyPortfolioHtml(detail)}">${escapeMyPortfolioHtml(label)}</span>`;
+            : (reasonCode ? myPortfolioReasonSummary(row) : "Decision confidence evidence is unavailable.");
+        return `<span class="my-portfolio-nowrap" title="${escapeMyPortfolioHtml(detail)}">${escapeMyPortfolioHtml(label)}</span>`;
     }
 
     function myPortfolioTrendCell(value, row) {
-        const trend = value ? String(value).toUpperCase() : null;
-        const detail = myPortfolioReasonSummary(row) || "D1 trend evidence is unavailable.";
-        return `<span title="${escapeMyPortfolioHtml(detail)}">${escapeMyPortfolioHtml(trend || "—")}</span>`;
+        const raw = value ? String(value).toUpperCase() : "";
+        const version = row?.provenance?.interpretation_version || "";
+        const display = raw && raw.includes("/")
+            ? raw
+            : raw && version !== "portfolio-interpretation-v3"
+                ? `${raw} / legacy`
+                : raw || "-";
+        const detailCodes = (row?.provenance?.interpretation_reason_codes || [])
+            .filter(code => String(code).startsWith("TREND_") || String(code).startsWith("SETUP_"));
+        const detail = detailCodes.length
+            ? myPortfolioReasonSummary({ provenance: { interpretation_reason_codes: detailCodes } })
+            : "D1 Trend / Opening Range Setup evidence.";
+        return `<span class="my-portfolio-nowrap" title="${escapeMyPortfolioHtml(detail)}">${escapeMyPortfolioHtml(display)}</span>`;
     }
 
     function showMyPortfolioAlert(message, tone = "neutral") {
@@ -247,6 +279,9 @@
             myPortfolioConfirm.disabled = busy || !previewCanConfirm(myPortfolioState.preview);
             const label = myPortfolioConfirm.querySelector("span");
             if (label) label.textContent = myPortfolioState.confirming ? "Confirming" : "Confirm Portfolio Update";
+        }
+        if (myPortfolioConfirmActions) {
+            myPortfolioConfirmActions.hidden = !myPortfolioState.preview;
         }
         if (myPortfolioSync) {
             myPortfolioSync.disabled = myPortfolioState.syncing;
@@ -299,6 +334,12 @@
         const snapshot = myPortfolioState.snapshot;
         const summary = snapshot?.summary || null;
         const latestConfirmed = imports.find(item => item.status === "CONFIRMED");
+        const hasLegacyAnalysis = Boolean(
+            snapshot?.rows?.some(row =>
+                row?.provenance?.interpretation_version
+                && row.provenance.interpretation_version !== "portfolio-interpretation-v3"
+            )
+        );
         const totalInvestment = summary
             ? summary.total_investment
             : holdings.reduce((sum, holding) => {
@@ -309,10 +350,10 @@
         myPortfolioTotalInvestment.textContent = formatMyPortfolioMoney(totalInvestment);
         myPortfolioCurrentValue.textContent = summary && summary.total_current_value != null
             ? formatMyPortfolioMoney(summary.total_current_value)
-            : "₹ —";
+            : "—";
         myPortfolioTotalPnl.textContent = summary && summary.total_pnl != null
             ? formatMyPortfolioMoney(summary.total_pnl)
-            : "₹ —";
+            : "—";
         myPortfolioTotalPnlDetail.textContent = summary && summary.total_pnl_pct != null
             ? `${formatMyPortfolioPct(summary.total_pnl_pct)} total return`
             : "Unavailable until all rows are priced";
@@ -330,9 +371,14 @@
             ? formatMyPortfolioTime(summary.last_synced_at)
             : "—";
         myPortfolioMarketDataThrough.textContent = summary?.market_data_through
-            ? `Market data through ${formatMyPortfolioTime(summary.market_data_through)}`
-            : "Market data through —";
-        if (myPortfolioSnapshotIsStale(snapshot)) {
+            ? `Latest accepted market session through ${formatMyPortfolioTime(summary.market_data_through)}`
+            : "Latest accepted market session unavailable";
+        if (hasLegacyAnalysis) {
+            showMyPortfolioAlert(
+                "Portfolio analysis is from a legacy interpretation version. Sync Portfolio to regenerate v3 Trend / Setup evidence.",
+                "warning"
+            );
+        } else if (myPortfolioSnapshotIsStale(snapshot)) {
             showMyPortfolioAlert(
                 "Portfolio holdings changed since this analysis. Previous snapshot remains visible; Sync Portfolio to refresh ATHENA analysis.",
                 "warning"
@@ -360,22 +406,22 @@
             <tr>
                 <td class="font-mono"><strong>${escapeMyPortfolioHtml(holding.symbol || bareMyPortfolioSymbol(holding.instrument_id))}</strong></td>
                 <td>${formatMyPortfolioNumber(holding.quantity)}</td>
-                <td class="font-mono">${formatMyPortfolioMoney(holding.avg_price)}</td>
-                <td class="text-muted">—</td>
+                <td class="font-mono">${myPortfolioMoneyCell(holding.avg_price)}</td>
+                <td>${myPortfolioDash()}</td>
                 <td class="text-muted">Not synced</td>
-                <td class="font-mono">${formatMyPortfolioMoney(holding.investment)}</td>
-                <td class="text-muted">—</td>
-                <td class="text-muted">—</td>
-                <td class="text-muted">—</td>
+                <td class="font-mono">${myPortfolioMoneyCell(holding.investment)}</td>
+                <td>${myPortfolioDash()}</td>
+                <td>${myPortfolioDash()}</td>
+                <td>${myPortfolioDash()}</td>
                 <td class="text-muted">Not available</td>
+                <td>${myPortfolioDash()}</td>
                 <td class="text-muted">Not available</td>
+                <td>${myPortfolioDash()}</td>
+                <td>${myPortfolioDash()}</td>
+                <td>${myPortfolioDash()}</td>
+                <td>${myPortfolioDash()}</td>
+                <td>${myPortfolioDash()}</td>
                 <td class="text-muted">Not available</td>
-                <td class="text-muted">Not available</td>
-                <td class="text-muted">Not available</td>
-                <td class="text-muted">Not available</td>
-                <td class="text-muted">—</td>
-                <td class="text-muted">—</td>
-                <td class="text-muted">—</td>
                 <td class="text-muted">Not available</td>
                 <td class="text-muted">Not synced</td>
             </tr>
@@ -387,24 +433,24 @@
             <tr>
                 <td class="font-mono"><strong>${escapeMyPortfolioHtml(row.symbol)}</strong></td>
                 <td>${formatMyPortfolioNumber(row.qty ?? row.quantity)}</td>
-                <td class="font-mono">${formatMyPortfolioMoney(row.avg_price)}</td>
-                <td class="font-mono">${row.last_price == null ? "₹ —" : formatMyPortfolioMoney(row.last_price)}</td>
-                <td>${row.price_as_of ? formatMyPortfolioTime(row.price_as_of) : "Not available"}</td>
-                <td class="font-mono">${formatMyPortfolioMoney(row.investment)}</td>
-                <td class="font-mono">${row.current_value == null ? "₹ —" : formatMyPortfolioMoney(row.current_value)}</td>
-                <td class="font-mono">${row.pnl == null ? "₹ —" : formatMyPortfolioMoney(row.pnl)}</td>
-                <td>${row.pnl_pct == null ? "—" : formatMyPortfolioPct(row.pnl_pct)}</td>
+                <td class="font-mono">${myPortfolioMoneyCell(row.avg_price)}</td>
+                <td class="font-mono">${row.last_price == null ? myPortfolioDash() : myPortfolioMoneyCell(row.last_price)}</td>
+                <td title="${escapeMyPortfolioHtml(row.price_as_of ? formatMyPortfolioTime(row.price_as_of) : "Not available")}">${row.price_as_of ? myPortfolioCell(formatMyPortfolioTime(row.price_as_of), "my-portfolio-nowrap") : "Not available"}</td>
+                <td class="font-mono">${myPortfolioMoneyCell(row.investment)}</td>
+                <td class="font-mono">${row.current_value == null ? myPortfolioDash() : myPortfolioMoneyCell(row.current_value)}</td>
+                <td class="font-mono">${row.pnl == null ? myPortfolioDash() : myPortfolioMoneyCell(row.pnl)}</td>
+                <td>${row.pnl_pct == null ? myPortfolioDash() : myPortfolioCell(formatMyPortfolioPct(row.pnl_pct), "my-portfolio-nowrap")}</td>
                 <td>${myPortfolioStatusPill(row.status, row)}</td>
                 <td>${myPortfolioConvictionCell(row.conviction, row)}</td>
                 <td>${myPortfolioTrendCell(row.trend_or_setup, row)}</td>
-                <td>${escapeMyPortfolioHtml(row.key_trigger || "Not available")}</td>
-                <td class="font-mono">${row.support_1 == null ? "₹ —" : formatMyPortfolioMoney(row.support_1)}</td>
-                <td class="font-mono">${row.major_support_exit == null ? "₹ —" : formatMyPortfolioMoney(row.major_support_exit)}</td>
-                <td class="font-mono">${row.target_1 == null ? "₹ —" : formatMyPortfolioMoney(row.target_1)}</td>
-                <td class="font-mono">${row.target_2 == null ? "₹ —" : formatMyPortfolioMoney(row.target_2)}</td>
-                <td class="font-mono">${row.target_3 == null ? "₹ —" : formatMyPortfolioMoney(row.target_3)}</td>
+                <td title="${escapeMyPortfolioHtml(row.key_trigger || "Not available")}">${escapeMyPortfolioHtml(row.key_trigger || "Not available")}</td>
+                <td class="font-mono">${row.support_1 == null ? myPortfolioDash() : myPortfolioMoneyCell(row.support_1)}</td>
+                <td class="font-mono">${row.major_support_exit == null ? myPortfolioDash() : myPortfolioMoneyCell(row.major_support_exit)}</td>
+                <td class="font-mono">${row.target_1 == null ? myPortfolioDash() : myPortfolioMoneyCell(row.target_1)}</td>
+                <td class="font-mono">${row.target_2 == null ? myPortfolioDash() : myPortfolioMoneyCell(row.target_2)}</td>
+                <td class="font-mono">${row.target_3 == null ? myPortfolioDash() : myPortfolioMoneyCell(row.target_3)}</td>
                 <td>${myPortfolioActionPill(row.next_action, row)}</td>
-                <td>${row.last_review ? formatMyPortfolioTime(row.last_review) : "Not available"}</td>
+                <td title="${escapeMyPortfolioHtml(row.last_review ? formatMyPortfolioTime(row.last_review) : "Not available")}">${row.last_review ? myPortfolioCell(formatMyPortfolioTime(row.last_review), "my-portfolio-nowrap") : "Not available"}</td>
             </tr>
         `).join("");
     }
@@ -667,9 +713,6 @@
                 ? "warning"
                 : "danger";
         showMyPortfolioAlert(`${message}${detail}.${myPortfolioSyncFailureSummary(run)}`, tone);
-        if (myPortfolioUploadState) {
-            myPortfolioUploadState.textContent = `Sync ${run.sync_run_id}: ${status}${detail}`;
-        }
         setMyPortfolioBusy({ syncing: !syncRunTerminal(status) });
     }
 
