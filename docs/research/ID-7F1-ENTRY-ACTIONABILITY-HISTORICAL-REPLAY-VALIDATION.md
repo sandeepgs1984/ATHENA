@@ -523,3 +523,89 @@ TRADE/ACTIONABLE/SHORT population this replay confirms is still
 entirely absent. Recommend (b) first, since it is the actual blocker
 for closing the empirical gaps §54–57 identified — no further replay
 code work changes that fact.
+
+---
+
+## Source-review correction (ID-7F1.1, 2026-09-05)
+
+Owner/Chief Architect source review **accepted the original 11,986-row
+real historical replay result in full** (§37–53 above stand unchanged —
+same population, same zero-defect outcome, same determinism proof) and
+held final ID-7F1 closure for one narrow harness-accounting/
+observability defect, corrected same day as ID-7F1.1:
+
+- **`rows_attempted` accounting was unsafe.** The original formula,
+  `rows_attempted = len(rows) + len(defects)`, double-counts any
+  observation that both reconstructs successfully (appended to `rows`)
+  **and** carries a `REPLAY_EQUIVALENCE_DEFECT` (appended to `defects`)
+  — a determinism mismatch does both. The real accepted run happened to
+  have zero such mismatches, so its own `11,986` figure was coincidentally
+  correct, but the formula itself was not generally safe for a future
+  defect-bearing run. **Fixed:** `population_total`, `duplicate_population_total`,
+  `unique_population_total`, and `rows_attempted` (`= unique_population_total`,
+  computed once, never derived from `len(rows) + len(defects)`) are now
+  tracked as independent, explicit summary fields.
+- **Unexpected (non-`ValueError`) exceptions had no dedicated
+  observability.** The frozen `ValueError` → `PIT_EVIDENCE_DEFECT` rule
+  is unchanged, but a genuinely unexpected per-observation failure
+  previously had no distinct diagnostic category and would have
+  terminated the entire replay run. **Fixed:** a new, deliberately
+  separate `UnexpectedReplayException` diagnostic (never folded into
+  ID-7F0's frozen defect taxonomy, never mapped to `UNKNOWN`/
+  `DATA_AVAILABILITY`) catches only `Exception` (never `BaseException`/
+  `KeyboardInterrupt`/`SystemExit`) around one observation's own
+  reconstruction/evaluation, records it, and continues to the next
+  independent observation — while forcing the run's own new explicit
+  `replay_acceptance` verdict to `False` whenever any exist. A
+  genuinely unexpected failure can therefore never silently "pass" a
+  review of the summary.
+- **A new explicit `replay_acceptance` boolean** was added, requiring
+  zero binding/PIT/persistence/replay-equivalence defects, zero
+  unexpected exceptions, zero determinism mismatches, zero M5/VWAP
+  checkpoint violations, and zero WATCH-invariant violations — TRADE/
+  ACTIONABLE/UNKNOWN/SHORT empirical availability is deliberately
+  **excluded** from this criterion (those populations remain honestly
+  absent from real data, per ID-7F0, and are never an acceptance gate).
+- **7 new focused tests** added (proving: a determinism defect does not
+  double-count its own attempt; a pre-evaluation binding failure counts
+  as attempted but not reconstructed; a synthetic duplicate counts
+  toward `population_total` but not `rows_attempted`; an unexpected
+  `RuntimeError` is recorded under its own diagnostic, not relabeled,
+  and forces `replay_acceptance` false; a `ValueError` remains
+  classified `PIT_EVIDENCE_DEFECT`, never rerouted to the unexpected-
+  exception bucket; an infrastructure failure (missing source DB) still
+  propagates normally, proving no broad exception-swallowing boundary
+  was introduced; and the clean seeded-WATCH population yields
+  `replay_acceptance: true`). Full suite: **3644 passed, 1
+  pre-existing unrelated skip, 0 failures** (exactly +7 from ID-7F1's
+  own 3637).
+- **No PIT/methodology/config/schema/repository/workflow change of any
+  kind.** `M5`/`VWAP`/`OR15` reconstruction, `evaluated_at` semantics,
+  Decision/EQ loading, binding validation, and the
+  `EntryActionabilityEngine` call are all byte-for-byte unchanged from
+  ID-7F1 — confirmed by diff (only `ReplayDefect`'s sibling
+  `UnexpectedReplayException` dataclass, the population-counter
+  bookkeeping, the new exception boundary, and `_replay_acceptance`
+  were added).
+
+**Rerun of the hardened harness against the real `db/athena.db`, same
+strict read-only mode, complete population, no sampling:** **11,986 /
+11,986** rows reconstructed successfully (population unchanged from the
+original run — no source-data delta occurred between runs), **0**
+binding defects, **0** PIT-evidence defects, **0** persistence/duplicate
+defects, **0** replay-equivalence defects, **0** unexpected replay
+exceptions, determinism holds across all 11,986 double-reconstructions,
+`schema_version` unchanged at 17 → 17, and the new explicit
+**`replay_acceptance: true`**. Runtime 19.83s (materially identical to
+the original 20.37s). All empirical-availability flags unchanged:
+`TRADE_EMPIRICAL_VALIDATION_NOT_AVAILABLE` /
+`ACTIONABLE_EMPIRICAL_VALIDATION_NOT_AVAILABLE` /
+`UNKNOWN_EMPIRICAL_VALIDATION_NOT_AVAILABLE` /
+`SHORT_EMPIRICAL_VALIDATION_NOT_AVAILABLE`. `git diff --check`/
+`git status --short` clean; diff scoped to exactly
+`src/athena/data/id7f1_entry_actionability_replay.py` and its test
+file — zero touches to schema/repository/workflow/Decision/ID-6/
+EntryActionability methodology/EMR/DarvaX.
+
+**ID-7F1.1 COMPLETE — ID-7F1 READY FOR FINAL OWNER / CHIEF ARCHITECT
+CLOSURE.**

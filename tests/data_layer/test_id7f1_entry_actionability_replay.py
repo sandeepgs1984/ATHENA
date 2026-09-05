@@ -40,7 +40,7 @@ from athena.decision.engine import DecisionEngine
 from athena.domain.decision import Decision, TradePlan
 from athena.domain.enums import DecisionType, Direction, RunTrigger, Timeframe
 from athena.domain.market import Candle, Instrument
-from athena.intraday import EntryQualificationEngine, EntryQualificationState
+from athena.intraday import EntryActionabilityEngine, EntryQualificationEngine, EntryQualificationState
 from athena.intraday.entry_qualification_models import EntryQualification
 from athena.ops.owner_candidates import SqliteCandidateStore
 from athena.ops.owner_validation import OwnerValidationPipeline
@@ -545,3 +545,166 @@ def test_determinism_double_reconstruction_matches_across_forward_and_reversed_o
     by_identity_forward = {r["decision_id"]: r["ea_state"] for r in rows}
     by_identity_reversed = {r["decision_id"]: r["ea_state"] for r in reversed(rows)}
     assert by_identity_forward == by_identity_reversed
+
+
+# --------------------------------------------------------------------------- #
+# ID-7F1.1: harness accounting + failure-observability hardening tests
+# --------------------------------------------------------------------------- #
+
+
+def test_determinism_defect_does_not_double_count_attempt(
+    seeded_watch_db: Path, tmp_path: Path, monkeypatch
+) -> None:
+    """A REPLAY_EQUIVALENCE_DEFECT is attached to an observation that
+    was ALSO successfully reconstructed (appended to rows) -- proving
+    rows_attempted must never be derived from len(rows) + len(defects),
+    which would double-count exactly this case."""
+    real_evaluate = EntryActionabilityEngine.evaluate
+    call_count = {"n": 0}
+
+    def flaky_evaluate(self, *args, **kwargs):
+        call_count["n"] += 1
+        result = real_evaluate(self, *args, **kwargs)
+        if call_count["n"] == 2:
+            # Force the SECOND reconstruction's evaluation to disagree
+            # with the first -- a controlled, deliberate mismatch.
+            result = dataclasses.replace(result, explanation=result.explanation + " (forced-mismatch)")
+        return result
+
+    monkeypatch.setattr(EntryActionabilityEngine, "evaluate", flaky_evaluate)
+
+    summary = run_replay(db_path=seeded_watch_db, config_dir=Path("config"), output_dir=tmp_path / "out")
+    assert summary["population_total"] == 1
+    assert summary["rows_attempted"] == 1
+    assert summary["rows_reconstructed_successfully"] == 1
+    assert summary["defect_counts"]["replay_equivalence_defects"] == 1
+    assert summary["determinism"]["mismatches"] == 1
+    assert summary["determinism"]["determinism_holds"] is False
+    assert summary["replay_acceptance"] is False
+
+
+def test_pre_evaluation_binding_failure_accounting(tmp_path: Path, monkeypatch) -> None:
+    """An observation whose bound Decision is missing entirely (a
+    genuine UPSTREAM_BINDING_DEFECT) must still count as attempted, but
+    not as successfully reconstructed -- no double counting either
+    direction."""
+    from athena.intraday.entry_qualification_models import (
+        EntryEvidenceFinality,
+        EntryQualificationConfirmation,
+    )
+
+    orphan_eq = EntryQualification(
+        instrument_id="NSE:AAA", session_date=AS_OF.date(), as_of=AS_OF,
+        run_id="run-1", cycle_id="cyc-1", decision_id="decision-that-does-not-exist",
+        decision_type=DecisionType.WATCH, state=EntryQualificationState.NOT_YET,
+        evidence_finality=EntryEvidenceFinality.NO_DECISIVE_PROVISIONAL_M5_DEPENDENCY,
+        confirmation=EntryQualificationConfirmation.NOT_EVALUATED,
+        reason_codes=(), evidence_refs=(), methodology_version="entry-qualification-v0",
+        config_snapshot_id=None, explanation="test",
+    )
+    monkeypatch.setattr(m, "_load_eq_population", lambda store: [orphan_eq])
+
+    db_path = tmp_path / "athena.db"
+    repo = SqliteRepository(db_path)
+    repo.initialize()
+    repo.close()
+
+    summary = run_replay(db_path=db_path, config_dir=Path("config"), output_dir=tmp_path / "out")
+    assert summary["population_total"] == 1
+    assert summary["duplicate_population_total"] == 0
+    assert summary["unique_population_total"] == 1
+    assert summary["rows_attempted"] == 1
+    assert summary["rows_reconstructed_successfully"] == 0
+    assert summary["defect_counts"]["upstream_binding_defects"] == 1
+    assert summary["replay_acceptance"] is False
+
+
+def test_duplicate_accounting_excludes_duplicate_from_attempted(
+    seeded_watch_db: Path, tmp_path: Path, monkeypatch
+) -> None:
+    """population_total counts every persisted row including the
+    duplicate; unique_population_total/rows_attempted count only the
+    first-seen observation -- the duplicate itself is a
+    PERSISTENCE_DEFECT, never an independently-attempted observation."""
+    real_load = m._load_eq_population
+
+    def duplicated_load(store):
+        population = real_load(store)
+        assert len(population) == 1
+        eq = population[0]
+        return [eq, eq]  # identical object twice -> identical identity
+
+    monkeypatch.setattr(m, "_load_eq_population", duplicated_load)
+
+    summary = run_replay(db_path=seeded_watch_db, config_dir=Path("config"), output_dir=tmp_path / "out")
+    assert summary["population_total"] == 2
+    assert summary["duplicate_population_total"] == 1
+    assert summary["unique_population_total"] == 1
+    assert summary["rows_attempted"] == 1
+    assert summary["rows_reconstructed_successfully"] == 1
+    assert summary["defect_counts"]["persistence_defects"] == 1
+
+
+def test_unexpected_exception_is_not_relabeled_and_fails_acceptance(
+    seeded_watch_db: Path, tmp_path: Path, monkeypatch
+) -> None:
+    """A genuinely unexpected (non-ValueError) failure must be recorded
+    under its own diagnostic -- never converted into UNKNOWN, never
+    DATA_AVAILABILITY, never PIT_EVIDENCE_DEFECT -- must still count as
+    attempted but not reconstructed, and must force replay_acceptance
+    False."""
+    def boom(self, *args, **kwargs):
+        raise RuntimeError("deliberate unexpected failure for this one observation")
+
+    monkeypatch.setattr(EntryActionabilityEngine, "evaluate", boom)
+
+    summary = run_replay(db_path=seeded_watch_db, config_dir=Path("config"), output_dir=tmp_path / "out")
+    assert summary["rows_attempted"] == 1
+    assert summary["rows_reconstructed_successfully"] == 0
+    assert summary["unexpected_replay_exceptions"]["total"] == 1
+    assert summary["unexpected_replay_exceptions"]["by_exception_type"] == {"RuntimeError": 1}
+    assert summary["defect_counts"]["total"] == 0  # never folded into the frozen defect taxonomy
+    assert summary["replay_acceptance"] is False
+
+    unexpected_path = Path(summary["artifacts"]["unexpected_exceptions_path"])
+    lines = unexpected_path.read_text().strip().splitlines()
+    assert len(lines) == 1
+    record = json.loads(lines[0])
+    assert record["exception_type"] == "RuntimeError"
+
+
+def test_value_error_still_classified_pit_evidence_defect_not_unexpected(
+    seeded_watch_db: Path, tmp_path: Path, monkeypatch
+) -> None:
+    """Regression: a ValueError (the frozen PIT-evidence-defect rule)
+    must remain classified as PIT_EVIDENCE_DEFECT, never rerouted into
+    the new unexpected-exception diagnostic."""
+    def boom(self, *args, **kwargs):
+        raise ValueError("deliberate PIT-style failure")
+
+    monkeypatch.setattr(EntryActionabilityEngine, "evaluate", boom)
+
+    summary = run_replay(db_path=seeded_watch_db, config_dir=Path("config"), output_dir=tmp_path / "out")
+    assert summary["rows_attempted"] == 1
+    assert summary["rows_reconstructed_successfully"] == 0
+    assert summary["defect_counts"]["pit_evidence_defects"] == 1
+    assert summary["unexpected_replay_exceptions"]["total"] == 0
+    assert summary["replay_acceptance"] is False
+
+
+def test_infrastructure_failure_to_open_db_still_propagates(tmp_path: Path) -> None:
+    """run_replay must not swallow an infrastructure-level failure (e.g.
+    a source DB that does not exist) -- it should fail fast, not be
+    silently absorbed into the per-observation try/except."""
+    missing_db = tmp_path / "does-not-exist.db"
+    with pytest.raises(Exception):
+        run_replay(db_path=missing_db, config_dir=Path("config"), output_dir=tmp_path / "out")
+
+
+def test_replay_acceptance_true_on_the_clean_seeded_watch_population(
+    seeded_watch_db: Path, tmp_path: Path
+) -> None:
+    summary = run_replay(db_path=seeded_watch_db, config_dir=Path("config"), output_dir=tmp_path / "out")
+    assert summary["replay_acceptance"] is True
+    assert summary["observations_with_defects"] == 0
+    assert summary["unexpected_replay_exceptions"]["total"] == 0

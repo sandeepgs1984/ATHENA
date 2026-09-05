@@ -6,6 +6,132 @@ status updated on approval.
 
 ---
 
+## ID-7F1.1 Entry Actionability Replay Harness Accounting + Failure-Observability Hardening — Complete
+
+**Summary.** Owner/Chief Architect source review accepted ID-7F1's real
+11,986-row historical replay result in full (zero defects, determinism
+holds, schema unchanged) but held final closure for one narrow harness
+correction: `rows_attempted` was derived as `len(rows) + len(defects)`,
+which double-counts an observation that both reconstructs successfully
+and carries a `REPLAY_EQUIVALENCE_DEFECT` — coincidentally harmless for
+the accepted run (zero such mismatches occurred) but unsafe in general;
+and unexpected (non-`ValueError`) per-observation exceptions had no
+dedicated diagnostic and would have terminated the whole run.
+
+**Architecture compliance.** No replay methodology/PIT/config/schema/
+repository/workflow change of any kind — confirmed by diff (only a new
+sibling dataclass, explicit population counters, one narrow exception
+boundary, and one new pure acceptance function were added).
+Decision/ID-6/EntryActionability-engine/EMR/DarvaX untouched.
+
+**Files created.** None.
+
+**Files modified.**
+- [src/athena/data/id7f1_entry_actionability_replay.py](src/athena/data/id7f1_entry_actionability_replay.py)
+  — added `UnexpectedReplayException` (a diagnostic deliberately kept
+  separate from ID-7F0's own frozen defect taxonomy); replaced the
+  unsafe `rows_attempted` derivation with explicit `population_total`/
+  `duplicate_population_total`/`unique_population_total`/`rows_attempted`
+  fields (the last set once to `unique_population_total`); added a
+  narrow `except Exception` boundary (never `BaseException`) around one
+  observation's own reconstruction/evaluation, recording any non-
+  `ValueError` failure and continuing to the next observation; added
+  `_replay_acceptance(...)` and a new `replay_acceptance` summary field;
+  added `observations_with_defects` and an `id7f1_unexpected_exceptions.jsonl`
+  output artifact.
+- [tests/data_layer/test_id7f1_entry_actionability_replay.py](tests/data_layer/test_id7f1_entry_actionability_replay.py)
+  — 7 new tests (see below).
+- `docs/MILESTONES.md`, `docs/ATHENA-ID-TRACK-HANDOFF.md`,
+  `ATHENA_BRIEFING.md` — record the accepted historical result, this
+  hardening, and that ID-7F1 overall remains pending final closure.
+- `docs/research/ID-7F1-ENTRY-ACTIONABILITY-HISTORICAL-REPLAY-VALIDATION.md`
+  — a source-review correction section appended (original numbers
+  preserved, not rewritten).
+
+**Public APIs added.** None.
+
+**Tests added.** 7, all in
+`tests/data_layer/test_id7f1_entry_actionability_replay.py`: a
+determinism defect proven not to double-count its own attempt; a
+pre-evaluation binding failure proven to count as attempted but not
+reconstructed; a synthetic-duplicate accounting proof (via a
+monkeypatched population loader); an unexpected `RuntimeError` proven
+recorded under its own diagnostic (never relabeled as `UNKNOWN`/
+`DATA_AVAILABILITY`/`PIT_EVIDENCE_DEFECT`) and forcing
+`replay_acceptance` false; a `ValueError`-still-`PIT_EVIDENCE_DEFECT`
+regression proof; an infrastructure-failure-still-propagates proof (a
+missing source DB is never silently swallowed); and a clean-population
+`replay_acceptance: true` proof.
+
+**Test results.** Full suite: **3644 passed, 1 pre-existing unrelated
+skip, 0 failures** (up from 3637 at ID-7F1 closure — exactly +7, all
+new).
+
+**Coverage summary.** Every accounting edge case the source review
+identified (determinism-defect double-counting, pre-evaluation failure,
+duplicate exclusion, unexpected-exception observability) now has a
+dedicated regression test.
+
+**Architecture compliance.** See above — zero PIT/methodology/config/
+schema/repository/workflow change; the frozen `ValueError` →
+`PIT_EVIDENCE_DEFECT` rule and all M5/VWAP/OR15/Decision/EQ
+reconstruction are byte-for-byte unchanged.
+
+**ADR compliance.** Not applicable — no ADR-governed contract touched;
+this is a harness self-consistency correction only.
+
+**Risks discovered.** None new.
+
+**Technical debt introduced.** None.
+
+**Suggested improvements.** None.
+
+**Remaining work.** Same as ID-7F1: `run_shadow_equivalence` (Mode B)
+and/or the schema v18 migration + `athena-serve` restart — both
+recommendation-only, not authorized here.
+
+**Real-run re-verification.** The hardened harness was re-run against
+the real `db/athena.db`, same strict read-only mode, complete
+population, no sampling: **11,986/11,986 rows reconstructed
+successfully, 0 defects of any kind, 0 unexpected exceptions,
+determinism holds across all 11,986 double-reconstructions,
+`schema_version` unchanged at 17 → 17, `replay_acceptance: true`** —
+population and every distribution unchanged from the original accepted
+run (runtime 19.83s, materially identical to the original 20.37s).
+
+**Commit message.**
+```
+fix(intraday): harden Entry Actionability replay harness accounting (ID-7F1.1)
+
+- Replaced the unsafe rows_attempted = len(rows) + len(defects)
+  derivation (double-counts an observation that both reconstructs
+  successfully and carries a REPLAY_EQUIVALENCE_DEFECT) with explicit
+  population_total/duplicate_population_total/unique_population_total/
+  rows_attempted fields.
+- Added a dedicated UnexpectedReplayException diagnostic for genuinely
+  unexpected (non-ValueError) per-observation failures -- deliberately
+  kept separate from ID-7F0's own frozen defect taxonomy, never
+  relabeled as UNKNOWN/DATA_AVAILABILITY/PIT_EVIDENCE_DEFECT -- caught
+  via a narrow except Exception boundary (never BaseException) around
+  one observation's own reconstruction/evaluation; the run continues to
+  the next independent observation.
+- Added an explicit replay_acceptance boolean, forced False by any
+  unexpected exception, determinism mismatch, or classified defect --
+  never a silent "PASS with hidden exceptions."
+- 7 new tests; full suite 3644 passed / 1 pre-existing unrelated skip /
+  0 failures. Re-ran the hardened harness against the real db/athena.db:
+  11,986/11,986 reconstructed, 0 defects, 0 unexpected exceptions,
+  determinism holds, schema_version unchanged 17->17,
+  replay_acceptance: true -- identical result to the original accepted
+  run. No PIT/methodology/schema/repository/workflow change.
+```
+
+**Ready for review.** Yes — ID-7F1.1 is implemented, self-validated, and
+re-verified against the real historical population; awaiting
+Owner/Chief Architect final closure of ID-7F1 overall.
+
+---
+
 ## ID-7F1 Entry Actionability Historical Replay Adapter + Deterministic Validation — Complete
 
 **Summary.** Owner/Chief Architect closed ID-7F0 2026-09-05 (validation
@@ -136,6 +262,11 @@ feat(intraday): add Entry Actionability historical replay adapter (ID-7F1)
 **Ready for review.** Yes — ID-7F1 is implemented, self-validated, and
 has been run against the real historical population; awaiting
 Owner/Chief Architect historical-replay closure.
+
+**Update (2026-09-05).** Owner/Chief Architect source review accepted
+the real 11,986-row historical replay result in full; final closure was
+held for one narrow harness-accounting/observability defect, resolved
+same day by ID-7F1.1 — see the entry above.
 
 ---
 

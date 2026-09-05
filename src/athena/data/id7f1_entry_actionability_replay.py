@@ -109,6 +109,31 @@ class ReplayDefect:
     detail: str
 
 
+@dataclass(frozen=True, slots=True)
+class UnexpectedReplayException:
+    """ID-7F1.1: a per-observation reconstruction/evaluation failure that
+    is NOT a `ValueError` (which the frozen `PIT_EVIDENCE_DEFECT` rule
+    already covers) -- i.e. a genuine, unanticipated programming failure
+    for this one observation. Deliberately kept as its own diagnostic
+    category, separate from ID-7F0's frozen defect taxonomy (never
+    silently mapped to `DATA_AVAILABILITY`/`UNKNOWN`/`PIT_EVIDENCE_DEFECT`,
+    and never expanding that taxonomy either) -- a bug in this module's
+    own reconstruction is neither legitimate missing evidence nor a
+    point-in-time coherence defect; it is its own thing, reported
+    honestly. The observation still counts as *attempted* (it was
+    selected and processing began) but NOT as *reconstructed
+    successfully*, and it makes the run's own acceptance verdict
+    ``False`` (§ replay acceptance criteria) -- never a silent
+    "PASS with hidden exceptions"."""
+
+    instrument_id: str
+    session_date: str
+    decision_id: str
+    entry_qualification_as_of: str
+    exception_type: str
+    detail: str
+
+
 def _get_decision(store: ReadOnlyStore, decision_id: str) -> Decision | None:
     """Exact-by-id lookup -- never "latest Decision"."""
     row = store.conn.execute(
@@ -345,12 +370,26 @@ def run_replay(
 
     rows: list[dict[str, Any]] = []
     defects: list[ReplayDefect] = []
+    unexpected_exceptions: list[UnexpectedReplayException] = []
     m5_vwap_checkpoint_violations = 0
 
     try:
         population = _load_eq_population(store)
+        population_total = len(population)
         unique_population, duplicate_population = partition_duplicates(population)
         duplicate_identity_count = len(duplicate_population)
+        unique_population_total = len(unique_population)
+        # ID-7F1.1: `rows_attempted` is exactly the unique population
+        # size -- every unique EQ enters the per-observation loop below
+        # exactly once and is "attempted" regardless of whether it ends
+        # in a binding defect, a PIT-evidence defect, an unexpected
+        # exception, or a successful (possibly determinism-mismatched)
+        # reconstruction. It is deliberately NOT derived from
+        # len(rows) + len(defects) -- a determinism mismatch appends to
+        # BOTH `rows` (the reconstruction did succeed) AND `defects`
+        # (flagging the mismatch), so that sum double-counts exactly the
+        # observations this milestone exists to stop double-counting.
+        rows_attempted = unique_population_total
         for dup in duplicate_population:
             defects.append(ReplayDefect(
                 instrument_id=dup.instrument_id, session_date=dup.session_date.isoformat(),
@@ -371,43 +410,64 @@ def run_replay(
             assert decision is not None  # binding_error is None => decision exists
 
             try:
-                market_evidence, descriptive = _reconstruct_market_evidence(
-                    eq, store=store, session_engine=session_engine,
-                    opening_range_engine=opening_range_engine,
-                    indicator_engine=indicator_engine, calendar=calendar, tzinfo=tzinfo,
-                    exchange=cfg.market.exchange, sessions_cfg=cfg.market.sessions,
-                )
-                ea_first = engine.evaluate(
-                    decision=decision, entry_qualification=eq,
-                    market_evidence=market_evidence, evaluated_at=evaluated_at, policy=None,
-                )
-                # Determinism (ID-7F0 §27 / this milestone §20): full
-                # independent re-reconstruction + re-evaluation of the
-                # identical historical checkpoint must be byte-for-byte
-                # equal -- never merely re-calling evaluate() on cached
-                # objects, which would only prove the engine's own
-                # purity, not the whole replay pipeline's.
-                market_evidence_2, _ = _reconstruct_market_evidence(
-                    eq, store=store, session_engine=session_engine,
-                    opening_range_engine=opening_range_engine,
-                    indicator_engine=indicator_engine, calendar=calendar, tzinfo=tzinfo,
-                    exchange=cfg.market.exchange, sessions_cfg=cfg.market.sessions,
-                )
-                ea_second = engine.evaluate(
-                    decision=decision, entry_qualification=eq,
-                    market_evidence=market_evidence_2, evaluated_at=evaluated_at, policy=None,
-                )
-            except ValueError as exc:
-                # PIT_EVIDENCE_DEFECT: binding was already independently
-                # proven above, so any ValueError past this point is a
-                # point-in-time evidence/coherence defect (candle
-                # coherence, VWAP-provenance, OR15 coherence, or this
-                # module's own malformed reconstruction) -- never
-                # silently relabeled as a legitimate methodology UNKNOWN.
-                defects.append(ReplayDefect(
+                try:
+                    market_evidence, descriptive = _reconstruct_market_evidence(
+                        eq, store=store, session_engine=session_engine,
+                        opening_range_engine=opening_range_engine,
+                        indicator_engine=indicator_engine, calendar=calendar, tzinfo=tzinfo,
+                        exchange=cfg.market.exchange, sessions_cfg=cfg.market.sessions,
+                    )
+                    ea_first = engine.evaluate(
+                        decision=decision, entry_qualification=eq,
+                        market_evidence=market_evidence, evaluated_at=evaluated_at, policy=None,
+                    )
+                    # Determinism (ID-7F0 §27 / ID-7F1 §20): full
+                    # independent re-reconstruction + re-evaluation of the
+                    # identical historical checkpoint must be byte-for-byte
+                    # equal -- never merely re-calling evaluate() on cached
+                    # objects, which would only prove the engine's own
+                    # purity, not the whole replay pipeline's.
+                    market_evidence_2, _ = _reconstruct_market_evidence(
+                        eq, store=store, session_engine=session_engine,
+                        opening_range_engine=opening_range_engine,
+                        indicator_engine=indicator_engine, calendar=calendar, tzinfo=tzinfo,
+                        exchange=cfg.market.exchange, sessions_cfg=cfg.market.sessions,
+                    )
+                    ea_second = engine.evaluate(
+                        decision=decision, entry_qualification=eq,
+                        market_evidence=market_evidence_2, evaluated_at=evaluated_at, policy=None,
+                    )
+                except ValueError as exc:
+                    # PIT_EVIDENCE_DEFECT: binding was already independently
+                    # proven above, so any ValueError past this point is a
+                    # point-in-time evidence/coherence defect (candle
+                    # coherence, VWAP-provenance, OR15 coherence, or this
+                    # module's own malformed reconstruction) -- never
+                    # silently relabeled as a legitimate methodology UNKNOWN.
+                    defects.append(ReplayDefect(
+                        instrument_id=eq.instrument_id, session_date=eq.session_date.isoformat(),
+                        decision_id=eq.decision_id, entry_qualification_as_of=eq.as_of.isoformat(),
+                        kind="PIT_EVIDENCE_DEFECT", detail=f"{type(exc).__name__}: {exc}",
+                    ))
+                    continue
+            except Exception as exc:  # noqa: BLE001 -- deliberate, narrow, documented (§6/§7)
+                # ID-7F1.1: a genuinely unexpected (non-ValueError)
+                # failure reconstructing/evaluating THIS ONE observation
+                # -- never BaseException/KeyboardInterrupt/SystemExit
+                # (not subclasses of Exception, so never caught here),
+                # never silently relabeled as legitimate methodology
+                # evidence, never expanding ID-7F0's own frozen defect
+                # taxonomy. Recorded as its own diagnostic, the run
+                # continues to the next independent observation (so one
+                # bad row cannot hide whether the issue is isolated or
+                # systemic), and the run's own acceptance verdict is
+                # forced to False by any non-zero count of these
+                # (§ replay acceptance criteria) -- never a silent
+                # "PASS with hidden exceptions."
+                unexpected_exceptions.append(UnexpectedReplayException(
                     instrument_id=eq.instrument_id, session_date=eq.session_date.isoformat(),
                     decision_id=eq.decision_id, entry_qualification_as_of=eq.as_of.isoformat(),
-                    kind="PIT_EVIDENCE_DEFECT", detail=f"{type(exc).__name__}: {exc}",
+                    exception_type=type(exc).__name__, detail=str(exc),
                 ))
                 continue
 
@@ -438,7 +498,9 @@ def run_replay(
         store.close()
 
     return _summarize(
-        rows=rows, defects=defects, duplicate_identity_count=duplicate_identity_count,
+        rows=rows, defects=defects, unexpected_exceptions=unexpected_exceptions,
+        population_total=population_total, unique_population_total=unique_population_total,
+        duplicate_identity_count=duplicate_identity_count, rows_attempted=rows_attempted,
         m5_vwap_checkpoint_violations=m5_vwap_checkpoint_violations,
         db_path=db_path, schema_version_start=schema_version_start,
         schema_version_end=schema_version_end, evaluated_at=evaluated_at,
@@ -558,11 +620,41 @@ def _analysis_digest(summary: dict[str, Any]) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+def _replay_acceptance(
+    *,
+    defect_kind_counts: Counter[str],
+    unexpected_exception_count: int,
+    determinism_mismatches: int,
+    m5_vwap_checkpoint_violations: int,
+    watch_invariant_violations: int,
+) -> bool:
+    """ID-7F1.1 §9: the smallest explicit clean-replay acceptance
+    verdict. Deliberately excludes TRADE/ACTIONABLE/UNKNOWN/SHORT
+    empirical availability -- those populations remain honestly absent
+    from real data (§27 elsewhere) and are never an acceptance
+    criterion. Any non-zero unexpected-exception count forces this
+    False -- never a silent "PASS with hidden exceptions"."""
+    return (
+        defect_kind_counts.get("UPSTREAM_BINDING_DEFECT", 0) == 0
+        and defect_kind_counts.get("PIT_EVIDENCE_DEFECT", 0) == 0
+        and defect_kind_counts.get("PERSISTENCE_DEFECT", 0) == 0
+        and defect_kind_counts.get("REPLAY_EQUIVALENCE_DEFECT", 0) == 0
+        and unexpected_exception_count == 0
+        and determinism_mismatches == 0
+        and m5_vwap_checkpoint_violations == 0
+        and watch_invariant_violations == 0
+    )
+
+
 def _summarize(
     *,
     rows: list[dict[str, Any]],
     defects: list[ReplayDefect],
+    unexpected_exceptions: list[UnexpectedReplayException],
+    population_total: int,
+    unique_population_total: int,
     duplicate_identity_count: int,
+    rows_attempted: int,
     m5_vwap_checkpoint_violations: int,
     db_path: Path,
     schema_version_start: int | None,
@@ -585,10 +677,27 @@ def _summarize(
                 "entry_qualification_as_of": defect.entry_qualification_as_of,
                 "kind": defect.kind, "detail": defect.detail,
             }, sort_keys=True) + "\n")
+    unexpected_path = output_dir / "id7f1_unexpected_exceptions.jsonl"
+    with unexpected_path.open("w", encoding="utf-8") as fh:
+        for exc in unexpected_exceptions:
+            fh.write(json.dumps({
+                "instrument_id": exc.instrument_id, "session_date": exc.session_date,
+                "decision_id": exc.decision_id,
+                "entry_qualification_as_of": exc.entry_qualification_as_of,
+                "exception_type": exc.exception_type, "detail": exc.detail,
+            }, sort_keys=True) + "\n")
 
     defect_kind_counts = Counter(d.kind for d in defects)
     determinism_mismatches = sum(1 for r in rows if not r["deterministic_match"])
-    rows_attempted = len(rows) + len(defects)
+    # ID-7F1.1 §3: defect-bearing OBSERVATIONS, keyed by exact replay
+    # identity -- orthogonal to len(defects), since one observation
+    # could in principle carry more than one defect record (it does
+    # not today, but this count is correct either way).
+    observations_with_defects = len({
+        (d.instrument_id, d.session_date, d.decision_id, d.entry_qualification_as_of)
+        for d in defects
+    })
+    watch_invariant = _watch_invariant_check(rows)
 
     summary: dict[str, Any] = {
         "metadata": {
@@ -608,6 +717,13 @@ def _summarize(
             "runtime_seconds": round(time.perf_counter() - started, 3),
         },
         "population_inventory": _population_inventory(rows),
+        # ID-7F1.1: explicit, independently-derived population counters
+        # (never rows_attempted = len(rows) + len(defects), which
+        # double-counts any observation that both reconstructed
+        # successfully AND carries a REPLAY_EQUIVALENCE_DEFECT).
+        "population_total": population_total,
+        "duplicate_population_total": duplicate_identity_count,
+        "unique_population_total": unique_population_total,
         "rows_attempted": rows_attempted,
         "rows_reconstructed_successfully": len(rows),
         "defect_counts": {
@@ -618,7 +734,14 @@ def _summarize(
             "persistence_defects": defect_kind_counts.get("PERSISTENCE_DEFECT", 0),
             "replay_equivalence_defects": defect_kind_counts.get("REPLAY_EQUIVALENCE_DEFECT", 0),
         },
+        "observations_with_defects": observations_with_defects,
         "duplicate_identity_count": duplicate_identity_count,
+        "unexpected_replay_exceptions": {
+            "total": len(unexpected_exceptions),
+            "by_exception_type": dict(sorted(
+                Counter(e.exception_type for e in unexpected_exceptions).items()
+            )),
+        },
         "determinism": {
             "checked_observations": len(rows),
             "mismatches": determinism_mismatches,
@@ -627,9 +750,16 @@ def _summarize(
         "m5_vwap_checkpoint_violations": m5_vwap_checkpoint_violations,
         "watch_result_distribution": _ea_result_distribution(rows, "WATCH"),
         "trade_result_distribution": _ea_result_distribution(rows, "TRADE"),
-        "watch_invariant_check": _watch_invariant_check(rows),
+        "watch_invariant_check": watch_invariant,
         "evidence_availability": _evidence_availability(rows),
         "empirical_availability": _empirical_availability(rows),
+        "replay_acceptance": _replay_acceptance(
+            defect_kind_counts=defect_kind_counts,
+            unexpected_exception_count=len(unexpected_exceptions),
+            determinism_mismatches=determinism_mismatches,
+            m5_vwap_checkpoint_violations=m5_vwap_checkpoint_violations,
+            watch_invariant_violations=watch_invariant["watch_invariant_violations"],
+        ),
     }
     summary_path = output_dir / "id7f1_summary.json"
     analysis_digest = _analysis_digest(summary)
@@ -637,6 +767,7 @@ def _summarize(
         "summary_path": str(summary_path),
         "observations_path": str(rows_path),
         "defects_path": str(defects_path),
+        "unexpected_exceptions_path": str(unexpected_path),
         "analysis_sha256": analysis_digest,
     }
     summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
