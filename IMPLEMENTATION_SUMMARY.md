@@ -6,7 +6,83 @@ status updated on approval.
 
 ---
 
+## PS-P10C.1 Structural Levels / Targets Closure — Ready for Owner Review
+
+**Summary.** Completed the final bounded PS-P10C.1 methodology closure for
+Excel-parity structural levels and targets. Recommendation: **NO-GO** for
+Support 1, Major Structural Support / Invalidation, Target 1/2/3, structural
+Review Trigger, and `EXIT_RISK` in `portfolio-daily-review-v0`; keep those
+fields null/deferred in PS-P10D.
+
+**Architecture compliance.** Documentation/replay only. No production Portfolio
+source, Portfolio Sync, PortfolioInterpreter, schema/API/DTO, dashboard,
+OpeningRangeEngine, PortfolioTrendAdapter, PortfolioSetupAdapter, SuperTrend
+formula, interpretation version, `uv.lock`, Decision, EntryQualification, or
+TradePlan change.
+
+**Files created.**
+
+- `docs/research/PS-P10C1-STRUCTURAL-LEVELS-TARGETS-CLOSURE.md`
+
+**Files modified.**
+
+- `docs/MILESTONES.md`
+- `IMPLEMENTATION_SUMMARY.md`
+- `ATHENA_BRIEFING.md`
+
+**Public APIs added.** None.
+
+**Tests added.** None. Methodology/replay only.
+
+**Test results.** Read-only replay against `db/athena.db`: 20 current holdings
+and 12,095 point-in-time observations after warm-up. Candidate A (2x2 local
+swings) populated Support 1 for 11,918 observations but churned 10,411 support
+changes; Candidate B (2x2 plus half-ATR prominence) reduced average pivots to
+21.45 but still churned 4,840 support changes and introduced an unfrozen
+prominence threshold; Candidate C (3x3 local swings) remained dense and churny.
+`git diff --check`: clean.
+
+**Coverage summary.** Covers Support 1, Major Structural Support /
+Invalidation, Target 1/2/3, structural Review Trigger, role reversal, broken
+level lifecycle, target ladder safety, `EXIT_RISK`, representative owner-style
+holdings, point-in-time confirmation delay, Excel comparison, and final
+GO/NO-GO.
+
+**Risks discovered.** Mechanical local-swing levels can look useful in isolated
+examples, but the bounded candidates produce duplicate nearby targets, wide or
+stale zones, high churn, and ambiguous support/trigger relationships. Freezing
+them now would give false precision compared with the owner's earlier
+human-filtered spreadsheet.
+
+**Technical debt introduced.** None.
+
+**Suggested improvements.** PS-P10D should implement only the already
+owner-approved PS-P10C core review status/reasons/guidance methodology. Future
+structural-level sophistication belongs to backlog after v0, not PS-P10C.2.
+
+**Remaining work.** Wait for Owner/Chief Architect review. PS-P10D is not
+authorized.
+
+**Implementation metrics.** Documentation files created: 1. Documentation files
+modified: 3. Production source files modified: 0.
+
+**Phase outcome.** PS-P10C.1 methodology/replay complete 2026-09-05 and ready
+for Owner/Chief Architect review. Recommendation: NO-GO for structural
+levels/targets/`EXIT_RISK` in v0.
+
+**Commit hash.** Pending owner commit.
+
+**Branch.** feature/portfolio-sync.
+
+**Review status.** Ready for Owner/Chief Architect review.
+
+---
+
 ## PS-P10C Daily Chart Portfolio Review Methodology Freeze — Ready for Owner Review
+
+**Final update (2026-09-05).** Owner/Chief Architect approved the PS-P10C core
+methodology and authorized PS-P10C.1 as the final bounded structural-level
+closure before PS-P10D. PS-P10D remains not authorized.
 
 **Summary.** Completed PS-P10C methodology/replay for converting the frozen
 PS-P10B D1 evidence foundation into Daily Chart Portfolio Review intelligence.
@@ -40,7 +116,7 @@ TradePlan change.
 12,295 historical point-in-time observations, 6,198 `HOLD`, 5,533
 `REVIEW_HOLD_TIGHT`, 564 `HOLD_STRONG`, 0 safe Support 1 observations under
 the no-pivot/no-zone policy, and naive available-history target candidates
-rejected as product-unsafe. `git diff --check`: pending after final docs update.
+rejected as product-unsafe. `git diff --check`: clean at PS-P10C handoff.
 
 **Coverage summary.** Covers Review Status taxonomy/precedence, SuperTrend
 consumption, RSI/volume context boundaries, Support 1 and target deferral,
@@ -73,7 +149,8 @@ Owner/Chief Architect review.
 
 **Branch.** feature/portfolio-sync.
 
-**Review status.** Ready for Owner/Chief Architect review.
+**Review status.** Core methodology Owner/Chief Architect approved 2026-09-05;
+final structural-level closure moved to PS-P10C.1 before PS-P10D.
 
 ---
 
