@@ -6,6 +6,77 @@ status updated on approval.
 
 ---
 
+## PS-P10C Daily Chart Portfolio Review Methodology Freeze — Ready for Owner Review
+
+**Summary.** Completed PS-P10C methodology/replay for converting the frozen
+PS-P10B D1 evidence foundation into Daily Chart Portfolio Review intelligence.
+Recommended conservative `portfolio-daily-review-v0`: a separate Daily Review
+Status taxonomy (`HOLD_STRONG`, `HOLD`, `REVIEW_HOLD_TIGHT`, `null`), SuperTrend
+as the primary chart-health input, available-history high as breakout context,
+RSI14 and Volume/VMA as context-only evidence, deterministic reason-code based
+Review Guidance, and position-aware guidance context that never drives status.
+
+**Architecture compliance.** Documentation/replay only. No production Portfolio
+source, Portfolio Sync, PortfolioInterpreter, schema/API/DTO, dashboard,
+OpeningRangeEngine, PortfolioTrendAdapter, PortfolioSetupAdapter, SuperTrend
+formula, interpretation version, `uv.lock`, Decision, EntryQualification, or
+TradePlan change.
+
+**Files created.**
+
+- `docs/research/PS-P10C-DAILY-CHART-PORTFOLIO-REVIEW-METHODOLOGY-FREEZE.md`
+
+**Files modified.**
+
+- `docs/MILESTONES.md`
+- `IMPLEMENTATION_SUMMARY.md`
+- `ATHENA_BRIEFING.md`
+
+**Public APIs added.** None.
+
+**Tests added.** None. Methodology/replay only.
+
+**Test results.** Read-only replay against `db/athena.db`: 20 current holdings,
+12,295 historical point-in-time observations, 6,198 `HOLD`, 5,533
+`REVIEW_HOLD_TIGHT`, 564 `HOLD_STRONG`, 0 safe Support 1 observations under
+the no-pivot/no-zone policy, and naive available-history target candidates
+rejected as product-unsafe. `git diff --check`: pending after final docs update.
+
+**Coverage summary.** Covers Review Status taxonomy/precedence, SuperTrend
+consumption, RSI/volume context boundaries, Support 1 and target deferral,
+Major Support / Exit separation, Review Trigger separation from Key Trigger,
+ATH/blue-sky behavior, Review Guidance reason taxonomy, position-aware guidance,
+numeric Review Conviction deferral, historical replay safety, and the mandatory
+Excel-parity matrix.
+
+**Risks discovered.** My Portfolio can only partially replace the old Excel +
+daily chart screenshot workflow under a trustworthy v0. Support zones, structural
+invalidation zones, target ladders, reclaim/resistance triggers, and numeric
+Review Conviction remain unfrozen.
+
+**Technical debt introduced.** None.
+
+**Suggested improvements.** PS-P10D should implement only owner-approved v0
+review status/reasons/guidance and optional trailing-structure detail; support
+zones and target ladders need a separate pivot/zone/target methodology milestone.
+
+**Remaining work.** Wait for Owner/Chief Architect review. PS-P10D is not
+authorized.
+
+**Implementation metrics.** Documentation files created: 1. Documentation files
+modified: 3. Production source files modified: 0.
+
+**Phase outcome.** PS-P10C methodology/replay complete 2026-09-05 and ready for
+Owner/Chief Architect review.
+
+**Commit hash.** Pending owner commit.
+
+**Branch.** feature/portfolio-sync.
+
+**Review status.** Ready for Owner/Chief Architect review.
+
+---
+
 ## PS-P10B Daily Chart Evidence Foundation — Owner Approved and Frozen
 
 **Final update (2026-09-05).** Owner/Chief Architect approved and froze PS-P10B

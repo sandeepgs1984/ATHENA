@@ -30,7 +30,8 @@ too large for a single-sitting review is split BEFORE implementation.
 `docs/research/PS-P9D1-MY-PORTFOLIO-UX-CORRECTION.md`,
 `docs/research/PS-P10A-DAILY-CHART-PORTFOLIO-REVIEW-DISCOVERY.md`,
 `docs/research/PS-P10B-DAILY-CHART-EVIDENCE-FOUNDATION.md`,
-`docs/research/PS-P10B1-SUPERTREND-COMPATIBILITY-REPLAY.md`
+`docs/research/PS-P10B1-SUPERTREND-COMPATIBILITY-REPLAY.md`,
+`docs/research/PS-P10C-DAILY-CHART-PORTFOLIO-REVIEW-METHODOLOGY-FREEZE.md`
 
 Adds a My Portfolio dashboard feature/subdomain inside ATHENA's existing
 portfolio capability. The feature owns imported current holdings,
@@ -62,6 +63,7 @@ ScoringEngine/DecisionEngine methodology.
 | PS-P9D.1 | My Portfolio Dashboard UX Correction — fix owner-observed table overlap, stale asset cache, upload/confirm state, inline reason noise, legacy v2 display, and dense timestamp/money readability without changing PS-P9D methodology or contracts | 🔄 Implementation complete 2026-09-05 — ready for Owner/Chief Architect review |
 | PS-P10A | Daily Chart Portfolio Review Intelligence Discovery — plan Excel-like My Portfolio review fields generated from Kite/persisted D1 candles, SuperTrend/RSI/volume/swing evidence, and owner-approved chart methodology without daily chart uploads | ✅ Owner/Chief Architect approved and frozen 2026-09-05 |
 | PS-P10B | Daily Chart Evidence Foundation — add deterministic/versioned D1 evidence primitives for SuperTrend 10,3, RSI14, D1 volume measurements, ATH/rolling-high relationships, and typed structural-level candidates without populating Review Status, support/exit, targets, guidance, snapshot, sync, API, or dashboard fields | ✅ Owner/Chief Architect approved and frozen 2026-09-05; PS-P10B.1 validation approved/closed; PS-P10C not started/not authorized |
+| PS-P10C | Daily Chart Portfolio Review Methodology Freeze — replay and freeze the deterministic evidence-to-review methodology for Excel-like Daily Chart Review intelligence without production Portfolio population, schema/API/dashboard changes, interpretation-version bump, or PS-P10D implementation | 🔄 Methodology/replay complete 2026-09-05 — ready for Owner/Chief Architect review; PS-P10D not authorized |
 
 ## Intraday Intelligence Track (ID-0 started 2026-08-29)
 
