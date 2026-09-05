@@ -6,7 +6,94 @@ status updated on approval.
 
 ---
 
+## PS-P10B Daily Chart Evidence Foundation — Ready for Owner Review
+
+**Summary.** Implemented the PS-P10B evidence-only foundation for future Daily
+Chart Portfolio Review intelligence. Added typed, deterministic D1 evidence for
+SuperTrend 10,3, RSI14, Volume MA measurements, ATH/rolling-high relationships,
+and structural-level candidates. The implementation intentionally does not
+populate Review Status, Review Guidance, Support 1, Major Support / Exit,
+Target 1/2/3, numeric Review Conviction, chart-derived Key Trigger, Portfolio
+Sync snapshots, API fields, or dashboard output.
+
+**Architecture compliance.** Pure reusable evidence module only. No provider
+calls, repository dependency, clock reads, schema/API/DTO change, dashboard
+change, Portfolio Sync wiring, PortfolioInterpreter change, OpeningRangeEngine
+change, DecisionEngine/ScoringEngine change, EntryQualification/TradePlan
+change, broker/order behavior, or methodology redefinition.
+
+**Files created.**
+
+- `src/athena/portfolio/daily_chart_evidence.py`
+- `tests/runtime/test_portfolio_daily_chart_evidence.py`
+- `docs/research/PS-P10B-DAILY-CHART-EVIDENCE-FOUNDATION.md`
+
+**Files modified.**
+
+- `src/athena/portfolio/__init__.py`
+- `tests/api/platform/test_decision_chart_release_gate.py`
+- `docs/MILESTONES.md`
+- `IMPLEMENTATION_SUMMARY.md`
+- `ATHENA_BRIEFING.md`
+
+**Public APIs added.** Package exports for `DailyChartEvidenceEngine`,
+`DailyChartEvidenceProvenance`, `DailyChartEvidenceReason`,
+`SuperTrendEvidence`, `RsiReviewEvidence`, `VolumeReviewEvidence`,
+`AthRollingHighEvidence`, structural-level candidate types, and version/period
+constants.
+
+**Tests added.** 10 runtime tests covering SuperTrend warm-up, deterministic
+rerun, future-D1 exclusion, latest flip evidence, wrong instrument/timeframe
+incoherency, accepted/expected session mismatch, RSI reuse-equivalence, raw
+Volume MA measurement, ATH/rolling-high relationships, structural-level
+candidate deferral, and rolling-window validation.
+
+**Test results.** `rtk pytest tests/runtime/test_portfolio_daily_chart_evidence.py`:
+10 passed. `rtk uv run ruff check src/athena/portfolio/daily_chart_evidence.py
+tests/runtime/test_portfolio_daily_chart_evidence.py`: clean. `rtk uv run
+--no-cache mypy src/athena/portfolio/daily_chart_evidence.py`: clean.
+`rtk pytest tests/runtime/test_portfolio_daily_chart_evidence.py
+tests/api/platform/test_decision_chart_release_gate.py`: 15 passed. `rtk pytest`:
+3,668 passed, 0 failed, 1 skipped.
+
+**Coverage summary.** Covers the PS-P10B evidence foundation and replay-safety
+contract without relying on provider data, screenshots, dashboard JS, or
+Portfolio snapshot mutation.
+
+**Risks discovered.** TradingView equivalence is not claimed. Pivot/support
+methodology, target methodology, Review Status taxonomy, numeric Review
+Conviction, and Review Guidance prose remain unresolved owner-gated decisions.
+
+**Technical debt introduced.** None. An incidental stale release-gate test
+expectation was updated from dashboard asset version `9.150.0` to the already
+active `9.153.0`; no dashboard source changed.
+
+**Suggested improvements.** Authorize PS-P10C only after owner review if the
+next step is methodology replay/freeze for daily-chart review labels and
+explanations.
+
+**Remaining work.** Wait for Owner/Chief Architect review. PS-P10C is not
+authorized.
+
+**Implementation metrics.** Production source files created: 1. Production
+source files modified: 1. Tests created: 1. Documentation files created/updated:
+4.
+
+**Phase outcome.** PS-P10B implementation complete 2026-09-05 and ready for
+Owner/Chief Architect review.
+
+**Commit hash.** Pending owner commit.
+
+**Branch.** feature/portfolio-sync.
+
+**Review status.** Ready for Owner/Chief Architect review.
+
+---
+
 ## PS-P10A Daily Chart Portfolio Review Intelligence Discovery — Ready for Owner Review
+
+**Update (2026-09-05).** Owner/Chief Architect approved and froze PS-P10A, and
+authorized PS-P10B only. PS-P10C and PS-P10D remain not authorized.
 
 **Summary.** Completed discovery for replacing the owner's earlier Portfolio
 Trading Snapshot workflow with deterministic My Portfolio daily-chart review
