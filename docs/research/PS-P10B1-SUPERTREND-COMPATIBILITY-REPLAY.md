@@ -1,6 +1,6 @@
 # ATHENA — PS-P10B.1 SuperTrend 10,3 Compatibility / Replay Validation
 
-**Status:** Validation complete — ready for Owner / Chief Architect freeze review
+**Status:** Owner / Chief Architect approved and closed
 **Date:** 2026-09-05
 **Scope:** Research/validation only. No Portfolio Review methodology, Portfolio
 field population, SuperTrend formula change, schema/API change, Sync wiring, or
@@ -14,7 +14,10 @@ validate whether the current `supertrend-10-3-athena-v0` primitive behaves close
 enough to the owner's previous Daily Chart workflow to become canonical PS-P10
 evidence.
 
-PS-P10C remains not authorized.
+Owner / Chief Architect approved this validation and froze
+`supertrend-10-3-athena-v0` as the canonical PS-P10 Daily Chart Review
+SuperTrend evidence primitive on 2026-09-05. TradingView equivalence is not
+claimed. PS-P10C remains not started and unauthorized.
 
 ## 2. Implementation Audit
 
@@ -169,10 +172,10 @@ Commands run:
 Validation script was read-only against `db/athena.db`. It created no production
 rows and triggered no provider calls.
 
-## 9. Recommendation
+## 9. Owner Decision
 
-Recommendation: **A. FREEZE `supertrend-10-3-athena-v0` as canonical PS-P10
-evidence.**
+Owner accepted recommendation **A. FREEZE `supertrend-10-3-athena-v0` as
+canonical PS-P10 evidence.**
 
 Reason: the implementation is deterministic, point-in-time safe, has explicit
 warm-up/equality/session semantics, replayed cleanly across 5,134 historical
@@ -181,9 +184,8 @@ available owner screenshot references. Approximate level differences are
 consistent with screenshot/source precision limitations and do not justify a
 formula change.
 
-This recommendation does not claim TradingView equivalence. It recommends
-freezing ATHENA's explicitly versioned primitive as the canonical Portfolio
-Review evidence source.
+This decision does not claim TradingView equivalence. ATHENA's explicitly
+versioned primitive is frozen as the canonical Portfolio Review evidence source.
 
 ## 10. Milestone Review Summary
 
@@ -226,8 +228,7 @@ only screenshots, not exported indicator values, are available.
 later, capture exact exported SuperTrend values for a small reference set and
 compare against this primitive without changing Portfolio methodology.
 
-**Remaining work.** Owner / Chief Architect freeze decision for PS-P10B. PS-P10C
-is not authorized.
+**Remaining work.** PS-P10C is not started and remains unauthorized.
 
 **Commit message.**
 
@@ -243,4 +244,5 @@ docs(portfolio): validate PS-P10B SuperTrend compatibility
   while keeping TradingView equivalence unclaimed.
 ```
 
-**Ready for review.** Yes.
+**Ready for review.** No further PS-P10B.1 review pending; Owner / Chief
+Architect approved/closed 2026-09-05.

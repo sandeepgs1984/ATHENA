@@ -6,7 +6,12 @@ status updated on approval.
 
 ---
 
-## PS-P10B Daily Chart Evidence Foundation — Ready for Owner Review
+## PS-P10B Daily Chart Evidence Foundation — Owner Approved and Frozen
+
+**Final update (2026-09-05).** Owner/Chief Architect approved and froze PS-P10B
+and approved/closed PS-P10B.1. `supertrend-10-3-athena-v0` is frozen as the
+canonical PS-P10 Daily Chart Review SuperTrend evidence primitive, without any
+TradingView-equivalence claim. PS-P10C is not started and remains unauthorized.
 
 **Update (2026-09-05).** Owner/Chief Architect conditionally approved PS-P10B,
 accepted the architecture and evidence-only scope, and required one narrow
@@ -90,14 +95,14 @@ authorized.
 source files modified: 1. Tests created: 1. Documentation files created/updated:
 4.
 
-**Phase outcome.** PS-P10B implementation complete 2026-09-05 and ready for
-Owner/Chief Architect review.
+**Phase outcome.** PS-P10B Owner/Chief Architect approved and frozen
+2026-09-05. PS-P10B.1 validation approved/closed.
 
 **Commit hash.** Pending owner commit.
 
 **Branch.** feature/portfolio-sync.
 
-**Review status.** Ready for Owner/Chief Architect review.
+**Review status.** Owner/Chief Architect approved and frozen 2026-09-05.
 
 ---
 

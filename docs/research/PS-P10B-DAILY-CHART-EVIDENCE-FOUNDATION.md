@@ -1,6 +1,6 @@
 # ATHENA — PS-P10B Daily Chart Evidence Foundation
 
-**Status:** Implementation complete — ready for Owner / Chief Architect review
+**Status:** Owner / Chief Architect approved and frozen
 **Date:** 2026-09-05
 **Scope:** Evidence foundation only. No Portfolio Review Status, Review Guidance,
 Support 1, Major Support / Exit, Target 1/2/3, numeric Review Conviction,
@@ -13,6 +13,11 @@ PS-P10B creates the deterministic D1 evidence foundation needed for a future
 Daily Chart Portfolio Review layer. It replaces the old chart-screenshot-based
 workflow with reusable, typed, point-in-time-safe evidence over canonical D1
 candles.
+
+Owner / Chief Architect approved and froze PS-P10B on 2026-09-05 after the
+PS-P10B.1 SuperTrend compatibility validation. `supertrend-10-3-athena-v0` is
+the canonical PS-P10 SuperTrend evidence primitive. TradingView equivalence is
+not claimed.
 
 The production direction remains:
 
@@ -257,7 +262,7 @@ active `9.153.0`; no dashboard source changed.
 methodologies against real holdings and owner examples before any snapshot or
 dashboard field is populated.
 
-**Remaining work.** Owner / Chief Architect review. PS-P10C is not authorized.
+**Remaining work.** PS-P10C is not started and remains unauthorized.
 
 **Commit message.**
 
@@ -273,4 +278,5 @@ feat(portfolio): add daily chart review evidence foundation
   reuse, candidate deferral, and deterministic replay boundaries.
 ```
 
-**Ready for review.** Yes.
+**Ready for review.** No further PS-P10B review pending; Owner / Chief
+Architect approved and frozen 2026-09-05.
