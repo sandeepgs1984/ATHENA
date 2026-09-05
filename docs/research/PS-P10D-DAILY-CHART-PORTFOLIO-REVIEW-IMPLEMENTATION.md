@@ -2,8 +2,8 @@
 
 Date: 2026-09-05
 
-Status: Implementation correction complete, ready for Owner/Chief Architect
-review. PS-P10D remains not yet approved/frozen pending final owner review.
+Status: Owner/Chief Architect approved and frozen 2026-09-05. Portfolio Daily
+Review v0 COMPLETE.
 
 ## 1. Scope
 
@@ -193,7 +193,7 @@ ADR impact: none.
 Risks: Excel parity is intentionally partial until a future owner-authorized
 structural-level methodology exists.
 
-Remaining work: Owner/Chief Architect review. PS-P10E is not authorized.
+Remaining work: none for Portfolio Daily Review v0. PS-P10E is not required.
 
 Proposed commit message:
 
