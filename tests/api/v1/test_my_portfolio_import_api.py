@@ -77,6 +77,30 @@ def _trend_candles(
     ]
 
 
+def _m5_candle(ts: datetime, close: str, *, high: str = "100", low: str = "95") -> Candle:
+    price = Decimal(close)
+    return Candle(
+        instrument_id="NSE:INFY",
+        timeframe=Timeframe.M5,
+        ts_open=ts,
+        open=price,
+        high=Decimal(high),
+        low=Decimal(low),
+        close=price,
+        volume=1000,
+        source="test-m5",
+    )
+
+
+def _setup_breakout_candles() -> list[Candle]:
+    open_ts = datetime(2026, 9, 2, 9, 15, tzinfo=ZoneInfo("Asia/Kolkata"))
+    return [
+        *[_m5_candle(open_ts + timedelta(minutes=i * 5), "99") for i in range(6)],
+        _m5_candle(open_ts + timedelta(minutes=30), "99"),
+        _m5_candle(open_ts + timedelta(minutes=35), "101", high="101"),
+    ]
+
+
 def _decision(
     *,
     decision_id: str = "dec-infy",
@@ -626,11 +650,11 @@ def test_sync_builds_server_owned_snapshot_math_and_tradeplan_target(
     assert row.next_action == "HOLD"
     assert row.provenance.decision_id == "dec-infy"
     assert row.provenance.validation_run_id == "run-infy"
-    assert row.provenance.interpretation_version == "portfolio-interpretation-v2"
+    assert row.provenance.interpretation_version == "portfolio-interpretation-v3"
     assert "CURRENT_TRADE_PLAN" in row.provenance.interpretation_reason_codes
     assert "ADD_NOT_CONFIRMED" in row.provenance.interpretation_reason_codes
     assert "TREND_D1_EVIDENCE_UNAVAILABLE" in row.provenance.interpretation_reason_codes
-    assert "SETUP_METHODOLOGY_DEFERRED" in row.provenance.interpretation_reason_codes
+    assert "SETUP_OR_INCOMPLETE" in row.provenance.interpretation_reason_codes
     assert "status" not in row.provenance.unavailable_fields
     assert "trend_setup" in row.provenance.unavailable_fields
     assert "target_2" in row.provenance.unavailable_fields
@@ -685,7 +709,7 @@ def test_sync_populates_conviction_from_coherent_confidence(
     assert row.status == "STRONG"
     assert row.next_action == "HOLD"
     assert row.target_1 == Decimal("1700")
-    assert row.provenance.interpretation_version == "portfolio-interpretation-v2"
+    assert row.provenance.interpretation_version == "portfolio-interpretation-v3"
     assert "CONVICTION_FROM_CONFIDENCE" in row.provenance.interpretation_reason_codes
     assert "conviction" not in row.provenance.unavailable_fields
     assert row.provenance.interpretation_evidence["confidence"] == {
@@ -711,13 +735,13 @@ def test_sync_populates_d1_trend_without_new_schema_or_setup(
 
     assert run["status"] == "SUCCESS"
     assert row.last_price == Decimal("1600")
-    assert row.trend_setup == "UPTREND"
+    assert row.trend_setup == "UPTREND / -"
     assert row.status == "STRONG"
     assert row.next_action == "HOLD"
     assert "trend_setup" not in row.provenance.unavailable_fields
     assert "support_1" in row.provenance.unavailable_fields
     assert "target_2" in row.provenance.unavailable_fields
-    assert "SETUP_METHODOLOGY_DEFERRED" in row.provenance.interpretation_reason_codes
+    assert "SETUP_OR_INCOMPLETE" in row.provenance.interpretation_reason_codes
     assert "TREND_UP_FROM_D1_SMA_STRUCTURE" in row.provenance.interpretation_reason_codes
     assert row.provenance.interpretation_evidence["trend"] == {
         "label": "UPTREND",
@@ -731,6 +755,37 @@ def test_sync_populates_d1_trend_without_new_schema_or_setup(
         "candles_used": 50,
         "is_coherent": True,
     }
+    assert row.provenance.interpretation_evidence["setup"]["reason"] == "SETUP_OR_INCOMPLETE"
+
+
+def test_sync_populates_opening_range_setup_without_changing_status_action(
+    my_portfolio_client: TestClient,
+) -> None:
+    repo = _confirm_infy_holding(my_portfolio_client)
+    repo.add_candles(_trend_candles("NSE:INFY", "1400", "1600", "1600"))
+    repo.add_candles(_setup_breakout_candles())
+    decision = _decision(decision_id="dec-setup", ts=SEP2, target="1700")
+    repo.save_decision(decision)
+
+    run = _run_portfolio_sync(repo)
+    row = MyPortfolioService(repo).latest_snapshot().rows[0]
+
+    assert run["status"] == "SUCCESS"
+    assert row.trend_setup == "UPTREND / BREAKOUT"
+    assert row.status == "STRONG"
+    assert row.next_action == "HOLD"
+    assert row.conviction is None
+    assert row.key_trigger is None
+    assert "SETUP_BREAKOUT_FROM_OPENING_RANGE_AGREEMENT" in (
+        row.provenance.interpretation_reason_codes
+    )
+    assert row.provenance.interpretation_evidence["setup"]["label"] == "BREAKOUT"
+    assert row.provenance.interpretation_evidence["setup"]["or15"]["event"] == (
+        "UPSIDE_BREAKOUT_EVENT"
+    )
+    assert row.provenance.interpretation_evidence["setup"]["or30"]["event"] == (
+        "UPSIDE_BREAKOUT_EVENT"
+    )
 
 
 def test_sync_nulls_trend_when_d1_session_does_not_equal_expected_session(
@@ -849,7 +904,7 @@ def test_low_confidence_does_not_block_add_in_sync(
     row = MyPortfolioService(repo).latest_snapshot().rows[0]
 
     assert row.conviction == "LOW"
-    assert row.trend_setup == "MIXED"
+    assert row.trend_setup == "MIXED / -"
     assert row.status == "STRONG"
     assert row.next_action == "ADD"
 
@@ -867,7 +922,7 @@ def test_high_confidence_does_not_suppress_exit_in_sync(
     row = MyPortfolioService(repo).latest_snapshot().rows[0]
 
     assert row.conviction == "HIGH"
-    assert row.trend_setup == "UPTREND"
+    assert row.trend_setup == "UPTREND / -"
     assert row.status == "AT_RISK"
     assert row.next_action == "EXIT"
 

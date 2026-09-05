@@ -39,6 +39,11 @@ from athena.portfolio.my_portfolio_contracts import (
     PortfolioSnapshotRow,
     SyncRunStatus,
 )
+from athena.portfolio.setup_adapter import (
+    PortfolioSetupAdapter,
+    PortfolioSetupEvidence,
+    PortfolioSetupWindowEvidence,
+)
 from athena.portfolio.trend_adapter import PortfolioTrendAdapter, PortfolioTrendEvidence
 
 ValidationRunner = Callable[[Sequence[str], datetime], str | None]
@@ -69,6 +74,7 @@ class PortfolioSyncOrchestrator:
         self._interpreter = PortfolioInterpreter()
         self._confidence_adapter = PortfolioConfidenceAdapter(repo)
         self._trend_adapter = PortfolioTrendAdapter(repo, config_dir=config_dir)
+        self._setup_adapter = PortfolioSetupAdapter(repo, config_dir=config_dir)
 
     def create_run(self) -> dict[str, object]:
         active = self._repo.get_active_portfolio_sync_run()
@@ -344,6 +350,12 @@ class PortfolioSyncOrchestrator:
             expected_analysis_as_of=self._expected_analysis_as_of,
             market_timezone=self._market_timezone,
         )
+        setup_evidence = self._setup_adapter.resolve(
+            instrument_id=holding.instrument_id,
+            accepted_price_as_of=price_as_of,
+            expected_analysis_as_of=self._expected_analysis_as_of,
+            market_timezone=self._market_timezone,
+        )
         interpretation = self._interpreter.interpret(
             PortfolioInterpretationEvidence(
                 instrument_id=holding.instrument_id,
@@ -367,6 +379,9 @@ class PortfolioSyncOrchestrator:
                 trend=trend_evidence.trend,
                 trend_is_coherent=trend_evidence.is_coherent,
                 trend_reason=trend_evidence.reason,
+                setup=setup_evidence.setup,
+                setup_is_coherent=setup_evidence.is_coherent,
+                setup_reason=setup_evidence.reason,
             )
         )
         target_1 = None
@@ -425,6 +440,7 @@ class PortfolioSyncOrchestrator:
                 entry_qualification=entry_qualification,
                 confidence_evidence=confidence_evidence,
                 trend_evidence=trend_evidence,
+                setup_evidence=setup_evidence,
                 price_is_current=final_price_is_expected_session,
                 interpretation_as_of=interpretation_as_of,
             ),
@@ -631,6 +647,7 @@ class PortfolioSyncOrchestrator:
         entry_qualification: EntryQualification | None,
         confidence_evidence: PortfolioConfidenceEvidence,
         trend_evidence: PortfolioTrendEvidence,
+        setup_evidence: PortfolioSetupEvidence,
         price_is_current: bool,
         interpretation_as_of: datetime,
     ) -> dict[str, object]:
@@ -695,6 +712,54 @@ class PortfolioSyncOrchestrator:
                 "candles_used": trend_evidence.candles_used,
                 "is_coherent": trend_evidence.is_coherent,
             },
+            "setup": {
+                "label": (
+                    setup_evidence.setup.value
+                    if setup_evidence.setup is not None
+                    else None
+                ),
+                "reason": setup_evidence.reason.value,
+                "session_date": (
+                    setup_evidence.session_date.isoformat()
+                    if setup_evidence.session_date is not None
+                    else None
+                ),
+                "analysis_as_of": (
+                    setup_evidence.analysis_as_of.isoformat()
+                    if setup_evidence.analysis_as_of is not None
+                    else None
+                ),
+                "evidence_as_of": (
+                    setup_evidence.evidence_as_of.isoformat()
+                    if setup_evidence.evidence_as_of is not None
+                    else None
+                ),
+                "latest_completed_m5_slot": (
+                    setup_evidence.latest_completed_m5_slot.isoformat()
+                    if setup_evidence.latest_completed_m5_slot is not None
+                    else None
+                ),
+                "is_coherent": setup_evidence.is_coherent,
+                "or15": cls._setup_window_to_json(setup_evidence.or15),
+                "or30": cls._setup_window_to_json(setup_evidence.or30),
+            },
+        }
+
+    @staticmethod
+    def _setup_window_to_json(
+        window: PortfolioSetupWindowEvidence | None,
+    ) -> dict[str, object] | None:
+        if window is None:
+            return None
+        return {
+            "status": window.status.value if window.status is not None else None,
+            "event": window.event.value if window.event is not None else None,
+            "returned_inside_range": window.returned_inside_range,
+            "first_event_ts": (
+                window.first_event_ts.isoformat()
+                if window.first_event_ts is not None
+                else None
+            ),
         }
 
     @classmethod

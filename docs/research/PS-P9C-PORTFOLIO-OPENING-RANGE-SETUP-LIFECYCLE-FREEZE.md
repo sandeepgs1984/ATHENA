@@ -3,7 +3,7 @@
 **Date:** 2026-09-05
 **Branch:** `feature/portfolio-sync`
 **Milestone:** PS-P9C - methodology/research only
-**Status:** Ready for Owner / Chief Architect review
+**Status:** Owner / Chief Architect approved and frozen 2026-09-05
 
 ---
 
@@ -14,7 +14,7 @@ smallest deterministic structural Portfolio Setup methodology after resolving
 directionality, OR15/OR30 precedence, returned-inside behavior, intraday
 lifecycle, and post-close lifecycle.
 
-Verdict: recommend freezing Candidate L1 for PS-P9D implementation review.
+Verdict: Candidate L1 is frozen for PS-P9D implementation.
 
 L1 is conservative: it emits `BREAKOUT` only when OR15 and OR30 both show active
 upside breakout with no returned-inside behavior, emits `BREAKDOWN` only when
@@ -24,8 +24,8 @@ or returned-inside cases, but the remaining labels are directional,
 deterministic, explainable, and free of direct `BREAKOUT -> BREAKDOWN` flips in
 the checkpoint grid.
 
-Production remains unchanged: Setup is still null and Portfolio interpretation
-remains `portfolio-interpretation-v2`.
+Production remained unchanged during PS-P9C: Setup was still null and Portfolio
+interpretation remained `portfolio-interpretation-v2`.
 
 ## 2. Frozen PS-P9B Decisions
 
@@ -84,7 +84,7 @@ the main usability cost of L1.
 
 ## 7. Candidate L1
 
-Rule:
+Frozen rule:
 
 - OR15 event and OR30 event both `UPSIDE_BREAKOUT_EVENT`, and neither required
   window returned inside range -> `BREAKOUT`.
@@ -97,6 +97,50 @@ Rule:
   `SETUP_OR_INCOMPLETE`.
 - No valid OR event -> null / `SETUP_NOT_PRESENT`.
 - One-window-only event -> null / `SETUP_SINGLE_WINDOW_ONLY`.
+
+PS-P9C final owner refinement freezes deterministic null-reason precedence from
+highest to lowest:
+
+1. `SETUP_EVIDENCE_INCOHERENT`
+2. `SETUP_EVIDENCE_STALE`
+3. `SETUP_EVIDENCE_UNAVAILABLE`
+4. `SETUP_OR_INCOMPLETE`
+5. `SETUP_OR_WINDOWS_CONFLICT`
+6. `SETUP_RETURNED_INSIDE_RANGE`
+7. `SETUP_SINGLE_WINDOW_ONLY`
+8. `SETUP_NOT_PRESENT`
+
+Overlap examples:
+
+- OR15 downside and returned-inside, OR30 upside and not returned-inside ->
+  null / `SETUP_OR_WINDOWS_CONFLICT`, because conflict outranks
+  returned-inside.
+- OR15 complete active event and OR30 forming/incomplete -> null /
+  `SETUP_OR_INCOMPLETE`, not `SETUP_SINGLE_WINDOW_ONLY`.
+- Both windows complete with exactly one active event -> null /
+  `SETUP_SINGLE_WINDOW_ONLY`.
+- Both windows complete with no active event -> null / `SETUP_NOT_PRESENT`.
+
+Lifecycle:
+
+- Intraday Setup is a stateless point-in-time classification from current
+  accepted evidence.
+- Setup may appear, disappear, or reappear intraday as OR evidence evolves.
+- Conflict and returned-inside produce null; later same-direction agreement can
+  re-establish Setup.
+- No consumed-state memory is introduced.
+- Post-close, retain the final accepted session Setup as the latest completed
+  session structural snapshot.
+- Weekend/holiday views may retain the latest completed trading session Setup
+  with source-session provenance.
+- The next trading session hard-resets Setup.
+
+Context independence:
+
+- Setup does not consume EQ, VWAP, intraday trend, RS, RVOL, DecisionType,
+  Conviction, D1 Trend, TradePlan, Key Trigger, Status, Action, or P&L.
+- `BREAKDOWN` does not mean `EXIT`, `AT_RISK`, or `DOWNTREND`.
+- No thresholds are introduced.
 
 ## 8. Candidate L2
 
@@ -359,15 +403,14 @@ L2 is not recommended for first implementation because it introduces
 early-session OR15-first semantics and a quasi-provisional lifecycle without a
 need strong enough to justify that complexity.
 
-L3 remains safe but less useful than L1 after PS-P9C replay.
+L3 remains safe but is not preferred after PS-P9C replay.
 
 ## 30. Recommended Methodology or Deferral
 
-Outcome A: recommend freezing L1 as the minimal Portfolio Opening Range Setup
-methodology for owner review.
+Outcome A: L1 is frozen as the minimal Portfolio Opening Range Setup
+methodology.
 
-Do not implement until the owner explicitly approves PS-P9C and authorizes a
-separate PS-P9D implementation milestone.
+PS-P9D implementation is authorized only after this PS-P9C freeze.
 
 ## 31. Reason-Code Recommendation
 
@@ -382,6 +425,7 @@ Freeze these conceptual reasons for PS-P9D naming/finalization:
 - `SETUP_EVIDENCE_UNAVAILABLE`
 - `SETUP_EVIDENCE_STALE`
 - `SETUP_EVIDENCE_INCOHERENT`
+- `SETUP_SINGLE_WINDOW_ONLY`
 
 Owner-facing Setup labels remain only `BREAKOUT`, `BREAKDOWN`, and `-`.
 
@@ -399,7 +443,7 @@ backfill; v0/v1/v2 snapshots remain immutable.
 | `BREAKOUT` owner-facing label? | Yes, under L1 only. |
 | `BREAKDOWN` owner-facing label? | Yes, as structural context only. |
 | Structural rather than actionable? | Yes. |
-| L1 agreement rule? | Approve/freeze. |
+| L1 agreement rule? | Approved and frozen. |
 | OR15-only Setup allowed? | No. |
 | OR30-only Setup allowed? | No. |
 | Conflict -> null? | Yes. |
@@ -420,11 +464,11 @@ backfill; v0/v1/v2 snapshots remain immutable.
 | Null reason taxonomy? | Approve. |
 | No-setup vs unavailable distinction? | Mandatory. |
 | Future implementation version? | `portfolio-interpretation-v3`. |
-| PS-P9D or deferral? | PS-P9D implementation if owner approves L1; otherwise keep Setup deferred. |
+| PS-P9D or deferral? | PS-P9D implementation authorized after PS-P9C freeze. |
 
 ## 34. Recommended Next Milestone
 
-Recommended PS-P9D: implement only L1 Opening Range Setup in Portfolio
+PS-P9D: implement only L1 Opening Range Setup in Portfolio
 interpretation/sync/API/dashboard using the existing `trend_setup`/
 `trend_or_setup` surface, version new snapshots as `portfolio-interpretation-v3`,
 and preserve Status, Action, Conviction, D1 Trend, Key Trigger, schema shape,
@@ -455,6 +499,13 @@ Documentation/research validation:
 - Portfolio interpretation version check: still `portfolio-interpretation-v2`.
 - OpeningRangeEngine, EntryQualification, schema, API, and dashboard status
   checks: unchanged by PS-P9C.
+
+## 38. Freeze Decision
+
+PS-P9C is Owner / Chief Architect approved and frozen 2026-09-05. Candidate L1
+is the only approved production Setup methodology for PS-P9D. L2 is rejected.
+L3 remains a safe fallback if implementation is deferred, but is not the
+preferred path.
 
 ## 37. Suggested Commit Message
 

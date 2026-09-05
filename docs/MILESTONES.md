@@ -25,7 +25,8 @@ too large for a single-sitting review is split BEFORE implementation.
 `docs/research/PS-P8C-PORTFOLIO-D1-TREND-ADAPTER-IMPLEMENTATION.md`,
 `docs/research/PS-P9A-PORTFOLIO-SETUP-METHODOLOGY-DISCOVERY.md`,
 `docs/research/PS-P9B-PORTFOLIO-OPENING-RANGE-SETUP-METHODOLOGY-REPLAY.md`,
-`docs/research/PS-P9C-PORTFOLIO-OPENING-RANGE-SETUP-LIFECYCLE-FREEZE.md`
+`docs/research/PS-P9C-PORTFOLIO-OPENING-RANGE-SETUP-LIFECYCLE-FREEZE.md`,
+`docs/research/PS-P9D-PORTFOLIO-OPENING-RANGE-SETUP-ADAPTER-IMPLEMENTATION.md`
 
 Adds a My Portfolio dashboard feature/subdomain inside ATHENA's existing
 portfolio capability. The feature owns imported current holdings,
@@ -52,7 +53,8 @@ ScoringEngine/DecisionEngine methodology.
 | PS-P8C | Portfolio D1 Trend Adapter Implementation — populate only the existing Trend / Setup field's Trend dimension from coherent holding D1 SMA20/SMA50 evidence, version new output as portfolio-interpretation-v2, and keep Setup/support/target/reduce/rotate/ranking/history deferred | ✅ Owner/Chief Architect approved and frozen 2026-09-04 |
 | PS-P9A | Portfolio Setup Methodology Discovery — audit whether any existing approved evidence can deterministically support current Setup semantics without confusing Setup with Trend, Decision, Status, Action, Conviction, P&L, DarvaX, or research-only artifacts | ✅ Owner/Chief Architect approved and frozen 2026-09-04 |
 | PS-P9B | Portfolio Opening-Range Setup Methodology Design & Replay — determine whether approved OR15/OR30 evidence can become a stable owner-facing Setup semantic with directionality, lifecycle, session validity, conflict handling, and replay safety defined without new thresholds | ✅ Owner/Chief Architect approved and frozen 2026-09-04 |
-| PS-P9C | Opening-Range Setup Lifecycle & Precedence Freeze — replay the minimal directional OR15+OR30 agreement rule, compare OR15-first deferral risk, freeze or defer Setup lifecycle/precedence/null semantics before any implementation | 🔄 Methodology/replay complete 2026-09-05 — ready for Owner/Chief Architect review; no Setup implementation authorized |
+| PS-P9C | Opening-Range Setup Lifecycle & Precedence Freeze — replay the minimal directional OR15+OR30 agreement rule, compare OR15-first deferral risk, freeze or defer Setup lifecycle/precedence/null semantics before any implementation | ✅ Owner/Chief Architect approved and frozen 2026-09-05 |
+| PS-P9D | Portfolio Opening Range Setup Adapter Implementation — implement only frozen L1 using persisted canonical M5, OpeningRangeEngine, typed Setup evidence, interpretation-v3, and existing Trend / Setup presentation while preserving Status/Action/Conviction/TradePlan independence | 🔄 Implementation complete 2026-09-05 — ready for Owner/Chief Architect review |
 
 ## Intraday Intelligence Track (ID-0 started 2026-08-29)
 

@@ -414,6 +414,10 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert "TREND_D1_EVIDENCE_UNAVAILABLE" in js
     assert "TREND_D1_EVIDENCE_INCOHERENT" in js
     assert "SETUP_METHODOLOGY_DEFERRED" in js
+    assert "SETUP_BREAKOUT_FROM_OPENING_RANGE_AGREEMENT" in js
+    assert "SETUP_BREAKDOWN_FROM_OPENING_RANGE_AGREEMENT" in js
+    assert "SETUP_OR_WINDOWS_CONFLICT" in js
+    assert "SETUP_RETURNED_INSIDE_RANGE" in js
     my_portfolio_js = (
         Path(__file__).parents[3]
         / "src"

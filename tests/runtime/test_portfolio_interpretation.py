@@ -25,6 +25,7 @@ from athena.portfolio.interpretation import (
     PortfolioNextAction,
     PortfolioStatus,
 )
+from athena.portfolio.setup_adapter import PortfolioSetup, PortfolioSetupReason
 from athena.portfolio.trend_adapter import PortfolioTrend, PortfolioTrendReason
 
 AS_OF = datetime(2026, 9, 2, 10, 0, tzinfo=timezone.utc)
@@ -105,6 +106,9 @@ def _evidence(
     trend: PortfolioTrend | None = None,
     trend_is_coherent: bool = False,
     trend_reason: PortfolioTrendReason | None = None,
+    setup: PortfolioSetup | None = None,
+    setup_is_coherent: bool = False,
+    setup_reason: PortfolioSetupReason | None = None,
 ) -> PortfolioInterpretationEvidence:
     resolved_decision = decision if decision is not None else _decision(plan=_plan())
     return PortfolioInterpretationEvidence(
@@ -123,6 +127,9 @@ def _evidence(
         trend=trend,
         trend_is_coherent=trend_is_coherent,
         trend_reason=trend_reason,
+        setup=setup,
+        setup_is_coherent=setup_is_coherent,
+        setup_reason=setup_reason,
     )
 
 
@@ -245,7 +252,7 @@ def test_null_methodology_fields_remain_null_with_reasons() -> None:
     assert result.target_2 is None
     assert result.target_3 is None
     assert PortfolioInterpretationReason.CONVICTION_CONFIDENCE_UNAVAILABLE in result.reason_codes
-    assert PortfolioInterpretationReason.SETUP_METHODOLOGY_DEFERRED in result.reason_codes
+    assert PortfolioInterpretationReason.SETUP_EVIDENCE_UNAVAILABLE in result.reason_codes
     assert PortfolioInterpretationReason.TREND_D1_EVIDENCE_UNAVAILABLE in result.reason_codes
     assert PortfolioInterpretationReason.SUPPORT_1_METHODOLOGY_UNAVAILABLE in result.reason_codes
     assert PortfolioInterpretationReason.NO_APPROVED_SECONDARY_TARGET in result.reason_codes
@@ -291,7 +298,7 @@ def test_trend_maps_directly_without_changing_status_action_or_plan_fields(
         _evidence(trend=trend, trend_is_coherent=True, trend_reason=reason)
     )
 
-    assert result.trend_setup == trend.value
+    assert result.trend_setup == f"{trend.value} / -"
     assert result.status is PortfolioStatus.STRONG
     assert result.next_action is PortfolioNextAction.HOLD
     assert result.key_trigger is None
@@ -299,7 +306,7 @@ def test_trend_maps_directly_without_changing_status_action_or_plan_fields(
     assert result.target_2 is None
     assert result.target_3 is None
     assert expected_reason in result.reason_codes
-    assert PortfolioInterpretationReason.SETUP_METHODOLOGY_DEFERRED in result.reason_codes
+    assert PortfolioInterpretationReason.SETUP_EVIDENCE_UNAVAILABLE in result.reason_codes
 
 
 def test_incoherent_trend_is_null_without_changing_interpretation() -> None:
@@ -315,6 +322,88 @@ def test_incoherent_trend_is_null_without_changing_interpretation() -> None:
     assert result.status is PortfolioStatus.STRONG
     assert result.next_action is PortfolioNextAction.HOLD
     assert PortfolioInterpretationReason.TREND_D1_EVIDENCE_INCOHERENT in result.reason_codes
+
+
+def test_setup_maps_directly_without_changing_status_action_or_plan_fields() -> None:
+    result = _interpret(
+        _evidence(
+            trend=PortfolioTrend.UPTREND,
+            trend_is_coherent=True,
+            trend_reason=PortfolioTrendReason.UP_FROM_D1_SMA_STRUCTURE,
+            setup=PortfolioSetup.BREAKOUT,
+            setup_is_coherent=True,
+            setup_reason=PortfolioSetupReason.BREAKOUT_FROM_OPENING_RANGE_AGREEMENT,
+        )
+    )
+
+    assert result.trend_setup == "UPTREND / BREAKOUT"
+    assert result.status is PortfolioStatus.STRONG
+    assert result.next_action is PortfolioNextAction.HOLD
+    assert result.key_trigger is None
+    assert result.major_support_exit == Decimal("1450")
+    assert result.target_2 is None
+    assert result.target_3 is None
+    assert (
+        PortfolioInterpretationReason.SETUP_BREAKOUT_FROM_OPENING_RANGE_AGREEMENT
+        in result.reason_codes
+    )
+
+
+@pytest.mark.parametrize(
+    ("reason", "expected_reason"),
+    [
+        (
+            PortfolioSetupReason.EVIDENCE_INCOHERENT,
+            PortfolioInterpretationReason.SETUP_EVIDENCE_INCOHERENT,
+        ),
+        (
+            PortfolioSetupReason.EVIDENCE_STALE,
+            PortfolioInterpretationReason.SETUP_EVIDENCE_STALE,
+        ),
+        (
+            PortfolioSetupReason.OR_INCOMPLETE,
+            PortfolioInterpretationReason.SETUP_OR_INCOMPLETE,
+        ),
+        (
+            PortfolioSetupReason.OR_WINDOWS_CONFLICT,
+            PortfolioInterpretationReason.SETUP_OR_WINDOWS_CONFLICT,
+        ),
+        (
+            PortfolioSetupReason.RETURNED_INSIDE_RANGE,
+            PortfolioInterpretationReason.SETUP_RETURNED_INSIDE_RANGE,
+        ),
+        (
+            PortfolioSetupReason.SINGLE_WINDOW_ONLY,
+            PortfolioInterpretationReason.SETUP_SINGLE_WINDOW_ONLY,
+        ),
+        (
+            PortfolioSetupReason.NOT_PRESENT,
+            PortfolioInterpretationReason.SETUP_NOT_PRESENT,
+        ),
+    ],
+)
+def test_setup_null_reasons_do_not_change_interpretation(
+    reason: PortfolioSetupReason,
+    expected_reason: PortfolioInterpretationReason,
+) -> None:
+    result = _interpret(
+        _evidence(
+            trend=PortfolioTrend.MIXED,
+            trend_is_coherent=True,
+            trend_reason=PortfolioTrendReason.MIXED_FROM_D1_SMA_STRUCTURE,
+            setup=None,
+            setup_is_coherent=reason not in (
+                PortfolioSetupReason.EVIDENCE_INCOHERENT,
+                PortfolioSetupReason.EVIDENCE_STALE,
+            ),
+            setup_reason=reason,
+        )
+    )
+
+    assert result.trend_setup == "MIXED / -"
+    assert result.status is PortfolioStatus.STRONG
+    assert result.next_action is PortfolioNextAction.HOLD
+    assert expected_reason in result.reason_codes
 
 
 def test_trend_does_not_block_add_or_suppress_exit() -> None:
@@ -336,9 +425,9 @@ def test_trend_does_not_block_add_or_suppress_exit() -> None:
         )
     )
 
-    assert add.trend_setup == "DOWNTREND"
+    assert add.trend_setup == "DOWNTREND / -"
     assert add.next_action is PortfolioNextAction.ADD
-    assert exit_result.trend_setup == "UPTREND"
+    assert exit_result.trend_setup == "UPTREND / -"
     assert exit_result.next_action is PortfolioNextAction.EXIT
 
 

@@ -143,6 +143,16 @@
             TREND_D1_EVIDENCE_UNAVAILABLE: "D1 trend evidence is unavailable.",
             TREND_D1_EVIDENCE_INCOHERENT: "D1 trend evidence is not coherent with the accepted Portfolio session.",
             SETUP_METHODOLOGY_DEFERRED: "Setup methodology is intentionally deferred.",
+            SETUP_BREAKOUT_FROM_OPENING_RANGE_AGREEMENT: "Setup: OR15 and OR30 both show an upside breakout.",
+            SETUP_BREAKDOWN_FROM_OPENING_RANGE_AGREEMENT: "Setup: OR15 and OR30 both show a downside breakdown.",
+            SETUP_EVIDENCE_INCOHERENT: "Setup evidence is not coherent with the accepted Portfolio session.",
+            SETUP_EVIDENCE_STALE: "Setup evidence is stale for the accepted Portfolio session.",
+            SETUP_EVIDENCE_UNAVAILABLE: "Setup evidence is unavailable.",
+            SETUP_OR_INCOMPLETE: "Setup: OR15 or OR30 is not complete.",
+            SETUP_OR_WINDOWS_CONFLICT: "Setup: OR15 and OR30 disagree.",
+            SETUP_RETURNED_INSIDE_RANGE: "Setup: price returned inside a required opening range.",
+            SETUP_SINGLE_WINDOW_ONLY: "Setup: only one opening range window has an active event.",
+            SETUP_NOT_PRESENT: "Setup: no opening range setup is present.",
         };
         const messages = codes.map(code => labels[code]).filter(Boolean);
         const failures = row?.provenance?.failed_components || [];

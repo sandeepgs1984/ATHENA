@@ -19,9 +19,10 @@ from athena.intraday.entry_qualification_models import (
     EntryQualification,
     EntryQualificationState,
 )
+from athena.portfolio.setup_adapter import PortfolioSetup, PortfolioSetupReason
 from athena.portfolio.trend_adapter import PortfolioTrend, PortfolioTrendReason
 
-PORTFOLIO_INTERPRETATION_VERSION = "portfolio-interpretation-v2"
+PORTFOLIO_INTERPRETATION_VERSION = "portfolio-interpretation-v3"
 
 
 @unique
@@ -81,6 +82,20 @@ class PortfolioInterpretationReason(str, Enum):
     TREND_D1_EVIDENCE_UNAVAILABLE = "TREND_D1_EVIDENCE_UNAVAILABLE"
     TREND_D1_EVIDENCE_INCOHERENT = "TREND_D1_EVIDENCE_INCOHERENT"
     SETUP_METHODOLOGY_DEFERRED = "SETUP_METHODOLOGY_DEFERRED"
+    SETUP_BREAKOUT_FROM_OPENING_RANGE_AGREEMENT = (
+        "SETUP_BREAKOUT_FROM_OPENING_RANGE_AGREEMENT"
+    )
+    SETUP_BREAKDOWN_FROM_OPENING_RANGE_AGREEMENT = (
+        "SETUP_BREAKDOWN_FROM_OPENING_RANGE_AGREEMENT"
+    )
+    SETUP_EVIDENCE_INCOHERENT = "SETUP_EVIDENCE_INCOHERENT"
+    SETUP_EVIDENCE_STALE = "SETUP_EVIDENCE_STALE"
+    SETUP_EVIDENCE_UNAVAILABLE = "SETUP_EVIDENCE_UNAVAILABLE"
+    SETUP_OR_INCOMPLETE = "SETUP_OR_INCOMPLETE"
+    SETUP_OR_WINDOWS_CONFLICT = "SETUP_OR_WINDOWS_CONFLICT"
+    SETUP_RETURNED_INSIDE_RANGE = "SETUP_RETURNED_INSIDE_RANGE"
+    SETUP_SINGLE_WINDOW_ONLY = "SETUP_SINGLE_WINDOW_ONLY"
+    SETUP_NOT_PRESENT = "SETUP_NOT_PRESENT"
     CONTEXT_CAUTION = "CONTEXT_CAUTION"
     NO_STRONGER_ACTION_SUPPORTED = "NO_STRONGER_ACTION_SUPPORTED"
 
@@ -102,6 +117,9 @@ class PortfolioInterpretationEvidence:
     trend: PortfolioTrend | None = None
     trend_is_coherent: bool = False
     trend_reason: PortfolioTrendReason | None = None
+    setup: PortfolioSetup | None = None
+    setup_is_coherent: bool = False
+    setup_reason: PortfolioSetupReason | None = None
 
     def __post_init__(self) -> None:
         if not self.instrument_id:
@@ -133,7 +151,6 @@ class PortfolioInterpreter:
         evidence: PortfolioInterpretationEvidence,
     ) -> PortfolioInterpretationResult:
         reasons: list[PortfolioInterpretationReason] = [
-            PortfolioInterpretationReason.SETUP_METHODOLOGY_DEFERRED,
             PortfolioInterpretationReason.SUPPORT_1_METHODOLOGY_UNAVAILABLE,
             PortfolioInterpretationReason.NO_APPROVED_SECONDARY_TARGET,
         ]
@@ -193,15 +210,29 @@ class PortfolioInterpreter:
         evidence: PortfolioInterpretationEvidence,
         reasons: list[PortfolioInterpretationReason],
     ) -> str | None:
+        trend_label: str | None = None
         if evidence.trend is not None and evidence.trend_is_coherent:
             if evidence.trend_reason is not None:
                 reasons.append(PortfolioInterpretationReason(evidence.trend_reason.value))
-            return evidence.trend.value
-        if evidence.trend_reason is PortfolioTrendReason.D1_EVIDENCE_INCOHERENT:
+            trend_label = evidence.trend.value
+        elif evidence.trend_reason is PortfolioTrendReason.D1_EVIDENCE_INCOHERENT:
             reasons.append(PortfolioInterpretationReason.TREND_D1_EVIDENCE_INCOHERENT)
         else:
             reasons.append(PortfolioInterpretationReason.TREND_D1_EVIDENCE_UNAVAILABLE)
-        return None
+
+        setup_label: str | None = None
+        if evidence.setup is not None and evidence.setup_is_coherent:
+            if evidence.setup_reason is not None:
+                reasons.append(PortfolioInterpretationReason(evidence.setup_reason.value))
+            setup_label = evidence.setup.value
+        elif evidence.setup_reason is not None:
+            reasons.append(PortfolioInterpretationReason(evidence.setup_reason.value))
+        else:
+            reasons.append(PortfolioInterpretationReason.SETUP_EVIDENCE_UNAVAILABLE)
+
+        if trend_label is None and setup_label is None:
+            return None
+        return f"{trend_label or '-'} / {setup_label or '-'}"
 
     def _status(
         self,

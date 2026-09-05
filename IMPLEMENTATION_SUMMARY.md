@@ -6,16 +6,96 @@ status updated on approval.
 
 ---
 
-## PS-P9C Opening-Range Setup Lifecycle Freeze — Ready for Owner Review
+## PS-P9D Opening-Range Setup Adapter Implementation — Ready for Owner Review
+
+**Summary.** Implemented the Owner/Chief Architect-approved PS-P9C L1 Opening
+Range Setup methodology for My Portfolio. The new adapter consumes persisted
+canonical M5 evidence, delegates OR15/OR30 computation to `OpeningRangeEngine`,
+applies the frozen null precedence, and produces typed `BREAKOUT`/`BREAKDOWN` or
+null Setup evidence with provenance. New Portfolio outputs are versioned
+`portfolio-interpretation-v3` and reuse the existing `trend_setup` /
+`trend_or_setup` surface for combined Trend / Setup display.
+
+**Architecture compliance.** Preserved frozen boundaries: no schema migration,
+no API shape change, no OpeningRangeEngine duplication, no EntryQualification
+change, no DecisionEngine/ScoringEngine change, no broker/order behavior.
+Setup is structural-only and does not affect Status, Next Action, ADD, EXIT,
+Conviction, Key Trigger, TradePlan, D1 Trend, or P&L.
+
+**Files created.**
+
+- `src/athena/portfolio/setup_adapter.py`
+- `tests/runtime/test_portfolio_setup_adapter.py`
+- `docs/research/PS-P9D-PORTFOLIO-OPENING-RANGE-SETUP-ADAPTER-IMPLEMENTATION.md`
+
+**Files modified.**
+
+- `src/athena/portfolio/interpretation.py`
+- `src/athena/portfolio/sync.py`
+- `src/athena/api/static/js/08b-my-portfolio.js`
+- `tests/runtime/test_portfolio_interpretation.py`
+- `tests/api/v1/test_my_portfolio_import_api.py`
+- `tests/api/platform/test_dashboard_hosting.py`
+- `docs/research/PS-P9C-PORTFOLIO-OPENING-RANGE-SETUP-LIFECYCLE-FREEZE.md`
+- `docs/MILESTONES.md`
+- `IMPLEMENTATION_SUMMARY.md`
+- `ATHENA_BRIEFING.md`
+
+**Public APIs added.** None. Existing `trend_or_setup` remains the DTO/API
+field.
+
+**Tests added.** Adapter tests for L1 `BREAKOUT`/`BREAKDOWN`, null precedence,
+incoherent OR context, stale/unavailable evidence, and future M5 safety.
+
+**Test results.** Focused runtime tests: 36 passed. My Portfolio API/dashboard
+slice: 58 passed. Ruff on changed Python files: all checks passed. Mypy on
+changed Portfolio source files: success, no issues found in 3 source files.
+Full suite: 3,658 passed, 1 skipped. `git diff --check`: clean.
+
+**Coverage summary.** Covers pure adapter classification, interpreter
+non-interference, sync provenance, combined Trend / Setup output, dashboard
+reason text, and future-candle regression.
+
+**Risks discovered.** No M5 current-session evidence produces
+`SETUP_OR_INCOMPLETE` once the adapter can prove OR15/OR30 are not complete.
+This is expected under PS-P9C L1 precedence and is intentionally distinct from
+true evidence-unavailable/stale/incoherent cases.
+
+**Technical debt introduced.** None. Deferred Portfolio Intelligence work
+remains Support 1, Target 2/3, REDUCE, ROTATE, allocation, ranking, and history.
+
+**Suggested improvements.** After owner approval, run a read-only production
+observation pass to characterize Setup label frequency on real Portfolio
+holdings without changing thresholds or methodology.
+
+**Remaining work.** Owner/Chief Architect review of PS-P9D. Do not auto-start
+the next milestone.
+
+**Implementation metrics.** Production source files created: 1. Production
+source files modified: 3. Tests created/updated: 4. Documentation files
+created/updated: 4.
+
+**Phase outcome.** PS-P9D implementation complete and ready for Owner/Chief
+Architect review.
+
+**Commit hash.** Pending owner commit.
+
+**Branch.** feature/portfolio-sync.
+
+**Review status.** Ready for Owner/Chief Architect review.
+
+---
+
+## PS-P9C Opening-Range Setup Lifecycle Freeze — Owner Approved and Frozen
 
 **Summary.** PS-P9B was Owner/Chief Architect approved and frozen on
 2026-09-04 with production Setup still null under `portfolio-interpretation-v2`.
 PS-P9C replayed the minimal Opening Range Setup candidates over the same
-persisted ATHENA evidence population. Verdict: recommend freezing Candidate L1
-for owner review — `BREAKOUT` only when OR15 and OR30 both show active upside
-breakout with no returned-inside behavior, `BREAKDOWN` only when both show
-active downside breakdown with no returned-inside behavior, otherwise null with
-provenance.
+persisted ATHENA evidence population. Owner/Chief Architect approved and froze
+Candidate L1 on 2026-09-05 — `BREAKOUT` only when OR15 and OR30 both show
+active upside breakout with no returned-inside behavior, `BREAKDOWN` only when
+both show active downside breakdown with no returned-inside behavior, otherwise
+null with deterministic provenance.
 
 **Architecture compliance.** Documentation/research-only milestone. No
 production Portfolio interpreter, Portfolio Sync, DTO, dashboard, schema,
@@ -55,24 +135,23 @@ conflict. This is the cost of keeping v3 semantics simple and stable.
 work remains: production Setup implementation, Support 1, Target 2/3, REDUCE,
 ROTATE, allocation, ranking, and history.
 
-**Suggested improvements.** If the owner approves PS-P9C, authorize PS-P9D to
-implement only L1 Opening Range Setup under `portfolio-interpretation-v3`.
-Otherwise keep Setup deferred and move to another Portfolio V2 capability.
+**Suggested improvements.** Implement only L1 Opening Range Setup under
+`portfolio-interpretation-v3` in PS-P9D; keep all non-L1 variants deferred.
 
-**Remaining work.** Owner/Chief Architect review of PS-P9C. No Setup
-implementation is authorized.
+**Remaining work.** PS-P9D implementation only; no L2/OR15-only/OR30-only
+methodology is authorized.
 
 **Implementation metrics.** Documentation-only. Production source files
 changed for PS-P9C: 0. Tests added: 0.
 
-**Phase outcome.** PS-P9C methodology/replay complete and ready for Owner/Chief
-Architect review. Production Setup remains deferred.
+**Phase outcome.** PS-P9C Owner/Chief Architect approved and frozen 2026-09-05.
+Production Setup remains deferred until PS-P9D output.
 
 **Commit hash.** Pending owner commit.
 
 **Branch.** feature/portfolio-sync.
 
-**Review status.** Ready for Owner/Chief Architect review.
+**Review status.** Owner/Chief Architect approved and frozen 2026-09-05.
 
 ---
 
