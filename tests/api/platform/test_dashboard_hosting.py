@@ -303,8 +303,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.154.0" in html
-    assert "dashboard.js?v=9.154.0" in html
+    assert "dashboard.css?v=9.155.0" in html
+    assert "dashboard.js?v=9.155.0" in html
     assert "function decisionConfidenceBand" in js
     assert "analysis?.confidence_level" in js
     assert "confidence reflects evidence reliability, not expected profit" in js
@@ -367,15 +367,26 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert 'id="my-portfolio-preview-duplicates"' in html
     assert 'id="my-portfolio-holdings-rows"' in html
     assert 'id="my-portfolio-history-rows"' in html
+    assert 'id="my-portfolio-detail-modal"' in html
+    assert 'id="my-portfolio-detail-body"' in html
     for heading in (
         "Last Price",
-        "Price As Of",
-        "Current Value",
         "P&amp;L",
+        "P&amp;L %",
         "Status",
         "Conviction",
         "Trend / Setup",
         "Daily Review",
+        "Next Action",
+        "Plan Levels",
+        "Freshness",
+    ):
+        assert heading in html
+    # MY-PORTFOLIO-V1-FINAL-UX-CLOSURE: these five columns were dropped from
+    # the main table (3 permanently, PS-P10C.1 NO-GO; 2 collapsed into Plan
+    # Levels) — proves the redesign actually happened, not just additions.
+    for removed_heading in (
+        "Price As Of",
         "Daily Guidance",
         "Key Trigger",
         "Support 1",
@@ -383,10 +394,8 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
         "Target 1",
         "Target 2",
         "Target 3",
-        "Next Action",
-        "Last Review",
     ):
-        assert heading in html
+        assert removed_heading not in html
 
     assert '@import url("css/05b-my-portfolio.css");' in css_manifest
     assert ".my-portfolio-table-scroll" in my_portfolio_css
@@ -395,25 +404,60 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert ".my-portfolio-wide-table th:nth-child(3)" in my_portfolio_css
     assert "position: sticky" in my_portfolio_css
     assert ".my-portfolio-confirm-actions[hidden]" in my_portfolio_css
-    assert "min-width: 3820px" in my_portfolio_css
+    assert "min-width: 2290px" in my_portfolio_css
+    assert "min-width: 3820px" not in my_portfolio_css
     assert "table-layout: fixed" in my_portfolio_css
     assert "left: 180px" in my_portfolio_css
     assert "left: 290px" in my_portfolio_css
     assert "background: var(--bg-sidebar)" in my_portfolio_css
     assert "box-shadow: 1px 0 0 var(--border-color)" in my_portfolio_css
     assert ".my-portfolio-col-symbol" in my_portfolio_css
-    assert ".my-portfolio-col-daily-status" in my_portfolio_css
-    assert ".my-portfolio-col-daily-guidance" in my_portfolio_css
-    assert ".my-portfolio-col-trigger" in my_portfolio_css
+    assert ".my-portfolio-col-daily-review" in my_portfolio_css
+    assert ".my-portfolio-col-levels" in my_portfolio_css
+    assert ".my-portfolio-col-freshness" in my_portfolio_css
+    assert ".my-portfolio-col-daily-status" not in my_portfolio_css
+    assert ".my-portfolio-col-daily-guidance" not in my_portfolio_css
+    assert ".my-portfolio-col-trigger" not in my_portfolio_css
     assert ".my-portfolio-wide-table td {\n    overflow: visible;" in my_portfolio_css
     assert ".my-portfolio-nowrap" in my_portfolio_css
     assert ".my-portfolio-muted-dash" in my_portfolio_css
+    assert ".my-portfolio-daily-review-cell" in my_portfolio_css
+    assert ".my-portfolio-daily-review-summary" in my_portfolio_css
+    assert ".my-portfolio-levels" in my_portfolio_css
+    assert "#my-portfolio-holdings-rows tr[data-instrument-id]" in my_portfolio_css
+    assert ".my-portfolio-detail-grid" in my_portfolio_css
+    assert ".my-portfolio-detail-notice" in my_portfolio_css
+    assert ".my-portfolio-detail-modal-container" in css
 
     assert "08b-my-portfolio.js" in DASHBOARD_JS_PARTS
     assert "function loadMyPortfolioWorkspace()" in js
     assert "function uploadMyPortfolioFile(file)" in js
     assert "function myPortfolioDailyReviewStatusCell(review)" in js
-    assert "function myPortfolioDailyGuidanceCell(review)" in js
+    assert "function myPortfolioDailyGuidanceCell(review)" not in js
+    assert "function myPortfolioDailyReviewSummary(review, trendLabel)" in js
+    assert "function myPortfolioDailyReviewCell(row)" in js
+    assert "function myPortfolioPlanLevelsCell(row)" in js
+    assert "function myPortfolioFreshnessCell(row)" in js
+    assert "function myPortfolioTrendLabelOnly(value)" in js
+    assert "function myPortfolioDailyReviewReasonSummary(row)" in js
+    assert "function renderMyPortfolioDetail(row)" in js
+    assert "function openMyPortfolioDetail(key)" in js
+    # Owner Correction 2: TradePlan-derived levels must never be labeled
+    # "Support"/"Major Support" — that implies rejected structural
+    # methodology (PS-P10C.1 NO-GO).
+    assert "Plan Trigger" in js
+    assert "Plan Stop" in js
+    assert "Plan T1" in js
+    assert "Major Support" not in js
+    assert "No active plan levels" in js
+    assert "No active TradePlan level currently available." in js
+    assert (
+        "Structural Support 1 and Target 2/3 are unavailable in Portfolio v0 "
+        "because no trustworthy deterministic methodology has been frozen"
+    ) in js
+    assert "RSI14 is raw context only" in js
+    assert "no overbought/oversold interpretation" in js
+    assert "no expansion/compression interpretation" in js
     assert "Support, invalidation, targets, EXIT_RISK, and numeric Review Conviction are deferred for v0." in js
     assert "function confirmMyPortfolioPreview()" in js
     assert "/api/v1/my-portfolio/imports?filename=" in js
@@ -446,8 +490,8 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert "Sync Portfolio to regenerate current Trend, Setup, and Daily Review evidence" in js
     assert "Latest accepted market session through" in js
     assert "myPortfolioConfirmActions.hidden = !myPortfolioState.preview" in js
-    assert 'myPortfolioCell(formatMyPortfolioTime(row.price_as_of), "my-portfolio-nowrap")' in js
-    assert "myPortfolioMoneyCell(row.current_value)" in js
+    assert "formatMyPortfolioTime(row.price_as_of)" in js
+    assert "formatMyPortfolioMoney(row.current_value)" in js
     assert "myPortfolioDash()" in js
     assert "${raw} / legacy" in js
     assert 'myPortfolioUploadState.textContent = `Sync ${run.sync_run_id}' not in js
@@ -2514,6 +2558,139 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert "dag-node-icon-wrap" in render_trace_dag_body
     assert "dag-node-body" in render_trace_dag_body
     assert "selectNode(stage.stage_id, { userInitiated: true })" in render_trace_dag_body
+
+
+def test_my_portfolio_ux_closure_composition_contract(client: TestClient) -> None:
+    """MY-PORTFOLIO-V1-FINAL-UX-CLOSURE: the compact main table, the Plan
+    Levels/Daily Review/Freshness compositions, and the holding-detail
+    drawer are presentation-only over already-computed fields — no DTO,
+    methodology, or classification change. Static-asset codebase (ADR-004,
+    no JS test runner), so behavior is locked at the source-string level,
+    matching this test file's own established convention."""
+    js = client.get("/dashboard/dashboard.js").text
+
+    # --- Daily Review composed summary: one branch per frozen status, using
+    # only already-computed fields (SuperTrend direction, D1 Trend label,
+    # new-available-history-high flag). Never a new classification path.
+    daily_review_summary_start = js.find("function myPortfolioDailyReviewSummary(")
+    assert daily_review_summary_start != -1
+    daily_review_summary_end = js.find("\n    function ", daily_review_summary_start + 1)
+    daily_review_summary_body = js[daily_review_summary_start:daily_review_summary_end]
+    assert '"HOLD_STRONG"' in daily_review_summary_body
+    assert "new available-history high" in daily_review_summary_body
+    assert '"HOLD"' in daily_review_summary_body
+    assert '"REVIEW_HOLD_TIGHT"' in daily_review_summary_body
+    assert "Bullish ST" in daily_review_summary_body
+    assert "Bearish ST" in daily_review_summary_body
+    assert "EVIDENCE_STALE_OR_SESSION_MISMATCH" in daily_review_summary_body
+    assert "D1 evidence stale" in daily_review_summary_body
+    assert "EVIDENCE_INCOHERENT" in daily_review_summary_body
+    assert "D1 evidence incoherent" in daily_review_summary_body
+    assert "D1 evidence unavailable" in daily_review_summary_body
+
+    # --- Daily Review cell composes the frozen status pill (unchanged
+    # classification function) with the summary above — one main-table cell,
+    # replacing the old separate Daily Guidance column.
+    assert "const pill = myPortfolioDailyReviewStatusCell(review);" in js
+    assert "myPortfolioDailyReviewCell" in js
+
+    # --- Plan Levels: populated-only lines with truthful labels; empty case
+    # shows one muted line, never blank/dash cells; Support 1/Target 2/3 are
+    # never referenced (frozen PS-P10C.1 NO-GO).
+    levels_start = js.find("function myPortfolioPlanLevelsCell(")
+    assert levels_start != -1
+    levels_end = js.find("\n    function ", levels_start + 1)
+    levels_body = js[levels_start:levels_end]
+    assert "row?.key_trigger" in levels_body
+    assert "Plan Trigger" in levels_body
+    assert "row?.major_support_exit" in levels_body
+    assert "Plan Stop" in levels_body
+    assert "row?.target_1" in levels_body
+    assert "Plan T1" in levels_body
+    assert "No active plan levels" in levels_body
+    assert "support_1" not in levels_body.lower()
+    assert "target_2" not in levels_body.lower()
+    assert "target_3" not in levels_body.lower()
+
+    # --- Freshness: compact Price As Of + Last Review collapse.
+    freshness_start = js.find("function myPortfolioFreshnessCell(")
+    assert freshness_start != -1
+    freshness_end = js.find("\n    function ", freshness_start + 1)
+    freshness_body = js[freshness_start:freshness_end]
+    assert "row?.price_as_of" in freshness_body
+    assert "row?.last_review" in freshness_body
+    assert "Not available" in freshness_body
+
+    # --- Detail drawer: renders full Position/Technical State/ATHENA
+    # Review/Plan Levels sections from already-computed row/daily_review
+    # fields, plus the unconditional v0 structural-methodology notice.
+    detail_start = js.find("function renderMyPortfolioDetail(")
+    assert detail_start != -1
+    detail_end = js.find("\n    function ", detail_start + 1)
+    detail_body = js[detail_start:detail_end]
+    for label in (
+        "Qty",
+        "Avg Price",
+        "Investment",
+        "Current Value",
+        "P&L",
+        "D1 Trend",
+        "OR Setup",
+        "SuperTrend direction",
+        "SuperTrend value",
+        "Price vs SuperTrend",
+        "RSI14 (context only)",
+        "Volume MA20",
+        "Available-history high",
+        "Daily Review as of",
+        "Evidence as of",
+        "Status",
+        "Conviction",
+        "Next Action",
+        "Plan Trigger",
+        "Plan Stop",
+        "Plan T1",
+    ):
+        assert label in detail_body
+    assert "No active TradePlan level currently available." in detail_body
+    assert (
+        "Structural Support 1 and Target 2/3 are unavailable in Portfolio v0 "
+        "because no trustworthy deterministic methodology has been frozen"
+    ) in detail_body
+    assert "review?.rsi14" in detail_body
+    assert "review?.volume" in detail_body
+    assert "review?.supertrend_direction" in detail_body
+    assert "review?.supertrend_value" in detail_body
+
+    # --- Reason-code owner-readable mapping extends the existing pattern
+    # (myPortfolioReasonSummary) to daily_review_reason_codes.
+    assert "MY_PORTFOLIO_DAILY_REVIEW_REASON_LABELS" in js
+    for code in (
+        "EVIDENCE_INCOHERENT",
+        "EVIDENCE_STALE_OR_SESSION_MISMATCH",
+        "EVIDENCE_UNAVAILABLE_OR_INSUFFICIENT_HISTORY",
+        "BULLISH_TRAILING_STRUCTURE_INTACT",
+        "NEW_AVAILABLE_HISTORY_HIGH",
+        "BEARISH_TRAILING_STRUCTURE_REVIEW",
+        "PROFIT_CUSHION_PROTECT_WINNER_CONTEXT",
+        "LOSS_CONTEXT_REVIEW_DISCIPLINE",
+        "VOLUME_CONTEXT_ONLY",
+        "SUPPORT_METHOD_DEFERRED",
+        "TARGET_METHOD_DEFERRED",
+        "EXIT_RISK_DEFERRED",
+        "REVIEW_CONVICTION_DEFERRED",
+        "UNADJUSTED_HISTORY_LIMITATION",
+    ):
+        assert code in js
+
+    # --- Row click / keyboard open, drawer close wiring, and closeAllModals
+    # registration (so Escape/other-modal-open flows also close this one).
+    assert 'data-instrument-id="${escapeMyPortfolioHtml(myPortfolioRowKey(row))}"' in js
+    assert 'tr[data-instrument-id]' in js
+    assert 'event.key !== "Enter" && event.key !== " "' in js
+    assert "openMyPortfolioDetail(tr.getAttribute" in js
+    assert 'myPortfolioDetailClose?.addEventListener("click", () => closeModal(myPortfolioDetailModal));' in js
+    assert 'closeModal(document.getElementById("my-portfolio-detail-modal"));' in js
 
 
 def test_advisor_status_release_gate(client: TestClient) -> None:

@@ -11,6 +11,16 @@ This document answers one question only: *given everything ATHENA already
 computes today, what is the best final My Portfolio owner experience without
 inventing new technical-analysis methodology?*
 
+**Owner/Chief Architect update (2026-09-05): APPROVED WITH MINOR CORRECTIONS,
+implementation authorized.** Two corrections from the approval are applied
+in place below: (1) the main-table column count dropped for v0 is **three**
+(Support 1, Target 2, Target 3), not two as originally written in §3; (2) the
+compact Levels cell and detail drawer must never label a TradePlan stop as
+"Major Support" — that implies the structural methodology PS-P10C.1 rejected.
+The implementation instead uses truthful labels: **Plan Trigger / Plan Stop /
+Plan T1**, all sourced from the same existing `key_trigger` /
+`major_support_exit` / `target_1` fields with no semantic change.
+
 ---
 
 ## 1. Deployed-Product Diagnosis
@@ -138,17 +148,22 @@ Review`, `Daily Guidance`, PS-P10D additions):
 | Daily Review (status pill) | **A** — keep permanently | Frozen classification; compact pill, high scanning value |
 | Daily Guidance (full sentence) | **B** — move to detail; replace main-table cell with a short composed summary (Task 3) | Full frozen guidance text stays owner-readable, just not at main-table density |
 
-**Net effect on the main table:** of 22 current columns, **13 stay
-permanently** (Symbol, Qty, Avg Price, Last Price, Investment, Current Value,
-P&L, P&L%, Status, Conviction, Trend/Setup, Daily Review, Next Action), **3
-become conditional/compact** (Key Trigger, Major Support/Exit, Target 1 — kept
-but collapsed into a single "Levels" cell that renders "—" compactly rather
-than three separate wide dash columns, or shown only when at least one is
-non-null for that row), **2 move to detail** (Price As Of, Last Review — as a
-single "freshness" affordance), **1 is replaced with a composed short summary**
-(Daily Guidance → concise line, full text in detail), and **2 are dropped from
-the main table for v0** (Support 1, Target 2, Target 3 collapse into a single
-compact indicator or disappear entirely from the row — see §4).
+**Net effect on the main table (as implemented):** of 22 current columns,
+**11 stay permanently** (Symbol, Qty, Avg Price, Last Price, P&L, P&L%,
+Status, Conviction, Trend/Setup, Daily Review, Next Action), **3 become one
+conditional/compact cell** (Key Trigger, Major Support/Exit, Target 1 —
+collapsed into a single "Plan Levels" cell, populated-lines-only, using
+truthful `Plan Trigger` / `Plan Stop` / `Plan T1` labels per the owner's
+Correction 2 — never "Major Support"), **4 move to the detail drawer**
+(Investment, Current Value — kept in the main table only if they fit
+cleanly, dropped here in favor of a tighter table per the owner's explicit
+preference; Price As Of, Last Review — collapsed into one compact
+"Freshness" cell), **1 is replaced with a composed short summary** (Daily
+Guidance's full sentence → concise line inline with the Daily Review pill,
+full text moved to the detail drawer), and **3 are dropped from the main
+table entirely for v0** (Support 1, Target 2, Target 3 — never rendered as
+columns or dashes; stated once, in words, inside the detail drawer's
+methodology notice — see §4/§5).
 
 This is expected to reduce `min-width` meaningfully below the current 3820px
 — the exact number depends on the implementation milestone's actual column
@@ -187,16 +202,19 @@ Target column set (left to right), all using ALREADY-COMPUTED evidence:
     dashboard JS only, mirroring how `myPortfolioTrendCell` already composes
     `Trend / Setup` from two evidence sources today.
 13. **Next Action** (unchanged)
-14. **Levels** (new compact composite, replacing the current 5 separate
+14. **Plan Levels** (new compact composite, replacing the current 6 separate
     Key Trigger / Support 1 / Major Support-Exit / Target 1/2/3 columns): a
     single cell showing only the levels that are genuinely populated for that
-    row (Key Trigger, Major Support/Exit, Target 1), each on its own short
-    line with a label, e.g.:
+    row (Key Trigger → `Plan Trigger`, Major Support/Exit → `Plan Stop`,
+    Target 1 → `Plan T1`), each on its own short line with a **truthful**
+    label — never "Support" or "Major Support", since these are TradePlan
+    values, not structural methodology (owner Correction 2):
     ```
-    Trigger ₹412.50
-    Exit ₹380.00
-    T1 ₹455.00
+    Plan Trigger ₹412.50
+    Plan Stop ₹380.00
+    Plan T1 ₹455.00
     ```
+    Support 1 / Target 2 / Target 3 are never referenced in this cell.
     A row with none of the three populated shows a single muted "No active
     plan levels" line instead of three stacked dashes. Support 1/Target 2/3
     are never referenced here (Category D, hidden entirely for v0).
@@ -257,16 +275,20 @@ Qty · Avg Price · Last Price · Investment · Current Value · P&L · P&L%
 - Existing Conviction (unchanged)
 - Existing Next Action (unchanged)
 
-**LEVELS / PLAN**
-- Key Trigger if genuinely available, else "Not available — no active
-  pre-entry TradePlan trigger"
-- Major Support / Exit if genuinely available, else "Not available — no
-  active TradePlan stop"
-- Target 1 if genuinely available, else "Not available — no active
-  TradePlan target"
-- Support 1 / Target 2 / Target 3: **always** rendered as one explicit line
-  — "Support 1, Target 2, and Target 3 are not available under the current
-  v0 methodology (PS-P10C.1)" — never as blank/dash cells
+**PLAN / LEVELS**
+- Plan Trigger (from `key_trigger`) if genuinely available, else "Not
+  available — no active pre-entry TradePlan trigger"
+- Plan Stop (from `major_support_exit`) if genuinely available, else "Not
+  available — no active TradePlan stop" — **never labeled "Support" or
+  "Major Support"**, per owner Correction 2: this is a TradePlan stop-loss
+  value, not structural support/invalidation methodology
+- Plan T1 (from `target_1`) if genuinely available, else "Not available —
+  no active TradePlan target"
+- Support 1 / Target 2 / Target 3: **always** rendered as one explicit
+  methodology notice — "Structural Support 1 and Target 2/3 are unavailable
+  in Portfolio v0 because no trustworthy deterministic methodology has been
+  frozen (PS-P10C.1)" — never as blank/dash cells, and never implying such
+  methodology exists
 
 This satisfies Task 4's explicit instruction not to show five permanent
 dashes anywhere: the main table drops them, and the detail view states the
@@ -492,7 +514,71 @@ already and deliberately left open.
 - [x] One bounded implementation recommendation (§8)
 - [x] Explicit statement of what remains unavailable afterward (§9)
 - [x] Final product completion criterion (§10)
-- [x] No implementation performed
+- [x] Review-phase deliverable had no implementation
 - [x] PS-P10C / PS-P10C.1 / Daily Review methodology / SuperTrend
       methodology not reopened
+
+---
+
+## 11. Implementation Closure (2026-09-05)
+
+Owner/Chief Architect approved this review "with minor corrections" and
+authorized implementation of the one bounded milestone in §8. Both
+corrections were applied: the main-table disposition in §3/§4 now states
+**three** columns dropped for v0 (Support 1, Target 2, Target 3), and every
+TradePlan-derived value is labeled truthfully — **Plan Trigger / Plan Stop /
+Plan T1** — never "Support" or "Major Support".
+
+**Implemented exactly as designed in §4/§5:**
+- Main table reduced from 22 columns / `min-width: 3820px` to **13 columns /
+  `min-width: 2290px`** (a 40% reduction), verified at runtime
+  (`getComputedStyle` confirmed `2290px` rendered, `scrollWidth === offsetWidth
+  === 2290`, i.e. no residual overflow).
+- Investment and Current Value were dropped from the main table (moved to
+  the detail drawer) rather than kept "if they fit cleanly" — chosen to keep
+  the table as tight as possible, per the owner's explicit preference that
+  scanability wins over preserving every field in the main view.
+- Daily Review is one cell: the frozen status pill plus a composed one-line
+  summary (`myPortfolioDailyReviewSummary`), verified live for all three
+  populated statuses and the unavailable/stale cases (see below).
+- Plan Levels is one compact cell, populated-lines-only, truthful labels,
+  "No active plan levels" when none apply — verified live with a fully
+  populated row, a partially populated row, and an empty row.
+- Freshness collapses Price As Of + Last Review into one cell.
+- A full holding-detail drawer opens on row click (mouse and keyboard),
+  reusing the codebase's existing `.modal-overlay`/`.modal-container`
+  pattern, and renders POSITION / TECHNICAL STATE / ATHENA REVIEW / PLAN &
+  LEVELS exactly per §5, including the unconditional structural-methodology
+  notice and the RSI/Volume "context only" disclaimers.
+
+**Live-verified** against a throwaway scratch server (`ATHENA_DB_PATH`
+pointed at a temp SQLite file, isolated from the real `db/athena.db`, which
+was never opened and is confirmed unmodified — mtime predates this session)
+seeded with five representative holdings covering HOLD, HOLD_STRONG,
+REVIEW_HOLD_TIGHT, an unavailable/stale Daily Review, fully-populated Plan
+Levels, partially-populated Plan Levels, and no Plan Levels at all. Every
+composed cell and the detail drawer rendered exactly as designed on the
+first working pass after fixing one seeding-script bug (unrelated to
+production code).
+
+**Full validation:** 81 focused My Portfolio/dashboard/release-gate tests
+passed, a new dedicated composition-contract test passed, the full suite
+passed (3683 passed, 0 failed, 0 skipped), Ruff clean, `git diff --check`
+clean.
+
+**Product decision: ACCEPT.** My Portfolio V1 UX closure is complete. No
+PS-P10E was created. Structural support/resistance, targets, `EXIT_RISK`,
+numeric Review Conviction, and rolling-high DTO exposure remain future
+backlog requiring separate explicit Owner authorization.
 - [x] No PS-P10E created
+
+**Owner/Chief Architect final decision (2026-09-05): APPROVED AND
+COMPLETE — final verdict ACCEPT.** My Portfolio V1 Final UX Closure is
+closed. Combined with Portfolio Sync V1 (frozen 2026-09-03) and Portfolio
+Daily Review v0 (frozen 2026-09-05), **MY PORTFOLIO V1 IS COMPLETE**.
+Structural Support 1, Major Structural Support/Invalidation, Target 2/3,
+structural Review Trigger, `EXIT_RISK`, numeric Review Conviction, and
+advanced structural support/resistance interpretation are explicit future
+Portfolio Intelligence V2 candidates only — not V1 blockers, not to be
+started automatically. No PS-P10E, no further automatic Portfolio
+milestone.

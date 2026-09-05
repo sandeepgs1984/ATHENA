@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.154.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.155.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -634,24 +634,15 @@
                                             <col class="my-portfolio-col-qty">
                                             <col class="my-portfolio-col-avg-price">
                                             <col class="my-portfolio-col-money">
-                                            <col class="my-portfolio-col-time">
                                             <col class="my-portfolio-col-money-wide">
-                                            <col class="my-portfolio-col-money-wide">
-                                            <col class="my-portfolio-col-money">
                                             <col class="my-portfolio-col-pct">
                                             <col class="my-portfolio-col-pill">
                                             <col class="my-portfolio-col-conviction">
                                             <col class="my-portfolio-col-trend">
-                                            <col class="my-portfolio-col-daily-status">
-                                            <col class="my-portfolio-col-daily-guidance">
-                                            <col class="my-portfolio-col-trigger">
-                                            <col class="my-portfolio-col-money">
-                                            <col class="my-portfolio-col-money-wide">
-                                            <col class="my-portfolio-col-money">
-                                            <col class="my-portfolio-col-money">
-                                            <col class="my-portfolio-col-money">
+                                            <col class="my-portfolio-col-daily-review">
                                             <col class="my-portfolio-col-action">
-                                            <col class="my-portfolio-col-time">
+                                            <col class="my-portfolio-col-levels">
+                                            <col class="my-portfolio-col-freshness">
                                         </colgroup>
                                         <thead>
                                             <tr>
@@ -659,30 +650,22 @@
                                                 <th>Qty</th>
                                                 <th>Avg Price</th>
                                                 <th>Last Price</th>
-                                                <th>Price As Of</th>
-                                                <th>Investment</th>
-                                                <th>Current Value</th>
                                                 <th>P&amp;L</th>
                                                 <th>P&amp;L %</th>
                                                 <th>Status</th>
                                                 <th>Conviction</th>
                                                 <th>Trend / Setup</th>
                                                 <th>Daily Review</th>
-                                                <th>Daily Guidance</th>
-                                                <th>Key Trigger</th>
-                                                <th>Support 1</th>
-                                                <th>Major Support / Exit</th>
-                                                <th>Target 1</th>
-                                                <th>Target 2</th>
-                                                <th>Target 3</th>
                                                 <th>Next Action</th>
-                                                <th>Last Review</th>
+                                                <th>Plan Levels</th>
+                                                <th>Freshness</th>
                                             </tr>
                                         </thead>
                                         <tbody id="my-portfolio-holdings-rows">
-                                            <tr><td colspan="22" class="text-center text-muted">Loading holdings…</td></tr>
+                                            <tr><td colspan="13" class="text-center text-muted">Loading holdings…</td></tr>
                                         </tbody>
                                     </table>
+                                    <p class="metric-desc my-portfolio-detail-hint">Click a holding row for full position, technical, and review detail — including Investment, Current Value, raw RSI/Volume, and Plan Levels provenance.</p>
                                 </div>
                             </div>
                         </div>
@@ -1637,6 +1620,23 @@
         </div>
     </div>
 
+    <!-- MY-PORTFOLIO-V1-FINAL-UX-CLOSURE: holding-detail drawer, opened on
+         row click. Full Position/Technical State/ATHENA Review/Plan Levels
+         detail lives here so the main table can stay compact — presentation
+         only, no new evidence or classification. -->
+    <div id="my-portfolio-detail-modal" class="modal-overlay" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="my-portfolio-detail-title">
+        <div class="modal-container my-portfolio-detail-modal-container">
+            <div class="modal-header">
+                <div>
+                    <h3 id="my-portfolio-detail-title">Holding detail</h3>
+                    <p id="my-portfolio-detail-subtitle" class="metric-desc"></p>
+                </div>
+                <button id="my-portfolio-detail-close" class="modal-close-btn" type="button" aria-label="Close holding detail">&times;</button>
+            </div>
+            <div class="modal-body my-portfolio-detail-body" id="my-portfolio-detail-body"></div>
+        </div>
+    </div>
+
     <!-- IX-2: full index observations remain outside page flow so the
          Validation Pipeline keeps its daily-workspace height. -->
     <div id="index-leadership-modal" class="modal-overlay" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="index-leadership-modal-title">
@@ -2027,7 +2027,7 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.154.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.155.0"></script>
 
     <!-- DarvaX satellite tab (ADR-010 Amendment 1) — the ONLY DarvaX reference
          in this file, and the flag guard itself. This asset is served solely by

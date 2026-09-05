@@ -6,6 +6,116 @@ status updated on approval.
 
 ---
 
+## My Portfolio V1 Final UX Closure — Implementation Complete, Ready for Owner Review
+
+**Summary.** After PS-P10D shipped `portfolio-daily-review-v0`, the Owner
+reviewed the actual deployed My Portfolio table and found a product/UX gap:
+5 of 22 columns (Support 1, Major Support/Exit, Key Trigger, Target 1/2/3)
+were permanently or near-permanently empty — Support 1/Target 2/Target 3 by
+frozen PS-P10C.1 NO-GO, Key Trigger because My Portfolio holdings are
+already-owned positions whose entry trigger is almost always already
+consumed. A bounded product-gap review
+(`docs/research/MY-PORTFOLIO-V1-FINAL-UX-CLOSURE-REVIEW.md`) audited every
+field ATHENA already computes and found the gap was overwhelmingly
+presentation, not methodology or data — SuperTrend value/direction, raw
+RSI14, Volume/VMA20, and available-history-high were already computed and in
+the DTO, just hidden in HTML hover tooltips. The Owner approved the review
+"with minor corrections" (three columns dropped, not two; TradePlan-derived
+values must never be labeled "Support"/"Major Support") and authorized one
+bounded, presentation-only implementation milestone — explicitly **not**
+PS-P10E, no structural-level methodology reopened.
+
+**Implementation.** Redesigned the My Portfolio main table from 22 columns
+(`min-width: 3820px`) to **13 columns (`min-width: 2290px`)**: dropped
+Investment/Current Value to the new holding-detail drawer; collapsed Key
+Trigger/Major Support-Exit/Target 1 into one **Plan Levels** cell
+(populated-lines-only, truthful `Plan Trigger`/`Plan Stop`/`Plan T1` labels
+— never "Support"); dropped Support 1/Target 2/Target 3 from the main table
+entirely (frozen PS-P10C.1 NO-GO, stated once in words in the drawer, never
+as blank cells); collapsed Price As Of/Last Review into one **Freshness**
+cell; replaced the separate Daily Guidance column with a short
+presentation-only summary composed under the existing frozen Daily Review
+status pill (`myPortfolioDailyReviewSummary` — SuperTrend direction + D1
+Trend label + new-available-history-high flag, zero new classification).
+Added a full holding-detail drawer (new `my-portfolio-detail-modal`, reusing
+the codebase's existing `.modal-overlay`/`.modal-container` pattern; its
+own width override lives in `07-universe-modals.css` after the base
+`.modal-container` rule, matching the documented cascade-order precedent
+for `.index-leadership-modal-container`) covering POSITION / TECHNICAL
+STATE / ATHENA REVIEW / PLAN & LEVELS, including an unconditional
+structural-methodology notice and explicit RSI/Volume "context only"
+disclaimers. Also corrected a pre-existing PS-P10C-era reason-code label
+("TradePlan stop is available as Major Support / Exit" → "...as Plan
+Stop") to apply the same truthful-labeling correction consistently.
+
+**Files changed:** `src/athena/api/static/index.html`,
+`src/athena/api/static/js/08b-my-portfolio.js`,
+`src/athena/api/static/js/06-ui-helpers.js` (registered the new modal in
+`closeAllModals`), `src/athena/api/static/css/05b-my-portfolio.css`,
+`src/athena/api/static/css/07-universe-modals.css`,
+`tests/api/platform/test_dashboard_hosting.py`,
+`tests/api/platform/test_decision_chart_release_gate.py`,
+`docs/research/MY-PORTFOLIO-V1-FINAL-UX-CLOSURE-REVIEW.md`. Zero DTO
+changes; zero `daily_review.py`/`PortfolioInterpreter`/`TrendAdapter`/
+`SetupAdapter`/SuperTrend/`DecisionEngine`/`ScoringEngine`/
+`EntryQualification`/`TradePlan` changes.
+
+**Tests.** Rewrote the My Portfolio dashboard-contract assertions for the
+new column set (11 permanent + Plan Levels + Freshness) and added a new
+`test_my_portfolio_ux_closure_composition_contract` locking the composition
+logic at the source-string level (this codebase has no JS execution test
+harness per ADR-004 — static HTML/vanilla JS, no build step — so dashboard
+tests are string-presence assertions against the served static text,
+matching this file's own established convention): Daily Review summary
+branches for all three statuses plus stale/incoherent/unavailable, Plan
+Levels populated/empty cases and truthful labels, the detail-drawer field
+set, the reason-code label map, and the row click/keyboard/close wiring.
+81 focused tests passed (dashboard hosting, release gate, Daily Review,
+Daily Chart evidence, DTOs, import API); full suite: **3683 passed, 0
+failed, 0 skipped**; Ruff clean; `git diff --check` clean.
+
+**Live verification.** Started a throwaway scratch server (`ATHENA_DB_PATH`
+pointed at a temp SQLite file under the session scratchpad, `ATHENA_OWNER_
+PASSWORD_HASH` set to a locally-generated throwaway bcrypt hash for a
+scratch-only login) seeded with 5 representative holdings covering every
+Daily Review status (HOLD, HOLD_STRONG, REVIEW_HOLD_TIGHT, unavailable/
+stale) and every Plan Levels state (fully populated, partially populated,
+empty). The real `db/athena.db` (4.8GB, production trading data) was never
+opened — the scratch server used a completely separate path — and its
+mtime is confirmed unchanged across this session. Verified live: the
+compact 13-column table renders correctly with real color-coded status
+pills; the composed Daily Review summaries render exactly as designed for
+every status; the Plan Levels cell shows truthful labels and the correct
+populated/partial/empty states; the detail drawer opens on row click for
+both a healthy (RATNAVEER, all three Plan Levels populated) and an at-risk
+(JINDWORLD, REVIEW_HOLD_TIGHT) holding, rendering every specified field
+including the P&L-context-never-overrides-status proof and the
+unconditional structural-methodology notice; the rendered table width
+measured 2290px via `getComputedStyle`, confirming the 3820px→2290px
+reduction actually took effect (not just declared in CSS).
+
+**Architecture compliance.** Presentation/composition only. No frozen
+Decision/EntryQualification/TradePlan/Interpretation/Daily-Review/SuperTrend
+semantics touched. PS-P10C/PS-P10C.1 not reopened. No PS-P10E created.
+
+**Risks / technical debt.** None identified beyond what §9 of the review
+document already lists as intentionally deferred (Support 1, Major
+structural support, Target 2/3, structural Review Trigger, `EXIT_RISK`,
+numeric Review Conviction, rolling-high DTO exposure) — all future backlog
+requiring separate explicit Owner authorization.
+
+**Status:** Owner/Chief Architect reviewed the actual implementation
+archive and returned final verdict **ACCEPT** (2026-09-05). My Portfolio V1
+Final UX Closure is **APPROVED AND COMPLETE**. Combined with Portfolio Sync
+V1 (frozen 2026-09-03) and Portfolio Daily Review v0 (frozen 2026-09-05),
+**MY PORTFOLIO V1 IS COMPLETE**. Structural Support 1, Major Structural
+Support/Invalidation, Target 2/3, structural Review Trigger, `EXIT_RISK`,
+numeric Review Conviction, and advanced structural support/resistance
+interpretation remain future Portfolio Intelligence V2 candidates only —
+not V1 blockers, not to be started automatically, no PS-P10E.
+
+---
+
 ## PS-P10D Daily Chart Portfolio Review Implementation — Owner Approved and Frozen
 
 **Final update (2026-09-05).** Owner/Chief Architect approved PS-P10D and

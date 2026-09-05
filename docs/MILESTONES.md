@@ -33,7 +33,8 @@ too large for a single-sitting review is split BEFORE implementation.
 `docs/research/PS-P10B1-SUPERTREND-COMPATIBILITY-REPLAY.md`,
 `docs/research/PS-P10C-DAILY-CHART-PORTFOLIO-REVIEW-METHODOLOGY-FREEZE.md`,
 `docs/research/PS-P10C1-STRUCTURAL-LEVELS-TARGETS-CLOSURE.md`,
-`docs/research/PS-P10D-DAILY-CHART-PORTFOLIO-REVIEW-IMPLEMENTATION.md`
+`docs/research/PS-P10D-DAILY-CHART-PORTFOLIO-REVIEW-IMPLEMENTATION.md`,
+`docs/research/MY-PORTFOLIO-V1-FINAL-UX-CLOSURE-REVIEW.md`
 
 Adds a My Portfolio dashboard feature/subdomain inside ATHENA's existing
 portfolio capability. The feature owns imported current holdings,
@@ -68,6 +69,7 @@ ScoringEngine/DecisionEngine methodology.
 | PS-P10C | Daily Chart Portfolio Review Methodology Freeze — replay and freeze the deterministic evidence-to-review methodology for Excel-like Daily Chart Review intelligence without production Portfolio population, schema/API/dashboard changes, interpretation-version bump, or PS-P10D implementation | ✅ Core methodology Owner/Chief Architect approved 2026-09-05; final structural-level closure handled by PS-P10C.1 before PS-P10D |
 | PS-P10C.1 | Structural Levels / Targets Closure — evaluate bounded D1 swing, role-reversal, support/invalidation, target, structural Review Trigger, and EXIT_RISK candidates, then decide GO/NO-GO for v0 before PS-P10D | ✅ Owner/Chief Architect approved and closed 2026-09-05 — NO-GO frozen for structural levels/targets/EXIT_RISK in v0 |
 | PS-P10D | Daily Chart Portfolio Review Production Implementation — populate the separate Daily Review layer from frozen SuperTrend 10,3, RSI14, volume/VMA, available-history-high context, deterministic guidance, reason codes, and provenance while keeping structural levels/targets/null deferrals and existing Portfolio semantics independent | ✅ Owner/Chief Architect approved and frozen 2026-09-05 — Portfolio Daily Review v0 COMPLETE; PS-P10E not required |
+| MY-PORTFOLIO-V1-UX-CLOSURE | My Portfolio Final UX Closure — bounded, presentation-only main-table redesign (22→13 columns, 3820px→2290px) plus a new holding-detail drawer, composing already-computed PS-P10D/PS-P5B/PS-P8C/PS-P9D evidence; no DTO/methodology/classification change; truthful Plan Trigger/Plan Stop/Plan T1 labeling (never "Support"/"Major Support"); explicitly NOT PS-P10E, no structural-level methodology reopened | ✅ Owner/Chief Architect approved and complete 2026-09-05 — MY PORTFOLIO V1 COMPLETE (Portfolio Sync V1 + Portfolio Daily Review v0 + this UX closure); structural Support 1/Major Support/Target 2/3/Review Trigger/EXIT_RISK/numeric Review Conviction are future Portfolio Intelligence V2 candidates only, not V1 blockers |
 
 ## Intraday Intelligence Track (ID-0 started 2026-08-29)
 

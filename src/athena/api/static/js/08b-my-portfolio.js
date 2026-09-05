@@ -28,6 +28,11 @@
     const myPortfolioReconciliationRows = document.getElementById("my-portfolio-reconciliation-rows");
     const myPortfolioHoldingsRows = document.getElementById("my-portfolio-holdings-rows");
     const myPortfolioHistoryRows = document.getElementById("my-portfolio-history-rows");
+    const myPortfolioDetailModal = document.getElementById("my-portfolio-detail-modal");
+    const myPortfolioDetailClose = document.getElementById("my-portfolio-detail-close");
+    const myPortfolioDetailTitle = document.getElementById("my-portfolio-detail-title");
+    const myPortfolioDetailSubtitle = document.getElementById("my-portfolio-detail-subtitle");
+    const myPortfolioDetailBody = document.getElementById("my-portfolio-detail-body");
 
     const myPortfolioState = {
         preview: null,
@@ -41,6 +46,7 @@
         snapshot: null,
         holdings: [],
         imports: [],
+        snapshotRowsByKey: {},
     };
 
     function escapeMyPortfolioHtml(value) {
@@ -136,7 +142,7 @@
             ADD_NOT_CONFIRMED: "ADD is not confirmed by current actionability evidence.",
             TRADE_PLAN_ENTRY_TRIGGER_ACTIVE: "TradePlan entry-low trigger remains active.",
             ENTRY_TRIGGER_CONSUMED: "Entry trigger has already been consumed.",
-            TRADE_PLAN_STOP_AVAILABLE: "TradePlan stop is available as Major Support / Exit.",
+            TRADE_PLAN_STOP_AVAILABLE: "TradePlan stop is available as Plan Stop.",
             TRADE_PLAN_STOP_BREACHED: "TradePlan stop has been breached.",
             MAJOR_INVALIDATION_BREACHED: "Major invalidation level has been breached.",
             NO_TRADE_DECISION_EVIDENCE: "Current Decision evidence is cautionary.",
@@ -265,10 +271,102 @@
         return `<span title="${escapeMyPortfolioHtml(myPortfolioDailyReviewDetail(review))}">${myPortfolioStatus(label, tone, icon)}</span>`;
     }
 
-    function myPortfolioDailyGuidanceCell(review) {
-        const guidance = review?.guidance || "Daily Review unavailable.";
-        const detail = myPortfolioDailyReviewDetail(review);
-        return `<span class="my-portfolio-guidance" title="${escapeMyPortfolioHtml(detail)}">${escapeMyPortfolioHtml(guidance)}</span>`;
+    // MY-PORTFOLIO-V1-FINAL-UX-CLOSURE: extract just the D1 Trend half of
+    // the existing "TREND / SETUP" composite string (e.g. "UPTREND / -").
+    // Presentation-only parsing of an already-computed field — no new
+    // classification.
+    function myPortfolioTrendLabelOnly(value) {
+        if (!value) return null;
+        const label = String(value).toUpperCase().split("/")[0].trim();
+        return label && label !== "-" ? label : null;
+    }
+
+    // Short, presentation-only Daily Review summary composed from fields
+    // already on the row (SuperTrend direction, D1 Trend label, and the
+    // new-available-history-high flag). Never changes review_status.
+    function myPortfolioDailyReviewSummary(review, trendLabel) {
+        const status = String(review?.review_status || "").toUpperCase();
+        const direction = review?.supertrend_direction ? String(review.supertrend_direction).toUpperCase() : null;
+        const stPhrase = direction === "BULLISH" ? "Bullish ST" : direction === "BEARISH" ? "Bearish ST" : "ST unavailable";
+        if (status === "HOLD_STRONG") {
+            return `${stPhrase} · new available-history high`;
+        }
+        if (status === "HOLD" || status === "REVIEW_HOLD_TIGHT") {
+            return trendLabel ? `${stPhrase} · D1 ${trendLabel.toLowerCase()}` : stPhrase;
+        }
+        const reason = review?.availability_reason;
+        if (reason === "EVIDENCE_STALE_OR_SESSION_MISMATCH") return "D1 evidence stale";
+        if (reason === "EVIDENCE_INCOHERENT") return "D1 evidence incoherent";
+        return "D1 evidence unavailable";
+    }
+
+    // Combines the frozen Daily Review status pill with the concise summary
+    // above into one main-table cell, replacing the old separate Daily
+    // Guidance column. Full guidance text moves to the detail drawer.
+    function myPortfolioDailyReviewCell(row) {
+        const review = row?.daily_review;
+        const pill = myPortfolioDailyReviewStatusCell(review);
+        const trendLabel = myPortfolioTrendLabelOnly(row?.trend_or_setup);
+        const summary = myPortfolioDailyReviewSummary(review, trendLabel);
+        return `<span class="my-portfolio-daily-review-cell">${pill}<span class="my-portfolio-daily-review-summary">${escapeMyPortfolioHtml(summary)}</span></span>`;
+    }
+
+    const MY_PORTFOLIO_DAILY_REVIEW_REASON_LABELS = {
+        EVIDENCE_INCOHERENT: "D1 evidence is not coherent for this holding.",
+        EVIDENCE_STALE_OR_SESSION_MISMATCH: "D1 evidence is stale for the accepted Portfolio session.",
+        EVIDENCE_UNAVAILABLE_OR_INSUFFICIENT_HISTORY: "Completed D1 evidence is unavailable or insufficient.",
+        BULLISH_TRAILING_STRUCTURE_INTACT: "Bullish SuperTrend trailing structure remains intact.",
+        NEW_AVAILABLE_HISTORY_HIGH: "Latest D1 high exceeded the prior available-history high.",
+        BEARISH_TRAILING_STRUCTURE_REVIEW: "Price is below bearish SuperTrend evidence.",
+        PROFIT_CUSHION_PROTECT_WINNER_CONTEXT: "Position is in profit — context only, does not change Review Status.",
+        LOSS_CONTEXT_REVIEW_DISCIPLINE: "Position is at a loss — context only, does not change Review Status.",
+        VOLUME_CONTEXT_ONLY: "Volume vs 20-day average is context only; no expansion/compression threshold.",
+        SUPPORT_METHOD_DEFERRED: "Support 1 is intentionally unavailable in Portfolio v0.",
+        TARGET_METHOD_DEFERRED: "Target 2/3 are intentionally unavailable in Portfolio v0.",
+        EXIT_RISK_DEFERRED: "EXIT_RISK is intentionally unavailable in Portfolio v0.",
+        REVIEW_CONVICTION_DEFERRED: "Numeric Review Conviction is intentionally unavailable in Portfolio v0.",
+        UNADJUSTED_HISTORY_LIMITATION: "Available D1 history is not corporate-action adjusted.",
+    };
+
+    function myPortfolioDailyReviewReasonSummary(row) {
+        const codes = row?.provenance?.daily_review_reason_codes || [];
+        const messages = codes.map(code => MY_PORTFOLIO_DAILY_REVIEW_REASON_LABELS[code]).filter(Boolean);
+        return [...new Set(messages)];
+    }
+
+    // Compact Plan Levels cell: only genuine TradePlan-derived values, one
+    // per line, with truthful labels. Support 1/Target 2/Target 3 are never
+    // referenced here (frozen PS-P10C.1 NO-GO) — a TradePlan stop is a plan
+    // value, not the rejected structural-support methodology, so it is
+    // never given that label (Owner Correction 2).
+    function myPortfolioPlanLevelsCell(row) {
+        const lines = [];
+        if (row?.key_trigger != null && row.key_trigger !== "") {
+            lines.push(`Plan Trigger ${formatMyPortfolioMoney(row.key_trigger)}`);
+        }
+        if (row?.major_support_exit != null) {
+            lines.push(`Plan Stop ${formatMyPortfolioMoney(row.major_support_exit)}`);
+        }
+        if (row?.target_1 != null) {
+            lines.push(`Plan T1 ${formatMyPortfolioMoney(row.target_1)}`);
+        }
+        if (!lines.length) {
+            return `<span class="my-portfolio-muted-dash">No active plan levels</span>`;
+        }
+        return `<span class="my-portfolio-levels">${lines.map(escapeMyPortfolioHtml).join("<br>")}</span>`;
+    }
+
+    // Compact Freshness cell: collapses Price As Of + Last Review into one
+    // main-table affordance; the full freshness chain lives in the drawer.
+    function myPortfolioFreshnessCell(row) {
+        const priceAsOf = row?.price_as_of ? formatMyPortfolioTime(row.price_as_of) : null;
+        const lastReview = row?.last_review ? formatMyPortfolioTime(row.last_review) : null;
+        const label = priceAsOf || "Not available";
+        const detailParts = [];
+        if (priceAsOf) detailParts.push(`Price as of ${priceAsOf}`);
+        if (lastReview) detailParts.push(`Last reviewed ${lastReview}`);
+        const detail = detailParts.length ? detailParts.join(" · ") : "Freshness evidence unavailable.";
+        return `<span class="my-portfolio-nowrap" title="${escapeMyPortfolioHtml(detail)}">${escapeMyPortfolioHtml(label)}</span>`;
     }
 
     function showMyPortfolioAlert(message, tone = "neutral") {
@@ -335,7 +433,7 @@
         if (!myPortfolioHoldingsRows) return;
         myPortfolioState.loading = true;
         clearMyPortfolioAlert();
-        myPortfolioHoldingsRows.innerHTML = '<tr><td colspan="22" class="text-center text-muted">Loading holdings...</td></tr>';
+        myPortfolioHoldingsRows.innerHTML = '<tr><td colspan="13" class="text-center text-muted">Loading holdings...</td></tr>';
         myPortfolioHistoryRows.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Loading import history...</td></tr>';
         try {
             const [holdingsRes, historyRes] = await Promise.all([
@@ -430,13 +528,18 @@
         }
     }
 
+    function myPortfolioRowKey(row) {
+        return String(row?.provenance?.instrument_id || row?.symbol || "");
+    }
+
     function renderMyPortfolioHoldings(holdings) {
         if (myPortfolioState.snapshot?.rows?.length) {
             renderMyPortfolioSnapshotRows(myPortfolioState.snapshot.rows);
             return;
         }
+        myPortfolioState.snapshotRowsByKey = {};
         if (!holdings.length) {
-            myPortfolioHoldingsRows.innerHTML = '<tr><td colspan="22" class="text-center text-muted">No holdings imported yet. Upload Portfolio to begin.</td></tr>';
+            myPortfolioHoldingsRows.innerHTML = '<tr><td colspan="13" class="text-center text-muted">No holdings imported yet. Upload Portfolio to begin.</td></tr>';
             return;
         }
         myPortfolioHoldingsRows.innerHTML = holdings.map(holding => `
@@ -445,56 +548,175 @@
                 <td>${formatMyPortfolioNumber(holding.quantity)}</td>
                 <td class="font-mono">${myPortfolioMoneyCell(holding.avg_price)}</td>
                 <td>${myPortfolioDash()}</td>
+                <td>${myPortfolioDash()}</td>
+                <td>${myPortfolioDash()}</td>
+                <td class="text-muted">Not available</td>
+                <td>${myPortfolioDash()}</td>
+                <td class="text-muted">Not available</td>
                 <td class="text-muted">Not synced</td>
-                <td class="font-mono">${myPortfolioMoneyCell(holding.investment)}</td>
-                <td>${myPortfolioDash()}</td>
-                <td>${myPortfolioDash()}</td>
-                <td>${myPortfolioDash()}</td>
-                <td>${myPortfolioDash()}</td>
-                <td>${myPortfolioDash()}</td>
                 <td class="text-muted">Not available</td>
                 <td>${myPortfolioDash()}</td>
-                <td class="text-muted">Not available</td>
-                <td>${myPortfolioDash()}</td>
-                <td>${myPortfolioDash()}</td>
-                <td>${myPortfolioDash()}</td>
-                <td>${myPortfolioDash()}</td>
-                <td>${myPortfolioDash()}</td>
-                <td class="text-muted">Not available</td>
-                <td class="text-muted">Not available</td>
                 <td class="text-muted">Not synced</td>
             </tr>
         `).join("");
     }
 
     function renderMyPortfolioSnapshotRows(rows) {
+        myPortfolioState.snapshotRowsByKey = {};
+        rows.forEach(row => {
+            myPortfolioState.snapshotRowsByKey[myPortfolioRowKey(row)] = row;
+        });
         myPortfolioHoldingsRows.innerHTML = rows.map(row => `
-            <tr>
+            <tr data-instrument-id="${escapeMyPortfolioHtml(myPortfolioRowKey(row))}" tabindex="0" role="button" aria-label="Open detail for ${escapeMyPortfolioHtml(row.symbol)}">
                 <td class="font-mono"><strong>${escapeMyPortfolioHtml(row.symbol)}</strong></td>
                 <td>${formatMyPortfolioNumber(row.qty ?? row.quantity)}</td>
                 <td class="font-mono">${myPortfolioMoneyCell(row.avg_price)}</td>
                 <td class="font-mono">${row.last_price == null ? myPortfolioDash() : myPortfolioMoneyCell(row.last_price)}</td>
-                <td title="${escapeMyPortfolioHtml(row.price_as_of ? formatMyPortfolioTime(row.price_as_of) : "Not available")}">${row.price_as_of ? myPortfolioCell(formatMyPortfolioTime(row.price_as_of), "my-portfolio-nowrap") : "Not available"}</td>
-                <td class="font-mono">${myPortfolioMoneyCell(row.investment)}</td>
-                <td class="font-mono">${row.current_value == null ? myPortfolioDash() : myPortfolioMoneyCell(row.current_value)}</td>
                 <td class="font-mono">${row.pnl == null ? myPortfolioDash() : myPortfolioMoneyCell(row.pnl)}</td>
                 <td>${row.pnl_pct == null ? myPortfolioDash() : myPortfolioCell(formatMyPortfolioPct(row.pnl_pct), "my-portfolio-nowrap")}</td>
                 <td>${myPortfolioStatusPill(row.status, row)}</td>
                 <td>${myPortfolioConvictionCell(row.conviction, row)}</td>
                 <td>${myPortfolioTrendCell(row.trend_or_setup, row)}</td>
-                <td>${myPortfolioDailyReviewStatusCell(row.daily_review)}</td>
-                <td>${myPortfolioDailyGuidanceCell(row.daily_review)}</td>
-                <td title="${escapeMyPortfolioHtml(row.key_trigger || "Not available")}">${escapeMyPortfolioHtml(row.key_trigger || "Not available")}</td>
-                <td class="font-mono">${row.support_1 == null ? myPortfolioDash() : myPortfolioMoneyCell(row.support_1)}</td>
-                <td class="font-mono">${row.major_support_exit == null ? myPortfolioDash() : myPortfolioMoneyCell(row.major_support_exit)}</td>
-                <td class="font-mono">${row.target_1 == null ? myPortfolioDash() : myPortfolioMoneyCell(row.target_1)}</td>
-                <td class="font-mono">${row.target_2 == null ? myPortfolioDash() : myPortfolioMoneyCell(row.target_2)}</td>
-                <td class="font-mono">${row.target_3 == null ? myPortfolioDash() : myPortfolioMoneyCell(row.target_3)}</td>
+                <td>${myPortfolioDailyReviewCell(row)}</td>
                 <td>${myPortfolioActionPill(row.next_action, row)}</td>
-                <td title="${escapeMyPortfolioHtml(row.last_review ? formatMyPortfolioTime(row.last_review) : "Not available")}">${row.last_review ? myPortfolioCell(formatMyPortfolioTime(row.last_review), "my-portfolio-nowrap") : "Not available"}</td>
+                <td>${myPortfolioPlanLevelsCell(row)}</td>
+                <td>${myPortfolioFreshnessCell(row)}</td>
             </tr>
         `).join("");
     }
+
+    // MY-PORTFOLIO-V1-FINAL-UX-CLOSURE holding-detail drawer. Every value
+    // below is already present on the snapshot row / daily_review /
+    // provenance objects — no new fetch, no new evidence, no new
+    // classification. Support 1/Target 2/Target 3 are never rendered as
+    // blank rows here; the PLAN / LEVELS section states the v0 methodology
+    // NO-GO once, in words.
+    function myPortfolioDetailRow(label, value) {
+        return `<div class="my-portfolio-detail-row"><span class="my-portfolio-detail-label">${escapeMyPortfolioHtml(label)}</span><span class="my-portfolio-detail-value">${escapeMyPortfolioHtml(value)}</span></div>`;
+    }
+
+    function myPortfolioPriceVsSupertrend(row, review) {
+        const price = row?.last_price;
+        const st = review?.supertrend_value;
+        if (price == null || st == null) return "Not available";
+        const priceNum = Number(price);
+        const stNum = Number(st);
+        if (!Number.isFinite(priceNum) || !Number.isFinite(stNum)) return "Not available";
+        if (priceNum > stNum) return `Above SuperTrend (${formatMyPortfolioMoney(st)})`;
+        if (priceNum < stNum) return `Below SuperTrend (${formatMyPortfolioMoney(st)})`;
+        return `At SuperTrend (${formatMyPortfolioMoney(st)})`;
+    }
+
+    function myPortfolioAvailableHistoryHighText(review) {
+        if (review?.latest_high_exceeds_prior_available_high === true) {
+            return "Latest D1 high exceeded prior available-history high";
+        }
+        if (review?.latest_high_exceeds_prior_available_high === false) {
+            return "Latest D1 high did not exceed prior available-history high";
+        }
+        return "Not available";
+    }
+
+    function renderMyPortfolioDetail(row) {
+        const review = row?.daily_review || null;
+        const trendLabel = myPortfolioTrendLabelOnly(row?.trend_or_setup);
+        const setupLabel = (() => {
+            const raw = row?.trend_or_setup ? String(row.trend_or_setup).toUpperCase() : "";
+            const half = raw.split("/")[1];
+            const label = half ? half.trim() : "";
+            return label && label !== "-" ? label : "Not available";
+        })();
+        const reasonMessages = myPortfolioDailyReviewReasonSummary(row);
+
+        const planLines = [];
+        if (row?.key_trigger != null && row.key_trigger !== "") {
+            planLines.push(myPortfolioDetailRow("Plan Trigger", formatMyPortfolioMoney(row.key_trigger)));
+        }
+        if (row?.major_support_exit != null) {
+            planLines.push(myPortfolioDetailRow("Plan Stop", formatMyPortfolioMoney(row.major_support_exit)));
+        }
+        if (row?.target_1 != null) {
+            planLines.push(myPortfolioDetailRow("Plan T1", formatMyPortfolioMoney(row.target_1)));
+        }
+        const planSection = planLines.length
+            ? `<div class="my-portfolio-detail-grid">${planLines.join("")}</div>`
+            : `<p class="my-portfolio-detail-guidance text-muted">No active TradePlan level currently available.</p>`;
+
+        myPortfolioDetailBody.innerHTML = `
+            <div class="my-portfolio-detail-section">
+                <h4>Position</h4>
+                <div class="my-portfolio-detail-grid">
+                    ${myPortfolioDetailRow("Qty", formatMyPortfolioNumber(row.qty ?? row.quantity))}
+                    ${myPortfolioDetailRow("Avg Price", formatMyPortfolioMoney(row.avg_price))}
+                    ${myPortfolioDetailRow("Last Price", row.last_price == null ? "Not available" : formatMyPortfolioMoney(row.last_price))}
+                    ${myPortfolioDetailRow("Investment", formatMyPortfolioMoney(row.investment))}
+                    ${myPortfolioDetailRow("Current Value", row.current_value == null ? "Not available" : formatMyPortfolioMoney(row.current_value))}
+                    ${myPortfolioDetailRow("P&L", row.pnl == null ? "Not available" : formatMyPortfolioMoney(row.pnl))}
+                    ${myPortfolioDetailRow("P&L %", row.pnl_pct == null ? "Not available" : formatMyPortfolioPct(row.pnl_pct))}
+                </div>
+            </div>
+            <div class="my-portfolio-detail-section">
+                <h4>Technical State</h4>
+                <div class="my-portfolio-detail-grid">
+                    ${myPortfolioDetailRow("D1 Trend", trendLabel || "Not available")}
+                    ${myPortfolioDetailRow("OR Setup", setupLabel)}
+                    ${myPortfolioDetailRow("SuperTrend direction", review?.supertrend_direction || "Not available")}
+                    ${myPortfolioDetailRow("SuperTrend value", review?.supertrend_value == null ? "Not available" : formatMyPortfolioMoney(review.supertrend_value))}
+                    ${myPortfolioDetailRow("Price vs SuperTrend", myPortfolioPriceVsSupertrend(row, review))}
+                    ${myPortfolioDetailRow("RSI14 (context only)", review?.rsi14 == null ? "Not available" : formatMyPortfolioNumber(review.rsi14))}
+                    ${myPortfolioDetailRow("Volume", review?.volume == null ? "Not available" : formatMyPortfolioNumber(review.volume))}
+                    ${myPortfolioDetailRow("Volume MA20", review?.volume_ma20 == null ? "Not available" : formatMyPortfolioNumber(review.volume_ma20))}
+                    ${myPortfolioDetailRow("Available-history high", myPortfolioAvailableHistoryHighText(review))}
+                    ${myPortfolioDetailRow("Daily Review as of", review?.as_of ? formatMyPortfolioTime(review.as_of) : "Not available")}
+                    ${myPortfolioDetailRow("Evidence as of", review?.evidence_as_of ? formatMyPortfolioTime(review.evidence_as_of) : "Not available")}
+                </div>
+                <p class="my-portfolio-detail-guidance text-muted">RSI14 is raw context only — no overbought/oversold interpretation. Volume/VMA20 are raw context only — no expansion/compression interpretation.</p>
+            </div>
+            <div class="my-portfolio-detail-section">
+                <h4>ATHENA Review</h4>
+                <div class="my-portfolio-detail-grid">
+                    ${myPortfolioDetailRow("Status", row.status || "Not available")}
+                    ${myPortfolioDetailRow("Conviction", row.conviction || "Not available")}
+                    ${myPortfolioDetailRow("Next Action", row.next_action || "Not available")}
+                </div>
+                <p class="my-portfolio-detail-guidance"><strong>Daily Guidance:</strong> ${escapeMyPortfolioHtml(review?.guidance || "Daily Review unavailable.")}</p>
+                ${reasonMessages.length ? `<ul class="my-portfolio-detail-reasons">${reasonMessages.map(msg => `<li>${escapeMyPortfolioHtml(msg)}</li>`).join("")}</ul>` : ""}
+            </div>
+            <div class="my-portfolio-detail-section">
+                <h4>Plan / Levels</h4>
+                ${planSection}
+                <p class="my-portfolio-detail-notice">Structural Support 1 and Target 2/3 are unavailable in Portfolio v0 because no trustworthy deterministic methodology has been frozen (PS-P10C.1).</p>
+            </div>
+        `;
+    }
+
+    function openMyPortfolioDetail(key) {
+        const row = myPortfolioState.snapshotRowsByKey[key];
+        if (!row || !myPortfolioDetailModal) return;
+        if (myPortfolioDetailTitle) myPortfolioDetailTitle.textContent = row.symbol || key;
+        if (myPortfolioDetailSubtitle) {
+            myPortfolioDetailSubtitle.textContent = `Qty ${formatMyPortfolioNumber(row.qty ?? row.quantity)} @ ${formatMyPortfolioMoney(row.avg_price)} avg`;
+        }
+        renderMyPortfolioDetail(row);
+        openModal(myPortfolioDetailModal);
+    }
+
+    myPortfolioHoldingsRows?.addEventListener("click", event => {
+        const tr = event.target.closest("tr[data-instrument-id]");
+        if (!tr) return;
+        openMyPortfolioDetail(tr.getAttribute("data-instrument-id"));
+    });
+    myPortfolioHoldingsRows?.addEventListener("keydown", event => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        const tr = event.target.closest("tr[data-instrument-id]");
+        if (!tr) return;
+        event.preventDefault();
+        openMyPortfolioDetail(tr.getAttribute("data-instrument-id"));
+    });
+    myPortfolioDetailClose?.addEventListener("click", () => closeModal(myPortfolioDetailModal));
+    window.addEventListener("click", event => {
+        if (event.target === myPortfolioDetailModal) closeModal(myPortfolioDetailModal);
+    });
 
     function renderMyPortfolioHistory(imports) {
         if (!imports.length) {

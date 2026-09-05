@@ -539,6 +539,22 @@
     .top-opportunities-modal-container { width: min(920px, calc(100vw - 32px)); }
 }
 
+/* MY-PORTFOLIO-V1-FINAL-UX-CLOSURE: same reasoning as
+   .index-leadership-modal-container/.top-opportunities-modal-container
+   above — 05b-my-portfolio.css @imports BEFORE this file, so a width
+   override defined there would lose the cascade to the base
+   .modal-container rule above (equal specificity, later file wins). Must
+   live here, after that base rule, to actually win. */
+.my-portfolio-detail-modal-container {
+    width: min(760px, calc(100vw - 32px));
+    max-width: 760px;
+    max-height: min(82vh, 780px);
+}
+
+@media (max-width: 860px) {
+    .my-portfolio-detail-modal-container { width: min(560px, calc(100vw - 32px)); }
+}
+
 .modal-header {
     align-items: center;
     border-bottom: 1px solid var(--border-color);

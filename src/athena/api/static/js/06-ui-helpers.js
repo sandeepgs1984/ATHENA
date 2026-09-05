@@ -56,5 +56,6 @@
         closeModal(document.getElementById("validation-funnel-modal"));
         closeModal(document.getElementById("validation-report-modal"));
         closeModal(document.getElementById("top-opportunities-modal"));
+        closeModal(document.getElementById("my-portfolio-detail-modal"));
         if (!state.kiteBlocking) hideKiteGate();
     }
