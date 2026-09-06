@@ -303,8 +303,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.166.0" in html
-    assert "dashboard.js?v=9.166.0" in html
+    assert "dashboard.css?v=9.167.0" in html
+    assert "dashboard.js?v=9.167.0" in html
     assert "function decisionConfidenceBand" in js
     assert "analysis?.confidence_level" in js
     assert "confidence reflects evidence reliability, not expected profit" in js
@@ -460,9 +460,13 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert 'id="my-portfolio-sync-overlay"' in html
     assert "Recalculating Portfolio Intelligence" in html
     assert "Holdings are locked until this run finishes." in html
+    assert html.find('id="my-portfolio-sync-overlay"') > html.find('id="tab-my-portfolio"')
+    assert html.find('id="my-portfolio-sync-overlay"') > html.find('id="my-portfolio-holdings-rows"')
+    assert html.find('id="my-portfolio-sync-overlay"') < html.find('id="my-portfolio-detail-modal"')
     assert "function renderMyPortfolioSyncOverlay" in js
     assert "holdingActionPending" in js
     assert 'document.body.classList.toggle("my-portfolio-sync-blocked", active)' in js
+    assert ".my-portfolio-sync-blocked .workspace-viewport" in my_portfolio_css
     assert "position: fixed" in my_portfolio_css
     assert "z-index: 9500" in my_portfolio_css
     # Owner-reported: confirming a real broker export must never require a
@@ -513,6 +517,9 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert "#my-portfolio-holdings-rows tr[data-instrument-id]" in my_portfolio_css
     assert ".my-portfolio-detail-grid" in my_portfolio_css
     assert ".my-portfolio-detail-section" in my_portfolio_css
+    assert "function resetMyPortfolioDetailScroll" in js
+    assert "myPortfolioDetailBody.scrollTop = 0" in js
+    assert "window.requestAnimationFrame(resetMyPortfolioDetailScroll)" in js
     assert 'data-detail-section="position"' in js
     assert 'data-detail-section="technical"' in js
     assert ".my-portfolio-detail-notice" in my_portfolio_css

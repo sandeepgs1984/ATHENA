@@ -14,6 +14,8 @@ Owner request: improve My Portfolio usability after the Portfolio track closure 
 - Make the uploaded-file preview modal-first so row quality and reconciliation are immediately visible after parsing.
 - Make manual `Sync Existing Holdings` feel like a full-portfolio recalculation by blocking the whole app until sync and snapshot refresh complete.
 - Improve Current Holdings scan quality with trading-oriented, presentation-only indicators for P&L, price-vs-average, Conviction, Trend, Setup, Plan Levels, and Freshness.
+- Correct the symbol detail overlay so each newly opened holding starts at the top rather than inheriting the previous modal scroll position.
+- Correct the Sync Existing Holdings blocker so it is viewport-owned and visible even when Current Holdings is below the fold.
 
 ## Decisions
 
@@ -28,6 +30,8 @@ Owner request: improve My Portfolio usability after the Portfolio track closure 
 - The detailed preview modal opens automatically after upload parsing finishes. The inline upload card remains a compact status/control strip.
 - Confirming an upload runs Portfolio Sync automatically after the holdings replacement succeeds. The header sync button remains available only as an explicit refresh for existing holdings.
 - Portfolio Sync uses a full-viewport blocker for manual sync, upload-confirm sync, and edit/delete-triggered sync. It is dismissed only after the sync reaches a terminal state and the visible snapshot refresh has completed.
+- The sync blocker is mounted at top-level document scope, not inside Current Holdings, so it always covers the visible app.
+- The holding detail overlay resets its internal scroll position on every open.
 - Detailed preview/reconciliation tables remain available in a `Preview Details` overlay after the inline counts and issue chips identify whether attention is needed.
 - Table colors and icons are presentation-only affordances over existing values. They do not change Status, Conviction, D1 Trend, Opening Range Setup, Daily Review, Next Action, TradePlan, Structural Review, or any Portfolio snapshot semantics.
 
@@ -46,9 +50,11 @@ Owner request: improve My Portfolio usability after the Portfolio track closure 
 - The manual header action was renamed from `Sync Portfolio` to `Sync Existing Holdings` to distinguish it from the upload confirmation flow.
 - The duplicate header file-picker was removed. File selection now appears only inside `Update Holdings`; the header contains page-level actions only.
 - `Sync Existing Holdings` now activates a full-app blocking overlay with progress text and scroll lock until the recalculation and snapshot refresh finish.
+- The full-app blocker is outside the Current Holdings section in the DOM and also locks the workspace scroll container.
 - The Current Holdings sort toolbar now has explicit header spacing and a wider selector so focus rings/buttons do not overlap the title or sort summary.
 - Current Holdings now colors positive P&L/returns green and negative P&L/returns red, marks Last Price green/red relative to Avg Price, renders Conviction as a pill, renders Trend / Setup as directional chips, adds Plan Level icons, and adds a Freshness clock indicator.
 - The tapped-holding detail overlay is wider and section-framed, with roomier grids, value spacing, guidance callouts, and reason-list line-height for easier scanning.
+- Opening a different holding detail always resets the modal body and container scroll position to the top.
 - Full reset is gated by a modal requiring the exact `RESET` token.
 
 ## Methodology Boundary

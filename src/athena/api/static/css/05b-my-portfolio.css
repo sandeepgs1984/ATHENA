@@ -409,20 +409,16 @@
     line-height: 1;
 }
 
-/* Holdings-edit/delete: a full blocking overlay over the Current Holdings
-   card while a Portfolio Sync this action triggered (or the manual Sync
-   Portfolio button) is recalculating — up until then, per-row busy state
-   alone was too easy to miss and cleared before the owner expected. Sits
-   above the table (its own sticky columns/headers only reach z-index 5)
-   and blocks pointer events on everything beneath it while active, so
-   nothing can be edited/deleted again until the whole recalculation lands.
-   `.my-portfolio-holdings-card-body` only sets position:relative — nothing
-   else about that card body changes. */
+/* Holdings-edit/delete needs the Current Holdings body as a local positioning
+   context for table affordances, but the Portfolio Sync blocker itself lives
+   at top-level document scope so it always covers the viewport, even when the
+   Current Holdings section is below the fold. */
 .my-portfolio-holdings-card-body {
     position: relative;
 }
 
-.my-portfolio-sync-blocked {
+.my-portfolio-sync-blocked,
+.my-portfolio-sync-blocked .workspace-viewport {
     overflow: hidden;
 }
 

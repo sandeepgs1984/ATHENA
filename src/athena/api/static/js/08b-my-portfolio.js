@@ -1054,6 +1054,12 @@
         `;
     }
 
+    function resetMyPortfolioDetailScroll() {
+        if (myPortfolioDetailBody) myPortfolioDetailBody.scrollTop = 0;
+        const container = myPortfolioDetailModal?.querySelector(".my-portfolio-detail-modal-container");
+        if (container) container.scrollTop = 0;
+    }
+
     function openMyPortfolioDetail(key) {
         const row = myPortfolioState.snapshotRowsByKey[key];
         if (!row || !myPortfolioDetailModal) return;
@@ -1062,7 +1068,9 @@
             myPortfolioDetailSubtitle.textContent = `Qty ${formatMyPortfolioNumber(row.qty ?? row.quantity)} @ ${formatMyPortfolioMoney(row.avg_price)} avg`;
         }
         renderMyPortfolioDetail(row);
+        resetMyPortfolioDetailScroll();
         openModal(myPortfolioDetailModal);
+        window.requestAnimationFrame(resetMyPortfolioDetailScroll);
     }
 
     myPortfolioHoldingsRows?.addEventListener("click", event => {
