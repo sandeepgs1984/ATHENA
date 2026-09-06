@@ -38,6 +38,8 @@ Owner request: improve My Portfolio usability after the Portfolio track closure 
 - `Confirm Portfolio Update` became `Confirm & Sync Portfolio`; the action confirms the import, reloads canonical holdings, and starts the existing Portfolio Sync pipeline in one user gesture.
 - The manual header action was renamed from `Sync Portfolio` to `Sync Existing Holdings` to distinguish it from the upload confirmation flow.
 - The duplicate header file-picker was removed. File selection now appears only inside `Update Holdings`; the header contains page-level actions only.
+- The Current Holdings sort toolbar now has explicit header spacing and a wider selector so focus rings/buttons do not overlap the title or sort summary.
+- The tapped-holding detail overlay is wider and section-framed, with roomier grids, value spacing, guidance callouts, and reason-list line-height for easier scanning.
 - Full reset is gated by a modal requiring the exact `RESET` token.
 
 ## Methodology Boundary

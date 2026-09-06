@@ -546,9 +546,9 @@
    .modal-container rule above (equal specificity, later file wins). Must
    live here, after that base rule, to actually win. */
 .my-portfolio-detail-modal-container {
-    width: min(760px, calc(100vw - 32px));
-    max-width: 760px;
-    max-height: min(82vh, 780px);
+    width: min(1040px, calc(100vw - 32px));
+    max-width: 1040px;
+    max-height: min(86vh, 860px);
 }
 
 .my-portfolio-preview-modal-container {
@@ -558,7 +558,7 @@
 }
 
 @media (max-width: 860px) {
-    .my-portfolio-detail-modal-container { width: min(560px, calc(100vw - 32px)); }
+    .my-portfolio-detail-modal-container { width: min(720px, calc(100vw - 32px)); }
     .my-portfolio-preview-modal-container { width: min(720px, calc(100vw - 32px)); }
 }
 

@@ -303,8 +303,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.164.0" in html
-    assert "dashboard.js?v=9.164.0" in html
+    assert "dashboard.css?v=9.165.0" in html
+    assert "dashboard.js?v=9.165.0" in html
     assert "function decisionConfidenceBand" in js
     assert "analysis?.confidence_level" in js
     assert "confidence reflects evidence reliability, not expected profit" in js
@@ -395,6 +395,8 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert 'id="my-portfolio-history-rows"' in html
     assert 'id="my-portfolio-detail-modal"' in html
     assert 'id="my-portfolio-detail-body"' in html
+    assert 'class="card-header my-portfolio-holdings-header"' in html
+    assert 'class="my-portfolio-holdings-heading"' in html
     for heading in (
         "No.",
         "Last Price",
@@ -493,10 +495,18 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert ".my-portfolio-levels" in my_portfolio_css
     assert "#my-portfolio-holdings-rows tr[data-instrument-id]" in my_portfolio_css
     assert ".my-portfolio-detail-grid" in my_portfolio_css
+    assert ".my-portfolio-detail-section" in my_portfolio_css
+    assert 'data-detail-section="position"' in js
+    assert 'data-detail-section="technical"' in js
     assert ".my-portfolio-detail-notice" in my_portfolio_css
     assert ".my-portfolio-detail-modal-container" in css
+    assert "width: min(1040px, calc(100vw - 32px))" in css
+    assert "max-height: min(86vh, 860px)" in css
     assert ".my-portfolio-upload-flow" in my_portfolio_css
+    assert ".my-portfolio-holdings-header" in my_portfolio_css
+    assert ".my-portfolio-holdings-heading" in my_portfolio_css
     assert ".my-portfolio-sort-toolbar" in my_portfolio_css
+    assert "min-width: 190px" in my_portfolio_css
     assert ".my-portfolio-sort-indicator" in my_portfolio_css
 
     # MY-PORTFOLIO-POST-V1-UI-POLISH: tighter cell padding scoped to this

@@ -320,22 +320,39 @@
     width: 90px;
 }
 
+.my-portfolio-holdings-header {
+    align-items: flex-start;
+    gap: var(--space-18);
+}
+
+.my-portfolio-holdings-heading {
+    min-width: min(360px, 100%);
+}
+
+.my-portfolio-holdings-heading h2 {
+    margin-bottom: var(--space-6);
+}
+
 .my-portfolio-sort-toolbar {
     display: flex;
-    align-items: center;
-    gap: var(--space-8);
+    align-items: flex-end;
+    gap: var(--space-10);
     flex-wrap: wrap;
+    margin-top: var(--space-4);
+    padding-top: var(--space-2);
 }
 
 .my-portfolio-sort-toolbar label {
+    align-self: center;
     color: var(--text-muted);
     font-size: var(--text-0-75);
     font-weight: 700;
+    line-height: 36px;
     text-transform: uppercase;
 }
 
 .my-portfolio-sort-select {
-    min-width: 148px;
+    min-width: 190px;
     height: 36px;
     border: 1px solid var(--border-color);
     border-radius: 8px;
@@ -712,11 +729,18 @@
 .my-portfolio-detail-body {
     display: flex;
     flex-direction: column;
-    gap: var(--space-20);
+    gap: var(--space-18);
+}
+
+.my-portfolio-detail-section {
+    padding: var(--space-18);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: rgba(15, 22, 38, 0.34);
 }
 
 .my-portfolio-detail-section h4 {
-    margin: 0 0 var(--space-8);
+    margin: 0 0 var(--space-14);
     font-size: var(--text-0-8);
     font-weight: 700;
     letter-spacing: 0.04em;
@@ -726,47 +750,63 @@
 
 .my-portfolio-detail-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: var(--space-8) var(--space-16);
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: var(--space-16) var(--space-24);
 }
 
 .my-portfolio-detail-row {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: var(--space-5);
+    min-width: 0;
 }
 
 .my-portfolio-detail-label {
     font-size: var(--text-0-75);
     color: var(--text-muted);
+    line-height: 1.25;
 }
 
 .my-portfolio-detail-value {
-    font-size: var(--text-0-9);
+    font-size: var(--text-0-95);
     font-weight: 600;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
 }
 
 .my-portfolio-detail-guidance {
-    margin: 0;
-    line-height: 1.4;
+    margin: var(--space-16) 0 0;
+    padding: var(--space-12) var(--space-14);
+    border-left: 3px solid rgba(0, 229, 255, 0.42);
+    border-radius: 0 8px 8px 0;
+    background: rgba(0, 229, 255, 0.06);
+    line-height: 1.5;
+    overflow-wrap: anywhere;
 }
 
 .my-portfolio-detail-reasons {
-    margin: var(--space-8) 0 0;
+    margin: var(--space-14) 0 0;
     padding-left: var(--space-20);
+    color: var(--text-muted);
+    font-size: var(--text-0-82);
+    line-height: 1.65;
+}
+
+.my-portfolio-detail-notice {
+    margin: var(--space-14) 0 0;
+    padding: var(--space-10) var(--space-12);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
     color: var(--text-muted);
     font-size: var(--text-0-8);
     line-height: 1.5;
 }
 
-.my-portfolio-detail-notice {
-    margin: var(--space-8) 0 0;
-    padding: var(--space-8) var(--space-12);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    color: var(--text-muted);
-    font-size: var(--text-0-8);
-    line-height: 1.4;
+@media (min-width: 980px) {
+    .my-portfolio-detail-section[data-detail-section="position"] .my-portfolio-detail-grid,
+    .my-portfolio-detail-section[data-detail-section="technical"] .my-portfolio-detail-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
 }
 
 .sr-only {

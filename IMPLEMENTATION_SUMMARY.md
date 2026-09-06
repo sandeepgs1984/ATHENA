@@ -47,7 +47,9 @@ Update` is labeled `Confirm & Sync Portfolio`, and a successful confirmation
 automatically starts the existing Portfolio Sync pipeline. The header action
 is renamed `Sync Existing Holdings` and the duplicate header file-picker was
 removed, so manual refresh is distinct from the upload confirmation flow and
-file selection appears only inside `Update Holdings`.
+file selection appears only inside `Update Holdings`. Follow-up screenshot
+polish fixed the Current Holdings sort-control overlap and widened/reframed
+the tapped-holding detail overlay into more readable scan sections.
 
 **Tests.** Added API coverage for full reset success, reset-token rejection,
 and active-sync reset rejection without mutation. Focused validation: My

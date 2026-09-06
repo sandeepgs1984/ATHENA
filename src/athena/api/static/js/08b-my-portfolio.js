@@ -955,7 +955,7 @@
             : `<p class="my-portfolio-detail-guidance text-muted">Structural Review is unavailable for this holding (insufficient or incoherent D1 history).</p>`;
 
         myPortfolioDetailBody.innerHTML = `
-            <div class="my-portfolio-detail-section">
+            <div class="my-portfolio-detail-section" data-detail-section="position">
                 <h4>Position</h4>
                 <div class="my-portfolio-detail-grid">
                     ${myPortfolioDetailRow("Qty", formatMyPortfolioNumber(row.qty ?? row.quantity))}
@@ -967,7 +967,7 @@
                     ${myPortfolioDetailRow("P&L %", row.pnl_pct == null ? "Not available" : formatMyPortfolioPct(row.pnl_pct))}
                 </div>
             </div>
-            <div class="my-portfolio-detail-section">
+            <div class="my-portfolio-detail-section" data-detail-section="technical">
                 <h4>Technical State</h4>
                 <div class="my-portfolio-detail-grid">
                     ${myPortfolioDetailRow("D1 Trend", trendLabel || "Not available")}
@@ -984,7 +984,7 @@
                 </div>
                 <p class="my-portfolio-detail-guidance text-muted">RSI14 is raw context only — no overbought/oversold interpretation. Volume/VMA20 are raw context only — no expansion/compression interpretation.</p>
             </div>
-            <div class="my-portfolio-detail-section">
+            <div class="my-portfolio-detail-section" data-detail-section="review">
                 <h4>ATHENA Review</h4>
                 <div class="my-portfolio-detail-grid">
                     ${myPortfolioDetailRow("Status", row.status || "Not available")}
@@ -994,12 +994,12 @@
                 <p class="my-portfolio-detail-guidance"><strong>Daily Guidance:</strong> ${escapeMyPortfolioHtml(review?.guidance || "Daily Review unavailable.")}</p>
                 ${reasonMessages.length ? `<ul class="my-portfolio-detail-reasons">${reasonMessages.map(msg => `<li>${escapeMyPortfolioHtml(msg)}</li>`).join("")}</ul>` : ""}
             </div>
-            <div class="my-portfolio-detail-section">
+            <div class="my-portfolio-detail-section" data-detail-section="plan">
                 <h4>Plan / Levels</h4>
                 ${planSection}
                 <p class="my-portfolio-detail-notice">Plan Trigger/Stop/T1 reflect an active TradePlan only, distinct from the structural D1 levels below.</p>
             </div>
-            <div class="my-portfolio-detail-section">
+            <div class="my-portfolio-detail-section" data-detail-section="structural">
                 <h4>Structural Review / Levels</h4>
                 ${structuralSection}
             </div>
