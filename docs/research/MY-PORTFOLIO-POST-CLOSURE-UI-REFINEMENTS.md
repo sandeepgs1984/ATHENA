@@ -33,7 +33,7 @@ Owner request: improve My Portfolio usability after the Portfolio track closure 
 - Portfolio Sync uses a full-viewport blocker for manual sync, upload-confirm sync, and edit/delete-triggered sync. It is dismissed only after the sync reaches a terminal state and the visible snapshot refresh has completed.
 - The sync blocker is mounted at top-level document scope, not inside Current Holdings, so it always covers the visible app.
 - The holding detail overlay resets its internal scroll position on every open.
-- Detailed preview/reconciliation tables remain available in a `Preview Details` overlay after the inline counts and issue chips identify whether attention is needed.
+- Detailed preview/reconciliation tables remain available in an `Upload Preview` overlay after the inline counts and issue chips identify whether attention is needed.
 - Table colors and icons are presentation-only affordances over existing values. They do not change Status, Conviction, D1 Trend, Opening Range Setup, Daily Review, Next Action, TradePlan, Structural Review, or any Portfolio snapshot semantics.
 - The page hierarchy is presentation-only. The Current Holdings table is the primary daily-work surface; upload/import history are operational/audit surfaces and therefore sit below the trading workbench.
 
@@ -43,7 +43,7 @@ Owner request: improve My Portfolio usability after the Portfolio track closure 
 - The holdings toolbar supports sorting by P&L %, P&L, Conviction, Next Action, Status, Trend / Setup, Qty, Avg Price, Last Price, Symbol, and Daily Review.
 - Column headers also show the active sort indicator and can be clicked to sort.
 - The upload card now explicitly says that upload creates a preview first and holdings change only after confirmation.
-- Cancel is labeled as `Discard Preview` to avoid confusion with page-level cancel semantics.
+- The preview-open action is labeled `Upload Preview` and the discard action is labeled `Discard Upload`, matching the uploaded-file workflow rather than generic preview/cancel language.
 - Alerts are rendered inside the upload card, directly above the three-step flow, so row-quality warnings and confirm/sync completion messages stay attached to the action that produced them.
 - The visible preview summary shows total rows, accepted rows, skipped rows, duplicate rows, and the first few row issues inline before the confirm action.
 - Full row-quality and reconciliation detail opens in a large modal overlay, so the owner can inspect the uploaded file without scrolling below the fold or losing the confirm/discard action context.
@@ -57,7 +57,7 @@ Owner request: improve My Portfolio usability after the Portfolio track closure 
 - Current Holdings now colors positive P&L/returns green and negative P&L/returns red, marks Last Price green/red relative to Avg Price, renders Conviction as a pill, renders Trend / Setup as directional chips, adds Plan Level icons, and adds a Freshness clock indicator.
 - The tapped-holding detail overlay is wider and section-framed, with roomier grids, value spacing, guidance callouts, and reason-list line-height for easier scanning.
 - Opening a different holding detail always resets the modal body and container scroll position to the top.
-- The page now uses a professional trading-workstation layout: compact command center, global status banner, KPI strip led by Current Value and Total P&L, primary Current Holdings workbench, and a secondary two-column operations area for Update Holdings and Recent Imports.
+- The page now uses a professional trading-workstation layout: compact command center, global status banner, a four-card KPI strip led by Current Value and Total P&L, a compact freshness strip for Latest Import/Last Synced metadata, primary Current Holdings workbench, and a secondary two-column operations area for Update Holdings and Recent Imports.
 - Full reset is gated by a modal requiring the exact `RESET` token.
 
 ## Methodology Boundary

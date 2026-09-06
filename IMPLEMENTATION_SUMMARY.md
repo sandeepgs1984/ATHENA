@@ -40,9 +40,9 @@ Reworked Update Holdings into the first operational block on the page,
 ahead of the read-only summary metrics, with one staged flow (`Choose file`
 -> `Review preview` -> `Confirm & sync`). Preview counts and the first row
 issues render inline inside the upload card; the full preview/reconciliation
-tables open in a large `Preview Details` overlay instead of falling below
+tables open in a large `Upload Preview` overlay instead of falling below
 the viewport. Alerts now live inside
-the upload card, `Cancel` is labeled `Discard Preview`, `Confirm Portfolio
+the upload card, discard is labeled `Discard Upload`, `Confirm Portfolio
 Update` is labeled `Confirm & Sync Portfolio`, and a successful confirmation
 automatically starts the existing Portfolio Sync pipeline. The header action
 is renamed `Sync Existing Holdings` and the duplicate header file-picker was
@@ -60,10 +60,12 @@ only and do not change Portfolio semantics. Owner follow-up corrected two
 interaction defects: holding detail now resets its scroll position on every
 open, and the Sync Existing Holdings blocker is mounted at top-level document
 scope with workspace scroll lock so it remains visible even when Current
-Holdings is below the fold. Final workstation redesign makes Current Value
-and Total P&L the leading KPI strip, promotes Current Holdings to the primary
-daily workbench directly under KPIs, and moves Update Holdings plus Recent
-Imports into a secondary operations/audit grid. No feature behavior changed.
+Holdings is below the fold. Final workstation redesign makes Current Value,
+Total P&L, Total Investment, and Holdings the leading KPI strip; moves
+Latest Import and Last Synced into a compact freshness strip; promotes
+Current Holdings to the primary daily workbench directly under KPIs; and
+moves Update Holdings plus Recent Imports into a secondary operations/audit
+grid. No feature behavior changed.
 
 **Tests.** Added API coverage for full reset success, reset-token rejection,
 and active-sync reset rejection without mutation. Focused validation: My

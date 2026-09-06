@@ -258,16 +258,58 @@
     content: "\23";
 }
 
-.my-portfolio-kpi-freshness {
-    grid-column: span 2;
-}
-
-.my-portfolio-kpi-freshness h3::before {
-    content: "\f017";
-}
-
 .my-portfolio-kpi-strip .metric-value {
     line-height: 1.05;
+}
+
+.my-portfolio-freshness-strip {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-10);
+    margin-top: calc(var(--space-8) * -1);
+}
+
+.my-portfolio-freshness-item {
+    display: grid;
+    grid-template-columns: auto auto minmax(max-content, auto) minmax(0, 1fr);
+    align-items: center;
+    gap: var(--space-8);
+    min-width: 0;
+    padding: var(--space-8) var(--space-12);
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    border-radius: 8px;
+    background: rgba(15, 22, 38, 0.32);
+    color: var(--text-muted);
+}
+
+.my-portfolio-freshness-item i {
+    color: var(--accent);
+    font-size: var(--text-0-8);
+}
+
+.my-portfolio-freshness-item span {
+    color: var(--text-muted);
+    font-size: var(--text-0-72);
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.my-portfolio-freshness-item strong {
+    color: var(--text-primary);
+    font-size: var(--text-0-88);
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.my-portfolio-freshness-item small {
+    min-width: 0;
+    color: var(--text-muted);
+    font-size: var(--text-0-78);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .my-portfolio-kpi-tone-positive,
@@ -1088,10 +1130,6 @@
         grid-template-columns: 1fr;
     }
 
-    .my-portfolio-kpi-freshness {
-        grid-column: auto;
-    }
-
     .my-portfolio-preview-counts {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
@@ -1102,6 +1140,19 @@
 
     .my-portfolio-upload-body {
         align-items: stretch;
+    }
+
+    .my-portfolio-freshness-strip {
+        grid-template-columns: 1fr;
+        margin-top: 0;
+    }
+
+    .my-portfolio-freshness-item {
+        grid-template-columns: auto auto minmax(0, 1fr);
+    }
+
+    .my-portfolio-freshness-item small {
+        grid-column: 2 / -1;
     }
 }
 

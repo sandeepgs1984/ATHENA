@@ -1287,7 +1287,7 @@
         } else {
             showMyPortfolioAlert("This preview has no rows to confirm. Upload a file with at least one holding.", "warning");
         }
-        setMyPortfolioCancelLabel("Discard Preview");
+        setMyPortfolioCancelLabel("Discard Upload");
 
         renderMyPortfolioPreviewRows(preview.rows || []);
         renderMyPortfolioReconciliation(preview.proposed_changes || []);
@@ -1457,7 +1457,7 @@
                     "Portfolio holdings changed after this preview was generated. Please generate a fresh preview before confirming.",
                     "warning"
                 );
-                setMyPortfolioCancelLabel("Discard Preview");
+                setMyPortfolioCancelLabel("Discard Upload");
                 myPortfolioUploadState.textContent = "Preview is stale. Discard it and choose the holdings file again.";
             } else {
                 // Only reachable when literally every row in the file is
@@ -1603,7 +1603,7 @@
         if (myPortfolioPreview) closeModal(myPortfolioPreview);
         renderMyPortfolioInlinePreview(null);
         if (myPortfolioUploadState) myPortfolioUploadState.textContent = "Choose a holdings file to create a preview.";
-        setMyPortfolioCancelLabel("Discard Preview");
+        setMyPortfolioCancelLabel("Discard Upload");
         clearMyPortfolioAlert();
         setMyPortfolioBusy();
         myPortfolioFileInput?.focus();

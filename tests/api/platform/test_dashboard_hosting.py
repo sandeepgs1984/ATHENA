@@ -303,8 +303,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.168.0" in html
-    assert "dashboard.js?v=9.168.0" in html
+    assert "dashboard.css?v=9.169.0" in html
+    assert "dashboard.js?v=9.169.0" in html
     assert "function decisionConfidenceBand" in js
     assert "analysis?.confidence_level" in js
     assert "confidence reflects evidence reliability, not expected profit" in js
@@ -369,6 +369,8 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert 'id="my-portfolio-alert" class="my-portfolio-alert my-portfolio-status-banner" hidden' in html
     assert 'class="my-portfolio-summary my-portfolio-kpi-strip"' in html
     assert 'class="card val-card my-portfolio-kpi-card my-portfolio-kpi-primary"' in html
+    assert 'class="my-portfolio-freshness-strip" aria-label="Portfolio freshness"' in html
+    assert "my-portfolio-kpi-freshness" not in html
     assert 'class="card my-portfolio-holdings-card"' in html
     assert 'class="my-portfolio-secondary-grid"' in html
     assert 'class="card my-portfolio-upload-panel"' in html
@@ -391,8 +393,11 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert 'id="my-portfolio-preview-modal" class="modal-overlay" hidden' in html
     assert 'id="my-portfolio-preview-close"' in html
     assert '<details id="my-portfolio-preview"' not in html
-    assert "Preview Details" in html
-    assert "Holdings Preview Details" in html
+    assert "Upload Preview" in html
+    assert "Preview Details" not in html
+    assert "Holdings Preview Details" not in html
+    assert "Discard Upload" in html
+    assert "Discard Preview" not in html
     assert "Confirm &amp; Sync Portfolio" in html
     assert "No trades or realized P&amp;L are inferred" in html
     assert 'id="my-portfolio-confirm-actions" class="my-portfolio-confirm-actions" hidden' in html
@@ -445,6 +450,9 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert ".my-portfolio-status-banner" in my_portfolio_css
     assert ".my-portfolio-kpi-strip" in my_portfolio_css
     assert ".my-portfolio-kpi-primary" in my_portfolio_css
+    assert ".my-portfolio-freshness-strip" in my_portfolio_css
+    assert ".my-portfolio-freshness-item" in my_portfolio_css
+    assert ".my-portfolio-kpi-freshness" not in my_portfolio_css
     assert ".my-portfolio-kpi-tone-positive" in my_portfolio_css
     assert "function setMyPortfolioToneClass" in js
     assert ".my-portfolio-holdings-card" in my_portfolio_css
