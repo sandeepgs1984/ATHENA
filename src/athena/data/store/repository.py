@@ -47,6 +47,7 @@ from athena.portfolio.my_portfolio_contracts import (
     ImportStatus,
     ReconciliationAction,
     ReconciliationChange,
+    SkippedImportRow,
     SymbolMappingState,
     SyncRunStatus,
     reconcile_current_holdings,
@@ -2158,10 +2159,15 @@ class SqliteRepository:
         import_id: str,
         expected_base_digest: str,
         confirmed_at: datetime,
-    ) -> tuple[bool, tuple[ReconciliationChange, ...]]:
+    ) -> tuple[bool, tuple[ReconciliationChange, ...], tuple[SkippedImportRow, ...]]:
         """Atomically apply a clean persisted preview to canonical holdings.
 
-        Returns ``(already_confirmed, changes)``. If the current holdings digest
+        Returns ``(already_confirmed, changes, skipped)``. Confirmation is
+        best-effort per row, never all-or-nothing: a structurally invalid row
+        or a symbol that still can't be resolved (even after the service
+        layer's own automatic onboarding attempt, if any) is reported back
+        in ``skipped`` rather than blocking every other valid row in the
+        same file — see ``SkippedImportRow``. If the current holdings digest
         no longer matches the preview base, raises ``RepositoryError`` with a
         stable ``STALE_PREVIEW`` marker for the API layer.
         """
@@ -2184,15 +2190,9 @@ class SqliteRepository:
                             self._change_from_reconciliation(row)
                             for row in self.list_portfolio_reconciliations(import_id)
                         )
-                        return True, existing_changes
+                        return True, existing_changes, ()
                     if status is not ImportStatus.PREVIEWED:
                         raise RepositoryError("IMPORT_NOT_CONFIRMABLE")
-                    if (
-                        int(import_record["rejected_rows"])
-                        or int(import_record["unresolved_rows"])
-                        or int(import_record["ambiguous_rows"])
-                    ):
-                        raise RepositoryError("IMPORT_HAS_INVALID_ROWS")
 
                     current = {
                         holding.instrument_id: holding
@@ -2201,9 +2201,9 @@ class SqliteRepository:
                     if self._holdings_digest(current.values()) != expected_base_digest:
                         raise RepositoryError("STALE_PREVIEW")
 
-                    uploaded = self._uploaded_holdings_for_import_locked(import_id, confirmed_at)
+                    uploaded, skipped = self._uploaded_holdings_for_import_locked(import_id, confirmed_at)
                     if not uploaded:
-                        raise RepositoryError("IMPORT_HAS_NO_HOLDINGS")
+                        raise RepositoryError("IMPORT_HAS_NO_CONFIRMABLE_HOLDINGS")
                     changes = reconcile_current_holdings(current, uploaded)
                     for index, change in enumerate(changes, start=1):
                         reconciliation_id = f"{import_id}-rec-{index:04d}"
@@ -2264,7 +2264,7 @@ class SqliteRepository:
                         "UPDATE portfolio_imports SET status=?, confirmed_at=? WHERE import_id=?",
                         (ImportStatus.CONFIRMED.value, confirmed_at.isoformat(), import_id),
                     )
-                    return False, changes
+                    return False, changes, skipped
         except sqlite3.Error as exc:
             raise RepositoryError(f"confirm portfolio import failed: {exc}") from exc
 
@@ -2700,7 +2700,27 @@ class SqliteRepository:
         self,
         import_id: str,
         confirmed_at: datetime,
-    ) -> dict[str, CanonicalPortfolioHolding]:
+    ) -> tuple[dict[str, CanonicalPortfolioHolding], tuple[SkippedImportRow, ...]]:
+        """Build the confirmable holdings for one import, best-effort per row.
+
+        Never all-or-nothing: a structurally invalid row, an unresolved
+        symbol (even after the service layer's own automatic onboarding
+        attempt, if any — this re-resolves live against the current
+        instruments/symbol_master tables rather than trusting a possibly
+        stale preview-time snapshot), a symbol that only ever resolved
+        against ATHENA's broader `symbol_master` catalog with no
+        corresponding `instruments` row (which would otherwise confirm fine
+        and then fail Portfolio Sync forever afterwards), or a duplicate
+        canonical instrument is excluded from the result and reported in
+        ``skipped`` instead of raising and blocking every other, perfectly
+        valid row.
+        """
+        from athena.portfolio.imports import (
+            ParsedHoldingRow,
+            build_symbol_resolver_index,
+            resolve_preview_rows,
+        )
+
         rows = self._conn.execute(
             "SELECT import_id, source_row_id, source_row_number, original_values_json, "
             "normalized_symbol, raw_symbol, quantity, avg_price, mapping_state, "
@@ -2709,16 +2729,76 @@ class SqliteRepository:
             "ORDER BY source_row_number ASC, source_row_id ASC",
             (import_id,),
         ).fetchall()
+
+        index = build_symbol_resolver_index(self.list_symbol_records(), self.list_instruments())
+
+        def as_real_instrument(candidate_instrument_id: str | None) -> str | None:
+            # A `symbol_master`-only match is real canonical identity but
+            # carries no ingested D1 candle history — never accept one here,
+            # only ever a row already backed by a real `instruments` row.
+            if candidate_instrument_id and self.get_instrument(candidate_instrument_id) is not None:
+                return candidate_instrument_id
+            return None
+
         holdings: dict[str, CanonicalPortfolioHolding] = {}
+        skipped: list[SkippedImportRow] = []
         for row in rows:
             item = self._portfolio_import_row_from_row(row)
             errors = tuple(item["validation_errors"])
             mapping_state = SymbolMappingState(str(item["mapping_state"]))
-            if errors or mapping_state is not SymbolMappingState.RESOLVED:
-                raise RepositoryError("IMPORT_HAS_INVALID_ROWS")
-            instrument_id = str(item["resolved_instrument_id"])
+            source_row_id = str(item["source_row_id"])
+            raw_symbol = str(item["raw_symbol"])
+
+            instrument_id: str | None = None
+            if mapping_state is SymbolMappingState.RESOLVED and not errors:
+                instrument_id = as_real_instrument(str(item["resolved_instrument_id"]))
+            needs_live_attempt = (
+                instrument_id is None
+                and item["quantity"] is not None
+                and item["avg_price"] is not None
+                and (errors == ("UNRESOLVED_SYMBOL",) or (mapping_state is SymbolMappingState.RESOLVED and not errors))
+            )
+            if needs_live_attempt:
+                # Worth a live re-resolution attempt: the row's own data was
+                # always valid, it just didn't match a real, ingested
+                # instrument at preview time. A service-layer auto-onboard
+                # step may have fixed that since — check the current
+                # catalog, never trust the frozen preview-time verdict here.
+                reparsed = ParsedHoldingRow(
+                    source_row_id=source_row_id,
+                    source_row_number=int(item["source_row_number"]),
+                    original_values=item["original_values"],
+                    raw_symbol=raw_symbol,
+                    normalized_symbol=str(item["normalized_symbol"]),
+                    quantity=int(item["quantity"]),
+                    avg_price=Decimal(str(item["avg_price"])),
+                )
+                (reresolved,) = resolve_preview_rows((reparsed,), index)
+                if reresolved.mapping_state is SymbolMappingState.RESOLVED:
+                    instrument_id = as_real_instrument(reresolved.resolved_instrument_id)
+
+            if instrument_id is None:
+                # Every non-RESOLVED mapping state carries at least one error
+                # code by construction (see imports.py `_resolve_one`); a
+                # RESOLVED-but-never-a-real-instrument row carries none, so
+                # it gets its own distinct, honest reason instead.
+                if errors:
+                    reason = ",".join(errors)
+                elif mapping_state is SymbolMappingState.RESOLVED:
+                    reason = "INSTRUMENT_NOT_YET_INGESTED"
+                else:
+                    reason = "UNRESOLVED_SYMBOL"
+                skipped.append(SkippedImportRow(source_row_id=source_row_id, raw_symbol=raw_symbol, reason=reason))
+                continue
             if instrument_id in holdings:
-                raise RepositoryError("DUPLICATE_CANONICAL_INSTRUMENT")
+                skipped.append(
+                    SkippedImportRow(
+                        source_row_id=source_row_id,
+                        raw_symbol=raw_symbol,
+                        reason="DUPLICATE_CANONICAL_INSTRUMENT",
+                    )
+                )
+                continue
             holdings[instrument_id] = CanonicalPortfolioHolding(
                 instrument_id=instrument_id,
                 quantity=int(item["quantity"]),
@@ -2726,14 +2806,14 @@ class SqliteRepository:
                 imported_at=confirmed_at,
                 updated_at=confirmed_at,
                 source_import_id=import_id,
-                source_row_id=str(item["source_row_id"]),
+                source_row_id=source_row_id,
                 provenance={
                     "source_row_number": item["source_row_number"],
-                    "raw_symbol": item["raw_symbol"],
+                    "raw_symbol": raw_symbol,
                     "normalized_symbol": item["normalized_symbol"],
                 },
             )
-        return holdings
+        return holdings, tuple(skipped)
 
     def _holdings_digest(self, holdings: Iterable[CanonicalPortfolioHolding]) -> str:
         import hashlib

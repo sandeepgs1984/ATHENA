@@ -20,7 +20,9 @@ from athena.portfolio.my_portfolio_contracts import (
 MAX_IMPORT_BYTES = 2_000_000
 MAX_IMPORT_ROWS = 2_000
 
-_SYMBOL_ALIASES = frozenset({"symbol", "ticker", "trading symbol", "tradingsymbol"})
+_SYMBOL_ALIASES = frozenset(
+    {"symbol", "ticker", "trading symbol", "tradingsymbol", "instrument"}
+)
 _QTY_ALIASES = frozenset({"qty", "quantity", "shares"})
 _AVG_PRICE_ALIASES = frozenset(
     {"avg price", "average price", "avg_price", "average_price", "buy price", "avg cost"}
@@ -369,7 +371,10 @@ def _resolve_one(row: ParsedHoldingRow, index: SymbolResolverIndex) -> ResolvedH
 
 
 def _normalize_header(value: str) -> str:
-    return " ".join(str(value).strip().lower().replace("_", " ").split())
+    # Broker export headers commonly abbreviate with trailing/embedded
+    # periods ("Qty.", "Avg. cost", "Cur. val") — strip them so those still
+    # match the existing period-free alias entries ("qty", "avg cost").
+    return " ".join(str(value).strip().lower().replace("_", " ").replace(".", " ").split())
 
 
 def _normalize_symbol(value: str) -> str:

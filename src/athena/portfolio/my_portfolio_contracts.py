@@ -146,6 +146,22 @@ class ReconciliationChange:
     after: CanonicalPortfolioHolding | None
 
 
+@dataclass(frozen=True, slots=True)
+class SkippedImportRow:
+    """One uploaded row excluded from confirmation, with the reason why.
+
+    Confirming an import is best-effort per row, never all-or-nothing: a
+    structurally invalid row (e.g. zero avg price) or a symbol that still
+    can't be resolved after an automatic onboarding attempt is excluded from
+    the confirmed holdings snapshot rather than blocking every other,
+    perfectly valid row in the same file.
+    """
+
+    source_row_id: str
+    raw_symbol: str
+    reason: str
+
+
 def reconcile_current_holdings(
     existing: Mapping[str, CanonicalPortfolioHolding],
     uploaded: Mapping[str, CanonicalPortfolioHolding],

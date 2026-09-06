@@ -63,6 +63,51 @@ def test_csv_parser_accepts_canonical_columns_and_aliases() -> None:
     assert parsed.rows[0].avg_price == Decimal("1500.25")
 
 
+def test_csv_parser_accepts_broker_export_headers_with_periods_and_extra_columns() -> None:
+    # Owner-reported: a real Zerodha/Kite holdings export ("Instrument,Qty.,
+    # Avg. cost,LTP,Invested,Cur. val,P&L,Net chg.,Day chg.") previously
+    # failed with MISSING_REQUIRED_COLUMN for all three required fields —
+    # "Instrument" wasn't a recognized symbol alias, and the trailing/
+    # embedded periods in "Qty."/"Avg. cost" broke the exact-match against
+    # the already-existing period-free "qty"/"avg cost" aliases. The extra
+    # broker-computed columns (LTP, Invested, P&L, ...) are ATHENA's own
+    # server-owned math and must stay ignored, never required or parsed.
+    parsed = parse_holdings_file(
+        "holdings.csv",
+        b"Instrument,Qty.,Avg. cost,LTP,Invested,Cur. val,P&L,Net chg.,Day chg.\n"
+        b"ACMESOLAR,418,408.35,418.00,170690.30,174724.00,4033.70,2.36,4.01\n"
+        b"BALKRISIND,46,2153.57,2284.60,99064.00,105091.60,6027.60,6.08,-1.83\n",
+    )
+
+    assert parsed.errors == ()
+    assert len(parsed.rows) == 2
+    assert parsed.rows[0].normalized_symbol == "ACMESOLAR"
+    assert parsed.rows[0].quantity == 418
+    assert parsed.rows[0].avg_price == Decimal("408.35")
+    assert parsed.rows[0].is_valid
+    assert parsed.rows[1].normalized_symbol == "BALKRISIND"
+    assert parsed.rows[1].quantity == 46
+    assert parsed.rows[1].avg_price == Decimal("2153.57")
+
+
+def test_csv_parser_rejects_zero_avg_price_row_without_failing_whole_import() -> None:
+    # A real broker export can carry a genuine ₹0.00 avg cost (e.g. a bonus/
+    # demerger share with no cost basis) — ATHENA's own domain invariant
+    # requires avg_price > 0, so that one row is rejected on its own; it
+    # must never abort parsing the rest of a otherwise-valid file.
+    parsed = parse_holdings_file(
+        "holdings.csv",
+        b"Instrument,Qty.,Avg. cost\nRATNA-RE,74,0.00\nINFY,10,1500\n",
+    )
+
+    assert parsed.errors == ()
+    assert len(parsed.rows) == 2
+    assert parsed.rows[0].normalized_symbol == "RATNA-RE"
+    assert not parsed.rows[0].is_valid
+    assert "INVALID_AVG_PRICE" in parsed.rows[0].errors
+    assert parsed.rows[1].is_valid
+
+
 def test_csv_parser_reports_missing_required_columns_and_unsupported_file() -> None:
     missing = parse_holdings_file("holdings.csv", b"Symbol,Qty\nINFY,10\n")
     unsupported = parse_holdings_file("holdings.txt", b"Symbol,Qty,Avg Price\nINFY,10,100\n")

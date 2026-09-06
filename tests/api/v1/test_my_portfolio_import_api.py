@@ -43,6 +43,33 @@ def _instrument(instrument_id: str, symbol: str, exchange: str = "NSE") -> Instr
     return Instrument(instrument_id=instrument_id, symbol=symbol, exchange=exchange, series="EQ")
 
 
+def _symbol_master_only_record(instrument_id: str, symbol: str, exchange: str = "NSE"):
+    # Owner-reported real scenario: a symbol resolvable against ATHENA's
+    # broader `symbol_master` catalog (ADR-011) with NO corresponding
+    # `instruments` row and therefore no ingested D1 candle history —
+    # exactly how GOLDBEES/SILVERCASE confirmed fine, then failed every
+    # Portfolio Sync afterwards with "invalid canonical instrument, no
+    # persisted d1 candle".
+    from athena.symbols.models import Board, SeriesSource, SymbolRecord
+
+    return SymbolRecord(
+        symbol=symbol,
+        exchange=exchange,
+        instrument_id=instrument_id,
+        name=None,
+        series="EQ",
+        series_source=SeriesSource.BROKER,
+        board=Board.MAINBOARD,
+        lot_size=1,
+        tick_size=Decimal("0.05"),
+        status="ACTIVE",
+        first_seen=NOW,
+        last_seen=NOW,
+        source="test",
+        classification_reason="test fixture",
+    )
+
+
 def _candle(instrument_id: str, close: str, ts: datetime = NOW) -> Candle:
     price = Decimal(close)
     return Candle(
@@ -324,6 +351,258 @@ def test_import_preview_persists_rows_and_does_not_mutate_holdings(my_portfolio_
     )
     assert detail.status_code == 200
     assert detail.json()["data"]["rows"][1]["mapping_state"] == "UNRESOLVED"
+
+
+def _fake_validate_symbols_adds_instrument(*, exchange: str = "NSE"):
+    """Simulates a real 'Add & validate' onboarding call succeeding: adds
+    the symbol as a real tracked instrument, matching what the real Kite
+    ingestion path would do — never fabricates holdings data, only makes
+    the symbol resolvable."""
+
+    def fake(repo, config_dir, *, symbols, as_of, repo_root=None):
+        for symbol in symbols:
+            repo.upsert_instrument(_instrument(f"{exchange}:{symbol}", symbol, exchange=exchange))
+        return type("Result", (), {"run_id": "fake-validate-run"})()
+
+    return fake
+
+
+def _fake_validate_symbols_always_fails(repo, config_dir, *, symbols, as_of, repo_root=None):
+    raise RuntimeError("no Kite session configured (simulated)")
+
+
+def test_confirm_auto_resolves_unknown_symbol_and_confirms_it(
+    my_portfolio_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Owner-reported: confirming a real broker export must never require a
+    # manual CLI step or a hand-edited CSV for a symbol ATHENA simply
+    # hasn't tracked yet — confirm auto-onboards it via the same real
+    # ingest path "Add & validate" already uses.
+    monkeypatch.setattr(
+        "athena.ops.symbol_validate.validate_symbols",
+        _fake_validate_symbols_adds_instrument(),
+    )
+    data = _preview(my_portfolio_client, b"Symbol,Qty,Avg Price\nINFY,10,1500\nNEWSYM,5,250\n")
+    headers = get_auth_headers(my_portfolio_client, Role.OPERATOR)
+
+    response = my_portfolio_client.post(
+        f"/api/v1/my-portfolio/imports/{data['import_id']}/confirm",
+        headers=headers,
+        json={"import_id": data["import_id"], "confirmation": "CONFIRM"},
+    )
+
+    assert response.status_code == 200
+    result = response.json()["data"]
+    assert result["status"] == "CONFIRMED"
+    assert result["skipped_rows"] == []
+    holding_ids = {h["instrument_id"] for h in result["holdings"]}
+    assert holding_ids == {"NSE:INFY", "NSE:NEWSYM"}
+
+
+def test_confirm_skips_symbol_auto_resolve_cannot_fix_but_confirms_the_rest(
+    my_portfolio_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Auto-resolve is best-effort, never blocking: a genuinely unknown/
+    # delisted symbol (or no live broker session) must not prevent the
+    # rest of a real, otherwise-valid file from confirming.
+    monkeypatch.setattr(
+        "athena.ops.symbol_validate.validate_symbols",
+        _fake_validate_symbols_always_fails,
+    )
+    data = _preview(my_portfolio_client, b"Symbol,Qty,Avg Price\nINFY,10,1500\nBOGUS,5,250\n")
+    headers = get_auth_headers(my_portfolio_client, Role.OPERATOR)
+
+    response = my_portfolio_client.post(
+        f"/api/v1/my-portfolio/imports/{data['import_id']}/confirm",
+        headers=headers,
+        json={"import_id": data["import_id"], "confirmation": "CONFIRM"},
+    )
+
+    assert response.status_code == 200
+    result = response.json()["data"]
+    assert result["status"] == "CONFIRMED"
+    holding_ids = {h["instrument_id"] for h in result["holdings"]}
+    assert holding_ids == {"NSE:INFY"}
+    assert len(result["skipped_rows"]) == 1
+    assert result["skipped_rows"][0]["raw_symbol"] == "BOGUS"
+    assert result["skipped_rows"][0]["reason"] == "UNRESOLVED_SYMBOL"
+
+
+def test_confirm_skips_structurally_invalid_row_but_confirms_the_rest(
+    my_portfolio_client: TestClient,
+) -> None:
+    # A genuinely bad row (e.g. a broker export's zero-cost-basis demerger
+    # share) is excluded from the confirmed snapshot and reported — never a
+    # reason to block every other valid holding in the same file, and never
+    # a reason to fabricate a price for it.
+    data = _preview(my_portfolio_client, b"Symbol,Qty,Avg Price\nINFY,10,1500\nTCS,5,0\n")
+    headers = get_auth_headers(my_portfolio_client, Role.OPERATOR)
+
+    response = my_portfolio_client.post(
+        f"/api/v1/my-portfolio/imports/{data['import_id']}/confirm",
+        headers=headers,
+        json={"import_id": data["import_id"], "confirmation": "CONFIRM"},
+    )
+
+    assert response.status_code == 200
+    result = response.json()["data"]
+    holding_ids = {h["instrument_id"] for h in result["holdings"]}
+    assert holding_ids == {"NSE:INFY"}
+    assert len(result["skipped_rows"]) == 1
+    assert result["skipped_rows"][0]["raw_symbol"] == "TCS"
+    assert result["skipped_rows"][0]["reason"] == "INVALID_AVG_PRICE"
+
+
+def test_confirm_skips_ambiguous_row_without_attempting_auto_resolve(
+    my_portfolio_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("validate_symbols must never be called for an ambiguous row")
+
+    monkeypatch.setattr("athena.ops.symbol_validate.validate_symbols", fail_if_called)
+    # ABC matches both NSE:ABC and BSE:ABC per the my_portfolio_client fixture.
+    data = _preview(my_portfolio_client, b"Symbol,Qty,Avg Price\nINFY,10,1500\nABC,1,1\n")
+    headers = get_auth_headers(my_portfolio_client, Role.OPERATOR)
+
+    response = my_portfolio_client.post(
+        f"/api/v1/my-portfolio/imports/{data['import_id']}/confirm",
+        headers=headers,
+        json={"import_id": data["import_id"], "confirmation": "CONFIRM"},
+    )
+
+    assert response.status_code == 200
+    result = response.json()["data"]
+    holding_ids = {h["instrument_id"] for h in result["holdings"]}
+    assert holding_ids == {"NSE:INFY"}
+    assert len(result["skipped_rows"]) == 1
+    assert result["skipped_rows"][0]["raw_symbol"] == "ABC"
+    assert result["skipped_rows"][0]["reason"] == "AMBIGUOUS_SYMBOL"
+
+
+def test_confirm_is_blocked_when_no_row_is_confirmable(
+    my_portfolio_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "athena.ops.symbol_validate.validate_symbols",
+        _fake_validate_symbols_always_fails,
+    )
+    data = _preview(my_portfolio_client, b"Symbol,Qty,Avg Price\nBOGUS,5,250\n")
+    headers = get_auth_headers(my_portfolio_client, Role.OPERATOR)
+    before = my_portfolio_client.app.state.sqlite_repo.portfolio_holdings_digest()
+
+    response = my_portfolio_client.post(
+        f"/api/v1/my-portfolio/imports/{data['import_id']}/confirm",
+        headers=headers,
+        json={"import_id": data["import_id"], "confirmation": "CONFIRM"},
+    )
+
+    assert response.status_code == 400
+    assert my_portfolio_client.app.state.sqlite_repo.portfolio_holdings_digest() == before
+
+
+def test_confirm_auto_onboards_symbol_master_only_match_and_confirms_it(
+    my_portfolio_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Owner-reported real scenario: GOLDBEES/SILVERCASE resolved fine at
+    # import time against the broader symbol_master catalog, confirmed as
+    # holdings, then failed EVERY Portfolio Sync afterwards because no
+    # `instruments` row (and therefore no D1 candle history) ever existed
+    # for them. Confirm must auto-onboard this case too, not just a fully
+    # unresolved symbol.
+    repo = my_portfolio_client.app.state.sqlite_repo
+    repo.upsert_symbol_records([_symbol_master_only_record("NSE:GOLDBEES", "GOLDBEES")])
+    monkeypatch.setattr(
+        "athena.ops.symbol_validate.validate_symbols",
+        _fake_validate_symbols_adds_instrument(),
+    )
+    data = _preview(my_portfolio_client, b"Symbol,Qty,Avg Price\nINFY,10,1500\nGOLDBEES,100,120\n")
+    assert data["accepted_rows"] == 2  # resolves via symbol_master already, no unresolved/rejected count
+    headers = get_auth_headers(my_portfolio_client, Role.OPERATOR)
+
+    response = my_portfolio_client.post(
+        f"/api/v1/my-portfolio/imports/{data['import_id']}/confirm",
+        headers=headers,
+        json={"import_id": data["import_id"], "confirmation": "CONFIRM"},
+    )
+
+    assert response.status_code == 200
+    result = response.json()["data"]
+    assert result["skipped_rows"] == []
+    holding_ids = {h["instrument_id"] for h in result["holdings"]}
+    assert holding_ids == {"NSE:INFY", "NSE:GOLDBEES"}
+    assert repo.get_instrument("NSE:GOLDBEES") is not None
+
+
+def test_confirm_skips_symbol_master_only_match_that_cannot_be_onboarded(
+    my_portfolio_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = my_portfolio_client.app.state.sqlite_repo
+    repo.upsert_symbol_records([_symbol_master_only_record("NSE:SILVERCASE", "SILVERCASE")])
+    monkeypatch.setattr(
+        "athena.ops.symbol_validate.validate_symbols",
+        _fake_validate_symbols_always_fails,
+    )
+    data = _preview(my_portfolio_client, b"Symbol,Qty,Avg Price\nINFY,10,1500\nSILVERCASE,100,20\n")
+    headers = get_auth_headers(my_portfolio_client, Role.OPERATOR)
+
+    response = my_portfolio_client.post(
+        f"/api/v1/my-portfolio/imports/{data['import_id']}/confirm",
+        headers=headers,
+        json={"import_id": data["import_id"], "confirmation": "CONFIRM"},
+    )
+
+    assert response.status_code == 200
+    result = response.json()["data"]
+    holding_ids = {h["instrument_id"] for h in result["holdings"]}
+    assert holding_ids == {"NSE:INFY"}
+    assert len(result["skipped_rows"]) == 1
+    assert result["skipped_rows"][0]["raw_symbol"] == "SILVERCASE"
+    assert result["skipped_rows"][0]["reason"] == "INSTRUMENT_NOT_YET_INGESTED"
+    assert repo.get_instrument("NSE:SILVERCASE") is None
+
+
+def test_validation_runner_registers_owner_candidate_before_validating(
+    my_portfolio_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Fix for the OTHER half of the owner-reported symptom: Portfolio Sync's
+    # OWN existing auto-refresh mechanism (MyPortfolioService._validation_
+    # runner, injected into PortfolioSyncOrchestrator) calls validate_symbols
+    # for any holding needing a data refresh — but validate_symbols hard-
+    # requires the symbol to already be a registered owner-candidate, which
+    # a holding resolved via symbol_master alone (or any instrument that
+    # reached `instruments` some other way) never is. Before this fix,
+    # every single refresh attempt for such a holding would raise "add
+    # symbols to the validation list first", forever — never a one-time
+    # failure. The service's validation_runner must register it first.
+    from athena.ops.owner_candidates import SqliteCandidateStore
+
+    repo = my_portfolio_client.app.state.sqlite_repo
+    store = SqliteCandidateStore(repo)
+    assert "NEVERCANDIDATE" not in {c.symbol for c in store.list_candidates(active_only=False)}
+
+    calls: list[list[str]] = []
+
+    def fake_validate_symbols(repo_arg, config_dir, *, symbols, as_of, repo_root=None):
+        calls.append(list(symbols))
+        return type("Result", (), {"run_id": "fake-validate-run"})()
+
+    monkeypatch.setattr("athena.ops.symbol_validate.validate_symbols", fake_validate_symbols)
+
+    service = MyPortfolioService(repo, config_dir=Path("config"), repo_root=None)
+    run = service._validation_runner()
+    assert run is not None
+    run(["NEVERCANDIDATE"], NOW)
+
+    assert calls == [["NEVERCANDIDATE"]]
+    known_after = {c.symbol for c in store.list_candidates(active_only=False)}
+    assert "NEVERCANDIDATE" in known_after
 
 
 def test_clean_import_confirm_applies_holdings_and_audit_idempotently(my_portfolio_client: TestClient) -> None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import threading
 from dataclasses import asdict
 from datetime import datetime, timezone
@@ -37,6 +38,7 @@ from athena.api.v1.dtos.portfolio import (
     PortfolioSnapshotSummaryDTO,
     PortfolioStructuralReviewDTO,
     PortfolioSyncRunDTO,
+    SkippedImportRowDTO,
 )
 from athena.calendar.engine import CalendarEngine
 from athena.calendar.resolve_as_of import resolve_validate_as_of
@@ -62,6 +64,8 @@ from athena.portfolio.my_portfolio_contracts import (
     reconcile_current_holdings,
 )
 from athena.portfolio.sync import PortfolioSyncOrchestrator, utc_now
+
+logger = logging.getLogger(__name__)
 
 _CONFIRM_TOKEN = "CONFIRM"
 _SYNC_GUARD = threading.Lock()
@@ -166,18 +170,19 @@ class MyPortfolioService:
             expected_digest = str(provenance.get("base_holdings_digest", ""))
             if not expected_digest:
                 raise MyPortfolioImportError("import preview is missing base holdings digest")
-            if (
-                ImportStatus(str(record["status"])) is ImportStatus.PREVIEWED
-                and (
-                    int(record["rejected_rows"])
-                    or int(record["unresolved_rows"])
-                    or int(record["ambiguous_rows"])
-                )
-            ):
-                raise MyPortfolioImportError("import preview has invalid, unresolved, ambiguous, or duplicate rows")
+
+            # Best-effort, never blocking: any symbol still unresolved purely
+            # because it isn't in ATHENA's tracked universe yet is
+            # auto-onboarded (the same real ingest "Add & validate" already
+            # does) before confirming. A row that's still unresolvable after
+            # that, or is structurally invalid data, is simply excluded from
+            # the confirmed snapshot and reported back — never a reason to
+            # block every other valid row in the same file.
+            if ImportStatus(str(record["status"])) is ImportStatus.PREVIEWED:
+                self._auto_resolve_unresolved_symbols(import_id)
 
             try:
-                already_confirmed, changes = self._repo.confirm_portfolio_import(
+                already_confirmed, changes, skipped = self._repo.confirm_portfolio_import(
                     import_id=import_id,
                     expected_base_digest=expected_digest,
                     confirmed_at=datetime.now(tz=timezone.utc),
@@ -189,6 +194,12 @@ class MyPortfolioService:
                     ) from exc
                 if "IMPORT_NOT_FOUND" in str(exc):
                     raise MyPortfolioImportNotFoundError(f"portfolio import not found: {import_id}") from exc
+                if "IMPORT_HAS_NO_CONFIRMABLE_HOLDINGS" in str(exc):
+                    raise MyPortfolioImportError(
+                        "No row in this import could be confirmed — every row is either structurally "
+                        "invalid or its symbol could not be resolved, even after attempting to add it "
+                        "to ATHENA's tracked instruments. Check the import's rows for details."
+                    ) from exc
                 raise MyPortfolioImportError(str(exc)) from exc
 
         refreshed = self._repo.get_portfolio_import(import_id)
@@ -199,7 +210,86 @@ class MyPortfolioService:
             already_confirmed=already_confirmed,
             holdings=self.list_holdings(),
             reconciliation=[self._change_to_dto(change) for change in changes],
+            skipped_rows=[
+                SkippedImportRowDTO(source_row_id=row.source_row_id, raw_symbol=row.raw_symbol, reason=row.reason)
+                for row in skipped
+            ],
         )
+
+    def _auto_resolve_unresolved_symbols(self, import_id: str) -> None:
+        """Best-effort: onboard any symbol that isn't operationally ready yet
+        — either genuinely unresolved, or "resolved" only against ATHENA's
+        broader canonical `symbol_master` catalog (ADR-011) with no
+        corresponding `instruments` row and therefore no ingested D1 candle
+        history. The latter would otherwise confirm successfully and then
+        fail Portfolio Sync forever afterwards (owner-reported: GOLDBEES/
+        SILVERCASE confirmed fine, then failed every sync with "invalid
+        canonical instrument, no persisted d1 candle"). Never attempted for
+        a row that was already ambiguous or carried a structural data
+        error — resolving the symbol wouldn't fix either of those."""
+
+        if self._config_dir is None:
+            return
+        symbols: set[str] = set()
+        for row in self._repo.list_portfolio_import_rows(import_id):
+            mapping_state = str(row["mapping_state"])
+            errors = tuple(row["validation_errors"])
+            resolved_instrument_id = row["resolved_instrument_id"]
+            genuinely_unresolved = (
+                mapping_state == SymbolMappingState.UNRESOLVED.value and errors == ("UNRESOLVED_SYMBOL",)
+            )
+            resolved_but_not_ingested = (
+                mapping_state == SymbolMappingState.RESOLVED.value
+                and not errors
+                and resolved_instrument_id
+                and self._repo.get_instrument(str(resolved_instrument_id)) is None
+            )
+            if genuinely_unresolved or resolved_but_not_ingested:
+                symbols.add(str(row["normalized_symbol"]))
+        for symbol in sorted(symbols):
+            try:
+                self._auto_resolve_one_symbol(symbol)
+            except Exception:
+                # Genuinely bad/delisted/unknown-to-the-provider symbol, no
+                # broker session, provider outage, etc. — leave it
+                # unresolved; it will be reported as a skipped row rather
+                # than blocking the rest of the import.
+                logger.warning("My Portfolio auto-resolve failed for %s", symbol, exc_info=True)
+
+    def _auto_resolve_one_symbol(self, symbol: str) -> None:
+        from athena.ops.symbol_validate import validate_symbols
+
+        assert self._config_dir is not None  # narrowed by the caller
+        bare = self._ensure_candidates_registered([symbol])[0]
+        as_of, _tz = self._expected_analysis_session()
+        if as_of is None:
+            as_of = datetime.now(tz=timezone.utc)
+        validate_symbols(self._repo, self._config_dir, symbols=[bare], as_of=as_of, repo_root=self._repo_root)
+
+    def _ensure_candidates_registered(self, symbols: list[str]) -> list[str]:
+        """Register any of these symbols as an owner-candidate if it isn't
+        one already — a hard prerequisite `validate_symbols` enforces.
+        Returns the bare, normalized form of each input symbol, in order.
+
+        Without this, a symbol that only ever reached ATHENA through a
+        broader `symbol_master` catalog match (never through "Add &
+        validate" or a prior My Portfolio auto-resolve) can never be
+        refreshed by Portfolio Sync's own existing auto-refresh mechanism
+        either — `validate_symbols` would just keep raising
+        "add symbols to the validation list first" on every single sync
+        cycle, forever, for that holding.
+        """
+
+        from athena.ops.owner_candidates import SqliteCandidateStore, normalize_candidate_symbol
+
+        bare_symbols = [normalize_candidate_symbol(symbol) for symbol in symbols]
+        store = SqliteCandidateStore(self._repo)
+        known = {c.symbol for c in store.list_candidates(active_only=False)}
+        for bare in bare_symbols:
+            if bare not in known:
+                store.upsert_candidate(symbol=bare, notes="auto-resolved from My Portfolio", active=True)
+                known.add(bare)
+        return bare_symbols
 
     def list_holdings(self) -> list[MyPortfolioHoldingDTO]:
         return [self._holding_to_dto(holding) for holding in self._repo.list_portfolio_holdings()]
@@ -434,10 +524,16 @@ class MyPortfolioService:
         def run(symbols, as_of: datetime) -> str | None:
             from athena.ops.symbol_validate import validate_symbols
 
+            # A holding whose instrument only ever came from a `symbol_master`
+            # catalog match (never "Add & validate", never a prior My
+            # Portfolio auto-resolve) is never yet a registered owner
+            # candidate — validate_symbols hard-requires that, so register
+            # first rather than let it raise on every refresh attempt.
+            bare_symbols = self._ensure_candidates_registered(list(symbols))
             result = validate_symbols(
                 self._repo,
                 self._config_dir,
-                symbols=list(symbols),
+                symbols=bare_symbols,
                 as_of=as_of,
                 repo_root=self._repo_root,
             )

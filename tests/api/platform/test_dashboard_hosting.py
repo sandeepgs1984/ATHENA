@@ -303,8 +303,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.162.0" in html
-    assert "dashboard.js?v=9.162.0" in html
+    assert "dashboard.css?v=9.163.0" in html
+    assert "dashboard.js?v=9.163.0" in html
     assert "function decisionConfidenceBand" in js
     assert "analysis?.confidence_level" in js
     assert "confidence reflects evidence reliability, not expected profit" in js
@@ -424,6 +424,13 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert 'id="my-portfolio-sync-overlay"' in html
     assert "function renderMyPortfolioSyncOverlay" in js
     assert "holdingActionPending" in js
+    # Owner-reported: confirming a real broker export must never require a
+    # manual CSV edit or CLI step for an unresolved symbol or a bad row —
+    # confirming is best-effort per row, so the client no longer gates the
+    # Confirm button on rejected/unresolved/ambiguous/duplicate row counts.
+    assert "Number(preview.total_rows || 0) > 0" in js
+    assert "skipped_rows" in js
+    assert "auto-resolve unrecognized symbols" in js
     assert ".my-portfolio-sync-overlay.active" in my_portfolio_css
     assert "@keyframes my-portfolio-sync-overlay-spin" in my_portfolio_css
     assert "prefers-reduced-motion: reduce" in my_portfolio_css

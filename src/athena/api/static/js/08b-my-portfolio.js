@@ -398,12 +398,14 @@
     }
 
     function previewCanConfirm(preview) {
-        if (!preview || preview.status !== "PREVIEWED") return false;
-        return Number(preview.rejected_rows || 0) === 0
-            && Number(preview.unresolved_rows || 0) === 0
-            && Number(preview.ambiguous_rows || 0) === 0
-            && countMyPortfolioDuplicateRows(preview) === 0
-            && (preview.rows || []).every(row => (row.validation_errors || []).length === 0);
+        // Confirming is best-effort per row, never all-or-nothing: a
+        // structurally invalid row, an unresolved symbol (auto-onboarded if
+        // possible), or a duplicate is excluded and reported rather than
+        // blocking every other valid row — so the only client-side
+        // precondition is that there's a real preview with at least one row
+        // to try. The server is the sole source of truth for what actually
+        // confirms; it refuses only if truly nothing in the file could be.
+        return Boolean(preview) && preview.status === "PREVIEWED" && Number(preview.total_rows || 0) > 0;
     }
 
     function setMyPortfolioBusy(next = {}) {
@@ -982,12 +984,26 @@
         myPortfolioPreviewDuplicates.textContent = formatMyPortfolioNumber(countMyPortfolioDuplicateRows(preview));
 
         const topMessages = [...(preview.errors || []), ...(preview.warnings || [])];
+        const needsAttention = Number(preview.rejected_rows || 0)
+            + Number(preview.unresolved_rows || 0)
+            + Number(preview.ambiguous_rows || 0)
+            + countMyPortfolioDuplicateRows(preview);
         if (preview.status === "FAILED") {
             showMyPortfolioAlert(topMessages.join(" ") || "The uploaded file could not be parsed. Review the required columns and upload again.", "danger");
-        } else if (previewCanConfirm(preview)) {
+        } else if (needsAttention === 0) {
             showMyPortfolioAlert("Preview is clean. Review the reconciliation diff before confirming.", "good");
+        } else if (previewCanConfirm(preview)) {
+            // Confirming is best-effort per row, never all-or-nothing: no
+            // manual CSV edit needed. Any symbol unresolved only because
+            // ATHENA hasn't tracked it yet is auto-onboarded on confirm;
+            // whatever still can't be resolved, or is structurally invalid,
+            // is simply excluded and reported — the rest still confirms.
+            showMyPortfolioAlert(
+                `${needsAttention} of ${preview.total_rows} row(s) need attention. Confirming will try to auto-resolve unrecognized symbols and apply every row it can — anything it still can't will be skipped and reported, not upload-blocking.`,
+                "warning"
+            );
         } else {
-            showMyPortfolioAlert("Preview has invalid, unresolved, ambiguous, or duplicate rows. Fix the file and upload again before confirming.", "warning");
+            showMyPortfolioAlert("This preview has no rows to confirm. Upload a file with at least one holding.", "warning");
         }
         setMyPortfolioCancelLabel("Cancel");
 
@@ -1122,7 +1138,11 @@
                 acc[action] = (acc[action] || 0) + 1;
                 return acc;
             }, {});
-            const successMessage = `Portfolio update confirmed. Added ${counts.ADDED || 0}, updated ${counts.UPDATED || 0}, removed ${counts.REMOVED || 0}, unchanged ${counts.UNCHANGED || 0}.`;
+            const skippedRows = result?.skipped_rows || [];
+            const skippedText = skippedRows.length
+                ? ` ${skippedRows.length} row(s) skipped: ${skippedRows.map(row => `${row.raw_symbol} (${row.reason})`).join(", ")}.`
+                : "";
+            const successMessage = `Portfolio update confirmed. Added ${counts.ADDED || 0}, updated ${counts.UPDATED || 0}, removed ${counts.REMOVED || 0}, unchanged ${counts.UNCHANGED || 0}.${skippedText}`;
             if (myPortfolioFileInput) myPortfolioFileInput.value = "";
             if (myPortfolioSelectedFile) myPortfolioSelectedFile.textContent = "No file selected";
             myPortfolioState.preview = null;
@@ -1133,7 +1153,7 @@
             if (myPortfolioSnapshotIsStale()) {
                 showMyPortfolioAlert(`${successMessage} Portfolio analysis is now stale. Sync Portfolio to refresh ATHENA analysis.`, "warning");
             } else {
-                showMyPortfolioAlert(successMessage, "good");
+                showMyPortfolioAlert(successMessage, skippedRows.length ? "warning" : "good");
             }
         } catch (err) {
             console.error("My Portfolio confirmation failed", err);
@@ -1153,7 +1173,11 @@
                 setMyPortfolioCancelLabel("Upload Again");
                 myPortfolioUploadState.textContent = "Preview is stale. Use Upload Again or re-select the file to refresh the preview.";
             } else {
-                showMyPortfolioAlert("Confirmation failed. Review the preview and retry.", "danger");
+                // Only reachable when literally every row in the file is
+                // unconfirmable (see previewCanConfirm) — the server's own
+                // detail message names exactly why, so surface it verbatim
+                // rather than a generic "fix the file" that no longer applies.
+                showMyPortfolioAlert(detail || "Confirmation failed. Review the preview and retry.", "danger");
             }
         } finally {
             setMyPortfolioBusy();

@@ -209,6 +209,16 @@ class PortfolioImportSummaryDTO(BaseModel):
     provenance: dict[str, object] = Field(default_factory=dict)
 
 
+class SkippedImportRowDTO(BaseModel):
+    """One uploaded row excluded from confirmation, with the reason why."""
+
+    model_config = ConfigDict(frozen=True)
+
+    source_row_id: str
+    raw_symbol: str
+    reason: str
+
+
 class PortfolioImportConfirmResultDTO(BaseModel):
     """Result of confirming a persisted My Portfolio preview."""
 
@@ -219,6 +229,7 @@ class PortfolioImportConfirmResultDTO(BaseModel):
     already_confirmed: bool
     holdings: list[MyPortfolioHoldingDTO]
     reconciliation: list[PortfolioReconciliationChangeDTO]
+    skipped_rows: list[SkippedImportRowDTO] = Field(default_factory=list)
 
 
 class PortfolioImportHistoryDTO(BaseModel):
