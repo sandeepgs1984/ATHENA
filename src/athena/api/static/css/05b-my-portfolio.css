@@ -118,8 +118,13 @@
        2050px by tightening cell padding and non-priority column widths
        (Qty, monetary columns, Freshness, Plan Levels) while keeping the
        owner-prioritized scan path (Symbol/P&L%/Status/Conviction/
-       Trend-Setup/Daily Review/Next Action) comfortably readable. */
-    min-width: 2050px;
+       Trend-Setup/Daily Review/Next Action) comfortably readable.
+       Holdings-edit/delete: +90px for a new trailing Actions column of two
+       compact icon buttons (not full-text pills, which needed 110px and
+       looked heavy/blocky in a fixed-layout table), and Freshness widened
+       140px->185px (measured: its date string needs ~174px) so it neither
+       clips into Actions nor truncates itself. */
+    min-width: 2185px;
     table-layout: fixed;
 }
 
@@ -177,7 +182,117 @@
 }
 
 .my-portfolio-col-freshness {
-    width: 140px;
+    /* Measured: "04 Sept, 12:00 am IST" needs ~150px of text plus 24px of
+       cell padding (~174px) — 185px leaves real margin so it never
+       re-truncates on a slightly longer real value. */
+    width: 185px;
+}
+
+.my-portfolio-col-actions {
+    width: 90px;
+}
+
+/* Root-cause fix for Holdings-edit/delete: the shared `.my-portfolio-wide-
+   table td { overflow: visible; }` rule above let a long Freshness date
+   string ("04 Sept, 12:00 am IST") spill past its own 140px column — always
+   harmless before, since Freshness was the last column with nothing to its
+   right to spill onto. Now that Actions (14th) follows it, that overflow
+   visually collided with the Edit/Delete icons. Widened the column (140px→
+   160px) AND clip it explicitly, matching the sticky-column ellipsis
+   pattern above, so this can't regress if a future freshness string is
+   longer still. */
+.my-portfolio-wide-table th:nth-child(13),
+.my-portfolio-wide-table td:nth-child(13) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Compact icon-only Edit/Delete: smaller square footprint than the default
+   .inspect-btn padding, which was sized for icon+text buttons elsewhere. */
+.holdings-actions .inspect-btn {
+    padding: var(--space-5) var(--space-8);
+    line-height: 1;
+}
+
+/* Holdings-edit/delete: a full blocking overlay over the Current Holdings
+   card while a Portfolio Sync this action triggered (or the manual Sync
+   Portfolio button) is recalculating — up until then, per-row busy state
+   alone was too easy to miss and cleared before the owner expected. Sits
+   above the table (its own sticky columns/headers only reach z-index 5)
+   and blocks pointer events on everything beneath it while active, so
+   nothing can be edited/deleted again until the whole recalculation lands.
+   `.my-portfolio-holdings-card-body` only sets position:relative — nothing
+   else about that card body changes. */
+.my-portfolio-holdings-card-body {
+    position: relative;
+}
+
+.my-portfolio-sync-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 8;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-10);
+    background: rgba(11, 15, 25, 0.82);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+    border-radius: 8px;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: scale(0.99);
+    transition: opacity 0.28s ease, transform 0.28s ease, visibility 0s linear 0.28s;
+}
+
+.my-portfolio-sync-overlay.active {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: all;
+    transform: scale(1);
+    transition: opacity 0.22s ease, transform 0.22s ease, visibility 0s linear 0s;
+}
+
+.my-portfolio-sync-overlay-spinner {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: 3px solid rgba(241, 245, 249, 0.15);
+    border-top-color: var(--accent);
+    box-shadow: var(--glow-accent-sm);
+    animation: my-portfolio-sync-overlay-spin 0.85s linear infinite;
+}
+
+@keyframes my-portfolio-sync-overlay-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.my-portfolio-sync-overlay-text {
+    color: var(--text-primary);
+    font-weight: 700;
+    font-size: var(--text-0-95);
+    letter-spacing: 0.01em;
+}
+
+.my-portfolio-sync-overlay-detail {
+    color: var(--text-secondary);
+    font-size: var(--text-0-8);
+    min-height: 1.2em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .my-portfolio-sync-overlay-spinner {
+        animation-duration: 1.6s;
+    }
+
+    .my-portfolio-sync-overlay {
+        transition-duration: 0.05s;
+    }
 }
 
 .my-portfolio-wide-table th,

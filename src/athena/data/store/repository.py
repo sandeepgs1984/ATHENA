@@ -1835,6 +1835,76 @@ class SqliteRepository:
         )
         return self._portfolio_holding_from_row(row) if row else None
 
+    def update_portfolio_holding(
+        self,
+        *,
+        instrument_id: str,
+        quantity: int,
+        avg_price: Decimal,
+        updated_at: datetime,
+    ) -> CanonicalPortfolioHolding:
+        """Owner-initiated correction to one holding's quantity/avg price.
+
+        Leaves ``source_import_id``/``source_row_id``/``reconciliation_id``
+        untouched — this is a direct correction to the current-state row, not
+        a new import/reconciliation event. The previous values are recorded
+        under ``provenance["manual_edits"]`` for traceability.
+        """
+
+        try:
+            with self._lock:
+                with self._conn:
+                    row = self._conn.execute(
+                        "SELECT instrument_id, quantity, avg_price, imported_at, updated_at, "
+                        "source_import_id, source_row_id, provenance_json "
+                        "FROM portfolio_holdings WHERE instrument_id=?",
+                        (instrument_id,),
+                    ).fetchone()
+                    if row is None:
+                        raise RepositoryError("HOLDING_NOT_FOUND")
+                    existing = self._portfolio_holding_from_row(row)
+                    provenance = dict(existing.provenance)
+                    manual_edits = list(provenance.get("manual_edits", []))
+                    manual_edits.append(
+                        {
+                            "edited_at": updated_at.isoformat(),
+                            "previous_quantity": existing.quantity,
+                            "previous_avg_price": str(existing.avg_price),
+                        }
+                    )
+                    provenance["manual_edits"] = manual_edits
+                    self._conn.execute(
+                        "UPDATE portfolio_holdings SET quantity=?, avg_price=?, updated_at=?, "
+                        "provenance_json=? WHERE instrument_id=?",
+                        (
+                            quantity,
+                            str(avg_price),
+                            updated_at.isoformat(),
+                            json.dumps(provenance, sort_keys=True),
+                            instrument_id,
+                        ),
+                    )
+        except sqlite3.Error as exc:
+            raise RepositoryError(f"update portfolio holding failed: {exc}") from exc
+        refreshed = self.get_portfolio_holding(instrument_id)
+        if refreshed is None:
+            raise RepositoryError("HOLDING_NOT_FOUND")
+        return refreshed
+
+    def delete_portfolio_holding(self, *, instrument_id: str) -> bool:
+        """Owner-initiated removal of one holding. Returns False if it was absent."""
+
+        try:
+            with self._lock:
+                with self._conn:
+                    cursor = self._conn.execute(
+                        "DELETE FROM portfolio_holdings WHERE instrument_id=?",
+                        (instrument_id,),
+                    )
+                    return cursor.rowcount > 0
+        except sqlite3.Error as exc:
+            raise RepositoryError(f"delete portfolio holding failed: {exc}") from exc
+
     def portfolio_holdings_digest(self) -> str:
         """Deterministic digest of current canonical My Portfolio holdings."""
 

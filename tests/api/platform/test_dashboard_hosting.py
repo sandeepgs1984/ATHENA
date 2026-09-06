@@ -303,8 +303,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.157.0" in html
-    assert "dashboard.js?v=9.157.0" in html
+    assert "dashboard.css?v=9.162.0" in html
+    assert "dashboard.js?v=9.162.0" in html
     assert "function decisionConfidenceBand" in js
     assert "analysis?.confidence_level" in js
     assert "confidence reflects evidence reliability, not expected profit" in js
@@ -380,6 +380,7 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
         "Next Action",
         "Plan Levels",
         "Freshness",
+        "Actions",
     ):
         assert heading in html
     # MY-PORTFOLIO-V1-FINAL-UX-CLOSURE: these five columns were dropped from
@@ -404,10 +405,28 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert ".my-portfolio-wide-table th:nth-child(3)" in my_portfolio_css
     assert "position: sticky" in my_portfolio_css
     assert ".my-portfolio-confirm-actions[hidden]" in my_portfolio_css
-    assert "min-width: 2050px" in my_portfolio_css
+    assert "min-width: 2185px" in my_portfolio_css
+    assert "min-width: 2160px" not in my_portfolio_css
+    assert "min-width: 2140px" not in my_portfolio_css
+    assert "min-width: 2050px" not in my_portfolio_css
     assert "min-width: 2290px" not in my_portfolio_css
     assert "min-width: 3820px" not in my_portfolio_css
+    assert ".my-portfolio-col-actions" in my_portfolio_css
+    assert "my-portfolio-row-action" in js
+    assert "function myPortfolioEditHolding" in js
+    assert "function myPortfolioDeleteHolding" in js
+    assert "/api/v1/my-portfolio/holdings/" in js
     assert "table-layout: fixed" in my_portfolio_css
+    # Full blocking overlay (owner-reported: per-row spinners alone were too
+    # easy to miss / dismissed before the whole recalculation actually
+    # finished) — active for BOTH an Edit/Delete-triggered sync and the
+    # manual Sync Portfolio button, since both run the same one operation.
+    assert 'id="my-portfolio-sync-overlay"' in html
+    assert "function renderMyPortfolioSyncOverlay" in js
+    assert "holdingActionPending" in js
+    assert ".my-portfolio-sync-overlay.active" in my_portfolio_css
+    assert "@keyframes my-portfolio-sync-overlay-spin" in my_portfolio_css
+    assert "prefers-reduced-motion: reduce" in my_portfolio_css
     assert "left: 170px" in my_portfolio_css
     assert "left: 260px" in my_portfolio_css
     assert "left: 180px" not in my_portfolio_css

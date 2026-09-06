@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse
@@ -154,8 +155,11 @@ def _register_exception_handlers(app: FastAPI) -> None:
     ) -> JSONResponse:
         request_id = getattr(request.state, "request_id", "unknown")
         correlation_id = getattr(request.state, "correlation_id", request_id)
-        # Format list of validation errors
-        errors = exc.errors()
+        # Format list of validation errors. Pydantic's raw error context can
+        # carry the offending input value itself (e.g. a Decimal), which the
+        # plain JSONResponse below cannot serialize — encode it the same way
+        # FastAPI's own default handler does.
+        errors = jsonable_encoder(exc.errors())
         extensions = {"validation_errors": errors}
 
         # Build message detailing the failure

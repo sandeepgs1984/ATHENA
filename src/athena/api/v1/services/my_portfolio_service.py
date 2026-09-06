@@ -12,6 +12,8 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from athena.api.exceptions import (
+    MyPortfolioHoldingError,
+    MyPortfolioHoldingNotFoundError,
     MyPortfolioImportError,
     MyPortfolioImportNotFoundError,
     MyPortfolioSyncNotFoundError,
@@ -19,6 +21,7 @@ from athena.api.exceptions import (
     StalePortfolioPreviewError,
 )
 from athena.api.v1.dtos.portfolio import (
+    DeleteMyPortfolioHoldingResultDTO,
     ImportedHoldingRowDTO,
     MyPortfolioHoldingDTO,
     PortfolioAnalysisProvenanceDTO,
@@ -200,6 +203,52 @@ class MyPortfolioService:
 
     def list_holdings(self) -> list[MyPortfolioHoldingDTO]:
         return [self._holding_to_dto(holding) for holding in self._repo.list_portfolio_holdings()]
+
+    def update_holding(
+        self, instrument_id: str, *, quantity: int, avg_price: Decimal
+    ) -> MyPortfolioHoldingDTO:
+        """Owner-initiated correction to one holding's quantity/avg price."""
+
+        with _SYNC_GUARD:
+            self._recover_interrupted_sync_if_needed()
+            active = self._repo.get_active_portfolio_sync_run()
+            if active is not None:
+                raise PortfolioSyncActiveConflictError(
+                    "Portfolio Sync is currently running. Wait for it to finish before "
+                    "editing holdings."
+                )
+            if self._repo.get_portfolio_holding(instrument_id) is None:
+                raise MyPortfolioHoldingNotFoundError(f"portfolio holding not found: {instrument_id}")
+            try:
+                updated = self._repo.update_portfolio_holding(
+                    instrument_id=instrument_id,
+                    quantity=quantity,
+                    avg_price=avg_price,
+                    updated_at=datetime.now(tz=timezone.utc),
+                )
+            except RepositoryError as exc:
+                if "HOLDING_NOT_FOUND" in str(exc):
+                    raise MyPortfolioHoldingNotFoundError(
+                        f"portfolio holding not found: {instrument_id}"
+                    ) from exc
+                raise MyPortfolioHoldingError(str(exc)) from exc
+        return self._holding_to_dto(updated)
+
+    def delete_holding(self, instrument_id: str) -> DeleteMyPortfolioHoldingResultDTO:
+        """Owner-initiated removal of one holding from current My Portfolio."""
+
+        with _SYNC_GUARD:
+            self._recover_interrupted_sync_if_needed()
+            active = self._repo.get_active_portfolio_sync_run()
+            if active is not None:
+                raise PortfolioSyncActiveConflictError(
+                    "Portfolio Sync is currently running. Wait for it to finish before "
+                    "deleting holdings."
+                )
+            if self._repo.get_portfolio_holding(instrument_id) is None:
+                raise MyPortfolioHoldingNotFoundError(f"portfolio holding not found: {instrument_id}")
+            deleted = self._repo.delete_portfolio_holding(instrument_id=instrument_id)
+        return DeleteMyPortfolioHoldingResultDTO(instrument_id=instrument_id, deleted=deleted)
 
     def import_history(self, *, limit: int = 50) -> PortfolioImportHistoryDTO:
         return PortfolioImportHistoryDTO(

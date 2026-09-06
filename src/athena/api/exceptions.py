@@ -88,6 +88,14 @@ class MyPortfolioSyncNotFoundError(ResourceNotFoundError):
     """My Portfolio Sync run or snapshot not found."""
 
 
+class MyPortfolioHoldingError(APIResourceError):
+    """My Portfolio holding edit/delete request is invalid."""
+
+
+class MyPortfolioHoldingNotFoundError(ResourceNotFoundError):
+    """My Portfolio holding not found for the given instrument."""
+
+
 class StalePortfolioPreviewError(APIResourceError):
     """My Portfolio preview was based on an older holdings state."""
 

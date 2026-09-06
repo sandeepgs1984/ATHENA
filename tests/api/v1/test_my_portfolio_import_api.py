@@ -1483,3 +1483,130 @@ def test_sync_api_starts_background_and_exposes_snapshot(
         "next_action",
         "last_review",
     }
+
+
+def test_update_holding_corrects_quantity_and_avg_price(my_portfolio_client: TestClient) -> None:
+    repo = _confirm_infy_holding(my_portfolio_client)
+    headers = get_auth_headers(my_portfolio_client, Role.OPERATOR)
+
+    response = my_portfolio_client.patch(
+        "/api/v1/my-portfolio/holdings/NSE:INFY",
+        headers=headers,
+        json={"quantity": 25, "avg_price": "1750.50"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["instrument_id"] == "NSE:INFY"
+    assert data["quantity"] == 25
+    assert data["avg_price"] == "1750.50"
+
+    holding = repo.get_portfolio_holding("NSE:INFY")
+    assert holding is not None
+    assert holding.quantity == 25
+    assert holding.avg_price == Decimal("1750.50")
+    # source_import_id/source_row_id are untouched — this is a direct
+    # correction, not a new import event.
+    assert holding.source_import_id
+    manual_edits = holding.provenance.get("manual_edits")
+    assert manual_edits and manual_edits[-1]["previous_quantity"] == 10
+
+
+def test_update_holding_rejects_non_positive_values(my_portfolio_client: TestClient) -> None:
+    _confirm_infy_holding(my_portfolio_client)
+    headers = get_auth_headers(my_portfolio_client, Role.OPERATOR)
+
+    invalid_bodies = (
+        {"quantity": 0, "avg_price": "10"},
+        {"quantity": 5, "avg_price": "0"},
+        {"quantity": -1, "avg_price": "10"},
+    )
+    for body in invalid_bodies:
+        response = my_portfolio_client.patch(
+            "/api/v1/my-portfolio/holdings/NSE:INFY",
+            headers=headers,
+            json=body,
+        )
+        assert response.status_code == 422
+
+
+def test_update_holding_not_found_returns_404(my_portfolio_client: TestClient) -> None:
+    headers = get_auth_headers(my_portfolio_client, Role.OPERATOR)
+
+    response = my_portfolio_client.patch(
+        "/api/v1/my-portfolio/holdings/NSE:TCS",
+        headers=headers,
+        json={"quantity": 10, "avg_price": "100"},
+    )
+
+    assert response.status_code == 404
+
+
+def test_update_holding_is_blocked_during_active_sync_without_mutating_holdings(
+    my_portfolio_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _confirm_infy_holding(my_portfolio_client)
+    before = repo.portfolio_holdings_digest()
+    _install_active_sync(monkeypatch, repo, status=SyncRunStatus.RUNNING)
+
+    response = my_portfolio_client.patch(
+        "/api/v1/my-portfolio/holdings/NSE:INFY",
+        headers=get_auth_headers(my_portfolio_client, Role.OPERATOR),
+        json={"quantity": 25, "avg_price": "1750.50"},
+    )
+
+    assert response.status_code == 409
+    assert "Portfolio Sync is currently running" in response.json()["detail"]
+    assert repo.portfolio_holdings_digest() == before
+
+
+def test_delete_holding_removes_it(my_portfolio_client: TestClient) -> None:
+    repo = _confirm_infy_holding(my_portfolio_client)
+    headers = get_auth_headers(my_portfolio_client, Role.OPERATOR)
+
+    response = my_portfolio_client.delete(
+        "/api/v1/my-portfolio/holdings/NSE:INFY",
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data == {"instrument_id": "NSE:INFY", "deleted": True}
+    assert repo.get_portfolio_holding("NSE:INFY") is None
+
+    holdings_response = my_portfolio_client.get(
+        "/api/v1/my-portfolio/holdings",
+        headers=get_auth_headers(my_portfolio_client, Role.READONLY, username="holdings-reader"),
+    )
+    assert holdings_response.json()["data"] == []
+
+
+def test_delete_holding_not_found_returns_404(my_portfolio_client: TestClient) -> None:
+    headers = get_auth_headers(my_portfolio_client, Role.OPERATOR)
+
+    response = my_portfolio_client.delete(
+        "/api/v1/my-portfolio/holdings/NSE:TCS",
+        headers=headers,
+    )
+
+    assert response.status_code == 404
+
+
+def test_delete_holding_is_blocked_during_active_sync_without_mutating_holdings(
+    my_portfolio_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _confirm_infy_holding(my_portfolio_client)
+    before = repo.portfolio_holdings_digest()
+    _install_active_sync(monkeypatch, repo, status=SyncRunStatus.RUNNING)
+
+    response = my_portfolio_client.delete(
+        "/api/v1/my-portfolio/holdings/NSE:INFY",
+        headers=get_auth_headers(my_portfolio_client, Role.OPERATOR),
+    )
+
+    assert response.status_code == 409
+    assert "Portfolio Sync is currently running" in response.json()["detail"]
+    assert repo.portfolio_holdings_digest() == before
+    assert repo.get_portfolio_holding("NSE:INFY") is not None

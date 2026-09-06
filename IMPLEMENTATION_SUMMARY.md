@@ -6,6 +6,93 @@ status updated on approval.
 
 ---
 
+## My Portfolio — Holdings Edit/Delete — Implementation Complete, Ready for Owner Review
+
+**Summary.** Owner-requested addition to the current-holdings list: an
+Edit/Delete action per holding, with the holdings list and computed analysis
+recalculated after either change. Scoped narrowly to correcting/removing one
+existing confirmed holding — no new import/reconciliation semantics, no
+change to Status/Conviction/Trend/Daily Review/Structural Review methodology.
+
+**Design.** `portfolio_holdings` is already a live current-state table
+(`UNIQUE(instrument_id)`, mutated via upsert/delete inside
+`confirm_portfolio_import`) — not one of the append-only history tables — so
+adding direct single-holding mutation is additive, not a contract change.
+Edit corrects `quantity`/`avg_price` only (the two fields a holding's own
+upsert already touches); `source_import_id`/`source_row_id` stay pointed at
+the original import, and the previous values are recorded under
+`provenance["manual_edits"]` for traceability. There is no isolated
+per-holding recompute path in `sync.py` (every run scores the full holdings
+set), so both actions reuse the existing full Portfolio Sync pipeline rather
+than inventing one — matching the smallest viable extension point.
+
+**Backend.** New `SqliteRepository.update_portfolio_holding`/
+`delete_portfolio_holding`. New `MyPortfolioService.update_holding`/
+`delete_holding`, guarded by the same `_SYNC_GUARD`/active-sync check
+`confirm_import` already uses (409 `PortfolioSyncActiveConflictError` while a
+sync is running — never a torn edit). New `PATCH /api/v1/my-portfolio/
+holdings/{instrument_id}` and `DELETE /api/v1/my-portfolio/holdings/
+{instrument_id}` routes, `UpdateMyPortfolioHoldingRequest`/
+`DeleteMyPortfolioHoldingResultDTO`, and `MyPortfolioHoldingError`/
+`MyPortfolioHoldingNotFoundError` (404/400) exception mappings. While adding
+the first request DTO with a `Decimal` numeric constraint that a test could
+actually violate, found and fixed a genuine pre-existing bug in `app.py`'s
+`RequestValidationError` handler: it built a raw `JSONResponse` directly from
+pydantic's `exc.errors()`, whose `ctx` can carry the offending `Decimal`
+input itself — `json.dumps` can't serialize that, so any bad `Decimal` input
+anywhere in the API 500'd instead of cleanly 422'ing. Fixed by encoding
+`exc.errors()` through `fastapi.encoders.jsonable_encoder` first, matching
+FastAPI's own default handler.
+
+**Frontend.** New "Actions" column (Edit/Delete) on the My Portfolio holdings
+table, reusing the existing `.inspect-btn`/`.holdings-actions` classes from
+the Owner Positions table (no new CSS component) — `min-width` bumped
+2050px→2160px. Edit/Delete use `window.prompt`/`window.confirm`, matching
+the exact convention `08-portfolio.js`'s `promptClosePosition` already
+established elsewhere in this dashboard. Both actions call `loadMyPortfolio
+Workspace()` (immediate list/summary refresh) then `startMyPortfolioSync()`
+(the existing Sync Portfolio pipeline + poller) — "reload the list and page
+by re-calculating with updated values" reuses the exact mechanism Sync
+Portfolio already provides, no new polling/recompute code. The existing
+row-click-opens-detail-drawer listener is guarded to ignore clicks
+originating inside the new action buttons.
+
+**Tests.** 7 new API tests (update happy path incl. provenance/manual_edits,
+non-positive quantity/avg_price rejected 422, not-found 404, blocked during
+active sync 409 without mutating holdings; delete happy path, not-found 404,
+blocked during active sync 409). Dashboard contract test extended (Actions
+heading, new CSS/JS symbols, updated min-width). Full suite: **3712 passed,
+0 failed, 0 skipped** (+7 from this milestone). Ruff clean on every changed
+file (pre-existing SIM117 nested-`with` findings in `repository.py` are
+baseline noise identical to every other write method in that file — not
+introduced by this change). Mypy clean on every new/changed module. `git
+diff --check` clean. Live-verified against a real running server on a
+disposable scratch DB (`db/athena.db` mtime confirmed unchanged before/
+after): imported and confirmed a real holding via the actual API, saw the
+new Actions column render with real data, clicked Edit/Delete (native
+dialogs are stubbed in the automated browser harness — `confirm()` returns
+`false`/cancel, proving the safe-cancel path; a direct PATCH via curl then a
+page reload confirmed the holdings list and Total Investment recalculated
+correctly with the new quantity/avg price).
+
+**Files changed:** `src/athena/api/app.py` (validation-handler fix),
+`src/athena/api/exceptions.py`, `src/athena/api/errors.py`,
+`src/athena/data/store/repository.py`, `src/athena/api/v1/dtos/portfolio.py`,
+`src/athena/api/v1/services/my_portfolio_service.py`,
+`src/athena/api/v1/routers/my_portfolio.py`,
+`src/athena/api/static/js/08b-my-portfolio.js`,
+`src/athena/api/static/css/05b-my-portfolio.css`,
+`src/athena/api/static/index.html` (Actions column + asset version bump),
+`tests/api/v1/test_my_portfolio_import_api.py`,
+`tests/api/platform/test_dashboard_hosting.py`,
+`tests/api/platform/test_decision_chart_release_gate.py`.
+
+**Status:** Implementation complete, self-validated. Not yet committed by
+the implementer (no git action taken); not yet marked Owner-approved —
+awaiting Owner/Chief Architect review, per the mandatory milestone workflow.
+
+---
+
 ## Portfolio Intelligence V2 — Owner Correction Round + Mandatory Historical PIT Robustness Replay — Final Validation Complete
 
 **Summary.** Owner gave conditional approval on the V2 structural review

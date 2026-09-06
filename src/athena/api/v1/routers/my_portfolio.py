@@ -11,6 +11,7 @@ from athena.api.security import Permission, RequirePermission
 from athena.api.security.models import AuthenticatedPrincipal
 from athena.api.v1.dtos import AthenaResponse, ResponseMeta
 from athena.api.v1.dtos.portfolio import (
+    DeleteMyPortfolioHoldingResultDTO,
     MyPortfolioHoldingDTO,
     PortfolioImportConfirmRequest,
     PortfolioImportConfirmResultDTO,
@@ -20,6 +21,7 @@ from athena.api.v1.dtos.portfolio import (
     PortfolioSnapshotDTO,
     PortfolioSyncRunDTO,
     PortfolioSyncStartRequest,
+    UpdateMyPortfolioHoldingRequest,
 )
 from athena.api.v1.services.my_portfolio_service import MyPortfolioService
 
@@ -134,6 +136,47 @@ def list_holdings(
     return AthenaResponse(
         status="success",
         data=service.list_holdings(),
+        meta=_meta(request),
+    )
+
+
+@router.patch(
+    "/holdings/{instrument_id}",
+    response_model=AthenaResponse[MyPortfolioHoldingDTO],
+    summary="Manually correct one My Portfolio holding's quantity/avg price",
+    status_code=status.HTTP_200_OK,
+    operation_id="updateMyPortfolioHolding",
+)
+def update_holding(
+    instrument_id: str,
+    body: UpdateMyPortfolioHoldingRequest,
+    request: Request,
+    service: MyPortfolioService = Depends(get_my_portfolio_service),  # noqa: B008
+    principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.EXECUTE)),  # noqa: B008
+) -> AthenaResponse[MyPortfolioHoldingDTO]:
+    return AthenaResponse(
+        status="success",
+        data=service.update_holding(instrument_id, quantity=body.quantity, avg_price=body.avg_price),
+        meta=_meta(request),
+    )
+
+
+@router.delete(
+    "/holdings/{instrument_id}",
+    response_model=AthenaResponse[DeleteMyPortfolioHoldingResultDTO],
+    summary="Delete one My Portfolio holding",
+    status_code=status.HTTP_200_OK,
+    operation_id="deleteMyPortfolioHolding",
+)
+def delete_holding(
+    instrument_id: str,
+    request: Request,
+    service: MyPortfolioService = Depends(get_my_portfolio_service),  # noqa: B008
+    principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.EXECUTE)),  # noqa: B008
+) -> AthenaResponse[DeleteMyPortfolioHoldingResultDTO]:
+    return AthenaResponse(
+        status="success",
+        data=service.delete_holding(instrument_id),
         meta=_meta(request),
     )
 

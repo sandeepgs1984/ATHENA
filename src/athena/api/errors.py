@@ -25,6 +25,8 @@ from athena.api.exceptions import (
     ExportArtifactNotFoundError,
     ExportGenerationError,
     ExportSnapshotNotFoundError,
+    MyPortfolioHoldingError,
+    MyPortfolioHoldingNotFoundError,
     MyPortfolioImportError,
     MyPortfolioImportNotFoundError,
     MyPortfolioSyncNotFoundError,
@@ -157,6 +159,13 @@ class AthenaExceptionMapper:
         ),
         ExceptionMapping(StalePortfolioPreviewError, 409, "stale-portfolio-preview", "Stale Portfolio Preview"),
         ExceptionMapping(MyPortfolioImportError, 400, "portfolio-import-error", "Portfolio Import Error"),
+        ExceptionMapping(
+            MyPortfolioHoldingNotFoundError,
+            404,
+            "portfolio-holding-not-found",
+            "Portfolio Holding Not Found",
+        ),
+        ExceptionMapping(MyPortfolioHoldingError, 400, "portfolio-holding-error", "Portfolio Holding Error"),
         ExceptionMapping(
             DecisionsResetConfirmationError,
             400,

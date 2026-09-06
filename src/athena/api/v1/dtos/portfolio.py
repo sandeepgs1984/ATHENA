@@ -170,6 +170,24 @@ class MyPortfolioHoldingDTO(BaseModel):
     provenance: dict[str, object] = Field(default_factory=dict)
 
 
+class UpdateMyPortfolioHoldingRequest(BaseModel):
+    """Owner-initiated correction to one holding's quantity/avg price."""
+
+    model_config = ConfigDict(frozen=True)
+
+    quantity: int = Field(gt=0)
+    avg_price: Decimal = Field(gt=0)
+
+
+class DeleteMyPortfolioHoldingResultDTO(BaseModel):
+    """Result of removing one My Portfolio holding."""
+
+    model_config = ConfigDict(frozen=True)
+
+    instrument_id: str
+    deleted: bool
+
+
 class PortfolioImportSummaryDTO(BaseModel):
     """Audit summary for a My Portfolio import batch."""
 

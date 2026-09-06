@@ -27,6 +27,8 @@
     const myPortfolioReconciliationSummary = document.getElementById("my-portfolio-reconciliation-summary");
     const myPortfolioReconciliationRows = document.getElementById("my-portfolio-reconciliation-rows");
     const myPortfolioHoldingsRows = document.getElementById("my-portfolio-holdings-rows");
+    const myPortfolioSyncOverlay = document.getElementById("my-portfolio-sync-overlay");
+    const myPortfolioSyncOverlayDetail = document.getElementById("my-portfolio-sync-overlay-detail");
     const myPortfolioHistoryRows = document.getElementById("my-portfolio-history-rows");
     const myPortfolioDetailModal = document.getElementById("my-portfolio-detail-modal");
     const myPortfolioDetailClose = document.getElementById("my-portfolio-detail-close");
@@ -43,6 +45,11 @@
         syncing: false,
         syncPollTimer: null,
         syncRun: null,
+        // True from the moment an Edit/Delete is confirmed until Portfolio
+        // Sync actually starts (or the edit/delete itself fails) — bridges
+        // the brief gap before `syncing` turns true, so the blocking
+        // overlay never flickers off between "saved" and "sync started".
+        holdingActionPending: false,
         snapshot: null,
         holdings: [],
         imports: [],
@@ -532,6 +539,29 @@
         return String(row?.provenance?.instrument_id || row?.symbol || "");
     }
 
+    // Holdings edit/delete: one small, reused Actions cell. Buttons carry
+    // data-action + rely on the row's own data-instrument-id (delegated
+    // listener below) so no per-button symbol/id string escaping is needed
+    // beyond the existing row-level attribute.
+    // Compact icon buttons (Edit=neutral, Delete=btn-danger-outline — both
+    // existing classes, reused as-is) rather than full-text pills, which
+    // read as too heavy/blocky in a 110px column. Disabled + spinner while
+    // a Portfolio Sync this action triggered is still recalculating —
+    // editing/deleting another holding mid-sync would race the same full
+    // resync, so every row's actions are held until it settles.
+    function myPortfolioRowActionsCell(symbol) {
+        const busy = Boolean(myPortfolioState.syncing);
+        const safeSymbol = escapeMyPortfolioHtml(symbol);
+        const disabledAttr = busy ? "disabled" : "";
+        const editIcon = busy ? '<i class="fa-solid fa-spinner fa-spin"></i>' : '<i class="fa-solid fa-pen"></i>';
+        const deleteIcon = busy ? '<i class="fa-solid fa-spinner fa-spin"></i>' : '<i class="fa-solid fa-trash-can"></i>';
+        const title = busy ? "Portfolio Sync is recalculating — please wait" : null;
+        return `<td class="holdings-actions">
+            <button type="button" class="inspect-btn my-portfolio-row-action" data-action="edit" title="${title || `Edit ${safeSymbol}`}" aria-label="Edit ${safeSymbol}" ${disabledAttr}>${editIcon}</button>
+            <button type="button" class="inspect-btn btn-danger-outline my-portfolio-row-action" data-action="delete" title="${title || `Delete ${safeSymbol}`}" aria-label="Delete ${safeSymbol}" ${disabledAttr}>${deleteIcon}</button>
+        </td>`;
+    }
+
     function renderMyPortfolioHoldings(holdings) {
         if (myPortfolioState.snapshot?.rows?.length) {
             renderMyPortfolioSnapshotRows(myPortfolioState.snapshot.rows);
@@ -539,12 +569,14 @@
         }
         myPortfolioState.snapshotRowsByKey = {};
         if (!holdings.length) {
-            myPortfolioHoldingsRows.innerHTML = '<tr><td colspan="13" class="text-center text-muted">No holdings imported yet. Upload Portfolio to begin.</td></tr>';
+            myPortfolioHoldingsRows.innerHTML = '<tr><td colspan="14" class="text-center text-muted">No holdings imported yet. Upload Portfolio to begin.</td></tr>';
             return;
         }
-        myPortfolioHoldingsRows.innerHTML = holdings.map(holding => `
-            <tr>
-                <td class="font-mono"><strong>${escapeMyPortfolioHtml(holding.symbol || bareMyPortfolioSymbol(holding.instrument_id))}</strong></td>
+        myPortfolioHoldingsRows.innerHTML = holdings.map(holding => {
+            const symbol = holding.symbol || bareMyPortfolioSymbol(holding.instrument_id);
+            return `
+            <tr data-instrument-id="${escapeMyPortfolioHtml(holding.instrument_id)}">
+                <td class="font-mono"><strong>${escapeMyPortfolioHtml(symbol)}</strong></td>
                 <td>${formatMyPortfolioNumber(holding.quantity)}</td>
                 <td class="font-mono">${myPortfolioMoneyCell(holding.avg_price)}</td>
                 <td>${myPortfolioDash()}</td>
@@ -557,8 +589,10 @@
                 <td class="text-muted">Not available</td>
                 <td>${myPortfolioDash()}</td>
                 <td class="text-muted">Not synced</td>
+                ${myPortfolioRowActionsCell(symbol)}
             </tr>
-        `).join("");
+        `;
+        }).join("");
     }
 
     function renderMyPortfolioSnapshotRows(rows) {
@@ -581,6 +615,7 @@
                 <td>${myPortfolioActionPill(row.next_action, row)}</td>
                 <td>${myPortfolioPlanLevelsCell(row)}</td>
                 <td>${myPortfolioFreshnessCell(row)}</td>
+                ${myPortfolioRowActionsCell(row.symbol)}
             </tr>
         `).join("");
     }
@@ -765,21 +800,125 @@
     }
 
     myPortfolioHoldingsRows?.addEventListener("click", event => {
+        if (event.target.closest(".my-portfolio-row-action")) return;
         const tr = event.target.closest("tr[data-instrument-id]");
         if (!tr) return;
         openMyPortfolioDetail(tr.getAttribute("data-instrument-id"));
     });
     myPortfolioHoldingsRows?.addEventListener("keydown", event => {
         if (event.key !== "Enter" && event.key !== " ") return;
+        if (event.target.closest(".my-portfolio-row-action")) return;
         const tr = event.target.closest("tr[data-instrument-id]");
         if (!tr) return;
         event.preventDefault();
         openMyPortfolioDetail(tr.getAttribute("data-instrument-id"));
     });
+    myPortfolioHoldingsRows?.addEventListener("click", event => {
+        const btn = event.target.closest(".my-portfolio-row-action");
+        if (!btn) return;
+        const tr = btn.closest("tr[data-instrument-id]");
+        if (!tr) return;
+        const instrumentId = tr.getAttribute("data-instrument-id");
+        if (btn.getAttribute("data-action") === "edit") {
+            myPortfolioEditHolding(instrumentId);
+        } else if (btn.getAttribute("data-action") === "delete") {
+            myPortfolioDeleteHolding(instrumentId);
+        }
+    });
     myPortfolioDetailClose?.addEventListener("click", () => closeModal(myPortfolioDetailModal));
     window.addEventListener("click", event => {
         if (event.target === myPortfolioDetailModal) closeModal(myPortfolioDetailModal);
     });
+
+    // Holdings edit/delete: owner-initiated corrections to one current
+    // holding. Both reuse the existing Sync Portfolio pipeline (there is no
+    // isolated single-holding recompute) so Status/Conviction/Trend/Daily
+    // Review/Structural Review are recalculated with the updated holding,
+    // then the list and page re-render via the same poller Sync already uses.
+    function myPortfolioHoldingLookup(instrumentId) {
+        const holding = (myPortfolioState.holdings || []).find(h => h.instrument_id === instrumentId);
+        const snapshotRow = myPortfolioState.snapshotRowsByKey?.[instrumentId];
+        return {
+            symbol: holding?.symbol || snapshotRow?.symbol || bareMyPortfolioSymbol(instrumentId),
+            quantity: holding?.quantity ?? snapshotRow?.qty ?? snapshotRow?.quantity ?? null,
+            avgPrice: holding?.avg_price ?? snapshotRow?.avg_price ?? null,
+        };
+    }
+
+    async function myPortfolioEditHolding(instrumentId) {
+        if (!instrumentId) return;
+        const { symbol, quantity, avgPrice } = myPortfolioHoldingLookup(instrumentId);
+
+        const rawQty = window.prompt(`Quantity for ${symbol}?`, quantity != null ? String(quantity) : "");
+        if (rawQty === null || rawQty.trim() === "") return;
+        const parsedQty = parseInt(rawQty, 10);
+        if (!Number.isFinite(parsedQty) || parsedQty <= 0) {
+            showMyPortfolioAlert("Quantity must be a positive whole number.", "danger");
+            return;
+        }
+
+        const rawAvgPrice = window.prompt(`Average price for ${symbol}?`, avgPrice != null ? String(avgPrice) : "");
+        if (rawAvgPrice === null || rawAvgPrice.trim() === "") return;
+        const parsedAvgPrice = parseFloat(rawAvgPrice);
+        if (!Number.isFinite(parsedAvgPrice) || parsedAvgPrice <= 0) {
+            showMyPortfolioAlert("Average price must be a positive number.", "danger");
+            return;
+        }
+
+        // Blocking overlay from the instant the change is confirmed — bridges
+        // the gap before Sync itself is running (tracked by `syncing`) so it
+        // never flickers off between "saved" and "sync started".
+        myPortfolioState.holdingActionPending = true;
+        renderMyPortfolioSyncOverlay();
+        try {
+            await apiRequest(`/api/v1/my-portfolio/holdings/${encodeURIComponent(instrumentId)}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ quantity: parsedQty, avg_price: String(parsedAvgPrice) }),
+                skipToast: true,
+            });
+            showMyPortfolioAlert(`${symbol} updated. Syncing Portfolio to recalculate...`, "good");
+            await loadMyPortfolioWorkspace();
+            await startMyPortfolioSync();
+            // startMyPortfolioSync only awaits the sync *starting*; render now so
+            // the Actions column shows the busy/spinner state immediately rather
+            // than waiting for the next poll tick. `syncing` is tracking the run
+            // itself from here on, so the overlay stays up through it.
+            renderMyPortfolioHoldings(myPortfolioState.holdings);
+        } catch (err) {
+            console.error("Failed to update My Portfolio holding", err);
+            showMyPortfolioAlert(`Could not update ${symbol}. The existing holding is unchanged.`, "danger");
+        } finally {
+            myPortfolioState.holdingActionPending = false;
+            renderMyPortfolioSyncOverlay();
+        }
+    }
+
+    async function myPortfolioDeleteHolding(instrumentId) {
+        if (!instrumentId) return;
+        const { symbol, quantity, avgPrice } = myPortfolioHoldingLookup(instrumentId);
+        const qtyText = quantity != null ? `${formatMyPortfolioNumber(quantity)} @ ${formatMyPortfolioMoney(avgPrice)} avg` : "";
+        if (!window.confirm(`Delete ${symbol} ${qtyText} from My Portfolio? Re-import it to add it back.`)) return;
+
+        myPortfolioState.holdingActionPending = true;
+        renderMyPortfolioSyncOverlay();
+        try {
+            await apiRequest(`/api/v1/my-portfolio/holdings/${encodeURIComponent(instrumentId)}`, {
+                method: "DELETE",
+                skipToast: true,
+            });
+            showMyPortfolioAlert(`${symbol} removed. Syncing Portfolio to recalculate...`, "good");
+            await loadMyPortfolioWorkspace();
+            await startMyPortfolioSync();
+            renderMyPortfolioHoldings(myPortfolioState.holdings);
+        } catch (err) {
+            console.error("Failed to delete My Portfolio holding", err);
+            showMyPortfolioAlert(`Could not remove ${symbol}. The existing holding is unchanged.`, "danger");
+        } finally {
+            myPortfolioState.holdingActionPending = false;
+            renderMyPortfolioSyncOverlay();
+        }
+    }
 
     function renderMyPortfolioHistory(imports) {
         if (!imports.length) {
@@ -1025,6 +1164,30 @@
         return ["SUCCESS", "PARTIAL", "FAILED", "CANCELLED"].includes(String(status || "").toUpperCase());
     }
 
+    // Full blocking overlay, driven by the same `syncing`/`syncRun` state
+    // the Sync Portfolio button and holdings table already track correctly
+    // for the whole run — plus `holdingActionPending`, which covers the
+    // brief window after an Edit/Delete is confirmed but before Sync has
+    // actually started. Shows/hides for BOTH the manual Sync Portfolio
+    // button and an Edit/Delete-triggered sync — one consistent "please
+    // wait" experience for the one full-portfolio-recalculation operation
+    // that exists, regardless of what triggered it.
+    function renderMyPortfolioSyncOverlay() {
+        if (!myPortfolioSyncOverlay) return;
+        const active = Boolean(myPortfolioState.syncing || myPortfolioState.holdingActionPending);
+        myPortfolioSyncOverlay.classList.toggle("active", active);
+        myPortfolioSyncOverlay.setAttribute("aria-hidden", active ? "false" : "true");
+        if (!active || !myPortfolioSyncOverlayDetail) return;
+        const run = myPortfolioState.syncRun;
+        const processed = Number(run?.progress?.processed_holdings || 0);
+        const total = Number(run?.total_holdings || 0);
+        myPortfolioSyncOverlayDetail.textContent = total > 0
+            ? `Recalculating ${processed} of ${total} holdings…`
+            : myPortfolioState.holdingActionPending
+                ? "Saving your change…"
+                : "Starting Portfolio Sync…";
+    }
+
     function renderMyPortfolioSyncStatus(run) {
         if (!run) return;
         myPortfolioState.syncRun = run;
@@ -1040,6 +1203,7 @@
                 : "danger";
         showMyPortfolioAlert(`${message}${detail}.${myPortfolioSyncFailureSummary(run)}`, tone);
         setMyPortfolioBusy({ syncing: !syncRunTerminal(status) });
+        renderMyPortfolioSyncOverlay();
     }
 
     async function startMyPortfolioSync() {
@@ -1058,6 +1222,7 @@
             console.error("Failed to start My Portfolio Sync", err);
             showMyPortfolioAlert("Could not start Portfolio Sync. Existing holdings and last good snapshot are unchanged.", "danger");
             setMyPortfolioBusy({ syncing: false });
+            renderMyPortfolioSyncOverlay();
         }
     }
 
@@ -1091,6 +1256,9 @@
                     }
                 } else {
                     showMyPortfolioAlert("Portfolio Sync failed. Previous completed snapshot remains unchanged.", "danger");
+                    // syncing just flipped false above — re-render so the Actions
+                    // column's busy/spinner state clears even on a failed sync.
+                    renderMyPortfolioHoldings(myPortfolioState.holdings);
                 }
                 return;
             }
@@ -1099,6 +1267,8 @@
             console.error("Failed to poll My Portfolio Sync", err);
             showMyPortfolioAlert("Could not read Portfolio Sync status. Previous completed snapshot remains unchanged.", "danger");
             setMyPortfolioBusy({ syncing: false });
+            renderMyPortfolioHoldings(myPortfolioState.holdings);
+            renderMyPortfolioSyncOverlay();
         }
     }
 
