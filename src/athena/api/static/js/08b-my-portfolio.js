@@ -240,6 +240,30 @@
         return `<span${attr}>${escapeMyPortfolioHtml(value)}</span>`;
     }
 
+    function myPortfolioToneFromNumber(value) {
+        const number = Number(value);
+        if (!Number.isFinite(number)) return "neutral";
+        if (number > 0) return "positive";
+        if (number < 0) return "negative";
+        return "neutral";
+    }
+
+    function myPortfolioSignedCell(value, formatter, extraClass = "") {
+        const tone = myPortfolioToneFromNumber(value);
+        const classes = ["my-portfolio-signed-value", tone, extraClass].filter(Boolean).join(" ");
+        return myPortfolioCell(formatter(value), classes);
+    }
+
+    function myPortfolioPriceToneCell(value, compareTo) {
+        if (value == null) return myPortfolioDash();
+        const price = Number(value);
+        const avg = Number(compareTo);
+        const tone = Number.isFinite(price) && Number.isFinite(avg)
+            ? price >= avg ? "positive" : "negative"
+            : "neutral";
+        return myPortfolioCell(formatMyPortfolioMoney(value), `my-portfolio-price-value ${tone}`);
+    }
+
     function myPortfolioMoneyCell(value) {
         return myPortfolioCell(formatMyPortfolioMoney(value), "my-portfolio-nowrap");
     }
@@ -359,27 +383,51 @@
     function myPortfolioConvictionCell(value, row) {
         const conviction = value ? String(value).toUpperCase() : null;
         const label = conviction || "-";
+        const tone = conviction === "HIGH"
+            ? "good"
+            : conviction === "MEDIUM"
+                ? "warning"
+                : conviction === "LOW"
+                    ? "danger"
+                    : "neutral";
+        const icon = conviction === "HIGH"
+            ? "fa-signal"
+            : conviction === "MEDIUM"
+                ? "fa-gauge-high"
+                : conviction === "LOW"
+                    ? "fa-signal"
+                    : "fa-minus";
         const reasonCode = myPortfolioFieldReason(row, ["CONVICTION_", "CONFIDENCE_"]);
         const detail = conviction
             ? `Decision confidence: ${conviction}. Conviction reflects ATHENA Decision confidence/reliability, not buy strength.`
             : (reasonCode ? myPortfolioReasonSummary(row) : "Decision confidence evidence is unavailable.");
-        return `<span class="my-portfolio-nowrap" title="${escapeMyPortfolioHtml(detail)}">${escapeMyPortfolioHtml(label)}</span>`;
+        return `<span title="${escapeMyPortfolioHtml(detail)}">${myPortfolioStatus(label, tone, icon)}</span>`;
     }
 
     function myPortfolioTrendCell(value, row) {
         const raw = value ? String(value).toUpperCase() : "";
         const version = row?.provenance?.interpretation_version || "";
-        const display = raw && raw.includes("/")
-            ? raw
-            : raw && !["portfolio-interpretation-v3", "portfolio-interpretation-v4"].includes(version)
-                ? `${raw} / legacy`
-                : raw || "-";
+        const trend = raw.split("/")[0]?.trim() || "";
+        const setup = raw.includes("/") ? raw.split("/")[1]?.trim() || "" : "";
+        const legacy = raw && !raw.includes("/") && !["portfolio-interpretation-v3", "portfolio-interpretation-v4"].includes(version);
+        const trendMeta = {
+            UPTREND: ["Uptrend", "trend-up", "fa-arrow-trend-up"],
+            DOWNTREND: ["Downtrend", "trend-down", "fa-arrow-trend-down"],
+            MIXED: ["Mixed", "trend-mixed", "fa-shuffle"],
+        }[trend] || [trend || "Trend unavailable", "trend-neutral", "fa-minus"];
+        const setupMeta = {
+            BREAKOUT: ["Breakout", "setup-breakout", "fa-arrow-up-right-dots"],
+            BREAKDOWN: ["Breakdown", "setup-breakdown", "fa-arrow-down-short-wide"],
+        }[setup] || [legacy ? "Legacy setup" : "No setup", "setup-neutral", legacy ? "fa-clock-rotate-left" : "fa-minus"];
         const detailCodes = (row?.provenance?.interpretation_reason_codes || [])
             .filter(code => String(code).startsWith("TREND_") || String(code).startsWith("SETUP_"));
         const detail = detailCodes.length
             ? myPortfolioReasonSummary({ provenance: { interpretation_reason_codes: detailCodes } })
             : "D1 Trend / Opening Range Setup evidence.";
-        return `<span class="my-portfolio-nowrap" title="${escapeMyPortfolioHtml(detail)}">${escapeMyPortfolioHtml(display)}</span>`;
+        return `<span class="my-portfolio-trend-stack" title="${escapeMyPortfolioHtml(detail)}">
+            <span class="my-portfolio-market-chip ${trendMeta[1]}"><i class="fa-solid ${trendMeta[2]}" aria-hidden="true"></i>${escapeMyPortfolioHtml(trendMeta[0])}</span>
+            <span class="my-portfolio-market-chip ${setupMeta[1]}"><i class="fa-solid ${setupMeta[2]}" aria-hidden="true"></i>${escapeMyPortfolioHtml(setupMeta[0])}</span>
+        </span>`;
     }
 
     function myPortfolioDailyReviewDetail(review) {
@@ -484,18 +532,18 @@
     function myPortfolioPlanLevelsCell(row) {
         const lines = [];
         if (row?.key_trigger != null && row.key_trigger !== "") {
-            lines.push(`Plan Trigger ${formatMyPortfolioMoney(row.key_trigger)}`);
+            lines.push(`<span><i class="fa-solid fa-bolt" aria-hidden="true"></i>Plan Trigger ${escapeMyPortfolioHtml(formatMyPortfolioMoney(row.key_trigger))}</span>`);
         }
         if (row?.major_support_exit != null) {
-            lines.push(`Plan Stop ${formatMyPortfolioMoney(row.major_support_exit)}`);
+            lines.push(`<span><i class="fa-solid fa-shield-halved" aria-hidden="true"></i>Plan Stop ${escapeMyPortfolioHtml(formatMyPortfolioMoney(row.major_support_exit))}</span>`);
         }
         if (row?.target_1 != null) {
-            lines.push(`Plan T1 ${formatMyPortfolioMoney(row.target_1)}`);
+            lines.push(`<span><i class="fa-solid fa-location-arrow" aria-hidden="true"></i>Plan T1 ${escapeMyPortfolioHtml(formatMyPortfolioMoney(row.target_1))}</span>`);
         }
         if (!lines.length) {
             return `<span class="my-portfolio-muted-dash">No plan levels</span>`;
         }
-        return `<span class="my-portfolio-levels">${lines.map(escapeMyPortfolioHtml).join("<br>")}</span>`;
+        return `<span class="my-portfolio-levels">${lines.join("")}</span>`;
     }
 
     // Compact Freshness cell: collapses Price As Of + Last Review into one
@@ -508,7 +556,7 @@
         if (priceAsOf) detailParts.push(`Price as of ${priceAsOf}`);
         if (lastReview) detailParts.push(`Last reviewed ${lastReview}`);
         const detail = detailParts.length ? detailParts.join(" · ") : "Freshness evidence unavailable.";
-        return `<span class="my-portfolio-nowrap" title="${escapeMyPortfolioHtml(detail)}">${escapeMyPortfolioHtml(label)}</span>`;
+        return `<span class="my-portfolio-freshness-cell" title="${escapeMyPortfolioHtml(detail)}"><i class="fa-regular fa-clock" aria-hidden="true"></i>${escapeMyPortfolioHtml(label)}</span>`;
     }
 
     function showMyPortfolioAlert(message, tone = "neutral") {
@@ -822,9 +870,9 @@
                 <td class="font-mono"><strong>${escapeMyPortfolioHtml(row.symbol)}</strong></td>
                 <td>${formatMyPortfolioNumber(row.qty ?? row.quantity)}</td>
                 <td class="font-mono">${myPortfolioMoneyCell(row.avg_price)}</td>
-                <td class="font-mono">${row.last_price == null ? myPortfolioDash() : myPortfolioMoneyCell(row.last_price)}</td>
-                <td class="font-mono">${row.pnl == null ? myPortfolioDash() : myPortfolioMoneyCell(row.pnl)}</td>
-                <td>${row.pnl_pct == null ? myPortfolioDash() : myPortfolioCell(formatMyPortfolioPct(row.pnl_pct), "my-portfolio-nowrap")}</td>
+                <td class="font-mono">${myPortfolioPriceToneCell(row.last_price, row.avg_price)}</td>
+                <td class="font-mono">${row.pnl == null ? myPortfolioDash() : myPortfolioSignedCell(row.pnl, formatMyPortfolioMoney)}</td>
+                <td>${row.pnl_pct == null ? myPortfolioDash() : myPortfolioSignedCell(row.pnl_pct, formatMyPortfolioPct)}</td>
                 <td>${myPortfolioStatusPill(row.status, row)}</td>
                 <td>${myPortfolioConvictionCell(row.conviction, row)}</td>
                 <td>${myPortfolioTrendCell(row.trend_or_setup, row)}</td>
@@ -1192,7 +1240,6 @@
             setMyPortfolioBusy();
             return;
         }
-        closeModal(myPortfolioPreview);
         renderMyPortfolioInlinePreview(preview);
         myPortfolioPreviewTotal.textContent = formatMyPortfolioNumber(preview.total_rows);
         myPortfolioPreviewValid.textContent = formatMyPortfolioNumber(preview.accepted_rows);
@@ -1229,6 +1276,7 @@
         renderMyPortfolioReconciliation(preview.proposed_changes || []);
         myPortfolioUploadState.textContent = `Preview ready for ${preview.filename}. Confirm & Sync will replace holdings and refresh analysis in one step.`;
         setMyPortfolioBusy();
+        openModal(myPortfolioPreview);
     }
 
     function renderMyPortfolioPreviewRows(rows) {
@@ -1422,6 +1470,7 @@
         if (!myPortfolioSyncOverlay) return;
         const active = Boolean(myPortfolioState.syncing || myPortfolioState.holdingActionPending);
         myPortfolioSyncOverlay.classList.toggle("active", active);
+        document.body.classList.toggle("my-portfolio-sync-blocked", active);
         myPortfolioSyncOverlay.setAttribute("aria-hidden", active ? "false" : "true");
         if (!active || !myPortfolioSyncOverlayDetail) return;
         const run = myPortfolioState.syncRun;
@@ -1448,7 +1497,7 @@
                 ? "warning"
                 : "danger";
         showMyPortfolioAlert(`${message}${detail}.${myPortfolioSyncFailureSummary(run)}`, tone);
-        setMyPortfolioBusy({ syncing: !syncRunTerminal(status) });
+        setMyPortfolioBusy({ syncing: syncRunTerminal(status) ? myPortfolioState.syncing : true });
         renderMyPortfolioSyncOverlay();
     }
 
@@ -1488,7 +1537,6 @@
             const run = response.data;
             renderMyPortfolioSyncStatus(run);
             if (syncRunTerminal(run.status)) {
-                setMyPortfolioBusy({ syncing: false });
                 if (run.status === "SUCCESS" || run.status === "PARTIAL") {
                     const snapshotRes = await apiRequest("/api/v1/my-portfolio/snapshot", { skipToast: true });
                     myPortfolioState.snapshot = snapshotRes?.data || null;
@@ -1512,10 +1560,12 @@
                 } else {
                     myPortfolioState.syncCompletion = null;
                     showMyPortfolioAlert("Portfolio Sync failed. Previous completed snapshot remains unchanged.", "danger");
-                    // syncing just flipped false above — re-render so the Actions
-                    // column's busy/spinner state clears even on a failed sync.
+                    // Keep the row actions aligned with the terminal sync
+                    // state before the full-page blocker is dismissed below.
                     renderMyPortfolioHoldings(myPortfolioState.holdings);
                 }
+                setMyPortfolioBusy({ syncing: false });
+                renderMyPortfolioSyncOverlay();
                 return;
             }
             myPortfolioState.syncPollTimer = setTimeout(() => pollMyPortfolioSync(syncRunId), 1500);

@@ -303,8 +303,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.165.0" in html
-    assert "dashboard.js?v=9.165.0" in html
+    assert "dashboard.css?v=9.166.0" in html
+    assert "dashboard.js?v=9.166.0" in html
     assert "function decisionConfidenceBand" in js
     assert "analysis?.confidence_level" in js
     assert "confidence reflects evidence reliability, not expected profit" in js
@@ -458,8 +458,13 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     # finished) — active for BOTH an Edit/Delete-triggered sync and the
     # manual Sync Portfolio button, since both run the same one operation.
     assert 'id="my-portfolio-sync-overlay"' in html
+    assert "Recalculating Portfolio Intelligence" in html
+    assert "Holdings are locked until this run finishes." in html
     assert "function renderMyPortfolioSyncOverlay" in js
     assert "holdingActionPending" in js
+    assert 'document.body.classList.toggle("my-portfolio-sync-blocked", active)' in js
+    assert "position: fixed" in my_portfolio_css
+    assert "z-index: 9500" in my_portfolio_css
     # Owner-reported: confirming a real broker export must never require a
     # manual CSV edit or CLI step for an unresolved symbol or a bad row —
     # confirming is best-effort per row, so the client no longer gates the
@@ -469,6 +474,7 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert "Confirm & Sync will apply every row ATHENA can resolve and skip the rest" in js
     assert ".my-portfolio-sync-overlay.active" in my_portfolio_css
     assert "@keyframes my-portfolio-sync-overlay-spin" in my_portfolio_css
+    assert ".my-portfolio-sync-overlay-subtext" in my_portfolio_css
     assert "prefers-reduced-motion: reduce" in my_portfolio_css
     assert "left: 64px" in my_portfolio_css
     assert "left: 234px" in my_portfolio_css
@@ -493,6 +499,17 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert ".my-portfolio-daily-review-cell" in my_portfolio_css
     assert ".my-portfolio-daily-review-summary" in my_portfolio_css
     assert ".my-portfolio-levels" in my_portfolio_css
+    assert "function myPortfolioSignedCell" in js
+    assert "function myPortfolioPriceToneCell" in js
+    assert "openModal(myPortfolioPreview);" in js
+    assert ".my-portfolio-signed-value.positive" in my_portfolio_css
+    assert ".my-portfolio-signed-value.negative" in my_portfolio_css
+    assert ".my-portfolio-price-value.positive" in my_portfolio_css
+    assert ".my-portfolio-market-chip.trend-up" in my_portfolio_css
+    assert ".my-portfolio-market-chip.trend-down" in my_portfolio_css
+    assert ".my-portfolio-market-chip.setup-breakout" in my_portfolio_css
+    assert ".my-portfolio-market-chip.setup-breakdown" in my_portfolio_css
+    assert ".my-portfolio-freshness-cell" in my_portfolio_css
     assert "#my-portfolio-holdings-rows tr[data-instrument-id]" in my_portfolio_css
     assert ".my-portfolio-detail-grid" in my_portfolio_css
     assert ".my-portfolio-detail-section" in my_portfolio_css
@@ -600,7 +617,7 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert "formatMyPortfolioTime(row.price_as_of)" in js
     assert "formatMyPortfolioMoney(row.current_value)" in js
     assert "myPortfolioDash()" in js
-    assert "${raw} / legacy" in js
+    assert "Legacy setup" in js
     assert 'myPortfolioUploadState.textContent = `Sync ${run.sync_run_id}' not in js
     assert "Why: ${escapeMyPortfolioHtml(reason)}" not in js
     my_portfolio_js = (

@@ -49,7 +49,14 @@ is renamed `Sync Existing Holdings` and the duplicate header file-picker was
 removed, so manual refresh is distinct from the upload confirmation flow and
 file selection appears only inside `Update Holdings`. Follow-up screenshot
 polish fixed the Current Holdings sort-control overlap and widened/reframed
-the tapped-holding detail overlay into more readable scan sections.
+the tapped-holding detail overlay into more readable scan sections. Final
+UX pass opens the preview modal immediately after upload parsing succeeds,
+promotes `Sync Existing Holdings` into a full-viewport blocker until the
+terminal sync result and snapshot refresh complete, and adds trading-style
+presentation indicators: green/red signed P&L and returns, Last Price
+relative-to-Avg Price coloring, Conviction pills, directional Trend/Setup
+chips, Plan Level icons, and a Freshness clock. These are visual affordances
+only and do not change Portfolio semantics.
 
 **Tests.** Added API coverage for full reset success, reset-token rejection,
 and active-sync reset rejection without mutation. Focused validation: My
@@ -64,7 +71,10 @@ typing debt unrelated to this UI/reset change. Second-pass validation after
 the upload-first/confirm-and-sync refinement: combined focused pytest **81
 passed**; `node --check src/athena/api/static/js/08b-my-portfolio.js`
 passed; ruff passed on touched API/test Python files and `repository.py`
-with the repository's pre-existing SIM117 baseline ignored.
+with the repository's pre-existing SIM117 baseline ignored. Latest
+modal-first preview / full-page sync blocker / trading-indicator polish is
+covered by dashboard-contract assertions and ready for the same focused
+validation slice.
 
 **Files changed:** `src/athena/api/v1/dtos/portfolio.py`,
 `src/athena/api/v1/routers/my_portfolio.py`,

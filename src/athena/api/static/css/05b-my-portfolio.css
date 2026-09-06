@@ -422,23 +422,30 @@
     position: relative;
 }
 
+.my-portfolio-sync-blocked {
+    overflow: hidden;
+}
+
 .my-portfolio-sync-overlay {
-    position: absolute;
+    position: fixed;
     inset: 0;
-    z-index: 8;
+    z-index: 9500;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: var(--space-10);
-    background: rgba(11, 15, 25, 0.82);
-    backdrop-filter: blur(3px);
-    -webkit-backdrop-filter: blur(3px);
-    border-radius: 8px;
+    gap: var(--space-12);
+    padding: var(--space-24);
+    text-align: center;
+    background:
+        radial-gradient(circle at 50% 42%, rgba(0, 229, 255, 0.14), transparent 26rem),
+        rgba(5, 9, 17, 0.88);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
-    transform: scale(0.99);
+    transform: scale(1.01);
     transition: opacity 0.28s ease, transform 0.28s ease, visibility 0s linear 0.28s;
 }
 
@@ -451,12 +458,13 @@
 }
 
 .my-portfolio-sync-overlay-spinner {
-    width: 34px;
-    height: 34px;
+    width: 68px;
+    height: 68px;
     border-radius: 50%;
-    border: 3px solid rgba(241, 245, 249, 0.15);
+    border: 4px solid rgba(241, 245, 249, 0.12);
     border-top-color: var(--accent);
-    box-shadow: var(--glow-accent-sm);
+    border-right-color: rgba(31, 191, 117, 0.85);
+    box-shadow: 0 0 42px rgba(0, 229, 255, 0.2);
     animation: my-portfolio-sync-overlay-spin 0.85s linear infinite;
 }
 
@@ -469,14 +477,19 @@
 .my-portfolio-sync-overlay-text {
     color: var(--text-primary);
     font-weight: 700;
-    font-size: var(--text-0-95);
-    letter-spacing: 0.01em;
+    font-size: var(--text-1-25);
+    letter-spacing: 0;
 }
 
 .my-portfolio-sync-overlay-detail {
     color: var(--text-secondary);
-    font-size: var(--text-0-8);
+    font-size: var(--text-0-95);
     min-height: 1.2em;
+}
+
+.my-portfolio-sync-overlay-subtext {
+    color: var(--text-muted);
+    font-size: var(--text-0-82);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -653,6 +666,100 @@
     color: var(--text-muted);
 }
 
+.my-portfolio-signed-value,
+.my-portfolio-price-value {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-5);
+    white-space: nowrap;
+}
+
+.my-portfolio-signed-value::before,
+.my-portfolio-price-value::before {
+    font-family: "Font Awesome 6 Free";
+    font-size: var(--text-0-65);
+    font-weight: 900;
+}
+
+.my-portfolio-signed-value.positive,
+.my-portfolio-price-value.positive {
+    color: var(--success);
+}
+
+.my-portfolio-signed-value.positive::before,
+.my-portfolio-price-value.positive::before {
+    content: "\f062";
+}
+
+.my-portfolio-signed-value.negative,
+.my-portfolio-price-value.negative {
+    color: var(--danger);
+}
+
+.my-portfolio-signed-value.negative::before,
+.my-portfolio-price-value.negative::before {
+    content: "\f063";
+}
+
+.my-portfolio-signed-value.neutral,
+.my-portfolio-price-value.neutral {
+    color: var(--text-secondary);
+}
+
+.my-portfolio-signed-value.neutral::before,
+.my-portfolio-price-value.neutral::before {
+    content: "\f068";
+    color: var(--text-muted);
+}
+
+.my-portfolio-trend-stack {
+    display: flex;
+    align-items: center;
+    gap: var(--space-6);
+    flex-wrap: wrap;
+    min-width: 0;
+}
+
+.my-portfolio-market-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-5);
+    max-width: 100%;
+    padding: 2px var(--space-8);
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    font-size: var(--text-0-72);
+    font-weight: 800;
+    line-height: 1.4;
+    white-space: nowrap;
+}
+
+.my-portfolio-market-chip.trend-up,
+.my-portfolio-market-chip.setup-breakout {
+    border-color: rgba(31, 191, 117, 0.45);
+    color: var(--success);
+    background: rgba(31, 191, 117, 0.08);
+}
+
+.my-portfolio-market-chip.trend-down,
+.my-portfolio-market-chip.setup-breakdown {
+    border-color: rgba(239, 68, 68, 0.45);
+    color: var(--danger);
+    background: rgba(239, 68, 68, 0.08);
+}
+
+.my-portfolio-market-chip.trend-mixed {
+    border-color: rgba(245, 158, 11, 0.45);
+    color: var(--warning);
+    background: rgba(245, 158, 11, 0.08);
+}
+
+.my-portfolio-market-chip.trend-neutral,
+.my-portfolio-market-chip.setup-neutral {
+    color: var(--text-muted);
+    background: rgba(148, 163, 184, 0.06);
+}
+
 .my-portfolio-row-note {
     display: inline-block;
     max-width: 170px;
@@ -684,10 +791,37 @@
    with truthful labels (Plan Trigger / Plan Stop / Plan T1 — never
    "Support" or "Major Support", per Owner Correction 2). */
 .my-portfolio-levels {
-    display: block;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
     line-height: 1.4;
     font-size: var(--text-0-8);
     white-space: normal;
+}
+
+.my-portfolio-levels span {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--space-6);
+    color: var(--text-secondary);
+}
+
+.my-portfolio-levels i {
+    color: var(--accent);
+    font-size: var(--text-0-72);
+}
+
+.my-portfolio-freshness-cell {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-6);
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.my-portfolio-freshness-cell i {
+    color: var(--text-muted);
+    font-size: var(--text-0-72);
 }
 
 #my-portfolio-holdings-rows tr[data-instrument-id] {

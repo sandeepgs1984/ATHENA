@@ -11,6 +11,9 @@ Owner request: improve My Portfolio usability after the Portfolio track closure 
 - Add a complete My Portfolio reset action.
 - Clarify the Upload / Update Holdings flow so preview, confirmation, and cancellation are visually distinct.
 - Remove the post-upload confusion where the preview/confirm controls appeared below the fold and the owner had to manually run Sync Portfolio after confirming.
+- Make the uploaded-file preview modal-first so row quality and reconciliation are immediately visible after parsing.
+- Make manual `Sync Existing Holdings` feel like a full-portfolio recalculation by blocking the whole app until sync and snapshot refresh complete.
+- Improve Current Holdings scan quality with trading-oriented, presentation-only indicators for P&L, price-vs-average, Conviction, Trend, Setup, Plan Levels, and Freshness.
 
 ## Decisions
 
@@ -22,8 +25,11 @@ Owner request: improve My Portfolio usability after the Portfolio track closure 
 - Reset is blocked while Portfolio Sync is active.
 - Upload remains a three-step staged flow: choose file, review preview, confirm update.
 - The upload panel is now the primary workflow block above summary metrics. Summary cards are read-only results, not the place where a pending upload is confirmed.
+- The detailed preview modal opens automatically after upload parsing finishes. The inline upload card remains a compact status/control strip.
 - Confirming an upload runs Portfolio Sync automatically after the holdings replacement succeeds. The header sync button remains available only as an explicit refresh for existing holdings.
+- Portfolio Sync uses a full-viewport blocker for manual sync, upload-confirm sync, and edit/delete-triggered sync. It is dismissed only after the sync reaches a terminal state and the visible snapshot refresh has completed.
 - Detailed preview/reconciliation tables remain available in a `Preview Details` overlay after the inline counts and issue chips identify whether attention is needed.
+- Table colors and icons are presentation-only affordances over existing values. They do not change Status, Conviction, D1 Trend, Opening Range Setup, Daily Review, Next Action, TradePlan, Structural Review, or any Portfolio snapshot semantics.
 
 ## Implementation Notes
 
@@ -35,10 +41,13 @@ Owner request: improve My Portfolio usability after the Portfolio track closure 
 - Alerts are rendered inside the upload card, directly above the three-step flow, so row-quality warnings and confirm/sync completion messages stay attached to the action that produced them.
 - The visible preview summary shows total rows, accepted rows, skipped rows, duplicate rows, and the first few row issues inline before the confirm action.
 - Full row-quality and reconciliation detail opens in a large modal overlay, so the owner can inspect the uploaded file without scrolling below the fold or losing the confirm/discard action context.
+- The row-quality/reconciliation modal now opens immediately after a successful preview response, eliminating the hidden-below-the-fold discovery problem.
 - `Confirm Portfolio Update` became `Confirm & Sync Portfolio`; the action confirms the import, reloads canonical holdings, and starts the existing Portfolio Sync pipeline in one user gesture.
 - The manual header action was renamed from `Sync Portfolio` to `Sync Existing Holdings` to distinguish it from the upload confirmation flow.
 - The duplicate header file-picker was removed. File selection now appears only inside `Update Holdings`; the header contains page-level actions only.
+- `Sync Existing Holdings` now activates a full-app blocking overlay with progress text and scroll lock until the recalculation and snapshot refresh finish.
 - The Current Holdings sort toolbar now has explicit header spacing and a wider selector so focus rings/buttons do not overlap the title or sort summary.
+- Current Holdings now colors positive P&L/returns green and negative P&L/returns red, marks Last Price green/red relative to Avg Price, renders Conviction as a pill, renders Trend / Setup as directional chips, adds Plan Level icons, and adds a Freshness clock indicator.
 - The tapped-holding detail overlay is wider and section-framed, with roomier grids, value spacing, guidance callouts, and reason-list line-height for easier scanning.
 - Full reset is gated by a modal requiring the exact `RESET` token.
 
