@@ -29,6 +29,7 @@ from athena.portfolio.confidence_adapter import (
 )
 from athena.portfolio.daily_chart_evidence import (
     DailyChartEvidenceEngine,
+    SuperTrendEvidence,
 )
 from athena.portfolio.daily_review import (
     PortfolioDailyReviewAdapter,
@@ -52,6 +53,11 @@ from athena.portfolio.setup_adapter import (
     PortfolioSetupAdapter,
     PortfolioSetupEvidence,
     PortfolioSetupWindowEvidence,
+)
+from athena.portfolio.structural_review import (
+    PortfolioStructuralReviewEngine,
+    PortfolioStructuralReviewResult,
+    StructuralZone,
 )
 from athena.portfolio.trend_adapter import PortfolioTrendAdapter, PortfolioTrendEvidence
 
@@ -86,6 +92,7 @@ class PortfolioSyncOrchestrator:
         self._setup_adapter = PortfolioSetupAdapter(repo, config_dir=config_dir)
         self._daily_evidence_engine = DailyChartEvidenceEngine()
         self._daily_review_adapter = PortfolioDailyReviewAdapter()
+        self._structural_review_engine = PortfolioStructuralReviewEngine()
 
     def create_run(self) -> dict[str, object]:
         active = self._repo.get_active_portfolio_sync_run()
@@ -395,10 +402,23 @@ class PortfolioSyncOrchestrator:
                 setup_reason=setup_evidence.reason,
             )
         )
-        daily_review = self._daily_review(
+        daily_review, supertrend_evidence, daily_candles = self._daily_review(
             holding=holding,
             accepted_price_as_of=price_as_of,
             last_price=last_price,
+        )
+        structural_review = self._structural_review(
+            holding=holding,
+            accepted_price_as_of=price_as_of,
+            last_price=last_price,
+            candles=daily_candles,
+            supertrend=supertrend_evidence,
+            trend_label=trend_evidence.trend.value if trend_evidence.trend is not None else None,
+            daily_review_status=(
+                daily_review.review_status.value
+                if daily_review.review_status is not None
+                else None
+            ),
         )
         target_1 = None
         if decision is not None and not decision_is_coherent:
@@ -420,6 +440,8 @@ class PortfolioSyncOrchestrator:
             unavailable.append("decision")
         if daily_review.review_status is None:
             unavailable.append("daily_review")
+        if not structural_review.is_coherent:
+            unavailable.append("structural_review")
 
         freshness = PortfolioFreshness(
             portfolio_imported_at=holding.imported_at,
@@ -456,6 +478,11 @@ class PortfolioSyncOrchestrator:
                 reason.value for reason in daily_review.reason_codes
             ),
             daily_review_evidence=self._daily_review_to_json(daily_review),
+            structural_review_version=structural_review.methodology_version,
+            structural_review_reason_codes=tuple(
+                reason.value for reason in structural_review.reason_codes
+            ),
+            structural_review_evidence=self._structural_review_to_json(structural_review),
             interpretation_evidence=self._interpretation_evidence_to_json(
                 decision=decision,
                 decision_is_coherent=decision_is_coherent,
@@ -488,6 +515,7 @@ class PortfolioSyncOrchestrator:
             target_3=interpretation.target_3,
             next_action=interpretation.next_action.value,
             daily_review=self._daily_review_to_json(daily_review),
+            structural_review=self._structural_review_to_json(structural_review),
             last_review=analyzed_at,
             freshness=freshness,
             provenance=provenance,
@@ -665,7 +693,7 @@ class PortfolioSyncOrchestrator:
         holding: CanonicalPortfolioHolding,
         accepted_price_as_of: datetime | None,
         last_price: Decimal | None,
-    ) -> PortfolioDailyReviewResult:
+    ) -> tuple[PortfolioDailyReviewResult, SuperTrendEvidence, tuple[Candle, ...]]:
         candles = self._daily_candles(holding.instrument_id)
         supertrend = self._daily_evidence_engine.supertrend_10_3(
             instrument_id=holding.instrument_id,
@@ -701,7 +729,7 @@ class PortfolioSyncOrchestrator:
             avg_price=holding.avg_price,
             last_price=last_price,
         )
-        return self._daily_review_adapter.resolve(
+        result = self._daily_review_adapter.resolve(
             supertrend=supertrend,
             rsi=rsi,
             volume=volume,
@@ -713,6 +741,30 @@ class PortfolioSyncOrchestrator:
                 pnl=math.pnl,
                 pnl_pct=math.pnl_pct,
             ),
+        )
+        return result, supertrend, candles
+
+    def _structural_review(
+        self,
+        *,
+        holding: CanonicalPortfolioHolding,
+        accepted_price_as_of: datetime | None,
+        last_price: Decimal | None,
+        candles: tuple[Candle, ...],
+        supertrend: SuperTrendEvidence,
+        trend_label: str | None,
+        daily_review_status: str | None,
+    ) -> PortfolioStructuralReviewResult:
+        return self._structural_review_engine.resolve(
+            instrument_id=holding.instrument_id,
+            candles=candles,
+            accepted_price_as_of=accepted_price_as_of,
+            expected_analysis_as_of=self._expected_analysis_as_of,
+            market_timezone=self._market_timezone,
+            supertrend=supertrend,
+            current_price=last_price,
+            trend_label=trend_label,
+            daily_review_status=daily_review_status,
         )
 
     @staticmethod
@@ -901,6 +953,49 @@ class PortfolioSyncOrchestrator:
                 if review.trailing_structure_level is not None
                 else None
             ),
+        }
+
+    @classmethod
+    def _structural_zone_to_json(
+        cls, zone: StructuralZone | None
+    ) -> dict[str, object] | None:
+        if zone is None:
+            return None
+        return {
+            "lower": str(zone.lower),
+            "upper": str(zone.upper),
+            "role": zone.role.value,
+            "touches": zone.touches,
+            "most_recent_session": zone.most_recent_session.isoformat(),
+        }
+
+    @classmethod
+    def _structural_review_to_json(
+        cls, review: PortfolioStructuralReviewResult
+    ) -> dict[str, object]:
+        return {
+            "is_coherent": review.is_coherent,
+            "methodology_version": review.methodology_version,
+            "as_of": (
+                review.provenance.as_of.isoformat()
+                if review.provenance.as_of is not None
+                else None
+            ),
+            "evidence_as_of": (
+                review.provenance.evidence_as_of.isoformat()
+                if review.provenance.evidence_as_of is not None
+                else None
+            ),
+            "reason_codes": [reason.value for reason in review.reason_codes],
+            "support_1": cls._structural_zone_to_json(review.support_1),
+            "major_support": cls._structural_zone_to_json(review.major_support),
+            "major_support_source": review.major_support_source,
+            "review_trigger": cls._structural_zone_to_json(review.review_trigger),
+            "target_1": cls._structural_zone_to_json(review.target_1),
+            "target_2": cls._structural_zone_to_json(review.target_2),
+            "target_3": cls._structural_zone_to_json(review.target_3),
+            "exit_risk": review.exit_risk,
+            "guidance": review.guidance,
         }
 
     @classmethod

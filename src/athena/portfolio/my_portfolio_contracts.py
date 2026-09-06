@@ -249,6 +249,9 @@ class PortfolioAnalysisProvenance:
     daily_review_version: str | None = None
     daily_review_reason_codes: tuple[str, ...] = ()
     daily_review_evidence: Mapping[str, object] = field(default_factory=dict)
+    structural_review_version: str | None = None
+    structural_review_reason_codes: tuple[str, ...] = ()
+    structural_review_evidence: Mapping[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -275,6 +278,7 @@ class PortfolioSnapshotRow:
     target_3: Decimal | None
     next_action: str | None
     daily_review: Mapping[str, object] | None
+    structural_review: Mapping[str, object] | None
     last_review: datetime | None
     freshness: PortfolioFreshness
     provenance: PortfolioAnalysisProvenance
@@ -300,6 +304,7 @@ class PortfolioSnapshotRow:
         target_3: Decimal | None = None,
         next_action: str | None = None,
         daily_review: Mapping[str, object] | None = None,
+        structural_review: Mapping[str, object] | None = None,
         last_review: datetime | None = None,
     ) -> PortfolioSnapshotRow:
         math = calculate_portfolio_row_math(
@@ -328,6 +333,7 @@ class PortfolioSnapshotRow:
             target_3=target_3,
             next_action=next_action,
             daily_review=daily_review,
+            structural_review=structural_review,
             last_review=last_review,
             freshness=freshness,
             provenance=provenance,

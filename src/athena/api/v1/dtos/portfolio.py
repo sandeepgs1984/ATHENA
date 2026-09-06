@@ -244,6 +244,9 @@ class PortfolioAnalysisProvenanceDTO(BaseModel):
     daily_review_version: str | None = None
     daily_review_reason_codes: list[str] = Field(default_factory=list)
     daily_review_evidence: dict[str, object] = Field(default_factory=dict)
+    structural_review_version: str | None = None
+    structural_review_reason_codes: list[str] = Field(default_factory=list)
+    structural_review_evidence: dict[str, object] = Field(default_factory=dict)
 
 
 class PortfolioDailyReviewDTO(BaseModel):
@@ -267,6 +270,41 @@ class PortfolioDailyReviewDTO(BaseModel):
     available_history_high: Decimal | None = None
     latest_high_exceeds_prior_available_high: bool | None = None
     trailing_structure_level: Decimal | None = None
+
+
+class PortfolioStructuralZoneDTO(BaseModel):
+    """One owner-facing structural level/zone (Portfolio Intelligence V2)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    lower: Decimal
+    upper: Decimal
+    role: str
+    touches: int
+    most_recent_session: datetime | None = None
+
+
+class PortfolioStructuralReviewDTO(BaseModel):
+    """Portfolio Structural Review output for one holding (V2, additive to
+    Daily Review v0 — never redefines Status/Conviction/Trend/Setup/Next
+    Action/TradePlan/SuperTrend)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    is_coherent: bool
+    methodology_version: str
+    as_of: datetime | None = None
+    evidence_as_of: datetime | None = None
+    reason_codes: list[str] = Field(default_factory=list)
+    support_1: PortfolioStructuralZoneDTO | None = None
+    major_support: PortfolioStructuralZoneDTO | None = None
+    major_support_source: str | None = None
+    review_trigger: PortfolioStructuralZoneDTO | None = None
+    target_1: PortfolioStructuralZoneDTO | None = None
+    target_2: PortfolioStructuralZoneDTO | None = None
+    target_3: PortfolioStructuralZoneDTO | None = None
+    exit_risk: bool = False
+    guidance: str | None = None
 
 
 class PortfolioSnapshotRowDTO(BaseModel):
@@ -294,6 +332,7 @@ class PortfolioSnapshotRowDTO(BaseModel):
     target_3: Decimal | None = None
     next_action: str | None = None
     daily_review: PortfolioDailyReviewDTO | None = None
+    structural_review: PortfolioStructuralReviewDTO | None = None
     last_review: datetime | None = None
     freshness: PortfolioFreshnessDTO
     provenance: PortfolioAnalysisProvenanceDTO

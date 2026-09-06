@@ -617,6 +617,47 @@
         return "Not available";
     }
 
+    // Portfolio Intelligence V2 — Structural Review helpers. Additive only:
+    // never redefines Status/Conviction/Trend/Setup/Daily Review/Next
+    // Action/TradePlan/SuperTrend. "Plan Levels" (TradePlan-derived) and
+    // "Structural Levels" (D1 swing-structure-derived) stay semantically
+    // distinct and are never merged into one cell/label.
+    function myPortfolioStructuralZoneText(zone) {
+        if (!zone) return "Not available";
+        const lower = Number(zone.lower);
+        const upper = Number(zone.upper);
+        if (!Number.isFinite(lower) || !Number.isFinite(upper)) return "Not available";
+        return lower === upper
+            ? formatMyPortfolioMoney(lower)
+            : `${formatMyPortfolioMoney(lower)}-${formatMyPortfolioMoney(upper)}`;
+    }
+
+    const MY_PORTFOLIO_STRUCTURAL_REASON_LABELS = {
+        STRUCTURAL_EVIDENCE_UNAVAILABLE: "Structural D1 evidence is unavailable.",
+        STRUCTURAL_EVIDENCE_INCOHERENT: "Structural D1 evidence is not coherent for this holding.",
+        STRUCTURAL_INSUFFICIENT_HISTORY: "Insufficient D1 history for structural analysis.",
+        SUPPORT_1_SELECTED: "Support 1 selected from a confirmed recent reaction-low zone.",
+        SUPPORT_1_UNAVAILABLE: "No structural support zone is currently active below price.",
+        MAJOR_SUPPORT_FROM_SUPERTREND: "Major Support is anchored to the existing SuperTrend level.",
+        MAJOR_SUPPORT_FROM_STRUCTURE: "Major Support is a deeper confirmed structural zone.",
+        MAJOR_SUPPORT_UNAVAILABLE: "No deeper Major Support zone could be identified.",
+        TARGET_1_SELECTED: "Target 1 selected from the nearest confirmed resistance zone.",
+        TARGET_2_SELECTED: "Target 2 selected from the next distinct resistance zone.",
+        TARGET_3_SELECTED: "Target 3 selected from the next distinct resistance zone.",
+        NO_OVERHEAD_RESISTANCE: "No defensible overhead resistance exists — targets are intentionally null, never synthetic.",
+        REVIEW_TRIGGER_RECLAIM: "Review Trigger is a reclaim of a recently lost structural level.",
+        REVIEW_TRIGGER_BREAKOUT: "Review Trigger is a breakout of the nearest resistance zone.",
+        REVIEW_TRIGGER_UNAVAILABLE: "No Review Trigger could be identified.",
+        EXIT_RISK_STRUCTURAL_INVALIDATION: "Major Support has been decisively broken with no reclaim.",
+        EXIT_RISK_NOT_TRIGGERED: "Structural invalidation has not been triggered.",
+    };
+
+    function myPortfolioStructuralReasonSummary(row) {
+        const codes = row?.structural_review?.reason_codes || [];
+        const messages = codes.map(code => MY_PORTFOLIO_STRUCTURAL_REASON_LABELS[code]).filter(Boolean);
+        return [...new Set(messages)];
+    }
+
     function renderMyPortfolioDetail(row) {
         const review = row?.daily_review || null;
         const trendLabel = myPortfolioTrendLabelOnly(row?.trend_or_setup);
@@ -641,6 +682,24 @@
         const planSection = planLines.length
             ? `<div class="my-portfolio-detail-grid">${planLines.join("")}</div>`
             : `<p class="my-portfolio-detail-guidance text-muted">No active TradePlan level currently available.</p>`;
+
+        const sr = row?.structural_review || null;
+        const structuralReasonMessages = myPortfolioStructuralReasonSummary(row);
+        const structuralSection = sr && sr.is_coherent
+            ? `
+                <div class="my-portfolio-detail-grid">
+                    ${myPortfolioDetailRow("Support 1", myPortfolioStructuralZoneText(sr.support_1))}
+                    ${myPortfolioDetailRow("Major Support / Invalidation", myPortfolioStructuralZoneText(sr.major_support))}
+                    ${myPortfolioDetailRow("Review Trigger", myPortfolioStructuralZoneText(sr.review_trigger))}
+                    ${myPortfolioDetailRow("Target 1", myPortfolioStructuralZoneText(sr.target_1))}
+                    ${myPortfolioDetailRow("Target 2", myPortfolioStructuralZoneText(sr.target_2))}
+                    ${myPortfolioDetailRow("Target 3", myPortfolioStructuralZoneText(sr.target_3))}
+                    ${myPortfolioDetailRow("EXIT_RISK", sr.exit_risk ? "Elevated" : "Not triggered")}
+                </div>
+                ${sr.guidance ? `<p class="my-portfolio-detail-guidance"><strong>Structural Guidance:</strong> ${escapeMyPortfolioHtml(sr.guidance)}</p>` : ""}
+                ${structuralReasonMessages.length ? `<ul class="my-portfolio-detail-reasons">${structuralReasonMessages.map(msg => `<li>${escapeMyPortfolioHtml(msg)}</li>`).join("")}</ul>` : ""}
+            `
+            : `<p class="my-portfolio-detail-guidance text-muted">Structural Review is unavailable for this holding (insufficient or incoherent D1 history).</p>`;
 
         myPortfolioDetailBody.innerHTML = `
             <div class="my-portfolio-detail-section">
@@ -685,7 +744,11 @@
             <div class="my-portfolio-detail-section">
                 <h4>Plan / Levels</h4>
                 ${planSection}
-                <p class="my-portfolio-detail-notice">Structural Support 1 and Target 2/3 are unavailable in Portfolio v0 because no trustworthy deterministic methodology has been frozen (PS-P10C.1).</p>
+                <p class="my-portfolio-detail-notice">Plan Trigger/Stop/T1 reflect an active TradePlan only, distinct from the structural D1 levels below.</p>
+            </div>
+            <div class="my-portfolio-detail-section">
+                <h4>Structural Review / Levels</h4>
+                ${structuralSection}
             </div>
         `;
     }

@@ -735,6 +735,78 @@ def test_sync_populates_daily_review_without_reusing_portfolio_status_or_actions
     assert "decision" in row.provenance.unavailable_fields
 
 
+def _structural_review_candles(
+    instrument_id: str,
+    *,
+    end: datetime = SEP2,
+    length: int = 150,
+    base: int = 100,
+    overrides: dict[int, dict[str, int]] | None = None,
+) -> list[Candle]:
+    overrides = overrides or {}
+    candles: list[Candle] = []
+    for index in range(length):
+        o = overrides.get(index, {})
+        close = Decimal(str(o.get("close", base)))
+        low = Decimal(str(o.get("low", int(close) - 1)))
+        high = Decimal(str(o.get("high", int(close) + 1)))
+        candles.append(
+            Candle(
+                instrument_id=instrument_id,
+                timeframe=Timeframe.D1,
+                ts_open=end - timedelta(days=length - 1 - index),
+                open=close,
+                high=high,
+                low=low,
+                close=close,
+                volume=1000 + index,
+                source="test-d1",
+            )
+        )
+    return candles
+
+
+def test_sync_populates_structural_review_end_to_end_through_api(
+    my_portfolio_client: TestClient,
+) -> None:
+    """Portfolio Intelligence V2 — structural Support/Target zones must
+    reach the API/DTO layer intact, additive to Daily Review v0, and must
+    never redefine Status/Conviction/Next Action/Daily Review."""
+    repo = _confirm_infy_holding(my_portfolio_client)
+    overrides = {
+        60: {"low": 80, "high": 82, "close": 81},  # confirmed swing low
+        100: {"low": 118, "high": 120, "close": 119},  # confirmed swing high
+    }
+    candles = _structural_review_candles("NSE:INFY", end=SEP2, overrides=overrides)
+    repo.add_candles(candles)
+
+    run = _run_portfolio_sync(repo)
+    row = MyPortfolioService(repo).latest_snapshot().rows[0]
+
+    assert run["status"] == "SUCCESS"
+    assert row.daily_review is not None
+    assert row.structural_review is not None
+    sr = row.structural_review
+    assert sr.is_coherent is True
+    assert sr.methodology_version == "portfolio-structural-review-v1"
+    assert sr.support_1 is not None
+    assert sr.support_1.lower == Decimal("80")
+    assert sr.support_1.role == "SUPPORT"
+    assert sr.target_1 is not None
+    assert sr.target_1.upper == Decimal("120")
+    assert sr.target_1.role == "RESISTANCE"
+    assert sr.exit_risk is False
+    assert sr.guidance is not None
+    # Additive only — existing V1 fields/semantics stay exactly as frozen.
+    assert row.support_1 is None
+    assert row.target_2 is None
+    assert row.target_3 is None
+    assert row.daily_review.methodology_version == "portfolio-daily-review-v0"
+    assert row.provenance.structural_review_version == "portfolio-structural-review-v1"
+    assert "SUPPORT_1_SELECTED" in row.provenance.structural_review_reason_codes
+    assert "structural_review" not in row.provenance.unavailable_fields
+
+
 def test_sync_sets_entry_low_key_trigger_when_trade_plan_entry_is_actionable(
     my_portfolio_client: TestClient,
 ) -> None:

@@ -32,6 +32,7 @@ from athena.api.v1.dtos.portfolio import (
     PortfolioSnapshotDTO,
     PortfolioSnapshotRowDTO,
     PortfolioSnapshotSummaryDTO,
+    PortfolioStructuralReviewDTO,
     PortfolioSyncRunDTO,
 )
 from athena.calendar.engine import CalendarEngine
@@ -575,11 +576,17 @@ class MyPortfolioService:
         freshness = dict(payload.pop("freshness"))
         provenance = dict(payload.pop("provenance"))
         daily_review = payload.pop("daily_review", None)
+        structural_review = payload.pop("structural_review", None)
         return PortfolioSnapshotRowDTO(
             **payload,
             daily_review=(
                 PortfolioDailyReviewDTO(**dict(daily_review))
                 if isinstance(daily_review, dict)
+                else None
+            ),
+            structural_review=(
+                PortfolioStructuralReviewDTO(**dict(structural_review))
+                if isinstance(structural_review, dict)
                 else None
             ),
             freshness=PortfolioFreshnessDTO(**freshness),
@@ -647,6 +654,11 @@ class MyPortfolioService:
             daily_review=(
                 row.daily_review.model_dump(mode="json")
                 if row.daily_review is not None
+                else None
+            ),
+            structural_review=(
+                row.structural_review.model_dump(mode="json")
+                if row.structural_review is not None
                 else None
             ),
             last_review=row.last_review,

@@ -6,6 +6,106 @@ status updated on approval.
 
 ---
 
+## Portfolio Intelligence V2 — Structural Review Engine — Implementation Complete, Ready for Owner Review
+
+**Summary.** One-day final Portfolio closure sprint. Owner asked to close the
+remaining usefulness gap between the old manually-maintained Portfolio
+Trading Snapshot (Support 1, Major Support/invalidation, Review Trigger,
+Target 1-3, EXIT_RISK) and ATHENA My Portfolio, without reopening frozen V1
+architecture or spending the day on backlog items (RSI/volume thresholds,
+numeric Review Conviction, Fibonacci/fixed-percent targets — all explicitly
+out of scope). Golden-dataset acceptance required real historical
+ground-truth; none existed in-repo (verified by search), so the Owner
+supplied the actual `PORTFOLIO SNAPSHOT.xlsx` (their real 1-Sep-2026 chart
+review) as the reference.
+
+**Architecture.** New `PortfolioStructuralReviewEngine`
+(`src/athena/portfolio/structural_review.py`), deliberately separate from
+`PortfolioInterpreter`/`DailyReviewAdapter`/`TrendAdapter`/`SetupAdapter`/
+`DecisionEngine`/`ScoringEngine` (all untouched). Two-stage design avoiding
+PS-P10C.1's "too dense" failure: (1) candidate generation — confirmed D1
+swing highs/lows (strict local extremum over a ±3-session fractal window,
+never a lookahead) within a bounded ~1-year lookback, clustered into
+non-overlapping zones by proximity, rejecting stale (>180 sessions untouched)
+zones; (2) structural selection — Support 1 (nearest active zone below
+price), Major Support/Invalidation (the nearer of the next structural tier
+down or the existing SuperTrend level — found by position in the full zone
+ordering, independent of current price, so a genuine "price broke below
+Major Support" state remains reachable), Review Trigger (reclaim of a
+recently-lost former support if one exists, else breakout of the nearest
+resistance), Target 1-3 (ascending resistance zones, capped at 3, null at
+genuine blue-sky/ATH — never synthetic), EXIT_RISK (bearish SuperTrend AND
+price decisively below Major Support only — price below SuperTrend alone
+stays REVIEW_HOLD_TIGHT, never EXIT_RISK). Zones render as ranges, not false
+precision, when the evidence represents an area. Deterministic structural
+guidance composed only from selected zones (no unrestricted LLM, every price
+traces to persisted evidence).
+
+**Wiring.** New `structural_review` field, additive, on
+`PortfolioSnapshotRow`/`PortfolioSnapshotRowDTO` (new
+`PortfolioStructuralReviewDTO`/`PortfolioStructuralZoneDTO`) and
+`PortfolioAnalysisProvenance` (version/reason-codes/evidence, mirroring the
+Daily Review v0 precedent exactly). `sync.py` computes it once per holding
+alongside the existing Daily Review SuperTrend call (no duplicate
+computation) and reuses the same D1 Trend evidence for guidance. Dashboard:
+new "Structural Review / Levels" section in the existing V1 holding-detail
+drawer only — no main-table change, no new milestone chain. "Plan Levels"
+(TradePlan-derived) and "Structural Levels" (D1-swing-derived) stay
+semantically distinct; the drawer's old PS-P10C.1 notice was corrected
+in place now that a real structural methodology exists.
+
+**Golden dataset (8 cases, real `PORTFOLIO SNAPSHOT.xlsx`, replayed on real
+persisted D1 data as of 2026-09-01 close via `db/athena.db`, read-only,
+never modified — verified by mtime before/after):** RAINBOW and HBLENGINE
+and JKTYRE — EQUIVALENT to REASONABLY CLOSE (Major Support/Target 1/Target 2
+often within a few rupees of the Owner's own numbers, reclaim-vs-breakout
+Review Trigger semantics matched correctly for every weakening case).
+AZAD, CHENNPETRO, JINDWORLD, NAVINFLUOR — REASONABLY CLOSE (Review
+Trigger/Target 1 frequently near-exact; Support 1 sometimes one structural
+tier deeper than the Owner's tighter, more recent read; Target 2/3 correctly
+and conservatively null rather than synthetic on fresh-breakout names).
+RATNAVEER — MATERIALLY DIFFERENT (a genuine parabolic run left too few nearby
+swing points for the fractal detector, so Support 1 landed far deeper and
+Target 1-3 came back null rather than the Owner's tighter numbers) — no
+case was UNSAFE (no false EXIT_RISK, no support/target that would encourage
+a materially wrong decision; RATNAVEER's miss is conservative, not
+dangerous). One systematic, clearly-defensible guidance-text redundancy
+(repeating one price when Review Trigger and Target 1 coincide) was fixed;
+no parameter-searching for exact matches was performed, per the Owner's
+explicit time-box.
+
+**Files changed:** `src/athena/portfolio/structural_review.py` (new),
+`src/athena/portfolio/sync.py`, `src/athena/portfolio/my_portfolio_contracts.py`,
+`src/athena/api/v1/dtos/portfolio.py`,
+`src/athena/api/v1/services/my_portfolio_service.py`,
+`src/athena/api/static/js/08b-my-portfolio.js`,
+`src/athena/api/static/index.html` (dashboard asset version bump only),
+`tests/runtime/test_portfolio_structural_review.py` (new),
+`tests/api/v1/test_my_portfolio_import_api.py`,
+`tests/api/platform/test_dashboard_hosting.py`,
+`tests/api/platform/test_decision_chart_release_gate.py`. Zero changes to
+`DecisionEngine`/`ScoringEngine`/`PortfolioInterpreter`/`TrendAdapter`/
+`SetupAdapter`/`daily_review.py`/SuperTrend methodology.
+
+**Tests.** 20 new structural-review unit tests (support selection, duplicate
+collapse, stale rejection, role reversal/reclaim, resistance ordering, null
+targets at ATH, Major-Support-from-structure-vs-SuperTrend precedence,
+EXIT_RISK positive/negative/bullish-override, future-candle leakage,
+deterministic rerun, incoherent/insufficient evidence, provenance) plus 1 new
+end-to-end API/DTO serialization test. Full suite: **3704 passed, 0 failed,
+0 skipped** (re-confirmed after the guidance-text fix), Ruff clean, mypy clean on
+every new/changed domain module (matching the PS-P10D precedent of not
+broad-mypy-checking `my_portfolio_service.py`, which already carries 54-55
+pre-existing object-typing issues unrelated to this work), `git diff --check`
+clean.
+
+**Status:** Implementation complete, self-validated against the Owner's own
+real historical data, implementer recommends **ACCEPT**. Not yet marked
+Owner-approved — awaiting Owner/Chief Architect final confirmation, per the
+mandatory milestone workflow.
+
+---
+
 ## My Portfolio V1 Final UX Closure — Implementation Complete, Ready for Owner Review
 
 **Summary.** After PS-P10D shipped `portfolio-daily-review-v0`, the Owner

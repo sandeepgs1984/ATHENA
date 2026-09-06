@@ -303,8 +303,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.156.0" in html
-    assert "dashboard.js?v=9.156.0" in html
+    assert "dashboard.css?v=9.157.0" in html
+    assert "dashboard.js?v=9.157.0" in html
     assert "function decisionConfidenceBand" in js
     assert "analysis?.confidence_level" in js
     assert "confidence reflects evidence reliability, not expected profit" in js
@@ -467,13 +467,13 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert "Plan Trigger" in js
     assert "Plan Stop" in js
     assert "Plan T1" in js
-    assert "Major Support" not in js
     assert "No plan levels" in js
     assert "No active TradePlan level currently available." in js
-    assert (
-        "Structural Support 1 and Target 2/3 are unavailable in Portfolio v0 "
-        "because no trustworthy deterministic methodology has been frozen"
-    ) in js
+    # Portfolio Intelligence V2: TradePlan-derived Plan Stop must never be
+    # mislabeled "Major Support" — the row.major_support_exit accessor is
+    # only ever paired with the truthful "Plan Stop" label.
+    assert 'myPortfolioDetailRow("Plan Stop", formatMyPortfolioMoney(row.major_support_exit))' in js
+    assert "Plan Trigger/Stop/T1 reflect an active TradePlan only, distinct from the structural D1 levels below." in js
     assert "RSI14 is raw context only" in js
     assert "no overbought/oversold interpretation" in js
     assert "no expansion/compression interpretation" in js
@@ -2673,13 +2673,31 @@ def test_my_portfolio_ux_closure_composition_contract(client: TestClient) -> Non
         assert label in detail_body
     assert "No active TradePlan level currently available." in detail_body
     assert (
-        "Structural Support 1 and Target 2/3 are unavailable in Portfolio v0 "
-        "because no trustworthy deterministic methodology has been frozen"
+        "Plan Trigger/Stop/T1 reflect an active TradePlan only, distinct "
+        "from the structural D1 levels below."
     ) in detail_body
     assert "review?.rsi14" in detail_body
     assert "review?.volume" in detail_body
     assert "review?.supertrend_direction" in detail_body
     assert "review?.supertrend_value" in detail_body
+
+    # --- Portfolio Intelligence V2: Structural Review / Levels section is
+    # additive only, using the existing V1 detail drawer (no redesign, no
+    # main-table change) and semantically distinct from Plan Levels above.
+    assert "Structural Review / Levels" in detail_body
+    for label in (
+        "Support 1",
+        "Major Support / Invalidation",
+        "Review Trigger",
+        "Target 1",
+        "Target 2",
+        "Target 3",
+        "EXIT_RISK",
+    ):
+        assert label in detail_body
+    assert "sr.exit_risk" in detail_body
+    assert "Structural Review is unavailable for this holding" in detail_body
+    assert "Structural Guidance:" in detail_body
 
     # --- Reason-code owner-readable mapping extends the existing pattern
     # (myPortfolioReasonSummary) to daily_review_reason_codes.
@@ -2699,6 +2717,32 @@ def test_my_portfolio_ux_closure_composition_contract(client: TestClient) -> Non
         "EXIT_RISK_DEFERRED",
         "REVIEW_CONVICTION_DEFERRED",
         "UNADJUSTED_HISTORY_LIMITATION",
+    ):
+        assert code in js
+
+    # --- Portfolio Intelligence V2: structural reason-code owner-readable
+    # mapping, mirroring the same established pattern.
+    assert "MY_PORTFOLIO_STRUCTURAL_REASON_LABELS" in js
+    assert "function myPortfolioStructuralZoneText(zone)" in js
+    assert "function myPortfolioStructuralReasonSummary(row)" in js
+    for code in (
+        "STRUCTURAL_EVIDENCE_UNAVAILABLE",
+        "STRUCTURAL_EVIDENCE_INCOHERENT",
+        "STRUCTURAL_INSUFFICIENT_HISTORY",
+        "SUPPORT_1_SELECTED",
+        "SUPPORT_1_UNAVAILABLE",
+        "MAJOR_SUPPORT_FROM_SUPERTREND",
+        "MAJOR_SUPPORT_FROM_STRUCTURE",
+        "MAJOR_SUPPORT_UNAVAILABLE",
+        "TARGET_1_SELECTED",
+        "TARGET_2_SELECTED",
+        "TARGET_3_SELECTED",
+        "NO_OVERHEAD_RESISTANCE",
+        "REVIEW_TRIGGER_RECLAIM",
+        "REVIEW_TRIGGER_BREAKOUT",
+        "REVIEW_TRIGGER_UNAVAILABLE",
+        "EXIT_RISK_STRUCTURAL_INVALIDATION",
+        "EXIT_RISK_NOT_TRIGGERED",
     ):
         assert code in js
 
