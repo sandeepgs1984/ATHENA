@@ -60,7 +60,10 @@ only and do not change Portfolio semantics. Owner follow-up corrected two
 interaction defects: holding detail now resets its scroll position on every
 open, and the Sync Existing Holdings blocker is mounted at top-level document
 scope with workspace scroll lock so it remains visible even when Current
-Holdings is below the fold.
+Holdings is below the fold. Final workstation redesign makes Current Value
+and Total P&L the leading KPI strip, promotes Current Holdings to the primary
+daily workbench directly under KPIs, and moves Update Holdings plus Recent
+Imports into a secondary operations/audit grid. No feature behavior changed.
 
 **Tests.** Added API coverage for full reset success, reset-token rejection,
 and active-sync reset rejection without mutation. Focused validation: My

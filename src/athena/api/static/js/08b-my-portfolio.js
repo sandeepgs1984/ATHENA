@@ -248,6 +248,13 @@
         return "neutral";
     }
 
+    function setMyPortfolioToneClass(el, value, baseClass) {
+        if (!el) return;
+        const tone = myPortfolioToneFromNumber(value);
+        el.classList.remove(`${baseClass}-positive`, `${baseClass}-negative`, `${baseClass}-neutral`);
+        el.classList.add(`${baseClass}-${tone}`);
+    }
+
     function myPortfolioSignedCell(value, formatter, extraClass = "") {
         const tone = myPortfolioToneFromNumber(value);
         const classes = ["my-portfolio-signed-value", tone, extraClass].filter(Boolean).join(" ");
@@ -755,9 +762,11 @@
         myPortfolioTotalPnl.textContent = summary && summary.total_pnl != null
             ? formatMyPortfolioMoney(summary.total_pnl)
             : "—";
+        setMyPortfolioToneClass(myPortfolioTotalPnl, summary?.total_pnl, "my-portfolio-kpi-tone");
         myPortfolioTotalPnlDetail.textContent = summary && summary.total_pnl_pct != null
             ? `${formatMyPortfolioPct(summary.total_pnl_pct)} total return`
             : "Unavailable until all rows are priced";
+        setMyPortfolioToneClass(myPortfolioTotalPnlDetail, summary?.total_pnl_pct, "my-portfolio-kpi-detail-tone");
         if (latestConfirmed) {
             myPortfolioLatestImport.textContent = formatMyPortfolioTime(latestConfirmed.confirmed_at || latestConfirmed.uploaded_at);
             const asOf = latestConfirmed.holdings_as_of

@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.167.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.168.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -476,7 +476,7 @@
                 <!-- My Portfolio Tab -->
                 <div id="tab-my-portfolio" class="tab-pane">
                     <section class="my-portfolio-workstation" aria-labelledby="my-portfolio-heading">
-                        <div class="my-portfolio-header">
+                        <div class="my-portfolio-header my-portfolio-command-center">
                             <div>
                                 <h2 id="my-portfolio-heading">My Portfolio</h2>
                                 <p class="metric-desc">Canonical current holdings from confirmed imports. Portfolio Sync analysis reflects the latest successful or partial Sync.</p>
@@ -492,108 +492,46 @@
                                 </button>
                             </div>
                         </div>
-                        <div class="card my-portfolio-upload-panel">
-                            <div class="card-header">
-                                <div>
-                                    <h2>Update Holdings</h2>
-                                    <p class="metric-desc">Upload creates a preview first. Current holdings change only after confirmation.</p>
-                                </div>
-                                <span id="my-portfolio-selected-file" class="my-portfolio-file-name">No file selected</span>
-                            </div>
-                            <div class="card-body">
-                                <div id="my-portfolio-alert" class="my-portfolio-alert" hidden></div>
-                                <div class="my-portfolio-upload-flow" aria-live="polite">
-                                    <div class="my-portfolio-upload-step active" data-upload-step="choose">
-                                        <span class="my-portfolio-step-index">1</span>
-                                        <div>
-                                            <strong>Choose file</strong>
-                                            <span>Symbol, Qty, Avg Price. CSV/XLSX up to 2 MB and 2,000 rows.</span>
-                                        </div>
-                                    </div>
-                                    <div class="my-portfolio-upload-step" data-upload-step="preview">
-                                        <span class="my-portfolio-step-index">2</span>
-                                        <div>
-                                            <strong>Review preview</strong>
-                                            <span>ATHENA shows row quality and added/updated/removed holdings.</span>
-                                        </div>
-                                    </div>
-                                    <div class="my-portfolio-upload-step" data-upload-step="confirm">
-                                        <span class="my-portfolio-step-index">3</span>
-                                        <div>
-                                            <strong>Confirm &amp; sync</strong>
-                                            <span>ATHENA replaces holdings, then refreshes analysis automatically.</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div id="my-portfolio-inline-preview" class="my-portfolio-inline-preview" hidden>
-                                    <span><strong id="my-portfolio-inline-total">0</strong> rows</span>
-                                    <span><strong id="my-portfolio-inline-valid">0</strong> accepted</span>
-                                    <span><strong id="my-portfolio-inline-skipped">0</strong> skipped</span>
-                                    <span><strong id="my-portfolio-inline-duplicates">0</strong> duplicates</span>
-                                </div>
-                                <div id="my-portfolio-preview-issues" class="my-portfolio-preview-issues" hidden></div>
-                                <div class="my-portfolio-upload-body">
-                                    <div>
-                                        <div id="my-portfolio-upload-state" class="metric-desc">Choose a holdings file to create a preview.</div>
-                                        <p class="metric-desc my-portfolio-confirm-note">Confirmation replaces ATHENA's current My Portfolio holdings with the uploaded snapshot. No trades or realized P&amp;L are inferred.</p>
-                                    </div>
-                                    <input id="my-portfolio-file" class="sr-only" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
-                                    <label class="btn btn-secondary my-portfolio-upload-btn" for="my-portfolio-file">
-                                        <i class="fa-solid fa-file-arrow-up" aria-hidden="true"></i>
-                                        <span>Choose Holdings File</span>
-                                    </label>
-                                    <div id="my-portfolio-confirm-actions" class="my-portfolio-confirm-actions" hidden>
-                                        <button id="my-portfolio-preview-open" class="btn btn-secondary" type="button" disabled>
-                                            <i class="fa-solid fa-table-list" aria-hidden="true"></i>
-                                            <span>Preview Details</span>
-                                        </button>
-                                        <button id="my-portfolio-cancel-preview" class="btn btn-secondary" type="button" disabled>Discard Preview</button>
-                                        <button id="my-portfolio-confirm" class="btn" type="button" disabled>
-                                            <i class="fa-solid fa-check" aria-hidden="true"></i>
-                                            <span>Confirm &amp; Sync Portfolio</span>
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
 
-                        <div class="grid-layout cols-3 my-portfolio-summary">
-                            <div class="card val-card">
-                                <div class="card-body">
-                                    <h3>Current Holdings</h3>
-                                    <div class="metric-value" id="my-portfolio-holding-count">—</div>
-                                    <p class="metric-desc">Confirmed canonical rows</p>
-                                </div>
-                            </div>
-                            <div class="card val-card">
-                                <div class="card-body">
-                                    <h3>Total Investment</h3>
-                                    <div class="metric-value" id="my-portfolio-total-investment">₹ —</div>
-                                    <p class="metric-desc">Server-owned holding math</p>
-                                </div>
-                            </div>
-                            <div class="card val-card">
+                        <div id="my-portfolio-alert" class="my-portfolio-alert my-portfolio-status-banner" hidden></div>
+
+                        <div class="my-portfolio-summary my-portfolio-kpi-strip">
+                            <div class="card val-card my-portfolio-kpi-card my-portfolio-kpi-primary">
                                 <div class="card-body">
                                     <h3>Current Value</h3>
                                     <div class="metric-value" id="my-portfolio-current-value">₹ —</div>
                                     <p class="metric-desc">Available after Sync</p>
                                 </div>
                             </div>
-                            <div class="card val-card">
+                            <div class="card val-card my-portfolio-kpi-card my-portfolio-kpi-pnl">
                                 <div class="card-body">
                                     <h3>Total P&amp;L</h3>
                                     <div class="metric-value" id="my-portfolio-total-pnl">₹ —</div>
                                     <p class="metric-desc" id="my-portfolio-total-pnl-detail">Unavailable until all rows are priced</p>
                                 </div>
                             </div>
-                            <div class="card val-card">
+                            <div class="card val-card my-portfolio-kpi-card">
+                                <div class="card-body">
+                                    <h3>Total Investment</h3>
+                                    <div class="metric-value" id="my-portfolio-total-investment">₹ —</div>
+                                    <p class="metric-desc">Server-owned holding math</p>
+                                </div>
+                            </div>
+                            <div class="card val-card my-portfolio-kpi-card my-portfolio-kpi-compact">
+                                <div class="card-body">
+                                    <h3>Holdings</h3>
+                                    <div class="metric-value" id="my-portfolio-holding-count">—</div>
+                                    <p class="metric-desc">Confirmed rows</p>
+                                </div>
+                            </div>
+                            <div class="card val-card my-portfolio-kpi-card my-portfolio-kpi-freshness">
                                 <div class="card-body">
                                     <h3>Latest Import</h3>
                                     <div class="metric-value my-portfolio-small-metric" id="my-portfolio-latest-import">—</div>
                                     <p class="metric-desc" id="my-portfolio-latest-import-detail">No import confirmed yet</p>
                                 </div>
                             </div>
-                            <div class="card val-card">
+                            <div class="card val-card my-portfolio-kpi-card my-portfolio-kpi-freshness">
                                 <div class="card-body">
                                     <h3>Last Synced</h3>
                                     <div class="metric-value my-portfolio-small-metric" id="my-portfolio-last-synced">—</div>
@@ -602,78 +540,7 @@
                             </div>
                         </div>
 
-                        <div id="my-portfolio-preview-modal" class="modal-overlay" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="my-portfolio-preview-title">
-                            <div class="modal-container my-portfolio-preview-modal-container">
-                                <div class="modal-header">
-                                    <div>
-                                        <h3 id="my-portfolio-preview-title">Holdings Preview Details</h3>
-                                        <p class="metric-desc">Review row quality and reconciliation before confirming.</p>
-                                    </div>
-                                    <button id="my-portfolio-preview-close" class="modal-close-btn" type="button" aria-label="Close holdings preview">&times;</button>
-                                </div>
-                                <div class="modal-body my-portfolio-preview-modal-body">
-                            <div class="grid-layout my-portfolio-preview-counts">
-                                <div class="card val-card"><div class="card-body"><h3>Total rows</h3><div id="my-portfolio-preview-total" class="metric-value">0</div></div></div>
-                                <div class="card val-card"><div class="card-body"><h3>Valid</h3><div id="my-portfolio-preview-valid" class="metric-value">0</div></div></div>
-                                <div class="card val-card"><div class="card-body"><h3>Invalid</h3><div id="my-portfolio-preview-invalid" class="metric-value">0</div></div></div>
-                                <div class="card val-card"><div class="card-body"><h3>Unresolved</h3><div id="my-portfolio-preview-unresolved" class="metric-value">0</div></div></div>
-                                <div class="card val-card"><div class="card-body"><h3>Ambiguous</h3><div id="my-portfolio-preview-ambiguous" class="metric-value">0</div></div></div>
-                                <div class="card val-card"><div class="card-body"><h3>Duplicates</h3><div id="my-portfolio-preview-duplicates" class="metric-value">0</div></div></div>
-                            </div>
-
-                            <div class="card">
-                                <div class="card-header">
-                                    <h2>Preview Rows</h2>
-                                </div>
-                                <div class="card-body">
-                                    <div class="my-portfolio-table-scroll">
-                                        <table class="data-table my-portfolio-table">
-                                            <thead>
-                                                <tr>
-                                                    <th>Row</th>
-                                                    <th>Raw Symbol</th>
-                                                    <th>Resolved Instrument</th>
-                                                    <th>Qty</th>
-                                                    <th>Avg Price</th>
-                                                    <th>Mapping State</th>
-                                                    <th>Validation State / Error</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody id="my-portfolio-preview-rows"></tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="card">
-                                <div class="card-header">
-                                    <h2>Proposed Reconciliation</h2>
-                                </div>
-                                <div class="card-body">
-                                    <div id="my-portfolio-reconciliation-summary" class="my-portfolio-diff-summary"></div>
-                                    <div class="my-portfolio-table-scroll">
-                                        <table class="data-table my-portfolio-table">
-                                            <thead>
-                                                <tr>
-                                                    <th>Action</th>
-                                                    <th>Instrument</th>
-                                                    <th>Previous Qty</th>
-                                                    <th>New Qty</th>
-                                                    <th>Previous Avg Price</th>
-                                                    <th>New Avg Price</th>
-                                                    <th>Meaning</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody id="my-portfolio-reconciliation-rows"></tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="card">
+                        <div class="card my-portfolio-holdings-card">
                             <div class="card-header my-portfolio-holdings-header">
                                 <div class="my-portfolio-holdings-heading">
                                     <h2>Current Holdings</h2>
@@ -748,26 +615,166 @@
                             </div>
                         </div>
 
-                        <div class="card">
-                            <div class="card-header">
-                                <h2>Recent Imports</h2>
+                        <div id="my-portfolio-preview-modal" class="modal-overlay" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="my-portfolio-preview-title">
+                            <div class="modal-container my-portfolio-preview-modal-container">
+                                <div class="modal-header">
+                                    <div>
+                                        <h3 id="my-portfolio-preview-title">Holdings Preview Details</h3>
+                                        <p class="metric-desc">Review row quality and reconciliation before confirming.</p>
+                                    </div>
+                                    <button id="my-portfolio-preview-close" class="modal-close-btn" type="button" aria-label="Close holdings preview">&times;</button>
+                                </div>
+                                <div class="modal-body my-portfolio-preview-modal-body">
+                            <div class="grid-layout my-portfolio-preview-counts">
+                                <div class="card val-card"><div class="card-body"><h3>Total rows</h3><div id="my-portfolio-preview-total" class="metric-value">0</div></div></div>
+                                <div class="card val-card"><div class="card-body"><h3>Valid</h3><div id="my-portfolio-preview-valid" class="metric-value">0</div></div></div>
+                                <div class="card val-card"><div class="card-body"><h3>Invalid</h3><div id="my-portfolio-preview-invalid" class="metric-value">0</div></div></div>
+                                <div class="card val-card"><div class="card-body"><h3>Unresolved</h3><div id="my-portfolio-preview-unresolved" class="metric-value">0</div></div></div>
+                                <div class="card val-card"><div class="card-body"><h3>Ambiguous</h3><div id="my-portfolio-preview-ambiguous" class="metric-value">0</div></div></div>
+                                <div class="card val-card"><div class="card-body"><h3>Duplicates</h3><div id="my-portfolio-preview-duplicates" class="metric-value">0</div></div></div>
                             </div>
-                            <div class="card-body">
-                                <div class="my-portfolio-table-scroll">
-                                    <table class="data-table my-portfolio-table">
-                                        <thead>
-                                            <tr>
-                                                <th>Uploaded</th>
-                                                <th>Filename</th>
-                                                <th>Status</th>
-                                                <th>Rows</th>
-                                                <th>Confirmed</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="my-portfolio-history-rows">
-                                            <tr><td colspan="5" class="text-center text-muted">Loading import history…</td></tr>
-                                        </tbody>
-                                    </table>
+
+                            <div class="card">
+                                <div class="card-header">
+                                    <h2>Preview Rows</h2>
+                                </div>
+                                <div class="card-body">
+                                    <div class="my-portfolio-table-scroll">
+                                        <table class="data-table my-portfolio-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Row</th>
+                                                    <th>Raw Symbol</th>
+                                                    <th>Resolved Instrument</th>
+                                                    <th>Qty</th>
+                                                    <th>Avg Price</th>
+                                                    <th>Mapping State</th>
+                                                    <th>Validation State / Error</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="my-portfolio-preview-rows"></tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="card">
+                                <div class="card-header">
+                                    <h2>Proposed Reconciliation</h2>
+                                </div>
+                                <div class="card-body">
+                                    <div id="my-portfolio-reconciliation-summary" class="my-portfolio-diff-summary"></div>
+                                    <div class="my-portfolio-table-scroll">
+                                        <table class="data-table my-portfolio-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Action</th>
+                                                    <th>Instrument</th>
+                                                    <th>Previous Qty</th>
+                                                    <th>New Qty</th>
+                                                    <th>Previous Avg Price</th>
+                                                    <th>New Avg Price</th>
+                                                    <th>Meaning</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="my-portfolio-reconciliation-rows"></tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="my-portfolio-secondary-grid">
+                            <div class="card my-portfolio-upload-panel">
+                                <div class="card-header">
+                                    <div>
+                                        <h2>Update Holdings</h2>
+                                        <p class="metric-desc">Upload creates a preview first. Current holdings change only after confirmation.</p>
+                                    </div>
+                                    <span id="my-portfolio-selected-file" class="my-portfolio-file-name">No file selected</span>
+                                </div>
+                                <div class="card-body">
+                                    <div class="my-portfolio-upload-flow" aria-live="polite">
+                                        <div class="my-portfolio-upload-step active" data-upload-step="choose">
+                                            <span class="my-portfolio-step-index">1</span>
+                                            <div>
+                                                <strong>Choose file</strong>
+                                                <span>Symbol, Qty, Avg Price. CSV/XLSX up to 2 MB and 2,000 rows.</span>
+                                            </div>
+                                        </div>
+                                        <div class="my-portfolio-upload-step" data-upload-step="preview">
+                                            <span class="my-portfolio-step-index">2</span>
+                                            <div>
+                                                <strong>Review preview</strong>
+                                                <span>ATHENA shows row quality and added/updated/removed holdings.</span>
+                                            </div>
+                                        </div>
+                                        <div class="my-portfolio-upload-step" data-upload-step="confirm">
+                                            <span class="my-portfolio-step-index">3</span>
+                                            <div>
+                                                <strong>Confirm &amp; sync</strong>
+                                                <span>ATHENA replaces holdings, then refreshes analysis automatically.</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div id="my-portfolio-inline-preview" class="my-portfolio-inline-preview" hidden>
+                                        <span><strong id="my-portfolio-inline-total">0</strong> rows</span>
+                                        <span><strong id="my-portfolio-inline-valid">0</strong> accepted</span>
+                                        <span><strong id="my-portfolio-inline-skipped">0</strong> skipped</span>
+                                        <span><strong id="my-portfolio-inline-duplicates">0</strong> duplicates</span>
+                                    </div>
+                                    <div id="my-portfolio-preview-issues" class="my-portfolio-preview-issues" hidden></div>
+                                    <div class="my-portfolio-upload-body">
+                                        <div>
+                                            <div id="my-portfolio-upload-state" class="metric-desc">Choose a holdings file to create a preview.</div>
+                                            <p class="metric-desc my-portfolio-confirm-note">Confirmation replaces ATHENA's current My Portfolio holdings with the uploaded snapshot. No trades or realized P&amp;L are inferred.</p>
+                                        </div>
+                                        <input id="my-portfolio-file" class="sr-only" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+                                        <label class="btn btn-secondary my-portfolio-upload-btn" for="my-portfolio-file">
+                                            <i class="fa-solid fa-file-arrow-up" aria-hidden="true"></i>
+                                            <span>Choose Holdings File</span>
+                                        </label>
+                                        <div id="my-portfolio-confirm-actions" class="my-portfolio-confirm-actions" hidden>
+                                            <button id="my-portfolio-preview-open" class="btn btn-secondary" type="button" disabled>
+                                                <i class="fa-solid fa-table-list" aria-hidden="true"></i>
+                                                <span>Preview Details</span>
+                                            </button>
+                                            <button id="my-portfolio-cancel-preview" class="btn btn-secondary" type="button" disabled>Discard Preview</button>
+                                            <button id="my-portfolio-confirm" class="btn" type="button" disabled>
+                                                <i class="fa-solid fa-check" aria-hidden="true"></i>
+                                                <span>Confirm &amp; Sync Portfolio</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="card my-portfolio-history-panel">
+                                <div class="card-header">
+                                    <div>
+                                        <h2>Recent Imports</h2>
+                                        <p class="metric-desc">Audit trail for confirmed and previewed holding snapshots.</p>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    <div class="my-portfolio-table-scroll">
+                                        <table class="data-table my-portfolio-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Uploaded</th>
+                                                    <th>Filename</th>
+                                                    <th>Status</th>
+                                                    <th>Rows</th>
+                                                    <th>Confirmed</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="my-portfolio-history-rows">
+                                                <tr><td colspan="5" class="text-center text-muted">Loading import history…</td></tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -2136,7 +2143,7 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.167.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.168.0"></script>
 
     <!-- DarvaX satellite tab (ADR-010 Amendment 1) — the ONLY DarvaX reference
          in this file, and the flag guard itself. This asset is served solely by
