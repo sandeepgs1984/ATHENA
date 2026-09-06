@@ -551,8 +551,15 @@
     max-height: min(82vh, 780px);
 }
 
+.my-portfolio-preview-modal-container {
+    width: min(1320px, calc(100vw - 32px));
+    max-width: 1320px;
+    max-height: min(86vh, 860px);
+}
+
 @media (max-width: 860px) {
     .my-portfolio-detail-modal-container { width: min(560px, calc(100vw - 32px)); }
+    .my-portfolio-preview-modal-container { width: min(720px, calc(100vw - 32px)); }
 }
 
 .modal-header {

@@ -4,7 +4,9 @@
     const myPortfolioSelectedFile = document.getElementById("my-portfolio-selected-file");
     const myPortfolioUploadState = document.getElementById("my-portfolio-upload-state");
     const myPortfolioConfirmActions = document.getElementById("my-portfolio-confirm-actions");
-    const myPortfolioPreview = document.getElementById("my-portfolio-preview");
+    const myPortfolioPreview = document.getElementById("my-portfolio-preview-modal");
+    const myPortfolioPreviewOpen = document.getElementById("my-portfolio-preview-open");
+    const myPortfolioPreviewClose = document.getElementById("my-portfolio-preview-close");
     const myPortfolioConfirm = document.getElementById("my-portfolio-confirm");
     const myPortfolioCancelPreview = document.getElementById("my-portfolio-cancel-preview");
     const myPortfolioSync = document.getElementById("my-portfolio-sync");
@@ -619,6 +621,9 @@
         if (myPortfolioConfirmActions) {
             myPortfolioConfirmActions.hidden = !myPortfolioState.preview;
         }
+        if (myPortfolioPreviewOpen) {
+            myPortfolioPreviewOpen.disabled = busy || !myPortfolioState.preview;
+        }
         if (myPortfolioSync) {
             myPortfolioSync.disabled = myPortfolioState.syncing;
             const label = myPortfolioSync.querySelector("span");
@@ -1182,13 +1187,12 @@
     function renderMyPortfolioPreview(preview) {
         myPortfolioState.preview = preview;
         if (!preview || !myPortfolioPreview) {
-            if (myPortfolioPreview) myPortfolioPreview.hidden = true;
+            if (myPortfolioPreview) closeModal(myPortfolioPreview);
             renderMyPortfolioInlinePreview(null);
             setMyPortfolioBusy();
             return;
         }
-        myPortfolioPreview.hidden = false;
-        myPortfolioPreview.open = false;
+        closeModal(myPortfolioPreview);
         renderMyPortfolioInlinePreview(preview);
         myPortfolioPreviewTotal.textContent = formatMyPortfolioNumber(preview.total_rows);
         myPortfolioPreviewValid.textContent = formatMyPortfolioNumber(preview.accepted_rows);
@@ -1363,7 +1367,7 @@
             if (myPortfolioSelectedFile) myPortfolioSelectedFile.textContent = "No file selected";
             myPortfolioState.preview = null;
             myPortfolioState.selectedFile = null;
-            if (myPortfolioPreview) myPortfolioPreview.hidden = true;
+            if (myPortfolioPreview) closeModal(myPortfolioPreview);
             renderMyPortfolioInlinePreview(null);
             myPortfolioUploadState.textContent = "Holdings confirmed. Refreshing Portfolio analysis...";
             await loadMyPortfolioWorkspace();
@@ -1529,7 +1533,7 @@
         myPortfolioState.selectedFile = null;
         if (myPortfolioFileInput) myPortfolioFileInput.value = "";
         if (myPortfolioSelectedFile) myPortfolioSelectedFile.textContent = "No file selected";
-        if (myPortfolioPreview) myPortfolioPreview.hidden = true;
+        if (myPortfolioPreview) closeModal(myPortfolioPreview);
         renderMyPortfolioInlinePreview(null);
         if (myPortfolioUploadState) myPortfolioUploadState.textContent = "Choose a holdings file to create a preview.";
         setMyPortfolioCancelLabel("Discard Preview");
@@ -1586,7 +1590,7 @@
             myPortfolioState.snapshotRowsByKey = {};
             if (myPortfolioFileInput) myPortfolioFileInput.value = "";
             if (myPortfolioSelectedFile) myPortfolioSelectedFile.textContent = "No file selected";
-            if (myPortfolioPreview) myPortfolioPreview.hidden = true;
+            if (myPortfolioPreview) closeModal(myPortfolioPreview);
             await loadMyPortfolioWorkspace();
             showMyPortfolioAlert(`My Portfolio reset complete. Deleted ${formatMyPortfolioNumber(totalDeleted)} My Portfolio record(s).`, "good");
         } catch (err) {
@@ -1603,6 +1607,8 @@
     });
     myPortfolioConfirm?.addEventListener("click", confirmMyPortfolioPreview);
     myPortfolioCancelPreview?.addEventListener("click", clearMyPortfolioPreview);
+    myPortfolioPreviewOpen?.addEventListener("click", () => openModal(myPortfolioPreview));
+    myPortfolioPreviewClose?.addEventListener("click", () => closeModal(myPortfolioPreview));
     myPortfolioSync?.addEventListener("click", () => startMyPortfolioSync());
     myPortfolioSortField?.addEventListener("change", event => {
         myPortfolioState.sort.key = event.target.value || "pnl_pct";
@@ -1635,4 +1641,5 @@
     myPortfolioResetSubmit?.addEventListener("click", resetMyPortfolio);
     window.addEventListener("click", event => {
         if (event.target === myPortfolioResetModal) closeMyPortfolioResetModal();
+        if (event.target === myPortfolioPreview) closeModal(myPortfolioPreview);
     });

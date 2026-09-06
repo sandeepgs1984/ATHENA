@@ -23,7 +23,7 @@ Owner request: improve My Portfolio usability after the Portfolio track closure 
 - Upload remains a three-step staged flow: choose file, review preview, confirm update.
 - The upload panel is now the primary workflow block above summary metrics. Summary cards are read-only results, not the place where a pending upload is confirmed.
 - Confirming an upload runs Portfolio Sync automatically after the holdings replacement succeeds. The header sync button remains available only as an explicit refresh for existing holdings.
-- Detailed preview/reconciliation tables remain available, but they are collapsed behind `Preview Details` after the inline counts and issue chips identify whether attention is needed.
+- Detailed preview/reconciliation tables remain available in a `Preview Details` overlay after the inline counts and issue chips identify whether attention is needed.
 
 ## Implementation Notes
 
@@ -34,6 +34,7 @@ Owner request: improve My Portfolio usability after the Portfolio track closure 
 - Cancel is labeled as `Discard Preview` to avoid confusion with page-level cancel semantics.
 - Alerts are rendered inside the upload card, directly above the three-step flow, so row-quality warnings and confirm/sync completion messages stay attached to the action that produced them.
 - The visible preview summary shows total rows, accepted rows, skipped rows, duplicate rows, and the first few row issues inline before the confirm action.
+- Full row-quality and reconciliation detail opens in a large modal overlay, so the owner can inspect the uploaded file without scrolling below the fold or losing the confirm/discard action context.
 - `Confirm Portfolio Update` became `Confirm & Sync Portfolio`; the action confirms the import, reloads canonical holdings, and starts the existing Portfolio Sync pipeline in one user gesture.
 - The manual header action was renamed from `Sync Portfolio` to `Sync Existing Holdings` to distinguish it from the upload confirmation flow.
 - The duplicate header file-picker was removed. File selection now appears only inside `Update Holdings`; the header contains page-level actions only.

@@ -543,6 +543,10 @@
                                         <span>Choose Holdings File</span>
                                     </label>
                                     <div id="my-portfolio-confirm-actions" class="my-portfolio-confirm-actions" hidden>
+                                        <button id="my-portfolio-preview-open" class="btn btn-secondary" type="button" disabled>
+                                            <i class="fa-solid fa-table-list" aria-hidden="true"></i>
+                                            <span>Preview Details</span>
+                                        </button>
                                         <button id="my-portfolio-cancel-preview" class="btn btn-secondary" type="button" disabled>Discard Preview</button>
                                         <button id="my-portfolio-confirm" class="btn" type="button" disabled>
                                             <i class="fa-solid fa-check" aria-hidden="true"></i>
@@ -598,8 +602,16 @@
                             </div>
                         </div>
 
-                        <details id="my-portfolio-preview" class="my-portfolio-preview" hidden>
-                            <summary class="my-portfolio-preview-summary">Preview Details</summary>
+                        <div id="my-portfolio-preview-modal" class="modal-overlay" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="my-portfolio-preview-title">
+                            <div class="modal-container my-portfolio-preview-modal-container">
+                                <div class="modal-header">
+                                    <div>
+                                        <h3 id="my-portfolio-preview-title">Holdings Preview Details</h3>
+                                        <p class="metric-desc">Review row quality and reconciliation before confirming.</p>
+                                    </div>
+                                    <button id="my-portfolio-preview-close" class="modal-close-btn" type="button" aria-label="Close holdings preview">&times;</button>
+                                </div>
+                                <div class="modal-body my-portfolio-preview-modal-body">
                             <div class="grid-layout my-portfolio-preview-counts">
                                 <div class="card val-card"><div class="card-body"><h3>Total rows</h3><div id="my-portfolio-preview-total" class="metric-value">0</div></div></div>
                                 <div class="card val-card"><div class="card-body"><h3>Valid</h3><div id="my-portfolio-preview-valid" class="metric-value">0</div></div></div>
@@ -657,7 +669,9 @@
                                     </div>
                                 </div>
                             </div>
-                        </details>
+                                </div>
+                            </div>
+                        </div>
 
                         <div class="card">
                             <div class="card-header">

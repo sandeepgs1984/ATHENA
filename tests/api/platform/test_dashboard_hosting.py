@@ -375,8 +375,12 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert "ATHENA replaces holdings, then refreshes analysis automatically." in html
     assert 'id="my-portfolio-inline-preview"' in html
     assert 'id="my-portfolio-preview-issues"' in html
-    assert '<details id="my-portfolio-preview" class="my-portfolio-preview" hidden>' in html
+    assert 'id="my-portfolio-preview-open"' in html
+    assert 'id="my-portfolio-preview-modal" class="modal-overlay" hidden' in html
+    assert 'id="my-portfolio-preview-close"' in html
+    assert '<details id="my-portfolio-preview"' not in html
     assert "Preview Details" in html
+    assert "Holdings Preview Details" in html
     assert "Confirm &amp; Sync Portfolio" in html
     assert "No trades or realized P&amp;L are inferred" in html
     assert 'id="my-portfolio-confirm-actions" class="my-portfolio-confirm-actions" hidden' in html
@@ -428,6 +432,9 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert ".my-portfolio-wide-table th:nth-child(3)" in my_portfolio_css
     assert "position: sticky" in my_portfolio_css
     assert ".my-portfolio-confirm-actions[hidden]" in my_portfolio_css
+    assert ".my-portfolio-preview-modal-body" in my_portfolio_css
+    assert ".my-portfolio-preview-modal-container" in css
+    assert "max-height: min(86vh, 860px)" in css
     assert "min-width: 2249px" in my_portfolio_css
     assert "min-width: 2185px" not in my_portfolio_css
     assert "min-width: 2160px" not in my_portfolio_css
@@ -551,6 +558,8 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert "Starting Portfolio Sync now" in js
     assert "Portfolio updated and synced. Choose another holdings file to update again." in js
     assert "Sync Existing Holdings" in js
+    assert 'myPortfolioPreviewOpen?.addEventListener("click", () => openModal(myPortfolioPreview))' in js
+    assert 'myPortfolioPreviewClose?.addEventListener("click", () => closeModal(myPortfolioPreview))' in js
     assert "function myPortfolioPreviewIssueSummary(preview)" in js
     assert "function renderMyPortfolioInlinePreview(preview)" in js
     assert "renderMyPortfolioInlinePreview(preview)" in js
@@ -2821,6 +2830,7 @@ def test_my_portfolio_ux_closure_composition_contract(client: TestClient) -> Non
     assert 'event.key !== "Enter" && event.key !== " "' in js
     assert "openMyPortfolioDetail(tr.getAttribute" in js
     assert 'myPortfolioDetailClose?.addEventListener("click", () => closeModal(myPortfolioDetailModal));' in js
+    assert 'closeModal(document.getElementById("my-portfolio-preview-modal"));' in js
     assert 'closeModal(document.getElementById("my-portfolio-detail-modal"));' in js
 
 

@@ -40,7 +40,8 @@ Reworked Update Holdings into the first operational block on the page,
 ahead of the read-only summary metrics, with one staged flow (`Choose file`
 -> `Review preview` -> `Confirm & sync`). Preview counts and the first row
 issues render inline inside the upload card; the full preview/reconciliation
-tables are still available behind `Preview Details`. Alerts now live inside
+tables open in a large `Preview Details` overlay instead of falling below
+the viewport. Alerts now live inside
 the upload card, `Cancel` is labeled `Discard Preview`, `Confirm Portfolio
 Update` is labeled `Confirm & Sync Portfolio`, and a successful confirmation
 automatically starts the existing Portfolio Sync pipeline. The header action
