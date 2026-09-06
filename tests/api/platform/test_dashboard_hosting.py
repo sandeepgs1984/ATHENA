@@ -356,20 +356,29 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert 'id="tab-my-portfolio"' in html
     assert 'id="my-portfolio-file"' in html
     assert 'accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"' in html
-    assert "Required columns: Symbol, Qty, Avg Price" in html
+    assert "Upload creates a preview first" in html
     assert "up to 2 MB and 2,000 rows" in html
+    assert "Choose Holdings File" in html
     assert 'id="my-portfolio-sync" class="btn" type="button"' in html
     assert "Sync Portfolio" in html
+    assert 'id="my-portfolio-reset-open"' in html
+    assert 'id="my-portfolio-reset-modal"' in html
+    assert "Delete My Portfolio" in html
     assert "No trades or realized P&amp;L are inferred" in html
     assert 'id="my-portfolio-confirm-actions" class="my-portfolio-confirm-actions" hidden' in html
+    assert '<col class="my-portfolio-col-index">' in html
     assert '<col class="my-portfolio-col-symbol">' in html
     assert '<col class="my-portfolio-col-action">' in html
+    assert 'id="my-portfolio-sort-field"' in html
+    assert 'id="my-portfolio-sort-direction"' in html
+    assert 'id="my-portfolio-sort-reset"' in html
     assert 'id="my-portfolio-preview-duplicates"' in html
     assert 'id="my-portfolio-holdings-rows"' in html
     assert 'id="my-portfolio-history-rows"' in html
     assert 'id="my-portfolio-detail-modal"' in html
     assert 'id="my-portfolio-detail-body"' in html
     for heading in (
+        "No.",
         "Last Price",
         "P&amp;L",
         "P&amp;L %",
@@ -405,7 +414,8 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert ".my-portfolio-wide-table th:nth-child(3)" in my_portfolio_css
     assert "position: sticky" in my_portfolio_css
     assert ".my-portfolio-confirm-actions[hidden]" in my_portfolio_css
-    assert "min-width: 2185px" in my_portfolio_css
+    assert "min-width: 2249px" in my_portfolio_css
+    assert "min-width: 2185px" not in my_portfolio_css
     assert "min-width: 2160px" not in my_portfolio_css
     assert "min-width: 2140px" not in my_portfolio_css
     assert "min-width: 2050px" not in my_portfolio_css
@@ -415,7 +425,10 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert "my-portfolio-row-action" in js
     assert "function myPortfolioEditHolding" in js
     assert "function myPortfolioDeleteHolding" in js
+    assert "function resetMyPortfolio" in js
+    assert "function sortedMyPortfolioRows" in js
     assert "/api/v1/my-portfolio/holdings/" in js
+    assert "/api/v1/my-portfolio" in js
     assert "table-layout: fixed" in my_portfolio_css
     # Full blocking overlay (owner-reported: per-row spinners alone were too
     # easy to miss / dismissed before the whole recalculation actually
@@ -434,13 +447,17 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert ".my-portfolio-sync-overlay.active" in my_portfolio_css
     assert "@keyframes my-portfolio-sync-overlay-spin" in my_portfolio_css
     assert "prefers-reduced-motion: reduce" in my_portfolio_css
-    assert "left: 170px" in my_portfolio_css
-    assert "left: 260px" in my_portfolio_css
+    assert "left: 64px" in my_portfolio_css
+    assert "left: 234px" in my_portfolio_css
+    assert "left: 324px" in my_portfolio_css
+    assert "left: 170px" not in my_portfolio_css
+    assert "left: 260px" not in my_portfolio_css
     assert "left: 180px" not in my_portfolio_css
     assert "left: 290px" not in my_portfolio_css
     assert "background: var(--bg-sidebar)" in my_portfolio_css
     assert "box-shadow: 1px 0 0 var(--border-color)" in my_portfolio_css
     assert ".my-portfolio-col-symbol" in my_portfolio_css
+    assert ".my-portfolio-col-index" in my_portfolio_css
     assert ".my-portfolio-col-daily-review" in my_portfolio_css
     assert ".my-portfolio-col-levels" in my_portfolio_css
     assert ".my-portfolio-col-freshness" in my_portfolio_css
@@ -457,6 +474,9 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert ".my-portfolio-detail-grid" in my_portfolio_css
     assert ".my-portfolio-detail-notice" in my_portfolio_css
     assert ".my-portfolio-detail-modal-container" in css
+    assert ".my-portfolio-upload-flow" in my_portfolio_css
+    assert ".my-portfolio-sort-toolbar" in my_portfolio_css
+    assert ".my-portfolio-sort-indicator" in my_portfolio_css
 
     # MY-PORTFOLIO-POST-V1-UI-POLISH: tighter cell padding scoped to this
     # table only (never the shared .data-table default), and mandatory
@@ -468,7 +488,7 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert "padding: var(--space-10) var(--space-12);" in my_portfolio_css
     assert ".my-portfolio-holdings-scroll" in my_portfolio_css
     assert "scroll-snap-type: x mandatory;" in my_portfolio_css
-    assert "scroll-padding-left: 410px;" in my_portfolio_css
+    assert "scroll-padding-left: 474px;" in my_portfolio_css
     assert "scroll-snap-align: start;" in my_portfolio_css
     assert "scroll-snap-stop: always;" in my_portfolio_css
     assert 'my-portfolio-holdings-scroll' in html

@@ -6,6 +6,65 @@ status updated on approval.
 
 ---
 
+## My Portfolio Post-Closure UI Refinements — Implementation Complete, Ready for Owner Review
+
+**Summary.** Owner requested a first post-closure UX refinement set for My
+Portfolio: serial numbering, Excel-like sorting, a complete reset option,
+and a clearer upload/preview/confirm experience. Implemented as operational
+UI/API polish only after the Portfolio track closure; no Portfolio
+methodology, evidence primitive, interpretation version, or snapshot meaning
+changed.
+
+**Design.** Current Holdings sorting is client-side presentation state. The
+stored holdings order, snapshot rows, import rows, sync runs, and Portfolio
+analysis artifacts remain untouched. The visible `No.` column is derived
+after sorting so row numbers match the owner's current view. Default sort is
+P&L % high-to-low, matching the spreadsheet review workflow. Reset is
+destructive but isolated to the My Portfolio subdomain only: canonical
+holdings, import previews/history, reconciliation audit, sync runs, and
+analysis snapshots. It never touches Decisions, candidates, journal/trade
+data, Kite settings, or the legacy owner-position ledger.
+
+**Backend.** Added `DELETE /api/v1/my-portfolio`, gated by exact `RESET`
+confirmation and by the existing active-sync guard. New repository helper
+`reset_my_portfolio()` deletes child tables before parents and returns per
+table counts. New DTOs `ResetMyPortfolioRequest` and
+`ResetMyPortfolioResultDTO` keep the destructive API explicit and typed.
+
+**Frontend.** Added the Current Holdings `No.` column and a sort toolbar
+with field selector, direction toggle, reset-to-default, clickable sortable
+headers, and a live sort summary. Supported sort fields: P&L %, P&L,
+Conviction, Next Action, Status, Trend / Setup, Qty, Avg Price, Last Price,
+Symbol, and Daily Review. Added a dedicated Reset button and typed modal.
+Reworked Update Holdings into a staged flow (`Choose file` -> `Review
+preview` -> `Confirm update`) and renamed Cancel to `Discard Preview`, so an
+uploaded preview is clearly separate from the current confirmed portfolio.
+
+**Tests.** Added API coverage for full reset success, reset-token rejection,
+and active-sync reset rejection without mutation. Focused validation: My
+Portfolio API tests **68 passed**; dashboard hosting/release-gate tests **13
+passed**; combined focused pytest run **81 passed**. `node --check`
+passed for `08b-my-portfolio.js`. Ruff passed on touched API/test Python
+files and on `repository.py` with the repository's pre-existing SIM117
+nested-`with` baseline ignored; the new reset helper itself uses one combined
+transaction context and adds no new SIM117 instance. Targeted mypy on the
+service stack remains blocked by pre-existing broad `my_portfolio_service.py`
+typing debt unrelated to this UI/reset change.
+
+**Files changed:** `src/athena/api/v1/dtos/portfolio.py`,
+`src/athena/api/v1/routers/my_portfolio.py`,
+`src/athena/api/v1/services/my_portfolio_service.py`,
+`src/athena/data/store/repository.py`,
+`src/athena/api/static/index.html`,
+`src/athena/api/static/js/08b-my-portfolio.js`,
+`src/athena/api/static/css/05b-my-portfolio.css`,
+`tests/api/v1/test_my_portfolio_import_api.py`,
+`docs/research/MY-PORTFOLIO-POST-CLOSURE-UI-REFINEMENTS.md`.
+
+**Status:** Implementation complete; awaiting Owner/Chief Architect review.
+
+---
+
 ## My Portfolio — Holdings Edit/Delete — Implementation Complete, Ready for Owner Review
 
 **Summary.** Owner-requested addition to the current-holdings list: an

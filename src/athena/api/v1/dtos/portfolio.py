@@ -188,6 +188,22 @@ class DeleteMyPortfolioHoldingResultDTO(BaseModel):
     deleted: bool
 
 
+class ResetMyPortfolioRequest(BaseModel):
+    """Destructive wipe of the My Portfolio subdomain (RESET-gated)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    confirmation: str = Field(description="Must be the exact token RESET")
+
+
+class ResetMyPortfolioResultDTO(BaseModel):
+    """Result of an owner-triggered My Portfolio reset."""
+
+    model_config = ConfigDict(frozen=True)
+
+    deleted_counts: dict[str, int]
+
+
 class PortfolioImportSummaryDTO(BaseModel):
     """Audit summary for a My Portfolio import batch."""
 

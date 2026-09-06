@@ -21,6 +21,8 @@ from athena.api.v1.dtos.portfolio import (
     PortfolioSnapshotDTO,
     PortfolioSyncRunDTO,
     PortfolioSyncStartRequest,
+    ResetMyPortfolioRequest,
+    ResetMyPortfolioResultDTO,
     UpdateMyPortfolioHoldingRequest,
 )
 from athena.api.v1.services.my_portfolio_service import MyPortfolioService
@@ -177,6 +179,26 @@ def delete_holding(
     return AthenaResponse(
         status="success",
         data=service.delete_holding(instrument_id),
+        meta=_meta(request),
+    )
+
+
+@router.delete(
+    "",
+    response_model=AthenaResponse[ResetMyPortfolioResultDTO],
+    summary="Reset all My Portfolio holdings, imports, sync runs, and snapshots",
+    status_code=status.HTTP_200_OK,
+    operation_id="resetMyPortfolio",
+)
+def reset_my_portfolio(
+    body: ResetMyPortfolioRequest,
+    request: Request,
+    service: MyPortfolioService = Depends(get_my_portfolio_service),  # noqa: B008
+    principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.EXECUTE)),  # noqa: B008
+) -> AthenaResponse[ResetMyPortfolioResultDTO]:
+    return AthenaResponse(
+        status="success",
+        data=service.reset_portfolio(confirmation=body.confirmation),
         meta=_meta(request),
     )
 

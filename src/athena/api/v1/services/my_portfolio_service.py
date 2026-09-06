@@ -18,6 +18,7 @@ from athena.api.exceptions import (
     MyPortfolioImportError,
     MyPortfolioImportNotFoundError,
     MyPortfolioSyncNotFoundError,
+    PortfolioResetConfirmationError,
     PortfolioSyncActiveConflictError,
     StalePortfolioPreviewError,
 )
@@ -38,6 +39,7 @@ from athena.api.v1.dtos.portfolio import (
     PortfolioSnapshotSummaryDTO,
     PortfolioStructuralReviewDTO,
     PortfolioSyncRunDTO,
+    ResetMyPortfolioResultDTO,
     SkippedImportRowDTO,
 )
 from athena.calendar.engine import CalendarEngine
@@ -68,6 +70,7 @@ from athena.portfolio.sync import PortfolioSyncOrchestrator, utc_now
 logger = logging.getLogger(__name__)
 
 _CONFIRM_TOKEN = "CONFIRM"
+_RESET_TOKEN = "RESET"
 _SYNC_GUARD = threading.Lock()
 _SYNC_THREAD: threading.Thread | None = None
 _SYNC_THREAD_RUN_ID: str | None = None
@@ -339,6 +342,25 @@ class MyPortfolioService:
                 raise MyPortfolioHoldingNotFoundError(f"portfolio holding not found: {instrument_id}")
             deleted = self._repo.delete_portfolio_holding(instrument_id=instrument_id)
         return DeleteMyPortfolioHoldingResultDTO(instrument_id=instrument_id, deleted=deleted)
+
+    def reset_portfolio(self, *, confirmation: str) -> ResetMyPortfolioResultDTO:
+        """Owner-triggered full wipe of My Portfolio state only."""
+
+        if confirmation != _RESET_TOKEN:
+            raise PortfolioResetConfirmationError("Type RESET to clear My Portfolio.")
+        with _SYNC_GUARD:
+            self._recover_interrupted_sync_if_needed()
+            active = self._repo.get_active_portfolio_sync_run()
+            if active is not None:
+                raise PortfolioSyncActiveConflictError(
+                    "Portfolio Sync is currently running. Wait for it to finish before "
+                    "resetting My Portfolio."
+                )
+            try:
+                deleted_counts = self._repo.reset_my_portfolio()
+            except RepositoryError as exc:
+                raise MyPortfolioHoldingError(str(exc)) from exc
+        return ResetMyPortfolioResultDTO(deleted_counts=deleted_counts)
 
     def import_history(self, *, limit: int = 50) -> PortfolioImportHistoryDTO:
         return PortfolioImportHistoryDTO(

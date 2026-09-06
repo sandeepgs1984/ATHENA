@@ -1889,3 +1889,67 @@ def test_delete_holding_is_blocked_during_active_sync_without_mutating_holdings(
     assert "Portfolio Sync is currently running" in response.json()["detail"]
     assert repo.portfolio_holdings_digest() == before
     assert repo.get_portfolio_holding("NSE:INFY") is not None
+
+
+def test_reset_my_portfolio_clears_subdomain_state(my_portfolio_client: TestClient) -> None:
+    repo = _confirm_infy_holding(my_portfolio_client)
+    repo.add_candles([_candle("NSE:INFY", "1600")])
+    service = MyPortfolioService(repo)
+    run = service.run_sync_inline()
+    assert repo.list_portfolio_holdings()
+    assert repo.list_portfolio_imports()
+    assert repo.list_portfolio_analysis_snapshots(run.sync_run_id)
+
+    response = my_portfolio_client.request(
+        "DELETE",
+        "/api/v1/my-portfolio",
+        headers=get_auth_headers(my_portfolio_client, Role.OPERATOR),
+        json={"confirmation": "RESET"},
+    )
+
+    assert response.status_code == 200
+    counts = response.json()["data"]["deleted_counts"]
+    assert counts["portfolio_holdings"] == 1
+    assert counts["portfolio_imports"] == 1
+    assert counts["portfolio_sync_runs"] == 1
+    assert counts["portfolio_analysis_snapshots"] == 1
+    assert repo.list_portfolio_holdings() == []
+    assert repo.list_portfolio_imports() == []
+    assert repo.list_portfolio_analysis_snapshots(run.sync_run_id) == []
+
+
+def test_reset_my_portfolio_requires_reset_token(my_portfolio_client: TestClient) -> None:
+    repo = _confirm_infy_holding(my_portfolio_client)
+    before = repo.portfolio_holdings_digest()
+
+    response = my_portfolio_client.request(
+        "DELETE",
+        "/api/v1/my-portfolio",
+        headers=get_auth_headers(my_portfolio_client, Role.OPERATOR),
+        json={"confirmation": "CONFIRM"},
+    )
+
+    assert response.status_code == 400
+    assert "RESET" in response.json()["detail"]
+    assert repo.portfolio_holdings_digest() == before
+
+
+def test_reset_my_portfolio_is_blocked_during_active_sync_without_mutating_holdings(
+    my_portfolio_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _confirm_infy_holding(my_portfolio_client)
+    before = repo.portfolio_holdings_digest()
+    _install_active_sync(monkeypatch, repo, status=SyncRunStatus.RUNNING)
+
+    response = my_portfolio_client.request(
+        "DELETE",
+        "/api/v1/my-portfolio",
+        headers=get_auth_headers(my_portfolio_client, Role.OPERATOR),
+        json={"confirmation": "RESET"},
+    )
+
+    assert response.status_code == 409
+    assert "Portfolio Sync is currently running" in response.json()["detail"]
+    assert repo.portfolio_holdings_digest() == before
+    assert repo.list_portfolio_imports()

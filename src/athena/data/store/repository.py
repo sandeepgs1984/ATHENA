@@ -1906,6 +1906,27 @@ class SqliteRepository:
         except sqlite3.Error as exc:
             raise RepositoryError(f"delete portfolio holding failed: {exc}") from exc
 
+    def reset_my_portfolio(self) -> dict[str, int]:
+        """Delete all persisted rows owned by the My Portfolio subdomain."""
+
+        tables = (
+            "portfolio_analysis_snapshots",
+            "portfolio_sync_runs",
+            "portfolio_holdings",
+            "portfolio_reconciliations",
+            "portfolio_import_rows",
+            "portfolio_imports",
+        )
+        try:
+            with self._lock, self._conn:
+                counts: dict[str, int] = {}
+                for table in tables:
+                    cursor = self._conn.execute(f"DELETE FROM {table}")
+                    counts[table] = int(cursor.rowcount)
+                return counts
+        except sqlite3.Error as exc:
+            raise RepositoryError(f"reset my portfolio failed: {exc}") from exc
+
     def portfolio_holdings_digest(self) -> str:
         """Deterministic digest of current canonical My Portfolio holdings."""
 

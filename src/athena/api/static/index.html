@@ -491,6 +491,10 @@
                                     <i class="fa-solid fa-rotate" aria-hidden="true"></i>
                                     <span>Sync Portfolio</span>
                                 </button>
+                                <button id="my-portfolio-reset-open" class="btn btn-danger-outline" type="button" title="Clear all My Portfolio state">
+                                    <i class="fa-solid fa-trash-can" aria-hidden="true"></i>
+                                    <span>Reset</span>
+                                </button>
                             </div>
                         </div>
 
@@ -545,20 +549,51 @@
                             <div class="card-header">
                                 <div>
                                     <h2>Update Holdings</h2>
-                                    <p class="metric-desc">Required columns: Symbol, Qty, Avg Price. CSV and XLSX are supported up to 2 MB and 2,000 rows.</p>
+                                    <p class="metric-desc">Upload creates a preview first. Current holdings change only after confirmation.</p>
                                 </div>
                                 <span id="my-portfolio-selected-file" class="my-portfolio-file-name">No file selected</span>
                             </div>
-                            <div class="card-body my-portfolio-upload-body">
-                                <div id="my-portfolio-upload-state" class="metric-desc">Choose a holdings file to create a preview.</div>
-                                <div id="my-portfolio-confirm-actions" class="my-portfolio-confirm-actions" hidden>
-                                    <button id="my-portfolio-cancel-preview" class="btn btn-secondary" type="button" disabled>Cancel</button>
-                                    <button id="my-portfolio-confirm" class="btn" type="button" disabled>
-                                        <i class="fa-solid fa-check" aria-hidden="true"></i>
-                                        <span>Confirm Portfolio Update</span>
-                                    </button>
+                            <div class="card-body">
+                                <div class="my-portfolio-upload-flow" aria-live="polite">
+                                    <div class="my-portfolio-upload-step active" data-upload-step="choose">
+                                        <span class="my-portfolio-step-index">1</span>
+                                        <div>
+                                            <strong>Choose file</strong>
+                                            <span>Symbol, Qty, Avg Price. CSV/XLSX up to 2 MB and 2,000 rows.</span>
+                                        </div>
+                                    </div>
+                                    <div class="my-portfolio-upload-step" data-upload-step="preview">
+                                        <span class="my-portfolio-step-index">2</span>
+                                        <div>
+                                            <strong>Review preview</strong>
+                                            <span>ATHENA shows row quality and added/updated/removed holdings.</span>
+                                        </div>
+                                    </div>
+                                    <div class="my-portfolio-upload-step" data-upload-step="confirm">
+                                        <span class="my-portfolio-step-index">3</span>
+                                        <div>
+                                            <strong>Confirm update</strong>
+                                            <span>Only then does the uploaded snapshot replace current holdings.</span>
+                                        </div>
+                                    </div>
                                 </div>
-                                <p class="metric-desc my-portfolio-confirm-note">Confirmation replaces ATHENA's current My Portfolio holdings with the uploaded snapshot. No trades or realized P&amp;L are inferred.</p>
+                                <div class="my-portfolio-upload-body">
+                                    <div>
+                                        <div id="my-portfolio-upload-state" class="metric-desc">Choose a holdings file to create a preview.</div>
+                                        <p class="metric-desc my-portfolio-confirm-note">Confirmation replaces ATHENA's current My Portfolio holdings with the uploaded snapshot. No trades or realized P&amp;L are inferred.</p>
+                                    </div>
+                                    <label class="btn btn-secondary my-portfolio-upload-btn" for="my-portfolio-file">
+                                        <i class="fa-solid fa-file-arrow-up" aria-hidden="true"></i>
+                                        <span>Choose Holdings File</span>
+                                    </label>
+                                    <div id="my-portfolio-confirm-actions" class="my-portfolio-confirm-actions" hidden>
+                                        <button id="my-portfolio-cancel-preview" class="btn btn-secondary" type="button" disabled>Discard Preview</button>
+                                        <button id="my-portfolio-confirm" class="btn" type="button" disabled>
+                                            <i class="fa-solid fa-check" aria-hidden="true"></i>
+                                            <span>Confirm Portfolio Update</span>
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -624,7 +659,30 @@
 
                         <div class="card">
                             <div class="card-header">
-                                <h2>Current Holdings</h2>
+                                <div>
+                                    <h2>Current Holdings</h2>
+                                    <p id="my-portfolio-sort-summary" class="metric-desc">Sorted by P&amp;L % high to low.</p>
+                                </div>
+                                <div class="my-portfolio-sort-toolbar" aria-label="Current holdings sort controls">
+                                    <label for="my-portfolio-sort-field">Sort by</label>
+                                    <select id="my-portfolio-sort-field" class="my-portfolio-sort-select">
+                                        <option value="pnl_pct">P&amp;L %</option>
+                                        <option value="pnl">P&amp;L</option>
+                                        <option value="conviction">Conviction</option>
+                                        <option value="next_action">Next Action</option>
+                                        <option value="status">Status</option>
+                                        <option value="trend">Trend / Setup</option>
+                                        <option value="quantity">Qty</option>
+                                        <option value="avg_price">Avg Price</option>
+                                        <option value="last_price">Last Price</option>
+                                        <option value="symbol">Symbol</option>
+                                        <option value="daily_review">Daily Review</option>
+                                    </select>
+                                    <button id="my-portfolio-sort-direction" class="btn btn-icon" type="button" title="Toggle sort direction" aria-label="Toggle sort direction">
+                                        <i class="fa-solid fa-arrow-down-wide-short" aria-hidden="true"></i>
+                                    </button>
+                                    <button id="my-portfolio-sort-reset" class="btn btn-secondary btn-sm" type="button">Default</button>
+                                </div>
                             </div>
                             <div class="card-body my-portfolio-holdings-card-body">
                                 <div id="my-portfolio-sync-overlay" class="my-portfolio-sync-overlay" aria-live="polite" aria-hidden="true">
@@ -635,6 +693,7 @@
                                 <div class="my-portfolio-table-scroll my-portfolio-holdings-scroll">
                                     <table class="data-table my-portfolio-table my-portfolio-wide-table">
                                         <colgroup>
+                                            <col class="my-portfolio-col-index">
                                             <col class="my-portfolio-col-symbol">
                                             <col class="my-portfolio-col-qty">
                                             <col class="my-portfolio-col-avg-price">
@@ -652,24 +711,25 @@
                                         </colgroup>
                                         <thead>
                                             <tr>
-                                                <th>Symbol</th>
-                                                <th>Qty</th>
-                                                <th>Avg Price</th>
-                                                <th>Last Price</th>
-                                                <th>P&amp;L</th>
-                                                <th>P&amp;L %</th>
-                                                <th>Status</th>
-                                                <th>Conviction</th>
-                                                <th>Trend / Setup</th>
-                                                <th>Daily Review</th>
-                                                <th>Next Action</th>
+                                                <th>No.</th>
+                                                <th data-sort-key="symbol">Symbol</th>
+                                                <th data-sort-key="quantity">Qty</th>
+                                                <th data-sort-key="avg_price">Avg Price</th>
+                                                <th data-sort-key="last_price">Last Price</th>
+                                                <th data-sort-key="pnl">P&amp;L</th>
+                                                <th data-sort-key="pnl_pct">P&amp;L %</th>
+                                                <th data-sort-key="status">Status</th>
+                                                <th data-sort-key="conviction">Conviction</th>
+                                                <th data-sort-key="trend">Trend / Setup</th>
+                                                <th data-sort-key="daily_review">Daily Review</th>
+                                                <th data-sort-key="next_action">Next Action</th>
                                                 <th>Plan Levels</th>
                                                 <th>Freshness</th>
                                                 <th>Actions</th>
                                             </tr>
                                         </thead>
                                         <tbody id="my-portfolio-holdings-rows">
-                                            <tr><td colspan="14" class="text-center text-muted">Loading holdings…</td></tr>
+                                            <tr><td colspan="15" class="text-center text-muted">Loading holdings…</td></tr>
                                         </tbody>
                                     </table>
                                 </div>
@@ -2023,6 +2083,30 @@
                     <p id="decisions-clear-all-gate-status" class="ops-restore-gate-status locked">Locked until CONFIRM matches exactly.</p>
                     <button id="decisions-clear-all-submit" class="btn btn-danger-outline" type="button" disabled style="margin-top: 8px;">
                         <i class="fa-solid fa-trash-can"></i> Delete everything
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="my-portfolio-reset-modal" class="modal-overlay" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="my-portfolio-reset-title">
+        <div class="modal-container">
+            <div class="modal-header">
+                <h3 id="my-portfolio-reset-title">Reset My Portfolio</h3>
+                <button id="my-portfolio-reset-close" class="modal-close-btn" type="button" aria-label="Close reset modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="context-caption">
+                    Permanently clears My Portfolio holdings, import previews/history,
+                    reconciliation audit, sync runs, and analysis snapshots. Decisions,
+                    candidates, journal data, and Kite settings are not touched.
+                </p>
+                <div class="ops-restore-gate">
+                    <label for="my-portfolio-reset-confirm">Type <strong>RESET</strong> to unlock</label>
+                    <input id="my-portfolio-reset-confirm" type="text" autocomplete="off" spellcheck="false" placeholder="RESET">
+                    <p id="my-portfolio-reset-gate-status" class="ops-restore-gate-status locked">Locked until RESET matches exactly.</p>
+                    <button id="my-portfolio-reset-submit" class="btn btn-danger-outline" type="button" disabled style="margin-top: 8px;">
+                        <i class="fa-solid fa-trash-can" aria-hidden="true"></i> Delete My Portfolio
                     </button>
                 </div>
             </div>

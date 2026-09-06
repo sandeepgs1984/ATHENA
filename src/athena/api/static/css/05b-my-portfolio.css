@@ -42,6 +42,70 @@
     flex-wrap: wrap;
 }
 
+.my-portfolio-upload-flow {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-8);
+    margin-bottom: var(--space-16);
+}
+
+.my-portfolio-upload-step {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-8);
+    min-width: 0;
+    padding: var(--space-10) var(--space-12);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-muted);
+    background: rgba(15, 22, 38, 0.36);
+}
+
+.my-portfolio-upload-step strong,
+.my-portfolio-upload-step span:not(.my-portfolio-step-index) {
+    display: block;
+}
+
+.my-portfolio-upload-step strong {
+    color: var(--text-secondary);
+    font-size: var(--text-0-85);
+}
+
+.my-portfolio-upload-step span:not(.my-portfolio-step-index) {
+    margin-top: 2px;
+    font-size: var(--text-0-75);
+    line-height: 1.35;
+}
+
+.my-portfolio-upload-step.active {
+    border-color: rgba(0, 229, 255, 0.45);
+    background: rgba(0, 229, 255, 0.08);
+    color: var(--text-secondary);
+}
+
+.my-portfolio-upload-step.done {
+    border-color: rgba(31, 191, 117, 0.42);
+}
+
+.my-portfolio-upload-step.done .my-portfolio-step-index {
+    border-color: rgba(31, 191, 117, 0.5);
+    color: var(--success);
+}
+
+.my-portfolio-step-index {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    color: var(--text-secondary);
+    font-size: var(--text-0-75);
+    font-weight: 800;
+}
+
 .my-portfolio-confirm-note {
     flex: 1 1 100%;
     margin: 0;
@@ -124,7 +188,7 @@
        looked heavy/blocky in a fixed-layout table), and Freshness widened
        140px->185px (measured: its date string needs ~174px) so it neither
        clips into Actions nor truncates itself. */
-    min-width: 2185px;
+    min-width: 2249px;
     table-layout: fixed;
 }
 
@@ -134,6 +198,10 @@
 .my-portfolio-wide-table th,
 .my-portfolio-wide-table td {
     padding: var(--space-10) var(--space-12);
+}
+
+.my-portfolio-col-index {
+    width: 64px;
 }
 
 .my-portfolio-col-symbol {
@@ -192,6 +260,55 @@
     width: 90px;
 }
 
+.my-portfolio-sort-toolbar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-8);
+    flex-wrap: wrap;
+}
+
+.my-portfolio-sort-toolbar label {
+    color: var(--text-muted);
+    font-size: var(--text-0-75);
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.my-portfolio-sort-select {
+    min-width: 148px;
+    height: 36px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0 var(--space-10);
+    color: var(--text-primary);
+    background: var(--bg-sidebar);
+}
+
+.my-portfolio-row-index {
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+.my-portfolio-sortable-th {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-6);
+    color: inherit;
+}
+
+.my-portfolio-wide-table th[data-sort-key] {
+    cursor: pointer;
+}
+
+.my-portfolio-wide-table th[data-sort-key]:hover {
+    color: var(--text-primary);
+}
+
+.my-portfolio-sort-indicator {
+    color: var(--accent);
+    font-size: var(--text-0-7);
+}
+
 /* Root-cause fix for Holdings-edit/delete: the shared `.my-portfolio-wide-
    table td { overflow: visible; }` rule above let a long Freshness date
    string ("04 Sept, 12:00 am IST") spill past its own 140px column — always
@@ -201,8 +318,8 @@
    160px) AND clip it explicitly, matching the sticky-column ellipsis
    pattern above, so this can't regress if a future freshness string is
    longer still. */
-.my-portfolio-wide-table th:nth-child(13),
-.my-portfolio-wide-table td:nth-child(13) {
+.my-portfolio-wide-table th:nth-child(14),
+.my-portfolio-wide-table td:nth-child(14) {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -327,7 +444,7 @@
 .my-portfolio-wide-table th:nth-child(2),
 .my-portfolio-wide-table td:nth-child(2) {
     position: sticky;
-    left: 170px;
+    left: 64px;
     z-index: 4;
     background: var(--bg-sidebar);
     box-shadow: 1px 0 0 var(--border-color);
@@ -336,7 +453,16 @@
 .my-portfolio-wide-table th:nth-child(3),
 .my-portfolio-wide-table td:nth-child(3) {
     position: sticky;
-    left: 260px;
+    left: 234px;
+    z-index: 4;
+    background: var(--bg-sidebar);
+    box-shadow: 1px 0 0 var(--border-color);
+}
+
+.my-portfolio-wide-table th:nth-child(4),
+.my-portfolio-wide-table td:nth-child(4) {
+    position: sticky;
+    left: 324px;
     z-index: 4;
     background: var(--bg-sidebar);
     box-shadow: 1px 0 0 var(--border-color);
@@ -344,6 +470,15 @@
 
 .my-portfolio-wide-table th:first-child,
 .my-portfolio-wide-table td:first-child {
+    min-width: 64px;
+    width: 64px;
+    max-width: 64px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.my-portfolio-wide-table th:nth-child(2),
+.my-portfolio-wide-table td:nth-child(2) {
     min-width: 170px;
     width: 170px;
     max-width: 170px;
@@ -351,8 +486,8 @@
     text-overflow: ellipsis;
 }
 
-.my-portfolio-wide-table th:nth-child(2),
-.my-portfolio-wide-table td:nth-child(2) {
+.my-portfolio-wide-table th:nth-child(3),
+.my-portfolio-wide-table td:nth-child(3) {
     min-width: 90px;
     width: 90px;
     max-width: 90px;
@@ -360,8 +495,8 @@
     text-overflow: ellipsis;
 }
 
-.my-portfolio-wide-table th:nth-child(3),
-.my-portfolio-wide-table td:nth-child(3) {
+.my-portfolio-wide-table th:nth-child(4),
+.my-portfolio-wide-table td:nth-child(4) {
     min-width: 150px;
     width: 150px;
     max-width: 150px;
@@ -386,14 +521,14 @@
    are position:sticky and already pinned, not real scroll targets. */
 .my-portfolio-holdings-scroll {
     scroll-snap-type: x mandatory;
-    /* Full sticky region width (Symbol 170 + Qty 90 + Avg Price 150 =
-       410px) — snap points are measured from where non-sticky content
+    /* Full sticky region width (No. 64 + Symbol 170 + Qty 90 + Avg Price
+       150 = 474px) — snap points are measured from where non-sticky content
        actually becomes visible, not from the scrollport's own left edge. */
-    scroll-padding-left: 410px;
+    scroll-padding-left: 474px;
 }
 
-.my-portfolio-wide-table th:nth-child(n + 4),
-.my-portfolio-wide-table td:nth-child(n + 4) {
+.my-portfolio-wide-table th:nth-child(n + 5),
+.my-portfolio-wide-table td:nth-child(n + 5) {
     scroll-snap-align: start;
     scroll-snap-stop: always;
 }
@@ -404,7 +539,8 @@
 }
 
 .my-portfolio-wide-table thead th:nth-child(2),
-.my-portfolio-wide-table thead th:nth-child(3) {
+.my-portfolio-wide-table thead th:nth-child(3),
+.my-portfolio-wide-table thead th:nth-child(4) {
     z-index: 5;
     background: var(--bg-sidebar);
 }
@@ -588,6 +724,10 @@
 @media (max-width: 920px) {
     .my-portfolio-preview-counts {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .my-portfolio-upload-flow {
+        grid-template-columns: 1fr;
     }
 
     .my-portfolio-upload-body {

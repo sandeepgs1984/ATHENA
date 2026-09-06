@@ -30,6 +30,16 @@
     const myPortfolioSyncOverlay = document.getElementById("my-portfolio-sync-overlay");
     const myPortfolioSyncOverlayDetail = document.getElementById("my-portfolio-sync-overlay-detail");
     const myPortfolioHistoryRows = document.getElementById("my-portfolio-history-rows");
+    const myPortfolioSortField = document.getElementById("my-portfolio-sort-field");
+    const myPortfolioSortDirection = document.getElementById("my-portfolio-sort-direction");
+    const myPortfolioSortReset = document.getElementById("my-portfolio-sort-reset");
+    const myPortfolioSortSummary = document.getElementById("my-portfolio-sort-summary");
+    const myPortfolioResetOpen = document.getElementById("my-portfolio-reset-open");
+    const myPortfolioResetModal = document.getElementById("my-portfolio-reset-modal");
+    const myPortfolioResetClose = document.getElementById("my-portfolio-reset-close");
+    const myPortfolioResetConfirm = document.getElementById("my-portfolio-reset-confirm");
+    const myPortfolioResetGateStatus = document.getElementById("my-portfolio-reset-gate-status");
+    const myPortfolioResetSubmit = document.getElementById("my-portfolio-reset-submit");
     const myPortfolioDetailModal = document.getElementById("my-portfolio-detail-modal");
     const myPortfolioDetailClose = document.getElementById("my-portfolio-detail-close");
     const myPortfolioDetailTitle = document.getElementById("my-portfolio-detail-title");
@@ -54,6 +64,10 @@
         holdings: [],
         imports: [],
         snapshotRowsByKey: {},
+        sort: {
+            key: "pnl_pct",
+            direction: "desc",
+        },
     };
 
     function escapeMyPortfolioHtml(value) {
@@ -89,6 +103,118 @@
     function formatMyPortfolioTime(value) {
         if (!value) return "—";
         return String(formatDecisionTime(value)).replace(/([ap]m)IST$/i, "$1 IST");
+    }
+
+    const MY_PORTFOLIO_SORT_LABELS = {
+        symbol: "Symbol",
+        quantity: "Qty",
+        avg_price: "Avg Price",
+        last_price: "Last Price",
+        pnl: "P&L",
+        pnl_pct: "P&L %",
+        status: "Status",
+        conviction: "Conviction",
+        trend: "Trend / Setup",
+        daily_review: "Daily Review",
+        next_action: "Next Action",
+    };
+
+    const MY_PORTFOLIO_SORT_RANKS = {
+        conviction: { HIGH: 3, MEDIUM: 2, LOW: 1 },
+        next_action: { EXIT: 4, ADD: 3, WATCH: 2, HOLD: 1 },
+        status: { AT_RISK: 4, CAUTION: 3, HEALTHY: 2, STRONG: 1, UNAVAILABLE: 0 },
+        daily_review: { HOLD_STRONG: 3, HOLD: 2, REVIEW_HOLD_TIGHT: 1 },
+    };
+
+    function myPortfolioNumericSortValue(value) {
+        const number = Number(value);
+        return Number.isFinite(number) ? number : null;
+    }
+
+    function myPortfolioSortValue(row, key) {
+        if (key === "quantity") return myPortfolioNumericSortValue(row.qty ?? row.quantity);
+        if (["avg_price", "last_price", "pnl", "pnl_pct"].includes(key)) {
+            return myPortfolioNumericSortValue(row[key]);
+        }
+        if (key === "conviction" || key === "next_action" || key === "status") {
+            const label = String(row[key] || "").toUpperCase();
+            return MY_PORTFOLIO_SORT_RANKS[key][label] ?? -1;
+        }
+        if (key === "daily_review") {
+            const label = String(row?.daily_review?.review_status || "").toUpperCase();
+            return MY_PORTFOLIO_SORT_RANKS.daily_review[label] ?? -1;
+        }
+        if (key === "trend") return String(row.trend_or_setup || "");
+        if (key === "symbol") return String(row.symbol || bareMyPortfolioSymbol(row.instrument_id) || "");
+        return String(row[key] || "");
+    }
+
+    function myPortfolioCompareValues(left, right, direction) {
+        const leftMissing = left == null || left === "";
+        const rightMissing = right == null || right === "";
+        if (leftMissing && rightMissing) return 0;
+        if (leftMissing) return 1;
+        if (rightMissing) return -1;
+        if (typeof left === "number" && typeof right === "number") {
+            return direction === "asc" ? left - right : right - left;
+        }
+        const compared = String(left).localeCompare(String(right), "en", {
+            numeric: true,
+            sensitivity: "base",
+        });
+        return direction === "asc" ? compared : -compared;
+    }
+
+    function sortedMyPortfolioRows(rows) {
+        const key = myPortfolioState.sort.key;
+        const direction = myPortfolioState.sort.direction;
+        return [...(rows || [])].sort((left, right) => {
+            const primary = myPortfolioCompareValues(
+                myPortfolioSortValue(left, key),
+                myPortfolioSortValue(right, key),
+                direction
+            );
+            if (primary !== 0) return primary;
+            return String(left.symbol || left.instrument_id || "").localeCompare(
+                String(right.symbol || right.instrument_id || ""),
+                "en",
+                { numeric: true, sensitivity: "base" }
+            );
+        });
+    }
+
+    function renderMyPortfolioSortControls() {
+        const key = myPortfolioState.sort.key;
+        const direction = myPortfolioState.sort.direction;
+        if (myPortfolioSortField) myPortfolioSortField.value = key;
+        if (myPortfolioSortDirection) {
+            const icon = myPortfolioSortDirection.querySelector("i");
+            if (icon) {
+                icon.className = direction === "asc"
+                    ? "fa-solid fa-arrow-up-wide-short"
+                    : "fa-solid fa-arrow-down-wide-short";
+            }
+            myPortfolioSortDirection.title = direction === "asc"
+                ? "Sort ascending. Click for descending."
+                : "Sort descending. Click for ascending.";
+        }
+        if (myPortfolioSortSummary) {
+            const label = MY_PORTFOLIO_SORT_LABELS[key] || key;
+            myPortfolioSortSummary.textContent = `Sorted by ${label} ${direction === "asc" ? "low to high" : "high to low"}.`;
+        }
+        document.querySelectorAll(".my-portfolio-wide-table th[data-sort-key]").forEach(th => {
+            const label = th.textContent.replace(/[↑↓]/g, "").trim();
+            const sortKey = th.getAttribute("data-sort-key");
+            th.innerHTML = myPortfolioHeader(label, sortKey);
+            th.classList.toggle("active", sortKey === key);
+            th.setAttribute("aria-sort", sortKey === key ? (direction === "asc" ? "ascending" : "descending") : "none");
+        });
+    }
+
+    function myPortfolioHeader(label, key) {
+        if (!key || key !== myPortfolioState.sort.key) return escapeMyPortfolioHtml(label);
+        const icon = myPortfolioState.sort.direction === "asc" ? "fa-arrow-up" : "fa-arrow-down";
+        return `<span class="my-portfolio-sortable-th">${escapeMyPortfolioHtml(label)}<i class="fa-solid ${icon} my-portfolio-sort-indicator" aria-hidden="true"></i></span>`;
     }
 
     function bareMyPortfolioSymbol(instrumentId) {
@@ -408,6 +534,17 @@
         return Boolean(preview) && preview.status === "PREVIEWED" && Number(preview.total_rows || 0) > 0;
     }
 
+    function setMyPortfolioUploadStage(stage) {
+        document.querySelectorAll("[data-upload-step]").forEach(stepEl => {
+            const step = stepEl.getAttribute("data-upload-step");
+            stepEl.classList.toggle("active", step === stage);
+            stepEl.classList.toggle("done", (
+                (stage === "preview" && step === "choose")
+                || (stage === "confirm" && (step === "choose" || step === "preview"))
+            ));
+        });
+    }
+
     function setMyPortfolioBusy(next = {}) {
         myPortfolioState.previewing = Boolean(next.previewing);
         myPortfolioState.confirming = Boolean(next.confirming);
@@ -432,6 +569,18 @@
             const label = myPortfolioSync.querySelector("span");
             if (label) label.textContent = myPortfolioState.syncing ? "Syncing Portfolio" : "Sync Portfolio";
         }
+        if (myPortfolioResetOpen) {
+            myPortfolioResetOpen.disabled = myPortfolioState.syncing || myPortfolioState.previewing || myPortfolioState.confirming;
+        }
+        if (myPortfolioState.confirming) {
+            setMyPortfolioUploadStage("confirm");
+        } else if (myPortfolioState.previewing) {
+            setMyPortfolioUploadStage("preview");
+        } else if (myPortfolioState.preview) {
+            setMyPortfolioUploadStage("preview");
+        } else {
+            setMyPortfolioUploadStage("choose");
+        }
     }
 
     function setMyPortfolioCancelLabel(label) {
@@ -442,7 +591,7 @@
         if (!myPortfolioHoldingsRows) return;
         myPortfolioState.loading = true;
         clearMyPortfolioAlert();
-        myPortfolioHoldingsRows.innerHTML = '<tr><td colspan="13" class="text-center text-muted">Loading holdings...</td></tr>';
+        myPortfolioHoldingsRows.innerHTML = '<tr><td colspan="15" class="text-center text-muted">Loading holdings...</td></tr>';
         myPortfolioHistoryRows.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Loading import history...</td></tr>';
         try {
             const [holdingsRes, historyRes] = await Promise.all([
@@ -571,13 +720,16 @@
         }
         myPortfolioState.snapshotRowsByKey = {};
         if (!holdings.length) {
-            myPortfolioHoldingsRows.innerHTML = '<tr><td colspan="14" class="text-center text-muted">No holdings imported yet. Upload Portfolio to begin.</td></tr>';
+            myPortfolioHoldingsRows.innerHTML = '<tr><td colspan="15" class="text-center text-muted">No holdings imported yet. Upload Portfolio to begin.</td></tr>';
+            renderMyPortfolioSortControls();
             return;
         }
-        myPortfolioHoldingsRows.innerHTML = holdings.map(holding => {
+        const rows = sortedMyPortfolioRows(holdings);
+        myPortfolioHoldingsRows.innerHTML = rows.map((holding, index) => {
             const symbol = holding.symbol || bareMyPortfolioSymbol(holding.instrument_id);
             return `
             <tr data-instrument-id="${escapeMyPortfolioHtml(holding.instrument_id)}">
+                <td class="my-portfolio-row-index">${formatMyPortfolioNumber(index + 1)}</td>
                 <td class="font-mono"><strong>${escapeMyPortfolioHtml(symbol)}</strong></td>
                 <td>${formatMyPortfolioNumber(holding.quantity)}</td>
                 <td class="font-mono">${myPortfolioMoneyCell(holding.avg_price)}</td>
@@ -595,6 +747,7 @@
             </tr>
         `;
         }).join("");
+        renderMyPortfolioSortControls();
     }
 
     function renderMyPortfolioSnapshotRows(rows) {
@@ -602,8 +755,10 @@
         rows.forEach(row => {
             myPortfolioState.snapshotRowsByKey[myPortfolioRowKey(row)] = row;
         });
-        myPortfolioHoldingsRows.innerHTML = rows.map(row => `
+        const sortedRows = sortedMyPortfolioRows(rows);
+        myPortfolioHoldingsRows.innerHTML = sortedRows.map((row, index) => `
             <tr data-instrument-id="${escapeMyPortfolioHtml(myPortfolioRowKey(row))}" tabindex="0" role="button" aria-label="Open detail for ${escapeMyPortfolioHtml(row.symbol)}">
+                <td class="my-portfolio-row-index">${formatMyPortfolioNumber(index + 1)}</td>
                 <td class="font-mono"><strong>${escapeMyPortfolioHtml(row.symbol)}</strong></td>
                 <td>${formatMyPortfolioNumber(row.qty ?? row.quantity)}</td>
                 <td class="font-mono">${myPortfolioMoneyCell(row.avg_price)}</td>
@@ -620,6 +775,7 @@
                 ${myPortfolioRowActionsCell(row.symbol)}
             </tr>
         `).join("");
+        renderMyPortfolioSortControls();
     }
 
     // MY-PORTFOLIO-V1-FINAL-UX-CLOSURE holding-detail drawer. Every value
@@ -1005,11 +1161,11 @@
         } else {
             showMyPortfolioAlert("This preview has no rows to confirm. Upload a file with at least one holding.", "warning");
         }
-        setMyPortfolioCancelLabel("Cancel");
+        setMyPortfolioCancelLabel("Discard Preview");
 
         renderMyPortfolioPreviewRows(preview.rows || []);
         renderMyPortfolioReconciliation(preview.proposed_changes || []);
-        myPortfolioUploadState.textContent = `Preview ${preview.import_id} ready for ${preview.filename}.`;
+        myPortfolioUploadState.textContent = `Preview ready for ${preview.filename}. Review the row quality and reconciliation diff, then confirm or discard.`;
         setMyPortfolioBusy();
     }
 
@@ -1090,6 +1246,7 @@
         myPortfolioUploadState.textContent = "Uploading and parsing on the server...";
         clearMyPortfolioAlert();
         renderMyPortfolioPreview(null);
+        setMyPortfolioUploadStage("preview");
         setMyPortfolioBusy({ previewing: true });
         try {
             const response = await apiRequest(
@@ -1170,8 +1327,8 @@
                     "Portfolio holdings changed after this preview was generated. Please generate a fresh preview before confirming.",
                     "warning"
                 );
-                setMyPortfolioCancelLabel("Upload Again");
-                myPortfolioUploadState.textContent = "Preview is stale. Use Upload Again or re-select the file to refresh the preview.";
+                setMyPortfolioCancelLabel("Discard Preview");
+                myPortfolioUploadState.textContent = "Preview is stale. Discard it and choose the holdings file again.";
             } else {
                 // Only reachable when literally every row in the file is
                 // unconfirmable (see previewCanConfirm) — the server's own
@@ -1303,10 +1460,69 @@
         if (myPortfolioSelectedFile) myPortfolioSelectedFile.textContent = "No file selected";
         if (myPortfolioPreview) myPortfolioPreview.hidden = true;
         if (myPortfolioUploadState) myPortfolioUploadState.textContent = "Choose a holdings file to create a preview.";
-        setMyPortfolioCancelLabel("Cancel");
+        setMyPortfolioCancelLabel("Discard Preview");
         clearMyPortfolioAlert();
         setMyPortfolioBusy();
         myPortfolioFileInput?.focus();
+    }
+
+    function resetMyPortfolioGate() {
+        const unlocked = myPortfolioResetConfirm?.value === "RESET";
+        if (myPortfolioResetSubmit) myPortfolioResetSubmit.disabled = !unlocked;
+        if (myPortfolioResetGateStatus) {
+            myPortfolioResetGateStatus.textContent = unlocked
+                ? "Unlocked. This will permanently clear My Portfolio state."
+                : "Locked until RESET matches exactly.";
+            myPortfolioResetGateStatus.classList.toggle("locked", !unlocked);
+            myPortfolioResetGateStatus.classList.toggle("unlocked", unlocked);
+        }
+    }
+
+    function openMyPortfolioResetModal() {
+        if (!myPortfolioResetModal) return;
+        if (myPortfolioResetConfirm) myPortfolioResetConfirm.value = "";
+        resetMyPortfolioGate();
+        openModal(myPortfolioResetModal);
+        myPortfolioResetConfirm?.focus();
+    }
+
+    function closeMyPortfolioResetModal() {
+        if (myPortfolioResetModal) closeModal(myPortfolioResetModal);
+    }
+
+    async function resetMyPortfolio() {
+        if (myPortfolioResetConfirm?.value !== "RESET") {
+            resetMyPortfolioGate();
+            return;
+        }
+        if (myPortfolioResetSubmit) myPortfolioResetSubmit.disabled = true;
+        try {
+            const response = await apiRequest("/api/v1/my-portfolio", {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ confirmation: "RESET" }),
+                skipToast: true,
+            });
+            const counts = response?.data?.deleted_counts || {};
+            const totalDeleted = Object.values(counts).reduce((sum, value) => sum + Number(value || 0), 0);
+            closeMyPortfolioResetModal();
+            myPortfolioState.preview = null;
+            myPortfolioState.selectedFile = null;
+            myPortfolioState.snapshot = null;
+            myPortfolioState.holdings = [];
+            myPortfolioState.imports = [];
+            myPortfolioState.snapshotRowsByKey = {};
+            if (myPortfolioFileInput) myPortfolioFileInput.value = "";
+            if (myPortfolioSelectedFile) myPortfolioSelectedFile.textContent = "No file selected";
+            if (myPortfolioPreview) myPortfolioPreview.hidden = true;
+            await loadMyPortfolioWorkspace();
+            showMyPortfolioAlert(`My Portfolio reset complete. Deleted ${formatMyPortfolioNumber(totalDeleted)} My Portfolio record(s).`, "good");
+        } catch (err) {
+            console.error("Failed to reset My Portfolio", err);
+            const detail = String(err?.data?.detail || "");
+            showMyPortfolioAlert(detail || "Could not reset My Portfolio. Existing data is unchanged.", "danger");
+            resetMyPortfolioGate();
+        }
     }
 
     myPortfolioFileInput?.addEventListener("change", event => {
@@ -1316,3 +1532,35 @@
     myPortfolioConfirm?.addEventListener("click", confirmMyPortfolioPreview);
     myPortfolioCancelPreview?.addEventListener("click", clearMyPortfolioPreview);
     myPortfolioSync?.addEventListener("click", startMyPortfolioSync);
+    myPortfolioSortField?.addEventListener("change", event => {
+        myPortfolioState.sort.key = event.target.value || "pnl_pct";
+        renderMyPortfolioHoldings(myPortfolioState.holdings);
+    });
+    myPortfolioSortDirection?.addEventListener("click", () => {
+        myPortfolioState.sort.direction = myPortfolioState.sort.direction === "asc" ? "desc" : "asc";
+        renderMyPortfolioHoldings(myPortfolioState.holdings);
+    });
+    myPortfolioSortReset?.addEventListener("click", () => {
+        myPortfolioState.sort = { key: "pnl_pct", direction: "desc" };
+        renderMyPortfolioHoldings(myPortfolioState.holdings);
+    });
+    document.querySelector(".my-portfolio-wide-table thead")?.addEventListener("click", event => {
+        const th = event.target.closest("th[data-sort-key]");
+        if (!th) return;
+        const key = th.getAttribute("data-sort-key");
+        if (!key) return;
+        if (myPortfolioState.sort.key === key) {
+            myPortfolioState.sort.direction = myPortfolioState.sort.direction === "asc" ? "desc" : "asc";
+        } else {
+            myPortfolioState.sort.key = key;
+            myPortfolioState.sort.direction = key === "symbol" ? "asc" : "desc";
+        }
+        renderMyPortfolioHoldings(myPortfolioState.holdings);
+    });
+    myPortfolioResetOpen?.addEventListener("click", openMyPortfolioResetModal);
+    myPortfolioResetClose?.addEventListener("click", closeMyPortfolioResetModal);
+    myPortfolioResetConfirm?.addEventListener("input", resetMyPortfolioGate);
+    myPortfolioResetSubmit?.addEventListener("click", resetMyPortfolio);
+    window.addEventListener("click", event => {
+        if (event.target === myPortfolioResetModal) closeMyPortfolioResetModal();
+    });
