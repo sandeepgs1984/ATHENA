@@ -142,10 +142,19 @@ implemented, tested, and replay-verified; the mandatory robustness replay
 shows a real (if partial) improvement over every PS-P10C.1 rejected
 candidate on the support side, zero duplicate/wide-zone pathologies, a
 correctly-bounded staleness ceiling, clean determinism/leakage, and an
-unchanged golden result. Recommend Owner/Chief Architect final confirmation.
-Per the correction-round's explicit stop boundary: not committed by the
-implementer; no further Portfolio enhancement begun; no V2A/V2B/V2C
-created.
+unchanged golden result.
+
+**Owner/Chief Architect decision (2026-09-06): APPROVED AND FROZEN.**
+Committed by the owner as `8e7cdaa`. All three corrections (session-distance
+semantics, EXIT_RISK wording, Major-Support fallback), the frozen EXIT_RISK
+definition, the Major-Support fallback rule, the historical PIT robustness
+gate findings, the target policy, the architectural boundary, and the golden
+dataset result are all accepted as documented above. `portfolio-structural-
+review-v1` is FROZEN. **Portfolio Intelligence V2 is COMPLETE. The
+PORTFOLIO TRACK IS CLOSED** (Portfolio Sync V1 + Portfolio Daily Review v0 +
+My Portfolio V1 UX Closure + Portfolio Intelligence V2). No V2A/V2B/V2C, no
+PS-P10E, no further Portfolio milestone authorized. Per the owner's explicit
+instruction, ID/EMR work is the next active ATHENA priority.
 
 ---
 
