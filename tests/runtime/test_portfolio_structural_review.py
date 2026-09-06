@@ -268,6 +268,50 @@ def test_exit_risk_requires_bearish_supertrend_and_price_below_major_support() -
     assert result.exit_risk is True
     assert PortfolioStructuralReviewReason.EXIT_RISK_STRUCTURAL_INVALIDATION in result.reason_codes
     assert "exit risk" in (result.guidance or "").lower()
+    assert "decisively" not in (result.guidance or "").lower()
+    assert "no reclaim" not in (result.guidance or "").lower()
+
+
+def test_major_support_fallback_picks_nearest_not_shallowest_zone() -> None:
+    # Regression test for a genuine correctness bug found by the historical
+    # PIT robustness replay: when no support zone is currently below price
+    # (every known zone now sits above it), Major Support must anchor to
+    # whichever zone is NEAREST to current price by absolute distance — not
+    # "the shallowest zone recorded across the whole lookback," which can be
+    # an arbitrary, far-away zone from an earlier, unrelated (much higher)
+    # price regime. Two regimes: an early, higher-priced regime (~220, with
+    # its own genuine swing low at 215) the stock has since fallen well away
+    # from, and a more recent, lower regime (~112, with a genuine swing low
+    # at 108) much closer to the current crashed price of 100.
+    early_regime = _series(30, base=220, overrides={15: {"low": 215, "high": 224, "close": 220}})
+    recent_regime = _series(90, base=112, overrides={45: {"low": 108, "high": 114, "close": 112}})
+    candles = [
+        *early_regime,
+        *[
+            Candle(
+                instrument_id=c.instrument_id,
+                timeframe=c.timeframe,
+                ts_open=c.ts_open + timedelta(days=30),
+                open=c.open,
+                high=c.high,
+                low=c.low,
+                close=c.close,
+                volume=c.volume,
+                source=c.source,
+                adjusted=c.adjusted,
+            )
+            for c in recent_regime
+        ],
+    ]
+    as_of = candles[-1].ts_open
+    bearish = _supertrend(direction=SuperTrendDirection.BEARISH, value=None, latest_session=as_of)
+    # Current price (100) has fallen below both regimes' swing lows (108 and
+    # 215), so support_1 is unavailable and the fallback path is exercised.
+    result = _resolve(candles, as_of=as_of, current_price=100, supertrend=bearish)
+    assert result.support_1 is None
+    assert result.major_support is not None
+    assert result.major_support.lower == Decimal(108)
+    assert result.major_support.upper != Decimal(215)
 
 
 def test_exit_risk_not_triggered_when_price_below_supertrend_only() -> None:

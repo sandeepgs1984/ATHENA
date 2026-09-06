@@ -12,7 +12,7 @@ because it exposed mechanical candidates directly; this engine never does).
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
@@ -178,9 +178,15 @@ class PortfolioStructuralReviewEngine:
         support_zones = _cluster_zones(swing_lows, StructuralZoneRole.SUPPORT)
         resistance_zones = _cluster_zones(swing_highs, StructuralZoneRole.RESISTANCE)
 
-        latest_session = bounded[-1].ts_open
-        support_zones = _reject_stale(support_zones, latest_session)
-        resistance_zones = _reject_stale(resistance_zones, latest_session)
+        # Session distance is measured by POSITION in the already
+        # point-in-time-bounded `bounded` sequence, not by calendar-day
+        # subtraction — `ZONE_STALENESS_SESSIONS`/`RECLAIM_LOOKBACK_SESSIONS`
+        # must count actually-observed D1 trading sessions (skipping
+        # weekends/holidays), never calendar days.
+        session_index = _session_index_map(bounded)
+        latest_index = len(bounded) - 1
+        support_zones = _reject_stale(support_zones, session_index, latest_index)
+        resistance_zones = _reject_stale(resistance_zones, session_index, latest_index)
 
         reasons: list[PortfolioStructuralReviewReason] = []
 
@@ -232,7 +238,8 @@ class PortfolioStructuralReviewEngine:
             support_zones=support_zones,
             target_1=target_1,
             current_price=current_price,
-            latest_session=latest_session,
+            session_index=session_index,
+            latest_index=latest_index,
         )
         if review_trigger is not None:
             reasons.append(
@@ -324,10 +331,20 @@ class PortfolioStructuralReviewEngine:
             if idx + 1 < len(all_support_sorted):
                 deeper_structural = all_support_sorted[idx + 1]
         elif support_1 is None and all_support_sorted:
-            # No currently-active support at all (price already fell
-            # through every known zone) — the shallowest known zone is the
-            # one price broke, so it anchors Major Support.
-            deeper_structural = all_support_sorted[0]
+            # No currently-active support below price at all — every known
+            # zone now sits at/above price, meaning price has fallen through
+            # each of them. Major Support must anchor to whichever zone is
+            # NEAREST to current price by absolute distance (the most
+            # recently broken, most relevant floor), never "the shallowest
+            # zone recorded across the whole lookback" — a PIT robustness
+            # replay proved that picks an arbitrary, potentially far-away
+            # zone from an earlier, unrelated price regime (e.g. a support
+            # confirmed when the stock traded 10%+ higher), which is not a
+            # meaningful nearby reference even though it is structurally
+            # "above price and therefore breachable."
+            deeper_structural = min(
+                all_support_sorted, key=lambda z: abs(z.midpoint() - current_price)
+            )
 
         ceiling = support_1.lower if support_1 is not None else current_price
         st_candidate = (
@@ -350,13 +367,14 @@ class PortfolioStructuralReviewEngine:
         support_zones: Sequence[StructuralZone],
         target_1: StructuralZone | None,
         current_price: Decimal,
-        latest_session: datetime,
+        session_index: Mapping[datetime, int],
+        latest_index: int,
     ) -> tuple[StructuralZone | None, bool]:
         lost = [
             z
             for z in support_zones
             if z.lower > current_price
-            and _sessions_between(z.most_recent_session, latest_session)
+            and _session_distance(session_index, z.most_recent_session, latest_index)
             <= RECLAIM_LOOKBACK_SESSIONS
         ]
         if lost:
@@ -373,6 +391,15 @@ class PortfolioStructuralReviewEngine:
         supertrend: SuperTrendEvidence,
         current_price: Decimal,
     ) -> bool:
+        """Frozen V2 EXIT_RISK definition — deliberately the simplest
+        defensible rule, nothing more: bearish canonical SuperTrend AND
+        current close below the lower bound of selected Major Structural
+        Support. This is a single point-in-time evaluation only — there is
+        no separate "decisive" breach threshold and no reclaim-confirmation
+        lifecycle. Do not describe this as "decisively broken" or "with no
+        reclaim" anywhere (guidance, reason labels, docs) since neither is
+        actually implemented; a reclaim-based Review Trigger exists
+        independently and must never be conflated with this."""
         if major_support is None:
             return False
         if not supertrend.is_coherent or supertrend.direction is not SuperTrendDirection.BEARISH:
@@ -449,8 +476,23 @@ def _epoch_placeholder() -> datetime:
     return datetime(1970, 1, 1, tzinfo=timezone.utc)
 
 
-def _sessions_between(earlier: datetime, later: datetime) -> int:
-    return max(0, (later.date() - earlier.date()).days)
+def _session_index_map(candles: Sequence[Candle]) -> dict[datetime, int]:
+    """Map each candle's ts_open to its position in the point-in-time-bounded
+    sequence, so session distance can be measured in actually-observed D1
+    trading sessions (skipping weekends/holidays), never calendar days."""
+    return {candle.ts_open: index for index, candle in enumerate(candles)}
+
+
+def _session_distance(
+    session_index: Mapping[datetime, int], earlier: datetime, latest_index: int
+) -> int:
+    index = session_index.get(earlier)
+    if index is None:
+        # Every zone's most_recent_session is derived from a candle inside
+        # `bounded`, so this should never happen — fall back to "beyond any
+        # bound" rather than crash if it ever does.
+        return latest_index + 1
+    return max(0, latest_index - index)
 
 
 def _confirmed_swing_lows(candles: Sequence[Candle]) -> list[Candle]:
@@ -518,12 +560,14 @@ def _cluster_zones(
 
 
 def _reject_stale(
-    zones: Sequence[StructuralZone], latest_session: datetime
+    zones: Sequence[StructuralZone],
+    session_index: Mapping[datetime, int],
+    latest_index: int,
 ) -> list[StructuralZone]:
     return [
         z
         for z in zones
-        if _sessions_between(z.most_recent_session, latest_session)
+        if _session_distance(session_index, z.most_recent_session, latest_index)
         <= ZONE_STALENESS_SESSIONS
     ]
 
@@ -555,10 +599,13 @@ def _compose_guidance(
     )
 
     if exit_risk and major_support is not None:
+        # Truthful to the frozen, single point-in-time EXIT_RISK definition
+        # only — never claim "decisively broken" or "no reclaim" here, since
+        # neither a separate decisive-breach threshold nor a reclaim-
+        # confirmation lifecycle is actually implemented.
         return (
-            f"{trend_phrase.replace('remains intact', 'is damaged')}; "
-            f"{_format_zone(major_support)} structural invalidation is broken with no reclaim. "
-            "Exit risk is elevated."
+            f"Major structural support ({_format_zone(major_support)}) is currently "
+            "breached while SuperTrend is bearish; exit risk is elevated."
         )
 
     if supertrend.direction is SuperTrendDirection.BEARISH:

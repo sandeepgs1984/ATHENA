@@ -648,7 +648,7 @@
         REVIEW_TRIGGER_RECLAIM: "Review Trigger is a reclaim of a recently lost structural level.",
         REVIEW_TRIGGER_BREAKOUT: "Review Trigger is a breakout of the nearest resistance zone.",
         REVIEW_TRIGGER_UNAVAILABLE: "No Review Trigger could be identified.",
-        EXIT_RISK_STRUCTURAL_INVALIDATION: "Major Support has been decisively broken with no reclaim.",
+        EXIT_RISK_STRUCTURAL_INVALIDATION: "Major structural support is currently breached while SuperTrend is bearish.",
         EXIT_RISK_NOT_TRIGGERED: "Structural invalidation has not been triggered.",
     };
 

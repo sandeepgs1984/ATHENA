@@ -6,6 +6,149 @@ status updated on approval.
 
 ---
 
+## Portfolio Intelligence V2 — Owner Correction Round + Mandatory Historical PIT Robustness Replay — Final Validation Complete
+
+**Summary.** Owner gave conditional approval on the V2 structural review
+engine (previous entry below) pending two named correctness fixes, a
+no-tuning confirmation on the one documented golden miss (RATNAVEER), and a
+mandatory historical point-in-time robustness replay (validation only, no
+fitting) answering: has V2 materially solved PS-P10C.1's dense/churny
+mechanical-levels problem? All items are closed; a third, previously-unknown
+correctness bug was found and fixed during the replay itself (explicitly
+permitted by the Owner's own instructions: "if a genuine correctness bug is
+found").
+
+**Fix 1 — session-distance semantics.** `ZONE_STALENESS_SESSIONS`/
+`RECLAIM_LOOKBACK_SESSIONS` were being compared against raw calendar-day
+subtraction despite the constant names saying "sessions" — replaced with a
+true session-index distance (`_session_index_map`/`_session_distance`)
+computed from each candle's position in the already point-in-time-bounded
+sequence, so weekends/holidays are never miscounted as elapsed sessions.
+
+**Fix 2 — EXIT_RISK wording correction.** Guidance text, reason labels, and
+prose docs described EXIT_RISK as "decisively broken with no reclaim,"
+implying a separate decisive-breach threshold and a reclaim-confirmation
+lifecycle that were never implemented. Corrected everywhere (engine
+docstring/comments, `_compose_guidance`'s EXIT_RISK branch, the dashboard's
+`MY_PORTFOLIO_STRUCTURAL_REASON_LABELS` entry, `IMPLEMENTATION_SUMMARY.md`,
+`ATHENA_BRIEFING.md`) to state the actual frozen rule only: a single
+point-in-time check — bearish canonical SuperTrend AND current close below
+the lower bound of selected Major Structural Support. Two inline test
+assertions added confirming "decisively"/"no reclaim" never appear in
+guidance text.
+
+**Fix 3 — Major Support fallback bug (found via the mandated replay, not
+via the golden dataset or unit tests).** When no support zone sat below
+price at all (every known zone had been broken), `_select_major_support`'s
+fallback picked the shallowest zone in the full lookback-ordered list —
+which, in that specific condition, is actually the *farthest-above-price*
+zone, sometimes an old swing low from an unrelated, much-higher price
+regime. Observed on real BALKRISIND data: `major_support` jumped to a stale
+2024 zone while price traded ~8% lower, producing a spurious `EXIT_RISK`. A
+first attempted fix (gating the fallback to `zone.upper <= current_price`)
+was proven, by direct algebraic reasoning, to make `EXIT_RISK` permanently
+unreachable from any code path — caught and reverted before being applied.
+**Final fix:** the fallback selects the zone *nearest to current price by
+absolute distance from its midpoint*, with no side-of-price gate — the most
+recently broken, most relevant floor. New regression test
+`test_major_support_fallback_picks_nearest_not_shallowest_zone` (two
+synthetic price regimes) locks this in. RATNAVEER (Fix 3, no-tuning
+confirmation): re-checked and confirmed unaffected by any of the three
+fixes — still a genuine, documented, conservative miss (too few nearby
+swing points for a parabolic run), not tuned.
+
+**Mandatory historical PIT robustness replay.** Read-only against the real
+`db/athena.db` (`mode=ro` + `PRAGMA query_only=ON`, mtime verified
+unchanged before/after every run), replaying the *same 20 real confirmed
+Portfolio holdings* PS-P10C.1 used, at every D1 session from a 60-session
+warm-up onward — 12,075 point-in-time observations (PS-P10C.1's own replay:
+12,095, same population, same near-identical scale).
+
+| Metric | V2 (this replay) | PS-P10C.1 Candidate A | Candidate B | Candidate C |
+|---|---:|---:|---:|---:|
+| Support 1 populated | 11,640 (96.4%) | 11,918 (98.5%) | 10,943 (90.5%) | 11,874 (98.2%) |
+| Support 1 churn | **3,571** | 10,411 | 4,840 | 9,661 |
+| Target churn (any of T1-3) | 4,096 | 4,606 | 1,092 | 3,614 |
+| Target 1/2/3 populated | 92.3% / 81.8% / 70.8% | 93.0% / 83.8% / 75.6% | 33.4% / n/a | 91.5% / 80.4% / 70.3% |
+
+Major Support churn 4,001, Review Trigger churn 4,155, median persistence
+(support/major/trigger) 2 sessions each, duplicate/overlapping target
+pathology 0, wide-zone (>8% of price) pathology 0 (widest observed 2.94%,
+TARIL 2025-09-26), old-selected-zone (>150 sessions) pathology 532
+(oldest observed exactly 180 — the `ZONE_STALENESS_SESSIONS` ceiling itself,
+never exceeded), EXIT_RISK 388 observations (3.2%) / 178 transitions,
+determinism 240/240 sampled matches, future-leakage 239/239 sampled clean.
+
+**Verdict on the PS-P10C.1 question — partial, real, honest improvement, not
+a total solve.** Support-side churn is substantially and genuinely better
+than even the best-performing previously-rejected candidate (3,571 vs
+Candidate B's 4,840) while maintaining much higher Support 1 population than
+B (96.4% vs 90.5%) — B's low churn came largely from under-populating, not
+from genuine stability. Target-side churn (4,096) sits between Candidates B
+and C, worse than B in raw count but with dramatically higher target
+population than B (Target 2/3 populated 81.8%/70.8% vs B's far lower rates)
+— B achieved low target churn mostly by frequently returning no target at
+all. Zero duplicate-target or wide-zone pathologies at any point across
+12,075 observations; the only bounded "stale zone" pathology count (532)
+never exceeds the explicit 180-session design ceiling.
+
+**Worst-case/pathology classification (per Owner instruction — fix nothing
+here, classify only):**
+- Support churn (WELSPUNLIV, 294) / Major Support churn (WELSPUNLIV, 318) /
+  Review Trigger churn (TDPOWERSYS, 269) / Target churn (WELSPUNLIV, 272) —
+  **CONSERVATIVE.** Selection changes roughly every ~2 sessions
+  (system-wide median persistence), consistent with volatile names trading
+  repeatedly near a zone boundary under a deliberately proximity-based,
+  non-hysteresis "always show the nearest relevant zone" design — never a
+  wrong or misleading value, just a frequently-updated one. Adding
+  hysteresis/smoothing was explicitly out of scope this round.
+- Widest zone (TARIL, major_support, 2025-09-26, 2.94% of price) —
+  **ACCEPTABLE.** Well inside the 8% pathology ceiling; confirms
+  `ZONE_MERGE_TOLERANCE_PCT` clustering stays tight even in the worst
+  observed case.
+- Oldest selected zone (BALKRISIND, 2024-08-26, age exactly 180 sessions) —
+  **ACCEPTABLE.** Sits exactly at the `ZONE_STALENESS_SESSIONS` ceiling,
+  never beyond it across 12,075 observations — the staleness reject is
+  working as designed, not leaking unbounded age.
+- EXIT_RISK transition (BALKRISIND, Feb 2024) — **ACCEPTABLE.** Re-verified
+  after the Fix 3 correction: reflects a genuine bearish-SuperTrend +
+  price-below-a-nearby-real-Major-Support oscillation, not the arbitrary
+  stale-zone artifact Fix 3 removed.
+- Blue-sky case (JINDWORLD, 2026-09-04, Target 1 null) — **ACCEPTABLE.**
+  The intended, designed null-target-at-no-overhead-resistance behavior
+  (matches the existing "null targets at ATH" test), not a pathology.
+
+**Golden dataset (8 real cases, `PORTFOLIO SNAPSHOT.xlsx`):** re-run after
+all three fixes — **result unchanged**; none of the 8 cases exercised either
+corrected code path.
+
+**Validation.** Full suite **3705 passed, 0 failed, 0 skipped**. Ruff clean
+on every changed file. Mypy clean on `structural_review.py` (the only
+changed domain module this round; `my_portfolio_service.py` remains
+excluded from broad mypy per the standing PS-P10D precedent). `git diff
+--check` clean. `db/athena.db` mtime verified unchanged across every replay
+run this round.
+
+**Files changed this round:** `src/athena/portfolio/structural_review.py`
+(Fix 1 session-distance helpers, Fix 3 `_select_major_support` correction,
+Fix 2 guidance/docstring wording), `tests/runtime/test_portfolio_structural_review.py`
+(new regression test + 2 new inline wording assertions),
+`src/athena/api/static/js/08b-my-portfolio.js` (Fix 2 label wording),
+`IMPLEMENTATION_SUMMARY.md`, `ATHENA_BRIEFING.md` (this section + wording
+corrections).
+
+**Final decision: ACCEPT.** All three named/found correctness fixes are
+implemented, tested, and replay-verified; the mandatory robustness replay
+shows a real (if partial) improvement over every PS-P10C.1 rejected
+candidate on the support side, zero duplicate/wide-zone pathologies, a
+correctly-bounded staleness ceiling, clean determinism/leakage, and an
+unchanged golden result. Recommend Owner/Chief Architect final confirmation.
+Per the correction-round's explicit stop boundary: not committed by the
+implementer; no further Portfolio enhancement begun; no V2A/V2B/V2C
+created.
+
+---
+
 ## Portfolio Intelligence V2 — Structural Review Engine — Implementation Complete, Ready for Owner Review
 
 **Summary.** One-day final Portfolio closure sprint. Owner asked to close the
@@ -34,9 +177,12 @@ ordering, independent of current price, so a genuine "price broke below
 Major Support" state remains reachable), Review Trigger (reclaim of a
 recently-lost former support if one exists, else breakout of the nearest
 resistance), Target 1-3 (ascending resistance zones, capped at 3, null at
-genuine blue-sky/ATH — never synthetic), EXIT_RISK (bearish SuperTrend AND
-price decisively below Major Support only — price below SuperTrend alone
-stays REVIEW_HOLD_TIGHT, never EXIT_RISK). Zones render as ranges, not false
+genuine blue-sky/ATH — never synthetic), EXIT_RISK (frozen simple
+single-point-in-time rule: bearish canonical SuperTrend AND current close
+below the lower bound of selected Major Structural Support — no separate
+"decisive breach" threshold and no reclaim-confirmation lifecycle exist;
+price below SuperTrend alone stays REVIEW_HOLD_TIGHT, never EXIT_RISK).
+Zones render as ranges, not false
 precision, when the evidence represents an area. Deterministic structural
 guidance composed only from selected zones (no unrestricted LLM, every price
 traces to persisted evidence).
