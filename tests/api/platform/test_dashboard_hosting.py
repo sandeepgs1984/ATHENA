@@ -303,8 +303,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.169.0" in html
-    assert "dashboard.js?v=9.169.0" in html
+    assert "dashboard.css?v=9.170.0" in html
+    assert "dashboard.js?v=9.170.0" in html
     assert "function decisionConfidenceBand" in js
     assert "analysis?.confidence_level" in js
     assert "confidence reflects evidence reliability, not expected profit" in js
@@ -602,7 +602,17 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     # Portfolio Intelligence V2: TradePlan-derived Plan Stop must never be
     # mislabeled "Major Support" — the row.major_support_exit accessor is
     # only ever paired with the truthful "Plan Stop" label.
-    assert 'myPortfolioDetailRow("Plan Stop", formatMyPortfolioMoney(row.major_support_exit))' in js
+    assert 'myPortfolioDetailRow("Plan Stop", formatMyPortfolioMoney(row.major_support_exit), {' in js
+    assert 'icon: "fa-shield-halved"' in js
+    assert "function myPortfolioDetailRowHtml" in js
+    assert "function myPortfolioDetailSignedRow" in js
+    assert "function myPortfolioDetailMarketChip" in js
+    assert "function myPortfolioDetailTrendChip" in js
+    assert "function myPortfolioDetailSetupChip" in js
+    assert "function myPortfolioDetailDirectionChip" in js
+    assert "my-portfolio-detail-chip" in js
+    assert "myPortfolioStatusPill(row.status, row)" in js
+    assert "myPortfolioActionPill(row.next_action, row)" in js
     assert "Plan Trigger/Stop/T1 reflect an active TradePlan only, distinct from the structural D1 levels below." in js
     assert "RSI14 is raw context only" in js
     assert "no overbought/oversold interpretation" in js
@@ -691,6 +701,13 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert "TRADE_PLAN_STOP_BREACHED" in js
     assert "SUPPORT_1_METHODOLOGY_UNAVAILABLE" in js
     assert ".my-portfolio-row-note" in my_portfolio_css
+    assert ".my-portfolio-detail-section[data-detail-section=\"technical\"]::before" in my_portfolio_css
+    assert ".my-portfolio-detail-row.tone-positive .my-portfolio-detail-value" in my_portfolio_css
+    assert ".my-portfolio-detail-row.tone-negative .my-portfolio-detail-value" in my_portfolio_css
+    assert ".my-portfolio-detail-chip.good" in my_portfolio_css
+    assert ".my-portfolio-detail-chip.danger" in my_portfolio_css
+    assert ".my-portfolio-detail-guidance.review" in my_portfolio_css
+    assert ".my-portfolio-detail-guidance.structural" in my_portfolio_css
     assert "Previous completed snapshot remains unchanged" in js
     assert "Content-Type\": \"application/octet-stream" in js
     assert "DUPLICATE_CANONICAL_INSTRUMENT" in js

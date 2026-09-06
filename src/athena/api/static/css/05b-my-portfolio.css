@@ -1036,13 +1036,46 @@
 }
 
 .my-portfolio-detail-section {
+    position: relative;
     padding: var(--space-18);
     border: 1px solid var(--border-color);
     border-radius: 8px;
-    background: rgba(15, 22, 38, 0.34);
+    background:
+        linear-gradient(180deg, rgba(15, 23, 42, 0.68), rgba(15, 23, 42, 0.4)),
+        rgba(15, 22, 38, 0.34);
+    box-shadow: inset 0 1px 0 rgba(148, 163, 184, 0.04);
+}
+
+.my-portfolio-detail-section::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 3px;
+    border-radius: 8px 0 0 8px;
+    background: rgba(148, 163, 184, 0.18);
+}
+
+.my-portfolio-detail-section[data-detail-section="position"]::before {
+    background: rgba(0, 229, 255, 0.45);
+}
+
+.my-portfolio-detail-section[data-detail-section="technical"]::before {
+    background: rgba(31, 191, 117, 0.44);
+}
+
+.my-portfolio-detail-section[data-detail-section="review"]::before {
+    background: rgba(99, 102, 241, 0.48);
+}
+
+.my-portfolio-detail-section[data-detail-section="plan"]::before,
+.my-portfolio-detail-section[data-detail-section="structural"]::before {
+    background: rgba(245, 158, 11, 0.42);
 }
 
 .my-portfolio-detail-section h4 {
+    display: flex;
+    align-items: center;
+    gap: var(--space-7);
     margin: 0 0 var(--space-14);
     font-size: var(--text-0-8);
     font-weight: 700;
@@ -1051,10 +1084,37 @@
     color: var(--text-muted);
 }
 
+.my-portfolio-detail-section h4::before {
+    color: var(--accent);
+    font-family: "Font Awesome 6 Free";
+    font-size: var(--text-0-78);
+    font-weight: 900;
+}
+
+.my-portfolio-detail-section[data-detail-section="position"] h4::before {
+    content: "\f555";
+}
+
+.my-portfolio-detail-section[data-detail-section="technical"] h4::before {
+    content: "\f201";
+}
+
+.my-portfolio-detail-section[data-detail-section="review"] h4::before {
+    content: "\f0eb";
+}
+
+.my-portfolio-detail-section[data-detail-section="plan"] h4::before {
+    content: "\f5a0";
+}
+
+.my-portfolio-detail-section[data-detail-section="structural"] h4::before {
+    content: "\f542";
+}
+
 .my-portfolio-detail-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    gap: var(--space-16) var(--space-24);
+    gap: var(--space-10);
 }
 
 .my-portfolio-detail-row {
@@ -1062,12 +1122,26 @@
     flex-direction: column;
     gap: var(--space-5);
     min-width: 0;
+    padding: var(--space-10) var(--space-12);
+    border: 1px solid rgba(148, 163, 184, 0.08);
+    border-radius: 8px;
+    background: rgba(2, 6, 23, 0.14);
 }
 
 .my-portfolio-detail-label {
+    display: flex;
+    align-items: center;
+    gap: var(--space-6);
     font-size: var(--text-0-75);
     color: var(--text-muted);
     line-height: 1.25;
+}
+
+.my-portfolio-detail-label i {
+    width: 14px;
+    color: var(--text-muted);
+    font-size: var(--text-0-72);
+    text-align: center;
 }
 
 .my-portfolio-detail-value {
@@ -1077,7 +1151,81 @@
     overflow-wrap: anywhere;
 }
 
+.my-portfolio-detail-row.tone-positive .my-portfolio-detail-value,
+.my-portfolio-detail-row.tone-positive .my-portfolio-detail-label i {
+    color: var(--success);
+}
+
+.my-portfolio-detail-row.tone-negative .my-portfolio-detail-value,
+.my-portfolio-detail-row.tone-negative .my-portfolio-detail-label i {
+    color: var(--danger);
+}
+
+.my-portfolio-detail-row.tone-warning .my-portfolio-detail-value,
+.my-portfolio-detail-row.tone-warning .my-portfolio-detail-label i {
+    color: var(--warning);
+}
+
+.my-portfolio-detail-row.tone-accent .my-portfolio-detail-value,
+.my-portfolio-detail-row.tone-accent .my-portfolio-detail-label i {
+    color: var(--accent);
+}
+
+.my-portfolio-detail-row.tone-neutral .my-portfolio-detail-value {
+    color: var(--text-primary);
+}
+
+.my-portfolio-detail-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-5);
+    width: fit-content;
+    max-width: 100%;
+    padding: 2px var(--space-8);
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    font-size: var(--text-0-78);
+    font-weight: 800;
+    line-height: 1.45;
+    white-space: nowrap;
+}
+
+.my-portfolio-detail-chip.good {
+    border-color: rgba(31, 191, 117, 0.46);
+    color: var(--success);
+    background: rgba(31, 191, 117, 0.08);
+}
+
+.my-portfolio-detail-chip.danger {
+    border-color: rgba(239, 68, 68, 0.46);
+    color: var(--danger);
+    background: rgba(239, 68, 68, 0.08);
+}
+
+.my-portfolio-detail-chip.warning {
+    border-color: rgba(245, 158, 11, 0.48);
+    color: var(--warning);
+    background: rgba(245, 158, 11, 0.08);
+}
+
+.my-portfolio-detail-chip.neutral {
+    color: var(--text-secondary);
+    background: rgba(148, 163, 184, 0.07);
+}
+
+.my-portfolio-detail-chip i {
+    font-size: var(--text-0-68);
+}
+
+.my-portfolio-detail-row .my-portfolio-status,
+.my-portfolio-detail-row .my-portfolio-market-chip {
+    width: fit-content;
+}
+
 .my-portfolio-detail-guidance {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-10);
     margin: var(--space-16) 0 0;
     padding: var(--space-12) var(--space-14);
     border-left: 3px solid rgba(0, 229, 255, 0.42);
@@ -1085,6 +1233,44 @@
     background: rgba(0, 229, 255, 0.06);
     line-height: 1.5;
     overflow-wrap: anywhere;
+}
+
+.my-portfolio-detail-guidance i {
+    flex: 0 0 auto;
+    margin-top: 0.25em;
+    color: var(--accent);
+}
+
+.my-portfolio-detail-guidance span {
+    min-width: 0;
+}
+
+.my-portfolio-detail-guidance.review {
+    border-left-color: rgba(99, 102, 241, 0.58);
+    background: rgba(99, 102, 241, 0.08);
+}
+
+.my-portfolio-detail-guidance.review i {
+    color: #a5b4fc;
+}
+
+.my-portfolio-detail-guidance.structural {
+    border-left-color: rgba(245, 158, 11, 0.56);
+    background: rgba(245, 158, 11, 0.08);
+}
+
+.my-portfolio-detail-guidance.structural i {
+    color: var(--warning);
+}
+
+.my-portfolio-detail-guidance.muted {
+    border-left-color: rgba(148, 163, 184, 0.34);
+    background: rgba(148, 163, 184, 0.06);
+    color: var(--text-muted);
+}
+
+.my-portfolio-detail-guidance.muted i {
+    color: var(--text-muted);
 }
 
 .my-portfolio-detail-reasons {

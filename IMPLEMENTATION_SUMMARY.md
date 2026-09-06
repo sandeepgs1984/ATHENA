@@ -64,8 +64,13 @@ Holdings is below the fold. Final workstation redesign makes Current Value,
 Total P&L, Total Investment, and Holdings the leading KPI strip; moves
 Latest Import and Last Synced into a compact freshness strip; promotes
 Current Holdings to the primary daily workbench directly under KPIs; and
-moves Update Holdings plus Recent Imports into a secondary operations/audit
-grid. No feature behavior changed.
+    moves Update Holdings plus Recent Imports into a secondary operations/audit
+    grid. The detail overlay now gets the same professional treatment:
+    section accents for Position, Technical State, ATHENA Review, Plan / Levels,
+    and Structural Review / Levels; purpose-specific label icons; signed
+    green/red value tones; directional chips for D1 Trend, OR Setup, and
+    SuperTrend direction; and visually distinct Daily Guidance, Structural
+    Guidance, and raw-context caveat callouts. No feature behavior changed.
 
 **Tests.** Added API coverage for full reset success, reset-token rejection,
 and active-sync reset rejection without mutation. Focused validation: My
@@ -81,9 +86,10 @@ the upload-first/confirm-and-sync refinement: combined focused pytest **81
 passed**; `node --check src/athena/api/static/js/08b-my-portfolio.js`
 passed; ruff passed on touched API/test Python files and `repository.py`
 with the repository's pre-existing SIM117 baseline ignored. Latest
-modal-first preview / full-page sync blocker / trading-indicator polish is
-covered by dashboard-contract assertions and ready for the same focused
-validation slice.
+    modal-first preview / full-page sync blocker / trading-indicator polish is
+    covered by dashboard-contract assertions. Detail-overlay visual hierarchy
+    is covered by dashboard-contract assertions for the new chip, tone, and
+    callout primitives and ready for the same focused validation slice.
 
 **Files changed:** `src/athena/api/v1/dtos/portfolio.py`,
 `src/athena/api/v1/routers/my_portfolio.py`,

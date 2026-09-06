@@ -901,8 +901,69 @@
     // classification. Support 1/Target 2/Target 3 are never rendered as
     // blank rows here; the PLAN / LEVELS section states the v0 methodology
     // NO-GO once, in words.
-    function myPortfolioDetailRow(label, value) {
-        return `<div class="my-portfolio-detail-row"><span class="my-portfolio-detail-label">${escapeMyPortfolioHtml(label)}</span><span class="my-portfolio-detail-value">${escapeMyPortfolioHtml(value)}</span></div>`;
+    function myPortfolioDetailRow(label, value, options = {}) {
+        return myPortfolioDetailRowHtml(label, escapeMyPortfolioHtml(value), options);
+    }
+
+    function myPortfolioDetailRowHtml(label, valueHtml, options = {}) {
+        const tone = options.tone ? ` tone-${escapeMyPortfolioHtml(options.tone)}` : "";
+        const icon = options.icon
+            ? `<i class="fa-solid ${escapeMyPortfolioHtml(options.icon)}" aria-hidden="true"></i>`
+            : "";
+        return `<div class="my-portfolio-detail-row${tone}">
+            <span class="my-portfolio-detail-label">${icon}${escapeMyPortfolioHtml(label)}</span>
+            <span class="my-portfolio-detail-value">${valueHtml}</span>
+        </div>`;
+    }
+
+    function myPortfolioDetailSignedRow(label, value, formatter, icon) {
+        const tone = myPortfolioToneFromNumber(value);
+        const valueText = value == null ? "Not available" : formatter(value);
+        return myPortfolioDetailRow(label, valueText, { icon, tone });
+    }
+
+    function myPortfolioDetailMarketChip(label, tone, icon) {
+        return `<span class="my-portfolio-detail-chip ${escapeMyPortfolioHtml(tone)}"><i class="fa-solid ${escapeMyPortfolioHtml(icon)}" aria-hidden="true"></i>${escapeMyPortfolioHtml(label)}</span>`;
+    }
+
+    function myPortfolioDetailTrendChip(value) {
+        const label = value ? String(value).toUpperCase() : "";
+        const map = {
+            UPTREND: ["Uptrend", "good", "fa-arrow-trend-up"],
+            DOWNTREND: ["Downtrend", "danger", "fa-arrow-trend-down"],
+            MIXED: ["Mixed", "warning", "fa-shuffle"],
+        };
+        const [display, tone, icon] = map[label] || ["Not available", "neutral", "fa-minus"];
+        return myPortfolioDetailMarketChip(display, tone, icon);
+    }
+
+    function myPortfolioDetailSetupChip(value) {
+        const label = value ? String(value).toUpperCase() : "";
+        const map = {
+            BREAKOUT: ["Breakout", "good", "fa-arrow-up-right-dots"],
+            BREAKDOWN: ["Breakdown", "danger", "fa-arrow-down-short-wide"],
+        };
+        const [display, tone, icon] = map[label] || ["Not available", "neutral", "fa-minus"];
+        return myPortfolioDetailMarketChip(display, tone, icon);
+    }
+
+    function myPortfolioDetailDirectionChip(value) {
+        const label = value ? String(value).toUpperCase() : "";
+        const map = {
+            BULLISH: ["Bullish", "good", "fa-arrow-trend-up"],
+            BEARISH: ["Bearish", "danger", "fa-arrow-trend-down"],
+        };
+        const [display, tone, icon] = map[label] || ["Not available", "neutral", "fa-minus"];
+        return myPortfolioDetailMarketChip(display, tone, icon);
+    }
+
+    function myPortfolioDetailPriceVsSupertrendTone(row, review) {
+        const price = Number(row?.last_price);
+        const st = Number(review?.supertrend_value);
+        if (!Number.isFinite(price) || !Number.isFinite(st)) return "neutral";
+        if (price > st) return "positive";
+        if (price < st) return "negative";
+        return "neutral";
     }
 
     function myPortfolioPriceVsSupertrend(row, review) {
@@ -981,13 +1042,22 @@
 
         const planLines = [];
         if (row?.key_trigger != null && row.key_trigger !== "") {
-            planLines.push(myPortfolioDetailRow("Plan Trigger", formatMyPortfolioMoney(row.key_trigger)));
+            planLines.push(myPortfolioDetailRow("Plan Trigger", formatMyPortfolioMoney(row.key_trigger), {
+                icon: "fa-bolt",
+                tone: "accent",
+            }));
         }
         if (row?.major_support_exit != null) {
-            planLines.push(myPortfolioDetailRow("Plan Stop", formatMyPortfolioMoney(row.major_support_exit)));
+            planLines.push(myPortfolioDetailRow("Plan Stop", formatMyPortfolioMoney(row.major_support_exit), {
+                icon: "fa-shield-halved",
+                tone: "negative",
+            }));
         }
         if (row?.target_1 != null) {
-            planLines.push(myPortfolioDetailRow("Plan T1", formatMyPortfolioMoney(row.target_1)));
+            planLines.push(myPortfolioDetailRow("Plan T1", formatMyPortfolioMoney(row.target_1), {
+                icon: "fa-location-arrow",
+                tone: "positive",
+            }));
         }
         const planSection = planLines.length
             ? `<div class="my-portfolio-detail-grid">${planLines.join("")}</div>`
@@ -998,15 +1068,15 @@
         const structuralSection = sr && sr.is_coherent
             ? `
                 <div class="my-portfolio-detail-grid">
-                    ${myPortfolioDetailRow("Support 1", myPortfolioStructuralZoneText(sr.support_1))}
-                    ${myPortfolioDetailRow("Major Support / Invalidation", myPortfolioStructuralZoneText(sr.major_support))}
-                    ${myPortfolioDetailRow("Review Trigger", myPortfolioStructuralZoneText(sr.review_trigger))}
-                    ${myPortfolioDetailRow("Target 1", myPortfolioStructuralZoneText(sr.target_1))}
-                    ${myPortfolioDetailRow("Target 2", myPortfolioStructuralZoneText(sr.target_2))}
-                    ${myPortfolioDetailRow("Target 3", myPortfolioStructuralZoneText(sr.target_3))}
-                    ${myPortfolioDetailRow("EXIT_RISK", sr.exit_risk ? "Elevated" : "Not triggered")}
+                    ${myPortfolioDetailRow("Support 1", myPortfolioStructuralZoneText(sr.support_1), { icon: "fa-layer-group", tone: sr.support_1 ? "positive" : "neutral" })}
+                    ${myPortfolioDetailRow("Major Support / Invalidation", myPortfolioStructuralZoneText(sr.major_support), { icon: "fa-shield-halved", tone: sr.major_support ? "negative" : "neutral" })}
+                    ${myPortfolioDetailRow("Review Trigger", myPortfolioStructuralZoneText(sr.review_trigger), { icon: "fa-bolt", tone: sr.review_trigger ? "accent" : "neutral" })}
+                    ${myPortfolioDetailRow("Target 1", myPortfolioStructuralZoneText(sr.target_1), { icon: "fa-location-arrow", tone: sr.target_1 ? "positive" : "neutral" })}
+                    ${myPortfolioDetailRow("Target 2", myPortfolioStructuralZoneText(sr.target_2), { icon: "fa-location-dot", tone: sr.target_2 ? "positive" : "neutral" })}
+                    ${myPortfolioDetailRow("Target 3", myPortfolioStructuralZoneText(sr.target_3), { icon: "fa-bullseye", tone: sr.target_3 ? "positive" : "neutral" })}
+                    ${myPortfolioDetailRow("EXIT_RISK", sr.exit_risk ? "Elevated" : "Not triggered", { icon: sr.exit_risk ? "fa-triangle-exclamation" : "fa-circle-check", tone: sr.exit_risk ? "negative" : "positive" })}
                 </div>
-                ${sr.guidance ? `<p class="my-portfolio-detail-guidance"><strong>Structural Guidance:</strong> ${escapeMyPortfolioHtml(sr.guidance)}</p>` : ""}
+                ${sr.guidance ? `<p class="my-portfolio-detail-guidance structural"><i class="fa-solid fa-route" aria-hidden="true"></i><span><strong>Structural Guidance:</strong> ${escapeMyPortfolioHtml(sr.guidance)}</span></p>` : ""}
                 ${structuralReasonMessages.length ? `<ul class="my-portfolio-detail-reasons">${structuralReasonMessages.map(msg => `<li>${escapeMyPortfolioHtml(msg)}</li>`).join("")}</ul>` : ""}
             `
             : `<p class="my-portfolio-detail-guidance text-muted">Structural Review is unavailable for this holding (insufficient or incoherent D1 history).</p>`;
@@ -1015,40 +1085,40 @@
             <div class="my-portfolio-detail-section" data-detail-section="position">
                 <h4>Position</h4>
                 <div class="my-portfolio-detail-grid">
-                    ${myPortfolioDetailRow("Qty", formatMyPortfolioNumber(row.qty ?? row.quantity))}
-                    ${myPortfolioDetailRow("Avg Price", formatMyPortfolioMoney(row.avg_price))}
-                    ${myPortfolioDetailRow("Last Price", row.last_price == null ? "Not available" : formatMyPortfolioMoney(row.last_price))}
-                    ${myPortfolioDetailRow("Investment", formatMyPortfolioMoney(row.investment))}
-                    ${myPortfolioDetailRow("Current Value", row.current_value == null ? "Not available" : formatMyPortfolioMoney(row.current_value))}
-                    ${myPortfolioDetailRow("P&L", row.pnl == null ? "Not available" : formatMyPortfolioMoney(row.pnl))}
-                    ${myPortfolioDetailRow("P&L %", row.pnl_pct == null ? "Not available" : formatMyPortfolioPct(row.pnl_pct))}
+                    ${myPortfolioDetailRow("Qty", formatMyPortfolioNumber(row.qty ?? row.quantity), { icon: "fa-layer-group" })}
+                    ${myPortfolioDetailRow("Avg Price", formatMyPortfolioMoney(row.avg_price), { icon: "fa-scale-balanced" })}
+                    ${myPortfolioDetailRow("Last Price", row.last_price == null ? "Not available" : formatMyPortfolioMoney(row.last_price), { icon: "fa-indian-rupee-sign", tone: row.last_price == null ? "neutral" : myPortfolioToneFromNumber(Number(row.last_price) - Number(row.avg_price)) })}
+                    ${myPortfolioDetailRow("Investment", formatMyPortfolioMoney(row.investment), { icon: "fa-wallet" })}
+                    ${myPortfolioDetailRow("Current Value", row.current_value == null ? "Not available" : formatMyPortfolioMoney(row.current_value), { icon: "fa-chart-line", tone: "accent" })}
+                    ${myPortfolioDetailSignedRow("P&L", row.pnl, formatMyPortfolioMoney, "fa-arrow-trend-up")}
+                    ${myPortfolioDetailSignedRow("P&L %", row.pnl_pct, formatMyPortfolioPct, "fa-percent")}
                 </div>
             </div>
             <div class="my-portfolio-detail-section" data-detail-section="technical">
                 <h4>Technical State</h4>
                 <div class="my-portfolio-detail-grid">
-                    ${myPortfolioDetailRow("D1 Trend", trendLabel || "Not available")}
-                    ${myPortfolioDetailRow("OR Setup", setupLabel)}
-                    ${myPortfolioDetailRow("SuperTrend direction", review?.supertrend_direction || "Not available")}
-                    ${myPortfolioDetailRow("SuperTrend value", review?.supertrend_value == null ? "Not available" : formatMyPortfolioMoney(review.supertrend_value))}
-                    ${myPortfolioDetailRow("Price vs SuperTrend", myPortfolioPriceVsSupertrend(row, review))}
-                    ${myPortfolioDetailRow("RSI14 (context only)", review?.rsi14 == null ? "Not available" : formatMyPortfolioNumber(review.rsi14))}
-                    ${myPortfolioDetailRow("Volume", review?.volume == null ? "Not available" : formatMyPortfolioNumber(review.volume))}
-                    ${myPortfolioDetailRow("Volume MA20", review?.volume_ma20 == null ? "Not available" : formatMyPortfolioNumber(review.volume_ma20))}
-                    ${myPortfolioDetailRow("Available-history high", myPortfolioAvailableHistoryHighText(review))}
-                    ${myPortfolioDetailRow("Daily Review as of", review?.as_of ? formatMyPortfolioTime(review.as_of) : "Not available")}
-                    ${myPortfolioDetailRow("Evidence as of", review?.evidence_as_of ? formatMyPortfolioTime(review.evidence_as_of) : "Not available")}
+                    ${myPortfolioDetailRowHtml("D1 Trend", myPortfolioDetailTrendChip(trendLabel), { icon: "fa-chart-line" })}
+                    ${myPortfolioDetailRowHtml("OR Setup", myPortfolioDetailSetupChip(setupLabel), { icon: "fa-border-top-left" })}
+                    ${myPortfolioDetailRowHtml("SuperTrend direction", myPortfolioDetailDirectionChip(review?.supertrend_direction), { icon: "fa-route" })}
+                    ${myPortfolioDetailRow("SuperTrend value", review?.supertrend_value == null ? "Not available" : formatMyPortfolioMoney(review.supertrend_value), { icon: "fa-wave-square", tone: "accent" })}
+                    ${myPortfolioDetailRow("Price vs SuperTrend", myPortfolioPriceVsSupertrend(row, review), { icon: "fa-code-compare", tone: myPortfolioDetailPriceVsSupertrendTone(row, review) })}
+                    ${myPortfolioDetailRow("RSI14 (context only)", review?.rsi14 == null ? "Not available" : formatMyPortfolioNumber(review.rsi14), { icon: "fa-gauge-high" })}
+                    ${myPortfolioDetailRow("Volume", review?.volume == null ? "Not available" : formatMyPortfolioNumber(review.volume), { icon: "fa-chart-column" })}
+                    ${myPortfolioDetailRow("Volume MA20", review?.volume_ma20 == null ? "Not available" : formatMyPortfolioNumber(review.volume_ma20), { icon: "fa-chart-simple" })}
+                    ${myPortfolioDetailRow("Available-history high", myPortfolioAvailableHistoryHighText(review), { icon: "fa-mountain-sun", tone: review?.latest_high_exceeds_prior_available_high ? "positive" : "neutral" })}
+                    ${myPortfolioDetailRow("Daily Review as of", review?.as_of ? formatMyPortfolioTime(review.as_of) : "Not available", { icon: "fa-calendar-check" })}
+                    ${myPortfolioDetailRow("Evidence as of", review?.evidence_as_of ? formatMyPortfolioTime(review.evidence_as_of) : "Not available", { icon: "fa-clock" })}
                 </div>
-                <p class="my-portfolio-detail-guidance text-muted">RSI14 is raw context only — no overbought/oversold interpretation. Volume/VMA20 are raw context only — no expansion/compression interpretation.</p>
+                <p class="my-portfolio-detail-guidance muted"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><span>RSI14 is raw context only — no overbought/oversold interpretation. Volume/VMA20 are raw context only — no expansion/compression interpretation.</span></p>
             </div>
             <div class="my-portfolio-detail-section" data-detail-section="review">
                 <h4>ATHENA Review</h4>
                 <div class="my-portfolio-detail-grid">
-                    ${myPortfolioDetailRow("Status", row.status || "Not available")}
-                    ${myPortfolioDetailRow("Conviction", row.conviction || "Not available")}
-                    ${myPortfolioDetailRow("Next Action", row.next_action || "Not available")}
+                    ${myPortfolioDetailRowHtml("Status", myPortfolioStatusPill(row.status, row), { icon: "fa-heart-pulse" })}
+                    ${myPortfolioDetailRowHtml("Conviction", myPortfolioConvictionCell(row.conviction, row), { icon: "fa-signal" })}
+                    ${myPortfolioDetailRowHtml("Next Action", myPortfolioActionPill(row.next_action, row), { icon: "fa-compass" })}
                 </div>
-                <p class="my-portfolio-detail-guidance"><strong>Daily Guidance:</strong> ${escapeMyPortfolioHtml(review?.guidance || "Daily Review unavailable.")}</p>
+                <p class="my-portfolio-detail-guidance review"><i class="fa-solid fa-bolt" aria-hidden="true"></i><span><strong>Daily Guidance:</strong> ${escapeMyPortfolioHtml(review?.guidance || "Daily Review unavailable.")}</span></p>
                 ${reasonMessages.length ? `<ul class="my-portfolio-detail-reasons">${reasonMessages.map(msg => `<li>${escapeMyPortfolioHtml(msg)}</li>`).join("")}</ul>` : ""}
             </div>
             <div class="my-portfolio-detail-section" data-detail-section="plan">

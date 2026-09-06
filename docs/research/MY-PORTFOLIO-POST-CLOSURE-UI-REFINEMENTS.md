@@ -17,6 +17,7 @@ Owner request: improve My Portfolio usability after the Portfolio track closure 
 - Correct the symbol detail overlay so each newly opened holding starts at the top rather than inheriting the previous modal scroll position.
 - Correct the Sync Existing Holdings blocker so it is viewport-owned and visible even when Current Holdings is below the fold.
 - Redesign the My Portfolio page into a trading-workstation hierarchy without changing any feature behavior: command center, status banner, KPI strip, holdings workbench, then secondary update/audit panels.
+- Redesign the holding detail overlay with professional trading visual hierarchy: section accents, row icons, signed value tones, directional chips, and differentiated guidance callouts.
 
 ## Decisions
 
@@ -36,6 +37,7 @@ Owner request: improve My Portfolio usability after the Portfolio track closure 
 - Detailed preview/reconciliation tables remain available in an `Upload Preview` overlay after the inline counts and issue chips identify whether attention is needed.
 - Table colors and icons are presentation-only affordances over existing values. They do not change Status, Conviction, D1 Trend, Opening Range Setup, Daily Review, Next Action, TradePlan, Structural Review, or any Portfolio snapshot semantics.
 - The page hierarchy is presentation-only. The Current Holdings table is the primary daily-work surface; upload/import history are operational/audit surfaces and therefore sit below the trading workbench.
+- Detail-overlay colors, icons, and chips are presentation-only. They describe the already-computed position, technical, daily-review, TradePlan, and structural-review values; they do not introduce new classifications or trading rules.
 
 ## Implementation Notes
 
@@ -58,6 +60,9 @@ Owner request: improve My Portfolio usability after the Portfolio track closure 
 - The tapped-holding detail overlay is wider and section-framed, with roomier grids, value spacing, guidance callouts, and reason-list line-height for easier scanning.
 - Opening a different holding detail always resets the modal body and container scroll position to the top.
 - The page now uses a professional trading-workstation layout: compact command center, global status banner, a four-card KPI strip led by Current Value and Total P&L, a compact freshness strip for Latest Import/Last Synced metadata, primary Current Holdings workbench, and a secondary two-column operations area for Update Holdings and Recent Imports.
+- The detail overlay now uses section-level visual hierarchy: Position, Technical State, ATHENA Review, Plan / Levels, and Structural Review / Levels each get a subtle section accent; field labels get purpose-specific icons; positive P&L and favorable price context render green, negative values render red, warning/trigger fields render amber, and neutral unavailable fields stay muted.
+- D1 Trend, Opening Range Setup, and SuperTrend direction now render as compact directional chips inside the detail overlay, matching the main table's trading scan language while remaining separate from methodology semantics.
+- Daily Guidance, Structural Guidance, and raw-context notes are differentiated by callout tone so the user can scan recommendation, structural context, and caveat text without reading the whole modal linearly.
 - Full reset is gated by a modal requiring the exact `RESET` token.
 
 ## Methodology Boundary
@@ -76,4 +81,5 @@ Focused validation:
 - `node --check src/athena/api/static/js/08b-my-portfolio.js`: passed.
 - Ruff: passed on touched API/test Python files; `repository.py` passed with the repository's pre-existing SIM117 baseline ignored.
 - Second-pass upload-first / confirm-and-sync validation: combined focused pytest 81 passed; JS syntax check passed; ruff passed.
+- Detail-overlay visual hierarchy pass: dashboard asset version advanced to `9.170.0`; dashboard contract tests assert the detail chip/tone/callout primitives.
 - Targeted mypy: not a clean gate because `my_portfolio_service.py` has pre-existing broad typing debt unrelated to this change.
