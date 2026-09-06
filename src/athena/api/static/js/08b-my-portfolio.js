@@ -23,6 +23,12 @@
     const myPortfolioPreviewUnresolved = document.getElementById("my-portfolio-preview-unresolved");
     const myPortfolioPreviewAmbiguous = document.getElementById("my-portfolio-preview-ambiguous");
     const myPortfolioPreviewDuplicates = document.getElementById("my-portfolio-preview-duplicates");
+    const myPortfolioInlinePreview = document.getElementById("my-portfolio-inline-preview");
+    const myPortfolioInlineTotal = document.getElementById("my-portfolio-inline-total");
+    const myPortfolioInlineValid = document.getElementById("my-portfolio-inline-valid");
+    const myPortfolioInlineSkipped = document.getElementById("my-portfolio-inline-skipped");
+    const myPortfolioInlineDuplicates = document.getElementById("my-portfolio-inline-duplicates");
+    const myPortfolioPreviewIssues = document.getElementById("my-portfolio-preview-issues");
     const myPortfolioPreviewRows = document.getElementById("my-portfolio-preview-rows");
     const myPortfolioReconciliationSummary = document.getElementById("my-portfolio-reconciliation-summary");
     const myPortfolioReconciliationRows = document.getElementById("my-portfolio-reconciliation-rows");
@@ -68,6 +74,7 @@
             key: "pnl_pct",
             direction: "desc",
         },
+        syncCompletion: null,
     };
 
     function escapeMyPortfolioHtml(value) {
@@ -534,6 +541,54 @@
         return Boolean(preview) && preview.status === "PREVIEWED" && Number(preview.total_rows || 0) > 0;
     }
 
+    function myPortfolioPreviewIssueSummary(preview) {
+        const rows = preview?.rows || [];
+        return rows
+            .filter(row => (row.validation_errors || []).length || String(row.mapping_state || "").toUpperCase() !== "RESOLVED")
+            .slice(0, 5)
+            .map(row => {
+                const reasons = [
+                    ...(row.validation_errors || []),
+                    String(row.mapping_state || "").toUpperCase() === "RESOLVED" ? "" : String(row.mapping_state || "UNRESOLVED").toUpperCase(),
+                ].filter(Boolean);
+                return `${row.raw_symbol || row.normalized_symbol || row.source_row_id}: ${reasons.join(", ")}`;
+            });
+    }
+
+    function renderMyPortfolioInlinePreview(preview) {
+        if (!myPortfolioInlinePreview) return;
+        if (!preview) {
+            myPortfolioInlinePreview.hidden = true;
+            if (myPortfolioPreviewIssues) {
+                myPortfolioPreviewIssues.hidden = true;
+                myPortfolioPreviewIssues.innerHTML = "";
+            }
+            return;
+        }
+        const duplicates = countMyPortfolioDuplicateRows(preview);
+        const skipped = Number(preview.rejected_rows || 0)
+            + Number(preview.unresolved_rows || 0)
+            + Number(preview.ambiguous_rows || 0)
+            + duplicates;
+        if (myPortfolioInlineTotal) myPortfolioInlineTotal.textContent = formatMyPortfolioNumber(preview.total_rows);
+        if (myPortfolioInlineValid) myPortfolioInlineValid.textContent = formatMyPortfolioNumber(preview.accepted_rows);
+        if (myPortfolioInlineSkipped) myPortfolioInlineSkipped.textContent = formatMyPortfolioNumber(skipped);
+        if (myPortfolioInlineDuplicates) myPortfolioInlineDuplicates.textContent = formatMyPortfolioNumber(duplicates);
+        myPortfolioInlinePreview.hidden = false;
+        const issues = myPortfolioPreviewIssueSummary(preview);
+        if (myPortfolioPreviewIssues) {
+            if (issues.length) {
+                myPortfolioPreviewIssues.hidden = false;
+                myPortfolioPreviewIssues.innerHTML = issues
+                    .map(issue => `<span>${escapeMyPortfolioHtml(issue)}</span>`)
+                    .join("");
+            } else {
+                myPortfolioPreviewIssues.hidden = true;
+                myPortfolioPreviewIssues.innerHTML = "";
+            }
+        }
+    }
+
     function setMyPortfolioUploadStage(stage) {
         document.querySelectorAll("[data-upload-step]").forEach(stepEl => {
             const step = stepEl.getAttribute("data-upload-step");
@@ -551,7 +606,7 @@
         if (Object.prototype.hasOwnProperty.call(next, "syncing")) {
             myPortfolioState.syncing = Boolean(next.syncing);
         }
-        const busy = myPortfolioState.previewing || myPortfolioState.confirming;
+        const busy = myPortfolioState.previewing || myPortfolioState.confirming || myPortfolioState.syncing;
         if (myPortfolioFileInput) myPortfolioFileInput.disabled = busy;
         if (myPortfolioCancelPreview) {
             myPortfolioCancelPreview.disabled = busy || !myPortfolioState.preview;
@@ -559,7 +614,7 @@
         if (myPortfolioConfirm) {
             myPortfolioConfirm.disabled = busy || !previewCanConfirm(myPortfolioState.preview);
             const label = myPortfolioConfirm.querySelector("span");
-            if (label) label.textContent = myPortfolioState.confirming ? "Confirming" : "Confirm Portfolio Update";
+            if (label) label.textContent = myPortfolioState.confirming ? "Confirming & Syncing" : "Confirm & Sync Portfolio";
         }
         if (myPortfolioConfirmActions) {
             myPortfolioConfirmActions.hidden = !myPortfolioState.preview;
@@ -567,7 +622,7 @@
         if (myPortfolioSync) {
             myPortfolioSync.disabled = myPortfolioState.syncing;
             const label = myPortfolioSync.querySelector("span");
-            if (label) label.textContent = myPortfolioState.syncing ? "Syncing Portfolio" : "Sync Portfolio";
+            if (label) label.textContent = myPortfolioState.syncing ? "Syncing Portfolio" : "Sync Existing Holdings";
         }
         if (myPortfolioResetOpen) {
             myPortfolioResetOpen.disabled = myPortfolioState.syncing || myPortfolioState.previewing || myPortfolioState.confirming;
@@ -1128,10 +1183,13 @@
         myPortfolioState.preview = preview;
         if (!preview || !myPortfolioPreview) {
             if (myPortfolioPreview) myPortfolioPreview.hidden = true;
+            renderMyPortfolioInlinePreview(null);
             setMyPortfolioBusy();
             return;
         }
         myPortfolioPreview.hidden = false;
+        myPortfolioPreview.open = false;
+        renderMyPortfolioInlinePreview(preview);
         myPortfolioPreviewTotal.textContent = formatMyPortfolioNumber(preview.total_rows);
         myPortfolioPreviewValid.textContent = formatMyPortfolioNumber(preview.accepted_rows);
         myPortfolioPreviewInvalid.textContent = formatMyPortfolioNumber(preview.rejected_rows);
@@ -1147,7 +1205,7 @@
         if (preview.status === "FAILED") {
             showMyPortfolioAlert(topMessages.join(" ") || "The uploaded file could not be parsed. Review the required columns and upload again.", "danger");
         } else if (needsAttention === 0) {
-            showMyPortfolioAlert("Preview is clean. Review the reconciliation diff before confirming.", "good");
+            showMyPortfolioAlert("Preview is clean. Confirm & Sync Portfolio to replace holdings and refresh analysis.", "good");
         } else if (previewCanConfirm(preview)) {
             // Confirming is best-effort per row, never all-or-nothing: no
             // manual CSV edit needed. Any symbol unresolved only because
@@ -1155,7 +1213,7 @@
             // whatever still can't be resolved, or is structurally invalid,
             // is simply excluded and reported — the rest still confirms.
             showMyPortfolioAlert(
-                `${needsAttention} of ${preview.total_rows} row(s) need attention. Confirming will try to auto-resolve unrecognized symbols and apply every row it can — anything it still can't will be skipped and reported, not upload-blocking.`,
+                `${needsAttention} of ${preview.total_rows} row(s) need attention. Confirm & Sync will apply every row ATHENA can resolve and skip the rest.`,
                 "warning"
             );
         } else {
@@ -1165,7 +1223,7 @@
 
         renderMyPortfolioPreviewRows(preview.rows || []);
         renderMyPortfolioReconciliation(preview.proposed_changes || []);
-        myPortfolioUploadState.textContent = `Preview ready for ${preview.filename}. Review the row quality and reconciliation diff, then confirm or discard.`;
+        myPortfolioUploadState.textContent = `Preview ready for ${preview.filename}. Confirm & Sync will replace holdings and refresh analysis in one step.`;
         setMyPortfolioBusy();
     }
 
@@ -1240,7 +1298,7 @@
     }
 
     async function uploadMyPortfolioFile(file) {
-        if (!file || myPortfolioState.previewing || myPortfolioState.confirming) return;
+        if (!file || myPortfolioState.previewing || myPortfolioState.confirming || myPortfolioState.syncing) return;
         myPortfolioState.selectedFile = file;
         myPortfolioSelectedFile.textContent = file.name;
         myPortfolioUploadState.textContent = "Uploading and parsing on the server...";
@@ -1267,6 +1325,7 @@
                 console.error("My Portfolio upload failed", err);
                 showMyPortfolioAlert("Upload failed before ATHENA could create a preview.", "danger");
                 myPortfolioUploadState.textContent = "Upload failed. Choose the file again to retry.";
+                renderMyPortfolioInlinePreview(null);
             }
         } finally {
             setMyPortfolioBusy();
@@ -1277,7 +1336,7 @@
         const preview = myPortfolioState.preview;
         if (!previewCanConfirm(preview) || myPortfolioState.confirming) return;
         setMyPortfolioBusy({ confirming: true });
-        myPortfolioUploadState.textContent = "Confirming portfolio update...";
+        myPortfolioUploadState.textContent = "Confirming holdings, then starting Portfolio Sync...";
         try {
             const response = await apiRequest(
                 `/api/v1/my-portfolio/imports/${encodeURIComponent(preview.import_id)}/confirm`,
@@ -1305,13 +1364,15 @@
             myPortfolioState.preview = null;
             myPortfolioState.selectedFile = null;
             if (myPortfolioPreview) myPortfolioPreview.hidden = true;
-            myPortfolioUploadState.textContent = "Choose a holdings file to create a preview.";
+            renderMyPortfolioInlinePreview(null);
+            myPortfolioUploadState.textContent = "Holdings confirmed. Refreshing Portfolio analysis...";
             await loadMyPortfolioWorkspace();
-            if (myPortfolioSnapshotIsStale()) {
-                showMyPortfolioAlert(`${successMessage} Portfolio analysis is now stale. Sync Portfolio to refresh ATHENA analysis.`, "warning");
-            } else {
-                showMyPortfolioAlert(successMessage, skippedRows.length ? "warning" : "good");
-            }
+            showMyPortfolioAlert(`${successMessage} Starting Portfolio Sync now...`, skippedRows.length ? "warning" : "good");
+            await startMyPortfolioSync({
+                source: "upload-confirm",
+                successMessage: `${successMessage} Portfolio analysis refreshed.`,
+                partialMessage: `${successMessage} Portfolio Sync finished partial — some holdings could not be analyzed.`,
+            });
         } catch (err) {
             console.error("My Portfolio confirmation failed", err);
             const detail = String(err?.data?.detail || "");
@@ -1387,8 +1448,9 @@
         renderMyPortfolioSyncOverlay();
     }
 
-    async function startMyPortfolioSync() {
+    async function startMyPortfolioSync(options = {}) {
         if (myPortfolioState.syncing) return;
+        myPortfolioState.syncCompletion = options;
         setMyPortfolioBusy({ syncing: true });
         try {
             const response = await apiRequest("/api/v1/my-portfolio/sync", {
@@ -1402,6 +1464,7 @@
         } catch (err) {
             console.error("Failed to start My Portfolio Sync", err);
             showMyPortfolioAlert("Could not start Portfolio Sync. Existing holdings and last good snapshot are unchanged.", "danger");
+            myPortfolioState.syncCompletion = null;
             setMyPortfolioBusy({ syncing: false });
             renderMyPortfolioSyncOverlay();
         }
@@ -1427,15 +1490,23 @@
                     myPortfolioState.snapshot = snapshotRes?.data || null;
                     renderMyPortfolioHoldings(myPortfolioState.holdings);
                     renderMyPortfolioSummary();
+                    const completion = myPortfolioState.syncCompletion || {};
+                    myPortfolioState.syncCompletion = null;
+                    if (completion.source === "upload-confirm") {
+                        myPortfolioUploadState.textContent = "Portfolio updated and synced. Choose another holdings file to update again.";
+                    }
                     if (run.status === "PARTIAL") {
                         showMyPortfolioAlert(
-                            `Portfolio Sync partial — ${run.succeeded_holdings} of ${run.total_holdings} holdings analyzed.${myPortfolioSyncFailureSummary(run)} Failed rows remain visible in the table.`,
+                            completion.partialMessage
+                                ? `${completion.partialMessage} ${run.succeeded_holdings} of ${run.total_holdings} holdings analyzed.${myPortfolioSyncFailureSummary(run)}`
+                                : `Portfolio Sync partial — ${run.succeeded_holdings} of ${run.total_holdings} holdings analyzed.${myPortfolioSyncFailureSummary(run)} Failed rows remain visible in the table.`,
                             "warning"
                         );
                     } else {
-                        showMyPortfolioAlert("Portfolio Sync completed. Snapshot refreshed.", "good");
+                        showMyPortfolioAlert(completion.successMessage || "Portfolio Sync completed. Snapshot refreshed.", "good");
                     }
                 } else {
+                    myPortfolioState.syncCompletion = null;
                     showMyPortfolioAlert("Portfolio Sync failed. Previous completed snapshot remains unchanged.", "danger");
                     // syncing just flipped false above — re-render so the Actions
                     // column's busy/spinner state clears even on a failed sync.
@@ -1459,6 +1530,7 @@
         if (myPortfolioFileInput) myPortfolioFileInput.value = "";
         if (myPortfolioSelectedFile) myPortfolioSelectedFile.textContent = "No file selected";
         if (myPortfolioPreview) myPortfolioPreview.hidden = true;
+        renderMyPortfolioInlinePreview(null);
         if (myPortfolioUploadState) myPortfolioUploadState.textContent = "Choose a holdings file to create a preview.";
         setMyPortfolioCancelLabel("Discard Preview");
         clearMyPortfolioAlert();
@@ -1531,7 +1603,7 @@
     });
     myPortfolioConfirm?.addEventListener("click", confirmMyPortfolioPreview);
     myPortfolioCancelPreview?.addEventListener("click", clearMyPortfolioPreview);
-    myPortfolioSync?.addEventListener("click", startMyPortfolioSync);
+    myPortfolioSync?.addEventListener("click", () => startMyPortfolioSync());
     myPortfolioSortField?.addEventListener("change", event => {
         myPortfolioState.sort.key = event.target.value || "pnl_pct";
         renderMyPortfolioHoldings(myPortfolioState.holdings);

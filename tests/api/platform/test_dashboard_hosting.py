@@ -303,8 +303,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.163.0" in html
-    assert "dashboard.js?v=9.163.0" in html
+    assert "dashboard.css?v=9.164.0" in html
+    assert "dashboard.js?v=9.164.0" in html
     assert "function decisionConfidenceBand" in js
     assert "analysis?.confidence_level" in js
     assert "confidence reflects evidence reliability, not expected profit" in js
@@ -359,11 +359,25 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert "Upload creates a preview first" in html
     assert "up to 2 MB and 2,000 rows" in html
     assert "Choose Holdings File" in html
+    assert html.count("Choose Holdings File") == 1
     assert 'id="my-portfolio-sync" class="btn" type="button"' in html
-    assert "Sync Portfolio" in html
+    assert "Sync Existing Holdings" in html
     assert 'id="my-portfolio-reset-open"' in html
     assert 'id="my-portfolio-reset-modal"' in html
     assert "Delete My Portfolio" in html
+    assert 'id="my-portfolio-alert" class="my-portfolio-alert" hidden' in html
+    assert html.find('id="my-portfolio-alert"') > html.find('class="card my-portfolio-upload-panel"')
+    assert html.find('id="my-portfolio-alert"') < html.find('class="grid-layout cols-3 my-portfolio-summary"')
+    assert html.find('class="card my-portfolio-upload-panel"') < html.find(
+        'class="grid-layout cols-3 my-portfolio-summary"'
+    )
+    assert "Confirm &amp; sync" in html
+    assert "ATHENA replaces holdings, then refreshes analysis automatically." in html
+    assert 'id="my-portfolio-inline-preview"' in html
+    assert 'id="my-portfolio-preview-issues"' in html
+    assert '<details id="my-portfolio-preview" class="my-portfolio-preview" hidden>' in html
+    assert "Preview Details" in html
+    assert "Confirm &amp; Sync Portfolio" in html
     assert "No trades or realized P&amp;L are inferred" in html
     assert 'id="my-portfolio-confirm-actions" class="my-portfolio-confirm-actions" hidden' in html
     assert '<col class="my-portfolio-col-index">' in html
@@ -443,7 +457,7 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     # Confirm button on rejected/unresolved/ambiguous/duplicate row counts.
     assert "Number(preview.total_rows || 0) > 0" in js
     assert "skipped_rows" in js
-    assert "auto-resolve unrecognized symbols" in js
+    assert "Confirm & Sync will apply every row ATHENA can resolve and skip the rest" in js
     assert ".my-portfolio-sync-overlay.active" in my_portfolio_css
     assert "@keyframes my-portfolio-sync-overlay-spin" in my_portfolio_css
     assert "prefers-reduced-motion: reduce" in my_portfolio_css
@@ -530,7 +544,16 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert "/api/v1/my-portfolio/imports" in js
     assert "/api/v1/my-portfolio/sync" in js
     assert "/api/v1/my-portfolio/snapshot" in js
-    assert "function startMyPortfolioSync()" in js
+    assert "async function startMyPortfolioSync(options = {})" in js
+    assert 'myPortfolioSync?.addEventListener("click", () => startMyPortfolioSync())' in js
+    assert "Confirming holdings, then starting Portfolio Sync" in js
+    assert "Confirm & Sync will replace holdings and refresh analysis in one step" in js
+    assert "Starting Portfolio Sync now" in js
+    assert "Portfolio updated and synced. Choose another holdings file to update again." in js
+    assert "Sync Existing Holdings" in js
+    assert "function myPortfolioPreviewIssueSummary(preview)" in js
+    assert "function renderMyPortfolioInlinePreview(preview)" in js
+    assert "renderMyPortfolioInlinePreview(preview)" in js
     assert "function pollMyPortfolioSync(syncRunId)" in js
     assert "function renderMyPortfolioSnapshotRows(rows)" in js
     assert "function myPortfolioSnapshotIsStale" in js
@@ -588,7 +611,6 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert "Portfolio holdings changed since this analysis" in js
     assert "Portfolio analysis currentness could not be verified" in js
     assert "Sync Portfolio to generate a current verified snapshot" in js
-    assert "Portfolio analysis is now stale" in js
     assert "Portfolio Sync is currently running. Wait for it to finish" in js
     assert "Preview remains available. Confirm after Portfolio Sync finishes." in js
     assert "Portfolio holdings are imported. Sync Portfolio" in js

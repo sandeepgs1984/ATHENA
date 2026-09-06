@@ -10,10 +10,10 @@ status updated on approval.
 
 **Summary.** Owner requested a first post-closure UX refinement set for My
 Portfolio: serial numbering, Excel-like sorting, a complete reset option,
-and a clearer upload/preview/confirm experience. Implemented as operational
-UI/API polish only after the Portfolio track closure; no Portfolio
-methodology, evidence primitive, interpretation version, or snapshot meaning
-changed.
+and a clearer upload/preview/confirm/sync experience. Implemented as
+operational UI/API polish only after the Portfolio track closure; no
+Portfolio methodology, evidence primitive, interpretation version, or
+snapshot meaning changed.
 
 **Design.** Current Holdings sorting is client-side presentation state. The
 stored holdings order, snapshot rows, import rows, sync runs, and Portfolio
@@ -36,9 +36,17 @@ with field selector, direction toggle, reset-to-default, clickable sortable
 headers, and a live sort summary. Supported sort fields: P&L %, P&L,
 Conviction, Next Action, Status, Trend / Setup, Qty, Avg Price, Last Price,
 Symbol, and Daily Review. Added a dedicated Reset button and typed modal.
-Reworked Update Holdings into a staged flow (`Choose file` -> `Review
-preview` -> `Confirm update`) and renamed Cancel to `Discard Preview`, so an
-uploaded preview is clearly separate from the current confirmed portfolio.
+Reworked Update Holdings into the first operational block on the page,
+ahead of the read-only summary metrics, with one staged flow (`Choose file`
+-> `Review preview` -> `Confirm & sync`). Preview counts and the first row
+issues render inline inside the upload card; the full preview/reconciliation
+tables are still available behind `Preview Details`. Alerts now live inside
+the upload card, `Cancel` is labeled `Discard Preview`, `Confirm Portfolio
+Update` is labeled `Confirm & Sync Portfolio`, and a successful confirmation
+automatically starts the existing Portfolio Sync pipeline. The header action
+is renamed `Sync Existing Holdings` and the duplicate header file-picker was
+removed, so manual refresh is distinct from the upload confirmation flow and
+file selection appears only inside `Update Holdings`.
 
 **Tests.** Added API coverage for full reset success, reset-token rejection,
 and active-sync reset rejection without mutation. Focused validation: My
@@ -49,7 +57,11 @@ files and on `repository.py` with the repository's pre-existing SIM117
 nested-`with` baseline ignored; the new reset helper itself uses one combined
 transaction context and adds no new SIM117 instance. Targeted mypy on the
 service stack remains blocked by pre-existing broad `my_portfolio_service.py`
-typing debt unrelated to this UI/reset change.
+typing debt unrelated to this UI/reset change. Second-pass validation after
+the upload-first/confirm-and-sync refinement: combined focused pytest **81
+passed**; `node --check src/athena/api/static/js/08b-my-portfolio.js`
+passed; ruff passed on touched API/test Python files and `repository.py`
+with the repository's pre-existing SIM117 baseline ignored.
 
 **Files changed:** `src/athena/api/v1/dtos/portfolio.py`,
 `src/athena/api/v1/routers/my_portfolio.py`,

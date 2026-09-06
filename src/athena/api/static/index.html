@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.163.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.164.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -482,14 +482,9 @@
                                 <p class="metric-desc">Canonical current holdings from confirmed imports. Portfolio Sync analysis reflects the latest successful or partial Sync.</p>
                             </div>
                             <div class="my-portfolio-actions">
-                                <label class="btn my-portfolio-upload-btn" for="my-portfolio-file">
-                                    <i class="fa-solid fa-upload" aria-hidden="true"></i>
-                                    <span>Upload / Update Holdings</span>
-                                </label>
-                                <input id="my-portfolio-file" class="sr-only" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
                                 <button id="my-portfolio-sync" class="btn" type="button" title="Analyze confirmed holdings through ATHENA's persisted market state">
                                     <i class="fa-solid fa-rotate" aria-hidden="true"></i>
-                                    <span>Sync Portfolio</span>
+                                    <span>Sync Existing Holdings</span>
                                 </button>
                                 <button id="my-portfolio-reset-open" class="btn btn-danger-outline" type="button" title="Clear all My Portfolio state">
                                     <i class="fa-solid fa-trash-can" aria-hidden="true"></i>
@@ -497,8 +492,66 @@
                                 </button>
                             </div>
                         </div>
-
-                        <div id="my-portfolio-alert" class="my-portfolio-alert" hidden></div>
+                        <div class="card my-portfolio-upload-panel">
+                            <div class="card-header">
+                                <div>
+                                    <h2>Update Holdings</h2>
+                                    <p class="metric-desc">Upload creates a preview first. Current holdings change only after confirmation.</p>
+                                </div>
+                                <span id="my-portfolio-selected-file" class="my-portfolio-file-name">No file selected</span>
+                            </div>
+                            <div class="card-body">
+                                <div id="my-portfolio-alert" class="my-portfolio-alert" hidden></div>
+                                <div class="my-portfolio-upload-flow" aria-live="polite">
+                                    <div class="my-portfolio-upload-step active" data-upload-step="choose">
+                                        <span class="my-portfolio-step-index">1</span>
+                                        <div>
+                                            <strong>Choose file</strong>
+                                            <span>Symbol, Qty, Avg Price. CSV/XLSX up to 2 MB and 2,000 rows.</span>
+                                        </div>
+                                    </div>
+                                    <div class="my-portfolio-upload-step" data-upload-step="preview">
+                                        <span class="my-portfolio-step-index">2</span>
+                                        <div>
+                                            <strong>Review preview</strong>
+                                            <span>ATHENA shows row quality and added/updated/removed holdings.</span>
+                                        </div>
+                                    </div>
+                                    <div class="my-portfolio-upload-step" data-upload-step="confirm">
+                                        <span class="my-portfolio-step-index">3</span>
+                                        <div>
+                                            <strong>Confirm &amp; sync</strong>
+                                            <span>ATHENA replaces holdings, then refreshes analysis automatically.</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div id="my-portfolio-inline-preview" class="my-portfolio-inline-preview" hidden>
+                                    <span><strong id="my-portfolio-inline-total">0</strong> rows</span>
+                                    <span><strong id="my-portfolio-inline-valid">0</strong> accepted</span>
+                                    <span><strong id="my-portfolio-inline-skipped">0</strong> skipped</span>
+                                    <span><strong id="my-portfolio-inline-duplicates">0</strong> duplicates</span>
+                                </div>
+                                <div id="my-portfolio-preview-issues" class="my-portfolio-preview-issues" hidden></div>
+                                <div class="my-portfolio-upload-body">
+                                    <div>
+                                        <div id="my-portfolio-upload-state" class="metric-desc">Choose a holdings file to create a preview.</div>
+                                        <p class="metric-desc my-portfolio-confirm-note">Confirmation replaces ATHENA's current My Portfolio holdings with the uploaded snapshot. No trades or realized P&amp;L are inferred.</p>
+                                    </div>
+                                    <input id="my-portfolio-file" class="sr-only" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+                                    <label class="btn btn-secondary my-portfolio-upload-btn" for="my-portfolio-file">
+                                        <i class="fa-solid fa-file-arrow-up" aria-hidden="true"></i>
+                                        <span>Choose Holdings File</span>
+                                    </label>
+                                    <div id="my-portfolio-confirm-actions" class="my-portfolio-confirm-actions" hidden>
+                                        <button id="my-portfolio-cancel-preview" class="btn btn-secondary" type="button" disabled>Discard Preview</button>
+                                        <button id="my-portfolio-confirm" class="btn" type="button" disabled>
+                                            <i class="fa-solid fa-check" aria-hidden="true"></i>
+                                            <span>Confirm &amp; Sync Portfolio</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
 
                         <div class="grid-layout cols-3 my-portfolio-summary">
                             <div class="card val-card">
@@ -545,59 +598,8 @@
                             </div>
                         </div>
 
-                        <div class="card my-portfolio-upload-panel">
-                            <div class="card-header">
-                                <div>
-                                    <h2>Update Holdings</h2>
-                                    <p class="metric-desc">Upload creates a preview first. Current holdings change only after confirmation.</p>
-                                </div>
-                                <span id="my-portfolio-selected-file" class="my-portfolio-file-name">No file selected</span>
-                            </div>
-                            <div class="card-body">
-                                <div class="my-portfolio-upload-flow" aria-live="polite">
-                                    <div class="my-portfolio-upload-step active" data-upload-step="choose">
-                                        <span class="my-portfolio-step-index">1</span>
-                                        <div>
-                                            <strong>Choose file</strong>
-                                            <span>Symbol, Qty, Avg Price. CSV/XLSX up to 2 MB and 2,000 rows.</span>
-                                        </div>
-                                    </div>
-                                    <div class="my-portfolio-upload-step" data-upload-step="preview">
-                                        <span class="my-portfolio-step-index">2</span>
-                                        <div>
-                                            <strong>Review preview</strong>
-                                            <span>ATHENA shows row quality and added/updated/removed holdings.</span>
-                                        </div>
-                                    </div>
-                                    <div class="my-portfolio-upload-step" data-upload-step="confirm">
-                                        <span class="my-portfolio-step-index">3</span>
-                                        <div>
-                                            <strong>Confirm update</strong>
-                                            <span>Only then does the uploaded snapshot replace current holdings.</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="my-portfolio-upload-body">
-                                    <div>
-                                        <div id="my-portfolio-upload-state" class="metric-desc">Choose a holdings file to create a preview.</div>
-                                        <p class="metric-desc my-portfolio-confirm-note">Confirmation replaces ATHENA's current My Portfolio holdings with the uploaded snapshot. No trades or realized P&amp;L are inferred.</p>
-                                    </div>
-                                    <label class="btn btn-secondary my-portfolio-upload-btn" for="my-portfolio-file">
-                                        <i class="fa-solid fa-file-arrow-up" aria-hidden="true"></i>
-                                        <span>Choose Holdings File</span>
-                                    </label>
-                                    <div id="my-portfolio-confirm-actions" class="my-portfolio-confirm-actions" hidden>
-                                        <button id="my-portfolio-cancel-preview" class="btn btn-secondary" type="button" disabled>Discard Preview</button>
-                                        <button id="my-portfolio-confirm" class="btn" type="button" disabled>
-                                            <i class="fa-solid fa-check" aria-hidden="true"></i>
-                                            <span>Confirm Portfolio Update</span>
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div id="my-portfolio-preview" class="my-portfolio-preview" hidden>
+                        <details id="my-portfolio-preview" class="my-portfolio-preview" hidden>
+                            <summary class="my-portfolio-preview-summary">Preview Details</summary>
                             <div class="grid-layout my-portfolio-preview-counts">
                                 <div class="card val-card"><div class="card-body"><h3>Total rows</h3><div id="my-portfolio-preview-total" class="metric-value">0</div></div></div>
                                 <div class="card val-card"><div class="card-body"><h3>Valid</h3><div id="my-portfolio-preview-valid" class="metric-value">0</div></div></div>
@@ -655,7 +657,7 @@
                                     </div>
                                 </div>
                             </div>
-                        </div>
+                        </details>
 
                         <div class="card">
                             <div class="card-header">
@@ -2118,7 +2120,7 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.163.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.164.0"></script>
 
     <!-- DarvaX satellite tab (ADR-010 Amendment 1) — the ONLY DarvaX reference
          in this file, and the flag guard itself. This asset is served solely by
