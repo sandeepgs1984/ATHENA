@@ -1,16 +1,32 @@
 # ID-8 — Full Historical Entry/Risk Outcome Validation
 
-Status: **ID-8 FULL HISTORICAL ENTRY/RISK OUTCOME VALIDATION
-METHODOLOGY-CORRECT — READY FOR OWNER / CHIEF ARCHITECT FREEZE
-DECISION.** See §32 for the Owner's own explicit freeze question,
-answered directly.
+Status: **ID-8 PRIMARY LONG V0 ENTRY/RISK METHODOLOGY CORRECT AND READY
+FOR OWNER FREEZE.** See §32 for the Owner's own explicit freeze
+question, answered directly; §34 records this round's own narrow
+diagnostic fix.
 
-**This is the SECOND correction/completion of the same report
-(2026-09-07), per explicit Owner instruction — no new milestone was
-created.** §33 records exactly what changed in this round and why; §31
-records the prior round's own changes, preserved unmodified.
+**This is the THIRD correction pass on the same report (2026-09-07), per
+explicit Owner instruction — no new milestone was created.** §34 records
+exactly what changed in this round; §33 records the second round's own
+changes (methodology-rigor: MAE-before-target ordering, OR15/D1-ATR
+comparator semantics, bootstrap/session reconciliation); §31 records the
+first round's own changes. All three are preserved unmodified below.
 
-## 0. This round's corrections (methodology-rigor pass — see §33 for full detail)
+## -1. This round's correction (diagnostic-only, 2026-09-07 — see §34 for full detail)
+
+One narrow diagnostic-field sign defect was found and fixed:
+`t1_hit_bar_adverse_excursion_pct`/`t2_hit_bar_adverse_excursion_pct`
+(introduced in the second correction round, §0 item 1) were computed as
+a raw signed distance and could go negative whenever a target-hit bar's
+own low/high never actually moved past entry — but adverse excursion is
+a magnitude, never negative by definition. Fixed by clamping at
+`max(0, adv)` (§7). **This is a diagnostic-field-only correction**: it
+does not touch `MAE_STRICTLY_BEFORE_T1`/`_T2`, target-hit semantics, or
+any terminal-ordering/reachability/VWAP-loss/RR/regime/uncertainty
+result — every PRIMARY LONG headline figure is verified byte-for-byte
+unchanged (§22).
+
+## 0. Second round's corrections (methodology-rigor pass — see §33 for full detail)
 
 1. **MAE-strictly-before-target intrabar-ordering bug fixed.** The
    running adverse-excursion tracker no longer folds a bar's own `adv`
@@ -179,18 +195,30 @@ p95 2.592%, max 6.602% (n=756).
 - **MAE strictly before T2** (n=147, corrected §0 item 1): median
   0.207%, p90 0.940%, max 2.344%.
 - **T1-hit-bar's own adverse excursion** (n=248, new metric, exposed
-  separately, never merged into the "strictly before" figures above):
-  median −0.464%, p25 −0.645%, p75 −0.239%, p90 0.081%, p95 0.146%. The
-  predominantly-negative median means the hit bar's own low most often
-  never actually dips below entry at all (the raw signed
-  `(entry−low)/entry` distance is negative — zero real adverse movement
-  on that specific bar, following the same signed-distance convention
-  `mae_pct`/`mfe_pct` use before their own floor-clamp at 0); a positive
-  value means the hit bar genuinely also carried its own real adverse
+  separately, never merged into the "strictly before" figures above,
+  **corrected this round — see §0 item 0 below**): median 0.0%, p25
+  0.0%, p75 0.0%, p90 0.081%, p95 0.146%, max 0.482%. This is a
+  magnitude, clamped at 0 — never negative: the median of 0.0% means the
+  hit bar's own low most often never actually dips below entry at all
+  (zero real adverse excursion on that specific bar); a positive value
+  means the hit bar genuinely also carried its own real adverse
   excursion, co-occurring with (not necessarily before) the target
   touch.
-- **T2-hit-bar's own adverse excursion** (n=147): median −0.960%, p90
-  −0.301%.
+- **T2-hit-bar's own adverse excursion** (n=147, corrected this round):
+  median 0.0%, p75 0.0%, p90 0.0%, p95 0.0%, max 0.342%.
+- **Correction (this round, 2026-09-07 diagnostic pass):** these two
+  fields were previously computed as a raw signed distance
+  (`(entry−low)/entry` for LONG, `(high−entry)/entry` for SHORT), which
+  could go negative whenever the hit bar's own low/high never actually
+  moved past entry — a signed *displacement*, not a valid *adverse
+  excursion* (which is a magnitude, always ≥ 0 by definition, matching
+  the same floor-clamp convention `mae_pct`/`mfe_pct` and the
+  `MAE_STRICTLY_BEFORE_T1`/`_T2` running trackers already use). Fixed by
+  clamping at `max(0, adv)`. This was a diagnostic-field-only defect:
+  `MAE_STRICTLY_BEFORE_T1`/`_T2` (above), all reachability/VWAP-
+  loss/terminal-ordering/RR/regime/uncertainty/chronological-stability
+  results, and every other PRIMARY LONG headline figure are byte-for-
+  byte unchanged by this fix (verified directly — see §22).
 - **Prior-version numbers superseded**: the pre-correction MAE-before-T1
   median (0.171%) and MAE-before-T2 median (0.211%) were each inflated
   by folding the hit bar's own adverse range into the running tracker
@@ -505,49 +533,55 @@ unaffected: 96,985/6,624/783 unchanged.)
 
 ## 22. Determinism
 
-An independent second full run of the entire, methodology-corrected
-study (798 qualified observations, ~70s wall time) reproduced
-**byte-for-byte identical `primary_LONG` block output** — every field
-(N, MFE/MAE, T1/T2 reachability + timing, MAE-strictly-before-target,
-hit-bar-own-adverse-excursion, VWAP-loss, terminal ordering, RR,
-OR15/D1-ATR level/geometry comparators, session_accounting, and the
-session-block bootstrap's own CI, which uses a fixed seed) matched
-exactly across the two runs. `schema_version` confirmed unchanged
-(18→18) and `integrity_check: ok` after both runs. The only cross-run
-variation would be in the live, still-growing SHORT/total-decision
-counts — none occurred between these two specific runs (both LONG and
-SHORT populations were identical across the two, since no new
-production TRADE decision landed in the interval).
+**Third-round rerun (2026-09-07, this diagnostic fix):** an independent
+second full run of the entire study (798 qualified observations, ~81s
+wall time) reproduced **byte-for-byte identical `primary_LONG` block
+output** — every field, including the newly-clamped
+`t1_hit_bar_adverse_excursion_pct`/`t2_hit_bar_adverse_excursion_pct`
+distributions, matched exactly across the two runs. `schema_version`
+confirmed unchanged (18→18) and `integrity_check: ok` after both runs.
+Direct comparison against the pre-fix rerun (§0/§33) confirms every
+other PRIMARY LONG field — N (783/756/756/0), MFE/MAE, T1/T2
+reachability + timing, `MAE_STRICTLY_BEFORE_T1`/`_T2`, VWAP-loss,
+terminal ordering, RR, OR15/D1-ATR level/geometry comparators,
+`session_accounting` (19/19/19/19), and the session-block bootstrap's
+own CI — is **byte-for-byte unchanged** by this diagnostic fix; only the
+two hit-bar-adverse-excursion distributions themselves changed (from
+containing negative values to being floor-clamped at 0, per §7/§-1).
+
+**Second-round rerun (prior, preserved for record):** an independent
+second full run of the methodology-corrected study (798 qualified
+observations, ~70s wall time) reproduced byte-for-byte identical
+`primary_LONG` block output — every field matched exactly across the
+two runs. `schema_version` confirmed unchanged (18→18) and
+`integrity_check: ok` after both runs. The only cross-run variation
+would be in the live, still-growing SHORT/total-decision counts — none
+occurred between either pair of runs (LONG and SHORT populations were
+identical across each pair, since no new production TRADE decision
+landed in either interval).
 
 ## 23. Tests
 
-24 tests in `tests/data_layer/test_id8_entry_risk_outcome_validation.py`
-(5 net new this round: `test_or15_and_d1_atr_have_no_forward_event_detection_in_source`,
-`test_or15_and_d1_atr_comparators_report_event_semantics_not_reconstructable`,
-`test_mae_strictly_before_t1_excludes_hit_bars_own_adverse_range_long`,
-`test_mae_strictly_before_t1_single_bar_hit_reports_zero_long`,
-`test_mae_strictly_before_t1_excludes_hit_bars_own_adverse_range_short`,
-`test_bootstrap_and_chronological_stability_share_session_population` —
-6 added, 1 removed: the prior round's
-`test_or15_ambiguous_with_t1_when_both_intrabar_same_bar` tested the
-now-withdrawn OR15 intrabar-event behavior and was replaced by the
-source-scan proof above). Covers: the exact same-bar information-limit
-scenario the Owner specified (a LONG/SHORT candle whose low/high crosses
-both an adverse extreme and the target in one bar, proven NOT counted in
-the "strictly before" metric, with the hit bar's own range exposed
-separately); a direct source-scan proof that no OR15/D1-ATR forward-
-event field is computed anywhere in `analyze_forward_outcome`; a proof
-the summary's own comparator blocks carry the exact
-`..._EVENT_SEMANTICS_NOT_RECONSTRUCTABLE...` classifications and never
-an event rate; a synthetic bootstrap/chronological session-population
-reconciliation proof; plus all 18 pre-existing tests (canonical
-session-close bound, LONG/SHORT never pooled, geometry-gated terminal
-ordering, deterministic bootstrap, D1-ATR level direction-awareness,
-PIT/forward structural isolation, episode-boundary bug-fix regression,
-direction-correct target-touch, no-provider/no-persistence source
-scans, real disposable-DB integration tests). **24/24 passed.** Full
-repository suite: **3768 passed, 1 pre-existing unrelated skip, 0
-failures.**
+**26 tests** in `tests/data_layer/test_id8_entry_risk_outcome_validation.py`
+(2 new this round:
+`test_t1_hit_bar_adverse_excursion_is_zero_when_long_hit_bar_never_dips_below_entry`,
+`test_t1_hit_bar_adverse_excursion_is_zero_when_short_hit_bar_never_rises_above_entry`
+— each constructs a target-hit bar whose own low/high never actually
+crosses entry against the trade's direction and asserts the reported
+adverse-excursion field is exactly `0.0`, never negative; the 3
+pre-existing hit-bar-adverse-excursion tests, which all construct
+genuinely adverse hit bars, are unaffected by the clamp since their
+expected values were already positive) plus all 24 pre-existing tests
+(MAE-strictly-before-target same-bar information-limit scenarios,
+OR15/D1-ATR no-forward-event source-scan proof, comparator-classification
+proof, bootstrap/chronological session-population-sharing proof,
+canonical session-close bound, LONG/SHORT never pooled, geometry-gated
+terminal ordering, deterministic bootstrap, D1-ATR level
+direction-awareness, PIT/forward structural isolation, episode-boundary
+bug-fix regression, direction-correct target-touch, no-provider/no-
+persistence source scans, real disposable-DB integration tests).
+**26/26 passed.** Full repository suite: **3770 passed, 1 pre-existing
+unrelated skip, 0 failures.**
 
 ## 24. git diff --check
 
@@ -557,13 +591,12 @@ Clean.
 
 Read-only throughout; zero writes; zero provider/network calls; zero
 `save_*`/`INSERT` calls anywhere in the module (confirmed by source
-scan, including this round's new `_or15_level`/`_d1_atr_level`
-docstrings and the removed forward-event code). `schema_version`
-confirmed unchanged at 18 before and after every run in this round
-(both the primary rerun and the independent second determinism run).
-`integrity_check: ok` after each. PID 2453 (`athena.cli serve
---with-cycles`) untouched throughout — confirmed still running,
-unchanged, via direct process inspection.
+scan). `schema_version` confirmed unchanged at 18 before and after every
+run in this round (both the primary rerun and the independent second
+determinism run). `integrity_check: ok` after each. PID 2453
+(`athena.cli serve --with-cycles`) untouched throughout — confirmed
+still running, unchanged, via direct process inspection (uptime
+continuous across this and all prior ID-8 correction rounds).
 
 ## 26. Revised acceptance questions A-H
 
@@ -806,7 +839,65 @@ ordering, and the initial MFE/MAE-before-event/OR15/D1-ATR/regime/
 uncertainty/chronological-stability completions) is preserved unmodified
 above and remains historically accurate for that round.
 
+## 34. Correction record — this round (diagnostic-only pass, 2026-09-07)
+
+This is the THIRD in-place correction of this report. The Owner's source
+review found the second round's `primary_LONG` methodology accepted in
+substance and freeze-quality, holding closure for exactly one narrow
+diagnostic-field correctness defect:
+
+**Defect:** `t1_hit_bar_adverse_excursion_pct`/
+`t2_hit_bar_adverse_excursion_pct` (introduced in the second round, §0
+item 1, to expose a target-hit bar's own adverse range separately from
+the "strictly before" tracker) were computed directly from the
+direction-aware signed `adv` value (`(entry-low)/entry` for LONG,
+`(high-entry)/entry` for SHORT) without a floor clamp. Whenever a
+target-hit bar's own low/high never actually moved past entry against
+the trade's direction, `adv` is negative — a valid signed price
+displacement, but not a valid adverse *excursion*, which is a magnitude
+and must be ≥ 0 by definition (matching the same floor-clamp convention
+`mae_pct`/`mfe_pct` and the `MAE_STRICTLY_BEFORE_T1`/`_T2` running
+trackers already use, all of which are `max(tracker, adv)` starting from
+0).
+
+**Fix:** both fields are now computed as `max(0, adv)` in
+`analyze_forward_outcome` (`src/athena/data/id8_entry_risk_outcome_validation.py`).
+2 new regression tests construct a LONG target-hit bar whose own low
+never dips below entry and a SHORT mirror whose own high never rises
+above entry, and assert the reported field is exactly `0.0`; the 3
+pre-existing hit-bar-adverse-excursion tests (which all construct
+genuinely adverse hit bars with already-positive expected values) remain
+green unchanged, proving the clamp does not alter any genuinely adverse
+case.
+
+**Scope:** diagnostic-field-only. `MAE_STRICTLY_BEFORE_T1`/`_T2`, target-
+hit semantics (`t1_intrabar`/`t1_close`/etc.), terminal ordering, VWAP
+geometry/loss, RR, session-time/RS/RVOL/regime associations,
+chronological stability, and the session-block bootstrap are completely
+untouched by this fix — verified directly by an independent rerun
+against the real `db/athena.db` showing every PRIMARY LONG field other
+than the two corrected distributions is byte-for-byte identical to the
+pre-fix rerun (§22). Corrected distributions: §7 (both now floor-clamped
+at 0, median 0.0% for both T1 and T2 hit-bar-adverse-excursion, down
+from the pre-fix run's negative medians of −0.464%/−0.960%).
+
+Preserved unmodified this round, per explicit Owner instruction:
+`ID8_V0_ENTRY_RISK_PARTIALLY_SUPPORTED` (§27),
+`LONG_VALIDATED_SHORT_UNVALIDATED`,
+`OR15_LEVEL_GEOMETRY_RECONSTRUCTED_EVENT_SEMANTICS_NOT_RECOVERABLE` (§12),
+`D1_ATR_LEVEL_GEOMETRY_RECONSTRUCTED_EVENT_SEMANTICS_NOT_RECOVERABLE`
+(§13), and `NO_DISPLACEMENT_CLAIM_POSSIBLE_FROM_COMPARABLE_EVENT_EVIDENCE`
+(§26 Question F).
+
+**Final freeze-readiness statement:** with this correction, PRIMARY LONG
+ID-8 methodology has no remaining known correctness blocker. §32's own
+answer to the Owner's freeze question stands, strengthened rather than
+reopened by this pass — the newly committed harness is byte-for-byte
+verified deterministic, source-grounded on every comparator it claims
+event semantics for, and now free of the one diagnostic-field defect
+identified in this round.
+
 ---
 
-**ID-8 FULL HISTORICAL ENTRY/RISK OUTCOME VALIDATION METHODOLOGY-CORRECT
-— READY FOR OWNER / CHIEF ARCHITECT FREEZE DECISION.**
+**ID-8 PRIMARY LONG V0 ENTRY/RISK METHODOLOGY CORRECT AND READY FOR
+OWNER FREEZE**

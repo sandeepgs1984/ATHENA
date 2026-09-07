@@ -510,7 +510,12 @@ def analyze_forward_outcome(
     never that bar's own range. The hit bar's own separate adverse range
     is exposed independently as `t1_hit_bar_adverse_excursion_pct`/
     `t2_hit_bar_adverse_excursion_pct`, never merged into the "before"
-    figure.
+    figure -- both are non-negative magnitudes (clamped at 0, owner
+    correction 2026-09-07): a bar whose low/high never actually moved
+    past entry against the trade's direction contributed zero real
+    adverse excursion, never a negative one, matching the same
+    floor-clamp convention `mae`/the running "before" trackers already
+    use.
 
     OR15-boundary and D1-ATR(1x) are LEVEL/GEOMETRY comparators only --
     see `_or15_level`/`_d1_atr_level` docstrings. Their entry-time risk
@@ -577,11 +582,17 @@ def analyze_forward_outcome(
         # and the hit bar's own adv must never enter the tracker at all.
         if t1_intrabar is None and t1_hit_i:
             mae_before_t1 = float(running_mae_before_t1 * 100)
-            t1_hit_bar_adverse_excursion = float(adv * 100)
+            # Adverse excursion is a magnitude, never a signed displacement:
+            # if the hit bar's own low/high never actually moved past entry
+            # against the trade's direction, there was zero real adverse
+            # excursion on that bar -- clamp at 0, matching the same
+            # floor-clamp convention `mae`/`running_mae_before_t*` already
+            # use (both are `max(tracker, adv)` starting from 0).
+            t1_hit_bar_adverse_excursion = float(max(Decimal("0"), adv) * 100)
             t1_intrabar = elapsed_min
         if t2_intrabar is None and t2_hit_i:
             mae_before_t2 = float(running_mae_before_t2 * 100)
-            t2_hit_bar_adverse_excursion = float(adv * 100)
+            t2_hit_bar_adverse_excursion = float(max(Decimal("0"), adv) * 100)
             t2_intrabar = elapsed_min
 
         if t1_intrabar is None:

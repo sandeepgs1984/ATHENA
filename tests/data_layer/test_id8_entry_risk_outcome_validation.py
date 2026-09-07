@@ -534,6 +534,65 @@ def test_mae_strictly_before_t1_excludes_hit_bars_own_adverse_range_short() -> N
         assert outcome["t1_hit_bar_adverse_excursion_pct"] == pytest.approx(5.0, abs=1e-6)
 
 
+def test_t1_hit_bar_adverse_excursion_is_zero_when_long_hit_bar_never_dips_below_entry() -> None:
+    """Owner correction, 2026-09-07: adverse excursion is a magnitude, not
+    a signed displacement. A LONG T1-hit bar whose own low never actually
+    moves below entry (high=101.5 hits T1, low=100.5 stays above entry)
+    has ZERO real adverse excursion on that bar -- the raw signed
+    `(entry-low)/entry` distance is negative, but the reported field must
+    be clamped at 0.0, never negative."""
+    with tempfile.TemporaryDirectory() as td:
+        db_path = Path(td) / "athena.db"
+        repo = SqliteRepository(db_path)
+        repo.initialize()
+        iid = "NSE:III"
+        repo.upsert_instrument(Instrument(instrument_id=iid, symbol="III", exchange="NSE", series="EQ", status="ACTIVE"))
+        ts0 = datetime(2026, 8, 13, 9, 15, tzinfo=IST)
+        entry_candle = _bar(iid, ts0, o=100, h=100, low=100, c=100)
+        # Hits T1 (high>=101) but low (100.5) never dips below entry (100).
+        hit_bar = _bar(iid, ts0 + timedelta(minutes=5), o=100.6, h=101.5, low=100.5, c=101.2)
+        repo.add_candles([entry_candle, hit_bar])
+        repo.close()
+
+        store = ReadOnlyStore(db_path)
+        outcome = _call(
+            store, instrument_id=iid, session_date="2026-08-13",
+            entry_ts_open=ts0.isoformat(), entry_price=Decimal("100"), direction="LONG",
+        )
+        store.close()
+        assert outcome is not None
+        assert outcome["t1_intrabar_min"] is not None
+        assert outcome["t1_hit_bar_adverse_excursion_pct"] == 0.0
+
+
+def test_t1_hit_bar_adverse_excursion_is_zero_when_short_hit_bar_never_rises_above_entry() -> None:
+    """SHORT mirror: a T1-hit bar (low<=99) whose own high never actually
+    rises above entry (high=99.5, low=98.5) has zero real adverse
+    excursion -- clamped at 0.0, never negative."""
+    with tempfile.TemporaryDirectory() as td:
+        db_path = Path(td) / "athena.db"
+        repo = SqliteRepository(db_path)
+        repo.initialize()
+        iid = "NSE:JJJ"
+        repo.upsert_instrument(Instrument(instrument_id=iid, symbol="JJJ", exchange="NSE", series="EQ", status="ACTIVE"))
+        ts0 = datetime(2026, 8, 13, 9, 15, tzinfo=IST)
+        entry_candle = _bar(iid, ts0, o=100, h=100, low=100, c=100)
+        # Hits T1 (low<=99) but high (99.5) never rises above entry (100).
+        hit_bar = _bar(iid, ts0 + timedelta(minutes=5), o=99.0, h=99.5, low=98.5, c=98.8)
+        repo.add_candles([entry_candle, hit_bar])
+        repo.close()
+
+        store = ReadOnlyStore(db_path)
+        outcome = _call(
+            store, instrument_id=iid, session_date="2026-08-13",
+            entry_ts_open=ts0.isoformat(), entry_price=Decimal("100"), direction="SHORT",
+        )
+        store.close()
+        assert outcome is not None
+        assert outcome["t1_intrabar_min"] is not None
+        assert outcome["t1_hit_bar_adverse_excursion_pct"] == 0.0
+
+
 def test_bootstrap_and_chronological_stability_share_session_population() -> None:
     """Owner correction, 2026-09-07 (§5): the session-block bootstrap and
     chronological-stability views must draw from the identical

@@ -6,6 +6,107 @@ status updated on approval.
 
 ---
 
+## ID-8 Full Historical Entry/Risk Outcome Validation — Diagnostic Sign Correction, Ready for Owner Freeze
+
+**Summary.** With the second methodology-rigor correction round accepted
+in substance, the Owner's source review held final closure for one
+narrow diagnostic-field correctness defect — no ID-8.1/ID-8.x
+sub-milestone created, same committed module and test file.
+
+**Defect.** `t1_hit_bar_adverse_excursion_pct`/
+`t2_hit_bar_adverse_excursion_pct` (introduced in the prior round to
+expose a target-hit bar's own adverse range separately from the
+"strictly before" tracker) were computed directly from the direction-
+aware signed `adv` value without a floor clamp. Whenever a target-hit
+bar's own low/high never actually moved past entry against the trade's
+direction, `adv` is negative — a valid signed price displacement, but
+not a valid adverse *excursion*, which is a magnitude and must be ≥ 0 by
+definition (matching the floor-clamp convention `mae_pct`/`mfe_pct` and
+the `MAE_STRICTLY_BEFORE_T1`/`_T2` running trackers already use).
+
+**Fix.** Both fields in `analyze_forward_outcome`
+(`src/athena/data/id8_entry_risk_outcome_validation.py`) are now
+computed as `max(Decimal("0"), adv)`. `MAE_STRICTLY_BEFORE_T1`/`_T2`
+tracker logic, target-hit semantics, terminal ordering, and every other
+computation are completely untouched.
+
+**Tests.** 2 new regression tests
+(`test_t1_hit_bar_adverse_excursion_is_zero_when_long_hit_bar_never_dips_below_entry`,
+`test_t1_hit_bar_adverse_excursion_is_zero_when_short_hit_bar_never_rises_above_entry`)
+construct a target-hit bar whose own low/high never crosses entry
+against the trade's direction and assert the reported field is exactly
+`0.0`; the 3 pre-existing hit-bar-adverse-excursion tests (all
+constructing genuinely adverse hit bars with already-positive expected
+values) remain green unchanged, proving the clamp alters only the
+previously-negative cases. 26 tests total in
+`tests/data_layer/test_id8_entry_risk_outcome_validation.py`. Full
+repository suite: **3770 passed, 1 pre-existing unrelated skip, 0
+failures.**
+
+**Rerun against the real `db/athena.db`** (strict read-only, schema
+unchanged 18→18 both for the primary rerun and an independent second
+determinism run; `integrity_check: ok` after each; PID 2453 confirmed
+running unchanged throughout): every PRIMARY LONG field other than the
+two corrected distributions is byte-for-byte identical to the pre-fix
+rerun — N (783/756/756/0), MFE/MAE, T1/T2 reachability + timing,
+`MAE_STRICTLY_BEFORE_T1`/`_T2`, VWAP geometry/loss, terminal ordering,
+RR, OR15/D1-ATR level/geometry comparators, `session_accounting`
+(19/19/19/19), and the session-block bootstrap's CI are all unchanged.
+Only `t1_hit_bar_adverse_excursion_pct`/`t2_hit_bar_adverse_excursion_pct`
+themselves changed: median 0.0%/0.0% (both floor-clamped), down from the
+pre-fix run's −0.464%/−0.960%.
+
+**Preserved unchanged**, per explicit Owner instruction:
+`ID8_V0_ENTRY_RISK_PARTIALLY_SUPPORTED`,
+`LONG_VALIDATED_SHORT_UNVALIDATED`,
+`OR15_LEVEL_GEOMETRY_RECONSTRUCTED_EVENT_SEMANTICS_NOT_RECOVERABLE`,
+`D1_ATR_LEVEL_GEOMETRY_RECONSTRUCTED_EVENT_SEMANTICS_NOT_RECOVERABLE`,
+`NO_DISPLACEMENT_CLAIM_POSSIBLE_FROM_COMPARABLE_EVENT_EVIDENCE`. §32's
+own answer to the Owner's PRIMARY-LONG-freeze question stands,
+strengthened rather than reopened by this pass.
+
+**Files modified:** `src/athena/data/id8_entry_risk_outcome_validation.py`,
+`tests/data_layer/test_id8_entry_risk_outcome_validation.py`,
+`docs/research/ID-8-FULL-HISTORICAL-ENTRY-RISK-OUTCOME-VALIDATION.md`,
+`docs/MILESTONES.md`, `ATHENA_BRIEFING.md`,
+`docs/ATHENA-ID-TRACK-HANDOFF.md`, this file. **Zero schema/production/
+EMR/DarvaX changes.** `db/athena.db` confirmed unchanged throughout
+(`schema_version` 18, `integrity_check: ok`); PID 2453 untouched; zero
+writes; zero provider/network calls.
+
+**Status: ID-8 PRIMARY LONG V0 ENTRY/RISK METHODOLOGY CORRECT AND READY
+FOR OWNER FREEZE.** No remaining known correctness blocker on PRIMARY
+LONG. Does not freeze the methodology itself (reserved for the Owner);
+does not start ID-9; does not begin an ID-6 SHORT correction; EMR and
+DarvaX untouched.
+
+**Suggested commit message** (for the owner to run themselves, per
+CLAUDE.md — no git action taken by the AI):
+
+```
+fix(intraday): clamp ID-8 hit-bar adverse-excursion diagnostic at zero
+
+- Fixed a sign defect: t1_hit_bar_adverse_excursion_pct/
+  t2_hit_bar_adverse_excursion_pct were computed from a raw signed
+  distance and could go negative when a target-hit bar's own low/high
+  never actually moved past entry - but adverse excursion is a
+  magnitude, never negative by definition. Now computed as
+  max(Decimal("0"), adv), matching the same floor-clamp convention
+  mae_pct/mfe_pct and the MAE_STRICTLY_BEFORE_T1/_T2 trackers already
+  use.
+- Diagnostic-field-only fix: MAE_STRICTLY_BEFORE_T1/_T2, target-hit
+  semantics, terminal ordering, VWAP geometry/loss, RR, and every other
+  PRIMARY LONG result verified byte-for-byte unchanged by a real rerun
+  against db/athena.db (read-only, schema 18->18, PID 2453 untouched).
+- Added 2 regression tests proving a hit bar with zero real adverse
+  movement reports exactly 0.0, never negative (26 total); full suite
+  3770 passed.
+- Updated the ID-8 full-historical report, MILESTONES.md,
+  ATHENA_BRIEFING.md, and the ID-track handoff doc with the correction.
+```
+
+---
+
 ## ID-8 Full Historical Entry/Risk Outcome Validation — Final Methodology Correction, Ready for Owner Freeze Decision
 
 **Summary.** With ID-8's full historical study corrected once already
