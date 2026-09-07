@@ -303,8 +303,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.177.0" in html
-    assert "dashboard.js?v=9.177.0" in html
+    assert "dashboard.css?v=9.180.0" in html
+    assert "dashboard.js?v=9.180.0" in html
     assert "function decisionConfidenceBand" in js
     assert "analysis?.confidence_level" in js
     assert "confidence reflects evidence reliability, not expected profit" in js
@@ -429,6 +429,8 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert 'id="my-portfolio-sort-field"' in html
     assert 'id="my-portfolio-sort-direction"' in html
     assert 'id="my-portfolio-sort-reset"' in html
+    assert 'class="btn btn-icon my-portfolio-sort-reset"' in html
+    assert 'aria-label="Reset to default P&amp;L % sort"' in html
     assert 'id="my-portfolio-preview-duplicates"' in html
     assert 'id="my-portfolio-holdings-rows"' in html
     assert 'id="my-portfolio-history-rows"' in html
@@ -593,7 +595,16 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert ".my-portfolio-view-toolbar" in my_portfolio_css
     assert ".my-portfolio-holdings-context" in my_portfolio_css
     assert "grid-column: 1 / -1" in my_portfolio_css
-    assert "min-width: 190px" in my_portfolio_css
+    assert "z-index: 40" in my_portfolio_css
+    assert "0 -88px 0 88px #050911" in my_portfolio_css
+    assert ".my-portfolio-holdings-card.sticky-engaged > .card-header" in my_portfolio_css
+    assert ".my-portfolio-holdings-card.sticky-engaged > .card-header::before" in my_portfolio_css
+    assert ".my-portfolio-holdings-card > .card-header::before" in my_portfolio_css
+    assert "display: none;" in my_portfolio_css
+    assert "top: -96px" in my_portfolio_css
+    assert "height: 96px" in my_portfolio_css
+    assert "grid-template-columns: auto minmax(190px, 220px) auto auto" in my_portfolio_css
+    assert ".my-portfolio-sort-reset" in my_portfolio_css
     assert ".my-portfolio-sort-indicator" in my_portfolio_css
     assert ".my-portfolio-mini-bar" in my_portfolio_css
     assert "position: sticky" in my_portfolio_css
@@ -672,6 +683,10 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert "Hide private portfolio values" in js
     assert "myPortfolioPrivacyToggle?.addEventListener" in js
     assert 'document.querySelector(".my-portfolio-holdings-scroll")' in js
+    assert 'document.querySelector(".my-portfolio-holdings-card")' in js
+    assert "function syncMyPortfolioStickyHeaderState" in js
+    assert 'classList.toggle("sticky-engaged", engaged)' in js
+    assert 'myPortfolioWorkspaceViewport?.addEventListener("scroll", syncMyPortfolioStickyHeaderState' in js
     assert 'classList.toggle("compact-density", !comfortable)' in js
     assert "function renderMyPortfolioHistoryDisclosure()" in js
     assert "function myPortfolioRowStateClass(row)" in js

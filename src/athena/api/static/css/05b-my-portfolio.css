@@ -453,14 +453,39 @@
 .my-portfolio-holdings-card > .card-header {
     position: sticky;
     top: 0;
-    z-index: 12;
-    border-bottom-color: rgba(0, 229, 255, 0.18);
+    z-index: 40;
+    isolation: isolate;
+    overflow: visible;
+    border-bottom-color: rgba(0, 229, 255, 0.22);
     background:
-        linear-gradient(180deg, rgba(15, 22, 38, 0.99), rgba(15, 22, 38, 0.96)),
-        var(--bg-sidebar);
-    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.22);
-    backdrop-filter: blur(18px) saturate(1.1);
-    -webkit-backdrop-filter: blur(18px) saturate(1.1);
+        linear-gradient(180deg, rgba(5, 9, 17, 1), rgba(8, 13, 24, 1)),
+        #050911;
+    box-shadow:
+        0 12px 28px rgba(0, 0, 0, 0.26),
+        0 1px 0 rgba(0, 229, 255, 0.14) inset;
+}
+
+.my-portfolio-holdings-card > .card-header::before {
+    content: "";
+    display: none;
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: -96px;
+    z-index: -1;
+    height: 96px;
+    background: #050911;
+}
+
+.my-portfolio-holdings-card.sticky-engaged > .card-header {
+    box-shadow:
+        0 -88px 0 88px #050911,
+        0 18px 42px rgba(0, 0, 0, 0.42),
+        0 1px 0 rgba(0, 229, 255, 0.14) inset;
+}
+
+.my-portfolio-holdings-card.sticky-engaged > .card-header::before {
+    display: block;
 }
 
 .my-portfolio-secondary-grid {
@@ -694,29 +719,48 @@
 }
 
 .my-portfolio-sort-toolbar {
-    display: flex;
-    align-items: flex-end;
-    gap: var(--space-10);
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: auto minmax(190px, 220px) auto auto;
+    align-items: center;
+    gap: var(--space-8);
+    padding: var(--space-6);
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    border-radius: 10px;
+    background: rgba(2, 6, 23, 0.36);
+    box-shadow: 0 1px 0 rgba(0, 229, 255, 0.06) inset;
 }
 
 .my-portfolio-sort-toolbar label {
-    align-self: center;
     color: var(--text-muted);
     font-size: var(--text-0-75);
-    font-weight: 700;
-    line-height: 36px;
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: 0.04em;
     text-transform: uppercase;
 }
 
 .my-portfolio-sort-select {
-    min-width: 190px;
+    min-width: 0;
     height: 36px;
     border: 1px solid var(--border-color);
     border-radius: 8px;
     padding: 0 var(--space-10);
     color: var(--text-primary);
     background: var(--bg-sidebar);
+}
+
+.my-portfolio-sort-reset {
+    width: 36px;
+    height: 36px;
+    color: var(--text-muted);
+    background: rgba(15, 22, 38, 0.58);
+}
+
+.my-portfolio-sort-reset:hover,
+.my-portfolio-sort-reset:focus-visible {
+    border-color: rgba(0, 229, 255, 0.36);
+    color: var(--accent);
+    background: rgba(0, 229, 255, 0.08);
 }
 
 .my-portfolio-holdings-controls {
@@ -733,8 +777,8 @@
     align-items: center;
     justify-content: flex-end;
     gap: var(--space-8);
-    padding-left: var(--space-12);
-    border-left: 1px solid rgba(148, 163, 184, 0.16);
+    padding: var(--space-6) var(--space-6) var(--space-6) var(--space-12);
+    border-left: 1px solid rgba(0, 229, 255, 0.18);
 }
 
 .my-portfolio-holdings-context {
@@ -750,7 +794,8 @@
 .my-portfolio-view-toolbar > span {
     color: var(--text-muted);
     font-size: var(--text-0-75);
-    font-weight: 700;
+    font-weight: 800;
+    letter-spacing: 0.04em;
     text-transform: uppercase;
     white-space: nowrap;
 }
@@ -760,12 +805,13 @@
     align-items: center;
     gap: var(--space-4);
     padding: 2px;
-    border: 1px solid rgba(148, 163, 184, 0.14);
+    border: 1px solid rgba(0, 229, 255, 0.16);
     border-radius: 8px;
-    background: rgba(2, 6, 23, 0.28);
+    background: rgba(15, 23, 42, 0.64);
 }
 
 .my-portfolio-density-toggle .btn {
+    min-width: 104px;
     min-height: 32px;
     border-color: transparent;
 }
@@ -1792,6 +1838,10 @@
     .my-portfolio-sort-toolbar,
     .my-portfolio-view-toolbar {
         justify-content: flex-start;
+    }
+
+    .my-portfolio-sort-toolbar {
+        grid-template-columns: auto minmax(160px, 1fr) auto auto;
     }
 
     .my-portfolio-view-toolbar {

@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.177.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.180.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -569,7 +569,9 @@
                                         <button id="my-portfolio-sort-direction" class="btn btn-icon" type="button" title="Toggle sort direction" aria-label="Toggle sort direction">
                                             <i class="fa-solid fa-arrow-down-wide-short" aria-hidden="true"></i>
                                         </button>
-                                        <button id="my-portfolio-sort-reset" class="btn btn-secondary btn-sm" type="button">Default</button>
+                                        <button id="my-portfolio-sort-reset" class="btn btn-icon my-portfolio-sort-reset" type="button" title="Reset to default P&amp;L % sort" aria-label="Reset to default P&amp;L % sort">
+                                            <i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>
+                                        </button>
                                     </div>
                                     <div class="my-portfolio-view-toolbar" aria-label="Current holdings view controls">
                                         <span>View</span>
@@ -2168,7 +2170,7 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.177.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.180.0"></script>
 
     <!-- DarvaX satellite tab (ADR-010 Amendment 1) — the ONLY DarvaX reference
          in this file, and the flag guard itself. This asset is served solely by

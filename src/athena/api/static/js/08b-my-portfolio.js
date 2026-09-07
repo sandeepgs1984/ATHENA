@@ -50,7 +50,10 @@
     const myPortfolioDensityCompact = document.getElementById("my-portfolio-density-compact");
     const myPortfolioDensityComfortable = document.getElementById("my-portfolio-density-comfortable");
     const myPortfolioHoldingsTable = document.querySelector(".my-portfolio-wide-table");
+    const myPortfolioHoldingsCard = document.querySelector(".my-portfolio-holdings-card");
+    const myPortfolioHoldingsHeader = document.querySelector(".my-portfolio-holdings-card > .card-header");
     const myPortfolioHoldingsScroll = document.querySelector(".my-portfolio-holdings-scroll");
+    const myPortfolioWorkspaceViewport = document.querySelector(".workspace-viewport");
     const myPortfolioHistoryPanel = document.querySelector(".my-portfolio-history-panel");
     const myPortfolioHistoryBody = document.getElementById("my-portfolio-history-body");
     const myPortfolioHistoryToggle = document.getElementById("my-portfolio-history-toggle");
@@ -311,6 +314,14 @@
         myPortfolioDensityComfortable?.classList.toggle("active", comfortable);
         myPortfolioDensityCompact?.setAttribute("aria-pressed", String(!comfortable));
         myPortfolioDensityComfortable?.setAttribute("aria-pressed", String(comfortable));
+    }
+
+    function syncMyPortfolioStickyHeaderState() {
+        if (!myPortfolioHoldingsCard || !myPortfolioHoldingsHeader) return;
+        const cardRect = myPortfolioHoldingsCard.getBoundingClientRect();
+        const headerRect = myPortfolioHoldingsHeader.getBoundingClientRect();
+        const engaged = cardRect.top < headerRect.top - 1;
+        myPortfolioHoldingsCard.classList.toggle("sticky-engaged", engaged);
     }
 
     function setMyPortfolioDensity(density) {
@@ -1982,6 +1993,10 @@
     myPortfolioResetConfirm?.addEventListener("input", resetMyPortfolioGate);
     myPortfolioResetSubmit?.addEventListener("click", resetMyPortfolio);
     renderMyPortfolioPrivacyToggle();
+    syncMyPortfolioStickyHeaderState();
+    window.addEventListener("scroll", syncMyPortfolioStickyHeaderState, { passive: true });
+    window.addEventListener("resize", syncMyPortfolioStickyHeaderState);
+    myPortfolioWorkspaceViewport?.addEventListener("scroll", syncMyPortfolioStickyHeaderState, { passive: true });
     window.addEventListener("click", event => {
         if (event.target === myPortfolioResetModal) closeMyPortfolioResetModal();
         if (event.target === myPortfolioPreview) closeModal(myPortfolioPreview);

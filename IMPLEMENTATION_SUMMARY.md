@@ -372,8 +372,14 @@ Current Holdings to the primary daily workbench directly under KPIs; and
     state. A final screenshot correction removes visible/searchable `Hidden`
     text from masked values and reshapes the Current Holdings sticky header
     into a two-row workbench header with title/summary, separated Sort/View
-    controls, and an integrated full-width context strip. No feature behavior
-    changed.
+    controls, and an integrated full-width context strip. The latest screenshot
+    correction hardens that sticky header into an opaque high-z-index control
+    deck with a top curtain so scrolled rows cannot bleed behind it, and changes
+    the Sort reset to an icon-only action so it is visually distinct from
+    Compact scan / Full review view modes. The initial-layout follow-up keeps
+    that curtain hidden until a browser-side `sticky-engaged` scroll state
+    proves the Current Holdings header is actually stuck, so KPI cards are not
+    covered on first render. No feature behavior changed.
 
 **Tests.** Added API coverage for full reset success, reset-token rejection,
 and active-sync reset rejection without mutation. Focused validation: My
@@ -397,8 +403,14 @@ with the repository's pre-existing SIM117 baseline ignored. Latest
     row-state rails, collapsed audit history, unavailable chips, and the detail
     hero summary. Screenshot-review corrections are covered by assertions for
     quick-context backdrop opacity/blur, Recent Imports action spacing, and
-    distinct compact-vs-comfortable table behavior, and are ready for the same
-    focused validation slice.
+    distinct compact-vs-comfortable table behavior. The latest sticky
+    workbench correction is covered by assertions for the opaque header curtain,
+    higher stacking layer, icon-only sort reset, and differentiated Sort/View
+    controls. Final focused validation for the sticky workbench correction
+    passed: JS syntax check, dashboard hosting/release-gate tests (`13 passed`),
+    and ruff on touched dashboard contract tests. The initial-layout follow-up
+    is covered by assertions for the hidden-by-default curtain, scroll/resize
+    sticky-state toggling, and synchronized `9.180.0` dashboard assets.
 
 **Files changed:** `src/athena/api/v1/dtos/portfolio.py`,
 `src/athena/api/v1/routers/my_portfolio.py`,
