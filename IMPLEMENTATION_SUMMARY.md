@@ -71,10 +71,26 @@ Current Holdings to the primary daily workbench directly under KPIs; and
     green/red value tones; directional chips for D1 Trend, OR Setup, and
     SuperTrend direction; and visually distinct Daily Guidance, Structural
     Guidance, and raw-context caveat callouts. Follow-up workstation polish adds
-    a sticky quick-context bar, Compact/Comfortable holdings density control,
+    an integrated sticky holdings-context summary, Compact scan / Full review
+    holdings view control,
     thin row-state rails, muted unavailable chips, a collapsed-by-default Recent
-    Imports audit panel, and a stronger detail-overlay summary band. No feature
-    behavior changed.
+    Imports audit panel, and a stronger detail-overlay summary band. Screenshot
+    review on 2026-09-07 tightened that slice: the holdings context now
+    uses a stronger blurred/opaque backdrop, Recent Imports has a dedicated
+    Show/Hide action lane, and Compact scan / Full review now means scan mode vs review
+    mode rather than row-height-only spacing. A follow-up correction anchors
+    the quick-context summary inside the Current Holdings sticky header so it no
+    longer floats over scrolled rows, separates Sort controls from View controls,
+    and makes Compact scan hide lower-priority audit columns (`Avg Price`,
+    `Plan Levels`, `Freshness`) while Full review restores the complete table.
+    A privacy-mode follow-up adds an eye / eye-slash header control that masks
+    private exposure/performance values across KPIs, holdings rows, detail
+    overlay, and edit/delete confirmations using only local browser presentation
+    state. A final screenshot correction removes visible/searchable `Hidden`
+    text from masked values and reshapes the Current Holdings sticky header
+    into a two-row workbench header with title/summary, separated Sort/View
+    controls, and an integrated full-width context strip. No feature behavior
+    changed.
 
 **Tests.** Added API coverage for full reset success, reset-token rejection,
 and active-sync reset rejection without mutation. Focused validation: My
@@ -96,7 +112,10 @@ with the repository's pre-existing SIM117 baseline ignored. Latest
     callout primitives. The follow-up workstation polish is covered by
     dashboard-contract assertions for sticky context, density controls,
     row-state rails, collapsed audit history, unavailable chips, and the detail
-    hero summary, and is ready for the same focused validation slice.
+    hero summary. Screenshot-review corrections are covered by assertions for
+    quick-context backdrop opacity/blur, Recent Imports action spacing, and
+    distinct compact-vs-comfortable table behavior, and are ready for the same
+    focused validation slice.
 
 **Files changed:** `src/athena/api/v1/dtos/portfolio.py`,
 `src/athena/api/v1/routers/my_portfolio.py`,

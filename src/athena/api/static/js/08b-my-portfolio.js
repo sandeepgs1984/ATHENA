@@ -23,6 +23,7 @@
     const myPortfolioMiniPnl = document.getElementById("my-portfolio-mini-pnl");
     const myPortfolioMiniSynced = document.getElementById("my-portfolio-mini-synced");
     const myPortfolioMiniSort = document.getElementById("my-portfolio-mini-sort");
+    const myPortfolioPrivacyToggle = document.getElementById("my-portfolio-privacy-toggle");
     const myPortfolioPreviewTotal = document.getElementById("my-portfolio-preview-total");
     const myPortfolioPreviewValid = document.getElementById("my-portfolio-preview-valid");
     const myPortfolioPreviewInvalid = document.getElementById("my-portfolio-preview-invalid");
@@ -49,6 +50,7 @@
     const myPortfolioDensityCompact = document.getElementById("my-portfolio-density-compact");
     const myPortfolioDensityComfortable = document.getElementById("my-portfolio-density-comfortable");
     const myPortfolioHoldingsTable = document.querySelector(".my-portfolio-wide-table");
+    const myPortfolioHoldingsScroll = document.querySelector(".my-portfolio-holdings-scroll");
     const myPortfolioHistoryPanel = document.querySelector(".my-portfolio-history-panel");
     const myPortfolioHistoryBody = document.getElementById("my-portfolio-history-body");
     const myPortfolioHistoryToggle = document.getElementById("my-portfolio-history-toggle");
@@ -88,6 +90,14 @@
         },
         density: "compact",
         historyExpanded: false,
+        valuesHidden: (() => {
+            try {
+                return window.localStorage.getItem("athena.myPortfolio.valuesHidden") === "true";
+            } catch (err) {
+                return false;
+            }
+        })(),
+        detailOpenKey: null,
         syncCompletion: null,
     };
 
@@ -119,6 +129,61 @@
         const number = Number(value);
         if (!Number.isFinite(number)) return "—";
         return `${number >= 0 ? "+" : ""}${number.toFixed(2)}%`;
+    }
+
+    function myPortfolioMaskedValue(label = "Private value masked") {
+        return `<span class="my-portfolio-private-value" aria-label="${escapeMyPortfolioHtml(label)}"></span>`;
+    }
+
+    function myPortfolioPrivateText(value, formatter, label = "Private portfolio value") {
+        if (myPortfolioState.valuesHidden) return "••••";
+        return formatter(value);
+    }
+
+    function myPortfolioPrivateHtml(value, formatter, label = "Private portfolio value") {
+        if (myPortfolioState.valuesHidden) return myPortfolioMaskedValue(label);
+        return escapeMyPortfolioHtml(formatter(value));
+    }
+
+    function formatMyPortfolioPrivateMoney(value) {
+        return myPortfolioPrivateText(value, formatMyPortfolioMoney);
+    }
+
+    function formatMyPortfolioPrivateNumber(value) {
+        return myPortfolioPrivateText(value, formatMyPortfolioNumber);
+    }
+
+    function formatMyPortfolioPrivatePct(value) {
+        return myPortfolioPrivateText(value, formatMyPortfolioPct);
+    }
+
+    function renderMyPortfolioPrivacyToggle() {
+        if (!myPortfolioPrivacyToggle) return;
+        const hidden = Boolean(myPortfolioState.valuesHidden);
+        const icon = myPortfolioPrivacyToggle.querySelector("i");
+        if (icon) icon.className = hidden ? "fa-solid fa-eye-slash" : "fa-solid fa-eye";
+        myPortfolioPrivacyToggle.classList.toggle("active", hidden);
+        myPortfolioPrivacyToggle.setAttribute("aria-pressed", String(hidden));
+        myPortfolioPrivacyToggle.setAttribute(
+            "aria-label",
+            hidden ? "Show private portfolio values" : "Hide private portfolio values"
+        );
+        myPortfolioPrivacyToggle.title = hidden ? "Show private portfolio values" : "Hide private portfolio values";
+    }
+
+    function setMyPortfolioValuesHidden(hidden) {
+        myPortfolioState.valuesHidden = Boolean(hidden);
+        try {
+            window.localStorage.setItem("athena.myPortfolio.valuesHidden", String(myPortfolioState.valuesHidden));
+        } catch (err) {
+            // Browser privacy/storage restrictions should not break rendering.
+        }
+        renderMyPortfolioPrivacyToggle();
+        renderMyPortfolioSummary();
+        renderMyPortfolioHoldings(myPortfolioState.holdings || []);
+        if (myPortfolioState.detailOpenKey && myPortfolioDetailModal && !myPortfolioDetailModal.hidden) {
+            renderMyPortfolioDetail(myPortfolioState.snapshotRowsByKey[myPortfolioState.detailOpenKey]);
+        }
     }
 
     function formatMyPortfolioTime(value) {
@@ -239,6 +304,9 @@
     function renderMyPortfolioDensityControls() {
         const comfortable = myPortfolioState.density === "comfortable";
         myPortfolioHoldingsTable?.classList.toggle("comfortable-density", comfortable);
+        myPortfolioHoldingsTable?.classList.toggle("compact-density", !comfortable);
+        myPortfolioHoldingsScroll?.classList.toggle("comfortable-density", comfortable);
+        myPortfolioHoldingsScroll?.classList.toggle("compact-density", !comfortable);
         myPortfolioDensityCompact?.classList.toggle("active", !comfortable);
         myPortfolioDensityComfortable?.classList.toggle("active", comfortable);
         myPortfolioDensityCompact?.setAttribute("aria-pressed", String(!comfortable));
@@ -317,6 +385,9 @@
     function myPortfolioSignedCell(value, formatter, extraClass = "") {
         const tone = myPortfolioToneFromNumber(value);
         const classes = ["my-portfolio-signed-value", tone, extraClass].filter(Boolean).join(" ");
+        if (myPortfolioState.valuesHidden) {
+            return `<span class="${escapeMyPortfolioHtml(classes)}">${myPortfolioMaskedValue()}</span>`;
+        }
         return myPortfolioCell(formatter(value), classes);
     }
 
@@ -327,11 +398,20 @@
         const tone = Number.isFinite(price) && Number.isFinite(avg)
             ? price >= avg ? "positive" : "negative"
             : "neutral";
+        if (myPortfolioState.valuesHidden) {
+            return `<span class="my-portfolio-price-value ${tone}">${myPortfolioMaskedValue()}</span>`;
+        }
         return myPortfolioCell(formatMyPortfolioMoney(value), `my-portfolio-price-value ${tone}`);
     }
 
     function myPortfolioMoneyCell(value) {
+        if (myPortfolioState.valuesHidden) return myPortfolioMaskedValue();
         return myPortfolioCell(formatMyPortfolioMoney(value), "my-portfolio-nowrap");
+    }
+
+    function myPortfolioPrivateNumberCell(value) {
+        if (myPortfolioState.valuesHidden) return myPortfolioMaskedValue();
+        return escapeMyPortfolioHtml(formatMyPortfolioNumber(value));
     }
 
     function myPortfolioDash() {
@@ -814,27 +894,27 @@
                 return sum + (Number.isFinite(investment) ? investment : 0);
             }, 0);
         myPortfolioHoldingCount.textContent = formatMyPortfolioNumber(summary ? summary.holding_count : holdings.length);
-        myPortfolioTotalInvestment.textContent = formatMyPortfolioMoney(totalInvestment);
-        myPortfolioCurrentValue.textContent = summary && summary.total_current_value != null
-            ? formatMyPortfolioMoney(summary.total_current_value)
+        myPortfolioTotalInvestment.innerHTML = myPortfolioPrivateHtml(totalInvestment, formatMyPortfolioMoney, "Total investment masked");
+        myPortfolioCurrentValue.innerHTML = summary && summary.total_current_value != null
+            ? myPortfolioPrivateHtml(summary.total_current_value, formatMyPortfolioMoney, "Current value masked")
             : "—";
         if (myPortfolioMiniValue) {
-            myPortfolioMiniValue.textContent = summary && summary.total_current_value != null
-                ? formatMyPortfolioMoney(summary.total_current_value)
+            myPortfolioMiniValue.innerHTML = summary && summary.total_current_value != null
+                ? myPortfolioPrivateHtml(summary.total_current_value, formatMyPortfolioMoney, "Current value masked")
                 : "₹ —";
         }
-        myPortfolioTotalPnl.textContent = summary && summary.total_pnl != null
-            ? formatMyPortfolioMoney(summary.total_pnl)
+        myPortfolioTotalPnl.innerHTML = summary && summary.total_pnl != null
+            ? myPortfolioPrivateHtml(summary.total_pnl, formatMyPortfolioMoney, "Total P and L masked")
             : "—";
         if (myPortfolioMiniPnl) {
-            myPortfolioMiniPnl.textContent = summary && summary.total_pnl != null
-                ? formatMyPortfolioMoney(summary.total_pnl)
+            myPortfolioMiniPnl.innerHTML = summary && summary.total_pnl != null
+                ? myPortfolioPrivateHtml(summary.total_pnl, formatMyPortfolioMoney, "Total P and L masked")
                 : "₹ —";
             setMyPortfolioToneClass(myPortfolioMiniPnl, summary?.total_pnl, "my-portfolio-mini-tone");
         }
         setMyPortfolioToneClass(myPortfolioTotalPnl, summary?.total_pnl, "my-portfolio-kpi-tone");
         myPortfolioTotalPnlDetail.textContent = summary && summary.total_pnl_pct != null
-            ? `${formatMyPortfolioPct(summary.total_pnl_pct)} total return`
+            ? `${formatMyPortfolioPrivatePct(summary.total_pnl_pct)} total return`
             : "Unavailable until all rows are priced";
         setMyPortfolioToneClass(myPortfolioTotalPnlDetail, summary?.total_pnl_pct, "my-portfolio-kpi-detail-tone");
         if (latestConfirmed) {
@@ -924,7 +1004,7 @@
             <tr class="my-portfolio-row-state state-muted" data-instrument-id="${escapeMyPortfolioHtml(holding.instrument_id)}">
                 <td class="my-portfolio-row-index">${formatMyPortfolioNumber(index + 1)}</td>
                 <td class="font-mono"><strong>${escapeMyPortfolioHtml(symbol)}</strong></td>
-                <td>${formatMyPortfolioNumber(holding.quantity)}</td>
+                <td>${myPortfolioPrivateNumberCell(holding.quantity)}</td>
                 <td class="font-mono">${myPortfolioMoneyCell(holding.avg_price)}</td>
                 <td>${myPortfolioDash()}</td>
                 <td>${myPortfolioDash()}</td>
@@ -954,7 +1034,7 @@
             <tr class="my-portfolio-row-state ${myPortfolioRowStateClass(row)}" data-instrument-id="${escapeMyPortfolioHtml(myPortfolioRowKey(row))}" tabindex="0" role="button" aria-label="Open detail for ${escapeMyPortfolioHtml(row.symbol)}">
                 <td class="my-portfolio-row-index">${formatMyPortfolioNumber(index + 1)}</td>
                 <td class="font-mono"><strong>${escapeMyPortfolioHtml(row.symbol)}</strong></td>
-                <td>${formatMyPortfolioNumber(row.qty ?? row.quantity)}</td>
+                <td>${myPortfolioPrivateNumberCell(row.qty ?? row.quantity)}</td>
                 <td class="font-mono">${myPortfolioMoneyCell(row.avg_price)}</td>
                 <td class="font-mono">${myPortfolioPriceToneCell(row.last_price, row.avg_price)}</td>
                 <td class="font-mono">${row.pnl == null ? myPortfolioDash() : myPortfolioSignedCell(row.pnl, formatMyPortfolioMoney)}</td>
@@ -996,7 +1076,10 @@
 
     function myPortfolioDetailSignedRow(label, value, formatter, icon) {
         const tone = myPortfolioToneFromNumber(value);
-        const valueText = value == null ? "Not available" : formatter(value);
+        if (value != null && myPortfolioState.valuesHidden) {
+            return myPortfolioDetailRowHtml(label, myPortfolioMaskedValue(`${label} masked`), { icon, tone });
+        }
+        const valueText = value == null ? "Not available" : myPortfolioPrivateText(value, formatter);
         return myPortfolioDetailRow(label, valueText, { icon, tone });
     }
 
@@ -1052,18 +1135,18 @@
         return `<div class="my-portfolio-detail-hero" aria-label="Holding quick summary">
             <div class="my-portfolio-detail-hero-primary">
                 <span class="my-portfolio-detail-symbol">${escapeMyPortfolioHtml(row?.symbol || "Holding")}</span>
-                <span class="my-portfolio-detail-subline">Qty ${escapeMyPortfolioHtml(formatMyPortfolioNumber(row?.qty ?? row?.quantity))} @ ${escapeMyPortfolioHtml(formatMyPortfolioMoney(row?.avg_price))} avg</span>
+                <span class="my-portfolio-detail-subline">Qty ${myPortfolioPrivateHtml(row?.qty ?? row?.quantity, formatMyPortfolioNumber, "Quantity masked")} @ ${myPortfolioPrivateHtml(row?.avg_price, formatMyPortfolioMoney, "Average price masked")} avg</span>
             </div>
             <div class="my-portfolio-detail-hero-grid">
                 <span class="my-portfolio-detail-hero-metric tone-${escapeMyPortfolioHtml(priceTone)}">
                     <i class="fa-solid fa-indian-rupee-sign" aria-hidden="true"></i>
                     <span>Last</span>
-                    <strong>${escapeMyPortfolioHtml(row?.last_price == null ? "Not available" : formatMyPortfolioMoney(row.last_price))}</strong>
+                    <strong>${row?.last_price == null ? "Not available" : myPortfolioPrivateHtml(row.last_price, formatMyPortfolioMoney, "Last price masked")}</strong>
                 </span>
                 <span class="my-portfolio-detail-hero-metric tone-${escapeMyPortfolioHtml(pnlTone)}">
                     <i class="fa-solid fa-percent" aria-hidden="true"></i>
                     <span>P&L %</span>
-                    <strong>${escapeMyPortfolioHtml(row?.pnl_pct == null ? "Not available" : formatMyPortfolioPct(row.pnl_pct))}</strong>
+                    <strong>${row?.pnl_pct == null ? "Not available" : myPortfolioPrivateHtml(row.pnl_pct, formatMyPortfolioPct, "P and L percent masked")}</strong>
                 </span>
                 <span class="my-portfolio-detail-hero-chip">${myPortfolioStatusPill(row?.status, row)}</span>
                 <span class="my-portfolio-detail-hero-chip">${myPortfolioActionPill(row?.next_action, row)}</span>
@@ -1193,11 +1276,11 @@
             <div class="my-portfolio-detail-section" data-detail-section="position">
                 <h4>Position</h4>
                 <div class="my-portfolio-detail-grid">
-                    ${myPortfolioDetailRow("Qty", formatMyPortfolioNumber(row.qty ?? row.quantity), { icon: "fa-layer-group" })}
-                    ${myPortfolioDetailRow("Avg Price", formatMyPortfolioMoney(row.avg_price), { icon: "fa-scale-balanced" })}
-                    ${myPortfolioDetailRow("Last Price", row.last_price == null ? "Not available" : formatMyPortfolioMoney(row.last_price), { icon: "fa-indian-rupee-sign", tone: row.last_price == null ? "neutral" : myPortfolioToneFromNumber(Number(row.last_price) - Number(row.avg_price)) })}
-                    ${myPortfolioDetailRow("Investment", formatMyPortfolioMoney(row.investment), { icon: "fa-wallet" })}
-                    ${myPortfolioDetailRow("Current Value", row.current_value == null ? "Not available" : formatMyPortfolioMoney(row.current_value), { icon: "fa-chart-line", tone: "accent" })}
+                    ${myPortfolioDetailRowHtml("Qty", myPortfolioPrivateHtml(row.qty ?? row.quantity, formatMyPortfolioNumber, "Quantity masked"), { icon: "fa-layer-group" })}
+                    ${myPortfolioDetailRowHtml("Avg Price", myPortfolioPrivateHtml(row.avg_price, formatMyPortfolioMoney, "Average price masked"), { icon: "fa-scale-balanced" })}
+                    ${myPortfolioDetailRowHtml("Last Price", row.last_price == null ? "Not available" : myPortfolioPrivateHtml(row.last_price, formatMyPortfolioMoney, "Last price masked"), { icon: "fa-indian-rupee-sign", tone: row.last_price == null ? "neutral" : myPortfolioToneFromNumber(Number(row.last_price) - Number(row.avg_price)) })}
+                    ${myPortfolioDetailRowHtml("Investment", myPortfolioPrivateHtml(row.investment, formatMyPortfolioMoney, "Investment masked"), { icon: "fa-wallet" })}
+                    ${myPortfolioDetailRowHtml("Current Value", row.current_value == null ? "Not available" : myPortfolioPrivateHtml(row.current_value, formatMyPortfolioMoney, "Current value masked"), { icon: "fa-chart-line", tone: "accent" })}
                     ${myPortfolioDetailSignedRow("P&L", row.pnl, formatMyPortfolioMoney, "fa-arrow-trend-up")}
                     ${myPortfolioDetailSignedRow("P&L %", row.pnl_pct, formatMyPortfolioPct, "fa-percent")}
                 </div>
@@ -1252,8 +1335,9 @@
         if (!row || !myPortfolioDetailModal) return;
         if (myPortfolioDetailTitle) myPortfolioDetailTitle.textContent = row.symbol || key;
         if (myPortfolioDetailSubtitle) {
-            myPortfolioDetailSubtitle.textContent = `Qty ${formatMyPortfolioNumber(row.qty ?? row.quantity)} @ ${formatMyPortfolioMoney(row.avg_price)} avg`;
+            myPortfolioDetailSubtitle.textContent = `Qty ${formatMyPortfolioPrivateNumber(row.qty ?? row.quantity)} @ ${formatMyPortfolioPrivateMoney(row.avg_price)} avg`;
         }
+        myPortfolioState.detailOpenKey = key;
         renderMyPortfolioDetail(row);
         resetMyPortfolioDetailScroll();
         openModal(myPortfolioDetailModal);
@@ -1310,7 +1394,7 @@
         if (!instrumentId) return;
         const { symbol, quantity, avgPrice } = myPortfolioHoldingLookup(instrumentId);
 
-        const rawQty = window.prompt(`Quantity for ${symbol}?`, quantity != null ? String(quantity) : "");
+        const rawQty = window.prompt(`Quantity for ${symbol}?`, myPortfolioState.valuesHidden ? "" : quantity != null ? String(quantity) : "");
         if (rawQty === null || rawQty.trim() === "") return;
         const parsedQty = parseInt(rawQty, 10);
         if (!Number.isFinite(parsedQty) || parsedQty <= 0) {
@@ -1318,7 +1402,7 @@
             return;
         }
 
-        const rawAvgPrice = window.prompt(`Average price for ${symbol}?`, avgPrice != null ? String(avgPrice) : "");
+        const rawAvgPrice = window.prompt(`Average price for ${symbol}?`, myPortfolioState.valuesHidden ? "" : avgPrice != null ? String(avgPrice) : "");
         if (rawAvgPrice === null || rawAvgPrice.trim() === "") return;
         const parsedAvgPrice = parseFloat(rawAvgPrice);
         if (!Number.isFinite(parsedAvgPrice) || parsedAvgPrice <= 0) {
@@ -1358,7 +1442,9 @@
     async function myPortfolioDeleteHolding(instrumentId) {
         if (!instrumentId) return;
         const { symbol, quantity, avgPrice } = myPortfolioHoldingLookup(instrumentId);
-        const qtyText = quantity != null ? `${formatMyPortfolioNumber(quantity)} @ ${formatMyPortfolioMoney(avgPrice)} avg` : "";
+        const qtyText = quantity != null && !myPortfolioState.valuesHidden
+            ? `${formatMyPortfolioNumber(quantity)} @ ${formatMyPortfolioMoney(avgPrice)} avg`
+            : "";
         if (!window.confirm(`Delete ${symbol} ${qtyText} from My Portfolio? Re-import it to add it back.`)) return;
 
         myPortfolioState.holdingActionPending = true;
@@ -1871,6 +1957,9 @@
     });
     myPortfolioDensityCompact?.addEventListener("click", () => setMyPortfolioDensity("compact"));
     myPortfolioDensityComfortable?.addEventListener("click", () => setMyPortfolioDensity("comfortable"));
+    myPortfolioPrivacyToggle?.addEventListener("click", () => {
+        setMyPortfolioValuesHidden(!myPortfolioState.valuesHidden);
+    });
     myPortfolioHistoryToggle?.addEventListener("click", () => {
         myPortfolioState.historyExpanded = !myPortfolioState.historyExpanded;
         renderMyPortfolioHistoryDisclosure();
@@ -1892,6 +1981,7 @@
     myPortfolioResetClose?.addEventListener("click", closeMyPortfolioResetModal);
     myPortfolioResetConfirm?.addEventListener("input", resetMyPortfolioGate);
     myPortfolioResetSubmit?.addEventListener("click", resetMyPortfolio);
+    renderMyPortfolioPrivacyToggle();
     window.addEventListener("click", event => {
         if (event.target === myPortfolioResetModal) closeMyPortfolioResetModal();
         if (event.target === myPortfolioPreview) closeModal(myPortfolioPreview);

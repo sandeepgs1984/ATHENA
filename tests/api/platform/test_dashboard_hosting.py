@@ -303,8 +303,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.171.0" in html
-    assert "dashboard.js?v=9.171.0" in html
+    assert "dashboard.css?v=9.176.0" in html
+    assert "dashboard.js?v=9.176.0" in html
     assert "function decisionConfidenceBand" in js
     assert "analysis?.confidence_level" in js
     assert "confidence reflects evidence reliability, not expected profit" in js
@@ -366,23 +366,35 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert 'id="my-portfolio-reset-modal"' in html
     assert "Delete My Portfolio" in html
     assert 'class="my-portfolio-header my-portfolio-command-center"' in html
+    assert 'id="my-portfolio-privacy-toggle"' in html
+    assert 'class="btn btn-icon my-portfolio-privacy-toggle"' in html
+    assert 'aria-label="Hide private portfolio values"' in html
+    assert 'fa-eye' in html
     assert 'id="my-portfolio-alert" class="my-portfolio-alert my-portfolio-status-banner" hidden' in html
     assert 'class="my-portfolio-summary my-portfolio-kpi-strip"' in html
     assert 'class="card val-card my-portfolio-kpi-card my-portfolio-kpi-primary"' in html
     assert 'class="my-portfolio-freshness-strip" aria-label="Portfolio freshness"' in html
-    assert 'class="my-portfolio-mini-bar" aria-label="Portfolio quick context"' in html
+    assert 'class="my-portfolio-mini-bar my-portfolio-holdings-context" aria-label="Portfolio quick context"' in html
     assert 'id="my-portfolio-mini-value"' in html
     assert 'id="my-portfolio-mini-pnl"' in html
     assert 'id="my-portfolio-mini-synced"' in html
     assert 'id="my-portfolio-mini-sort"' in html
     assert "my-portfolio-kpi-freshness" not in html
     assert 'class="card my-portfolio-holdings-card"' in html
+    assert html.find('class="card my-portfolio-holdings-card"') < html.find(
+        'class="my-portfolio-mini-bar my-portfolio-holdings-context"'
+    )
+    assert 'class="my-portfolio-holdings-controls" aria-label="Current holdings controls"' in html
     assert 'class="my-portfolio-density-toggle" role="group"' in html
     assert 'id="my-portfolio-density-compact"' in html
     assert 'id="my-portfolio-density-comfortable"' in html
+    assert "Compact scan" in html
+    assert "Full review" in html
     assert 'class="my-portfolio-secondary-grid"' in html
     assert 'class="card my-portfolio-upload-panel"' in html
     assert 'class="card my-portfolio-history-panel"' in html
+    assert 'class="card-header my-portfolio-history-header"' in html
+    assert 'class="my-portfolio-history-actions"' in html
     assert 'id="my-portfolio-history-toggle"' in html
     assert 'id="my-portfolio-history-body" class="card-body" hidden' in html
     assert html.find('id="my-portfolio-alert"') < html.find('class="my-portfolio-summary my-portfolio-kpi-strip"')
@@ -424,6 +436,9 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert 'id="my-portfolio-detail-body"' in html
     assert 'class="card-header my-portfolio-holdings-header"' in html
     assert 'class="my-portfolio-holdings-heading"' in html
+    assert html.find('class="my-portfolio-holdings-controls"') < html.find(
+        'class="my-portfolio-mini-bar my-portfolio-holdings-context"'
+    )
     for heading in (
         "No.",
         "Last Price",
@@ -457,6 +472,10 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert '@import url("css/05b-my-portfolio.css");' in css_manifest
     assert ".my-portfolio-table-scroll" in my_portfolio_css
     assert ".my-portfolio-command-center" in my_portfolio_css
+    assert ".my-portfolio-privacy-toggle" in my_portfolio_css
+    assert ".my-portfolio-privacy-toggle.active" in my_portfolio_css
+    assert ".my-portfolio-private-value" in my_portfolio_css
+    assert ".my-portfolio-private-value::before" in my_portfolio_css
     assert ".my-portfolio-status-banner" in my_portfolio_css
     assert ".my-portfolio-kpi-strip" in my_portfolio_css
     assert ".my-portfolio-kpi-primary" in my_portfolio_css
@@ -568,13 +587,37 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert ".my-portfolio-upload-flow" in my_portfolio_css
     assert ".my-portfolio-holdings-header" in my_portfolio_css
     assert ".my-portfolio-holdings-heading" in my_portfolio_css
+    assert ".my-portfolio-holdings-controls" in my_portfolio_css
+    assert "grid-template-columns: minmax(320px, 1fr) minmax(520px, auto)" in my_portfolio_css
     assert ".my-portfolio-sort-toolbar" in my_portfolio_css
+    assert ".my-portfolio-view-toolbar" in my_portfolio_css
+    assert ".my-portfolio-holdings-context" in my_portfolio_css
+    assert "grid-column: 1 / -1" in my_portfolio_css
     assert "min-width: 190px" in my_portfolio_css
     assert ".my-portfolio-sort-indicator" in my_portfolio_css
     assert ".my-portfolio-mini-bar" in my_portfolio_css
     assert "position: sticky" in my_portfolio_css
+    assert "backdrop-filter: blur(18px) saturate(1.1)" in my_portfolio_css
+    assert ".my-portfolio-mini-bar::before" in my_portfolio_css
+    assert "background: rgba(5, 9, 17, 0.96)" in my_portfolio_css
+    assert ".my-portfolio-history-header" in my_portfolio_css
+    assert ".my-portfolio-history-actions" in my_portfolio_css
+    assert ".my-portfolio-upload-panel .card-header h2" in my_portfolio_css
+    assert ".my-portfolio-history-panel .card-header h2" in my_portfolio_css
+    assert "margin-bottom: var(--space-8)" in my_portfolio_css
     assert ".my-portfolio-density-toggle" in my_portfolio_css
     assert ".my-portfolio-wide-table.comfortable-density th" in my_portfolio_css
+    assert ".my-portfolio-wide-table.compact-density th" in my_portfolio_css
+    assert ".my-portfolio-wide-table.compact-density .my-portfolio-col-avg-price" in my_portfolio_css
+    assert ".my-portfolio-wide-table.compact-density .my-portfolio-col-levels" in my_portfolio_css
+    assert ".my-portfolio-wide-table.compact-density .my-portfolio-col-freshness" in my_portfolio_css
+    assert ".my-portfolio-wide-table.compact-density th:nth-child(4)" in my_portfolio_css
+    assert ".my-portfolio-wide-table.compact-density th:nth-child(13)" in my_portfolio_css
+    assert ".my-portfolio-wide-table.compact-density th:nth-child(14)" in my_portfolio_css
+    assert "display: none;" in my_portfolio_css
+    assert ".my-portfolio-wide-table.comfortable-density .my-portfolio-col-daily-review" in my_portfolio_css
+    assert ".my-portfolio-wide-table.compact-density .my-portfolio-daily-review-summary" in my_portfolio_css
+    assert ".my-portfolio-wide-table.comfortable-density .my-portfolio-daily-review-summary" in my_portfolio_css
     assert "#my-portfolio-holdings-rows tr.my-portfolio-row-state td:first-child::before" in my_portfolio_css
     assert "#my-portfolio-holdings-rows tr.state-positive td:first-child::before" in my_portfolio_css
     assert ".my-portfolio-unavailable-chip" in my_portfolio_css
@@ -590,10 +633,11 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert ".my-portfolio-holdings-scroll" in my_portfolio_css
     assert "scroll-snap-type: x mandatory;" in my_portfolio_css
     assert "scroll-padding-left: 474px;" in my_portfolio_css
+    assert "scroll-padding-left: 324px;" in my_portfolio_css
     assert "scroll-snap-align: start;" in my_portfolio_css
     assert "scroll-snap-stop: always;" in my_portfolio_css
     assert 'my-portfolio-holdings-scroll' in html
-    assert 'my-portfolio-table-scroll my-portfolio-holdings-scroll' in html
+    assert 'my-portfolio-table-scroll my-portfolio-holdings-scroll compact-density' in html
 
     assert "08b-my-portfolio.js" in DASHBOARD_JS_PARTS
     assert "function loadMyPortfolioWorkspace()" in js
@@ -610,6 +654,25 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert "function myPortfolioDetailHero(row, review, trendLabel)" in js
     assert "function openMyPortfolioDetail(key)" in js
     assert "function renderMyPortfolioDensityControls()" in js
+    assert "athena.myPortfolio.valuesHidden" in js
+    assert "function renderMyPortfolioPrivacyToggle()" in js
+    assert "function setMyPortfolioValuesHidden" in js
+    assert "function myPortfolioMaskedValue" in js
+    assert (
+        'return `<span class="my-portfolio-private-value" '
+        'aria-label="${escapeMyPortfolioHtml(label)}"></span>`;'
+    ) in js
+    assert 'return "••••";' in js
+    assert '">Hidden</span>' not in js
+    assert "function formatMyPortfolioPrivateMoney" in js
+    assert "function formatMyPortfolioPrivateNumber" in js
+    assert "function formatMyPortfolioPrivatePct" in js
+    assert "fa-solid fa-eye-slash" in js
+    assert "Show private portfolio values" in js
+    assert "Hide private portfolio values" in js
+    assert "myPortfolioPrivacyToggle?.addEventListener" in js
+    assert 'document.querySelector(".my-portfolio-holdings-scroll")' in js
+    assert 'classList.toggle("compact-density", !comfortable)' in js
     assert "function renderMyPortfolioHistoryDisclosure()" in js
     assert "function myPortfolioRowStateClass(row)" in js
     assert "function myPortfolioUnavailableChip" in js
@@ -686,7 +749,7 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert "Latest accepted market session through" in js
     assert "myPortfolioConfirmActions.hidden = !myPortfolioState.preview" in js
     assert "formatMyPortfolioTime(row.price_as_of)" in js
-    assert "formatMyPortfolioMoney(row.current_value)" in js
+    assert "myPortfolioPrivateHtml(row.current_value, formatMyPortfolioMoney" in js
     assert "myPortfolioDash()" in js
     assert "Legacy setup" in js
     assert 'myPortfolioUploadState.textContent = `Sync ${run.sync_run_id}' not in js

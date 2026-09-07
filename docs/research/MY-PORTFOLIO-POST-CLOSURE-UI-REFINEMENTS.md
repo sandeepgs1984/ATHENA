@@ -18,7 +18,10 @@ Owner request: improve My Portfolio usability after the Portfolio track closure 
 - Correct the Sync Existing Holdings blocker so it is viewport-owned and visible even when Current Holdings is below the fold.
 - Redesign the My Portfolio page into a trading-workstation hierarchy without changing any feature behavior: command center, status banner, KPI strip, holdings workbench, then secondary update/audit panels.
 - Redesign the holding detail overlay with professional trading visual hierarchy: section accents, row icons, signed value tones, directional chips, and differentiated guidance callouts.
-- Add the next professional workstation polish slice: sticky quick-context bar, Current Holdings density controls, row-state rails, softer unavailable chips, collapsed Recent Imports audit panel, and an at-a-glance detail overlay summary band.
+- Add the next professional workstation polish slice: integrated sticky holdings context, Current Holdings view controls, row-state rails, softer unavailable chips, collapsed Recent Imports audit panel, and an at-a-glance detail overlay summary band.
+- Correct screenshot-review findings from 2026-09-07: quick-context backdrop bleed, cramped Recent Imports show/hide placement, shallow Compact scan / Full review behavior, and the floating quick-context strip visually fighting scrolled table rows.
+- Add a screen-sharing privacy mode that hides private portfolio values on demand.
+- Correct screenshot-review findings from 2026-09-07: privacy masks must not expose visible/searchable `Hidden` text, and the Current Holdings quick context must remain part of a refined sticky workbench header rather than scrolling like a loose table row.
 
 ## Decisions
 
@@ -39,7 +42,10 @@ Owner request: improve My Portfolio usability after the Portfolio track closure 
 - Table colors and icons are presentation-only affordances over existing values. They do not change Status, Conviction, D1 Trend, Opening Range Setup, Daily Review, Next Action, TradePlan, Structural Review, or any Portfolio snapshot semantics.
 - The page hierarchy is presentation-only. The Current Holdings table is the primary daily-work surface; upload/import history are operational/audit surfaces and therefore sit below the trading workbench.
 - Detail-overlay colors, icons, and chips are presentation-only. They describe the already-computed position, technical, daily-review, TradePlan, and structural-review values; they do not introduce new classifications or trading rules.
-- Density mode, sticky context, row-state rails, and collapsed Recent Imports are browser presentation state only. They do not persist, reorder stored holdings, or change sync/import/audit semantics.
+- View mode, sticky holdings context, row-state rails, and collapsed Recent Imports are browser presentation state only. They do not persist, reorder stored holdings, or change sync/import/audit semantics.
+- Compact scan mode intentionally hides lower-priority audit columns (`Avg Price`, `Plan Levels`, and `Freshness`) from the main holdings grid so the daily trading scan path stays readable. Full review mode restores the complete table.
+- Privacy mode is client-side presentation state only. It masks private exposure/performance values in the browser and never changes stored holdings, import records, snapshots, Portfolio Sync output, or API payloads.
+- Privacy mode persists only as a local browser preference under `athena.myPortfolio.valuesHidden`.
 
 ## Implementation Notes
 
@@ -65,12 +71,21 @@ Owner request: improve My Portfolio usability after the Portfolio track closure 
 - The detail overlay now uses section-level visual hierarchy: Position, Technical State, ATHENA Review, Plan / Levels, and Structural Review / Levels each get a subtle section accent; field labels get purpose-specific icons; positive P&L and favorable price context render green, negative values render red, warning/trigger fields render amber, and neutral unavailable fields stay muted.
 - D1 Trend, Opening Range Setup, and SuperTrend direction now render as compact directional chips inside the detail overlay, matching the main table's trading scan language while remaining separate from methodology semantics.
 - Daily Guidance, Structural Guidance, and raw-context notes are differentiated by callout tone so the user can scan recommendation, structural context, and caveat text without reading the whole modal linearly.
-- The My Portfolio workstation now keeps a sticky quick-context bar above Current Holdings showing current value, total P&L, last synced time, and active sort while the user scrolls deeper into holdings.
-- Current Holdings now supports Compact and Comfortable density modes. The toggle only changes table padding and is never persisted into portfolio state.
+- The My Portfolio workstation now keeps the quick-context summary inside the sticky Current Holdings header, showing current value, total P&L, last synced time, and active sort while the user scrolls deeper into holdings without overlaying table rows.
+- Current Holdings now supports separate Compact scan and Full review view modes. Compact scan hides `Avg Price`, `Plan Levels`, and `Freshness` columns and keeps secondary text one-line for a focused trading scan. Full review restores every column with wider table rhythm, roomier cells, and multi-line summaries. The toggle is never persisted into portfolio state.
 - Holding rows now carry a thin left state rail derived from existing row values: positive/healthy rows, warning/watch rows, danger/exit/review rows, and muted unavailable rows.
 - Unavailable table placeholders use muted chips instead of large repeated text, reducing noise while preserving truthfulness.
 - Recent Imports is collapsed by default as a secondary audit surface and can be expanded on demand.
 - The holding detail overlay now opens with an at-a-glance summary band containing the symbol, quantity/average, last price tone, P&L %, Status, Next Action, D1 Trend, and SuperTrend direction.
+- The holdings context now has a stronger opaque blur/isolation layer and is anchored inside the Current Holdings sticky header so table rows do not visually bleed through while scrolling.
+- Recent Imports now uses a dedicated header action lane with minimum button width, keeping Show/Hide separated from the title and audit description.
+- Comfortable mode widens Daily Review, Trend / Setup, Plan Levels, and Freshness rhythm while Compact mode keeps the scan path tight.
+- Update Holdings and Recent Imports now have more breathing room between section title and explanatory subtitle.
+- Sort controls and view-mode controls are visually separated so `Default` reads as a sort reset, while Compact scan / Full review read as table view presets rather than extra filters.
+- Screenshot-review follow-up: dashboard asset version advanced to `9.174.0`; dashboard contract tests assert the integrated sticky holdings context, separated Sort/View controls, Compact scan column hiding, and compact scroll-snap padding.
+- The My Portfolio header now includes an eye / eye-slash privacy toggle. When active, it masks private quantity, average price, last price, investment, current value, total investment, total current value, P&L, and P&L % values across KPIs, the holdings grid, quick holdings context, edit/delete confirmations, and the holding detail overlay while preserving analysis signals and actions.
+- Privacy-mode pass: dashboard asset version advanced to `9.175.0`; dashboard contract tests assert the privacy toggle, local browser preference key, masked-value rendering primitive, and private formatter helpers.
+- Privacy/sticky-header correction pass: dashboard asset version advanced to `9.176.0`; masked private values now render as visual bars without visible `Hidden` text, text-only privacy slots use bullets, and the Current Holdings sticky header is a two-row workbench header with title/summary, separated Sort/View controls, and an integrated full-width context strip.
 - Full reset is gated by a modal requiring the exact `RESET` token.
 
 ## Methodology Boundary
@@ -91,4 +106,9 @@ Focused validation:
 - Second-pass upload-first / confirm-and-sync validation: combined focused pytest 81 passed; JS syntax check passed; ruff passed.
 - Detail-overlay visual hierarchy pass: dashboard asset version advanced to `9.170.0`; dashboard contract tests assert the detail chip/tone/callout primitives.
 - Workstation polish pass: dashboard asset version advanced to `9.171.0`; dashboard contract tests assert sticky context, density controls, row rails, collapsed audit panel, unavailable chips, and detail hero primitives.
+- Screenshot-review correction pass: dashboard asset version advanced to `9.172.0`; dashboard contract tests assert quick-context backdrop opacity/blur, Recent Imports action spacing, and distinct compact-vs-comfortable table behavior.
+- Header-spacing polish: dashboard asset version advanced to `9.173.0`; dashboard contract tests assert scoped title/subtitle spacing for Update Holdings and Recent Imports.
+- Compact scan correction pass: dashboard asset version advanced to `9.174.0`; dashboard contract tests assert the quick context is anchored in the sticky holdings header, Sort and View controls are separate, Compact scan hides lower-priority columns, and Full review keeps the complete table available.
+- Privacy-mode pass: dashboard asset version advanced to `9.175.0`; dashboard contract tests assert the eye/eye-slash control, local preference key, masked-value primitive, and private value formatter helpers.
+- Privacy/sticky-header correction pass: dashboard asset version advanced to `9.176.0`; dashboard contract tests assert no visible `Hidden` text in masked tokens and assert the refined sticky holdings header structure.
 - Targeted mypy: not a clean gate because `my_portfolio_service.py` has pre-existing broad typing debt unrelated to this change.

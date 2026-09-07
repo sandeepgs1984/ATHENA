@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.171.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.176.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -482,6 +482,9 @@
                                 <p class="metric-desc">Canonical current holdings from confirmed imports. Portfolio Sync analysis reflects the latest successful or partial Sync.</p>
                             </div>
                             <div class="my-portfolio-actions">
+                                <button id="my-portfolio-privacy-toggle" class="btn btn-icon my-portfolio-privacy-toggle" type="button" title="Hide private portfolio values" aria-label="Hide private portfolio values" aria-pressed="false">
+                                    <i class="fa-solid fa-eye" aria-hidden="true"></i>
+                                </button>
                                 <button id="my-portfolio-sync" class="btn" type="button" title="Analyze confirmed holdings through ATHENA's persisted market state">
                                     <i class="fa-solid fa-rotate" aria-hidden="true"></i>
                                     <span>Sync Existing Holdings</span>
@@ -541,47 +544,51 @@
                             </div>
                         </div>
 
-                        <div class="my-portfolio-mini-bar" aria-label="Portfolio quick context">
-                            <span><i class="fa-solid fa-chart-line" aria-hidden="true"></i>Value <strong id="my-portfolio-mini-value">₹ —</strong></span>
-                            <span><i class="fa-solid fa-money-bill-trend-up" aria-hidden="true"></i>P&amp;L <strong id="my-portfolio-mini-pnl">₹ —</strong></span>
-                            <span><i class="fa-regular fa-clock" aria-hidden="true"></i>Synced <strong id="my-portfolio-mini-synced">—</strong></span>
-                            <span><i class="fa-solid fa-arrow-down-wide-short" aria-hidden="true"></i><strong id="my-portfolio-mini-sort">P&amp;L % high to low</strong></span>
-                        </div>
-
                         <div class="card my-portfolio-holdings-card">
                             <div class="card-header my-portfolio-holdings-header">
                                 <div class="my-portfolio-holdings-heading">
                                     <h2>Current Holdings</h2>
                                     <p id="my-portfolio-sort-summary" class="metric-desc">Sorted by P&amp;L % high to low.</p>
                                 </div>
-                                <div class="my-portfolio-sort-toolbar" aria-label="Current holdings sort controls">
-                                    <label for="my-portfolio-sort-field">Sort by</label>
-                                    <select id="my-portfolio-sort-field" class="my-portfolio-sort-select">
-                                        <option value="pnl_pct">P&amp;L %</option>
-                                        <option value="pnl">P&amp;L</option>
-                                        <option value="conviction">Conviction</option>
-                                        <option value="next_action">Next Action</option>
-                                        <option value="status">Status</option>
-                                        <option value="trend">Trend / Setup</option>
-                                        <option value="quantity">Qty</option>
-                                        <option value="avg_price">Avg Price</option>
-                                        <option value="last_price">Last Price</option>
-                                        <option value="symbol">Symbol</option>
-                                        <option value="daily_review">Daily Review</option>
-                                    </select>
-                                    <button id="my-portfolio-sort-direction" class="btn btn-icon" type="button" title="Toggle sort direction" aria-label="Toggle sort direction">
-                                        <i class="fa-solid fa-arrow-down-wide-short" aria-hidden="true"></i>
-                                    </button>
-                                    <button id="my-portfolio-sort-reset" class="btn btn-secondary btn-sm" type="button">Default</button>
-                                    <div class="my-portfolio-density-toggle" role="group" aria-label="Current holdings density">
-                                        <button id="my-portfolio-density-compact" class="btn btn-secondary btn-sm active" type="button">Compact</button>
-                                        <button id="my-portfolio-density-comfortable" class="btn btn-secondary btn-sm" type="button">Comfortable</button>
+                                <div class="my-portfolio-holdings-controls" aria-label="Current holdings controls">
+                                    <div class="my-portfolio-sort-toolbar" aria-label="Current holdings sort controls">
+                                        <label for="my-portfolio-sort-field">Sort</label>
+                                        <select id="my-portfolio-sort-field" class="my-portfolio-sort-select">
+                                            <option value="pnl_pct">P&amp;L %</option>
+                                            <option value="pnl">P&amp;L</option>
+                                            <option value="conviction">Conviction</option>
+                                            <option value="next_action">Next Action</option>
+                                            <option value="status">Status</option>
+                                            <option value="trend">Trend / Setup</option>
+                                            <option value="quantity">Qty</option>
+                                            <option value="avg_price">Avg Price</option>
+                                            <option value="last_price">Last Price</option>
+                                            <option value="symbol">Symbol</option>
+                                            <option value="daily_review">Daily Review</option>
+                                        </select>
+                                        <button id="my-portfolio-sort-direction" class="btn btn-icon" type="button" title="Toggle sort direction" aria-label="Toggle sort direction">
+                                            <i class="fa-solid fa-arrow-down-wide-short" aria-hidden="true"></i>
+                                        </button>
+                                        <button id="my-portfolio-sort-reset" class="btn btn-secondary btn-sm" type="button">Default</button>
                                     </div>
+                                    <div class="my-portfolio-view-toolbar" aria-label="Current holdings view controls">
+                                        <span>View</span>
+                                        <div class="my-portfolio-density-toggle" role="group" aria-label="Current holdings view mode">
+                                            <button id="my-portfolio-density-compact" class="btn btn-secondary btn-sm active" type="button">Compact scan</button>
+                                            <button id="my-portfolio-density-comfortable" class="btn btn-secondary btn-sm" type="button">Full review</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="my-portfolio-mini-bar my-portfolio-holdings-context" aria-label="Portfolio quick context">
+                                    <span><i class="fa-solid fa-chart-line" aria-hidden="true"></i>Value <strong id="my-portfolio-mini-value">₹ —</strong></span>
+                                    <span><i class="fa-solid fa-money-bill-trend-up" aria-hidden="true"></i>P&amp;L <strong id="my-portfolio-mini-pnl">₹ —</strong></span>
+                                    <span><i class="fa-regular fa-clock" aria-hidden="true"></i>Synced <strong id="my-portfolio-mini-synced">—</strong></span>
+                                    <span><i class="fa-solid fa-arrow-down-wide-short" aria-hidden="true"></i><strong id="my-portfolio-mini-sort">P&amp;L % high to low</strong></span>
                                 </div>
                             </div>
                             <div class="card-body my-portfolio-holdings-card-body">
-                                <div class="my-portfolio-table-scroll my-portfolio-holdings-scroll">
-                                    <table class="data-table my-portfolio-table my-portfolio-wide-table">
+                                <div class="my-portfolio-table-scroll my-portfolio-holdings-scroll compact-density">
+                                    <table class="data-table my-portfolio-table my-portfolio-wide-table compact-density">
                                         <colgroup>
                                             <col class="my-portfolio-col-index">
                                             <col class="my-portfolio-col-symbol">
@@ -764,15 +771,17 @@
                             </div>
 
                             <div class="card my-portfolio-history-panel">
-                                <div class="card-header">
+                                <div class="card-header my-portfolio-history-header">
                                     <div>
                                         <h2>Recent Imports</h2>
                                         <p class="metric-desc">Audit trail for confirmed and previewed holding snapshots.</p>
                                     </div>
-                                    <button id="my-portfolio-history-toggle" class="btn btn-secondary btn-sm" type="button" aria-expanded="false" aria-controls="my-portfolio-history-body">
-                                        <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
-                                        <span>Show</span>
-                                    </button>
+                                    <div class="my-portfolio-history-actions">
+                                        <button id="my-portfolio-history-toggle" class="btn btn-secondary btn-sm" type="button" aria-expanded="false" aria-controls="my-portfolio-history-body">
+                                            <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
+                                            <span>Show</span>
+                                        </button>
+                                    </div>
                                 </div>
                                 <div id="my-portfolio-history-body" class="card-body" hidden>
                                     <div class="my-portfolio-table-scroll">
@@ -2159,7 +2168,7 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.171.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.176.0"></script>
 
     <!-- DarvaX satellite tab (ADR-010 Amendment 1) — the ONLY DarvaX reference
          in this file, and the flag guard itself. This asset is served solely by
