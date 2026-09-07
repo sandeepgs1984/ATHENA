@@ -68,8 +68,8 @@ Existing dashboard patterns to preserve:
 
 The roadmap intentionally covers all 14 owner-discussed next-level UX ideas:
 
-- Portfolio Command Dashboard: MP-NX1.
-- Action Queue View: MP-NX1.
+- Portfolio Command Dashboard: MP-NX1 — implemented 2026-09-07, pending owner review.
+- Action Queue View: MP-NX1 — implemented 2026-09-07, pending owner review.
 - Column Profiles: MP-NX3.
 - Portfolio Heatmap: MP-NX4.
 - Symbol Detail Review Timeline: MP-NX5.
@@ -79,7 +79,7 @@ The roadmap intentionally covers all 14 owner-discussed next-level UX ideas:
 - Notes / Owner Override Layer: MP-NX6.
 - Review Session Mode: MP-NX6.
 - Pinned Rows: MP-NX3.
-- Smart Filters: MP-NX1.
+- Smart Filters: MP-NX1 — implemented 2026-09-07, pending owner review.
 - Inline Mini Sparklines: MP-NX4.
 - Export Profiles: MP-NX3.
 
@@ -87,30 +87,27 @@ The roadmap intentionally covers all 14 owner-discussed next-level UX ideas:
 
 ### 1. MP-NX1 Action Queue and Smart Filters
 
-Start here.
+Implemented 2026-09-07. Ready for Owner / Chief Architect review.
 
-Implementation approach:
+What shipped:
 
-- Derive counts from the already loaded latest snapshot rows in the browser
-  first, unless server-side query support is clearly needed.
-- Add filter chips above the holdings table, not as a separate page.
-- Add an Action Queue mode or panel that reuses the same row renderer where
-  possible.
-- Treat the Portfolio Command Dashboard as the primary morning triage summary.
-- Define filter predicates explicitly and name them in tests.
+- Non-sticky `.my-portfolio-command-dashboard` between freshness and Current
+  Holdings.
+- Named JS predicates in `08b-my-portfolio.js`:
+  `myPortfolioRowMatchesReviewHoldTight`, `myPortfolioRowMatchesExitRisk`,
+  `myPortfolioRowMatchesStaleData`, `myPortfolioRowMatchesUnavailableEvidence`,
+  `myPortfolioRowIsActionable`, plus smart-filter group matching.
+- `Near Trigger` / `Near Support` / `Fresh Breakout` remain disabled
+  unavailable chips. Opening Range Setup `BREAKOUT` is a Smart Filter only.
+- Action Queue reuses the existing holdings renderer and adds reason chips
+  next to the symbol. Sort, Compact/Full, privacy, export, and sync are
+  unchanged.
+- Dashboard asset version `9.184.0`. Screenshot correction: Action Queue
+  badge and Clear filters now honor `[hidden]` so they do not stay visible
+  on All Holdings.
 
-Watch-outs:
-
-- "Near Trigger" and "Near Support" can imply thresholds. If no frozen threshold
-  exists, either defer those chips or label them as not yet available until the
-  owner approves exact semantics.
-- Do not turn unavailable structural levels into synthetic levels.
-
-Suggested tests:
-
-- dashboard HTML/CSS/JS contract for chips and queue;
-- JS predicate string/fixture tests if a JS test harness exists;
-- API tests only if new backend contracts are introduced.
+Do not reopen MP-NX1 unless the owner asks for a correction. Continue with
+MP-NX2 only after owner approval.
 
 ### 2. MP-NX2 Change Since Last Sync
 
@@ -249,8 +246,8 @@ For every milestone:
 
 ## Suggested Next Owner Decision
 
-Authorize MP-NX1 only:
+Review and approve MP-NX1 first.
 
-Action Queue and Smart Filters as a presentation-only milestone over existing
-snapshot fields, with any threshold-like filters deferred unless exact semantics
-are separately approved.
+If accepted, authorize MP-NX2 only: Change Since Last Sync plus the Risk
+Concentration Panel as factual display aggregation over existing values, with
+no new risk scoring and no interpretation-version bump.

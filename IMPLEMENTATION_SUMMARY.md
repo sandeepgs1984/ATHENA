@@ -1285,6 +1285,52 @@ feat(intraday): full historical ID-8 entry/risk outcome validation
 
 ---
 
+## MP-NX1 — Action Queue and Smart Filters
+
+**Summary.** Added a presentation-only morning triage surface to My Portfolio
+so the owner can see what deserves attention before scanning the full book.
+MP-NX1 uses already loaded holdings/snapshot fields only. It does not change
+Portfolio methodology, interpretation versions, export/sync/privacy contracts,
+or advisory-only scope.
+
+**What changed.** The workstation now has a non-sticky Portfolio Command
+Dashboard between the freshness strip and Current Holdings. Attention chips
+count Review / Hold Tight, Exit Risk, Stale Data, Unavailable Evidence, and
+Needs Review. Near Trigger, Near Support, and Fresh Breakout are visible but
+disabled as unavailable — no new distance or recency threshold was invented.
+Smart Filters refine the existing table by Status, Daily Review, Next Action,
+Trend, Opening Range Setup, P&L state, currentness, and evidence availability.
+Action Queue is a list-scope over the same row renderer; queued rows show
+factual reason chips. Current sort, Compact/Full, privacy masking, export, and
+sync behavior are preserved. Dashboard assets advanced to `9.184.0` after a
+screenshot correction: the Action Queue badge and Clear filters no longer
+override `[hidden]`, and the triage footer reads "Showing all N holdings"
+instead of "Showing N all holdings."
+
+**Tests.** Dashboard hosting / release-gate contracts now lock the command
+dashboard, deferred unavailable chips, named JS predicates, Action Queue empty
+states, Smart Filter groups, `[hidden]` bleed protection, and cache-busted
+`9.184.0` assets. Focused
+validation: `node --check` on `08b-my-portfolio.js` passed; dashboard hosting
+and release-gate tests 13 passed; ruff passed on the touched dashboard
+contract tests.
+
+**Files created:** none.
+
+**Files modified:** `src/athena/api/static/index.html`,
+`src/athena/api/static/js/08b-my-portfolio.js`,
+`src/athena/api/static/css/05b-my-portfolio.css`,
+`tests/api/platform/test_dashboard_hosting.py`,
+`tests/api/platform/test_decision_chart_release_gate.py`,
+`docs/design/MY-PORTFOLIO-NEXT-LEVEL-UX-ROADMAP.md`,
+`docs/research/MY-PORTFOLIO-NEXT-LEVEL-UX-HANDOFF.md`,
+`docs/MILESTONES.md`, `ATHENA_BRIEFING.md`, this file.
+
+**Status:** Implementation complete 2026-09-07; ready for Owner / Chief
+Architect review. Not marked approved. Do not start MP-NX2 until authorized.
+
+---
+
 ## My Portfolio Next-Level UX Plan — Planning Docs Created
 
 **Summary.** Created a milestone-based roadmap and AI-agent handoff for the next

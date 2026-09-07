@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.182.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.184.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -590,10 +590,121 @@
                             </div>
                         </div>
 
+                        <section class="my-portfolio-command-dashboard" aria-labelledby="my-portfolio-triage-heading">
+                            <div class="my-portfolio-triage-header">
+                                <div>
+                                    <h3 id="my-portfolio-triage-heading">Morning triage</h3>
+                                    <p id="my-portfolio-triage-lead" class="metric-desc">See what deserves attention before scanning the full book.</p>
+                                </div>
+                                <div class="my-portfolio-queue-toolbar" aria-label="Holdings list scope">
+                                    <span>List</span>
+                                    <div class="my-portfolio-queue-toggle" role="group" aria-label="Holdings list scope">
+                                        <button id="my-portfolio-queue-all" class="btn btn-secondary btn-sm active" type="button" aria-pressed="true">All Holdings</button>
+                                        <button id="my-portfolio-queue-only" class="btn btn-secondary btn-sm" type="button" aria-pressed="false">Action Queue</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="my-portfolio-triage-attention" role="toolbar" aria-label="Attention counts">
+                                <button type="button" class="my-portfolio-triage-chip tone-warning" data-triage-filter="review_hold_tight" data-triage-available="true" title="Daily Review is Review / Hold Tight.">
+                                    <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+                                    <span>Review / Hold Tight</span>
+                                    <strong id="my-portfolio-triage-count-review_hold_tight">0</strong>
+                                </button>
+                                <button type="button" class="my-portfolio-triage-chip tone-danger" data-triage-filter="exit_risk" data-triage-available="true" title="Structural Review EXIT_RISK is already triggered.">
+                                    <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
+                                    <span>Exit Risk</span>
+                                    <strong id="my-portfolio-triage-count-exit_risk">0</strong>
+                                </button>
+                                <button type="button" class="my-portfolio-triage-chip is-unavailable" data-triage-filter="near_trigger" data-triage-available="false" disabled title="Unavailable until owner-approved near-trigger semantics exist. No new distance threshold was invented.">
+                                    <i class="fa-solid fa-bullseye" aria-hidden="true"></i>
+                                    <span>Near Trigger</span>
+                                    <strong aria-label="Unavailable">—</strong>
+                                </button>
+                                <button type="button" class="my-portfolio-triage-chip is-unavailable" data-triage-filter="near_support" data-triage-available="false" disabled title="Unavailable until owner-approved near-support semantics exist. No new distance threshold was invented.">
+                                    <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
+                                    <span>Near Support</span>
+                                    <strong aria-label="Unavailable">—</strong>
+                                </button>
+                                <button type="button" class="my-portfolio-triage-chip is-unavailable" data-triage-filter="fresh_breakout" data-triage-available="false" disabled title="Unavailable until owner-approved fresh-breakout semantics exist. Opening Range Setup Breakout remains available as a Smart Filter.">
+                                    <i class="fa-solid fa-arrow-up-right-dots" aria-hidden="true"></i>
+                                    <span>Fresh Breakout</span>
+                                    <strong aria-label="Unavailable">—</strong>
+                                </button>
+                                <button type="button" class="my-portfolio-triage-chip tone-warning" data-triage-filter="stale_data" data-triage-available="true" title="Snapshot currentness is stale or unknown, or the row carries STALE provenance.">
+                                    <i class="fa-regular fa-clock" aria-hidden="true"></i>
+                                    <span>Stale Data</span>
+                                    <strong id="my-portfolio-triage-count-stale_data">0</strong>
+                                </button>
+                                <button type="button" class="my-portfolio-triage-chip" data-triage-filter="unavailable_evidence" data-triage-available="true" title="Daily Review, Status, Trend / Setup, or Structural Review evidence is missing or incoherent.">
+                                    <i class="fa-solid fa-circle-minus" aria-hidden="true"></i>
+                                    <span>Unavailable Evidence</span>
+                                    <strong id="my-portfolio-triage-count-unavailable_evidence">0</strong>
+                                </button>
+                                <button type="button" class="my-portfolio-triage-chip tone-accent" data-triage-filter="needs_review" data-triage-available="true" title="Action Queue: Status Caution/At Risk, Next Action Exit/Watch/Add, Review / Hold Tight, or Exit Risk.">
+                                    <i class="fa-solid fa-list-check" aria-hidden="true"></i>
+                                    <span>Needs Review</span>
+                                    <strong id="my-portfolio-triage-count-needs_review">0</strong>
+                                </button>
+                            </div>
+                            <div class="my-portfolio-smart-filters" aria-label="Smart filters">
+                                <div class="my-portfolio-smart-filter-group" data-smart-group="status">
+                                    <span>Status</span>
+                                    <button type="button" class="my-portfolio-smart-chip" data-smart-group="status" data-smart-value="STRONG">Strong</button>
+                                    <button type="button" class="my-portfolio-smart-chip" data-smart-group="status" data-smart-value="HEALTHY">Healthy</button>
+                                    <button type="button" class="my-portfolio-smart-chip" data-smart-group="status" data-smart-value="CAUTION">Caution</button>
+                                    <button type="button" class="my-portfolio-smart-chip" data-smart-group="status" data-smart-value="AT_RISK">At Risk</button>
+                                </div>
+                                <div class="my-portfolio-smart-filter-group" data-smart-group="daily_review">
+                                    <span>Daily Review</span>
+                                    <button type="button" class="my-portfolio-smart-chip" data-smart-group="daily_review" data-smart-value="HOLD_STRONG">Hold Strong</button>
+                                    <button type="button" class="my-portfolio-smart-chip" data-smart-group="daily_review" data-smart-value="HOLD">Hold</button>
+                                </div>
+                                <div class="my-portfolio-smart-filter-group" data-smart-group="next_action">
+                                    <span>Next Action</span>
+                                    <button type="button" class="my-portfolio-smart-chip" data-smart-group="next_action" data-smart-value="EXIT">Exit</button>
+                                    <button type="button" class="my-portfolio-smart-chip" data-smart-group="next_action" data-smart-value="ADD">Add</button>
+                                    <button type="button" class="my-portfolio-smart-chip" data-smart-group="next_action" data-smart-value="WATCH">Watch</button>
+                                    <button type="button" class="my-portfolio-smart-chip" data-smart-group="next_action" data-smart-value="HOLD">Hold</button>
+                                </div>
+                                <div class="my-portfolio-smart-filter-group" data-smart-group="trend">
+                                    <span>Trend</span>
+                                    <button type="button" class="my-portfolio-smart-chip" data-smart-group="trend" data-smart-value="UPTREND">Uptrend</button>
+                                    <button type="button" class="my-portfolio-smart-chip" data-smart-group="trend" data-smart-value="DOWNTREND">Downtrend</button>
+                                    <button type="button" class="my-portfolio-smart-chip" data-smart-group="trend" data-smart-value="MIXED">Mixed</button>
+                                </div>
+                                <div class="my-portfolio-smart-filter-group" data-smart-group="setup">
+                                    <span>Setup</span>
+                                    <button type="button" class="my-portfolio-smart-chip" data-smart-group="setup" data-smart-value="BREAKOUT">Breakout</button>
+                                    <button type="button" class="my-portfolio-smart-chip" data-smart-group="setup" data-smart-value="BREAKDOWN">Breakdown</button>
+                                </div>
+                                <div class="my-portfolio-smart-filter-group" data-smart-group="pnl">
+                                    <span>P&amp;L</span>
+                                    <button type="button" class="my-portfolio-smart-chip" data-smart-group="pnl" data-smart-value="winner">Winner</button>
+                                    <button type="button" class="my-portfolio-smart-chip" data-smart-group="pnl" data-smart-value="loser">Loser</button>
+                                    <button type="button" class="my-portfolio-smart-chip" data-smart-group="pnl" data-smart-value="unpriced">Unpriced</button>
+                                </div>
+                                <div class="my-portfolio-smart-filter-group" data-smart-group="currentness">
+                                    <span>Currentness</span>
+                                    <button type="button" class="my-portfolio-smart-chip" data-smart-group="currentness" data-smart-value="CURRENT">Current</button>
+                                    <button type="button" class="my-portfolio-smart-chip" data-smart-group="currentness" data-smart-value="STALE">Stale</button>
+                                    <button type="button" class="my-portfolio-smart-chip" data-smart-group="currentness" data-smart-value="UNKNOWN">Unknown</button>
+                                </div>
+                                <div class="my-portfolio-smart-filter-group" data-smart-group="evidence">
+                                    <span>Evidence</span>
+                                    <button type="button" class="my-portfolio-smart-chip" data-smart-group="evidence" data-smart-value="daily_review">Daily Review</button>
+                                    <button type="button" class="my-portfolio-smart-chip" data-smart-group="evidence" data-smart-value="structural">Structural</button>
+                                </div>
+                            </div>
+                            <div class="my-portfolio-triage-footer">
+                                <p id="my-portfolio-triage-summary">Showing all holdings.</p>
+                                <button id="my-portfolio-triage-clear" class="btn btn-sm" type="button" hidden>Clear filters</button>
+                            </div>
+                        </section>
+
                         <div class="card my-portfolio-holdings-card">
                             <div class="card-header my-portfolio-holdings-header">
                                 <div class="my-portfolio-holdings-heading">
-                                    <h2>Current Holdings</h2>
+                                    <h2>Current Holdings <span id="my-portfolio-holdings-scope-badge" class="my-portfolio-scope-badge" hidden>Action Queue</span></h2>
                                     <p id="my-portfolio-sort-summary" class="metric-desc">Sorted by P&amp;L % high to low.</p>
                                 </div>
                                 <div class="my-portfolio-holdings-controls" aria-label="Current holdings controls">
@@ -632,6 +743,7 @@
                                     <span><i class="fa-solid fa-money-bill-trend-up" aria-hidden="true"></i>P&amp;L <strong id="my-portfolio-mini-pnl">₹ —</strong></span>
                                     <span><i class="fa-regular fa-clock" aria-hidden="true"></i>Synced <strong id="my-portfolio-mini-synced">—</strong></span>
                                     <span><i class="fa-solid fa-arrow-down-wide-short" aria-hidden="true"></i><strong id="my-portfolio-mini-sort">P&amp;L % high to low</strong></span>
+                                    <span><i class="fa-solid fa-filter" aria-hidden="true"></i><strong id="my-portfolio-mini-triage">All holdings</strong></span>
                                 </div>
                             </div>
                             <div class="card-body my-portfolio-holdings-card-body">
@@ -2216,7 +2328,7 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.182.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.184.0"></script>
 
     <!-- DarvaX satellite tab (ADR-010 Amendment 1) — the ONLY DarvaX reference
          in this file, and the flag guard itself. This asset is served solely by

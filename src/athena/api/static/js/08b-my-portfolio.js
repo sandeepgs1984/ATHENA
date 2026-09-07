@@ -23,6 +23,14 @@
     const myPortfolioMiniPnl = document.getElementById("my-portfolio-mini-pnl");
     const myPortfolioMiniSynced = document.getElementById("my-portfolio-mini-synced");
     const myPortfolioMiniSort = document.getElementById("my-portfolio-mini-sort");
+    const myPortfolioMiniTriage = document.getElementById("my-portfolio-mini-triage");
+    const myPortfolioQueueAll = document.getElementById("my-portfolio-queue-all");
+    const myPortfolioQueueOnly = document.getElementById("my-portfolio-queue-only");
+    const myPortfolioTriageClear = document.getElementById("my-portfolio-triage-clear");
+    const myPortfolioTriageSummary = document.getElementById("my-portfolio-triage-summary");
+    const myPortfolioTriageLead = document.getElementById("my-portfolio-triage-lead");
+    const myPortfolioHoldingsScopeBadge = document.getElementById("my-portfolio-holdings-scope-badge");
+    const myPortfolioCommandDashboard = document.querySelector(".my-portfolio-command-dashboard");
     const myPortfolioExportToggle = document.getElementById("my-portfolio-export-toggle");
     const myPortfolioExportPanel = document.getElementById("my-portfolio-export-panel");
     const myPortfolioExportScope = document.getElementById("my-portfolio-export-scope");
@@ -117,6 +125,48 @@
         syncCompletion: null,
         exporting: false,
         exportColumnsByScope: {},
+        triage: {
+            queueView: false,
+            attention: [],
+            smart: {
+                status: [],
+                daily_review: [],
+                next_action: [],
+                trend: [],
+                setup: [],
+                pnl: [],
+                currentness: [],
+                evidence: [],
+            },
+        },
+    };
+
+    const MY_PORTFOLIO_EMPTY_SMART_FILTERS = {
+        status: [],
+        daily_review: [],
+        next_action: [],
+        trend: [],
+        setup: [],
+        pnl: [],
+        currentness: [],
+        evidence: [],
+    };
+
+    const MY_PORTFOLIO_ATTENTION_FILTERS = [
+        "review_hold_tight",
+        "exit_risk",
+        "stale_data",
+        "unavailable_evidence",
+    ];
+
+    const MY_PORTFOLIO_QUEUE_REASON_LABELS = {
+        review_hold_tight: "Review / Hold Tight",
+        exit_risk: "Exit Risk",
+        next_action_exit: "Exit",
+        next_action_watch: "Watch",
+        next_action_add: "Add",
+        status_at_risk: "At Risk",
+        status_caution: "Caution",
     };
 
     const MY_PORTFOLIO_EXPORT_COLUMNS = {
@@ -684,6 +734,323 @@
         return snapshot?.currentness === "UNKNOWN";
     }
 
+    function resetMyPortfolioTriageState() {
+        myPortfolioState.triage = {
+            queueView: false,
+            attention: [],
+            smart: {
+                status: [...MY_PORTFOLIO_EMPTY_SMART_FILTERS.status],
+                daily_review: [...MY_PORTFOLIO_EMPTY_SMART_FILTERS.daily_review],
+                next_action: [...MY_PORTFOLIO_EMPTY_SMART_FILTERS.next_action],
+                trend: [...MY_PORTFOLIO_EMPTY_SMART_FILTERS.trend],
+                setup: [...MY_PORTFOLIO_EMPTY_SMART_FILTERS.setup],
+                pnl: [...MY_PORTFOLIO_EMPTY_SMART_FILTERS.pnl],
+                currentness: [...MY_PORTFOLIO_EMPTY_SMART_FILTERS.currentness],
+                evidence: [...MY_PORTFOLIO_EMPTY_SMART_FILTERS.evidence],
+            },
+        };
+    }
+
+    function myPortfolioHasActiveTriage() {
+        const triage = myPortfolioState.triage;
+        if (triage.queueView || triage.attention.length) return true;
+        return Object.values(triage.smart).some(values => values.length);
+    }
+
+    function myPortfolioSourceRows() {
+        if (myPortfolioState.snapshot?.rows?.length) return myPortfolioState.snapshot.rows;
+        return myPortfolioState.holdings || [];
+    }
+
+    function myPortfolioTriageContext() {
+        const snapshot = myPortfolioState.snapshot;
+        const hasSnapshot = Boolean(snapshot?.rows?.length);
+        return {
+            hasSnapshot,
+            snapshotStale: myPortfolioSnapshotIsStale(snapshot),
+            snapshotUnknown: myPortfolioSnapshotCurrentnessIsUnknown(snapshot),
+            snapshotCurrent: hasSnapshot && !myPortfolioSnapshotIsStale(snapshot) && !myPortfolioSnapshotCurrentnessIsUnknown(snapshot),
+        };
+    }
+
+    function myPortfolioDailyStatus(row) {
+        return String(row?.daily_review?.review_status || "").toUpperCase();
+    }
+
+    function myPortfolioRowStatus(row) {
+        return String(row?.status || "").toUpperCase();
+    }
+
+    function myPortfolioRowAction(row) {
+        return String(row?.next_action || "").toUpperCase();
+    }
+
+    function myPortfolioTrendParts(row) {
+        const raw = row?.trend_or_setup ? String(row.trend_or_setup).toUpperCase() : "";
+        return {
+            trend: raw.split("/")[0]?.trim() || "",
+            setup: raw.includes("/") ? raw.split("/")[1]?.trim() || "" : "",
+        };
+    }
+
+    function myPortfolioRowHasStaleProvenance(row) {
+        return (row?.provenance?.interpretation_reason_codes || []).some(code =>
+            String(code).startsWith("STALE_")
+        );
+    }
+
+    function myPortfolioRowMatchesReviewHoldTight(row) {
+        return myPortfolioDailyStatus(row) === "REVIEW_HOLD_TIGHT";
+    }
+
+    function myPortfolioRowMatchesExitRisk(row) {
+        return row?.structural_review?.exit_risk === true;
+    }
+
+    function myPortfolioRowMatchesStaleData(row, ctx) {
+        if (!ctx.hasSnapshot) return false;
+        return ctx.snapshotStale || ctx.snapshotUnknown || myPortfolioRowHasStaleProvenance(row);
+    }
+
+    function myPortfolioRowMatchesUnavailableEvidence(row, ctx) {
+        if (!ctx.hasSnapshot) return true;
+        const dailyMissing = !myPortfolioDailyStatus(row);
+        const statusMissing = !myPortfolioRowStatus(row) || myPortfolioRowStatus(row) === "UNAVAILABLE";
+        const trendMissing = !myPortfolioTrendParts(row).trend;
+        const structuralMissing = !row?.structural_review || row.structural_review.is_coherent === false;
+        return dailyMissing || statusMissing || trendMissing || structuralMissing;
+    }
+
+    function myPortfolioRowIsActionable(row, ctx) {
+        if (!ctx.hasSnapshot) return false;
+        const status = myPortfolioRowStatus(row);
+        const action = myPortfolioRowAction(row);
+        return myPortfolioRowMatchesReviewHoldTight(row)
+            || myPortfolioRowMatchesExitRisk(row)
+            || action === "EXIT"
+            || action === "WATCH"
+            || action === "ADD"
+            || status === "AT_RISK"
+            || status === "CAUTION";
+    }
+
+    function myPortfolioRowMatchesAttentionFilter(row, filterId, ctx) {
+        if (filterId === "review_hold_tight") return myPortfolioRowMatchesReviewHoldTight(row);
+        if (filterId === "exit_risk") return myPortfolioRowMatchesExitRisk(row);
+        if (filterId === "stale_data") return myPortfolioRowMatchesStaleData(row, ctx);
+        if (filterId === "unavailable_evidence") return myPortfolioRowMatchesUnavailableEvidence(row, ctx);
+        return false;
+    }
+
+    function myPortfolioRowMatchesAttentionFilters(row, ctx) {
+        const selected = myPortfolioState.triage.attention;
+        if (!selected.length) return true;
+        return selected.some(filterId => myPortfolioRowMatchesAttentionFilter(row, filterId, ctx));
+    }
+
+    function myPortfolioRowMatchesSmartGroup(row, group, values, ctx) {
+        if (!values.length) return true;
+        if (group === "status") return values.includes(myPortfolioRowStatus(row));
+        if (group === "daily_review") return values.includes(myPortfolioDailyStatus(row));
+        if (group === "next_action") return values.includes(myPortfolioRowAction(row));
+        if (group === "trend") return values.includes(myPortfolioTrendParts(row).trend);
+        if (group === "setup") return values.includes(myPortfolioTrendParts(row).setup);
+        if (group === "pnl") {
+            const pnl = Number(row?.pnl);
+            return values.some(value => {
+                if (value === "unpriced") return row?.pnl == null || !Number.isFinite(pnl);
+                if (value === "winner") return Number.isFinite(pnl) && pnl > 0;
+                if (value === "loser") return Number.isFinite(pnl) && pnl < 0;
+                return false;
+            });
+        }
+        if (group === "currentness") {
+            return values.some(value => {
+                if (value === "CURRENT") return ctx.snapshotCurrent;
+                if (value === "STALE") return ctx.hasSnapshot && ctx.snapshotStale;
+                if (value === "UNKNOWN") return !ctx.hasSnapshot || ctx.snapshotUnknown;
+                return false;
+            });
+        }
+        if (group === "evidence") {
+            return values.some(value => {
+                if (value === "daily_review") return Boolean(myPortfolioDailyStatus(row));
+                if (value === "structural") return row?.structural_review?.is_coherent === true;
+                return false;
+            });
+        }
+        return true;
+    }
+
+    function myPortfolioRowMatchesSmartFilters(row, ctx) {
+        return Object.entries(myPortfolioState.triage.smart).every(([group, values]) =>
+            myPortfolioRowMatchesSmartGroup(row, group, values, ctx)
+        );
+    }
+
+    function myPortfolioRowVisible(row, ctx) {
+        if (myPortfolioState.triage.queueView && !myPortfolioRowIsActionable(row, ctx)) return false;
+        if (!myPortfolioRowMatchesAttentionFilters(row, ctx)) return false;
+        return myPortfolioRowMatchesSmartFilters(row, ctx);
+    }
+
+    function myPortfolioVisibleRows(rows) {
+        const ctx = myPortfolioTriageContext();
+        return (rows || []).filter(row => myPortfolioRowVisible(row, ctx));
+    }
+
+    function myPortfolioQueueReasons(row) {
+        const reasons = [];
+        if (myPortfolioRowMatchesReviewHoldTight(row)) reasons.push("review_hold_tight");
+        if (myPortfolioRowMatchesExitRisk(row)) reasons.push("exit_risk");
+        const action = myPortfolioRowAction(row);
+        if (action === "EXIT") reasons.push("next_action_exit");
+        if (action === "WATCH") reasons.push("next_action_watch");
+        if (action === "ADD") reasons.push("next_action_add");
+        const status = myPortfolioRowStatus(row);
+        if (status === "AT_RISK") reasons.push("status_at_risk");
+        if (status === "CAUTION") reasons.push("status_caution");
+        return reasons;
+    }
+
+    function myPortfolioQueueReasonChips(row) {
+        if (!myPortfolioState.triage.queueView) return "";
+        const reasons = myPortfolioQueueReasons(row);
+        if (!reasons.length) return "";
+        return `<span class="my-portfolio-queue-reasons">${reasons.map(reason =>
+            `<span class="my-portfolio-queue-reason">${escapeMyPortfolioHtml(MY_PORTFOLIO_QUEUE_REASON_LABELS[reason] || reason)}</span>`
+        ).join("")}</span>`;
+    }
+
+    function myPortfolioTriageCounts(rows = myPortfolioSourceRows()) {
+        const ctx = myPortfolioTriageContext();
+        const counts = {
+            review_hold_tight: 0,
+            exit_risk: 0,
+            stale_data: 0,
+            unavailable_evidence: 0,
+            needs_review: 0,
+        };
+        (rows || []).forEach(row => {
+            if (myPortfolioRowMatchesReviewHoldTight(row)) counts.review_hold_tight += 1;
+            if (myPortfolioRowMatchesExitRisk(row)) counts.exit_risk += 1;
+            if (myPortfolioRowMatchesStaleData(row, ctx)) counts.stale_data += 1;
+            if (myPortfolioRowMatchesUnavailableEvidence(row, ctx)) counts.unavailable_evidence += 1;
+            if (myPortfolioRowIsActionable(row, ctx)) counts.needs_review += 1;
+        });
+        return counts;
+    }
+
+    function myPortfolioTriageEmptyMessage(totalCount) {
+        if (!totalCount) return "No holdings imported yet. Upload Portfolio to begin.";
+        if (myPortfolioState.triage.queueView && !myPortfolioTriageContext().hasSnapshot) {
+            return "Sync Existing Holdings to build the action queue.";
+        }
+        const refining = myPortfolioState.triage.attention.length
+            || Object.values(myPortfolioState.triage.smart).some(values => values.length);
+        if (myPortfolioState.triage.queueView && !refining) {
+            return "No holdings need attention.";
+        }
+        if (myPortfolioState.triage.queueView) {
+            return "No Action Queue holdings match the current filters.";
+        }
+        return "No holdings match the current triage filters.";
+    }
+
+    function setMyPortfolioQueueView(queueView) {
+        myPortfolioState.triage.queueView = Boolean(queueView);
+        renderMyPortfolioHoldings(myPortfolioSourceRows());
+    }
+
+    function toggleMyPortfolioAttentionFilter(filterId) {
+        if (filterId === "needs_review") {
+            setMyPortfolioQueueView(!myPortfolioState.triage.queueView);
+            return;
+        }
+        if (filterId === "near_trigger" || filterId === "near_support" || filterId === "fresh_breakout") {
+            return;
+        }
+        const selected = new Set(myPortfolioState.triage.attention);
+        if (selected.has(filterId)) selected.delete(filterId);
+        else selected.add(filterId);
+        myPortfolioState.triage.attention = MY_PORTFOLIO_ATTENTION_FILTERS.filter(id => selected.has(id));
+        renderMyPortfolioHoldings(myPortfolioSourceRows());
+    }
+
+    function toggleMyPortfolioSmartFilter(group, value) {
+        const current = new Set(myPortfolioState.triage.smart[group] || []);
+        if (current.has(value)) current.delete(value);
+        else current.add(value);
+        myPortfolioState.triage.smart[group] = [...current];
+        renderMyPortfolioHoldings(myPortfolioSourceRows());
+    }
+
+    function clearMyPortfolioTriage() {
+        resetMyPortfolioTriageState();
+        renderMyPortfolioHoldings(myPortfolioSourceRows());
+    }
+
+    function renderMyPortfolioTriage(totalCount, visibleCount) {
+        const counts = myPortfolioTriageCounts();
+        Object.entries(counts).forEach(([filterId, count]) => {
+            const el = document.getElementById(`my-portfolio-triage-count-${filterId}`);
+            if (el) el.textContent = formatMyPortfolioNumber(count);
+        });
+        document.querySelectorAll(".my-portfolio-triage-chip[data-triage-available='true']").forEach(chip => {
+            const filterId = chip.getAttribute("data-triage-filter");
+            const active = filterId === "needs_review"
+                ? myPortfolioState.triage.queueView
+                : myPortfolioState.triage.attention.includes(filterId);
+            chip.classList.toggle("active", active);
+            chip.setAttribute("aria-pressed", String(active));
+        });
+        document.querySelectorAll(".my-portfolio-smart-chip").forEach(chip => {
+            const group = chip.getAttribute("data-smart-group");
+            const value = chip.getAttribute("data-smart-value");
+            const active = (myPortfolioState.triage.smart[group] || []).includes(value);
+            chip.classList.toggle("active", active);
+            chip.setAttribute("aria-pressed", String(active));
+        });
+        myPortfolioQueueAll?.classList.toggle("active", !myPortfolioState.triage.queueView);
+        myPortfolioQueueOnly?.classList.toggle("active", myPortfolioState.triage.queueView);
+        myPortfolioQueueAll?.setAttribute("aria-pressed", String(!myPortfolioState.triage.queueView));
+        myPortfolioQueueOnly?.setAttribute("aria-pressed", String(myPortfolioState.triage.queueView));
+        if (myPortfolioHoldingsScopeBadge) {
+            myPortfolioHoldingsScopeBadge.hidden = !myPortfolioState.triage.queueView;
+        }
+        const active = myPortfolioHasActiveTriage();
+        if (myPortfolioTriageClear) myPortfolioTriageClear.hidden = !active;
+        let summary;
+        if (myPortfolioState.triage.queueView) {
+            summary = totalCount === visibleCount
+                ? `Showing ${formatMyPortfolioNumber(visibleCount)} holdings in Action Queue.`
+                : `Showing ${formatMyPortfolioNumber(visibleCount)} of ${formatMyPortfolioNumber(totalCount)} holdings in Action Queue.`;
+        } else if (totalCount === visibleCount) {
+            summary = `Showing all ${formatMyPortfolioNumber(visibleCount)} holdings.`;
+        } else {
+            summary = `Showing ${formatMyPortfolioNumber(visibleCount)} of ${formatMyPortfolioNumber(totalCount)} holdings.`;
+        }
+        if (myPortfolioTriageSummary) myPortfolioTriageSummary.textContent = summary;
+        if (myPortfolioMiniTriage) {
+            myPortfolioMiniTriage.textContent = myPortfolioState.triage.queueView
+                ? `Queue · ${formatMyPortfolioNumber(visibleCount)}`
+                : active
+                    ? `Filtered · ${formatMyPortfolioNumber(visibleCount)}`
+                    : `All · ${formatMyPortfolioNumber(visibleCount)}`;
+        }
+        if (myPortfolioTriageLead) {
+            myPortfolioTriageLead.textContent = counts.needs_review
+                ? `${formatMyPortfolioNumber(counts.needs_review)} holding${counts.needs_review === 1 ? "" : "s"} need attention.`
+                : myPortfolioTriageContext().hasSnapshot
+                    ? "No holdings currently need attention."
+                    : totalCount
+                        ? "Sync Existing Holdings to generate the action queue."
+                        : "See what deserves attention before scanning the full book.";
+        }
+        myPortfolioCommandDashboard?.classList.toggle("queue-active", myPortfolioState.triage.queueView);
+        myPortfolioCommandDashboard?.classList.toggle("filters-active", active);
+    }
+
     function myPortfolioSyncFailureSummary(run) {
         const failed = Object.entries(run?.per_symbol || {})
             .filter(([, item]) => String(item?.status || "").toUpperCase() === "FAILED")
@@ -1248,13 +1615,16 @@
             return;
         }
         myPortfolioState.snapshotRowsByKey = {};
-        if (!holdings.length) {
-            myPortfolioHoldingsRows.innerHTML = '<tr><td colspan="15" class="text-center text-muted">No holdings imported yet. Upload Portfolio to begin.</td></tr>';
+        const sourceRows = holdings || [];
+        const visibleRows = myPortfolioVisibleRows(sourceRows);
+        if (!sourceRows.length || !visibleRows.length) {
+            myPortfolioHoldingsRows.innerHTML = `<tr><td colspan="15" class="text-center text-muted">${escapeMyPortfolioHtml(myPortfolioTriageEmptyMessage(sourceRows.length))}</td></tr>`;
             renderMyPortfolioSortControls();
             renderMyPortfolioDensityControls();
+            renderMyPortfolioTriage(sourceRows.length, visibleRows.length);
             return;
         }
-        const rows = sortedMyPortfolioRows(holdings);
+        const rows = sortedMyPortfolioRows(visibleRows);
         myPortfolioHoldingsRows.innerHTML = rows.map((holding, index) => {
             const symbol = holding.symbol || bareMyPortfolioSymbol(holding.instrument_id);
             return `
@@ -1279,6 +1649,7 @@
         }).join("");
         renderMyPortfolioSortControls();
         renderMyPortfolioDensityControls();
+        renderMyPortfolioTriage(sourceRows.length, rows.length);
     }
 
     function renderMyPortfolioSnapshotRows(rows) {
@@ -1286,11 +1657,19 @@
         rows.forEach(row => {
             myPortfolioState.snapshotRowsByKey[myPortfolioRowKey(row)] = row;
         });
-        const sortedRows = sortedMyPortfolioRows(rows);
+        const visibleRows = myPortfolioVisibleRows(rows);
+        if (!visibleRows.length) {
+            myPortfolioHoldingsRows.innerHTML = `<tr><td colspan="15" class="text-center text-muted">${escapeMyPortfolioHtml(myPortfolioTriageEmptyMessage(rows.length))}</td></tr>`;
+            renderMyPortfolioSortControls();
+            renderMyPortfolioDensityControls();
+            renderMyPortfolioTriage(rows.length, 0);
+            return;
+        }
+        const sortedRows = sortedMyPortfolioRows(visibleRows);
         myPortfolioHoldingsRows.innerHTML = sortedRows.map((row, index) => `
             <tr class="my-portfolio-row-state ${myPortfolioRowStateClass(row)}" data-instrument-id="${escapeMyPortfolioHtml(myPortfolioRowKey(row))}" tabindex="0" role="button" aria-label="Open detail for ${escapeMyPortfolioHtml(row.symbol)}">
                 <td class="my-portfolio-row-index">${formatMyPortfolioNumber(index + 1)}</td>
-                <td class="font-mono"><strong>${escapeMyPortfolioHtml(row.symbol)}</strong></td>
+                <td class="font-mono"><strong>${escapeMyPortfolioHtml(row.symbol)}</strong>${myPortfolioQueueReasonChips(row)}</td>
                 <td>${myPortfolioPrivateNumberCell(row.qty ?? row.quantity)}</td>
                 <td class="font-mono">${myPortfolioMoneyCell(row.avg_price)}</td>
                 <td class="font-mono">${myPortfolioPriceToneCell(row.last_price, row.avg_price)}</td>
@@ -1308,6 +1687,7 @@
         `).join("");
         renderMyPortfolioSortControls();
         renderMyPortfolioDensityControls();
+        renderMyPortfolioTriage(rows.length, sortedRows.length);
     }
 
     // MY-PORTFOLIO-V1-FINAL-UX-CLOSURE holding-detail drawer. Every value
@@ -2178,6 +2558,7 @@
             myPortfolioState.holdings = [];
             myPortfolioState.imports = [];
             myPortfolioState.snapshotRowsByKey = {};
+            resetMyPortfolioTriageState();
             if (myPortfolioFileInput) myPortfolioFileInput.value = "";
             if (myPortfolioSelectedFile) myPortfolioSelectedFile.textContent = "No file selected";
             if (myPortfolioPreview) closeModal(myPortfolioPreview);
@@ -2202,15 +2583,32 @@
     myPortfolioSync?.addEventListener("click", () => startMyPortfolioSync());
     myPortfolioSortField?.addEventListener("change", event => {
         myPortfolioState.sort.key = event.target.value || "pnl_pct";
-        renderMyPortfolioHoldings(myPortfolioState.snapshot?.rows?.length ? myPortfolioState.snapshot.rows : myPortfolioState.holdings);
+        renderMyPortfolioHoldings(myPortfolioSourceRows());
     });
     myPortfolioSortDirection?.addEventListener("click", () => {
         myPortfolioState.sort.direction = myPortfolioState.sort.direction === "asc" ? "desc" : "asc";
-        renderMyPortfolioHoldings(myPortfolioState.snapshot?.rows?.length ? myPortfolioState.snapshot.rows : myPortfolioState.holdings);
+        renderMyPortfolioHoldings(myPortfolioSourceRows());
     });
     myPortfolioSortReset?.addEventListener("click", () => {
         myPortfolioState.sort = { key: "pnl_pct", direction: "desc" };
-        renderMyPortfolioHoldings(myPortfolioState.snapshot?.rows?.length ? myPortfolioState.snapshot.rows : myPortfolioState.holdings);
+        renderMyPortfolioHoldings(myPortfolioSourceRows());
+    });
+    myPortfolioQueueAll?.addEventListener("click", () => setMyPortfolioQueueView(false));
+    myPortfolioQueueOnly?.addEventListener("click", () => setMyPortfolioQueueView(true));
+    myPortfolioTriageClear?.addEventListener("click", clearMyPortfolioTriage);
+    myPortfolioCommandDashboard?.addEventListener("click", event => {
+        const attentionChip = event.target.closest(".my-portfolio-triage-chip[data-triage-available='true']");
+        if (attentionChip) {
+            toggleMyPortfolioAttentionFilter(attentionChip.getAttribute("data-triage-filter"));
+            return;
+        }
+        const smartChip = event.target.closest(".my-portfolio-smart-chip");
+        if (smartChip) {
+            toggleMyPortfolioSmartFilter(
+                smartChip.getAttribute("data-smart-group"),
+                smartChip.getAttribute("data-smart-value")
+            );
+        }
     });
     myPortfolioDensityCompact?.addEventListener("click", () => setMyPortfolioDensity("compact"));
     myPortfolioDensityComfortable?.addEventListener("click", () => setMyPortfolioDensity("comfortable"));
@@ -2261,7 +2659,7 @@
             myPortfolioState.sort.key = key;
             myPortfolioState.sort.direction = key === "symbol" ? "asc" : "desc";
         }
-        renderMyPortfolioHoldings(myPortfolioState.snapshot?.rows?.length ? myPortfolioState.snapshot.rows : myPortfolioState.holdings);
+        renderMyPortfolioHoldings(myPortfolioSourceRows());
     });
     myPortfolioResetOpen?.addEventListener("click", openMyPortfolioResetModal);
     myPortfolioResetClose?.addEventListener("click", closeMyPortfolioResetModal);

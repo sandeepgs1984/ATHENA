@@ -46,9 +46,9 @@ This roadmap covers the full 14-item next-level UX inventory:
 
 | Feature | Milestone | Notes |
 |---|---|---|
-| Portfolio Command Dashboard | MP-NX1 | Triage strip and attention counts above Current Holdings. |
-| Action Queue View | MP-NX1 | Dedicated actionable-holdings view over existing snapshot fields. |
-| Smart Filters | MP-NX1 | Filter chips for review, trend, status, evidence availability, and currentness. |
+| Portfolio Command Dashboard | MP-NX1 | Implemented 2026-09-07: non-sticky triage strip and attention counts above Current Holdings. |
+| Action Queue View | MP-NX1 | Implemented 2026-09-07: dedicated actionable-holdings list scope over existing snapshot fields. |
+| Smart Filters | MP-NX1 | Implemented 2026-09-07: filter chips for review, trend, status, P&L state, evidence availability, and currentness. |
 | Change Since Last Sync | MP-NX2 | Snapshot-to-snapshot factual diff badges and detail-panel deltas. |
 | Risk Concentration Panel | MP-NX2 | Exposure/status/trend/action concentration summaries over existing values. |
 | Column Profiles | MP-NX3 | Purposeful table layouts for scan, P&L, technical, risk, and audit workflows. |
@@ -81,27 +81,49 @@ This roadmap covers the full 14-item next-level UX inventory:
 
 ### MP-NX1 — Action Queue and Smart Filters
 
+Status: Implementation complete 2026-09-07 — ready for Owner / Chief Architect
+review. Presentation-only over already loaded holdings/snapshot rows.
+
 Objective: create a morning triage surface that shows holdings needing attention
 without requiring the owner to scan the full table.
 
-Scope:
+Scope completed:
 
-- Add a compact command strip above Current Holdings with counts for:
-  `Review / Hold Tight`, `Exit Risk`, `Near Trigger`, `Near Support`,
-  `Fresh Breakout`, `Stale Data`, `Unavailable Evidence`, and `Needs Review`.
-- Add smart filter chips that filter the existing holdings table.
-- Add an Action Queue view that lists only actionable holdings using existing
-  fields such as Status, Daily Review, Next Action, Trend / Setup, currentness,
-  and structural review values.
-- Establish the Portfolio Command Dashboard as the primary morning triage
-  surface without adding new methodology.
-- Preserve current sorting and view modes.
+- Added a non-sticky Portfolio Command Dashboard between the freshness strip
+  and Current Holdings so sticky-header bleed cannot recur.
+- Attention chips with counts: `Review / Hold Tight`, `Exit Risk`, `Stale Data`,
+  `Unavailable Evidence`, and `Needs Review`.
+- Deferred chips labeled unavailable (not invented): `Near Trigger`,
+  `Near Support`, and `Fresh Breakout`.
+- Smart Filters over existing fields only: Status, Daily Review, Next Action,
+  Trend, Opening Range Setup, P&L state, currentness, and evidence
+  availability.
+- Action Queue list scope (`All Holdings` / `Action Queue`) reuses the existing
+  row renderer and current sort/density/privacy/export/sync behavior.
+- Client-side predicates only. No API, methodology, or interpretation-version
+  change.
+
+Frozen MP-NX1 predicates:
+
+- `Review / Hold Tight`: `daily_review.review_status === REVIEW_HOLD_TIGHT`.
+- `Exit Risk`: `structural_review.exit_risk === true`.
+- `Stale Data`: snapshot currentness is `STALE_HOLDINGS_CHANGED` or `UNKNOWN`,
+  or the row carries `STALE_*` interpretation provenance. No snapshot → 0.
+- `Unavailable Evidence`: no snapshot, or missing Daily Review status, Status
+  missing/`UNAVAILABLE`, missing Trend, or Structural Review missing/incoherent.
+- `Needs Review` / Action Queue membership: snapshot row with Review / Hold
+  Tight, Exit Risk, Next Action `EXIT`/`WATCH`/`ADD`, or Status `AT_RISK`/
+  `CAUTION`. No snapshot → empty queue with a sync prompt.
+- Smart Filters AND across groups and OR within a group. Attention chips OR.
+  Action Queue ANDs with the actionable predicate. `Needs Review` toggles the
+  Action Queue rather than adding a second overlapping filter.
 
 Non-goals:
 
 - No new Status, Conviction, Next Action, structural level, or Daily Review
   methodology.
 - No new broker calls outside the existing sync path.
+- No near-trigger, near-support, or fresh-breakout distance/recency thresholds.
 
 Primary UX outcome:
 
@@ -289,8 +311,9 @@ Expanded inventory order:
 
 ## Open Questions for Owner Approval
 
-- Should smart filters be pure client-side filters over the latest loaded
-  snapshot, or should an API query layer be added for future scale?
+- MP-NX1 decided: smart filters are pure client-side filters over the latest
+  loaded snapshot/holdings. Revisit an API query layer only if holdings scale
+  requires it.
 - Should column profiles be local browser preferences or server-persisted owner
   preferences?
 - In privacy mode, should heatmap tile size still encode private capital values?

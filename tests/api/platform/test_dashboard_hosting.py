@@ -303,8 +303,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.182.0" in html
-    assert "dashboard.js?v=9.182.0" in html
+    assert "dashboard.css?v=9.184.0" in html
+    assert "dashboard.js?v=9.184.0" in html
     assert "function decisionConfidenceBand" in js
     assert "analysis?.confidence_level" in js
     assert "confidence reflects evidence reliability, not expected profit" in js
@@ -390,6 +390,41 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert 'class="my-portfolio-summary my-portfolio-kpi-strip"' in html
     assert 'class="card val-card my-portfolio-kpi-card my-portfolio-kpi-primary"' in html
     assert 'class="my-portfolio-freshness-strip" aria-label="Portfolio freshness"' in html
+    assert 'class="my-portfolio-command-dashboard"' in html
+    assert 'id="my-portfolio-triage-heading"' in html
+    assert "Morning triage" in html
+    assert 'id="my-portfolio-queue-all"' in html
+    assert 'id="my-portfolio-queue-only"' in html
+    assert "Action Queue" in html
+    assert 'data-triage-filter="review_hold_tight"' in html
+    assert 'data-triage-filter="exit_risk"' in html
+    assert 'data-triage-filter="near_trigger" data-triage-available="false"' in html
+    assert 'data-triage-filter="near_support" data-triage-available="false"' in html
+    assert 'data-triage-filter="fresh_breakout" data-triage-available="false"' in html
+    assert 'data-triage-filter="stale_data"' in html
+    assert 'data-triage-filter="unavailable_evidence"' in html
+    assert 'data-triage-filter="needs_review"' in html
+    assert 'class="my-portfolio-smart-filters" aria-label="Smart filters"' in html
+    assert 'data-smart-group="status"' in html
+    assert 'data-smart-group="daily_review"' in html
+    assert 'data-smart-group="next_action"' in html
+    assert 'data-smart-group="trend"' in html
+    assert 'data-smart-group="setup"' in html
+    assert 'data-smart-group="pnl"' in html
+    assert 'data-smart-group="currentness"' in html
+    assert 'data-smart-group="evidence"' in html
+    assert 'id="my-portfolio-triage-clear"' in html
+    assert 'id="my-portfolio-holdings-scope-badge"' in html
+    assert 'id="my-portfolio-mini-triage"' in html
+    assert html.find('class="my-portfolio-freshness-strip"') < html.find(
+        'class="my-portfolio-command-dashboard"'
+    )
+    assert html.find('class="my-portfolio-command-dashboard"') < html.find(
+        'class="card my-portfolio-holdings-card"'
+    )
+    assert html.find('class="my-portfolio-command-dashboard"') < html.find(
+        'class="my-portfolio-mini-bar my-portfolio-holdings-context"'
+    )
     assert 'class="my-portfolio-mini-bar my-portfolio-holdings-context" aria-label="Portfolio quick context"' in html
     assert 'id="my-portfolio-mini-value"' in html
     assert 'id="my-portfolio-mini-pnl"' in html
@@ -506,6 +541,19 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert ".my-portfolio-kpi-primary" in my_portfolio_css
     assert ".my-portfolio-freshness-strip" in my_portfolio_css
     assert ".my-portfolio-freshness-item" in my_portfolio_css
+    assert ".my-portfolio-command-dashboard" in my_portfolio_css
+    assert ".my-portfolio-triage-chip" in my_portfolio_css
+    assert ".my-portfolio-smart-filters" in my_portfolio_css
+    assert ".my-portfolio-smart-chip" in my_portfolio_css
+    assert ".my-portfolio-queue-toggle" in my_portfolio_css
+    assert ".my-portfolio-queue-reason" in my_portfolio_css
+    assert ".my-portfolio-triage-chip.is-unavailable" in my_portfolio_css
+    assert ".my-portfolio-command-dashboard.queue-active" in my_portfolio_css
+    assert "#my-portfolio-triage-clear[hidden]" in my_portfolio_css
+    assert ".my-portfolio-scope-badge[hidden]" in my_portfolio_css
+    command_dashboard_css = my_portfolio_css.split(".my-portfolio-command-dashboard")[1]
+    command_dashboard_block = command_dashboard_css.split(".my-portfolio-triage-header")[0]
+    assert "position: sticky" not in command_dashboard_block
     assert ".my-portfolio-kpi-freshness" not in my_portfolio_css
     assert ".my-portfolio-kpi-tone-positive" in my_portfolio_css
     assert "function setMyPortfolioToneClass" in js
@@ -724,6 +772,33 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert "function myPortfolioRowStateClass(row)" in js
     assert "function myPortfolioUnavailableChip" in js
     assert "myPortfolioMiniSort.textContent" in js
+    assert "function myPortfolioRowMatchesReviewHoldTight" in js
+    assert "function myPortfolioRowMatchesExitRisk" in js
+    assert "function myPortfolioRowMatchesStaleData" in js
+    assert "function myPortfolioRowMatchesUnavailableEvidence" in js
+    assert "function myPortfolioRowIsActionable" in js
+    assert "function myPortfolioRowMatchesAttentionFilter" in js
+    assert "function myPortfolioRowMatchesSmartFilters" in js
+    assert "function myPortfolioVisibleRows" in js
+    assert "function myPortfolioTriageCounts" in js
+    assert "function renderMyPortfolioTriage" in js
+    assert "function setMyPortfolioQueueView" in js
+    assert "function toggleMyPortfolioAttentionFilter" in js
+    assert "function toggleMyPortfolioSmartFilter" in js
+    assert "myPortfolioRowMatchesExitRisk(row)" in js
+    assert 'action === "EXIT"' in js
+    assert 'action === "WATCH"' in js
+    assert 'action === "ADD"' in js
+    assert 'status === "AT_RISK"' in js
+    assert 'status === "CAUTION"' in js
+    assert 'filterId === "near_trigger"' in js
+    assert "No new distance threshold was invented." in html
+    assert "Sync Existing Holdings to build the action queue." in js
+    assert "No holdings need attention." in js
+    assert "No holdings match the current triage filters." in js
+    assert "Showing all ${formatMyPortfolioNumber(visibleCount)} holdings." in js
+    assert "Showing ${formatMyPortfolioNumber(visibleCount)} holdings in Action Queue." in js
+    assert "myPortfolioQueueReasonChips" in js
     assert "myPortfolioDensityCompact?.addEventListener" in js
     assert "myPortfolioHistoryToggle?.addEventListener" in js
     # Owner Correction 2: TradePlan-derived levels must never be labeled
@@ -815,6 +890,8 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert "snapshot?.portfolio_changed_since_sync === true" in js
     assert 'snapshot?.currentness === "UNKNOWN"' in js
     assert 'snapshot?.currentness === "CURRENT"' not in js
+    assert "snapshotCurrent: hasSnapshot && !myPortfolioSnapshotIsStale(snapshot)" in js
+    assert "!myPortfolioSnapshotCurrentnessIsUnknown(snapshot)" in js
     assert re.search(
         r"if \(hasLegacyAnalysis\) \{.*?"
         r"Portfolio analysis is from a legacy interpretation version.*?"
