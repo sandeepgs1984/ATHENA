@@ -258,6 +258,70 @@ def test_loader_makes_no_network_or_provider_call(tmp_path: Path, monkeypatch: p
 # ---- PositionSizingPolicyConfig model itself ----------------------------
 
 
-def test_model_drops_underscore_prefixed_documentation_keys() -> None:
+def test_model_drops_meta_documentation_key() -> None:
     parsed = PositionSizingPolicyConfig.model_validate(VALID_PAYLOAD)
     assert parsed.policy_version == VALID_PAYLOAD["policy_version"]
+
+
+# ---- ID-9 Capital Policy Config Final Hardening (2026-09-07) ----------
+
+
+def test_meta_key_accepted_and_ignored(tmp_path: Path) -> None:
+    payload = dict(VALID_PAYLOAD, **{"_meta": {"description": "anything"}})
+    _write(tmp_path, payload)
+    policy = load_position_sizing_policy_config(tmp_path)
+    assert policy is not None
+    assert policy.policy_version == VALID_PAYLOAD["policy_version"]
+
+
+def test_note_key_accepted_and_ignored(tmp_path: Path) -> None:
+    payload = {k: v for k, v in VALID_PAYLOAD.items() if k != "_meta"}
+    payload["_note"] = "some documentation note"
+    _write(tmp_path, payload)
+    policy = load_position_sizing_policy_config(tmp_path)
+    assert policy is not None
+    assert policy.policy_version == VALID_PAYLOAD["policy_version"]
+
+
+def test_arbitrary_underscore_key_rejected(tmp_path: Path) -> None:
+    payload = dict(VALID_PAYLOAD, _unknown="anything")
+    _write(tmp_path, payload)
+    with pytest.raises(ConfigError):
+        load_position_sizing_policy_config(tmp_path)
+
+
+def test_misspelled_meta_key_rejected(tmp_path: Path) -> None:
+    payload = {k: v for k, v in VALID_PAYLOAD.items() if k != "_meta"}
+    payload["_metaa"] = {"description": "typo'd meta key"}
+    _write(tmp_path, payload)
+    with pytest.raises(ConfigError):
+        load_position_sizing_policy_config(tmp_path)
+
+
+def test_ordinary_unknown_key_still_rejected(tmp_path: Path) -> None:
+    payload = dict(VALID_PAYLOAD, extra_field="1.0")
+    _write(tmp_path, payload)
+    with pytest.raises(ConfigError):
+        load_position_sizing_policy_config(tmp_path)
+
+
+def test_policy_version_surrounding_whitespace_is_trimmed(tmp_path: Path) -> None:
+    payload = dict(VALID_PAYLOAD, policy_version="  policy-2026-09-07-v1  ")
+    _write(tmp_path, payload)
+    policy = load_position_sizing_policy_config(tmp_path)
+    assert policy is not None
+    assert policy.policy_version == "policy-2026-09-07-v1"
+
+
+def test_whitespace_only_policy_version_rejected(tmp_path: Path) -> None:
+    payload = dict(VALID_PAYLOAD, policy_version="   ")
+    _write(tmp_path, payload)
+    with pytest.raises(ConfigError):
+        load_position_sizing_policy_config(tmp_path)
+
+
+def test_normalized_version_reaches_capital_policy_exactly() -> None:
+    parsed = PositionSizingPolicyConfig.model_validate(
+        dict(VALID_PAYLOAD, policy_version="\tpolicy-v9\n")
+    )
+    assert parsed.policy_version == "policy-v9"

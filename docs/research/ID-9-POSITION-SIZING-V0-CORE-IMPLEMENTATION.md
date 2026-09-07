@@ -1,13 +1,14 @@
 # ID-9 — Position Sizing V0 Core Implementation
 
-Status: **ID-9 V0 CAPITAL POLICY ACTIVATION READY FOR OWNER VALUES /
-FINAL CLOSURE.** The Owner froze the ID-9 V0 core methodology/
+Status: **ID-9 CAPITAL POLICY CONFIG HARDENED — READY FOR OWNER VALUES
+/ FINAL ACTIVATION.** The Owner froze the ID-9 V0 core methodology/
 implementation itself (classification
 `ID9_V0_CORE_IMPLEMENTATION_METHODOLOGY_CORRECT_NO_PRODUCTION_ACTIVATION`,
 §0/§34/§35 below — **nothing in §0-§35 changed by this round**). This
-round (§36-§49) closes the one remaining operational gap: a canonical
-production configuration seam for `CapitalPolicy` now exists, wired
-into the same `OwnerValidationPipeline` construction path production
+round (§36-§49, incl. §41a final config hardening) closes the one
+remaining operational gap: a canonical production configuration seam
+for `CapitalPolicy` now exists, wired into the same
+`OwnerValidationPipeline` construction path production
 already uses; production capital policy remains intentionally absent
 until the Owner supplies four numeric values (§49).
 
@@ -912,7 +913,8 @@ a clear `ConfigError` message naming the file and field:
 - `risk_budget_per_trade_pct <= 0` or `> 100`
 - `max_position_value_pct <= 0` or `> 100`
 - empty/whitespace-only/missing `policy_version`
-- any unknown key (a typo must fail loudly, never silently ignored)
+- any unknown key (a typo must fail loudly, never silently ignored) —
+  including an underscore-prefixed one (§41a hardening below)
 - a bare JSON number for any of the three numeric fields (must be a
   JSON string — exact `Decimal` parsing, never a float intermediate)
 - non-JSON / non-object top-level content
@@ -923,6 +925,46 @@ loader additionally constructs a real `CapitalPolicy(...)` from the
 validated fields — `CapitalPolicy.__post_init__`'s own frozen
 invariants (§the V0 core round) run a second time, for real, rather
 than being duplicated as a parallel range check only.
+
+### 41a. Final config hardening (2026-09-07)
+
+Owner/Chief Architect source review accepted the whole activation
+architecture (§37-§40 above) and found two narrow config-hardening
+gaps before Owner values are written — both fixed in this same
+milestone, same file, no ID-9.1/ID-9.x created:
+
+1. **Strict meta-key handling.** The original `_Strict._drop_meta_keys`
+   dropped *every* key starting with `_` before validation — directly
+   contradicting this module's own "unknown keys are errors" contract,
+   since a typo like `_metaa`, `_unexpected`, or even
+   `_risk_budget_per_trade_pct` would be silently swallowed instead of
+   rejected. Replaced with `_DOCUMENTATION_KEYS = frozenset({"_meta",
+   "_note"})` and `_drop_documentation_keys`, which drops only those
+   two exact keys — every other key, underscore-prefixed or not, now
+   reaches pydantic's `extra="forbid"` and fails loudly.
+2. **Policy-version normalization.** `_non_empty_version` validated
+   `v.strip()` for emptiness but returned the original, untrimmed `v`
+   — so `"capital-policy-v1"` and `" capital-policy-v1 "` (a stray
+   leading/trailing space in the JSON file) would be accepted as two
+   *different* `policy_version` identities, silently splitting
+   `PositionSizing.identity_tuple()` (§19/§40) for what the Owner
+   intended as the same policy. Fixed to return `stripped` — trims
+   surrounding whitespace only, never lowercases, never rewrites
+   interior characters.
+
+Neither fix touches `CapitalPolicy` itself, the activation seam
+(`cli.py`'s `_owner_validation_pipeline`), the config file shape (§38),
+or any sizing methodology (§0-§35, unchanged). **8 new tests** added to
+`tests/market_intel/test_position_sizing_config.py` (39 total, up from
+31): `_meta` accepted, `_note` accepted, an arbitrary `_unknown` key
+rejected, a misspelled `_metaa` rejected, an ordinary unknown key still
+rejected, surrounding whitespace trimmed, whitespace-only version
+rejected, and a direct `PositionSizingPolicyConfig` normalization
+proof. Full suite **3876 passed, 1 pre-existing unrelated skip, 0
+failures** (up from 3868, exactly +8). Zero schema/production change;
+`config/position_sizing_policy.json` still does not exist in
+production; `git diff --check` clean, diff scoped to
+`position_sizing_config.py` and its test file only.
 
 ## 42. Normalized Owner Policy Impact Table
 
@@ -1042,10 +1084,18 @@ workflow from the V0 core round, plus 19 pure-engine/domain-model
 currentness/policy-identity tests from the correction round) were
 weakened, removed, or re-scoped — all still pass unchanged.
 
+**8 more new tests** (§41a config hardening, same file,
+`tests/market_intel/test_position_sizing_config.py`, now 39 total):
+`_meta` accepted/ignored, `_note` accepted/ignored, an arbitrary
+`_unknown` key rejected, a misspelled `_metaa` rejected, an ordinary
+unknown key still rejected, `policy_version` surrounding whitespace
+trimmed, whitespace-only `policy_version` rejected, and a direct
+`PositionSizingPolicyConfig` normalization proof.
+
 ## 46. Full suite
 
-**3868 passed, 1 pre-existing unrelated skip, 0 failures** (up from
-3831 before this round — exactly +37: 31 config-loader tests + 6
+**3876 passed, 1 pre-existing unrelated skip, 0 failures** (up from
+3831 before this round — exactly +45: 39 config-loader tests + 6
 workflow-seam tests).
 
 ## 47. `git diff --check`
@@ -1114,5 +1164,5 @@ produce a real recommended quantity in production:**
 
 ---
 
-**ID-9 V0 CAPITAL POLICY ACTIVATION READY FOR OWNER VALUES / FINAL
-CLOSURE**
+**ID-9 CAPITAL POLICY CONFIG HARDENED — READY FOR OWNER VALUES / FINAL
+ACTIVATION**

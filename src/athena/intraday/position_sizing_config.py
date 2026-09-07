@@ -69,6 +69,18 @@ from athena.intraday.position_sizing_models import CapitalPolicy
 POSITION_SIZING_POLICY_CONFIG_FILENAME = "position_sizing_policy.json"
 
 
+#: The ONLY documentation keys this config format recognizes and drops
+#: before validation. ID-9 Capital Policy Config Final Hardening
+#: (2026-09-07, Owner/Chief Architect source review): the prior
+#: wildcard "drop every key starting with `_`" rule silently swallowed
+#: any underscore-prefixed typo (`_metaa`, `_unexpected`,
+#: `_risk_budget_per_trade_pct`) instead of rejecting it -- directly
+#: contradicting this module's own "unknown keys are errors" contract.
+#: Only these two exact keys are dropped; every other key (underscore-
+#: prefixed or not) reaches `extra="forbid"` and fails loudly.
+_DOCUMENTATION_KEYS = frozenset({"_meta", "_note"})
+
+
 class _Strict(BaseModel):
     """Unknown keys are errors -- a typo in this policy file must fail
     loudly, never silently fall back to `None`/`CAPITAL_POLICY_UNAVAILABLE`
@@ -78,15 +90,17 @@ class _Strict(BaseModel):
     convention, independently -- this module owns its own tiny config
     stack rather than joining `athena.config.loader.load_config`'s
     all-files-mandatory aggregate tree (this file must be able to be
-    ABSENT without breaking every other `athena` command)."""
+    ABSENT without breaking every other `athena` command). Drops only
+    the exact, supported documentation keys in `_DOCUMENTATION_KEYS` --
+    never a wildcard underscore-prefix rule (2026-09-07 hardening)."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     @model_validator(mode="before")
     @classmethod
-    def _drop_meta_keys(cls, values: object) -> object:
+    def _drop_documentation_keys(cls, values: object) -> object:
         if isinstance(values, dict):
-            return {k: v for k, v in values.items() if not (isinstance(k, str) and k.startswith("_"))}
+            return {k: v for k, v in values.items() if k not in _DOCUMENTATION_KEYS}
         return values
 
 
@@ -167,9 +181,17 @@ class PositionSizingPolicyConfig(_Strict):
     @field_validator("policy_version")
     @classmethod
     def _non_empty_version(cls, v: str) -> str:
-        if not v.strip():
+        """Trims surrounding whitespace only -- never lowercases, never
+        rewrites interior characters. 2026-09-07 hardening: the prior
+        version validated `v.strip()` for emptiness but returned the
+        original untrimmed `v`, so `"capital-policy-v1"` and
+        `" capital-policy-v1 "` would be accepted as different
+        `policy_version` identities -- an accidental identity split a
+        stray space in the JSON file could silently cause."""
+        stripped = v.strip()
+        if not stripped:
             raise ValueError("position_sizing_policy.policy_version is mandatory and must be non-empty")
-        return v
+        return stripped
 
 
 def position_sizing_policy_config_path(config_dir: Path | str) -> Path:
