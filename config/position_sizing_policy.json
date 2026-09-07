@@ -1,0 +1,9 @@
+{
+  "_meta": {
+    "description": "ATHENA ID-9 Owner-approved V0 capital policy"
+  },
+  "total_deployable_capital": "1000000.00",
+  "risk_budget_per_trade_pct": "0.50",
+  "max_position_value_pct": "15.00",
+  "policy_version": "id9-capital-policy-v1"
+}

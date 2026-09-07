@@ -1153,9 +1153,19 @@ produce a real recommended quantity in production:**
    its `OwnerValidationPipeline` per cycle via this same helper — no
    in-memory caching to invalidate.)
 3. This activation step is a tiny, reversible configuration change —
-   not a methodology milestone. Deleting or emptying the file at any
-   time instantly reverts to `CAPITAL_POLICY_UNAVAILABLE`, with zero
-   code change.
+   not a methodology milestone. **Deleting** the file at any time
+   (making it absent) instantly reverts `capital_policy` to `None` →
+   `CAPITAL_POLICY_UNAVAILABLE`, with zero code change (§39, safe
+   absence). **Emptying** the file (leaving it present but with empty,
+   truncated, or otherwise invalid content) does **not** safely
+   disable sizing — a present file is always validated, so an empty/
+   invalid file raises `ConfigError` at the very next
+   `OwnerValidationPipeline` construction instead, failing that
+   cycle's pipeline construction loudly rather than silently falling
+   back to `CAPITAL_POLICY_UNAVAILABLE` (§39/§41: "malformed config
+   must never silently resolve to a usable, or a differently-shaped,
+   policy"). To deliberately deactivate sizing again, **delete the
+   file** — never truncate or empty it in place.
 4. `PositionSizing` remains non-persisted (§21, unchanged) — activation
    makes the pure per-cycle sizing result available in
    `WorkflowContext` for that cycle's own consumers; it does not, by
