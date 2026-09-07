@@ -6,7 +6,7 @@ status updated on approval.
 
 ---
 
-## ID-8 Entry/Risk Methodology Validation — Discovery + Empirical Contract, Ready for Owner Review
+## ID-8 Entry/Risk Methodology Validation — Discovery + Empirical Contract, Owner Approved / Frozen
 
 **Summary.** With ID-7 closed, the Owner authorized ID-8: given an
 actionable/eligible intraday opportunity, what entry/risk structure is
@@ -114,6 +114,175 @@ docs(intraday): ID-8 entry/risk methodology discovery + empirical contract
   writes/provider calls) proving the contract's mechanics work on real
   data - explicitly not methodology-validating evidence given this
   batch's invalid entry risk-geometry.
+```
+
+**Owner/Chief Architect decision (2026-09-07): ID-8 Discovery + Empirical
+Methodology Contract OWNER APPROVED / CLOSED — the contract is FROZEN
+for this validation stage.** Owner decisions: (1) YES, rebuild the
+historical LONG replay cohort; (2) YES, exercise forward VWAP-loss
+end-to-end on the valid-geometry LONG population; (3) NO, do not
+interrupt ID-8 to investigate ID-6 SHORT methodology now. Two small
+pre-freeze consistency-cleanup rounds were applied to the discovery
+report (target-touch direction wording corrected; same-bar ordering
+tightened to `TARGET_NO_LATER_THAN_INVALIDATION`, never strictly-before;
+outcome taxonomy split into independent reachability metrics vs. a
+single terminal-ordering label) — zero numeric results changed by
+either round. See the new top entry below for the full historical study
+authorized and completed the same day.
+
+---
+
+## ID-8 Full Historical Entry/Risk Outcome Validation — Ready for Owner Review
+
+**Summary.** With the ID-8 discovery contract frozen, the Owner
+authorized executing it at full historical scale. This milestone builds
+a new, committed, reusable research harness and runs it against the
+real historical LONG population — never copying ID-7B.1's own published
+numbers, since that harness was never committed to the repository.
+
+**New committed module:** `src/athena/data/id8_entry_risk_outcome_validation.py`,
+structurally split into two phases enforced by module layout and a
+dedicated source-scan test, never by convention alone:
+- **PHASE A (point-in-time observation selection):** `build_trade_episodes`
+  (zero-invented-parameter episode construction) and
+  `_reconstruct_eq_at_checkpoint` (reuses `id6e_replay_shadow_validation.run_replay`'s
+  own exact evidence-composition pattern — VWAP, confluence, OR15, RS,
+  RVOL, gap — generalized to an arbitrary `(Decision, as_of)` pair
+  instead of a fixed session/checkpoint grid). Every candle read here is
+  bounded `<= as_of`; no forward information can enter.
+- **PHASE B (forward outcome analysis):** `forward_candles` (new — no
+  forward-reading capability existed anywhere in the repository before
+  this milestone), `_vwap_at` (session-cumulative VWAP recomputed per
+  subsequent bar, since VWAP is a running indicator by its own frozen
+  definition, never a level frozen at the entry checkpoint), and
+  `analyze_forward_outcome` (direction-aware MFE/MAE, T1/T2
+  intrabar/close-confirmed reachability, VWAP-loss occurrence/timing,
+  the frozen `TARGET_NO_LATER_THAN_INVALIDATION` same-bar rule, terminal
+  ordering, risk geometry, RR).
+
+**A real bug found and fixed during self-validation.** An early draft of
+`build_trade_episodes` pre-filtered to `decision_type='TRADE'` before
+grouping rows into episodes — this silently discarded the intervening
+non-TRADE rows needed to detect a true episode boundary (ID-7B.1's own
+rule: an episode breaks on ANY decision-type change, not only a session
+change), over-merging episodes into fewer, larger ones (5,037 episodes
+instead of the correct 6,739). Fixed by reading the full per-instrument
+decision timeline first. After the fix, a regression test
+(`test_build_trade_episodes_breaks_on_intervening_non_trade_row`) locks
+this in.
+
+**Reconciliation against ID-7B.1.** Population-identity statistics match
+**exactly**: 6,624 LONG episodes, 783 REPLAYED_QUALIFIED LONG
+observations, max episode length 60 (`NSE:PAYTM`, 2026-08-10) — all
+`EXACT_MATCH`. However, several outcome statistics differ materially on
+the *identical* population: T1 (+1%) hit rate 31.67% (248/783) vs.
+ID-7B.1's published 23.88% (187/783); T2 (+1.5%) 18.77% vs. 14.81%;
+median MFE 0.604% vs. 0.434%. A manual spot-check of one real
+observation found the calculation internally consistent (entry price,
+MFE/MAE, RR, T1-timing all reconcile with each other); SQLite's
+`datetime()` UTC-normalization was checked directly and found to apply
+symmetrically to both comparison operands, ruling out that specific
+suspicion. **Root cause not fully identifiable — ID-7B.1's own
+harness/scripts were never committed** (lived in a session scratchpad,
+per that report's own §25), so no line-by-line diff is possible.
+Classified `UNEXPLAINED_DIFFERENCE` honestly, not forced to match. **Per
+the authorization's own instruction, this new committed harness and its
+numbers are now authoritative for future ID-8 work**; ID-7B.1's own
+report is preserved unmodified, not treated as ground truth going
+forward.
+
+**Real findings at scale (794 total observations, LONG 783 + SHORT 11
+via episode replay; native SHORT snapshot separately 67 rows).**
+VWAP-loss occurred in 66.8% of 756 valid-geometry observations (median
+time-to-loss 40 min). Terminal ordering: 52.5% `INVALIDATION_FIRST`,
+24.7% `TARGET_SIDE_NO_LATER_THAN_INVALIDATION`, 19.4%
+`SESSION_END_NO_RESOLUTION`, 3.4% `INSUFFICIENT_FORWARD_DATA` — **zero**
+observations ever classified `AMBIGUOUS_SAME_BAR`, structurally proven
+unreachable for the target-vs-VWAP-loss pairing (confirmed by source
+scan). A strong, real, monotonic session-time-of-entry association with
+T1 reachability (44.3% at 09h falling to 4.7% at 15h) — classified
+`EXTENSION_EFFECT_WARRANTS_CALIBRATION`, real evidence but cause not
+isolated. RS and initial-risk-distance quartiles both show real,
+monotonic-ish positive associations with T1 reachability, directionally
+consistent with (though not numerically matching) ID-7B.1's own §20
+finding. OR15 comparator: 99.37% available, median risk-distance 1.42%
+(notably wider than VWAP-loss's own 0.47%) — descriptive risk-distance
+only; a full stop-hit/timing/RR comparator was not implemented in this
+pass (stated limitation). D1-ATR comparator, MFE/MAE-before-event
+conditional distributions, regime association, and session-clustering-
+aware uncertainty intervals were likewise not implemented — real, stated
+scope limitations, not silently omitted.
+
+**Native SHORT appendix.** 67 real, natively-persisted TRADE+QUALIFIED
+rows (up from 60 at discovery) — 100% remain `UNKNOWN`/
+`INVALIDATION_UNAVAILABLE`. Reported strictly separately, never pooled
+with LONG. `LONG_VALIDATED_SHORT_UNVALIDATED` unchanged. **Zero ID-6/EQ
+methodology investigated or touched**, per the Owner's own explicit
+decision.
+
+**Determinism.** An independent second full run of the entire study
+(6,750 episodes, 77.7s wall time) reproduced the exact same 783 LONG
+observation identities with byte-for-byte identical full records — 0
+mismatches across every MFE/MAE/T1/T2/VWAP-loss/terminal-ordering/RR
+field. The only cross-run variation was in the live, still-growing
+native SHORT population (expected — production kept running between
+runs).
+
+**Tests.** 12 new tests in
+`tests/data_layer/test_id8_entry_risk_outcome_validation.py`: PHASE
+A/PHASE B structural-isolation source scans, the episode-boundary
+bug-fix regression, direction-correct target-touch proof (a candle
+whose *wrong*-direction extreme would falsely register a hit under a
+reversed rule is proven NOT to trigger one), no-provider/no-persistence
+source scans, real disposable-DB integration tests for LONG/SHORT
+forward outcomes and the `INSUFFICIENT_FORWARD_DATA` case. Full
+repository suite: **3756 passed, 1 pre-existing unrelated skip, 0
+failures**.
+
+**Files created:** `src/athena/data/id8_entry_risk_outcome_validation.py`,
+`tests/data_layer/test_id8_entry_risk_outcome_validation.py`,
+`docs/research/ID-8-FULL-HISTORICAL-ENTRY-RISK-OUTCOME-VALIDATION.md`.
+**Files modified:** `docs/MILESTONES.md`, `ATHENA_BRIEFING.md`,
+`docs/ATHENA-ID-TRACK-HANDOFF.md`, this file. **Zero schema/production/
+EMR/DarvaX changes.** `db/athena.db` confirmed unchanged throughout
+(`schema_version` 18, `integrity_check: ok`); PID 2453 untouched; zero
+writes; zero provider/network calls.
+
+**Status: ID-8 FULL HISTORICAL ENTRY/RISK OUTCOME VALIDATION READY FOR
+OWNER / CHIEF ARCHITECT REVIEW.** Classification:
+**`ID8_V0_ENTRY_RISK_PARTIALLY_SUPPORTED`** — real, mechanically sound
+evidence at scale, but open threads (the outcome-rate discrepancy,
+incomplete OR15/D1-ATR comparators, an unisolated extension effect)
+mean V0 is not yet frozen. Does not start ID-9; does not begin an ID-6
+SHORT correction; EMR and DarvaX untouched.
+
+**Suggested commit message** (for the owner to run themselves, per
+CLAUDE.md — no git action taken by the AI):
+
+```
+feat(intraday): full historical ID-8 entry/risk outcome validation
+
+- Added a new committed, PHASE-A/PHASE-B-separated research harness
+  (id8_entry_risk_outcome_validation.py) that independently reconstructs
+  the real historical LONG TRADE+QUALIFIED population and measures real
+  forward MFE/MAE, T1/T2 reachability, and VWAP-loss occurrence/timing -
+  no forward-reading capability existed anywhere in the repo before this.
+- Found and fixed a real episode-construction bug during self-validation
+  (pre-filtering to TRADE before grouping silently discarded the
+  intervening-non-TRADE rows needed to detect a true episode boundary),
+  locked in with a regression test.
+- After the fix, population-identity numbers matched ID-7B.1's own
+  published figures exactly (6,624 episodes, 783 QUALIFIED); several
+  outcome rates differ materially and are honestly classified
+  UNEXPLAINED_DIFFERENCE since ID-7B.1's own harness was never
+  committed - this new harness is now authoritative going forward.
+- Found real evidence: 66.8% VWAP-loss occurrence rate, a strong
+  session-time/T1-reachability association, RS/risk-distance
+  associations with reachability; native SHORT population (67 rows)
+  remains 100% INVALIDATION_UNAVAILABLE, unchanged, not pooled with
+  LONG, zero ID-6 methodology touched.
+- Proved determinism (0 mismatches across an independent full rerun);
+  12 new tests; full suite 3756 passed.
 ```
 
 ---
