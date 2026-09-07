@@ -132,7 +132,7 @@ authorized and completed the same day.
 
 ---
 
-## ID-8 Full Historical Entry/Risk Outcome Validation — Ready for Owner Review
+## ID-8 Full Historical Entry/Risk Outcome Validation — Corrected and Complete, Ready for Owner Review
 
 **Summary.** With the ID-8 discovery contract frozen, the Owner
 authorized executing it at full historical scale. This milestone builds
@@ -248,13 +248,118 @@ EMR/DarvaX changes.** `db/athena.db` confirmed unchanged throughout
 (`schema_version` 18, `integrity_check: ok`); PID 2453 untouched; zero
 writes; zero provider/network calls.
 
-**Status: ID-8 FULL HISTORICAL ENTRY/RISK OUTCOME VALIDATION READY FOR
-OWNER / CHIEF ARCHITECT REVIEW.** Classification:
-**`ID8_V0_ENTRY_RISK_PARTIALLY_SUPPORTED`** — real, mechanically sound
-evidence at scale, but open threads (the outcome-rate discrepancy,
-incomplete OR15/D1-ATR comparators, an unisolated extension effect)
-mean V0 is not yet frozen. Does not start ID-9; does not begin an ID-6
-SHORT correction; EMR and DarvaX untouched.
+**Status (superseded by the correction round below, same day).**
+
+---
+
+**Owner/Chief Architect source review correction (same day, same
+milestone — no ID-8.1/ID-8.x created).** The review found several
+correctness/completeness defects in the version above and required them
+fixed inside this same milestone before Owner review:
+
+1. **LONG/SHORT pooling.** The report claimed "never pooled" but
+   `_summarize` combined 783 LONG + 11 SHORT into one 794-observation
+   denominator for T1/T2/MFE/MAE/geometry/terminal ordering. **Fixed:**
+   `_summarize` now returns two fully independent blocks,
+   `primary_LONG` (783 observations — the only block used for any V0
+   methodology evidence) and `replayed_SHORT_diagnostic` (12
+   observations, 100% invalid geometry) — proven by a dedicated test
+   that constructs synthetic LONG+SHORT rows and checks the blocks never
+   share a denominator.
+2. **Episode reconciliation mixed LONG+SHORT.** ID-7B.1's own published
+   mean/max episode length is LONG-only; the report compared it against
+   a combined-population figure. **Fixed:** `long_trade_decisions`
+   (96,985), `long_episodes` (6,624), `long_mean_episode_length`
+   (14.64), `long_max_episode_length` (60) are now computed directly
+   from the LONG-only episode subset — all four now `EXACT_MATCH` ID-7B.1.
+3. **Forward window used a same-date filter, not the canonical session
+   close.** **Fixed:** `forward_candles` now takes an explicit
+   `session_close_ts` (from `CalendarEngine.context_for` +
+   `session_open_close_ts`) and excludes any bar whose own completion
+   instant falls after it — proven by a test that seeds a real
+   after-close M5 row and confirms it is excluded, plus a boundary test
+   proving a bar completing exactly at close is still included.
+4. **Entry selection used a raw SQL completion check instead of the
+   canonical helper.** **Fixed:** now uses `latest_completed_candle`/
+   `completed_candles` directly. Combined with fix #3 (evaluated
+   together, since separating them would need a throwaway
+   implementation), this changed the LONG T1 rate's denominator from
+   783 to 756 (27 observations now correctly `INSUFFICIENT_FORWARD_DATA`
+   under the canonical bound) — the same 248 raw T1 hits, a more precise
+   rate (32.80% vs. the prior 31.67%).
+5. **Terminal ordering could be assigned without valid VWAP geometry.**
+   A T1 hit with invalid geometry could still report
+   `TARGET_SIDE_NO_LATER_THAN_INVALIDATION`, a meaningless claim since no
+   valid invalidation exists to order against. **Fixed:** terminal
+   ordering is now `None` whenever `valid_geometry` is `False`, with
+   `invalid_geometry_n` tracked as its own explicit coverage field —
+   proven by a test with a genuine T1 hit under invalid geometry
+   asserting `terminal is None`. This is also why the SHORT diagnostic's
+   own terminal-ordering denominator is correctly `0` (12/12 invalid
+   geometry).
+6. **VWAP-loss semantics (evolving vs. frozen-at-entry) needed a
+   frozen-source citation, not just an inference from VWAP being
+   generically cumulative.** **Resolved, unambiguously:**
+   `docs/research/ID-7B-ENTRY-RISK-METHODOLOGY.md:303-304` defines the
+   primary invalidation as "price closes back through **session VWAP**
+   ... on a completed M5 bar" — "session VWAP" is the same term used
+   everywhere else in the codebase exclusively for the evolving,
+   session-cumulative indicator. No Owner escalation was needed.
+7. **MFE-before-VWAP-loss, MAE-before-T1, MAE-before-T2** — requested,
+   not optional. **Implemented** as running-max trackers up to and
+   including the bar where each event first fires.
+8. **OR15 comparator was distance-only.** **Completed:** event rate
+   (22.64%, 170/751), time-to-event, before-T1 rate (88.24%), and
+   `AMBIGUOUS_SAME_BAR` tracking for genuine same-bar OR15+T1 co-
+   occurrence (0 found this run) — kept structurally separate from
+   VWAP-loss's own close-confirmed-only semantics, proven by a test that
+   seeds one bar crossing both an intrabar T1 and an intrabar OR15
+   level and asserts the ambiguity flag fires.
+9. **D1-ATR(1×) comparator** — reconstructed using the real
+   `IndicatorEngine` ATR computation and ID-7B.1's own explicit "1×,
+   descriptive only" choice: 1.72% event rate, `EXACT_MATCH` to
+   ID-7B.1's own 1.76%.
+10. **Regime association** — PIT-reconstructed via the real, unmodified
+    `RegimeEngine` (D1 index candles + the latest `market_snapshots` row
+    at-or-before each checkpoint), not deferred: `BULL_TREND` n=705
+    (32.34% T1 rate), `SIDEWAYS` n=51 (39.22%).
+11. **Session-aware uncertainty** — a deterministic, fixed-seed
+    (`20260907`) session-block bootstrap (2,000 resamples, whole
+    sessions resampled with replacement) for the primary LONG rates: T1
+    90% CI [28.81%, 36.69%]; VWAP-loss 90% CI [56.77%, 75.92%] — wide,
+    reported honestly, evidence characterization only.
+12. **Chronological stability** — a descriptive first-half/second-half
+    session split: T1 rate 34.53% (first) vs. 32.08% (second) — stable,
+    not concentrated in a few sessions.
+13. **ID-7B.1 reconciliation re-run** on the corrected, LONG-only basis:
+    population-identity metrics remain `EXACT_MATCH`; VWAP-loss and
+    D1-ATR event rates now also reconcile almost exactly; T1/T2/MFE and
+    OR15-timing remain honestly `UNEXPLAINED_DIFFERENCE`/
+    `LEGACY_OUTCOME_DISCREPANCY_UNRESOLVABLE_FROM_AVAILABLE_SOURCE`
+    (ID-7B.1's own harness was never committed).
+14. **Extension/lateness interpretation** — reclassified from
+    `EXTENSION_EFFECT_WARRANTS_CALIBRATION` to
+    `LATE_SESSION_TIME_BUDGET_EFFECT_OBSERVED`, since this pass does not
+    isolate genuine extension/chase risk from ordinary remaining-
+    session-time effects.
+
+**Determinism re-proven** on the corrected harness: an independent
+second full run reproduced a byte-for-byte identical `primary_LONG`
+block (every field, including the fixed-seed bootstrap's own CI). **7
+new regression tests** (19 total, up from 12). Full suite: **3763
+passed, 1 pre-existing unrelated skip, 0 failures**. Zero schema/
+production/EMR/DarvaX changes throughout; `db/athena.db` confirmed
+unchanged (schema 18, integrity ok); PID 2453 untouched.
+
+**Status: ID-8 FULL HISTORICAL ENTRY/RISK OUTCOME VALIDATION CORRECTED
+AND COMPLETE — READY FOR OWNER / CHIEF ARCHITECT REVIEW.** Classification
+unchanged: **`ID8_V0_ENTRY_RISK_PARTIALLY_SUPPORTED`**, now on
+materially more rigorous grounds — real, mechanically sound,
+deterministic, correctly-denominated LONG-only evidence at scale, but
+the legacy T1/T2/MFE/OR15-timing discrepancy with ID-7B.1 remains an
+open thread the Owner may want to weigh before freezing V0. Does not
+start ID-9; does not begin an ID-6 SHORT correction; EMR and DarvaX
+untouched.
 
 **Suggested commit message** (for the owner to run themselves, per
 CLAUDE.md — no git action taken by the AI):
@@ -265,24 +370,39 @@ feat(intraday): full historical ID-8 entry/risk outcome validation
 - Added a new committed, PHASE-A/PHASE-B-separated research harness
   (id8_entry_risk_outcome_validation.py) that independently reconstructs
   the real historical LONG TRADE+QUALIFIED population and measures real
-  forward MFE/MAE, T1/T2 reachability, and VWAP-loss occurrence/timing -
-  no forward-reading capability existed anywhere in the repo before this.
+  forward MFE/MAE, T1/T2 reachability, VWAP-loss occurrence/timing, and
+  OR15/D1-ATR comparators - no forward-reading capability existed
+  anywhere in the repo before this.
 - Found and fixed a real episode-construction bug during self-validation
   (pre-filtering to TRADE before grouping silently discarded the
-  intervening-non-TRADE rows needed to detect a true episode boundary),
-  locked in with a regression test.
-- After the fix, population-identity numbers matched ID-7B.1's own
-  published figures exactly (6,624 episodes, 783 QUALIFIED); several
-  outcome rates differ materially and are honestly classified
+  intervening-non-TRADE rows needed to detect a true episode boundary).
+- LONG and SHORT are never pooled: _summarize returns fully independent
+  primary_LONG (783 obs, the only block used for methodology evidence)
+  and replayed_SHORT_diagnostic (12 obs, 100% invalid geometry) blocks.
+- Forward window bounded by the canonical session close
+  (CalendarEngine + session_open_close_ts); entry selection uses the
+  canonical latest_completed_candle helper; terminal ordering requires
+  valid VWAP geometry (an invalid-geometry T1 hit reports terminal=None,
+  never a false ordering claim).
+- VWAP-loss semantics resolved via direct frozen-source citation
+  (ID-7B-ENTRY-RISK-METHODOLOGY.md:303-304): evolving session-cumulative
+  VWAP, not a level frozen at entry.
+- LONG-only episode reconciliation matches ID-7B.1's own published
+  figures exactly (96,985 decisions, 6,624 episodes, 14.64 mean, 60 max,
+  783 QUALIFIED); VWAP-loss (66.8%) and D1-ATR (1.72% vs 1.76%) rates
+  also reconcile closely; T1/T2/MFE/OR15-timing remain honestly
   UNEXPLAINED_DIFFERENCE since ID-7B.1's own harness was never
   committed - this new harness is now authoritative going forward.
-- Found real evidence: 66.8% VWAP-loss occurrence rate, a strong
-  session-time/T1-reachability association, RS/risk-distance
-  associations with reachability; native SHORT population (67 rows)
-  remains 100% INVALIDATION_UNAVAILABLE, unchanged, not pooled with
-  LONG, zero ID-6 methodology touched.
-- Proved determinism (0 mismatches across an independent full rerun);
-  12 new tests; full suite 3756 passed.
+- Added MFE-before-loss/MAE-before-T1/T2, a full OR15 comparator (with
+  its own AMBIGUOUS_SAME_BAR tracking, kept separate from VWAP-loss's
+  close-confirmed semantics), PIT-replayed regime association, a
+  fixed-seed session-block bootstrap, and a chronological stability
+  view.
+- Native SHORT population (76 rows) remains 100% INVALIDATION_UNAVAILABLE,
+  unchanged, zero ID-6 methodology touched.
+- Proved determinism (byte-for-byte identical primary_LONG block across
+  an independent full rerun); 19 tests (7 added in a correction round);
+  full suite 3763 passed.
 ```
 
 ---
