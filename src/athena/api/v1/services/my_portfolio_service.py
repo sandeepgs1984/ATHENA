@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
+import csv
 import hashlib
+import json
 import logging
 import threading
-from dataclasses import asdict
+import zipfile
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
+from io import BytesIO, StringIO
 from pathlib import Path
 from uuid import uuid4
+from xml.sax.saxutils import escape as xml_escape
 from zoneinfo import ZoneInfo
 
 from athena.api.exceptions import (
@@ -74,6 +79,42 @@ _RESET_TOKEN = "RESET"
 _SYNC_GUARD = threading.Lock()
 _SYNC_THREAD: threading.Thread | None = None
 _SYNC_THREAD_RUN_ID: str | None = None
+_XLSX_CONTENT_TYPES = (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+    '<Default Extension="xml" ContentType="application/xml"/>'
+    '<Override PartName="/xl/workbook.xml" '
+    'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+    '<Override PartName="/xl/worksheets/sheet1.xml" '
+    'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+    "</Types>"
+)
+_XLSX_ROOT_RELS = (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+    '<Relationship Id="rId1" '
+    'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" '
+    'Target="xl/workbook.xml"/>'
+    "</Relationships>"
+)
+_XLSX_WORKBOOK_RELS = (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+    '<Relationship Id="rId1" '
+    'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" '
+    'Target="worksheets/sheet1.xml"/>'
+    "</Relationships>"
+)
+
+
+@dataclass(frozen=True, slots=True)
+class MyPortfolioExportFile:
+    """Downloadable My Portfolio export artifact."""
+
+    filename: str
+    media_type: str
+    content: bytes
 
 
 class MyPortfolioService:
@@ -453,6 +494,56 @@ class MyPortfolioService:
             rows=row_dtos,
         )
 
+    def export_portfolio(self, *, scope: str, format_: str) -> MyPortfolioExportFile:
+        """Build a downloadable export from existing My Portfolio state.
+
+        Exports are read-only projections over already-persisted holdings,
+        imports, and snapshots. They never recalculate Portfolio Intelligence.
+        """
+
+        normalized_scope = scope.lower().strip()
+        normalized_format = format_.lower().strip()
+        if normalized_scope not in {"snapshot", "holdings", "imports"}:
+            raise MyPortfolioHoldingError("export scope must be one of: snapshot, holdings, imports")
+        if normalized_format not in {"csv", "xlsx", "json"}:
+            raise MyPortfolioHoldingError("export format must be one of: csv, xlsx, json")
+
+        generated_at = datetime.now(tz=timezone.utc)
+        if normalized_scope == "snapshot":
+            snapshot = self.latest_snapshot()
+            headers, rows = self._snapshot_export_table(snapshot)
+            payload: object = snapshot.model_dump(mode="json", by_alias=True)
+            timestamp = snapshot.generated_at
+        elif normalized_scope == "holdings":
+            holdings = self.list_holdings()
+            headers, rows = self._holdings_export_table(holdings)
+            payload = {
+                "generated_at": generated_at.isoformat(),
+                "holdings": [h.model_dump(mode="json") for h in holdings],
+            }
+            timestamp = generated_at
+        else:
+            imports = self.import_history(limit=500)
+            headers, rows = self._imports_export_table(imports)
+            payload = imports.model_dump(mode="json")
+            timestamp = generated_at
+
+        stem = self._export_filename_stem(normalized_scope, timestamp)
+        if normalized_format == "json":
+            content = json.dumps(payload, indent=2, sort_keys=True).encode("utf-8")
+            return MyPortfolioExportFile(f"{stem}.json", "application/json", content)
+        if normalized_format == "csv":
+            return MyPortfolioExportFile(
+                f"{stem}.csv",
+                "text/csv; charset=utf-8",
+                self._csv_export_bytes(headers, rows),
+            )
+        return MyPortfolioExportFile(
+            f"{stem}.xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            self._xlsx_export_bytes(self._export_sheet_name(normalized_scope), headers, rows),
+        )
+
     def _snapshot_currentness(
         self,
         run: dict[str, object],
@@ -790,6 +881,254 @@ class MyPortfolioService:
             market_data_through=summary.market_data_through,
             sync_status=summary.sync_status,
         )
+
+    def _snapshot_export_table(
+        self,
+        snapshot: PortfolioSnapshotDTO,
+    ) -> tuple[list[str], list[list[object]]]:
+        headers = [
+            "No.",
+            "Symbol",
+            "Qty",
+            "Avg Price",
+            "Last Price",
+            "Price As Of",
+            "Investment",
+            "Current Value",
+            "P&L",
+            "P&L %",
+            "Status",
+            "Conviction",
+            "Trend / Setup",
+            "Daily Review Status",
+            "SuperTrend Direction",
+            "SuperTrend Value",
+            "RSI14",
+            "Volume",
+            "Volume MA20",
+            "Next Action",
+            "Plan Trigger",
+            "Plan Stop",
+            "Plan T1",
+            "Structural Support 1",
+            "Structural Major Support",
+            "Structural Review Trigger",
+            "Structural Target 1",
+            "Structural Target 2",
+            "Structural Target 3",
+            "Exit Risk",
+            "Daily Guidance",
+            "Structural Guidance",
+            "Last Review",
+            "Snapshot ID",
+            "Snapshot Currentness",
+        ]
+        rows: list[list[object]] = []
+        for index, row in enumerate(snapshot.rows, start=1):
+            daily = row.daily_review
+            structural = row.structural_review
+            rows.append(
+                [
+                    index,
+                    row.symbol,
+                    row.quantity,
+                    row.avg_price,
+                    row.last_price,
+                    row.price_as_of,
+                    row.investment,
+                    row.current_value,
+                    row.pnl,
+                    row.pnl_pct,
+                    row.status,
+                    row.conviction,
+                    row.trend_setup,
+                    daily.review_status if daily else None,
+                    daily.supertrend_direction if daily else None,
+                    daily.supertrend_value if daily else None,
+                    daily.rsi14 if daily else None,
+                    daily.volume if daily else None,
+                    daily.volume_ma20 if daily else None,
+                    row.next_action,
+                    row.key_trigger,
+                    row.major_support_exit,
+                    row.target_1,
+                    self._zone_text(structural.support_1 if structural else None),
+                    self._zone_text(structural.major_support if structural else None),
+                    self._zone_text(structural.review_trigger if structural else None),
+                    self._zone_text(structural.target_1 if structural else None),
+                    self._zone_text(structural.target_2 if structural else None),
+                    self._zone_text(structural.target_3 if structural else None),
+                    structural.exit_risk if structural else None,
+                    daily.guidance if daily else None,
+                    structural.guidance if structural else None,
+                    row.last_review,
+                    snapshot.snapshot_id,
+                    snapshot.currentness.value,
+                ]
+            )
+        return headers, rows
+
+    def _holdings_export_table(
+        self,
+        holdings: list[MyPortfolioHoldingDTO],
+    ) -> tuple[list[str], list[list[object]]]:
+        headers = [
+            "No.",
+            "Instrument ID",
+            "Symbol",
+            "Qty",
+            "Avg Price",
+            "Investment",
+            "Imported At",
+            "Updated At",
+            "Source Import ID",
+            "Source Row ID",
+        ]
+        rows = [
+            [
+                index,
+                holding.instrument_id,
+                holding.symbol,
+                holding.quantity,
+                holding.avg_price,
+                holding.investment,
+                holding.imported_at,
+                holding.updated_at,
+                holding.source_import_id,
+                holding.source_row_id,
+            ]
+            for index, holding in enumerate(holdings, start=1)
+        ]
+        return headers, rows
+
+    def _imports_export_table(
+        self,
+        history: PortfolioImportHistoryDTO,
+    ) -> tuple[list[str], list[list[object]]]:
+        headers = [
+            "No.",
+            "Import ID",
+            "Filename",
+            "Source",
+            "Uploaded At",
+            "Confirmed At",
+            "Status",
+            "Total Rows",
+            "Accepted Rows",
+            "Rejected Rows",
+            "Unresolved Rows",
+            "Ambiguous Rows",
+            "Parser Version",
+        ]
+        rows = [
+            [
+                index,
+                item.import_id,
+                item.filename,
+                item.source,
+                item.uploaded_at,
+                item.confirmed_at,
+                item.status.value,
+                item.total_rows,
+                item.accepted_rows,
+                item.rejected_rows,
+                item.unresolved_rows,
+                item.ambiguous_rows,
+                item.parser_version,
+            ]
+            for index, item in enumerate(history.imports, start=1)
+        ]
+        return headers, rows
+
+    def _zone_text(self, zone: object | None) -> str:
+        if zone is None:
+            return ""
+        lower = getattr(zone, "lower", None)
+        upper = getattr(zone, "upper", None)
+        if lower is None or upper is None:
+            return ""
+        return f"{lower}-{upper}"
+
+    def _export_filename_stem(self, scope: str, timestamp: datetime) -> str:
+        return f"athena-my-portfolio-{scope}-{timestamp:%Y%m%d-%H%M%SZ}"
+
+    def _export_sheet_name(self, scope: str) -> str:
+        return {
+            "snapshot": "Latest Snapshot",
+            "holdings": "Confirmed Holdings",
+            "imports": "Import History",
+        }[scope]
+
+    def _csv_export_bytes(self, headers: list[str], rows: list[list[object]]) -> bytes:
+        buffer = StringIO(newline="")
+        writer = csv.writer(buffer)
+        writer.writerow(headers)
+        writer.writerows([[self._export_cell(value) for value in row] for row in rows])
+        return buffer.getvalue().encode("utf-8-sig")
+
+    def _xlsx_export_bytes(
+        self,
+        sheet_name: str,
+        headers: list[str],
+        rows: list[list[object]],
+    ) -> bytes:
+        data = [headers, *[[self._export_cell(value) for value in row] for row in rows]]
+        sheet_xml = self._xlsx_sheet_xml(data)
+        out = BytesIO()
+        with zipfile.ZipFile(out, "w", compression=zipfile.ZIP_DEFLATED) as workbook:
+            workbook.writestr("[Content_Types].xml", _XLSX_CONTENT_TYPES)
+            workbook.writestr("_rels/.rels", _XLSX_ROOT_RELS)
+            workbook.writestr("xl/workbook.xml", self._xlsx_workbook_xml(sheet_name))
+            workbook.writestr("xl/_rels/workbook.xml.rels", _XLSX_WORKBOOK_RELS)
+            workbook.writestr("xl/worksheets/sheet1.xml", sheet_xml)
+        return out.getvalue()
+
+    def _xlsx_workbook_xml(self, sheet_name: str) -> str:
+        escaped_name = xml_escape(sheet_name)
+        return (
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+            'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+            f'<sheets><sheet name="{escaped_name}" sheetId="1" r:id="rId1"/></sheets>'
+            "</workbook>"
+        )
+
+    def _xlsx_sheet_xml(self, rows: list[list[str]]) -> str:
+        row_xml = []
+        for row_index, row in enumerate(rows, start=1):
+            cells = []
+            for col_index, value in enumerate(row, start=1):
+                ref = f"{self._xlsx_column_name(col_index)}{row_index}"
+                cells.append(
+                    f'<c r="{ref}" t="inlineStr"><is><t>{xml_escape(value)}</t></is></c>'
+                )
+            row_xml.append(f'<row r="{row_index}">{"".join(cells)}</row>')
+        return (
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+            "<sheetViews><sheetView workbookViewId=\"0\"><pane ySplit=\"1\" "
+            'topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>'
+            f'<sheetData>{"".join(row_xml)}</sheetData>'
+            "</worksheet>"
+        )
+
+    def _xlsx_column_name(self, index: int) -> str:
+        name = ""
+        while index:
+            index, rem = divmod(index - 1, 26)
+            name = chr(65 + rem) + name
+        return name
+
+    def _export_cell(self, value: object) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, datetime):
+            return value.isoformat()
+        if isinstance(value, Decimal):
+            return format(value, "f")
+        if isinstance(value, bool):
+            return "TRUE" if value else "FALSE"
+        return str(value)
 
     def _dto_row_to_contract_row(self, row: PortfolioSnapshotRowDTO):
         from athena.portfolio.my_portfolio_contracts import (

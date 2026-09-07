@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import time
+import zipfile
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from io import BytesIO
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -1953,3 +1956,75 @@ def test_reset_my_portfolio_is_blocked_during_active_sync_without_mutating_holdi
     assert "Portfolio Sync is currently running" in response.json()["detail"]
     assert repo.portfolio_holdings_digest() == before
     assert repo.list_portfolio_imports()
+
+
+def test_export_latest_snapshot_as_csv(my_portfolio_client: TestClient) -> None:
+    repo = _confirm_infy_holding(my_portfolio_client)
+    repo.add_candles([_candle("NSE:INFY", "1600")])
+    MyPortfolioService(repo).run_sync_inline()
+
+    response = my_portfolio_client.get(
+        "/api/v1/my-portfolio/export",
+        params={"scope": "snapshot", "format": "csv"},
+        headers=get_auth_headers(my_portfolio_client, Role.READONLY, username="export-reader"),
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/csv")
+    assert "athena-my-portfolio-snapshot-" in response.headers["content-disposition"]
+    text = response.content.decode("utf-8-sig")
+    assert "No.,Symbol,Qty,Avg Price,Last Price" in text
+    assert "INFY,10,1500,1600" in text
+    assert "Snapshot Currentness" in text
+
+
+def test_export_confirmed_holdings_as_xlsx(my_portfolio_client: TestClient) -> None:
+    _confirm_infy_holding(my_portfolio_client)
+
+    response = my_portfolio_client.get(
+        "/api/v1/my-portfolio/export",
+        params={"scope": "holdings", "format": "xlsx"},
+        headers=get_auth_headers(my_portfolio_client, Role.READONLY, username="xlsx-export-reader"),
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith(
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    assert "athena-my-portfolio-holdings-" in response.headers["content-disposition"]
+    with zipfile.ZipFile(BytesIO(response.content)) as workbook:
+        sheet = workbook.read("xl/worksheets/sheet1.xml").decode("utf-8")
+    assert "Confirmed Holdings" not in sheet
+    assert "<t>Instrument ID</t>" in sheet
+    assert "<t>NSE:INFY</t>" in sheet
+    assert "<t>15000</t>" in sheet
+
+
+def test_export_import_history_as_json(my_portfolio_client: TestClient) -> None:
+    preview = _preview(my_portfolio_client, b"Symbol,Qty,Avg Price\nINFY,10,1500\n")
+
+    response = my_portfolio_client.get(
+        "/api/v1/my-portfolio/export",
+        params={"scope": "imports", "format": "json"},
+        headers=get_auth_headers(my_portfolio_client, Role.READONLY, username="json-export-reader"),
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/json")
+    payload = json.loads(response.content)
+    assert payload["imports"][0]["import_id"] == preview["import_id"]
+    assert payload["imports"][0]["filename"] == "holdings.csv"
+    assert "athena-my-portfolio-imports-" in response.headers["content-disposition"]
+
+
+def test_export_snapshot_requires_completed_sync(my_portfolio_client: TestClient) -> None:
+    _confirm_infy_holding(my_portfolio_client)
+
+    response = my_portfolio_client.get(
+        "/api/v1/my-portfolio/export",
+        params={"scope": "snapshot", "format": "xlsx"},
+        headers=get_auth_headers(my_portfolio_client, Role.READONLY, username="missing-export-reader"),
+    )
+
+    assert response.status_code == 404
+    assert "no completed My Portfolio snapshot exists" in response.json()["detail"]

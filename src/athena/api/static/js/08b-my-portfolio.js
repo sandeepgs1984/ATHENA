@@ -23,6 +23,12 @@
     const myPortfolioMiniPnl = document.getElementById("my-portfolio-mini-pnl");
     const myPortfolioMiniSynced = document.getElementById("my-portfolio-mini-synced");
     const myPortfolioMiniSort = document.getElementById("my-portfolio-mini-sort");
+    const myPortfolioExportToggle = document.getElementById("my-portfolio-export-toggle");
+    const myPortfolioExportPanel = document.getElementById("my-portfolio-export-panel");
+    const myPortfolioExportScope = document.getElementById("my-portfolio-export-scope");
+    const myPortfolioExportFormat = document.getElementById("my-portfolio-export-format");
+    const myPortfolioExportStatus = document.getElementById("my-portfolio-export-status");
+    const myPortfolioExportDownload = document.getElementById("my-portfolio-export-download");
     const myPortfolioPrivacyToggle = document.getElementById("my-portfolio-privacy-toggle");
     const myPortfolioPreviewTotal = document.getElementById("my-portfolio-preview-total");
     const myPortfolioPreviewValid = document.getElementById("my-portfolio-preview-valid");
@@ -102,6 +108,7 @@
         })(),
         detailOpenKey: null,
         syncCompletion: null,
+        exporting: false,
     };
 
     function escapeMyPortfolioHtml(value) {
@@ -186,6 +193,68 @@
         renderMyPortfolioHoldings(myPortfolioState.holdings || []);
         if (myPortfolioState.detailOpenKey && myPortfolioDetailModal && !myPortfolioDetailModal.hidden) {
             renderMyPortfolioDetail(myPortfolioState.snapshotRowsByKey[myPortfolioState.detailOpenKey]);
+        }
+    }
+
+    function renderMyPortfolioExportPanel() {
+        if (!myPortfolioExportPanel || !myPortfolioExportToggle) return;
+        const expanded = !myPortfolioExportPanel.hidden;
+        myPortfolioExportToggle.setAttribute("aria-expanded", String(expanded));
+    }
+
+    function setMyPortfolioExportStatus(message, tone = "neutral") {
+        if (!myPortfolioExportStatus) return;
+        myPortfolioExportStatus.textContent = message;
+        myPortfolioExportStatus.dataset.tone = tone;
+    }
+
+    function myPortfolioExportFilename(response, fallback) {
+        const disposition = response.headers.get("Content-Disposition") || "";
+        const match = disposition.match(/filename="([^"]+)"/i);
+        return match ? match[1] : fallback;
+    }
+
+    async function downloadMyPortfolioExport() {
+        if (myPortfolioState.exporting) return;
+        const scope = myPortfolioExportScope?.value || "snapshot";
+        const format = myPortfolioExportFormat?.value || "xlsx";
+        myPortfolioState.exporting = true;
+        myPortfolioExportDownload?.setAttribute("disabled", "disabled");
+        setMyPortfolioExportStatus("Preparing export…", "neutral");
+        try {
+            const headers = {};
+            const accessToken = getAccessToken();
+            if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+            const response = await fetch(
+                `/api/v1/my-portfolio/export?scope=${encodeURIComponent(scope)}&format=${encodeURIComponent(format)}`,
+                { headers }
+            );
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                const detail = errorData?.detail || errorData?.title || `Export failed (${response.status})`;
+                throw new Error(typeof detail === "string" ? detail : "Export failed");
+            }
+            const blob = await response.blob();
+            const filename = myPortfolioExportFilename(
+                response,
+                `athena-my-portfolio-${scope}.${format}`
+            );
+            const url = URL.createObjectURL(blob);
+            const anchor = document.createElement("a");
+            anchor.href = url;
+            anchor.download = filename;
+            document.body.appendChild(anchor);
+            anchor.click();
+            anchor.remove();
+            URL.revokeObjectURL(url);
+            setMyPortfolioExportStatus(`Downloaded ${filename}`, "good");
+        } catch (err) {
+            console.error("Failed to export My Portfolio", err);
+            setMyPortfolioExportStatus(err?.message || "Could not export My Portfolio.", "danger");
+            showToast(err?.message || "Could not export My Portfolio.", "danger");
+        } finally {
+            myPortfolioState.exporting = false;
+            myPortfolioExportDownload?.removeAttribute("disabled");
         }
     }
 
@@ -1971,6 +2040,16 @@
     myPortfolioPrivacyToggle?.addEventListener("click", () => {
         setMyPortfolioValuesHidden(!myPortfolioState.valuesHidden);
     });
+    myPortfolioExportToggle?.addEventListener("click", event => {
+        event.stopPropagation();
+        if (!myPortfolioExportPanel) return;
+        myPortfolioExportPanel.hidden = !myPortfolioExportPanel.hidden;
+        renderMyPortfolioExportPanel();
+    });
+    myPortfolioExportPanel?.addEventListener("click", event => {
+        event.stopPropagation();
+    });
+    myPortfolioExportDownload?.addEventListener("click", downloadMyPortfolioExport);
     myPortfolioHistoryToggle?.addEventListener("click", () => {
         myPortfolioState.historyExpanded = !myPortfolioState.historyExpanded;
         renderMyPortfolioHistoryDisclosure();
@@ -1993,11 +2072,16 @@
     myPortfolioResetConfirm?.addEventListener("input", resetMyPortfolioGate);
     myPortfolioResetSubmit?.addEventListener("click", resetMyPortfolio);
     renderMyPortfolioPrivacyToggle();
+    renderMyPortfolioExportPanel();
     syncMyPortfolioStickyHeaderState();
     window.addEventListener("scroll", syncMyPortfolioStickyHeaderState, { passive: true });
     window.addEventListener("resize", syncMyPortfolioStickyHeaderState);
     myPortfolioWorkspaceViewport?.addEventListener("scroll", syncMyPortfolioStickyHeaderState, { passive: true });
     window.addEventListener("click", event => {
+        if (myPortfolioExportPanel && !myPortfolioExportPanel.hidden) {
+            myPortfolioExportPanel.hidden = true;
+            renderMyPortfolioExportPanel();
+        }
         if (event.target === myPortfolioResetModal) closeMyPortfolioResetModal();
         if (event.target === myPortfolioPreview) closeModal(myPortfolioPreview);
     });

@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.180.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.181.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -482,6 +482,39 @@
                                 <p class="metric-desc">Canonical current holdings from confirmed imports. Portfolio Sync analysis reflects the latest successful or partial Sync.</p>
                             </div>
                             <div class="my-portfolio-actions">
+                                <div class="my-portfolio-export-menu">
+                                    <button id="my-portfolio-export-toggle" class="btn" type="button" title="Export My Portfolio data" aria-expanded="false" aria-controls="my-portfolio-export-panel">
+                                        <i class="fa-solid fa-file-export" aria-hidden="true"></i>
+                                        <span>Export</span>
+                                    </button>
+                                    <div id="my-portfolio-export-panel" class="my-portfolio-export-panel" hidden>
+                                        <div>
+                                            <h3>Export Portfolio</h3>
+                                            <p>Download server-owned My Portfolio data. Exports include private values.</p>
+                                        </div>
+                                        <label for="my-portfolio-export-scope">
+                                            Dataset
+                                            <select id="my-portfolio-export-scope">
+                                                <option value="snapshot">Latest analyzed snapshot</option>
+                                                <option value="holdings">Confirmed holdings</option>
+                                                <option value="imports">Import history</option>
+                                            </select>
+                                        </label>
+                                        <label for="my-portfolio-export-format">
+                                            Format
+                                            <select id="my-portfolio-export-format">
+                                                <option value="xlsx">Excel workbook (.xlsx)</option>
+                                                <option value="csv">CSV (.csv)</option>
+                                                <option value="json">JSON audit (.json)</option>
+                                            </select>
+                                        </label>
+                                        <p id="my-portfolio-export-status" class="my-portfolio-export-status">Latest snapshot export requires at least one completed Portfolio Sync.</p>
+                                        <button id="my-portfolio-export-download" class="btn btn-primary" type="button">
+                                            <i class="fa-solid fa-download" aria-hidden="true"></i>
+                                            <span>Download Export</span>
+                                        </button>
+                                    </div>
+                                </div>
                                 <button id="my-portfolio-privacy-toggle" class="btn btn-icon my-portfolio-privacy-toggle" type="button" title="Hide private portfolio values" aria-label="Hide private portfolio values" aria-pressed="false">
                                     <i class="fa-solid fa-eye" aria-hidden="true"></i>
                                 </button>
@@ -2170,7 +2203,7 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.180.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.181.0"></script>
 
     <!-- DarvaX satellite tab (ADR-010 Amendment 1) — the ONLY DarvaX reference
          in this file, and the flag guard itself. This asset is served solely by

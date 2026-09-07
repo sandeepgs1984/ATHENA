@@ -6,6 +6,48 @@ status updated on approval.
 
 ---
 
+## My Portfolio Export Options — Implementation Complete, Ready for Owner Review
+
+**Summary.** Added production-ready My Portfolio exports so the owner can
+download ATHENA's server-owned portfolio state from the dashboard without
+copying table data or maintaining a parallel spreadsheet. Scope is export-only:
+no Portfolio Sync execution, no recalculation, no methodology change, no
+interpretation-version bump, and no snapshot semantic change.
+
+**What changed.** Added `GET /api/v1/my-portfolio/export` with explicit
+`scope=snapshot|holdings|imports` and `format=csv|xlsx|json` query contracts.
+The server flattens the latest analyzed Portfolio Snapshot, canonical confirmed
+holdings, or import-history audit rows into CSV/XLSX tables, and returns JSON
+for machine-readable audit/detail. XLSX output uses a deterministic minimal
+OpenXML workbook with a frozen header row and no new dependency. The My
+Portfolio command center now has a compact Export popover with Dataset and
+Format selectors, a private-values disclosure, status feedback, and a single
+Download Export action that fetches the server artifact with auth headers and
+uses the response filename.
+
+**Tests.** Added API coverage for snapshot CSV, holdings XLSX, import-history
+JSON, and missing-snapshot export failure. Dashboard contract tests cover the
+Export popover, scope/format selectors, private-value notice, download helper,
+and `9.181.0` cache-busted dashboard assets. Final focused validation passed:
+JS syntax check, targeted pytest suite with 85 tests, and ruff checks.
+
+**Files created:** `docs/research/MY-PORTFOLIO-EXPORTS.md`.
+
+**Files modified:** `src/athena/api/v1/routers/my_portfolio.py`,
+`src/athena/api/v1/services/my_portfolio_service.py`,
+`src/athena/api/static/index.html`,
+`src/athena/api/static/js/08b-my-portfolio.js`,
+`src/athena/api/static/css/05b-my-portfolio.css`,
+`tests/api/v1/test_my_portfolio_import_api.py`,
+`tests/api/platform/test_dashboard_hosting.py`,
+`tests/api/platform/test_decision_chart_release_gate.py`,
+`docs/MILESTONES.md`, `ATHENA_BRIEFING.md`, this file.
+
+**Status:** Implementation complete and focused validation passed; ready for
+Owner / Chief Architect review.
+
+---
+
 ## ID-7F3 Production-vs-Replay Mode B Shadow Equivalence — Owner Approved / Closed; ID-7 Overall Owner Approved / Closed
 
 **Summary.** Owner approved and closed ID-7F2 (2026-09-07), then

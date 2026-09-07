@@ -142,6 +142,30 @@ def list_holdings(
     )
 
 
+@router.get(
+    "/export",
+    summary="Export My Portfolio data",
+    status_code=status.HTTP_200_OK,
+    operation_id="exportMyPortfolio",
+)
+def export_my_portfolio(
+    request: Request,
+    scope: str = Query(default="snapshot", pattern="^(snapshot|holdings|imports)$"),
+    format_: str = Query(default="csv", alias="format", pattern="^(csv|xlsx|json)$"),
+    service: MyPortfolioService = Depends(get_my_portfolio_service),  # noqa: B008
+    principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.READ)),  # noqa: B008
+) -> Response:
+    export_file = service.export_portfolio(scope=scope, format_=format_)
+    return Response(
+        content=export_file.content,
+        media_type=export_file.media_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{export_file.filename}"',
+            "X-ATHENA-Request-ID": getattr(request.state, "request_id", "unknown"),
+        },
+    )
+
+
 @router.patch(
     "/holdings/{instrument_id}",
     response_model=AthenaResponse[MyPortfolioHoldingDTO],
